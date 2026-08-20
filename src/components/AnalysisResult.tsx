@@ -275,6 +275,164 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </CardContent>
       </Card>
 
+      {/* News Sentiment (Alpha Vantage) */}
+      {result.sentimentData && result.sentimentData.confidence !== "unavailable" && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span> news-sentiment
+              </h4>
+              <Badge
+                className={cn(
+                  "text-[10px] font-mono",
+                  result.sentimentData.label === "bullish" ? "bg-emerald-500/15 text-emerald-400" :
+                  result.sentimentData.label === "bearish" ? "bg-red-500/15 text-red-400" :
+                  "bg-muted/30 text-muted-foreground"
+                )}
+              >
+                {result.sentimentData.label}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                {result.sentimentData.articleCount} articles
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex items-center gap-4 mb-3">
+              <div>
+                <p className="text-[10px] font-mono text-muted-foreground">avg score</p>
+                <p className={cn(
+                  "text-sm font-bold font-mono tabular-nums",
+                  result.sentimentData.averageScore > 0 ? "text-emerald-400" : result.sentimentData.averageScore < 0 ? "text-red-400" : "text-foreground"
+                )}>
+                  {result.sentimentData.averageScore > 0 ? "+" : ""}{result.sentimentData.averageScore.toFixed(3)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-mono text-muted-foreground">positive</p>
+                <p className="text-sm font-bold font-mono text-emerald-400 tabular-nums">{result.sentimentData.breakdown.positive}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-mono text-muted-foreground">negative</p>
+                <p className="text-sm font-bold font-mono text-red-400 tabular-nums">{result.sentimentData.breakdown.negative}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-mono text-muted-foreground">neutral</p>
+                <p className="text-sm font-bold font-mono text-muted-foreground tabular-nums">{result.sentimentData.breakdown.neutral}</p>
+              </div>
+            </div>
+            {result.sentimentData.articles.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-mono font-medium text-muted-foreground">top headlines</p>
+                {result.sentimentData.articles.slice(0, 3).map((article, i) => (
+                  <div key={i} className="flex items-start gap-2 rounded-md bg-muted/20 px-2.5 py-2">
+                    <span className={cn(
+                      "mt-1 size-1.5 rounded-full shrink-0",
+                      article.sentimentScore !== undefined ? (article.sentimentScore > 0.1 ? "bg-emerald-400" : article.sentimentScore < -0.1 ? "bg-red-400" : "bg-muted-foreground") : "bg-muted-foreground"
+                    )} />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-mono text-foreground truncate">{article.title}</p>
+                      <p className="text-[10px] font-mono text-muted-foreground">{article.source}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Macro Context (Alpha Vantage) */}
+      {result.macroData && result.macroData.confidence !== "unavailable" && result.macroData.indicators.length > 0 && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span> macro-context
+              </h4>
+              <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                {result.macroData.confidence}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <p className="text-sm leading-relaxed text-muted-foreground font-mono mb-3">{result.macroData.summary}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {result.macroData.indicators.slice(0, 6).map((ind, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-mono",
+                    ind.sentiment === "positive" ? "border-emerald-500/20 text-emerald-400 bg-emerald-500/5" :
+                    ind.sentiment === "negative" ? "border-red-500/20 text-red-400 bg-red-500/5" :
+                    "border-border/50 text-muted-foreground bg-muted/10"
+                  )}
+                >
+                  {ind.name}
+                </span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Stock Fundamentals (Alpha Vantage) */}
+      {result.fundamentalData && result.fundamentalData.available && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span> fundamentals
+              </h4>
+              <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                {result.fundamentalData.sector || result.fundamentalData.industry || "stock"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {result.fundamentalData.peRatio !== undefined && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">P/E</p>
+                  <p className="text-sm font-bold font-mono tabular-nums">{result.fundamentalData.peRatio.toFixed(1)}</p>
+                </div>
+              )}
+              {result.fundamentalData.earningsPerShare !== undefined && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">EPS</p>
+                  <p className="text-sm font-bold font-mono tabular-nums">${result.fundamentalData.earningsPerShare.toFixed(2)}</p>
+                </div>
+              )}
+              {result.fundamentalData.profitMargin !== undefined && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">Margin</p>
+                  <p className="text-sm font-bold font-mono tabular-nums">{(result.fundamentalData.profitMargin * 100).toFixed(1)}%</p>
+                </div>
+              )}
+              {result.fundamentalData.marketCap !== undefined && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">Mkt Cap</p>
+                  <p className="text-sm font-bold font-mono tabular-nums">${(result.fundamentalData.marketCap / 1e9).toFixed(1)}B</p>
+                </div>
+              )}
+              {result.fundamentalData.dividendYield !== undefined && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">Div Yield</p>
+                  <p className="text-sm font-bold font-mono tabular-nums">{(result.fundamentalData.dividendYield * 100).toFixed(2)}%</p>
+                </div>
+              )}
+              {result.fundamentalData.fiftyTwoWeekHigh !== undefined && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">52W High</p>
+                  <p className="text-sm font-bold font-mono tabular-nums">{formatPrice(result.fundamentalData.fiftyTwoWeekHigh)}</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Score Breakdown */}
       <Card className="border-border/50">
         <CardHeader className="pb-2">

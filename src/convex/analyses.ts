@@ -64,6 +64,9 @@ export const save = mutation({
     dataFlags: v.array(v.string()),
     price: v.optional(v.number()),
     dataSource: v.optional(v.string()),
+    sentimentSummary: v.optional(v.string()),
+    sentimentScore: v.optional(v.number()),
+    macroSummary: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx);
@@ -85,6 +88,9 @@ export const save = mutation({
       dataFlags: args.dataFlags,
       price: args.price,
       dataSource: args.dataSource,
+      sentimentSummary: args.sentimentSummary,
+      sentimentScore: args.sentimentScore,
+      macroSummary: args.macroSummary,
       timestamp: Date.now(),
     });
   },

@@ -1,3 +1,5 @@
+import type { SentimentData, FundamentalData, MacroData } from "@/lib/data/intelligence-types";
+
 export type InstrumentType = "forex" | "crypto" | "stock" | "commodity" | "indices";
 
 export type Timeframe = "M1" | "M5" | "M15" | "H1" | "H4" | "D1" | "W1";
@@ -34,6 +36,10 @@ export interface AnalysisInput {
   // Auto-fetched market data (preferred over manual inputs)
   marketData?: import("@/lib/data/market-types").MarketData;
   technicalData?: import("@/lib/data/market-types").TechnicalData;
+  // Secondary intelligence layer (Alpha Vantage)
+  sentimentData?: SentimentData;
+  fundamentalData?: FundamentalData;
+  macroData?: MacroData;
 }
 
 export interface AnalysisResult {
@@ -55,4 +61,8 @@ export interface AnalysisResult {
   priceSnapshot?: import("@/lib/data/market-types").PriceSnapshot;
   technicalData?: import("@/lib/data/market-types").TechnicalData;
   dataSource?: string;
+  // Intelligence layer metadata
+  sentimentData?: SentimentData;
+  fundamentalData?: FundamentalData;
+  macroData?: MacroData;
 }
