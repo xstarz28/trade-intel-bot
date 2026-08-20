@@ -6,18 +6,21 @@
 /** Detect asset class from the instrument string. */
 export function detectAssetClass(instrument: string): string {
   const sym = instrument.toUpperCase().trim();
+  const base = sym.replace(/\/USD(T)?$/, "").replace(/[- ]/g, "");
 
-  if (/^[A-Z]{3}\/[A-Z]{3}$/.test(sym)) return "forex";
-
+  // Check crypto BEFORE forex (BTC/USD matches the forex pattern too)
   const cryptoPrefixes = [
     "BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "MATIC",
     "LINK", "UNI", "ATOM", "LTC", "BCH", "FIL", "APT", "ARB", "OP",
     "SUI", "NEAR", "AAVE", "MKR", "SNX", "CRV",
   ];
-  const base = sym.replace(/\/USD(T)?$/, "").replace(/[- ]/g, "");
   if (cryptoPrefixes.includes(base)) return "crypto";
 
-  if (/^XAU|^XAG|^XPD|^XPT/.test(sym)) return "commodity";
+  // Check commodities BEFORE forex (XAU/USD matches the forex pattern too)
+  if (/^XAU|^XAG|^XPD|^XPT/.test(base)) return "commodity";
+
+  // Forex: XXX/YYY pattern with 6-letter pairs (after crypto/commodity checks)
+  if (/^[A-Z]{3}\/[A-Z]{3}$/.test(sym)) return "forex";
 
   if (/^[A-Z]{1,5}$/.test(sym)) return "stock";
 

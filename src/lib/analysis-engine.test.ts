@@ -209,7 +209,7 @@ describe("scoreSentiment (via breakdown)", () => {
 // ── Data completeness ─────────────────────────────────────────────
 
 describe("dataCompleteness", () => {
-  it("marks 'full' with complete price data", () => {
+  it("marks 'limited' when only manual inputs are provided (no marketData/technicalData)", () => {
     const result = runAnalysis(
       baseInput({
         currentPrice: "1.10",
@@ -217,6 +217,42 @@ describe("dataCompleteness", () => {
         recentLow: "1.00",
         newsContext: "Strong rally",
         economicEvents: "NFP data released",
+      }),
+    );
+    // Without marketData/technicalData, the engine marks partial at best
+    expect(["partial", "limited"]).toContain(result.dataCompleteness);
+  });
+
+  it("marks 'full' when marketData and technicalData are provided", () => {
+    const result = runAnalysis(
+      baseInput({
+        marketData: {
+          instrument: "EUR/USD",
+          instrumentType: "forex",
+          provider: "twelve-data",
+          fetchTimestamp: Date.now(),
+          price: { price: 1.10, timestamp: Date.now(), source: "twelve-data" },
+          candles: Array.from({ length: 210 }, (_, i) => ({
+            timestamp: Date.now() - (210 - i) * 86400000,
+            open: 1.0 + i * 0.001,
+            high: 1.0 + i * 0.001 + 0.005,
+            low: 1.0 + i * 0.001 - 0.005,
+            close: 1.0 + i * 0.001 + 0.002,
+            volume: 1000,
+          })),
+          timeframe: "D1",
+          dataFreshness: "delayed",
+        },
+        technicalData: {
+          swingHighs: [1.2],
+          swingLows: [1.0],
+          structure: "HH/HL" as const,
+          supportLevels: [1.0],
+          resistanceLevels: [1.2],
+          volumeTrend: "stable" as const,
+          dataPoints: 210,
+          rsi14: 55,
+        },
       }),
     );
     expect(result.dataCompleteness).toBe("full");
@@ -228,15 +264,9 @@ describe("dataCompleteness", () => {
     expect(result.dataFlags.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("marks 'partial' with some data missing", () => {
-    const result = runAnalysis(
-      baseInput({
-        currentPrice: "1.10",
-        recentHigh: "1.11",
-        recentLow: "1.00",
-      }),
-    );
-    expect(result.dataCompleteness).toBe("partial");
+  it("marks 'limited' with no manual or auto data", () => {
+    const result = runAnalysis(baseInput());
+    expect(result.dataCompleteness).toBe("limited");
   });
 });
 

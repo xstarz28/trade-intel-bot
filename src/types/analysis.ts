@@ -1,6 +1,6 @@
-export type InstrumentType = "forex" | "crypto" | "stock" | "commodity";
+export type InstrumentType = "forex" | "crypto" | "stock" | "commodity" | "indices";
 
-export type Timeframe = "M15" | "H1" | "H4" | "D1" | "W1";
+export type Timeframe = "M1" | "M5" | "M15" | "H1" | "H4" | "D1" | "W1";
 
 export type DirectionalBias = "Bullish" | "Bearish" | "Neutral";
 
@@ -23,7 +23,7 @@ export interface AnalysisInput {
   instrument: string;
   instrumentType: InstrumentType;
   timeframe: Timeframe;
-  // Optional user-supplied data
+  // Optional user-supplied data (fallback when auto-fetch is unavailable)
   currentPrice?: string;
   recentHigh?: string;
   recentLow?: string;
@@ -31,6 +31,9 @@ export interface AnalysisInput {
   economicEvents?: string;
   fundingRate?: string;
   openInterest?: string;
+  // Auto-fetched market data (preferred over manual inputs)
+  marketData?: import("@/lib/data/market-types").MarketData;
+  technicalData?: import("@/lib/data/market-types").TechnicalData;
 }
 
 export interface AnalysisResult {
@@ -48,4 +51,8 @@ export interface AnalysisResult {
   dataCompleteness: "full" | "partial" | "limited";
   dataFlags: string[];
   timestamp: number;
+  // Market data metadata
+  priceSnapshot?: import("@/lib/data/market-types").PriceSnapshot;
+  technicalData?: import("@/lib/data/market-types").TechnicalData;
+  dataSource?: string;
 }

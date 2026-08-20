@@ -16,6 +16,7 @@ export const fetchMarketData = action({
       v.literal("crypto"),
       v.literal("stock"),
       v.literal("commodity"),
+      v.literal("indices"),
     ),
     timeframe: v.string(),
   },

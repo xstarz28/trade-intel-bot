@@ -10,7 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import {
   POPULAR_INSTRUMENTS,
   TIMEFRAMES,
@@ -21,8 +20,6 @@ import {
 import { cn } from "@/lib/utils";
 import {
   Terminal,
-  ChevronDown,
-  ChevronUp,
   Zap,
   AlertCircle,
 } from "lucide-react";
@@ -38,26 +35,12 @@ interface PersistedForm {
   instrument: string;
   instrumentType: InstrumentType;
   timeframe: Timeframe;
-  currentPrice: string;
-  recentHigh: string;
-  recentLow: string;
-  newsContext: string;
-  economicEvents: string;
-  fundingRate: string;
-  showAdvanced: boolean;
 }
 
 const DEFAULT_FORM: PersistedForm = {
   instrument: "",
   instrumentType: "forex",
   timeframe: "D1",
-  currentPrice: "",
-  recentHigh: "",
-  recentLow: "",
-  newsContext: "",
-  economicEvents: "",
-  fundingRate: "",
-  showAdvanced: false,
 };
 
 function loadPersistedForm(): PersistedForm {
@@ -65,7 +48,6 @@ function loadPersistedForm(): PersistedForm {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_FORM;
     const parsed = JSON.parse(raw);
-    // Merge with defaults so new fields are always present
     return { ...DEFAULT_FORM, ...parsed };
   } catch {
     return DEFAULT_FORM;
@@ -73,16 +55,13 @@ function loadPersistedForm(): PersistedForm {
 }
 
 export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps) {
-  // Lazy initializer reads sessionStorage on mount — no hydration mismatch
-  // because Vite SPA has no server-rendered markup.
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
 
-  // Persist every change to sessionStorage
   useEffect(() => {
     try {
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(form));
     } catch {
-      // Storage full or unavailable — silent fail
+      // silent
     }
   }, [form]);
 
@@ -105,12 +84,6 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
       instrument: form.instrument.trim(),
       instrumentType: form.instrumentType,
       timeframe: form.timeframe,
-      currentPrice: form.currentPrice || undefined,
-      recentHigh: form.recentHigh || undefined,
-      recentLow: form.recentLow || undefined,
-      newsContext: form.newsContext || undefined,
-      economicEvents: form.economicEvents || undefined,
-      fundingRate: form.fundingRate || undefined,
     });
   };
 
@@ -126,7 +99,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
               $ new-analysis
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
-              submit an instrument to generate a directional bias
+              select an instrument and run bias — data is fetched automatically
             </p>
           </div>
         </div>
@@ -215,105 +188,6 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
             </div>
           </div>
 
-          {/* Price Data */}
-          <div>
-            <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-              price data{" "}
-              <span className="text-muted-foreground/50">(optional)</span>
-            </Label>
-            <div className="grid grid-cols-3 gap-3">
-              <Input
-                placeholder="current"
-                value={form.currentPrice}
-                onChange={(e) => update("currentPrice", e.target.value)}
-                className="h-9 text-sm font-mono"
-                type="number"
-                step="any"
-              />
-              <Input
-                placeholder="high"
-                value={form.recentHigh}
-                onChange={(e) => update("recentHigh", e.target.value)}
-                className="h-9 text-sm font-mono"
-                type="number"
-                step="any"
-              />
-              <Input
-                placeholder="low"
-                value={form.recentLow}
-                onChange={(e) => update("recentLow", e.target.value)}
-                className="h-9 text-sm font-mono"
-                type="number"
-                step="any"
-              />
-            </div>
-          </div>
-
-          {/* Advanced Toggle */}
-          <button
-            type="button"
-            onClick={() => update("showAdvanced", !form.showAdvanced)}
-            className="flex items-center gap-1.5 text-[11px] font-mono font-medium text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <span className="text-primary/60">$</span>
-            advanced data
-            {form.showAdvanced ? (
-              <ChevronUp className="size-3.5" />
-            ) : (
-              <ChevronDown className="size-3.5" />
-            )}
-          </button>
-
-          {form.showAdvanced && (
-            <div className="space-y-3 pl-3 border-l border-border/50">
-              <div>
-                <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                  news / context
-                </Label>
-                <Textarea
-                  placeholder={
-                    form.instrumentType === "crypto"
-                      ? "ETF inflows, regulatory news, on-chain catalysts..."
-                      : "Fed signals, NFP data, geopolitical events..."
-                  }
-                  value={form.newsContext}
-                  onChange={(e) => update("newsContext", e.target.value)}
-                  className="text-sm font-mono min-h-[60px] resize-none"
-                  rows={2}
-                />
-              </div>
-              {form.instrumentType === "forex" && (
-                <div>
-                  <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                    economic events
-                  </Label>
-                  <Textarea
-                    placeholder="CPI 3.2% vs 3.0% exp, ECB decision Thursday..."
-                    value={form.economicEvents}
-                    onChange={(e) => update("economicEvents", e.target.value)}
-                    className="text-sm font-mono min-h-[60px] resize-none"
-                    rows={2}
-                  />
-                </div>
-              )}
-              {form.instrumentType === "crypto" && (
-                <div>
-                  <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                    funding rate (%)
-                  </Label>
-                  <Input
-                    placeholder="0.01"
-                    value={form.fundingRate}
-                    onChange={(e) => update("fundingRate", e.target.value)}
-                    className="h-9 text-sm font-mono"
-                    type="number"
-                    step="any"
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Submit */}
           <div className="flex items-center gap-3 pt-1">
             <Button
@@ -335,7 +209,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
             </Button>
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-mono">
               <AlertCircle className="size-3" />
-              <span>more data → higher confidence</span>
+              <span>data fetched automatically via backend</span>
             </div>
           </div>
         </form>
