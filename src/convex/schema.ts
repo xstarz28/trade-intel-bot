@@ -56,6 +56,8 @@ const schema = defineSchema(
       riskNote: v.string(),
       dataCompleteness: v.string(),
       dataFlags: v.array(v.string()),
+      price: v.optional(v.number()),
+      dataSource: v.optional(v.string()),
       timestamp: v.number(),
     }).index("by_user", ["userId", "timestamp"])
   },

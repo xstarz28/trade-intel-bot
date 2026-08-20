@@ -437,9 +437,25 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const currentPrice = md?.price.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : 0);
 
   let keyLevels: KeyLevels;
-  if (tech && tech.supportLevels.length > 0 && tech.resistanceLevels.length > 0) {
-    const nearestSupport = tech.supportLevels[tech.supportLevels.length - 1];
-    const nearestResistance = tech.resistanceLevels[0];
+  if (tech && (tech.supportLevels.length > 0 || tech.resistanceLevels.length > 0)) {
+    // Derive levels from technical data — handle missing sides gracefully
+    let nearestSupport: number;
+    let nearestResistance: number;
+
+    if (tech.supportLevels.length > 0) {
+      nearestSupport = tech.supportLevels[tech.supportLevels.length - 1];
+    } else {
+      // No swing-low support found — derive from ATR below current price
+      nearestSupport = currentPrice - (tech.atr14 ?? currentPrice * 0.02) * 2;
+    }
+
+    if (tech.resistanceLevels.length > 0) {
+      nearestResistance = tech.resistanceLevels[0];
+    } else {
+      // No swing-high resistance found — derive from ATR above current price
+      nearestResistance = currentPrice + (tech.atr14 ?? currentPrice * 0.02) * 2;
+    }
+
     keyLevels = {
       support: nearestSupport.toFixed(4),
       resistance: nearestResistance.toFixed(4),

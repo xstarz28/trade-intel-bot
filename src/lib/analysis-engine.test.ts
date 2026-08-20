@@ -292,6 +292,50 @@ describe("keyLevels", () => {
     expect(result.keyLevels.support).toBeTruthy();
     expect(result.keyLevels.resistance).toBeTruthy();
   });
+
+  it("derives resistance from ATR when resistanceLevels is empty but supportLevels exists", () => {
+    const result = runAnalysis(
+      baseInput({
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        timeframe: "H4",
+        marketData: {
+          instrument: "BTC/USD",
+          instrumentType: "crypto",
+          provider: "twelve-data",
+          fetchTimestamp: Date.now(),
+          price: { price: 71720, timestamp: Date.now(), source: "twelve-data" },
+          candles: [],
+          timeframe: "H4",
+          dataFreshness: "delayed",
+        },
+        technicalData: {
+          swingHighs: [65000],
+          swingLows: [62000, 63000, 64000],
+          structure: "range" as const,
+          bosDirection: "bullish" as const,
+          supportLevels: [63000, 64000],
+          resistanceLevels: [], // price above all swing highs
+          volumeTrend: "stable" as const,
+          dataPoints: 210,
+          atr14: 1150,
+          rsi14: 86.7,
+          macdHistogram: 700,
+          sma50: 64470,
+          sma200: 64455,
+        },
+      }),
+    );
+    // Support should come from technical levels, not price * 0.98
+    expect(result.keyLevels.support).toBe("64000.0000");
+    // Resistance should be derived from ATR above price, not price * 1.02
+    const resistance = parseFloat(result.keyLevels.resistance);
+    expect(resistance).toBeGreaterThan(71720);
+    expect(resistance).toBeLessThan(71720 + 5000); // ATR*2 = 2300, reasonable bound
+    expect(result.keyLevels.support).toBeTruthy();
+    expect(result.keyLevels.resistance).toBeTruthy();
+    expect(result.keyLevels.invalidation).toBeTruthy();
+  });
 });
 
 // ── Instrument formatting ─────────────────────────────────────────
