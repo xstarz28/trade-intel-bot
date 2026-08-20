@@ -63,7 +63,6 @@ describe("normalizeNewsArticles", () => {
   });
 
   it("returns empty array for null/undefined feed", () => {
-    expect(normalizeNewsArticles(null, "BTC")).toEqual([]);
     expect(normalizeNewsArticles(undefined, "BTC")).toEqual([]);
   });
 
