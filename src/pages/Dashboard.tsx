@@ -7,7 +7,7 @@ import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import type { AnalysisResult } from "@/types/analysis";
-import { LogOut, Shield, Zap, History } from "lucide-react";
+import { LogOut, Terminal, Zap } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -28,7 +28,7 @@ export default function Dashboard() {
       setIsAnalyzing(true);
       setCurrentResult(null);
 
-      // Simulate a brief processing delay for UX
+      // Brief processing delay for UX
       setTimeout(() => {
         const result = runAnalysis(input);
         setCurrentResult(result);
@@ -45,29 +45,25 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Top Navigation Bar */}
+      {/* Top bar */}
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10">
-              <Zap className="size-4 text-primary" />
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
+              <Terminal className="size-4 text-primary" />
             </div>
             <div>
-              <h1 className="text-sm font-bold tracking-tight">
-                Trade<span className="text-primary">Edge</span>
+              <h1 className="text-sm font-bold tracking-tight font-mono">
+                gilfan<span className="text-primary">/</span>trading-agent
               </h1>
-              <p className="text-[10px] text-muted-foreground -mt-0.5">Trading Intelligence</p>
+              <p className="text-[10px] text-muted-foreground -mt-0.5 font-mono">bias analysis</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-muted-foreground">
-              <Shield className="size-3" />
-              <span>Decision-support tool · Not financial advice</span>
-            </div>
-            <Separator orientation="vertical" className="h-5 hidden sm:block" />
-            <span className="text-xs text-muted-foreground hidden sm:block">
-              {user?.name || user?.email || "Trader"}
+            <span className="text-[11px] text-muted-foreground font-mono hidden sm:block">
+              {user?.name || user?.email || "guest"}
             </span>
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
             <Button
               variant="ghost"
               size="sm"
@@ -75,20 +71,19 @@ export default function Dashboard() {
               className="gap-1.5 text-muted-foreground hover:text-foreground"
             >
               <LogOut className="size-3.5" />
-              <span className="hidden sm:inline">Sign out</span>
+              <span className="hidden sm:inline text-xs font-mono">exit</span>
             </Button>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Main */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column — Input + History */}
+          {/* Left — Input + History */}
           <div className="lg:col-span-4 space-y-4">
             <InstrumentInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} />
 
-            {/* History — Desktop */}
             <div className="hidden lg:block">
               <AnalysisHistory
                 analyses={history}
@@ -98,7 +93,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right Column — Results */}
+          {/* Right — Results */}
           <div className="lg:col-span-8">
             <AnimatePresence mode="wait">
               {isAnalyzing ? (
@@ -115,11 +110,11 @@ export default function Dashboard() {
                       <Zap className="size-6 text-primary" />
                     </div>
                   </div>
-                  <p className="mt-6 text-sm font-medium text-foreground">
+                  <p className="mt-6 text-sm font-medium text-foreground font-mono">
                     Running multi-factor analysis...
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Evaluating technicals, fundamentals, sentiment, and positioning
+                  <p className="mt-1 text-xs text-muted-foreground font-mono">
+                    Evaluating structure · indicators · fundamentals · sentiment
                   </p>
                 </motion.div>
               ) : currentResult ? (
@@ -140,27 +135,27 @@ export default function Dashboard() {
                   className="flex flex-col items-center justify-center py-24 text-center"
                 >
                   <div className="flex size-16 items-center justify-center rounded-2xl bg-muted/50 mb-4">
-                    <Zap className="size-7 text-muted-foreground/50" />
+                    <Terminal className="size-7 text-muted-foreground/40" />
                   </div>
-                  <h3 className="text-base font-semibold text-foreground">
-                    Ready to analyze
+                  <h3 className="text-base font-semibold text-foreground font-mono">
+                    Ready
                   </h3>
-                  <p className="mt-1.5 text-sm text-muted-foreground max-w-sm">
-                    Select a popular instrument or enter one manually. Add price data and
-                    market context for higher-confidence analysis.
+                  <p className="mt-1.5 text-sm text-muted-foreground max-w-sm font-mono">
+                    Pick an instrument or enter one manually. Add price data and market
+                    context to improve confidence.
                   </p>
                   <div className="mt-6 grid grid-cols-3 gap-3 max-w-sm">
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
-                      <p className="text-lg font-bold text-primary">4</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Factor Weights</p>
+                      <p className="text-lg font-bold text-primary font-mono">4</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">factors</p>
                     </div>
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
-                      <p className="text-lg font-bold text-primary">5</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Timeframes</p>
+                      <p className="text-lg font-bold text-primary font-mono">5</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">timeframes</p>
                     </div>
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
-                      <p className="text-lg font-bold text-primary">∞</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5">Instruments</p>
+                      <p className="text-lg font-bold text-primary font-mono">∞</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">instruments</p>
                     </div>
                   </div>
                 </motion.div>
