@@ -7,16 +7,41 @@ import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import type { AnalysisResult } from "@/types/analysis";
+import { api } from "@/convex/_generated/api";
+import { useMutation, useQuery } from "convex/react";
 import { LogOut, Terminal, Zap } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
+
+/** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
+function fromDbRecord(record: any): AnalysisResult {
+  return {
+    id: record._id,
+    instrument: record.instrument,
+    instrumentType: record.instrumentType,
+    timeframe: record.timeframe,
+    bias: record.bias,
+    confidence: record.confidence,
+    technicalSummary: record.technicalSummary,
+    fundamentalSummary: record.fundamentalSummary,
+    breakdown: record.breakdown,
+    keyLevels: record.keyLevels,
+    riskNote: record.riskNote,
+    dataCompleteness: record.dataCompleteness,
+    dataFlags: record.dataFlags,
+    timestamp: record.timestamp,
+  };
+}
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
-  const [history, setHistory] = useState<AnalysisResult[]>([]);
+
+  // Convex persistence
+  const saveAnalysis = useMutation(api.analyses.save);
+  const dbHistory = useQuery(api.analyses.list);
 
   const handleSignOut = async () => {
     await signOut();
@@ -29,19 +54,43 @@ export default function Dashboard() {
       setCurrentResult(null);
 
       // Brief processing delay for UX
-      setTimeout(() => {
+      setTimeout(async () => {
         const result = runAnalysis(input);
         setCurrentResult(result);
-        setHistory((prev) => [result, ...prev]);
         setIsAnalyzing(false);
+
+        // Persist to Convex (fire-and-forget, don't block UI)
+        try {
+          await saveAnalysis({
+            instrument: result.instrument,
+            instrumentType: result.instrumentType,
+            timeframe: result.timeframe,
+            bias: result.bias,
+            confidence: result.confidence,
+            technicalSummary: result.technicalSummary,
+            fundamentalSummary: result.fundamentalSummary,
+            breakdown: result.breakdown,
+            keyLevels: result.keyLevels,
+            riskNote: result.riskNote,
+            dataCompleteness: result.dataCompleteness,
+            dataFlags: result.dataFlags,
+          });
+        } catch {
+          // Save failed (e.g. guest user) — analysis still shows in UI session
+        }
       }, 800);
     },
-    []
+    [saveAnalysis],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
     setCurrentResult(analysis);
   }, []);
+
+  // Map DB records to AnalysisResult; fall back to empty array while loading
+  const history: AnalysisResult[] = dbHistory
+    ? dbHistory.map(fromDbRecord)
+    : [];
 
   return (
     <div className="min-h-screen bg-background">
