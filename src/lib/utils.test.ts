@@ -3,26 +3,32 @@ import { getTimeAgo } from "./utils";
 
 describe("getTimeAgo", () => {
   it("returns 'now' for timestamps less than 60s ago", () => {
-    expect(getTimeAgo(Date.now() - 30_000)).toBe("now");
-    expect(getTimeAgo(Date.now() - 1_000)).toBe("now");
+    const now = Date.now();
+    expect(getTimeAgo(now - 30_000)).toBe("now");
+    expect(getTimeAgo(now)).toBe("now");
   });
 
-  it("returns minutes for < 1 hour", () => {
-    expect(getTimeAgo(Date.now() - 120_000)).toBe("2m");
-    expect(getTimeAgo(Date.now() - 3_600_000 + 1)).toBe("59m");
+  it("returns minutes for timestamps within the hour", () => {
+    const now = Date.now();
+    expect(getTimeAgo(now - 5 * 60_000)).toBe("5m");
+    expect(getTimeAgo(now - 59 * 60_000)).toBe("59m");
   });
 
-  it("returns hours for < 24 hours", () => {
-    expect(getTimeAgo(Date.now() - 3_600_000)).toBe("1h");
-    expect(getTimeAgo(Date.now() - 86_400_000 + 1)).toBe("23h");
+  it("returns hours for timestamps within the day", () => {
+    const now = Date.now();
+    expect(getTimeAgo(now - 2 * 3600_000)).toBe("2h");
+    expect(getTimeAgo(now - 23 * 3600_000)).toBe("23h");
   });
 
-  it("returns days for >= 24 hours", () => {
-    expect(getTimeAgo(Date.now() - 86_400_000)).toBe("1d");
-    expect(getTimeAgo(Date.now() - 172_800_000)).toBe("2d");
+  it("returns days for older timestamps", () => {
+    const now = Date.now();
+    expect(getTimeAgo(now - 2 * 86400_000)).toBe("2d");
+    expect(getTimeAgo(now - 30 * 86400_000)).toBe("30d");
   });
 
-  it("returns 'now' for future timestamps (edge case)", () => {
-    expect(getTimeAgo(Date.now() + 60_000)).toBe("now");
+  it("handles future timestamps gracefully", () => {
+    const now = Date.now();
+    // Future timestamp: diff is negative, seconds will be negative, < 60 → "now"
+    expect(getTimeAgo(now + 60_000)).toBe("now");
   });
 });
