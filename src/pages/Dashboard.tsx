@@ -33,6 +33,8 @@ function fromDbRecord(record: any): AnalysisResult {
     timestamp: record.timestamp,
     ...(record.price != null ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } } : {}),
     ...(record.dataSource ? { dataSource: record.dataSource } : {}),
+    ...(record.sentimentSummary ? { sentimentData: { provider: "alpha-vantage", timestamp: record.timestamp, averageScore: record.sentimentScore ?? 0, articleCount: 0, label: (record.sentimentScore ?? 0) > 0.15 ? "bullish" : (record.sentimentScore ?? 0) < -0.15 ? "bearish" : "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "medium" as const, articles: [] } } : {}),
+    ...(record.macroSummary ? { macroData: { provider: "alpha-vantage", timestamp: record.timestamp, indicators: [], summary: record.macroSummary, confidence: "medium" as const } } : {}),
   };
 }
 
@@ -45,7 +47,7 @@ interface LoadingStep {
 const INITIAL_STEPS: LoadingStep[] = [
   { label: "Detecting instrument", status: "pending" },
   { label: "Fetching market data", status: "pending" },
-  { label: "Building multi-timeframe structure", status: "pending" },
+  { label: "Fetching intelligence data", status: "pending" },
   { label: "Calculating indicators", status: "pending" },
   { label: "Generating bias", status: "pending" },
 ];
@@ -62,8 +64,9 @@ export default function Dashboard() {
   const saveAnalysis = useMutation(api.analyses.save);
   const dbHistory = useQuery(api.analyses.list);
 
-  // Convex action for server-side market data fetching
+  // Convex actions for server-side data fetching
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
+  const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
 
   const handleSignOut = async () => {
     await signOut();
@@ -91,38 +94,58 @@ export default function Dashboard() {
         await new Promise((r) => setTimeout(r, 300));
         updateStep(0, "done");
 
-        // Step 2: Fetching market data via Convex server-side action
+        // Step 2: Fetching market data + intelligence in parallel
         updateStep(1, "active");
         let marketDataResult: MarketDataResult;
+        let intelligenceResult: any = null;
         try {
-          marketDataResult = (await fetchMarketData({
-            instrument: input.instrument,
-            instrumentType: input.instrumentType,
-            timeframe: input.timeframe,
-          })) as MarketDataResult;
+          const [marketResult, intelResult] = await Promise.allSettled([
+            fetchMarketData({
+              instrument: input.instrument,
+              instrumentType: input.instrumentType,
+              timeframe: input.timeframe,
+            }),
+            fetchIntelligence({
+              instrument: input.instrument,
+              instrumentType: input.instrumentType,
+            }),
+          ]);
+
+          // Market data is critical
+          if (marketResult.status === "fulfilled") {
+            marketDataResult = marketResult.value as MarketDataResult;
+          } else {
+            throw new Error(marketResult.reason?.message || "Market data fetch failed");
+          }
+
+          if (!marketDataResult.success || !marketDataResult.data) {
+            throw new Error(marketDataResult.error || "Market data unavailable");
+          }
           updateStep(1, "done");
+
+          // Intelligence is non-critical
+          if (intelResult.status === "fulfilled") {
+            intelligenceResult = intelResult.value;
+          }
         } catch (err: any) {
           updateStep(1, "error");
-          setFetchError(`Market data unavailable: ${err?.message || "provider not configured"}`);
+          setFetchError(`Data fetch failed: ${err?.message || "provider not configured"}`);
           setIsAnalyzing(false);
           return;
         }
 
-        if (!marketDataResult.success || !marketDataResult.data) {
-          updateStep(1, "error");
-          setFetchError(marketDataResult.error || "Market data unavailable");
-          setIsAnalyzing(false);
-          return;
-        }
-
-        // Step 3: Building structure (already done in Convex action)
+        // Step 3: Fetching intelligence data
         updateStep(2, "active");
-        await new Promise((r) => setTimeout(r, 200));
-        updateStep(2, "done");
+        if (intelligenceResult?.success) {
+          updateStep(2, "done");
+        } else {
+          // Intelligence unavailable — continue without it
+          updateStep(2, "done");
+        }
 
         // Step 4: Calculating indicators (already done in Convex action)
         updateStep(3, "active");
-        await new Promise((r) => setTimeout(r, 200));
+        await new Promise((r) => setTimeout(r, 150));
         updateStep(3, "done");
 
         // Step 5: Generate bias
@@ -131,6 +154,9 @@ export default function Dashboard() {
           ...input,
           marketData: marketDataResult.data,
           technicalData: marketDataResult.technical,
+          sentimentData: intelligenceResult?.sentiment,
+          fundamentalData: intelligenceResult?.fundamentals,
+          macroData: intelligenceResult?.macro,
         };
         const result = runAnalysis(enrichedInput);
 
@@ -156,6 +182,9 @@ export default function Dashboard() {
             dataFlags: result.dataFlags,
             price: result.priceSnapshot?.price,
             dataSource: result.dataSource,
+            sentimentSummary: result.sentimentData?.confidence !== "unavailable" ? `${result.sentimentData?.label} (${result.sentimentData?.articleCount ?? 0} articles)` : undefined,
+            sentimentScore: result.sentimentData?.confidence !== "unavailable" ? result.sentimentData?.averageScore : undefined,
+            macroSummary: result.macroData?.confidence !== "unavailable" ? result.macroData?.summary : undefined,
           });
         } catch {
           // Save failed (guest user) — analysis still shows in session

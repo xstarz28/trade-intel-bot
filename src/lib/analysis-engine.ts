@@ -171,19 +171,55 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
 
 function scoreFundamentals(input: AnalysisInput): FactorScore {
   let score = 0;
-  const events = (input.economicEvents || "").toLowerCase();
-  const context = (input.newsContext || "").toLowerCase();
-  const combined = `${events} ${context}`;
 
-  if (input.instrumentType === "forex") {
-    if (combined.includes("hawkish") || combined.includes("rate hike") || combined.includes("tightening")) score += 1;
-    if (combined.includes("dovish") || combined.includes("rate cut") || combined.includes("easing")) score -= 1;
-    if (combined.includes("strong gdp") || combined.includes("strong nfp") || combined.includes("strong employment")) score += 1;
-    if (combined.includes("weak gdp") || combined.includes("weak nfp") || combined.includes("recession")) score -= 1;
-  } else if (input.instrumentType === "crypto") {
-    if (combined.includes("institutional") || combined.includes("etf approval") || combined.includes("adoption")) score += 1;
-    if (combined.includes("regulation") || combined.includes("ban") || combined.includes("crackdown")) score -= 1;
-    if (combined.includes("halving") || combined.includes("bullish catalyst")) score += 1;
+  // ── Alpha Vantage intelligence data (preferred) ──
+  const macro = input.macroData;
+  const fund = input.fundamentalData;
+
+  if (macro && macro.confidence !== "unavailable" && macro.indicators.length > 0) {
+    // Score from macro indicators
+    const bullish = macro.indicators.filter((ind) => ind.sentiment === "positive").length;
+    const bearish = macro.indicators.filter((ind) => ind.sentiment === "negative").length;
+    const total = macro.indicators.length;
+    if (total > 0) {
+      const ratio = (bullish - bearish) / total;
+      if (ratio > 0.3) score += 1;
+      if (ratio > 0.6) score += 1;
+      if (ratio < -0.3) score -= 1;
+      if (ratio < -0.6) score -= 1;
+    }
+    // DXY trend for forex
+    if (input.instrumentType === "forex" && macro.dxyTrend) {
+      // Rising USD is bearish for EUR/USD, GBP/USD etc.
+      if (macro.dxyTrend === "rising") score -= 1;
+      if (macro.dxyTrend === "falling") score += 1;
+    }
+  } else if (fund && fund.available && input.instrumentType === "stock") {
+    // Stock fundamentals
+    if (fund.peRatio !== undefined && fund.peRatio > 0) {
+      if (fund.peRatio < 15) score += 1; // Potentially undervalued
+      if (fund.peRatio > 35) score -= 1; // Potentially overvalued
+    }
+    if (fund.profitMargin !== undefined && fund.profitMargin > 0.2) score += 1;
+    if (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) score += 1;
+  }
+
+  // ── Manual input fallback ──
+  if (score === 0) {
+    const events = (input.economicEvents || "").toLowerCase();
+    const context = (input.newsContext || "").toLowerCase();
+    const combined = `${events} ${context}`;
+
+    if (input.instrumentType === "forex") {
+      if (combined.includes("hawkish") || combined.includes("rate hike") || combined.includes("tightening")) score += 1;
+      if (combined.includes("dovish") || combined.includes("rate cut") || combined.includes("easing")) score -= 1;
+      if (combined.includes("strong gdp") || combined.includes("strong nfp") || combined.includes("strong employment")) score += 1;
+      if (combined.includes("weak gdp") || combined.includes("weak nfp") || combined.includes("recession")) score -= 1;
+    } else if (input.instrumentType === "crypto") {
+      if (combined.includes("institutional") || combined.includes("etf approval") || combined.includes("adoption")) score += 1;
+      if (combined.includes("regulation") || combined.includes("ban") || combined.includes("crackdown")) score -= 1;
+      if (combined.includes("halving") || combined.includes("bullish catalyst")) score += 1;
+    }
   }
 
   return clampScore(score);
@@ -194,23 +230,38 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
 function scoreSentiment(input: AnalysisInput): FactorScore {
   let score = 0;
 
+  // ── Alpha Vantage news sentiment (preferred) ──
+  const sentiment = input.sentimentData;
+  if (sentiment && sentiment.confidence !== "unavailable" && sentiment.articleCount > 0) {
+    // Map AV sentiment score (-1 to 1) to our score (-2 to 2)
+    const avScore = sentiment.averageScore;
+    if (avScore > 0.25) score += 1;
+    if (avScore > 0.5) score += 1;
+    if (avScore < -0.25) score -= 1;
+    if (avScore < -0.5) score -= 1;
+
+    // Strong consensus adds confirmation
+    if (sentiment.breakdown.positive > sentiment.breakdown.negative * 2 && sentiment.articleCount >= 3) score += 1;
+    if (sentiment.breakdown.negative > sentiment.breakdown.positive * 2 && sentiment.articleCount >= 3) score -= 1;
+  }
+
+  // ── Funding rate (crypto, manual) ──
   if (input.fundingRate) {
     const fr = parseFloat(input.fundingRate);
     if (!isNaN(fr)) {
-      if (fr > 0.05) score -= 1; // Overcrowded long → contrarian bearish
-      if (fr < -0.05) score += 1; // Overcrowded short → contrarian bullish
+      if (fr > 0.05) score -= 1;
+      if (fr < -0.05) score += 1;
     }
   }
 
-  // Volume as a sentiment proxy from auto-fetched data
+  // ── Volume as sentiment proxy ──
   const tech = input.technicalData;
   if (tech && tech.dataPoints >= 20) {
-    // High volume during a downtrend can indicate capitulation (bullish)
     if (tech.volumeTrend === "increasing" && tech.structure === "LH/LL") score += 1;
-    // High volume during uptrend can indicate euphoria (bearish)
     if (tech.volumeTrend === "increasing" && tech.structure === "HH/HL") score -= 1;
   }
 
+  // ── Manual input fallback ──
   const context = (input.newsContext || "").toLowerCase();
   if (context.includes("fear") || context.includes("panic") || context.includes("capitulation")) score += 1;
   if (context.includes("greed") || context.includes("euphoria") || context.includes("fomo")) score -= 1;
@@ -236,8 +287,9 @@ function assessDataCompleteness(input: AnalysisInput): {
   if (hasTechnical && input.technicalData!.dataPoints < 50) {
     flags.push(`Limited candle history (${input.technicalData!.dataPoints} candles) — indicators may be unreliable`);
   }
-  if (!input.newsContext) {
-    flags.push("No news context — fundamental analysis limited to technicals");
+  const hasIntelligence = !!(input.sentimentData || input.fundamentalData || input.macroData);
+  if (!input.newsContext && !hasIntelligence) {
+    flags.push("No news context or intelligence data — fundamental analysis limited to technicals");
     missing++;
   }
   if (!input.economicEvents && input.instrumentType === "forex") {
@@ -350,26 +402,44 @@ function generateFundamentalSummary(
   fundamentalScore: FactorScore,
 ): string {
   const parts: string[] = [];
+  const macro = input.macroData;
+  const fund = input.fundamentalData;
+  const sentiment = input.sentimentData;
 
-  if (input.instrumentType === "forex") {
-    parts.push("Forex fundamental context:");
-    if (input.economicEvents) {
-      parts.push(`Economic events: ${input.economicEvents}`);
+  // Macro intelligence (Alpha Vantage)
+  if (macro && macro.confidence !== "unavailable") {
+    parts.push(`Macro context (${macro.confidence} confidence): ${macro.summary}`);
+  }
+
+  // Stock fundamentals (Alpha Vantage)
+  if (fund && fund.available && input.instrumentType === "stock") {
+    parts.push(`Fundamentals — ${fund.name || fund.symbol}:`);
+    if (fund.peRatio !== undefined) parts.push(`P/E: ${fund.peRatio.toFixed(1)}`);
+    if (fund.earningsPerShare !== undefined) parts.push(`EPS: $${fund.earningsPerShare.toFixed(2)}`);
+    if (fund.profitMargin !== undefined) parts.push(`Margin: ${(fund.profitMargin * 100).toFixed(1)}%`);
+    if (fund.marketCap !== undefined) parts.push(`Mkt Cap: $${(fund.marketCap / 1e9).toFixed(1)}B`);
+    if (fund.sector) parts.push(`Sector: ${fund.sector}`);
+    if (fund.latestEarnings?.date) parts.push(`Latest earnings: ${fund.latestEarnings.date}`);
+  } else if (fund && !fund.available && fund.unavailableReason) {
+    parts.push(fund.unavailableReason);
+  }
+
+  // News sentiment summary (Alpha Vantage)
+  if (sentiment && sentiment.confidence !== "unavailable") {
+    parts.push(`News sentiment: ${sentiment.label} (${sentiment.averageScore > 0 ? "+" : ""}${sentiment.averageScore.toFixed(2)} avg, ${sentiment.articleCount} articles, ${sentiment.confidence} confidence).`);
+  }
+
+  // Fallback if no intelligence data at all
+  if (parts.length === 0) {
+    if (input.instrumentType === "forex") {
+      parts.push("Forex fundamental context: No economic calendar or news data available.");
+    } else if (input.instrumentType === "crypto") {
+      parts.push("Crypto fundamental context: No news or on-chain data available.");
+    } else if (input.instrumentType === "stock") {
+      parts.push("Stock fundamental data not available — analysis is technical/structure-based only.");
     } else {
-      parts.push("No economic calendar data supplied. For full analysis, provide upcoming NFP, CPI, rate decisions.");
+      parts.push("Fundamental data not available — analysis is technical/structure-based only.");
     }
-    if (input.newsContext) {
-      parts.push(`Market news: ${input.newsContext}`);
-    }
-  } else if (input.instrumentType === "crypto") {
-    parts.push("Crypto fundamental context:");
-    if (input.newsContext) {
-      parts.push(`News/catalysts: ${input.newsContext}`);
-    } else {
-      parts.push("No on-chain or regulatory news supplied. For full analysis, provide ETF flows, regulatory developments.");
-    }
-  } else {
-    parts.push("Fundamental data not provided — analysis is technical/structure-based only.");
   }
 
   if (fundamentalScore === 0) {
@@ -490,6 +560,16 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   if (md && tech && tech.dataPoints >= 100) {
     adjustedConfidence = Math.min(95, adjustedConfidence + 5);
   }
+  // Boost for intelligence data availability
+  if (input.sentimentData && input.sentimentData.confidence !== "unavailable") {
+    adjustedConfidence = Math.min(95, adjustedConfidence + 3);
+  }
+  if (input.fundamentalData && input.fundamentalData.available) {
+    adjustedConfidence = Math.min(95, adjustedConfidence + 3);
+  }
+  if (input.macroData && input.macroData.confidence !== "unavailable") {
+    adjustedConfidence = Math.min(95, adjustedConfidence + 2);
+  }
 
   return {
     id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -509,6 +589,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     priceSnapshot: md?.price,
     technicalData: tech,
     dataSource: md?.provider,
+    sentimentData: input.sentimentData,
+    fundamentalData: input.fundamentalData,
+    macroData: input.macroData,
   };
 }
 
