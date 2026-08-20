@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   POPULAR_INSTRUMENTS,
   TIMEFRAMES,
@@ -21,8 +20,7 @@ import {
 } from "@/lib/analysis-engine";
 import { cn } from "@/lib/utils";
 import {
-  TrendingUp,
-  BarChart3,
+  Terminal,
   Search,
   ChevronDown,
   ChevronUp,
@@ -71,25 +69,27 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
 
   return (
     <Card className="border-border/50 shadow-sm">
-      <CardHeader className="pb-4">
+      <CardHeader className="pb-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10">
-            <TrendingUp className="size-4.5 text-primary" />
+          <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
+            <Terminal className="size-4 text-primary" />
           </div>
           <div>
-            <CardTitle className="text-base font-semibold">New Analysis</CardTitle>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Enter an instrument and optional market data
+            <CardTitle className="text-sm font-semibold font-mono">
+              $ new-analysis
+            </CardTitle>
+            <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
+              submit an instrument to generate a directional bias
             </p>
           </div>
         </div>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           {/* Quick Picks */}
           <div>
-            <Label className="text-xs font-medium text-muted-foreground mb-2 block">
-              Quick Picks
+            <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-2 block">
+              $ instruments
             </Label>
             <div className="flex flex-wrap gap-1.5">
               {POPULAR_INSTRUMENTS.map((item) => (
@@ -98,10 +98,10 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
                   type="button"
                   onClick={() => handleQuickSelect(item.symbol, item.type)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium transition-all",
+                    "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono font-medium transition-all",
                     instrument === item.symbol
-                      ? "border-primary bg-primary/10 text-primary"
-                      : "border-border/60 bg-muted/30 text-muted-foreground hover:border-border hover:text-foreground"
+                      ? "border-primary bg-primary/15 text-primary"
+                      : "border-border/50 bg-muted/20 text-muted-foreground hover:border-border hover:text-foreground"
                   )}
                 >
                   <span>{item.symbol}</span>
@@ -113,54 +113,54 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
           {/* Instrument + Type + Timeframe */}
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-1">
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Instrument
+              <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+                instrument
               </Label>
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-primary/60 font-mono">$</span>
                 <Input
-                  placeholder="e.g. EUR/USD"
+                  placeholder="EUR/USD"
                   value={instrument}
                   onChange={(e) => setInstrument(e.target.value)}
-                  className="pl-8 h-9 text-sm"
+                  className="pl-7 h-9 text-sm font-mono"
                   required
                 />
               </div>
             </div>
             <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Type
+              <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+                type
               </Label>
               <Select
                 value={instrumentType}
                 onValueChange={(v) => setInstrumentType(v as InstrumentType)}
               >
-                <SelectTrigger className="h-9 text-sm">
+                <SelectTrigger className="h-9 text-sm font-mono">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="forex">Forex</SelectItem>
-                  <SelectItem value="crypto">Crypto</SelectItem>
-                  <SelectItem value="stock">Stock</SelectItem>
-                  <SelectItem value="commodity">Commodity</SelectItem>
+                  <SelectItem value="forex">forex</SelectItem>
+                  <SelectItem value="crypto">crypto</SelectItem>
+                  <SelectItem value="stock">stock</SelectItem>
+                  <SelectItem value="commodity">commodity</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                Timeframe
+              <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+                timeframe
               </Label>
               <Select
                 value={timeframe}
                 onValueChange={(v) => setTimeframe(v as Timeframe)}
               >
-                <SelectTrigger className="h-9 text-sm">
+                <SelectTrigger className="h-9 text-sm font-mono">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {TIMEFRAMES.map((tf) => (
-                    <SelectItem key={tf.value} value={tf.value}>
-                      {tf.label}
+                    <SelectItem key={tf.value} value={tf.value} className="font-mono">
+                      {tf.value}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -170,46 +170,46 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
 
           {/* Price Data */}
           <div>
-            <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-              Price Data{" "}
-              <span className="text-muted-foreground/60">(optional — improves accuracy)</span>
+            <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+              price data{" "}
+              <span className="text-muted-foreground/50">(optional)</span>
             </Label>
             <div className="grid grid-cols-3 gap-3">
               <Input
-                placeholder="Current price"
+                placeholder="current"
                 value={currentPrice}
                 onChange={(e) => setCurrentPrice(e.target.value)}
-                className="h-9 text-sm"
+                className="h-9 text-sm font-mono"
                 type="number"
                 step="any"
               />
               <Input
-                placeholder="Recent high"
+                placeholder="high"
                 value={recentHigh}
                 onChange={(e) => setRecentHigh(e.target.value)}
-                className="h-9 text-sm"
+                className="h-9 text-sm font-mono"
                 type="number"
                 step="any"
               />
               <Input
-                placeholder="Recent low"
+                placeholder="low"
                 value={recentLow}
                 onChange={(e) => setRecentLow(e.target.value)}
-                className="h-9 text-sm"
+                className="h-9 text-sm font-mono"
                 type="number"
                 step="any"
               />
             </div>
           </div>
 
-          {/* Advanced Options Toggle */}
+          {/* Advanced Toggle */}
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+            className="flex items-center gap-1.5 text-[11px] font-mono font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
-            <BarChart3 className="size-3.5" />
-            Advanced Market Data
+            <span className="text-primary/60">$</span>
+            advanced data
             {showAdvanced ? (
               <ChevronUp className="size-3.5" />
             ) : (
@@ -218,52 +218,50 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
           </button>
 
           {showAdvanced && (
-            <div className="space-y-3 pl-1 border-l-2 border-border/50 ml-1">
+            <div className="space-y-3 pl-3 border-l border-border/50">
               <div>
-                <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  News / Market Context
+                <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+                  news / context
                 </Label>
                 <Textarea
                   placeholder={
                     instrumentType === "crypto"
-                      ? "e.g. Bitcoin ETF inflows hit $1B this week, regulatory clarity in EU..."
-                      : "e.g. Fed signals pause, NFP beat expectations, geopolitical tensions in..."
+                      ? "ETF inflows, regulatory news, on-chain catalysts..."
+                      : "Fed signals, NFP data, geopolitical events..."
                   }
                   value={newsContext}
                   onChange={(e) => setNewsContext(e.target.value)}
-                  className="text-sm min-h-[60px] resize-none"
+                  className="text-sm font-mono min-h-[60px] resize-none"
                   rows={2}
                 />
               </div>
               {instrumentType === "forex" && (
                 <div>
-                  <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                    Economic Events
+                  <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+                    economic events
                   </Label>
                   <Textarea
-                    placeholder="e.g. CPI 3.2% vs 3.0% expected, ECB rate decision Thursday, Jobless Claims Friday..."
+                    placeholder="CPI 3.2% vs 3.0% exp, ECB decision Thursday..."
                     value={economicEvents}
                     onChange={(e) => setEconomicEvents(e.target.value)}
-                    className="text-sm min-h-[60px] resize-none"
+                    className="text-sm font-mono min-h-[60px] resize-none"
                     rows={2}
                   />
                 </div>
               )}
               {instrumentType === "crypto" && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                      Funding Rate (%)
-                    </Label>
-                    <Input
-                      placeholder="e.g. 0.01"
-                      value={fundingRate}
-                      onChange={(e) => setFundingRate(e.target.value)}
-                      className="h-9 text-sm"
-                      type="number"
-                      step="any"
-                    />
-                  </div>
+                <div>
+                  <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+                    funding rate (%)
+                  </Label>
+                  <Input
+                    placeholder="0.01"
+                    value={fundingRate}
+                    onChange={(e) => setFundingRate(e.target.value)}
+                    className="h-9 text-sm font-mono"
+                    type="number"
+                    step="any"
+                  />
                 </div>
               )}
             </div>
@@ -274,23 +272,23 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
             <Button
               type="submit"
               disabled={!instrument.trim() || isAnalyzing}
-              className="gap-2 px-5"
+              className="gap-2 px-5 font-mono text-sm"
             >
               {isAnalyzing ? (
                 <>
                   <div className="size-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-                  Analyzing...
+                  analyzing...
                 </>
               ) : (
                 <>
                   <Zap className="size-4" />
-                  Generate Bias
+                  run bias
                 </>
               )}
             </Button>
-            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-mono">
               <AlertCircle className="size-3" />
-              <span>More data = higher confidence</span>
+              <span>more data → higher confidence</span>
             </div>
           </div>
         </form>

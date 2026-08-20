@@ -1,6 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnalysisResult } from "@/types/analysis";
 import { cn } from "@/lib/utils";
@@ -19,21 +18,21 @@ const BIAS_ICONS = {
 } as const;
 
 const BIAS_COLORS = {
-  Bullish: "text-emerald-500",
-  Bearish: "text-red-500",
+  Bullish: "text-emerald-400",
+  Bearish: "text-red-400",
   Neutral: "text-muted-foreground",
 } as const;
 
 function getTimeAgo(timestamp: number): string {
   const diff = Date.now() - timestamp;
   const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "Just now";
+  if (seconds < 60) return "now";
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
+  if (hours < 24) return `${hours}h`;
   const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return `${days}d`;
 }
 
 export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHistoryProps) {
@@ -41,12 +40,12 @@ export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHist
     return (
       <Card className="border-border/50">
         <CardContent className="flex flex-col items-center justify-center py-10 text-center">
-          <div className="flex size-10 items-center justify-center rounded-full bg-muted mb-3">
-            <History className="size-5 text-muted-foreground" />
+          <div className="flex size-10 items-center justify-center rounded-full bg-muted/30 mb-3">
+            <History className="size-5 text-muted-foreground/50" />
           </div>
-          <p className="text-sm font-medium text-muted-foreground">No analyses yet</p>
-          <p className="text-xs text-muted-foreground/70 mt-1">
-            Your analysis history will appear here
+          <p className="text-xs font-mono font-medium text-muted-foreground">no history yet</p>
+          <p className="text-[11px] text-muted-foreground/50 mt-1 font-mono">
+            run an analysis to see results here
           </p>
         </CardContent>
       </Card>
@@ -57,16 +56,16 @@ export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHist
     <Card className="border-border/50">
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
-          <History className="size-4 text-muted-foreground" />
-          <CardTitle className="text-sm font-semibold">History</CardTitle>
-          <Badge variant="outline" className="text-[10px] ml-auto">
+          <History className="size-3.5 text-muted-foreground" />
+          <CardTitle className="text-[11px] font-mono font-semibold text-muted-foreground">$ history</CardTitle>
+          <Badge variant="outline" className="text-[10px] font-mono ml-auto border-border/50">
             {analyses.length}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="pt-0">
         <ScrollArea className="max-h-[400px]">
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {analyses.map((a) => {
               const BiasIcon = BIAS_ICONS[a.bias];
               const isSelected = a.id === selectedId;
@@ -75,28 +74,28 @@ export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHist
                   key={a.id}
                   onClick={() => onSelect(a)}
                   className={cn(
-                    "w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-all",
+                    "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-left transition-all",
                     isSelected
                       ? "bg-primary/10 border border-primary/20"
-                      : "hover:bg-muted/50 border border-transparent"
+                      : "hover:bg-muted/30 border border-transparent"
                   )}
                 >
-                  <BiasIcon className={cn("size-4 shrink-0", BIAS_COLORS[a.bias])} />
+                  <BiasIcon className={cn("size-3.5 shrink-0", BIAS_COLORS[a.bias])} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-semibold">{a.instrument}</span>
+                      <span className="text-xs font-mono font-semibold">{a.instrument}</span>
                       <span className="text-[10px] text-muted-foreground font-mono">{a.timeframe}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className={cn("text-[11px] font-medium", BIAS_COLORS[a.bias])}>
-                        {a.bias}
+                      <span className={cn("text-[11px] font-mono font-medium", BIAS_COLORS[a.bias])}>
+                        {a.bias.toLowerCase()}
                       </span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[10px] text-muted-foreground font-mono">
                         {a.confidence}%
                       </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground shrink-0">
+                  <div className="flex items-center gap-1 text-[10px] text-muted-foreground font-mono shrink-0">
                     <Clock className="size-3" />
                     {getTimeAgo(a.timestamp)}
                   </div>
