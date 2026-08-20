@@ -7,9 +7,10 @@ import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import type { AnalysisResult } from "@/types/analysis";
+import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
-import { LogOut, Terminal, Zap } from "lucide-react";
+import { useMutation, useQuery, useAction } from "convex/react";
+import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -33,33 +34,110 @@ function fromDbRecord(record: any): AnalysisResult {
   };
 }
 
+/** Loading step for the multi-step sequence. */
+interface LoadingStep {
+  label: string;
+  status: "pending" | "active" | "done" | "error";
+}
+
+const INITIAL_STEPS: LoadingStep[] = [
+  { label: "Detecting instrument", status: "pending" },
+  { label: "Fetching market data", status: "pending" },
+  { label: "Building multi-timeframe structure", status: "pending" },
+  { label: "Calculating indicators", status: "pending" },
+  { label: "Generating bias", status: "pending" },
+];
+
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
+  const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(INITIAL_STEPS);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // Convex persistence
   const saveAnalysis = useMutation(api.analyses.save);
   const dbHistory = useQuery(api.analyses.list);
+
+  // Convex action for server-side market data fetching
+  const fetchMarketData = useAction(api.marketData.fetchMarketData);
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/");
   };
 
+  const updateStep = useCallback((index: number, status: LoadingStep["status"]) => {
+    setLoadingSteps((prev) =>
+      prev.map((step, i) => (i === index ? { ...step, status } : step)),
+    );
+  }, []);
+
   const handleAnalyze = useCallback(
-    (input: AnalysisInput) => {
+    async (input: AnalysisInput) => {
       setIsAnalyzing(true);
       setCurrentResult(null);
+      setFetchError(null);
 
-      // Brief processing delay for UX
-      setTimeout(async () => {
-        const result = runAnalysis(input);
+      // Reset loading steps
+      setLoadingSteps(INITIAL_STEPS.map((s) => ({ ...s, status: "pending" as const })));
+
+      try {
+        // Step 1: Detecting instrument
+        updateStep(0, "active");
+        await new Promise((r) => setTimeout(r, 300));
+        updateStep(0, "done");
+
+        // Step 2: Fetching market data via Convex server-side action
+        updateStep(1, "active");
+        let marketDataResult: MarketDataResult;
+        try {
+          marketDataResult = (await fetchMarketData({
+            instrument: input.instrument,
+            instrumentType: input.instrumentType,
+            timeframe: input.timeframe,
+          })) as MarketDataResult;
+          updateStep(1, "done");
+        } catch (err: any) {
+          updateStep(1, "error");
+          setFetchError(`Market data unavailable: ${err?.message || "provider not configured"}`);
+          setIsAnalyzing(false);
+          return;
+        }
+
+        if (!marketDataResult.success || !marketDataResult.data) {
+          updateStep(1, "error");
+          setFetchError(marketDataResult.error || "Market data unavailable");
+          setIsAnalyzing(false);
+          return;
+        }
+
+        // Step 3: Building structure (already done in Convex action)
+        updateStep(2, "active");
+        await new Promise((r) => setTimeout(r, 200));
+        updateStep(2, "done");
+
+        // Step 4: Calculating indicators (already done in Convex action)
+        updateStep(3, "active");
+        await new Promise((r) => setTimeout(r, 200));
+        updateStep(3, "done");
+
+        // Step 5: Generate bias
+        updateStep(4, "active");
+        const enrichedInput: AnalysisInput = {
+          ...input,
+          marketData: marketDataResult.data,
+          technicalData: marketDataResult.technical,
+        };
+        const result = runAnalysis(enrichedInput);
+
+        await new Promise((r) => setTimeout(r, 150));
+        updateStep(4, "done");
+
         setCurrentResult(result);
-        setIsAnalyzing(false);
 
-        // Persist to Convex (fire-and-forget, don't block UI)
+        // Persist to Convex (fire-and-forget)
         try {
           await saveAnalysis({
             instrument: result.instrument,
@@ -76,18 +154,21 @@ export default function Dashboard() {
             dataFlags: result.dataFlags,
           });
         } catch {
-          // Save failed (e.g. guest user) — analysis still shows in UI session
+          // Save failed (guest user) — analysis still shows in session
         }
-      }, 800);
+      } catch (err: any) {
+        setFetchError(`Analysis failed: ${err?.message || "unknown error"}`);
+      } finally {
+        setIsAnalyzing(false);
+      }
     },
-    [saveAnalysis],
+    [fetchMarketData, saveAnalysis, updateStep],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
     setCurrentResult(analysis);
   }, []);
 
-  // Map DB records to AnalysisResult; fall back to empty array while loading
   const history: AnalysisResult[] = dbHistory
     ? dbHistory.map(fromDbRecord)
     : [];
@@ -151,20 +232,53 @@ export default function Dashboard() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
-                  className="flex flex-col items-center justify-center py-24 text-center"
+                  className="flex flex-col items-center justify-center py-16 text-center"
                 >
-                  <div className="relative">
+                  <div className="relative mb-6">
                     <div className="size-16 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
                     <div className="absolute inset-0 flex items-center justify-center">
                       <Zap className="size-6 text-primary" />
                     </div>
                   </div>
-                  <p className="mt-6 text-sm font-medium text-foreground font-mono">
-                    Running multi-factor analysis...
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground font-mono">
-                    Evaluating structure · indicators · fundamentals · sentiment
-                  </p>
+
+                  {/* Multi-step loading sequence */}
+                  <div className="w-full max-w-xs space-y-2.5">
+                    {loadingSteps.map((step, i) => (
+                      <div key={i} className="flex items-center gap-2.5">
+                        {step.status === "done" ? (
+                          <CheckCircle2 className="size-4 text-emerald-400 shrink-0" />
+                        ) : step.status === "error" ? (
+                          <span className="size-4 flex items-center justify-center text-red-400 shrink-0">✗</span>
+                        ) : step.status === "active" ? (
+                          <Loader2 className="size-4 animate-spin text-primary shrink-0" />
+                        ) : (
+                          <div className="size-4 rounded-full border border-border/50 shrink-0" />
+                        )}
+                        <span
+                          className={`text-xs font-mono ${
+                            step.status === "active"
+                              ? "text-foreground"
+                              : step.status === "done"
+                                ? "text-emerald-400"
+                                : step.status === "error"
+                                  ? "text-red-400"
+                                  : "text-muted-foreground/50"
+                          }`}
+                        >
+                          {step.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {fetchError && (
+                    <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+                      <p className="text-xs font-mono text-red-400">{fetchError}</p>
+                      <p className="text-[10px] font-mono text-red-400/60 mt-1">
+                        Check that TWELVE_DATA_API_KEY is configured in the Keys tab.
+                      </p>
+                    </div>
+                  )}
                 </motion.div>
               ) : currentResult ? (
                 <motion.div
@@ -190,8 +304,8 @@ export default function Dashboard() {
                     Ready
                   </h3>
                   <p className="mt-1.5 text-sm text-muted-foreground max-w-sm font-mono">
-                    Pick an instrument or enter one manually. Add price data and market
-                    context to improve confidence.
+                    Pick an instrument and click run bias. Market data is fetched
+                    automatically via the backend.
                   </p>
                   <div className="mt-6 grid grid-cols-3 gap-3 max-w-sm">
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
