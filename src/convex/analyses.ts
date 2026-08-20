@@ -62,6 +62,8 @@ export const save = mutation({
     riskNote: v.string(),
     dataCompleteness: v.string(),
     dataFlags: v.array(v.string()),
+    price: v.optional(v.number()),
+    dataSource: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx);
@@ -81,6 +83,8 @@ export const save = mutation({
       riskNote: args.riskNote,
       dataCompleteness: args.dataCompleteness,
       dataFlags: args.dataFlags,
+      price: args.price,
+      dataSource: args.dataSource,
       timestamp: Date.now(),
     });
   },

@@ -31,6 +31,8 @@ function fromDbRecord(record: any): AnalysisResult {
     dataCompleteness: record.dataCompleteness,
     dataFlags: record.dataFlags,
     timestamp: record.timestamp,
+    ...(record.price != null ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } } : {}),
+    ...(record.dataSource ? { dataSource: record.dataSource } : {}),
   };
 }
 
@@ -152,6 +154,8 @@ export default function Dashboard() {
             riskNote: result.riskNote,
             dataCompleteness: result.dataCompleteness,
             dataFlags: result.dataFlags,
+            price: result.priceSnapshot?.price,
+            dataSource: result.dataSource,
           });
         } catch {
           // Save failed (guest user) — analysis still shows in session
