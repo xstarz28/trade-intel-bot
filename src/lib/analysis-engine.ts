@@ -102,11 +102,13 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
   if (newsLower.includes("crash") || newsLower.includes("plunge") || newsLower.includes("breakdown")) {
     score -= 1;
   }
-  if (newsLower.includes("divergence") || newsLower.includes("bullish divergence")) {
-    score += 1;
-  }
+  // Check specific divergences before the bare "divergence" keyword
   if (newsLower.includes("bearish divergence")) {
     score -= 1;
+  } else if (newsLower.includes("bullish divergence")) {
+    score += 1;
+  } else if (newsLower.includes("divergence")) {
+    score += 1;
   }
 
   return clampScore(score);

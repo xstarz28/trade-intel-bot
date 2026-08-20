@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnalysisResult } from "@/types/analysis";
-import { cn } from "@/lib/utils";
+import { cn, getTimeAgo } from "@/lib/utils";
 import { History, TrendingUp, TrendingDown, Minus, Clock } from "lucide-react";
 
 interface AnalysisHistoryProps {
@@ -23,17 +23,7 @@ const BIAS_COLORS = {
   Neutral: "text-muted-foreground",
 } as const;
 
-function getTimeAgo(timestamp: number): string {
-  const diff = Date.now() - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `${days}d`;
-}
+
 
 export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHistoryProps) {
   if (analyses.length === 0) {
