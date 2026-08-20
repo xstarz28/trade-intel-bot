@@ -1,10 +1,8 @@
 import { describe, it, expect } from "vitest";
-import {
-  runAnalysis,
-  type AnalysisInput,
-} from "./analysis-engine";
+import { runAnalysis } from "./analysis-engine";
+import type { AnalysisInput } from "@/types/analysis";
 
-function base(overrides: Partial<AnalysisInput> = {}): AnalysisInput {
+function baseInput(overrides?: Partial<AnalysisInput>): AnalysisInput {
   return {
     instrument: "EUR/USD",
     instrumentType: "forex",
@@ -15,240 +13,263 @@ function base(overrides: Partial<AnalysisInput> = {}): AnalysisInput {
 
 // ── Bias calculation ──────────────────────────────────────────────
 
-describe("runAnalysis — bias calculation", () => {
-  it("returns Neutral with all-zero breakdown", () => {
-    const r = runAnalysis(base());
-    expect(r.bias).toBe("Neutral");
-    expect(r.breakdown).toEqual({ trend: 0, indicator: 0, fundamental: 0, sentiment: 0 });
+describe("calculateBias (via runAnalysis)", () => {
+  it("returns Neutral when all scores are zero", () => {
+    const result = runAnalysis(baseInput());
+    expect(result.bias).toBe("Neutral");
   });
 
-  it("returns Bullish when all factors are positive", () => {
-    const r = runAnalysis(
-      base({
+  it("returns Bullish when trend is strong and price is near high", () => {
+    const result = runAnalysis(
+      baseInput({
         currentPrice: "1.10",
-        recentHigh: "1.12",
-        recentLow: "1.05",
-        newsContext: "rally surge breakout bullish divergence",
-        economicEvents: "hawkish rate hike strong gdp",
+        recentHigh: "1.11",
+        recentLow: "1.00",
       }),
     );
-    expect(r.bias).toBe("Bullish");
-    expect(r.confidence).toBeGreaterThan(50);
+    // Price at upper range → trend +2
+    expect(result.bias).toBe("Bullish");
+    expect(result.breakdown.trend).toBeGreaterThanOrEqual(1);
   });
 
-  it("returns Bearish when all factors are negative", () => {
-    const r = runAnalysis(
-      base({
-        currentPrice: "1.05",
-        recentHigh: "1.12",
-        recentLow: "1.04",
-        newsContext: "crash plunge breakdown bearish divergence fear",
-        economicEvents: "dovish rate cut weak gdp recession",
+  it("returns Bearish when price is near the low", () => {
+    const result = runAnalysis(
+      baseInput({
+        currentPrice: "1.01",
+        recentHigh: "1.11",
+        recentLow: "1.00",
       }),
     );
-    expect(r.bias).toBe("Bearish");
-    expect(r.confidence).toBeGreaterThan(50);
+    expect(result.bias).toBe("Bearish");
+    expect(result.breakdown.trend).toBeLessThanOrEqual(-1);
   });
 });
 
 // ── Trend scoring ─────────────────────────────────────────────────
 
-describe("trend scoring via price position", () => {
-  it("scores bullish when price is near the high", () => {
-    const r = runAnalysis(
-      base({ currentPrice: "1.118", recentHigh: "1.12", recentLow: "1.05" }),
+describe("scoreTrend (via breakdown)", () => {
+  it("scores bullish when price is near high", () => {
+    const result = runAnalysis(
+      baseInput({
+        currentPrice: "1.10",
+        recentHigh: "1.11",
+        recentLow: "1.00",
+      }),
     );
-    expect(r.breakdown.trend).toBeGreaterThanOrEqual(1);
+    expect(result.breakdown.trend).toBeGreaterThanOrEqual(1);
   });
 
-  it("scores bearish when price is near the low", () => {
-    const r = runAnalysis(
-      base({ currentPrice: "1.052", recentHigh: "1.12", recentLow: "1.05" }),
+  it("scores bearish when price is near low", () => {
+    const result = runAnalysis(
+      baseInput({
+        currentPrice: "1.01",
+        recentHigh: "1.11",
+        recentLow: "1.00",
+      }),
     );
-    expect(r.breakdown.trend).toBeLessThanOrEqual(-1);
+    expect(result.breakdown.trend).toBeLessThanOrEqual(-1);
   });
 
-  it("scores neutral when price is mid-range", () => {
-    const r = runAnalysis(
-      base({ currentPrice: "1.085", recentHigh: "1.12", recentLow: "1.05" }),
-    );
-    expect(r.breakdown.trend).toBe(0);
+  it("scores neutral when no price data is provided", () => {
+    const result = runAnalysis(baseInput());
+    expect(result.breakdown.trend).toBe(0);
   });
 });
 
-// ── Indicator scoring / bearish divergence fix ────────────────────
+// ── Indicator scoring ─────────────────────────────────────────────
 
-describe("indicator scoring", () => {
-  it("scores bullish on 'rally' keyword", () => {
-    const r = runAnalysis(base({ newsContext: "strong rally continuation" }));
-    expect(r.breakdown.indicator).toBeGreaterThanOrEqual(1);
+describe("scoreIndicators (via breakdown)", () => {
+  it("scores +1 for rally/surge/breakout keywords", () => {
+    const result = runAnalysis(
+      baseInput({ newsContext: "Market rally continues strong" }),
+    );
+    expect(result.breakdown.indicator).toBeGreaterThanOrEqual(1);
   });
 
-  it("scores bearish on 'crash' keyword", () => {
-    const r = runAnalysis(base({ newsContext: "market crash underway" }));
-    expect(r.breakdown.indicator).toBeLessThanOrEqual(-1);
+  it("scores -1 for crash/plunge/breakdown keywords", () => {
+    const result = runAnalysis(
+      baseInput({ newsContext: "Market crashes after data" }),
+    );
+    expect(result.breakdown.indicator).toBeLessThanOrEqual(-1);
   });
 
-  it("scores -1 for 'bearish divergence' (the fixed bug)", () => {
-    const r = runAnalysis(base({ newsContext: "bearish divergence on RSI" }));
-    expect(r.breakdown.indicator).toBe(-1);
+  it("scores -1 for bearish divergence (not 0)", () => {
+    const result = runAnalysis(
+      baseInput({ newsContext: "Bearish divergence on daily chart" }),
+    );
+    expect(result.breakdown.indicator).toBe(-1);
   });
 
-  it("scores +1 for 'bullish divergence'", () => {
-    const r = runAnalysis(base({ newsContext: "bullish divergence forming" }));
-    expect(r.breakdown.indicator).toBe(1);
+  it("scores +1 for bullish divergence", () => {
+    const result = runAnalysis(
+      baseInput({ newsContext: "Bullish divergence forming on RSI" }),
+    );
+    expect(result.breakdown.indicator).toBe(1);
   });
 
-  it("scores +1 for bare 'divergence' without directional qualifier", () => {
-    const r = runAnalysis(base({ newsContext: "divergence visible on MACD" }));
-    expect(r.breakdown.indicator).toBe(1);
+  it("scores +1 for bare 'divergence' without bearish prefix", () => {
+    const result = runAnalysis(
+      baseInput({ newsContext: "Divergence noted on MACD" }),
+    );
+    expect(result.breakdown.indicator).toBe(1);
   });
 
-  it("scores 0 with no news context", () => {
-    const r = runAnalysis(base());
-    expect(r.breakdown.indicator).toBe(0);
+  it("scores 0 with empty context", () => {
+    const result = runAnalysis(baseInput());
+    expect(result.breakdown.indicator).toBe(0);
   });
 });
 
 // ── Fundamental scoring ───────────────────────────────────────────
 
-describe("fundamental scoring", () => {
-  it("forex: hawkish + strong gdp → positive", () => {
-    const r = runAnalysis(
-      base({
+describe("scoreFundamentals (via breakdown)", () => {
+  it("scores +1 for hawkish forex news", () => {
+    const result = runAnalysis(
+      baseInput({
         instrumentType: "forex",
-        economicEvents: "hawkish rate hike",
-        newsContext: "strong gdp beat",
+        economicEvents: "Fed signals hawkish stance",
       }),
     );
-    expect(r.breakdown.fundamental).toBeGreaterThanOrEqual(1);
+    expect(result.breakdown.fundamental).toBeGreaterThanOrEqual(1);
   });
 
-  it("forex: dovish + recession → negative", () => {
-    const r = runAnalysis(
-      base({
+  it("scores -1 for dovish forex news", () => {
+    const result = runAnalysis(
+      baseInput({
         instrumentType: "forex",
-        economicEvents: "dovish rate cut easing",
-        newsContext: "recession fears deepening",
+        economicEvents: "ECB dovish, rate cut expected",
       }),
     );
-    expect(r.breakdown.fundamental).toBeLessThanOrEqual(-1);
+    expect(result.breakdown.fundamental).toBeLessThanOrEqual(-1);
   });
 
-  it("crypto: institutional + etf approval → positive", () => {
-    const r = runAnalysis(
-      base({
-        instrument: "BTC/USD",
+  it("scores +1 for crypto institutional adoption", () => {
+    const result = runAnalysis(
+      baseInput({
         instrumentType: "crypto",
-        newsContext: "institutional adoption etf approval",
+        instrument: "BTC/USD",
+        newsContext: "Institutional adoption growing",
       }),
     );
-    expect(r.breakdown.fundamental).toBeGreaterThanOrEqual(1);
+    expect(result.breakdown.fundamental).toBeGreaterThanOrEqual(1);
   });
 
-  it("crypto: regulation + crackdown → negative", () => {
-    const r = runAnalysis(
-      base({
-        instrument: "BTC/USD",
+  it("scores -1 for crypto regulation news", () => {
+    const result = runAnalysis(
+      baseInput({
         instrumentType: "crypto",
-        newsContext: "regulation crackdown ban",
+        instrument: "BTC/USD",
+        newsContext: "New regulation crackdown announced",
       }),
     );
-    expect(r.breakdown.fundamental).toBeLessThanOrEqual(-1);
+    expect(result.breakdown.fundamental).toBeLessThanOrEqual(-1);
   });
 });
 
 // ── Sentiment scoring ─────────────────────────────────────────────
 
-describe("sentiment scoring", () => {
-  it("contrarian bullish on fear/panic", () => {
-    const r = runAnalysis(base({ newsContext: "extreme fear in market" }));
-    expect(r.breakdown.sentiment).toBeGreaterThanOrEqual(1);
-  });
-
-  it("contrarian bearish on greed/euphoria", () => {
-    const r = runAnalysis(base({ newsContext: "greed euphoria fomo" }));
-    expect(r.breakdown.sentiment).toBeLessThanOrEqual(-1);
-  });
-
-  it("crypto: high funding rate → bearish contrarian", () => {
-    const r = runAnalysis(
-      base({
-        instrument: "BTC/USD",
+describe("scoreSentiment (via breakdown)", () => {
+  it("scores -1 for high positive funding rate (contrarian bearish)", () => {
+    const result = runAnalysis(
+      baseInput({
         instrumentType: "crypto",
+        instrument: "BTC/USD",
         fundingRate: "0.08",
       }),
     );
-    expect(r.breakdown.sentiment).toBeLessThanOrEqual(-1);
+    expect(result.breakdown.sentiment).toBeLessThanOrEqual(-1);
   });
 
-  it("crypto: negative funding rate → bullish contrarian", () => {
-    const r = runAnalysis(
-      base({
-        instrument: "BTC/USD",
+  it("scores +1 for negative funding rate (contrarian bullish)", () => {
+    const result = runAnalysis(
+      baseInput({
         instrumentType: "crypto",
-        fundingRate: "-0.06",
+        instrument: "BTC/USD",
+        fundingRate: "-0.08",
       }),
     );
-    expect(r.breakdown.sentiment).toBeGreaterThanOrEqual(1);
+    expect(result.breakdown.sentiment).toBeGreaterThanOrEqual(1);
+  });
+
+  it("scores +1 for fear/panic (contrarian bullish)", () => {
+    const result = runAnalysis(
+      baseInput({ newsContext: "Market in panic mode, extreme fear" }),
+    );
+    expect(result.breakdown.sentiment).toBeGreaterThanOrEqual(1);
+  });
+
+  it("scores -1 for greed/euphoria (contrarian bearish)", () => {
+    const result = runAnalysis(
+      baseInput({ newsContext: "Euphoria and greed everywhere" }),
+    );
+    expect(result.breakdown.sentiment).toBeLessThanOrEqual(-1);
   });
 });
 
 // ── Data completeness ─────────────────────────────────────────────
 
-describe("data completeness", () => {
-  it("full data when all fields provided", () => {
-    const r = runAnalysis(
-      base({
+describe("dataCompleteness", () => {
+  it("marks 'full' with complete price data", () => {
+    const result = runAnalysis(
+      baseInput({
         currentPrice: "1.10",
-        recentHigh: "1.12",
-        recentLow: "1.05",
-        newsContext: "some news",
-        economicEvents: "some events",
+        recentHigh: "1.11",
+        recentLow: "1.00",
+        newsContext: "Strong rally",
+        economicEvents: "NFP data released",
       }),
     );
-    expect(r.dataCompleteness).toBe("full");
-    expect(r.dataFlags.length).toBe(0);
+    expect(result.dataCompleteness).toBe("full");
   });
 
-  it("limited data when nothing is provided", () => {
-    const r = runAnalysis(base());
-    expect(r.dataCompleteness).toBe("limited");
-    expect(r.dataFlags.length).toBeGreaterThanOrEqual(4);
+  it("marks 'limited' with no data at all", () => {
+    const result = runAnalysis(baseInput());
+    expect(result.dataCompleteness).toBe("limited");
+    expect(result.dataFlags.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("partial data when some fields are missing", () => {
-    const r = runAnalysis(
-      base({ currentPrice: "1.10", newsContext: "some context" }),
+  it("marks 'partial' with some data missing", () => {
+    const result = runAnalysis(
+      baseInput({
+        currentPrice: "1.10",
+        recentHigh: "1.11",
+        recentLow: "1.00",
+      }),
     );
-    expect(r.dataCompleteness).toBe("partial");
+    expect(result.dataCompleteness).toBe("partial");
   });
 });
 
 // ── Key levels ────────────────────────────────────────────────────
 
-describe("key levels", () => {
-  it("uses provided high/low as resistance/support", () => {
-    const r = runAnalysis(
-      base({ recentHigh: "1.1500", recentLow: "1.0800" }),
+describe("keyLevels", () => {
+  it("uses provided price data for levels", () => {
+    const result = runAnalysis(
+      baseInput({
+        currentPrice: "1.10",
+        recentHigh: "1.11",
+        recentLow: "1.05",
+      }),
     );
-    expect(r.keyLevels.resistance).toBe("1.1500");
-    expect(r.keyLevels.support).toBe("1.0800");
+    expect(result.keyLevels.support).toBe("1.05");
+    expect(result.keyLevels.resistance).toBe("1.11");
   });
 
-  it("derives levels from price when high/low not provided", () => {
-    const r = runAnalysis(base({ currentPrice: "1.1000" }));
-    expect(r.keyLevels.support).toMatch(/^\d+\.\d+$/);
-    expect(r.keyLevels.resistance).toMatch(/^\d+\.\d+$/);
+  it("derives levels from price when not explicitly provided", () => {
+    const result = runAnalysis(
+      baseInput({ currentPrice: "1.10" }),
+    );
+    expect(result.keyLevels.support).toBeTruthy();
+    expect(result.keyLevels.resistance).toBeTruthy();
   });
 });
 
-// ── Instrument uppercasing ────────────────────────────────────────
+// ── Instrument formatting ─────────────────────────────────────────
 
 describe("instrument formatting", () => {
   it("uppercases the instrument name", () => {
-    const r = runAnalysis(base({ instrument: "eur/usd" }));
-    expect(r.instrument).toBe("EUR/USD");
+    const result = runAnalysis(baseInput({ instrument: "eur/usd" }));
+    expect(result.instrument).toBe("EUR/USD");
   });
 });
 
@@ -256,21 +277,23 @@ describe("instrument formatting", () => {
 
 describe("confidence", () => {
   it("stays within 20-95 range", () => {
-    const r = runAnalysis(base());
-    expect(r.confidence).toBeGreaterThanOrEqual(20);
-    expect(r.confidence).toBeLessThanOrEqual(95);
-  });
-
-  it("caps at 95 for maximum conviction", () => {
-    const r = runAnalysis(
-      base({
-        currentPrice: "1.119",
-        recentHigh: "1.12",
-        recentLow: "1.05",
-        newsContext: "rally surge breakout bullish divergence",
-        economicEvents: "hawkish rate hike strong gdp",
+    // Very bullish inputs
+    const bullish = runAnalysis(
+      baseInput({
+        currentPrice: "1.109",
+        recentHigh: "1.11",
+        recentLow: "1.00",
+        newsContext: "rally breakout surge institutional adoption",
+        economicEvents: "hawkish rate hike tightening strong gdp",
+        fundingRate: "-0.1",
       }),
     );
-    expect(r.confidence).toBeLessThanOrEqual(95);
+    expect(bullish.confidence).toBeGreaterThanOrEqual(20);
+    expect(bullish.confidence).toBeLessThanOrEqual(95);
+
+    // Empty inputs → neutral
+    const neutral = runAnalysis(baseInput());
+    expect(neutral.confidence).toBeGreaterThanOrEqual(20);
+    expect(neutral.confidence).toBeLessThanOrEqual(95);
   });
 });

@@ -1,34 +1,34 @@
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
-import { type ReactNode, useState, useEffect } from "react";
+import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
 
+/**
+ * Blocks the children until the auth phase is definitively resolved.
+ *
+ * While phase === "initializing" → renders a stable loading screen
+ * (no white flash, no intermediate redirect).
+ * Once phase is "authenticated"   → renders children.
+ * Once phase is "unauthenticated" → redirects to /auth.
+ */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { isLoading, isAuthenticated } = useAuth();
+  const { phase } = useAuth();
   const location = useLocation();
 
-  // Block any redirect until after the first mount + effect cycle.
-  // This prevents the component from rendering a Navigate before
-  // Convex's auth token has had a chance to restore from storage.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted || isLoading) {
+  if (phase === "initializing") {
     return (
       <main className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
           <p className="text-xs text-muted-foreground font-mono">
-            {!mounted ? "initializing..." : "restoring session..."}
+            restoring session...
           </p>
         </div>
       </main>
     );
   }
 
-  if (!isAuthenticated) {
+  if (phase === "unauthenticated") {
     const returnTo = `${location.pathname}${location.search}`;
     return (
       <Navigate

@@ -3,35 +3,55 @@ import { api } from "@/convex/_generated/api";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useConvexAuth, useQuery } from "convex/react";
 
+/**
+ * Three-phase auth state machine. There are exactly three stable states,
+ * and the phase transitions exactly once during the app lifecycle:
+ *
+ *   "initializing" → "authenticated"   (session found)
+ *   "initializing" → "unauthenticated" (no session)
+ *
+ * Once the phase leaves "initializing" it never returns to it.
+ * This eliminates flicker caused by independent boolean flags
+ * resolving at different ticks.
+ */
+export type AuthPhase = "initializing" | "authenticated" | "unauthenticated";
+
 export function useAuth() {
   const { isLoading: isAuthLoading, isAuthenticated } = useConvexAuth();
   const user = useQuery(api.users.currentUser);
   const { signIn, signOut } = useAuthActions();
 
-  // Track whether the initial Convex auth check has completed.
-  // useConvexAuth can briefly report isLoading=false before the token has
-  // fully propagated through the query layer. This flag ensures we don't
-  // treat that transitional state as "auth settled".
-  const [authInitialized, setAuthInitialized] = useState(false);
-  const initRef = useRef(false);
+  const [phase, setPhase] = useState<AuthPhase>("initializing");
+  const phaseRef = useRef<AuthPhase>("initializing");
 
   useEffect(() => {
-    if (!isAuthLoading && !initRef.current) {
-      initRef.current = true;
-      setAuthInitialized(true);
-    }
-  }, [isAuthLoading]);
+    // Don't resolve until the Convex auth provider has finished its
+    // initial session check AND the user query has loaded (null = no
+    // user, object = user found).
+    if (isAuthLoading || user === undefined) return;
 
-  // Auth is loading until ALL of:
-  //   1. useConvexAuth finishes its initial session check
-  //   2. The user query has resolved (undefined → null | user)
-  //   3. The initialized flag has been set (one tick after isAuthLoading flips)
-  const isLoading = isAuthLoading || user === undefined || !authInitialized;
+    // Compute the target phase exactly once.
+    const target: AuthPhase = isAuthenticated ? "authenticated" : "unauthenticated";
+
+    // Only set if we haven't already settled — prevents StrictMode
+    // double-fire from re-triggering a phase change.
+    if (phaseRef.current === "initializing") {
+      phaseRef.current = target;
+      setPhase(target);
+    }
+  }, [isAuthLoading, isAuthenticated, user]);
+
+  const isLoading = phase === "initializing";
 
   return {
+    /** The strict three-phase state. */
+    phase,
+    /** True only while phase is "initializing". */
     isLoading,
-    isAuthenticated,
-    user,
+    /** Derived from phase — true in "authenticated" state. */
+    isAuthenticated: phase === "authenticated",
+    /** The current user document (or null). */
+    user: phase === "initializing" ? undefined : user ?? null,
     signIn,
     signOut,
   };

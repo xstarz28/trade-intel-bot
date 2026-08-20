@@ -1,172 +1,122 @@
+/**
+ * @file Tests for the three-phase auth state machine in useAuth.
+ *
+ * We mock the Convex dependencies and verify that the phase transitions
+ * are stable and don't flicker between "initializing" → resolved.
+ */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { renderHook, waitFor, act } from "@testing-library/react";
+import { renderHook, act } from "@testing-library/react";
 
-// ── Mocks ────────────────────────────────────────────────────────────
+// ── Mocks ─────────────────────────────────────────────────────────
 
-let mockIsAuthLoading = true;
-let mockIsAuthenticated = false;
-let mockUser: any = undefined;
-
-vi.mock("convex/react", () => ({
-  useConvexAuth: () => ({
-    isLoading: mockIsAuthLoading,
-    isAuthenticated: mockIsAuthenticated,
-  }),
-  useQuery: () => mockUser,
-}));
+const mockSignIn = vi.fn();
+const mockSignOut = vi.fn();
 
 vi.mock("@convex-dev/auth/react", () => ({
-  useAuthActions: () => ({
-    signIn: vi.fn(),
-    signOut: vi.fn(),
-  }),
+  useAuthActions: () => ({ signIn: mockSignIn, signOut: mockSignOut }),
+}));
+
+// Mutable mock state — tests toggle these to simulate auth phases.
+let isAuthLoading = true;
+let isAuthenticated = false;
+let userMock: undefined | null | { name: string } = undefined;
+
+vi.mock("convex/react", () => ({
+  useConvexAuth: () => ({ isLoading: isAuthLoading, isAuthenticated }),
+  useQuery: () => userMock,
 }));
 
 vi.mock("@/convex/_generated/api", () => ({
-  api: { users: { currentUser: {} } },
+  api: { users: { currentUser: "users/currentUser" } },
 }));
 
-// ── Tests ────────────────────────────────────────────────────────────
+// ── Import after mocks ────────────────────────────────────────────
+import { useAuth } from "../use-auth";
 
-describe("useAuth — loading state during session restore", () => {
+// Helper: render useAuth, advance mock state, rerender, return hook result.
+function runPhaseSequence(
+  updates: Array<{ authLoading?: boolean; authenticated?: boolean; user?: null | { name: string } }>,
+) {
+  const { result, rerender } = renderHook(() => useAuth());
+
+  for (const update of updates) {
+    if (update.authLoading !== undefined) isAuthLoading = update.authLoading;
+    if (update.authenticated !== undefined) isAuthenticated = update.authenticated;
+    if (update.user !== undefined) userMock = update.user;
+    act(() => rerender());
+  }
+
+  return result;
+}
+
+// ── Tests ─────────────────────────────────────────────────────────
+
+describe("useAuth — three-phase state machine", () => {
   beforeEach(() => {
-    mockIsAuthLoading = true;
-    mockIsAuthenticated = false;
-    mockUser = undefined;
+    isAuthLoading = true;
+    isAuthenticated = false;
+    userMock = undefined;
+    vi.clearAllMocks();
   });
 
-  it("isLoading is true while useConvexAuth is loading", async () => {
-    const { useAuth } = await import("@/hooks/use-auth");
-    const { result, rerender } = renderHook(() => useAuth());
-
+  it("reports isLoading while auth is still loading", () => {
+    const result = runPhaseSequence([{ authLoading: true, user: undefined }]);
     expect(result.current.isLoading).toBe(true);
-    expect(result.current.isAuthenticated).toBe(false);
-    rerender();
+    expect(result.current.phase).toBe("initializing");
   });
 
-  it("isLoading stays true until authInitialized flag fires", async () => {
-    const { useAuth } = await import("@/hooks/use-auth");
-    const { result, rerender } = renderHook(() => useAuth());
-
-    // Simulate useConvexAuth finishing its check
-    act(() => {
-      mockIsAuthLoading = false;
-      mockIsAuthenticated = true;
-    });
-    rerender();
-
-    // The useEffect to set authInitialized hasn't committed yet
-    // isLoading should still be true
+  it("stays 'initializing' until authInitialized fires", () => {
+    // Phase 1: auth loading
+    // Phase 2: auth loaded but user query still pending
+    const result = runPhaseSequence([
+      { authLoading: false, authenticated: true, user: undefined },
+    ]);
+    // isLoading should still be true — user query hasn't resolved yet
     expect(result.current.isLoading).toBe(true);
+    expect(result.current.phase).toBe("initializing");
+  });
 
-    // After useEffect commits (next render cycle)
-    act(() => {});
-    rerender();
-
-    // Now authInitialized should be true, user is still undefined though
-    // isLoading = false || true || false = true (user undefined keeps it true)
+  it("stays 'initializing' while user query is undefined", () => {
+    const result = runPhaseSequence([
+      { authLoading: false, authenticated: false, user: undefined },
+    ]);
     expect(result.current.isLoading).toBe(true);
+    expect(result.current.phase).toBe("initializing");
+  });
 
-    // Now provide the user
-    act(() => {
-      mockUser = { _id: "user1", name: "Test" };
-    });
-    rerender();
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
+  it("resolves to 'authenticated' when all conditions met", () => {
+    const result = runPhaseSequence([
+      { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+    ]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.phase).toBe("authenticated");
     expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.user).toEqual({ name: "Gilfan" });
   });
 
-  it("isLoading stays true while user query is still undefined", async () => {
-    const { useAuth } = await import("@/hooks/use-auth");
-    const { result, rerender } = renderHook(() => useAuth());
-
-    act(() => {
-      mockIsAuthLoading = false;
-      mockIsAuthenticated = true;
-      // user is still undefined
-    });
-    rerender();
-    act(() => {}); // flush useEffect
-    rerender();
-
-    // user===undefined keeps isLoading true
-    expect(result.current.isLoading).toBe(true);
-  });
-
-  it("isLoading becomes false when all three conditions are met", async () => {
-    const { useAuth } = await import("@/hooks/use-auth");
-    const { result, rerender } = renderHook(() => useAuth());
-
-    act(() => {
-      mockIsAuthLoading = false;
-      mockIsAuthenticated = true;
-      mockUser = { _id: "user1", name: "Test" };
-    });
-    rerender();
-    act(() => {}); // flush useEffect
-    rerender();
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
-    expect(result.current.isAuthenticated).toBe(true);
-    expect(result.current.user).toEqual({ _id: "user1", name: "Test" });
-  });
-
-  it("isLoading becomes false for unauthenticated users after init", async () => {
-    const { useAuth } = await import("@/hooks/use-auth");
-    const { result, rerender } = renderHook(() => useAuth());
-
-    act(() => {
-      mockIsAuthLoading = false;
-      mockIsAuthenticated = false;
-      mockUser = null; // query resolved, no user
-    });
-    rerender();
-    act(() => {}); // flush useEffect
-    rerender();
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
+  it("resolves to 'unauthenticated' when not authenticated", () => {
+    const result = runPhaseSequence([
+      { authLoading: false, authenticated: false, user: null },
+    ]);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.phase).toBe("unauthenticated");
     expect(result.current.isAuthenticated).toBe(false);
+    expect(result.current.user).toBeNull();
   });
 
-  it("isLoading stays true during the full reload → restore cycle", async () => {
-    const { useAuth } = await import("@/hooks/use-auth");
-    const { result, rerender } = renderHook(() => useAuth());
+  it("simulates a full reload → restore cycle", () => {
+    const result = runPhaseSequence([
+      // Phase 1: initial loading (app just mounted)
+      { authLoading: true, user: undefined },
+      // Phase 2: Convex auth resolved, but user query still loading
+      { authLoading: false, authenticated: true, user: undefined },
+      // Phase 3: user query resolves — authenticated
+      { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+    ]);
 
-    // Phase 1: initial load (auth loading, no user)
-    expect(result.current.isLoading).toBe(true);
-    expect(result.current.isAuthenticated).toBe(false);
-
-    // Phase 2: auth finishes, user query still loading
-    act(() => {
-      mockIsAuthLoading = false;
-      mockIsAuthenticated = true;
-      mockUser = undefined;
-    });
-    rerender();
-    expect(result.current.isLoading).toBe(true);
-
-    // Phase 3: useEffect fires, authInitialized = true
-    act(() => {});
-    rerender();
-    // user===undefined still keeps isLoading true
-    expect(result.current.isLoading).toBe(true);
-
-    // Phase 4: user query resolves
-    act(() => {
-      mockUser = { _id: "u1", name: "Gilfan" };
-    });
-    rerender();
-
-    await waitFor(() => {
-      expect(result.current.isLoading).toBe(false);
-    });
+    // All three phases were "initializing" until the final resolution
+    expect(result.current.phase).toBe("authenticated");
+    expect(result.current.isLoading).toBe(false);
     expect(result.current.isAuthenticated).toBe(true);
   });
 });
