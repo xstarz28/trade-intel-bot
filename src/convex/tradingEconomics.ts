@@ -1,5 +1,5 @@
 /**
- * Convex server-side action for Trading Economics economic calendar.
+ * Convex server-side action for TickAtlas economic calendar.
  * All API keys are read from environment variables — never exposed to client.
  */
 "use node";
@@ -25,42 +25,54 @@ function getCached(key: string): EconomicCalendarData | null {
   return null;
 }
 
-// ── Trading Economics API ────────────────────────────────────────
+// ── TickAtlas API ────────────────────────────────────────────────
 
-const TE_BASE = "https://api.tradingeconomics.com";
+const TA_BASE = "https://tickatlas.com/v1";
 
-async function teFetch(path: string, apiKey: string): Promise<any> {
-  const separator = path.includes("?") ? "&" : "?";
-  const url = `${TE_BASE}${path}${separator}c=${apiKey}`;
+async function taFetch(path: string, apiKey: string): Promise<any> {
+  const url = `${TA_BASE}${path}`;
   const res = await fetch(url, {
-    headers: { accept: "application/json" },
+    headers: {
+      "X-API-Key": apiKey,
+      accept: "application/json",
+    },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     if (res.status === 401 || res.status === 403) {
-      throw new Error("AUTH_ERROR:Trading Economics authentication failed");
+      throw new Error("AUTH_ERROR:TickAtlas authentication failed");
     }
     if (res.status === 429) {
-      throw new Error("RATE_LIMIT:Trading Economics rate limit exceeded");
+      throw new Error("RATE_LIMIT:TickAtlas rate limit exceeded");
     }
-    throw new Error(`Trading Economics HTTP ${res.status}: ${text || res.statusText}`);
+    throw new Error(`TickAtlas HTTP ${res.status}: ${text || res.statusText}`);
   }
   return res.json();
 }
 
+// ── Currency → Country Mapping ───────────────────────────────────
+
+const CURRENCY_COUNTRY: Record<string, string> = {
+  USD: "United States",
+  EUR: "Euro Area",
+  GBP: "United Kingdom",
+  JPY: "Japan",
+  CHF: "Switzerland",
+  CAD: "Canada",
+  AUD: "Australia",
+  NZD: "New Zealand",
+  CNY: "China",
+  SEK: "Sweden",
+  NOK: "Norway",
+};
+
 // ── Response Normalization ───────────────────────────────────────
 
-function normalizeImportance(raw: string | number | undefined): EventImportance {
-  if (typeof raw === "number") {
-    if (raw >= 3) return 3;
-    if (raw === 2) return 2;
-    return 1;
-  }
-  if (typeof raw === "string") {
-    const lower = raw.toLowerCase();
-    if (lower === "high" || lower === "3") return 3;
-    if (lower === "medium" || lower === "mid" || lower === "2") return 2;
-  }
+function normalizeImportance(raw: string | undefined): EventImportance {
+  if (!raw) return 1;
+  const lower = raw.toLowerCase();
+  if (lower === "high") return 3;
+  if (lower === "medium") return 2;
   return 1;
 }
 
@@ -76,39 +88,38 @@ function parseValue(raw: any): number | string | undefined {
 function normalizeEvent(raw: any): EconomicEvent | null {
   if (!raw) return null;
 
-  const id = raw.id ?? raw.Symbol ?? raw.Event ?? `te-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const eventName = raw.Event ?? raw.Name ?? raw.event ?? "";
+  const id = raw.id ?? `ta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const eventName = raw.event ?? raw.Event ?? "";
   if (!eventName) return null;
 
-  const country = raw.Country ?? raw.country ?? "";
-  const currency = raw.Currency ?? raw.currency ?? "";
+  const currency = raw.currency ?? raw.Currency ?? "";
+  const country = CURRENCY_COUNTRY[currency] ?? "";
 
   // Parse datetime
   let datetime = Date.now();
-  const dateStr = raw.Date ?? raw.date ?? raw.Datetime;
+  const dateStr = raw.datetime ?? raw.Date ?? raw.date;
   if (dateStr) {
     const parsed = new Date(dateStr).getTime();
     if (!isNaN(parsed)) datetime = parsed;
   }
 
-  // Determine status
-  const actual = parseValue(raw.Actual ?? raw.actual);
-  const forecast = parseValue(raw.Forecast ?? raw.forecast);
-  const previous = parseValue(raw.Previous ?? raw.previous);
-  const revised = parseValue(raw.Revised ?? raw.revised);
+  // Determine status from actual/forecast
+  const actual = parseValue(raw.actual ?? raw.Actual);
+  const forecast = parseValue(raw.forecast ?? raw.Forecast);
+  const previous = parseValue(raw.previous ?? raw.Previous);
+  const revised = parseValue(raw.revised ?? raw.Revised);
 
   let status: EconomicEvent["status"] = "upcoming";
   if (actual !== undefined) {
     status = revised !== undefined ? "revised" : "released";
   } else if (datetime < Date.now()) {
-    // Past event with no actual — data might be missing
     status = "released";
   }
 
   return {
     id: String(id),
     event: eventName,
-    category: raw.Category ?? raw.Type ?? raw.category ?? "",
+    category: raw.category ?? raw.Category ?? "",
     country,
     currency,
     datetime,
@@ -116,28 +127,12 @@ function normalizeEvent(raw: any): EconomicEvent | null {
     forecast,
     previous,
     revised,
-    importance: normalizeImportance(raw.Importance ?? raw.important ?? 1),
-    source: "trading-economics",
-    sourceUrl: raw.Source_url ?? raw.url,
-    referencePeriod: raw.Period ?? raw.period,
+    importance: normalizeImportance(raw.impact ?? raw.Importance),
+    source: "tickatlas",
+    sourceUrl: raw.url ?? raw.Source_url,
+    referencePeriod: raw.period ?? raw.Period,
     status,
   };
-}
-
-// ── Currency Code Mapping ────────────────────────────────────────
-
-function currencyToTECode(currency: string): string {
-  const map: Record<string, string> = {
-    EUR: "EUR",
-    GBP: "GBP",
-    USD: "USD",
-    JPY: "JPY",
-    CHF: "CHF",
-    CAD: "CAD",
-    AUD: "AUD",
-    NZD: "NZD",
-  };
-  return map[currency.toUpperCase()] ?? currency.toUpperCase();
 }
 
 // ── Main Action ─────────────────────────────────────────────────
@@ -148,12 +143,12 @@ export const fetchCalendar = action({
     instrumentType: v.string(),
   },
   handler: async (_ctx, args): Promise<CalendarResult> => {
-    const apiKey = process.env.TRADING_ECONOMICS_API_KEY;
+    const apiKey = process.env.TICKATLAS_API_KEY;
     if (!apiKey) {
       return {
         success: false,
         error:
-          "Trading Economics not configured: TRADING_ECONOMICS_API_KEY is missing. Add it via: bunx convex env set TRADING_ECONOMICS_API_KEY <your-key>",
+          "TickAtlas not configured: TICKATLAS_API_KEY is missing. Add it via: bunx convex env set TICKATLAS_API_KEY <your-key>",
         errorCode: "AUTH_ERROR",
       };
     }
@@ -175,15 +170,9 @@ export const fetchCalendar = action({
         };
       }
 
-      const currencyCodes = relevantCurrencies
-        .map((c) => currencyToTECode(c.currency))
+      const countryParam = relevantCurrencies
+        .map((c) => encodeURIComponent(c.country))
         .join(",");
-
-      // Fetch upcoming + recent events
-      // Trading Economics calendar endpoint: /calendar
-      // Filter by countries
-      const countries = relevantCurrencies.map((c) => c.country);
-      const countryParam = countries.join(",");
 
       // Fetch upcoming events (next 7 days)
       const now = new Date();
@@ -193,31 +182,21 @@ export const fetchCalendar = action({
 
       let rawEvents: any[] = [];
       try {
-        const data = await teFetch(
-          `/calendar/country/${encodeURIComponent(countryParam)}?d1=${dateFrom}&d2=${dateTo}`,
+        const result = await taFetch(
+          `/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`,
           apiKey,
         );
-        if (Array.isArray(data)) {
-          rawEvents = data;
+        if (result?.success && Array.isArray(result?.data?.events)) {
+          rawEvents = result.data.events;
+        } else if (Array.isArray(result?.data)) {
+          rawEvents = result.data;
         }
       } catch (err: any) {
         if (String(err?.message).startsWith("RATE_LIMIT")) {
-          return { success: false, error: "Trading Economics rate limit exceeded.", errorCode: "RATE_LIMIT" };
+          return { success: false, error: "TickAtlas rate limit exceeded.", errorCode: "RATE_LIMIT" };
         }
         if (String(err?.message).startsWith("AUTH_ERROR")) {
-          return { success: false, error: "Trading Economics authentication failed.", errorCode: "AUTH_ERROR" };
-        }
-        // Try alternate endpoint format
-        try {
-          const data = await teFetch(
-            `/calendar?country=${encodeURIComponent(countryParam)}&d1=${dateFrom}&d2=${dateTo}`,
-            apiKey,
-          );
-          if (Array.isArray(data)) {
-            rawEvents = data;
-          }
-        } catch {
-          // Both endpoints failed — continue with empty data
+          return { success: false, error: "TickAtlas authentication failed.", errorCode: "AUTH_ERROR" };
         }
       }
 
@@ -226,17 +205,21 @@ export const fetchCalendar = action({
       const datePast = sevenDaysAgo.toISOString().split("T")[0];
 
       try {
-        const data = await teFetch(
-          `/calendar/country/${encodeURIComponent(countryParam)}?d1=${datePast}&d2=${dateFrom}`,
+        const result = await taFetch(
+          `/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`,
           apiKey,
         );
-        if (Array.isArray(data)) {
-          // Only add high-impact recently released events not already in upcoming
-          const existingIds = new Set(rawEvents.map((e: any) => e.id ?? e.Symbol));
-          for (const evt of data) {
-            const norm = normalizeEvent(evt);
-            if (norm && norm.importance === 3 && norm.actual !== undefined && !existingIds.has(norm.id)) {
-              rawEvents.push(evt);
+        const pastEvents = result?.success && Array.isArray(result?.data?.events)
+          ? result.data.events
+          : Array.isArray(result?.data) ? result.data : [];
+        if (Array.isArray(pastEvents)) {
+          const existingIds = new Set(rawEvents.map((e: any) => e.id));
+          for (const evt of pastEvents) {
+            if (evt.id && !existingIds.has(evt.id)) {
+              const norm = normalizeEvent(evt);
+              if (norm && norm.importance === 3 && norm.actual !== undefined) {
+                rawEvents.push(evt);
+              }
             }
           }
         }
@@ -251,7 +234,6 @@ export const fetchCalendar = action({
       for (const raw of rawEvents) {
         const event = normalizeEvent(raw);
         if (!event) continue;
-        // Only include events for relevant currencies
         if (event.currency && relevantCurrencySet.has(event.currency)) {
           events.push(event);
         }
@@ -287,7 +269,7 @@ export const fetchCalendar = action({
       }
 
       const data: EconomicCalendarData = {
-        provider: "trading-economics",
+        provider: "tickatlas" as EconomicCalendarData["provider"],
         events,
         macroRisk,
         timestamp: Date.now(),

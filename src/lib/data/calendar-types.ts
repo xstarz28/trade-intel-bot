@@ -7,7 +7,7 @@ export type EventImportance = 1 | 2 | 3; // 1=low, 2=medium, 3=high
 
 export type EventStatus = "upcoming" | "released" | "revised" | "unavailable";
 
-export type CalendarSource = "trading-economics";
+export type CalendarSource = "trading-economics" | "tickatlas";
 
 /** A single normalized economic event. */
 export interface EconomicEvent {
