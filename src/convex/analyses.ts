@@ -67,6 +67,7 @@ export const save = mutation({
     sentimentSummary: v.optional(v.string()),
     sentimentScore: v.optional(v.number()),
     macroSummary: v.optional(v.string()),
+    derivativesSummary: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx);
@@ -91,6 +92,7 @@ export const save = mutation({
       sentimentSummary: args.sentimentSummary,
       sentimentScore: args.sentimentScore,
       macroSummary: args.macroSummary,
+      derivativesSummary: args.derivativesSummary,
       timestamp: Date.now(),
     });
   },

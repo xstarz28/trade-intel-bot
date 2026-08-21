@@ -1,4 +1,5 @@
 import type { SentimentData, FundamentalData, MacroData } from "@/lib/data/intelligence-types";
+import type { CryptoDerivativesData } from "@/lib/data/derivatives-types";
 
 export type InstrumentType = "forex" | "crypto" | "stock" | "commodity" | "indices";
 
@@ -40,6 +41,8 @@ export interface AnalysisInput {
   sentimentData?: SentimentData;
   fundamentalData?: FundamentalData;
   macroData?: MacroData;
+  // Crypto derivatives layer (CoinGlass)
+  derivativesData?: CryptoDerivativesData;
 }
 
 export interface AnalysisResult {
@@ -65,4 +68,6 @@ export interface AnalysisResult {
   sentimentData?: SentimentData;
   fundamentalData?: FundamentalData;
   macroData?: MacroData;
+  // Crypto derivatives metadata
+  derivativesData?: CryptoDerivativesData;
 }

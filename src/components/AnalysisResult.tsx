@@ -505,6 +505,119 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </p>
         </CardContent>
       </Card>
+
+      {/* Derivatives / Positioning (crypto only) */}
+      {result.derivativesData && result.derivativesData.confidence !== "unavailable" && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span> derivatives-positioning
+              </h4>
+              <Badge
+                className={cn(
+                  "text-[10px] font-mono",
+                  result.derivativesData.confidence === "high" ? "bg-emerald-500/15 text-emerald-400" :
+                  result.derivativesData.confidence === "medium" ? "bg-amber-500/15 text-amber-400" :
+                  "bg-red-500/15 text-red-400"
+                )}
+              >
+                {result.derivativesData.confidence} confidence
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+              {result.derivativesData.fundingRate && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">funding rate</p>
+                  <p className={cn(
+                    "text-sm font-bold font-mono tabular-nums",
+                    result.derivativesData.fundingRate.currentRate > 0.001 ? "text-red-400" :
+                    result.derivativesData.fundingRate.currentRate < -0.001 ? "text-emerald-400" :
+                    "text-foreground"
+                  )}>
+                    {(result.derivativesData.fundingRate.currentRate * 100).toFixed(4)}%
+                  </p>
+                  {result.derivativesData.fundingRate.annualizedRate !== undefined && (
+                    <p className="text-[10px] font-mono text-muted-foreground">
+                      ~{(result.derivativesData.fundingRate.annualizedRate * 100).toFixed(1)}% ann.
+                    </p>
+                  )}
+                </div>
+              )}
+              {result.derivativesData.openInterest && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">open interest</p>
+                  <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                    {result.derivativesData.openInterest.current > 1e9
+                      ? `$${(result.derivativesData.openInterest.current / 1e9).toFixed(2)}B`
+                      : result.derivativesData.openInterest.current > 1e6
+                        ? `$${(result.derivativesData.openInterest.current / 1e6).toFixed(1)}M`
+                        : `$${result.derivativesData.openInterest.current.toFixed(0)}`}
+                  </p>
+                  {result.derivativesData.openInterest.change1h !== undefined && (
+                    <p className={cn(
+                      "text-[10px] font-mono",
+                      result.derivativesData.openInterest.change1h! > 0 ? "text-emerald-400" : "text-red-400"
+                    )}>
+                      {result.derivativesData.openInterest.change1h! > 0 ? "+" : ""}{result.derivativesData.openInterest.change1h!.toFixed(1)}% (1h)
+                    </p>
+                  )}
+                </div>
+              )}
+              {result.derivativesData.longShort && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">L/S ratio</p>
+                  {result.derivativesData.longShort.accountRatio !== undefined && (
+                    <p className={cn(
+                      "text-sm font-bold font-mono tabular-nums",
+                      result.derivativesData.longShort.accountRatio > 1.5 ? "text-red-400" :
+                      result.derivativesData.longShort.accountRatio < 0.67 ? "text-emerald-400" :
+                      "text-foreground"
+                    )}>
+                      {result.derivativesData.longShort.accountRatio.toFixed(2)}
+                    </p>
+                  )}
+                  {result.derivativesData.longShort.topTraderRatio !== undefined && (
+                    <p className="text-[10px] font-mono text-muted-foreground">
+                      top: {result.derivativesData.longShort.topTraderRatio.toFixed(2)}
+                    </p>
+                  )}
+                </div>
+              )}
+              {result.derivativesData.liquidations && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground">liquidations</p>
+                  <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                    {result.derivativesData.liquidations.totalVolume !== undefined
+                      ? `$${(result.derivativesData.liquidations.totalVolume / 1e6).toFixed(1)}M`
+                      : "—"}
+                  </p>
+                  {result.derivativesData.liquidations.dominantSide && (
+                    <p className={cn(
+                      "text-[10px] font-mono",
+                      result.derivativesData.liquidations.dominantSide === "longs" ? "text-red-400" :
+                      result.derivativesData.liquidations.dominantSide === "shorts" ? "text-emerald-400" :
+                      "text-muted-foreground"
+                    )}>
+                      {result.derivativesData.liquidations.dominantSide} liquidated
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+            {result.derivativesData.interpretation && (
+              <div className="pt-2 border-t border-border/30">
+                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">interpretation</p>
+                <p className="text-[11px] leading-relaxed text-muted-foreground font-mono">
+                  {result.derivativesData.interpretation}
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

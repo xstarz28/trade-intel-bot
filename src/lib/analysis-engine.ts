@@ -230,35 +230,80 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
 function scoreSentiment(input: AnalysisInput): FactorScore {
   let score = 0;
 
-  // ── Alpha Vantage news sentiment (preferred) ──
-  const sentiment = input.sentimentData;
-  if (sentiment && sentiment.confidence !== "unavailable" && sentiment.articleCount > 0) {
-    // Map AV sentiment score (-1 to 1) to our score (-2 to 2)
-    const avScore = sentiment.averageScore;
-    if (avScore > 0.25) score += 1;
-    if (avScore > 0.5) score += 1;
-    if (avScore < -0.25) score -= 1;
-    if (avScore < -0.5) score -= 1;
+  // ── Crypto derivatives data (CoinGlass — highest priority for crypto) ──
+  const deriv = input.derivativesData;
+  const tech = input.technicalData;
+  const md = input.marketData;
+  const currentPrice = md?.price.price ?? 0;
+  const structure = tech?.structure;
 
-    // Strong consensus adds confirmation
-    if (sentiment.breakdown.positive > sentiment.breakdown.negative * 2 && sentiment.articleCount >= 3) score += 1;
-    if (sentiment.breakdown.negative > sentiment.breakdown.positive * 2 && sentiment.articleCount >= 3) score -= 1;
-  }
+  if (deriv && deriv.confidence !== "unavailable" && input.instrumentType === "crypto") {
+    // Funding rate: extremely positive = crowded longs = contrarian bearish risk
+    if (deriv.fundingRate) {
+      const fr = deriv.fundingRate.currentRate;
+      // Extremely positive funding (>0.1% per 8h = ~110% annualized)
+      if (fr > 0.001) score -= 1;
+      // Extremely negative funding = crowded shorts = contrarian bullish
+      if (fr < -0.001) score += 1;
+      // Context: if funding is positive AND price is rising (HH/HL), trend confirmation
+      if (fr > 0.0005 && structure === "HH/HL") score += 1;
+      // Context: if funding is positive AND price is falling (LH/LL), bears are being paid
+      if (fr > 0.0005 && structure === "LH/LL") score -= 1;
+    }
 
-  // ── Funding rate (crypto, manual) ──
-  if (input.fundingRate) {
-    const fr = parseFloat(input.fundingRate);
-    if (!isNaN(fr)) {
-      if (fr > 0.05) score -= 1;
-      if (fr < -0.05) score += 1;
+    // OI change in context with price
+    if (deriv.openInterest && deriv.openInterest.change1h !== undefined) {
+      const oiChange = deriv.openInterest.change1h;
+      // OI rising + price rising = trend continuation support
+      if (oiChange > 2 && structure === "HH/HL") score += 1;
+      // OI rising + price falling = new shorts opening, bearish conviction
+      if (oiChange > 2 && structure === "LH/LL") score -= 1;
+      // OI declining + price falling = longs closing, but could signal capitulation
+      if (oiChange < -2 && structure === "LH/LL") score += 1;
+    }
+
+    // Long/short ratio: contrarian signal
+    if (deriv.longShort?.accountRatio !== undefined) {
+      const ratio = deriv.longShort.accountRatio;
+      if (ratio > 2.0) score -= 1; // Extreme long crowding
+      if (ratio < 0.5) score += 1; // Extreme short crowding
+    }
+
+    // Liquidations: dominant side provides context
+    if (deriv.liquidations?.dominantSide === "longs") {
+      // Long liquidation cascade often near local bottom
+      score += 1;
+    } else if (deriv.liquidations?.dominantSide === "shorts") {
+      // Short liquidation cascade often near local top
+      score -= 1;
+    }
+  } else {
+    // ── Alpha Vantage news sentiment (preferred for non-crypto) ──
+    const sentiment = input.sentimentData;
+    if (sentiment && sentiment.confidence !== "unavailable" && sentiment.articleCount > 0) {
+      const avScore = sentiment.averageScore;
+      if (avScore > 0.25) score += 1;
+      if (avScore > 0.5) score += 1;
+      if (avScore < -0.25) score -= 1;
+      if (avScore < -0.5) score -= 1;
+      if (sentiment.breakdown.positive > sentiment.breakdown.negative * 2 && sentiment.articleCount >= 3) score += 1;
+      if (sentiment.breakdown.negative > sentiment.breakdown.positive * 2 && sentiment.articleCount >= 3) score -= 1;
+    }
+
+    // Manual funding rate fallback (when derivatives data not available)
+    if (input.fundingRate) {
+      const fr = parseFloat(input.fundingRate);
+      if (!isNaN(fr)) {
+        if (fr > 0.05) score -= 1;
+        if (fr < -0.05) score += 1;
+      }
     }
   }
 
   // ── Volume as sentiment proxy ──
-  const tech = input.technicalData;
   if (tech && tech.dataPoints >= 20) {
-    if (tech.volumeTrend === "increasing" && tech.structure === "LH/LL") score += 1;
-    if (tech.volumeTrend === "increasing" && tech.structure === "HH/HL") score -= 1;
+    if (tech.volumeTrend === "increasing" && structure === "LH/LL") score += 1;
+    if (tech.volumeTrend === "increasing" && structure === "HH/HL") score -= 1;
   }
 
   // ── Manual input fallback ──
@@ -570,6 +615,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   if (input.macroData && input.macroData.confidence !== "unavailable") {
     adjustedConfidence = Math.min(95, adjustedConfidence + 2);
   }
+  if (input.derivativesData && input.derivativesData.confidence !== "unavailable") {
+    adjustedConfidence = Math.min(95, adjustedConfidence + 3);
+  }
 
   return {
     id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -592,6 +640,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     sentimentData: input.sentimentData,
     fundamentalData: input.fundamentalData,
     macroData: input.macroData,
+    derivativesData: input.derivativesData,
   };
 }
 
