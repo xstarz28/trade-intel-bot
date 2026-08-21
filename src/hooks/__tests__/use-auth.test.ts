@@ -65,23 +65,22 @@ describe("useAuth — three-phase state machine", () => {
     expect(result.current.phase).toBe("initializing");
   });
 
-  it("stays 'initializing' until authInitialized fires", () => {
-    // Phase 1: auth loading
-    // Phase 2: auth loaded but user query still pending
+  it("resolves to 'authenticated' once auth settles (no user query dependency)", () => {
+    // Phase: auth loaded, token valid, user query still pending
     const result = runPhaseSequence([
       { authLoading: false, authenticated: true, user: undefined },
     ]);
-    // isLoading should still be true — user query hasn't resolved yet
-    expect(result.current.isLoading).toBe(true);
-    expect(result.current.phase).toBe("initializing");
+    // Phase resolves immediately — user query is fetched separately
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.phase).toBe("authenticated");
   });
 
-  it("stays 'initializing' while user query is undefined", () => {
+  it("resolves to 'unauthenticated' when auth settles without token", () => {
     const result = runPhaseSequence([
       { authLoading: false, authenticated: false, user: undefined },
     ]);
-    expect(result.current.isLoading).toBe(true);
-    expect(result.current.phase).toBe("initializing");
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.phase).toBe("unauthenticated");
   });
 
   it("resolves to 'authenticated' when all conditions met", () => {
