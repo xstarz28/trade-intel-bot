@@ -87,6 +87,13 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 function RouteSyncer() {
   const location = useLocation();
 
+  // When running inside the Freebuff editor iframe, posting
+  // iframe-route-change messages causes the platform to treat the
+  // navigation as a signal to close the preview and return to the
+  // editor.  Only post when the app owns the top-level window
+  // (standalone deployment).
+  const isTopLevel = typeof window !== "undefined" && window.self === window.top;
+
   // Skip the first post on mount — on reload this fires before auth
   // settles, and the Freebuff platform may treat it as a navigation
   // event that triggers the "continue to project" interstitial.
@@ -96,11 +103,12 @@ function RouteSyncer() {
       skipInitial.current = false;
       return;
     }
+    if (!isTopLevel) return;
     window.parent.postMessage(
       { type: "iframe-route-change", path: location.pathname },
       "*",
     );
-  }, [location.pathname]);
+  }, [location.pathname, isTopLevel]);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
