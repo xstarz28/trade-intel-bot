@@ -79,10 +79,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     try {
       const formData = new FormData(event.currentTarget);
       await signIn("email-otp", formData);
-
-      console.log("signed in");
-
-      navigate(redirect);
+      // Do NOT navigate here — the useEffect above handles redirect
+      // once isAuthenticated is true. Navigating before Convex auth
+      // fully resolves causes the double-login loop.
     } catch (error) {
       console.error("OTP verification error:", error);
 
@@ -97,10 +96,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
     setIsLoading(true);
     setError(null);
     try {
-      console.log("Attempting anonymous sign in...");
       await signIn("anonymous");
-      console.log("Anonymous sign in successful");
-      navigate(redirect);
+      // Do NOT navigate here — the useEffect above handles redirect
+      // once isAuthenticated is true.
     } catch (error) {
       console.error("Guest login error:", error);
       console.error("Error details:", JSON.stringify(error, null, 2));

@@ -13,6 +13,11 @@ import { useConvexAuth, useQuery } from "convex/react";
  * Once the phase leaves "initializing" it never returns to it.
  * This eliminates flicker caused by independent boolean flags
  * resolving at different ticks.
+ *
+ * Phase resolution is based solely on Convex's auth token state
+ * (useConvexAuth). The user query is fetched separately and does
+ * NOT gate phase transitions — waiting for it caused the double-login
+ * loop because the query arrives after the token is already valid.
  */
 export type AuthPhase = "initializing" | "authenticated" | "unauthenticated";
 
@@ -26,9 +31,9 @@ export function useAuth() {
 
   useEffect(() => {
     // Don't resolve until the Convex auth provider has finished its
-    // initial session check AND the user query has loaded (null = no
-    // user, object = user found).
-    if (isAuthLoading || user === undefined) return;
+    // initial session check. The user query is NOT required here —
+    // it may still be loading when the token is already valid.
+    if (isAuthLoading) return;
 
     // Compute the target phase exactly once.
     const target: AuthPhase = isAuthenticated ? "authenticated" : "unauthenticated";
@@ -39,7 +44,7 @@ export function useAuth() {
       phaseRef.current = target;
       setPhase(target);
     }
-  }, [isAuthLoading, isAuthenticated, user]);
+  }, [isAuthLoading, isAuthenticated]);
 
   const isLoading = phase === "initializing";
 
