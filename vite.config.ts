@@ -6,6 +6,9 @@ import { defineConfig } from "vite";
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Relative base so all asset URLs resolve inside the preview iframe
+  // instead of leaking to the parent domain.
+  base: './',
   plugins: [react(), vlyPlugin(), tailwindcss()],
   resolve: {
     alias: {
@@ -92,9 +95,13 @@ export default defineConfig({
     // Bind to all interfaces so WebContainer's server-ready event fires.
     host: true,
     port: 5173,
-    // Keep HMR on, but disable full-screen error overlay
+    // Iframe-safe HMR: route WebSocket through the external HTTPS port
+    // (443) so the HMR client inside the iframe can reach the dev server
+    // without mixed-content or origin-mismatch errors.
     hmr: {
       overlay: false,
+      clientPort: 443,
+      protocol: 'wss',
     },
   },
 });
