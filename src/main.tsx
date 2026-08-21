@@ -4,9 +4,9 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
-import React, { StrictMode, useEffect, Suspense } from "react";
+import React, { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes } from "react-router";
 import "./index.css";
 
 // Static imports — React.lazy chunks fail to load in the Freebuff
@@ -76,30 +76,6 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
 
 
-function RouteSyncer() {
-  // Never post iframe-route-change messages to the parent. The Freebuff
-  // platform manages the iframe ↔ editor lifecycle itself; sending
-  // route-change messages from the preview triggers the editor to treat
-  // them as navigation signals and redirects the user back to the editor,
-  // breaking the preview.
-  //
-  // The parent→iframe `navigate` listener below is retained so the
-  // platform can still drive browser-history back/forward if needed.
-  useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (event.data?.type === "navigate") {
-        if (event.data.direction === "back") window.history.back();
-        if (event.data.direction === "forward") window.history.forward();
-      }
-    }
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  return null;
-}
-
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
@@ -107,8 +83,7 @@ createRoot(document.getElementById("root")!).render(
         <VlyToolbar />
       </ToolbarErrorBoundary>
       <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
-          <RouteSyncer />
+        <MemoryRouter initialEntries={["/"]}>
           <Routes>
               <Route path="/" element={<Landing />} />
               <Route
@@ -125,7 +100,7 @@ createRoot(document.getElementById("root")!).render(
               />
               <Route path="*" element={<NotFound />} />
           </Routes>
-        </BrowserRouter>
+        </MemoryRouter>
         <Toaster />
       </ConvexAuthProvider>
     </RootErrorBoundary>
