@@ -35,6 +35,7 @@ function fromDbRecord(record: any): AnalysisResult {
     ...(record.dataSource ? { dataSource: record.dataSource } : {}),
     ...(record.sentimentSummary ? { sentimentData: { provider: "alpha-vantage", timestamp: record.timestamp, averageScore: record.sentimentScore ?? 0, articleCount: 0, label: (record.sentimentScore ?? 0) > 0.15 ? "bullish" : (record.sentimentScore ?? 0) < -0.15 ? "bearish" : "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "medium" as const, articles: [] } } : {}),
     ...(record.macroSummary ? { macroData: { provider: "alpha-vantage", timestamp: record.timestamp, indicators: [], summary: record.macroSummary, confidence: "medium" as const } } : {}),
+    ...(record.derivativesSummary ? { derivativesData: { provider: "coinglass", symbol: record.instrument, timestamp: record.timestamp, freshness: "delayed" as const, availability: { openInterest: true, fundingRate: true, longShort: true, liquidations: true }, confidence: "medium" as const, interpretation: record.derivativesSummary } } : {}),
   };
 }
 
@@ -67,6 +68,7 @@ export default function Dashboard() {
   // Convex actions for server-side data fetching
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
+  const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
 
   const handleSignOut = async () => {
     await signOut();
@@ -94,12 +96,14 @@ export default function Dashboard() {
         await new Promise((r) => setTimeout(r, 300));
         updateStep(0, "done");
 
-        // Step 2: Fetching market data + intelligence in parallel
+        // Step 2: Fetching market data + intelligence + derivatives in parallel
         updateStep(1, "active");
         let marketDataResult: MarketDataResult;
         let intelligenceResult: any = null;
+        let derivativesResult: any = null;
         try {
-          const [marketResult, intelResult] = await Promise.allSettled([
+          // Build fetch promises — derivatives only for crypto
+          const fetchPromises: Promise<any>[] = [
             fetchMarketData({
               instrument: input.instrument,
               instrumentType: input.instrumentType,
@@ -109,7 +113,17 @@ export default function Dashboard() {
               instrument: input.instrument,
               instrumentType: input.instrumentType,
             }),
-          ]);
+          ];
+          if (input.instrumentType === "crypto") {
+            fetchPromises.push(
+              fetchDerivatives({ instrument: input.instrument }),
+            );
+          }
+
+          const results = await Promise.allSettled(fetchPromises);
+          const marketResult = results[0];
+          const intelResult = results[1];
+          const derivResult = input.instrumentType === "crypto" ? results[2] : undefined;
 
           // Market data is critical
           if (marketResult.status === "fulfilled") {
@@ -126,6 +140,10 @@ export default function Dashboard() {
           // Intelligence is non-critical
           if (intelResult.status === "fulfilled") {
             intelligenceResult = intelResult.value;
+          }
+          // Derivatives is non-critical
+          if (derivResult && derivResult.status === "fulfilled") {
+            derivativesResult = derivResult.value;
           }
         } catch (err: any) {
           updateStep(1, "error");
@@ -157,6 +175,7 @@ export default function Dashboard() {
           sentimentData: intelligenceResult?.sentiment,
           fundamentalData: intelligenceResult?.fundamentals,
           macroData: intelligenceResult?.macro,
+          derivativesData: derivativesResult?.data,
         };
         const result = runAnalysis(enrichedInput);
 
@@ -185,6 +204,7 @@ export default function Dashboard() {
             sentimentSummary: result.sentimentData?.confidence !== "unavailable" ? `${result.sentimentData?.label} (${result.sentimentData?.articleCount ?? 0} articles)` : undefined,
             sentimentScore: result.sentimentData?.confidence !== "unavailable" ? result.sentimentData?.averageScore : undefined,
             macroSummary: result.macroData?.confidence !== "unavailable" ? result.macroData?.summary : undefined,
+            derivativesSummary: result.derivativesData?.confidence !== "unavailable" ? result.derivativesData?.interpretation : undefined,
           });
         } catch {
           // Save failed (guest user) — analysis still shows in session
@@ -195,7 +215,7 @@ export default function Dashboard() {
         setIsAnalyzing(false);
       }
     },
-    [fetchMarketData, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchDerivatives, saveAnalysis, updateStep],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
