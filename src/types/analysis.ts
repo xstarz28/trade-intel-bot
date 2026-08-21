@@ -1,5 +1,6 @@
 import type { SentimentData, FundamentalData, MacroData } from "@/lib/data/intelligence-types";
 import type { CryptoDerivativesData } from "@/lib/data/derivatives-types";
+import type { EconomicCalendarData } from "@/lib/data/calendar-types";
 
 export type InstrumentType = "forex" | "crypto" | "stock" | "commodity" | "indices";
 
@@ -43,6 +44,8 @@ export interface AnalysisInput {
   macroData?: MacroData;
   // Crypto derivatives layer (CoinGlass)
   derivativesData?: CryptoDerivativesData;
+  // Economic calendar layer (Trading Economics)
+  calendarData?: EconomicCalendarData;
 }
 
 export interface AnalysisResult {
@@ -70,4 +73,6 @@ export interface AnalysisResult {
   macroData?: MacroData;
   // Crypto derivatives metadata
   derivativesData?: CryptoDerivativesData;
+  // Economic calendar metadata
+  calendarData?: EconomicCalendarData;
 }

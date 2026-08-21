@@ -63,6 +63,7 @@ const schema = defineSchema(
       sentimentScore: v.optional(v.number()),
       macroSummary: v.optional(v.string()),
       derivativesSummary: v.optional(v.string()),
+      calendarSummary: v.optional(v.string()),
       timestamp: v.number(),
     }).index("by_user", ["userId", "timestamp"])
   },

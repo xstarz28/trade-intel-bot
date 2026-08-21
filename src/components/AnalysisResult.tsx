@@ -618,6 +618,91 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Economic Calendar / Macro Risk */}
+      {result.calendarData && result.calendarData.confidence !== "unavailable" && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span> economic-calendar
+              </h4>
+              <Badge variant="outline" className={cn(
+                "text-[10px] font-mono",
+                result.calendarData.macroRisk.level === "high" ? "bg-red-500/15 text-red-400 border-red-500/30" :
+                result.calendarData.macroRisk.level === "medium" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
+                "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+              )}>
+                macro risk: {result.calendarData.macroRisk.level}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {/* Macro Risk Explanation */}
+            <div className="mb-3">
+              <p className="text-[11px] leading-relaxed text-muted-foreground font-mono">
+                {result.calendarData.macroRisk.explanation}
+              </p>
+            </div>
+
+            {/* Upcoming High-Impact Events */}
+            {result.calendarData.events.filter((e) => e.status === "upcoming" && e.importance === 3).length > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">upcoming high-impact</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {result.calendarData.events
+                    .filter((e) => e.status === "upcoming" && e.importance === 3)
+                    .slice(0, 4)
+                    .map((evt) => {
+                      const hrs = Math.round((evt.datetime - Date.now()) / (1000 * 60 * 60));
+                      return (
+                        <div key={evt.id} className="bg-red-500/5 border border-red-500/20 rounded p-2">
+                          <p className="text-[11px] font-mono font-medium text-foreground">{evt.event}</p>
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            {evt.currency} · in {hrs}h
+                          </p>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            {/* Recently Released Events with Surprises */}
+            {result.calendarData.events.filter((e) => e.status === "released" && e.importance === 3 && e.actual !== undefined).length > 0 && (
+              <div>
+                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">recent high-impact releases</p>
+                <div className="space-y-1">
+                  {result.calendarData.events
+                    .filter((e) => e.status === "released" && e.importance === 3 && e.actual !== undefined)
+                    .slice(0, 3)
+                    .map((evt) => {
+                      const actualNum = typeof evt.actual === "number" ? evt.actual : parseFloat(String(evt.actual));
+                      const forecastNum = typeof evt.forecast === "number" ? evt.forecast : parseFloat(String(evt.forecast));
+                      const surprise = !isNaN(actualNum) && !isNaN(forecastNum) ? actualNum - forecastNum : null;
+                      return (
+                        <div key={evt.id} className="flex items-center gap-2 text-[10px] font-mono">
+                          <span className="text-muted-foreground truncate">{evt.event}</span>
+                          <span className="text-foreground">{String(evt.actual)}</span>
+                          <span className="text-muted-foreground">vs</span>
+                          <span className="text-foreground">{String(evt.forecast)}</span>
+                          {surprise !== null && (
+                            <span className={cn(
+                              "font-medium",
+                              surprise > 0 ? "text-emerald-400" : "text-red-400"
+                            )}>
+                              {surprise > 0 ? "+" : ""}{surprise.toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

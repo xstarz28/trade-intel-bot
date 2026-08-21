@@ -36,6 +36,7 @@ function fromDbRecord(record: any): AnalysisResult {
     ...(record.sentimentSummary ? { sentimentData: { provider: "alpha-vantage", timestamp: record.timestamp, averageScore: record.sentimentScore ?? 0, articleCount: 0, label: (record.sentimentScore ?? 0) > 0.15 ? "bullish" : (record.sentimentScore ?? 0) < -0.15 ? "bearish" : "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "medium" as const, articles: [] } } : {}),
     ...(record.macroSummary ? { macroData: { provider: "alpha-vantage", timestamp: record.timestamp, indicators: [], summary: record.macroSummary, confidence: "medium" as const } } : {}),
     ...(record.derivativesSummary ? { derivativesData: { provider: "coinglass", symbol: record.instrument, timestamp: record.timestamp, freshness: "delayed" as const, availability: { openInterest: true, fundingRate: true, longShort: true, liquidations: true }, confidence: "medium" as const, interpretation: record.derivativesSummary } } : {}),
+    ...(record.calendarSummary ? { calendarData: { provider: "trading-economics" as const, events: [], macroRisk: { level: "medium" as const, explanation: record.calendarSummary, highImpact24h: 0, highImpact72h: 0 }, timestamp: record.timestamp, freshness: "recent" as const, confidence: "medium" as const, availability: { upcoming24h: false, upcoming72h: false, recentReleased: false } } } : {}),
   };
 }
 
@@ -69,6 +70,7 @@ export default function Dashboard() {
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
+  const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
 
   const handleSignOut = async () => {
     await signOut();
@@ -101,8 +103,9 @@ export default function Dashboard() {
         let marketDataResult: MarketDataResult;
         let intelligenceResult: any = null;
         let derivativesResult: any = null;
+        let calendarResult: any = null;
         try {
-          // Build fetch promises — derivatives only for crypto
+          // Build fetch promises
           const fetchPromises: Promise<any>[] = [
             fetchMarketData({
               instrument: input.instrument,
@@ -110,6 +113,10 @@ export default function Dashboard() {
               timeframe: input.timeframe,
             }),
             fetchIntelligence({
+              instrument: input.instrument,
+              instrumentType: input.instrumentType,
+            }),
+            fetchCalendar({
               instrument: input.instrument,
               instrumentType: input.instrumentType,
             }),
@@ -123,7 +130,8 @@ export default function Dashboard() {
           const results = await Promise.allSettled(fetchPromises);
           const marketResult = results[0];
           const intelResult = results[1];
-          const derivResult = input.instrumentType === "crypto" ? results[2] : undefined;
+          calendarResult = results[2];
+          const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
 
           // Market data is critical
           if (marketResult.status === "fulfilled") {
@@ -140,6 +148,10 @@ export default function Dashboard() {
           // Intelligence is non-critical
           if (intelResult.status === "fulfilled") {
             intelligenceResult = intelResult.value;
+          }
+          // Calendar is non-critical
+          if (calendarResult && calendarResult.status === "fulfilled") {
+            calendarResult = calendarResult.value;
           }
           // Derivatives is non-critical
           if (derivResult && derivResult.status === "fulfilled") {
@@ -176,6 +188,7 @@ export default function Dashboard() {
           fundamentalData: intelligenceResult?.fundamentals,
           macroData: intelligenceResult?.macro,
           derivativesData: derivativesResult?.data,
+          calendarData: calendarResult?.data,
         };
         const result = runAnalysis(enrichedInput);
 
@@ -205,6 +218,7 @@ export default function Dashboard() {
             sentimentScore: result.sentimentData?.confidence !== "unavailable" ? result.sentimentData?.averageScore : undefined,
             macroSummary: result.macroData?.confidence !== "unavailable" ? result.macroData?.summary : undefined,
             derivativesSummary: result.derivativesData?.confidence !== "unavailable" ? result.derivativesData?.interpretation : undefined,
+            calendarSummary: result.calendarData?.confidence !== "unavailable" ? `Macro risk: ${result.calendarData?.macroRisk.level} — ${result.calendarData?.macroRisk.explanation}` : undefined,
           });
         } catch {
           // Save failed (guest user) — analysis still shows in session
@@ -215,7 +229,7 @@ export default function Dashboard() {
         setIsAnalyzing(false);
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchDerivatives, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, saveAnalysis, updateStep],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
