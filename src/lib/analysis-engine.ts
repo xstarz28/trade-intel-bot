@@ -204,6 +204,66 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     if (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) score += 1;
   }
 
+  // ── Economic calendar data (Trading Economics — released event surprises) ──
+  const cal = input.calendarData;
+  if (cal && cal.confidence !== "unavailable" && cal.events.length > 0) {
+    // Only score from RELEASED events with actual vs forecast
+    const released = cal.events.filter(
+      (e) => e.status === "released" && e.actual !== undefined && e.forecast !== undefined && e.importance === 3,
+    );
+    for (const evt of released) {
+      const actualNum = typeof evt.actual === "number" ? evt.actual : parseFloat(String(evt.actual));
+      const forecastNum = typeof evt.forecast === "number" ? evt.forecast : parseFloat(String(evt.forecast));
+      if (isNaN(actualNum) || isNaN(forecastNum)) continue;
+
+      const surprise = actualNum - forecastNum;
+      const pctSurprise = forecastNum !== 0 ? Math.abs(surprise / forecastNum) : 0;
+
+      // Only score if surprise is material (>1% or >0.2 absolute for rates)
+      if (pctSurprise < 0.01 && Math.abs(surprise) < 0.2) continue;
+
+      const eventLower = evt.event.toLowerCase();
+      const isRateEvent = eventLower.includes("interest rate") || eventLower.includes("rate decision") || eventLower.includes("policy rate");
+      const isEmployment = eventLower.includes("payroll") || eventLower.includes("unemployment") || eventLower.includes("employment");
+      const isInflation = eventLower.includes("cpi") || eventLower.includes("inflation") || eventLower.includes("pce");
+
+      if (isRateEvent) {
+        // Higher-than-expected rate → hawkish → for forex: strength in that currency
+        // For EUR/USD: higher USD rate = bearish (score -= 1)
+        // For GBP/USD: same
+        if (input.instrumentType === "forex") {
+          if (evt.currency === "USD" || evt.currency === "EUR" || evt.currency === "GBP") {
+            score += surprise > 0 ? 1 : -1;
+          }
+        }
+        // For crypto: higher rates = risk-off = bearish
+        if (input.instrumentType === "crypto") {
+          score += surprise > 0 ? -1 : 1;
+        }
+      } else if (isEmployment) {
+        // Stronger employment in USD → mixed for forex
+        // Strong NFP → hawkish Fed → USD strength → bearish EUR/USD
+        if (input.instrumentType === "forex" && evt.currency === "USD") {
+          score += surprise > 0 ? -1 : 1; // Strong employment → USD strong → EUR/USD bearish
+        }
+        if (input.instrumentType === "crypto") {
+          score += surprise > 0 ? -1 : 1; // Strong employment → risk-off → crypto bearish
+        }
+      } else if (isInflation) {
+        // Higher inflation → depends on context
+        // For forex: higher USD CPI → hawkish Fed → USD strength → bearish EUR/USD
+        if (input.instrumentType === "forex" && evt.currency === "USD") {
+          score += surprise > 0 ? -1 : 1; // Higher inflation → USD strength
+        }
+        // For crypto: higher inflation → could be risk-on (inflation hedge narrative) or risk-off (rate hikes)
+        // Conservative: higher inflation → mixed, score only when very material
+        if (input.instrumentType === "crypto" && pctSurprise > 0.05) {
+          score += surprise > 0 ? -1 : 1; // Strong inflation → risk-off
+        }
+      }
+    }
+  }
+
   // ── Manual input fallback ──
   if (score === 0) {
     const events = (input.economicEvents || "").toLowerCase();
@@ -337,7 +397,7 @@ function assessDataCompleteness(input: AnalysisInput): {
     flags.push("No news context or intelligence data — fundamental analysis limited to technicals");
     missing++;
   }
-  if (!input.economicEvents && input.instrumentType === "forex") {
+  if (input.instrumentType === "forex" && !input.economicEvents && !input.calendarData) {
     flags.push("No economic calendar data — macro events not factored");
     missing++;
   }
@@ -472,6 +532,40 @@ function generateFundamentalSummary(
   // News sentiment summary (Alpha Vantage)
   if (sentiment && sentiment.confidence !== "unavailable") {
     parts.push(`News sentiment: ${sentiment.label} (${sentiment.averageScore > 0 ? "+" : ""}${sentiment.averageScore.toFixed(2)} avg, ${sentiment.articleCount} articles, ${sentiment.confidence} confidence).`);
+  }
+
+  // Economic calendar summary (Trading Economics)
+  const cal = input.calendarData;
+  if (cal && cal.confidence !== "unavailable" && cal.events.length > 0) {
+    // Macro risk
+    parts.push(`Macro risk: ${cal.macroRisk.level.toUpperCase()} — ${cal.macroRisk.explanation}`);
+
+    // Recently released high-impact events with surprises
+    const releasedHighImpact = cal.events.filter(
+      (e) => e.status === "released" && e.importance === 3 && e.actual !== undefined && e.forecast !== undefined,
+    );
+    if (releasedHighImpact.length > 0) {
+      const eventSummaries = releasedHighImpact.slice(0, 3).map((e) => {
+        const actualNum = typeof e.actual === "number" ? e.actual : parseFloat(String(e.actual));
+        const forecastNum = typeof e.forecast === "number" ? e.forecast : parseFloat(String(e.forecast));
+        const surprise = !isNaN(actualNum) && !isNaN(forecastNum) ? actualNum - forecastNum : undefined;
+        const surpriseStr = surprise !== undefined ? ` (surprise: ${surprise > 0 ? "+" : ""}${surprise})` : "";
+        return `${e.event} [${e.currency}]: actual ${e.actual} vs forecast ${e.forecast}${surpriseStr}`;
+      });
+      parts.push(`Recent high-impact: ${eventSummaries.join("; ")}.`);
+    }
+
+    // Upcoming high-impact events
+    const upcomingHighImpact = cal.events.filter(
+      (e) => e.status === "upcoming" && e.importance === 3,
+    );
+    if (upcomingHighImpact.length > 0) {
+      const eventNames = upcomingHighImpact.slice(0, 3).map((e) => {
+        const hrs = Math.round((e.datetime - Date.now()) / (1000 * 60 * 60));
+        return `${e.event} [${e.currency}] in ${hrs}h`;
+      });
+      parts.push(`Upcoming high-impact: ${eventNames.join(", ")}.`);
+    }
   }
 
   // Fallback if no intelligence data at all
@@ -618,6 +712,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   if (input.derivativesData && input.derivativesData.confidence !== "unavailable") {
     adjustedConfidence = Math.min(95, adjustedConfidence + 3);
   }
+  if (input.calendarData && input.calendarData.confidence !== "unavailable") {
+    adjustedConfidence = Math.min(95, adjustedConfidence + 2);
+  }
 
   return {
     id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -641,6 +738,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     fundamentalData: input.fundamentalData,
     macroData: input.macroData,
     derivativesData: input.derivativesData,
+    calendarData: input.calendarData,
   };
 }
 
