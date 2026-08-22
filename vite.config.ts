@@ -95,13 +95,7 @@ export default defineConfig({
     // Bind to all interfaces so WebContainer's server-ready event fires.
     host: true,
     port: 5173,
-    // Iframe-safe HMR: route WebSocket through the external HTTPS port
-    // (443) so the HMR client inside the iframe can reach the dev server
-    // without mixed-content or origin-mismatch errors.
-    hmr: {
-      overlay: false,
-      clientPort: 443,
-      protocol: 'wss',
-    },
+    // Freebuff requires HMR to remain disabled in the preview iframe.
+    hmr: false,
   },
 });

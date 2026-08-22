@@ -33,6 +33,7 @@ if (typeof window !== "undefined") {
   window.addEventListener(
     "error",
     (e) => {
+      e.stopImmediatePropagation();
       e.preventDefault();
       // eslint-disable-next-line no-console
       console.error("[iframe-guard] error:", e.message, e.filename, e.lineno);
@@ -42,6 +43,7 @@ if (typeof window !== "undefined") {
   window.addEventListener(
     "unhandledrejection",
     (e) => {
+      e.stopImmediatePropagation();
       e.preventDefault();
       // eslint-disable-next-line no-console
       console.error("[iframe-guard] unhandledrejection:", e.reason);
