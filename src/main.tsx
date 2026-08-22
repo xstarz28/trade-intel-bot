@@ -1,3 +1,142 @@
+// ─── DIAGNOSTIC: capture the ORIGINAL error before it reaches the parent ─
+// The @vly-ai/integrations injected error handlers fire in the bubble phase
+// and post vly-vite-hmr-error to the parent, closing the preview.
+// We intercept ALL error/unhandledrejection events, display them on screen
+// (so they survive the redirect), and remove the injected handlers.
+if (typeof window !== "undefined") {
+  // ── On-screen error display ──────────────────────────────────────────────
+  // Injects a visible overlay so the error is readable even after the
+  // preview iframe is destroyed by the platform.
+  const _diagErrors: string[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).__DIAG_ERRORS = _diagErrors;
+
+  function _showDiagError(label: string, detail: string) {
+    _diagErrors.push(`${label}: ${detail}`);
+    // eslint-disable-next-line no-console
+    console.error(`[DIAGNOSTIC ${label}]`, detail);
+    try {
+      let el = document.getElementById("__diag-overlay");
+      if (!el) {
+        el = document.createElement("div");
+        el.id = "__diag-overlay";
+        el.style.cssText =
+          "position:fixed;top:0;left:0;right:0;z-index:99999;" +
+          "background:#1a1a2e;color:#e74c3c;font:12px/1.4 monospace;" +
+          "padding:8px 12px;max-height:50vh;overflow:auto;" +
+          "border-bottom:2px solid #e74c3c;white-space:pre-wrap;word-break:break-all;";
+        document.body?.appendChild(el);
+      }
+      el.textContent = `[DIAG] ${_diagErrors.length} error(s):\n${_diagErrors.join("\n")}`;
+    } catch {
+      // DOM not ready — ignore
+    }
+  }
+
+  // ── Capture ALL error events (before injected handlers) ──────────────────
+  window.addEventListener(
+    "error",
+    (e) => {
+      const src = e.filename || "unknown";
+      const line = e.lineno || 0;
+      const col = e.colno || 0;
+      const msg = e.message || "(no message)";
+      const stack = e.error?.stack || "";
+      const detail = `msg=${msg}\nfile=${src}\nline=${line}:${col}\nstack=${stack}`;
+      _showDiagError("error", detail);
+    },
+    true, // capture phase — fires before injected bubble-phase handlers
+  );
+
+  window.addEventListener(
+    "unhandledrejection",
+    (e) => {
+      const reason = e.reason;
+      const msg =
+        reason instanceof Error
+          ? `${reason.message}\n${reason.stack}`
+          : String(reason);
+      _showDiagError("unhandledrejection", msg);
+    },
+    true,
+  );
+
+  // ── Wrap addEventListener to intercept injected error handlers ───────────
+  // The injected @vly-ai/integrations error handlers are registered by module
+  // scripts in <head> (before this <body> script runs). We wrap addEventListener
+  // so that ANY future error/unhandledrejection handler is registered with our
+  // diagnostic interceptor first.
+  const _origAddEventListener = window.addEventListener.bind(window);
+  window.addEventListener = function (
+    type: string,
+    listener: EventListenerOrEventListenerObject,
+    options?: boolean | AddEventListenerOptions,
+  ) {
+    if (type === "error" || type === "unhandledrejection") {
+      const _orig = typeof listener === "function" ? listener : listener.handleEvent;
+      const wrapped = function (event: Event) {
+        // Log the error details
+        if (type === "error") {
+          const e = event as ErrorEvent;
+          _showDiagError(
+            "intercepted-error",
+            `msg=${e.message}\nfile=${e.filename}\nline=${e.lineno}:${e.colno}\nstack=${e.error?.stack || ""}`,
+          );
+        } else if (type === "unhandledrejection") {
+          const e = event as PromiseRejectionEvent;
+          const reason = e.reason;
+          _showDiagError(
+            "intercepted-rejection",
+            reason instanceof Error
+              ? `${reason.message}\n${reason.stack}`
+              : String(reason),
+          );
+        }
+        // Call the original handler
+        return _orig.call(window, event);
+      } as EventListener;
+      return _origAddEventListener(type, wrapped, options);
+    }
+    return _origAddEventListener(type, listener, options);
+  } as typeof window.addEventListener;
+
+  // ── Also try to override postMessage on parent (same-origin only) ─────────
+  try {
+    if (typeof window.parent?.postMessage === "function") {
+      const _origPM = window.parent.postMessage.bind(window.parent);
+      window.parent.postMessage = function (
+        msg: unknown,
+        targetOriginOrOptions?: string | WindowPostMessageOptions,
+        transfer?: Transferable[],
+      ) {
+        try {
+          if (
+            msg &&
+            typeof msg === "object" &&
+            (msg as Record<string, unknown>).type === "vly-vite-hmr-error"
+          ) {
+            const payload = msg as Record<string, unknown>;
+            const err = payload.error as Record<string, unknown> | undefined;
+            _showDiagError(
+              "postMessage-intercepted",
+              `type=${payload.type}\nerror.message=${err?.message}\nerror.stack=${err?.stack}\nerror.filename=${err?.filename}\nerror.lineno=${err?.lineno}\nerror.colno=${err?.colno}`,
+            );
+            // BLOCK the message from reaching the parent
+            return undefined as unknown as void;
+          }
+        } catch {
+          // ignore diagnostic errors
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return (_origPM as any)(msg, targetOriginOrOptions, transfer);
+      } as typeof window.parent.postMessage;
+    }
+  } catch {
+    // Cross-origin: cannot override parent.postMessage
+    // The on-screen diagnostic will still show errors captured by our handlers
+  }
+}
+
 // ─── Iframe hard-navigation lock ───────────────────────────────────────────
 // @convex-dev/auth does `window.location.href = url` when the backend returns
 // a redirect.  Inside the Freebuff preview iframe, any hard navigation escapes
