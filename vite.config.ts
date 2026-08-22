@@ -9,14 +9,13 @@ export default defineConfig({
   // Relative base so all asset URLs resolve inside the preview iframe
   // instead of leaking to the parent domain.
   base: './',
-  plugins: [react(), vlyPlugin(), tailwindcss()],
+  plugins: [vlyPlugin(), react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-    // Force a single copy of React across all packages (including vlyPlugin).
-    // Without this, @vly-ai/integrations can resolve its own React copy, which
-    // triggers "Invalid hook call" errors at runtime.
+    // Force a single copy of React across all packages.
+    // Without this, duplicate React copies can trigger "Invalid hook call" errors.
     dedupe: ["react", "react/jsx-runtime", "react-dom", "react-dom/client"],
   },
   build: {
