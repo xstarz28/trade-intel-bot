@@ -748,6 +748,15 @@ function decideTrade(
           takeProfit: tpLevel.toFixed(decimals),
           tpBasis,
           riskReward: rr,
+          ...(mtf
+            ? {
+                htfBias: `${mtf.htfTimeframe ?? "HTF"} ${mtf.htfBias} external structure${mtf.htfReversal ? ` (genuine ${mtf.htfReversal.kind} ${mtf.htfReversal.direction})` : ""}`,
+                setupTimeframe: mtf.setupTimeframe,
+                ...(mtf.triggerTimeframe
+                  ? { triggerTimeframe: mtf.triggerTimeframe }
+                  : {}),
+              }
+            : {}),
         };
       }
     }
@@ -765,7 +774,38 @@ function decideTrade(
     const biasSign = bias === "Bullish" ? 1 : -1;
 
     // HTF/LTF alignment
-    if (alignment?.state === "aligned") s += 15;
+    if (mtf) {
+      // ── Phase 3A: MTF alignment as EVIDENCE, not a count of timeframes ──
+      // A single valid HTF read outweighs several small agreeing TFs, and
+      // unavailable timeframes never add conviction (uncertainty ≠ strength).
+      if (mtf.alignment === "ALIGNED_BULLISH" || mtf.alignment === "ALIGNED_BEARISH") s += 15;
+      else if (mtf.alignment === "COUNTER_TREND") s -= 10;
+      else if (mtf.alignment === "MIXED") s -= 8;
+      // INSUFFICIENT_DATA: no adjustment — never reward missing context.
+
+      // A genuine external BOS/CHoCH on the HTF itself is high-value evidence.
+      if (
+        mtf.htfReversal &&
+        (mtf.htfReversal.direction === "bullish") === (biasSign === 1)
+      )
+        s += 6;
+      else if (mtf.htfReversal) s -= 6;
+
+      // Execution refinement: fresh trigger-timeframe evidence in trade
+      // direction (displacement or fresh FVG) — real detected events only.
+      const trig = mtf.timeframes.find((t) => t.role === "trigger")?.smc;
+      if (trig) {
+        const trigAligned =
+          (trig.displacement !== undefined &&
+            (trig.displacement.direction === "bullish") === (biasSign === 1)) ||
+          trig.fvgs.some(
+            (f) =>
+              f.status === "fresh" &&
+              f.direction === (biasSign === 1 ? "bullish" : "bearish"),
+          );
+        if (trigAligned) s += 5;
+      }
+    } else if (alignment?.state === "aligned") s += 15;
     else if (alignment?.state === "counter_trend") s -= 15;
     // htf_unknown / ltf_unclear: no adjustment — uncertainty is not strength
 
@@ -872,14 +912,41 @@ function generateTechnicalSummary(
   trendScore: FactorScore,
   indicatorScore: FactorScore,
   alignment: HtfAlignment | undefined,
+  mtf?: MtfContext,
 ): string {
   const parts: string[] = [];
   const tech = input.technicalData;
   const md = input.marketData;
 
   if (tech && tech.dataPoints > 0) {
-    // HTF context first (top-down)
-    if (alignment) {
+    // ── Phase 3A: adaptive MTF narrative (supersedes single-slot context) ──
+    if (mtf) {
+      parts.push(
+        `MTF chain actually used: ${mtf.chainUsed.length > 0 ? mtf.chainUsed.join(" → ") : "(none)"} — requested setup: ${mtf.requestedTimeframe}.`,
+      );
+      if (mtf.unavailable.length > 0) {
+        parts.push(
+          `Timeframes unavailable (NOT synthesized): ${mtf.unavailable.map((u) => `${u.timeframe} (${u.reason})`).join("; ")}.`,
+        );
+      }
+      const biasDesc =
+        mtf.htfBias === "long" ? "bullish" : mtf.htfBias === "short" ? "bearish" : "unknown";
+      parts.push(
+        `Alignment: ${mtf.alignment} — HTF bias ${biasDesc}${mtf.htfTimeframe ? ` (${mtf.htfTimeframe})` : ""}, setup ${mtf.setupTimeframe}${mtf.triggerTimeframe ? `, trigger ${mtf.triggerTimeframe}` : ""}.`,
+      );
+      for (const t of mtf.timeframes) {
+        const ext = t.smc!.internalExternal.external;
+        const int = t.smc!.internalExternal.internal;
+        parts.push(
+          `${t.timeframe} (${t.role}): external ${ext.structure}, BOS ${ext.bosDirection}, CHoCH ${ext.chochDirection}; internal ${int.structure}${t.smc!.internalExternal.internalConflict ? " — WARNING: internal opposes external" : ""}.`,
+        );
+      }
+      if (mtf.htfReversal) {
+        parts.push(
+          `Genuine HTF reversal: external ${mtf.htfReversal.kind} ${mtf.htfReversal.direction} on ${mtf.htfReversal.timeframe} — this can legitimately change macro context (LTF signals cannot).`,
+        );
+      }
+    } else if (alignment) {
       const stateDesc =
         alignment.state === "aligned"
           ? "aligned with LTF"
@@ -1173,6 +1240,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
 
   const { bias, coreWeightedAvg } = calculateBias(breakdown);
   const alignment = computeAlignment(input);
+  const mtf = input.technicalData?.mtf;
 
   const decision = decideTrade(
     input,
@@ -1182,9 +1250,16 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     completeness,
     flags,
     alignment,
+    mtf,
   );
 
-  const technicalSummary = generateTechnicalSummary(input, trendScore, indicatorScore, alignment);
+  const technicalSummary = generateTechnicalSummary(
+    input,
+    trendScore,
+    indicatorScore,
+    alignment,
+    mtf,
+  );
   const fundamentalSummary = generateFundamentalSummary(input, fundamentalScore);
   const riskNote = generateRiskNote(
     decision.recommendation,
@@ -1194,6 +1269,21 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     decision.noTradeReasons,
     decision.keyLevels,
   );
+
+  // Phase 3A — compact MTF transparency summary for the UI.
+  const mtfSummary: MtfSummary | undefined = mtf
+    ? {
+        alignment: mtf.alignment,
+        chainUsed: mtf.chainUsed,
+        unavailable: mtf.unavailable.map((u) => ({
+          timeframe: u.timeframe,
+          reason: u.reason,
+        })),
+        htfBias: mtf.htfBias,
+        setupTimeframe: mtf.setupTimeframe,
+        triggerTimeframe: mtf.triggerTimeframe,
+      }
+    : undefined;
 
   return {
     id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1207,6 +1297,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     noTradeReasons: decision.noTradeReasons,
     tradePlan: decision.tradePlan,
     htfAlignment: alignment,
+    mtfSummary,
     technicalSummary,
     fundamentalSummary,
     breakdown,

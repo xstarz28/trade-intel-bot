@@ -263,6 +263,51 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
+      {/* Phase 3A — Multi-Timeframe transparency (only what the engine computed) */}
+      {result.mtfSummary && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+              <span className="text-primary/60">$</span> multi-timeframe
+            </p>
+            <div className="flex flex-wrap items-center gap-1.5 mb-2">
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] font-mono",
+                  result.mtfSummary.alignment === "ALIGNED_BULLISH" && "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+                  result.mtfSummary.alignment === "ALIGNED_BEARISH" && "bg-red-500/10 text-red-400 border-red-500/30",
+                  (result.mtfSummary.alignment === "MIXED" || result.mtfSummary.alignment === "COUNTER_TREND") && "bg-amber-500/10 text-amber-400 border-amber-500/30",
+                  result.mtfSummary.alignment === "INSUFFICIENT_DATA" && "bg-muted/30 text-muted-foreground border-border/50",
+                )}
+              >
+                {result.mtfSummary.alignment}
+              </Badge>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                chain: {result.mtfSummary.chainUsed.length > 0 ? result.mtfSummary.chainUsed.join(" → ") : "none available"}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-[10px] font-mono text-muted-foreground">
+              <div>
+                HTF bias: <span className="text-foreground">{result.mtfSummary.htfBias}</span>
+                {result.mtfSummary.htfBias !== "none" && result.technicalData?.mtf?.htfTimeframe && (
+                  <> ({result.technicalData.mtf.htfTimeframe})</>
+                )}
+              </div>
+              <div>Setup: <span className="text-foreground">{result.mtfSummary.setupTimeframe}</span></div>
+              <div>
+                Trigger: <span className="text-foreground">{result.mtfSummary.triggerTimeframe ?? "—"}</span>
+              </div>
+            </div>
+            {result.mtfSummary.unavailable.length > 0 && (
+              <p className="mt-2 pt-2 border-t border-border/30 text-[10px] font-mono text-amber-400/90">
+                ⚠ unavailable (not synthesized): {result.mtfSummary.unavailable.map((u) => u.timeframe).join(", ")}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* NO TRADE — explicit rejection reasons */}
       {result.recommendation === "NO_TRADE" && result.noTradeReasons.length > 0 && (
         <Card className="border-red-500/25 bg-red-500/5">
