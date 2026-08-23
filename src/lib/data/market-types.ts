@@ -37,6 +37,17 @@ export interface MarketData {
   error?: string; // If something went partial
 }
 
+/** Structural summary of one timeframe, used for HTF/LTF comparison. */
+export interface TimeframeStructureContext {
+  timeframe: string;
+  structure: "HH/HL" | "LH/LL" | "range" | "unknown";
+  bosDirection: "bullish" | "bearish" | "none";
+  chochDirection: "bullish" | "bearish" | "none";
+  lastSwingHigh?: number;
+  lastSwingLow?: number;
+  dataPoints: number;
+}
+
 /** Technical indicators derived from OHLCV data. */
 export interface TechnicalData {
   // Moving averages
@@ -81,6 +92,9 @@ export interface TechnicalData {
   atr14?: number;
   dailyRange?: number; // High - Low of latest candle
   dataPoints: number; // How many candles were used
+
+  // Higher-timeframe structural context (e.g. D1 when analyzing H4)
+  htfContext?: TimeframeStructureContext;
 }
 
 /** What the Convex action returns. */

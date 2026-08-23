@@ -40,6 +40,10 @@ const schema = defineSchema(
       timeframe: v.string(),
       bias: v.string(),
       confidence: v.number(),
+      recommendation: v.optional(v.string()), // LONG | SHORT | NO_TRADE
+      conviction: v.optional(v.string()), // High | Medium | Low (trades only)
+      noTradeReasons: v.optional(v.array(v.string())),
+      riskReward: v.optional(v.number()),
       technicalSummary: v.string(),
       fundamentalSummary: v.string(),
       breakdown: v.object({

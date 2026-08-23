@@ -285,12 +285,15 @@ describe("keyLevels", () => {
     expect(result.keyLevels.resistance).toBe("1.11");
   });
 
-  it("derives levels from price when not explicitly provided", () => {
+  it("does NOT fabricate levels when no market-derived levels exist", () => {
     const result = runAnalysis(
       baseInput({ currentPrice: "1.10" }),
     );
-    expect(result.keyLevels.support).toBeTruthy();
-    expect(result.keyLevels.resistance).toBeTruthy();
+    // Phase 1: no synthetic price×% fallback — levels stay empty and
+    // the engine refuses to trade without structural confirmation.
+    expect(result.keyLevels.support).toBe("");
+    expect(result.keyLevels.resistance).toBe("");
+    expect(result.recommendation).toBe("NO_TRADE");
   });
 
   it("derives resistance from ATR when resistanceLevels is empty but supportLevels exists", () => {
@@ -327,14 +330,12 @@ describe("keyLevels", () => {
       }),
     );
     // Support should come from technical levels, not price * 0.98
-    expect(result.keyLevels.support).toBe("64000.0000");
-    // Resistance should be derived from ATR above price, not price * 1.02
-    const resistance = parseFloat(result.keyLevels.resistance);
-    expect(resistance).toBeGreaterThan(71720);
-    expect(resistance).toBeLessThan(71720 + 5000); // ATR*2 = 2300, reasonable bound
-    expect(result.keyLevels.support).toBeTruthy();
-    expect(result.keyLevels.resistance).toBeTruthy();
-    expect(result.keyLevels.invalidation).toBeTruthy();
+    expect(result.keyLevels.support).toBe("64000");
+    // Phase 1: no synthetic ATR-derived resistance — level stays empty
+    expect(result.keyLevels.resistance).toBe("");
+    // Without an opposing structural level the engine refuses to trade
+    expect(result.recommendation).toBe("NO_TRADE");
+    expect(result.noTradeReasons.length).toBeGreaterThan(0);
   });
 });
 
