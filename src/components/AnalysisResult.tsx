@@ -329,7 +329,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
-      {/* Trade Plan — market-derived levels only */}
+      {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (
         <Card className={cn("border", biasConfig.border)}>
           <CardHeader className="pb-2">
@@ -364,6 +364,43 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.takeProfit}</p>
                 <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">{result.tradePlan.tpBasis}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Phase 3B — Position sizing: shown ONLY when fully computable from
+          real user inputs + complete instrument spec. Never fabricated. */}
+      {result.positionSizing?.available && result.recommendation !== "NO_TRADE" && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+              <span className="text-primary/60">$</span> position-sizing{" "}
+              <span className="text-muted-foreground/50">(from your inputs — not advice)</span>
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-center">
+                <p className="text-[10px] font-mono text-muted-foreground">quantity</p>
+                <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                  {result.positionSizing.quantity}
+                </p>
+                <p className="text-[9px] font-mono text-muted-foreground/60">{result.positionSizing.quantityUnit}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] font-mono text-muted-foreground">risk amount</p>
+                <p className="text-sm font-bold font-mono tabular-nums text-red-400">
+                  ≈{result.positionSizing.riskAmount?.toFixed(2)}
+                </p>
+                <p className="text-[9px] font-mono text-muted-foreground/60">
+                  at {((result.positionSizing.appliedRiskPercent ?? 0) * 100).toFixed(2)}% risk
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] font-mono text-muted-foreground">risk / unit</p>
+                <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                  {result.positionSizing.riskPerUnit?.toFixed(4)}
+                </p>
               </div>
             </div>
           </CardContent>

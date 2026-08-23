@@ -102,6 +102,14 @@ export interface AnalysisInput {
   derivativesData?: CryptoDerivativesData;
   // Economic calendar layer (Trading Economics)
   calendarData?: EconomicCalendarData;
+  // ── Phase 3B: risk model inputs (all optional; sizing stays unavailable
+  // unless every required piece is genuinely provided) ──
+  /** Account equity in account currency, user-provided. */
+  accountEquity?: number;
+  /** Risk per trade as a fraction of equity (e.g. 0.01 = 1%). User-chosen. */
+  riskPercent?: number;
+  /** Provider/broker instrument specification. Sizing is impossible without it. */
+  instrumentSpec?: import("@/lib/risk").InstrumentSpec;
 }
 
 export interface AnalysisResult {
@@ -117,12 +125,15 @@ export interface AnalysisResult {
   conviction?: ConvictionLevel;
   /** Explicit reasons why the setup was rejected. Empty for valid setups. */
   noTradeReasons: string[];
-  /** Market-derived trade plan; absent for NO_TRADE. Never synthetic. */
+  /** Market-derived trade plan; ALWAYS undefined for NO_TRADE (state integrity). */
   tradePlan?: TradePlan;
   /** HTF vs LTF relationship used in the decision. */
   htfAlignment?: HtfAlignment;
   /** Adaptive multi-timeframe summary (Phase 3A) when MTF data exists. */
   mtfSummary?: MtfSummary;
+  /** Position sizing — present ONLY for LONG/SHORT AND fully computable
+   *  from real user inputs + a complete InstrumentSpec. Never fabricated. */
+  positionSizing?: import("@/lib/risk").PositionSizingResult;
   technicalSummary: string;
   fundamentalSummary: string;
   breakdown: BiasBreakdown;
