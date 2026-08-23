@@ -29,7 +29,7 @@ interface InstrumentInputProps {
   isAnalyzing: boolean;
 }
 
-const STORAGE_KEY = "gilfan-analysis-form";
+const STORAGE_KEY = "xstarzg-analysis-form";
 
 interface PersistedForm {
   instrument: string;
@@ -99,7 +99,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
               $ new-analysis
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
-              select an instrument and run bias — data is fetched automatically
+              pilih instrumen dan run analysis — data diambil otomatis
             </p>
           </div>
         </div>
@@ -203,13 +203,13 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
               ) : (
                 <>
                   <Zap className="size-4" />
-                  run bias
+                  run analysis
                 </>
               )}
             </Button>
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-mono">
               <AlertCircle className="size-3" />
-              <span>data fetched automatically via backend</span>
+              <span>data diambil otomatis via backend</span>
             </div>
           </div>
         </form>

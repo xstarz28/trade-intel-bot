@@ -251,9 +251,10 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-tight font-mono">
-                gilfan<span className="text-primary">/</span>trading-agent
+                XstarzG<span className="text-muted-foreground"> · </span>
+                <span className="text-primary">Trader</span>
               </h1>
-              <p className="text-[10px] text-muted-foreground -mt-0.5 font-mono">bias analysis</p>
+              <p className="text-[10px] text-muted-foreground -mt-0.5 font-mono">chief market strategist</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -368,16 +369,16 @@ export default function Dashboard() {
                     <Terminal className="size-7 text-muted-foreground/40" />
                   </div>
                   <h3 className="text-base font-semibold text-foreground font-mono">
-                    Ready
+                    Terminal Ready
                   </h3>
                   <p className="mt-1.5 text-sm text-muted-foreground max-w-sm font-mono">
-                    Pick an instrument and click run bias. Market data is fetched
-                    automatically via the backend.
+                    Pilih instrumen dan run analysis — struktur, liquidity, positioning
+                    dan fundamental diambil otomatis dari backend.
                   </p>
                   <div className="mt-6 grid grid-cols-3 gap-3 max-w-sm">
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
                       <p className="text-lg font-bold text-primary font-mono">4</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">factors</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">faktor</p>
                     </div>
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
                       <p className="text-lg font-bold text-primary font-mono">5</p>
@@ -385,7 +386,7 @@ export default function Dashboard() {
                     </div>
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
                       <p className="text-lg font-bold text-primary font-mono">∞</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">instruments</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">instrumen</p>
                     </div>
                   </div>
                 </motion.div>

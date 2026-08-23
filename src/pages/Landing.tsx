@@ -7,49 +7,53 @@ import {
   Shield,
   Target,
   Brain,
-  LineChart,
   AlertTriangle,
   ChevronRight,
   Terminal,
+  Layers,
+  Scale,
+  Ban,
+  Crosshair,
+  Waves,
 } from "lucide-react";
 import { useNavigate } from "react-router";
 
 const FEATURES = [
   {
-    icon: Brain,
-    title: "Multi-Factor Scoring",
+    icon: Layers,
+    title: "Market Structure & Liquidity",
     description:
-      "Four weighted factors — technical structure, indicator confirmation, fundamentals, and sentiment — each scored transparently from -2 to +2.",
+      "BOS / CHoCH detection, swing structure, internal vs external liquidity, equal highs/lows, sweeps, dan buy-side/sell-side liquidity pools — dibaca langsung dari data candle multi-timeframe.",
     color: "text-primary",
     bg: "bg-primary/10",
   },
   {
-    icon: LineChart,
-    title: "Directional Bias",
+    icon: Waves,
+    title: "Supply, Demand & Imbalance",
     description:
-      "A clear bullish, bearish, or neutral bias with a confidence percentage. No hidden logic — every output traces back to its inputs.",
+      "Order block tervalidasi displacement, Fair Value Gap (FVG), imbalance, mitigation & reaction area — bukan zona acak, tapi area harga institusional dengan alasan yang bisa ditelusuri.",
     color: "text-blue-400",
     bg: "bg-blue-400/10",
   },
   {
-    icon: Target,
-    title: "Key Levels & Risk",
+    icon: Crosshair,
+    title: "Multi-Timeframe Top-Down",
     description:
-      "Support, resistance, and invalidation levels derived from your inputs, plus R:R guidance and position sizing recommendations.",
+      "W1 → D1 → H4 → H1 → M15/M5. HTF menentukan macro bias & liquidity pool; LTF untuk konfirmasi sweep, BOS, entry refinement, dan invalidation placement.",
     color: "text-emerald-400",
     bg: "bg-emerald-400/10",
   },
   {
-    icon: Shield,
-    title: "Transparent, Not Magic",
+    icon: Scale,
+    title: "Positioning & Flow",
     description:
-      "Explicit confidence scores, data-gap warnings, and invalidation scenarios. You stay in control — nothing is executed automatically.",
-    color: "text-amber-400",
-    bg: "bg-amber-400/10",
+      "Funding rate, open interest, liquidation cascade, long/short ratio untuk crypto. Kalender ekonomi high-impact, DXY, real yields, dan risk sentiment untuk makro.",
+    color: "text-violet-400",
+    bg: "bg-violet-400/10",
   },
 ];
 
-const INSTRUMENTS = ["EUR/USD", "GBP/USD", "USD/JPY", "BTC/USD", "ETH/USD", "XAU/USD"];
+const INSTRUMENTS = ["EUR/USD", "BTC/USD", "XAU/USD", "US30", "NVDA", "WTI"];
 
 const fadeUp = {
   initial: { opacity: 0, y: 20 },
@@ -70,7 +74,8 @@ export default function Landing() {
               <Terminal className="size-4 text-primary" />
             </div>
             <span className="text-sm font-bold tracking-tight font-mono">
-              gilfan<span className="text-primary">/</span>trading-agent
+              XstarzG<span className="text-muted-foreground"> · </span>
+              <span className="text-primary">Trader</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -96,20 +101,22 @@ export default function Landing() {
           <motion.div {...fadeUp} className="text-center max-w-3xl mx-auto">
             <Badge variant="outline" className="text-[11px] font-mono mb-6 gap-1.5 border-primary/30 text-primary">
               <Zap className="size-3" />
-              v1 · single instrument analysis
+              Chief Market Strategist · institutional-grade AI
             </Badge>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] font-mono">
-              <span className="text-primary">gilfan</span>
-              <span className="text-muted-foreground">/</span>
-              <br className="sm:hidden" />
-              trading-agent
+              <span className="text-primary">XstarzG</span>{" "}
+              <span className="text-foreground">Trader</span>
+              <br />
+              <span className="text-lg sm:text-xl lg:text-2xl font-semibold text-muted-foreground">
+                Chief Market Strategist
+              </span>
             </h1>
 
             <p className="mt-6 text-sm sm:text-base text-muted-foreground leading-relaxed max-w-xl mx-auto font-mono">
-              Transparent directional bias for forex and crypto.
-              <br className="hidden sm:block" />
-              Technical + fundamental scoring — no black boxes.
+              Analisis market presisi tinggi: price action, structure, liquidity,
+              volume &amp; fundamental makro — tajam, berbasis data, tanpa sinyal generik.
+              Conviction selalu proporsional dengan confluence yang ada.
             </p>
 
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -131,16 +138,24 @@ export default function Landing() {
               </Button>
             </div>
 
-            {/* Supported instruments */}
+            {/* Supported asset classes */}
             <div className="mt-10 flex items-center justify-center gap-2 flex-wrap">
-              <span className="text-[11px] text-muted-foreground font-mono">$ instruments:</span>
-              {INSTRUMENTS.map((s) => (
+              <span className="text-[11px] text-muted-foreground font-mono">$ coverage:</span>
+              {["crypto", "forex", "saham", "komoditas", "index futures"].map((s) => (
                 <Badge key={s} variant="secondary" className="text-[11px] font-mono border-border/50">
                   {s}
                 </Badge>
               ))}
-              <Badge variant="secondary" className="text-[11px] font-mono border-border/50">
-                + any pair
+            </div>
+            <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
+              <span className="text-[11px] text-muted-foreground font-mono">$ instruments:</span>
+              {INSTRUMENTS.map((s) => (
+                <Badge key={s} variant="outline" className="text-[11px] font-mono border-primary/25 text-primary/90">
+                  {s}
+                </Badge>
+              ))}
+              <Badge variant="outline" className="text-[11px] font-mono border-border/50">
+                + any symbol
               </Badge>
             </div>
           </motion.div>
@@ -156,10 +171,10 @@ export default function Landing() {
             viewport={{ once: true }}
             className="text-center mb-12"
           >
-            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono">What It Does</h2>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono">Analytical Framework</h2>
             <p className="mt-2 text-sm text-muted-foreground max-w-lg mx-auto font-mono">
-              You submit an instrument. It returns a structured, auditable bias — with every
-              scoring step visible.
+              Indikator textbook lama bukan fondasi. Setiap bias dibangun dari
+              structure, liquidity, supply/demand, volume &amp; positioning — dengan evidence yang bisa ditelusuri.
             </p>
           </motion.div>
 
@@ -199,25 +214,27 @@ export default function Landing() {
               viewport={{ once: true }}
             >
               <Badge variant="outline" className="text-[11px] font-mono mb-4 gap-1.5 border-primary/30 text-primary">
-                <span className="font-mono">$</span> scoring methodology
+                <Brain className="size-3" /> conviction framework
               </Badge>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono">
-                Weighted Bias
+                Conviction Level,
                 <br />
-                Breakdown
+                Bukan Klaim Akurasi
               </h2>
               <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
-                Each analysis scores four factors from -2 (very bearish) to +2 (very bullish).
-                The weighted average produces the final directional bias. Every number is visible — nothing
-                is hidden behind a single "confidence" number.
+                Tidak ada setup dengan winrate pasti. Conviction High/Medium/Low
+                mencerminkan kekuatan confluence aktual — structure + liquidity +
+                supply/demand + fundamental yang saling menguatkan. Jika confluence
+                tidak cukup dan ada conflicting evidence signifikan, jawabannya
+                adalah NO TRADE — bukan setup yang dipaksakan.
               </p>
 
               <div className="mt-6 space-y-3">
                 {[
-                  { label: "Structure & Trend", weight: "30%", color: "bg-primary" },
-                  { label: "Indicator Confirmation", weight: "25%", color: "bg-blue-400" },
-                  { label: "Fundamentals & Catalysts", weight: "25%", color: "bg-emerald-400" },
-                  { label: "Sentiment & Positioning", weight: "20%", color: "bg-violet-400" },
+                  { label: "Structure & Trend (BOS/CHoCH)", weight: "35%", color: "bg-primary" },
+                  { label: "Liquidity & Supply/Demand", weight: "30%", color: "bg-blue-400" },
+                  { label: "Fundamental & Katalis Makro", weight: "20%", color: "bg-emerald-400" },
+                  { label: "Sentiment & Positioning", weight: "15%", color: "bg-violet-400" },
                 ].map((f) => (
                   <div key={f.label} className="flex items-center gap-3">
                     <div className={`h-1.5 rounded-full ${f.color}`} style={{ width: f.weight }} />
@@ -240,28 +257,28 @@ export default function Landing() {
             >
               {[
                 {
-                  label: "Technical Summary",
-                  desc: "Market structure, BOS/CHoCH, key zones, indicator readings",
+                  label: "Technical Thesis",
+                  desc: "Struktur pasar, BOS/CHoCH, liquidity zones, order block/FVG, level kunci",
                   icon: "📊",
                 },
                 {
-                  label: "Fundamental Summary",
-                  desc: "Monetary policy, economic events, regulatory developments",
+                  label: "Fundamental Catalyst",
+                  desc: "Kebijakan moneter, kalender ekonomi, positioning data — relevan dengan timeframe",
                   icon: "📰",
                 },
                 {
-                  label: "Score Breakdown",
-                  desc: "Four factor scores with weights — fully traceable",
-                  icon: "⚖️",
-                },
-                {
-                  label: "Key Levels",
-                  desc: "Support, resistance, and invalidation prices",
+                  label: "Trade Plan",
+                  desc: "Entry, SL/invalidation, take profit, R:R, saran position sizing per risk per trade",
                   icon: "🎯",
                 },
                 {
-                  label: "Risk Note",
-                  desc: "R:R guidance, position sizing, disclaimers",
+                  label: "Conviction & Reasoning",
+                  desc: "High/Medium/Low conviction dengan setiap alasan teknikal & fundamental terbuka",
+                  icon: "⚖️",
+                },
+                {
+                  label: "Invalidation",
+                  desc: "Level/kondisi eksplisit yang membatalkan thesis — wajib di setiap output",
                   icon: "⚠️",
                 },
               ].map((item, i) => (
@@ -285,6 +302,37 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Non-negotiables */}
+      <section className="border-t border-border/40">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6 py-14">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              {
+                icon: Ban,
+                title: "No Fabricated Data",
+                desc: "Jika tools/API tidak menyediakan data, kami katakan secara eksplisit — tidak pernah mengarang harga, level, atau berita.",
+              },
+              {
+                icon: Shield,
+                title: "Capital First",
+                desc: "Preservation of capital dan kualitas setup di atas frekuensi entry. Position sizing selalu berbasis risk per trade.",
+              },
+              {
+                icon: Target,
+                title: "No Auto-Execution",
+                desc: "Tidak ada order otomatis tanpa konfirmasi eksplisit Anda. Ini decision-support, bukan mesin eksekusi.",
+              },
+            ].map((item) => (
+              <div key={item.title} className="rounded-lg border border-border/50 bg-card/40 p-5">
+                <item.icon className="size-5 text-primary mb-3" />
+                <h3 className="text-sm font-semibold font-mono">{item.title}</h3>
+                <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Disclaimer */}
       <section className="border-t border-border/40 bg-amber-500/5">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8">
@@ -295,8 +343,9 @@ export default function Landing() {
                 Not Financial Advice
               </p>
               <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                This is a decision-support tool. It does not execute trades, guarantee profits,
-                or provide licensed financial advice. Always verify independently and manage risk.
+                XstarzG Trader adalah decision-support tool. Tidak mengeksekusi trade,
+                tidak menjamin profit, dan bukan nasihat keuangan berlisensi.
+                Selalu verifikasi independen dan kelola risiko Anda sendiri.
               </p>
             </div>
           </div>
@@ -307,15 +356,15 @@ export default function Landing() {
       <section className="border-t border-border/40">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-16 sm:py-20 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono">
-            One instrument. One bias. Full transparency.
+            One instrument. Full thesis. Traceable reasoning.
           </h2>
           <p className="mt-2 text-sm text-muted-foreground max-w-md mx-auto font-mono">
-            Submit a pair, optionally add market data, and get a structured directional bias
-            with every scoring factor visible.
+            Submit instrumen apa pun — dapatkan bias, level kunci, trade plan,
+            dan invalidation dengan setiap langkah analisis yang transparan.
           </p>
           <div className="mt-6 flex items-center justify-center gap-3">
             <Button size="lg" onClick={() => navigate("/auth")} className="gap-2 px-7 text-sm font-semibold font-mono">
-              Launch Agent
+              Launch Strategist
               <ChevronRight className="size-4" />
             </Button>
           </div>
@@ -330,11 +379,12 @@ export default function Landing() {
               <Terminal className="size-3 text-primary" />
             </div>
             <span className="text-xs font-semibold font-mono">
-              gilfan<span className="text-primary">/</span>trading-agent
+              XstarzG<span className="text-muted-foreground"> · </span>
+              <span className="text-primary">Trader</span>
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground font-mono">
-            Decision-support tool · Not financial advice
+            Chief Market Strategist · Decision-support tool · Not financial advice
           </p>
         </div>
       </footer>

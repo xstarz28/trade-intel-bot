@@ -45,6 +45,22 @@ const COMPLETENESS_CONFIG = {
   limited: { label: "limited data", color: "bg-red-500/15 text-red-400", icon: AlertTriangle },
 } as const;
 
+/** Qualitative conviction level — replaces accuracy claims. Reflects actual
+ *  confluence strength: High only when evidence aligns without major conflict. */
+function getConviction(confidence: number): { label: "High" | "Medium" | "Low"; color: string } {
+  if (confidence >= 70) return { label: "High", color: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" };
+  if (confidence >= 50) return { label: "Medium", color: "bg-amber-500/15 text-amber-400 border border-amber-500/30" };
+  return { label: "Low", color: "bg-muted/40 text-muted-foreground border border-border/50" };
+}
+
+const ASSET_CLASS_LABEL: Record<string, string> = {
+  forex: "Forex",
+  crypto: "Crypto",
+  stock: "Stock",
+  commodity: "Commodity",
+  index: "Index Futures",
+};
+
 interface AnalysisResultProps {
   result: AnalysisResultType;
 }
@@ -70,6 +86,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
   const completenessConfig = COMPLETENESS_CONFIG[result.dataCompleteness];
   const CompletenessIcon = completenessConfig.icon;
   const timeAgo = getTimeAgo(result.timestamp);
+  const conviction = getConviction(result.confidence);
 
   const tech = result.technicalData;
   const priceSnap = result.priceSnapshot;
@@ -85,26 +102,30 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <BiasIcon className={cn("size-5", biasConfig.color)} />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-lg font-bold tracking-tight font-mono">{result.instrument}</h3>
-                  <Badge variant="outline" className="text-[10px] font-mono border-border/50">
-                    {result.timeframe}
-                  </Badge>
-                </div>
-                <div className="flex items-center gap-2 mt-0.5">
+                {/* Institutional output header: INSTRUMENT | Asset Class | Timeframe */}
+                <p className="text-sm font-bold tracking-tight font-mono">
+                  {result.instrument}
+                  <span className="text-muted-foreground"> | </span>
+                  <span className="text-xs font-medium text-muted-foreground">{ASSET_CLASS_LABEL[result.instrumentType] || result.instrumentType}</span>
+                  <span className="text-muted-foreground"> | </span>
+                  <span className="text-xs font-medium text-muted-foreground">{result.timeframe}</span>
+                </p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className={cn("text-sm font-semibold font-mono", biasConfig.color)}>
-                    {result.bias}
+                    BIAS: {result.bias}
                   </span>
-                  <span className="text-[11px] text-muted-foreground font-mono">bias</span>
+                  <Badge variant="outline" className={cn("text-[10px] font-mono", conviction.color)}>
+                    Conviction: {conviction.label}
+                  </Badge>
                 </div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-3xl font-bold tracking-tight tabular-nums font-mono">
+              <div className="text-2xl font-bold tracking-tight tabular-nums font-mono">
                 {result.confidence}
                 <span className="text-sm font-medium text-muted-foreground">%</span>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">confidence</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">confluence score</p>
             </div>
           </div>
 
