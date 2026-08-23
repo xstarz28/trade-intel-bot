@@ -375,6 +375,30 @@ export function calculateTechnical(
   const bosDirection = detectBos(swingHighs, swingLows, currentPrice);
   const chochDirection = detectChoch(swingHighs, swingLows, structure, currentPrice);
 
+  // Higher-timeframe structural context (kept separate from LTF setup)
+  let htfContext: TechnicalData["htfContext"];
+  if (
+    higherTimeframeCandles &&
+    higherTimeframeCandles.length >= 20 &&
+    higherTimeframeCandles !== structureCandles
+  ) {
+    const htfLookback = higherTimeframeCandles.length > 50 ? 5 : 3;
+    const htfSwings = detectSwings(higherTimeframeCandles, htfLookback);
+    const htfStructure = analyzeStructure(htfSwings.highs, htfSwings.lows);
+    const htfLastClose = higherTimeframeCandles[higherTimeframeCandles.length - 1].close;
+    htfContext = {
+      timeframe: "D1",
+      structure: htfStructure,
+      bosDirection: detectBos(htfSwings.highs, htfSwings.lows, htfLastClose),
+      chochDirection: detectChoch(htfSwings.highs, htfSwings.lows, htfStructure, htfLastClose),
+      lastSwingHigh:
+        htfSwings.highs.length > 0 ? htfSwings.highs[htfSwings.highs.length - 1] : undefined,
+      lastSwingLow:
+        htfSwings.lows.length > 0 ? htfSwings.lows[htfSwings.lows.length - 1] : undefined,
+      dataPoints: higherTimeframeCandles.length,
+    };
+  }
+
   // Key levels from swing points
   const { support, resistance } = findKeyLevels(swingHighs, swingLows, currentPrice);
 
@@ -420,5 +444,6 @@ export function calculateTechnical(
     atr14,
     dailyRange,
     dataPoints: candles.length,
+    htfContext,
   };
 }

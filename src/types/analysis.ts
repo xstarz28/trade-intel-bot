@@ -10,6 +10,37 @@ export type DirectionalBias = "Bullish" | "Bearish" | "Neutral";
 
 export type FactorScore = -2 | -1 | 0 | 1 | 2;
 
+/** Actionable recommendation. The engine may actively refuse to trade. */
+export type Recommendation = "LONG" | "SHORT" | "NO_TRADE";
+
+/** Qualitative conviction — reflects actual confluence strength, NOT accuracy.
+ *  Only present when recommendation is LONG or SHORT. */
+export type ConvictionLevel = "High" | "Medium" | "Low";
+
+/** A trade plan whose every level is market-derived. Absent for NO_TRADE. */
+export interface TradePlan {
+  direction: "long" | "short";
+  entry: string;
+  entryBasis: string;
+  stopLoss: string;
+  /** Where the stop comes from — e.g. "nearest swing low (structural)" */
+  slBasis: string;
+  takeProfit: string;
+  tpBasis: string;
+  riskReward: number;
+}
+
+/** Higher-timeframe vs lower-timeframe relationship. */
+export interface HtfAlignment {
+  htfTimeframe: string;
+  htfStructure: "HH/HL" | "LH/LL" | "range" | "unknown";
+  state:
+    | "aligned"
+    | "counter_trend"
+    | "htf_unknown"
+    | "ltf_unclear";
+}
+
 export interface BiasBreakdown {
   trend: FactorScore;
   indicator: FactorScore;
@@ -54,7 +85,17 @@ export interface AnalysisResult {
   instrumentType: InstrumentType;
   timeframe: Timeframe;
   bias: DirectionalBias;
-  confidence: number; // 0-100
+  confidence: number; // 0-100 — evidence strength score
+  /** Actionable decision — may be NO_TRADE even when bias is directional. */
+  recommendation: Recommendation;
+  /** Qualitative conviction; undefined for NO_TRADE (never forced into Low). */
+  conviction?: ConvictionLevel;
+  /** Explicit reasons why the setup was rejected. Empty for valid setups. */
+  noTradeReasons: string[];
+  /** Market-derived trade plan; absent for NO_TRADE. Never synthetic. */
+  tradePlan?: TradePlan;
+  /** HTF vs LTF relationship used in the decision. */
+  htfAlignment?: HtfAlignment;
   technicalSummary: string;
   fundamentalSummary: string;
   breakdown: BiasBreakdown;

@@ -102,6 +102,11 @@ export const fetchMarketData = action({
         } catch {
           // Non-critical — proceed without HTF data
         }
+
+      // Compute HTF structural context so the engine can do top-down analysis.
+      if (higherCandles && higherCandles.length >= 20) {
+        technical.htfContext = computeHtfContext(higherCandles);
+      }
       }
 
       return {
@@ -150,6 +155,25 @@ function classifyError(json: any) {
     return { success: false as const, error: `Rate limited: ${msg}`, errorCode: "RATE_LIMIT" as const };
   }
   return { success: false as const, error: `API error ${code}: ${msg}`, errorCode: "API_UNAVAILABLE" as const };
+}
+
+// ── Higher-Timeframe Structural Context ────────────────────────────
+
+/** Derive macro structure from D1 candles for top-down analysis. */
+function computeHtfContext(candles: any[]) {
+  const lookback = candles.length > 50 ? 5 : 3;
+  const { highs, lows } = detectSwings(candles, lookback);
+  const structure = analyzeStructure(highs, lows);
+  const lastClose = candles[candles.length - 1].close;
+  return {
+    timeframe: "D1",
+    structure,
+    bosDirection: detectBos(highs, lows, lastClose),
+    chochDirection: detectChoch(highs, lows, structure, lastClose),
+    lastSwingHigh: highs.length > 0 ? highs[highs.length - 1] : undefined,
+    lastSwingLow: lows.length > 0 ? lows[lows.length - 1] : undefined,
+    dataPoints: candles.length,
+  };
 }
 
 // ── Technical Calculations (inline to avoid import issues) ──────────
@@ -230,6 +254,17 @@ function calculateAll(candles: any[]) {
     atr14,
     dailyRange,
     dataPoints: candles.length,
+    htfContext: undefined as
+      | {
+          timeframe: string;
+          structure: string;
+          bosDirection: string;
+          chochDirection: string;
+          lastSwingHigh?: number;
+          lastSwingLow?: number;
+          dataPoints: number;
+        }
+      | undefined,
   };
 }
 

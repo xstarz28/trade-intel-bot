@@ -2,67 +2,116 @@ import type {
   AnalysisInput,
   AnalysisResult,
   BiasBreakdown,
+  ConvictionLevel,
   DirectionalBias,
   FactorScore,
+  HtfAlignment,
   KeyLevels,
+  Recommendation,
+  TradePlan,
 } from "@/types/analysis";
 import type { MarketData, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
 
 export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels };
-export type { InstrumentType, Timeframe } from "@/types/analysis";
+export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradePlan, HtfAlignment } from "@/types/analysis";
 
-// ── Weights from the methodology ──────────────────────────────────
-
-const WEIGHTS = {
-  trend: 0.3,
-  indicator: 0.25,
-  fundamental: 0.25,
-  sentiment: 0.2,
+// ── Phase 1 decision-engine constants ─────────────────────────────
+//
+// Core directional bias is built ONLY from factors that reflect real
+// market evidence available today: structure (trend), fundamentals and
+// positioning/sentiment. RSI/MACD are NOT part of the weighted core —
+// they exist only as a small secondary modifier that can never flip
+// the bias on its own.
+const CORE_WEIGHTS = {
+  trend: 0.45,
+  fundamental: 0.3,
+  sentiment: 0.25,
 } as const;
+
+/** Max influence of the RSI/MACD modifier on the weighted average. */
+const INDICATOR_MODIFIER_WEIGHT = 0.1;
+
+/** Minimum projected R:R for a setup to be actionable. */
+const MIN_RR = 1.5;
 
 function clampScore(score: number): FactorScore {
   return Math.max(-2, Math.min(2, Math.round(score))) as FactorScore;
 }
 
-// ── Bias Calculation ──────────────────────────────────────────────
+// ── Timeframe direction & HTF/LTF alignment ───────────────────────
 
-function calculateBias(breakdown: BiasBreakdown): {
-  bias: DirectionalBias;
-  weightedAvg: number;
-  confidence: number;
-} {
-  const weightedAvg =
-    breakdown.trend * WEIGHTS.trend +
-    breakdown.indicator * WEIGHTS.indicator +
-    breakdown.fundamental * WEIGHTS.fundamental +
-    breakdown.sentiment * WEIGHTS.sentiment;
+type TfDirection = "long" | "short" | "none";
 
-  let bias: DirectionalBias = "Neutral";
-  if (weightedAvg > 0.25) bias = "Bullish";
-  else if (weightedAvg < -0.25) bias = "Bearish";
+/** Directional read of one timeframe from its structure + CHoCH. */
+function tfDirection(
+  structure: "HH/HL" | "LH/LL" | "range" | "unknown" | undefined,
+  choch: "bullish" | "bearish" | "none" | undefined,
+): TfDirection {
+  // A confirmed CHoCH overrides a stale structure label — it is the
+  // earliest algorithmic signal of a character change.
+  if (choch === "bullish") return "long";
+  if (choch === "bearish") return "short";
+  if (structure === "HH/HL") return "long";
+  if (structure === "LH/LL") return "short";
+  return "none";
+}
 
-  const scores = [breakdown.trend, breakdown.indicator, breakdown.fundamental, breakdown.sentiment];
-  const absAvg = Math.abs(weightedAvg);
-  const allSameDirection = scores.every((s) => s >= 0) || scores.every((s) => s <= 0);
-  const hasStrongScores = scores.some((s) => Math.abs(s) === 2);
+function computeAlignment(input: AnalysisInput): HtfAlignment | undefined {
+  const htf = input.technicalData?.htfContext;
+  if (!htf || htf.dataPoints < 20) return undefined;
 
-  let confidence = Math.min(95, 40 + absAvg * 25);
-  if (allSameDirection) confidence += 10;
-  if (hasStrongScores) confidence += 5;
-  if (bias === "Neutral") confidence = Math.min(confidence, 55);
+  const ltf = input.technicalData;
+  const htfDir = tfDirection(htf.structure, htf.chochDirection);
+  const ltfDir = tfDirection(ltf?.structure, ltf?.chochDirection);
+
+  let state: HtfAlignment["state"];
+  if (ltfDir === "none") {
+    state = "ltf_unclear";
+  } else if (htfDir === "none") {
+    state = "htf_unknown";
+  } else if (htfDir === ltfDir) {
+    state = "aligned";
+  } else {
+    state = "counter_trend";
+  }
 
   return {
-    bias,
-    weightedAvg: Math.round(weightedAvg * 100) / 100,
-    confidence: Math.round(Math.min(95, Math.max(20, confidence))),
+    htfTimeframe: htf.timeframe,
+    htfStructure: htf.structure,
+    state,
   };
 }
 
-// ── Trend / Structure Scoring ─────────────────────────────────────
+// ── Bias Calculation (structure + fundamental + positioning core) ─
+
+function calculateBias(breakdown: BiasBreakdown): {
+  bias: DirectionalBias;
+  coreWeightedAvg: number;
+} {
+  const coreWeightedAvg =
+    breakdown.trend * CORE_WEIGHTS.trend +
+    breakdown.fundamental * CORE_WEIGHTS.fundamental +
+    breakdown.sentiment * CORE_WEIGHTS.sentiment;
+
+  // NOTE: breakdown.indicator (RSI/MACD) is deliberately EXCLUDED from
+  // this weighted average. It is a capped secondary modifier used only
+  // in conviction scoring — it can never create or flip the bias.
+
+  // Bias is derived from the CORE average only.
+  let bias: DirectionalBias = "Neutral";
+  if (coreWeightedAvg > 0.25) bias = "Bullish";
+  else if (coreWeightedAvg < -0.25) bias = "Bearish";
+
+  return {
+    bias,
+    coreWeightedAvg: Math.round(coreWeightedAvg * 100) / 100,
+  };
+}
+
+// ── Trend / Structure Scoring (structure-only, no MA crossover) ───
 
 function scoreTrend(input: AnalysisInput): FactorScore {
   const tech = input.technicalData;
-  const md = input.marketData;
 
   // ── Auto-fetched data path (preferred) ──
   if (tech && tech.dataPoints >= 5) {
@@ -80,19 +129,10 @@ function scoreTrend(input: AnalysisInput): FactorScore {
     if (tech.chochDirection === "bearish") score -= 1;
     if (tech.chochDirection === "bullish") score += 1;
 
-    // Price relative to moving averages
-    const price = md?.price.price ?? 0;
-    if (price > 0) {
-      if (tech.sma50 && tech.sma200) {
-        if (price > tech.sma50 && tech.sma50 > tech.sma200) score += 1;
-        if (price < tech.sma50 && tech.sma50 < tech.sma200) score -= 1;
-      }
-    }
-
     return clampScore(score);
   }
 
-  // ── Manual input fallback ──
+  // ── Manual input fallback (user-supplied observed levels only) ──
   if (input.currentPrice && input.recentHigh && input.recentLow) {
     const price = parseFloat(input.currentPrice);
     const high = parseFloat(input.recentHigh);
@@ -112,7 +152,10 @@ function scoreTrend(input: AnalysisInput): FactorScore {
   return 0;
 }
 
-// ── Indicator Confirmation Scoring ────────────────────────────────
+// ── Indicator Scoring — SECONDARY ONLY ────────────────────────────
+// RSI/MACD are computed and reported for context but carry no core
+// weight. Their score can adjust conviction magnitude slightly; it can
+// never establish or flip the directional bias (see calculateBias).
 
 function scoreIndicators(input: AnalysisInput): FactorScore {
   const tech = input.technicalData;
@@ -121,26 +164,18 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
   if (tech && tech.dataPoints >= 14) {
     let score = 0;
 
-    // RSI
+    // RSI — momentum context only
     if (tech.rsi14 !== undefined) {
-      if (tech.rsi14 > 70) score -= 1; // Overbought → bearish
-      else if (tech.rsi14 < 30) score += 1; // Oversold → bullish
-      // Divergence overrides
+      if (tech.rsi14 > 70) score -= 1;
+      else if (tech.rsi14 < 30) score += 1;
       if (tech.rsiDivergence === "bullish") score += 1;
       if (tech.rsiDivergence === "bearish") score -= 1;
     }
 
-    // MACD
+    // MACD — momentum context only
     if (tech.macdHistogram !== undefined) {
       if (tech.macdHistogram > 0) score += 1;
       else if (tech.macdHistogram < 0) score -= 1;
-    }
-
-    // Volume confirmation
-    if (tech.volumeTrend === "increasing") {
-      // Increasing volume confirms the direction
-      if (score > 0) score += 1;
-      else if (score < 0) score -= 1;
     }
 
     return clampScore(score);
@@ -177,7 +212,6 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
   const fund = input.fundamentalData;
 
   if (macro && macro.confidence !== "unavailable" && macro.indicators.length > 0) {
-    // Score from macro indicators
     const bullish = macro.indicators.filter((ind) => ind.sentiment === "positive").length;
     const bearish = macro.indicators.filter((ind) => ind.sentiment === "negative").length;
     const total = macro.indicators.length;
@@ -190,24 +224,21 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     }
     // DXY trend for forex
     if (input.instrumentType === "forex" && macro.dxyTrend) {
-      // Rising USD is bearish for EUR/USD, GBP/USD etc.
       if (macro.dxyTrend === "rising") score -= 1;
       if (macro.dxyTrend === "falling") score += 1;
     }
   } else if (fund && fund.available && input.instrumentType === "stock") {
-    // Stock fundamentals
     if (fund.peRatio !== undefined && fund.peRatio > 0) {
-      if (fund.peRatio < 15) score += 1; // Potentially undervalued
-      if (fund.peRatio > 35) score -= 1; // Potentially overvalued
+      if (fund.peRatio < 15) score += 1;
+      if (fund.peRatio > 35) score -= 1;
     }
     if (fund.profitMargin !== undefined && fund.profitMargin > 0.2) score += 1;
     if (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) score += 1;
   }
 
-  // ── Economic calendar data (Trading Economics — released event surprises) ──
+  // ── Economic calendar data (released event surprises only) ──
   const cal = input.calendarData;
   if (cal && cal.confidence !== "unavailable" && cal.events.length > 0) {
-    // Only score from RELEASED events with actual vs forecast
     const released = cal.events.filter(
       (e) => e.status === "released" && e.actual !== undefined && e.forecast !== undefined && e.importance === 3,
     );
@@ -218,8 +249,6 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
 
       const surprise = actualNum - forecastNum;
       const pctSurprise = forecastNum !== 0 ? Math.abs(surprise / forecastNum) : 0;
-
-      // Only score if surprise is material (>1% or >0.2 absolute for rates)
       if (pctSurprise < 0.01 && Math.abs(surprise) < 0.2) continue;
 
       const eventLower = evt.event.toLowerCase();
@@ -228,37 +257,27 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
       const isInflation = eventLower.includes("cpi") || eventLower.includes("inflation") || eventLower.includes("pce");
 
       if (isRateEvent) {
-        // Higher-than-expected rate → hawkish → for forex: strength in that currency
-        // For EUR/USD: higher USD rate = bearish (score -= 1)
-        // For GBP/USD: same
         if (input.instrumentType === "forex") {
           if (evt.currency === "USD" || evt.currency === "EUR" || evt.currency === "GBP") {
             score += surprise > 0 ? 1 : -1;
           }
         }
-        // For crypto: higher rates = risk-off = bearish
         if (input.instrumentType === "crypto") {
           score += surprise > 0 ? -1 : 1;
         }
       } else if (isEmployment) {
-        // Stronger employment in USD → mixed for forex
-        // Strong NFP → hawkish Fed → USD strength → bearish EUR/USD
         if (input.instrumentType === "forex" && evt.currency === "USD") {
-          score += surprise > 0 ? -1 : 1; // Strong employment → USD strong → EUR/USD bearish
+          score += surprise > 0 ? -1 : 1;
         }
         if (input.instrumentType === "crypto") {
-          score += surprise > 0 ? -1 : 1; // Strong employment → risk-off → crypto bearish
+          score += surprise > 0 ? -1 : 1;
         }
       } else if (isInflation) {
-        // Higher inflation → depends on context
-        // For forex: higher USD CPI → hawkish Fed → USD strength → bearish EUR/USD
         if (input.instrumentType === "forex" && evt.currency === "USD") {
-          score += surprise > 0 ? -1 : 1; // Higher inflation → USD strength
+          score += surprise > 0 ? -1 : 1;
         }
-        // For crypto: higher inflation → could be risk-on (inflation hedge narrative) or risk-off (rate hikes)
-        // Conservative: higher inflation → mixed, score only when very material
         if (input.instrumentType === "crypto" && pctSurprise > 0.05) {
-          score += surprise > 0 ? -1 : 1; // Strong inflation → risk-off
+          score += surprise > 0 ? -1 : 1;
         }
       }
     }
@@ -290,55 +309,41 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
 function scoreSentiment(input: AnalysisInput): FactorScore {
   let score = 0;
 
-  // ── Crypto derivatives data (CoinGlass — highest priority for crypto) ──
+  // ── Crypto derivatives data (CoinGlass) ──
   const deriv = input.derivativesData;
   const tech = input.technicalData;
-  const md = input.marketData;
-  const currentPrice = md?.price.price ?? 0;
+
   const structure = tech?.structure;
 
   if (deriv && deriv.confidence !== "unavailable" && input.instrumentType === "crypto") {
-    // Funding rate: extremely positive = crowded longs = contrarian bearish risk
     if (deriv.fundingRate) {
       const fr = deriv.fundingRate.currentRate;
-      // Extremely positive funding (>0.1% per 8h = ~110% annualized)
       if (fr > 0.001) score -= 1;
-      // Extremely negative funding = crowded shorts = contrarian bullish
       if (fr < -0.001) score += 1;
-      // Context: if funding is positive AND price is rising (HH/HL), trend confirmation
       if (fr > 0.0005 && structure === "HH/HL") score += 1;
-      // Context: if funding is positive AND price is falling (LH/LL), bears are being paid
       if (fr > 0.0005 && structure === "LH/LL") score -= 1;
     }
 
-    // OI change in context with price
     if (deriv.openInterest && deriv.openInterest.change1h !== undefined) {
       const oiChange = deriv.openInterest.change1h;
-      // OI rising + price rising = trend continuation support
       if (oiChange > 2 && structure === "HH/HL") score += 1;
-      // OI rising + price falling = new shorts opening, bearish conviction
       if (oiChange > 2 && structure === "LH/LL") score -= 1;
-      // OI declining + price falling = longs closing, but could signal capitulation
       if (oiChange < -2 && structure === "LH/LL") score += 1;
     }
 
-    // Long/short ratio: contrarian signal
     if (deriv.longShort?.accountRatio !== undefined) {
       const ratio = deriv.longShort.accountRatio;
-      if (ratio > 2.0) score -= 1; // Extreme long crowding
-      if (ratio < 0.5) score += 1; // Extreme short crowding
+      if (ratio > 2.0) score -= 1;
+      if (ratio < 0.5) score += 1;
     }
 
-    // Liquidations: dominant side provides context
     if (deriv.liquidations?.dominantSide === "longs") {
-      // Long liquidation cascade often near local bottom
       score += 1;
     } else if (deriv.liquidations?.dominantSide === "shorts") {
-      // Short liquidation cascade often near local top
       score -= 1;
     }
   } else {
-    // ── Alpha Vantage news sentiment (preferred for non-crypto) ──
+    // ── Alpha Vantage news sentiment ──
     const sentiment = input.sentimentData;
     if (sentiment && sentiment.confidence !== "unavailable" && sentiment.articleCount > 0) {
       const avScore = sentiment.averageScore;
@@ -350,7 +355,7 @@ function scoreSentiment(input: AnalysisInput): FactorScore {
       if (sentiment.breakdown.negative > sentiment.breakdown.positive * 2 && sentiment.articleCount >= 3) score -= 1;
     }
 
-    // Manual funding rate fallback (when derivatives data not available)
+    // Manual funding rate fallback
     if (input.fundingRate) {
       const fr = parseFloat(input.fundingRate);
       if (!isNaN(fr)) {
@@ -360,10 +365,10 @@ function scoreSentiment(input: AnalysisInput): FactorScore {
     }
   }
 
-  // ── Volume as sentiment proxy ──
-  if (tech && tech.dataPoints >= 20) {
-    if (tech.volumeTrend === "increasing" && structure === "LH/LL") score += 1;
-    if (tech.volumeTrend === "increasing" && structure === "HH/HL") score -= 1;
+  // ── Volume as structure confirmation (NOT coupled to RSI/MACD) ──
+  if (tech && tech.dataPoints >= 20 && tech.volumeTrend !== "unknown") {
+    if (tech.volumeTrend === "increasing" && structure !== "range" && structure !== "unknown") score += 1;
+    if (tech.volumeTrend === "decreasing" && structure !== "range" && structure !== "unknown") score -= 1;
   }
 
   // ── Manual input fallback ──
@@ -401,9 +406,16 @@ function assessDataCompleteness(input: AnalysisInput): {
     flags.push("No economic calendar data — macro events not factored");
     missing++;
   }
-  if (input.instrumentType === "crypto" && !input.fundingRate) {
+  if (
+    input.instrumentType === "crypto" &&
+    !input.fundingRate &&
+    !(input.derivativesData && input.derivativesData.confidence !== "unavailable")
+  ) {
     flags.push("No funding rate data — sentiment analysis limited");
     missing++;
+  }
+  if (!input.technicalData?.htfContext) {
+    flags.push("No higher-timeframe (D1) structural data — macro context unverified");
   }
 
   let completeness: "full" | "partial" | "limited" = "full";
@@ -416,25 +428,297 @@ function assessDataCompleteness(input: AnalysisInput): {
   return { completeness, flags };
 }
 
+// ── NO_TRADE gate + trade plan construction ───────────────────────
+
+interface TradeDecision {
+  recommendation: Recommendation;
+  noTradeReasons: string[];
+  tradePlan?: TradePlan;
+  conviction?: ConvictionLevel;
+  confidence: number;
+  keyLevels: KeyLevels;
+}
+
+function parseLevel(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const n = parseFloat(value);
+  return isNaN(n) ? undefined : n;
+}
+
+function decideTrade(
+  input: AnalysisInput,
+  bias: DirectionalBias,
+  breakdown: BiasBreakdown,
+  coreWeightedAvg: number,
+  completeness: "full" | "partial" | "limited",
+  flags: string[],
+  alignment: HtfAlignment | undefined,
+): TradeDecision {
+  const reasons: string[] = [];
+  const tech = input.technicalData;
+  const md = input.marketData;
+
+  const entry =
+    md?.price.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : undefined);
+
+  // Structural levels — ONLY from real market swings or user-supplied
+  // observed levels. No synthetic price×% fallbacks, ever.
+  const price = entry ?? 0;
+  const swingSupports = [
+    ...(tech?.supportLevels ?? []),
+    ...(tech?.swingLows ?? []),
+  ]
+    .filter((l) => l > 0 && l < price)
+    .sort((a, b) => b - a); // nearest below first
+  const swingResistances = [
+    ...(tech?.resistanceLevels ?? []),
+    ...(tech?.swingHighs ?? []),
+  ]
+    .filter((l) => l > price)
+    .sort((a, b) => a - b); // nearest above first
+
+  const userLow = parseLevel(input.recentLow);
+  const userHigh = parseLevel(input.recentHigh);
+  if (userLow !== undefined && userLow < price) swingSupports.push(userLow);
+  if (userHigh !== undefined && userHigh > price) swingResistances.push(userHigh);
+
+  // ── Gate 1: live price required ──
+  if (entry === undefined || entry <= 0) {
+    reasons.push("No live market price available — cannot define entry or measure structural distance.");
+  }
+
+  // ── Gate 2: data completeness ──
+  if (completeness === "limited") {
+    reasons.push(`Data completeness is LIMITED for the data this thesis requires: ${flags.join(" ")}`);
+  }
+
+  // ── Gate 3: directional bias required ──
+  if (bias === "Neutral") {
+    reasons.push("Core bias is Neutral — structure, fundamentals and positioning do not agree on a direction.");
+  }
+
+  // ── Gate 4: confluence strength ──
+  const dirSign = bias === "Bullish" ? 1 : bias === "Bearish" ? -1 : 0;
+  const coreScores = [
+    { name: "structure", score: breakdown.trend },
+    { name: "fundamental", score: breakdown.fundamental },
+    { name: "positioning", score: breakdown.sentiment },
+  ];
+  const agreeing = coreScores.filter((f) => f.score !== 0 && Math.sign(f.score) === dirSign);
+  const opposing = coreScores.filter((f) => f.score !== 0 && Math.sign(f.score) === -dirSign);
+
+  if (bias !== "Neutral" && agreeing.length < 2) {
+    reasons.push(
+      `Confluence too weak: only ${agreeing.length} core factor(s) support the ${bias.toLowerCase()} bias (need at least 2).`,
+    );
+  }
+
+  // ── Gate 5: material opposing evidence ──
+  const materialOpposition = opposing.filter((f) => Math.abs(f.score) >= 2);
+  if (bias !== "Neutral" && materialOpposition.length > 0) {
+    reasons.push(
+      `Material conflict: ${materialOpposition.map((f) => f.name).join(", ")} strongly oppose the ${bias.toLowerCase()} bias.`,
+    );
+  }
+
+  // ── Gate 6: HTF/LTF relationship ──
+  if (alignment && bias !== "Neutral") {
+    const ltfDir = tfDirection(tech?.structure, tech?.chochDirection);
+    const ltfSign = ltfDir === "long" ? 1 : ltfDir === "short" ? -1 : 0;
+
+    if (alignment.state === "counter_trend") {
+      // Counter-trend is only valid with LTF confirmation (a CHoCH that
+      // produced the LTF direction) AND at least one non-technical core
+      // factor agreeing with the LTF direction.
+      const ltfChochConfirms =
+        (ltfDir === "long" && tech?.chochDirection === "bullish") ||
+        (ltfDir === "short" && tech?.chochDirection === "bearish");
+      const nonTechnicalAgrees =
+        Math.sign(breakdown.fundamental) === ltfSign ||
+        Math.sign(breakdown.sentiment) === ltfSign;
+
+      if (!ltfChochConfirms || !nonTechnicalAgrees) {
+        reasons.push(
+          `HTF (${alignment.htfTimeframe} ${alignment.htfStructure}) conflicts with LTF direction without a valid counter-trend confirmation (needs LTF CHoCH + fundamental/positioning agreement).`,
+        );
+      }
+    }
+  }
+
+  // ── Gate 7: structural invalidation & opposing target ──
+  let stopLevel: number | undefined;
+  let slBasis = "";
+  let tpLevel: number | undefined;
+  let tpBasis = "";
+
+  if (entry !== undefined && entry > 0) {
+    if (bias === "Bullish") {
+      stopLevel = swingSupports[0];
+      slBasis = stopLevel !== undefined ? "nearest market swing low (structural)" : "";
+      tpLevel = swingResistances[0];
+      tpBasis = tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
+    } else if (bias === "Bearish") {
+      stopLevel = swingResistances[0];
+      slBasis = stopLevel !== undefined ? "nearest market swing high (structural)" : "";
+      tpLevel = swingSupports[0];
+      tpBasis = tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
+    }
+
+    if (bias !== "Neutral" && stopLevel === undefined) {
+      reasons.push(
+        `Insufficient structural confirmation: no market-derived swing ${bias === "Bullish" ? "low below price" : "high above price"} available to anchor the stop loss.`,
+      );
+    }
+    if (bias !== "Neutral" && stopLevel !== undefined && tpLevel === undefined) {
+      reasons.push(
+        "No opposing structural level available to define a take profit — R:R cannot be computed from market data.",
+      );
+    }
+  }
+
+  // ── Gate 8: R:R ──
+  let tradePlan: TradePlan | undefined;
+  if (
+    bias !== "Neutral" &&
+    entry !== undefined && entry > 0 &&
+    stopLevel !== undefined && tpLevel !== undefined
+  ) {
+    const risk = Math.abs(entry - stopLevel);
+    const reward = Math.abs(tpLevel - entry);
+    if (risk <= 0) {
+      reasons.push("Structural stop level equals entry price — invalid risk distance.");
+    } else {
+      const rr = Math.round((reward / risk) * 100) / 100;
+      if (rr < MIN_RR) {
+        reasons.push(
+          `Projected R:R ${rr.toFixed(2)} is below the ${MIN_RR.toFixed(2)} minimum for actionable setups.`,
+        );
+      } else {
+        // Small technical buffer beyond the structural level (ATR-based
+        // when available). The buffer is disclosed — the invalidation
+        // BASE remains the structural level, never a fixed percentage.
+        const buffer = tech?.atr14 !== undefined ? tech.atr14 * 0.2 : 0;
+        const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
+        const decimals = entry < 10 ? 5 : 2;
+        const bufferNote =
+          buffer > 0
+            ? ` (incl. ${((buffer / entry) * 100).toFixed(3)}% technical ATR buffer beyond structural level)`
+            : "";
+
+        tradePlan = {
+          direction: bias === "Bullish" ? "long" : "short",
+          entry: entry.toString(),
+          entryBasis: "live market price at analysis time",
+          stopLoss: sl.toFixed(decimals),
+          slBasis: `${slBasis}${bufferNote}`,
+          takeProfit: tpLevel.toFixed(decimals),
+          tpBasis,
+          riskReward: rr,
+        };
+      }
+    }
+  }
+
+  const recommendation: Recommendation =
+    tradePlan && reasons.length === 0 ? (bias === "Bullish" ? "LONG" : "SHORT") : "NO_TRADE";
+
+  // ── Conviction — evidence-based, no data-availability bonuses ──
+  let conviction: ConvictionLevel | undefined;
+  let confidence = 0;
+
+  if (recommendation !== "NO_TRADE") {
+    let s = 45;
+    const biasSign = bias === "Bullish" ? 1 : -1;
+
+    // HTF/LTF alignment
+    if (alignment?.state === "aligned") s += 15;
+    else if (alignment?.state === "counter_trend") s -= 15;
+    // htf_unknown / ltf_unclear: no adjustment — uncertainty is not strength
+
+    // Structure strength & confirmation
+    if (tech?.structure === "HH/HL" || tech?.structure === "LH/LL") s += 8;
+    if (tech?.bosDirection === "bullish" && biasSign === 1) s += 8;
+    if (tech?.bosDirection === "bearish" && biasSign === -1) s += 8;
+    if (tech?.chochDirection === "bullish" && biasSign === -1) s -= 8;
+    if (tech?.chochDirection === "bearish" && biasSign === 1) s -= 8;
+
+    // Fundamental alignment
+    if (Math.sign(breakdown.fundamental) === biasSign) s += 10;
+    else if (breakdown.fundamental !== 0) s -= 15;
+
+    // Positioning alignment
+    if (Math.sign(breakdown.sentiment) === biasSign) s += 8;
+    else if (breakdown.sentiment !== 0) s -= 12;
+
+    // RSI/MACD modifier — small, never decisive
+    if (Math.sign(breakdown.indicator) === biasSign) s += 3;
+    else if (breakdown.indicator !== 0) s -= 3;
+
+    // Data completeness
+    if (completeness === "full") s += 5;
+    else if (completeness === "partial") s -= 3;
+    s -= flags.length * 4;
+
+    confidence = Math.round(Math.max(20, Math.min(88, s)));
+    conviction = confidence >= 70 ? "High" : confidence >= 50 ? "Medium" : "Low";
+  } else {
+    // Informational evidence strength for NO_TRADE — NOT a trade conviction.
+    const absAvg = Math.abs(coreWeightedAvg);
+    confidence = Math.round(Math.max(20, Math.min(55, 30 + absAvg * 20)));
+  }
+
+  // ── Key levels output — real levels only, empty when unavailable ──
+  const keyLevels: KeyLevels = {
+    support: swingSupports[0]?.toString() ?? "",
+    resistance: swingResistances[0]?.toString() ?? "",
+    invalidation: tradePlan ? tradePlan.stopLoss : "",
+  };
+
+  return {
+    recommendation,
+    noTradeReasons: recommendation === "NO_TRADE" ? reasons : [],
+    tradePlan,
+    conviction,
+    confidence,
+    keyLevels,
+  };
+}
+
 // ── Summary Generators ────────────────────────────────────────────
 
 function generateTechnicalSummary(
   input: AnalysisInput,
   trendScore: FactorScore,
   indicatorScore: FactorScore,
+  alignment: HtfAlignment | undefined,
 ): string {
   const parts: string[] = [];
   const tech = input.technicalData;
   const md = input.marketData;
 
   if (tech && tech.dataPoints > 0) {
-    // Structure
+    // HTF context first (top-down)
+    if (alignment) {
+      const stateDesc =
+        alignment.state === "aligned"
+          ? "aligned with LTF"
+          : alignment.state === "counter_trend"
+            ? "CONFLICTS with LTF — counter-trend context"
+            : alignment.state === "ltf_unclear"
+              ? "LTF direction unclear"
+              : "HTF structure unclear for comparison";
+      parts.push(`${alignment.htfTimeframe} macro structure: ${alignment.htfStructure} (${stateDesc}).`);
+    } else {
+      parts.push("No higher-timeframe (D1) structural data available — macro context unverified.");
+    }
+
+    // LTF structure
     if (tech.structure === "HH/HL") {
-      parts.push("Market structure is bullish (Higher Highs / Higher Lows).");
+      parts.push("LTF market structure is bullish (Higher Highs / Higher Lows).");
     } else if (tech.structure === "LH/LL") {
-      parts.push("Market structure is bearish (Lower Highs / Lower Lows).");
+      parts.push("LTF market structure is bearish (Lower Highs / Lower Lows).");
     } else if (tech.structure === "range") {
-      parts.push("Market is in a ranging/consolidation phase — no clear directional structure.");
+      parts.push("LTF market is in a ranging/consolidation phase — no clear directional structure.");
     }
 
     // BOS / CHoCH
@@ -443,29 +727,7 @@ function generateTechnicalSummary(
     if (tech.chochDirection === "bullish") parts.push("Bullish Change of Character — potential reversal to upside.");
     else if (tech.chochDirection === "bearish") parts.push("Bearish Change of Character — potential reversal to downside.");
 
-    // Moving averages
-    if (tech.sma50 && tech.sma100 && tech.sma200) {
-      if (tech.sma50 > tech.sma200) {
-        parts.push(`MA alignment bullish: SMA50 (${tech.sma50.toFixed(4)}) > SMA200 (${tech.sma200.toFixed(4)}).`);
-      } else {
-        parts.push(`MA alignment bearish: SMA50 (${tech.sma50.toFixed(4)}) < SMA200 (${tech.sma200.toFixed(4)}).`);
-      }
-    }
-
-    // RSI
-    if (tech.rsi14 !== undefined) {
-      const rsiLabel = tech.rsi14 > 70 ? "overbought" : tech.rsi14 < 30 ? "oversold" : "neutral";
-      parts.push(`RSI(14): ${tech.rsi14} (${rsiLabel}).`);
-      if (tech.rsiDivergence === "bullish") parts.push("Bullish RSI divergence detected.");
-      if (tech.rsiDivergence === "bearish") parts.push("Bearish RSI divergence detected.");
-    }
-
-    // MACD
-    if (tech.macdHistogram !== undefined) {
-      parts.push(`MACD histogram: ${tech.macdHistogram > 0 ? "positive (bullish)" : "negative (bearish)"}.`);
-    }
-
-    // Support / Resistance
+    // Support / Resistance from swings
     if (tech.supportLevels.length > 0) {
       parts.push(`Key support: ${tech.supportLevels.map((s) => s.toFixed(4)).join(", ")}.`);
     }
@@ -480,10 +742,20 @@ function generateTechnicalSummary(
 
     // ATR
     if (tech.atr14 !== undefined) {
-      parts.push(`ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`);
+      parts.push(
+        `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`,
+      );
+    }
+
+    // Secondary momentum context — explicitly non-decisive
+    if (tech.rsi14 !== undefined) {
+      const rsiLabel = tech.rsi14 > 70 ? "overbought" : tech.rsi14 < 30 ? "oversold" : "neutral";
+      parts.push(`RSI(14): ${tech.rsi14} (${rsiLabel}) — secondary context only.`);
+    }
+    if (tech.macdHistogram !== undefined) {
+      parts.push(`MACD histogram: ${tech.macdHistogram > 0 ? "positive" : "negative"} — secondary context only.`);
     }
   } else if (input.currentPrice && input.recentHigh && input.recentLow) {
-    // Manual fallback
     if (trendScore >= 1) {
       parts.push("Price is positioned in the upper range near recent highs, suggesting bullish market structure.");
     } else if (trendScore <= -1) {
@@ -496,27 +768,22 @@ function generateTechnicalSummary(
   }
 
   if (indicatorScore === 0 && (!tech || tech.dataPoints === 0)) {
-    parts.push("Indicator confirmation unavailable — scored neutral.");
+    parts.push("Momentum indicators unavailable — scored neutral (secondary factor).");
   }
 
   return parts.join(" ");
 }
 
-function generateFundamentalSummary(
-  input: AnalysisInput,
-  fundamentalScore: FactorScore,
-): string {
+function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: FactorScore): string {
   const parts: string[] = [];
   const macro = input.macroData;
   const fund = input.fundamentalData;
   const sentiment = input.sentimentData;
 
-  // Macro intelligence (Alpha Vantage)
   if (macro && macro.confidence !== "unavailable") {
     parts.push(`Macro context (${macro.confidence} confidence): ${macro.summary}`);
   }
 
-  // Stock fundamentals (Alpha Vantage)
   if (fund && fund.available && input.instrumentType === "stock") {
     parts.push(`Fundamentals — ${fund.name || fund.symbol}:`);
     if (fund.peRatio !== undefined) parts.push(`P/E: ${fund.peRatio.toFixed(1)}`);
@@ -529,18 +796,16 @@ function generateFundamentalSummary(
     parts.push(fund.unavailableReason);
   }
 
-  // News sentiment summary (Alpha Vantage)
   if (sentiment && sentiment.confidence !== "unavailable") {
-    parts.push(`News sentiment: ${sentiment.label} (${sentiment.averageScore > 0 ? "+" : ""}${sentiment.averageScore.toFixed(2)} avg, ${sentiment.articleCount} articles, ${sentiment.confidence} confidence).`);
+    parts.push(
+      `News sentiment: ${sentiment.label} (${sentiment.averageScore > 0 ? "+" : ""}${sentiment.averageScore.toFixed(2)} avg, ${sentiment.articleCount} articles, ${sentiment.confidence} confidence).`,
+    );
   }
 
-  // Economic calendar summary (Trading Economics)
   const cal = input.calendarData;
   if (cal && cal.confidence !== "unavailable" && cal.events.length > 0) {
-    // Macro risk
     parts.push(`Macro risk: ${cal.macroRisk.level.toUpperCase()} — ${cal.macroRisk.explanation}`);
 
-    // Recently released high-impact events with surprises
     const releasedHighImpact = cal.events.filter(
       (e) => e.status === "released" && e.importance === 3 && e.actual !== undefined && e.forecast !== undefined,
     );
@@ -555,10 +820,7 @@ function generateFundamentalSummary(
       parts.push(`Recent high-impact: ${eventSummaries.join("; ")}.`);
     }
 
-    // Upcoming high-impact events
-    const upcomingHighImpact = cal.events.filter(
-      (e) => e.status === "upcoming" && e.importance === 3,
-    );
+    const upcomingHighImpact = cal.events.filter((e) => e.status === "upcoming" && e.importance === 3);
     if (upcomingHighImpact.length > 0) {
       const eventNames = upcomingHighImpact.slice(0, 3).map((e) => {
         const hrs = Math.round((e.datetime - Date.now()) / (1000 * 60 * 60));
@@ -568,7 +830,6 @@ function generateFundamentalSummary(
     }
   }
 
-  // Fallback if no intelligence data at all
   if (parts.length === 0) {
     if (input.instrumentType === "forex") {
       parts.push("Forex fundamental context: No economic calendar or news data available.");
@@ -588,32 +849,37 @@ function generateFundamentalSummary(
   return parts.join(" ");
 }
 
-function generateRiskNote(bias: DirectionalBias, confidence: number, keyLevels: KeyLevels): string {
+function generateRiskNote(
+  recommendation: Recommendation,
+  conviction: ConvictionLevel | undefined,
+  confidence: number,
+  tradePlan: TradePlan | undefined,
+  noTradeReasons: string[],
+  keyLevels: KeyLevels,
+): string {
   const parts: string[] = [];
 
-  parts.push(
-    `With a ${bias.toLowerCase()} bias at ${confidence}% confidence, ` +
-    `use conservative position sizing (1-2% account risk per trade).`
-  );
-
-  if (bias === "Bullish") {
+  if (recommendation === "NO_TRADE") {
+    parts.push("NO TRADE — this setup does not meet the execution standard.");
+    if (noTradeReasons.length > 0) {
+      parts.push(`Reasons: ${noTradeReasons.join(" ")}`);
+    }
     parts.push(
-      `Consider entries near support at ${keyLevels.support} with a stop below ${keyLevels.invalidation}. ` +
-      `First target at ${keyLevels.resistance}.`
+      "The setup becomes valid when: core factors align in one direction with at least two agreeing, a market-derived structural invalidation exists, an opposing structural level defines a target, and the projected R:R is at least 1.5.",
     );
-  } else if (bias === "Bearish") {
+    if (keyLevels.support || keyLevels.resistance) {
+      parts.push(`Watch levels — support: ${keyLevels.support || "n/a"}, resistance: ${keyLevels.resistance || "n/a"}.`);
+    }
+  } else if (tradePlan) {
     parts.push(
-      `Consider entries near resistance at ${keyLevels.resistance} with a stop above ${keyLevels.invalidation}. ` +
-      `First target at ${keyLevels.support}.`
+      `${recommendation} plan — entry ${tradePlan.entry} (${tradePlan.entryBasis}), SL ${tradePlan.stopLoss} (${tradePlan.slBasis}), TP ${tradePlan.takeProfit} (${tradePlan.tpBasis}). R:R ${tradePlan.riskReward.toFixed(2)}.`,
     );
-  } else {
     parts.push(
-      `No clear directional edge — wait for a catalyst or breakout above ${keyLevels.resistance} / below ${keyLevels.support} before committing.`
+      `Conviction ${conviction} at ${confidence}% evidence strength. Use conservative position sizing (1-2% account risk per trade); exact contract sizing requires instrument specifications not currently available.`,
     );
-  }
-
-  if (confidence < 50) {
-    parts.push("⚠️ Low confidence — reduce position size or wait for higher-conviction setup.");
+    parts.push(
+      `Invalidation: thesis is void if price trades through ${tradePlan.stopLoss} or if structure/HTF context changes against the position.`,
+    );
   }
 
   parts.push("This is NOT financial advice. Always verify with your own analysis and risk management rules.");
@@ -638,83 +904,29 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     sentiment: sentimentScore,
   };
 
-  const { bias, confidence } = calculateBias(breakdown);
+  const { bias, coreWeightedAvg } = calculateBias(breakdown);
+  const alignment = computeAlignment(input);
 
-  // Derive key levels from technical data or fallback to manual input
-  const tech = input.technicalData;
-  const md = input.marketData;
-  const currentPrice = md?.price.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : 0);
+  const decision = decideTrade(
+    input,
+    bias,
+    breakdown,
+    coreWeightedAvg,
+    completeness,
+    flags,
+    alignment,
+  );
 
-  let keyLevels: KeyLevels;
-  if (tech && (tech.supportLevels.length > 0 || tech.resistanceLevels.length > 0)) {
-    // Derive levels from technical data — handle missing sides gracefully
-    let nearestSupport: number;
-    let nearestResistance: number;
-
-    if (tech.supportLevels.length > 0) {
-      nearestSupport = tech.supportLevels[tech.supportLevels.length - 1];
-    } else {
-      // No swing-low support found — derive from ATR below current price
-      nearestSupport = currentPrice - (tech.atr14 ?? currentPrice * 0.02) * 2;
-    }
-
-    if (tech.resistanceLevels.length > 0) {
-      nearestResistance = tech.resistanceLevels[0];
-    } else {
-      // No swing-high resistance found — derive from ATR above current price
-      nearestResistance = currentPrice + (tech.atr14 ?? currentPrice * 0.02) * 2;
-    }
-
-    keyLevels = {
-      support: nearestSupport.toFixed(4),
-      resistance: nearestResistance.toFixed(4),
-      invalidation:
-        bias === "Bullish"
-          ? `${(nearestSupport * 0.995).toFixed(4)}`
-          : bias === "Bearish"
-            ? `${(nearestResistance * 1.005).toFixed(4)}`
-            : `${(nearestSupport * 0.99).toFixed(4)} — ${(nearestResistance * 1.01).toFixed(4)}`,
-    };
-  } else {
-    const high = input.recentHigh ? parseFloat(input.recentHigh) : currentPrice * 1.02;
-    const low = input.recentLow ? parseFloat(input.recentLow) : currentPrice * 0.98;
-    keyLevels = {
-      support: input.recentLow || low.toFixed(4),
-      resistance: input.recentHigh || high.toFixed(4),
-      invalidation:
-        bias === "Bullish"
-          ? `${(low * 0.995).toFixed(4)}`
-          : bias === "Bearish"
-            ? `${(high * 1.005).toFixed(4)}`
-            : `${(low * 0.99).toFixed(4)} — ${(high * 1.01).toFixed(4)}`,
-    };
-  }
-
-  const technicalSummary = generateTechnicalSummary(input, trendScore, indicatorScore);
+  const technicalSummary = generateTechnicalSummary(input, trendScore, indicatorScore, alignment);
   const fundamentalSummary = generateFundamentalSummary(input, fundamentalScore);
-  const riskNote = generateRiskNote(bias, confidence, keyLevels);
-
-  // Boost confidence slightly for auto-fetched data
-  let adjustedConfidence = confidence;
-  if (md && tech && tech.dataPoints >= 100) {
-    adjustedConfidence = Math.min(95, adjustedConfidence + 5);
-  }
-  // Boost for intelligence data availability
-  if (input.sentimentData && input.sentimentData.confidence !== "unavailable") {
-    adjustedConfidence = Math.min(95, adjustedConfidence + 3);
-  }
-  if (input.fundamentalData && input.fundamentalData.available) {
-    adjustedConfidence = Math.min(95, adjustedConfidence + 3);
-  }
-  if (input.macroData && input.macroData.confidence !== "unavailable") {
-    adjustedConfidence = Math.min(95, adjustedConfidence + 2);
-  }
-  if (input.derivativesData && input.derivativesData.confidence !== "unavailable") {
-    adjustedConfidence = Math.min(95, adjustedConfidence + 3);
-  }
-  if (input.calendarData && input.calendarData.confidence !== "unavailable") {
-    adjustedConfidence = Math.min(95, adjustedConfidence + 2);
-  }
+  const riskNote = generateRiskNote(
+    decision.recommendation,
+    decision.conviction,
+    decision.confidence,
+    decision.tradePlan,
+    decision.noTradeReasons,
+    decision.keyLevels,
+  );
 
   return {
     id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -722,18 +934,23 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     instrumentType: input.instrumentType,
     timeframe: input.timeframe,
     bias,
-    confidence: adjustedConfidence,
+    confidence: decision.confidence,
+    recommendation: decision.recommendation,
+    conviction: decision.conviction,
+    noTradeReasons: decision.noTradeReasons,
+    tradePlan: decision.tradePlan,
+    htfAlignment: alignment,
     technicalSummary,
     fundamentalSummary,
     breakdown,
-    keyLevels,
+    keyLevels: decision.keyLevels,
     riskNote,
     dataCompleteness: completeness,
     dataFlags: flags,
     timestamp: Date.now(),
-    priceSnapshot: md?.price,
-    technicalData: tech,
-    dataSource: md?.provider,
+    priceSnapshot: input.marketData?.price,
+    technicalData: input.technicalData,
+    dataSource: input.marketData?.provider,
     sentimentData: input.sentimentData,
     fundamentalData: input.fundamentalData,
     macroData: input.macroData,
@@ -762,3 +979,5 @@ export const TIMEFRAMES: { value: string; label: string }[] = [
   { value: "D1", label: "Daily" },
   { value: "W1", label: "Weekly" },
 ];
+
+export const MIN_RR_THRESHOLD = MIN_RR;

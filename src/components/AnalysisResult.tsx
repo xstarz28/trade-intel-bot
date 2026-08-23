@@ -114,9 +114,27 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <span className={cn("text-sm font-semibold font-mono", biasConfig.color)}>
                     BIAS: {result.bias}
                   </span>
-                  <Badge variant="outline" className={cn("text-[10px] font-mono", conviction.color)}>
-                    Conviction: {conviction.label}
-                  </Badge>
+                  {result.recommendation === "NO_TRADE" ? (
+                    <Badge className="text-[10px] font-mono bg-red-500/15 text-red-400 border border-red-500/30">
+                      ⛔ NO TRADE
+                    </Badge>
+                  ) : (
+                    <Badge
+                      className={cn(
+                        "text-[10px] font-mono border",
+                        result.recommendation === "LONG"
+                          ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30"
+                          : "bg-red-500/15 text-red-400 border-red-500/30",
+                      )}
+                    >
+                      {result.recommendation === "LONG" ? "▲ LONG" : "▼ SHORT"}
+                    </Badge>
+                  )}
+                  {result.conviction && (
+                    <Badge variant="outline" className={cn("text-[10px] font-mono", conviction.color)}>
+                      Conviction: {result.conviction}
+                    </Badge>
+                  )}
                 </div>
               </div>
             </div>
@@ -240,6 +258,68 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   Vol: {tech.volumeTrend}
                 </span>
               )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* NO TRADE — explicit rejection reasons */}
+      {result.recommendation === "NO_TRADE" && result.noTradeReasons.length > 0 && (
+        <Card className="border-red-500/25 bg-red-500/5">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-mono font-semibold text-red-400">⛔ no-trade — setup rejected</h4>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <ul className="space-y-1.5">
+              {result.noTradeReasons.map((reason, i) => (
+                <li key={i} className="text-[11px] leading-relaxed text-red-300/80 font-mono flex gap-1.5">
+                  <span className="shrink-0">—</span>
+                  <span>{reason}</span>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Trade Plan — market-derived levels only */}
+      {result.tradePlan && result.recommendation !== "NO_TRADE" && (
+        <Card className={cn("border", biasConfig.border)}>
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span> trade-plan
+              </h4>
+              <Badge variant="outline" className="text-[10px] font-mono ml-auto border-border/50">
+                R:R {result.tradePlan.riskReward.toFixed(2)}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2.5">
+                <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider mb-1">
+                  entry
+                </p>
+                <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.entry}</p>
+                <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5">market price</p>
+              </div>
+              <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2.5">
+                <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-1">
+                  stop loss
+                </p>
+                <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.stopLoss}</p>
+                <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">{result.tradePlan.slBasis}</p>
+              </div>
+              <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2.5">
+                <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-1">
+                  take profit
+                </p>
+                <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.takeProfit}</p>
+                <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">{result.tradePlan.tpBasis}</p>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -489,19 +569,19 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-1">
                 support
               </p>
-              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.support}</p>
+              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.support || "—"}</p>
             </div>
             <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2.5">
               <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-1">
                 resistance
               </p>
-              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.resistance}</p>
+              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.resistance || "—"}</p>
             </div>
             <div className="rounded-lg bg-amber-500/5 border border-amber-500/15 px-3 py-2.5">
               <p className="text-[10px] font-mono font-medium text-amber-400 uppercase tracking-wider mb-1">
                 invalidation
               </p>
-              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.invalidation}</p>
+              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.invalidation || "—"}</p>
             </div>
           </div>
         </CardContent>
