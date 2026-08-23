@@ -116,18 +116,39 @@ function scoreTrend(input: AnalysisInput): FactorScore {
   // ── Auto-fetched data path (preferred) ──
   if (tech && tech.dataPoints >= 5) {
     let score = 0;
+    const smc = tech.smc;
 
-    // Market structure: HH/HL → bullish, LH/LL → bearish
-    if (tech.structure === "HH/HL") score += 1;
-    else if (tech.structure === "LH/LL") score -= 1;
+    if (smc) {
+      // ── External/major structure drives the trend factor ──
+      const ext = smc.internalExternal.external;
+      if (ext.structure === "HH/HL") score += 1;
+      else if (ext.structure === "LH/LL") score -= 1;
 
-    // BOS adds confirmation
-    if (tech.bosDirection === "bullish") score += 1;
-    else if (tech.bosDirection === "bearish") score -= 1;
+      // External BOS adds confirmation
+      if (ext.bosDirection === "bullish") score += 1;
+      else if (ext.bosDirection === "bearish") score -= 1;
 
-    // CHoCH reversal signal
-    if (tech.chochDirection === "bearish") score -= 1;
-    if (tech.chochDirection === "bullish") score += 1;
+      // External CHoCH reversal signal
+      if (ext.chochDirection === "bullish") score += 1;
+      if (ext.chochDirection === "bearish") score -= 1;
+
+      // Internal/minor structure is a TRIGGER context, never a trend
+      // change by itself. An opposing minor read is only an early-warning.
+      const int = smc.internalExternal.internal;
+      const extDir = tfDirection(ext.structure, ext.chochDirection);
+      const intDir = tfDirection(int.structure, int.chochDirection);
+      if (extDir !== "none" && intDir !== "none" && extDir !== intDir) score -= 1;
+    } else {
+      // Fallback: top-level fields (pre-SMC shape)
+      if (tech.structure === "HH/HL") score += 1;
+      else if (tech.structure === "LH/LL") score -= 1;
+
+      if (tech.bosDirection === "bullish") score += 1;
+      else if (tech.bosDirection === "bearish") score -= 1;
+
+      if (tech.chochDirection === "bearish") score -= 1;
+      if (tech.chochDirection === "bullish") score += 1;
+    }
 
     return clampScore(score);
   }
@@ -415,7 +436,16 @@ function assessDataCompleteness(input: AnalysisInput): {
     missing++;
   }
   if (!input.technicalData?.htfContext) {
-    flags.push("No higher-timeframe (D1) structural data — macro context unverified");
+    flags.push("No higher-timeframe structural data — macro context unverified");
+  }
+  if (input.technicalData?.chainUnavailable?.length) {
+    flags.push(
+      `Timeframe chain unavailable: ${input.technicalData.chainUnavailable.join(", ")} — context not synthesized`,
+    );
+  }
+  const smcFlag = input.technicalData?.smc;
+  if (smcFlag && !smcFlag.volumeProfile.available && smcFlag.volumeProfile.unavailableReason) {
+    flags.push(`Volume limitation: ${smcFlag.volumeProfile.unavailableReason}`);
   }
 
   let completeness: "full" | "partial" | "limited" = "full";
@@ -552,16 +582,34 @@ function decideTrade(
   let tpBasis = "";
 
   if (entry !== undefined && entry > 0) {
+    const smcPools = tech?.smc?.liquidityPools ?? [];
+
     if (bias === "Bullish") {
       stopLevel = swingSupports[0];
       slBasis = stopLevel !== undefined ? "nearest market swing low (structural)" : "";
-      tpLevel = swingResistances[0];
-      tpBasis = tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
+      // Prefer a resting buy-side liquidity pool as target when available,
+      // else the nearest swing resistance. Both are market-derived.
+      const buyPoolAbove = smcPools
+        .filter((p) => p.side === "buy_side" && !p.swept && !p.broken && p.level > price)
+        .sort((a, b) => a.level - b.level)[0];
+      tpLevel = buyPoolAbove?.level ?? swingResistances[0];
+      tpBasis = buyPoolAbove
+        ? `resting buy-side liquidity (${buyPoolAbove.source}, ${buyPoolAbove.touches} touch${buyPoolAbove.touches > 1 ? "es" : ""})`
+        : tpLevel !== undefined
+          ? "nearest market swing high / resistance (structural)"
+          : "";
     } else if (bias === "Bearish") {
       stopLevel = swingResistances[0];
       slBasis = stopLevel !== undefined ? "nearest market swing high (structural)" : "";
-      tpLevel = swingSupports[0];
-      tpBasis = tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
+      const sellPoolBelow = smcPools
+        .filter((p) => p.side === "sell_side" && !p.swept && !p.broken && p.level < price)
+        .sort((a, b) => b.level - a.level)[0];
+      tpLevel = sellPoolBelow?.level ?? swingSupports[0];
+      tpBasis = sellPoolBelow
+        ? `resting sell-side liquidity (${sellPoolBelow.source}, ${sellPoolBelow.touches} touch${sellPoolBelow.touches > 1 ? "es" : ""})`
+        : tpLevel !== undefined
+          ? "nearest market swing low / support (structural)"
+          : "";
     }
 
     if (bias !== "Neutral" && stopLevel === undefined) {
@@ -649,6 +697,53 @@ function decideTrade(
     // Positioning alignment
     if (Math.sign(breakdown.sentiment) === biasSign) s += 8;
     else if (breakdown.sentiment !== 0) s -= 12;
+
+    // ── Phase 2 price-action confluence — real evidence only ──
+    // Each bonus reflects an actual detected event, not data availability.
+    const smcEvid = tech?.smc;
+    if (smcEvid) {
+      // Liquidity sweep in favor of the trade direction
+      const sweepFavorable =
+        smcEvid.recentSweep &&
+        ((biasSign === 1 && smcEvid.recentSweep.side === "sell_side") ||
+          (biasSign === -1 && smcEvid.recentSweep.side === "buy_side"));
+      if (sweepFavorable) s += 8;
+
+      // Displacement confirming the direction
+      if (
+        smcEvid.displacement &&
+        (smcEvid.displacement.direction === "bullish") === (biasSign === 1)
+      )
+        s += 6;
+
+      // Fresh (unmitigated, uninvalidated) FVG in trade direction
+      if (
+        smcEvid.fvgs.some(
+          (f) => f.status === "fresh" && f.direction === (biasSign === 1 ? "bullish" : "bearish"),
+        )
+      )
+        s += 4;
+
+      // Validated Order Block in trade direction (invalidated ones never count)
+      if (
+        smcEvid.orderBlocks.some(
+          (o) => o.status !== "invalidated" && o.direction === (biasSign === 1 ? "bullish" : "bearish"),
+        )
+      )
+        s += 4;
+
+      // VWAP location context — deliberately small, never standalone
+      if (
+        smcEvid.vwap.available &&
+        ((biasSign === 1 && smcEvid.vwap.priceLocation === "above_vwap") ||
+          (biasSign === -1 && smcEvid.vwap.priceLocation === "below_vwap"))
+      )
+        s += 3;
+
+      // LTF trigger timeframe agrees with the setup direction
+      const triggerDir = tfDirection(tech?.ltfTrigger?.structure, tech?.ltfTrigger?.chochDirection);
+      if ((biasSign === 1 && triggerDir === "long") || (biasSign === -1 && triggerDir === "short")) s += 4;
+    }
 
     // RSI/MACD modifier — small, never decisive
     if (Math.sign(breakdown.indicator) === biasSign) s += 3;
@@ -744,6 +839,92 @@ function generateTechnicalSummary(
     if (tech.atr14 !== undefined) {
       parts.push(
         `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`,
+      );
+    }
+
+    // ── Phase 2 liquidity / FVG / OB / VWAP / Volume Profile context ──
+    const smcInfo = tech.smc;
+    if (smcInfo) {
+      // Liquidity pools
+      const restingBuys = smcInfo.liquidityPools
+        .filter((p) => p.side === "buy_side" && !p.swept && !p.broken)
+        .sort((a, b) => a.level - b.level)
+        .slice(0, 2);
+      const restingSells = smcInfo.liquidityPools
+        .filter((p) => p.side === "sell_side" && !p.swept && !p.broken)
+        .sort((a, b) => b.level - a.level)
+        .slice(0, 2);
+      const fmtPool = (p: { level: number; source: string }) => `${p.level.toFixed(4)} (${p.source})`;
+      if (restingBuys.length > 0 || restingSells.length > 0) {
+        parts.push(
+          `Resting liquidity — buy-side above: ${restingBuys.map(fmtPool).join(", ") || "none detected"}; sell-side below: ${restingSells.map(fmtPool).join(", ") || "none detected"}.`,
+        );
+      }
+      if (smcInfo.recentSweep) {
+        parts.push(
+          `Recent sweep: ${smcInfo.recentSweep.side} ${smcInfo.recentSweep.source} at ${smcInfo.recentSweep.level.toFixed(4)} — wick pierced, close rejected back (sweep, not breakout).`,
+        );
+      }
+
+      // Internal vs external structure note
+      if (smcInfo.internalExternal.internalConflict) {
+        parts.push("Internal structure currently opposes external structure — minor-degree warning only.");
+      }
+
+      // FVGs
+      const freshFvgs = smcInfo.fvgs.filter((f) => f.status === "fresh").slice(0, 2);
+      if (freshFvgs.length > 0) {
+        parts.push(
+          `Fresh FVGs: ${freshFvgs.map((f) => `${f.direction} ${f.lower.toFixed(4)}–${f.upper.toFixed(4)}`).join("; ")}.`,
+        );
+      }
+
+      // Displacement
+      if (smcInfo.displacement) {
+        parts.push(
+          `Displacement: ${smcInfo.displacement.direction} candle (${smcInfo.displacement.bodyRatio} body/ratio, ${smcInfo.displacement.rangeAtrMultiple}× ATR range).`,
+        );
+      }
+
+      // Validated Order Blocks
+      const obs = smcInfo.orderBlocks.slice(0, 2);
+      if (obs.length > 0) {
+        parts.push(
+          `Validated order blocks: ${obs.map((o) => `${o.direction} ${o.lower.toFixed(4)}–${o.upper.toFixed(4)} (${o.status}, displacement ${o.evidence.displacementRangeAtr}× ATR)`).join("; ")}.`,
+        );
+      }
+
+      // VWAP context
+      if (smcInfo.vwap.available) {
+        const v = smcInfo.vwap;
+        let vwapLine = `Session VWAP: ${v.sessionVwap?.toFixed(4)} — price ${v.priceLocation.replace("_", " ")}.`;
+        if (v.bands) {
+          vwapLine += ` Bands ±1σ: ${v.bands.minus1.toFixed(4)}–${v.bands.plus1.toFixed(4)}.`;
+        }
+        if (v.anchoredVwap) {
+          vwapLine += ` Anchored VWAP: ${v.anchoredVwap.value.toFixed(4)}.`;
+        }
+        vwapLine += " Context/location tool only — not a standalone signal.";
+        parts.push(vwapLine);
+      } else if (smcInfo.vwap.unavailableReason) {
+        parts.push(`VWAP unavailable: ${smcInfo.vwap.unavailableReason}`);
+      }
+
+      // Volume profile
+      if (smcInfo.volumeProfile.available) {
+        const vp = smcInfo.volumeProfile;
+        parts.push(
+          `Volume profile — POC ${vp.poc?.toFixed(4)}, VAH ${vp.vah?.toFixed(4)}, VAL ${vp.val?.toFixed(4)}.`,
+        );
+      } else if (smcInfo.volumeProfile.unavailableReason) {
+        parts.push(`Volume profile unavailable: ${smcInfo.volumeProfile.unavailableReason}`);
+      }
+    }
+
+    // LTF trigger context
+    if (tech.ltfTrigger) {
+      parts.push(
+        `LTF trigger (${tech.ltfTrigger.timeframe}): ${tech.ltfTrigger.structure}${tech.ltfTrigger.chochDirection !== "none" ? `, CHoCH ${tech.ltfTrigger.chochDirection}` : ""}.`,
       );
     }
 
