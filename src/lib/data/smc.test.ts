@@ -329,50 +329,70 @@ describe("computeVolumeProfile", () => {
 // ── computeSmcContext (integration) ───────────────────────────────
 
 describe("computeSmcContext", () => {
+  // Leg-based uptrend: up-legs of 10 bars (+1/bar) separated by pullbacks
+  // of 6 bars (−0.5/bar). Real fractal geometry → detectable major swings.
+  function trendWithPullbacks(): OhlcvCandle[] {
+    const out: OhlcvCandle[] = [];
+    let price = 100;
+    const legs = [
+      { bars: 10, step: 1 },
+      { bars: 6, step: -0.5 },
+      { bars: 10, step: 1 },
+      { bars: 6, step: -0.5 },
+      { bars: 10, step: 1 },
+      { bars: 6, step: -0.5 },
+      { bars: 10, step: 1 },
+    ];
+    for (const leg of legs) {
+      for (let b = 0; b < leg.bars; b++) {
+        const o = price;
+        price += leg.step;
+        out.push(
+          candle(T(out.length), o, Math.max(o, price) + 0.2, Math.min(o, price) - 0.2, price),
+        );
+      }
+    }
+    return out;
+  }
+
   it("assembles a full context from a trending series", () => {
-    const candles = Array.from({ length: 60 }, (_, i) => {
-      const base = 100 + i * 0.5;
-      const up = i % 2 === 0;
-      const open = base;
-      const close = base + (up ? 0.4 : -0.2);
-      return candle(
-        T(i),
-        open,
-        Math.max(open, close) + 0.3,
-        Math.min(open, close) - 0.3,
-        close,
-        1000,
-      );
-    });
+    const candles = trendWithPullbacks();
     const ctx = computeSmcContext(candles, "H4");
 
     expect(ctx.timeframe).toBe("H4");
     expect(ctx.internalExternal.external.structure).toBe("HH/HL");
-    expect(ctx.internalExternal.external.dataPoints).toBe(60);
+    expect(ctx.internalExternal.external.dataPoints).toBe(candles.length);
     expect(Array.isArray(ctx.liquidityPools)).toBe(true);
     expect(ctx.vwap.available).toBe(true);
     expect(ctx.volumeProfile.available).toBe(true);
-    // Uptrend with rising closes should eventually produce bullish evidence
-    expect(["bullish", "none"]).toContain(ctx.displacement?.direction ?? "bullish");
   });
 
   it("flags internal/external conflict when minor structure opposes major", () => {
-    // 70 rising bars then 8 declining bars
-    const candles: OhlcvCandle[] = [];
-    for (let i = 0; i < 70; i++) {
-      const base = 100 + i * 0.5;
-      const up = i % 2 === 0;
-      const close = base + (up ? 0.4 : -0.2);
-      candles.push(candle(T(i), base, Math.max(base, close) + 0.3, Math.min(base, close) - 0.3, close, 1000));
-    }
-    for (let i = 70; i < 78; i++) {
-      const base = 134.5 - (i - 70) * 0.6;
-      const up = i % 2 === 0;
-      const close = base + (up ? 0.3 : -0.4);
-      candles.push(candle(T(i), base, Math.max(base, close) + 0.2, Math.min(base, close) - 0.2, close, 1000));
-    }
+    const candles = trendWithPullbacks();
+    let p = candles[candles.length - 1].close;
+    const pushBar = (o: number, h: number, l: number, c: number) =>
+      candles.push(candle(T(candles.length), o, h, l, c));
+    const runBars = (n: number, step: number) => {
+      for (let k = 0; k < n; k++) {
+        const o = p;
+        p += step;
+        pushBar(o, Math.max(o, p) + 0.1, Math.min(o, p) - 0.1, p);
+      }
+    };
+    // Decline with two relief bounces forming MINOR lower-highs; terminal
+    // bottom breaks the last minor HL → internal LH/LL. Only the terminal
+    // bottom becomes a NEW major low and the recovery ends above the last
+    // major HL → external stays HH/HL with no CHoCH.
+    runBars(6, -0.75);
+    runBars(2, 0.5);
+    runBars(7, -0.75);
+    runBars(2, 0.45);
+    runBars(11, -0.75);
+    runBars(4, 1.5);
+
     const ctx = computeSmcContext(candles, "H1");
-    // External (lookback 5) should still read bullish; internal (lookback 3) bearish
+    expect(ctx.internalExternal.external.structure).toBe("HH/HL");
+    expect(ctx.internalExternal.internal.structure).toBe("LH/LL");
     expect(ctx.internalExternal.internalConflict).toBe(true);
   });
 });

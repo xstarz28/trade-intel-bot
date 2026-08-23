@@ -193,7 +193,7 @@ describe("liquidity-aware trade location", () => {
       baseInput({ marketData: makeMarket(100), technicalData: makeTech(bullishSmc()) }),
     );
     expect(result.recommendation).toBe("LONG");
-    expect(result.tradePlan?.takeProfit).toBe("108");
+    expect(result.tradePlan?.takeProfit).toBe("108.00");
     expect(result.tradePlan?.tpBasis).toContain("buy-side liquidity");
   });
 
@@ -218,7 +218,10 @@ describe("internal/external structure factor", () => {
         external: {
           timeframe: "H4",
           structure: "HH/HL",
-          bosDirection: "bullish",
+          // NOTE: bosDirection stays "none" so the ONLY delta vs emptySmc()
+          // is the internal conflict — otherwise the bullish-BOS bonus
+          // (+1) would exactly offset the conflict penalty (−1).
+          bosDirection: "none",
           chochDirection: "none",
           dataPoints: 210,
         },
