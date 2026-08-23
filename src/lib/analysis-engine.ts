@@ -12,6 +12,7 @@ import type {
   TradePlan,
 } from "@/types/analysis";
 import type { MarketData, MtfContext, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
+import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 
 export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels, MtfSummary };
 export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradePlan, HtfAlignment } from "@/types/analysis";
@@ -514,6 +515,25 @@ function decideTrade(
   if (userLow !== undefined && userLow < price) swingSupports.push(userLow);
   if (userHigh !== undefined && userHigh > price) swingResistances.push(userHigh);
 
+  // ── Gate 0: primary data validity (Phase 3B) ──
+  // Old or known-invalid data must never back an executable plan.
+  // "Missing data is uncertainty, not directional evidence."
+  if (md && (md.dataFreshness === "stale" || md.dataFreshness === "unavailable")) {
+    reasons.push(
+      `Primary market data is flagged "${md.dataFreshness}" by the provider — it cannot be treated as live pricing for an executable plan.`,
+    );
+  }
+  const PRICE_STALE_MS = 30 * 60 * 1000;
+  if (
+    md &&
+    Number.isFinite(md.price.timestamp) &&
+    Date.now() - md.price.timestamp > PRICE_STALE_MS
+  ) {
+    reasons.push(
+      `Price snapshot is older than ${PRICE_STALE_MS / 60000} minutes — treating it as stale rather than live.`,
+    );
+  }
+
   // ── Gate 1: live price required ──
   if (entry === undefined || entry <= 0) {
     reasons.push("No live market price available — cannot define entry or measure structural distance.");
@@ -698,6 +718,28 @@ function decideTrade(
             : "";
     }
 
+    if (bias !== "Neutral" && stopLevel !== undefined && tpLevel !== undefined) {
+      // Defensive side-validation: every level must sit on the correct side
+      // of entry for this trade direction. A violation means the level is
+      // not a usable market observation for this thesis.
+      const stopValid = bias === "Bullish" ? stopLevel < entry! : stopLevel > entry!;
+      const tpValid = bias === "Bullish" ? tpLevel > entry! : tpLevel < entry!;
+      if (!stopValid) {
+        reasons.push(
+          `Invalid structural stop: ${stopLevel} is on the wrong side of entry for a ${bias.toLowerCase()} thesis.`,
+        );
+        stopLevel = undefined;
+        slBasis = "";
+      }
+      if (!tpValid) {
+        reasons.push(
+          `Invalid target: ${tpLevel} is on the wrong side of entry for a ${bias.toLowerCase()} thesis.`,
+        );
+        tpLevel = undefined;
+        tpBasis = "";
+      }
+    }
+
     if (bias !== "Neutral" && stopLevel === undefined) {
       reasons.push(
         `Insufficient structural confirmation: no market-derived swing ${bias === "Bullish" ? "low below price" : "high above price"} available to anchor the stop loss.`,
@@ -764,6 +806,12 @@ function decideTrade(
 
   const recommendation: Recommendation =
     tradePlan && reasons.length === 0 ? (bias === "Bullish" ? "LONG" : "SHORT") : "NO_TRADE";
+
+  // ── Phase 3B state integrity ──
+  // NO_TRADE is a first-class state: it NEVER carries an executable plan.
+  // Entry/SL/TP/R:R exist only for LONG and SHORT — never hidden, always
+  // absent when the setup is rejected for any reason.
+  const finalPlan = recommendation === "NO_TRADE" ? undefined : tradePlan;
 
   // ── Conviction — evidence-based, no data-availability bonuses ──
   let conviction: ConvictionLevel | undefined;
@@ -892,13 +940,13 @@ function decideTrade(
   const keyLevels: KeyLevels = {
     support: swingSupports[0]?.toString() ?? "",
     resistance: swingResistances[0]?.toString() ?? "",
-    invalidation: tradePlan ? tradePlan.stopLoss : "",
+    invalidation: finalPlan ? finalPlan.stopLoss : "",
   };
 
   return {
     recommendation,
     noTradeReasons: recommendation === "NO_TRADE" ? reasons : [],
-    tradePlan,
+    tradePlan: finalPlan,
     conviction,
     confidence,
     keyLevels,
@@ -1190,6 +1238,7 @@ function generateRiskNote(
   tradePlan: TradePlan | undefined,
   noTradeReasons: string[],
   keyLevels: KeyLevels,
+  positionSizing?: PositionSizingResult,
 ): string {
   const parts: string[] = [];
 
@@ -1208,9 +1257,15 @@ function generateRiskNote(
     parts.push(
       `${recommendation} plan — entry ${tradePlan.entry} (${tradePlan.entryBasis}), SL ${tradePlan.stopLoss} (${tradePlan.slBasis}), TP ${tradePlan.takeProfit} (${tradePlan.tpBasis}). R:R ${tradePlan.riskReward.toFixed(2)}.`,
     );
-    parts.push(
-      `Conviction ${conviction} at ${confidence}% evidence strength. Use conservative position sizing (1-2% account risk per trade); exact contract sizing requires instrument specifications not currently available.`,
-    );
+    if (positionSizing?.available) {
+      parts.push(
+        `Conviction ${conviction} at ${confidence}% evidence strength. Position size for the provided account inputs: ${positionSizing.quantity} ${positionSizing.quantityUnit ?? "units"} at ${(positionSizing.appliedRiskPercent! * 100).toFixed(2)}% risk — risking ≈${positionSizing.riskAmount?.toFixed(2)} if the structural stop is hit. This reflects YOUR chosen risk, not a recommendation of what is optimal.`,
+      );
+    } else {
+      parts.push(
+        `Conviction ${conviction} at ${confidence}% evidence strength. Position sizing unavailable — it requires your account equity, your own risk-per-trade choice, and a complete instrument specification (contract size, quote currency, quantity step); none are assumed on your behalf. As general guidance only, many traders risk 1–2% per trade, but that is not optimal for every account or instrument.`,
+      );
+    }
     parts.push(
       `Invalidation: thesis is void if price trades through ${tradePlan.stopLoss} or if structure/HTF context changes against the position.`,
     );
@@ -1261,6 +1316,22 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     mtf,
   );
   const fundamentalSummary = generateFundamentalSummary(input, fundamentalScore);
+
+  // ── Phase 3B: position sizing — ONLY from complete real inputs ──
+  // Never fabricated: without user equity/risk% AND a complete
+  // InstrumentSpec, sizing stays explicitly unavailable.
+  let positionSizing: PositionSizingResult | undefined;
+  if (decision.recommendation !== "NO_TRADE" && decision.tradePlan) {
+    const sizing = computePositionSizing({
+      equity: input.accountEquity ?? NaN,
+      riskPercent: input.riskPercent ?? NaN,
+      entry: parseFloat(decision.tradePlan.entry),
+      stopLoss: parseFloat(decision.tradePlan.stopLoss),
+      spec: input.instrumentSpec,
+    });
+    if (sizing.available) positionSizing = sizing;
+  }
+
   const riskNote = generateRiskNote(
     decision.recommendation,
     decision.conviction,
@@ -1268,6 +1339,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     decision.tradePlan,
     decision.noTradeReasons,
     decision.keyLevels,
+    positionSizing,
   );
 
   // Phase 3A — compact MTF transparency summary for the UI.
