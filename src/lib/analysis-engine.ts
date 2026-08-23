@@ -7,12 +7,13 @@ import type {
   FactorScore,
   HtfAlignment,
   KeyLevels,
+  MtfSummary,
   Recommendation,
   TradePlan,
 } from "@/types/analysis";
-import type { MarketData, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
+import type { MarketData, MtfContext, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
 
-export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels };
+export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels, MtfSummary };
 export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradePlan, HtfAlignment } from "@/types/analysis";
 
 // ── Phase 1 decision-engine constants ─────────────────────────────
@@ -483,6 +484,7 @@ function decideTrade(
   completeness: "full" | "partial" | "limited",
   flags: string[],
   alignment: HtfAlignment | undefined,
+  mtf?: MtfContext,
 ): TradeDecision {
   const reasons: string[] = [];
   const tech = input.technicalData;
@@ -575,6 +577,71 @@ function decideTrade(
     }
   }
 
+  // ── Gate 6b: adaptive multi-timeframe hierarchy ──────────────────
+  // HTF is CONTEXT; LTF is TRIGGER. An LTF signal never flips the HTF bias
+  // by itself — only a genuine external BOS/CHoCH on the HTF can do that.
+  if (mtf && bias !== "Neutral") {
+    const biasDir = bias === "Bullish" ? "long" : "short";
+    const biasSign = bias === "Bullish" ? 1 : -1;
+
+    /** Fresh price-action evidence on one timeframe in the trade direction. */
+    const hasEvidence = (tfLabel: string | undefined): boolean => {
+      if (!tfLabel) return false;
+      const entry = mtf.timeframes.find((t) => t.timeframe === tfLabel);
+      const smc = entry?.smc;
+      if (!smc) return false;
+      const dirMatches = (d: "bullish" | "bearish") => (d === "bullish") === (biasSign === 1);
+      return (
+        (smc.displacement !== undefined && dirMatches(smc.displacement.direction)) ||
+        smc.fvgs.some((f) => f.status === "fresh" && dirMatches(f.direction)) ||
+        smc.orderBlocks.some((o) => o.status !== "invalidated" && dirMatches(o.direction)) ||
+        (smc.recentSweep !== undefined &&
+          ((biasSign === 1 && smc.recentSweep.side === "sell_side") ||
+            (biasSign === -1 && smc.recentSweep.side === "buy_side")))
+      );
+    };
+
+    if (mtf.alignment === "INSUFFICIENT_DATA") {
+      reasons.push(
+        `MTF context insufficient: no readable higher-timeframe structure available (${mtf.unavailable.map((u) => u.timeframe).join(", ") || "HTF chain"}) — macro context cannot be established from market data.`,
+      );
+    } else if (mtf.alignment === "COUNTER_TREND") {
+      if (biasDir !== mtf.htfBias) {
+        // Trading AGAINST the dominant HTF: requires a full confirmation
+        // chain on the counter side — trigger confirmation + fresh evidence
+        // + a non-technical factor agreeing. Otherwise NO_TRADE.
+        const triggerConfirms = hasEvidence(mtf.triggerTimeframe);
+        const setupChochConfirms =
+          tech?.chochDirection != null &&
+          ((biasDir === "long" && tech.chochDirection === "bullish") ||
+            (biasDir === "short" && tech.chochDirection === "bearish"));
+        const nonTechnicalAgrees =
+          Math.sign(breakdown.fundamental) === biasSign ||
+          Math.sign(breakdown.sentiment) === biasSign;
+
+        if (!(setupChochConfirms && triggerConfirms && nonTechnicalAgrees)) {
+          reasons.push(
+            `Counter-trend setup against ${mtf.htfTimeframe} ${mtf.htfBias === "long" ? "bullish" : "bearish"} structure lacks the required confirmation chain (needs setup CHoCH + trigger-timeframe fresh evidence + fundamental/positioning agreement). LTF signals alone do not reverse HTF context.`,
+          );
+        }
+      }
+      // bias WITH the HTF while lower TFs pull back = buying/selling into
+      // a retracement of the dominant trend — valid context.
+    } else if (mtf.alignment === "MIXED") {
+      // Mixed timeframes need strong remaining confluence to be accountable:
+      // a non-technical core factor AND fresh execution evidence must agree.
+      const nonTechnicalAgrees =
+        Math.sign(breakdown.fundamental) === biasSign ||
+        Math.sign(breakdown.sentiment) === biasSign;
+      const executionEvidence = hasEvidence(mtf.triggerTimeframe) || hasEvidence(mtf.setupTimeframe);
+      if (!nonTechnicalAgrees || !executionEvidence) {
+        reasons.push(
+          `MTF alignment MIXED without a clear trigger: higher and lower timeframes disagree and the remaining confluence (${nonTechnicalAgrees ? "fundamental/positional" : "no fundamental/positional"} support, ${executionEvidence ? "with" : "without"} fresh execution evidence) cannot justify an entry.`,
+        );
+      }
+    }
+  }
+
   // ── Gate 7: structural invalidation & opposing target ──
   let stopLevel: number | undefined;
   let slBasis = "";
@@ -583,33 +650,52 @@ function decideTrade(
 
   if (entry !== undefined && entry > 0) {
     const smcPools = tech?.smc?.liquidityPools ?? [];
+    // Higher-timeframe resting liquidity — used ONLY as fallback when the
+    // setup timeframe has no pool, and always labeled with its timeframe.
+    // Macro/structure roles only; trigger-role levels are too close to mix
+    // with higher-timeframe significance.
+    const htfPools = (mtf?.timeframes ?? [])
+      .filter((t) => t.role === "structure" || t.role === "macro")
+      .flatMap((t) =>
+        (t.smc?.liquidityPools ?? []).map((p) => ({ ...p, tf: t.timeframe })),
+      );
 
     if (bias === "Bullish") {
       stopLevel = swingSupports[0];
-      slBasis = stopLevel !== undefined ? "nearest market swing low (structural)" : "";
+      slBasis = stopLevel !== undefined ? `nearest market swing low (structural${tech?.smc ? `, ${tech.smc.timeframe}` : ""})` : "";
       // Prefer a resting buy-side liquidity pool as target when available,
-      // else the nearest swing resistance. Both are market-derived.
+      // else an HTF pool, else the nearest swing resistance.
       const buyPoolAbove = smcPools
         .filter((p) => p.side === "buy_side" && !p.swept && !p.broken && p.level > price)
         .sort((a, b) => a.level - b.level)[0];
-      tpLevel = buyPoolAbove?.level ?? swingResistances[0];
+      const htfBuyPool = htfPools
+        .filter((p) => p.side === "buy_side" && !p.swept && !p.broken && p.level > price)
+        .sort((a, b) => a.level - b.level)[0];
+      tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? swingResistances[0];
       tpBasis = buyPoolAbove
-        ? `resting buy-side liquidity (${buyPoolAbove.source}, ${buyPoolAbove.touches} touch${buyPoolAbove.touches > 1 ? "es" : ""})`
-        : tpLevel !== undefined
-          ? "nearest market swing high / resistance (structural)"
-          : "";
+        ? `resting buy-side liquidity (${buyPoolAbove.source}, ${buyPoolAbove.touches} touch${buyPoolAbove.touches > 1 ? "es" : ""}${tech?.smc ? `, ${tech.smc.timeframe}` : ""})`
+        : htfBuyPool
+          ? `resting buy-side liquidity on ${htfBuyPool.tf} (${htfBuyPool.source}, ${htfBuyPool.touches} touch${htfBuyPool.touches > 1 ? "es" : ""}) — HTF target`
+          : tpLevel !== undefined
+            ? "nearest market swing high / resistance (structural)"
+            : "";
     } else if (bias === "Bearish") {
       stopLevel = swingResistances[0];
-      slBasis = stopLevel !== undefined ? "nearest market swing high (structural)" : "";
+      slBasis = stopLevel !== undefined ? `nearest market swing high (structural${tech?.smc ? `, ${tech.smc.timeframe}` : ""})` : "";
       const sellPoolBelow = smcPools
         .filter((p) => p.side === "sell_side" && !p.swept && !p.broken && p.level < price)
         .sort((a, b) => b.level - a.level)[0];
-      tpLevel = sellPoolBelow?.level ?? swingSupports[0];
+      const htfSellPool = htfPools
+        .filter((p) => p.side === "sell_side" && !p.swept && !p.broken && p.level < price)
+        .sort((a, b) => b.level - a.level)[0];
+      tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? swingSupports[0];
       tpBasis = sellPoolBelow
-        ? `resting sell-side liquidity (${sellPoolBelow.source}, ${sellPoolBelow.touches} touch${sellPoolBelow.touches > 1 ? "es" : ""})`
-        : tpLevel !== undefined
-          ? "nearest market swing low / support (structural)"
-          : "";
+        ? `resting sell-side liquidity (${sellPoolBelow.source}, ${sellPoolBelow.touches} touch${sellPoolBelow.touches > 1 ? "es" : ""}${tech?.smc ? `, ${tech.smc.timeframe}` : ""})`
+        : htfSellPool
+          ? `resting sell-side liquidity on ${htfSellPool.tf} (${htfSellPool.source}, ${htfSellPool.touches} touch${htfSellPool.touches > 1 ? "es" : ""}) — HTF target`
+          : tpLevel !== undefined
+            ? "nearest market swing low / support (structural)"
+            : "";
     }
 
     if (bias !== "Neutral" && stopLevel === undefined) {

@@ -168,6 +168,52 @@ export interface SmcContext {
   volumeProfile: VolumeProfileContext;
 }
 
+// ── Phase 3A: adaptive multi-timeframe architecture ───────────────
+
+/** Role of a timeframe inside the top-down analysis hierarchy. */
+export type TfRole = "macro" | "structure" | "setup" | "trigger";
+
+/** One slot of the timeframe chain — available or explicitly not. */
+export interface MtfTimeframeData {
+  timeframe: string;
+  role: TfRole;
+  available: boolean;
+  /** Why this timeframe is absent — provider failure, rate limit, etc. */
+  unavailableReason?: string;
+  /** Full Phase-2 SMC context for THIS timeframe (never copied from another). */
+  smc?: SmcContext;
+}
+
+export type MtfAlignmentState =
+  | "ALIGNED_BULLISH"
+  | "ALIGNED_BEARISH"
+  | "MIXED"
+  | "COUNTER_TREND"
+  | "INSUFFICIENT_DATA";
+
+/** Adaptive multi-timeframe context — single source of truth for MTF state. */
+export interface MtfContext {
+  requestedTimeframe: string;
+  /** Timeframes actually used (in analysis order, highest first). */
+  chainUsed: string[];
+  /** Requested-chain slots that could NOT be fetched — never synthesized. */
+  unavailable: { timeframe: string; role: TfRole; reason: string }[];
+  timeframes: MtfTimeframeData[];
+  alignment: MtfAlignmentState;
+  /** Dominant higher-timeframe direction. "none" when unknown. */
+  htfBias: "long" | "short" | "none";
+  /** Highest available HTF timeframe label. */
+  htfTimeframe?: string;
+  setupTimeframe: string;
+  triggerTimeframe?: string;
+  /** A genuine external BOS/CHoCH on a HTF — can legitimately flip context. */
+  htfReversal?: {
+    timeframe: string;
+    direction: "bullish" | "bearish";
+    kind: "bos" | "choch";
+  };
+}
+
 /** Technical indicators derived from OHLCV data. */
 export interface TechnicalData {
   // Moving averages
@@ -224,6 +270,10 @@ export interface TechnicalData {
 
   // Phase 2 liquidity/structure/confluence context (null-safe optional)
   smc?: SmcContext;
+
+  // Phase 3A adaptive multi-timeframe context (null-safe optional).
+  // When present it supersedes the legacy single-slot htfContext/ltfTrigger.
+  mtf?: MtfContext;
 }
 
 /** What the Convex action returns. */

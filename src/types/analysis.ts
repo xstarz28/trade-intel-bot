@@ -28,6 +28,13 @@ export interface TradePlan {
   takeProfit: string;
   tpBasis: string;
   riskReward: number;
+  // ── Phase 3A multi-timeframe context (present when MTF data exists) ──
+  /** Direction of the highest available HTF, e.g. "D1 bullish external structure". */
+  htfBias?: string;
+  /** Timeframe whose structure produced the setup. */
+  setupTimeframe?: string;
+  /** Timeframe whose trigger refined the entry. */
+  triggerTimeframe?: string;
 }
 
 /** Higher-timeframe vs lower-timeframe relationship. */
@@ -39,6 +46,24 @@ export interface HtfAlignment {
     | "counter_trend"
     | "htf_unknown"
     | "ltf_unclear";
+}
+
+/** Compact MTF summary surfaced on the result for UI transparency. */
+export interface MtfSummary {
+  alignment:
+    | "ALIGNED_BULLISH"
+    | "ALIGNED_BEARISH"
+    | "MIXED"
+    | "COUNTER_TREND"
+    | "INSUFFICIENT_DATA";
+  /** Timeframes actually used, highest first. */
+  chainUsed: string[];
+  /** Chain slots that could not be fetched — never synthesized. */
+  unavailable: { timeframe: string; reason: string }[];
+  /** Highest available HTF direction. */
+  htfBias: "long" | "short" | "none";
+  setupTimeframe: string;
+  triggerTimeframe?: string;
 }
 
 export interface BiasBreakdown {
@@ -96,6 +121,8 @@ export interface AnalysisResult {
   tradePlan?: TradePlan;
   /** HTF vs LTF relationship used in the decision. */
   htfAlignment?: HtfAlignment;
+  /** Adaptive multi-timeframe summary (Phase 3A) when MTF data exists. */
+  mtfSummary?: MtfSummary;
   technicalSummary: string;
   fundamentalSummary: string;
   breakdown: BiasBreakdown;

@@ -1,13 +1,65 @@
 /**
  * Convex server-side market data proxy.
- * All logic is self-contained here to avoid transitive compilation issues.
  * API keys are read from environment variables, never exposed to the client.
+ *
+ * Phase 3A: technical calculations use the SHARED pure layer
+ * (lib/data/technical.ts + lib/data/smc.ts + lib/data/mtf.ts) — the same
+ * code the client would run — eliminating the previous duplicated inline
+ * implementations that could drift out of sync.
  */
 "use node";
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
+import { calculateTechnical } from "../lib/data/technical";
+import { buildChain, buildMtfContext } from "../lib/data/mtf";
+import type { OhlcvCandle, TimeframeStructureContext } from "../lib/data/market-types";
+
+interface TdCandle {
+  datetime: string;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: string;
+}
+
+function mapTimeframe(tf: string): string {
+  const map: Record<string, string> = {
+    M1: "1min", M5: "5min", M15: "15min",
+    H1: "1h", H4: "4h", D1: "1day", W1: "1week",
+  };
+  return map[tf] ?? tf.toLowerCase();
+}
+
+/** Fetch + normalize candles for one timeframe. Throws on failure. */
+async function fetchCandles(
+  symbol: string,
+  tf: string,
+  outputsize: number,
+  apiKey: string,
+): Promise<OhlcvCandle[]> {
+  const res = await fetch(
+    `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${mapTimeframe(tf)}&outputsize=${outputsize}&apikey=${apiKey}`,
+  );
+  const json = await res.json();
+  if (json.code) {
+    throw new Error(`[${json.code}] ${json.message || "provider error"}`);
+  }
+  const values: TdCandle[] = json.values ?? [];
+  if (values.length === 0) throw new Error("no candle data returned");
+  return values
+    .reverse()
+    .map((c) => ({
+      timestamp: new Date(c.datetime).getTime(),
+      open: parseFloat(c.open),
+      high: parseFloat(c.high),
+      low: parseFloat(c.low),
+      close: parseFloat(c.close),
+      volume: parseFloat(c.volume) || 0,
+    }));
+}
 
 export const fetchMarketData = action({
   args: {
@@ -31,107 +83,100 @@ export const fetchMarketData = action({
       };
     }
 
-    const tf = mapTimeframe(args.timeframe);
     const symbol = args.instrument.toUpperCase().trim();
 
     try {
-      // Fetch candles + price in parallel
-      const [candlesRes, quoteRes] = await Promise.all([
-        fetch(
-          `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${tf}&outputsize=210&apikey=${apiKey}`
-        ),
-        fetch(
-          `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`
-        ),
-      ]);
-
-      const candlesJson = await candlesRes.json();
-      const quoteJson = await quoteRes.json();
-
-      if (candlesJson.code) {
-        return classifyError(candlesJson);
+      // Primary (setup) timeframe — errors classified precisely (429, auth…)
+      let candles: OhlcvCandle[];
+      try {
+        candles = await fetchCandles(symbol, args.timeframe, 210, apiKey);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "unknown error";
+        if (msg.startsWith("[429]")) {
+          return { success: false as const, error: `Rate limited: ${msg}`, errorCode: "RATE_LIMIT" as const };
+        }
+        if (msg.startsWith("[401]") || msg.startsWith("[403]")) {
+          return { success: false as const, error: `Auth error: ${msg}`, errorCode: "AUTH_ERROR" as const };
+        }
+        return { success: false as const, error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" as const };
       }
 
-      const values: any[] = candlesJson.values ?? [];
-      if (values.length === 0) {
-        return {
-          success: false as const,
-          error: `No candle data returned for ${symbol}. The symbol may not be supported.`,
-          errorCode: "UNSUPPORTED_INSTRUMENT" as const,
-        };
-      }
+      // Live quote — NON-fatal: never discard successful candle data
+      const quoteRes = await fetch(
+        `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+      )
+        .then((r) => r.json())
+        .catch(() => ({}));
 
-      // Normalize candles (Twelve Data returns most-recent first)
-      const candles = values
-        .reverse()
-        .map((c: any) => ({
-          timestamp: new Date(c.datetime).getTime(),
-          open: parseFloat(c.open),
-          high: parseFloat(c.high),
-          low: parseFloat(c.low),
-          close: parseFloat(c.close),
-          volume: parseFloat(c.volume) || 0,
-        }));
+      const price = quoteRes.close ? parseFloat(quoteRes.close) : candles[candles.length - 1].close;
 
-      // Price
-      const price = quoteJson.close ? parseFloat(quoteJson.close) : candles[candles.length - 1].close;
-      const priceTimestamp = Date.now();      // Calculate technical indicators + Phase 2 SMC context from candles
-      const technical = calculateAll(candles);
+      // ── Shared calculation layer (identical to client-side path) ──
+      const technical = calculateTechnical(candles);
       technical.smc = computeSmcContext(candles, args.timeframe);
 
-      // ── Timeframe chain: HTF context → primary setup → LTF trigger ──
-      // Only timeframes that actually fetch successfully are used.
-      // Missing ones are marked unavailable explicitly — never synthesized.
-      const LADDER = ["M15", "H1", "H4", "D1", "W1"];
-      const idx = LADDER.indexOf(args.timeframe);
-      const htfTf = idx >= 0 && idx < LADDER.length - 1 ? LADDER[idx + 1] : undefined;
-      const ltfTf = idx > 0 ? LADDER[idx - 1] : undefined;
-      const chainUnavailable: string[] = [];
+      // ── Adaptive MTF chain ─────────────────────────────────────
+      // Only timeframes that actually fetch successfully enter the chain.
+      // Failures (rate limits included) preserve all successful data and
+      // mark the slot unavailable — nothing is ever synthesized.
+      const slots = buildChain(args.timeframe);
+      const settled = await Promise.allSettled(
+        slots.map((s) =>
+          s.role === "trigger"
+            ? fetchCandles(symbol, s.timeframe, 100, apiKey)
+            : fetchCandles(symbol, s.timeframe, 120, apiKey),
+        ),
+      );
 
-      async function fetchTfCandles(tf: string, size: number): Promise<any[] | null> {
-        try {
-          const res = await fetch(
-            `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${mapTimeframe(tf)}&outputsize=${size}&apikey=${apiKey}`
-          );
-          const json = await res.json();
-          if (!json.values || json.values.length === 0) return null;
-          return json.values.reverse().map((c: any) => ({
-            timestamp: new Date(c.datetime).getTime(),
-            open: parseFloat(c.open),
-            high: parseFloat(c.high),
-            low: parseFloat(c.low),
-            close: parseFloat(c.close),
-            volume: parseFloat(c.volume) || 0,
-          }));
-        } catch {
-          return null;
-        }
+      const mtfInputs = slots.map((s, i) => {
+        const r = settled[i];
+        return r.status === "fulfilled"
+          ? { timeframe: s.timeframe, role: s.role, candles: r.value as OhlcvCandle[] }
+          : {
+              timeframe: s.timeframe,
+              role: s.role,
+              candles: null,
+              error:
+                r.reason instanceof Error
+                  ? r.reason.message
+                  : "timeframe fetch failed",
+            };
+      });
+
+      // The setup slot uses the primary candles already fetched.
+      mtfInputs.unshift({
+        timeframe: args.timeframe,
+        role: "setup" as const,
+        candles,
+      });
+
+      const mtf = buildMtfContext(args.timeframe, mtfInputs);
+      technical.mtf = mtf;
+
+      // Legacy single-slot fields stay populated for backward compatibility
+      // (old UI records / engine fallback paths), derived from the same MTF
+      // computation — no second algorithm.
+      const structureEntry = mtf.timeframes.find((t) => t.role === "structure");
+      const triggerEntry = mtf.timeframes.find((t) => t.role === "trigger");
+      const legacyCtx = (
+        e: NonNullable<typeof structureEntry>,
+      ): TimeframeStructureContext => ({
+        timeframe: e.timeframe,
+        structure: e.smc!.internalExternal.external.structure,
+        bosDirection: e.smc!.internalExternal.external.bosDirection,
+        chochDirection: e.smc!.internalExternal.external.chochDirection,
+        lastSwingHigh: e.smc!.internalExternal.external.lastSwingHigh,
+        lastSwingLow: e.smc!.internalExternal.external.lastSwingLow,
+        dataPoints: e.smc!.internalExternal.external.dataPoints,
+      });
+      if (structureEntry) technical.htfContext = legacyCtx(structureEntry);
+      else delete technical.htfContext;
+      if (triggerEntry) technical.ltfTrigger = legacyCtx(triggerEntry);
+      else delete technical.ltfTrigger;
+      if (mtf.unavailable.length > 0) {
+        technical.chainUnavailable = mtf.unavailable.map((u) => u.timeframe);
+      } else {
+        delete technical.chainUnavailable;
       }
-
-      // HTF context (e.g. D1 for an H4 request)
-      if (htfTf) {
-        const htfCandles = await fetchTfCandles(htfTf, 100);
-        if (htfCandles && htfCandles.length >= 20) {
-          technical.htfContext = computeChainContext(htfCandles, htfTf);
-        } else {
-          chainUnavailable.push(htfTf);
-        }
-      }
-
-      // LTF trigger context (e.g. H1 for an H4 request)
-      if (ltfTf) {
-        const ltfCandles = await fetchTfCandles(ltfTf, 100);
-        if (ltfCandles && ltfCandles.length >= 20) {
-          technical.ltfTrigger = computeChainContext(ltfCandles, ltfTf);
-        } else {
-          chainUnavailable.push(ltfTf);
-        }
-      }
-
-      if (chainUnavailable.length > 0) {
-        technical.chainUnavailable = chainUnavailable;
-      }
-
 
       return {
         success: true as const,
@@ -140,10 +185,10 @@ export const fetchMarketData = action({
           instrumentType: args.instrumentType,
           provider: "twelve-data",
           fetchTimestamp: Date.now(),
-          price: { price, timestamp: priceTimestamp, source: "twelve-data" },
+          price: { price, timestamp: Date.now(), source: "twelve-data" },
           candles,
           timeframe: args.timeframe,
-          higherTimeframe: htfTf,
+          higherTimeframe: mtf.htfTimeframe,
           dataFreshness: "delayed" as const,
         },
         technical,
@@ -157,261 +202,3 @@ export const fetchMarketData = action({
     }
   },
 });
-
-// ── Helpers ────────────────────────────────────────────────────────
-
-function mapTimeframe(tf: string): string {
-  const map: Record<string, string> = {
-    M1: "1min", M5: "5min", M15: "15min",
-    H1: "1h", H4: "4h", D1: "1day", W1: "1week",
-  };
-  return map[tf] ?? tf.toLowerCase();
-}
-
-function classifyError(json: any) {
-  const msg = json.message || "Unknown API error";
-  const code = json.code;
-  if (code === 401 || code === 403) {
-    return { success: false as const, error: `Auth error: ${msg}`, errorCode: "AUTH_ERROR" as const };
-  }
-  if (code === 429) {
-    return { success: false as const, error: `Rate limited: ${msg}`, errorCode: "RATE_LIMIT" as const };
-  }
-  return { success: false as const, error: `API error ${code}: ${msg}`, errorCode: "API_UNAVAILABLE" as const };
-}
-
-// ── Higher-Timeframe Structural Context ────────────────────────────
-
-/** Derive structural context from any chain timeframe's candles. */
-function computeChainContext(candles: any[], timeframeLabel: string) {
-  const lookback = candles.length > 50 ? 5 : 3;
-  const { highs, lows } = detectSwings(candles, lookback);
-  const structure = analyzeStructure(highs, lows);
-  const lastClose = candles[candles.length - 1].close;
-  return {
-    timeframe: timeframeLabel,
-    structure,
-    bosDirection: detectBos(highs, lows, lastClose),
-    chochDirection: detectChoch(highs, lows, structure, lastClose),
-    lastSwingHigh: highs.length > 0 ? highs[highs.length - 1] : undefined,
-    lastSwingLow: lows.length > 0 ? lows[lows.length - 1] : undefined,
-    dataPoints: candles.length,
-  };
-}
-
-// ── Technical Calculations (inline to avoid import issues) ──────────
-
-function calculateAll(candles: any[]) {
-  if (candles.length === 0) {
-    return {
-      swingHighs: [], swingLows: [], structure: "unknown", supportLevels: [], resistanceLevels: [],
-      volumeTrend: "unknown", dataPoints: 0,
-      smc: undefined,
-      ltfTrigger: undefined,
-      chainUnavailable: undefined as string[] | undefined,
-      htfContext: undefined,
-    };
-  }
-  const closes = candles.map((c: any) => c.close);
-  const currentPrice = closes[closes.length - 1];
-
-  // Moving averages
-  const sma50 = sma(closes, 50);
-  const sma100 = sma(closes, 100);
-  const sma200 = sma(closes, 200);
-
-  // RSI
-  const rsi14 = computeRsi(closes, 14);
-
-  // MACD
-  const macdResult = computeMacd(closes);
-
-  // Swings
-  const lookback = candles.length > 50 ? 5 : 3;
-  const { highs: swingHighs, lows: swingLows } = detectSwings(candles, lookback);
-
-  // Structure
-  const structure = analyzeStructure(swingHighs, swingLows);
-  const bosDirection = detectBos(swingHighs, swingLows, currentPrice);
-  const chochDirection = detectChoch(swingHighs, swingLows, structure, currentPrice);
-
-  // Key levels
-  const { support, resistance } = findKeyLevels(swingHighs, swingLows, currentPrice);
-
-  // Fibonacci
-  let fibLevels: any;
-  if (swingHighs.length >= 1 && swingLows.length >= 1) {
-    const fibH = Math.max(...swingHighs.slice(-2));
-    const fibL = Math.min(...swingLows.slice(-2));
-    if (fibH > fibL) {
-      const range = fibH - fibL;
-      fibLevels = {
-        level236: fibL + range * 0.236,
-        level382: fibL + range * 0.382,
-        level500: fibL + range * 0.5,
-        level618: fibL + range * 0.618,
-        level786: fibL + range * 0.786,
-      };
-    }
-  }
-
-  // Volume
-  const { avg20, trend: volumeTrend } = analyzeVolume(candles);
-
-  // ATR
-  const atr14 = computeAtr(candles, 14);
-
-  const dailyRange = candles[candles.length - 1].high - candles[candles.length - 1].low;
-
-  return {
-    sma50: sma50 != null ? Math.round(sma50 * 1e6) / 1e6 : undefined,
-    sma100: sma100 != null ? Math.round(sma100 * 1e6) / 1e6 : undefined,
-    sma200: sma200 != null ? Math.round(sma200 * 1e6) / 1e6 : undefined,
-    rsi14: rsi14 != null ? Math.round(rsi14 * 10) / 10 : undefined,
-    macdLine: macdResult?.line,
-    macdSignal: macdResult?.signal,
-    macdHistogram: macdResult?.histogram,
-    swingHighs,
-    swingLows,
-    structure,
-    bosDirection,
-    chochDirection,
-    supportLevels: support,
-    resistanceLevels: resistance,
-    fibLevels,
-    avgVolume20: avg20,
-    volumeTrend,
-    atr14,
-    dailyRange,
-    dataPoints: candles.length,
-    htfContext: undefined as
-      | {
-          timeframe: string;
-          structure: string;
-          bosDirection: string;
-          chochDirection: string;
-          lastSwingHigh?: number;
-          lastSwingLow?: number;
-          dataPoints: number;
-        }
-      | undefined,
-    ltfTrigger: undefined as object | undefined,
-    chainUnavailable: undefined as string[] | undefined,
-    smc: undefined as object | undefined,
-  };
-}
-
-function sma(arr: number[], period: number): number | undefined {
-  if (arr.length < period) return undefined;
-  const s = arr.slice(arr.length - period);
-  return s.reduce((a, b) => a + b, 0) / period;
-}
-
-function ema(arr: number[], period: number): number[] {
-  if (arr.length === 0) return [];
-  const k = 2 / (period + 1);
-  const r = [arr[0]];
-  for (let i = 1; i < arr.length; i++) r.push(arr[i] * k + r[i - 1] * (1 - k));
-  return r;
-}
-
-function computeRsi(closes: number[], period = 14): number | undefined {
-  if (closes.length < period + 1) return undefined;
-  let gs = 0, ls = 0;
-  for (let i = 1; i <= period; i++) {
-    const d = closes[i] - closes[i - 1];
-    if (d > 0) gs += d; else ls += Math.abs(d);
-  }
-  let ag = gs / period, al = ls / period;
-  for (let i = period + 1; i < closes.length; i++) {
-    const d = closes[i] - closes[i - 1];
-    ag = (ag * (period - 1) + (d > 0 ? d : 0)) / period;
-    al = (al * (period - 1) + (d < 0 ? Math.abs(d) : 0)) / period;
-  }
-  if (al === 0) return 100;
-  return 100 - 100 / (1 + ag / al);
-}
-
-function computeMacd(closes: number[]) {
-  if (closes.length < 35) return undefined;
-  const e12 = ema(closes, 12);
-  const e26 = ema(closes, 26);
-  const macdLine = e12.map((v, i) => v - e26[i]);
-  const signal = ema(macdLine.slice(26), 9);
-  if (signal.length === 0) return undefined;
-  const ml = macdLine[macdLine.length - 1];
-  const sl = signal[signal.length - 1];
-  return { line: ml, signal: sl, histogram: ml - sl };
-}
-
-function detectSwings(candles: any[], lookback: number) {
-  const highs: number[] = [], lows: number[] = [];
-  for (let i = lookback; i < candles.length - lookback; i++) {
-    const c = candles[i];
-    if (candles.slice(i - lookback, i).every((x: any) => c.high >= x.high) &&
-        candles.slice(i + 1, i + lookback + 1).every((x: any) => c.high >= x.high))
-      highs.push(c.high);
-    if (candles.slice(i - lookback, i).every((x: any) => c.low <= x.low) &&
-        candles.slice(i + 1, i + lookback + 1).every((x: any) => c.low <= x.low))
-      lows.push(c.low);
-  }
-  return { highs, lows };
-}
-
-function analyzeStructure(sH: number[], sL: number[]): string {
-  if (sH.length < 2 || sL.length < 2) return "unknown";
-  const rh = sH.slice(-3), rl = sL.slice(-3);
-  const hr = rh[rh.length - 1] > rh[0], lr = rl[rl.length - 1] > rl[0];
-  if (hr && lr) return "HH/HL";
-  if (!hr && !lr) return "LH/LL";
-  return "range";
-}
-
-function detectBos(sH: number[], sL: number[], price: number): string {
-  if (sH.length < 2 || sL.length < 2) return "none";
-  if (price > sH[sH.length - 1]) return "bullish";
-  if (price < sL[sL.length - 1]) return "bearish";
-  return "none";
-}
-
-function detectChoch(sH: number[], sL: number[], structure: string, price: number): string {
-  if (sH.length < 2 || sL.length < 2) return "none";
-  if (structure === "HH/HL" && price < sL[sL.length - 1]) return "bearish";
-  if (structure === "LH/LL" && price > sH[sH.length - 1]) return "bullish";
-  return "none";
-}
-
-function findKeyLevels(sH: number[], sL: number[], price: number) {
-  const all = [
-    ...sH.map((h) => ({ level: h, type: "r" as const })),
-    ...sL.map((l) => ({ level: l, type: "s" as const })),
-  ].sort((a, b) => a.level - b.level);
-  return {
-    support: all.filter((s) => s.level < price && s.type === "s").map((s) => s.level).slice(-3),
-    resistance: all.filter((s) => s.level > price && s.type === "r").map((s) => s.level).slice(0, 3),
-  };
-}
-
-function analyzeVolume(candles: any[]) {
-  if (candles.length < 20) return { avg20: undefined, trend: "unknown" as const };
-  const vols = candles.map((c: any) => c.volume);
-  const avg20 = vols.slice(-20).reduce((a, b) => a + b, 0) / 20;
-  const r5 = vols.slice(-5).reduce((a, b) => a + b, 0) / 5;
-  const o5 = vols.slice(-10, -5).reduce((a, b) => a + b, 0) / 5;
-  const ratio = o5 > 0 ? r5 / o5 : 1;
-  let trend: "increasing" | "decreasing" | "stable" = "stable";
-  if (ratio > 1.3) trend = "increasing";
-  else if (ratio < 0.7) trend = "decreasing";
-  return { avg20, trend };
-}
-
-function computeAtr(candles: any[], period = 14): number | undefined {
-  if (candles.length < period + 1) return undefined;
-  const trs: number[] = [];
-  for (let i = 1; i < candles.length; i++) {
-    const h = candles[i].high, l = candles[i].low, pc = candles[i - 1].close;
-    trs.push(Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc)));
-  }
-  if (trs.length < period) return undefined;
-  return trs.slice(-period).reduce((a, b) => a + b, 0) / period;
-}
