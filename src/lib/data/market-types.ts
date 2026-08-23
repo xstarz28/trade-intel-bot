@@ -48,6 +48,126 @@ export interface TimeframeStructureContext {
   dataPoints: number;
 }
 
+// ── Phase 2: liquidity / structure / confluence types ─────────────
+
+export type LiquiditySide = "buy_side" | "sell_side";
+export type LiquiditySource =
+  | "equal_highs"
+  | "equal_lows"
+  | "swing_high"
+  | "swing_low";
+
+/** A resting liquidity pool detected from real swing/equal levels. */
+export interface LiquidityPool {
+  level: number;
+  side: LiquiditySide; // buy_side = above price (stop of shorts), sell_side = below
+  source: LiquiditySource;
+  touches: number; // how many swings formed this level
+  /** true = wick pierced and close returned (sweep). false = still resting. */
+  swept: boolean;
+  sweptAtIndex?: number;
+  sweptAtTime?: number;
+  /** true = price closed through the level (breakout, no longer liquidity). */
+  broken: boolean;
+}
+
+export interface LiquiditySweepEvent {
+  level: number;
+  side: LiquiditySide;
+  source: LiquiditySource;
+  candleIndex: number;
+  candleTime: number;
+  timeframe: string;
+}
+
+/** Minor (internal) vs major (external) structural read. */
+export interface InternalExternalStructure {
+  external: TimeframeStructureContext;
+  internal: TimeframeStructureContext;
+  /** true when internal direction opposes external — early warning. */
+  internalConflict: boolean;
+}
+
+export type FvgStatus = "fresh" | "mitigated" | "invalidated";
+
+/** Three-candle Fair Value Gap from actual OHLC data. */
+export interface FairValueGap {
+  direction: "bullish" | "bearish";
+  upper: number;
+  lower: number;
+  timeframe: string;
+  createdAtIndex: number;
+  createdAt: number;
+  status: FvgStatus;
+}
+
+export interface DisplacementEvent {
+  direction: "bullish" | "bearish";
+  candleIndex: number;
+  candleTime: number;
+  bodyRatio: number; // body / range
+  rangeAtrMultiple: number; // range / ATR14
+}
+
+export type ObStatus = "fresh" | "mitigated" | "invalidated";
+
+/** Order Block validated by displacement + structural break evidence. */
+export interface OrderBlock {
+  direction: "bullish" | "bearish"; // bullish OB supports longs
+  upper: number;
+  lower: number;
+  timeframe: string;
+  createdAt: number;
+  status: ObStatus;
+  /** Traceable evidence for why this zone qualifies as an OB. */
+  evidence: {
+    precedingOpposingCandle: boolean;
+    displacementAfter: boolean;
+    structuralBreakAfter: boolean;
+    displacementRangeAtr: number;
+  };
+}
+
+export interface VwapBand {
+  minus2: number;
+  minus1: number;
+  vwap: number;
+  plus1: number;
+  plus2: number;
+}
+
+export interface VwapContext {
+  available: boolean;
+  unavailableReason?: string;
+  sessionVwap?: number;
+  anchoredVwap?: { anchorTime: number; value: number };
+  bands?: VwapBand; // volume-weighted deviation bands around session VWAP
+  priceLocation: "above_vwap" | "below_vwap" | "at_vwap" | "unavailable";
+}
+
+export interface VolumeProfileContext {
+  available: boolean;
+  unavailableReason?: string;
+  poc?: number;
+  vah?: number;
+  val?: number;
+  hvn?: number[]; // high-volume node midpoints
+  lvn?: number[]; // low-volume node midpoints
+}
+
+/** Everything Phase 2 derives from raw candles on one timeframe. */
+export interface SmcContext {
+  timeframe: string;
+  liquidityPools: LiquidityPool[];
+  recentSweep?: LiquiditySweepEvent;
+  internalExternal: InternalExternalStructure;
+  fvgs: FairValueGap[]; // most recent first
+  displacement?: DisplacementEvent;
+  orderBlocks: OrderBlock[]; // most recent first
+  vwap: VwapContext;
+  volumeProfile: VolumeProfileContext;
+}
+
 /** Technical indicators derived from OHLCV data. */
 export interface TechnicalData {
   // Moving averages
@@ -95,6 +215,15 @@ export interface TechnicalData {
 
   // Higher-timeframe structural context (e.g. D1 when analyzing H4)
   htfContext?: TimeframeStructureContext;
+
+  // Lower-timeframe trigger context (e.g. H1 when analyzing H4), if fetched
+  ltfTrigger?: TimeframeStructureContext;
+
+  // Timeframes in the HTF→primary→LTF chain that could not be fetched
+  chainUnavailable?: string[];
+
+  // Phase 2 liquidity/structure/confluence context (null-safe optional)
+  smc?: SmcContext;
 }
 
 /** What the Convex action returns. */

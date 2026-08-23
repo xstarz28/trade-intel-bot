@@ -7,6 +7,7 @@
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
+import { computeSmcContext } from "../lib/data/smc";
 
 export const fetchMarketData = action({
   args: {
@@ -74,40 +75,63 @@ export const fetchMarketData = action({
 
       // Price
       const price = quoteJson.close ? parseFloat(quoteJson.close) : candles[candles.length - 1].close;
-      const priceTimestamp = Date.now();
-
-      // Calculate technical indicators from candles
+      const priceTimestamp = Date.now();      // Calculate technical indicators + Phase 2 SMC context from candles
       const technical = calculateAll(candles);
+      technical.smc = computeSmcContext(candles, args.timeframe);
 
-      // Optional: fetch D1 for higher-timeframe context
-      let higherCandles: any[] | undefined;
-      if (args.timeframe !== "D1" && args.timeframe !== "W1") {
+      // ── Timeframe chain: HTF context → primary setup → LTF trigger ──
+      // Only timeframes that actually fetch successfully are used.
+      // Missing ones are marked unavailable explicitly — never synthesized.
+      const LADDER = ["M15", "H1", "H4", "D1", "W1"];
+      const idx = LADDER.indexOf(args.timeframe);
+      const htfTf = idx >= 0 && idx < LADDER.length - 1 ? LADDER[idx + 1] : undefined;
+      const ltfTf = idx > 0 ? LADDER[idx - 1] : undefined;
+      const chainUnavailable: string[] = [];
+
+      async function fetchTfCandles(tf: string, size: number): Promise<any[] | null> {
         try {
-          const htfRes = await fetch(
-            `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=1day&outputsize=100&apikey=${apiKey}`
+          const res = await fetch(
+            `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${mapTimeframe(tf)}&outputsize=${size}&apikey=${apiKey}`
           );
-          const htfJson = await htfRes.json();
-          if (htfJson.values) {
-            higherCandles = htfJson.values
-              .reverse()
-              .map((c: any) => ({
-                timestamp: new Date(c.datetime).getTime(),
-                open: parseFloat(c.open),
-                high: parseFloat(c.high),
-                low: parseFloat(c.low),
-                close: parseFloat(c.close),
-                volume: parseFloat(c.volume) || 0,
-              }));
-          }
+          const json = await res.json();
+          if (!json.values || json.values.length === 0) return null;
+          return json.values.reverse().map((c: any) => ({
+            timestamp: new Date(c.datetime).getTime(),
+            open: parseFloat(c.open),
+            high: parseFloat(c.high),
+            low: parseFloat(c.low),
+            close: parseFloat(c.close),
+            volume: parseFloat(c.volume) || 0,
+          }));
         } catch {
-          // Non-critical — proceed without HTF data
+          return null;
         }
+      }
 
-      // Compute HTF structural context so the engine can do top-down analysis.
-      if (higherCandles && higherCandles.length >= 20) {
-        technical.htfContext = computeHtfContext(higherCandles);
+      // HTF context (e.g. D1 for an H4 request)
+      if (htfTf) {
+        const htfCandles = await fetchTfCandles(htfTf, 100);
+        if (htfCandles && htfCandles.length >= 20) {
+          technical.htfContext = computeChainContext(htfCandles, htfTf);
+        } else {
+          chainUnavailable.push(htfTf);
+        }
       }
+
+      // LTF trigger context (e.g. H1 for an H4 request)
+      if (ltfTf) {
+        const ltfCandles = await fetchTfCandles(ltfTf, 100);
+        if (ltfCandles && ltfCandles.length >= 20) {
+          technical.ltfTrigger = computeChainContext(ltfCandles, ltfTf);
+        } else {
+          chainUnavailable.push(ltfTf);
+        }
       }
+
+      if (chainUnavailable.length > 0) {
+        technical.chainUnavailable = chainUnavailable;
+      }
+
 
       return {
         success: true as const,
@@ -119,8 +143,7 @@ export const fetchMarketData = action({
           price: { price, timestamp: priceTimestamp, source: "twelve-data" },
           candles,
           timeframe: args.timeframe,
-          higherTimeframeCandles: higherCandles,
-          higherTimeframe: higherCandles ? "D1" : undefined,
+          higherTimeframe: htfTf,
           dataFreshness: "delayed" as const,
         },
         technical,
@@ -159,14 +182,14 @@ function classifyError(json: any) {
 
 // ── Higher-Timeframe Structural Context ────────────────────────────
 
-/** Derive macro structure from D1 candles for top-down analysis. */
-function computeHtfContext(candles: any[]) {
+/** Derive structural context from any chain timeframe's candles. */
+function computeChainContext(candles: any[], timeframeLabel: string) {
   const lookback = candles.length > 50 ? 5 : 3;
   const { highs, lows } = detectSwings(candles, lookback);
   const structure = analyzeStructure(highs, lows);
   const lastClose = candles[candles.length - 1].close;
   return {
-    timeframe: "D1",
+    timeframe: timeframeLabel,
     structure,
     bosDirection: detectBos(highs, lows, lastClose),
     chochDirection: detectChoch(highs, lows, structure, lastClose),
@@ -180,7 +203,14 @@ function computeHtfContext(candles: any[]) {
 
 function calculateAll(candles: any[]) {
   if (candles.length === 0) {
-    return { swingHighs: [], swingLows: [], structure: "unknown", supportLevels: [], resistanceLevels: [], volumeTrend: "unknown", dataPoints: 0 };
+    return {
+      swingHighs: [], swingLows: [], structure: "unknown", supportLevels: [], resistanceLevels: [],
+      volumeTrend: "unknown", dataPoints: 0,
+      smc: undefined,
+      ltfTrigger: undefined,
+      chainUnavailable: undefined as string[] | undefined,
+      htfContext: undefined,
+    };
   }
   const closes = candles.map((c: any) => c.close);
   const currentPrice = closes[closes.length - 1];
@@ -265,6 +295,9 @@ function calculateAll(candles: any[]) {
           dataPoints: number;
         }
       | undefined,
+    ltfTrigger: undefined as object | undefined,
+    chainUnavailable: undefined as string[] | undefined,
+    smc: undefined as object | undefined,
   };
 }
 
