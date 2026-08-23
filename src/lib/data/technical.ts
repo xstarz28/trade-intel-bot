@@ -333,6 +333,8 @@ export function analyzeVolume(
 export function calculateTechnical(
   candles: OhlcvCandle[],
   higherTimeframeCandles?: OhlcvCandle[],
+  /** Label for the optional HTF candle set (no hardcoded assumption). */
+  htfLabel = "HTF",
 ): TechnicalData {
   if (candles.length === 0) {
     return {
@@ -361,33 +363,31 @@ export function calculateTechnical(
   // MACD
   const macdResult = macd(closes);
 
-  // Use higher timeframe for structure if available, otherwise primary
-  const structureCandles = higherTimeframeCandles && higherTimeframeCandles.length >= 20
-    ? higherTimeframeCandles
-    : candles;
+  // Swing detection — ALWAYS on the primary candles.
+  // Phase 3A: each timeframe's structure is computed independently; the
+  // setup timeframe must never borrow another timeframe's structure.
+  const lookback = candles.length > 50 ? 5 : 3;
+  const { highs: swingHighs, lows: swingLows } = detectSwings(candles, lookback);
 
-  // Swing detection
-  const lookback = structureCandles.length > 50 ? 5 : 3;
-  const { highs: swingHighs, lows: swingLows } = detectSwings(structureCandles, lookback);
-
-  // Market structure
+  // Market structure (primary/setup timeframe)
   const structure = analyzeStructure(swingHighs, swingLows);
   const bosDirection = detectBos(swingHighs, swingLows, currentPrice);
   const chochDirection = detectChoch(swingHighs, swingLows, structure, currentPrice);
 
-  // Higher-timeframe structural context (kept separate from LTF setup)
+  // Higher-timeframe structural context (kept separate from LTF setup).
+  // Legacy single-slot field: the adaptive MTF layer supersedes it when present.
   let htfContext: TechnicalData["htfContext"];
   if (
     higherTimeframeCandles &&
     higherTimeframeCandles.length >= 20 &&
-    higherTimeframeCandles !== structureCandles
+    higherTimeframeCandles !== candles
   ) {
     const htfLookback = higherTimeframeCandles.length > 50 ? 5 : 3;
     const htfSwings = detectSwings(higherTimeframeCandles, htfLookback);
     const htfStructure = analyzeStructure(htfSwings.highs, htfSwings.lows);
     const htfLastClose = higherTimeframeCandles[higherTimeframeCandles.length - 1].close;
     htfContext = {
-      timeframe: "D1",
+      timeframe: htfLabel,
       structure: htfStructure,
       bosDirection: detectBos(htfSwings.highs, htfSwings.lows, htfLastClose),
       chochDirection: detectChoch(htfSwings.highs, htfSwings.lows, htfStructure, htfLastClose),
