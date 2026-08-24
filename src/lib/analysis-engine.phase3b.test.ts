@@ -115,7 +115,16 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
     const r = runAnalysis(input({ technicalData: tech("range") }));
     expect(r.recommendation).toBe("NO_TRADE");
     assertStateConsistency(r);
-    expect(r.noTradeReasons.join(" ")).toContain("Confluence too weak");
+    // PHASE 8 P1 behavior change:
+    // OLD: bias stayed directional on a range structure and GATE 4 rejected
+    //      with "Confluence too weak".
+    // WHY CHANGED: the veto-model makes structure the only thesis authority —
+    //      a range external structure vetoes the directional bias BEFORE
+    //      confluence is evaluated.
+    // NEW: rejection names the structural-agreement rule.
+    // WHY CORRECT: non-structural factors cannot create a thesis from a
+    //      neutral structure (F-5); "Confluence too weak" misdescribed that.
+    expect(r.noTradeReasons.join(" ")).toContain("Structural agreement");
   });
 
   it("material conflict (core factor |score| ≥ 2 opposing)", () => {
