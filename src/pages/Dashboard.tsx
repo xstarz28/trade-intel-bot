@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstrumentInput } from "@/components/InstrumentInput";
@@ -67,6 +67,9 @@ export default function Dashboard() {
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(INITIAL_STEPS);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  // Phase 14 P3 — run identity: a slow/abandoned analysis run must NEVER
+  // overwrite the result of a newer run (stale-result mixing guard).
+  const runTokenRef = useRef(0);
 
   // Convex persistence
   const saveAnalysis = useMutation(api.analyses.save);
@@ -97,6 +100,8 @@ export default function Dashboard() {
 
   const handleAnalyze = useCallback(
     async (input: AnalysisInput) => {
+      const myRun = ++runTokenRef.current;
+      const isStaleRun = () => runTokenRef.current !== myRun;
       setIsAnalyzing(true);
       setCurrentResult(null);
       setFetchError(null);
@@ -333,6 +338,9 @@ export default function Dashboard() {
         await new Promise((r) => setTimeout(r, 150));
         updateStep(4, "done");
 
+        // A newer analysis superseded this run — drop the stale result.
+        if (isStaleRun()) return;
+
         setCurrentResult(result);
 
         // Persist to Convex (fire-and-forget)
@@ -367,9 +375,14 @@ export default function Dashboard() {
           // Save failed (guest user) — analysis still shows in session
         }
       } catch (err: any) {
-        setFetchError(`Analysis failed: ${err?.message || "unknown error"}`);
+        if (!isStaleRun()) {
+          setFetchError(`Analysis failed: ${err?.message || "unknown error"}`);
+        }
       } finally {
-        setIsAnalyzing(false);
+        // Only the newest run owns the loading UI; stale runs exit silently.
+        if (!isStaleRun()) {
+          setIsAnalyzing(false);
+        }
       }
     },
     [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
