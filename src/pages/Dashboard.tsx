@@ -11,6 +11,7 @@ import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
+import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
@@ -25,6 +26,7 @@ function fromDbRecord(record: any): AnalysisResult {
     bias: record.bias,
     confidence: record.confidence,
     recommendation: record.recommendation ?? (record.bias === "Bullish" ? "LONG" : record.bias === "Bearish" ? "SHORT" : "NO_TRADE"),
+    tradingStyle: record.tradingStyle ?? "intraday",
     conviction: record.conviction ?? undefined,
     noTradeReasons: record.noTradeReasons ?? [],
     technicalSummary: record.technicalSummary,
@@ -102,6 +104,20 @@ export default function Dashboard() {
         updateStep(0, "active");
         await new Promise((r) => setTimeout(r, 300));
         updateStep(0, "done");
+
+        // Phase 6 — style-adaptive setup timeframe selection over the EXISTING
+        // ladder, applied BEFORE fetching. Fallback uses REAL provider data
+        // for a supported timeframe and is disclosed in the result.
+        const styleProfile = resolveStyle(input.tradingStyle);
+        const adapted = adaptSetupTimeframe(
+          styleProfile.style,
+          input.requestedTimeframe ?? input.timeframe,
+        );
+        input.timeframe = adapted.timeframe as AnalysisInput["timeframe"];
+        if (adapted.fallbackApplied) {
+          input.styleNotes = [adapted.reason!];
+        }
+        input.requestedTimeframe = undefined;
 
         // Step 2: Fetching market data + intelligence + derivatives in parallel
         updateStep(1, "active");
@@ -241,6 +257,7 @@ export default function Dashboard() {
             conviction: result.conviction,
             noTradeReasons: result.noTradeReasons.length > 0 ? result.noTradeReasons : undefined,
             riskReward: result.tradePlan?.riskReward,
+            tradingStyle: result.tradingStyle,
             technicalSummary: result.technicalSummary,
             fundamentalSummary: result.fundamentalSummary,
             breakdown: result.breakdown,

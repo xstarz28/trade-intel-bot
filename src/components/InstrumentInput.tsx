@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { TRADING_STYLES, type TradingStyle } from "@/lib/trading-style";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,12 +36,14 @@ interface PersistedForm {
   instrument: string;
   instrumentType: InstrumentType;
   timeframe: Timeframe;
+  tradingStyle: TradingStyle;
 }
 
 const DEFAULT_FORM: PersistedForm = {
   instrument: "",
   instrumentType: "forex",
   timeframe: "D1",
+  tradingStyle: "intraday",
 };
 
 function loadPersistedForm(): PersistedForm {
@@ -84,6 +87,8 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
       instrument: form.instrument.trim(),
       instrumentType: form.instrumentType,
       timeframe: form.timeframe,
+      tradingStyle: form.tradingStyle,
+      requestedTimeframe: form.timeframe,
     });
   };
 
@@ -185,6 +190,30 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* Phase 6 — Trading style: changes decision HORIZON and
+              requirements only, never market facts. */}
+          <div>
+            <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+              trading style
+            </Label>
+            <div className="grid grid-cols-3 gap-2">
+              {TRADING_STYLES.map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => update("tradingStyle", st)}
+                  className={`h-9 rounded-md border text-[11px] font-mono uppercase transition-colors ${
+                    form.tradingStyle === st
+                      ? "border-primary/50 bg-primary/15 text-primary"
+                      : "border-border/60 bg-background/50 text-muted-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
             </div>
           </div>
 

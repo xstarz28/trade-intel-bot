@@ -1,0 +1,106 @@
+/**
+ * Phase 6 — Trading style profiles (pure configuration).
+ *
+ * A style NEVER changes market facts (structure, swings, liquidity,
+ * FVG/OB, prices, correlations). It only changes DECISION HORIZON and
+ * OPPORTUNITY REQUIREMENTS: timeframe preference, freshness sensitivity,
+ * evidence priority (conviction layer scaling), target-horizon guards,
+ * and additional NO_TRADE conditions.
+ *
+ * The numbers below are POLICY PARAMETERS of this platform — documented
+ * here, never presented as universal market truths.
+ */
+
+export type TradingStyle = "scalping" | "intraday" | "swing";
+
+export const TRADING_STYLES: TradingStyle[] = ["scalping", "intraday", "swing"];
+
+/** Neutral default when the user does not choose. */
+export const DEFAULT_TRADING_STYLE: TradingStyle = "intraday";
+
+export interface StyleProfile {
+  style: TradingStyle;
+  /** Setup timeframes consistent with this horizon (subset of TF_LADDER). */
+  allowedSetupTfs: string[];
+  /** Nearest supported fallback when the requested TF is outside the horizon. */
+  fallbackTf: string;
+  /** Live-price staleness window (policy, style-sensitive). */
+  priceStaleMs: number;
+  /** Fundamental conviction-layer multiplier + cap (evidence PRIORITY). */
+  fundamentalLayerMultiplier: number;
+  fundamentalLayerCap: number;
+  /** Target-horizon guard in ATR multiples (null = unlimited). */
+  targetMaxAtrMultiple: number | null;
+  /** SCALPING: fresh execution evidence is mandatory. */
+  requiresTriggerEvidence: boolean;
+  /** SWING: readable HTF context is mandatory. */
+  requiresHtfContext: boolean;
+  /** INTRADAY: reject when high-impact events are imminent (hours; null = off). */
+  eventRiskWindowHours: number | null;
+}
+
+export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
+  scalping: {
+    style: "scalping",
+    allowedSetupTfs: ["M15", "H1"],
+    fallbackTf: "H1",
+    priceStaleMs: 10 * 60 * 1000,
+    fundamentalLayerMultiplier: 0.5,
+    fundamentalLayerCap: 8,
+    targetMaxAtrMultiple: 6,
+    requiresTriggerEvidence: true,
+    requiresHtfContext: false,
+    eventRiskWindowHours: null,
+  },
+  intraday: {
+    style: "intraday",
+    allowedSetupTfs: ["M15", "H1", "H4"],
+    fallbackTf: "H4",
+    priceStaleMs: 30 * 60 * 1000,
+    fundamentalLayerMultiplier: 1,
+    fundamentalLayerCap: 15,
+    targetMaxAtrMultiple: null,
+    requiresTriggerEvidence: false,
+    requiresHtfContext: false,
+    eventRiskWindowHours: 2,
+  },
+  swing: {
+    style: "swing",
+    allowedSetupTfs: ["H4", "D1", "W1"],
+    fallbackTf: "H4",
+    priceStaleMs: 60 * 60 * 1000,
+    fundamentalLayerMultiplier: 1.25,
+    fundamentalLayerCap: 18,
+    targetMaxAtrMultiple: null,
+    requiresTriggerEvidence: false,
+    requiresHtfContext: true,
+    eventRiskWindowHours: null,
+  },
+};
+
+export function resolveStyle(style?: TradingStyle | string): StyleProfile {
+  const s = TRADING_STYLES.includes(style as TradingStyle)
+    ? (style as TradingStyle)
+    : DEFAULT_TRADING_STYLE;
+  return STYLE_PROFILES[s];
+}
+
+/**
+ * Adaptive timeframe selection over the EXISTING ladder (no synthetic
+ * timeframes): if the requested setup TF sits outside the style's horizon,
+ * fall back to the nearest allowed ladder TF and DISCLOSE it.
+ */
+export function adaptSetupTimeframe(
+  style: TradingStyle,
+  requested: string,
+): { timeframe: string; fallbackApplied: boolean; reason?: string } {
+  const profile = STYLE_PROFILES[style];
+  if (profile.allowedSetupTfs.includes(requested)) {
+    return { timeframe: requested, fallbackApplied: false };
+  }
+  return {
+    timeframe: profile.fallbackTf,
+    fallbackApplied: true,
+    reason: `${style.toUpperCase()} horizon does not use ${requested} as a setup timeframe — fell back to ${profile.fallbackTf} (real provider data, nothing synthesized)`,
+  };
+}

@@ -44,6 +44,7 @@ const schema = defineSchema(
       conviction: v.optional(v.string()), // High | Medium | Low (trades only)
       noTradeReasons: v.optional(v.array(v.string())),
       riskReward: v.optional(v.number()),
+      tradingStyle: v.optional(v.string()),
       technicalSummary: v.string(),
       fundamentalSummary: v.string(),
       breakdown: v.object({
