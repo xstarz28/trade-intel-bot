@@ -220,4 +220,7 @@ export interface AnalysisResult {
   // Phase 26 — structured analyst thesis: purely derived presentation metadata.
   // Cannot modify recommendation, conviction, gates, trade plan, or sizing.
   analystThesis?: import("@/lib/analyst-thesis").AnalystThesis;
+  // Phase 27 — continuation vs reversal scenario context.
+  // Pure derivation: does not modify bias, conviction, gates, or trade plan.
+  marketScenario?: import("@/lib/market-scenario").MarketScenarioContext;
 }

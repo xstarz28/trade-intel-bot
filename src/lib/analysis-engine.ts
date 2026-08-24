@@ -41,6 +41,7 @@ import {
 import { GATE_IDS } from "@/lib/decision-trace";
 import { assessDataQuality } from "@/lib/data-quality";
 import { buildAnalystThesis } from "@/lib/analyst-thesis";
+import { buildMarketScenario } from "@/lib/market-scenario";
 import type {
   DecisionTrace,
   EvidenceLayerSummary,
@@ -2441,6 +2442,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // Must be built AFTER the result object so it can read all result fields.
   const analystThesis = buildAnalystThesis(result as AnalysisResult);
   result.analystThesis = analystThesis;
+
+  // Phase 27 — continuation vs reversal scenario (pure derivation).
+  const marketScenario = buildMarketScenario(result as AnalysisResult);
+  result.marketScenario = marketScenario;
 
   return result;
 }

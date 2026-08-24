@@ -897,6 +897,157 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </>
         );
       })()}
+      {/* Phase 27 — Continuation vs Reversal Scenario */}
+      {result.marketScenario && (() => {
+        const sc = result.marketScenario;
+        const SCENARIO_COLORS: Record<string, string> = {
+          CONFIRMED_CONTINUATION: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+          CONTINUATION_DEVELOPING: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+          PULLBACK_OR_CONSOLIDATION: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+          REVERSAL_DEVELOPING: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+          REVERSAL_CONFIRMED: "bg-red-500/15 text-red-400 border-red-500/30",
+          UNCONFIRMED: "bg-muted/30 text-muted-foreground border-border/50",
+          WAIT: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+        };
+        const RISK_COLORS: Record<string, string> = {
+          low: "text-emerald-400",
+          moderate: "text-amber-400",
+          elevated: "text-red-400",
+          high: "text-red-400",
+        };
+        return (
+          <Card className="border-border/50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span> continuation-vs-reversal
+                </h4>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              {/* Current Structure + Scenario */}
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                  structure: {sc.currentDirection}
+                </Badge>
+                <Badge className={cn("text-[10px] font-mono", SCENARIO_COLORS[sc.scenario])}>
+                  {sc.scenario.replace(/_/g, " ")}
+                </Badge>
+              </div>
+
+              {/* Status Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
+                <div>
+                  <span className="text-muted-foreground">continuation:</span>{" "}
+                  <span className={sc.continuationStatus === "confirmed" ? "text-emerald-400" : sc.continuationStatus === "developing" ? "text-amber-400" : "text-muted-foreground"}>
+                    {sc.continuationStatus}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">reversal:</span>{" "}
+                  <span className={sc.reversalStatus === "confirmed" ? "text-red-400" : sc.reversalStatus === "developing" ? "text-amber-400" : "text-muted-foreground"}>
+                    {sc.reversalStatus}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">confirmation:</span>{" "}
+                  <span className={sc.confirmationState === "confirmed" ? "text-emerald-400" : sc.confirmationState === "developing" ? "text-amber-400" : "text-muted-foreground"}>
+                    {sc.confirmationState}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">structural risk:</span>{" "}
+                  <span className={RISK_COLORS[sc.structuralRisk]}>{sc.structuralRisk}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">extension risk:</span>{" "}
+                  <span className={RISK_COLORS[sc.extensionRisk]}>{sc.extensionRisk}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">liquidity risk:</span>{" "}
+                  <span className={RISK_COLORS[sc.liquidityRisk]}>{sc.liquidityRisk}</span>
+                </div>
+              </div>
+
+              {/* Primary + Alternate */}
+              <div className="space-y-1.5">
+                <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2">
+                  <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider mb-0.5">primary</p>
+                  <p className="text-[11px] font-mono text-foreground/80 leading-relaxed">{sc.primaryScenario}</p>
+                </div>
+                <div className="rounded-lg bg-muted/10 border border-border/30 px-3 py-2">
+                  <p className="text-[10px] font-mono font-medium text-muted-foreground/60 uppercase tracking-wider mb-0.5">alternate</p>
+                  <p className="text-[11px] font-mono text-muted-foreground/70 leading-relaxed">{sc.alternateScenario}</p>
+                </div>
+              </div>
+
+              {/* WAIT reason */}
+              {sc.waitReason && (
+                <div className="rounded-lg bg-amber-500/5 border border-amber-500/15 px-3 py-2">
+                  <p className="text-[10px] font-mono font-medium text-amber-400 uppercase tracking-wider mb-0.5">why wait?</p>
+                  <p className="text-[11px] font-mono text-amber-300/80 leading-relaxed">{sc.waitReason}</p>
+                </div>
+              )}
+
+              {/* Continuation Evidence */}
+              {sc.continuationEvidence.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-mono font-semibold text-emerald-400 mb-1">continuation evidence</p>
+                  {sc.continuationEvidence.slice(0, 4).map((e, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
+                      <span className="text-emerald-400 shrink-0">+</span>
+                      <span className="text-muted-foreground/80">{e.explanation}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Reversal Evidence */}
+              {sc.reversalEvidence.length > 0 && (
+                <div className="border-t border-border/30 pt-2">
+                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">reversal risk</p>
+                  {sc.reversalEvidence.slice(0, 4).map((e, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
+                      <span className="text-amber-400 shrink-0">−</span>
+                      <span className="text-muted-foreground/80">{e.explanation}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Confirmation Conditions */}
+              {sc.confirmationConditions.length > 0 && (
+                <div className="border-t border-border/30 pt-2">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">what confirms</p>
+                  {sc.confirmationConditions.map((c, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
+                      <span className="text-muted-foreground/40 shrink-0">→</span>
+                      <span className="text-muted-foreground/80">{c}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Invalidation */}
+              {sc.invalidationConditions.length > 0 && (
+                <div className="border-t border-border/30 pt-2">
+                  <p className="text-[10px] font-mono font-semibold text-red-400/80 mb-1">what invalidates</p>
+                  {sc.invalidationConditions.map((inv, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
+                      <span className="text-red-400/60 shrink-0">✕</span>
+                      <span className="text-muted-foreground/80">{inv}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-[9px] font-mono text-muted-foreground/40 italic">
+                Scenario analysis is informational — it does not override the structural hierarchy, gates, or conviction.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (
