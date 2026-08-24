@@ -340,7 +340,12 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
   // scoring; it must never throw out of the engine.
   const sym = typeof input.instrument === "string" ? input.instrument.toUpperCase() : "";
 
-  if (macro && macro.confidence !== "unavailable" && macro.indicators.length > 0) {
+  if (
+    macro &&
+    macro.confidence !== "unavailable" &&
+    Array.isArray(macro.indicators) &&
+    macro.indicators.length > 0
+  ) {
     const bullish = macro.indicators.filter((ind) => ind.sentiment === "positive").length;
     const bearish = macro.indicators.filter((ind) => ind.sentiment === "negative").length;
     const total = macro.indicators.length;
@@ -543,8 +548,23 @@ function scoreSentiment(input: AnalysisInput): FactorScore {
       if (avScore > 0.5) score += 1;
       if (avScore < -0.25) score -= 1;
       if (avScore < -0.5) score -= 1;
-      if (sentiment.breakdown.positive > sentiment.breakdown.negative * 2 && sentiment.articleCount >= 3) score += 1;
-      if (sentiment.breakdown.negative > sentiment.breakdown.positive * 2 && sentiment.articleCount >= 3) score -= 1;
+      const bd = (sentiment as { breakdown?: { positive?: number; negative?: number } }).breakdown;
+      if (
+        bd &&
+        Number.isFinite(bd.positive) &&
+        Number.isFinite(bd.negative) &&
+        bd.positive! > bd.negative! * 2 &&
+        sentiment.articleCount >= 3
+      )
+        score += 1;
+      if (
+        bd &&
+        Number.isFinite(bd.positive) &&
+        Number.isFinite(bd.negative) &&
+        bd.negative! > bd.positive! * 2 &&
+        sentiment.articleCount >= 3
+      )
+        score -= 1;
     }
 
     // Manual funding rate fallback
@@ -1886,7 +1906,9 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
 
   if (sentiment && sentiment.confidence !== "unavailable") {
     parts.push(
-      `News sentiment: ${sentiment.label} (${sentiment.averageScore > 0 ? "+" : ""}${sentiment.averageScore.toFixed(2)} avg, ${sentiment.articleCount} articles, ${sentiment.confidence} confidence).`,
+      Number.isFinite(sentiment.averageScore)
+        ? `News sentiment: ${sentiment.label} (${sentiment.averageScore > 0 ? "+" : ""}${sentiment.averageScore.toFixed(2)} avg, ${sentiment.articleCount ?? 0} articles, ${sentiment.confidence} confidence).`
+        : `News sentiment context unavailable — malformed payload disclosed, no evidence synthesized.`,
     );
   }
 
@@ -2303,7 +2325,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     input.eiaData?.available
       ? { provider: "EIA WPSR", available: true, fetchedAt: input.eiaData.fetchedAt, observationDate: String(input.eiaData.series[0]?.observationDate ?? ""), freshness: String(input.eiaData.freshness), dataKind: "actual" as const }
       : { provider: "EIA WPSR", available: false, failureReason: failReasonOf(input.eiaData) },
-    input.executionData?.available
+    input.executionData?.available && typeof (input.executionData as { snapshotTs?: unknown }).snapshotTs === "number"
       ? { provider: "OKX order book", available: true, fetchedAt: input.executionData.fetchedAt, observationDate: new Date(input.executionData.snapshotTs).toISOString(), freshness: input.executionData.freshness, dataKind: "actual" as const }
       : { provider: "OKX order book", available: false, failureReason: failReasonOf(input.executionData) },
     input.technicalData?.crossAsset

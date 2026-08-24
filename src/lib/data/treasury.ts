@@ -288,26 +288,31 @@ export function deriveMacroYieldEvidence(ctx: TreasuryContext): MacroYieldEviden
   }
 
   let usdStrengthEffect = 0;
-  if (nom.change !== undefined && Math.abs(nom.change) >= MACRO_YIELD_SIGNAL_THRESHOLD_PTS) {
+  // Phase 13 — a NON-FINITE change (Infinity/NaN from malformed feed values)
+  // is UNAVAILABLE evidence, never an extreme directional signal.
+  const nomChange = nom.change !== undefined && Number.isFinite(nom.change) ? nom.change : undefined;
+  if (nomChange !== undefined && Math.abs(nomChange) >= MACRO_YIELD_SIGNAL_THRESHOLD_PTS) {
+    nom.change = nomChange;
     usdStrengthEffect = clampUnit(nom.change / MACRO_YIELD_FULL_EFFECT_PTS);
     notes.push(
-      `Nominal ${nom.tenors.join("/")} changed ${nom.change > 0 ? "+" : ""}${nom.change.toFixed(3)}pp → USD-${usdStrengthEffect > 0 ? "positive" : "negative"} context.`,
+      `Nominal ${nom.tenors.join("/")} changed ${nomChange > 0 ? "+" : ""}${nomChange.toFixed(3)}pp → USD-${usdStrengthEffect > 0 ? "positive" : "negative"} context.`,
     );
   }
 
   let goldLongEffect = 0;
   if (ctx.latest.real && ctx.previous.real) {
     const rl = meanSharedChange(ctx.latest.real.real, ctx.previous.real.real, ["5Y", "10Y", "30Y"]);
-    if (rl.change !== undefined && Math.abs(rl.change) >= MACRO_YIELD_SIGNAL_THRESHOLD_PTS) {
+    const rlChange = rl.change !== undefined && Number.isFinite(rl.change) ? rl.change : undefined;
+    if (rlChange !== undefined && Math.abs(rlChange) >= MACRO_YIELD_SIGNAL_THRESHOLD_PTS) {
       // Falling ACTUAL real yields are historically supportive of gold.
-      goldLongEffect = clampUnit(-rl.change / MACRO_YIELD_FULL_EFFECT_PTS);
+      goldLongEffect = clampUnit(-rlChange / MACRO_YIELD_FULL_EFFECT_PTS);
       notes.push(
-        `REAL yields (${rl.tenors.join("/")}, actual Treasury data) changed ${rl.change > 0 ? "+" : ""}${rl.change.toFixed(3)}pp → gold-${goldLongEffect > 0 ? "supportive" : "opposing"} context.`,
+        `REAL yields (${rl.tenors.join("/")}, actual Treasury data) changed ${rlChange > 0 ? "+" : ""}${rlChange.toFixed(3)}pp → gold-${goldLongEffect > 0 ? "supportive" : "opposing"} context.`,
       );
     } else {
       notes.push(
         rl.tenors.length > 0
-          ? `Real-yield change ${(rl.change ?? 0).toFixed(3)}pp below signal threshold — no gold directional evidence.`
+          ? `Real-yield change ${(rlChange ?? 0).toFixed(3)}pp below signal threshold — no gold directional evidence.`
           : "No shared real-yield tenors between observations.",
       );
     }
