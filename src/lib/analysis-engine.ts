@@ -28,6 +28,11 @@ import {
   deriveEiaInventoryEvidence,
 } from "@/lib/data/eia";
 import {
+  EXECUTION_EXTREME_SPREAD_BPS,
+  estimateSlippage,
+  type ExecutionData,
+} from "@/lib/execution-quality";
+import {
   detectMarketRegime,
   classifySetup,
   detectContradictions,
@@ -545,6 +550,14 @@ function assessDataCompleteness(input: AnalysisInput): {
   if (input.eiaData && !input.eiaData.available) {
     flags.push(`EIA inventory context unavailable (${input.eiaData.reason})`);
   }
+  // Phase 7E — execution quality is crypto-only by design: non-crypto assets
+  // have NO validated bid/ask provider. Purely informational — never a
+  // conviction penalty and never directional.
+  if (input.instrumentType !== "crypto") {
+    flags.push("Bid/ask data unavailable (no validated order-book provider for this asset class)");
+  } else if (input.executionData && !input.executionData.available) {
+    flags.push(`Execution-quality data unavailable (${input.executionData.reason})`);
+  }
   if (!input.technicalData?.htfContext) {
     flags.push("No higher-timeframe structural data — macro context unverified");
   }
@@ -821,6 +834,30 @@ function decideTrade(
       ) {
         reasons.push(
           "SWING horizon depends on fundamental/macro context — no such context is available for this instrument.",
+        );
+      }
+    }
+  }
+
+  // ── Gate 6d: SCALPING-only execution-quality veto (Phase 7E) ──
+  // Fires ONLY when ALL hold: scalping horizon, crypto instrument, ACTUAL
+  // order-book data available, snapshot FRESH (exchange timestamp), and an
+  // EXTREME condition is detected (spread ≥ policy extreme threshold, or a
+  // THIN book with no visible size on one side). Intraday/swing never get a
+  // hard veto from microstructure; provider failure is NEVER a veto.
+  if (
+    styleProfile.style === "scalping" &&
+    input.instrumentType === "crypto" &&
+    bias !== "Neutral"
+  ) {
+    const ed: ExecutionData | undefined = input.executionData;
+    if (ed?.available && ed.freshness === "FRESH") {
+      const extremeSpread = ed.spreadBps >= EXECUTION_EXTREME_SPREAD_BPS;
+      if (extremeSpread || ed.regime === "THIN") {
+        reasons.push(
+          extremeSpread
+            ? `SCALPING veto: order-book spread ${ed.spreadBps.toFixed(1)} bps exceeds the ${EXECUTION_EXTREME_SPREAD_BPS} bps extreme-spread policy threshold — entry materially unexecutable at this horizon.`
+            : "SCALPING veto: order book is THIN (no visible size on one side of the top levels) — depth materially insufficient for scalp execution.",
         );
       }
     }
@@ -1203,6 +1240,26 @@ function decideTrade(
       }
     }
 
+    // \u2500\u2500 LAYER: EXECUTION (Phase 7E, style-scaled cap \u00b16/\u00b13/\u00b11).
+    // ONE layer: spread + depth + imbalance + slippage are an internal
+    // breakdown, never four independent votes. Crypto only (real OKX book).
+    // Directional tilt comes from ACTUAL bid/ask imbalance scaled down by
+    // condition penalties (wide spread / thin book). STALE snapshots score
+    // ZERO. Sits BELOW structure/liquidity/MTF: cannot flip bias alone and
+    // contributes nothing when unavailable.
+    {
+      const ed: ExecutionData | undefined = input.executionData;
+      if (input.instrumentType === "crypto" && ed?.available && ed.freshness === "FRESH") {
+        const cap = styleProfile.executionLayerCap;
+        const conditionPenalty =
+          ed.regime === "THIN" ? 1 : ed.regime === "WIDE_SPREAD" ? 0.6 : 0;
+        const effectOnLong = Math.max(-1, Math.min(1, ed.imbalance - conditionPenalty)) * cap;
+        if (effectOnLong !== 0) {
+          s += layerClamp(Math.round(biasSign === 1 ? effectOnLong : -effectOnLong), cap);
+        }
+      }
+    }
+
     // RSI/MACD modifier — small, never decisive
     if (Math.sign(breakdown.indicator) === biasSign) s += 3;
     else if (breakdown.indicator !== 0) s -= 3;
@@ -1216,6 +1273,8 @@ function decideTrade(
     "Treasury yield context unavailable",
     "COT positioning context unavailable",
     "EIA inventory context unavailable",
+    "Bid/ask data unavailable",
+    "Execution-quality data unavailable",
     "Timeframe chain unavailable:",
     "No higher-timeframe structural data",
   ];
@@ -1773,6 +1832,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // snapshots — never constants, never silent inversion.
   let positionSizing: PositionSizingResult | undefined;
   let specUnavailableReason: string | undefined;
+  // Phase 7E — slippage estimate from the REAL calculated quantity only.
+  let slippageEstimate: import("@/lib/execution-quality").SlippageEstimate | undefined;
+  const executionWarnings: string[] = [];
   if (decision.recommendation !== "NO_TRADE" && decision.tradePlan) {
     // Phase 7B-3 — OKX contract metadata feeds the spec hierarchy
     // (explicit > verified OKX > unavailable). Conflicting values BLOCK
@@ -1800,7 +1862,29 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
           fxDirect: input.fxRates?.direct,
           fxInverse: input.fxRates?.inverse,
         });
-    if (sizing.available) positionSizing = sizing;
+    if (sizing.available) {
+      positionSizing = sizing;
+      // Phase 7E — walk the REAL book with the REAL risk-engine quantity.
+      // Sizing unavailable → slippage unavailable (no synthetic quantity);
+      // contract size unavailable → mapping refused honestly.
+      const ed: ExecutionData | undefined = input.executionData;
+      if (ed?.available) {
+        const dir = decision.tradePlan.direction === "short" ? "short" : "long";
+        slippageEstimate = estimateSlippage(
+          { ok: true, instrumentId: ed.instrumentId, snapshotTs: ed.snapshotTs, bids: ed.book.bids, asks: ed.book.asks },
+          dir,
+          { quantityBase: sizing.quantity, contractSize: resolvedSpec.spec?.contractSize },
+        );
+      }
+    }
+    // Sizing itself failed (spec/FX/inputs incomplete) on an actionable
+    // thesis → disclose why there is no slippage figure; never invent one.
+    if (!slippageEstimate && input.executionData?.available) {
+      slippageEstimate = {
+        confidence: "LOW",
+        unavailableReason: "position size unavailable — no synthetic quantity is assumed",
+      };
+    }
   }
 
   const riskNote = generateRiskNote(
@@ -1815,6 +1899,46 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
       ? specUnavailableReason
       : undefined,
   );
+
+  // Phase 7E — explicit execution warnings. Every string is backed by an
+  // actual metric or an actual unavailability; nothing is speculative.
+  {
+    const ed: ExecutionData | undefined = input.executionData;
+    const styleLabel = styleProfile.style.charAt(0).toUpperCase() + styleProfile.style.slice(1);
+    if (input.instrumentType === "crypto") {
+      if (!ed) {
+        executionWarnings.push("Bid/ask data unavailable.");
+      } else if (!ed.available) {
+        executionWarnings.push(`Execution-quality data unavailable (${ed.reason}).`);
+      } else {
+        if (ed.freshness === "STALE") executionWarnings.push("Execution snapshot is stale.");
+        if (ed.regime === "WIDE_SPREAD") {
+          if (styleProfile.style === "scalping" && ed.spreadBps >= EXECUTION_EXTREME_SPREAD_BPS) {
+            executionWarnings.push(`Spread is extreme for scalping (${ed.spreadBps.toFixed(1)} bps ≥ ${EXECUTION_EXTREME_SPREAD_BPS} bps policy threshold).`);
+          } else {
+            executionWarnings.push(`Spread is wide for ${styleProfile.style} (${ed.spreadBps.toFixed(1)} bps vs ${10} bps policy norm).`);
+          }
+        }
+        if (ed.regime === "THIN") executionWarnings.push("Order-book depth is thin (no visible size on one side of the top levels).");
+        if (ed.regime === "IMBALANCED") {
+          executionWarnings.push(`Book is imbalanced toward ${ed.imbalance > 0 ? "bids" : "asks"} (${(Math.abs(ed.imbalance) * 100).toFixed(0)}% of visible top-level size).`);
+        }
+        if (decision.recommendation !== "NO_TRADE") {
+          if (slippageEstimate?.unavailableReason) {
+            executionWarnings.push(
+              slippageEstimate.unavailableReason.includes("visible depth")
+                ? `Order-book depth is insufficient for calculated position size (${slippageEstimate.depthUsed?.toFixed(4)} contracts visible).`
+                : "Slippage estimate unavailable: " + slippageEstimate.unavailableReason,
+            );
+          } else if (slippageEstimate?.estimatedSlippage !== undefined && slippageEstimate.slippageBps !== undefined) {
+            executionWarnings.push(`Estimated market impact for the calculated size: ~${slippageEstimate.slippageBps.toFixed(1)} bps of mid (ESTIMATE, not an executed result; ${styleLabel} horizon).`);
+          }
+        }
+      }
+    } else if (decision.recommendation !== "NO_TRADE" && styleProfile.style === "scalping") {
+      executionWarnings.push("No validated bid/ask provider for this asset class — scalping executes without microstructure confirmation.");
+    }
+  }
 
   // Phase 3A — compact MTF transparency summary for the UI.
   const mtfSummary: MtfSummary | undefined = mtf
@@ -1875,6 +1999,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     treasuryContext: input.treasuryData?.available ? input.treasuryData : undefined,
     cotContext: input.cotData?.available ? input.cotData : undefined,
     eiaContext: input.eiaData?.available ? input.eiaData : undefined,
+    executionContext: input.executionData?.available ? input.executionData : undefined,
+    slippageEstimate,
+    executionWarnings: executionWarnings.length > 0 ? executionWarnings : undefined,
   };
 }
 

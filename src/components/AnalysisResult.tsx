@@ -520,6 +520,56 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
+      {/* Phase 7E — Execution quality provenance (crypto order book only). */}
+      {result.executionContext && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+              <span className="text-primary/60">$</span> execution-quality{" "}
+              <span
+                className={cn(
+                  "ml-1",
+                  result.executionContext.regime === "LIQUID" ? "text-emerald-400" : "text-amber-400",
+                )}
+              >
+                {result.executionContext.regime}
+              </span>
+              <span
+                className={cn(
+                  "ml-1",
+                  result.executionContext.freshness === "FRESH" ? "text-emerald-400" : "text-red-400",
+                )}
+              >
+                {result.executionContext.freshness}
+              </span>
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-muted-foreground/80">
+              <span>bid/ask: <span className="text-foreground">{result.executionContext.bid} / {result.executionContext.ask}</span></span>
+              <span>spread: <span className="text-foreground">{result.executionContext.spreadBps.toFixed(2)} bps</span></span>
+              <span>depth L/R: <span className="text-foreground">{result.executionContext.bidDepth.toFixed(2)} / {result.executionContext.askDepth.toFixed(2)}</span> contracts</span>
+              <span>imbalance: <span className="text-foreground">{(result.executionContext.imbalance * 100).toFixed(0)}%</span></span>
+              {result.slippageEstimate?.slippageBps !== undefined && (
+                <span>est. impact: <span className="text-foreground">~{result.slippageEstimate.slippageBps.toFixed(1)} bps</span> (estimate)</span>
+              )}
+              {result.slippageEstimate?.unavailableReason && (
+                <span className="text-amber-400/80">slippage: unavailable — {result.slippageEstimate.unavailableReason}</span>
+              )}
+            </div>
+            {(result.executionWarnings?.length ?? 0) > 0 && (
+              <ul className="mt-1.5 space-y-0.5">
+                {result.executionWarnings!.map((w) => (
+                  <li key={w} className="text-[9px] font-mono text-amber-400/80 leading-relaxed">⚠ {w}</li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-1.5 text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
+              {result.executionContext.provider} · snapshot ts {new Date(result.executionContext.snapshotTs).toISOString()} · refines
+              executability of a valid thesis — never the thesis itself; not a probability or win-rate
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Phase 3A — Multi-Timeframe transparency (only what the engine computed) */}
       {result.mtfSummary && (
         <Card className="border-border/50">

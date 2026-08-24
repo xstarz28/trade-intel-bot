@@ -49,6 +49,14 @@ export interface StyleProfile {
    * trigger, never able to flip structural bias alone.
    */
   eiaLayerCap: number;
+  /**
+   * Execution-quality conviction-layer cap (crypto order book only).
+   * INITIAL POLICY PARAMETER validated by tests: SCALPING \u00b16 (most
+   * sensitive to microstructure), INTRADAY \u00b13, SWING \u00b11 (contextual
+   * only). Must stay below structure/liquidity/MTF influence \u2014 never able
+   * to flip bias or rescue NO_TRADE on its own.
+   */
+  executionLayerCap: number;
   /** Target-horizon guard in ATR multiples (null = unlimited). */
   targetMaxAtrMultiple: number | null;
   /** SCALPING: fresh execution evidence is mandatory. */
@@ -70,6 +78,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     macroYieldLayerCap: 2,
     cotLayerCap: 1,
     eiaLayerCap: 1,
+    executionLayerCap: 6,
     targetMaxAtrMultiple: 6,
     requiresTriggerEvidence: true,
     requiresHtfContext: false,
@@ -85,6 +94,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     macroYieldLayerCap: 8,
     cotLayerCap: 5,
     eiaLayerCap: 4,
+    executionLayerCap: 3,
     targetMaxAtrMultiple: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: false,
@@ -100,6 +110,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     macroYieldLayerCap: 12,
     cotLayerCap: 12,
     eiaLayerCap: 8,
+    executionLayerCap: 1,
     targetMaxAtrMultiple: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: true,
