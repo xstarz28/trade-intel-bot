@@ -235,6 +235,18 @@ export function deriveCotEvidence(ctx: CotContext): CotEvidence {
   let crowded = false;
   let crowdRatio: number | undefined;
 
+  // Phase 12 P15 — malformed provider numbers are UNAVAILABLE evidence,
+  // never directional. A non-finite net/change/OI would otherwise poison
+  // conviction arithmetic downstream (NaN propagates through clamp/min/max).
+  if (
+    !Number.isFinite(ctx.netNonCommercial) ||
+    (ctx.changeFromPreviousReport !== undefined && !Number.isFinite(ctx.changeFromPreviousReport)) ||
+    (ctx.latest.openInterest !== undefined && !Number.isFinite(ctx.latest.openInterest))
+  ) {
+    notes.push("Malformed positioning numbers in report — context unavailable, no directional evidence synthesized.");
+    return { effectOnContractCurrency, crowded, notes };
+  }
+
   const oi = ctx.latest.openInterest;
   if (oi && oi > 0) {
     crowdRatio = Math.abs(ctx.netNonCommercial) / oi;
