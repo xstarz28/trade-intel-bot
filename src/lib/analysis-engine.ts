@@ -1514,6 +1514,8 @@ function generateRiskNote(
   noTradeReasons: string[],
   keyLevels: KeyLevels,
   positionSizing?: PositionSizingResult,
+  /** Phase 7B-3: exact spec/conflict reason when sizing is blocked on a tradeable thesis. */
+  sizingUnavailableReason?: string,
 ): string {
   const parts: string[] = [];
 
@@ -1543,7 +1545,7 @@ function generateRiskNote(
       );
     } else {
       parts.push(
-        `Conviction ${conviction} at ${confidence}% evidence strength. Position sizing unavailable — it requires your account equity, your own risk-per-trade choice, and a complete instrument specification (contract size, quote currency, quantity step); none are assumed on your behalf. As general guidance only, many traders risk 1–2% per trade, but that is not optimal for every account or instrument.`,
+        `Conviction ${conviction} at ${confidence}% evidence strength. Position sizing unavailable${sizingUnavailableReason ? ` (${sizingUnavailableReason})` : ""} — it requires your account equity, your own risk-per-trade choice, and a complete instrument specification (contract size, quote currency, quantity step); none are assumed on your behalf. As general guidance only, many traders risk 1–2% per trade, but that is not optimal for every account or instrument.`,
       );
     }
     parts.push(
@@ -1682,21 +1684,34 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // ONLY when explicitly supplied. Currency conversion uses live provider FX
   // snapshots — never constants, never silent inversion.
   let positionSizing: PositionSizingResult | undefined;
+  let specUnavailableReason: string | undefined;
   if (decision.recommendation !== "NO_TRADE" && decision.tradePlan) {
+    // Phase 7B-3 — OKX contract metadata feeds the spec hierarchy
+    // (explicit > verified OKX > unavailable). Conflicting values BLOCK
+    // sizing rather than silently picking a side. Risk data only: this can
+    // never influence bias, conviction, or the trade decision.
     const resolvedSpec = resolveInstrumentSpec({
       instrument: input.instrument,
       explicitSpec: input.instrumentSpec,
+      okx: input.okxSpecData,
     });
-    const sizing = computePositionSizing({
-      equity: input.accountEquity ?? NaN,
-      riskPercent: input.riskPercent ?? NaN,
-      entry: parseFloat(decision.tradePlan.entry),
-      stopLoss: parseFloat(decision.tradePlan.stopLoss),
-      spec: resolvedSpec.status === "unavailable" ? undefined : resolvedSpec.spec,
-      accountCurrency: input.accountCurrency,
-      fxDirect: input.fxRates?.direct,
-      fxInverse: input.fxRates?.inverse,
-    });
+    const specConflicted =
+      resolvedSpec.status === "conflict" || (resolvedSpec.conflicts?.length ?? 0) > 0;
+    if (resolvedSpec.status !== "available") {
+      specUnavailableReason = resolvedSpec.unavailableReason;
+    }
+    const sizing = specConflicted
+      ? ({ available: false, unavailableReason: resolvedSpec.unavailableReason ?? "specification conflict" } as PositionSizingResult)
+      : computePositionSizing({
+          equity: input.accountEquity ?? NaN,
+          riskPercent: input.riskPercent ?? NaN,
+          entry: parseFloat(decision.tradePlan.entry),
+          stopLoss: parseFloat(decision.tradePlan.stopLoss),
+          spec: resolvedSpec.status === "unavailable" ? undefined : resolvedSpec.spec,
+          accountCurrency: input.accountCurrency,
+          fxDirect: input.fxRates?.direct,
+          fxInverse: input.fxRates?.inverse,
+        });
     if (sizing.available) positionSizing = sizing;
   }
 
@@ -1708,6 +1723,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     decision.noTradeReasons,
     decision.keyLevels,
     positionSizing,
+    !positionSizing?.available && decision.recommendation !== "NO_TRADE"
+      ? specUnavailableReason
+      : undefined,
   );
 
   // Phase 3A — compact MTF transparency summary for the UI.

@@ -112,6 +112,10 @@ export interface AnalysisInput {
   // NEVER live/exchange/retail positioning; unavailable for unmappable
   // instruments (e.g. crypto spot) by design.
   cotData?: import("@/lib/data/cot").CotData;
+  // ── Phase 7B-3: OKX public instrument metadata (risk/spec data ONLY) ──
+  // Static contract metadata for position sizing. Never directional
+  // evidence; never presented as live market data.
+  okxSpecData?: import("@/lib/risk/okx-spec").OkxSpecData;
   // ── Phase 3B: risk model inputs (all optional; sizing stays unavailable
   // unless every required piece is genuinely provided) ──
   /** Account equity in account currency, user-provided. */

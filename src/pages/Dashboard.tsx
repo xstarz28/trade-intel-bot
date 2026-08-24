@@ -80,6 +80,7 @@ export default function Dashboard() {
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
   const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
   const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
+  const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
 
   const handleSignOut = async () => {
     await signOut();
@@ -262,6 +263,22 @@ export default function Dashboard() {
           }
         }
 
+        // Phase 7B-3 — OKX contract metadata for crypto sizing. Fetched ONLY
+        // when no explicit contract size/step was supplied. Failure is
+        // non-fatal: sizing reports unavailable; the thesis is untouched.
+        let okxSpecData: AnalysisInput["okxSpecData"];
+        if (
+          input.instrumentType === "crypto" &&
+          !(input.instrumentSpec?.contractSize && input.instrumentSpec?.quantityStep)
+        ) {
+          try {
+            const okx = await fetchOkxInstrumentSpec({ instrument: input.instrument });
+            if (okx.success) okxSpecData = okx.data;
+          } catch {
+            // OKX unavailable — sizing stays honestly unavailable.
+          }
+        }
+
         const enrichedInput: AnalysisInput = {
           ...input,
           marketData: marketDataResult.data,
@@ -274,6 +291,7 @@ export default function Dashboard() {
           fxRates,
           treasuryData,
           cotData,
+          okxSpecData,
         };
         const result = runAnalysis(enrichedInput);
 
@@ -319,7 +337,7 @@ export default function Dashboard() {
         setIsAnalyzing(false);
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
