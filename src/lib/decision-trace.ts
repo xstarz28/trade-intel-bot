@@ -137,6 +137,78 @@ export function stableSerialize(value: unknown): string {
   return JSON.stringify(enc(value));
 }
 
+// ── Phase 14 P5 — runtime observability event ──────────────────────
+/**
+ * Minimal typed telemetry summary derived FROM an already-made decision.
+ * DECISION-NEUTRAL by construction: nothing here feeds back into bias,
+ * conviction, gates or plans. Allowlisted fields ONLY — never raw provider
+ * payloads, never secrets, never user-identifying data.
+ */
+export interface ObservabilityEvent {
+  kind: "analysis.completed";
+  fingerprint: string;
+  instrument: string;
+  instrumentType: string;
+  timeframe: string;
+  tradingStyle: string;
+  recommendation: "LONG" | "SHORT" | "NO_TRADE";
+  convictionBand: string;
+  failedGateCount: number;
+  contradictionSeverities: string[];
+  providersAvailable: number;
+  providersUnavailable: number;
+  freshnessByProvider: Record<string, string>;
+  dataCompleteness: string;
+}
+
+const OBSERVABILITY_KEYS: readonly (keyof ObservabilityEvent)[] = [
+  "kind",
+  "fingerprint",
+  "instrument",
+  "instrumentType",
+  "timeframe",
+  "tradingStyle",
+  "recommendation",
+  "convictionBand",
+  "failedGateCount",
+  "contradictionSeverities",
+  "providersAvailable",
+  "providersUnavailable",
+  "freshnessByProvider",
+  "dataCompleteness",
+];
+
+/** Exact allowlist exposed for audit/tests — the event may never grow silently. */
+export function observabilityAllowlist(): readonly string[] {
+  return OBSERVABILITY_KEYS;
+}
+
+export function buildObservabilityEvent(trace: DecisionTrace): ObservabilityEvent {
+  const freshnessByProvider: Record<string, string> = {};
+  for (const p of trace.provenance) {
+    freshnessByProvider[p.provider] = p.available ? (p.freshness ?? "available") : "unavailable";
+  }
+  return {
+    kind: "analysis.completed",
+    fingerprint: computeDecisionFingerprint(trace),
+    instrument: trace.inputSnapshotSummary.instrument,
+    instrumentType: trace.inputSnapshotSummary.instrumentType,
+    timeframe: trace.inputSnapshotSummary.timeframe,
+    tradingStyle: trace.tradingStyle,
+    recommendation: trace.recommendation,
+    convictionBand:
+      trace.recommendation === "NO_TRADE"
+        ? "informational"
+        : (trace.convictionBreakdown.band ?? "unknown"),
+    failedGateCount: trace.failedGates.length,
+    contradictionSeverities: trace.contradictions.map((c) => c.severity),
+    providersAvailable: trace.provenance.filter((p) => p.available).length,
+    providersUnavailable: trace.provenance.filter((p) => !p.available).length,
+    freshnessByProvider,
+    dataCompleteness: trace.inputSnapshotSummary.dataCompleteness,
+  };
+}
+
 /** FNV-1a 32-bit — dependency-free, deterministic across runtimes. */
 export function fnv1a32(input: string): string {
   let h = 0x811c9dc5;
