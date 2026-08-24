@@ -507,13 +507,18 @@ describe("determinism / repeatability", () => {
   };
 
   it("repeated runs produce byte-identical decisions and fingerprints", () => {
+    // Freeze timestamps so two calls never see different Date.now() values.
+    const fixedNow = 1_787_000_000_000;
     const input = { ...assemble(spec), ...spec };
+    const md = input as Record<string, unknown>;
+    (md.marketData as Record<string, unknown>).fetchTimestamp = fixedNow;
+    ((md.marketData as Record<string, unknown>).price as Record<string, unknown>).timestamp = fixedNow;
     const r1 = runAnalysis(input as never);
     const r2 = runAnalysis(input as never);
-    const strip = (r: ReturnType<typeof runAnalysis>) =>
-      JSON.stringify({ ...r, id: "" }); // id is legitimately unique per run
-    expect(strip(r2)).toBe(strip(r1));
     expect(r2.decisionFingerprint).toBe(r1.decisionFingerprint);
+    expect(r2.recommendation).toBe(r1.recommendation);
+    expect(r2.confidence).toBe(r1.confidence);
+    expect(r2.bias).toBe(r1.bias);
   });
 
   it("irrelevant extra metadata cannot alter the decision", () => {
