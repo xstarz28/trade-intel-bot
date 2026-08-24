@@ -358,7 +358,16 @@ describe("contradiction engine (Phase 5)", () => {
       }),
     });
     const sev = items.map((i) => i.severity);
-    expect(sev).toContain("DECISIVE");   // |fundamental|=2 vs bias
+    // PHASE 8 P4 behavior change:
+    // OLD: detectContradictions itself assigned DECISIVE for |fundamental|≥2.
+    // WHY CHANGED: DECISIVE must derive ONLY from actual decision-gate state,
+    //      never from magnitude heuristics inside a pure classifier (F-7).
+    // NEW: the pure function caps at MATERIAL and tags the evidence domain;
+    //      the engine promotes to DECISIVE only when Gate 5 actually fired.
+    // WHY CORRECT: severity now reflects real gate decisions, not string or
+    //      threshold coincidence.
+    expect(sev).toContain("MATERIAL");   // |fundamental|=2 vs bias (capped)
+    expect(sev).not.toContain("DECISIVE"); // promotion is engine-owned
     expect(sev).toContain("MINOR");      // sweep against / ranging note
   });
 });

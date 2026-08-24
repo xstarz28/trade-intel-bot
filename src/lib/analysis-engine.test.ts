@@ -28,8 +28,16 @@ describe("calculateBias (via runAnalysis)", () => {
       }),
     );
     // Price at upper range → trend +2
-    expect(result.bias).toBe("Bullish");
     expect(result.breakdown.trend).toBeGreaterThanOrEqual(1);
+    // PHASE 8 P1 behavior change:
+    // OLD: final bias was Bullish from the price-position-in-range heuristic.
+    // WHY CHANGED: price position inside user-supplied highs/lows is NOT
+    //      market structure — under the veto-model it cannot create a thesis.
+    // NEW: evidence (breakdown.trend) is preserved; final bias is Neutral
+    //      because no external structural direction exists.
+    // WHY CORRECT: structure creates theses (F-5); a range-position heuristic
+    //      is not structural evidence.
+    expect(result.bias).toBe("Neutral");
   });
 
   it("returns Bearish when price is near the low", () => {
@@ -40,8 +48,11 @@ describe("calculateBias (via runAnalysis)", () => {
         recentLow: "1.00",
       }),
     );
-    expect(result.bias).toBe("Bearish");
+    // PHASE 8 P1 — see the bullish counterpart above for the documented
+    // change: evidence stays, thesis authority never comes from a position
+    // heuristic without structural data.
     expect(result.breakdown.trend).toBeLessThanOrEqual(-1);
+    expect(result.bias).toBe("Neutral");
   });
 });
 

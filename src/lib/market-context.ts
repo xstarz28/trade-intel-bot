@@ -299,6 +299,12 @@ export type ContradictionSeverity = "MINOR" | "MATERIAL" | "DECISIVE";
 export interface ContradictionItem {
   description: string;
   severity: ContradictionSeverity;
+  /**
+   * Phase 8 P4 — structured evidence domain. Severity above MATERIAL is
+   * NEVER assigned here: DECISIVE is derived exclusively from actual
+   * decision-gate state in the engine (see runAnalysis), matched by domain.
+   */
+  domain?: "mtf" | "fundamental" | "positioning" | "liquidity" | "regime" | "structure";
 }
 
 /**
@@ -322,6 +328,7 @@ export function detectContradictions(input: {
     items.push({
       description: `${mtf.htfTimeframe ?? "HTF"} ${mtf.htfBias} context vs lower-timeframe disagreement (${mtf.alignment})`,
       severity: mtf.alignment === "COUNTER_TREND" ? "MATERIAL" : "MINOR",
+      domain: "mtf",
     });
   }
 
@@ -335,6 +342,7 @@ export function detectContradictions(input: {
       items.push({
         description: `${bias!.toLowerCase()} thesis vs recent ${smc.recentSweep.side} liquidity sweep`,
         severity: "MINOR",
+        domain: "liquidity",
       });
     }
   }
@@ -342,15 +350,20 @@ export function detectContradictions(input: {
   // Structure vs fundamental / positioning.
   if (breakdown && biasSign !== 0) {
     if (Math.sign(breakdown.fundamental) === -biasSign && breakdown.fundamental !== 0) {
+      // Phase 8 P4 — magnitude caps at MATERIAL here. Whether this conflict
+      // is DECISIVE is decided ONLY by the actual gate outcome (Gate 5),
+      // communicated to the engine through the structured domain tag.
       items.push({
         description: `technical ${bias!.toLowerCase()} bias vs fundamental disagreement`,
-        severity: Math.abs(breakdown.fundamental) >= 2 ? "DECISIVE" : "MATERIAL",
+        severity: "MATERIAL",
+        domain: "fundamental",
       });
     }
     if (Math.sign(breakdown.sentiment) === -biasSign && breakdown.sentiment !== 0) {
       items.push({
         description: `technical ${bias!.toLowerCase()} bias vs positioning/sentiment disagreement`,
-        severity: Math.abs(breakdown.sentiment) >= 2 ? "DECISIVE" : "MINOR",
+        severity: "MATERIAL",
+        domain: "positioning",
       });
     }
   }
@@ -360,6 +373,7 @@ export function detectContradictions(input: {
     items.push({
       description: `directional ${bias!.toLowerCase()} thesis inside RANGING market regime`,
       severity: "MINOR",
+      domain: "regime",
     });
   }
 
@@ -368,6 +382,7 @@ export function detectContradictions(input: {
     items.push({
       description: "internal (minor) structure opposes external (major) structure",
       severity: "MINOR",
+      domain: "structure",
     });
   }
 

@@ -108,7 +108,68 @@ function computeAlignment(input: AnalysisInput): HtfAlignment | undefined {
   };
 }
 
-// ── Bias Calculation (structure + fundamental + positioning core) ─
+// ── Phase 8 P1 — structural-agreement veto (veto-model, not re-weighting) ──
+
+/**
+ * The STRUCTURAL direction used for thesis authority. Derived from the
+ * external structure LABEL only — a CHoCH is deliberately NOT given override
+ * priority here: an LTF/primary CHoCH alone is trigger context, never the
+ * reversal authority. The only reversal exception is a genuine HTF external
+ * BOS/CHoCH carried by mtf.htfReversal.
+ */
+function structuralDirection(tech?: TechnicalData): TfDirection {
+  const label = tech?.smc?.internalExternal.external.structure ?? tech?.structure;
+  if (label === "HH/HL") return "long";
+  if (label === "LH/LL") return "short";
+  return "none";
+}
+
+/**
+ * Apply the structural-agreement rule to the raw weighted-core bias.
+ *
+ * A directional bias survives ONLY when:
+ *   - the external structure label agrees with it, OR
+ *   - a genuine HTF external reversal (mtf.htfReversal) authorizes it.
+ * Otherwise the bias is vetoed to Neutral — non-structural evidence can
+ * support or weaken a thesis but can never create or flip one.
+ */
+function applyStructuralVeto(
+  bias: DirectionalBias,
+  input: AnalysisInput,
+  mtf?: MtfContext,
+): { bias: DirectionalBias; vetoReason?: string } {
+  if (bias === "Neutral") return { bias };
+  const biasDir: TfDirection = bias === "Bullish" ? "long" : "short";
+  if (structuralDirection(input.technicalData) === biasDir) return { bias };
+
+  const reversal = mtf?.htfReversal;
+  if (
+    reversal &&
+    (reversal.direction === "bullish") === (biasDir === "long")
+  ) {
+    return { bias };
+  }
+
+  const evidenceNames: string[] = [];
+  if ((input.macroData && input.macroData.confidence !== "unavailable") || input.calendarData || input.economicEvents || input.fundamentalData?.available) evidenceNames.push("fundamental");
+  if (
+    (input.sentimentData && input.sentimentData.confidence !== "unavailable") ||
+    (input.derivativesData && input.derivativesData.confidence !== "unavailable") ||
+    input.fundingRate
+  ) evidenceNames.push("positioning/sentiment");
+
+  const structLabel =
+    input.technicalData?.smc?.internalExternal.external.structure ??
+    input.technicalData?.structure ?? "unavailable";
+  return {
+    bias: "Neutral",
+    vetoReason:
+      `Structural agreement required: ${bias.toLowerCase()} core reading is not supported by external structure (${structLabel}) and no genuine HTF external BOS/CHoCH reversal authorizes it` +
+      (evidenceNames.length > 0 ? ` — non-structural evidence (${evidenceNames.join(", ")}) cannot create or flip a directional thesis.` : "."),
+  };
+}
+
+// ── Bias Calculation (structure + fundamental + positioning core) ──
 
 function calculateBias(breakdown: BiasBreakdown): {
   bias: DirectionalBias;
@@ -586,6 +647,12 @@ function assessDataCompleteness(input: AnalysisInput): {
 interface TradeDecision {
   recommendation: Recommendation;
   noTradeReasons: string[];
+  /**
+   * Phase 8 P4 — structured gate metadata. Domains whose ACTUAL rejection
+   * (this run) is authoritative enough to promote a matching-domain
+   * contradiction to DECISIVE. No string matching on human-readable text.
+   */
+  decisiveGateDomains: string[];
   tradePlan?: TradePlan;
   conviction?: ConvictionLevel;
   confidence: number;
@@ -607,6 +674,7 @@ function decideTrade(
   flags: string[],
   alignment: HtfAlignment | undefined,
   mtf?: MtfContext,
+  structuralVeto?: string,
 ): TradeDecision {
   const reasons: string[] = [];
   const tech = input.technicalData;
@@ -614,6 +682,9 @@ function decideTrade(
   // Phase 6 — style profile: decision-horizon parameters ONLY. It never
   // alters structure/liquidity/price facts, only requirements and weights.
   const styleProfile = resolveStyle(input.tradingStyle);
+
+  // ── Phase 8 P1 — the structural-agreement veto is a first-class gate reason.
+  if (structuralVeto) reasons.push(structuralVeto);
 
   const entry =
     md?.price.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : undefined);
@@ -648,15 +719,22 @@ function decideTrade(
     );
   }
   // Style-sensitive freshness policy (scalping strictest, swing most tolerant).
+  // Phase 8 P5 — malformed / zero / negative / future timestamps are rejected
+  // explicitly instead of silently passing the staleness comparison.
+  const PRICE_FUTURE_SKEW_MS = 90_000; // documented clock-skew tolerance
   const PRICE_STALE_MS = styleProfile.priceStaleMs;
-  if (
-    md &&
-    Number.isFinite(md.price.timestamp) &&
-    Date.now() - md.price.timestamp > PRICE_STALE_MS
-  ) {
-    reasons.push(
-      `Price snapshot is older than ${PRICE_STALE_MS / 60000} minutes — treating it as stale rather than live.`,
-    );
+  if (md) {
+    const ts = md.price.timestamp;
+    const isValidTs = Number.isFinite(ts) && ts > 0 && ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
+    if (!isValidTs) {
+      reasons.push(
+        `Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.`,
+      );
+    } else if (Date.now() - ts > PRICE_STALE_MS) {
+      reasons.push(
+        `Price snapshot is older than ${PRICE_STALE_MS / 60000} minutes — treating it as stale rather than live.`,
+      );
+    }
   }
 
   // ── Gate 1: live price required ──
@@ -692,10 +770,12 @@ function decideTrade(
 
   // ── Gate 5: material opposing evidence ──
   const materialOpposition = opposing.filter((f) => Math.abs(f.score) >= 2);
+  const decisiveGateDomains: string[] = [];
   if (bias !== "Neutral" && materialOpposition.length > 0) {
     reasons.push(
       `Material conflict: ${materialOpposition.map((f) => f.name).join(", ")} strongly oppose the ${bias.toLowerCase()} bias.`,
     );
+    for (const f of materialOpposition) decisiveGateDomains.push(f.name);
   }
 
   // ── Gate 6: HTF/LTF relationship ──
@@ -718,6 +798,7 @@ function decideTrade(
         reasons.push(
           `HTF (${alignment.htfTimeframe} ${alignment.htfStructure}) conflicts with LTF direction without a valid counter-trend confirmation (needs LTF CHoCH + fundamental/positioning agreement).`,
         );
+        decisiveGateDomains.push("mtf");
       }
     }
   }
@@ -768,6 +849,7 @@ function decideTrade(
           reasons.push(
             `Counter-trend setup against ${mtf.htfTimeframe} ${mtf.htfBias === "long" ? "bullish" : "bearish"} structure lacks the required confirmation chain (needs setup CHoCH + trigger-timeframe fresh evidence + fundamental/positioning agreement). LTF signals alone do not reverse HTF context.`,
           );
+          decisiveGateDomains.push("mtf");
         }
       }
       // bias WITH the HTF while lower TFs pull back = buying/selling into
@@ -788,6 +870,7 @@ function decideTrade(
         reasons.push(
           `MTF alignment MIXED without a clear trigger: higher and lower timeframes disagree and the remaining confluence (${nonTechnicalAgrees ? "fundamental/positional" : "no fundamental/positional"} support, ${executionEvidence ? "with" : "without"} fresh execution evidence) cannot justify an entry.`,
         );
+        decisiveGateDomains.push("mtf");
       }
     }
   }
@@ -1059,8 +1142,17 @@ function decideTrade(
         }
 
         // Trigger-timeframe execution evidence (real detected events only).
+        // Phase 8 P3 — SAME-CLUSTER DEDUP: when the trigger slot IS the
+        // primary/setup timeframe, its displacement/fresh-FVG events are the
+        // SAME candle cluster the Location layer already scores. The trigger
+        // sub-vote is suppressed so one observation never earns two layer
+        // votes. Distinct trigger timeframes remain independently countable.
         const trig = mtf.timeframes.find((t) => t.role === "trigger")?.smc;
-        if (trig) {
+        const triggerIsPrimaryCluster =
+          mtf.triggerTimeframe !== undefined &&
+          (mtf.triggerTimeframe === input.timeframe ||
+            mtf.triggerTimeframe === mtf.setupTimeframe);
+        if (trig && !triggerIsPrimaryCluster) {
           const trigAligned =
             (trig.displacement !== undefined &&
               (trig.displacement.direction === "bullish") === (biasSign === 1)) ||
@@ -1281,8 +1373,11 @@ function decideTrade(
     const criticalFlags = flags.filter(
       (f) => !INFORMATIONAL_FLAGS.some((p) => f.startsWith(p)),
     );
-    if (completeness === "full") s += 5;
-    else if (completeness === "partial") s -= 3;
+    // Phase 8 P2 — AVAILABILITY IS NEVER A CONFLUENCE BONUS. The previous
+    // "+5 for full completeness" rewarded data PRESENCE without any new
+    // directional evidence. Completeness now only ever REDUCES conviction
+    // (partial/critical-gap penalties below) or leaves it unchanged.
+    if (completeness === "partial") s -= 3;
     s -= criticalFlags.length * 4;
 
     confidence = Math.round(Math.max(20, Math.min(88, s)));
@@ -1303,6 +1398,8 @@ function decideTrade(
   return {
     recommendation,
     noTradeReasons: recommendation === "NO_TRADE" ? reasons : [],
+    decisiveGateDomains:
+      recommendation === "NO_TRADE" ? decisiveGateDomains : [],
     tradePlan: finalPlan,
     conviction,
     confidence,
@@ -1705,9 +1802,13 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     sentiment: sentimentScore,
   };
 
-  const { bias, coreWeightedAvg } = calculateBias(breakdown);
-  const alignment = computeAlignment(input);
+  // Phase 8 P1 — VETO-MODEL bias integrity: structure is the only thesis
+  // creation authority. Non-structural evidence can support/weaken/veto to
+  // Neutral; only a genuine HTF external reversal authorizes an exception.
   const mtf = input.technicalData?.mtf;
+  const { bias: rawBias, coreWeightedAvg } = calculateBias(breakdown);
+  const { bias, vetoReason: structuralVetoReason } = applyStructuralVeto(rawBias, input, mtf);
+  const alignment = computeAlignment(input);
 
   // ── Phase 5: market context (regime, setup class, contradictions) ──
   const marketRegime = detectMarketRegime({
@@ -1730,10 +1831,14 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     flags,
     alignment,
     mtf,
+    structuralVetoReason,
   );
 
-  // Contradictions: DECISIVE severity is derived from the actual gates —
-  // a triggered rejection reason marks its domain decisive.
+  // Phase 8 P4 — DECISIVE derivation is STRUCTURED, never string-matched:
+  // a contradiction becomes DECISIVE only when an actual decision gate that
+  // fired THIS run registered the contradiction's evidence domain as
+  // decisive (Gate 5 → fundamental/positioning; Gate 6/6b → mtf).
+  const decisiveGateDomains = new Set(decision.decisiveGateDomains);
   const keyContradictions = detectContradictions({
     mtf,
     technicalData: input.technicalData,
@@ -1741,9 +1846,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     bias,
     regime: marketRegime.regime,
   }).map((c) => {
-    if (decision.noTradeReasons.length === 0) return c;
-    const decisiveDomains = decision.noTradeReasons.join(" ");
-    if (c.severity === "MATERIAL" && /conflict|counter-trend|MIXED/i.test(decisiveDomains)) {
+    if (
+      c.domain !== undefined &&
+      decisiveGateDomains.has(c.domain)
+    ) {
       return { ...c, severity: "DECISIVE" as const };
     }
     return c;
