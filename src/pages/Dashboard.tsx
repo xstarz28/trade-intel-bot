@@ -81,6 +81,7 @@ export default function Dashboard() {
   const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
   const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
   const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
+  const fetchOkxOrderBook = useAction(api.okx.fetchOkxOrderBook);
   const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
 
   const handleSignOut = async () => {
@@ -251,6 +252,19 @@ export default function Dashboard() {
         // only (crude/gasoline/distillate stocks are meaningless elsewhere),
         // never for scalping (slow weekly data must not burden the execution
         // horizon). Failure is non-fatal: explicit flag, analysis proceeds.
+        // Phase 7E — crypto execution quality via OKX public order book.
+        // Crypto only (no validated bid/ask provider elsewhere); skipped for
+        // swing (microstructure is contextual-only there). Non-fatal.
+        let executionData: AnalysisInput["executionData"];
+        if (input.instrumentType === "crypto" && input.tradingStyle !== "swing") {
+          try {
+            const ob = await fetchOkxOrderBook({ instrument: input.instrument });
+            if (ob.success) executionData = ob.data;
+          } catch {
+            // Order book unavailable — explicit flag, analysis proceeds.
+          }
+        }
+
         let eiaData: AnalysisInput["eiaData"];
         if (
           input.instrumentType === "commodity" &&
@@ -311,6 +325,7 @@ export default function Dashboard() {
           treasuryData,
           cotData,
           eiaData,
+          executionData,
           okxSpecData,
         };
         const result = runAnalysis(enrichedInput);
@@ -357,7 +372,7 @@ export default function Dashboard() {
         setIsAnalyzing(false);
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {

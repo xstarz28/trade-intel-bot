@@ -12,6 +12,11 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { mapInstrumentToOkx, parseOkxResponse } from "../lib/risk/okx-spec";
+import {
+  buildExecutionData,
+  parseOkxOrderBook,
+  type ExecutionData,
+} from "../lib/execution-quality";
 
 const ENDPOINT = "https://www.okx.com/api/v5/public/instruments";
 
@@ -52,6 +57,44 @@ export const fetchOkxInstrumentSpec = action({
         success: false as const,
         error: `OKX fetch failed: ${err instanceof Error ? err.message : "unknown error"}`,
       };
+    }
+  },
+});
+
+/**
+ * Phase 7E — OKX public order-book snapshot for crypto execution quality.
+ * Endpoint verified live (no API key): /api/v5/market/books?instId=…&sz=50
+ * Parsing/regime/freshness use the SHARED pure layer
+ * (lib/execution-quality.ts) — identical to any client-side path.
+ * Freshness is based on the EXCHANGE timestamp, never on fetch time.
+ */
+export const fetchOkxOrderBook = action({
+  args: { instrument: v.string() },
+  handler: async (_ctx, args) => {
+    const instId = mapInstrumentToOkx(args.instrument);
+    if (!instId) {
+      return {
+        success: false as const,
+        error: `instrument "${args.instrument}" is not shaped like an OKX contract id or BASE/QUOTE pair`,
+      };
+    }
+    try {
+      const res = await fetch(
+        `https://www.okx.com/api/v5/market/books?instId=${encodeURIComponent(instId)}&sz=50`,
+        { headers: { Accept: "application/json" } },
+      );
+      if (!res.ok) {
+        return { success: false as const, error: `OKX order book returned HTTP ${res.status}.` };
+      }
+      const json: unknown = await res.json().catch(() => undefined);
+      if (json === undefined) {
+        return { success: false as const, error: "OKX returned malformed JSON." };
+      }
+      const parsed = parseOkxOrderBook(json);
+      const data = buildExecutionData(parsed, Date.now(), Date.now());
+      return { success: data.available as boolean, data } as { success: boolean; data: ExecutionData };
+    } catch (e) {
+      return { success: false as const, error: `network failure: ${String(e).slice(0, 120)}` };
     }
   },
 });
