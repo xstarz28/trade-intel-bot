@@ -80,6 +80,7 @@ export default function Dashboard() {
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
   const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
   const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
+  const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
   const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
 
   const handleSignOut = async () => {
@@ -246,6 +247,24 @@ export default function Dashboard() {
           }
         }
 
+        // Phase 7D — EIA WPSR inventory context. Conditional: OIL instruments
+        // only (crude/gasoline/distillate stocks are meaningless elsewhere),
+        // never for scalping (slow weekly data must not burden the execution
+        // horizon). Failure is non-fatal: explicit flag, analysis proceeds.
+        let eiaData: AnalysisInput["eiaData"];
+        if (
+          input.instrumentType === "commodity" &&
+          /WTI|CRUDE|BRENT|OIL/i.test(input.instrument) &&
+          input.tradingStyle !== "scalping"
+        ) {
+          try {
+            const e = await fetchEiaInventory({});
+            if (e.success) eiaData = e.data;
+          } catch {
+            // EIA unavailable — explicit flag, no fallback data.
+          }
+        }
+
         // Phase 7B-1 — Treasury macro-yield context. Conditional fetch:
         // only USD-relevant asset classes, never for scalping (slow macro
         // data must not burden the execution horizon). Failure is non-fatal:
@@ -291,6 +310,7 @@ export default function Dashboard() {
           fxRates,
           treasuryData,
           cotData,
+          eiaData,
           okxSpecData,
         };
         const result = runAnalysis(enrichedInput);
@@ -337,7 +357,7 @@ export default function Dashboard() {
         setIsAnalyzing(false);
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {

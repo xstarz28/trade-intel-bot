@@ -25,6 +25,9 @@ import {
   type CotData,
 } from "@/lib/data/cot";
 import {
+  deriveEiaInventoryEvidence,
+} from "@/lib/data/eia";
+import {
   detectMarketRegime,
   classifySetup,
   detectContradictions,
@@ -381,10 +384,19 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
         if (combined.includes("de-escalation") || combined.includes("peace deal")) score -= 1;
         if (combined.includes("inflation fear") || combined.includes("stagflation")) score += 1;
       } else {
-        // Oil & other commodities: supply/inventory data UNAVAILABLE (no
-        // provider). Only broad demand/risk and USD-proxy news are usable.
-        if (combined.includes("supply cut") || combined.includes("production disruption") || combined.includes("opec cut")) score += 1;
-        if (combined.includes("supply increase") || combined.includes("output hike") || combined.includes("demand destruction")) score -= 1;
+        // Oil & other commodities. When ACTUAL EIA inventory evidence exists
+        // for oil, news-derived supply-cut/hike keywords are REDUNDANT (same
+        // underlying supply phenomenon \u2014 never double-counted); geopolitical/
+        // demand keywords remain distinct context. Without EIA the news
+        // keywords stay as the honestly-labelled fallback.
+        const hasEiaDirectional =
+          /WTI|CRUDE|BRENT|OIL/.test(sym) &&
+          !!input.eiaData?.available &&
+          deriveEiaInventoryEvidence(input.eiaData).effectOnOilLong !== 0;
+        if (!hasEiaDirectional) {
+          if (combined.includes("supply cut") || combined.includes("production disruption") || combined.includes("opec cut")) score += 1;
+          if (combined.includes("supply increase") || combined.includes("output hike") || combined.includes("demand destruction")) score -= 1;
+        }
         if (combined.includes("recession") || combined.includes("demand slowdown")) score -= 1;
         if (combined.includes("sanctions") || combined.includes("conflict")) score += 1;
       }
@@ -510,10 +522,13 @@ function assessDataCompleteness(input: AnalysisInput): {
   }
   if (input.instrumentType === "commodity") {
     const realYieldActual = input.treasuryData?.available && !!input.treasuryData.latest.real;
+    const oilEiaActual = input.eiaData?.available && /WTI|CRUDE|BRENT|OIL/.test(input.instrument.toUpperCase());
     flags.push(
-      realYieldActual
-        ? "Supply/inventory data unavailable — commodity fundamentals limited to news-derived context plus ACTUAL Treasury yields"
-        : "Supply/inventory and real-yield data unavailable — commodity fundamentals limited to news-derived context",
+      oilEiaActual
+        ? "Inventory context available (ACTUAL EIA WPSR data) \u2014 news-derived supply keywords redundant"
+        : realYieldActual
+          ? "Supply/inventory data unavailable \u2014 commodity fundamentals limited to news-derived context plus ACTUAL Treasury yields"
+          : "Supply/inventory and real-yield data unavailable \u2014 commodity fundamentals limited to news-derived context",
     );
   }
   if (input.technicalData?.crossAsset && !input.technicalData.crossAsset.available) {
@@ -526,6 +541,9 @@ function assessDataCompleteness(input: AnalysisInput): {
   }
   if (input.cotData && !input.cotData.available) {
     flags.push(`COT positioning context unavailable (${input.cotData.reason})`);
+  }
+  if (input.eiaData && !input.eiaData.available) {
+    flags.push(`EIA inventory context unavailable (${input.eiaData.reason})`);
   }
   if (!input.technicalData?.htfContext) {
     flags.push("No higher-timeframe structural data — macro context unverified");
@@ -1165,6 +1183,26 @@ function decideTrade(
       }
     }
 
+    // \u2500\u2500 LAYER: EIA inventory (Phase 7D, style-scaled cap \u00b11/\u00b14/\u00b18).
+    // ONE WPSR release = ONE layer (crude + gasoline + distillate are an
+    // internal weighted breakdown, never three independent votes). Evidence
+    // comes ONLY from the change between two actual consecutive observations.
+    // Oil-only scope: non-oil assets get NOTHING from this layer. It can
+    // reinforce or dampen an existing structural thesis within its cap \u2014
+    // it is never an entry trigger and never flips bias alone.
+    {
+      const instrumentUp = input.instrument.toUpperCase();
+      const isOilInstrument =
+        input.instrumentType === "commodity" && /WTI|CRUDE|BRENT|OIL/.test(instrumentUp);
+      if (isOilInstrument && input.eiaData?.available) {
+        const ev = deriveEiaInventoryEvidence(input.eiaData);
+        if (ev.effectOnOilLong !== 0) {
+          const effectOnLong = ev.effectOnOilLong * styleProfile.eiaLayerCap;
+          s += layerClamp(Math.round(biasSign === 1 ? effectOnLong : -effectOnLong), styleProfile.eiaLayerCap);
+        }
+      }
+    }
+
     // RSI/MACD modifier — small, never decisive
     if (Math.sign(breakdown.indicator) === biasSign) s += 3;
     else if (breakdown.indicator !== 0) s -= 3;
@@ -1177,6 +1215,7 @@ function decideTrade(
     "Cross-asset context unavailable",
     "Treasury yield context unavailable",
     "COT positioning context unavailable",
+    "EIA inventory context unavailable",
     "Timeframe chain unavailable:",
     "No higher-timeframe structural data",
   ];
@@ -1455,6 +1494,18 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     const sym = input.instrument.toUpperCase();
     if (/XAU|XAG|GOLD|SILVER/.test(sym)) {
       parts.push("Real-yield context UNAVAILABLE — no yields provider integrated; gold fundamentals use news/calendar/USD-proxy context only.");
+    } else if (/WTI|CRUDE|BRENT|OIL/.test(sym)) {
+      const eiaCtx = input.eiaData;
+      if (eiaCtx?.available) {
+        const crude = eiaCtx.series.find((x) => x.productId === "EPC0");
+        const chg =
+          crude?.change !== undefined
+            ? `${crude.change >= 0 ? "+" : ""}${crude.change.toFixed(1)} ${crude.unit ?? ""} w/w (obs ${crude.observationDate}, ${eiaCtx.freshness.toLowerCase()})`
+            : `obs ${crude?.observationDate ?? eiaCtx.series[0].observationDate} (${eiaCtx.freshness.toLowerCase()})`;
+        parts.push(`Inventory context: ACTUAL EIA WPSR data in use — ${chg}. Contextual supply-demand evidence, never an entry trigger.`);
+      } else {
+        parts.push("Supply/inventory data UNAVAILABLE — no EIA data; commodity fundamentals use news-derived context only.");
+      }
     } else {
       parts.push("Supply/inventory data UNAVAILABLE — no inventory provider integrated; commodity fundamentals use news-derived context only.");
     }
@@ -1688,6 +1739,24 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     }
   }
 
+  // Phase 7D \u2014 EIA inventory contradiction: opposing actual supply-demand
+  // data is surfaced explicitly (MINOR/MATERIAL by magnitude). Never DECISIVE:
+  // only existing decision gates can force NO_TRADE.
+  if (
+    biasSignOuter !== 0 &&
+    input.instrumentType === "commodity" &&
+    /WTI|CRUDE|BRENT|OIL/.test(input.instrument.toUpperCase()) &&
+    input.eiaData?.available
+  ) {
+    const evE = deriveEiaInventoryEvidence(input.eiaData);
+    if ((biasSignOuter === 1 && evE.effectOnOilLong < 0) || (biasSignOuter === -1 && evE.effectOnOilLong > 0)) {
+      keyContradictions.push({
+        description: `${bias!.toLowerCase()} thesis vs opposing EIA inventory context (${evE.aggregate.toLowerCase()} \u2014 ${input.eiaData.freshness.toLowerCase()}, obs ${input.eiaData.series[0].observationDate})`,
+        severity: Math.abs(evE.effectOnOilLong) >= 0.6 ? "MATERIAL" : "MINOR",
+      });
+    }
+  }
+
   const technicalSummary = generateTechnicalSummary(
     input,
     trendScore,
@@ -1805,6 +1874,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     calendarData: input.calendarData,
     treasuryContext: input.treasuryData?.available ? input.treasuryData : undefined,
     cotContext: input.cotData?.available ? input.cotData : undefined,
+    eiaContext: input.eiaData?.available ? input.eiaData : undefined,
   };
 }
 

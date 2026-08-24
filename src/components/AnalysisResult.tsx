@@ -460,6 +460,66 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
+      {/* Phase 7D — EIA WPSR inventory provenance. Weekly slow fundamental
+          data: observation date always shown, never presented as live data. */}
+      {result.eiaContext && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+              <span className="text-primary/60">$</span> eia-inventory{" "}
+              <span
+                className={cn(
+                  "ml-1",
+                  result.eiaContext.freshness === "FRESH"
+                    ? "text-emerald-400"
+                    : result.eiaContext.freshness === "DELAYED"
+                      ? "text-amber-400"
+                      : "text-red-400",
+                )}
+              >
+                {result.eiaContext.freshness}
+              </span>
+              <span className="text-muted-foreground/50">
+                {" "}
+                · obs: {result.eiaContext.series[0].observationDate}
+              </span>
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-muted-foreground/80">
+              {result.eiaContext.series.map((x) => (
+                <span key={x.productId}>
+                  {x.productId}:{" "}
+                  <span className="text-foreground">
+                    {x.latestValue.toLocaleString()} {x.unit ?? ""}
+                  </span>
+                  {x.change !== undefined && (
+                    <span
+                      className={
+                        x.change >= 0
+                          ? "text-red-400" // build = bearish for oil
+                          : "text-emerald-400" // draw = bullish for oil
+                      }
+                    >
+                      {" "}
+                      ({x.change > 0 ? "+" : ""}
+                      {x.change.toFixed(1)})
+                    </span>
+                  )}
+                </span>
+              ))}
+              {result.eiaContext.failedLegs.length > 0 && (
+                <span className="text-amber-400/80">
+                  unavailable legs: {result.eiaContext.failedLegs.map((f) => f.productId).join(", ")}
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
+              {result.eiaContext.source} · weekly petroleum status report — contextual supply-demand evidence,
+              not an entry trigger; availability alone contributes nothing
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Phase 3A — Multi-Timeframe transparency (only what the engine computed) */}
       {result.mtfSummary && (
         <Card className="border-border/50">
