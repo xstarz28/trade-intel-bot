@@ -1029,16 +1029,16 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </CardContent>
       </Card>
 
-      {/* Key Levels */}
+      {/* Phase 19 — Key Levels + S/R Zones (informational only, no decision logic) */}
       <Card className="border-border/50">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> key-levels
+              <span className="text-primary/60">$</span> key-levels & sr-zones
             </h4>
           </div>
         </CardHeader>
-        <CardContent className="pt-0">
+        <CardContent className="pt-0 space-y-3">
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2.5">
               <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-1">
@@ -1059,6 +1059,60 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.invalidation || "—"}</p>
             </div>
           </div>
+          {/* Phase 19 — S/R Zones: liquidity pools, OBs, FVGs already present in typed data.
+              Informational context only — these levels do NOT change direction, conviction,
+              or decision. Structural hierarchy remains supreme. */}
+          {(() => {
+            const smc = result.technicalData?.smc;
+            const pools = smc?.liquidityPools?.filter((p) => !p.swept && !p.broken) ?? [];
+            const obs = smc?.orderBlocks?.filter((o) => o.status !== "invalidated") ?? [];
+            const fvgs = smc?.fvgs?.filter((f) => f.status === "fresh") ?? [];
+            const vwap = smc?.vwap?.available ? smc.vwap : undefined;
+            const vp = smc?.volumeProfile?.available ? smc.volumeProfile : undefined;
+            const tf = smc?.timeframe ?? result.timeframe;
+            if (pools.length === 0 && obs.length === 0 && fvgs.length === 0 && !vwap && !vp) return null;
+            return (
+              <div className="border-t border-border/30 pt-3">
+                <p className="text-[10px] font-mono text-muted-foreground/50 mb-2">
+                  sr zones · {tf} · informational context — structural hierarchy is supreme
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {pools.slice(0, 4).map((p, i) => (
+                    <div key={`pool-${i}`} className={cn(
+                      "rounded border px-2.5 py-1.5 text-[10px] font-mono",
+                      p.side === "buy_side"
+                        ? "bg-emerald-500/5 border-emerald-500/15 text-emerald-400/80"
+                        : "bg-red-500/5 border-red-500/15 text-red-400/80"
+                    )}>
+                      <span className="font-medium">{p.side === "buy_side" ? "buy-side" : "sell-side"}</span>
+                      {' '}{formatPrice(p.level)}
+                      <span className="text-muted-foreground/50"> · {p.source} · {p.touches} touch{p.touches > 1 ? "es" : ""}</span>
+                    </div>
+                  ))}
+                  {obs.slice(0, 2).map((o, i) => (
+                    <div key={`ob-${i}`} className="rounded border bg-violet-500/5 border-violet-500/15 px-2.5 py-1.5 text-[10px] font-mono text-violet-400/80">
+                      <span className="font-medium">order block</span>
+                      {' '}{o.direction} {formatPrice(o.lower)}–{formatPrice(o.upper)}
+                      <span className="text-muted-foreground/50"> · {o.status}</span>
+                    </div>
+                  ))}
+                  {fvgs.slice(0, 2).map((f, i) => (
+                    <div key={`fvg-${i}`} className="rounded border bg-amber-500/5 border-amber-500/15 px-2.5 py-1.5 text-[10px] font-mono text-amber-400/80">
+                      <span className="font-medium">fair value gap</span>
+                      {' '}{f.direction} {formatPrice(f.lower)}–{formatPrice(f.upper)}
+                      <span className="text-muted-foreground/50"> · fresh</span>
+                    </div>
+                  ))}
+                </div>
+                {(vwap || vp) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] font-mono text-muted-foreground/60">
+                    {vwap && <span>vwap: {vwap.sessionVwap?.toFixed(4)} ({vwap.priceLocation.replace("_", " ")})</span>}
+                    {vp && <span>vp poc: {vp.poc?.toFixed(4)} · vah: {vp.vah?.toFixed(4)} · val: {vp.val?.toFixed(4)}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
