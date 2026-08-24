@@ -10,6 +10,7 @@ import type { AnalysisResult } from "@/types/analysis";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
+import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
@@ -71,6 +72,7 @@ export default function Dashboard() {
 
   // Convex actions for server-side data fetching
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
+  const fetchFxRate = useAction(api.marketData.fetchFxRate);
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
@@ -183,6 +185,32 @@ export default function Dashboard() {
 
         // Step 5: Generate bias
         updateStep(4, "active");
+
+        // Phase 4 — live FX snapshots for account-currency-aware sizing.
+        // Fetched ONLY when an explicit account currency differs from the
+        // instrument's quote currency. Failure is non-fatal: the engine
+        // reports sizing as unavailable instead of inventing a rate.
+        let fxRates: AnalysisInput["fxRates"];
+        if (input.accountCurrency) {
+          const quoteCcy =
+            input.instrumentSpec?.quoteCurrency ??
+            parseSymbolCurrencies(input.instrument).quote;
+          const acct = input.accountCurrency.toUpperCase();
+          if (quoteCcy && quoteCcy.toUpperCase() !== acct) {
+            try {
+              const fx = await fetchFxRate({ from: quoteCcy, to: acct });
+              if (fx.success) {
+                fxRates = {
+                  direct: fx.direct ?? undefined,
+                  inverse: fx.inverse ?? undefined,
+                };
+              }
+            } catch {
+              // Conversion unavailable — sizing will state it explicitly.
+            }
+          }
+        }
+
         const enrichedInput: AnalysisInput = {
           ...input,
           marketData: marketDataResult.data,
@@ -192,6 +220,7 @@ export default function Dashboard() {
           macroData: intelligenceResult?.macro,
           derivativesData: derivativesResult?.data,
           calendarData: calendarResult?.data,
+          fxRates,
         };
         const result = runAnalysis(enrichedInput);
 

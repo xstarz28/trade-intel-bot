@@ -12,6 +12,7 @@ import type {
   TradePlan,
 } from "@/types/analysis";
 import type { MarketData, MtfContext, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
+import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 
 export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels, MtfSummary };
@@ -1258,8 +1259,13 @@ function generateRiskNote(
       `${recommendation} plan — entry ${tradePlan.entry} (${tradePlan.entryBasis}), SL ${tradePlan.stopLoss} (${tradePlan.slBasis}), TP ${tradePlan.takeProfit} (${tradePlan.tpBasis}). R:R ${tradePlan.riskReward.toFixed(2)}.`,
     );
     if (positionSizing?.available) {
+      const conv = positionSizing.conversion;
+      const convStr =
+        conv && conv.direction !== "same"
+          ? ` (quote→account ${conv.from}→${conv.to} via ${conv.direction} rate ${conv.rate.toFixed(5)}, source: ${conv.source})`
+          : "";
       parts.push(
-        `Conviction ${conviction} at ${confidence}% evidence strength. Position size for the provided account inputs: ${positionSizing.quantity} ${positionSizing.quantityUnit ?? "units"} at ${(positionSizing.appliedRiskPercent! * 100).toFixed(2)}% risk — risking ≈${positionSizing.riskAmount?.toFixed(2)} if the structural stop is hit. This reflects YOUR chosen risk, not a recommendation of what is optimal.`,
+        `Conviction ${conviction} at ${confidence}% evidence strength. Position size for the provided account inputs: ${positionSizing.quantity} ${positionSizing.quantityUnit ?? "units"} at ${(positionSizing.appliedRiskPercent! * 100).toFixed(2)}% risk — risking ≈${positionSizing.riskAmount?.toFixed(2)} ${positionSizing.denominationCurrency ?? ""} if the structural stop is hit${convStr}. Specification source: ${positionSizing.specificationSource ?? "user-provided"}. This reflects YOUR chosen risk, not a recommendation of what is optimal.`,
       );
     } else {
       parts.push(
@@ -1317,17 +1323,26 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   );
   const fundamentalSummary = generateFundamentalSummary(input, fundamentalScore);
 
-  // ── Phase 3B: position sizing — ONLY from complete real inputs ──
-  // Never fabricated: without user equity/risk% AND a complete
-  // InstrumentSpec, sizing stays explicitly unavailable.
+  // ── Phase 3B/4: position sizing — ONLY from complete real inputs ──
+  // Never fabricated. Spec resolution is honest-partial: quote currency may
+  // come from literal symbol structure; contract size / quantity step exist
+  // ONLY when explicitly supplied. Currency conversion uses live provider FX
+  // snapshots — never constants, never silent inversion.
   let positionSizing: PositionSizingResult | undefined;
   if (decision.recommendation !== "NO_TRADE" && decision.tradePlan) {
+    const resolvedSpec = resolveInstrumentSpec({
+      instrument: input.instrument,
+      explicitSpec: input.instrumentSpec,
+    });
     const sizing = computePositionSizing({
       equity: input.accountEquity ?? NaN,
       riskPercent: input.riskPercent ?? NaN,
       entry: parseFloat(decision.tradePlan.entry),
       stopLoss: parseFloat(decision.tradePlan.stopLoss),
-      spec: input.instrumentSpec,
+      spec: resolvedSpec.status === "unavailable" ? undefined : resolvedSpec.spec,
+      accountCurrency: input.accountCurrency,
+      fxDirect: input.fxRates?.direct,
+      fxInverse: input.fxRates?.inverse,
     });
     if (sizing.available) positionSizing = sizing;
   }
@@ -1375,6 +1390,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     breakdown,
     keyLevels: decision.keyLevels,
     riskNote,
+    positionSizing,
     dataCompleteness: completeness,
     dataFlags: flags,
     timestamp: Date.now(),

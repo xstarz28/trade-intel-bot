@@ -7,6 +7,7 @@
  * account inputs are provided — otherwise it returns an explicit
  * unavailable state with the reason.
  */
+import { resolveConversionRate } from "./risk/fx";
 
 /** Instrument specification — must come from a provider/broker, never assumed. */
 export interface InstrumentSpec {
@@ -24,6 +25,9 @@ export interface InstrumentSpec {
   minQuantity?: number;
   /** Quantity granularity (step). Quantities round DOWN to this step. */
   quantityStep?: number;
+  /** Where this specification came from (e.g. "user-provided", provider name).
+   *  Only set when the value was actually observed — never inferred. */
+  source?: string;
 }
 
 /** Which required spec fields are missing, if any. */
@@ -45,6 +49,33 @@ export interface PositionSizingRequest {
   /** Structural stop level (market-derived). */
   stopLoss: number;
   spec?: InstrumentSpec;
+  /** Explicit account currency. When omitted, sizing stays denominated in
+   *  the instrument's quote currency (Phase 3B behavior preserved). */
+  accountCurrency?: string;
+  /** Market FX snapshots usable for quote→account conversion.
+   *  Must come from a live provider — never hardcoded constants. */
+  fxDirect?: FxRateSnapshot;
+  fxInverse?: FxRateSnapshot;
+  /** Evaluation clock (ms) for staleness checks; defaults to Date.now(). */
+  now?: number;
+}
+
+/** A market FX rate observed from a provider (never an embedded constant). */
+export interface FxRateSnapshot {
+  /** Rate for the quoted pair, e.g. pair="EUR/USD" rate=1.08 means 1 EUR = 1.08 USD. */
+  rate: number;
+  timestamp: number;
+  source: string;
+  /** The literal pair the rate was observed for, e.g. "EUR/USD" or "USD/EUR". */
+  pair: string;
+}
+
+export interface ConversionInfo {
+  from: string;
+  to: string;
+  rate: number;
+  direction: "same" | "direct" | "inverse";
+  source: string;
 }
 
 export interface PositionSizingResult {
@@ -61,17 +92,24 @@ export interface PositionSizingResult {
   quantityUnit?: string;
   /** The user-chosen risk fraction actually applied (for transparency). */
   appliedRiskPercent?: number;
+  /** Currency all monetary outputs are denominated in. */
+  denominationCurrency?: string;
+  /** Quote→account currency conversion actually applied, if any. */
+  conversion?: ConversionInfo;
+  /** Where each critical spec field came from. */
+  specificationSource?: string;
 }
 
 /**
  * Compute position size from REAL inputs only:
- *   riskAmount = equity × riskPercent
- *   riskPerUnit = |entry − stopLoss| × contractSize
+ *   riskAmount = equity × riskPercent   (account currency)
+ *   riskPerUnit = |entry − stopLoss| × contractSize   (quote currency)
+ *   converted via a live provider FX rate when account ≠ quote currency
  *   quantity = floor(riskAmount / riskPerUnit / step) × step
  *
  * Returns an explicit unavailable state whenever ANY input is missing,
  * invalid, or the specification is incomplete. Never estimates, never
- * substitutes leverage for risk sizing.
+ * substitutes leverage for risk sizing, never fabricates an FX rate.
  */
 export function computePositionSizing(req: PositionSizingRequest): PositionSizingResult {
   if (!Number.isFinite(req.equity) || req.equity <= 0) {
@@ -101,11 +139,40 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
     return { available: false, unavailableReason: "entry and structural stop define no risk distance" };
   }
 
+  // ── Currency resolution (Phase 4) ────────────────────────────────
+  const quoteCcy = spec.quoteCurrency!.toUpperCase();
+  const accountCcy = req.accountCurrency?.toUpperCase();
+  let conversion: ConversionInfo | undefined;
+  let denomFactor = 1;
+  if (accountCcy) {
+    const conv = resolveConversionRate(quoteCcy, accountCcy, {
+      now: req.now ?? Date.now(),
+      direct: req.fxDirect,
+      inverse: req.fxInverse,
+    });
+    if (!conv.available) {
+      return {
+        available: false,
+        unavailableReason: `cannot compute position size — ${conv.reason} (quote ${quoteCcy} → account ${accountCcy})`,
+      };
+    }
+    denomFactor = conv.rate;
+    conversion = {
+      from: quoteCcy,
+      to: accountCcy,
+      rate: conv.rate,
+      direction: conv.direction,
+      source: conv.source,
+    };
+  }
+  const denom = accountCcy ?? quoteCcy;
+
   const riskAmount = req.equity * req.riskPercent;
-  const riskPerUnit = distance * spec.contractSize!;
-  if (!(riskPerUnit > 0)) {
+  const riskPerUnitQuote = distance * spec.contractSize!;
+  if (!(riskPerUnitQuote > 0)) {
     return { available: false, unavailableReason: "computed risk per unit is zero — check contract size" };
   }
+  const riskPerUnit = riskPerUnitQuote * denomFactor;
 
   const rawQuantity = riskAmount / riskPerUnit;
   const step = spec.quantityStep!;
@@ -130,5 +197,8 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
     quantity,
     quantityUnit: `${spec.quoteCurrency}-quoted contract${spec.contractSize !== 1 ? ` (×${spec.contractSize})` : ""}`,
     appliedRiskPercent: req.riskPercent,
+    denominationCurrency: denom,
+    conversion,
+    specificationSource: spec.source ?? "user-provided",
   };
 }

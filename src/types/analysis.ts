@@ -110,6 +110,15 @@ export interface AnalysisInput {
   riskPercent?: number;
   /** Provider/broker instrument specification. Sizing is impossible without it. */
   instrumentSpec?: import("@/lib/risk").InstrumentSpec;
+  /** Explicit account currency (e.g. "USD", "EUR"). Never assumed.
+   *  When omitted, sizing stays denominated in the quote currency. */
+  accountCurrency?: string;
+  /** Live provider FX snapshots for quote→account conversion (Phase 4).
+   *  direct = QUOTE/ACCOUNT pair, inverse = ACCOUNT/QUOTE pair. */
+  fxRates?: {
+    direct?: import("@/lib/risk").FxRateSnapshot;
+    inverse?: import("@/lib/risk").FxRateSnapshot;
+  };
 }
 
 export interface AnalysisResult {

@@ -370,9 +370,10 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
-      {/* Phase 3B — Position sizing: shown ONLY when fully computable from
-          real user inputs + complete instrument spec. Never fabricated. */}
-      {result.positionSizing?.available && result.recommendation !== "NO_TRADE" && (
+      {/* Phase 3B/4 — Position sizing: shown ONLY when fully computable from
+          real user inputs + complete instrument spec (+ live FX conversion
+          when the account currency differs). Never fabricated. */}
+      {result.recommendation !== "NO_TRADE" && result.positionSizing?.available && (
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
@@ -388,7 +389,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <p className="text-[9px] font-mono text-muted-foreground/60">{result.positionSizing.quantityUnit}</p>
               </div>
               <div className="text-center">
-                <p className="text-[10px] font-mono text-muted-foreground">risk amount</p>
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  risk amount{result.positionSizing.denominationCurrency ? ` (${result.positionSizing.denominationCurrency})` : ""}
+                </p>
                 <p className="text-sm font-bold font-mono tabular-nums text-red-400">
                   ≈{result.positionSizing.riskAmount?.toFixed(2)}
                 </p>
@@ -403,6 +406,19 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
               </div>
             </div>
+            {/* Phase 4 — currency & specification provenance transparency. */}
+            {(result.positionSizing.conversion || result.positionSizing.specificationSource) && (
+              <p className="mt-2 text-[9px] font-mono text-muted-foreground/70 border-t border-border/40 pt-2">
+                {result.positionSizing.conversion && result.positionSizing.conversion.direction !== "same" && (
+                  <>
+                    FX: {result.positionSizing.conversion.from}→{result.positionSizing.conversion.to}{" "}
+                    via {result.positionSizing.conversion.direction} rate{" "}
+                    {result.positionSizing.conversion.rate.toFixed(5)} ({result.positionSizing.conversion.source}) ·{" "}
+                  </>
+                )}
+                spec source: {result.positionSizing.specificationSource}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
