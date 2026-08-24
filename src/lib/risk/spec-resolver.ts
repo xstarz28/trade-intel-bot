@@ -12,8 +12,15 @@
  *   forex = 100000, gold = 100 oz, crypto = 1 coin/contract, stock = 1 share.
  */
 import type { InstrumentSpec } from "../risk";
+import { resolveWithOkx, type OkxSpecData } from "./okx-spec";
 
-export type SpecResolutionStatus = "available" | "partial" | "unavailable" | "provider_error";
+export type SpecResolutionStatus =
+  | "available"
+  | "partial"
+  | "unavailable"
+  | "provider_error"
+  // Phase 7B-3: explicit input and provider metadata disagree — sizing blocked.
+  | "conflict";
 
 export interface ResolvedInstrumentSpec {
   status: SpecResolutionStatus;
@@ -28,6 +35,8 @@ export interface ResolvedInstrumentSpec {
   /** Fields still required for full position sizing. Empty = complete. */
   missingForSizing: string[];
   unavailableReason?: string;
+  /** Phase 7B-3: explicit-vs-OKX disagreements that BLOCK sizing when present. */
+  conflicts?: string[];
 }
 
 /** Currencies parseable from a literal "AAA/BBB" symbol structure. */
@@ -49,8 +58,25 @@ export function resolveInstrumentSpec(args: {
   /** Optional provider-returned currency metadata (e.g. Twelve Data /quote.currency). */
   providerCurrency?: string;
   explicitSpec?: InstrumentSpec;
+  /** Phase 7B-3: OKX public instruments metadata. Hierarchy:
+   *  explicit input > verified OKX metadata > unavailable; conflicts BLOCK sizing. */
+  okx?: OkxSpecData;
 }): ResolvedInstrumentSpec {
   const { instrument, providerCurrency, explicitSpec } = args;
+
+  // Phase 7B-3: OKX path (crypto derivatives). Runs whenever OKX metadata
+  // exists, even alongside explicit input, so conflicts can be detected.
+  if (args.okx) {
+    const o = resolveWithOkx({ instrument, explicitSpec, okx: args.okx });
+    return {
+      status: o.status,
+      spec: o.spec ?? { assetClass: "" },
+      sources: { contractSize: "OKX public instruments", quantityStep: "OKX public instruments" },
+      missingForSizing: o.missingForSizing,
+      unavailableReason: o.unavailableReason,
+      conflicts: o.conflicts,
+    };
+  }
 
   if (!explicitSpec) {
     const parsed = parseSymbolCurrencies(instrument);
