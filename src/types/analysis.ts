@@ -102,6 +102,11 @@ export interface AnalysisInput {
   derivativesData?: CryptoDerivativesData;
   // Economic calendar layer (Trading Economics)
   calendarData?: EconomicCalendarData;
+  // ── Phase 7B-1: US Treasury yield / real-yield macro context ──
+  // Pure typed model from src/lib/data/treasury.ts. Absent or
+  // available:false is informational — NEVER a directional signal and
+  // never a NO_TRADE reason on its own.
+  treasuryData?: import("@/lib/data/treasury").TreasuryData;
   // ── Phase 3B: risk model inputs (all optional; sizing stays unavailable
   // unless every required piece is genuinely provided) ──
   /** Account equity in account currency, user-provided. */
@@ -185,4 +190,6 @@ export interface AnalysisResult {
   derivativesData?: CryptoDerivativesData;
   // Economic calendar metadata
   calendarData?: EconomicCalendarData;
+  // Phase 7B-1: Treasury provenance — observation dates, freshness, actual yields.
+  treasuryContext?: import("@/lib/data/treasury").TreasuryContext;
 }

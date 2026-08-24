@@ -16,6 +16,10 @@ import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 import { resolveStyle } from "@/lib/trading-style";
 import {
+  deriveMacroYieldEvidence,
+  type TreasuryData,
+} from "@/lib/data/treasury";
+import {
   detectMarketRegime,
   classifySetup,
   detectContradictions,
@@ -491,12 +495,20 @@ function assessDataCompleteness(input: AnalysisInput): {
     missing++;
   }
   if (input.instrumentType === "commodity") {
-    flags.push("Supply/inventory and real-yield data unavailable — commodity fundamentals limited to news-derived context");
+    const realYieldActual = input.treasuryData?.available && !!input.treasuryData.latest.real;
+    flags.push(
+      realYieldActual
+        ? "Supply/inventory data unavailable — commodity fundamentals limited to news-derived context plus ACTUAL Treasury yields"
+        : "Supply/inventory and real-yield data unavailable — commodity fundamentals limited to news-derived context",
+    );
   }
   if (input.technicalData?.crossAsset && !input.technicalData.crossAsset.available) {
     flags.push(
       `Cross-asset context unavailable (${input.technicalData.crossAsset.unavailableReason ?? "provider returned no comparable series"})`,
     );
+  }
+  if (input.treasuryData && !input.treasuryData.available) {
+    flags.push(`Treasury yield context unavailable (${input.treasuryData.reason})`);
   }
   if (!input.technicalData?.htfContext) {
     flags.push("No higher-timeframe structural data — macro context unverified");
@@ -1077,6 +1089,43 @@ function decideTrade(
       }
     }
 
+    // ── LAYER: macro-yield (Phase 7B-1, style-scaled cap ±2/±8/±12) —
+    // ACTUAL Treasury nominal/real yields as slow-moving MACRO context.
+    // One provider observation = ONE layer (nominal + real + direction are
+    // an internal breakdown, never three independent evidences). Zero
+    // directional evidence (sub-threshold change / single observation /
+    // missing curve) contributes NOTHING: availability ≠ confluence.
+    {
+      const td: TreasuryData | undefined = input.treasuryData;
+      if (td?.available) {
+        const ev = deriveMacroYieldEvidence(td);
+        const cap = styleProfile.macroYieldLayerCap;
+        const instrument = input.instrument.toUpperCase();
+        const [rawBase, rawQuote] = instrument.split("/");
+        const base = rawBase?.trim().toUpperCase();
+        const quote = rawQuote?.trim().toUpperCase();
+        const isGold = input.instrumentType === "commodity" && (base === "XAU" || instrument.includes("GOLD"));
+
+        let effectOnLong = 0; // signed magnitude in [-cap..cap] units pre-clamp
+        if (isGold) {
+          effectOnLong = ev.goldLongEffect * cap;
+        } else if (input.instrumentType === "forex" && base && quote) {
+          // USD-strength convention as EVIDENCE with magnitude — not a rule:
+          // USD/XXX longs benefit from rising USD (positive effect);
+          // XXX/USD longs are opposed by it.
+          if (base === "USD") effectOnLong = ev.usdStrengthEffect * cap;
+          else if (quote === "USD") effectOnLong = -ev.usdStrengthEffect * cap;
+        }
+        // Crypto/oil/index instruments get NO yield scoring (no honest,
+        // verified mapping — refusing to invent one).
+
+        if (effectOnLong !== 0) {
+          const contribution = biasSign === 1 ? effectOnLong : -effectOnLong;
+          s += layerClamp(Math.round(contribution), cap);
+        }
+      }
+    }
+
     // RSI/MACD modifier — small, never decisive
     if (Math.sign(breakdown.indicator) === biasSign) s += 3;
     else if (breakdown.indicator !== 0) s -= 3;
@@ -1084,12 +1133,13 @@ function decideTrade(
     // Data completeness — CRITICAL gaps penalize conviction; purely
     // informational unavailability notes do NOT (missing data is
     // uncertainty, never negative evidence).
-    const INFORMATIONAL_FLAGS = [
-      "Volume limitation:",
-      "Cross-asset context unavailable",
-      "Timeframe chain unavailable:",
-      "No higher-timeframe structural data",
-    ];
+  const INFORMATIONAL_FLAGS = [
+    "Volume limitation:",
+    "Cross-asset context unavailable",
+    "Treasury yield context unavailable",
+    "Timeframe chain unavailable:",
+    "No higher-timeframe structural data",
+  ];
     const criticalFlags = flags.filter(
       (f) => !INFORMATIONAL_FLAGS.some((p) => f.startsWith(p)),
     );
@@ -1537,6 +1587,33 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     return c;
   });
 
+  const biasSignOuter = bias === "Bullish" ? 1 : bias === "Bearish" ? -1 : 0;
+  // Phase 7B-1 — macro-yield contradiction: ACTUAL Treasury evidence that
+  // OPPOSES the thesis is surfaced explicitly (MINOR/MATERIAL by magnitude).
+  // It never becomes DECISIVE on its own — only existing gates can force
+  // NO_TRADE.
+  if (biasSignOuter !== 0 && input.treasuryData?.available) {
+    const evM = deriveMacroYieldEvidence(input.treasuryData);
+    const instParts = input.instrument.toUpperCase().split("/");
+    const baseCcy = instParts[0]?.trim().toUpperCase();
+    const quoteCcy = instParts[1]?.trim().toUpperCase();
+    const isGoldInstr =
+      input.instrumentType === "commodity" &&
+      (baseCcy === "XAU" || input.instrument.toUpperCase().includes("GOLD"));
+    let yieldEffectOnLong = 0;
+    if (isGoldInstr) yieldEffectOnLong = evM.goldLongEffect;
+    else if (input.instrumentType === "forex" && baseCcy && quoteCcy) {
+      if (baseCcy === "USD") yieldEffectOnLong = evM.usdStrengthEffect;
+      else if (quoteCcy === "USD") yieldEffectOnLong = -evM.usdStrengthEffect;
+    }
+    if ((biasSignOuter === 1 && yieldEffectOnLong < 0) || (biasSignOuter === -1 && yieldEffectOnLong > 0)) {
+      keyContradictions.push({
+        description: `${bias!.toLowerCase()} thesis vs opposing Treasury yield context (${evM.notes.find((n) => /changed|REAL/.test(n)) ?? "macro-yield direction disagrees"})`,
+        severity: Math.abs(yieldEffectOnLong) >= 0.6 ? "MATERIAL" : "MINOR",
+      });
+    }
+  }
+
   const technicalSummary = generateTechnicalSummary(
     input,
     trendScore,
@@ -1636,6 +1713,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     macroData: input.macroData,
     derivativesData: input.derivativesData,
     calendarData: input.calendarData,
+    treasuryContext: input.treasuryData?.available ? input.treasuryData : undefined,
   };
 }
 

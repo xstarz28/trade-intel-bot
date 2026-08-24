@@ -29,6 +29,12 @@ export interface StyleProfile {
   /** Fundamental conviction-layer multiplier + cap (evidence PRIORITY). */
   fundamentalLayerMultiplier: number;
   fundamentalLayerCap: number;
+  /**
+   * Macro-yield (Treasury) conviction-layer cap. Slow-moving macro data:
+   * SCALPING treats it as near-irrelevant CONTEXT (±2); INTRADAY moderate
+   * context (±8); SWING may weight it meaningfully (±12). Never a trigger.
+   */
+  macroYieldLayerCap: number;
   /** Target-horizon guard in ATR multiples (null = unlimited). */
   targetMaxAtrMultiple: number | null;
   /** SCALPING: fresh execution evidence is mandatory. */
@@ -47,6 +53,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     priceStaleMs: 10 * 60 * 1000,
     fundamentalLayerMultiplier: 0.5,
     fundamentalLayerCap: 8,
+    macroYieldLayerCap: 2,
     targetMaxAtrMultiple: 6,
     requiresTriggerEvidence: true,
     requiresHtfContext: false,
@@ -59,6 +66,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     priceStaleMs: 30 * 60 * 1000,
     fundamentalLayerMultiplier: 1,
     fundamentalLayerCap: 15,
+    macroYieldLayerCap: 8,
     targetMaxAtrMultiple: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: false,
@@ -71,6 +79,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     priceStaleMs: 60 * 60 * 1000,
     fundamentalLayerMultiplier: 1.25,
     fundamentalLayerCap: 18,
+    macroYieldLayerCap: 12,
     targetMaxAtrMultiple: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: true,
