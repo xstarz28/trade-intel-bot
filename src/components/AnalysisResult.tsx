@@ -385,6 +385,51 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
+      {/* Phase 7B-2 — CFTC futures positioning provenance. Weekly slow data:
+          always labeled as regulated futures positioning with its report date. */}
+      {result.cotContext && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+              <span className="text-primary/60">$</span> cftc-futures-positioning{" "}
+              <span
+                className={cn(
+                  "ml-1",
+                  result.cotContext.freshness === "FRESH"
+                    ? "text-emerald-400"
+                    : result.cotContext.freshness === "DELAYED"
+                      ? "text-amber-400"
+                      : "text-red-400",
+                )}
+              >
+                {result.cotContext.freshness}
+              </span>
+              <span className="text-muted-foreground/50"> · report: {result.cotContext.latest.reportDate}</span>
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-muted-foreground/80">
+              <span>mapped: <span className="text-foreground">{result.cotContext.mappedAsset}</span></span>
+              <span>net non-commercial:{" "}
+                <span className="text-foreground">{result.cotContext.netNonCommercial.toLocaleString()}</span>
+              </span>
+              {result.cotContext.changeFromPreviousReport !== undefined && (
+                <span>
+                  change:{" "}
+                  <span className={result.cotContext.changeFromPreviousReport >= 0 ? "text-emerald-400" : "text-red-400"}>
+                    {result.cotContext.changeFromPreviousReport > 0 ? "+" : ""}
+                    {result.cotContext.changeFromPreviousReport.toLocaleString()}
+                  </span>
+                </span>
+              )}
+              <span>non-comm L/S: {result.cotContext.latest.nonCommercialLong.toLocaleString()} / {result.cotContext.latest.nonCommercialShort.toLocaleString()}</span>
+            </div>
+            <p className="mt-1.5 text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
+              {result.cotContext.source} · source contract: {result.cotContext.sourceInstrument} · weekly regulated
+              futures positioning — never live/exchange data; level alone is not directional evidence
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Phase 3A — Multi-Timeframe transparency (only what the engine computed) */}
       {result.mtfSummary && (
         <Card className="border-border/50">

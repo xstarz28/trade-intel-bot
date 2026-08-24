@@ -35,6 +35,13 @@ export interface StyleProfile {
    * context (±8); SWING may weight it meaningfully (±12). Never a trigger.
    */
   macroYieldLayerCap: number;
+  /**
+   * Positioning-COT (CFTC weekly futures) conviction-layer cap.
+   * SCALPING: near-zero context (±1); INTRADAY supporting (±5);
+   * SWING: meaningful positioning evidence (±12). Never a trigger,
+   * never able to create or flip a trade alone.
+   */
+  cotLayerCap: number;
   /** Target-horizon guard in ATR multiples (null = unlimited). */
   targetMaxAtrMultiple: number | null;
   /** SCALPING: fresh execution evidence is mandatory. */
@@ -54,6 +61,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     fundamentalLayerMultiplier: 0.5,
     fundamentalLayerCap: 8,
     macroYieldLayerCap: 2,
+    cotLayerCap: 1,
     targetMaxAtrMultiple: 6,
     requiresTriggerEvidence: true,
     requiresHtfContext: false,
@@ -67,6 +75,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     fundamentalLayerMultiplier: 1,
     fundamentalLayerCap: 15,
     macroYieldLayerCap: 8,
+    cotLayerCap: 5,
     targetMaxAtrMultiple: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: false,
@@ -80,6 +89,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     fundamentalLayerMultiplier: 1.25,
     fundamentalLayerCap: 18,
     macroYieldLayerCap: 12,
+    cotLayerCap: 12,
     targetMaxAtrMultiple: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: true,

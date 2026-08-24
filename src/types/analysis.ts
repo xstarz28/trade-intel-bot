@@ -107,6 +107,11 @@ export interface AnalysisInput {
   // available:false is informational — NEVER a directional signal and
   // never a NO_TRADE reason on its own.
   treasuryData?: import("@/lib/data/treasury").TreasuryData;
+  // ── Phase 7B-2: CFTC Commitments of Traders positioning ──
+  // Weekly regulated-futures positioning with explicit contract mapping.
+  // NEVER live/exchange/retail positioning; unavailable for unmappable
+  // instruments (e.g. crypto spot) by design.
+  cotData?: import("@/lib/data/cot").CotData;
   // ── Phase 3B: risk model inputs (all optional; sizing stays unavailable
   // unless every required piece is genuinely provided) ──
   /** Account equity in account currency, user-provided. */
@@ -192,4 +197,6 @@ export interface AnalysisResult {
   calendarData?: EconomicCalendarData;
   // Phase 7B-1: Treasury provenance — observation dates, freshness, actual yields.
   treasuryContext?: import("@/lib/data/treasury").TreasuryContext;
+  // Phase 7B-2: COT provenance — source contract, report date, net/change, freshness.
+  cotContext?: import("@/lib/data/cot").CotContext;
 }
