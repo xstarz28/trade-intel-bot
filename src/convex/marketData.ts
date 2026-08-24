@@ -202,3 +202,52 @@ export const fetchMarketData = action({
     }
   },
 });
+
+/**
+ * Phase 4 — live FX rate snapshots for quote→account position sizing.
+ * Fetches BOTH the direct pair (FROM/TO) and the inverse pair (TO/FROM).
+ * Either may fail independently; the pure resolver in lib/risk/fx.ts
+ * decides which usable snapshot to apply. No rates are ever invented here.
+ */
+export const fetchFxRate = action({
+  args: { from: v.string(), to: v.string() },
+  handler: async (_ctx, args) => {
+    const apiKey = process.env.TWELVE_DATA_API_KEY;
+    if (!apiKey) {
+      return { success: false as const, error: "TWELVE_DATA_API_KEY missing" };
+    }
+    const from = args.from.toUpperCase();
+    const to = args.to.toUpperCase();
+    if (from === to) return { success: false as const, error: "same currency — no conversion needed" };
+
+    const fetchPair = async (
+      pair: string,
+    ): Promise<{ rate: number; timestamp: number; source: string; pair: string } | null> => {
+      try {
+        const res = await fetch(
+          `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(pair)}&apikey=${apiKey}`,
+        ).then((r) => r.json());
+        if (!res || res.code || res.close === undefined) return null;
+        const rate = parseFloat(res.close);
+        if (!Number.isFinite(rate) || rate <= 0) return null;
+        return { rate, timestamp: Date.now(), source: "twelve-data", pair };
+      } catch {
+        return null;
+      }
+    };
+
+    // Parallel — a failing leg never blocks or corrupts the other.
+    const [direct, inverse] = await Promise.all([
+      fetchPair(`${from}/${to}`),
+      fetchPair(`${to}/${from}`),
+    ]);
+
+    if (!direct && !inverse) {
+      return {
+        success: false as const,
+        error: `no FX quote available for ${from}/${to} from the provider`,
+      };
+    }
+    return { success: true as const, direct, inverse };
+  },
+});
