@@ -636,6 +636,76 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
+      {/* Phase 11 — decision explainability: rendered FROM the engine trace.
+          Pure presentation — no decision logic lives in the UI. */}
+      {result.decisionTrace && (
+        <Card className="border-border/40">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span> why-this-decision{" "}
+              </h4>
+              <Badge variant="outline" className="text-[10px] font-mono ml-auto border-border/50">
+                fp:{result.decisionFingerprint}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            {/* WHY — structural thesis */}
+            <div className="text-[11px] font-mono leading-relaxed text-muted-foreground">
+              Structure:{" "}
+              <span className="text-foreground">{result.decisionTrace.structuralDirection}</span>
+              {result.decisionTrace.biasCalculation.vetoApplied && (
+                <span className="text-amber-400"> · vetoed to Neutral ({result.decisionTrace.biasCalculation.vetoReason})</span>
+              )}
+              {result.decisionTrace.biasCalculation.vetoApplied === false &&
+                result.decisionTrace.structuralDirection !== "none" && (
+                  <span className="text-emerald-400/80"> · structural agreement</span>
+                )}
+            </div>
+
+            {/* CONVICTION breakdown — actual engine contributions */}
+            {result.decisionTrace.convictionBreakdown.layers.length > 0 && (
+              <div className="space-y-1">
+                {result.decisionTrace.convictionBreakdown.layers
+                  .filter((l) => l.contribution !== 0)
+                  .map((l) => (
+                    <div key={l.layer} className="flex items-center gap-2 text-[10px] font-mono">
+                      <span className={cn("w-4 text-right tabular-nums", l.contribution > 0 ? "text-emerald-400" : "text-red-400")}>
+                        {l.contribution > 0 ? `+${l.contribution}` : l.contribution}
+                      </span>
+                      <span className="text-muted-foreground w-36 truncate">{l.layer}</span>
+                      <span className="text-muted-foreground/50 truncate flex-1">{l.reason}</span>
+                    </div>
+                  ))}
+                <div className="pt-1 text-[10px] font-mono text-muted-foreground">
+                  conviction {result.decisionTrace.convictionBreakdown.final} · {result.decisionTrace.convictionBreakdown.band ?? "informational"}{" "}
+                  <span className="text-muted-foreground/50">(evidence strength — not a probability)</span>
+                </div>
+              </div>
+            )}
+
+            {/* BLOCKERS — blocking gate for NO_TRADE */}
+            {result.decisionTrace.failedGates.length > 0 && (
+              <div className="text-[10px] font-mono text-red-400/90">
+                blocking gate: {result.decisionTrace.failedGates.join(", ")}
+              </div>
+            )}
+
+            {/* CONTEXT UNAVAILABLE — informational, never a directional signal */}
+            {result.decisionTrace.informationalFlags.length > 0 && (
+              <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2">
+                {result.decisionTrace.informationalFlags.map((f, i) => (
+                  <p key={i} className="text-[10px] font-mono text-muted-foreground/80">
+                    ⓘ {f} — decision not penalized
+                  </p>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (
         <Card className={cn("border", biasConfig.border)}>

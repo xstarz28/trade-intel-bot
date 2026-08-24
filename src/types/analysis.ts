@@ -181,6 +181,11 @@ export interface AnalysisResult {
   /** Position sizing — present ONLY for LONG/SHORT AND fully computable
    *  from real user inputs + a complete InstrumentSpec. Never fabricated. */
   positionSizing?: import("@/lib/risk").PositionSizingResult;
+  /** Phase 11 — full explainability trace. Optional/additive: legacy records
+   *  without it remain valid (backward compatibility, no destructive migration). */
+  decisionTrace?: import("@/lib/decision-trace").DecisionTrace;
+  /** Phase 11 — deterministic fingerprint of the decision-relevant state. */
+  decisionFingerprint?: string;
   technicalSummary: string;
   fundamentalSummary: string;
   breakdown: BiasBreakdown;

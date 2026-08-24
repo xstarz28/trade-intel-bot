@@ -38,6 +38,16 @@ import {
   detectContradictions,
   isUsableSmc,
 } from "@/lib/market-context";
+import { GATE_IDS } from "@/lib/decision-trace";
+import type {
+  DecisionTrace,
+  EvidenceLayerSummary,
+  GateTraceEntry,
+  GateStatus,
+  ConvictionLayerContribution,
+  ProvenanceEntry,
+} from "@/lib/decision-trace";
+import { computeDecisionFingerprint } from "@/lib/decision-trace";
 
 export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels, MtfSummary };
 export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradePlan, HtfAlignment } from "@/types/analysis";
@@ -657,11 +667,30 @@ function assessDataCompleteness(input: AnalysisInput): {
   return { completeness, flags };
 }
 
+/** Flags that disclose unavailability WITHOUT being negative evidence. */
+const INFORMATIONAL_FLAG_PREFIXES = [
+  "Volume limitation:",
+  "Cross-asset context unavailable",
+  "Treasury yield context unavailable",
+  "COT positioning context unavailable",
+  "EIA inventory context unavailable",
+  "Bid/ask data unavailable",
+  "Execution-quality data unavailable",
+  "Timeframe chain unavailable:",
+  "No higher-timeframe structural data",
+];
+
 // ── NO_TRADE gate + trade plan construction ───────────────────────
 
 interface TradeDecision {
   recommendation: Recommendation;
   noTradeReasons: string[];
+  /** Phase 11 — observability: recorded WHILE deciding (no recomputation). */
+  rawBias: DirectionalBias;
+  structuralDirection: "long" | "short" | "none";
+  vetoApplied: boolean;
+  gateTrace: GateTraceEntry[];
+  convictionLayers: ConvictionLayerContribution[];
   /**
    * Phase 8 P4 — structured gate metadata. Domains whose ACTUAL rejection
    * (this run) is authoritative enough to promote a matching-domain
@@ -683,6 +712,7 @@ function parseLevel(value: string | undefined): number | undefined {
 function decideTrade(
   input: AnalysisInput,
   bias: DirectionalBias,
+  rawBias: DirectionalBias,
   breakdown: BiasBreakdown,
   coreWeightedAvg: number,
   completeness: "full" | "partial" | "limited",
@@ -692,6 +722,15 @@ function decideTrade(
   structuralVeto?: string,
 ): TradeDecision {
   const reasons: string[] = [];
+  // Phase 11 P3 — gate trace: failures are captured at push-time while the
+  // sequential gates run. Zero behavioral change: this only OBSERVES.
+  const gateFailures: Array<{ gateId: string; reason: string }> = [];
+  let currentGateId = "GATE3_DIRECTIONAL_BIAS"; // structural-veto region precedes Gate 0
+  const originalPush = reasons.push.bind(reasons);
+  reasons.push = (...items: string[]) => {
+    for (const text of items) gateFailures.push({ gateId: currentGateId, reason: text });
+    return originalPush(...items);
+  };
   const tech = input.technicalData;
   const md = input.marketData;
   // Phase 6 — style profile: decision-horizon parameters ONLY. It never
@@ -725,6 +764,7 @@ function decideTrade(
   if (userLow !== undefined && userLow < price) swingSupports.push(userLow);
   if (userHigh !== undefined && userHigh > price) swingResistances.push(userHigh);
 
+  currentGateId = "GATE0_DATA_FRESHNESS";
   // ── Gate 0: primary data validity (Phase 3B) ──
   // Old or known-invalid data must never back an executable plan.
   // "Missing data is uncertainty, not directional evidence."
@@ -752,6 +792,7 @@ function decideTrade(
     }
   }
 
+  currentGateId = "GATE1_LIVE_PRICE";
   // ── Gate 1: live price required ──
   // Phase 10 P1: non-finite prices (NaN/Infinity) are INVALID data, never a
   // passable comparison. Previously NaN slipped past `entry <= 0` and produced
@@ -760,16 +801,19 @@ function decideTrade(
     reasons.push("No live market price available — cannot define entry or measure structural distance.");
   }
 
+  currentGateId = "GATE2_COMPLETENESS";
   // ── Gate 2: data completeness ──
   if (completeness === "limited") {
     reasons.push(`Data completeness is LIMITED for the data this thesis requires: ${flags.join(" ")}`);
   }
 
+  currentGateId = "GATE3_DIRECTIONAL_BIAS";
   // ── Gate 3: directional bias required ──
   if (bias === "Neutral") {
     reasons.push("Core bias is Neutral — structure, fundamentals and positioning do not agree on a direction.");
   }
 
+  currentGateId = "GATE4_CONFLUENCE";
   // ── Gate 4: confluence strength ──
   const dirSign = bias === "Bullish" ? 1 : bias === "Bearish" ? -1 : 0;
   const coreScores = [
@@ -786,6 +830,7 @@ function decideTrade(
     );
   }
 
+  currentGateId = "GATE5_MATERIAL_OPPOSITION";
   // ── Gate 5: material opposing evidence ──
   const materialOpposition = opposing.filter((f) => Math.abs(f.score) >= 2);
   const decisiveGateDomains: string[] = [];
@@ -796,6 +841,7 @@ function decideTrade(
     for (const f of materialOpposition) decisiveGateDomains.push(f.name);
   }
 
+  currentGateId = "GATE6_HTF_LTF";
   // ── Gate 6: HTF/LTF relationship ──
   if (alignment && bias !== "Neutral") {
     const ltfDir = tfDirection(tech?.structure, tech?.chochDirection);
@@ -821,6 +867,7 @@ function decideTrade(
     }
   }
 
+  currentGateId = "GATE6B_MTF_HIERARCHY";
   // ── Gate 6b: adaptive multi-timeframe hierarchy ──────────────────
   // HTF is CONTEXT; LTF is TRIGGER. An LTF signal never flips the HTF bias
   // by itself — only a genuine external BOS/CHoCH on the HTF can do that.
@@ -893,6 +940,7 @@ function decideTrade(
     }
   }
 
+  currentGateId = "GATE6C_STYLE_REQUIREMENTS";
   // ── Gate 6c: style-specific requirements (Phase 6) ──
   // Horizon requirements reading EXISTING evidence only — no invented data.
   if (bias !== "Neutral") {
@@ -940,6 +988,7 @@ function decideTrade(
     }
   }
 
+  currentGateId = "GATE6D_EXECUTION_VETO";
   // ── Gate 6d: SCALPING-only execution-quality veto (Phase 7E) ──
   // Fires ONLY when ALL hold: scalping horizon, crypto instrument, ACTUAL
   // order-book data available, snapshot FRESH (exchange timestamp), and an
@@ -964,6 +1013,7 @@ function decideTrade(
     }
   }
 
+  currentGateId = "GATE7_STRUCTURAL_LEVELS";
   // ── Gate 7: structural invalidation & opposing target ──
   let stopLevel: number | undefined;
   let slBasis = "";
@@ -1068,6 +1118,7 @@ function decideTrade(
     }
   }
 
+  currentGateId = "GATE8_RR";
   // ── Gate 8: R:R ──
   let tradePlan: TradePlan | undefined;
   if (
@@ -1140,11 +1191,28 @@ function decideTrade(
   // credit inside their layer and can never exceed the layer cap.
   let conviction: ConvictionLevel | undefined;
   let confidence = 0;
+  // Phase 11 P2 — actual per-layer contributions recorded WHILE deciding.
+  const layers: ConvictionLayerContribution[] = [];
 
   if (recommendation !== "NO_TRADE") {
     let s = 30;
     const biasSign = bias === "Bullish" ? 1 : -1;
     const layerClamp = (v: number, cap: number) => Math.max(-cap, Math.min(cap, v));
+    const recordLayer = (
+      layer: string,
+      contribution: number,
+      cap: number,
+      reason: string,
+    ): number => {
+      layers.push({
+        layer,
+        contribution,
+        cap,
+        direction: contribution > 0 ? "supportive" : contribution < 0 ? "opposing" : "neutral",
+        reason,
+      });
+      return contribution;
+    };
 
     // ── LAYER: multi-timeframe context (cap ±15) ──
     // Alignment as EVIDENCE; unavailable timeframes add nothing.
@@ -1191,7 +1259,12 @@ function decideTrade(
       // Cap 18: high enough that a GENUINE HTF reversal (+6) still
       // differentiates within an aligned context, low enough that stacked
       // sub-signals can never masquerade as independent breadth.
-      s += layerClamp(m, 18);
+      s += recordLayer(
+        "MTF",
+        layerClamp(m, 18),
+        18,
+        mtf ? `alignment ${mtf.alignment}${mtf.htfReversal ? " + genuine HTF reversal" : ""}` : "no MTF context",
+      );
     }
 
     // ── LAYER: structure (cap ±12) — label, BOS and CHoCH usually share
@@ -1210,15 +1283,24 @@ function decideTrade(
         tech!.smc!.internalExternal!.internalConflict
       )
         st -= 3;
-      s += layerClamp(st, 12);
+      s += recordLayer(
+        "Structure",
+        layerClamp(st, 12),
+        12,
+        structDir === "none" ? "no directional structure label" : `structure ${structDir}`,
+      );
     }
 
     // ── LAYER: liquidity (cap ±8) — sweep for or against the thesis.
     {
       const sweep = isUsableSmc(tech?.smc) ? tech!.smc!.recentSweep : undefined;
       if (sweep) {
-        if ((biasSign === 1 && sweep.side === "sell_side") || (biasSign === -1 && sweep.side === "buy_side")) s += 8;
-        else s -= 8;
+        const supportive =
+          (biasSign === 1 && sweep.side === "sell_side") ||
+          (biasSign === -1 && sweep.side === "buy_side");
+        s += recordLayer("Liquidity", supportive ? 8 : -8, 8, `${sweep.side} liquidity sweep`);
+      } else {
+        recordLayer("Liquidity", 0, 8, "no recent sweep observed");
       }
     }
 
@@ -1231,19 +1313,25 @@ function decideTrade(
         if (smc.displacement && (smc.displacement.direction === "bullish") === (biasSign === 1)) imb += 4;
         if (smc.fvgs.some((f) => f.status === "fresh" && f.direction === (biasSign === 1 ? "bullish" : "bearish"))) imb += 3;
         if (smc.orderBlocks.some((o) => o.status !== "invalidated" && o.direction === (biasSign === 1 ? "bullish" : "bearish"))) imb += 3;
-        s += layerClamp(imb, 8);
+        s += recordLayer("Location", layerClamp(imb, 8), 8, "displacement/FVG/OB candle cluster");
+      } else {
+        recordLayer("Location", 0, 8, "SMC context unavailable");
       }
     }
 
     // ── LAYER: VWAP location context (cap +3) — never standalone.
     {
       const vw = tech?.smc?.vwap;
-      if (
-        vw?.available &&
+      const vwapAligned =
+        !!vw?.available &&
         ((biasSign === 1 && vw.priceLocation === "above_vwap") ||
-          (biasSign === -1 && vw.priceLocation === "below_vwap"))
-      )
-        s += 3;
+          (biasSign === -1 && vw.priceLocation === "below_vwap"));
+      s += recordLayer(
+        "VWAP",
+        vwapAligned ? 3 : 0,
+        3,
+        vw?.available ? "price location vs session VWAP" : "session VWAP unavailable",
+      );
     }
 
     // ── LAYER: fundamental (cap ±15 base) — style-scaled PRIORITY.
@@ -1253,12 +1341,29 @@ function decideTrade(
       if (Math.sign(breakdown.fundamental) === biasSign) f += 10;
       else if (breakdown.fundamental !== 0) f -= 15;
       f *= styleProfile.fundamentalLayerMultiplier;
-      s += layerClamp(Math.round(f), styleProfile.fundamentalLayerCap);
+      s += recordLayer(
+        "Fundamental",
+        layerClamp(Math.round(f), styleProfile.fundamentalLayerCap),
+        styleProfile.fundamentalLayerCap,
+        breakdown.fundamental === 0 ? "fundamental evidence neutral/unavailable" : "macro/news/calendar agreement",
+      );
     }
 
     // ── LAYER: positioning (cap ±12)
-    if (Math.sign(breakdown.sentiment) === biasSign) s += 8;
-    else if (breakdown.sentiment !== 0) s -= 12;
+    {
+      const posContribution =
+        Math.sign(breakdown.sentiment) === biasSign
+          ? 8
+          : breakdown.sentiment !== 0
+            ? -12
+            : 0;
+      s += recordLayer(
+        "Positioning",
+        posContribution,
+        12,
+        breakdown.sentiment === 0 ? "positioning evidence unavailable/neutral" : "positioning/sentiment agreement",
+      );
+    }
 
     // ── LAYER: cross-asset context (cap ±3) — measured correlation +
     // comparator momentum from ACTUAL candles; nothing hardcoded.
@@ -1274,8 +1379,12 @@ function decideTrade(
       ) {
         const mom = xa.comparatorMomentum === "up" ? 1 : -1;
         const effectOnInstrumentLong = mom * Math.sign(xa.correlation);
-        if ((biasSign === 1 && effectOnInstrumentLong > 0) || (biasSign === -1 && effectOnInstrumentLong < 0)) s += 3;
-        else s -= 3;
+        const xaSupportive =
+          (biasSign === 1 && effectOnInstrumentLong > 0) ||
+          (biasSign === -1 && effectOnInstrumentLong < 0);
+        s += recordLayer("Cross Asset", xaSupportive ? 3 : -3, 3, "measured comparator correlation + momentum");
+      } else {
+        recordLayer("Cross Asset", 0, 3, "cross-asset context unavailable");
       }
     }
 
@@ -1311,8 +1420,12 @@ function decideTrade(
 
         if (effectOnLong !== 0) {
           const contribution = biasSign === 1 ? effectOnLong : -effectOnLong;
-          s += layerClamp(Math.round(contribution), cap);
+          s += recordLayer("Macro Yield", layerClamp(Math.round(contribution), cap), cap, "Treasury nominal/real yield direction");
+        } else {
+          recordLayer("Macro Yield", 0, cap, "no applicable yield mapping / sub-threshold change");
         }
+      } else {
+        recordLayer("Macro Yield", 0, styleProfile.macroYieldLayerCap, "Treasury data unavailable");
       }
     }
 
@@ -1333,8 +1446,12 @@ function decideTrade(
         if (side === "quote") effectOnLong = -effectOnLong; // contract on QUOTE ccy inverts instrument direction
         if (effectOnLong !== 0) {
           const contribution = biasSign === 1 ? effectOnLong : -effectOnLong;
-          s += layerClamp(Math.round(contribution), cap);
+          s += recordLayer("COT Positioning", layerClamp(Math.round(contribution), cap), cap, "weekly futures positioning change");
+        } else {
+          recordLayer("COT Positioning", 0, cap, "no mapped contract / sub-threshold change");
         }
+      } else {
+        recordLayer("COT Positioning", 0, styleProfile.cotLayerCap, "COT data unavailable");
       }
     }
 
@@ -1353,8 +1470,12 @@ function decideTrade(
         const ev = deriveEiaInventoryEvidence(input.eiaData);
         if (ev.effectOnOilLong !== 0) {
           const effectOnLong = ev.effectOnOilLong * styleProfile.eiaLayerCap;
-          s += layerClamp(Math.round(biasSign === 1 ? effectOnLong : -effectOnLong), styleProfile.eiaLayerCap);
+          s += recordLayer("EIA Inventory", layerClamp(Math.round(biasSign === 1 ? effectOnLong : -effectOnLong), styleProfile.eiaLayerCap), styleProfile.eiaLayerCap, "WPSR inventory draw/build change");
+        } else {
+          recordLayer("EIA Inventory", 0, styleProfile.eiaLayerCap, "sub-threshold inventory change");
         }
+      } else {
+        recordLayer("EIA Inventory", 0, styleProfile.eiaLayerCap, isOilInstrument ? "EIA data unavailable" : "oil-only layer — not applicable");
       }
     }
 
@@ -1373,38 +1494,52 @@ function decideTrade(
           ed.regime === "THIN" ? 1 : ed.regime === "WIDE_SPREAD" ? 0.6 : 0;
         const effectOnLong = Math.max(-1, Math.min(1, ed.imbalance - conditionPenalty)) * cap;
         if (effectOnLong !== 0) {
-          s += layerClamp(Math.round(biasSign === 1 ? effectOnLong : -effectOnLong), cap);
+          s += recordLayer("Execution", layerClamp(Math.round(biasSign === 1 ? effectOnLong : -effectOnLong), cap), cap, `order-book imbalance (${ed.regime})`);
+        } else {
+          recordLayer("Execution", 0, cap, `balanced order book (${ed.regime})`);
         }
+      } else {
+        recordLayer(
+          "Execution",
+          0,
+          styleProfile.executionLayerCap,
+          input.instrumentType !== "crypto"
+            ? "no validated execution provider for this asset class"
+            : !ed?.available
+              ? "execution book unavailable"
+              : "execution snapshot stale — zero directional weight by policy",
+        );
       }
     }
 
     // RSI/MACD modifier — small, never decisive
-    if (Math.sign(breakdown.indicator) === biasSign) s += INDICATOR_MODIFIER_MAX;
-    else if (breakdown.indicator !== 0) s -= INDICATOR_MODIFIER_MAX;
+    {
+      const indContribution =
+        Math.sign(breakdown.indicator) === biasSign
+          ? INDICATOR_MODIFIER_MAX
+          : breakdown.indicator !== 0
+            ? -INDICATOR_MODIFIER_MAX
+            : 0;
+      s += recordLayer("Secondary Indicators", indContribution, INDICATOR_MODIFIER_MAX, "RSI/MACD secondary modifier — never core");
+    }
 
     // Data completeness — CRITICAL gaps penalize conviction; purely
     // informational unavailability notes do NOT (missing data is
     // uncertainty, never negative evidence).
-  const INFORMATIONAL_FLAGS = [
-    "Volume limitation:",
-    "Cross-asset context unavailable",
-    "Treasury yield context unavailable",
-    "COT positioning context unavailable",
-    "EIA inventory context unavailable",
-    "Bid/ask data unavailable",
-    "Execution-quality data unavailable",
-    "Timeframe chain unavailable:",
-    "No higher-timeframe structural data",
-  ];
     const criticalFlags = flags.filter(
-      (f) => !INFORMATIONAL_FLAGS.some((p) => f.startsWith(p)),
+      (f) => !INFORMATIONAL_FLAG_PREFIXES.some((p) => f.startsWith(p)),
     );
     // Phase 8 P2 — AVAILABILITY IS NEVER A CONFLUENCE BONUS. The previous
     // "+5 for full completeness" rewarded data PRESENCE without any new
     // directional evidence. Completeness now only ever REDUCES conviction
     // (partial/critical-gap penalties below) or leaves it unchanged.
-    if (completeness === "partial") s -= 3;
-    s -= criticalFlags.length * 4;
+    s += recordLayer("Completeness", completeness === "partial" ? -3 : 0, 3, `data completeness: ${completeness}`);
+    s += recordLayer(
+      "Critical Gaps",
+      -criticalFlags.length * 4,
+      12,
+      criticalFlags.length > 0 ? `${criticalFlags.length} critical data gap(s)` : "no critical gaps",
+    );
 
     confidence = Math.round(Math.max(20, Math.min(88, s)));
     conviction = confidence >= 70 ? "High" : confidence >= 50 ? "Medium" : "Low";
@@ -1421,6 +1556,29 @@ function decideTrade(
     invalidation: finalPlan ? finalPlan.stopLoss : "",
   };
 
+  // ── Phase 11 P3 — gate trace: assembled from failures captured at
+  // push-time. Gates evaluate sequentially and unconditionally, so a gate
+  // with no recorded failure PASSED for this decision.
+  const gateTrace: GateTraceEntry[] = GATE_IDS.map((id) => {
+    const fails = gateFailures.filter((f) => f.gateId === id);
+    const domain =
+      id === "GATE5_MATERIAL_OPPOSITION"
+        ? materialOpposition.map((f) => f.name).join(",")
+        : id === "GATE6_HTF_LTF" || id === "GATE6B_MTF_HIERARCHY"
+          ? "mtf"
+          : id === "GATE6C_STYLE_REQUIREMENTS"
+            ? "style"
+            : id === "GATE6D_EXECUTION_VETO"
+              ? "execution"
+              : undefined;
+    return {
+      gateId: id,
+      status: (fails.length > 0 ? "FAIL" : "PASS") as GateStatus,
+      reason: fails.map((f) => f.reason).join("; "),
+      ...(domain ? { evidenceDomain: domain } : {}),
+    };
+  });
+
   return {
     recommendation,
     noTradeReasons: recommendation === "NO_TRADE" ? reasons : [],
@@ -1430,6 +1588,11 @@ function decideTrade(
     conviction,
     confidence,
     keyLevels,
+    rawBias,
+    structuralDirection: structuralDirection(tech),
+    vetoApplied: structuralVeto !== undefined,
+    gateTrace,
+    convictionLayers: layers,
   };
 }
 
@@ -1858,6 +2021,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const decision = decideTrade(
     input,
     bias,
+    rawBias,
     breakdown,
     coreWeightedAvg,
     completeness,
@@ -2094,6 +2258,100 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
       }
     : undefined;
 
+  // ── Phase 11 — DECISION TRACE (P1), provenance (P4) & fingerprint (P5).
+  // Pure observability: assembled FROM the already-made decision. Nothing
+  // here recomputes or alters bias/gates/conviction — the trace FOLLOWS.
+  const absDirection = (contribution: number): "bullish" | "bearish" | "neutral" => {
+    if (contribution === 0 || bias === "Neutral") return "neutral";
+    return (contribution > 0) === (bias === "Bullish") ? "bullish" : "bearish";
+  };
+  const evidenceLayers: EvidenceLayerSummary[] = decision.convictionLayers.map((l) => ({
+    layer: l.layer,
+    available: l.contribution !== 0 || !l.reason.includes("unavailable"),
+    direction: absDirection(l.contribution),
+    contribution: l.contribution,
+    cap: l.cap,
+    reason: l.reason,
+    dataKind: "derived" as const,
+  }));
+  evidenceLayers.push(
+    { layer: "_context", available: true, direction: "neutral", contribution: 0, cap: 0, reason: `regime ${marketRegime.regime}`, dataKind: "derived" },
+    { layer: "_context", available: true, direction: "neutral", contribution: 0, cap: 0, reason: `setup ${setupClassification?.setupClass ?? "UNKNOWN"}`, dataKind: "derived" },
+  );
+
+  const failReasonOf = (u: unknown): string =>
+    typeof u === "object" && u !== null && "reason" in u && typeof (u as { reason?: unknown }).reason === "string"
+      ? (u as { reason: string }).reason
+      : "provider unavailable";
+  const provenance: ProvenanceEntry[] = [
+    { provider: "Market candles (primary)", available: !!input.marketData },
+    input.treasuryData?.available
+      ? { provider: "US Treasury XML feed", available: true, fetchedAt: input.treasuryData.fetchedAt, freshness: String(input.treasuryData.freshness), dataKind: "actual" as const }
+      : { provider: "US Treasury XML feed", available: false, failureReason: failReasonOf(input.treasuryData) },
+    input.cotData?.available
+      ? { provider: "CFTC COT", available: true, observationDate: input.cotData.latest.reportDate, freshness: String(input.cotData.freshness), dataKind: "actual" as const }
+      : { provider: "CFTC COT", available: false, failureReason: failReasonOf(input.cotData) },
+    input.eiaData?.available
+      ? { provider: "EIA WPSR", available: true, fetchedAt: input.eiaData.fetchedAt, observationDate: String(input.eiaData.series[0]?.observationDate ?? ""), freshness: String(input.eiaData.freshness), dataKind: "actual" as const }
+      : { provider: "EIA WPSR", available: false, failureReason: failReasonOf(input.eiaData) },
+    input.executionData?.available
+      ? { provider: "OKX order book", available: true, fetchedAt: input.executionData.fetchedAt, observationDate: new Date(input.executionData.snapshotTs).toISOString(), freshness: input.executionData.freshness, dataKind: "actual" as const }
+      : { provider: "OKX order book", available: false, failureReason: failReasonOf(input.executionData) },
+    input.technicalData?.crossAsset
+      ? { provider: "Cross-asset comparator candles", available: input.technicalData.crossAsset.available === true }
+      : { provider: "Cross-asset comparator candles", available: false, failureReason: "cross-asset context not provided" },
+  ];
+
+  const informationalFlags = flags.filter((f) =>
+    INFORMATIONAL_FLAG_PREFIXES.some((p) => f.startsWith(p)),
+  );
+  const criticalFlagList = flags.filter((f) =>
+    !INFORMATIONAL_FLAG_PREFIXES.some((p) => f.startsWith(p)),
+  );
+
+  const decisionTrace: DecisionTrace = {
+    version: 1,
+    tradingStyle: styleProfile.style,
+    inputSnapshotSummary: {
+      instrument: input.instrument.toUpperCase(),
+      instrumentType: input.instrumentType,
+      timeframe: input.timeframe,
+      dataCompleteness: completeness,
+    },
+    structuralDirection: decision.structuralDirection,
+    biasCalculation: {
+      rawBias: decision.rawBias,
+      coreWeightedAvg,
+      vetoApplied: decision.vetoApplied,
+      ...(structuralVetoReason ? { vetoReason: structuralVetoReason } : {}),
+      finalBias: bias,
+    },
+    evidenceLayers,
+    gates: decision.gateTrace,
+    passedGates: decision.gateTrace.filter((g) => g.status === "PASS").map((g) => g.gateId),
+    failedGates: decision.gateTrace.filter((g) => g.status === "FAIL").map((g) => g.gateId),
+    contradictions: keyContradictions.map((c) => ({ severity: c.severity, description: c.description })),
+    informationalFlags,
+    criticalFlags: criticalFlagList,
+    convictionBreakdown: {
+      base: 30,
+      layers: decision.convictionLayers,
+      rawTotal: 30 + decision.convictionLayers.reduce((a, l) => a + l.contribution, 0),
+      clamp: [20, 88],
+      final: decision.confidence,
+      band: decision.conviction,
+    },
+    recommendation: decision.recommendation,
+    tradePlanStatus: {
+      present: decision.tradePlan !== undefined,
+      ...(decision.tradePlan
+        ? { direction: decision.tradePlan.direction, rr: decision.tradePlan.riskReward }
+        : {}),
+    },
+    provenance,
+  };
+  const decisionFingerprint = computeDecisionFingerprint(decisionTrace);
+
   return {
     id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     instrument: input.instrument.toUpperCase(),
@@ -2122,6 +2380,8 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     fundamentalSummary,
     breakdown,
     keyLevels: decision.keyLevels,
+    decisionTrace,
+    decisionFingerprint,
     riskNote,
     positionSizing,
     dataCompleteness: completeness,
