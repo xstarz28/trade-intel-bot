@@ -263,6 +263,64 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
+      {/* Phase 5 — Market context: regime, setup class, key contradictions.
+          Only what the engine actually computed — no invented labels. */}
+      {(result.marketRegime || result.setupClassification) && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+              <span className="text-primary/60">$</span> market-context
+            </p>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {result.marketRegime && (
+                <span
+                  className={`rounded border px-2 py-0.5 text-[9px] font-mono ${
+                    result.marketRegime.regime === "TRENDING"
+                      ? "bg-sky-500/10 text-sky-400 border-sky-500/30"
+                      : result.marketRegime.regime === "RANGING"
+                        ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                        : result.marketRegime.regime === "UNKNOWN"
+                          ? "bg-muted/30 text-muted-foreground border-border/50"
+                          : "bg-violet-500/10 text-violet-400 border-violet-500/30"
+                  }`}
+                >
+                  regime: {result.marketRegime.regime}
+                </span>
+              )}
+              {result.setupClassification && (
+                <span className="rounded border bg-muted/30 px-2 py-0.5 text-[9px] font-mono text-muted-foreground">
+                  setup: {result.setupClassification.setupClass}
+                </span>
+              )}
+            </div>
+            {result.setupClassification?.rationale && (
+              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">{result.setupClassification.rationale}</p>
+            )}
+            {(result.keyContradictions?.filter((c) => c.severity !== "MINOR").length ?? 0) > 0 && (
+              <div className="mt-2 border-t border-border/40 pt-2">
+                <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">key contradictions</p>
+                {result.keyContradictions!
+                  .filter((c) => c.severity !== "MINOR")
+                  .map((c, i) => (
+                    <p key={i} className="text-[10px] font-mono leading-relaxed">
+                      <span
+                        className={
+                          c.severity === "DECISIVE"
+                            ? "text-red-400"
+                            : "text-amber-400"
+                        }
+                      >
+                        [{c.severity}]
+                      </span>{" "}
+                      <span className="text-muted-foreground/80">{c.description}</span>
+                    </p>
+                  ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Phase 3A — Multi-Timeframe transparency (only what the engine computed) */}
       {result.mtfSummary && (
         <Card className="border-border/50">
