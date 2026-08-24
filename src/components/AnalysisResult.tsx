@@ -779,6 +779,124 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </CardContent>
         </Card>
       )}
+      {/* Phase 26 — Structured Analyst Thesis: decision snapshot + evidence context */}
+      {result.analystThesis && (() => {
+        const thesis = result.analystThesis;
+        return (
+          <>
+            {/* Decision Snapshot */}
+            <Card className="border-border/50">
+              <CardContent className="px-4 py-3">
+                <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                  <span className="text-primary/60">$</span> decision-snapshot
+                </p>
+                <p className="text-sm font-mono font-bold text-foreground leading-relaxed">
+                  {thesis.decisionSnapshot}
+                </p>
+                <p className="text-[11px] font-mono text-muted-foreground/80 mt-1">
+                  {thesis.structuralThesis}
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Supporting + Conflicting Evidence */}
+            {(thesis.supportingEvidence.length > 0 || thesis.conflictingEvidence.length > 0) && (
+              <Card className="border-border/50">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                      <span className="text-primary/60">$</span> evidence-context
+                    </h4>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-3">
+                  {thesis.supportingEvidence.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-mono font-semibold text-emerald-400 mb-1">supporting</p>
+                      {thesis.supportingEvidence.slice(0, 5).map((e, i) => (
+                        <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-1">
+                          <span className="text-emerald-400 shrink-0">+</span>
+                          <span className="text-muted-foreground w-28 shrink-0">{e.category}</span>
+                          <span className="text-muted-foreground/80 flex-1">{e.explanation}</span>
+                          {e.contribution !== undefined && (
+                            <span className="text-emerald-400/60 shrink-0 tabular-nums">
+                              {e.contribution > 0 ? "+" : ""}{e.contribution}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {thesis.conflictingEvidence.length > 0 && (
+                    <div className="border-t border-border/30 pt-2">
+                      <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">conflicting</p>
+                      {thesis.conflictingEvidence.slice(0, 5).map((e, i) => (
+                        <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-1">
+                          <span className="text-amber-400 shrink-0">−</span>
+                          <span className="text-muted-foreground w-28 shrink-0">{e.category}</span>
+                          <span className="text-muted-foreground/80 flex-1">{e.explanation}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[9px] font-mono text-muted-foreground/40 italic">
+                    Evidence hierarchy: Structure → MTF → Liquidity → Location → Fundamental → Sentiment → Execution → Indicators
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Confirmation + Invalidation */}
+            <Card className="border-border/50">
+              <CardContent className="px-4 py-3 space-y-2">
+                <p className="text-[10px] font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span> thesis-validity
+                </p>
+                <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2">
+                  <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-0.5">confirmation</p>
+                  <p className="text-[11px] font-mono text-muted-foreground/80 leading-relaxed">{thesis.confirmationCondition}</p>
+                </div>
+                <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2">
+                  <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-0.5">invalidation</p>
+                  <p className="text-[11px] font-mono text-muted-foreground/80 leading-relaxed">{thesis.invalidationCondition}</p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Missing Information */}
+            {thesis.missingInformation.length > 0 && (
+              <Card className="border-amber-500/20 bg-amber-500/5">
+                <CardContent className="px-4 py-3">
+                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">
+                    <span className="text-amber-400/60">$</span> missing-context
+                  </p>
+                  <ul className="space-y-0.5">
+                    {thesis.missingInformation.map((m, i) => (
+                      <li key={i} className="text-[10px] font-mono text-amber-300/70">
+                        ⚠ {m}
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* NO_TRADE Path */}
+            {result.recommendation === "NO_TRADE" && thesis.noTradePath && (
+              <Card className="border-border/50">
+                <CardContent className="px-4 py-3">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                    <span className="text-primary/60">$</span> what-would-change
+                  </p>
+                  <p className="text-[11px] font-mono text-muted-foreground/80 leading-relaxed">
+                    {thesis.noTradePath}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </>
+        );
+      })()}
 
       {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (

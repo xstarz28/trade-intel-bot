@@ -217,4 +217,7 @@ export interface AnalysisResult {
   // Phase 25 — explicit data-quality transparency for analyst display.
   // Informational only: never modifies bias, conviction, or decision.
   dataQualityContext?: import("@/lib/data-quality").DataQualityContext;
+  // Phase 26 — structured analyst thesis: purely derived presentation metadata.
+  // Cannot modify recommendation, conviction, gates, trade plan, or sizing.
+  analystThesis?: import("@/lib/analyst-thesis").AnalystThesis;
 }
