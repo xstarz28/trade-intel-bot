@@ -14,8 +14,21 @@ import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext } from "../lib/data/mtf";
-import { crossAssetComparator, pearsonCorrelation } from "../lib/market-context";
+import {
+  crossAssetComparator,
+  DXY_CANDIDATE_SYMBOLS,
+  pearsonCorrelation,
+  resolveWorkingSymbol,
+} from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
+
+/**
+ * Phase 7C — in-memory memo of the working actual-DXY symbol (per server
+ * instance). Failure caching protects the Twelve Data rate budget: when no
+ * candidate resolves, probing is skipped for 24h instead of every analysis.
+ */
+let dxyResolvedSymbol: string | null = null;
+let dxyAllCandidatesFailedAt: number | null = null;
 
 interface TdCandle {
   datetime: string;
@@ -188,7 +201,35 @@ export const fetchMarketData = action({
       let crossAsset: TechnicalData["crossAsset"] | undefined;
       if (comparator && comparator !== symbol.toUpperCase()) {
         try {
-          const compCandles = await fetchCandles(comparator, args.timeframe, 120, apiKey).catch(() => null);
+          // Phase 7C — defensive actual-DXY discovery. The literal "DXY"
+          // symbol is NOT valid on the current Twelve Data plan (verified:
+          // all candidates return 404 while control EUR/USD succeeds), so we
+          // try candidates in order and CACHE failures for 24h to protect
+          // the rate budget. When a candidate works, this becomes ACTUAL
+          // price data with full provenance; otherwise the explicit
+          // unavailable state below stands — never a fabricated series.
+          let compSymbol: string | null = comparator;
+          if (comparator.toUpperCase() === "DXY") {
+            const DAY = 24 * 3600e3;
+            if (dxyAllCandidatesFailedAt !== null && Date.now() - dxyAllCandidatesFailedAt < DAY) {
+              compSymbol = null;
+            } else if (dxyResolvedSymbol) {
+              compSymbol = dxyResolvedSymbol;
+            } else {
+              const probes: Record<string, boolean> = {};
+              for (const cand of DXY_CANDIDATE_SYMBOLS) {
+                const test = await fetchCandles(cand, "D1", 5, apiKey).catch(() => null);
+                probes[cand] = !!test && test.length > 0;
+                if (probes[cand]) break; // stop at first success — minimal requests
+              }
+              compSymbol = resolveWorkingSymbol(DXY_CANDIDATE_SYMBOLS, (c) => probes[c] ?? false);
+              if (compSymbol) dxyResolvedSymbol = compSymbol;
+              else dxyAllCandidatesFailedAt = Date.now();
+            }
+          }
+          const compCandles = compSymbol
+            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey).catch(() => null)
+            : null;
           if (compCandles && compCandles.length >= 25) {
             const corr = pearsonCorrelation(
               candles.map((c) => c.close),
@@ -206,9 +247,11 @@ export const fetchMarketData = action({
                       : ("flat" as const)
                   : undefined;
               crossAsset = {
-                comparatorSymbol: comparator,
+                comparatorSymbol: compSymbol ?? comparator,
                 timeframe: args.timeframe,
                 available: true,
+                dataKind: "actual_price" as const,
+                provider: "Twelve Data",
                 correlation: Math.round(corr.correlation * 1000) / 1000,
                 sampleSize: corr.n,
                 directionalContext:
@@ -232,7 +275,10 @@ export const fetchMarketData = action({
               comparatorSymbol: comparator,
               timeframe: args.timeframe,
               available: false,
-              unavailableReason: `no comparable series returned by the provider for ${comparator}`,
+              unavailableReason:
+                comparator.toUpperCase() === "DXY"
+                  ? "actual DXY price series is not available on the current Twelve Data plan (all documented index symbols verified invalid live) — NEWS-derived USD proxy remains labeled fallback"
+                  : `no comparable series returned by the provider for ${comparator}`,
             };
           }
         } catch {
@@ -319,3 +365,4 @@ export const fetchFxRate = action({
     return { success: true as const, direct, inverse };
   },
 });
+

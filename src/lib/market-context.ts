@@ -270,6 +270,28 @@ export function crossAssetComparator(instrumentType: string, instrument: string)
   return null;
 }
 
+/**
+ * Phase 7C — DXY candidate symbols on Twelve Data, tried in order.
+ *
+ * LIVE-VERIFIED (Phase 7C audit, this account/plan): "DXY", "DX.Y.NYB",
+ * "USD_INDEX" and "I:DXY" ALL returned HTTP 404 invalid-symbol while the
+ * control EUR/USD series succeeded. Until the account plan exposes an actual
+ * dollar-index series, ACTUAL DXY stays explicitly unavailable and the
+ * NEWS-derived proxy remains the labeled fallback. This list is re-probed
+ * defensively (with a failure cache) so an upgraded plan picks up actual DXY
+ * without code changes.
+ */
+export const DXY_CANDIDATE_SYMBOLS = ["DXY", "DX.Y.NYB", "USD_INDEX", "I:DXY"] as const;
+
+/** Pick the first candidate that a probe reports valid; null when none. */
+export function resolveWorkingSymbol(
+  candidates: readonly string[],
+  isValid: (symbol: string) => boolean,
+): string | null {
+  for (const c of candidates) if (isValid(c)) return c;
+  return null;
+}
+
 // ── Contradictions ─────────────────────────────────────────────────
 
 export type ContradictionSeverity = "MINOR" | "MATERIAL" | "DECISIVE";
