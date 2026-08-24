@@ -39,6 +39,7 @@ import {
   isUsableSmc,
 } from "@/lib/market-context";
 import { GATE_IDS } from "@/lib/decision-trace";
+import { assessDataQuality } from "@/lib/data-quality";
 import type {
   DecisionTrace,
   EvidenceLayerSummary,
@@ -2432,6 +2433,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     executionContext: input.executionData?.available ? input.executionData : undefined,
     slippageEstimate,
     executionWarnings: executionWarnings.length > 0 ? executionWarnings : undefined,
+    dataQualityContext: assessDataQuality(input),
   };
 }
 

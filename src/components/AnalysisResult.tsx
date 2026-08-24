@@ -186,6 +186,80 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
       </Card>
 
       {/* Technical Indicators Quick View */}
+      {/* Phase 25 — Data Quality transparency panel. Informational only — never directional. */}
+      {result.dataQualityContext && (() => {
+        const dq = result.dataQualityContext;
+        const primaryStatus = dq.primaryData.status;
+        const STATUS_COLORS: Record<string, string> = {
+          GOOD: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+          DEGRADED: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+          INSUFFICIENT: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+          STALE: "bg-red-500/15 text-red-400 border-red-500/30",
+          UNAVAILABLE: "bg-red-500/15 text-red-400 border-red-500/30",
+          INVALID: "bg-red-500/15 text-red-400 border-red-500/30",
+        };
+        const IND_COLORS: Record<string, string> = {
+          AVAILABLE: "text-emerald-400",
+          INSUFFICIENT_DATA: "text-amber-400",
+          UNAVAILABLE: "text-red-400",
+        };
+        return (
+          <Card className="border-border/50">
+            <CardContent className="px-4 py-3">
+              <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                <span className="text-primary/60">$</span> data-quality
+                <span className="text-muted-foreground/50"> · informational — not directional evidence</span>
+              </p>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <Badge className={cn("text-[10px] font-mono", STATUS_COLORS[primaryStatus] ?? "bg-muted/30 text-muted-foreground border-border/50")}>
+                  primary: {primaryStatus}
+                </Badge>
+                {dq.primaryData.validCount !== undefined && dq.primaryData.expectedCount !== undefined && (
+                  <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                    {dq.primaryData.validCount}/{dq.primaryData.expectedCount} candles
+                  </Badge>
+                )}
+                {dq.primaryData.provider && (
+                  <span className="text-[10px] font-mono text-muted-foreground/60">provider: {dq.primaryData.provider}</span>
+                )}
+              </div>
+              <p className="text-[10px] font-mono text-muted-foreground/60 mb-2">{dq.primaryData.reason}</p>
+              {/* Indicator availability */}
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono mb-2">
+                {(["sma", "rsi", "macd", "atr", "smc"] as const).map((key) => {
+                  const item = dq.indicators[key];
+                  return (
+                    <span key={key} className={IND_COLORS[item.status]}>
+                      {key.toUpperCase()}: {item.status === "AVAILABLE" ? "✓" : item.status === "INSUFFICIENT_DATA" ? "⚠" : "✗"}
+                    </span>
+                  );
+                })}
+              </div>
+              {/* MTF quality */}
+              <div className="flex items-center gap-2 mb-2 text-[10px] font-mono">
+                <span className={IND_COLORS[dq.mtf.status === "GOOD" ? "AVAILABLE" : dq.mtf.status === "UNAVAILABLE" ? "UNAVAILABLE" : "INSUFFICIENT_DATA"]}>
+                  MTF: {dq.mtf.status}
+                </span>
+                <span className="text-muted-foreground/50">{dq.mtf.reason}</span>
+              </div>
+              {/* Provider availability summary */}
+              {(() => {
+                const entries = Object.entries(dq.providers).filter(([, v]) => v !== undefined) as [string, { status: string; reason: string; provider?: string }][];
+                if (entries.length === 0) return null;
+                return (
+                  <div className="border-t border-border/30 pt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono">
+                    {entries.map(([name, item]) => (
+                      <span key={name} className={IND_COLORS[item.status] ?? "text-muted-foreground"}>
+                        {name}: {item.status === "GOOD" ? "✓" : item.status === "UNAVAILABLE" ? "✗" : "⚠"}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+        );
+      })()}
       {tech && tech.dataPoints > 0 && (
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
