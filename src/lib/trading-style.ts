@@ -42,6 +42,13 @@ export interface StyleProfile {
    * never able to create or flip a trade alone.
    */
   cotLayerCap: number;
+  /**
+   * EIA WPSR inventory conviction-layer cap (weekly slow fundamental data).
+   * SCALPING: near-zero context (\u00b11); INTRADAY supporting (\u00b14);
+   * SWING meaningful supply-demand context (\u00b18). Never an entry
+   * trigger, never able to flip structural bias alone.
+   */
+  eiaLayerCap: number;
   /** Target-horizon guard in ATR multiples (null = unlimited). */
   targetMaxAtrMultiple: number | null;
   /** SCALPING: fresh execution evidence is mandatory. */
@@ -62,6 +69,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     fundamentalLayerCap: 8,
     macroYieldLayerCap: 2,
     cotLayerCap: 1,
+    eiaLayerCap: 1,
     targetMaxAtrMultiple: 6,
     requiresTriggerEvidence: true,
     requiresHtfContext: false,
@@ -76,6 +84,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     fundamentalLayerCap: 15,
     macroYieldLayerCap: 8,
     cotLayerCap: 5,
+    eiaLayerCap: 4,
     targetMaxAtrMultiple: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: false,
@@ -90,6 +99,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     fundamentalLayerCap: 18,
     macroYieldLayerCap: 12,
     cotLayerCap: 12,
+    eiaLayerCap: 8,
     targetMaxAtrMultiple: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: true,

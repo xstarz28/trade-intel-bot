@@ -112,6 +112,7 @@ export interface AnalysisInput {
   // NEVER live/exchange/retail positioning; unavailable for unmappable
   // instruments (e.g. crypto spot) by design.
   cotData?: import("@/lib/data/cot").CotData;
+  eiaData?: import("@/lib/data/eia").EiaData;
   // ── Phase 7B-3: OKX public instrument metadata (risk/spec data ONLY) ──
   // Static contract metadata for position sizing. Never directional
   // evidence; never presented as live market data.
@@ -203,4 +204,5 @@ export interface AnalysisResult {
   treasuryContext?: import("@/lib/data/treasury").TreasuryContext;
   // Phase 7B-2: COT provenance — source contract, report date, net/change, freshness.
   cotContext?: import("@/lib/data/cot").CotContext;
+  eiaContext?: import("@/lib/data/eia").EiaContext;
 }
