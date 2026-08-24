@@ -79,6 +79,7 @@ export default function Dashboard() {
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
   const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
+  const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
 
   const handleSignOut = async () => {
     await signOut();
@@ -228,6 +229,22 @@ export default function Dashboard() {
           }
         }
 
+        // Phase 7B-2 — CFTC COT positioning. Conditional: same USD-relevant
+        // asset classes as Treasury (mapping is explicit; crypto spot has no
+        // COT mapping by design), never for scalping. Failure is non-fatal.
+        let cotData: AnalysisInput["cotData"];
+        if (
+          (input.instrumentType === "forex" || input.instrumentType === "commodity") &&
+          input.tradingStyle !== "scalping"
+        ) {
+          try {
+            const c = await fetchCotPositioning({ instrument: input.instrument });
+            if (c.success) cotData = c.data;
+          } catch {
+            // COT unavailable — explicit flag, no fallback data.
+          }
+        }
+
         // Phase 7B-1 — Treasury macro-yield context. Conditional fetch:
         // only USD-relevant asset classes, never for scalping (slow macro
         // data must not burden the execution horizon). Failure is non-fatal:
@@ -256,6 +273,7 @@ export default function Dashboard() {
           calendarData: calendarResult?.data,
           fxRates,
           treasuryData,
+          cotData,
         };
         const result = runAnalysis(enrichedInput);
 
@@ -301,7 +319,7 @@ export default function Dashboard() {
         setIsAnalyzing(false);
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, saveAnalysis, updateStep],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {

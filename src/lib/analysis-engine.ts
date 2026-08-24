@@ -20,6 +20,11 @@ import {
   type TreasuryData,
 } from "@/lib/data/treasury";
 import {
+  deriveCotEvidence,
+  mapInstrumentToCot,
+  type CotData,
+} from "@/lib/data/cot";
+import {
   detectMarketRegime,
   classifySetup,
   detectContradictions,
@@ -509,6 +514,9 @@ function assessDataCompleteness(input: AnalysisInput): {
   }
   if (input.treasuryData && !input.treasuryData.available) {
     flags.push(`Treasury yield context unavailable (${input.treasuryData.reason})`);
+  }
+  if (input.cotData && !input.cotData.available) {
+    flags.push(`COT positioning context unavailable (${input.cotData.reason})`);
   }
   if (!input.technicalData?.htfContext) {
     flags.push("No higher-timeframe structural data — macro context unverified");
@@ -1126,6 +1134,28 @@ function decideTrade(
       }
     }
 
+    // ── LAYER: positioning-COT (Phase 7B-2, style-scaled cap ±1/±5/±12).
+    // ONE dataset = ONE layer: level + net + change are an internal breakdown,
+    // never independent evidences. Directional evidence comes ONLY from the
+    // change between two actual consecutive reports, scaled by OI. Level is
+    // never scored directionally; crowding surfaces as context/contradiction.
+    // Crypto spot has NO COT mapping by design — CoinGlass derivatives data
+    // remains the separate crypto positioning source (no double-counting).
+    {
+      const cd: CotData | undefined = input.cotData;
+      if (cd?.available) {
+        const ev = deriveCotEvidence(cd);
+        const cap = styleProfile.cotLayerCap;
+        const side = mapInstrumentToCot(cd.requestedInstrument)?.contractSide ?? "base";
+        let effectOnLong = ev.effectOnContractCurrency * cap;
+        if (side === "quote") effectOnLong = -effectOnLong; // contract on QUOTE ccy inverts instrument direction
+        if (effectOnLong !== 0) {
+          const contribution = biasSign === 1 ? effectOnLong : -effectOnLong;
+          s += layerClamp(Math.round(contribution), cap);
+        }
+      }
+    }
+
     // RSI/MACD modifier — small, never decisive
     if (Math.sign(breakdown.indicator) === biasSign) s += 3;
     else if (breakdown.indicator !== 0) s -= 3;
@@ -1137,6 +1167,7 @@ function decideTrade(
     "Volume limitation:",
     "Cross-asset context unavailable",
     "Treasury yield context unavailable",
+    "COT positioning context unavailable",
     "Timeframe chain unavailable:",
     "No higher-timeframe structural data",
   ];
@@ -1614,6 +1645,28 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     }
   }
 
+  // Phase 7B-2 — COT contradiction: opposing weekly futures positioning and
+  // crowding are surfaced explicitly. COT alone can never be DECISIVE.
+  if (biasSignOuter !== 0 && input.cotData?.available) {
+    const evC = deriveCotEvidence(input.cotData);
+    const side = mapInstrumentToCot(input.cotData.requestedInstrument)?.contractSide ?? "base";
+    let cotEffectOnLong = evC.effectOnContractCurrency;
+    if (side === "quote") cotEffectOnLong = -cotEffectOnLong;
+    const crowdSuffix =
+      evC.crowded && evC.crowdRatio !== undefined
+        ? ` — crowded positioning (${Math.round(evC.crowdRatio * 100)}% of OI) may amplify reversal risk`
+        : "";
+    if (
+      (cotEffectOnLong < 0 && input.cotData.changeFromPreviousReport !== undefined) ||
+      (evC.crowded && biasSignOuter === 1 && input.cotData.netNonCommercial > 0)
+    ) {
+      keyContradictions.push({
+        description: `${bias!.toLowerCase()} thesis vs CFTC futures positioning context${crowdSuffix}`,
+        severity: Math.abs(cotEffectOnLong) >= 0.6 ? "MATERIAL" : "MINOR",
+      });
+    }
+  }
+
   const technicalSummary = generateTechnicalSummary(
     input,
     trendScore,
@@ -1714,6 +1767,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     derivativesData: input.derivativesData,
     calendarData: input.calendarData,
     treasuryContext: input.treasuryData?.available ? input.treasuryData : undefined,
+    cotContext: input.cotData?.available ? input.cotData : undefined,
   };
 }
 
