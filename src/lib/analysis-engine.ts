@@ -54,8 +54,13 @@ const CORE_WEIGHTS = {
   sentiment: 0.25,
 } as const;
 
-/** Max influence of the RSI/MACD modifier on the weighted average. */
-const INDICATOR_MODIFIER_WEIGHT = 0.1;
+/**
+ * Phase 8 P6 — the RSI/MACD modifier is a FLAT ±3 conviction contribution
+ * (never a weighted-average term). This constant IS the implementation value;
+ * the previous unused INDICATOR_MODIFIER_WEIGHT = 0.1 was misleading dead
+ * configuration and has been removed.
+ */
+const INDICATOR_MODIFIER_MAX = 3;
 
 /** Minimum projected R:R for a setup to be actionable. */
 const MIN_RR = 1.5;
@@ -537,7 +542,12 @@ function scoreSentiment(input: AnalysisInput): FactorScore {
     }
   }
 
-  // ── Volume as structure confirmation (NOT coupled to RSI/MACD) ──
+  // ── Volume participation context (sentiment layer).
+  // SEMANTICS (Phase 8 P6): this is a sentiment-layer confirmation of an
+  // ALREADY-DETERMINED structural direction — it is NOT independent
+  // structural evidence and contributes nothing to structure scoring or
+  // thesis creation. Regime detection reads volumeTrend too, but regime is
+  // contextual classification only: it never feeds conviction directly.
   if (tech && tech.dataPoints >= 20 && tech.volumeTrend !== "unknown") {
     if (tech.volumeTrend === "increasing" && structure !== "range" && structure !== "unknown") score += 1;
     if (tech.volumeTrend === "decreasing" && structure !== "range" && structure !== "unknown") score -= 1;
@@ -1353,8 +1363,8 @@ function decideTrade(
     }
 
     // RSI/MACD modifier — small, never decisive
-    if (Math.sign(breakdown.indicator) === biasSign) s += 3;
-    else if (breakdown.indicator !== 0) s -= 3;
+    if (Math.sign(breakdown.indicator) === biasSign) s += INDICATOR_MODIFIER_MAX;
+    else if (breakdown.indicator !== 0) s -= INDICATOR_MODIFIER_MAX;
 
     // Data completeness — CRITICAL gaps penalize conviction; purely
     // informational unavailability notes do NOT (missing data is
