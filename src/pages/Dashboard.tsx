@@ -78,6 +78,7 @@ export default function Dashboard() {
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
+  const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
 
   const handleSignOut = async () => {
     await signOut();
@@ -227,6 +228,23 @@ export default function Dashboard() {
           }
         }
 
+        // Phase 7B-1 — Treasury macro-yield context. Conditional fetch:
+        // only USD-relevant asset classes, never for scalping (slow macro
+        // data must not burden the execution horizon). Failure is non-fatal:
+        // the engine flags it informationally and analysis proceeds.
+        let treasuryData: AnalysisInput["treasuryData"];
+        if (
+          (input.instrumentType === "forex" || input.instrumentType === "commodity") &&
+          input.tradingStyle !== "scalping"
+        ) {
+          try {
+            const t = await fetchTreasuryYields({});
+            if (t.success) treasuryData = t.data;
+          } catch {
+            // Treasury unavailable — explicit flag, no fallback data.
+          }
+        }
+
         const enrichedInput: AnalysisInput = {
           ...input,
           marketData: marketDataResult.data,
@@ -237,6 +255,7 @@ export default function Dashboard() {
           derivativesData: derivativesResult?.data,
           calendarData: calendarResult?.data,
           fxRates,
+          treasuryData,
         };
         const result = runAnalysis(enrichedInput);
 
@@ -282,7 +301,7 @@ export default function Dashboard() {
         setIsAnalyzing(false);
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, saveAnalysis, updateStep],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {

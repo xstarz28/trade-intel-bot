@@ -332,6 +332,59 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
+      {/* Phase 7B-1 — Treasury yield / real-yield provenance. Shown ONLY when
+          the provider returned actual data; every number carries its
+          observation date. Nominal and real are labeled separately. */}
+      {result.treasuryContext && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+              <span className="text-primary/60">$</span> treasury-yields{" "}
+              <span
+                className={cn(
+                  "ml-1",
+                  result.treasuryContext.freshness === "FRESH"
+                    ? "text-emerald-400"
+                    : result.treasuryContext.freshness === "DELAYED"
+                      ? "text-amber-400"
+                      : "text-red-400",
+                )}
+              >
+                {result.treasuryContext.freshness}
+              </span>
+              <span className="text-muted-foreground/50"> · obs: {result.treasuryContext.latest.nominal.observationDate}</span>
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono">
+              {(["2Y", "10Y", "30Y"] as const).map((t) =>
+                result.treasuryContext!.latest.nominal.nominal[t] !== undefined ? (
+                  <span key={t} className="text-muted-foreground/80">
+                    nominal {t}:{" "}
+                    <span className="text-foreground">{result.treasuryContext!.latest.nominal.nominal[t].toFixed(2)}%</span>
+                  </span>
+                ) : null,
+              )}
+              {result.treasuryContext.latest.real ? (
+                (["5Y", "10Y", "30Y"] as const).map((t) =>
+                  result.treasuryContext!.latest.real!.real[t] !== undefined ? (
+                    <span key={`r-${t}`} className="text-muted-foreground/80">
+                      real {t}:{" "}
+                      <span className="text-sky-300">{result.treasuryContext!.latest.real!.real[t].toFixed(2)}%</span>
+                    </span>
+                  ) : null,
+                )
+              ) : (
+                <span className="text-muted-foreground/60">real yield: unavailable</span>
+              )}
+            </div>
+            <p className="mt-1.5 text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
+              {result.treasuryContext.source} · nominal obs {result.treasuryContext.latest.nominal.observationDate}
+              {result.treasuryContext.latest.real && ` · real obs ${result.treasuryContext.latest.real.observationDate}`} · fetched{" "}
+              {new Date(result.treasuryContext.fetchedAt).toISOString().slice(0, 16).replace("T", " ")}Z · slow-moving macro context, never an entry trigger
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Phase 3A — Multi-Timeframe transparency (only what the engine computed) */}
       {result.mtfSummary && (
         <Card className="border-border/50">
