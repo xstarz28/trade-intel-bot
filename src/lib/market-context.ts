@@ -8,6 +8,26 @@
  */
 import type { MtfContext, TechnicalData } from "./data/market-types";
 
+/**
+ * Phase 10 P0 — defensive shape guard. A provider/context that claims to be
+ * present must actually carry the Phase-2 SMC structure before ANY consumer
+ * (engine, regime, contradictions) reads nested fields. Malformed contexts
+ * are treated as ABSENT (uncertainty), never as directional evidence and
+ * never as a crash.
+ */
+export function isUsableSmc(
+  smc: { internalExternal?: { external?: unknown; internal?: unknown }; fvgs?: unknown; orderBlocks?: unknown; liquidityPools?: unknown } | undefined | null,
+): boolean {
+  return (
+    !!smc &&
+    !!smc.internalExternal?.external &&
+    !!smc.internalExternal?.internal &&
+    Array.isArray(smc.fvgs) &&
+    Array.isArray(smc.orderBlocks) &&
+    Array.isArray(smc.liquidityPools)
+  );
+}
+
 /** Structural subset of the core bias breakdown (keeps this module free
  *  of app-alias imports so BOTH the Convex bundler and Vite can use it). */
 interface CoreBreakdownSubset {
@@ -62,7 +82,8 @@ export function detectMarketRegime(input: {
 
   // Evidence 1: external structure direction.
   const extStructure =
-    tech?.smc?.internalExternal.external.structure ?? tech?.structure ?? undefined;
+    (isUsableSmc(tech?.smc) ? tech!.smc!.internalExternal!.external!.structure : undefined) ??
+    tech?.structure ?? undefined;
   if (extStructure === "HH/HL" || extStructure === "LH/LL") {
     trendVotes++;
     evidences.push(`external structure ${extStructure} → trending`);
@@ -187,7 +208,7 @@ export function classifySetup(input: {
 
   if (!mtf) {
     // Without MTF context we can still recognize a range.
-    const ext = tech?.smc?.internalExternal.external.structure ?? tech?.structure;
+    const ext = (isUsableSmc(tech?.smc) ? tech!.smc!.internalExternal!.external!.structure : undefined) ?? tech?.structure;
     if (ext === "range") return { setupClass: "RANGE", rationale: "Primary timeframe structure is ranging." };
     return { setupClass: "UNKNOWN", rationale: "No multi-timeframe context available for classification." };
   }
@@ -219,7 +240,7 @@ export function classifySetup(input: {
   }
 
   // ALIGNED_* — but a fresh opposing sweep warns of a trap.
-  const smc = tech?.smc;
+  const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
   const sweepAgainst =
     smc?.recentSweep &&
     ((mtf.htfBias === "long" && smc.recentSweep.side === "buy_side") ||
@@ -333,7 +354,7 @@ export function detectContradictions(input: {
   }
 
   // Structure vs liquidity sweep.
-  const smc = tech?.smc;
+  const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
   if (smc?.recentSweep && biasSign !== 0) {
     const sweepAgainstBias =
       (biasSign === 1 && smc.recentSweep.side === "buy_side") ||
