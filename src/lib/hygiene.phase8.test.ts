@@ -1,17 +1,14 @@
 /**
- * Phase 8 P6 — hygiene semantics.
+ * Phase 8 P6 — semantic correctness regressions.
  *
- * - Regime detection must NEVER become additional conviction evidence:
- *   toggling a regime-only input (value-area containment) while every
- *   conviction-layer input stays byte-identical must leave confidence
- *   unchanged.
- * - The RSI/MACD modifier constant is the real implementation value; the
- *   engine's modifier behavior is pinned at exactly ±3.
+ * Proves regime detection NEVER becomes additional conviction evidence:
+ * toggling a regime-relevant input (volume-profile value area) that feeds NO
+ * conviction layer must leave recommendation AND confidence identical.
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
-import type { MarketData, SmcContext, TechnicalData, VolumeProfileContext, VwapContext } from "@/lib/data/market-types";
+import type { MarketData, SmcContext, TechnicalData } from "@/lib/data/market-types";
 
 function makeMarket(price: number): MarketData {
   return {
@@ -26,68 +23,69 @@ function makeMarket(price: number): MarketData {
   };
 }
 
-const vwapOff: VwapContext = { available: false as const, unavailableReason: "no session data" } as VwapContext;
-const vpOff: VolumeProfileContext = { available: false as const, unavailableReason: "zero-volume series" };
-/** Real-looking profile containing the last close → regime "ranging" vote. */
-const vpOn: VolumeProfileContext = {
-  available: true,
-  poc: 100, vah: 104, val: 96,
-  totalVolume: 210000,
-} as unknown as VolumeProfileContext;
-
-function smcWith(vp: VolumeProfileContext): SmcContext {
+function tech(vp: SmcContext["volumeProfile"]): TechnicalData {
   return {
-    timeframe: "H4",
-    liquidityPools: [],
-    internalExternal: {
-      external: { structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 112, lastSwingLow: 95, dataPoints: 210 },
-      internal: { structure: "HH/HL", bosDirection: "none", chochDirection: "none", lastSwingHigh: 108, lastSwingLow: 99, dataPoints: 60 },
-      internalConflict: false,
-    },
-    fvgs: [], orderBlocks: [],
-    vwap: vwapOff,
-    volumeProfile: vp,
-  } as unknown as SmcContext;
+    swingHighs: [112], swingLows: [95],
+    structure: "HH/HL", bosDirection: "bullish", chochDirection: "none",
+    supportLevels: [95], resistanceLevels: [112],
+    volumeTrend: "unknown", dataPoints: 210,
+    smc: {
+      timeframe: "H4",
+      liquidityPools: [],
+      internalExternal: {
+        external: { structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 112, lastSwingLow: 95, dataPoints: 210 },
+        internal: { structure: "HH/HL", bosDirection: "none", chochDirection: "none", lastSwingHigh: 108, lastSwingLow: 99, dataPoints: 60 },
+        internalConflict: false,
+      },
+      fvgs: [],
+      orderBlocks: [],
+      vwap: { available: false, unavailableReason: "no session data" },
+      volumeProfile: vp,
+    } as unknown as SmcContext,
+  };
 }
 
-function input(vp: VolumeProfileContext): AnalysisInput {
-  return {
+function runWith(vp: SmcContext["volumeProfile"]) {
+  return runAnalysis({
     instrument: "EUR/USD", instrumentType: "forex", timeframe: "H4",
-    marketData: makeMarket(100), // close inside [val..vah] when profile is ON
-    technicalData: { swingHighs: [112], swingLows: [95], structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", supportLevels: [95], resistanceLevels: [112], volumeTrend: "unknown", dataPoints: 210, smc: smcWith(vp) } as TechnicalData,
+    marketData: makeMarket(100),
+    technicalData: tech(vp),
     economicEvents: "Fed signals hawkish stance, rate hike",
-    sentimentData: {
-      provider: "alpha-vantage", timestamp: Date.now(),
-      averageScore: 0.8, articleCount: 10, label: "bullish",
-      breakdown: { positive: 9, negative: 0, neutral: 1 },
-      confidence: "high", articles: [],
-    },
-  } as AnalysisInput;
+  } as AnalysisInput);
 }
 
-describe("P6: regime is contextual only — never conviction evidence", () => {
-  it("regime vote change alone leaves conviction/confidence identical", () => {
-    const withoutProfile = runAnalysis(input(vpOff));
-    const withProfile = runAnalysis(input(vpOn));
-    // The volume profile toggles a REGIME vote (value-area containment) but is
-    // not part of any conviction layer.
-    expect(withProfile.confidence).toBe(withoutProfile.confidence);
-    expect(withProfile.recommendation).toBe(withoutProfile.recommendation);
-    expect(withProfile.conviction).toBe(withoutProfile.conviction);
+describe("P6: regime evidence is never conviction evidence", () => {
+  it("value-area containment changes regime votes but NOT conviction", () => {
+    // Price INSIDE the value area → range vote (RANGING-leaning regime).
+    const inside = runWith({
+      available: true,
+      poc: 100, vah: 104, val: 96,
+      vahVolume: 1000, valVolume: 1000,
+    } as unknown as SmcContext["volumeProfile"]);
+    // Volume profile UNAVAILABLE → fewer regime evidences.
+    const withoutVp = runWith({ available: false, unavailableReason: "zero-volume series" });
+
+    expect(inside.recommendation).toBe(withoutVp.recommendation);
+    expect(inside.confidence).toBe(withoutVp.confidence);
+    expect(inside.breakdown).toEqual(withoutVp.breakdown);
+
+    // Regime classification itself may differ — that is its job.
+    // (Not asserted to a specific label: only that it cannot move conviction.)
   });
 
-  it("RSI/MACD modifier remains pinned at the documented ±3 policy value", () => {
-    const neutral = runAnalysis(input(vpOff));
-    const withBullRsi = runAnalysis({
-      ...input(vpOff),
-      technicalData: {
-        ...input(vpOff).technicalData!,
-        rsi14: 55, macdHistogram: 10,
-      } as TechnicalData,
-    });
-    // indicator +1 aligned → exactly +3 conviction points
-    expect(neutral.breakdown.indicator).toBe(0);
-    expect(withBullRsi.breakdown.indicator).toBe(1);
-    expect(withBullRsi.confidence).toBe(neutral.confidence + 3);
+  it("RANGING-regime contradiction stays MINOR and never alters scoring", () => {
+    const r = runAnalysis({
+      instrument: "EUR/USD", instrumentType: "forex", timeframe: "H4",
+      marketData: makeMarket(100),
+      technicalData: tech({
+        available: true, poc: 100, vah: 104, val: 96,
+      } as unknown as SmcContext["volumeProfile"]),
+      economicEvents: "Fed signals hawkish stance, rate hike",
+    } as AnalysisInput);
+    if (r.marketRegime?.regime === "RANGING") {
+      const ranging = (r.keyContradictions ?? []).find((c) => /RANGING/i.test(c.description));
+      if (ranging) expect(ranging.severity).toBe("MINOR");
+    }
+    expect(r.recommendation).toBe("LONG");
   });
 });

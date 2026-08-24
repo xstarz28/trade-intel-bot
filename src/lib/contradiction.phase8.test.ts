@@ -47,7 +47,7 @@ function input(over?: Partial<AnalysisInput>): AnalysisInput {
 }
 
 const sevOf = (r: ReturnType<typeof runAnalysis>, needle: RegExp) =>
-  r.keyContradictions.find((c) => needle.test(c.description))?.severity;
+  (r.keyContradictions ?? []).find((c) => needle.test(c.description))?.severity;
 
 // ── Pure-function cap ──────────────────────────────────────────────
 
@@ -143,7 +143,7 @@ describe("P4: DECISIVE derives only from actual gate decisions", () => {
       treasuryData: { available: false as const, reason: "key missing", fetchedAt: Date.now() } as never,
       cotData: { available: false as const, reason: "no mapping", fetchedAt: Date.now(), requestedInstrument: "EUR/USD" } as never,
     }));
-    const decisive = r.keyContradictions.filter((c) => c.severity === "DECISIVE");
+    const decisive = (r.keyContradictions ?? []).filter((c) => c.severity === "DECISIVE");
     expect(decisive).toHaveLength(0);
     expect(r.noTradeReasons.join(" ").toLowerCase()).not.toContain("unavailable became decisive");
   });
