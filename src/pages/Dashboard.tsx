@@ -10,6 +10,7 @@ import type { AnalysisResult } from "@/types/analysis";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
+import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
@@ -213,109 +214,58 @@ export default function Dashboard() {
         updateStep(4, "active");
 
         // Phase 4 — live FX snapshots for account-currency-aware sizing.
-        // Fetched ONLY when an explicit account currency differs from the
-        // instrument's quote currency. Failure is non-fatal: the engine
-        // reports sizing as unavailable instead of inventing a rate.
-        let fxRates: AnalysisInput["fxRates"];
+        // Phase 15 — OPTIONAL slow-data providers now run CONCURRENTLY.
+        // These legs are provably independent of each other (no data
+        // dependencies), each keeps its EXACT conditional policy and non-fatal
+        // failure semantics (see lib/data/optional-providers.ts), each provider
+        // is still invoked at most once per analysis, and the Phase-14 race
+        // guard remains the sole authority for state updates. Parallelism
+        // changes WHEN data is fetched — never WHAT the data means.
+
+        // FX pair resolution stays synchronous (depends only on user input).
+        let fxPair: { from: string; to: string } | undefined;
         if (input.accountCurrency) {
           const quoteCcy =
             input.instrumentSpec?.quoteCurrency ??
             parseSymbolCurrencies(input.instrument).quote;
           const acct = input.accountCurrency.toUpperCase();
           if (quoteCcy && quoteCcy.toUpperCase() !== acct) {
-            try {
-              const fx = await fetchFxRate({ from: quoteCcy, to: acct });
-              if (fx.success) {
-                fxRates = {
-                  direct: fx.direct ?? undefined,
-                  inverse: fx.inverse ?? undefined,
-                };
-              }
-            } catch {
-              // Conversion unavailable — sizing will state it explicitly.
-            }
+            // Fetched ONLY when an explicit account currency differs from the
+            // instrument's quote currency. Failure is non-fatal: the engine
+            // reports sizing as unavailable instead of inventing a rate.
+            fxPair = { from: quoteCcy, to: acct };
           }
         }
 
-        // Phase 7B-2 — CFTC COT positioning. Conditional: same USD-relevant
-        // asset classes as Treasury (mapping is explicit; crypto spot has no
-        // COT mapping by design), never for scalping. Failure is non-fatal.
-        let cotData: AnalysisInput["cotData"];
-        if (
-          (input.instrumentType === "forex" || input.instrumentType === "commodity") &&
-          input.tradingStyle !== "scalping"
-        ) {
-          try {
-            const c = await fetchCotPositioning({ instrument: input.instrument });
-            if (c.success) cotData = c.data;
-          } catch {
-            // COT unavailable — explicit flag, no fallback data.
-          }
-        }
-
-        // Phase 7D — EIA WPSR inventory context. Conditional: OIL instruments
-        // only (crude/gasoline/distillate stocks are meaningless elsewhere),
-        // never for scalping (slow weekly data must not burden the execution
-        // horizon). Failure is non-fatal: explicit flag, analysis proceeds.
-        // Phase 7E — crypto execution quality via OKX public order book.
-        // Crypto only (no validated bid/ask provider elsewhere); skipped for
-        // swing (microstructure is contextual-only there). Non-fatal.
-        let executionData: AnalysisInput["executionData"];
-        if (input.instrumentType === "crypto" && input.tradingStyle !== "swing") {
-          try {
-            const ob = await fetchOkxOrderBook({ instrument: input.instrument });
-            if (ob.success) executionData = ob.data;
-          } catch {
-            // Order book unavailable — explicit flag, analysis proceeds.
-          }
-        }
-
-        let eiaData: AnalysisInput["eiaData"];
-        if (
-          input.instrumentType === "commodity" &&
-          /WTI|CRUDE|BRENT|OIL/i.test(input.instrument) &&
-          input.tradingStyle !== "scalping"
-        ) {
-          try {
-            const e = await fetchEiaInventory({});
-            if (e.success) eiaData = e.data;
-          } catch {
-            // EIA unavailable — explicit flag, no fallback data.
-          }
-        }
-
-        // Phase 7B-1 — Treasury macro-yield context. Conditional fetch:
-        // only USD-relevant asset classes, never for scalping (slow macro
-        // data must not burden the execution horizon). Failure is non-fatal:
-        // the engine flags it informationally and analysis proceeds.
-        let treasuryData: AnalysisInput["treasuryData"];
-        if (
-          (input.instrumentType === "forex" || input.instrumentType === "commodity") &&
-          input.tradingStyle !== "scalping"
-        ) {
-          try {
-            const t = await fetchTreasuryYields({});
-            if (t.success) treasuryData = t.data;
-          } catch {
-            // Treasury unavailable — explicit flag, no fallback data.
-          }
-        }
-
-        // Phase 7B-3 — OKX contract metadata for crypto sizing. Fetched ONLY
-        // when no explicit contract size/step was supplied. Failure is
-        // non-fatal: sizing reports unavailable; the thesis is untouched.
-        let okxSpecData: AnalysisInput["okxSpecData"];
-        if (
-          input.instrumentType === "crypto" &&
-          !(input.instrumentSpec?.contractSize && input.instrumentSpec?.quantityStep)
-        ) {
-          try {
-            const okx = await fetchOkxInstrumentSpec({ instrument: input.instrument });
-            if (okx.success) okxSpecData = okx.data;
-          } catch {
-            // OKX unavailable — sizing stays honestly unavailable.
-          }
-        }
+        const {
+          fxRates,
+          treasuryData,
+          cotData,
+          eiaData,
+          executionData,
+          okxSpecData,
+        } = await fetchOptionalSlowData(
+          {
+            instrumentType: input.instrumentType,
+            instrument: input.instrument,
+            tradingStyle: input.tradingStyle,
+            hasCompleteSpec: !!(
+              input.instrumentSpec?.contractSize &&
+              input.instrumentSpec?.quantityStep
+            ),
+          },
+          {
+            fx: fxPair
+              ? () => fetchFxRate({ from: fxPair!.from, to: fxPair!.to })
+              : undefined,
+            cot: () => fetchCotPositioning({ instrument: input.instrument }),
+            execution: () => fetchOkxOrderBook({ instrument: input.instrument }),
+            eia: () => fetchEiaInventory({}),
+            treasury: () => fetchTreasuryYields({}),
+            okxSpec: () =>
+              fetchOkxInstrumentSpec({ instrument: input.instrument }),
+          },
+        );
 
         const enrichedInput: AnalysisInput = {
           ...input,
