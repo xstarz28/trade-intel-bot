@@ -336,7 +336,9 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
   // ── Alpha Vantage intelligence data (preferred) ──
   const macro = input.macroData;
   const fund = input.fundamentalData;
-  const sym = input.instrument.toUpperCase();
+  // Phase 12 P15 — corrupted/empty primary input degrades to safe no-evidence
+  // scoring; it must never throw out of the engine.
+  const sym = typeof input.instrument === "string" ? input.instrument.toUpperCase() : "";
 
   if (macro && macro.confidence !== "unavailable" && macro.indicators.length > 0) {
     const bullish = macro.indicators.filter((ind) => ind.sentiment === "positive").length;
@@ -378,7 +380,7 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
 
   // ── Economic calendar data (released event surprises only) ──
   const cal = input.calendarData;
-  if (cal && cal.confidence !== "unavailable" && cal.events.length > 0) {
+  if (cal && cal.confidence !== "unavailable" && Array.isArray(cal.events) && cal.events.length > 0) {
     const released = cal.events.filter(
       (e) => e.status === "released" && e.actual !== undefined && e.forecast !== undefined && e.importance === 3,
     );
@@ -960,7 +962,11 @@ function decideTrade(
         );
       }
     }
-    if (styleProfile.eventRiskWindowHours !== null && input.calendarData?.events?.length) {
+    if (
+      styleProfile.eventRiskWindowHours !== null &&
+      Array.isArray(input.calendarData?.events) &&
+      input.calendarData!.events.length > 0
+    ) {
       const now = Date.now();
       const cutoff = now + styleProfile.eventRiskWindowHours! * 3600e3;
       const imminent = input.calendarData.events.some(
@@ -1197,7 +1203,10 @@ function decideTrade(
   if (recommendation !== "NO_TRADE") {
     let s = 30;
     const biasSign = bias === "Bullish" ? 1 : -1;
-    const layerClamp = (v: number, cap: number) => Math.max(-cap, Math.min(cap, v));
+    // Phase 12 — non-finite contribution can NEVER enter conviction:
+    // malformed provider arithmetic degrades to zero, never to NaN.
+    const layerClamp = (v: number, cap: number) =>
+      Number.isFinite(v) ? Math.max(-cap, Math.min(cap, v)) : 0;
     const recordLayer = (
       layer: string,
       contribution: number,
@@ -1882,7 +1891,7 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   }
 
   const cal = input.calendarData;
-  if (cal && cal.confidence !== "unavailable" && cal.events.length > 0) {
+  if (cal && cal.confidence !== "unavailable" && Array.isArray(cal.events) && cal.events.length > 0) {
     parts.push(`Macro risk: ${cal.macroRisk.level.toUpperCase()} — ${cal.macroRisk.explanation}`);
 
     const releasedHighImpact = cal.events.filter(
@@ -2286,7 +2295,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const provenance: ProvenanceEntry[] = [
     { provider: "Market candles (primary)", available: !!input.marketData },
     input.treasuryData?.available
-      ? { provider: "US Treasury XML feed", available: true, fetchedAt: input.treasuryData.fetchedAt, freshness: String(input.treasuryData.freshness), dataKind: "actual" as const }
+      ? { provider: "US Treasury XML feed", available: true, fetchedAt: input.treasuryData.fetchedAt, observationDate: String(input.treasuryData.latest.nominal.observationDate ?? ""), freshness: String(input.treasuryData.freshness), dataKind: "actual" as const }
       : { provider: "US Treasury XML feed", available: false, failureReason: failReasonOf(input.treasuryData) },
     input.cotData?.available
       ? { provider: "CFTC COT", available: true, observationDate: input.cotData.latest.reportDate, freshness: String(input.cotData.freshness), dataKind: "actual" as const }
@@ -2313,8 +2322,8 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     version: 1,
     tradingStyle: styleProfile.style,
     inputSnapshotSummary: {
-      instrument: input.instrument.toUpperCase(),
-      instrumentType: input.instrumentType,
+      instrument: typeof input.instrument === "string" ? input.instrument.toUpperCase() : "",
+      instrumentType: input.instrumentType ?? "forex",
       timeframe: input.timeframe,
       dataCompleteness: completeness,
     },
@@ -2354,8 +2363,8 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
 
   return {
     id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    instrument: input.instrument.toUpperCase(),
-    instrumentType: input.instrumentType,
+    instrument: typeof input.instrument === "string" ? input.instrument.toUpperCase() : "",
+    instrumentType: input.instrumentType ?? "forex",
     timeframe: input.timeframe,
     bias,
     confidence: decision.confidence,
