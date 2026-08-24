@@ -214,4 +214,7 @@ export interface AnalysisResult {
   executionContext?: import("@/lib/execution-quality").ExecutionQuality;
   slippageEstimate?: import("@/lib/execution-quality").SlippageEstimate;
   executionWarnings?: string[];
+  // Phase 25 — explicit data-quality transparency for analyst display.
+  // Informational only: never modifies bias, conviction, or decision.
+  dataQualityContext?: import("@/lib/data-quality").DataQualityContext;
 }
