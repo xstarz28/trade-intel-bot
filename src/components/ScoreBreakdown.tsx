@@ -1,11 +1,17 @@
 import type { BiasBreakdown, FactorScore } from "@/types/analysis";
 import { cn } from "@/lib/utils";
 
+/**
+ * Phase 19 — labels match the CURRENT engine weights (Phase 8 P6):
+ *   trend (structure): 45%  ·  fundamental: 30%  ·  sentiment: 25%
+ * Indicators (RSI/MACD) are NOT part of the bias calculation — they only
+ * contribute a ±3 conviction modifier. Displayed for context only.
+ */
 const FACTORS = [
-  { key: "trend" as const, label: "structure", weight: "30%" },
-  { key: "indicator" as const, label: "indicators", weight: "25%" },
-  { key: "fundamental" as const, label: "fundamentals", weight: "25%" },
-  { key: "sentiment" as const, label: "sentiment", weight: "20%" },
+  { key: "trend" as const, label: "structure", weight: "45%", core: true },
+  { key: "indicator" as const, label: "indicators", weight: "display only", core: false },
+  { key: "fundamental" as const, label: "fundamentals", weight: "30%", core: true },
+  { key: "sentiment" as const, label: "sentiment", weight: "25%", core: true },
 ] as const;
 
 const SCORE_LABELS: Record<FactorScore, string> = {
@@ -60,7 +66,12 @@ export function ScoreBreakdown({ breakdown, compact = false }: ScoreBreakdownPro
                 <span className={cn("text-xs font-mono font-medium", compact ? "text-[11px]" : "text-xs")}>
                   {label}
                 </span>
-                <span className="text-[10px] font-mono text-muted-foreground/50">({weight})</span>
+                <span className={cn(
+                  "text-[10px] font-mono",
+                  (FACTORS.find(f => f.key === key) ?? { core: true }).core
+                    ? "text-muted-foreground/50"
+                    : "text-muted-foreground/30 italic"
+                )}>({weight})</span>
               </div>
               <span
                 className={cn(
