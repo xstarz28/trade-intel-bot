@@ -36,6 +36,7 @@ import {
   detectMarketRegime,
   classifySetup,
   detectContradictions,
+  isUsableSmc,
 } from "@/lib/market-context";
 
 export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels, MtfSummary };
@@ -123,7 +124,9 @@ function computeAlignment(input: AnalysisInput): HtfAlignment | undefined {
  * BOS/CHoCH carried by mtf.htfReversal.
  */
 function structuralDirection(tech?: TechnicalData): TfDirection {
-  const label = tech?.smc?.internalExternal.external.structure ?? tech?.structure;
+  const label = (isUsableSmc(tech?.smc)
+    ? tech!.smc!.internalExternal!.external!.structure
+    : undefined) ?? tech?.structure;
   if (label === "HH/HL") return "long";
   if (label === "LH/LL") return "short";
   return "none";
@@ -210,7 +213,7 @@ function scoreTrend(input: AnalysisInput): FactorScore {
     let score = 0;
     const smc = tech.smc;
 
-    if (smc) {
+    if (smc && isUsableSmc(smc)) {
       // ── External/major structure drives the trend factor ──
       const ext = smc.internalExternal.external;
       if (ext.structure === "HH/HL") score += 1;
@@ -638,8 +641,10 @@ function assessDataCompleteness(input: AnalysisInput): {
     );
   }
   const smcFlag = input.technicalData?.smc;
-  if (smcFlag && !smcFlag.volumeProfile.available && smcFlag.volumeProfile.unavailableReason) {
-    flags.push(`Volume limitation: ${smcFlag.volumeProfile.unavailableReason}`);
+  // Phase 10 — malformed SMC contexts are treated as absent, never dereferenced.
+  const vpFlag = isUsableSmc(smcFlag) ? smcFlag!.volumeProfile : undefined;
+  if (vpFlag && !vpFlag.available && vpFlag.unavailableReason) {
+    flags.push(`Volume limitation: ${vpFlag.unavailableReason}`);
   }
 
   let completeness: "full" | "partial" | "limited" = "full";
@@ -748,7 +753,10 @@ function decideTrade(
   }
 
   // ── Gate 1: live price required ──
-  if (entry === undefined || entry <= 0) {
+  // Phase 10 P1: non-finite prices (NaN/Infinity) are INVALID data, never a
+  // passable comparison. Previously NaN slipped past `entry <= 0` and produced
+  // an UNEXPLAINED NO_TRADE; now it is rejected explicitly.
+  if (entry === undefined || !Number.isFinite(entry) || entry <= 0) {
     reasons.push("No live market price available — cannot define entry or measure structural distance.");
   }
 
@@ -825,7 +833,7 @@ function decideTrade(
       if (!tfLabel) return false;
       const entry = mtf.timeframes.find((t) => t.timeframe === tfLabel);
       const smc = entry?.smc;
-      if (!smc) return false;
+      if (!smc || !isUsableSmc(smc)) return false;
       const dirMatches = (d: "bullish" | "bearish") => (d === "bullish") === (biasSign === 1);
       return (
         (smc.displacement !== undefined && dirMatches(smc.displacement.direction)) ||
@@ -891,7 +899,7 @@ function decideTrade(
     if (styleProfile.requiresTriggerEvidence) {
       const dirMatches = (d: "bullish" | "bearish") => (d === "bullish") === (dirSign === 1);
       const freshExecution = (sm?: NonNullable<NonNullable<typeof tech>["smc"]>): boolean =>
-        !!sm &&
+        !!sm && isUsableSmc(sm) &&
         ((sm.displacement !== undefined && dirMatches(sm.displacement.direction)) ||
           sm.fvgs.some((f) => f.status === "fresh" && dirMatches(f.direction)) ||
           (sm.recentSweep !== undefined &&
@@ -963,7 +971,7 @@ function decideTrade(
   let tpBasis = "";
 
   if (entry !== undefined && entry > 0) {
-    const smcPools = tech?.smc?.liquidityPools ?? [];
+    const smcPools = isUsableSmc(tech?.smc) ? tech!.smc!.liquidityPools : [];
     // Higher-timeframe resting liquidity — used ONLY as fallback when the
     // setup timeframe has no pool, and always labeled with its timeframe.
     // Macro/structure roles only; trigger-role levels are too close to mix
@@ -1081,7 +1089,10 @@ function decideTrade(
         // Small technical buffer beyond the structural level (ATR-based
         // when available). The buffer is disclosed — the invalidation
         // BASE remains the structural level, never a fixed percentage.
-        const buffer = tech?.atr14 !== undefined ? tech.atr14 * 0.2 : 0;
+        const buffer =
+          tech?.atr14 !== undefined && Number.isFinite(tech.atr14) && tech.atr14 > 0
+            ? tech.atr14 * 0.2
+            : 0;
         const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
         const decimals = entry < 10 ? 5 : 2;
         const bufferNote =
@@ -1157,7 +1168,8 @@ function decideTrade(
         // SAME candle cluster the Location layer already scores. The trigger
         // sub-vote is suppressed so one observation never earns two layer
         // votes. Distinct trigger timeframes remain independently countable.
-        const trig = mtf.timeframes.find((t) => t.role === "trigger")?.smc;
+        const trigRaw = mtf.timeframes.find((t) => t.role === "trigger")?.smc;
+        const trig = trigRaw && isUsableSmc(trigRaw) ? trigRaw : undefined;
         const triggerIsPrimaryCluster =
           mtf.triggerTimeframe !== undefined &&
           (mtf.triggerTimeframe === input.timeframe ||
@@ -1193,13 +1205,17 @@ function decideTrade(
       if (tech?.bosDirection === "bearish" && biasSign === -1) st += 3;
       if (tech?.chochDirection === "bullish" && biasSign === -1) st -= 6;
       if (tech?.chochDirection === "bearish" && biasSign === 1) st -= 6;
-      if (tech?.smc?.internalExternal.internalConflict) st -= 3;
+      if (
+        isUsableSmc(tech?.smc) &&
+        tech!.smc!.internalExternal!.internalConflict
+      )
+        st -= 3;
       s += layerClamp(st, 12);
     }
 
     // ── LAYER: liquidity (cap ±8) — sweep for or against the thesis.
     {
-      const sweep = tech?.smc?.recentSweep;
+      const sweep = isUsableSmc(tech?.smc) ? tech!.smc!.recentSweep : undefined;
       if (sweep) {
         if ((biasSign === 1 && sweep.side === "sell_side") || (biasSign === -1 && sweep.side === "buy_side")) s += 8;
         else s -= 8;
@@ -1210,7 +1226,7 @@ function decideTrade(
     // frequently originate from the SAME candle cluster: capped together.
     {
       const smc = tech?.smc;
-      if (smc) {
+      if (smc && isUsableSmc(smc)) {
         let imb = 0;
         if (smc.displacement && (smc.displacement.direction === "bullish") === (biasSign === 1)) imb += 4;
         if (smc.fvgs.some((f) => f.status === "fresh" && f.direction === (biasSign === 1 ? "bullish" : "bearish"))) imb += 3;
@@ -1447,8 +1463,14 @@ function generateTechnicalSummary(
         `Alignment: ${mtf.alignment} — HTF bias ${biasDesc}${mtf.htfTimeframe ? ` (${mtf.htfTimeframe})` : ""}, setup ${mtf.setupTimeframe}${mtf.triggerTimeframe ? `, trigger ${mtf.triggerTimeframe}` : ""}.`,
       );
       for (const t of mtf.timeframes) {
-        const ext = t.smc!.internalExternal.external;
-        const int = t.smc!.internalExternal.internal;
+        // Phase 10 P0: a slot claiming availability without usable SMC data is
+        // DISCLOSED as unavailable — never dereferenced, never fabricated.
+        if (!t.smc || !isUsableSmc(t.smc)) {
+          parts.push(`${t.timeframe} (${t.role}): SMC context unavailable — no structure facts synthesized.`);
+          continue;
+        }
+        const ext = t.smc.internalExternal.external;
+        const int = t.smc.internalExternal.internal;
         parts.push(
           `${t.timeframe} (${t.role}): external ${ext.structure}, BOS ${ext.bosDirection}, CHoCH ${ext.chochDirection}; internal ${int.structure}${t.smc!.internalExternal.internalConflict ? " — WARNING: internal opposes external" : ""}.`,
         );
@@ -1521,7 +1543,8 @@ function generateTechnicalSummary(
 
     // ── Phase 2 liquidity / FVG / OB / VWAP / Volume Profile context ──
     const smcInfo = tech.smc;
-    if (smcInfo) {
+    // Phase 10 — only WELL-FORMED SMC contexts feed the technical summary.
+    if (smcInfo && isUsableSmc(smcInfo)) {
       // Liquidity pools
       const restingBuys = smcInfo.liquidityPools
         .filter((p) => p.side === "buy_side" && !p.swept && !p.broken)
@@ -1544,7 +1567,7 @@ function generateTechnicalSummary(
       }
 
       // Internal vs external structure note
-      if (smcInfo.internalExternal.internalConflict) {
+      if (isUsableSmc(smcInfo) && smcInfo.internalExternal.internalConflict) {
         parts.push("Internal structure currently opposes external structure — minor-degree warning only.");
       }
 
