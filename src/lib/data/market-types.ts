@@ -227,6 +227,10 @@ export interface CrossAssetContext {
   directionalContext?: "direct" | "inverse" | "weak";
   /** Sign of recent comparator momentum (last close vs ~20 bars ago), when known. */
   comparatorMomentum?: "up" | "down" | "flat";
+  /** Phase 7C: provenance — comparator series are ACTUAL provider prices. */
+  dataKind?: "actual_price";
+  /** Provider that supplied the actual comparator series (e.g. Twelve Data). */
+  provider?: string;
 }
 
 export interface TechnicalData {

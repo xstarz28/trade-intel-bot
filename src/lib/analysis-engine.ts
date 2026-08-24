@@ -263,9 +263,18 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
       if (ratio < -0.6) score -= 1;
     }
     // USD-strength context — NEWS-DERIVED PROXY, not actual DXY price data.
-    // Applies to forex AND USD-quoted commodities (gold inverse relationship
-    // must be measured cross-asset; here we only reflect broad USD pressure).
-    if ((input.instrumentType === "forex" || input.instrumentType === "commodity") && macro.dxyTrend) {
+    // Phase 7C: when ACTUAL DXY price data is available via the cross-asset
+    // layer, the proxy is REDUNDANT and contributes nothing (one underlying
+    // factor = one evidence; the CROSS_ASSET layer already carries it).
+    const actualDxyAvailable =
+      input.technicalData?.crossAsset?.available === true &&
+      input.technicalData.crossAsset.dataKind === "actual_price" &&
+      /DXY/i.test(input.technicalData.crossAsset.comparatorSymbol);
+    if (
+      !actualDxyAvailable &&
+      (input.instrumentType === "forex" || input.instrumentType === "commodity") &&
+      macro.dxyTrend
+    ) {
       if (macro.dxyTrend === "rising") score -= 1;
       if (macro.dxyTrend === "falling") score += 1;
     }
@@ -1424,11 +1433,21 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   const fund = input.fundamentalData;
   const sentiment = input.sentimentData;
 
+  // Phase 7C — USD/DXY provenance is independent of whether Alpha Vantage
+  // macro data exists: actual-price usage must always be disclosed.
+  const actualDxy =
+    input.technicalData?.crossAsset?.available === true &&
+    input.technicalData.crossAsset.dataKind === "actual_price" &&
+    /DXY/i.test(input.technicalData.crossAsset.comparatorSymbol);
   if (macro && macro.confidence !== "unavailable") {
     parts.push(`Macro context (${macro.confidence} confidence): ${macro.summary}`);
-    if (macro.dxyTrend && (input.instrumentType === "forex" || input.instrumentType === "commodity")) {
+    if (actualDxy) {
+      parts.push("USD strength context: ACTUAL DXY price data in use (Twelve Data) \u2014 news-derived proxy redundant and excluded from scoring.");
+    } else if (macro.dxyTrend && (input.instrumentType === "forex" || input.instrumentType === "commodity")) {
       parts.push(`USD strength context: ${macro.dxyTrend} (NEWS-derived proxy, not actual DXY price data).`);
     }
+  } else if (actualDxy) {
+    parts.push("USD strength context: ACTUAL DXY price data in use (Twelve Data) \u2014 news-derived proxy redundant and excluded from scoring.");
   }
 
   // Honest unavailability notes for asset classes without real providers.

@@ -307,6 +307,36 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             {result.setupClassification?.rationale && (
               <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">{result.setupClassification.rationale}</p>
             )}
+            {/* Phase 7C — cross-asset provenance: actual price vs NEWS-derived proxy. */}
+            {(() => {
+              const xa = result.technicalData?.crossAsset;
+              const dxyProxy =
+                !xa?.available &&
+                (result.instrumentType === "forex" || result.instrumentType === "commodity");
+              if (!xa && !dxyProxy) return null;
+              return (
+                <p className="mt-2 border-t border-border/40 pt-2 text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
+                  {xa?.available ? (
+                    <>
+                      <span className="text-sky-300">{xa.comparatorSymbol} — Actual Price Data</span>{" "}
+                      (source: {xa.provider ?? "provider"} · corr{" "}
+                      {xa.correlation !== undefined ? xa.correlation.toFixed(2) : "n/a"} ·{" "}
+                      {xa.directionalContext ?? "unknown"} · momentum {xa.comparatorMomentum ?? "unknown"})
+                    </>
+                  ) : (
+                    <span className="text-amber-400/90">
+                      USD proxy — NEWS-derived, not actual DXY price data
+                      {xa?.unavailableReason ? ` (${xa.unavailableReason})` : ""}
+                    </span>
+                  )}
+                  {!xa?.available && dxyProxy && (
+                    <span className="block text-[9px] text-muted-foreground/50">
+                      actual DXY unavailable on current provider plan — no fabricated series
+                    </span>
+                  )}
+                </p>
+              );
+            })()}
             {(result.keyContradictions?.filter((c) => c.severity !== "MINOR").length ?? 0) > 0 && (
               <div className="mt-2 border-t border-border/40 pt-2">
                 <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">key contradictions</p>
