@@ -269,8 +269,19 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> market-context
+              <span className="text-primary/60">$</span> market-context{" "}
+              <span className="text-muted-foreground/50">· style: {result.tradingStyle}</span>
+              {result.styleInfo?.fallbackApplied && (
+                <span className="text-amber-400/80"> · TF fallback: {result.styleInfo.requestedTimeframe}→{result.styleInfo.setupTimeframeUsed}</span>
+              )}
             </p>
+            {(result.styleInfo?.notes.length ?? 0) > 0 && (
+              <div className="mb-2">
+                {result.styleInfo!.notes.map((n, i) => (
+                  <p key={i} className="text-[10px] font-mono text-amber-400/80 leading-relaxed">{n}</p>
+                ))}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 mb-2">
               {result.marketRegime && (
                 <span

@@ -113,6 +113,13 @@ export interface AnalysisInput {
   /** Explicit account currency (e.g. "USD", "EUR"). Never assumed.
    *  When omitted, sizing stays denominated in the quote currency. */
   accountCurrency?: string;
+  /** Phase 6 — trading style. Changes decision HORIZON and opportunity
+   *  requirements only — never market facts. Default: intraday. */
+  tradingStyle?: import("@/lib/trading-style").TradingStyle;
+  /** Original user-requested timeframe when a style fallback was applied. */
+  requestedTimeframe?: string;
+  /** Style/timeframe adaptation notes surfaced to the UI. */
+  styleNotes?: string[];
   /** Live provider FX snapshots for quote→account conversion (Phase 4).
    *  direct = QUOTE/ACCOUNT pair, inverse = ACCOUNT/QUOTE pair. */
   fxRates?: {
@@ -146,6 +153,15 @@ export interface AnalysisResult {
   setupClassification?: import("@/lib/market-context").SetupClassificationInfo;
   /** Phase 5 — cross-layer contradictions with severity. */
   keyContradictions?: import("@/lib/market-context").ContradictionItem[];
+  /** Phase 6 — the style actually applied (defaults to intraday). */
+  tradingStyle: import("@/lib/trading-style").TradingStyle;
+  /** Phase 6 — horizon transparency: TFs used per role + adaptation notes. */
+  styleInfo?: {
+    setupTimeframeUsed: string;
+    requestedTimeframe?: string;
+    fallbackApplied: boolean;
+    notes: string[];
+  };
   /** Position sizing — present ONLY for LONG/SHORT AND fully computable
    *  from real user inputs + a complete InstrumentSpec. Never fabricated. */
   positionSizing?: import("@/lib/risk").PositionSizingResult;

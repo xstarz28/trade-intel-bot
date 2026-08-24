@@ -14,6 +14,7 @@ import type {
 import type { MarketData, MtfContext, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
 import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
+import { resolveStyle } from "@/lib/trading-style";
 import {
   detectMarketRegime,
   classifySetup,
@@ -550,6 +551,9 @@ function decideTrade(
   const reasons: string[] = [];
   const tech = input.technicalData;
   const md = input.marketData;
+  // Phase 6 — style profile: decision-horizon parameters ONLY. It never
+  // alters structure/liquidity/price facts, only requirements and weights.
+  const styleProfile = resolveStyle(input.tradingStyle);
 
   const entry =
     md?.price.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : undefined);
@@ -583,7 +587,8 @@ function decideTrade(
       `Primary market data is flagged "${md.dataFreshness}" by the provider — it cannot be treated as live pricing for an executable plan.`,
     );
   }
-  const PRICE_STALE_MS = 30 * 60 * 1000;
+  // Style-sensitive freshness policy (scalping strictest, swing most tolerant).
+  const PRICE_STALE_MS = styleProfile.priceStaleMs;
   if (
     md &&
     Number.isFinite(md.price.timestamp) &&
@@ -714,9 +719,61 @@ function decideTrade(
         Math.sign(breakdown.fundamental) === biasSign ||
         Math.sign(breakdown.sentiment) === biasSign;
       const executionEvidence = hasEvidence(mtf.triggerTimeframe) || hasEvidence(mtf.setupTimeframe);
-      if (!nonTechnicalAgrees || !executionEvidence) {
+      // SWING relaxation: when the thesis ALIGNS with the dominant HTF,
+      // lower-timeframe disagreement is noise, not a veto (conviction
+      // penalty already applies).
+      const swingAlignedExemption =
+        styleProfile.style === "swing" && biasDir === mtf.htfBias;
+      if (!swingAlignedExemption && (!nonTechnicalAgrees || !executionEvidence)) {
         reasons.push(
           `MTF alignment MIXED without a clear trigger: higher and lower timeframes disagree and the remaining confluence (${nonTechnicalAgrees ? "fundamental/positional" : "no fundamental/positional"} support, ${executionEvidence ? "with" : "without"} fresh execution evidence) cannot justify an entry.`,
+        );
+      }
+    }
+  }
+
+  // ── Gate 6c: style-specific requirements (Phase 6) ──
+  // Horizon requirements reading EXISTING evidence only — no invented data.
+  if (bias !== "Neutral") {
+    if (styleProfile.requiresTriggerEvidence) {
+      const dirMatches = (d: "bullish" | "bearish") => (d === "bullish") === (dirSign === 1);
+      const freshExecution = (sm?: NonNullable<NonNullable<typeof tech>["smc"]>): boolean =>
+        !!sm &&
+        ((sm.displacement !== undefined && dirMatches(sm.displacement.direction)) ||
+          sm.fvgs.some((f) => f.status === "fresh" && dirMatches(f.direction)) ||
+          (sm.recentSweep !== undefined &&
+            ((dirSign === 1 && sm.recentSweep!.side === "sell_side") ||
+              (dirSign === -1 && sm.recentSweep!.side === "buy_side"))));
+      const trigSmc = mtf?.timeframes.find((t) => t.role === "trigger")?.smc;
+      if (!freshExecution(tech?.smc) && !freshExecution(trigSmc)) {
+        reasons.push(
+          "SCALPING horizon requires fresh execution evidence (displacement, fresh FVG, or a favorable liquidity sweep on the setup/trigger timeframe) — none present.",
+        );
+      }
+    }
+    if (styleProfile.eventRiskWindowHours !== null && input.calendarData?.events?.length) {
+      const now = Date.now();
+      const cutoff = now + styleProfile.eventRiskWindowHours! * 3600e3;
+      const imminent = input.calendarData.events.some(
+        (e) => e.status === "upcoming" && e.importance === 3 && e.datetime > now && e.datetime <= cutoff,
+      );
+      if (imminent) {
+        reasons.push(
+          `INTRADAY horizon: high-impact economic event within ${styleProfile.eventRiskWindowHours}h — event-risk window active.`,
+        );
+      }
+    }
+    if (styleProfile.requiresHtfContext) {
+      if (!mtf || mtf.alignment === "INSUFFICIENT_DATA" || mtf.htfBias === "none") {
+        reasons.push(
+          "SWING horizon requires a readable higher-timeframe thesis — HTF context unavailable or unclear.",
+        );
+      } else if (
+        breakdown.fundamental === 0 &&
+        !(input.newsContext || input.economicEvents || input.macroData || input.calendarData)
+      ) {
+        reasons.push(
+          "SWING horizon depends on fundamental/macro context — no such context is available for this instrument.",
         );
       }
     }
@@ -808,6 +865,20 @@ function decideTrade(
     if (bias !== "Neutral" && stopLevel !== undefined && tpLevel === undefined) {
       reasons.push(
         "No opposing structural level available to define a take profit — R:R cannot be computed from market data.",
+      );
+    }
+    // Style target-horizon guard: the REAL level stays real — we simply
+    // refuse horizons whose nearest valid target is unreachably far.
+    if (
+      bias !== "Neutral" &&
+      tpLevel !== undefined &&
+      styleProfile.targetMaxAtrMultiple !== null &&
+      tech?.atr14 !== undefined &&
+      tech.atr14 > 0 &&
+      Math.abs(tpLevel - entry!) > styleProfile.targetMaxAtrMultiple * tech.atr14
+    ) {
+      reasons.push(
+        `${styleProfile.style.toUpperCase()} target horizon: the nearest valid target is farther than ${styleProfile.targetMaxAtrMultiple}×ATR from entry — outside this horizon.`,
       );
     }
   }
@@ -973,9 +1044,15 @@ function decideTrade(
         s += 3;
     }
 
-    // ── LAYER: fundamental (cap ±15)
-    if (Math.sign(breakdown.fundamental) === biasSign) s += 10;
-    else if (breakdown.fundamental !== 0) s -= 15;
+    // ── LAYER: fundamental (cap ±15 base) — style-scaled PRIORITY.
+    // Intraday keeps exactly the Phase 5 behavior (multiplier 1).
+    {
+      let f = 0;
+      if (Math.sign(breakdown.fundamental) === biasSign) f += 10;
+      else if (breakdown.fundamental !== 0) f -= 15;
+      f *= styleProfile.fundamentalLayerMultiplier;
+      s += layerClamp(Math.round(f), styleProfile.fundamentalLayerCap);
+    }
 
     // ── LAYER: positioning (cap ±12)
     if (Math.sign(breakdown.sentiment) === biasSign) s += 8;
@@ -1402,6 +1479,7 @@ function generateRiskNote(
 
 export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const { completeness, flags } = assessDataCompleteness(input);
+  const styleProfile = resolveStyle(input.tradingStyle);
 
   const trendScore = scoreTrend(input);
   const indicatorScore = scoreIndicators(input);
@@ -1533,6 +1611,14 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     marketRegime,
     setupClassification,
     keyContradictions,
+    tradingStyle: styleProfile.style,
+    styleInfo: {
+      setupTimeframeUsed: input.timeframe,
+      requestedTimeframe: input.requestedTimeframe,
+      fallbackApplied:
+        !!input.requestedTimeframe && input.requestedTimeframe !== input.timeframe,
+      notes: input.styleNotes ?? [],
+    },
     technicalSummary,
     fundamentalSummary,
     breakdown,

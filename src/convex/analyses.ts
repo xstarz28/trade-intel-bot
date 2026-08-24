@@ -50,6 +50,7 @@ export const save = mutation({
     conviction: v.optional(v.string()),
     noTradeReasons: v.optional(v.array(v.string())),
     riskReward: v.optional(v.number()),
+    tradingStyle: v.optional(v.string()),
     technicalSummary: v.string(),
     fundamentalSummary: v.string(),
     breakdown: v.object({
@@ -89,6 +90,7 @@ export const save = mutation({
       conviction: args.conviction,
       noTradeReasons: args.noTradeReasons,
       riskReward: args.riskReward,
+      tradingStyle: args.tradingStyle,
       technicalSummary: args.technicalSummary,
       fundamentalSummary: args.fundamentalSummary,
       breakdown: args.breakdown,
