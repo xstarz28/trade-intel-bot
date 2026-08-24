@@ -40,6 +40,7 @@ import {
 } from "@/lib/market-context";
 import { GATE_IDS } from "@/lib/decision-trace";
 import { assessDataQuality } from "@/lib/data-quality";
+import { buildAnalystThesis } from "@/lib/analyst-thesis";
 import type {
   DecisionTrace,
   EvidenceLayerSummary,
@@ -2384,7 +2385,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   };
   const decisionFingerprint = computeDecisionFingerprint(decisionTrace);
 
-  return {
+  const result: AnalysisResult = {
     id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     instrument: typeof input.instrument === "string" ? input.instrument.toUpperCase() : "",
     instrumentType: input.instrumentType ?? "forex",
@@ -2435,6 +2436,13 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     executionWarnings: executionWarnings.length > 0 ? executionWarnings : undefined,
     dataQualityContext: assessDataQuality(input),
   };
+
+  // Phase 26 — structured analyst thesis (pure derivation from existing result data).
+  // Must be built AFTER the result object so it can read all result fields.
+  const analystThesis = buildAnalystThesis(result as AnalysisResult);
+  result.analystThesis = analystThesis;
+
+  return result;
 }
 
 // ── Presets ───────────────────────────────────────────────────────
