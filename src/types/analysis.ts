@@ -140,6 +140,12 @@ export interface AnalysisResult {
   htfAlignment?: HtfAlignment;
   /** Adaptive multi-timeframe summary (Phase 3A) when MTF data exists. */
   mtfSummary?: MtfSummary;
+  /** Phase 5 — multi-evidence market regime (UNKNOWN when evidence is thin). */
+  marketRegime?: import("@/lib/market-context").MarketRegimeInfo;
+  /** Phase 5 — explicit setup classification (context/evidence, not a UI label). */
+  setupClassification?: import("@/lib/market-context").SetupClassificationInfo;
+  /** Phase 5 — cross-layer contradictions with severity. */
+  keyContradictions?: import("@/lib/market-context").ContradictionItem[];
   /** Position sizing — present ONLY for LONG/SHORT AND fully computable
    *  from real user inputs + a complete InstrumentSpec. Never fabricated. */
   positionSizing?: import("@/lib/risk").PositionSizingResult;

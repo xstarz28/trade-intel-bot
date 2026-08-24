@@ -14,6 +14,11 @@ import type {
 import type { MarketData, MtfContext, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
 import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
+import {
+  detectMarketRegime,
+  classifySetup,
+  detectContradictions,
+} from "@/lib/market-context";
 
 export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels, MtfSummary };
 export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradePlan, HtfAlignment } from "@/types/analysis";
@@ -226,7 +231,7 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
   return clampScore(score);
 }
 
-// ── Fundamental Scoring ───────────────────────────────────────────
+// ── Fundamental Scoring (Phase 5: asset-class specific) ───────────
 
 function scoreFundamentals(input: AnalysisInput): FactorScore {
   let score = 0;
@@ -234,6 +239,7 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
   // ── Alpha Vantage intelligence data (preferred) ──
   const macro = input.macroData;
   const fund = input.fundamentalData;
+  const sym = input.instrument.toUpperCase();
 
   if (macro && macro.confidence !== "unavailable" && macro.indicators.length > 0) {
     const bullish = macro.indicators.filter((ind) => ind.sentiment === "positive").length;
@@ -246,8 +252,10 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
       if (ratio < -0.3) score -= 1;
       if (ratio < -0.6) score -= 1;
     }
-    // DXY trend for forex
-    if (input.instrumentType === "forex" && macro.dxyTrend) {
+    // USD-strength context — NEWS-DERIVED PROXY, not actual DXY price data.
+    // Applies to forex AND USD-quoted commodities (gold inverse relationship
+    // must be measured cross-asset; here we only reflect broad USD pressure).
+    if ((input.instrumentType === "forex" || input.instrumentType === "commodity") && macro.dxyTrend) {
       if (macro.dxyTrend === "rising") score -= 1;
       if (macro.dxyTrend === "falling") score += 1;
     }
@@ -258,6 +266,8 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     }
     if (fund.profitMargin !== undefined && fund.profitMargin > 0.2) score += 1;
     if (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) score += 1;
+    // Sector context: stored but NO sector-benchmark provider exists —
+    // deliberately unscored rather than synthetically ranked.
   }
 
   // ── Economic calendar data (released event surprises only) ──
@@ -289,12 +299,20 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
         if (input.instrumentType === "crypto") {
           score += surprise > 0 ? -1 : 1;
         }
+        // Rate surprises also drive gold/indices via policy expectations —
+        // same direction as crypto risk assets (hawkish = headwind).
+        if (input.instrumentType === "commodity" || input.instrumentType === "indices") {
+          if (evt.currency === "USD") score += surprise > 0 ? -1 : 1;
+        }
       } else if (isEmployment) {
         if (input.instrumentType === "forex" && evt.currency === "USD") {
           score += surprise > 0 ? -1 : 1;
         }
         if (input.instrumentType === "crypto") {
           score += surprise > 0 ? -1 : 1;
+        }
+        if (input.instrumentType === "commodity" || input.instrumentType === "indices") {
+          if (evt.currency === "USD") score += surprise > 0 ? -1 : 1;
         }
       } else if (isInflation) {
         if (input.instrumentType === "forex" && evt.currency === "USD") {
@@ -303,11 +321,20 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
         if (input.instrumentType === "crypto" && pctSurprise > 0.05) {
           score += surprise > 0 ? -1 : 1;
         }
+        // Inflation surprise is gold-supportive (monetary hedge) but an
+        // index headwind (rate-hike expectations).
+        if (input.instrumentType === "commodity" && /XAU|XAG|GOLD|SILVER/.test(sym)) {
+          if (evt.currency === "USD") score += surprise > 0 ? 1 : -1;
+        }
+        if (input.instrumentType === "indices" && evt.currency === "USD") {
+          if (pctSurprise > 0.05) score += surprise > 0 ? -1 : 1;
+        }
       }
     }
   }
 
-  // ── Manual input fallback ──
+  // ── Manual input fallback (asset-specific keywords, honestly labelled
+  //    as NEWS-derived context — never treated as hard data) ──
   if (score === 0) {
     const events = (input.economicEvents || "").toLowerCase();
     const context = (input.newsContext || "").toLowerCase();
@@ -322,6 +349,30 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
       if (combined.includes("institutional") || combined.includes("etf approval") || combined.includes("adoption")) score += 1;
       if (combined.includes("regulation") || combined.includes("ban") || combined.includes("crackdown")) score -= 1;
       if (combined.includes("halving") || combined.includes("bullish catalyst")) score += 1;
+    } else if (input.instrumentType === "commodity") {
+      // Gold/precious metals: monetary + safe-haven context (NEWS keywords).
+      if (/XAU|XAG|GOLD|SILVER/.test(sym)) {
+        if (combined.includes("hawkish") || combined.includes("rate hike")) score -= 1;
+        if (combined.includes("dovish") || combined.includes("rate cut")) score += 1;
+        if (
+          combined.includes("geopolitical") || combined.includes("war") ||
+          combined.includes("conflict") || combined.includes("sanctions") ||
+          combined.includes("escalation") || combined.includes("safe haven")
+        ) score += 1;
+        if (combined.includes("de-escalation") || combined.includes("peace deal")) score -= 1;
+        if (combined.includes("inflation fear") || combined.includes("stagflation")) score += 1;
+      } else {
+        // Oil & other commodities: supply/inventory data UNAVAILABLE (no
+        // provider). Only broad demand/risk and USD-proxy news are usable.
+        if (combined.includes("supply cut") || combined.includes("production disruption") || combined.includes("opec cut")) score += 1;
+        if (combined.includes("supply increase") || combined.includes("output hike") || combined.includes("demand destruction")) score -= 1;
+        if (combined.includes("recession") || combined.includes("demand slowdown")) score -= 1;
+        if (combined.includes("sanctions") || combined.includes("conflict")) score += 1;
+      }
+    } else if (input.instrumentType === "indices") {
+      // Macro-driven, honest: risk regime words only.
+      if (combined.includes("risk-on") || combined.includes("record high") || combined.includes("earnings beat")) score += 1;
+      if (combined.includes("risk-off") || combined.includes("sell-off") || combined.includes("selloff") || combined.includes("recession fear")) score -= 1;
     }
   }
 
@@ -437,6 +488,14 @@ function assessDataCompleteness(input: AnalysisInput): {
   ) {
     flags.push("No funding rate data — sentiment analysis limited");
     missing++;
+  }
+  if (input.instrumentType === "commodity") {
+    flags.push("Supply/inventory and real-yield data unavailable — commodity fundamentals limited to news-derived context");
+  }
+  if (input.technicalData?.crossAsset && !input.technicalData.crossAsset.available) {
+    flags.push(
+      `Cross-asset context unavailable (${input.technicalData.crossAsset.unavailableReason ?? "provider returned no comparable series"})`,
+    );
   }
   if (!input.technicalData?.htfContext) {
     flags.push("No higher-timeframe structural data — macro context unverified");
@@ -814,120 +873,152 @@ function decideTrade(
   // absent when the setup is rejected for any reason.
   const finalPlan = recommendation === "NO_TRADE" ? undefined : tradePlan;
 
-  // ── Conviction — evidence-based, no data-availability bonuses ──
+  // ── Conviction — Phase 5 P1c: evidence LAYERS with per-layer caps ──
+  // Conviction measures breadth + independence + directional agreement,
+  // NOT raw signal count. Sub-signals derived from the same price-event
+  // cluster (external structure + BOS from one swing sequence; or
+  // displacement + FVG + OB from one candle run) earn graded partial
+  // credit inside their layer and can never exceed the layer cap.
   let conviction: ConvictionLevel | undefined;
   let confidence = 0;
 
   if (recommendation !== "NO_TRADE") {
-    let s = 45;
+    let s = 30;
     const biasSign = bias === "Bullish" ? 1 : -1;
+    const layerClamp = (v: number, cap: number) => Math.max(-cap, Math.min(cap, v));
 
-    // HTF/LTF alignment
-    if (mtf) {
-      // ── Phase 3A: MTF alignment as EVIDENCE, not a count of timeframes ──
-      // A single valid HTF read outweighs several small agreeing TFs, and
-      // unavailable timeframes never add conviction (uncertainty ≠ strength).
-      if (mtf.alignment === "ALIGNED_BULLISH" || mtf.alignment === "ALIGNED_BEARISH") s += 15;
-      else if (mtf.alignment === "COUNTER_TREND") s -= 10;
-      else if (mtf.alignment === "MIXED") s -= 8;
-      // INSUFFICIENT_DATA: no adjustment — never reward missing context.
+    // ── LAYER: multi-timeframe context (cap ±15) ──
+    // Alignment as EVIDENCE; unavailable timeframes add nothing.
+    {
+      let m = 0;
+      if (mtf) {
+        if (mtf.alignment === "ALIGNED_BULLISH" || mtf.alignment === "ALIGNED_BEARISH") m += 15;
+        else if (mtf.alignment === "COUNTER_TREND") m -= 10;
+        else if (mtf.alignment === "MIXED") m -= 8;
+        // INSUFFICIENT_DATA: no adjustment — uncertainty ≠ strength.
 
-      // A genuine external BOS/CHoCH on the HTF itself is high-value evidence.
-      if (
-        mtf.htfReversal &&
-        (mtf.htfReversal.direction === "bullish") === (biasSign === 1)
-      )
-        s += 6;
-      else if (mtf.htfReversal) s -= 6;
+        // A genuine external BOS/CHoCH on the HTF itself is high-value.
+        if (mtf.htfReversal) {
+          if ((mtf.htfReversal.direction === "bullish") === (biasSign === 1)) m += 6;
+          else m -= 6;
+        }
 
-      // Execution refinement: fresh trigger-timeframe evidence in trade
-      // direction (displacement or fresh FVG) — real detected events only.
-      const trig = mtf.timeframes.find((t) => t.role === "trigger")?.smc;
-      if (trig) {
-        const trigAligned =
-          (trig.displacement !== undefined &&
-            (trig.displacement.direction === "bullish") === (biasSign === 1)) ||
-          trig.fvgs.some(
-            (f) =>
-              f.status === "fresh" &&
-              f.direction === (biasSign === 1 ? "bullish" : "bearish"),
-          );
-        if (trigAligned) s += 5;
+        // Trigger-timeframe execution evidence (real detected events only).
+        const trig = mtf.timeframes.find((t) => t.role === "trigger")?.smc;
+        if (trig) {
+          const trigAligned =
+            (trig.displacement !== undefined &&
+              (trig.displacement.direction === "bullish") === (biasSign === 1)) ||
+            trig.fvgs.some(
+              (f) =>
+                f.status === "fresh" &&
+                f.direction === (biasSign === 1 ? "bullish" : "bearish"),
+            );
+          if (trigAligned) m += 4;
+        }
+      } else if (alignment?.state === "aligned") m += 15;
+      else if (alignment?.state === "counter_trend") m -= 15;
+      // legacy htf_unknown / ltf_unclear: no adjustment
+      // Cap 18: high enough that a GENUINE HTF reversal (+6) still
+      // differentiates within an aligned context, low enough that stacked
+      // sub-signals can never masquerade as independent breadth.
+      s += layerClamp(m, 18);
+    }
+
+    // ── LAYER: structure (cap ±12) — label, BOS and CHoCH usually share
+    // one swing sequence, so they earn graded partial credit, capped.
+    {
+      let st = 0;
+      const structDir = tfDirection(tech?.structure, tech?.chochDirection);
+      if (structDir === "long" && biasSign === 1) st += 6;
+      if (structDir === "short" && biasSign === -1) st += 6;
+      if (tech?.bosDirection === "bullish" && biasSign === 1) st += 3;
+      if (tech?.bosDirection === "bearish" && biasSign === -1) st += 3;
+      if (tech?.chochDirection === "bullish" && biasSign === -1) st -= 6;
+      if (tech?.chochDirection === "bearish" && biasSign === 1) st -= 6;
+      if (tech?.smc?.internalExternal.internalConflict) st -= 3;
+      s += layerClamp(st, 12);
+    }
+
+    // ── LAYER: liquidity (cap ±8) — sweep for or against the thesis.
+    {
+      const sweep = tech?.smc?.recentSweep;
+      if (sweep) {
+        if ((biasSign === 1 && sweep.side === "sell_side") || (biasSign === -1 && sweep.side === "buy_side")) s += 8;
+        else s -= 8;
       }
-    } else if (alignment?.state === "aligned") s += 15;
-    else if (alignment?.state === "counter_trend") s -= 15;
-    // htf_unknown / ltf_unclear: no adjustment — uncertainty is not strength
+    }
 
-    // Structure strength & confirmation
-    if (tech?.structure === "HH/HL" || tech?.structure === "LH/LL") s += 8;
-    if (tech?.bosDirection === "bullish" && biasSign === 1) s += 8;
-    if (tech?.bosDirection === "bearish" && biasSign === -1) s += 8;
-    if (tech?.chochDirection === "bullish" && biasSign === -1) s -= 8;
-    if (tech?.chochDirection === "bearish" && biasSign === 1) s -= 8;
+    // ── LAYER: location / imbalance (cap +8) — displacement, FVG and OB
+    // frequently originate from the SAME candle cluster: capped together.
+    {
+      const smc = tech?.smc;
+      if (smc) {
+        let imb = 0;
+        if (smc.displacement && (smc.displacement.direction === "bullish") === (biasSign === 1)) imb += 4;
+        if (smc.fvgs.some((f) => f.status === "fresh" && f.direction === (biasSign === 1 ? "bullish" : "bearish"))) imb += 3;
+        if (smc.orderBlocks.some((o) => o.status !== "invalidated" && o.direction === (biasSign === 1 ? "bullish" : "bearish"))) imb += 3;
+        s += layerClamp(imb, 8);
+      }
+    }
 
-    // Fundamental alignment
+    // ── LAYER: VWAP location context (cap +3) — never standalone.
+    {
+      const vw = tech?.smc?.vwap;
+      if (
+        vw?.available &&
+        ((biasSign === 1 && vw.priceLocation === "above_vwap") ||
+          (biasSign === -1 && vw.priceLocation === "below_vwap"))
+      )
+        s += 3;
+    }
+
+    // ── LAYER: fundamental (cap ±15)
     if (Math.sign(breakdown.fundamental) === biasSign) s += 10;
     else if (breakdown.fundamental !== 0) s -= 15;
 
-    // Positioning alignment
+    // ── LAYER: positioning (cap ±12)
     if (Math.sign(breakdown.sentiment) === biasSign) s += 8;
     else if (breakdown.sentiment !== 0) s -= 12;
 
-    // ── Phase 2 price-action confluence — real evidence only ──
-    // Each bonus reflects an actual detected event, not data availability.
-    const smcEvid = tech?.smc;
-    if (smcEvid) {
-      // Liquidity sweep in favor of the trade direction
-      const sweepFavorable =
-        smcEvid.recentSweep &&
-        ((biasSign === 1 && smcEvid.recentSweep.side === "sell_side") ||
-          (biasSign === -1 && smcEvid.recentSweep.side === "buy_side"));
-      if (sweepFavorable) s += 8;
-
-      // Displacement confirming the direction
+    // ── LAYER: cross-asset context (cap ±3) — measured correlation +
+    // comparator momentum from ACTUAL candles; nothing hardcoded.
+    {
+      const xa = tech?.crossAsset;
       if (
-        smcEvid.displacement &&
-        (smcEvid.displacement.direction === "bullish") === (biasSign === 1)
-      )
-        s += 6;
-
-      // Fresh (unmitigated, uninvalidated) FVG in trade direction
-      if (
-        smcEvid.fvgs.some(
-          (f) => f.status === "fresh" && f.direction === (biasSign === 1 ? "bullish" : "bearish"),
-        )
-      )
-        s += 4;
-
-      // Validated Order Block in trade direction (invalidated ones never count)
-      if (
-        smcEvid.orderBlocks.some(
-          (o) => o.status !== "invalidated" && o.direction === (biasSign === 1 ? "bullish" : "bearish"),
-        )
-      )
-        s += 4;
-
-      // VWAP location context — deliberately small, never standalone
-      if (
-        smcEvid.vwap.available &&
-        ((biasSign === 1 && smcEvid.vwap.priceLocation === "above_vwap") ||
-          (biasSign === -1 && smcEvid.vwap.priceLocation === "below_vwap"))
-      )
-        s += 3;
-
-      // LTF trigger timeframe agrees with the setup direction
-      const triggerDir = tfDirection(tech?.ltfTrigger?.structure, tech?.ltfTrigger?.chochDirection);
-      if ((biasSign === 1 && triggerDir === "long") || (biasSign === -1 && triggerDir === "short")) s += 4;
+        xa?.available &&
+        xa.correlation !== undefined &&
+        xa.directionalContext !== undefined &&
+        xa.directionalContext !== "weak" &&
+        xa.comparatorMomentum !== undefined &&
+        xa.comparatorMomentum !== "flat"
+      ) {
+        const mom = xa.comparatorMomentum === "up" ? 1 : -1;
+        const effectOnInstrumentLong = mom * Math.sign(xa.correlation);
+        if ((biasSign === 1 && effectOnInstrumentLong > 0) || (biasSign === -1 && effectOnInstrumentLong < 0)) s += 3;
+        else s -= 3;
+      }
     }
 
     // RSI/MACD modifier — small, never decisive
     if (Math.sign(breakdown.indicator) === biasSign) s += 3;
     else if (breakdown.indicator !== 0) s -= 3;
 
-    // Data completeness
+    // Data completeness — CRITICAL gaps penalize conviction; purely
+    // informational unavailability notes do NOT (missing data is
+    // uncertainty, never negative evidence).
+    const INFORMATIONAL_FLAGS = [
+      "Volume limitation:",
+      "Cross-asset context unavailable",
+      "Timeframe chain unavailable:",
+      "No higher-timeframe structural data",
+    ];
+    const criticalFlags = flags.filter(
+      (f) => !INFORMATIONAL_FLAGS.some((p) => f.startsWith(p)),
+    );
     if (completeness === "full") s += 5;
     else if (completeness === "partial") s -= 3;
-    s -= flags.length * 4;
+    s -= criticalFlags.length * 4;
 
     confidence = Math.round(Math.max(20, Math.min(88, s)));
     conviction = confidence >= 70 ? "High" : confidence >= 50 ? "Medium" : "Low";
@@ -1042,6 +1133,18 @@ function generateTechnicalSummary(
       parts.push(
         `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`,
       );
+    }
+
+    // Cross-asset context (Phase 5) — measured from actual candles only.
+    const xa = tech.crossAsset;
+    if (xa) {
+      if (xa.available && xa.correlation !== undefined) {
+        parts.push(
+          `Cross-asset: ${xa.comparatorSymbol} correlation ${(xa.correlation * 100).toFixed(0)}% over ${xa.sampleSize} returns (${xa.directionalContext ?? "weak"}) — computed from actual candles, not assumed.`,
+        );
+      } else if (xa.unavailableReason) {
+        parts.push(`Cross-asset context unavailable: ${xa.unavailableReason}`);
+      }
     }
 
     // ── Phase 2 liquidity / FVG / OB / VWAP / Volume Profile context ──
@@ -1165,6 +1268,19 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
 
   if (macro && macro.confidence !== "unavailable") {
     parts.push(`Macro context (${macro.confidence} confidence): ${macro.summary}`);
+    if (macro.dxyTrend && (input.instrumentType === "forex" || input.instrumentType === "commodity")) {
+      parts.push(`USD strength context: ${macro.dxyTrend} (NEWS-derived proxy, not actual DXY price data).`);
+    }
+  }
+
+  // Honest unavailability notes for asset classes without real providers.
+  if (input.instrumentType === "commodity") {
+    const sym = input.instrument.toUpperCase();
+    if (/XAU|XAG|GOLD|SILVER/.test(sym)) {
+      parts.push("Real-yield context UNAVAILABLE — no yields provider integrated; gold fundamentals use news/calendar/USD-proxy context only.");
+    } else {
+      parts.push("Supply/inventory data UNAVAILABLE — no inventory provider integrated; commodity fundamentals use news-derived context only.");
+    }
   }
 
   if (fund && fund.available && input.instrumentType === "stock") {
@@ -1173,7 +1289,7 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     if (fund.earningsPerShare !== undefined) parts.push(`EPS: $${fund.earningsPerShare.toFixed(2)}`);
     if (fund.profitMargin !== undefined) parts.push(`Margin: ${(fund.profitMargin * 100).toFixed(1)}%`);
     if (fund.marketCap !== undefined) parts.push(`Mkt Cap: $${(fund.marketCap / 1e9).toFixed(1)}B`);
-    if (fund.sector) parts.push(`Sector: ${fund.sector}`);
+    if (fund.sector) parts.push(`Sector: ${fund.sector} (sector-relative strength UNAVAILABLE — no benchmark provider)`);
     if (fund.latestEarnings?.date) parts.push(`Latest earnings: ${fund.latestEarnings.date}`);
   } else if (fund && !fund.available && fund.unavailableReason) {
     parts.push(fund.unavailableReason);
@@ -1303,6 +1419,18 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const alignment = computeAlignment(input);
   const mtf = input.technicalData?.mtf;
 
+  // ── Phase 5: market context (regime, setup class, contradictions) ──
+  const marketRegime = detectMarketRegime({
+    technicalData: input.technicalData,
+    candles: input.marketData?.candles,
+  });
+  const setupClassification = classifySetup({
+    mtf,
+    technicalData: input.technicalData,
+    regime: marketRegime.regime,
+    ...(bias === "Bullish" ? { biasDir: "long" as const } : bias === "Bearish" ? { biasDir: "short" as const } : {}),
+  });
+
   const decision = decideTrade(
     input,
     bias,
@@ -1313,6 +1441,23 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     alignment,
     mtf,
   );
+
+  // Contradictions: DECISIVE severity is derived from the actual gates —
+  // a triggered rejection reason marks its domain decisive.
+  const keyContradictions = detectContradictions({
+    mtf,
+    technicalData: input.technicalData,
+    breakdown,
+    bias,
+    regime: marketRegime.regime,
+  }).map((c) => {
+    if (decision.noTradeReasons.length === 0) return c;
+    const decisiveDomains = decision.noTradeReasons.join(" ");
+    if (c.severity === "MATERIAL" && /conflict|counter-trend|MIXED/i.test(decisiveDomains)) {
+      return { ...c, severity: "DECISIVE" as const };
+    }
+    return c;
+  });
 
   const technicalSummary = generateTechnicalSummary(
     input,
@@ -1385,6 +1530,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     tradePlan: decision.tradePlan,
     htfAlignment: alignment,
     mtfSummary,
+    marketRegime,
+    setupClassification,
+    keyContradictions,
     technicalSummary,
     fundamentalSummary,
     breakdown,

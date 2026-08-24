@@ -14,7 +14,8 @@ import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext } from "../lib/data/mtf";
-import type { OhlcvCandle, TimeframeStructureContext } from "../lib/data/market-types";
+import { crossAssetComparator, pearsonCorrelation } from "../lib/market-context";
+import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
 
 interface TdCandle {
   datetime: string;
@@ -177,6 +178,73 @@ export const fetchMarketData = action({
       } else {
         delete technical.chainUnavailable;
       }
+
+      // ── Phase 5: cross-asset context (rate-limit safe) ──
+      // ONE extra conditional fetch, only for a RELEVANT comparator
+      // (forex/commodity→DXY, BTC-like crypto→NDX). Failure is non-fatal:
+      // the primary analysis is never sacrificed for secondary context,
+      // and unavailability is flagged explicitly instead of guessed.
+      const comparator = crossAssetComparator(args.instrumentType, symbol);
+      let crossAsset: TechnicalData["crossAsset"] | undefined;
+      if (comparator && comparator !== symbol.toUpperCase()) {
+        try {
+          const compCandles = await fetchCandles(comparator, args.timeframe, 120, apiKey).catch(() => null);
+          if (compCandles && compCandles.length >= 25) {
+            const corr = pearsonCorrelation(
+              candles.map((c) => c.close),
+              compCandles.map((c) => c.close),
+            );
+            if (corr) {
+              const last = compCandles[compCandles.length - 1].close;
+              const back = compCandles[Math.max(0, compCandles.length - 21)].close;
+              const momentum =
+                back > 0 && Number.isFinite(last / back)
+                  ? last > back * 1.001
+                    ? ("up" as const)
+                    : last < back * 0.999
+                      ? ("down" as const)
+                      : ("flat" as const)
+                  : undefined;
+              crossAsset = {
+                comparatorSymbol: comparator,
+                timeframe: args.timeframe,
+                available: true,
+                correlation: Math.round(corr.correlation * 1000) / 1000,
+                sampleSize: corr.n,
+                directionalContext:
+                  Math.abs(corr.correlation) >= 0.6
+                    ? corr.correlation > 0
+                      ? ("direct" as const)
+                      : ("inverse" as const)
+                    : ("weak" as const),
+                comparatorMomentum: momentum,
+              };
+            } else {
+              crossAsset = {
+                comparatorSymbol: comparator,
+                timeframe: args.timeframe,
+                available: false,
+                unavailableReason: "insufficient overlapping candle history for an honest correlation",
+              };
+            }
+          } else {
+            crossAsset = {
+              comparatorSymbol: comparator,
+              timeframe: args.timeframe,
+              available: false,
+              unavailableReason: `no comparable series returned by the provider for ${comparator}`,
+            };
+          }
+        } catch {
+          crossAsset = {
+            comparatorSymbol: comparator,
+            timeframe: args.timeframe,
+            available: false,
+            unavailableReason: "cross-asset fetch failed — primary data unaffected",
+          };
+        }
+      }
+      if (crossAsset) technical.crossAsset = crossAsset;
 
       return {
         success: true as const,

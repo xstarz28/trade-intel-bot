@@ -215,6 +215,20 @@ export interface MtfContext {
 }
 
 /** Technical indicators derived from OHLCV data. */
+/** Phase 5 — cross-asset context computed from ACTUAL candles (never hardcoded).
+ *  Correlation is Pearson on returns; directional context only at |corr| ≥ 0.6. */
+export interface CrossAssetContext {
+  comparatorSymbol: string;
+  timeframe: string;
+  available: boolean;
+  unavailableReason?: string;
+  correlation?: number;
+  sampleSize?: number;
+  directionalContext?: "direct" | "inverse" | "weak";
+  /** Sign of recent comparator momentum (last close vs ~20 bars ago), when known. */
+  comparatorMomentum?: "up" | "down" | "flat";
+}
+
 export interface TechnicalData {
   // Moving averages
   sma50?: number;
@@ -267,6 +281,7 @@ export interface TechnicalData {
 
   // Timeframes in the HTF→primary→LTF chain that could not be fetched
   chainUnavailable?: string[];
+  crossAsset?: CrossAssetContext;
 
   // Phase 2 liquidity/structure/confluence context (null-safe optional)
   smc?: SmcContext;
