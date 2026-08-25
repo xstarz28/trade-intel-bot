@@ -1154,6 +1154,116 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         );
       })()}
 
+      {/* Phase 29 — Forward Market Path */}
+      {result.forwardMarketPath && (() => {
+        const fp = result.forwardMarketPath;
+        const PATH_COLORS: Record<string, string> = {
+          CONTINUATION_FAVORED: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+          CONTINUATION_POSSIBLE: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+          CORRECTION_FAVORED: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+          REVERSAL_ATTEMPT: "bg-red-500/20 text-red-400 border-red-500/30",
+          REVERSAL_FAVORED: "bg-red-500/30 text-red-300 border-red-500/40",
+          RANGE_CONTINUATION: "bg-muted text-muted-foreground border-border/50",
+          BREAKOUT_ATTEMPT: "bg-blue-500/20 text-blue-400 border-blue-500/30",
+          BREAKOUT_CONFIRMED: "bg-blue-500/30 text-blue-300 border-blue-500/40",
+          BREAKOUT_FAILURE: "bg-red-500/10 text-red-400 border-red-500/20",
+          UNCONFIRMED: "bg-muted text-muted-foreground border-border/50",
+        };
+        const CONF_COLORS: Record<string, string> = { high: "text-emerald-400", moderate: "text-amber-400", low: "text-red-400", insufficient_data: "text-muted-foreground" };
+        return (
+          <Card className={cn("border", biasConfig.border)}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span> forward-market-path
+                </h4>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", PATH_COLORS[fp.primaryPath])}>
+                  {fp.primaryPath.replace(/_/g, " ")}
+                </Badge>
+                <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                  {fp.horizon.replace(/_/g, " ")}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              {/* Current State */}
+              <p className="text-[10px] font-mono text-muted-foreground/80">{fp.currentState}</p>
+
+              {/* Primary + Alternate + Path Status */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
+                <div><span className="text-muted-foreground">primary:</span> <span>{fp.pathStatus}</span></div>
+                <div><span className="text-muted-foreground">alternate:</span> <span className="text-muted-foreground">{fp.alternatePath.replace(/_/g, " ")}</span></div>
+                <div><span className="text-muted-foreground">structural confidence:</span> <span className={CONF_COLORS[fp.structuralConfidence]}>{fp.structuralConfidence.replace(/_/g, " ")}</span></div>
+                <div><span className="text-muted-foreground">data reliability:</span> <span>{fp.dataReliability}</span></div>
+              </div>
+
+              {/* Confirmation + Invalidation */}
+              {fp.confirmationConditions.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">confirm:</span>{" "}
+                  {fp.confirmationConditions.map((c, i) => <span key={i} className="block text-emerald-400/80">• {c}</span>)}
+                </div>
+              )}
+              {fp.invalidationConditions.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">invalidate:</span>{" "}
+                  {fp.invalidationConditions.map((c, i) => <span key={i} className="block text-red-400/80">• {c}</span>)}
+                </div>
+              )}
+
+              {/* Path Risks */}
+              {fp.pathRisks.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">risks:</span>{" "}
+                  {fp.pathRisks.map((r, i) => <span key={i} className="block text-amber-400/80">• {r}</span>)}
+                </div>
+              )}
+
+              {/* Trigger Levels */}
+              {fp.triggerLevels.length > 0 && (
+                <div className="text-[10px] font-mono flex flex-wrap gap-2">
+                  {fp.triggerLevels.map((t, i) => (
+                    <Badge key={i} variant="outline" className="text-[9px] font-mono border-border/50">
+                      {t.type}: {t.level}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {/* Scenario Tree */}
+              {fp.scenarioTree.length > 0 && (
+                <div className="text-[10px] font-mono space-y-1">
+                  {fp.scenarioTree.map((node, i) => (
+                    <div key={i} className="flex gap-2">
+                      <span className="text-primary/80 shrink-0">{node.label}:</span>
+                      <span className="text-muted-foreground">{node.condition} → {node.outcome}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Next Best Action */}
+              <div className="text-[10px] font-mono">
+                <span className="text-muted-foreground">next:</span> <span className="text-primary/80">{fp.nextBestAction}</span>
+              </div>
+
+              {/* Trader + Investor View */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
+                <div className="rounded border border-border/30 p-2">
+                  <span className="text-muted-foreground">trader:</span> <span>{fp.traderView}</span>
+                </div>
+                <div className="rounded border border-border/30 p-2">
+                  <span className="text-muted-foreground">investor:</span> <span>{fp.investorView}</span>
+                </div>
+              </div>
+
+              {/* Rationale */}
+              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">{fp.rationale}</p>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
 {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (
         <Card className={cn("border", biasConfig.border)}>
