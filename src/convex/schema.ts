@@ -70,7 +70,70 @@ const schema = defineSchema(
       derivativesSummary: v.optional(v.string()),
       calendarSummary: v.optional(v.string()),
       timestamp: v.number(),
-    }).index("by_user", ["userId", "timestamp"])
+    }).index("by_user", ["userId", "timestamp"]),
+
+    // Phase 31 — Trade journal entries
+    journal: defineTable({
+      userId: v.id("users"),
+      instrument: v.string(),
+      instrumentType: v.string(),
+      timeframe: v.string(),
+      style: v.string(),
+      // Immutable analysis snapshot
+      analysisSnapshot: v.object({
+        analysisId: v.string(),
+        decision: v.string(),
+        bias: v.string(),
+        conviction: v.optional(v.string()),
+        confidence: v.number(),
+        scenario: v.optional(v.string()),
+        marketRegime: v.optional(v.string()),
+        marketPhase: v.optional(v.string()),
+        continuationQuality: v.optional(v.string()),
+        fundamentalAlignment: v.optional(v.string()),
+        actionability: v.optional(v.string()),
+        forwardPrimaryPath: v.optional(v.string()),
+        forwardAlternatePath: v.optional(v.string()),
+        keyLevels: v.optional(v.object({
+          support: v.string(),
+          resistance: v.string(),
+          invalidation: v.string(),
+        })),
+        technicalSummary: v.string(),
+        fundamentalSummary: v.string(),
+        dataCompleteness: v.string(),
+        decisionFingerprint: v.optional(v.string()),
+      }),
+      // Mutable trade info
+      status: v.string(),
+      entry: v.optional(v.number()),
+      stopLoss: v.optional(v.number()),
+      takeProfit: v.optional(v.number()),
+      riskReward: v.optional(v.number()),
+      positionSize: v.optional(v.number()),
+      notionalValue: v.optional(v.number()),
+      // Outcome
+      exitPrice: v.optional(v.number()),
+      pnl: v.optional(v.number()),
+      pnlPercent: v.optional(v.number()),
+      outcome: v.optional(v.string()),
+      closedAt: v.optional(v.number()),
+      // Review
+      entryReason: v.optional(v.string()),
+      thesisAtEntry: v.optional(v.string()),
+      confirmationObserved: v.optional(v.string()),
+      invalidationObserved: v.optional(v.string()),
+      whatWentRight: v.optional(v.string()),
+      whatWentWrong: v.optional(v.string()),
+      lessons: v.optional(v.string()),
+      notes: v.optional(v.string()),
+      timestamps: v.object({
+        createdAt: v.number(),
+        updatedAt: v.number(),
+      }),
+    }).index("by_user_journal", ["userId", "timestamps"]) // userId + createdAt
+      .index("by_instrument", ["userId", "instrument"]) // filter by instrument
+      .index("by_status", ["userId", "status"]) // filter by status
   },
   {
     schemaValidation: false,
