@@ -66,6 +66,7 @@ import "./index.css";
 import Landing from "./pages/Landing.tsx";
 import AuthPage from "./pages/Auth.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
+import { Journal } from "@/components/Journal";
 import NotFound from "./pages/NotFound.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
@@ -145,6 +146,14 @@ createRoot(document.getElementById("root")!).render(
               element={
                 <RequireAuth>
                   <Dashboard />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/journal"
+              element={
+                <RequireAuth>
+                  <Journal />
                 </RequireAuth>
               }
             />
