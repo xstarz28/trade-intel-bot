@@ -42,6 +42,7 @@ import { GATE_IDS } from "@/lib/decision-trace";
 import { assessDataQuality } from "@/lib/data-quality";
 import { buildAnalystThesis } from "@/lib/analyst-thesis";
 import { buildMarketScenario } from "@/lib/market-scenario";
+import { buildProfessionalThesis } from "@/lib/professional-thesis";
 import type {
   DecisionTrace,
   EvidenceLayerSummary,
@@ -2446,6 +2447,12 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // Phase 27 — continuation vs reversal scenario (pure derivation).
   const marketScenario = buildMarketScenario(result as AnalysisResult);
   result.marketScenario = marketScenario;
+
+  // Phase 28 — professional market reasoning (pure derivation).
+  const professionalThesis = buildProfessionalThesis(result as AnalysisResult, marketScenario);
+  result.professionalThesis = professionalThesis;
+  result.marketRegimeContext = professionalThesis.marketRegime;
+  result.fundamentalThesis = professionalThesis.fundamentalThesis;
 
   return result;
 }
