@@ -43,6 +43,7 @@ import { assessDataQuality } from "@/lib/data-quality";
 import { buildAnalystThesis } from "@/lib/analyst-thesis";
 import { buildMarketScenario } from "@/lib/market-scenario";
 import { buildProfessionalThesis } from "@/lib/professional-thesis";
+import { buildForwardMarketPath } from "@/lib/forward-market-path";
 import type {
   DecisionTrace,
   EvidenceLayerSummary,
@@ -2453,6 +2454,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   result.professionalThesis = professionalThesis;
   result.marketRegimeContext = professionalThesis.marketRegime;
   result.fundamentalThesis = professionalThesis.fundamentalThesis;
+
+  // Phase 29 — forward market path (pure derivation).
+  const forwardMarketPath = buildForwardMarketPath(result as AnalysisResult);
+  result.forwardMarketPath = forwardMarketPath;
 
   return result;
 }

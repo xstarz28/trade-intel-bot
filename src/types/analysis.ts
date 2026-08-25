@@ -228,4 +228,7 @@ export interface AnalysisResult {
   marketRegimeContext?: import("@/lib/market-regime").MarketRegimeContext;
   fundamentalThesis?: import("@/lib/fundamental-thesis").FundamentalThesis;
   professionalThesis?: import("@/lib/professional-thesis").ProfessionalThesis;
+  // Phase 29 — forward market path: professional forward-looking scenario planning.
+  // Pure derivation: does not modify bias, conviction, gates, or trade plan.
+  forwardMarketPath?: import("@/lib/forward-market-path").ForwardMarketPathContext;
 }
