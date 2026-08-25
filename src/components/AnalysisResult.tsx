@@ -1264,6 +1264,130 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         );
       })()}
 
+{/* Long-Horizon Thesis */}
+      {result.longHorizonThesis && (() => {
+        const lh = result.longHorizonThesis!;
+        const CYCLE_COLORS: Record<string, string> = {
+          TREND_EXPANSION: "text-emerald-400 border-emerald-500/30",
+          EARLY_EXPANSION: "text-emerald-300 border-emerald-500/20",
+          MATURE_TREND: "text-amber-400 border-amber-500/30",
+          LATE_TREND: "text-red-400 border-red-500/30",
+          DISTRIBUTION_CONTEXT: "text-red-400 border-red-500/30",
+          CORRECTION: "text-amber-300 border-amber-500/20",
+          RANGE: "text-muted-foreground border-border/50",
+          TRANSITION: "text-orange-400 border-orange-500/30",
+          ACCUMULATION_CONTEXT: "text-blue-400 border-blue-500/20",
+          UNCONFIRMED: "text-muted-foreground border-border/50",
+        };
+        const STATUS_COLORS: Record<string, string> = {
+          STRONGLY_SUPPORTED: "text-emerald-400 border-emerald-500/30",
+          SUPPORTED: "text-emerald-300 border-emerald-500/20",
+          MIXED: "text-amber-400 border-amber-500/30",
+          CONFLICTED: "text-red-400 border-red-500/30",
+          VALUATION_UNAVAILABLE: "text-muted-foreground border-border/50",
+          INSUFFICIENT_DATA: "text-orange-400 border-orange-500/20",
+        };
+        return (
+          <Card className="border border-border/50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span> long-horizon-thesis
+                </h4>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", CYCLE_COLORS[lh.marketCycle] ?? "border-border/50")}>
+                  {lh.marketCycle.replace(/_/g, " ")}
+                </Badge>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", STATUS_COLORS[lh.thesisStatus] ?? "border-border/50")}>
+                  {lh.thesisStatus.replace(/_/g, " ")}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              <div className="text-[10px] font-mono space-y-1">
+                <p className="text-muted-foreground/80">{lh.marketCycleContext}</p>
+                <p className="text-muted-foreground/60">{lh.structuralSummary}</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
+                <div className="rounded border border-emerald-500/15 p-2">
+                  <span className="text-emerald-400 font-semibold">primary thesis:</span>
+                  <p className="mt-1 text-muted-foreground/80 leading-relaxed">{lh.primaryThesis}</p>
+                </div>
+                <div className="rounded border border-red-500/15 p-2">
+                  <span className="text-red-400 font-semibold">counter thesis:</span>
+                  <p className="mt-1 text-muted-foreground/80 leading-relaxed">{lh.counterThesis}</p>
+                </div>
+              </div>
+
+              {lh.supportingEvidence.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">supporting:</span>
+                  {lh.supportingEvidence.map((e, i) => (
+                    <span key={i} className="block text-emerald-400/80">• [{e.source}] {e.explanation}</span>
+                  ))}
+                </div>
+              )}
+              {lh.conflictingEvidence.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">conflicting:</span>
+                  {lh.conflictingEvidence.map((e, i) => (
+                    <span key={i} className="block text-red-400/80">• [{e.source}] {e.explanation}</span>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
+                <div><span className="text-muted-foreground">primary scenario:</span> <span>{lh.primaryScenario}</span></div>
+                <div><span className="text-muted-foreground">alternate scenario:</span> <span className="text-muted-foreground">{lh.alternateScenario}</span></div>
+              </div>
+
+              {lh.confirmationConditions.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">confirm:</span>
+                  {lh.confirmationConditions.map((c, i) => <span key={i} className="block text-emerald-400/80">• {c}</span>)}
+                </div>
+              )}
+              {lh.invalidationConditions.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">invalidate:</span>
+                  {lh.invalidationConditions.map((c, i) => <span key={i} className="block text-red-400/80">• {c}</span>)}
+                </div>
+              )}
+
+              {lh.thesisRisks.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">risks:</span>
+                  {lh.thesisRisks.map((r, i) => <span key={i} className="block text-amber-400/80">• {r}</span>)}
+                </div>
+              )}
+              {lh.missingInformation.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">missing:</span>
+                  {lh.missingInformation.map((m, i) => <span key={i} className="block text-orange-300/60">• {m}</span>)}
+                </div>
+              )}
+
+              <div className="text-[10px] font-mono space-y-1">
+                <div><span className="text-muted-foreground">fundamental:</span> <span>{lh.fundamentalContext}</span></div>
+                <div><span className="text-muted-foreground">macro:</span> <span className="text-muted-foreground/80">{lh.macroContext}</span></div>
+                <div><span className="text-muted-foreground">valuation:</span> <span className="text-muted-foreground/80">{lh.valuationContext}</span></div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
+                <div className="rounded border border-border/30 p-2">
+                  <span className="text-muted-foreground">investor:</span> <span>{lh.investorImplication}</span>
+                </div>
+                <div className="rounded border border-border/30 p-2">
+                  <span className="text-muted-foreground">trader:</span> <span>{lh.traderImplication}</span>
+                </div>
+              </div>
+
+              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">{lh.rationale}</p>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
 {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (
         <Card className={cn("border", biasConfig.border)}>

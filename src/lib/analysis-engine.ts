@@ -44,6 +44,7 @@ import { buildAnalystThesis } from "@/lib/analyst-thesis";
 import { buildMarketScenario } from "@/lib/market-scenario";
 import { buildProfessionalThesis } from "@/lib/professional-thesis";
 import { buildForwardMarketPath } from "@/lib/forward-market-path";
+import { buildLongHorizonThesis } from "@/lib/long-horizon-thesis";
 import type {
   DecisionTrace,
   EvidenceLayerSummary,
@@ -2458,6 +2459,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // Phase 29 — forward market path (pure derivation).
   const forwardMarketPath = buildForwardMarketPath(result as AnalysisResult);
   result.forwardMarketPath = forwardMarketPath;
+
+  // Phase 35 — long-horizon thesis (pure derivation).
+  const longHorizonThesis = buildLongHorizonThesis(result as AnalysisResult);
+  result.longHorizonThesis = longHorizonThesis;
 
   return result;
 }
