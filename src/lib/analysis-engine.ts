@@ -45,6 +45,7 @@ import { buildMarketScenario } from "@/lib/market-scenario";
 import { buildProfessionalThesis } from "@/lib/professional-thesis";
 import { buildForwardMarketPath } from "@/lib/forward-market-path";
 import { buildLongHorizonThesis } from "@/lib/long-horizon-thesis";
+import { buildEvidenceChallenge } from "@/lib/evidence-challenge";
 import type {
   DecisionTrace,
   EvidenceLayerSummary,
@@ -2463,6 +2464,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // Phase 35 — long-horizon thesis (pure derivation).
   const longHorizonThesis = buildLongHorizonThesis(result as AnalysisResult);
   result.longHorizonThesis = longHorizonThesis;
+
+  // Phase 36 — evidence & thesis challenge audit (informational only).
+  const evidenceChallenge = buildEvidenceChallenge(result as AnalysisResult);
+  result.evidenceChallenge = evidenceChallenge;
 
   return result;
 }

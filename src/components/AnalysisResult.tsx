@@ -1388,6 +1388,96 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         );
       })()}
 
+{/* Evidence & Thesis Challenge — informational audit */}
+      {result.evidenceChallenge && (() => {
+        const ec = result.evidenceChallenge!;
+        const FRAGILITY_COLORS: Record<string, string> = {
+          LOW: "text-emerald-400 border-emerald-500/30",
+          MODERATE: "text-amber-400 border-amber-500/30",
+          ELEVATED: "text-orange-400 border-orange-500/30",
+          HIGH: "text-red-400 border-red-500/30",
+          UNKNOWN: "text-muted-foreground border-border/50",
+        };
+        const SUPPORT_COLORS: Record<string, string> = {
+          WELL_SUPPORTED: "text-emerald-400 border-emerald-500/30",
+          SUPPORTED: "text-emerald-300 border-emerald-500/20",
+          MIXED_SUPPORT: "text-amber-400 border-amber-500/30",
+          WEAK_SUPPORT: "text-orange-400 border-orange-500/30",
+          INSUFFICIENT_SUPPORT: "text-red-400 border-red-500/30",
+          CONFLICTED: "text-red-400 border-red-500/30",
+          NO_ACTIVE_THESIS: "text-muted-foreground border-border/50",
+        };
+        return (
+          <Card className="border border-border/50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span> evidence-challenge
+                </h4>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", SUPPORT_COLORS[ec.thesisSupportStatus] ?? "border-border/50")}>
+                  {ec.thesisSupportStatus.replace(/_/g, " ")}
+                </Badge>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", FRAGILITY_COLORS[ec.thesisFragility] ?? "border-border/50")}>
+                  fragility: {ec.thesisFragility.toLowerCase()}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              <p className="text-[10px] font-mono text-muted-foreground/80">{ec.thesisSupportExplanation}</p>
+
+              {ec.strongestSupportingEvidence && (
+                <div className="text-[10px] font-mono rounded border border-emerald-500/15 p-2">
+                  <span className="text-emerald-400 font-semibold">strongest support:</span>
+                  <span className="ml-1">[{ec.strongestSupportingEvidence.source}] {ec.strongestSupportingEvidence.explanation}</span>
+                </div>
+              )}
+              {ec.strongestConflictingEvidence && (
+                <div className="text-[10px] font-mono rounded border border-red-500/15 p-2">
+                  <span className="text-red-400 font-semibold">strongest conflict:</span>
+                  <span className="ml-1">[{ec.strongestConflictingEvidence.source}] {ec.strongestConflictingEvidence.explanation}</span>
+                </div>
+              )}
+
+              <div className="text-[10px] font-mono rounded border border-border/30 p-2">
+                <span className="text-muted-foreground">counter-thesis:</span>
+                <span className="ml-1">{ec.counterThesis}</span>
+              </div>
+
+              {ec.doubleCountingWarnings.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-amber-400 font-semibold">double-counting warnings:</span>
+                  {ec.doubleCountingWarnings.map((w, i) => (
+                    <span key={i} className="block text-amber-400/80">• {w.description}</span>
+                  ))}
+                </div>
+              )}
+
+              {ec.missingEvidence.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">missing evidence:</span>
+                  {ec.missingEvidence.map((m, i) => (
+                    <span key={i} className="block text-orange-300/60">• {m}</span>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
+                <div>
+                  <span className="text-emerald-400">strengthens:</span>
+                  {ec.thesisStrengtheners.slice(0, 3).map((s, i) => <span key={i} className="block text-emerald-400/70">• {s}</span>)}
+                </div>
+                <div>
+                  <span className="text-red-400">invalidates:</span>
+                  {ec.thesisInvalidators.slice(0, 3).map((v, i) => <span key={i} className="block text-red-400/70">• {v}</span>)}
+                </div>
+              </div>
+
+              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">{ec.auditSummary}</p>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
 {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (
         <Card className={cn("border", biasConfig.border)}>
