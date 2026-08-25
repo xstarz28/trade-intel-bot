@@ -1891,6 +1891,16 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </CardContent>
         </Card>
       )}
+      {/* Phase 32 — Journal This Analysis */}
+      <Card className="border border-border/30 mt-2">
+        <CardContent className="py-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-muted-foreground">
+              Save this analysis to your trade journal for later review.
+            </span>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
