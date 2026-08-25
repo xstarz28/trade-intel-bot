@@ -234,4 +234,7 @@ export interface AnalysisResult {
   // Phase 35 — long-horizon market & investment thesis.
   // Pure derivation: does not modify bias, conviction, gates, trade plan, or recommendation.
   longHorizonThesis?: import("@/lib/long-horizon-thesis").LongHorizonThesis;
+  // Phase 36 — evidence & thesis challenge audit.
+  // Informational only: does not modify bias, conviction, gates, trade plan, or recommendation.
+  evidenceChallenge?: import("@/lib/evidence-challenge").EvidenceChallengeContext;
 }
