@@ -1049,7 +1049,112 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         );
       })()}
 
-      {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
+            {/* Phase 28 — Professional Market Regime & Fundamental Thesis */}
+      {result.professionalThesis && (() => {
+        const pt = result.professionalThesis;
+        const regime = pt.marketRegime;
+        const ft = pt.fundamentalThesis;
+        const ACTION_COLORS: Record<string, string> = {
+          LONG: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+          SHORT: "bg-red-500/20 text-red-400 border-red-500/30",
+          WAIT: "bg-amber-500/20 text-amber-400 border-amber-500/30",
+          NO_TRADE: "bg-muted text-muted-foreground border-border/50",
+        };
+        const PHASE_COLORS: Record<string, string> = {
+          EARLY_TREND: "text-emerald-400",
+          TREND_MATURE: "text-emerald-300",
+          LATE_TREND: "text-amber-400",
+          CORRECTION: "text-amber-500",
+          RANGE_BALANCE: "text-muted-foreground",
+          BREAKOUT_ATTEMPT: "text-blue-400",
+          BREAKDOWN_ATTEMPT: "text-red-400",
+          REVERSAL_ATTEMPT: "text-red-500",
+          UNKNOWN: "text-muted-foreground",
+        };
+        const QUALITY_COLORS: Record<string, string> = {
+          STRONG: "text-emerald-400",
+          HEALTHY: "text-emerald-300",
+          DEVELOPING: "text-amber-400",
+          WEAK: "text-amber-500",
+          EXHAUSTED: "text-red-400",
+          INVALIDATED: "text-red-500",
+          UNKNOWN: "text-muted-foreground",
+        };
+        return (
+          <Card className={cn("border", biasConfig.border)}>
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span> professional-market-reading
+                </h4>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", ACTION_COLORS[pt.actionability])}>
+                  {pt.actionability}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                  regime: {regime.regime.replace(/_/g, " ").toLowerCase()}
+                </Badge>
+                <Badge variant="outline" className={cn("text-[10px] font-mono border-border/50", PHASE_COLORS[regime.marketPhase])}>
+                  phase: {regime.marketPhase.replace(/_/g, " ").toLowerCase()}
+                </Badge>
+                <Badge variant="outline" className={cn("text-[10px] font-mono border-border/50", QUALITY_COLORS[regime.continuationQuality])}>
+                  continuation: {regime.continuationQuality.toLowerCase()}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
+                <div>
+                  <span className="text-muted-foreground">direction:</span>{" "}
+                  <span>{regime.currentDirection}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">transition:</span>{" "}
+                  <span>{regime.trendTransition.transitionType.replace(/_/g, " ").toLowerCase()}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">fundamental:</span>{" "}
+                  <span>{ft.alignment.replace(/_/g, " ").toLowerCase()}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">event risk:</span>{" "}
+                  <span>{ft.eventRisk.toLowerCase()}</span>
+                </div>
+              </div>
+              <div className="text-[10px] font-mono space-y-1">
+                <div>
+                  <span className="text-muted-foreground">primary:</span>{" "}
+                  <span>{pt.primaryScenario}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">alternate:</span>{" "}
+                  <span className="text-muted-foreground">{pt.alternateScenario}</span>
+                </div>
+              </div>
+              {regime.exhaustionSignals.length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-muted-foreground">exhaustion:</span>{" "}
+                  {regime.exhaustionSignals.map((s, i) => (
+                    <span key={i} className={cn("mr-2", s.severity === "strong" ? "text-red-400" : s.severity === "moderate" ? "text-amber-400" : "text-muted-foreground")}>
+                      {s.signal} ({s.severity})
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="text-[10px] font-mono text-muted-foreground">
+                <span>why: </span>
+                <span>{pt.actionabilityReason}</span>
+              </div>
+              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
+                {pt.analystSummary}
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+{/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (
         <Card className={cn("border", biasConfig.border)}>
           <CardHeader className="pb-2">

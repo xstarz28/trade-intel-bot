@@ -223,4 +223,9 @@ export interface AnalysisResult {
   // Phase 27 — continuation vs reversal scenario context.
   // Pure derivation: does not modify bias, conviction, gates, or trade plan.
   marketScenario?: import("@/lib/market-scenario").MarketScenarioContext;
+  // Phase 28 — professional market regime + fundamental thesis.
+  // Pure derivation: does not modify bias, conviction, gates, or trade plan.
+  marketRegimeContext?: import("@/lib/market-regime").MarketRegimeContext;
+  fundamentalThesis?: import("@/lib/fundamental-thesis").FundamentalThesis;
+  professionalThesis?: import("@/lib/professional-thesis").ProfessionalThesis;
 }
