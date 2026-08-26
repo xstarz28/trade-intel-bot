@@ -47,7 +47,7 @@ import {
   TREASURY_DELAYED_DAYS,
 } from "./data/treasury";
 import type { InstrumentSpec } from "./risk";
-import { buildExecutionData, type ExecutionData } from "./execution-quality";
+import { buildExecutionData, parseOkxOrderBook, type ExecutionData } from "./execution-quality";
 
 // ─── HTTP helpers for live public endpoints ─────────────────────────
 
@@ -641,8 +641,8 @@ describe("Phase 39 — OKX Order Book (Live)", () => {
           expect(bestAsk).toBeGreaterThan(0);
           expect(bestBid).toBeLessThan(bestAsk);
 
-          // Execute the pure parser + builder
-          const parsed = { asks: book.asks, bids: book.bids, ts: book.ts };
+          // Execute the pure parser + builder (pass full response to parser)
+          const parsed = parseOkxOrderBook(json);
           const execData = buildExecutionData(parsed, Date.now(), Date.now());
           expect(execData).toBeDefined();
           if (execData) {
