@@ -2021,6 +2021,279 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
+      {/* Phase 41–43 — Crypto Intelligence Panel (crypto instruments only).
+          INFORMATIONAL ONLY — presentation of existing intelligence context.
+          Does NOT calculate bias, conviction, gates, trade plan, or recommendation. */}
+      {result.cryptoIntelligenceContext && result.instrumentType === "crypto" && (() => {
+        const ci = result.cryptoIntelligenceContext!;
+        const AVAIL_COLORS: Record<string, string> = {
+          FULL: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+          PARTIAL: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+          MINIMAL: "bg-red-500/15 text-red-400 border-red-500/30",
+          UNAVAILABLE: "bg-muted/30 text-muted-foreground border-border/50",
+        };
+        const FRESH_COLORS: Record<string, string> = {
+          FRESH: "text-emerald-400",
+          DELAYED: "text-amber-400",
+          STALE: "text-red-400",
+          UNAVAILABLE: "text-muted-foreground",
+        };
+        const Q_COLORS: Record<string, string> = {
+          VERIFIED: "text-emerald-400",
+          DEGRADED: "text-amber-400",
+          STALE: "text-red-400",
+          INSUFFICIENT: "text-orange-400",
+          UNAVAILABLE: "text-muted-foreground",
+        };
+        const DIR_COLORS: Record<string, string> = {
+          SUPPORTING: "text-emerald-400",
+          CONFLICTING: "text-red-400",
+          NEUTRAL: "text-muted-foreground",
+          UNAVAILABLE: "text-muted-foreground/50",
+        };
+        const STR_COLORS: Record<string, string> = {
+          STRONG: "text-emerald-400",
+          MODERATE: "text-amber-400",
+          WEAK: "text-orange-400",
+          UNKNOWN: "text-muted-foreground",
+        };
+        return (
+          <Card className="border border-border/50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span> crypto-intelligence
+                </h4>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", AVAIL_COLORS[ci.overallAvailability] ?? "border-border/50")}>
+                  {ci.overallAvailability.toLowerCase()}
+                </Badge>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", Q_COLORS[ci.overallQuality] ?? "border-border/50")}>
+                  {ci.overallQuality.toLowerCase()}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-4">
+              {/* Derivatives Intelligence */}
+              {ci.derivatives && (
+                <div>
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                    <span className="text-sky-400/80">{"●"}</span> derivatives {"·"} {ci.derivatives.provider}
+                    <span className={cn("ml-2", FRESH_COLORS[ci.derivatives.freshness])}> {ci.derivatives.freshness}</span>
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+                    {ci.derivatives.openInterest && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">open interest</p>
+                        <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                          {ci.derivatives.openInterest.current > 1e9
+                            ? `$${(ci.derivatives.openInterest.current / 1e9).toFixed(2)}B`
+                            : ci.derivatives.openInterest.current > 1e6
+                              ? `$${(ci.derivatives.openInterest.current / 1e6).toFixed(1)}M`
+                              : `$${ci.derivatives.openInterest.current.toLocaleString()}`}
+                        </p>
+                        {ci.derivatives.openInterest.change1h !== undefined && (
+                          <p className={cn("text-[10px] font-mono", ci.derivatives.openInterest.change1h! > 0 ? "text-emerald-400" : "text-red-400")}>
+                            {ci.derivatives.openInterest.change1h! > 0 ? "+" : ""}{ci.derivatives.openInterest.change1h!.toFixed(1)}% (1h)
+                          </p>
+                        )}
+                        {ci.derivatives.openInterest.change24h !== undefined && (
+                          <p className={cn("text-[10px] font-mono", ci.derivatives.openInterest.change24h! > 0 ? "text-emerald-400" : "text-red-400")}>
+                            {ci.derivatives.openInterest.change24h! > 0 ? "+" : ""}{ci.derivatives.openInterest.change24h!.toFixed(1)}% (24h)
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {ci.derivatives.fundingRate && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">funding rate</p>
+                        <p className={cn("text-sm font-bold font-mono tabular-nums", ci.derivatives.fundingRate.isExtreme ? "text-amber-400" : "text-foreground")}>
+                          {(ci.derivatives.fundingRate.currentRate * 100).toFixed(4)}%
+                        </p>
+                        {ci.derivatives.fundingRate.annualizedRate !== undefined && (
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            ~{(ci.derivatives.fundingRate.annualizedRate * 100).toFixed(1)}% ann.
+                          </p>
+                        )}
+                        {ci.derivatives.fundingRate.isExtreme && (
+                          <p className="text-[10px] font-mono text-amber-400">extreme</p>
+                        )}
+                      </div>
+                    )}
+                    {ci.derivatives.liquidation && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">liquidations</p>
+                        <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                          {ci.derivatives.liquidation.totalVolume !== undefined
+                            ? `$${(ci.derivatives.liquidation.totalVolume / 1e6).toFixed(1)}M`
+                            : "—"}
+                        </p>
+                        {ci.derivatives.liquidation.dominantSide && (
+                          <p className={cn("text-[10px] font-mono",
+                            ci.derivatives.liquidation.dominantSide === "longs" ? "text-red-400" :
+                            ci.derivatives.liquidation.dominantSide === "shorts" ? "text-emerald-400" : "text-muted-foreground")}>
+                            {ci.derivatives.liquidation.dominantSide} liquidated
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {ci.derivatives.positioning && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">positioning</p>
+                        {ci.derivatives.positioning.accountRatio !== undefined && (
+                          <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                            L/S: {ci.derivatives.positioning.accountRatio.toFixed(2)}
+                          </p>
+                        )}
+                        {ci.derivatives.positioning.topTraderRatio !== undefined && (
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            top: {ci.derivatives.positioning.topTraderRatio.toFixed(2)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
+                    Derivatives data is contextual {"—"} funding is not an automatic LONG/SHORT signal, OI is not inherently bullish/bearish, liquidations do not automatically imply reversal.
+                  </p>
+                </div>
+              )}
+              {/* DeFi Fundamentals */}
+              {ci.defi && (
+                <div className="border-t border-border/30 pt-3">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                    <span className="text-purple-400/80">{"●"}</span> defi fundamentals {"·"} {ci.defi.provider}
+                    <span className={cn("ml-2", FRESH_COLORS[ci.defi.freshness])}> {ci.defi.freshness}</span>
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+                    {ci.defi.tvl && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">TVL</p>
+                        <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                          ${(ci.defi.tvl.current / 1e9).toFixed(2)}B
+                        </p>
+                        {ci.defi.tvl.change7d !== undefined && (
+                          <p className={cn("text-[10px] font-mono", ci.defi.tvl.change7d! > 0 ? "text-emerald-400" : "text-red-400")}>
+                            {ci.defi.tvl.change7d! > 0 ? "+" : ""}{ci.defi.tvl.change7d!.toFixed(1)}% (7d)
+                          </p>
+                        )}
+                        {ci.defi.tvl.change30d !== undefined && (
+                          <p className={cn("text-[10px] font-mono", ci.defi.tvl.change30d! > 0 ? "text-emerald-400" : "text-red-400")}>
+                            {ci.defi.tvl.change30d! > 0 ? "+" : ""}{ci.defi.tvl.change30d!.toFixed(1)}% (30d)
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {ci.defi.fees && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">fees / revenue</p>
+                        {ci.defi.fees.dailyFees !== undefined && (
+                          <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                            ${ci.defi.fees.dailyFees.toLocaleString(undefined, { maximumFractionDigits: 0 })}/d
+                          </p>
+                        )}
+                        {ci.defi.fees.dailyRevenue !== undefined && (
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            rev: ${ci.defi.fees.dailyRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}/d
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
+                    Fundamental activity does not independently establish future price direction. TVL expansion is supportive context, not guaranteed bullish.
+                  </p>
+                </div>
+              )}
+              {/* Tokenomics */}
+              {ci.tokenomics && (
+                <div className="border-t border-border/30 pt-3">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                    <span className="text-orange-400/80">{"●"}</span> tokenomics {"·"} {ci.tokenomics.provider}
+                    <span className={cn("ml-2", FRESH_COLORS[ci.tokenomics.freshness])}> {ci.tokenomics.freshness}</span>
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+                    {ci.tokenomics.supply && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">supply</p>
+                        {ci.tokenomics.supply.circulatingSupply !== undefined && (
+                          <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                            circ: {ci.tokenomics.supply.circulatingSupply.toLocaleString()}
+                          </p>
+                        )}
+                        {ci.tokenomics.supply.totalSupply !== undefined && (
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            total: {ci.tokenomics.supply.totalSupply.toLocaleString()}
+                          </p>
+                        )}
+                        {ci.tokenomics.supply.circulatingPercent !== undefined && (
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            unlocked: {ci.tokenomics.supply.circulatingPercent.toFixed(1)}%
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {ci.tokenomics.unlocks && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">unlocks (30d)</p>
+                        <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                          {ci.tokenomics.unlocks.upcomingCount30d} event(s)
+                        </p>
+                        {ci.tokenomics.unlocks.unlockPercentOfCirculating !== undefined && (
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            ~{ci.tokenomics.unlocks.unlockPercentOfCirculating.toFixed(2)}% of circ.
+                          </p>
+                        )}
+                        {ci.tokenomics.unlocks.summary && (
+                          <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 leading-relaxed">
+                            {ci.tokenomics.unlocks.summary}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
+                    Unlocks are context, not automatic bearish signals. Impact depends on size, recipient behavior, liquidity, and market absorption.
+                  </p>
+                </div>
+              )}
+              {/* Evidence Summary */}
+              {ci.evidence.length > 0 && (
+                <div className="border-t border-border/30 pt-3">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">evidence</p>
+                  <div className="space-y-1">
+                    {ci.evidence.slice(0, 8).map((e, i) => (
+                      <div key={i} className="flex items-start gap-2 text-[10px] font-mono">
+                        <span className={cn("shrink-0", DIR_COLORS[e.direction])}>
+                          {e.direction === "SUPPORTING" ? "+" : e.direction === "CONFLICTING" ? "−" : e.direction === "NEUTRAL" ? "·" : "?"}
+                        </span>
+                        <span className="text-muted-foreground/60 w-24 shrink-0">{e.category}</span>
+                        <span className="text-muted-foreground/80 flex-1">{e.explanation}</span>
+                        <span className={cn("shrink-0", STR_COLORS[e.strength])}>{e.strength}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Missing Information */}
+              {ci.missingInformation.length > 0 && (
+                <div className="border-t border-border/30 pt-2">
+                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">missing intelligence</p>
+                  {ci.missingInformation.map((m, i) => (
+                    <p key={i} className="text-[10px] font-mono text-amber-300/70">{"⚠"} {m}</p>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed border-t border-border/30 pt-2">
+                {ci.analystSummary}
+              </p>
+              <p className="text-[9px] font-mono text-muted-foreground/40 italic">
+                Crypto intelligence is informational {"—"} it does not modify bias, conviction, gates, trade plan, or recommendation.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
       {/* Economic Calendar / Macro Risk */}
       {result.calendarData && result.calendarData.confidence !== "unavailable" && (
         <Card className="border-border/50">
