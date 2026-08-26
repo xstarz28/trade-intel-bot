@@ -2476,6 +2476,13 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     result.cryptoIntelligenceContext = input.cryptoIntelligenceContext;
   }
 
+  // Phase 44 — universal multi-asset intelligence context (informational only).
+  // Passes through any universal intelligence from the input.
+  // Cannot modify bias, conviction, gates, trade plan, recommendation, or actionability.
+  if (input.universalIntelligenceContext) {
+    result.universalIntelligenceContext = input.universalIntelligenceContext;
+  }
+
   return result;
 }
 
