@@ -118,6 +118,10 @@ export interface AnalysisInput {
   // Static contract metadata for position sizing. Never directional
   // evidence; never presented as live market data.
   okxSpecData?: import("@/lib/risk/okx-spec").OkxSpecData;
+  // ── Phase 41: Crypto intelligence context (derivatives, DeFi fundamentals, tokenomics).
+  // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
+  // or actionability. Absent for non-crypto instruments.
+  cryptoIntelligenceContext?: import("@/lib/data/crypto/types").CryptoIntelligenceContext;
   // ── Phase 3B: risk model inputs (all optional; sizing stays unavailable
   // unless every required piece is genuinely provided) ──
   /** Account equity in account currency, user-provided. */
@@ -237,4 +241,8 @@ export interface AnalysisResult {
   // Phase 36 — evidence & thesis challenge audit.
   // Informational only: does not modify bias, conviction, gates, trade plan, or recommendation.
   evidenceChallenge?: import("@/lib/evidence-challenge").EvidenceChallengeContext;
+  // ── Phase 41: Crypto intelligence context.
+  // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
+  // or actionability. Absent for non-crypto instruments.
+  cryptoIntelligenceContext?: import("@/lib/data/crypto/types").CryptoIntelligenceContext;
 }
