@@ -651,7 +651,10 @@ describe("Phase 33 — Security/secrets audit", () => {
     expect(allText).not.toContain("bearer");
     expect(allText).not.toContain("secret");
     expect(allText).not.toContain("password");
-    expect(allText).not.toContain("token");
+    // "token" alone matches domain terms like "tokenomics" — check for
+    // actual credential patterns: standalone token key or token_ prefix.
+    expect(allText).not.toMatch(/\btoken[_\s]*[=:]/);
+    expect(allText).not.toMatch(/\btoken\b(?!omics)/);
   });
 
   it("no probability language in any text field", () => {

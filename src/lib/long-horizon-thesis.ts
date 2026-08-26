@@ -287,6 +287,47 @@ function buildSupportingEvidence(
     });
   }
 
+  // Phase 42 — Crypto intelligence supporting evidence
+  const ci = result.cryptoIntelligenceContext;
+  if (ci) {
+    if (ci.defi?.tvl && ci.defi.tvl.reliable && ci.defi.tvl.change7d !== undefined && ci.defi.tvl.change7d > 5) {
+      evidence.push({
+        source: "DeFi TVL",
+        category: "liquidity",
+        explanation: `TVL expanding (+${ci.defi.tvl.change7d.toFixed(1)}% 7d) — protocol activity is growing. This provides supportive fundamental context for long-horizon assessment, but does not independently establish future price direction.`,
+        direction: "supportive",
+        weight: "moderate",
+      });
+    }
+    if (ci.defi?.fees && ci.defi.fees.reliable) {
+      evidence.push({
+        source: "Protocol fees",
+        category: "liquidity",
+        explanation: `Fee activity observable — protocol usage is generating revenue. This is a fundamental health indicator, not a directional price signal.`,
+        direction: "supportive",
+        weight: "low",
+      });
+    }
+    if (ci.tokenomics && !ci.tokenomics.unlocks?.upcomingCount30d) {
+      evidence.push({
+        source: "Tokenomics",
+        category: "liquidity",
+        explanation: "No significant token unlock events within 30 days — no immediate supply-side pressure from vesting. This is informational, not automatically bullish.",
+        direction: "supportive",
+        weight: "low",
+      });
+    }
+    if (ci.derivatives?.fundingRate && !ci.derivatives.fundingRate.isExtreme && ci.derivatives.fundingRate.reliable) {
+      evidence.push({
+        source: "Derivatives funding",
+        category: "liquidity",
+        explanation: `Funding rate is moderate (${(ci.derivatives.fundingRate.currentRate * 100).toFixed(4)}%) — derivatives positioning is not stretched. This provides constructive context.`,
+        direction: "supportive",
+        weight: "low",
+      });
+    }
+  }
+
   return evidence;
 }
 
@@ -365,6 +406,47 @@ function buildConflictingEvidence(
       direction: "unavailable",
       weight: "low",
     });
+  }
+
+  // Phase 42 — Crypto intelligence conflicting evidence
+  const ci = result.cryptoIntelligenceContext;
+  if (ci) {
+    if (ci.derivatives?.fundingRate?.isExtreme && ci.derivatives.fundingRate.reliable) {
+      evidence.push({
+        source: "Extreme funding",
+        category: "liquidity",
+        explanation: `Funding rate is extreme (${(ci.derivatives.fundingRate.currentRate * 100).toFixed(4)}%) — derivatives positioning is stretched and may contribute to volatility or reversal.`,
+        direction: "conflicting",
+        weight: "moderate",
+      });
+    }
+    if (ci.defi?.tvl && ci.defi.tvl.reliable && ci.defi.tvl.change7d !== undefined && ci.defi.tvl.change7d < -10) {
+      evidence.push({
+        source: "TVL decline",
+        category: "liquidity",
+        explanation: `TVL contracting (${ci.defi.tvl.change7d.toFixed(1)}% 7d) — protocol activity declining. This is concerning context, not a guaranteed price direction.`,
+        direction: "conflicting",
+        weight: "moderate",
+      });
+    }
+    if (ci.tokenomics?.unlocks?.upcomingCount30d !== undefined && ci.tokenomics.unlocks.upcomingCount30d > 0) {
+      evidence.push({
+        source: "Token unlock",
+        category: "liquidity",
+        explanation: `${ci.tokenomics.unlocks.upcomingCount30d} unlock event(s) within 30 days — potential supply expansion. Directional impact depends on unlock size, recipient behavior, and market absorption.`,
+        direction: "neutral",
+        weight: "low",
+      });
+    }
+    if (ci.derivatives?.liquidation?.dominantSide === "longs" && ci.derivatives.liquidation.reliable) {
+      evidence.push({
+        source: "Liquidation imbalance",
+        category: "liquidity",
+        explanation: "Long-side liquidations dominant — potential cascade risk. This is a derivatives-layer consideration, not a structural direction change.",
+        direction: "conflicting",
+        weight: "low",
+      });
+    }
   }
 
   return evidence;
@@ -504,6 +586,20 @@ function assessMacroContext(
     parts.push("Positioning data available — institutional context is informational.");
   }
 
+  // Phase 42 — Crypto intelligence context
+  const ci = result.cryptoIntelligenceContext;
+  if (ci) {
+    if (ci.derivatives) {
+      parts.push(`Crypto derivatives context available (${ci.derivatives.quality}) — funding/OI/liquidation context is informational.`);
+    }
+    if (ci.defi) {
+      parts.push(`DeFi fundamentals available (${ci.defi.quality}) — TVL and fee context is informational.`);
+    }
+    if (ci.tokenomics) {
+      parts.push(`Tokenomics context available (${ci.tokenomics.quality}) — supply and unlock context is informational.`);
+    }
+  }
+
   if (parts.length === 0) {
     return "Macro context limited — thesis relies primarily on technical structure.";
   }
@@ -569,6 +665,30 @@ function buildInvestorView(
     parts.push(`Structural invalidation level: ${result.keyLevels.invalidation}.`);
   }
 
+  // Phase 42 — Crypto intelligence for investor view
+  const ci = result.cryptoIntelligenceContext;
+  if (ci) {
+    if (ci.defi?.tvl && ci.defi.tvl.reliable) {
+      const tvlChange = ci.defi.tvl.change7d;
+      if (tvlChange !== undefined && tvlChange > 5) {
+        parts.push(`DeFi TVL expanding (+${tvlChange.toFixed(1)}% 7d) — ecosystem activity is growing. This is supportive context for long-horizon conviction, but does not independently establish price direction.`);
+      } else if (tvlChange !== undefined && tvlChange < -5) {
+        parts.push(`DeFi TVL contracting (${tvlChange.toFixed(1)}% 7d) — ecosystem activity declining. This is concerning context for long-horizon thesis.`);
+      } else {
+        parts.push(`DeFi TVL is stable — ecosystem activity is steady.`);
+      }
+    }
+    if (ci.tokenomics?.unlocks?.upcomingCount30d !== undefined && ci.tokenomics.unlocks.upcomingCount30d > 0) {
+      parts.push(`${ci.tokenomics.unlocks.upcomingCount30d} token unlock(s) within 30 days — potential supply-side consideration. Directional impact depends on unlock size and market absorption.`);
+    }
+    if (ci.tokenomics?.supply?.circulatingPercent !== undefined && ci.tokenomics.supply.circulatingPercent < 30) {
+      parts.push(`Only ${ci.tokenomics.supply.circulatingPercent.toFixed(1)}% of supply unlocked — significant future supply expansion is structurally possible.`);
+    }
+    if (ci.derivatives?.fundingRate?.isExtreme) {
+      parts.push(`Derivatives funding is extreme — market positioning is stretched. This is a risk factor for any long-horizon thesis.`);
+    }
+  }
+
   parts.push(primaryThesis);
 
   return parts.join(" ");
@@ -601,6 +721,23 @@ function buildTraderView(
 
   if (cycle === "LATE_TREND" || cycle === "DISTRIBUTION_CONTEXT") {
     parts.push("Late/distribution cycle — reduce exposure or wait for structural clarity.");
+  }
+
+  // Phase 42 — Crypto intelligence for trader view
+  const ci = result.cryptoIntelligenceContext;
+  if (ci?.derivatives) {
+    if (ci.derivatives.fundingRate?.isExtreme) {
+      parts.push(`Extreme funding (${(ci.derivatives.fundingRate.currentRate * 100).toFixed(4)}%) — derivatives positioning is stretched. Potential for volatility or forced deleveraging.`);
+    }
+    if (ci.derivatives.openInterest?.change24h !== undefined && Math.abs(ci.derivatives.openInterest.change24h) > 10) {
+      parts.push(`Significant OI change (${ci.derivatives.openInterest.change24h > 0 ? "+" : ""}${ci.derivatives.openInterest.change24h.toFixed(1)}% in 24h) — market positioning shifting rapidly.`);
+    }
+    if (ci.derivatives.liquidation?.dominantSide === "longs") {
+      parts.push("Long-side liquidations dominant — potential cascade risk.");
+    }
+    if (ci.derivatives.liquidation?.dominantSide === "shorts") {
+      parts.push("Short-side liquidations dominant — potential squeeze risk.");
+    }
   }
 
   const dirLabel = structural.includes("UPTREND") ? "bullish" : structural.includes("DOWNTREND") ? "bearish" : "neutral";
@@ -761,6 +898,20 @@ function assessRisks(
     risks.push("Data quality degraded — assessment may be incomplete");
   }
 
+  // Phase 42 — Crypto-specific risks
+  const ci = result.cryptoIntelligenceContext;
+  if (ci) {
+    if (ci.derivatives?.fundingRate?.isExtreme) {
+      risks.push("Extreme derivatives funding — market positioning is stretched, increased volatility risk");
+    }
+    if (ci.tokenomics?.unlocks?.upcomingCount30d !== undefined && ci.tokenomics.unlocks.upcomingCount30d > 0) {
+      risks.push(`${ci.tokenomics.unlocks.upcomingCount30d} upcoming token unlock(s) — potential supply-side pressure`);
+    }
+    if (ci.defi?.tvl && ci.defi.tvl.reliable && ci.defi.tvl.change7d !== undefined && ci.defi.tvl.change7d < -15) {
+      risks.push("Significant TVL decline — ecosystem activity deteriorating");
+    }
+  }
+
   return risks;
 }
 
@@ -774,8 +925,10 @@ function assessMissing(result: AnalysisResult): string[] {
   if (!result.fundamentalThesis) missing.push("Fundamental thesis");
   if (!result.forwardMarketPath) missing.push("Forward market path");
   if (!dataQualityOk(result)) missing.push("Market data quality is degraded");
-  if (result.instrumentType === "crypto" && !result.derivativesData) {
-    missing.push("Crypto derivatives context");
+  if (result.instrumentType === "crypto") {
+    if (!result.derivativesData) missing.push("Crypto derivatives context (CoinGlass)");
+    if (!result.cryptoIntelligenceContext?.defi) missing.push("DeFi fundamentals (TVL, fees, revenue)");
+    if (!result.cryptoIntelligenceContext?.tokenomics) missing.push("Tokenomics data (supply, unlocks)");
   }
   if (result.instrumentType === "forex" && !result.cotContext) {
     missing.push("COT positioning data");
