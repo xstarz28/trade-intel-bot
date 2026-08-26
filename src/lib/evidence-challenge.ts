@@ -477,8 +477,8 @@ function collectMacroEvidence(result: AnalysisResult): EvidenceItem[] {
     });
   }
 
-  // Derivatives
-  if (result.derivativesData) {
+  // Derivatives (legacy CoinGlass path)
+  if (result.derivativesData && !result.cryptoIntelligenceContext) {
     evidence.push({
       source: "Crypto derivatives",
       category: "DERIVATIVES",
@@ -489,6 +489,93 @@ function collectMacroEvidence(result: AnalysisResult): EvidenceItem[] {
       relevance: "low",
       dependencyGroup: "DERIVATIVES",
     });
+  }
+
+  // Phase 42 — Crypto intelligence evidence (detailed)
+  const ci = result.cryptoIntelligenceContext;
+  if (ci?.derivatives) {
+    if (ci.derivatives.fundingRate?.reliable) {
+      evidence.push({
+        source: "Funding rate",
+        category: "DERIVATIVES",
+        direction: ci.derivatives.fundingRate.isExtreme ? "conflicting" : "neutral",
+        explanation: ci.derivatives.fundingRate.isExtreme
+          ? `Funding rate extreme (${(ci.derivatives.fundingRate.currentRate * 100).toFixed(4)}%) — derivatives positioning stretched. This is a risk factor, not a directional signal.`
+          : `Funding rate moderate (${(ci.derivatives.fundingRate.currentRate * 100).toFixed(4)}%) — derivatives positioning is balanced.`,
+        strength: ci.derivatives.fundingRate.isExtreme ? "MODERATE" : "WEAK",
+        quality: ci.derivatives.freshness === "FRESH" ? "VERIFIED" : "DEGRADED",
+        relevance: ci.derivatives.fundingRate.isExtreme ? "moderate" : "low",
+        dependencyGroup: "DERIVATIVES",
+      });
+    }
+    if (ci.derivatives.openInterest?.reliable && ci.derivatives.openInterest.change24h !== undefined) {
+      const absChange = Math.abs(ci.derivatives.openInterest.change24h);
+      evidence.push({
+        source: "Open interest",
+        category: "DERIVATIVES",
+        direction: "neutral",
+        explanation: `OI ${ci.derivatives.openInterest.change24h > 0 ? "increasing" : "decreasing"} ${absChange.toFixed(1)}% in 24h — market positioning is ${absChange > 10 ? "shifting rapidly" : "relatively stable"}. Informational, not directional.`,
+        strength: absChange > 15 ? "MODERATE" : "WEAK",
+        quality: ci.derivatives.freshness === "FRESH" ? "VERIFIED" : "DEGRADED",
+        relevance: "low",
+        dependencyGroup: "DERIVATIVES",
+      });
+    }
+    if (ci.derivatives.liquidation?.dominantSide === "longs" || ci.derivatives.liquidation?.dominantSide === "shorts") {
+      evidence.push({
+        source: "Liquidation imbalance",
+        category: "DERIVATIVES",
+        direction: "neutral",
+        explanation: `${ci.derivatives.liquidation.dominantSide === "longs" ? "Long" : "Short"}-side liquidations dominant — potential ${ci.derivatives.liquidation.dominantSide === "longs" ? "cascade" : "squeeze"} risk. Contextual, not a structural signal.`,
+        strength: "WEAK",
+        quality: "VERIFIED",
+        relevance: "low",
+        dependencyGroup: "DERIVATIVES",
+      });
+    }
+  }
+  if (ci?.defi) {
+    if (ci.defi.tvl?.reliable) {
+      const tvlDir = (ci.defi.tvl.change7d ?? 0) > 5 ? "supporting" : (ci.defi.tvl.change7d ?? 0) < -5 ? "conflicting" : "neutral";
+      evidence.push({
+        source: "DeFi TVL",
+        category: "FUNDAMENTAL",
+        direction: tvlDir,
+        explanation: ci.defi.tvl.change7d !== undefined
+          ? `TVL ${ci.defi.tvl.change7d > 0 ? "expanding" : "contracting"} (${ci.defi.tvl.change7d > 0 ? "+" : ""}${ci.defi.tvl.change7d.toFixed(1)}% 7d) — protocol activity context. Not a price prediction.`
+          : `TVL: $${(ci.defi.tvl.current / 1e9).toFixed(2)}B — fundamental health indicator, not directional.`,
+        strength: tvlDir === "neutral" ? "WEAK" : "MODERATE",
+        quality: "VERIFIED",
+        relevance: tvlDir === "neutral" ? "low" : "moderate",
+        dependencyGroup: "FUNDAMENTAL",
+      });
+    }
+    if (ci.defi.fees?.reliable) {
+      evidence.push({
+        source: "Protocol fees",
+        category: "FUNDAMENTAL",
+        direction: "neutral",
+        explanation: `Fee activity observable — protocol revenue context. Not a directional price signal.`,
+        strength: "WEAK",
+        quality: "VERIFIED",
+        relevance: "low",
+        dependencyGroup: "FUNDAMENTAL",
+      });
+    }
+  }
+  if (ci?.tokenomics) {
+    if (ci.tokenomics.unlocks?.upcomingCount30d !== undefined && ci.tokenomics.unlocks.upcomingCount30d > 0) {
+      evidence.push({
+        source: "Token unlocks",
+        category: "FUNDAMENTAL",
+        direction: "neutral",
+        explanation: `${ci.tokenomics.unlocks.upcomingCount30d} unlock event(s) within 30 days — potential supply expansion. Directional impact depends on size, recipient behavior, and market absorption. This is informational, not automatically bearish.`,
+        strength: "WEAK",
+        quality: ci.tokenomics.freshness === "FRESH" ? "VERIFIED" : "DEGRADED",
+        relevance: "low",
+        dependencyGroup: "FUNDAMENTAL",
+      });
+    }
   }
 
   return evidence;

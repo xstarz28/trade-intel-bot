@@ -844,7 +844,7 @@ describe("Phase 37 — Market Regime & Decision Stress Testing", () => {
       const fullJson = JSON.stringify(r);
       expect(fullJson).not.toMatch(/api[_-]?key/i);
       expect(fullJson).not.toMatch(/secret/i);
-      expect(fullJson).not.toMatch(/token/i);
+      expect(fullJson).not.toMatch(/token[_\s]*[=:/]|\bauth[_-]?token\b|\bjwt[_-]?token\b/i);
       expect(fullJson).not.toMatch(/authorization/i);
     });
 
