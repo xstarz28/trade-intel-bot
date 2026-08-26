@@ -122,6 +122,11 @@ export interface AnalysisInput {
   // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
   // or actionability. Absent for non-crypto instruments.
   cryptoIntelligenceContext?: import("@/lib/data/crypto/types").CryptoIntelligenceContext;
+  // ── Phase 44: Universal multi-asset intelligence context.
+  // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
+  // or actionability. Wraps asset-class-specific intelligence (forex, equity, commodity, cross-asset)
+  // into a common interface for the analysis engine.
+  universalIntelligenceContext?: import("@/lib/data/universal/types").UniversalIntelligenceContext;
   // ── Phase 3B: risk model inputs (all optional; sizing stays unavailable
   // unless every required piece is genuinely provided) ──
   /** Account equity in account currency, user-provided. */
@@ -245,4 +250,8 @@ export interface AnalysisResult {
   // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
   // or actionability. Absent for non-crypto instruments.
   cryptoIntelligenceContext?: import("@/lib/data/crypto/types").CryptoIntelligenceContext;
+  // ── Phase 44: Universal multi-asset intelligence context.
+  // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
+  // or actionability. Wraps asset-class-specific intelligence into a common interface.
+  universalIntelligenceContext?: import("@/lib/data/universal/types").UniversalIntelligenceContext;
 }
