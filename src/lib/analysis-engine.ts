@@ -2469,6 +2469,13 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const evidenceChallenge = buildEvidenceChallenge(result as AnalysisResult);
   result.evidenceChallenge = evidenceChallenge;
 
+  // Phase 41 — crypto intelligence context (informational only).
+  // Passes through any crypto intelligence from the input.
+  // Cannot modify bias, conviction, gates, trade plan, recommendation, or actionability.
+  if (input.cryptoIntelligenceContext) {
+    result.cryptoIntelligenceContext = input.cryptoIntelligenceContext;
+  }
+
   return result;
 }
 
