@@ -20,7 +20,8 @@ import {
   recordProviderHealth,
   resetProviderHealth,
 } from "../routing-engine";
-import { cacheGet, cacheSet, type CacheKey } from "../cache";
+import { cacheGet, cacheSet } from "../cache";
+import type { CacheKey } from "../engine-types";
 import type {
   LiveStatus,
   OhlcvRecord,
@@ -30,6 +31,7 @@ import {
   validateOhlcvSeries,
   validateQuote,
   verifySymbolIdentityWithCandidates,
+  isLiveStatus,
 } from "./types";
 import { checkCredentials, type EnvReader } from "./credentials";
 
@@ -54,7 +56,7 @@ interface EndpointSpec {
   buildUrl: (providerSymbol: string, params: LiveRequestParams) => string;
   extract: (
     json: unknown,
-    params: LiveRequestParams,
+    params: LiveRequestParams & { providerSymbol?: string },
   ) => { symbol?: string | null; candles?: OhlcvRecord[]; quote?: { price: number; bid?: number; ask?: number }; fields: string[] };
 }
 
@@ -381,7 +383,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     }
     recordProviderHealth({ providerId, status: "AVAILABLE", responseTimeMs: latencyMs });
     cacheSet(
-      { instrument: params.instrument, capability: params.capability, providerId } as CacheKey,
+      { instrument: params.instrument, capability: params.capability, providerId },
       extracted.quote,
       "FRESH",
     );
@@ -411,7 +413,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     if (validation.valid) {
       recordProviderHealth({ providerId, status: "AVAILABLE", responseTimeMs: latencyMs });
       cacheSet(
-        { instrument: params.instrument, capability: params.capability, providerId } as CacheKey,
+        { instrument: params.instrument, capability: params.capability, providerId },
         accepted,
         "FRESH",
       );
