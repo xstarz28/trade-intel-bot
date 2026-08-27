@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstrumentInput } from "@/components/InstrumentInput";
@@ -15,6 +15,8 @@ import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
+import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -533,6 +535,52 @@ export default function Dashboard() {
     ? dbHistory.map(fromDbRecord)
     : [];
 
+  // Phase 50 — Build live candidate sources from analysis history.
+  // Each past analysis becomes a LiveCandidateSource with its actual data,
+  // enabling the live scanner to produce evidence-based rankings.
+  const liveSources: LiveCandidateSource[] = useMemo(() => {
+    if (history.length === 0) return [];
+    // Deduplicate by instrument, keep most recent analysis per instrument
+    const byInstrument = new Map<string, AnalysisResult>();
+    for (const h of history) {
+      const existing = byInstrument.get(h.instrument);
+      if (!existing || (h.timestamp ?? 0) > (existing.timestamp ?? 0)) {
+        byInstrument.set(h.instrument, h);
+      }
+    }
+    return Array.from(byInstrument.values()).map((ar) => {
+      const assetClass = ar.instrumentType === "crypto" ? "crypto" : ar.instrumentType === "forex" ? "forex" : ar.instrumentType === "stock" ? "equity" : ar.instrumentType === "commodity" ? "commodity" : ar.instrumentType === "indices" ? "indices" : "macro";
+      return {
+        instrument: ar.instrument,
+        assetClass: assetClass as LiveCandidateSource["assetClass"],
+        analysisResult: ar,
+      } as LiveCandidateSource;
+    });
+  }, [history]);
+
+  // Phase 50 — Live scan result from available sources
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+
+  const handleScanRefresh = useCallback(() => {
+    if (liveSources.length === 0) return;
+    setIsScanning(true);
+    // Run scan synchronously (pure computation)
+    const config = { horizons: ["INTRADAY" as const, "SWING" as const], maxResults: 10 };
+    const result = scanInstruments(liveSources, config);
+    setScanResult(result);
+    setIsScanning(false);
+  }, [liveSources]);
+
+  // Auto-scan when live sources change
+  useMemo(() => {
+    if (liveSources.length > 0) {
+      const config = { horizons: ["INTRADAY" as const, "SWING" as const], maxResults: 10 };
+      const result = scanInstruments(liveSources, config);
+      setScanResult(result);
+    }
+  }, [liveSources]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Top bar */}
@@ -583,7 +631,7 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* Phase 49 — Market Opportunities: ranked candidates from instrument registry discovery */}
+            {/* Phase 50 — Market Opportunities: live opportunity scanner */}
             <div className="hidden lg:block">
               <MarketOpportunities
                 candidates={discoverCandidates().map((d) => ({
@@ -596,6 +644,10 @@ export default function Dashboard() {
                   freshness: "UNAVAILABLE",
                   providerCoverage: "PARTIAL",
                 } as CandidateInput))}
+                liveSources={liveSources}
+                isScanning={isScanning}
+                scanResult={scanResult ?? undefined}
+                onRefresh={liveSources.length > 0 ? handleScanRefresh : undefined}
               />
             </div>
           </div>
