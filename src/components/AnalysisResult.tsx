@@ -2294,6 +2294,327 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         );
       })()}
 
+
+
+      {/* Phase 44-45 — Universal Intelligence Panel (forex, equity, commodity, cross-asset).
+          INFORMATIONAL ONLY — presentation of existing intelligence context.
+          Does NOT calculate bias, conviction, gates, trade plan, or recommendation.
+          Does NOT render for crypto instruments (crypto has its own panel above). */}
+      {result.universalIntelligenceContext && result.instrumentType !== "crypto" && (() => {
+        const ui = result.universalIntelligenceContext!;
+        const AVAIL_COLORS: Record<string, string> = {
+          FULL: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+          PARTIAL: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+          MINIMAL: "bg-red-500/15 text-red-400 border-red-500/30",
+          UNAVAILABLE: "bg-muted/30 text-muted-foreground border-border/50",
+        };
+        const Q_COLORS: Record<string, string> = {
+          VERIFIED: "text-emerald-400",
+          DEGRADED: "text-amber-400",
+          STALE: "text-red-400",
+          INSUFFICIENT: "text-orange-400",
+          UNAVAILABLE: "text-muted-foreground",
+        };
+        const FRESH_COLORS: Record<string, string> = {
+          FRESH: "text-emerald-400",
+          DELAYED: "text-amber-400",
+          STALE: "text-red-400",
+          UNAVAILABLE: "text-muted-foreground",
+        };
+        const DIR_COLORS: Record<string, string> = {
+          SUPPORTING: "text-emerald-400",
+          CONFLICTING: "text-red-400",
+          NEUTRAL: "text-muted-foreground",
+          UNAVAILABLE: "text-muted-foreground/50",
+        };
+        const STR_COLORS: Record<string, string> = {
+          STRONG: "text-emerald-400",
+          MODERATE: "text-amber-400",
+          WEAK: "text-orange-400",
+          UNKNOWN: "text-muted-foreground",
+        };
+        const ASSET_LABELS: Record<string, string> = {
+          forex: "forex",
+          equity: "equity",
+          commodity: "commodity",
+          indices: "indices",
+          macro: "macro",
+        };
+        return (
+          <Card className="border border-border/50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span> universal-intelligence
+                </h4>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", AVAIL_COLORS[ui.overallAvailability] ?? "border-border/50")}>
+                  {ASSET_LABELS[ui.assetClass] ?? ui.assetClass} · {ui.overallAvailability.toLowerCase()}
+                </Badge>
+                <Badge variant="outline" className={cn("text-[10px] font-mono", Q_COLORS[ui.overallQuality] ?? "border-border/50")}>
+                  {ui.overallQuality.toLowerCase()}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-4">
+              {/* Forex Intelligence */}
+              {ui.forex && (
+                <div>
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                    <span className="text-sky-400/80">{"●"}</span> forex intelligence
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono mb-2">
+                    {ui.forex.rates && (
+                      <div>
+                        <span className="text-muted-foreground">rates:</span>{" "}
+                        <span className={FRESH_COLORS[ui.forex.rates.freshness]}>{ui.forex.rates.freshness}</span>
+                        {ui.forex.rates.rateDifferential !== undefined && (
+                          <span className="ml-1">· diff: <span className="text-foreground">{ui.forex.rates.rateDifferential.toFixed(1)}bp</span></span>
+                        )}
+                      </div>
+                    )}
+                    {ui.forex.yields && (
+                      <div>
+                        <span className="text-muted-foreground">yields:</span>{" "}
+                        <span className={FRESH_COLORS[ui.forex.yields.freshness]}>{ui.forex.yields.freshness}</span>
+                        {ui.forex.yields.yieldDifferential !== undefined && (
+                          <span className="ml-1">· spread: <span className="text-foreground">{ui.forex.yields.yieldDifferential.toFixed(1)}bp</span></span>
+                        )}
+                      </div>
+                    )}
+                    {ui.forex.positioning && (
+                      <div>
+                        <span className="text-muted-foreground">COT:</span>{" "}
+                        <span className={FRESH_COLORS[ui.forex.positioning.freshness]}>{ui.forex.positioning.freshness}</span>
+                        {ui.forex.positioning.nonCommercialNet !== undefined && (
+                          <span className="ml-1">· net: <span className="text-foreground">{ui.forex.positioning.nonCommercialNet.toLocaleString()}</span></span>
+                        )}
+                      </div>
+                    )}
+                    {ui.forex.macro && (
+                      <div>
+                        <span className="text-muted-foreground">calendar:</span>{" "}
+                        <span className={FRESH_COLORS[ui.forex.macro.freshness]}>{ui.forex.macro.freshness}</span>
+                        {ui.forex.macro.upcomingEvents && (
+                          <span className="ml-1">· <span className="text-foreground">{ui.forex.macro.upcomingEvents.length} events</span></span>
+                        )}
+                      </div>
+                    )}
+                    {ui.forex.crossAsset && (
+                      <div>
+                        <span className="text-muted-foreground">cross-asset:</span>{" "}
+                        <span className="text-foreground">DXY {ui.forex.crossAsset.dxyTrend ?? "—"} · {ui.forex.crossAsset.riskRegime ?? "—"}</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
+                    Rate differential, COT positioning, and DXY are contextual evidence — not automatic directional signals.
+                  </p>
+                </div>
+              )}
+              {/* Equity Intelligence */}
+              {ui.equity && (
+                <div className="border-t border-border/30 pt-3">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                    <span className="text-purple-400/80">{"●"}</span> equity intelligence
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
+                    {ui.equity.fundamentals?.peRatio !== undefined && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">P/E</p>
+                        <p className="text-sm font-bold font-mono tabular-nums text-foreground">{ui.equity.fundamentals.peRatio!.toFixed(1)}</p>
+                      </div>
+                    )}
+                    {ui.equity.fundamentals?.revenueGrowth !== undefined && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">rev growth</p>
+                        <p className={cn("text-sm font-bold font-mono tabular-nums", ui.equity.fundamentals.revenueGrowth! > 0 ? "text-emerald-400" : "text-red-400")}>
+                          {(ui.equity.fundamentals.revenueGrowth! * 100).toFixed(1)}%
+                        </p>
+                      </div>
+                    )}
+                    {ui.equity.fundamentals?.profitMargin !== undefined && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">margin</p>
+                        <p className="text-sm font-bold font-mono tabular-nums text-foreground">{(ui.equity.fundamentals.profitMargin! * 100).toFixed(1)}%</p>
+                      </div>
+                    )}
+                    {ui.equity.fundamentals?.marketCap !== undefined && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground">mkt cap</p>
+                        <p className="text-sm font-bold font-mono tabular-nums text-foreground">${(ui.equity.fundamentals.marketCap! / 1e9).toFixed(1)}B</p>
+                      </div>
+                    )}
+                  </div>
+                  {ui.equity.sector && (
+                    <p className="text-[10px] font-mono text-muted-foreground/80 mb-1">
+                      sector: {ui.equity.sector.sector}{ui.equity.sector.industry ? ` · ${ui.equity.sector.industry}` : ""}
+                    </p>
+                  )}
+                  {ui.equity.valuation?.relativeValuation && (
+                    <p className="text-[10px] font-mono">
+                      valuation: <span className="text-foreground">{ui.equity.valuation.relativeValuation}</span>
+                    </p>
+                  )}
+                  <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed mt-1">
+                    Fundamental metrics are informational context — valuation does not independently establish timing.
+                  </p>
+                </div>
+              )}
+              {/* Commodity Intelligence */}
+              {ui.commodity && (
+                <div className="border-t border-border/30 pt-3">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                    <span className="text-amber-400/80">{"●"}</span> commodity intelligence
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono mb-2">
+                    {ui.commodity.inventory && (
+                      <div>
+                        <span className="text-muted-foreground">inventory:</span>{" "}
+                        <span className={FRESH_COLORS[ui.commodity.inventory.freshness]}>{ui.commodity.inventory.freshness}</span>
+                        {ui.commodity.inventory.changeWeekly !== undefined && (
+                          <span className="ml-1">· <span className="text-foreground">{ui.commodity.inventory.changeWeekly! > 0 ? "+" : ""}{ui.commodity.inventory.changeWeekly!.toLocaleString()}</span>/wk</span>
+                        )}
+                      </div>
+                    )}
+                    {ui.commodity.futuresStructure && (
+                      <div>
+                        <span className="text-muted-foreground">structure:</span>{" "}
+                        <span className="text-foreground">{ui.commodity.futuresStructure.structure ?? "—"}</span>
+                        {ui.commodity.futuresStructure.rollYield !== undefined && (
+                          <span className="ml-1">· roll: <span className="text-foreground">{ui.commodity.futuresStructure.rollYield!.toFixed(2)}%</span></span>
+                        )}
+                      </div>
+                    )}
+                    {ui.commodity.positioning && (
+                      <div>
+                        <span className="text-muted-foreground">COT:</span>{" "}
+                        <span className={FRESH_COLORS[ui.commodity.positioning.freshness]}>{ui.commodity.positioning.freshness}</span>
+                        {ui.commodity.positioning.managedMoneyNet !== undefined && (
+                          <span className="ml-1">· MM net: <span className="text-foreground">{ui.commodity.positioning.managedMoneyNet!.toLocaleString()}</span></span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  {ui.commodity.seasonality?.seasonalPattern && (
+                    <p className="text-[10px] font-mono text-muted-foreground/80 mb-1">
+                      seasonality: {ui.commodity.seasonality.seasonalPattern}
+                    </p>
+                  )}
+                  {ui.commodity.macroInfluence?.dollarContext && (
+                    <p className="text-[10px] font-mono text-muted-foreground/80 mb-1">
+                      dollar: {ui.commodity.macroInfluence.dollarContext}
+                    </p>
+                  )}
+                  <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed mt-1">
+                    Inventory, futures structure, and COT are contextual evidence — not automatic directional signals.
+                  </p>
+                </div>
+              )}
+              {/* Cross-Asset / Macro Intelligence */}
+              {ui.crossAsset && (
+                <div className="border-t border-border/30 pt-3">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+                    <span className="text-sky-400/80">{"●"}</span> cross-asset macro
+                  </p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono mb-2">
+                    {ui.crossAsset.dxy && (
+                      <div>
+                        <span className="text-muted-foreground">DXY:</span>{" "}
+                        <span className="text-foreground">{ui.crossAsset.dxy.value?.toFixed(1) ?? "—"}</span>
+                        {ui.crossAsset.dxy.trend && (
+                          <span className={cn("ml-1", ui.crossAsset.dxy.trend === "rising" ? "text-amber-400" : ui.crossAsset.dxy.trend === "falling" ? "text-emerald-400" : "text-muted-foreground")}>
+                            ({ui.crossAsset.dxy.trend})
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {ui.crossAsset.treasury && (
+                      <div>
+                        <span className="text-muted-foreground">10Y:</span>{" "}
+                        <span className="text-foreground">{ui.crossAsset.treasury.tenYear?.toFixed(2) ?? "—"}%</span>
+                        {ui.crossAsset.treasury.yieldCurve && (
+                          <span className="ml-1">· {ui.crossAsset.treasury.yieldCurve}</span>
+                        )}
+                      </div>
+                    )}
+                    {ui.crossAsset.riskRegime && (
+                      <div>
+                        <span className="text-muted-foreground">risk:</span>{" "}
+                        <span className={cn(
+                          "text-foreground",
+                          ui.crossAsset.riskRegime.regime === "risk_on" ? "text-emerald-400" :
+                          ui.crossAsset.riskRegime.regime === "risk_off" ? "text-red-400" : "text-foreground"
+                        )}>{ui.crossAsset.riskRegime.regime ?? "—"}</span>
+                      </div>
+                    )}
+                  </div>
+                  {ui.crossAsset.centralBanks?.fedContext && (
+                    <p className="text-[10px] font-mono text-muted-foreground/80 mb-1">
+                      fed: {ui.crossAsset.centralBanks.fedContext}
+                    </p>
+                  )}
+                  {ui.crossAsset.globalLiquidity?.m2Trend && (
+                    <p className="text-[10px] font-mono text-muted-foreground/80 mb-1">
+                      M2: {ui.crossAsset.globalLiquidity.m2Trend}
+                    </p>
+                  )}
+                  <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed mt-1">
+                    Cross-asset macro provides regime context — not predictive signals.
+                  </p>
+                </div>
+              )}
+              {/* Evidence Summary */}
+              {ui.evidence.length > 0 && (
+                <div className="border-t border-border/30 pt-3">
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">evidence ({ui.evidence.length})</p>
+                  <div className="space-y-1">
+                    {ui.evidence.slice(0, 6).map((e, i) => (
+                      <div key={i} className="flex items-start gap-2 text-[10px] font-mono">
+                        <span className={cn("shrink-0", DIR_COLORS[e.direction])}>
+                          {e.direction === "SUPPORTING" ? "+" : e.direction === "CONFLICTING" ? "−" : e.direction === "NEUTRAL" ? "·" : "?"}
+                        </span>
+                        <span className="text-muted-foreground/60 w-24 shrink-0">{e.category}</span>
+                        <span className="text-muted-foreground/80 flex-1 truncate">{e.explanation}</span>
+                        <span className={cn("shrink-0", STR_COLORS[e.strength])}>{e.strength}</span>
+                      </div>
+                    ))}
+                    {ui.evidence.length > 6 && (
+                      <p className="text-[9px] font-mono text-muted-foreground/50">+{ui.evidence.length - 6} more</p>
+                    )}
+                  </div>
+                </div>
+              )}
+              {/* Double-counting warnings */}
+              {ui.dataFlags.filter((f) => f.startsWith("DOUBLE_COUNTING")).length > 0 && (
+                <div className="text-[10px] font-mono">
+                  <span className="text-amber-400">double-counting:</span>{" "}
+                  {ui.dataFlags.filter((f) => f.startsWith("DOUBLE_COUNTING")).map((f, i) => (
+                    <span key={i} className="text-amber-400/80">• {f.replace("DOUBLE_COUNTING:", "")} </span>
+                  ))}
+                </div>
+              )}
+              {/* Missing Information */}
+              {ui.missingInformation.length > 0 && (
+                <div className="border-t border-border/30 pt-2">
+                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">missing intelligence</p>
+                  {ui.missingInformation.slice(0, 5).map((m, i) => (
+                    <p key={i} className="text-[10px] font-mono text-amber-300/70">{"⚠"} {m}</p>
+                  ))}
+                  {ui.missingInformation.length > 5 && (
+                    <p className="text-[9px] font-mono text-muted-foreground/50">+{ui.missingInformation.length - 5} more</p>
+                  )}
+                </div>
+              )}
+              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed border-t border-border/30 pt-2">
+                {ui.analystSummary}
+              </p>
+              <p className="text-[9px] font-mono text-muted-foreground/40 italic">
+                Universal intelligence is informational {"—"} it does not modify bias, conviction, gates, trade plan, or recommendation.
+              </p>
+            </CardContent>
+          </Card>
+        );
+      })()}
       {/* Economic Calendar / Macro Risk */}
       {result.calendarData && result.calendarData.confidence !== "unavailable" && (
         <Card className="border-border/50">
