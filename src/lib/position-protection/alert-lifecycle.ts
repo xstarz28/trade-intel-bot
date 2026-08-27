@@ -70,7 +70,7 @@ export function shouldAlert(
     // Check cooldown for escalations
     if (alertSeverityRank(newSeverity) > alertSeverityRank(state.currentSeverity)) {
       // Escalation — respect cooldown unless severity warrants immediate
-      if (now < state.nextAlertAllowedAt && newSeverity !== "INVALIDATED") {
+      if (now < state.nextAlertAllowedAt) {
         return { shouldFire: false, reason: `Cooldown active until ${new Date(state.nextAlertAllowedAt).toISOString()}.` };
       }
       return { shouldFire: true, reason: `Escalation: ${state.currentSeverity} → ${newSeverity}.` };
