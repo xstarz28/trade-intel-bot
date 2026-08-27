@@ -242,17 +242,10 @@ export function getProvidersForCapability(capability: StreamCapability): Provide
   return PROVIDER_PROFILES.filter(p => p.capabilities.includes(capability));
 }
 
-/** Check if a provider is available (credentials accessible). */
+/** Check if a provider is available (has a registered profile).
+ *  Credential validation happens server-side in Convex actions. */
 export function isProviderAvailable(provider: string): boolean {
-  const profile = getProviderProfile(provider);
-  if (!profile) return false;
-  // Providers with no required env vars are always available
-  if (profile.credentialEnvVars.length === 0) return true;
-  // Otherwise, check if env vars exist (server-side only)
-  if (typeof process !== "undefined" && process.env) {
-    return profile.credentialEnvVars.every(v => !!process.env[v]);
-  }
-  return false;
+  return getProviderProfile(provider) !== undefined;
 }
 
 /** Build default stream config for a provider. */
