@@ -275,12 +275,268 @@ function buildCoinGeckoAdapter(): ProviderAdapter {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// BUILD COINGLASS ADAPTER (Crypto Derivatives)
+// ═══════════════════════════════════════════════════════════════
+
+function buildCoinGlassAdapter(): ProviderAdapter {
+  const COINGLASS_SYMBOLS: Record<string, string> = {
+    "BTC/USD": "BTC", "ETH/USD": "ETH", "SOL/USD": "SOL",
+    "DOGE/USD": "DOGE", "XRP/USD": "XRP", "ADA/USD": "ADA",
+  };
+  return buildAdapter(
+    "coinglass", "CoinGlass", ["crypto"], ["derivatives"],
+    async (instrument, assetClass, readEnv) => {
+      const cred = checkCredentials("coinglass", readEnv);
+      if (cred && !cred.available) return null;
+      const apiKey = readEnv?.("COINGLASS_API_KEY") ?? "";
+      if (!apiKey) return null;
+      const symbol = COINGLASS_SYMBOLS[instrument]?.toUpperCase();
+      if (!symbol) return null;
+      try {
+        const baseUrl = "https://open-api-v3.coinglass.com/api";
+        const headers = { accept: "application/json", cg_api_key: apiKey };
+        const [oiRes, fundingRes] = await Promise.allSettled([
+          defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`),
+          defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`),
+        ]);
+        let price = 0;
+        let openInterest: number | undefined;
+        let fundingRate: number | undefined;
+        if (oiRes.status === "fulfilled" && oiRes.value.ok && oiRes.value.json) {
+          const d = oiRes.value.json as { data?: { openInterest?: string; lastPrice?: string } };
+          openInterest = d.data?.openInterest ? parseFloat(d.data.openInterest) : undefined;
+          price = d.data?.lastPrice ? parseFloat(d.data.lastPrice) : 0;
+        }
+        if (fundingRes.status === "fulfilled" && fundingRes.value.ok && fundingRes.value.json) {
+          const d = fundingRes.value.json as { data?: { data?: [{ value?: string }] } };
+          fundingRate = d.data?.data?.[0]?.value ? parseFloat(d.data.data[0].value) : undefined;
+        }
+        if (!Number.isFinite(price) || price <= 0) return null;
+        return {
+          instrument, assetClass, price, ohlcvAvailable: false,
+          availableTimeframes: [], provider: "coinglass",
+          observedAt: Date.now(), freshness: "FRESH", quality: "VERIFIED",
+        };
+      } catch { return null; }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD DEFILLAMA ADAPTER (DeFi)
+// ═══════════════════════════════════════════════════════════════
+
+function buildDefiLlamaAdapter(): ProviderAdapter {
+  return buildAdapter(
+    "defillama", "DeFiLlama", ["crypto"], ["defi"],
+    async (instrument) => {
+      const chain = instrument.split("/")[0]?.toLowerCase();
+      if (!chain) return null;
+      try {
+        const url = `https://api.llama.fi/v2/historicalChainTvl/${chain}`;
+        const res = await defaultTransport(url);
+        if (!res.ok || !res.json) return null;
+        const data = res.json as { tvl?: number }[];
+        if (!Array.isArray(data) || data.length === 0) return null;
+        const latest = data[data.length - 1];
+        if (!latest || latest.tvl === undefined) return null;
+        return {
+          instrument, assetClass: "crypto", price: 0,
+          ohlcvAvailable: false, availableTimeframes: [],
+          provider: "defillama", observedAt: Date.now(),
+          freshness: "FRESH", quality: "VERIFIED",
+        };
+      } catch { return null; }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD TOKENOMIST ADAPTER (Tokenomics)
+// ═══════════════════════════════════════════════════════════════
+
+function buildTokenomistAdapter(): ProviderAdapter {
+  return buildAdapter(
+    "tokenomist", "Tokenomist", ["crypto"], ["tokenomics"],
+    async (instrument) => {
+      try {
+        const symbol = instrument.split("/")[0]?.toLowerCase();
+        if (!symbol) return null;
+        const url = `https://api.tokenomist.xyz/v1/unlocks?symbol=${symbol}`;
+        const res = await defaultTransport(url);
+        if (!res.ok || !res.json) return null;
+        return {
+          instrument, assetClass: "crypto", price: 0,
+          ohlcvAvailable: false, availableTimeframes: [],
+          provider: "tokenomist", observedAt: Date.now(),
+          freshness: "FRESH", quality: "VERIFIED",
+        };
+      } catch { return null; }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD OKX ADAPTER (Crypto OHLCV)
+// ═══════════════════════════════════════════════════════════════
+
+function buildOkxAdapter(): ProviderAdapter {
+  const OKX_SYMBOLS: Record<string, string> = {
+    "BTC/USD": "BTC-USDT", "ETH/USD": "ETH-USDT", "SOL/USD": "SOL-USDT",
+    "DOGE/USD": "DOGE-USDT", "XRP/USD": "XRP-USDT", "ADA/USD": "ADA-USDT",
+  };
+  return buildAdapter(
+    "okx", "OKX", ["crypto"], ["ohlcv", "quote"],
+    async (instrument) => {
+      const sym = OKX_SYMBOLS[instrument];
+      if (!sym) return null;
+      try {
+        const url = `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=1`;
+        const res = await defaultTransport(url);
+        if (!res.ok || !res.json) return null;
+        const data = res.json as { data?: string[][] };
+        const rows = data.data ?? [];
+        if (rows.length === 0) return null;
+        const row = rows[0];
+        const price = parseFloat(row[4]); // close
+        if (!Number.isFinite(price) || price <= 0) return null;
+        const ts = parseInt(row[0]);
+        return {
+          instrument, assetClass: "crypto", price,
+          ohlcvAvailable: true, availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
+          provider: "okx", observedAt: Number.isFinite(ts) ? ts : Date.now(),
+          freshness: assessFreshness(Number.isFinite(ts) ? ts : Date.now(), Date.now()),
+          quality: "VERIFIED",
+        };
+      } catch { return null; }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD ALPHA VANTAGE ADAPTER (Fundamentals)
+// ═══════════════════════════════════════════════════════════════
+
+function buildAlphaVantageAdapter(): ProviderAdapter {
+  return buildAdapter(
+    "alpha-vantage", "Alpha Vantage", ["equity", "forex"], ["fundamentals"],
+    async (instrument, assetClass, readEnv) => {
+      const cred = checkCredentials("alpha-vantage", readEnv);
+      if (cred && !cred.available) return null;
+      const apiKey = readEnv?.("ALPHA_VANTAGE_API_KEY") ?? "";
+      if (!apiKey) return null;
+      const symbol = assetClass === "forex" ? instrument.replace("/", "") : instrument;
+      try {
+        const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`;
+        const res = await defaultTransport(url);
+        if (!res.ok || !res.json) return null;
+        const d = res.json as Record<string, string>;
+        const price = d["50DayMovingAverage"] ? parseFloat(d["50DayMovingAverage"]) : 0;
+        if (!Number.isFinite(price) || price <= 0) return null;
+        return {
+          instrument, assetClass, price,
+          ohlcvAvailable: false, availableTimeframes: [],
+          provider: "alpha-vantage", observedAt: Date.now(),
+          freshness: "DELAYED", quality: "DEGRADED",
+        };
+      } catch { return null; }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD CFTC ADAPTER (COT Positioning)
+// ═══════════════════════════════════════════════════════════════
+
+function buildCftcAdapter(): ProviderAdapter {
+  return buildAdapter(
+    "cftc", "CFTC", ["forex", "commodity"], ["cot"],
+    async (instrument) => {
+      try {
+        const url = `https://www.cftc.gov/dea/futures/other_lf.htm`;
+        const res = await defaultTransport(url);
+        if (!res.ok || !res.json) return null;
+        return {
+          instrument, assetClass: "forex", price: 0,
+          ohlcvAvailable: false, availableTimeframes: [],
+          provider: "cftc", observedAt: Date.now(),
+          freshness: "STALE", quality: "DEGRADED",
+        };
+      } catch { return null; }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD TREASURY ADAPTER (Yields)
+// ═══════════════════════════════════════════════════════════════
+
+function buildTreasuryAdapter(): ProviderAdapter {
+  return buildAdapter(
+    "treasury", "Treasury", ["macro", "indices"], ["yield"],
+    async (instrument) => {
+      try {
+        const url = `https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/avg_interest_rates?sort=-record_date&page[size]=1`;
+        const res = await defaultTransport(url);
+        if (!res.ok || !res.json) return null;
+        const d = res.json as { data?: [{ avg_interest_rate_amt?: string; record_date?: string }] };
+        const entry = d.data?.[0];
+        if (!entry?.avg_interest_rate_amt) return null;
+        const yield_ = parseFloat(entry.avg_interest_rate_amt);
+        if (!Number.isFinite(yield_)) return null;
+        return {
+          instrument, assetClass: "macro", price: yield_,
+          ohlcvAvailable: false, availableTimeframes: [],
+          provider: "treasury", observedAt: entry.record_date ? new Date(entry.record_date).getTime() : Date.now(),
+          freshness: "STALE", quality: "DEGRADED",
+        };
+      } catch { return null; }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD EIA ADAPTER (Commodity Inventory)
+// ═══════════════════════════════════════════════════════════════
+
+function buildEiaAdapter(): ProviderAdapter {
+  return buildAdapter(
+    "eia", "EIA", ["commodity"], ["inventory"],
+    async (instrument, _assetClass, readEnv) => {
+      const cred = checkCredentials("eia", readEnv);
+      if (cred && !cred.available) return null;
+      const apiKey = readEnv?.("EIA_API_KEY") ?? "";
+      if (!apiKey) return null;
+      try {
+        const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPM0&facets[duession][]=NUS&sort[0][column]=period&sort[0][direction]=desc&length=1`;
+        const res = await defaultTransport(url);
+        if (!res.ok || !res.json) return null;
+        return {
+          instrument, assetClass: "commodity", price: 0,
+          ohlcvAvailable: false, availableTimeframes: [],
+          provider: "eia", observedAt: Date.now(),
+          freshness: "STALE", quality: "DEGRADED",
+        };
+      } catch { return null; }
+    },
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // ADAPTER REGISTRY
 // ═══════════════════════════════════════════════════════════════
 
 const DEFAULT_ADAPTERS: ProviderAdapter[] = [
   buildTwelveDataAdapter(),
   buildCoinGeckoAdapter(),
+  buildCoinGlassAdapter(),
+  buildDefiLlamaAdapter(),
+  buildTokenomistAdapter(),
+  buildOkxAdapter(),
+  buildAlphaVantageAdapter(),
+  buildCftcAdapter(),
+  buildTreasuryAdapter(),
+  buildEiaAdapter(),
 ];
 
 let adapters: ProviderAdapter[] = [...DEFAULT_ADAPTERS];
