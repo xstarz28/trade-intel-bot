@@ -17,6 +17,8 @@ import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-en
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
+import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -572,6 +574,10 @@ export default function Dashboard() {
     setIsScanning(false);
   }, [liveSources]);
 
+  // Phase 51 — Radar state for autonomous scanning
+  const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
+  const radarStateRef = useRef<RadarState | null>(null);
+
   // Auto-scan when live sources change
   useMemo(() => {
     if (liveSources.length > 0) {
@@ -579,6 +585,48 @@ export default function Dashboard() {
       const result = scanInstruments(liveSources, config);
       setScanResult(result);
     }
+  }, [liveSources]);
+
+  // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
+  useMemo(() => {
+    if (liveSources.length === 0) return;
+    // Build radar candidate sources from analysis history
+    const radarSources: RadarCandidateSource[] = liveSources.map(ls => {
+      const ar = ls.analysisResult;
+      return {
+        universe: {
+          instrument: ls.instrument,
+          assetClass: ls.assetClass,
+          region: ls.assetClass === "equity" ? (ls.instrument.includes("BBCA") || ls.instrument.includes("BBRI") || ls.instrument.includes("TLKM") || ls.instrument.includes("BMRI") || ls.instrument.includes("BBNI") || ls.instrument.includes("GOTO") ? "idx" : "us") : "global",
+          requiredCapabilities: ["ohlcv", "quote"],
+          priority: 1,
+          refreshIntervalMs: 300_000,
+        },
+        snapshot: ar?.priceSnapshot ? {
+          instrument: ls.instrument,
+          assetClass: ls.assetClass,
+          price: ar.priceSnapshot.price,
+          ohlcvAvailable: true,
+          availableTimeframes: ["H1", "H4", "D1"],
+          htfBias: ar.bias === "Bullish" ? "long" : ar.bias === "Bearish" ? "short" : "neutral",
+          marketRegime: "UNKNOWN",
+          provider: ar.priceSnapshot.source ?? "unknown",
+          observedAt: ar.priceSnapshot.timestamp ?? Date.now(),
+          freshness: "FRESH",
+          quality: "DEGRADED",
+        } : null,
+        analysisResult: ar ? {
+          confidence: ar.confidence,
+          bias: ar.bias,
+          recommendation: ar.recommendation,
+        } : undefined,
+      } as RadarCandidateSource;
+    });
+
+    const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
+    const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);
+    radarStateRef.current = buildRadarState(result);
+    setRadarResult(result);
   }, [liveSources]);
 
   return (
@@ -647,6 +695,7 @@ export default function Dashboard() {
                 liveSources={liveSources}
                 isScanning={isScanning}
                 scanResult={scanResult ?? undefined}
+                radarResult={radarResult ?? undefined}
                 onRefresh={liveSources.length > 0 ? handleScanRefresh : undefined}
               />
             </div>

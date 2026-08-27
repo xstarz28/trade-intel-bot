@@ -28,6 +28,7 @@ import {
 } from "@/lib/liveScanner";
 import type { LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import type { AssetClass } from "@/lib/data/universal/types";
+import type { RadarScanResult, RadarOpportunity, OpportunityDiff, QualityTier } from "@/lib/market-radar/types";
 import {
   TrendingUp,
   Target,
@@ -115,6 +116,23 @@ const REGION_OPTIONS = [
 // PROPS
 // ═══════════════════════════════════════════════════════════════
 
+const QUALITY_TIER_COLORS: Record<QualityTier, string> = {
+  A: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  B: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+  C: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  D: "bg-orange-500/10 text-orange-400/60 border-orange-500/20",
+  X: "bg-red-500/10 text-red-400/50 border-red-500/15",
+};
+
+const LIFECYCLE_COLORS: Record<string, string> = {
+  ACTIVE: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  QUALIFIED: "bg-sky-500/15 text-sky-400 border-sky-500/30",
+  DISCOVERED: "bg-muted/30 text-muted-foreground border-border/50",
+  DEGRADED: "bg-amber-500/10 text-amber-400/60 border-amber-500/20",
+  INVALIDATED: "bg-red-500/10 text-red-400/60 border-red-500/20",
+  EXPIRED: "bg-red-500/5 text-red-400/40 border-red-500/10",
+};
+
 interface MarketOpportunitiesProps {
   /** Pre-computed candidates from current market state (Phase 49 fallback). */
   candidates: CandidateInput[];
@@ -124,6 +142,8 @@ interface MarketOpportunitiesProps {
   isScanning?: boolean;
   /** Last scan result (Phase 50). */
   scanResult?: ScanResult;
+  /** Phase 51 radar scan result. */
+  radarResult?: RadarScanResult;
   /** Callback to trigger a new scan. */
   onRefresh?: () => void;
 }
@@ -238,6 +258,119 @@ function RankedCard({ item }: { item: RankedInstrument }) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// RADAR CARD (Phase 51)
+// ═══════════════════════════════════════════════════════════════
+
+function RadarCard({ opp }: { opp: RadarOpportunity }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-mono font-bold">{opp.instrument}</span>
+        <Badge variant="outline" className={cn("text-[9px] font-mono", ASSET_COLORS[opp.assetClass] ?? "border-border/50")}>
+          {opp.assetClass}{opp.region ? ` · ${opp.region}` : ""}
+        </Badge>
+        <Badge variant="outline" className={cn("text-[9px] font-mono", LIFECYCLE_COLORS[opp.lifecycle] ?? "border-border/50")}>
+          {opp.lifecycle}
+        </Badge>
+        <Badge variant="outline" className={cn("text-[9px] font-mono font-bold", QUALITY_TIER_COLORS[opp.qualityTier])}>
+          {opp.qualityTier}
+        </Badge>
+        <span className="ml-auto text-[10px] font-mono text-muted-foreground">
+          score {opp.score}
+        </span>
+      </div>
+
+      <div className="flex items-center gap-3 mt-2">
+        <div className="text-center">
+          <p className="text-[9px] font-mono text-muted-foreground">score</p>
+          <p className={cn(
+            "text-sm font-bold font-mono tabular-nums",
+            opp.score >= 70 ? "text-emerald-400" :
+            opp.score >= 50 ? "text-amber-400" : "text-muted-foreground"
+          )}>
+            {opp.score}
+          </p>
+        </div>
+        <div className="text-center">
+          <p className="text-[9px] font-mono text-muted-foreground">confidence</p>
+          <p className="text-sm font-bold font-mono tabular-nums text-foreground">{opp.confidence}</p>
+        </div>
+        <div className="flex items-center gap-1 ml-auto">
+          <Badge variant="outline" className={cn("text-[8px] font-mono", FRESHNESS_COLORS[opp.freshness] ?? "border-border/50")}>
+            {opp.freshness}
+          </Badge>
+          <Badge variant="outline" className="text-[8px] font-mono border-border/50">
+            <span className={cn(DATA_COMPLETENESS_COLORS[opp.dataCompleteness])}>
+              {opp.dataCompleteness}
+            </span>
+          </Badge>
+        </div>
+      </div>
+
+      {opp.primaryReasons.length > 0 && (
+        <div className="mt-2 space-y-0.5">
+          {opp.primaryReasons.slice(0, 3).map((r, i) => (
+            <p key={i} className="text-[9px] font-mono text-muted-foreground/70">• {r}</p>
+          ))}
+        </div>
+      )}
+
+      {expanded && (
+        <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
+          {opp.supportingEvidence.length > 0 && (
+            <div>
+              <p className="text-[9px] font-mono font-semibold text-emerald-400/80 mb-0.5">supporting</p>
+              {opp.supportingEvidence.map((e, i) => (
+                <p key={i} className="text-[9px] font-mono text-emerald-300/60">✓ {e}</p>
+              ))}
+            </div>
+          )}
+          {opp.conflictingEvidence.length > 0 && (
+            <div>
+              <p className="text-[9px] font-mono font-semibold text-amber-400/80 mb-0.5">conflicts</p>
+              {opp.conflictingEvidence.map((c, i) => (
+                <p key={i} className="text-[9px] font-mono text-amber-300/60">⚠ {c}</p>
+              ))}
+            </div>
+          )}
+          {opp.missingInformation.length > 0 && (
+            <div>
+              <p className="text-[9px] font-mono font-semibold text-muted-foreground/60 mb-0.5">missing</p>
+              {opp.missingInformation.map((m, i) => (
+                <p key={i} className="text-[9px] font-mono text-muted-foreground/50">○ {m}</p>
+              ))}
+            </div>
+          )}
+          {opp.invalidationConditions.length > 0 && (
+            <div>
+              <p className="text-[9px] font-mono font-semibold text-red-400/80 mb-0.5">invalidation</p>
+              {opp.invalidationConditions.map((c, i) => (
+                <p key={i} className="text-[9px] font-mono text-red-300/60">• {c}</p>
+              ))}
+            </div>
+          )}
+          <div className="text-[9px] font-mono text-muted-foreground/60">
+            <span>coverage: {opp.providerCoverage}</span>
+            <span className="mx-1">·</span>
+            <span>updated: {new Date(opp.lastUpdated).toLocaleTimeString()}</span>
+          </div>
+        </div>
+      )}
+
+      <button
+        className="mt-1.5 text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground"
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? <ChevronDown className="size-3 inline" /> : <ChevronRight className="size-3 inline" />}
+        {" "}{expanded ? "less" : "why this asset?"}
+      </button>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
 
@@ -246,6 +379,7 @@ export function MarketOpportunities({
   liveSources,
   isScanning = false,
   scanResult: externalScanResult,
+  radarResult,
   onRefresh,
 }: MarketOpportunitiesProps) {
   const [tab, setTab] = useState<"trading" | "investing">("trading");
@@ -307,8 +441,27 @@ export function MarketOpportunities({
     });
   }, [result.rankedInstruments, regionFilter]);
 
-  const isLive = !!liveSources && liveSources.length > 0;
-  const scanTimestamp = scanResult?.timestamp;
+  // Phase 51: radar-based opportunities
+  const radarOpps = useMemo(() => {
+    if (!radarResult) return [];
+    const opps = radarResult.results.get(currentHorizon);
+    if (!opps) return [];
+    // Filter by region
+    if (regionFilter === "all") return opps;
+    return opps.filter(o => {
+      if (regionFilter === "idx") return o.region === "idx";
+      if (regionFilter === "us") return o.region === "us";
+      if (regionFilter === "global") return !o.region || o.region === "global" || o.region === "asia" || o.region === "europe";
+      return true;
+    }).filter(o => {
+      if (assetFilter === "all") return true;
+      return o.assetClass === assetFilter;
+    });
+  }, [radarResult, currentHorizon, regionFilter, assetFilter]);
+
+  const useRadar = radarOpps.length > 0;
+  const isLive = !!liveSources && liveSources.length > 0 || useRadar;
+  const scanTimestamp = scanResult?.timestamp ?? radarResult?.timestamp;
 
   const handleRefresh = useCallback(() => {
     if (onRefresh) onRefresh();
@@ -369,6 +522,11 @@ export function MarketOpportunities({
             {scanResult && (
               <span className="ml-1">
                 ({scanResult.totalScanned} scanned, {scanResult.totalWithLiveData} with live data, {scanResult.durationMs}ms)
+              </span>
+            )}
+            {radarResult && (
+              <span className="ml-1">
+                ({radarResult.totalScanned} scanned, {radarResult.freshCount}F/{radarResult.delayedCount}D/{radarResult.staleCount}S/{radarResult.unavailableCount}U)
               </span>
             )}
           </p>
@@ -479,24 +637,69 @@ export function MarketOpportunities({
           </div>
         )}
 
-        {/* Ranked instruments */}
-        {filteredRanked.length > 0 ? (
+        {/* Phase 51 Radar Opportunities */}
+        {useRadar && (
           <div className="space-y-2">
-            {filteredRanked.map((item) => (
-              <RankedCard key={item.instrument} item={item} />
-            ))}
+            {radarOpps.filter(o => o.lifecycle !== "EXPIRED" && o.lifecycle !== "INVALIDATED").length > 0 ? (
+              radarOpps
+                .filter(o => o.lifecycle !== "EXPIRED" && o.lifecycle !== "INVALIDATED")
+                .map((opp) => (
+                  <RadarCard key={opp.instrument} opp={opp} />
+                ))
+            ) : (
+              <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
+                <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />
+                <p className="text-xs font-mono text-muted-foreground font-semibold">
+                  No Clear Opportunity
+                </p>
+                <p className="text-[10px] font-mono text-muted-foreground/50 mt-1">
+                  Current market evidence does not support a strong ranking for this horizon.
+                </p>
+              </div>
+            )}
+            {/* Expired/Invalidated */}
+            {radarOpps.some(o => o.lifecycle === "EXPIRED" || o.lifecycle === "INVALIDATED") && (
+              <p className="text-[9px] font-mono text-muted-foreground/40">
+                {radarOpps.filter(o => o.lifecycle === "EXPIRED").length} expired, {radarOpps.filter(o => o.lifecycle === "INVALIDATED").length} invalidated
+              </p>
+            )}
           </div>
-        ) : (
-          <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
-            <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-xs font-mono text-muted-foreground font-semibold">
-              No Clear Opportunity
-            </p>
-            <p className="text-[10px] font-mono text-muted-foreground/50 mt-1">
-              {isLive
-                ? "Current market evidence does not support a strong ranking for this horizon."
-                : "No suitable instruments found. Connect live data sources for real-time scanning."}
-            </p>
+        )}
+
+        {/* Phase 50 Fallback: Static/Discovery Opportunities */}
+        {!useRadar && (
+          filteredRanked.length > 0 ? (
+            <div className="space-y-2">
+              {filteredRanked.map((item) => (
+                <RankedCard key={item.instrument} item={item} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
+              <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-xs font-mono text-muted-foreground font-semibold">
+                No Clear Opportunity
+              </p>
+              <p className="text-[10px] font-mono text-muted-foreground/50 mt-1">
+                {isLive
+                  ? "Current market evidence does not support a strong ranking for this horizon."
+                  : "No suitable instruments found. Connect live data sources for real-time scanning."}
+              </p>
+            </div>
+          )
+        )}
+
+        {/* Phase 51 Radar Diffs */}
+        {radarResult && radarResult.diffs.length > 0 && (
+          <div>
+            <p className="text-[8px] font-mono text-muted-foreground/40 mb-1">changes since last scan</p>
+            <div className="space-y-0.5">
+              {radarResult.diffs.slice(0, 5).map((d, i) => (
+                <p key={i} className="text-[8px] font-mono text-muted-foreground/50">
+                  <span className="font-semibold">{d.instrument}</span>: {d.changes.join(", ")}
+                </p>
+              ))}
+            </div>
           </div>
         )}
 
