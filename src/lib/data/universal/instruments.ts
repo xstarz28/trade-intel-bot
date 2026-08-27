@@ -743,3 +743,244 @@ export function isCryptoInstrument(instrument: string): boolean {
 export function getAllInstrumentIds(): string[] {
   return Object.keys(INSTRUMENTS);
 }
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 48 — ALIAS RESOLUTION & DISCOVERY
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Alias map: maps common user input forms to canonical instrument IDs.
+ * Keys are normalized to UPPER CASE, trimmed, with special chars removed.
+ */
+const ALIAS_MAP: Record<string, string> = {
+  // ── Crypto aliases ──────────────────────────────────────
+  BTC: "BTC/USD",
+  BTCUSD: "BTC/USD",
+  BTC_USD: "BTC/USD",
+  BTC-USDT: "BTC/USD",
+  BTCUSDT: "BTC/USD",
+  BITCOIN: "BTC/USD",
+  ETH: "ETH/USD",
+  ETHUSD: "ETH/USD",
+  ETH_USD: "ETH/USD",
+  ETHUSDT: "ETH/USD",
+  ETH-USDT: "ETH/USD",
+  ETHEREUM: "ETH/USD",
+  SOL: "SOL/USD",
+  SOLANA: "SOL/USD",
+  SOLUSD: "SOL/USD",
+  SOL_USD: "SOL/USD",
+  DOGE: "DOGE/USD",
+  DOGECOIN: "DOGE/USD",
+  DOGEUSD: "DOGE/USD",
+  DOGE_USD: "DOGE/USD",
+
+  // ── Forex aliases ───────────────────────────────────────
+  EURUSD: "EUR/USD",
+  EUR_USD: "EUR/USD",
+  GBPUSD: "GBP/USD",
+  GBP_USD: "GBP/USD",
+  USDJPY: "USD/JPY",
+  USD_JPY: "USD/JPY",
+  AUDUSD: "AUD/USD",
+  AUD_USD: "AUD/USD",
+  USDCAD: "USD/CAD",
+  USD_CAD: "USD/CAD",
+  USDCHF: "USD/CHF",
+  USD_CHF: "USD/CHF",
+  NZDUSD: "NZD/USD",
+  NZD_USD: "NZD/USD",
+  USDIDR: "USD/IDR",
+  USD_IDR: "USD/IDR",
+
+  // ── Commodity aliases ───────────────────────────────────
+  GOLD: "XAU/USD",
+  XAUUSD: "XAU/USD",
+  XAU_USD: "XAU/USD",
+  SILVER: "XAG/USD",
+  XAGUSD: "XAG/USD",
+  XAG_USD: "XAG/USD",
+  NATURALGAS: "NGAS",
+  "NATURAL GAS": "NGAS",
+
+  // ── Equity aliases ──────────────────────────────────────
+  "APPLE": "AAPL",
+  "APPLE INC": "AAPL",
+  "NVIDIA": "NVDA",
+  "TESLA": "TSLA",
+  "MICROSOFT": "MSFT",
+  "AMAZON": "AMZN",
+  "BANK CENTRAL ASIA": "BBCA",
+  "BANK RAKYAT INDONESIA": "BBRI",
+  "TELKOM INDONESIA": "TLKM",
+  "BANK MANDIRI": "BMRI",
+  "BANK NEGARA INDONESIA": "BBNI",
+  "GOTO GOJEK TOKOPEDIA": "GOTO",
+
+  // ── Index aliases ───────────────────────────────────────
+  "S&P 500": "SPX",
+  "S&P500": "SPX",
+  "SP500": "SPX",
+  "S&P 500 INDEX": "SPX",
+  "NASDAQ 100": "NDX",
+  "NASDAQ100": "NDX",
+  "NASDAQ 100 INDEX": "NDX",
+  "DOW JONES": "DJI",
+  "DOW JONES INDUSTRIAL AVERAGE": "DJI",
+  "DOW JONES INDEX": "DJI",
+  DJIA: "DJI",
+  "JAKARTA COMPOSITE": "IHSG",
+  "JAKARTA COMPOSITE INDEX": "IHSG",
+  JCI: "IHSG",
+  "IDX COMPOSITE": "IHSG",
+
+  // ── Macro aliases ───────────────────────────────────────
+  "US DOLLAR INDEX": "DXY",
+  "DOLLAR INDEX": "DXY",
+  "USDX": "DXY",
+};
+
+/**
+ * Normalize an input string for alias resolution.
+ * Uppercases, trims, collapses whitespace.
+ */
+function normalizeInput(input: string): string {
+  return input.toUpperCase().trim().replace(/\s+/g, " ");
+}
+
+/**
+ * Resolution status for ambiguous/failed lookups.
+ */
+export type ResolutionStatus =
+  | "RESOLVED"        // Exact canonical match or alias resolved
+  | "AMBIGUOUS"       // Multiple possible matches
+  | "UNKNOWN"         // Not found in registry or alias map
+  | "UNAVAILABLE";    // Found but all providers unavailable
+
+export interface InstrumentResolutionResult {
+  /** Resolution status. */
+  status: ResolutionStatus;
+  /** Canonical instrument ID if resolved. */
+  canonical?: string;
+  /** Full instrument identity if resolved. */
+  instrument?: CanonicalInstrument;
+  /** Candidate matches if ambiguous. */
+  candidates?: string[];
+  /** Why resolution failed. */
+  failureReason?: string;
+  /** Confidence of identity resolution (0-1). */
+  confidence: number;
+}
+
+/**
+ * Resolve a user input string to a canonical instrument.
+ * Handles aliases, normalization, and ambiguous cases.
+ */
+export function resolveInstrumentWithAliases(input: string): InstrumentResolutionResult {
+  if (!input || input.trim().length === 0) {
+    return { status: "UNKNOWN", confidence: 0, failureReason: "Empty input" };
+  }
+
+  const normalized = normalizeInput(input);
+
+  // 1. Direct canonical match (existing behavior)
+  const direct = INSTRUMENTS[normalized];
+  if (direct) {
+    return {
+      status: "RESOLVED",
+      canonical: direct.canonical,
+      instrument: direct,
+      confidence: 1.0,
+    };
+  }
+
+  // 2. Alias match
+  const aliasTarget = ALIAS_MAP[normalized];
+  if (aliasTarget) {
+    const canonical = INSTRUMENTS[aliasTarget];
+    if (canonical) {
+      return {
+        status: "RESOLVED",
+        canonical: canonical.canonical,
+        instrument: canonical,
+        confidence: 0.95,
+      };
+    }
+  }
+
+  // 3. Strip common suffixes (e.g., ".JK" for IDX, "/USD" variants)
+  const stripped = normalized.replace(/\.JK$/, "").replace(/\.IO$/, "");
+  if (stripped !== normalized) {
+    const directStripped = INSTRUMENTS[stripped];
+    if (directStripped) {
+      return {
+        status: "RESOLVED",
+        canonical: directStripped.canonical,
+        instrument: directStripped,
+        confidence: 0.9,
+      };
+    }
+  }
+
+  // 4. Fuzzy matching: find instruments where the normalized input appears as a
+  //    substring of the canonical or name (case-insensitive)
+  const fuzzyMatches: string[] = [];
+  for (const [key, inst] of Object.entries(INSTRUMENTS)) {
+    if (
+      inst.name.toUpperCase().includes(normalized) ||
+      inst.canonical.toUpperCase().includes(normalized) ||
+      inst.displaySymbol.toUpperCase().includes(normalized)
+    ) {
+      fuzzyMatches.push(key);
+    }
+  }
+
+  if (fuzzyMatches.length === 1) {
+    const match = INSTRUMENTS[fuzzyMatches[0]];
+    return {
+      status: "RESOLVED",
+      canonical: match.canonical,
+      instrument: match,
+      confidence: 0.7,
+    };
+  }
+
+  if (fuzzyMatches.length > 1) {
+    return {
+      status: "AMBIGUOUS",
+      candidates: fuzzyMatches,
+      confidence: 0.3,
+      failureReason: `Multiple matches: ${fuzzyMatches.join(", ")}`,
+    };
+  }
+
+  // 5. No match
+  return {
+    status: "UNKNOWN",
+    confidence: 0,
+    failureReason: `No canonical instrument found for "${input}"`,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// COVERAGE MATRIX & INSTRUMENT COUNT
+// ═══════════════════════════════════════════════════════════════
+
+/** Get the total count of known canonical instruments. */
+export function getInstrumentCount(): number {
+  return Object.keys(INSTRUMENTS).length;
+}
+
+/** Get instrument count by asset class. */
+export function getInstrumentCountByAssetClass(): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const inst of Object.values(INSTRUMENTS)) {
+    counts[inst.assetClass] = (counts[inst.assetClass] ?? 0) + 1;
+  }
+  return counts;
+}
+
+/** Get the total number of registered aliases. */
+export function getAliasCount(): number {
+  return Object.keys(ALIAS_MAP).length;
+}
