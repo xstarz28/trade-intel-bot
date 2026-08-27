@@ -393,16 +393,52 @@ export interface IndexAnalyticalDepth {
   assetClass: "indices";
   assembledAt: number;
 
-  marketStructure?: MarketStructureContext;
-  volatilityRegime?: VolatilityRegime;
+  marketStructure?: {
+    trend: TrendRegime;
+    momentum: "STRONG" | "MODERATE" | "WEAK" | "UNKNOWN";
+    volatilityRegime: VolatilityRegime;
+    rangeExpansion: "RANGE" | "EXPANSION" | "UNKNOWN";
+    description: string;
+  };
+  volatility?: {
+    currentVolatility?: number;
+    avgVolatility?: number;
+    regime: VolatilityRegime;
+    vixRelationship?: string;
+    available: boolean;
+    description: string;
+  };
   breadth?: {
     advanceDecline?: number;
     newHighsNewLows?: number;
+    breadthStrength?: "STRONG" | "MODERATE" | "WEAK" | "DIVERGENCE" | "UNKNOWN";
+    available: boolean;
+    description: string;
+  };
+  valuation?: {
+    pe?: number;
+    forwardPE?: number;
+    earningsYield?: number;
+    regime: "ELEVATED" | "MODERATE" | "DEPRESSED" | "UNKNOWN";
     available: boolean;
     description: string;
   };
   yieldSensitivity?: {
     level: "HIGH" | "MODERATE" | "LOW" | "UNKNOWN";
+    available: boolean;
+    description: string;
+  };
+  macroSensitivity?: {
+    us10YCorrelation?: string;
+    dxyCorrelation?: string;
+    vixInverseCorrelation?: string;
+    available: boolean;
+    description: string;
+  };
+  crossMarket?: {
+    spxVsNdx?: string;
+    spxVsDji?: string;
+    ihsgVsGlobal?: string;
     available: boolean;
     description: string;
   };
@@ -419,11 +455,14 @@ export interface MacroAnalyticalDepth {
   assetClass: "macro";
   assembledAt: number;
 
-  regime?: MarketRegime;
   trend?: TrendRegime;
+  momentum?: "STRONG" | "MODERATE" | "WEAK" | "UNKNOWN";
+
   yieldCurve?: {
-    shape: "NORMAL" | "INVERTED" | "FLAT" | "UNKNOWN";
+    shape: "STEEPENING" | "FLATTENING" | "INVERTED" | "POSITIVE_SLOPE" | "UNKNOWN";
     spread?: number;
+    tenYearYield?: number;
+    twoYearYield?: number;
     available: boolean;
     description: string;
   };
@@ -432,8 +471,33 @@ export interface MacroAnalyticalDepth {
     available: boolean;
     description: string;
   };
+  centralBank?: {
+    fedBias: "HAWKISH" | "DOVISH" | "NEUTRAL" | "SHIFTING" | "UNKNOWN";
+    ecbBias: "HAWKISH" | "DOVISH" | "NEUTRAL" | "SHIFTING" | "UNKNOWN";
+    bojBias: "HAWKISH" | "DOVISH" | "NEUTRAL" | "SHIFTING" | "UNKNOWN";
+    available: boolean;
+    description: string;
+  };
+  globalLiquidity?: {
+    trend: "EXPANDING" | "CONTRACTING" | "STABLE" | "UNKNOWN";
+    m2Change?: number;
+    available: boolean;
+    description: string;
+  };
+  macroEvents?: {
+    upcomingEvents: { name: string; date: string; impact: string; region?: string }[];
+    available: boolean;
+    description: string;
+  };
+  macroRegime?: {
+    regime: MarketRegime;
+    description: string;
+  };
   riskRegime?: MarketRegime;
-  centralBankContext?: string;
+  dxyContext?: {
+    trend: TrendRegime;
+    description: string;
+  };
 
   dimensions: AnalyticalDimension[];
   supportingEvidence: string[];
