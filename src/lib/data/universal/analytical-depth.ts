@@ -577,6 +577,272 @@ export function buildCommodityAnalyticalDepth(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// INDEX ANALYTICAL DEPTH
+// ═══════════════════════════════════════════════════════════════
+
+export interface IndexRawData {
+  price?: { current?: number; change24h?: number; changePct?: number };
+  volatility?: { current?: number; average?: number; vix?: number };
+  breadth?: { advanceDecline?: number; newHighsNewLows?: number };
+  valuation?: { pe?: number; forwardPE?: number };
+  yields?: { us10Y?: number; us2Y?: number; realYield10Y?: number };
+  dxy?: { value?: number; change?: number };
+  crossMarket?: { spxVsNdx?: string; spxVsDji?: string };
+  region?: string;
+}
+
+export function buildIndexAnalyticalDepth(
+  instrument: string,
+  data: IndexRawData,
+): IndexAnalyticalDepth {
+  const dims: AnalyticalDimension[] = [];
+  const supporting: string[] = [];
+  const conflicting: string[] = [];
+  const missing: string[] = [];
+
+  // Market Structure
+  const marketStructure = data.price?.changePct !== undefined ? {
+    trend: (data.price.changePct > 1 ? "BULLISH" : data.price.changePct < -1 ? "BEARISH" : "NEUTRAL") as TrendRegime,
+    momentum: (Math.abs(data.price.changePct) > 3 ? "STRONG" : Math.abs(data.price.changePct) > 1 ? "MODERATE" : "WEAK") as "STRONG" | "MODERATE" | "WEAK" | "UNKNOWN",
+    volatilityRegime: (data.volatility?.current !== undefined && data.volatility?.average !== undefined
+      ? (data.volatility.current > data.volatility.average * 1.5 ? "HIGH" : data.volatility.current < data.volatility.average * 0.6 ? "LOW" : "NORMAL")
+      : "UNKNOWN") as VolatilityRegime,
+    rangeExpansion: (Math.abs(data.price.changePct) > 2 ? "EXPANSION" : "RANGE") as "RANGE" | "EXPANSION" | "UNKNOWN",
+    description: `${instrument} moved ${data.price.changePct > 0 ? "+" : ""}${data.price.changePct.toFixed(2)}% — ${Math.abs(data.price.changePct) > 2 ? "expansion" : "range"} mode.`,
+  } : undefined;
+
+  if (marketStructure) {
+    dims.push({ name: "index_structure", category: "MARKET_STRUCTURE", source: "price_data", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "PRIMARY", explanation: marketStructure.description, available: true, dependencyGroup: "INDEX_STRUCTURE" });
+    supporting.push(marketStructure.description);
+  } else { missing.push("Index price data"); }
+
+  // Volatility
+  const volatility = data.volatility?.current !== undefined ? {
+    currentVolatility: data.volatility.current,
+    avgVolatility: data.volatility.average,
+    regime: (data.volatility.average !== undefined && data.volatility.current > data.volatility.average * 1.5 ? "HIGH" : data.volatility.average !== undefined && data.volatility.current < data.volatility.average * 0.6 ? "LOW" : "NORMAL") as VolatilityRegime,
+    vixRelationship: data.volatility.vix !== undefined ? `VIX at ${data.volatility.vix.toFixed(1)}` : undefined,
+    available: true,
+    description: `Volatility ${data.volatility.average !== undefined ? `${(data.volatility.current / data.volatility.average).toFixed(1)}x average` : `at ${data.volatility.current.toFixed(1)}`}.`,
+  } : undefined;
+
+  if (volatility) {
+    dims.push({ name: "index_volatility", category: "MARKET_STRUCTURE", source: "price_data", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "PRIMARY", explanation: volatility.description, available: true, dependencyGroup: "INDEX_VOLATILITY" });
+    supporting.push(volatility.description);
+  } else { missing.push("Volatility data"); }
+
+  // Breadth
+  const breadth = data.breadth ? {
+    advanceDecline: data.breadth.advanceDecline,
+    newHighsNewLows: data.breadth.newHighsNewLows,
+    breadthStrength: (data.breadth.advanceDecline !== undefined ? (data.breadth.advanceDecline > 1.5 ? "STRONG" : data.breadth.advanceDecline < 0.7 ? "WEAK" : "MODERATE") : "UNKNOWN") as "STRONG" | "MODERATE" | "WEAK" | "DIVERGENCE" | "UNKNOWN",
+    available: true,
+    description: `Advance/decline ratio: ${data.breadth.advanceDecline?.toFixed(2) ?? "unavailable"}.`,
+  } : { available: false, description: "Breadth data unavailable." };
+
+  if (breadth.available) {
+    dims.push({ name: "index_breadth", category: "CROSS_ASSET", source: "market_data", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "SECONDARY", explanation: breadth.description, available: true, dependencyGroup: "INDEX_BREADTH" });
+    supporting.push(breadth.description);
+  } else { missing.push("Breadth data"); }
+
+  // Valuation
+  const valuation = data.valuation?.pe !== undefined ? {
+    pe: data.valuation.pe,
+    forwardPE: data.valuation.forwardPE,
+    earningsYield: data.valuation.pe > 0 ? (1 / data.valuation.pe) * 100 : undefined,
+    regime: (data.valuation.pe > 25 ? "ELEVATED" : data.valuation.pe < 15 ? "DEPRESSED" : "MODERATE") as "ELEVATED" | "MODERATE" | "DEPRESSED" | "UNKNOWN",
+    available: true,
+    description: `P/E at ${data.valuation.pe.toFixed(1)}x — ${data.valuation.pe > 25 ? "elevated" : data.valuation.pe < 15 ? "depressed" : "moderate"} valuation.`,
+  } : undefined;
+
+  if (valuation) {
+    dims.push({ name: "index_valuation", category: "VALUATION", source: "market_data", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "SECONDARY", explanation: valuation.description, available: true, dependencyGroup: "INDEX_VALUATION" });
+    supporting.push(valuation.description);
+  } else { missing.push("Valuation data"); }
+
+  // Macro sensitivity
+  const macroSensitivity = data.yields?.us10Y !== undefined || data.dxy?.value !== undefined ? {
+    us1010YCorrelation: data.yields?.us10Y !== undefined ? `US10Y at ${data.yields.us10Y.toFixed(2)}%` : undefined,
+    dxyCorrelation: data.dxy?.value !== undefined ? `DXY at ${data.dxy.value.toFixed(1)}` : undefined,
+    available: true,
+    description: `Macro context: US10Y ${data.yields?.us10Y?.toFixed(2) ?? "N/A"}%, DXY ${data.dxy?.value?.toFixed(1) ?? "N/A"}.`,
+  } : undefined;
+
+  if (macroSensitivity) {
+    dims.push({ name: "index_macro_sensitivity", category: "CROSS_ASSET", source: "Treasury/DXY", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "SECONDARY", explanation: macroSensitivity.description, available: true, dependencyGroup: "MACRO_RATES" });
+  } else { missing.push("Macro sensitivity data"); }
+
+  // Risk regime
+  const riskRegime: MarketRegime | undefined = data.price?.changePct !== undefined && data.volatility?.current !== undefined
+    ? (data.price.changePct < -2 && data.volatility.current > (data.volatility.average ?? 20) * 1.3 ? "RISK_OFF"
+      : data.price.changePct > 2 ? "RISK_ON"
+      : "TRANSITION")
+    : undefined;
+
+  // Cross-market
+  const crossMarket = data.crossMarket ? {
+    spxVsNdx: data.crossMarket.spxVsNdx,
+    spxVsDji: data.crossMarket.spxVsDji,
+    available: true,
+    description: `Cross-market: ${data.crossMarket.spxVsNdx ?? "N/A"}.`,
+  } : undefined;
+
+  if (crossMarket) {
+    dims.push({ name: "index_cross_market", category: "CROSS_ASSET", source: "derived", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "SECONDARY", explanation: crossMarket.description, available: true, dependencyGroup: "INDEX_CROSS_MARKET" });
+  }
+
+  return {
+    instrument,
+    assetClass: "indices",
+    assembledAt: Date.now(),
+    marketStructure,
+    volatility,
+    breadth,
+    valuation,
+    yieldSensitivity: data.yields?.us10Y !== undefined ? { level: "MODERATE", available: true, description: `Yield sensitivity moderate (US10Y: ${data.yields.us10Y.toFixed(2)}%).` } : undefined,
+    macroSensitivity,
+    crossMarket,
+    riskRegime,
+    dimensions: dims,
+    supportingEvidence: supporting,
+    conflictingEvidence: conflicting,
+    missingInformation: missing,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MACRO ANALYTICAL DEPTH
+// ═══════════════════════════════════════════════════════════════
+
+export interface MacroRawData {
+  dxy?: { value?: number; change?: number; trend?: string };
+  treasury?: { tenYear?: number; twoYear?: number; change10Y?: number; change2Y?: number };
+  realYield?: { tenYearReal?: number };
+  centralBank?: { fedBias?: string; ecbBias?: string; bojBias?: string };
+  liquidity?: { m2Change?: number };
+  events?: { name: string; date: string; impact: string; region?: string }[];
+}
+
+export function buildMacroAnalyticalDepth(
+  instrument: string,
+  data: MacroRawData,
+): MacroAnalyticalDepth {
+  const dims: AnalyticalDimension[] = [];
+  const supporting: string[] = [];
+  const conflicting: string[] = [];
+  const missing: string[] = [];
+
+  // DXY context
+  const dxyContext = data.dxy?.value !== undefined ? {
+    trend: classifyTrend(data.dxy.change) as TrendRegime,
+    description: `DXY at ${data.dxy.value.toFixed(1)}, ${classifyTrend(data.dxy.change).toLowerCase()} trend.`,
+  } : undefined;
+
+  if (dxyContext) {
+    dims.push({ name: "dxy_context", category: "CROSS_ASSET", source: "market_data", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "PRIMARY", explanation: dxyContext.description, available: true, dependencyGroup: "DXY" });
+    supporting.push(dxyContext.description);
+  } else { missing.push("DXY data"); }
+
+  // Yield curve
+  const yieldCurve = data.treasury?.tenYear !== undefined && data.treasury?.twoYear !== undefined ? {
+    shape: ((data.treasury.tenYear - data.treasury.twoYear) < -0.1 ? "INVERTED"
+      : (data.treasury.tenYear - data.treasury.twoYear) < 0.2 ? "FLATTENING"
+      : "POSITIVE_SLOPE") as "STEEPENING" | "FLATTENING" | "INVERTED" | "POSITIVE_SLOPE" | "UNKNOWN",
+    spread: data.treasury.tenYear - data.treasury.twoYear,
+    tenYearYield: data.treasury.tenYear,
+    twoYearYield: data.treasury.twoYear,
+    available: true,
+    description: `10Y-2Y spread: ${(data.treasury.tenYear - data.treasury.twoYear).toFixed(2)}%.`,
+  } : undefined;
+
+  if (yieldCurve) {
+    dims.push({ name: "yield_curve", category: "MACRO", source: "Treasury", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "PRIMARY", explanation: yieldCurve.description, available: true, dependencyGroup: "YIELD_CURVE" });
+    supporting.push(yieldCurve.description);
+  } else { missing.push("Yield curve data"); }
+
+  // Real yield
+  const realYield = data.realYield?.tenYearReal !== undefined ? {
+    tenYearRealYield: data.realYield.tenYearReal,
+    available: true,
+    description: `10Y real yield: ${data.realYield.tenYearReal.toFixed(2)}%.`,
+  } : undefined;
+
+  if (realYield) {
+    dims.push({ name: "real_yield", category: "MACRO", source: "Treasury", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "SECONDARY", explanation: realYield.description, available: true, dependencyGroup: "REAL_YIELD" });
+    supporting.push(realYield.description);
+  } else { missing.push("Real yield data"); }
+
+  // Central bank
+  const centralBank = data.centralBank ? {
+    fedBias: classifyCentralBankBias(data.centralBank.fedBias) as "HAWKISH" | "DOVISH" | "NEUTRAL" | "SHIFTING" | "UNKNOWN",
+    ecbBias: classifyCentralBankBias(data.centralBank.ecbBias) as "HAWKISH" | "DOVISH" | "NEUTRAL" | "SHIFTING" | "UNKNOWN",
+    bojBias: classifyCentralBankBias(data.centralBank.bojBias) as "HAWKISH" | "DOVISH" | "NEUTRAL" | "SHIFTING" | "UNKNOWN",
+    available: true,
+    description: `Fed: ${data.centralBank.fedBias ?? "unknown"}, ECB: ${data.centralBank.ecbBias ?? "unknown"}, BoJ: ${data.centralBank.bojBias ?? "unknown"}.`,
+  } : undefined;
+
+  if (centralBank) {
+    dims.push({ name: "central_bank_policy", category: "RATES", source: "Central Banks", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "PRIMARY", explanation: centralBank.description, available: true, dependencyGroup: "CENTRAL_BANK_POLICY" });
+    supporting.push(centralBank.description);
+  } else { missing.push("Central bank context"); }
+
+  // Global liquidity
+  const globalLiquidity = data.liquidity?.m2Change !== undefined ? {
+    trend: (data.liquidity.m2Change > 5 ? "EXPANDING" : data.liquidity.m2Change < -5 ? "CONTRACTING" : "STABLE") as "EXPANDING" | "CONTRACTING" | "STABLE" | "UNKNOWN",
+    m2Change: data.liquidity.m2Change,
+    available: true,
+    description: `M2 ${data.liquidity.m2Change > 0 ? "expanding" : "contracting"} at ${data.liquidity.m2Change > 0 ? "+" : ""}${data.liquidity.m2Change.toFixed(1)}%.`,
+  } : undefined;
+
+  if (globalLiquidity) {
+    dims.push({ name: "global_liquidity", category: "LIQUIDITY", source: "FRED", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "SECONDARY", explanation: globalLiquidity.description, available: true, dependencyGroup: "GLOBAL_LIQUIDITY" });
+    supporting.push(globalLiquidity.description);
+  } else { missing.push("Global liquidity data"); }
+
+  // Macro events
+  const macroEvents = data.events && data.events.length > 0 ? {
+    upcomingEvents: data.events,
+    available: true,
+    description: `${data.events.length} upcoming event(s): ${data.events.map(e => e.name).join(", ")}.`,
+  } : undefined;
+
+  if (macroEvents) {
+    dims.push({ name: "macro_events", category: "MACRO", source: "calendar", quality: "DEGRADED", freshness: "STALE", horizonRelevance: "PRIMARY", explanation: macroEvents.description, available: true, dependencyGroup: "MACRO_EVENT" });
+    supporting.push(macroEvents.description);
+  } else { missing.push("Macro event data"); }
+
+  // Macro regime (from available data)
+  const macroRegime = data.dxy?.change !== undefined && data.treasury?.tenYear !== undefined ? {
+    regime: (data.treasury.tenYear > 4.5 && (data.dxy.change ?? 0) > 0.5 ? "POLICY_TIGHTENING"
+      : data.treasury.tenYear < 3.0 ? "POLICY_EASING"
+      : "TRANSITION") as MarketRegime,
+    description: `Macro regime based on yields and DXY trend.`,
+  } : undefined;
+
+  // Trend
+  const trend = classifyTrend(data.dxy?.change) as TrendRegime;
+
+  return {
+    instrument,
+    assetClass: "macro",
+    assembledAt: Date.now(),
+    trend,
+    yieldCurve,
+    realYield,
+    centralBank,
+    globalLiquidity,
+    macroEvents,
+    macroRegime,
+    riskRegime: macroRegime?.regime,
+    dxyContext,
+    dimensions: dims,
+    supportingEvidence: supporting,
+    conflictingEvidence: conflicting,
+    missingInformation: missing,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // UNIVERSAL ANALYTICAL CONTEXT ASSEMBLER
 // ═══════════════════════════════════════════════════════════════
 
@@ -670,7 +936,7 @@ function classifyCentralBankBias(bias?: string): "HAWKISH" | "DOVISH" | "NEUTRAL
   if (!bias) return "UNKNOWN";
   const b = bias.toLowerCase();
   if (b.includes("hawk")) return "HAWKISH";
-  if (b.includes("dove")) return "DOVISH";
+  if (b.includes("dov")) return "DOVISH";
   if (b.includes("neutral") || b.includes("steady")) return "NEUTRAL";
   if (b.includes("changing") || b.includes("shift")) return "CHANGING";
   return "UNKNOWN";
