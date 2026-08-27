@@ -154,12 +154,84 @@ export const VERIFICATION_MATRIX: VerificationSpec[] = [
   // ── Treasury ──
   { provider: "treasury", instrument: "US10Y", providerSymbol: "US10Y", capability: "yield", assetClass: "macro", requiresCredential: false },
 
+  // ── CFTC — verified COT market names ──
+  { provider: "cftc", instrument: "EUR/USD", providerSymbol: "EURO FX - CHICAGO MERCANTILE EXCHANGE", capability: "cot", assetClass: "forex", requiresCredential: false },
+  { provider: "cftc", instrument: "GBP/USD", providerSymbol: "BRITISH POUND STERLING - CHICAGO MERCANTILE EXCHANGE", capability: "cot", assetClass: "forex", requiresCredential: false },
+  { provider: "cftc", instrument: "USD/JPY", providerSymbol: "JAPANESE YEN - CHICAGO MERCANTILE EXCHANGE", capability: "cot", assetClass: "forex", requiresCredential: false },
+  { provider: "cftc", instrument: "XAU/USD", providerSymbol: "GOLD - COMMODITY EXCHANGE INC.", capability: "cot", assetClass: "commodity", requiresCredential: false },
+  { provider: "cftc", instrument: "XAG/USD", providerSymbol: "SILVER - COMMODITY EXCHANGE INC.", capability: "cot", assetClass: "commodity", requiresCredential: false },
+  { provider: "cftc", instrument: "WTI", providerSymbol: "CRUDE OIL, LIGHT SWEET - NEW YORK MERCANTILE EXCHANGE", capability: "cot", assetClass: "commodity", requiresCredential: false },
+
+  // ── EIA (requires API key for verification) ──
+  // EIA spec is listed here; live verification requires EIA_API_KEY.
+  // We include it for documentation; buildVerificationUrl handles null-key gracefully.
+  // { provider: "eia", instrument: "WTI", providerSymbol: "EPC0", capability: "inventory", assetClass: "commodity", requiresCredential: true },
+
   // ── DeFiLlama ──
   { provider: "defillama", instrument: "BTC/USD", providerSymbol: "bitcoin", capability: "defi", assetClass: "crypto", requiresCredential: false },
 
-  // ── Tokenomist ──
-  { provider: "tokenomist", instrument: "BTC/USD", providerSymbol: "btc", capability: "tokenomics", assetClass: "crypto", requiresCredential: false },
+  // ── OKX — additional ──
+  { provider: "okx", instrument: "DOGE/USD", providerSymbol: "DOGE-USDT", capability: "ohlcv", assetClass: "crypto", requiresCredential: false },
+  { provider: "okx", instrument: "XRP/USD", providerSymbol: "XRP-USDT", capability: "ohlcv", assetClass: "crypto", requiresCredential: false },
+
+  // ── CoinGecko — additional ──
+  { provider: "coingecko", instrument: "XRP/USD", providerSymbol: "ripple", capability: "quote", assetClass: "crypto", requiresCredential: false },
+  { provider: "coingecko", instrument: "AVAX/USD", providerSymbol: "avalanche-2", capability: "quote", assetClass: "crypto", requiresCredential: false },
+  { provider: "coingecko", instrument: "LINK/USD", providerSymbol: "chainlink", capability: "quote", assetClass: "crypto", requiresCredential: false },
+
+  // ── Twelve Data — additional ──
+  { provider: "twelve-data", instrument: "SOL/USD", providerSymbol: "SOL/USD", capability: "ohlcv", assetClass: "crypto", requiresCredential: true },
+  { provider: "twelve-data", instrument: "AUD/USD", providerSymbol: "AUD/USD", capability: "ohlcv", assetClass: "forex", requiresCredential: true },
+  { provider: "twelve-data", instrument: "VIX", providerSymbol: "VIX", capability: "ohlcv", assetClass: "indices", requiresCredential: true },
 ];
+
+
+function validateCftcResponse(json: unknown, base: ResponseValidation): ResponseValidation {
+  if (!Array.isArray(json)) {
+    return { ...base, errorMessage: "CFTC response is not an array" };
+  }
+  if (json.length === 0) {
+    return { ...base, errorMessage: "CFTC returned no COT data rows" };
+  }
+  const row = json[0] as Record<string, unknown>;
+  if (!row["market_and_exchange_names"] && !row["noncomm_positions_long_all"]) {
+    return { ...base, errorMessage: "CFTC row missing expected fields" };
+  }
+  return {
+    ...base,
+    schemaValid: true,
+    numericValid: true,
+    responseTimestamp: row["report_date_as_yyyy_mm_dd"]
+      ? new Date(String(row["report_date_as_yyyy_mm_dd"])).getTime()
+      : null,
+    freshness: "STALE", // COT reports are weekly
+    provenance: "cftc-socrata",
+  };
+}
+
+function validateEiaResponse(json: unknown, base: ResponseValidation): ResponseValidation {
+  const data = json as { data?: { response?: { data?: Record<string, unknown>[] } }; error?: string };
+  if (data.error) {
+    return { ...base, errorMessage: `EIA error: ${data.error}` };
+  }
+  const rows = data?.data?.response?.data ?? [];
+  if (rows.length === 0) {
+    return { ...base, errorMessage: "EIA returned no inventory data" };
+  }
+  const latest = rows[0];
+  const value = Number(latest?.value);
+  if (!Number.isFinite(value) || value <= 0) {
+    return { ...base, numericValid: false, errorMessage: "EIA invalid inventory value" };
+  }
+  return {
+    ...base,
+    schemaValid: true,
+    numericValid: true,
+    responseTimestamp: latest?.period ? new Date(String(latest.period)).getTime() : null,
+    freshness: "STALE",
+    provenance: "eia-v2",
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════
 // LIVE VERIFICATION ENGINE
@@ -381,8 +453,15 @@ function buildVerificationUrl(spec: VerificationSpec, apiKey: string): string | 
       return `https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v2/accounting/od/avg_interest_rates?sort=-record_date&page[size]=1`;
     case "defillama":
       return `https://api.llama.fi/v2/historicalChainTvl/${spec.providerSymbol}`;
+    case "cftc":
+      return `https://publicreporting.cftc.gov/resource/6dca-aqww.json?$where=market_and_exchange_names='${encodeURIComponent(spec.providerSymbol)}'&$order=report_date_as_yyyy_mm_dd DESC&$limit=1`;
+    case "eia":
+      // EIA requires API key — only verifiable if key present
+      if (!apiKey) return null;
+      return `https://api.eia.gov/v2/petroleum/sto/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPC0&facets[process][]=STA&facets[area][]=NUS-Z00&sort[0][column]=period&sort[0][direction]=desc&length=1`;
     case "tokenomist":
-      return null; // No public verification endpoint confirmed
+      // Tokenomist public API is not reliably available for verification
+      return null;
     default:
       return null;
   }
@@ -443,6 +522,10 @@ function validateProviderResponse(
         return validateTreasuryResponse(json, base);
       case "defillama":
         return validateDefiLlamaResponse(json, base);
+      case "cftc":
+        return validateCftcResponse(json, base);
+      case "eia":
+        return validateEiaResponse(json, base);
       default:
         return { ...base, errorMessage: "No validation defined for provider" };
     }
