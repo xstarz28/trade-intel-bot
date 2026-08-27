@@ -13,6 +13,7 @@ import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
+import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
@@ -283,6 +284,190 @@ export default function Dashboard() {
           executionData,
           okxSpecData,
         };
+
+        // Phase 44-45 — Build universal intelligence context for non-crypto instruments.
+        // Crypto uses its own CryptoIntelligenceContext (Phase 41-43).
+        if (input.instrumentType !== "crypto") {
+          try {
+            const now = Date.now();
+            const meta = (provider: string) => ({
+              provider,
+              observedAt: now,
+              freshness: "FRESH" as const,
+              quality: "DEGRADED" as const,
+              available: false,
+              availableDatasets: 0,
+              totalDatasets: 0,
+            });
+
+            // Build forex intelligence context
+            let forexCtx: ForexIntelligenceContext | undefined;
+            if (input.instrumentType === "forex") {
+              forexCtx = {
+                instrument: input.instrument,
+                instrumentType: "forex",
+                assembledAt: now,
+                rates: treasuryData?.available ? {
+                  ...meta("treasury"),
+                  available: true,
+                  quality: "VERIFIED",
+                  availableDatasets: 1,
+                  totalDatasets: 1,
+                  rateDifferential: undefined,
+                } : undefined,
+                positioning: cotData?.available ? {
+                  ...meta("cftc"),
+                  available: true,
+                  quality: "DEGRADED",
+                  availableDatasets: 1,
+                  totalDatasets: 1,
+                  nonCommercialNet: cotData.mappedAsset ? undefined : undefined,
+                  commercialNet: undefined,
+                } : undefined,
+                macro: calendarResult?.data ? {
+                  ...meta("trading-economics"),
+                  available: true,
+                  quality: "VERIFIED",
+                  availableDatasets: 1,
+                  totalDatasets: 1,
+                  upcomingEvents: calendarResult.data.events?.filter((e: any) => e.status === "upcoming").slice(0, 5).map((e: any) => ({
+                    name: e.event,
+                    date: new Date(e.datetime).toISOString().slice(0, 10),
+                    impact: e.importance === 3 ? "high" : e.importance === 2 ? "medium" : "low",
+                  })) ?? [],
+                } : undefined,
+                crossAsset: {
+                  ...meta("cross-asset"),
+                  available: true,
+                  quality: "DEGRADED",
+                  availableDatasets: 1,
+                  totalDatasets: 1,
+                  riskRegime: "unknown",
+                },
+                evidence: [],
+                overallAvailability: "PARTIAL",
+                overallQuality: "DEGRADED",
+                missingInformation: [],
+                analystSummary: `Forex intelligence assembled for ${input.instrument}.`,
+              };
+            }
+
+            // Build equity intelligence context
+            let equityCtx: EquityIntelligenceContext | undefined;
+            if (input.instrumentType === "stock") {
+              const fundamentals = intelligenceResult?.fundamentals;
+              equityCtx = {
+                instrument: input.instrument,
+                instrumentType: "equity",
+                assembledAt: now,
+                fundamentals: fundamentals?.available ? {
+                  ...meta("alpha-vantage"),
+                  available: true,
+                  quality: "VERIFIED",
+                  availableDatasets: 5,
+                  totalDatasets: 5,
+                  peRatio: fundamentals.peRatio,
+                  marketCap: fundamentals.marketCap,
+                  profitMargin: fundamentals.profitMargin,
+                  revenueGrowth: fundamentals.revenueGrowth,
+                } : undefined,
+                sector: fundamentals?.sector ? {
+                  sector: fundamentals.sector,
+                  industry: fundamentals.industry,
+                } : undefined,
+                evidence: [],
+                overallAvailability: fundamentals?.available ? "PARTIAL" : "MINIMAL",
+                overallQuality: fundamentals?.available ? "VERIFIED" : "UNAVAILABLE",
+                missingInformation: fundamentals?.available ? [] : ["Fundamental data unavailable"],
+                analystSummary: `Equity intelligence assembled for ${input.instrument}.`,
+              };
+            }
+
+            // Build commodity intelligence context
+            let commodityCtx: CommodityIntelligenceContext | undefined;
+            if (input.instrumentType === "commodity") {
+              commodityCtx = {
+                instrument: input.instrument,
+                instrumentType: "commodity",
+                assembledAt: now,
+                inventory: eiaData?.available ? {
+                  ...meta("eia"),
+                  available: true,
+                  quality: "DEGRADED",
+                  availableDatasets: 1,
+                  totalDatasets: 1,
+                  currentInventory: eiaData.series?.[0]?.latestValue,
+                  changeWeekly: eiaData.series?.[0]?.change,
+                } : undefined,
+                positioning: cotData?.available ? {
+                  ...meta("cftc"),
+                  available: true,
+                  quality: "DEGRADED",
+                  availableDatasets: 1,
+                  totalDatasets: 1,
+                } : undefined,
+                evidence: [],
+                overallAvailability: (eiaData?.available || cotData?.available) ? "PARTIAL" : "MINIMAL",
+                overallQuality: "DEGRADED",
+                missingInformation: [
+                  ...(!eiaData?.available ? ["EIA inventory data"] : []),
+                  ...(!cotData?.available ? ["CFTC COT positioning"] : []),
+                ],
+                analystSummary: `Commodity intelligence assembled for ${input.instrument}.`,
+              };
+            }
+
+            // Build cross-asset context (always available for non-crypto)
+            const crossAssetCtx: CrossAssetIntelligenceContext = {
+              assembledAt: now,
+              treasury: treasuryData?.available ? {
+                ...meta("treasury"),
+                available: true,
+                quality: "VERIFIED",
+                availableDatasets: 2,
+                totalDatasets: 2,
+                tenYear: treasuryData.latest?.nominal?.nominal?.["10Y"],
+                yieldCurve: undefined,
+              } : undefined,
+              evidence: [],
+              overallAvailability: treasuryData?.available ? "PARTIAL" : "MINIMAL",
+              overallQuality: "DEGRADED",
+              missingInformation: [
+                ...(!treasuryData?.available ? ["Treasury yield data"] : []),
+                "DXY data (live)",
+                "Risk regime data",
+              ],
+              analystSummary: `Cross-asset context assembled for ${input.instrument}.`,
+            };
+
+            // Construct universal intelligence context
+            const universalCtx: UniversalIntelligenceContext = {
+              instrument: input.instrument,
+              assetClass: input.instrumentType === "forex" ? "forex" : input.instrumentType === "stock" ? "equity" : input.instrumentType === "commodity" ? "commodity" : "macro",
+              assembledAt: now,
+              forex: forexCtx,
+              equity: equityCtx,
+              commodity: commodityCtx,
+              crossAsset: crossAssetCtx,
+              evidence: [],
+              overallAvailability: "PARTIAL",
+              overallQuality: "DEGRADED",
+              missingInformation: [
+                ...(!treasuryData?.available ? ["Treasury yield data"] : []),
+                ...(!cotData?.available ? ["CFTC COT positioning"] : []),
+                ...(!eiaData?.available ? ["EIA inventory data"] : []),
+                ...(!intelligenceResult?.fundamentals?.available ? ["Fundamental data"] : []),
+              ],
+              dataFlags: [],
+              analystSummary: `Universal intelligence assembled for ${input.instrument}.`,
+            };
+
+            enrichedInput.universalIntelligenceContext = universalCtx;
+          } catch {
+            // Universal intelligence is informational — failure is non-fatal
+          }
+        }
+
         const result = runAnalysis(enrichedInput);
 
         await new Promise((r) => setTimeout(r, 150));
