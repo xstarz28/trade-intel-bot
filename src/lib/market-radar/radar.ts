@@ -203,6 +203,25 @@ function scoreOpportunity(
     confidence = Math.max(0, confidence - conflicting.length * 5);
   }
 
+  // ── Phase 55: Analytical Depth (informational only, small weight) ──
+  if (source.analyticalDepth) {
+    const ad = source.analyticalDepth;
+    if (ad.regime && ad.regime !== "UNKNOWN") {
+      score += 2;
+      supporting.push(`analytical regime: ${ad.regime}`);
+    }
+    if (ad.dimensionsAvailable && ad.dimensionsAvailable >= 4) {
+      score += 3;
+      supporting.push(`deep analytical context (${ad.dimensionsAvailable} dimensions)`);
+    } else if (ad.dimensionsAvailable !== undefined && ad.dimensionsAvailable < 2) {
+      missing.push("deep analytical context");
+    }
+    if (ad.relativeValue) {
+      score += 1;
+      supporting.push(`relative value: ${ad.relativeValue}`);
+    }
+  }
+
   // Build primary reasons from top supporting evidence
   const topReasons = supporting.slice(0, 3);
 
@@ -358,6 +377,19 @@ export function scanRadar(
         freshness,
       );
 
+      // Phase 55: Build analytical context summary for the opportunity
+      const ad = source.analyticalDepth;
+      const analyticalContext = ad ? {
+        regime: ad.regime,
+        primarySupport: ad.supportingEvidence?.[0],
+        primaryConflict: ad.conflictingEvidence?.[0],
+        keyRisk: ad.missingInformation?.[0],
+        missingCritical: ad.missingInformation?.slice(0, 2).join('; '),
+        relativeValue: ad.relativeValue,
+        dimensionsAvailable: ad.dimensionsAvailable,
+        dimensionsTotal: ad.dimensionsTotal,
+      } : undefined;
+
       const opp: RadarOpportunity = {
         instrument: source.universe.instrument,
         assetClass: source.universe.assetClass,
@@ -377,6 +409,7 @@ export function scanRadar(
         lastUpdated: timestamp,
         candidateInstrument: source.universe.instrument,
         dependencyGroups: [],
+        analyticalContext,
       };
 
       if (!allHorizonOpps.has(horizon)) allHorizonOpps.set(horizon, []);
