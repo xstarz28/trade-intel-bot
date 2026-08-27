@@ -212,6 +212,28 @@ export interface RadarOpportunity {
   candidateInstrument: string;
   /** Dependency groups tracked. */
   dependencyGroups: string[];
+
+  /** Phase 55 — Analytical context summary (optional, informational only). */
+  analyticalContext?: {
+    /** Market regime classification. */
+    regime?: string;
+    /** Primary supporting analytical factor. */
+    primarySupport?: string;
+    /** Primary conflicting analytical factor. */
+    primaryConflict?: string;
+    /** Key analytical risk. */
+    keyRisk?: string;
+    /** Missing critical intelligence. */
+    missingCritical?: string;
+    /** Relative value context if available. */
+    relativeValue?: string;
+    /** Horizon relevance of analytical context. */
+    horizonRelevance?: string;
+    /** Number of analytical dimensions available. */
+    dimensionsAvailable?: number;
+    /** Total analytical dimensions attempted. */
+    dimensionsTotal?: number;
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════

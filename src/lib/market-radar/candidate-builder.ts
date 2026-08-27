@@ -64,6 +64,16 @@ export interface RadarCandidateSource {
       atr?: number;
     };
   };
+  /** Phase 55 — Analytical depth context (informational only, never modifies decision engine). */
+  analyticalDepth?: {
+    regime?: string;
+    supportingEvidence?: string[];
+    conflictingEvidence?: string[];
+    missingInformation?: string[];
+    dimensionsAvailable?: number;
+    dimensionsTotal?: number;
+    relativeValue?: string;
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
