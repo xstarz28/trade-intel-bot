@@ -13,6 +13,8 @@ import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
+import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
+import { MarketOpportunities } from "@/components/MarketOpportunities";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -578,6 +580,22 @@ export default function Dashboard() {
                 analyses={history}
                 onSelect={handleSelectHistory}
                 selectedId={currentResult?.id}
+              />
+            </div>
+
+            {/* Phase 49 — Market Opportunities: ranked candidates from instrument registry discovery */}
+            <div className="hidden lg:block">
+              <MarketOpportunities
+                candidates={discoverCandidates().map((d) => ({
+                  instrument: d.instrument,
+                  assetClass: d.assetClass,
+                  currentPrice: 0,
+                  dataCompleteness: "MINIMAL",
+                  dataPoints: 0,
+                  hasLiveData: false,
+                  freshness: "UNAVAILABLE",
+                  providerCoverage: "PARTIAL",
+                } as CandidateInput))}
               />
             </div>
           </div>
