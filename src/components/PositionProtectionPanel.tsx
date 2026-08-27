@@ -1,8 +1,9 @@
 /**
- * Phase 57/58 — Position Protection Panel
+ * Phase 57/58/59 — Position Protection Panel
  *
  * Displays profit protection alerts, thesis health monitoring,
- * real-time monitoring status, giveback tracking, and alert timeline.
+ * real-time monitoring status, giveback tracking, alert timeline,
+ * connection state, observation gap, acceleration, and reconciliation.
  * INFORMATIONAL_ONLY — never modifies trades.
  */
 import React, { useState } from "react";
@@ -20,6 +21,10 @@ import {
   Zap,
   Radio,
   Eye,
+  Wifi,
+  WifiOff,
+  RotateCcw,
+  Gauge,
 } from "lucide-react";
 import type { ProtectionAlert } from "@/lib/position-protection/types";
 import type {
@@ -27,7 +32,10 @@ import type {
   MonitoringStatus,
   AlertHistoryEntry,
 } from "@/lib/position-protection/realtime-types";
+import type { StreamHealthState } from "@/lib/market-stream/types";
 import type { GivebackState } from "@/lib/position-protection/giveback-monitor";
+import type { AccelerationResult } from "@/lib/position-protection/acceleration-monitor";
+import type { ReconciliationResult } from "@/lib/market-stream/types";
 
 // ═══════════════════════════════════════════════════════════════
 // SEVERITY STYLES
@@ -113,6 +121,16 @@ const STATUS_CONFIG: Record<
 };
 
 // ═══════════════════════════════════════════════════════════════
+// ACCELERATION LEVEL STYLES
+// ═══════════════════════════════════════════════════════════════
+
+const ACCEL_CONFIG: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
+  NORMAL: { color: "text-emerald-400", icon: <Gauge className="size-3" />, label: "Normal" },
+  ELEVATED: { color: "text-amber-400", icon: <Gauge className="size-3" />, label: "Elevated" },
+  HIGH: { color: "text-red-400", icon: <Gauge className="size-3" />, label: "High" },
+};
+
+// ═══════════════════════════════════════════════════════════════
 // SECTION
 // ═══════════════════════════════════════════════════════════════
 
@@ -155,9 +173,11 @@ function Section({
 function ProfitMetrics({
   alert,
   giveback,
+  peakProfit,
 }: {
   alert: ProtectionAlert;
   giveback?: GivebackState;
+  peakProfit?: number;
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
@@ -180,19 +200,129 @@ function ProfitMetrics({
         </div>
       </div>
       <div className="bg-background/50 rounded-lg p-2 border border-border/20">
-        <div className="text-[9px] text-muted-foreground">Distance from Entry</div>
+        <div className="text-[9px] text-muted-foreground">Peak Profit</div>
         <div className="text-foreground font-semibold">
-          {alert.profit.distanceFromEntryPct.toFixed(2)}%
+          {peakProfit !== undefined ? `+${peakProfit.toFixed(2)}` : "—"}
         </div>
       </div>
       {alert.protectionReference !== undefined && (
         <div className="bg-background/50 rounded-lg p-2 border border-border/20">
-          <div className="text-[9px] text-muted-foreground">
-            Protection Ref
-          </div>
+          <div className="text-[9px] text-muted-foreground">Protection Ref</div>
           <div className="text-foreground font-semibold">
             {alert.protectionReference.toFixed(2)}
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CONNECTION STATUS BAR
+// ═══════════════════════════════════════════════════════════════
+
+function ConnectionStatusBar({
+  streamHealth,
+  monitoringGapMs,
+  lastMarketUpdateAt,
+  reconciliation,
+}: {
+  streamHealth?: StreamHealthState;
+  monitoringGapMs?: number;
+  lastMarketUpdateAt?: number;
+  reconciliation?: ReconciliationResult;
+}) {
+  const statusLabel = streamHealth?.status ?? "DISCONNECTED";
+  const isLive = statusLabel === "LIVE";
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-3 text-[10px] font-mono">
+        <div className="flex items-center gap-1">
+          {isLive ? (
+            <Wifi className="size-3 text-emerald-400" />
+          ) : (
+            <WifiOff className="size-3 text-red-400" />
+          )}
+          <span className={isLive ? "text-emerald-400" : "text-red-400"}>
+            {statusLabel}
+          </span>
+        </div>
+        {streamHealth && (
+          <>
+            <span className="text-muted-foreground">
+              Events: {streamHealth.eventsReceived}
+            </span>
+            {streamHealth.eventsDropped > 0 && (
+              <span className="text-amber-400">
+                Dropped: {streamHealth.eventsDropped}
+              </span>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Monitoring gap */}
+      {monitoringGapMs !== undefined && monitoringGapMs > 0 && (
+        <div className="text-[10px] font-mono text-amber-400">
+          <RotateCcw className="size-3 inline mr-1" />
+          Monitoring gap: {(monitoringGapMs / 1000).toFixed(0)}s
+        </div>
+      )}
+
+      {/* Last market update */}
+      {lastMarketUpdateAt !== undefined && lastMarketUpdateAt > 0 && (
+        <div className="text-[10px] font-mono text-muted-foreground">
+          Last market update:{" "}
+          {new Date(lastMarketUpdateAt).toLocaleTimeString("en-US", {
+            hour12: false,
+          })}
+        </div>
+      )}
+
+      {/* Reconciliation */}
+      {reconciliation && reconciliation.gapDurationMs > 0 && (
+        <div
+          className={`text-[10px] font-mono px-2 py-0.5 rounded ${reconciliation.success ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400"}`}
+        >
+          {reconciliation.description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ACCELERATION DISPLAY
+// ═══════════════════════════════════════════════════════════════
+
+function AccelerationDisplay({
+  priceAcceleration,
+  givebackAcceleration,
+}: {
+  priceAcceleration?: AccelerationResult;
+  givebackAcceleration?: AccelerationResult;
+}) {
+  if (!priceAcceleration && !givebackAcceleration) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 text-[10px] font-mono">
+      {priceAcceleration && priceAcceleration.level !== "NORMAL" && (
+        <div
+          className={`flex items-center gap-1 px-2 py-0.5 rounded ${priceAcceleration.level === "HIGH" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400"}`}
+        >
+          <Gauge className="size-3" />
+          Price {ACCEL_CONFIG[priceAcceleration.level]?.label}:{" "}
+          {Math.abs(priceAcceleration.rate).toFixed(2)}/s
+        </div>
+      )}
+      {givebackAcceleration && givebackAcceleration.level !== "NORMAL" && (
+        <div
+          className={`flex items-center gap-1 px-2 py-0.5 rounded ${givebackAcceleration.level === "HIGH" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400"}`}
+        >
+          <TrendingDown className="size-3" />
+          Giveback {ACCEL_CONFIG[givebackAcceleration.level]?.label}:{" "}
+          {givebackAcceleration.rate.toFixed(2)}/s
         </div>
       )}
     </div>
@@ -255,6 +385,20 @@ interface PositionProtectionPanelProps {
   protectionEvent?: ProtectionEvent;
   /** Last update timestamp (ms). */
   lastUpdateAt?: number;
+  /** Stream health (Phase 59). */
+  streamHealth?: StreamHealthState;
+  /** Monitoring gap duration (ms). */
+  monitoringGapMs?: number;
+  /** Last market data update timestamp. */
+  lastMarketUpdateAt?: number;
+  /** Reconciliation result after reconnect. */
+  reconciliation?: ReconciliationResult;
+  /** Price acceleration. */
+  priceAcceleration?: AccelerationResult;
+  /** Giveback acceleration. */
+  givebackAcceleration?: AccelerationResult;
+  /** Peak profit seen. */
+  peakProfit?: number;
 }
 
 export function PositionProtectionPanel({
@@ -264,6 +408,13 @@ export function PositionProtectionPanel({
   alertHistory = [],
   protectionEvent,
   lastUpdateAt,
+  streamHealth,
+  monitoringGapMs,
+  lastMarketUpdateAt,
+  reconciliation,
+  priceAcceleration,
+  givebackAcceleration,
+  peakProfit,
 }: PositionProtectionPanelProps) {
   const [expanded, setExpanded] = useState(true);
   const cfg = SEVERITY_CONFIG[alert.severity] ?? SEVERITY_CONFIG.NONE;
@@ -321,7 +472,15 @@ export function PositionProtectionPanel({
 
       {expanded && (
         <div className="px-4 pb-4 space-y-3">
-          {/* Live monitoring status bar */}
+          {/* Phase 59 — Connection status bar */}
+          <ConnectionStatusBar
+            streamHealth={streamHealth}
+            monitoringGapMs={monitoringGapMs}
+            lastMarketUpdateAt={lastMarketUpdateAt}
+            reconciliation={reconciliation}
+          />
+
+          {/* Monitoring status bar */}
           {monitoringStatus !== "LIVE" && (
             <div
               className={`text-[10px] font-mono px-2 py-1 rounded ${
@@ -362,22 +521,28 @@ export function PositionProtectionPanel({
                   </div>
                 </div>
               </div>
-              {alert.severity === "HIGH_RISK" ||
-                (alert.severity === "INVALIDATED" && (
-                  <div className="text-[10px] font-mono text-muted-foreground pl-5">
-                    Why now:{" "}
-                    {alert.supportingEvidence.slice(0, 3).join("; ") ||
-                      "Multiple evidence signals indicate elevated risk."}
-                    {giveback && giveback.givebackPct > 0
-                      ? `. ${giveback.givebackPct.toFixed(0)}% of peak profit given back.`
-                      : ""}
-                  </div>
-                ))}
+              {(alert.severity === "HIGH_RISK" ||
+                alert.severity === "INVALIDATED") && (
+                <div className="text-[10px] font-mono text-muted-foreground pl-5">
+                  Why now:{" "}
+                  {alert.conflictingEvidence.slice(0, 3).join("; ") ||
+                    "Multiple evidence signals indicate elevated risk."}
+                  {giveback && giveback.givebackPct > 0
+                    ? `. ${giveback.givebackPct.toFixed(0)}% of peak profit given back.`
+                    : ""}
+                </div>
+              )}
             </div>
           )}
 
+          {/* Phase 59 — Acceleration display */}
+          <AccelerationDisplay
+            priceAcceleration={priceAcceleration}
+            givebackAcceleration={givebackAcceleration}
+          />
+
           {/* Profit metrics */}
-          <ProfitMetrics alert={alert} giveback={giveback} />
+          <ProfitMetrics alert={alert} giveback={giveback} peakProfit={peakProfit} />
 
           {/* Supporting evidence */}
           {alert.supportingEvidence.length > 0 && (
