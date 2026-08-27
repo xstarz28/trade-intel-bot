@@ -707,3 +707,89 @@ export function getProviderHealthSummary(): {
     };
   });
 }
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 54: VERIFICATION-AWARE HEALTH
+// ═══════════════════════════════════════════════════════════════
+
+import type { VerificationResult, VerificationStatus } from "./verification";
+
+/**
+ * Map a Phase 54 verification status to a provider health status.
+ * Provider health NEVER becomes directional evidence.
+ */
+export function verificationToHealthStatus(
+  verificationStatus: VerificationStatus,
+): ProviderHealthStatus {
+  switch (verificationStatus) {
+    case "LIVE_VERIFIED":
+    case "LIVE_VERIFIED_PARTIAL":
+      return "HEALTHY";
+    case "RATE_LIMITED":
+      return "RATE_LIMITED";
+    case "TIMEOUT":
+    case "NETWORK_ERROR":
+      return "TIMEOUT";
+    case "CREDENTIAL_MISSING":
+      return "AUTH_ERROR";
+    case "MALFORMED_RESPONSE":
+      return "MALFORMED_RESPONSE";
+    case "ENDPOINT_FAILED":
+    case "DATA_INVALID":
+    case "SYMBOL_UNSUPPORTED":
+      return "DEGRADED";
+    case "ARCHITECTURALLY_IMPLEMENTED":
+    case "DATA_STALE":
+    case "NOT_TESTED":
+    default:
+      return "HEALTHY"; // unknown/untested = assume healthy
+  }
+}
+
+/**
+ * Apply a batch of verification results to provider health state.
+ * Only HEALTHY/DEGRADED/RATE_LIMITED/TIMEOUT/etc are propagated.
+ * Provider health NEVER becomes directional evidence.
+ */
+export function applyVerificationResults(
+  results: VerificationResult[],
+): Map<string, ProviderHealthStatus> {
+  const aggregated = new Map<string, ProviderHealthStatus>();
+
+  // Group results by provider
+  const byProvider = new Map<string, VerificationResult[]>();
+  for (const r of results) {
+    const existing = byProvider.get(r.provider) ?? [];
+    existing.push(r);
+    byProvider.set(r.provider, existing);
+  }
+
+  // For each provider: worst status wins (conservative)
+  const healthPriority: Record<ProviderHealthStatus, number> = {
+    HEALTHY: 0,
+    DEGRADED: 1,
+    RATE_LIMITED: 2,
+    TIMEOUT: 3,
+    AUTH_ERROR: 4,
+    UNAVAILABLE: 5,
+    MALFORMED_RESPONSE: 4,
+  };
+
+  for (const [provider, providerResults] of byProvider) {
+    let worstHealth: ProviderHealthStatus = "HEALTHY";
+    let worstPriority = healthPriority["HEALTHY"];
+
+    for (const r of providerResults) {
+      const health = verificationToHealthStatus(r.status);
+      const priority = healthPriority[health];
+      if (priority > worstPriority) {
+        worstPriority = priority;
+        worstHealth = health;
+      }
+    }
+
+    aggregated.set(provider, worstHealth);
+  }
+
+  return aggregated;
+}
