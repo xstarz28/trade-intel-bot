@@ -80,7 +80,7 @@ export function detectShock(evidence: MarketEvidence): ShockAssessment {
     state = "SHOCK";
     description = `${shockCount} shock indicators detected simultaneously.`;
     confidence = Math.min(100, 50 + shockCount * 10);
-  } else if (shockCount === 1 || elevatedCount >= 2) {
+  } else if (shockCount === 1 || elevatedCount >= 1) {
     state = "ELEVATED";
     description = "Elevated market stress detected.";
     confidence = Math.min(100, 40 + elevatedCount * 10);
