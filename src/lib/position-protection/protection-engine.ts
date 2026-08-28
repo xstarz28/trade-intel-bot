@@ -15,6 +15,8 @@ import type {
   ProfitMetrics,
   ShockAssessment,
   MonitoringState,
+  ProfitProtectionUrgency,
+  WhyTpNowExplanation,
 } from "./types";
 import { alertSeverityRank } from "./types";
 import { calculateProfitMetrics } from "./profit-state";
@@ -117,6 +119,113 @@ function determineAction(severity: AlertSeverity, profit: ProfitMetrics): string
     case "INVALIDATED":
       return "Original thesis is no longer supported. Consider closing or hedging manually.";
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// URGENCY DETERMINATION
+// ═══════════════════════════════════════════════════════════════
+
+function determineUrgency(
+  severity: AlertSeverity,
+  profit: ProfitMetrics,
+  thesisHealth: { state: string; score: number; deteriorationCount: number; confirmingCount: number },
+  shock: ShockAssessment,
+  givebackPct?: number,
+): { urgency: ProfitProtectionUrgency; reason: string } {
+  const isProfitable = profit.profitState === "PROFITABLE" || profit.profitState === "STRONGLY_PROFITABLE";
+
+  if (severity === "INVALIDATED") {
+    return { urgency: "CRITICAL", reason: "Thesis invalidated — key conditions supporting the position are no longer present." };
+  }
+
+  if (severity === "HIGH_RISK") {
+    const factors = thesisHealth.deteriorationCount;
+    return {
+      urgency: "HIGH",
+      reason: `${factors} independent deterioration signals detected with significant thesis weakening. Profit giveback risk is materializing.`,
+    };
+  }
+
+  if (severity === "CAUTION") {
+    if (shock.state === "SHOCK") {
+      return { urgency: "HIGH", reason: "Market shock detected while thesis is deteriorating. Rapid reversal risk increasing." };
+    }
+    if (givebackPct !== undefined && givebackPct > 40) {
+      return { urgency: "MODERATE", reason: `Significant giveback (${givebackPct.toFixed(0)}%) combined with multiple deterioration signals.` };
+    }
+    return {
+      urgency: "MODERATE",
+      reason: `${thesisHealth.deteriorationCount} signals indicate increasing risk. Thesis health: ${thesisHealth.score}/100.`,
+    };
+  }
+
+  if (severity === "WATCH") {
+    return {
+      urgency: "LOW",
+      reason: "Early deterioration detected. Monitor conditions closely for potential escalation.",
+    };
+  }
+
+  return { urgency: "NONE", reason: "No urgency — position thesis appears healthy." };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// WHY TP NOW? EXPLANATION
+// ═══════════════════════════════════════════════════════════════
+
+function buildWhyTpNow(
+  severity: AlertSeverity,
+  profit: ProfitMetrics,
+  thesisHealth: { state: string; score: number; deteriorationCount: number; confirmingCount: number },
+  shock: ShockAssessment,
+  supportingEvidence: string[],
+  conflictingEvidence: string[],
+  missingData: string[],
+  givebackPct?: number,
+): WhyTpNowExplanation {
+  const rStr = profit.rMultiple !== undefined ? `${profit.rMultiple >= 0 ? "+" : ""}${profit.rMultiple.toFixed(2)}R` : `${profit.distanceFromEntryPct.toFixed(1)}%`;
+  const profitStatus = `${rStr} unrealized ${profit.profitState.toLowerCase().replace("_", " ")}`;
+
+  const whatChanged = conflictingEvidence.slice(0, 5);
+  const confirmations = conflictingEvidence.length >= 2 ? [`${conflictingEvidence.length} independent deterioration signals confirmed`] : [];
+  const stillSupporting = supportingEvidence.slice(0, 5);
+  const missingEvidence = missingData.slice(0, 3);
+
+  let urgencyIncreased = "";
+  let suggestedAction = "";
+
+  switch (severity) {
+    case "WATCH":
+      urgencyIncreased = "Early deterioration detected — monitoring conditions closely.";
+      suggestedAction = "No immediate action needed. Continue monitoring.";
+      break;
+    case "CAUTION":
+      urgencyIncreased = "Multiple signals indicate increasing risk. Thesis health is weakening.";
+      suggestedAction = "Consider securing partial profit manually if position remains strong.";
+      break;
+    case "HIGH_RISK":
+      urgencyIncreased = "Significant thesis deterioration combined with profit giveback. Risk of further adverse movement is materializing.";
+      suggestedAction = "Consider manually securing part or all of the existing profit.";
+      break;
+    case "INVALIDATED":
+      urgencyIncreased = "Original thesis is no longer supported by market evidence.";
+      suggestedAction = "Consider closing or hedging the position manually.";
+      break;
+    default:
+      urgencyIncreased = "No urgency.";
+      suggestedAction = "Hold and monitor.";
+  }
+
+  return {
+    profitStatus,
+    whatChanged,
+    confirmations,
+    stillSupporting,
+    missingEvidence,
+    urgencyIncreased,
+    suggestedAction,
+    disclaimer: "This is an informational risk-protection alert, not an automatic trade instruction. Classification confidence ≠ likelihood of price movement.",
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -234,10 +343,24 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
   }
   updatedState.peakProfitSeen = peakProfitSeen;
 
-  // 11. Build the alert
+  // 11. Compute urgency
+  const { urgency, reason: urgencyReason } = determineUrgency(
+    severity, profit, thesisHealth, shock, profit.givebackPct,
+  );
+
+  // 12. Build "Why TP Now?" explanation
+  const whyTpNow = buildWhyTpNow(
+    severity, profit, thesisHealth, shock, supportingEvidence, conflictingEvidence, missingData, profit.givebackPct,
+  );
+
+  // 13. Build the alert
   const alert: ProtectionAlert = {
     instrument: position.instrument,
+    side: position.side,
     severity,
+    urgency,
+    urgencyReason,
+    whyTpNow,
     thesisHealth: thesisHealth.state as any,
     thesisHealthScore: thesisHealth.score,
     profit,

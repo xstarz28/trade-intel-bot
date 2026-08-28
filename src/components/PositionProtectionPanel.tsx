@@ -612,7 +612,7 @@ export function PositionProtectionPanel({
           {/* Disclaimer */}
           <div className="text-[9px] font-mono text-muted-foreground/50 pt-2 border-t border-border/20">
             Informational only. This is not financial advice. Does not
-            auto-execute trades. Classification confidence ≠ profit probability.
+            auto-execute trades. Classification confidence ≠ likelihood of price movement.
           </div>
         </div>
       )}
