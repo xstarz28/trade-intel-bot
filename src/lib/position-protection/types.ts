@@ -162,9 +162,38 @@ export function alertSeverityRank(a: AlertSeverity): number {
 // PROTECTION ALERT
 // ═══════════════════════════════════════════════════════════════
 
+export type ProfitProtectionUrgency = "NONE" | "LOW" | "MODERATE" | "HIGH" | "CRITICAL";
+
+export const URGENCY_ORDER: ProfitProtectionUrgency[] = ["NONE", "LOW", "MODERATE", "HIGH", "CRITICAL"];
+
+export function urgencyRank(u: ProfitProtectionUrgency): number {
+  return URGENCY_ORDER.indexOf(u);
+}
+
+export interface WhyTpNowExplanation {
+  /** Current profit status. */
+  profitStatus: string;
+  /** What changed in market conditions. */
+  whatChanged: string[];
+  /** Independent confirmations of deterioration. */
+  confirmations: string[];
+  /** What evidence is still supporting the thesis. */
+  stillSupporting: string[];
+  /** What evidence is missing. */
+  missingEvidence: string[];
+  /** Why urgency increased. */
+  urgencyIncreased: string;
+  /** Manual action suggestion. */
+  suggestedAction: string;
+  /** Informational disclaimer. */
+  disclaimer: string;
+}
+
 export interface ProtectionAlert {
   /** Instrument. */
   instrument: string;
+  /** Side. */
+  side?: "LONG" | "SHORT";
   /** Current alert severity. */
   severity: AlertSeverity;
   /** Thesis health state. */
@@ -181,6 +210,12 @@ export interface ProtectionAlert {
   conflictingEvidence: string[];
   /** Missing critical data. */
   missingData: string[];
+  /** Profit protection urgency level. */
+  urgency: ProfitProtectionUrgency;
+  /** Reason for the urgency classification. */
+  urgencyReason: string;
+  /** Structured explanation for "Why TP Now?" */
+  whyTpNow: WhyTpNowExplanation;
   /** Human-readable alert message. */
   alertMessage: string;
   /** Action recommendation (manual only). */
