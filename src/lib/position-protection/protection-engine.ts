@@ -186,11 +186,31 @@ function buildWhyTpNow(
   const rStr = profit.rMultiple !== undefined ? `${profit.rMultiple >= 0 ? "+" : ""}${profit.rMultiple.toFixed(2)}R` : `${profit.distanceFromEntryPct.toFixed(1)}%`;
   const profitStatus = `${rStr} unrealized ${profit.profitState.toLowerCase().replace("_", " ")}`;
 
+  // What changed — list conflicting evidence
   const whatChanged = conflictingEvidence.slice(0, 5);
-  const confirmations = conflictingEvidence.length >= 2 ? [`${conflictingEvidence.length} independent deterioration signals confirmed`] : [];
+
+  // Confirmations — independent evidence groups
+  const independentGroups = conflictingEvidence.length;
+  const confirmations: string[] = [];
+  if (independentGroups >= 4) {
+    confirmations.push(`${independentGroups} independent evidence groups deteriorated — strong confirmation of reversal risk.`);
+  } else if (independentGroups >= 2) {
+    confirmations.push(`${independentGroups} independent evidence groups deteriorated.`);
+  }
+  if (thesisHealth.state === "SEVERELY_DETERIORATING") {
+    confirmations.push(`Thesis health severely deteriorating (${thesisHealth.score}/100).`);
+  }
+  if (shock.state === "SHOCK") {
+    confirmations.push(`Market shock detected — ${shock.description}`);
+  }
+
+  // Still supporting
   const stillSupporting = supportingEvidence.slice(0, 5);
+
+  // Missing evidence
   const missingEvidence = missingData.slice(0, 3);
 
+  // Urgency and action
   let urgencyIncreased = "";
   let suggestedAction = "";
 

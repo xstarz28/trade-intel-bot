@@ -329,7 +329,7 @@ export function createMacroChangeEvent(
     eventType: "MACRO_CHANGE",
     priority: regime === "risk_off" ? "HIGH" : "MEDIUM",
     dependencyGroup: `MACRO:${instrument}`,
-    payload: { regime },
+    payload: { regime, regimeChanged: regime === "risk_off" || regime === "transition" },
   };
 }
 

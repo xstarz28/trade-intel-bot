@@ -67,12 +67,8 @@ export function shouldAlert(
   // Always fire on state transition (escalation or recovery)
   const isTransition = newSeverity !== state.currentSeverity;
   if (isTransition) {
-    // Check cooldown for escalations
+    // Escalation always fires — bypasses cooldown for severity increases
     if (alertSeverityRank(newSeverity) > alertSeverityRank(state.currentSeverity)) {
-      // Escalation — respect cooldown unless severity warrants immediate
-      if (now < state.nextAlertAllowedAt) {
-        return { shouldFire: false, reason: `Cooldown active until ${new Date(state.nextAlertAllowedAt).toISOString()}.` };
-      }
       return { shouldFire: true, reason: `Escalation: ${state.currentSeverity} → ${newSeverity}.` };
     }
     // Recovery (severity decreased)
