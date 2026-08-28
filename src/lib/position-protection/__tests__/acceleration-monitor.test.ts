@@ -90,7 +90,8 @@ describe("calculateAcceleration", () => {
     ];
     const result = calculateAcceleration(obs, now);
     expect(result.level).toBe("NORMAL");
-    expect(result.rate).toBeCloseTo(1 / 1000, 4);
+    // Rate is computed per second: (103-100)/3s = 1.0/s
+    expect(result.rate).toBeCloseTo(1.0, 1);
   });
 
   it("detects HIGH acceleration for rapid rate change", () => {

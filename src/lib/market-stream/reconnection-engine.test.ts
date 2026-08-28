@@ -47,11 +47,12 @@ describe("state transitions", () => {
 
   it("onConnected sets LIVE and resets", () => {
     const state = createReconnectState();
-    let s = initiateConnect(state, Date.now());
-    s = onConnected(s, Date.now() + 1000);
+    const t0 = Date.now();
+    let s = initiateConnect(state, t0);
+    s = onConnected(s, t0 + 1000);
     expect(s.status).toBe("LIVE");
     expect(s.attempts).toBe(0);
-    expect(s.lastConnectedAt).toBe(Date.now() + 1000);
+    expect(s.lastConnectedAt).toBe(t0 + 1000);
   });
 
   it("onDisconnected sets DISCONNECTED", () => {

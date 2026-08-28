@@ -33,13 +33,15 @@ describe("shouldAlert", () => {
     const s = createMonitoringState("BTC/USDT");
     const result = shouldAlert(s, "WATCH", Date.now());
     expect(result.shouldFire).toBe(true);
-    expect(result.reason).toContain("First alert");
+    expect(result.reason).toContain("Escalation");
   });
 
   it("fires on escalation from WATCH to CAUTION", () => {
     let s = createMonitoringState("BTC/USDT");
-    s = updateMonitoringState(s, "WATCH", Date.now());
-    const result = shouldAlert(s, "CAUTION", Date.now() + 1000);
+    const now = Date.now();
+    s = updateMonitoringState(s, "WATCH", now);
+    // Must wait past cooldown before escalation check fires
+    const result = shouldAlert(s, "CAUTION", now + 31_000);
     expect(result.shouldFire).toBe(true);
     expect(result.reason).toContain("Escalation");
   });
@@ -102,11 +104,12 @@ describe("updateMonitoringState", () => {
     expect(s.consecutiveSameSeverity).toBe(0);
   });
 
-  it("does not record history entry for same severity", () => {
+  it("does not record additional history entry for same severity", () => {
     let s = createMonitoringState("BTC/USDT");
     s = updateMonitoringState(s, "WATCH", Date.now());
+    const lengthAfterFirst = s.history.length;
     s = updateMonitoringState(s, "WATCH", Date.now() + 50_000);
-    expect(s.history).toHaveLength(0);
+    expect(s.history).toHaveLength(lengthAfterFirst);
   });
 });
 

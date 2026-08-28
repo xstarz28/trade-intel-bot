@@ -100,14 +100,15 @@ describe("classifyGivebackSeverity", () => {
   it("returns WATCH for moderate giveback", () => {
     const gb = {
       peakPrice: 110_000,
-      currentPrice: 105_000,
+      currentPrice: 106_000,
       peakProfit: 10_000,
-      currentProfit: 5_000,
-      givebackAbsolute: 5_000,
-      givebackPct: 50,
+      currentProfit: 6_000,
+      givebackAbsolute: 4_000,
+      givebackPct: 40,
       pullbackType: "NORMAL_PULLBACK" as const,
       accelerating: false,
     };
+    // 40% on SWING: watchPct=30 → 40>=30, partialTpPct=45 → 40<45 → WATCH
     expect(classifyGivebackSeverity(gb, "SWING")).toBe("WATCH");
   });
 

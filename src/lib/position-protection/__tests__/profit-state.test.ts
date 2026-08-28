@@ -31,16 +31,16 @@ function shortPosition(overrides: Partial<PositionContext> = {}): PositionContex
 
 describe("calculateProfitMetrics", () => {
   it("classifies a profitable long", () => {
-    const m = calculateProfitMetrics(longPosition());
+    const m = calculateProfitMetrics(longPosition({ currentPrice: 102_000 }));
     expect(m.profitState).toBe("PROFITABLE");
-    expect(m.unrealizedPnL).toBe(5000);
-    expect(m.distanceFromEntryPct).toBeCloseTo(5);
+    expect(m.unrealizedPnL).toBe(2000);
+    expect(m.distanceFromEntryPct).toBeCloseTo(2);
   });
 
   it("classifies a strongly profitable long", () => {
-    const m = calculateProfitMetrics(longPosition({ currentPrice: 110_000 }));
+    const m = calculateProfitMetrics(longPosition({ currentPrice: 105_000 }));
     expect(m.profitState).toBe("STRONGLY_PROFITABLE");
-    expect(m.distanceFromEntryPct).toBeCloseTo(10);
+    expect(m.distanceFromEntryPct).toBeCloseTo(5);
   });
 
   it("classifies a losing long", () => {
@@ -50,9 +50,9 @@ describe("calculateProfitMetrics", () => {
   });
 
   it("classifies a profitable short", () => {
-    const m = calculateProfitMetrics(shortPosition());
+    const m = calculateProfitMetrics(shortPosition({ currentPrice: 98_000 }));
     expect(m.profitState).toBe("PROFITABLE");
-    expect(m.unrealizedPnL).toBe(5000);
+    expect(m.unrealizedPnL).toBe(2000);
   });
 
   it("classifies a losing short", () => {

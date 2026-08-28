@@ -20,9 +20,10 @@ import { scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
-import { LogOut, Terminal, Zap, Loader2, CheckCircle2 } from "lucide-react";
+import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
+import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 
 /** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
 function fromDbRecord(record: any): AnalysisResult {
@@ -68,9 +69,12 @@ const INITIAL_STEPS: LoadingStep[] = [
   { label: "Generating bias", status: "pending" },
 ];
 
+type DashboardTab = "analysis" | "protection";
+
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<DashboardTab>("analysis");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(INITIAL_STEPS);
@@ -646,6 +650,28 @@ export default function Dashboard() {
               <p className="text-[10px] text-muted-foreground -mt-0.5 font-mono">chief market strategist</p>
             </div>
           </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant={activeTab === "analysis" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-[10px] font-mono gap-1"
+              onClick={() => setActiveTab("analysis")}
+            >
+              <Terminal className="size-3" />
+              Analysis
+            </Button>
+            <Button
+              variant={activeTab === "protection" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-[10px] font-mono gap-1"
+              onClick={() => setActiveTab("protection")}
+            >
+              <Shield className="size-3" />
+              Protection
+            </Button>
+          </div>
+          <div className="flex items-center gap-3">
+          </div>
           <div className="flex items-center gap-3">
             <span className="text-[11px] text-muted-foreground font-mono hidden sm:block">
               {user?.name || user?.email || "guest"}
@@ -666,6 +692,9 @@ export default function Dashboard() {
 
       {/* Main */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+        {activeTab === "protection" ? (
+          <PositionProtectionDashboard />
+        ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left — Input + History */}
           <div className="lg:col-span-4 space-y-4">
@@ -813,6 +842,7 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
+        )}
       </main>
     </div>
   );

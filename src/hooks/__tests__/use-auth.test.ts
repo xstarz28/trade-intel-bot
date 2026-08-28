@@ -1,4 +1,6 @@
 /**
+ * @vitest-environment jsdom
+ *
  * @file Tests for the three-phase auth state machine in useAuth.
  *
  * We mock the Convex dependencies and verify that the phase transitions

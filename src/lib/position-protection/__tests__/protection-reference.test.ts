@@ -69,8 +69,9 @@ describe("computeProtectionReference", () => {
     const ev: MarketEvidence = { price: 2800, volatility: 100 };
     const ref = computeProtectionReference(pos, ev);
     expect(ref.available).toBe(true);
-    // For short: reference should be above entry (toward current price)
-    expect(ref.level!).toBeGreaterThanOrEqual(pos.entryPrice);
+    // For short: reference is between currentPrice and entryPrice
+    expect(ref.level!).toBeGreaterThanOrEqual(pos.currentPrice);
+    expect(ref.level!).toBeLessThanOrEqual(pos.entryPrice);
   });
 
   it("scales ATR multiple by horizon", () => {
