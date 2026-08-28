@@ -257,7 +257,7 @@ export function guardProviderFailureNeutrality(
     const deteriorationFromProvider = alert.deteriorationSignals.filter(
       (s) =>
         s.source.toLowerCase().includes("provider") ||
-        s.category === "PROVIDER_DEGRADED",
+        s.source.toLowerCase().includes("degraded"),
     );
 
     if (
