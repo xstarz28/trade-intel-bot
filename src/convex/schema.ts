@@ -133,7 +133,59 @@ const schema = defineSchema(
       }),
     }).index("by_user_journal", ["userId", "timestamps"]) // userId + createdAt
       .index("by_instrument", ["userId", "instrument"]) // filter by instrument
-      .index("by_status", ["userId", "status"]) // filter by status
+      .index("by_status", ["userId", "status"]),
+
+    // Phase 60 — Monitored positions for profit protection
+    monitoredPositions: defineTable({
+      userId: v.id("users"),
+      positionId: v.string(),
+      instrument: v.string(),
+      side: v.string(), // LONG | SHORT
+      entryPrice: v.number(),
+      stopLoss: v.optional(v.number()),
+      takeProfit: v.optional(v.number()),
+      leverage: v.optional(v.number()),
+      horizon: v.string(), // SCALPING | INTRADAY | SWING | INVESTING
+      openedAt: v.number(),
+      peakPrice: v.optional(v.number()),
+      peakProfit: v.optional(v.number()),
+      currentSeverity: v.string(), // NONE | WATCH | CAUTION | HIGH_RISK | INVALIDATED
+      lifecycleState: v.string(), // MONITORING | WATCH | CAUTION | HIGH_RISK | INVALIDATED | RECOVERED
+      monitoringLifecycle: v.string(), // REGISTERED | MONITORING | PAUSED | CLOSED
+      lastUpdateAt: v.number(),
+      lastAlertAt: v.number(),
+      consecutiveSameSeverity: v.number(),
+    })
+      .index("by_user_position", ["userId", "positionId"])
+      .index("by_user_instrument", ["userId", "instrument"])
+      .index("by_user_lifecycle", ["userId", "monitoringLifecycle"]),
+
+    // Phase 60 — Alert history for position protection
+    alertHistory: defineTable({
+      userId: v.id("users"),
+      alertId: v.string(),
+      positionId: v.string(),
+      instrument: v.string(),
+      severity: v.string(), // NONE | WATCH | CAUTION | HIGH_RISK | INVALIDATED
+      notificationPriority: v.string(), // INFO | WARNING | URGENT | CRITICAL
+      reason: v.string(),
+      action: v.string(),
+      timestamp: v.number(),
+      acknowledged: v.boolean(),
+    })
+      .index("by_user_alerts", ["userId", "timestamp"])
+      .index("by_user_position_alerts", ["userId", "positionId", "timestamp"]),
+
+    // Phase 60 — Stream event cursors for reconciliation
+    streamCursors: defineTable({
+      userId: v.id("users"),
+      provider: v.string(),
+      instrument: v.string(),
+      lastEventId: v.string(),
+      lastTimestamp: v.number(),
+      lastSequence: v.optional(v.number()),
+    })
+      .index("by_provider_instrument", ["provider", "instrument"]),
   },
   {
     schemaValidation: false,
