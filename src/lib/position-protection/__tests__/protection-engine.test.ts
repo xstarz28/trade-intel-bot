@@ -20,9 +20,9 @@ function longBtc(overrides?: Partial<PositionContext>): PositionContext {
 
 describe("evaluateProtection", () => {
   it("returns NONE severity for healthy position", () => {
-    const pos = longBtc();
+    const pos = longBtc({ currentPrice: 102_000 });
     const ev: MarketEvidence = {
-      price: 105_000,
+      price: 102_000,
       shortTermTrend: "bullish",
       mediumTermTrend: "bullish",
       structureBroken: false,
