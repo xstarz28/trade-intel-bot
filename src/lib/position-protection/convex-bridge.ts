@@ -27,7 +27,9 @@ import { InMemoryRepository } from "./persistence";
 
 interface ConvexMutationResult {
   /** Returns the mutation result. */
-  then?: (resolve: (v: unknown) => void, reject: (e: Error) => void) => void;
+  then?: (resolve: (v: unknown) => void, reject: (e: unknown) => void) => void;
+  /** Catch for error handling. */
+  catch?: (reject: (e: unknown) => void) => void;
 }
 
 interface ConvexClientLike {
@@ -35,7 +37,7 @@ interface ConvexClientLike {
   mutation(
     functionName: string,
     args?: Record<string, unknown>,
-  ): ConvexMutationResult;
+  ): ConvexMutationResult | Promise<unknown>;
 
   /** Execute a query. */
   query(
@@ -207,10 +209,11 @@ export class ConvexPersistenceBridge implements MonitoringStateRepository {
 
     if (this.client) {
       try {
-        await this.client.mutation(
+        const result = this.client.mutation(
           "positionProtection:acknowledgeAlert",
           { alertId },
         );
+        await (result as Promise<unknown>);
       } catch {
         this.degraded = true;
       }
