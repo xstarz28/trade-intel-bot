@@ -186,6 +186,49 @@ const schema = defineSchema(
       lastSequence: v.optional(v.number()),
     })
       .index("by_provider_instrument", ["provider", "instrument"]),
+
+    // Phase 90 — Historical intelligence snapshots
+    historicalSnapshots: defineTable({
+      userId: v.id("users"),
+      positionId: v.string(),
+      instrument: v.string(),
+      side: v.string(),
+      timestamp: v.number(),
+      thesisState: v.string(),
+      evidenceQuality: v.string(),
+      marketRegime: v.string(),
+      h1Trend: v.string(),
+      m15Trend: v.string(),
+      m5Trend: v.string(),
+      mtfAlignment: v.string(),
+      momentum: v.string(),
+      volatility: v.string(),
+      structure: v.string(),
+      supportingCount: v.number(),
+      conflictingCount: v.number(),
+      invalidationCondition: v.string(),
+      watchNext: v.string(),
+      dataAvailability: v.string(),
+    })
+      .index("by_user_position", ["userId", "positionId"])
+      .index("by_user_position_ts", ["userId", "positionId", "timestamp"]),
+
+    // Phase 90 — Historical intelligence events
+    historicalEvents: defineTable({
+      userId: v.id("users"),
+      positionId: v.string(),
+      instrument: v.string(),
+      side: v.string(),
+      timestamp: v.number(),
+      eventType: v.string(),
+      description: v.string(),
+      previousState: v.string(),
+      currentState: v.string(),
+      category: v.string(),
+      strength: v.string(),
+    })
+      .index("by_user_position", ["userId", "positionId"])
+      .index("by_user_position_ts", ["userId", "positionId", "timestamp"]),
   },
   {
     schemaValidation: false,

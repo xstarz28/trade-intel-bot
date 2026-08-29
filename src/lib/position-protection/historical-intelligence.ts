@@ -362,7 +362,7 @@ export function buildTimeline(
 // HISTORICAL SUMMARY
 // ═══════════════════════════════════════════════════════════════
 
-function generateSummary(
+export function generateSummary(
   previous: IntelligenceSnapshot | null,
   current: IntelligenceSnapshot,
   events: HistoricalEvent[],
