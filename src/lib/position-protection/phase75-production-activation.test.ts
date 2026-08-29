@@ -74,7 +74,19 @@ async function fetchCoingeckoBatch(instruments: string[]): Promise<LiveInstrumen
     { signal: AbortSignal.timeout(10_000) },
   );
 
+  // Rate limited — return empty results, don't throw
+  if (res.status === 429) {
+    console.warn("COINGECKO: Rate limited (429) — tests will be skipped");
+    return [];
+  }
+
   const data = await res.json();
+
+  // CoinGecko error response
+  if (data && typeof data === "object" && "error" in data) {
+    console.warn("COINGECKO: API error —", data.error);
+    return [];
+  }
 
   return instruments.map((inst) => {
     const coinId = coinMap[inst.toUpperCase().trim()];

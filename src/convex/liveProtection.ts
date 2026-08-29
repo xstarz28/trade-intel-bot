@@ -165,10 +165,11 @@ async function fetchCoingeckoPrices(
 // TWELVEDATA — FREE TIER (needs demo key at minimum)
 // ═══════════════════════════════════════════════════════════════
 
-/** Fetch a single forex/commodity quote from TwelveData */
+/** Fetch a single forex/commodity quote from TwelveData with rate-limit retry */
 async function fetchTwelveDataQuote(
   symbol: string,
   apiKey: string,
+  retries = 2,
 ): Promise<{
   instrument: string;
   price: number;
@@ -178,14 +179,60 @@ async function fetchTwelveDataQuote(
   success: boolean;
   error?: string;
 }> {
-  try {
-    const res = await fetch(
-      `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
-      { signal: AbortSignal.timeout(10_000) },
-    );
-    const json = await res.json();
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(
+        `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+        { signal: AbortSignal.timeout(10_000) },
+      );
+      const json = await res.json();
 
-    if (json.code) {
+      if (json.code === 429) {
+        // Rate limited — back off and retry
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+          continue;
+        }
+      }
+
+      if (json.code) {
+        return {
+          instrument: symbol,
+          price: 0,
+          bid: 0,
+          ask: 0,
+          timestamp: Date.now(),
+          success: false,
+          error: `TwelveData [${json.code}]: ${json.message ?? "provider error"}`,
+        };
+      }
+
+      const price = parseFloat(json.close);
+      if (!Number.isFinite(price) || price <= 0) {
+        return {
+          instrument: symbol,
+          price: 0,
+          bid: 0,
+          ask: 0,
+          timestamp: Date.now(),
+          success: false,
+          error: `Invalid price: ${json.close}`,
+        };
+      }
+
+      return {
+        instrument: symbol,
+        price,
+        bid: parseFloat(json.bid ?? "0") || price,
+        ask: parseFloat(json.ask ?? "0") || price,
+        timestamp: Date.now(),
+        success: true,
+      };
+    } catch (err: any) {
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
       return {
         instrument: symbol,
         price: 0,
@@ -193,42 +240,20 @@ async function fetchTwelveDataQuote(
         ask: 0,
         timestamp: Date.now(),
         success: false,
-        error: `TwelveData [${json.code}]: ${json.message ?? "provider error"}`,
+        error: `TwelveData request failed: ${err?.message ?? "unknown"}`,
       };
     }
-
-    const price = parseFloat(json.close);
-    if (!Number.isFinite(price) || price <= 0) {
-      return {
-        instrument: symbol,
-        price: 0,
-        bid: 0,
-        ask: 0,
-        timestamp: Date.now(),
-        success: false,
-        error: `Invalid price: ${json.close}`,
-      };
-    }
-
-    return {
-      instrument: symbol,
-      price,
-      bid: parseFloat(json.bid ?? "0") || price,
-      ask: parseFloat(json.ask ?? "0") || price,
-      timestamp: Date.now(),
-      success: true,
-    };
-  } catch (err: any) {
-    return {
-      instrument: symbol,
-      price: 0,
-      bid: 0,
-      ask: 0,
-      timestamp: Date.now(),
-      success: false,
-      error: `TwelveData request failed: ${err?.message ?? "unknown"}`,
-    };
   }
+  // Unreachable but satisfies TS
+  return {
+    instrument: symbol,
+    price: 0,
+    bid: 0,
+    ask: 0,
+    timestamp: Date.now(),
+    success: false,
+    error: "Unexpected retry exhaustion",
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -244,7 +269,14 @@ export interface LiveQuoteResult {
   change24h?: number;
   volume24h?: number;
   timestamp: number;
+  /** The provider that actually returned data. */
   provider: string;
+  /** The provider that routing preferred (may differ from actual). */
+  primaryProvider: string;
+  /** Whether fallback was used. */
+  fallbackUsed: boolean;
+  /** Reason for fallback if used. */
+  fallbackReason?: string;
   sourceMode: "LIVE" | "SIMULATED" | "STALE" | "UNAVAILABLE";
   success: boolean;
   error?: string;
@@ -292,6 +324,8 @@ export const fetchLiveProtectionQuote = action({
     if (cryptoInstruments.length > 0) {
       const coingeckoResults = await fetchCoingeckoPrices(cryptoInstruments);
       for (const r of coingeckoResults) {
+        // OKX is the preferred primary provider for crypto,
+        // but CoinGecko is used as fallback (free, no key needed)
         results.push({
           instrument: r.instrument,
           assetClass: "crypto",
@@ -300,6 +334,9 @@ export const fetchLiveProtectionQuote = action({
           volume24h: r.volume24h,
           timestamp: r.timestamp,
           provider: "CoinGecko",
+          primaryProvider: "OKX",
+          fallbackUsed: true,
+          fallbackReason: "OKX API key not configured — CoinGecko used as free fallback",
           sourceMode: r.success ? "LIVE" : "UNAVAILABLE",
           success: r.success,
           error: r.error,
@@ -324,6 +361,8 @@ export const fetchLiveProtectionQuote = action({
             ask: r.ask,
             timestamp: r.timestamp,
             provider: "TwelveData",
+            primaryProvider: "TwelveData",
+            fallbackUsed: false,
             sourceMode: r.success ? "LIVE" : "UNAVAILABLE",
             success: r.success,
             error: r.error,
@@ -338,6 +377,8 @@ export const fetchLiveProtectionQuote = action({
             price: 0,
             timestamp: now,
             provider: "TwelveData",
+            primaryProvider: "TwelveData",
+            fallbackUsed: false,
             sourceMode: "UNAVAILABLE",
             success: false,
             error: "TWELVE_DATA_API_KEY not configured — add it in Keys/API keys tab",
