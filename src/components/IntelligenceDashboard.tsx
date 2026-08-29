@@ -40,6 +40,8 @@ import type { NewsSynthesis, NewsRelevance } from "@/lib/position-protection/new
 import type { FundamentalSynthesis, CatalystAnalysis, FundamentalInterpretation } from "@/lib/position-protection/fundamental-intelligence";
 import type { HierarchicalEvidence, ScenarioSynthesis, DimensionStatus, MultiDimensionalSynthesis } from "@/lib/position-protection/multi-dimensional-intelligence";
 import type { PositionIntelligence } from "@/lib/position-protection/market-intelligence-analyzer";
+import { HistoricalTimelineView } from "./HistoricalTimeline";
+import type { HistoricalTimeline } from "@/lib/position-protection/historical-intelligence";
 
 interface IntelligenceDashboardProps {
   /** Position intelligence from the pipeline. */
@@ -56,6 +58,8 @@ interface IntelligenceDashboardProps {
   positionSide: "LONG" | "SHORT";
   /** Instrument. */
   instrument: string;
+  /** Historical timeline. */
+  historicalTimeline?: HistoricalTimeline | null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -531,6 +535,7 @@ export function IntelligenceDashboard({
   whatChanged,
   positionSide,
   instrument,
+  historicalTimeline,
 }: IntelligenceDashboardProps) {
   return (
     <div className="space-y-2">
@@ -567,6 +572,11 @@ export function IntelligenceDashboard({
 
       {/* Key Levels */}
       <KeyLevelsSection intelligence={intelligence} />
+
+      {/* Historical Intelligence Timeline */}
+      {historicalTimeline && (
+        <HistoricalTimelineView timeline={historicalTimeline} />
+      )}
     </div>
   );
 }
