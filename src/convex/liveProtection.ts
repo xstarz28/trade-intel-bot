@@ -282,6 +282,87 @@ export interface LiveQuoteResult {
   error?: string;
 }
 
+/** Yahoo Finance — free, no key needed — for VIX and other macro instruments */
+async function fetchYahooFinanceQuote(
+  symbol: string,
+): Promise<{
+  instrument: string;
+  price: number;
+  timestamp: number;
+  success: boolean;
+  error?: string;
+}> {
+  try {
+    // Yahoo Finance symbol mapping
+    const yahooMap: Record<string, string> = {
+      "VIX": "^VIX",
+      "DXY": "DX-Y.NYB",
+      "US10Y": "^TNX",
+      "US2Y": "^IRX",
+      "US500": "^GSPC",
+      "US30": "^DJI",
+      "US100": "^IXIC",
+    };
+    const yahooSymbol = yahooMap[symbol.toUpperCase().trim()] ?? symbol;
+
+    const res = await fetch(
+      `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=1d&range=1d`,
+      {
+        headers: { "User-Agent": "Mozilla/5.0" },
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+
+    if (!res.ok) {
+      return {
+        instrument: symbol,
+        price: 0,
+        timestamp: Date.now(),
+        success: false,
+        error: `Yahoo Finance HTTP ${res.status}`,
+      };
+    }
+
+    const data = await res.json();
+    const meta = data?.chart?.result?.[0]?.meta;
+    if (!meta || typeof meta.regularMarketPrice !== "number") {
+      return {
+        instrument: symbol,
+        price: 0,
+        timestamp: Date.now(),
+        success: false,
+        error: "Yahoo Finance: no price data",
+      };
+    }
+
+    const price = meta.regularMarketPrice;
+    if (!Number.isFinite(price) || price <= 0) {
+      return {
+        instrument: symbol,
+        price: 0,
+        timestamp: Date.now(),
+        success: false,
+        error: `Yahoo Finance: invalid price ${price}`,
+      };
+    }
+
+    return {
+      instrument: symbol,
+      price,
+      timestamp: (meta.regularMarketTime ?? Date.now()) * 1000,
+      success: true,
+    };
+  } catch (err: any) {
+    return {
+      instrument: symbol,
+      price: 0,
+      timestamp: Date.now(),
+      success: false,
+      error: `Yahoo Finance request failed: ${err?.message ?? "unknown"}`,
+    };
+  }
+}
+
 /** Detect asset class from instrument symbol */
 function detectAssetClass(instrument: string): string {
   const s = instrument.toUpperCase().trim();
@@ -317,7 +398,8 @@ export const fetchLiveProtectionQuote = action({
       if (cls === "crypto") cryptoInstruments.push(inst);
       else if (cls === "forex") forexInstruments.push(inst);
       else if (cls === "commodity") commodityInstruments.push(inst);
-      else forexInstruments.push(inst); // fallback
+      else if (cls === "macro") { /* handled separately below */ }
+      else forexInstruments.push(inst); // unknown → try forex
     }
 
     // ── CoinGecko batch (crypto, free, no key) ──
@@ -337,6 +419,31 @@ export const fetchLiveProtectionQuote = action({
           primaryProvider: "OKX",
           fallbackUsed: true,
           fallbackReason: "OKX API key not configured — CoinGecko used as free fallback",
+          sourceMode: r.success ? "LIVE" : "UNAVAILABLE",
+          success: r.success,
+          error: r.error,
+        });
+      }
+    }
+
+    // ── Yahoo Finance (macro, free, no key) ──
+    const macroInstruments: string[] = [];
+    for (const inst of args.instruments) {
+      const cls = detectAssetClass(inst);
+      if (cls === "macro") macroInstruments.push(inst);
+    }
+
+    if (macroInstruments.length > 0) {
+      for (const inst of macroInstruments) {
+        const r = await fetchYahooFinanceQuote(inst);
+        results.push({
+          instrument: r.instrument,
+          assetClass: "macro",
+          price: r.price,
+          timestamp: r.timestamp,
+          provider: "YahooFinance",
+          primaryProvider: "YahooFinance",
+          fallbackUsed: false,
           sourceMode: r.success ? "LIVE" : "UNAVAILABLE",
           success: r.success,
           error: r.error,
