@@ -72,6 +72,12 @@ import {
   snapshotToArgs,
   eventsToArgs,
   reconstructTimeline,
+  mergeTimelineEvents,
+  mergeSnapshots,
+  snapshotIdentity,
+  isSnapshotStale,
+  persistedToSnapshot,
+  persistedToEvent,
   type PersistedSnapshot,
   type PersistedEvent,
 } from "@/lib/position-protection/persistent-history-engine";
@@ -462,7 +468,47 @@ export function PositionProtectionDashboard() {
     return map;
   }, [positions, priceObservations, livePrices]);
 
-  // ─── Build Historical Timelines from Intelligence ───────
+  // ─── Phase 91: Reactive Convex Historical Timeline Queries ──
+  // One query per position, reactive — automatically updates when Convex data changes
+  const positionIds = useMemo(() => positions.map(p => p.position.positionId), [positions]);
+  const convTimeline0 = useQuery(
+    api.historicalIntelligence.getHistoricalTimeline,
+    positionIds.length > 0 ? { positionId: positionIds[0] } : "skip",
+  );
+  const convTimeline1 = useQuery(
+    api.historicalIntelligence.getHistoricalTimeline,
+    positionIds.length > 1 ? { positionId: positionIds[1] } : "skip",
+  );
+  const convTimeline2 = useQuery(
+    api.historicalIntelligence.getHistoricalTimeline,
+    positionIds.length > 2 ? { positionId: positionIds[2] } : "skip",
+  );
+  const convTimeline3 = useQuery(
+    api.historicalIntelligence.getHistoricalTimeline,
+    positionIds.length > 3 ? { positionId: positionIds[3] } : "skip",
+  );
+  const convTimeline4 = useQuery(
+    api.historicalIntelligence.getHistoricalTimeline,
+    positionIds.length > 4 ? { positionId: positionIds[4] } : "skip",
+  );
+
+  // Map Convex reactive results by positionId
+  const convTimelines = useMemo(() => {
+    const map = new Map<string, any>();
+    const results = [convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4];
+    for (let i = 0; i < positionIds.length && i < results.length; i++) {
+      const result = results[i];
+      if (result && result.latestSnapshot) {
+        map.set(positionIds[i], result);
+      }
+    }
+    return map;
+  }, [positionIds, convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4]);
+
+  // Track last-persisted snapshot identity to prevent redundant saves
+  const lastPersistedRef = useRef<Map<string, string>>(new Map());
+
+  // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
   useEffect(() => {
     if (intelligenceMap.size === 0) return;
 
@@ -491,48 +537,58 @@ export function PositionProtectionDashboard() {
           dataAvailability: intel.dataQuality,
         });
 
-        // Phase 90: Determine persistence decision
+        // Phase 91: Determine persistence decision with race-condition guard
         const previous = existing?.latestSnapshot ?? null;
         const decision = decidePersistence(previous, snapshot);
 
+        // Race-condition guard: skip if snapshot identity matches last persisted
+        const lastId = lastPersistedRef.current.get(posId) ?? null;
+        const stale = isSnapshotStale(snapshot, lastId);
+
         // Persist meaningful changes to Convex (fire-and-forget)
-        if (decision.shouldPersistSnapshot) {
+        if (decision.shouldPersistSnapshot && !stale) {
+          lastPersistedRef.current.set(posId, snapshotIdentity(snapshot));
           saveSnapshotMut(snapshotToArgs(snapshot)).catch(() => {});
         }
-        if (decision.shouldPersistEvents && decision.newEvents.length > 0) {
+        if (decision.shouldPersistEvents && decision.newEvents.length > 0 && !stale) {
           saveEventsMut(eventsToArgs(
             posId, intel.instrument, intel.side, decision.newEvents,
           )).catch(() => {});
         }
 
-        next.set(posId, buildTimeline(existing, snapshot));
+        // Phase 91: Build local timeline (optimistic layer)
+        const localTimeline = buildTimeline(existing, snapshot);
+
+        // Phase 91: Merge with Convex data if available
+        const convData = convTimelines.get(posId);
+        if (convData) {
+          // Reconstruct authoritative timeline from Convex
+          const persistedSnapshots: PersistedSnapshot[] = [];
+          if (convData.latestSnapshot) persistedSnapshots.push(convData.latestSnapshot);
+          if (convData.previousSnapshot) persistedSnapshots.push(convData.previousSnapshot);
+          const persistedEvents: PersistedEvent[] = convData.events ?? [];
+          const convTimeline = reconstructTimeline(persistedSnapshots, persistedEvents);
+
+          // Merge: local optimistic + Convex authoritative
+          const mergedLatest = mergeSnapshots(localTimeline.latestSnapshot, convTimeline.latestSnapshot);
+          const mergedPrevious = mergeSnapshots(localTimeline.previousSnapshot, convTimeline.previousSnapshot);
+          const mergedEvents = mergeTimelineEvents(localTimeline.events, convTimeline.events);
+
+          next.set(posId, {
+            positionId: posId,
+            latestSnapshot: mergedLatest,
+            previousSnapshot: mergedPrevious,
+            events: mergedEvents,
+            summary: localTimeline.summary ?? convTimeline.summary,
+          });
+        } else {
+          // No Convex data yet — use local optimistic timeline
+          next.set(posId, localTimeline);
+        }
       }
       return next;
     });
-  }, [intelligenceMap, saveSnapshotMut, saveEventsMut]);
-
-  // ─── Phase 90: Load Persisted History from Convex on Mount ──
-  useEffect(() => {
-    if (positions.length === 0) return;
-    let cancelled = false;
-
-    async function loadHistory() {
-      for (const pos of positions) {
-        if (cancelled) break;
-        const posId = pos.position.positionId;
-        try {
-          // Note: useQuery is reactive, but we use a one-time fetch here
-          // to avoid re-fetching on every intelligenceMap change.
-          // Convex reactive queries will handle subsequent updates.
-        } catch {
-          // History not yet available — local-only timeline is fine
-        }
-      }
-    }
-
-    loadHistory();
-    return () => { cancelled = true; };
-  }, [positions]);
+  }, [intelligenceMap, convTimelines, saveSnapshotMut, saveEventsMut]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {

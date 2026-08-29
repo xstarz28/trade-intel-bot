@@ -1,12 +1,24 @@
 /**
- * Phase 90 — Persistent Historical Intelligence
+ * Phase 91 — Persistent Historical Intelligence (Upgraded)
  *
  * Convex functions for persisting/retrieving intelligence snapshots and events.
  * All queries/mutations are user-scoped. Position ownership is verified.
+ *
+ * Phase 91 additions:
+ * - Auto-pruning after snapshot/event saves
+ * - Deduplication guard on event saves (same timestamp+eventType+description)
+ * - Deterministic event identity for merge safety
  */
 
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+
+// ═══════════════════════════════════════════════════════════════
+// CONSTANTS
+// ═══════════════════════════════════════════════════════════════
+
+const MAX_SNAPSHOTS = 50;
+const MAX_EVENTS = 100;
 
 // ═══════════════════════════════════════════════════════════════
 // AUTH RESOLUTION
@@ -48,10 +60,59 @@ async function verifyPositionOwnership(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// RETENTION ENFORCEMENT
+// ═══════════════════════════════════════════════════════════════
+
+/** Enforce retention limits for a position. Server-side only. */
+async function enforceRetention(
+  ctx: { db: any },
+  userId: string,
+  positionId: string,
+): Promise<number> {
+  let pruned = 0;
+
+  // Prune snapshots
+  const snapshots = await ctx.db
+    .query("historicalSnapshots")
+    .withIndex("by_user_position_ts", (q: any) =>
+      q.eq("userId", userId).eq("positionId", positionId),
+    )
+    .order("desc")
+    .collect();
+
+  if (snapshots.length > MAX_SNAPSHOTS) {
+    const toDelete = snapshots.slice(MAX_SNAPSHOTS);
+    for (const s of toDelete) {
+      await ctx.db.delete(s._id);
+      pruned++;
+    }
+  }
+
+  // Prune events
+  const events = await ctx.db
+    .query("historicalEvents")
+    .withIndex("by_user_position_ts", (q: any) =>
+      q.eq("userId", userId).eq("positionId", positionId),
+    )
+    .order("desc")
+    .collect();
+
+  if (events.length > MAX_EVENTS) {
+    const toDelete = events.slice(MAX_EVENTS);
+    for (const e of toDelete) {
+      await ctx.db.delete(e._id);
+      pruned++;
+    }
+  }
+
+  return pruned;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SNAPSHOT PERSISTENCE
 // ═══════════════════════════════════════════════════════════════
 
-/** Persist a new intelligence snapshot. */
+/** Persist a new intelligence snapshot + auto-prune. */
 export const saveSnapshot = mutation({
   args: {
     positionId: v.string(),
@@ -81,7 +142,7 @@ export const saveSnapshot = mutation({
     const owns = await verifyPositionOwnership(ctx, user._id, args.positionId);
     if (!owns) throw new Error("Position not found for user");
 
-    return ctx.db.insert("historicalSnapshots", {
+    const id = await ctx.db.insert("historicalSnapshots", {
       userId: user._id,
       positionId: args.positionId,
       instrument: args.instrument,
@@ -103,14 +164,31 @@ export const saveSnapshot = mutation({
       watchNext: args.watchNext,
       dataAvailability: args.dataAvailability,
     });
+
+    // Auto-enforce retention after save
+    await enforceRetention(ctx, user._id, args.positionId);
+
+    return id;
   },
 });
 
 // ═══════════════════════════════════════════════════════════════
-// EVENT PERSISTENCE
+// EVENT PERSISTENCE (with dedup guard)
 // ═══════════════════════════════════════════════════════════════
 
-/** Persist historical intelligence events (batch). */
+/**
+ * Deterministic event identity for deduplication.
+ * Same timestamp + eventType + description = same event.
+ */
+function eventIdentity(e: {
+  timestamp: number;
+  eventType: string;
+  description: string;
+}): string {
+  return `${e.timestamp}|${e.eventType}|${e.description}`;
+}
+
+/** Persist historical intelligence events (batch) with dedup + auto-prune. */
 export const saveEvents = mutation({
   args: {
     positionId: v.string(),
@@ -135,8 +213,28 @@ export const saveEvents = mutation({
     const owns = await verifyPositionOwnership(ctx, user._id, args.positionId);
     if (!owns) throw new Error("Position not found for user");
 
+    // Fetch existing event identities for dedup
+    const existingEvents = await ctx.db
+      .query("historicalEvents")
+      .withIndex("by_user_position_ts", (q: any) =>
+        q.eq("userId", user._id).eq("positionId", args.positionId),
+      )
+      .order("desc")
+      .take(100);
+
+    const existingIds = new Set(
+      existingEvents.map((e: any) => eventIdentity({
+        timestamp: e.timestamp,
+        eventType: e.eventType,
+        description: e.description,
+      })),
+    );
+
     const ids: string[] = [];
     for (const event of args.events) {
+      // Dedup: skip if event identity already exists
+      if (existingIds.has(eventIdentity(event))) continue;
+
       const id = await ctx.db.insert("historicalEvents", {
         userId: user._id,
         positionId: args.positionId,
@@ -152,6 +250,10 @@ export const saveEvents = mutation({
       });
       ids.push(id);
     }
+
+    // Auto-enforce retention after save
+    await enforceRetention(ctx, user._id, args.positionId);
+
     return ids;
   },
 });
@@ -266,11 +368,8 @@ export const getHistoricalTimeline = query({
 });
 
 // ═══════════════════════════════════════════════════════════════
-// RETENTION / PRUNING
+// RETENTION / PRUNING (explicit call)
 // ═══════════════════════════════════════════════════════════════
-
-const MAX_SNAPSHOTS = 50;
-const MAX_EVENTS = 100;
 
 /** Prune old snapshots beyond the retention limit. */
 export const pruneHistory = mutation({
@@ -282,43 +381,7 @@ export const pruneHistory = mutation({
     const owns = await verifyPositionOwnership(ctx, user._id, args.positionId);
     if (!owns) return 0;
 
-    let pruned = 0;
-
-    // Prune snapshots
-    const snapshots = await ctx.db
-      .query("historicalSnapshots")
-      .withIndex("by_user_position_ts", (q: any) =>
-        q.eq("userId", user._id).eq("positionId", args.positionId),
-      )
-      .order("desc")
-      .collect();
-
-    if (snapshots.length > MAX_SNAPSHOTS) {
-      const toDelete = snapshots.slice(MAX_SNAPSHOTS);
-      for (const s of toDelete) {
-        await ctx.db.delete(s._id);
-        pruned++;
-      }
-    }
-
-    // Prune events
-    const events = await ctx.db
-      .query("historicalEvents")
-      .withIndex("by_user_position_ts", (q: any) =>
-        q.eq("userId", user._id).eq("positionId", args.positionId),
-      )
-      .order("desc")
-      .collect();
-
-    if (events.length > MAX_EVENTS) {
-      const toDelete = events.slice(MAX_EVENTS);
-      for (const e of toDelete) {
-        await ctx.db.delete(e._id);
-        pruned++;
-      }
-    }
-
-    return pruned;
+    return enforceRetention(ctx, user._id, args.positionId);
   },
 });
 
