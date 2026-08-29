@@ -457,8 +457,15 @@ export const fetchLiveProtectionQuote = action({
 
     if (tdInstruments.length > 0) {
       if (apiKey) {
-        // Fetch sequentially to respect rate limits
-        for (const inst of tdInstruments) {
+        // Fetch sequentially with deliberate stagger to respect rate limits.
+        // Free tier allows ~8 requests/min. With 6 instruments,
+        // we space requests 1.5s apart to stay within budget.
+        const TWELVEDATA_STAGGER_MS = 1_500;
+        for (let i = 0; i < tdInstruments.length; i++) {
+          const inst = tdInstruments[i];
+          if (i > 0) {
+            await new Promise((r) => setTimeout(r, TWELVEDATA_STAGGER_MS));
+          }
           const r = await fetchTwelveDataQuote(inst, apiKey);
           results.push({
             instrument: r.instrument,
