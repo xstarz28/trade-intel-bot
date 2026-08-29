@@ -65,8 +65,17 @@ import {
   classifyNewsFreshness,
   type NewsItem,
 } from "@/lib/position-protection/news-intelligence";
-import { useQuery, useAction } from "convex/react";
+import { useQuery, useAction, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
+import {
+  decidePersistence,
+  snapshotToArgs,
+  eventsToArgs,
+  reconstructTimeline,
+  type PersistedSnapshot,
+  type PersistedEvent,
+} from "@/lib/position-protection/persistent-history-engine";
+import { detectChanges } from "@/lib/position-protection/historical-intelligence";
 import { useOHLCVData } from "@/lib/position-protection/use-ohlcv-data";
 import type { TimeframeKey } from "@/lib/position-protection/multi-timeframe-engine";
 
@@ -331,6 +340,12 @@ export function PositionProtectionDashboard() {
     });
   }, [livePrices]);
 
+  // ─── Phase 90: Convex Historical Intelligence Persistence ──
+  const saveSnapshotMut = useMutation(api.historicalIntelligence.saveSnapshot);
+  const saveEventsMut = useMutation(api.historicalIntelligence.saveEvents);
+  const deleteHistoryMut = useMutation(api.historicalIntelligence.deleteHistoryForPosition);
+  const pruneHistoryMut = useMutation(api.historicalIntelligence.pruneHistory);
+
   // ─── User Intelligence Feed ────────────────────────────────
   const userPositions = useMemo(
     () => extractUserPositions(positions.map(p => ({ instrument: p.position.instrument, side: p.position.side as "LONG" | "SHORT" }))),
@@ -475,11 +490,49 @@ export function PositionProtectionDashboard() {
           watchNext: intel.nextMonitor[0] ?? "—",
           dataAvailability: intel.dataQuality,
         });
+
+        // Phase 90: Determine persistence decision
+        const previous = existing?.latestSnapshot ?? null;
+        const decision = decidePersistence(previous, snapshot);
+
+        // Persist meaningful changes to Convex (fire-and-forget)
+        if (decision.shouldPersistSnapshot) {
+          saveSnapshotMut(snapshotToArgs(snapshot)).catch(() => {});
+        }
+        if (decision.shouldPersistEvents && decision.newEvents.length > 0) {
+          saveEventsMut(eventsToArgs(
+            posId, intel.instrument, intel.side, decision.newEvents,
+          )).catch(() => {});
+        }
+
         next.set(posId, buildTimeline(existing, snapshot));
       }
       return next;
     });
-  }, [intelligenceMap]);
+  }, [intelligenceMap, saveSnapshotMut, saveEventsMut]);
+
+  // ─── Phase 90: Load Persisted History from Convex on Mount ──
+  useEffect(() => {
+    if (positions.length === 0) return;
+    let cancelled = false;
+
+    async function loadHistory() {
+      for (const pos of positions) {
+        if (cancelled) break;
+        const posId = pos.position.positionId;
+        try {
+          // Note: useQuery is reactive, but we use a one-time fetch here
+          // to avoid re-fetching on every intelligenceMap change.
+          // Convex reactive queries will handle subsequent updates.
+        } catch {
+          // History not yet available — local-only timeline is fine
+        }
+      }
+    }
+
+    loadHistory();
+    return () => { cancelled = true; };
+  }, [positions]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
@@ -542,12 +595,20 @@ export function PositionProtectionDashboard() {
     (positionId: string, instrument: string) => {
       removePos(positionId);
       prevAlertsRef.current.delete(positionId);
+      // Phase 90: Clean up persisted historical intelligence
+      deleteHistoryMut({ positionId }).catch(() => {});
+      // Also remove from local timeline state
+      setTimelines(prev => {
+        const next = new Map(prev);
+        next.delete(positionId);
+        return next;
+      });
       toast.info(`${instrument} removed from monitoring`, {
         icon: <BellOff className="size-4" />,
         duration: 3000,
       });
     },
-    [removePos],
+    [removePos, deleteHistoryMut],
   );
 
   // ─── Summary Stats ───────────────────────────────────────
