@@ -205,7 +205,7 @@ describe("F. Multi-Dimensional Synthesis", () => {
     expect(result.side).toBe("LONG");
     expect(result.evidence.length).toBeGreaterThan(0);
     expect(result.scenarios.baseCase).toBeTruthy();
-    expect(result.dimensions.length).toBe(4);
+    expect(result.dimensions.length).toBe(6);
   });
 
   it("LONG in bullish market → supporting dimensions", () => {
