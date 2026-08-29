@@ -176,7 +176,25 @@ async function fetchCoinGeckoPrice(
     const res = await fetch(
       `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`,
     );
+    // Rate limited — return failure, don't throw
+    if (res.status === 429) {
+      return {
+        provider: "CoinGecko", instrument: symbol, price: 0,
+        timestamp: Date.now(), success: false,
+        error: "Rate limited (429)", latencyMs: Date.now() - start,
+        mode: "LIVE",
+      };
+    }
     const data = await res.json() as Record<string, { usd: number; usd_24h_change?: number }>;
+    // CoinGecko error response
+    if (data && typeof data === "object" && "error" in data) {
+      return {
+        provider: "CoinGecko", instrument: symbol, price: 0,
+        timestamp: Date.now(), success: false,
+        error: String((data as any).error), latencyMs: Date.now() - start,
+        mode: "LIVE",
+      };
+    }
     const price = data[coinId]?.usd;
     if (!price || !Number.isFinite(price) || price <= 0) {
       return {
