@@ -504,3 +504,194 @@ export const fetchLiveProtectionQuote = action({
     return results;
   },
 });
+
+// ═══════════════════════════════════════════════════════════════
+// OHLCV CANDLE FETCHING (TwelveData)
+// ═══════════════════════════════════════════════════════════════
+
+interface OHLCVCandle {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface OHLCVResult {
+  instrument: string;
+  timeframe: string;
+  candles: OHLCVCandle[];
+  sourceMode: "LIVE" | "UNAVAILABLE";
+  provider: string;
+  success: boolean;
+  error?: string;
+}
+
+/** TwelveData symbol for OHLCV (TwelveData uses different symbols for crypto) */
+function tdOHLCVSymbol(instrument: string): string {
+  // TwelveData uses BTC/USD not BTC/USDT for crypto OHLCV
+  const map: Record<string, string> = {
+    "BTC/USDT": "BTC/USD",
+    "ETH/USDT": "ETH/USD",
+    "SOL/USDT": "SOL/USD",
+    "DOGE/USDT": "DOGE/USD",
+    "EUR/USD": "EUR/USD",
+    "GBP/USD": "GBP/USD",
+    "USD/JPY": "USD/JPY",
+    "AUD/USD": "AUD/USD",
+    "USD/CAD": "USD/CAD",
+    "XAU/USD": "XAU/USD",
+  };
+  return map[instrument] ?? instrument;
+}
+
+/** Map our timeframe to TwelveData interval */
+function tdTimeframe(tf: string): string {
+  const map: Record<string, string> = {
+    M5: "5min",
+    M15: "15min",
+    H1: "1h",
+    H4: "4h",
+    D1: "1day",
+  };
+  return map[tf] ?? "15min";
+}
+
+async function fetchTwelveDataOHLCV(
+  instrument: string,
+  timeframe: string,
+  apiKey: string,
+  outputsize = 50,
+): Promise<OHLCVResult> {
+  try {
+    const symbol = tdOHLCVSymbol(instrument);
+    const interval = tdTimeframe(timeframe);
+    const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&apikey=${apiKey}`;
+
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+
+    if (res.status === 429) {
+      return {
+        instrument,
+        timeframe,
+        candles: [],
+        sourceMode: "UNAVAILABLE",
+        provider: "TwelveData",
+        success: false,
+        error: "Rate limited (429)",
+      };
+    }
+
+    if (!res.ok) {
+      return {
+        instrument,
+        timeframe,
+        candles: [],
+        sourceMode: "UNAVAILABLE",
+        provider: "TwelveData",
+        success: false,
+        error: `HTTP ${res.status}`,
+      };
+    }
+
+    const data = await res.json() as any;
+
+    if (data.status === "error" || !data.values) {
+      return {
+        instrument,
+        timeframe,
+        candles: [],
+        sourceMode: "UNAVAILABLE",
+        provider: "TwelveData",
+        success: false,
+        error: data.message ?? "No data",
+      };
+    }
+
+    const candles: OHLCVCandle[] = [];
+    for (const v of data.values) {
+      const open = parseFloat(v.open);
+      const high = parseFloat(v.high);
+      const low = parseFloat(v.low);
+      const close = parseFloat(v.close);
+      const volume = parseFloat(v.volume ?? "0");
+
+      // Validate candle
+      if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) continue;
+      if (open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
+
+      candles.push({
+        timestamp: new Date(v.datetime).getTime(),
+        open,
+        high,
+        low,
+        close,
+        volume: Number.isFinite(volume) ? volume : 0,
+      });
+    }
+
+    // Sort ascending by timestamp
+    candles.sort((a, b) => a.timestamp - b.timestamp);
+
+    return {
+      instrument,
+      timeframe,
+      candles,
+      sourceMode: candles.length > 0 ? "LIVE" : "UNAVAILABLE",
+      provider: "TwelveData",
+      success: candles.length > 0,
+    };
+  } catch (err: any) {
+    return {
+      instrument,
+      timeframe,
+      candles: [],
+      sourceMode: "UNAVAILABLE",
+      provider: "TwelveData",
+      success: false,
+      error: err?.message ?? "Fetch failed",
+    };
+  }
+}
+
+/**
+ * Fetch OHLCV candles for multiple instruments and timeframes.
+ * Respects TwelveData rate limits with staggered sequential fetching.
+ */
+export const fetchOHLCVCandles = action({
+  args: {
+    instruments: v.array(v.string()),
+    timeframes: v.array(v.string()),
+    outputsize: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<OHLCVResult[]> => {
+    const apiKey = process.env.TWELVE_DATA_API_KEY;
+    if (!apiKey) {
+      return args.instruments.map((inst) => ({
+        instrument: inst,
+        timeframe: args.timeframes[0] ?? "M15",
+        candles: [],
+        sourceMode: "UNAVAILABLE" as const,
+        provider: "TwelveData",
+        success: false,
+        error: "TWELVE_DATA_API_KEY not configured",
+      }));
+    }
+
+    const results: OHLCVResult[] = [];
+    const outputsize = args.outputsize ?? 50;
+
+    // Fetch sequentially with stagger to respect rate limits
+    for (const inst of args.instruments) {
+      for (const tf of args.timeframes) {
+        // Small delay between requests
+        await new Promise((r) => setTimeout(r, 1_200));
+        const result = await fetchTwelveDataOHLCV(inst, tf, apiKey, outputsize);
+        results.push(result);
+      }
+    }
+
+    return results;
+  },
+});
