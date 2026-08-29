@@ -19,9 +19,11 @@ import {
   type MTFConfluence,
 } from "./multi-timeframe-engine";
 
-const MAX_CANDLES_PER_TIMEFRAME = 100;
+const MAX_CANDLES_PER_TIMEFRAME = 50;
 const DEFAULT_TIMEFRAMES: TimeframeKey[] = ["M5", "M15", "H1"];
 const REFRESH_INTERVAL_MS = 120_000; // 2 minutes between OHLCV refreshes
+const STALE_THRESHOLD_MS = 60_000; // Data younger than 60s is still fresh
+const MAX_INSTRUMENTS_PER_FETCH = 2; // Limit instruments per fetch to avoid rate limits
 
 export interface OHLCVState {
   /** Candles per instrument per timeframe. */
@@ -76,11 +78,37 @@ export function useOHLCVData(
     if (!enabled || instruments.length === 0) return;
     if (stateRef.current.isFetching) return;
 
+    const now = Date.now();
+
+    // Skip if data is still fresh (caching)
+    if (now - stateRef.current.lastFetchAt < STALE_THRESHOLD_MS) return;
+
+    // Only fetch instruments that don't have fresh data
+    const instrumentsToFetch = instruments.filter((inst) => {
+      const instData = stateRef.current.data.get(inst);
+      if (!instData) return true; // no data yet
+      // Check if any timeframe has data
+      let hasFreshData = false;
+      for (const tf of timeframes) {
+        const candles = instData.get(tf);
+        if (candles && candles.length > 0) hasFreshData = true;
+      }
+      return !hasFreshData;
+    });
+
+    // If all instruments have fresh data, skip
+    if (instrumentsToFetch.length === 0 && stateRef.current.data.size > 0) return;
+
+    // Limit instruments per fetch to avoid rate limits
+    const batch = instrumentsToFetch.length > 0
+      ? instrumentsToFetch.slice(0, MAX_INSTRUMENTS_PER_FETCH)
+      : instruments.slice(0, MAX_INSTRUMENTS_PER_FETCH);
+
     setState((prev) => ({ ...prev, isFetching: true }));
 
     try {
       const results = await fetchCandles({
-        instruments,
+        instruments: batch,
         timeframes,
         outputsize: MAX_CANDLES_PER_TIMEFRAME,
       });
