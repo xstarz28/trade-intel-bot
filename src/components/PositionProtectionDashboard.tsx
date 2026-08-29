@@ -47,6 +47,8 @@ import {
 } from "@/lib/position-protection/market-intelligence-analyzer";
 import { getInstrumentInfo, formatInstrumentPrice } from "@/lib/position-protection/instrument-registry";
 import { MarketOverviewPanel } from "./MarketOverviewPanel";
+import { useOHLCVData } from "@/lib/position-protection/use-ohlcv-data";
+import type { TimeframeKey } from "@/lib/position-protection/multi-timeframe-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // SEVERITY → TOAST CONFIG
@@ -165,23 +167,51 @@ function PositionCard({
           )}
         </div>
 
-        {/* Intelligence summary line */}
+        {/* Intelligence + MTF summary line */}
         {intelligence && intelligence.dataQuality !== "INSUFFICIENT" && (
-          <div className="flex items-center gap-2 px-1 mb-1">
-            <span className={`text-[9px] font-mono ${
-              intelligence.marketState === "TRENDING_UP" ? "text-emerald-400" :
-              intelligence.marketState === "TRENDING_DOWN" ? "text-red-400" :
-              intelligence.marketState === "VOLATILE" ? "text-amber-400" :
-              "text-muted-foreground"
-            }`}>
-              {intelligence.marketState === "TRENDING_UP" && "▲ "}
-              {intelligence.marketState === "TRENDING_DOWN" && "▼ "}
-              {intelligence.marketState === "VOLATILE" && "⚡ "}
-              {intelligence.marketState.replace(/_/g, " ")}
-            </span>
-            <span className="text-[8px] font-mono text-muted-foreground/50">
-              {intelligence.shortTermContext}
-            </span>
+          <div className="flex items-center gap-2 px-1 mb-1 flex-wrap">
+            {/* OHLCV Regime */}
+            {intelligence.ohlcvRegime && intelligence.ohlcvRegime !== "INSUFFICIENT_DATA" && (
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                intelligence.ohlcvRegime === "TRENDING_UP" ? "text-emerald-400 bg-emerald-500/10" :
+                intelligence.ohlcvRegime === "TRENDING_DOWN" ? "text-red-400 bg-red-500/10" :
+                intelligence.ohlcvRegime === "VOLATILE" ? "text-amber-400 bg-amber-500/10" :
+                intelligence.ohlcvRegime === "PULLBACK" ? "text-blue-400 bg-blue-500/10" :
+                "text-muted-foreground bg-muted/30"
+              }`}>
+                {intelligence.ohlcvRegime.replace(/_/g, " ")}
+              </span>
+            )}
+            {/* MTF trend badges */}
+            {intelligence.h1Analysis && intelligence.h1Analysis.trend !== "UNKNOWN" && (
+              <span className={`text-[8px] font-mono ${
+                intelligence.h1Analysis.trend === "BULLISH" ? "text-emerald-400" :
+                intelligence.h1Analysis.trend === "BEARISH" ? "text-red-400" : "text-muted-foreground"
+              }`}>
+                H1:{intelligence.h1Analysis.trend}
+              </span>
+            )}
+            {intelligence.m15Analysis && intelligence.m15Analysis.trend !== "UNKNOWN" && (
+              <span className={`text-[8px] font-mono ${
+                intelligence.m15Analysis.trend === "BULLISH" ? "text-emerald-400" :
+                intelligence.m15Analysis.trend === "BEARISH" ? "text-red-400" : "text-muted-foreground"
+              }`}>
+                M15:{intelligence.m15Analysis.trend}
+              </span>
+            )}
+            {intelligence.m5Analysis && intelligence.m5Analysis.trend !== "UNKNOWN" && (
+              <span className={`text-[8px] font-mono ${
+                intelligence.m5Analysis.trend === "BULLISH" ? "text-emerald-400" :
+                intelligence.m5Analysis.trend === "BEARISH" ? "text-red-400" : "text-muted-foreground"
+              }`}>
+                M5:{intelligence.m5Analysis.trend}
+              </span>
+            )}
+            {!intelligence.ohlcvRegime && (
+              <span className="text-[9px] font-mono text-muted-foreground">
+                {intelligence.marketState.replace(/_/g, " ")}
+              </span>
+            )}
           </div>
         )}
 
@@ -247,6 +277,13 @@ export function PositionProtectionDashboard() {
     },
   });
 
+  // ─── OHLCV Data (MTF candles) ─────────────────────────
+  const ohlcv = useOHLCVData(monitoredInstruments, {
+    enabled: monitoredInstruments.length > 0,
+    timeframes: ["M5", "M15", "H1"],
+    refreshIntervalMs: 120_000,
+  });
+
   // ─── Price Observations (per instrument) ─────────────────
   const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
   const [activeTab, setActiveTab] = useState<"positions" | "market">("positions");
@@ -305,6 +342,7 @@ export function PositionProtectionDashboard() {
         givebackPct: pos.giveback?.givebackPct,
         sourceMode: live?.sourceMode ?? "UNAVAILABLE",
         provider: live?.provider ?? "—",
+        mtfConfluence: ohlcv.confluence.get(pos.position.instrument),
       });
 
       map.set(pos.position.positionId, intelligence);

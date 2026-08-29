@@ -21,6 +21,11 @@ import {
   buildMarketIntelligence,
 } from "./price-observation-engine";
 import { getInstrumentInfo, formatInstrumentPrice } from "./instrument-registry";
+import {
+  type MTFConfluence,
+  type TimeframeAnalysis,
+  type MarketRegime,
+} from "./multi-timeframe-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // INTELLIGENCE TYPES
@@ -78,6 +83,18 @@ export interface PositionIntelligence {
   mediumTermContext: string;
   /** Volatility description. */
   volatilityContext: string;
+
+  // ─── Multi-Timeframe (OHLCV-based) ───
+  /** MTF confluence analysis (from real OHLCV). */
+  mtfConfluence?: MTFConfluence;
+  /** Market regime from OHLCV. */
+  ohlcvRegime?: MarketRegime;
+  /** H1 analysis if available. */
+  h1Analysis?: TimeframeAnalysis;
+  /** M15 analysis if available. */
+  m15Analysis?: TimeframeAnalysis;
+  /** M5 analysis if available. */
+  m5Analysis?: TimeframeAnalysis;
 
   // ─── Position Metrics ───
   /** Current PnL %. */
@@ -172,12 +189,14 @@ export interface IntelligenceInput {
   /** Live data source info. */
   sourceMode: string;
   provider: string;
+  /** Optional OHLCV MTF confluence. */
+  mtfConfluence?: MTFConfluence;
 }
 
 export function generatePositionIntelligence(
   input: IntelligenceInput,
 ): PositionIntelligence {
-  const { position, observationState, thesisHealth, thesisHealthScore, severity, actionRecommendation, givebackPct, sourceMode, provider } = input;
+  const { position, observationState, thesisHealth, thesisHealthScore, severity, actionRecommendation, givebackPct, sourceMode, provider, mtfConfluence } = input;
 
   const marketSummary = buildMarketIntelligence(observationState, position.side);
   const signals = marketSummary.signals;
@@ -231,6 +250,11 @@ export function generatePositionIntelligence(
     evidence.filter((e) => e.direction === "conflicting").map((e) => e.category),
   ).size;
 
+  // ─── MTF enrichment ───
+  const h1Analysis = mtfConfluence?.timeframes.find((a) => a.timeframe === "H1");
+  const m15Analysis = mtfConfluence?.timeframes.find((a) => a.timeframe === "M15");
+  const m5Analysis = mtfConfluence?.timeframes.find((a) => a.timeframe === "M5");
+
   return {
     instrument: position.instrument,
     displayName: instrumentInfo?.displayName ?? position.instrument,
@@ -244,6 +268,11 @@ export function generatePositionIntelligence(
     shortTermContext,
     mediumTermContext,
     volatilityContext,
+    mtfConfluence,
+    ohlcvRegime: mtfConfluence?.regime,
+    h1Analysis,
+    m15Analysis,
+    m5Analysis,
     pnlPct,
     rMultiple,
     distanceToSL,
