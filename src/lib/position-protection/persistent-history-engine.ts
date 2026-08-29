@@ -22,6 +22,98 @@ import { detectChanges, generateSummary, MAX_HISTORY_EVENTS } from "./historical
 export { generateSummary };
 
 // ═══════════════════════════════════════════════════════════════
+// EVENT IDENTITY + DEDUP
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Deterministic event identity for deduplication.
+ * Same timestamp + eventType + description = same event.
+ * Used by both Convex server-side and client-side merge.
+ */
+export function eventIdentity(e: HistoricalEvent): string {
+  return `${e.timestamp}|${e.eventType}|${e.description}`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LOCAL + PERSISTED MERGE
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Merge local timeline events with persisted timeline events.
+ * Deduplicates by eventIdentity to prevent double-counting.
+ * Preserves chronological ordering (newest first).
+ */
+export function mergeTimelineEvents(
+  localEvents: HistoricalEvent[],
+  persistedEvents: HistoricalEvent[],
+): HistoricalEvent[] {
+  const seen = new Set<string>();
+  const merged: HistoricalEvent[] = [];
+
+  // Add persisted events first (authoritative source)
+  for (const event of persistedEvents) {
+    const id = eventIdentity(event);
+    if (!seen.has(id)) {
+      seen.add(id);
+      merged.push(event);
+    }
+  }
+
+  // Add local events that don't exist in persisted
+  for (const event of localEvents) {
+    const id = eventIdentity(event);
+    if (!seen.has(id)) {
+      seen.add(id);
+      merged.push(event);
+    }
+  }
+
+  // Sort newest first, bound to MAX_HISTORY_EVENTS
+  return merged
+    .sort((a, b) => b.timestamp - a.timestamp)
+    .slice(0, MAX_HISTORY_EVENTS);
+}
+
+/**
+ * Merge two IntelligenceSnapshots to produce the best available version.
+ * Prefers the newer timestamp.
+ */
+export function mergeSnapshots(
+  local: IntelligenceSnapshot | null,
+  persisted: IntelligenceSnapshot | null,
+): IntelligenceSnapshot | null {
+  if (!local) return persisted;
+  if (!persisted) return local;
+  return local.timestamp >= persisted.timestamp ? local : persisted;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PERSISTENCE RACE CONDITION GUARD
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Snapshot identity for deduplication against in-flight mutations.
+ * A snapshot with the same timestamp+positionId+thesisState should not
+ * be persisted twice even if two intelligence cycles fire before the
+ * first mutation completes.
+ */
+export function snapshotIdentity(s: IntelligenceSnapshot): string {
+  return `${s.timestamp}|${s.positionId}|${s.thesisState}|${s.marketRegime}|${s.h1Trend}|${s.structure}`;
+}
+
+/**
+ * Check whether a new snapshot is meaningfully different from the
+ * last-persisted snapshot identity, preventing redundant saves.
+ */
+export function isSnapshotStale(
+  newSnapshot: IntelligenceSnapshot,
+  lastPersistedIdentity: string | null,
+): boolean {
+  if (!lastPersistedIdentity) return false;
+  return snapshotIdentity(newSnapshot) === lastPersistedIdentity;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PERSISTED DATA MODELS
 // ═══════════════════════════════════════════════════════════════
 
