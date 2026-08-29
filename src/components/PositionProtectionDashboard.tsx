@@ -48,6 +48,20 @@ import {
 import { getInstrumentInfo, formatInstrumentPrice } from "@/lib/position-protection/instrument-registry";
 import { MarketOverviewPanel } from "./MarketOverviewPanel";
 import { IntelligenceDashboard } from "./IntelligenceDashboard";
+import { UserIntelligenceFeed } from "./UserIntelligenceFeed";
+import {
+  extractUserPositions,
+  buildUserIntelligenceFeed,
+  boundFeed,
+  type UserIntelligenceFeed as FeedType,
+  type UserPosition,
+} from "@/lib/position-protection/user-intelligence-feed";
+import {
+  classifyNewsFreshness,
+  type NewsItem,
+} from "@/lib/position-protection/news-intelligence";
+import { useQuery, useAction } from "convex/react";
+import { api } from "../convex/_generated/api";
 import { useOHLCVData } from "@/lib/position-protection/use-ohlcv-data";
 import type { TimeframeKey } from "@/lib/position-protection/multi-timeframe-engine";
 
@@ -287,7 +301,7 @@ export function PositionProtectionDashboard() {
 
   // ─── Price Observations (per instrument) ─────────────────
   const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
-  const [activeTab, setActiveTab] = useState<"positions" | "market" | "intelligence">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "feed" | "intelligence" | "market">("positions");
   const [showForm, setShowForm] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const prevAlertsRef = useRef<Map<string, AlertSeverity>>(new Map());
@@ -310,6 +324,81 @@ export function PositionProtectionDashboard() {
       return next;
     });
   }, [livePrices]);
+
+  // ─── User Intelligence Feed ────────────────────────────────
+  const userPositions = useMemo(
+    () => extractUserPositions(positions.map(p => ({ instrument: p.position.instrument, side: p.position.side as "LONG" | "SHORT" }))),
+    [positions],
+  );
+
+  // Fetch news for each unique instrument via Convex action
+  const [feedNews, setFeedNews] = useState<Map<string, NewsItem[]>>(new Map());
+  const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
+
+  // Fetch news for user's instruments (rate-limit safe: one at a time)
+  useEffect(() => {
+    if (userPositions.length === 0) return;
+
+    let cancelled = false;
+    const instruments = [...new Set(userPositions.map(p => p.instrument))];
+
+    async function fetchNews() {
+      for (const instrument of instruments) {
+        if (cancelled) break;
+        try {
+          const assetClass = userPositions.find(p => p.instrument === instrument)?.assetClass ?? "crypto";
+          const instrumentType = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
+          const result = await fetchIntelligence({
+            instrument: instrument.split("/")[0],
+            instrumentType: instrumentType as any,
+          });
+          if (cancelled) break;
+
+          const articles = result?.sentiment?.articles ?? [];
+          const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
+            id: `av-${instrument}-${i}`,
+            timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
+            source: art.source || "AlphaVantage",
+            headline: art.title || "",
+            summary: art.summary || undefined,
+            url: art.url || undefined,
+            relatedInstruments: [instrument],
+            assetClass: assetClass as any,
+            category: assetClass === "crypto" ? "CRYPTO_SPECIFIC" as const : "FOREX" as const,
+            sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
+                       art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
+            impactStrength: "MODERATE" as const,
+            freshness: classifyNewsFreshness(
+              art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
+              Date.now(),
+            ),
+            sourceMode: "LIVE" as const,
+          }));
+
+          setFeedNews(prev => {
+            const next = new Map(prev);
+            next.set(instrument, newsItems);
+            return next;
+          });
+        } catch {
+          // Provider rate limit or unavailable — skip silently
+        }
+        // Small delay to respect rate limits
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+
+    fetchNews();
+    return () => { cancelled = true; };
+  }, [userPositions, fetchIntelligence]);
+
+  // Build the user intelligence feed
+  const userFeed: FeedType | null = useMemo(() => {
+    if (userPositions.length === 0) return null;
+    const allNews = Array.from(feedNews.values()).flat();
+    if (allNews.length === 0) return null;
+    return boundFeed(buildUserIntelligenceFeed(allNews, userPositions));
+  }, [userPositions, feedNews]);
 
   // ─── Generate Intelligence per Position ───────────────────
   const intelligenceMap = useMemo(() => {
@@ -577,6 +666,16 @@ export function PositionProtectionDashboard() {
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
+              activeTab === "feed"
+                ? "bg-background text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("feed")}
+          >
+            Feed
+          </button>
+          <button
+            className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
               activeTab === "intelligence"
                 ? "bg-background text-foreground font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -633,6 +732,11 @@ export function PositionProtectionDashboard() {
             position for real-time profit protection.
           </p>
         </div>
+      )}
+
+      {/* Feed Tab */}
+      {activeTab === "feed" && (
+        <UserIntelligenceFeed feed={userFeed} />
       )}
 
       {/* Intelligence Tab */}
