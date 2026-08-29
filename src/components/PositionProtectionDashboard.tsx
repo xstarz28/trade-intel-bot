@@ -35,6 +35,18 @@ import { evaluateProtection } from "@/lib/position-protection/protection-engine"
 import { useLiveProtectionPolling, type LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
 import type { AlertSeverity } from "@/lib/position-protection/types";
 import type { ProtectionEvent } from "@/lib/position-protection/realtime-types";
+import {
+  type PriceObservationState,
+  createObservationState,
+  addObservation,
+  buildMarketIntelligence,
+} from "@/lib/position-protection/price-observation-engine";
+import {
+  generatePositionIntelligence,
+  type PositionIntelligence,
+} from "@/lib/position-protection/market-intelligence-analyzer";
+import { getInstrumentInfo, formatInstrumentPrice } from "@/lib/position-protection/instrument-registry";
+import { MarketOverviewPanel } from "./MarketOverviewPanel";
 
 // ═══════════════════════════════════════════════════════════════
 // SEVERITY → TOAST CONFIG
@@ -78,10 +90,12 @@ const SEVERITY_TOAST: Record<
 function PositionCard({
   state,
   livePrice,
+  intelligence,
   onRemove,
 }: {
   state: MonitoredPositionState;
   livePrice?: LiveInstrumentState;
+  intelligence?: PositionIntelligence;
   onRemove: () => void;
 }) {
   const { position, alert, monitoringStatus, giveback, lastUpdateAt, peakProfit } = state;
@@ -104,6 +118,8 @@ function PositionCard({
     now: Date.now(),
   }).alert;
 
+  const instrumentInfo = getInstrumentInfo(position.instrument);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -112,26 +128,63 @@ function PositionCard({
       transition={{ duration: 0.2 }}
     >
       <div className="relative">
-        {/* Live price badge */}
-        {livePrice && (
-          <div className="flex items-center gap-2 mb-1 px-1">
-            <span className="text-[10px] font-mono text-muted-foreground">
-              {livePrice.instrument}
+        {/* Live price + intelligence header */}
+        <div className="flex items-center justify-between gap-2 mb-1 px-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono font-semibold text-foreground">
+              {instrumentInfo?.displayName ?? position.instrument}
             </span>
-            <span className={`text-[10px] font-mono font-semibold ${
-              livePrice.sourceMode === "LIVE" ? "text-emerald-400" :
-              livePrice.sourceMode === "STALE" ? "text-amber-400" :
-              "text-red-400"
+            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+              position.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
             }`}>
-              {livePrice.sourceMode === "LIVE" && livePrice.price > 0
-                ? `$${livePrice.price.toLocaleString(undefined, { maximumFractionDigits: livePrice.price < 1 ? 6 : 2 })}`
-                : livePrice.sourceMode}
+              {position.side}
             </span>
-            <span className="text-[9px] font-mono text-muted-foreground/50">
-              via {livePrice.provider}
+          </div>
+          {livePrice && (
+            <div className="flex items-center gap-1.5">
+              <span className={`text-[11px] font-mono font-bold ${
+                livePrice.sourceMode === "LIVE" ? "text-foreground" :
+                livePrice.sourceMode === "STALE" ? "text-amber-400" :
+                "text-muted-foreground"
+              }`}>
+                {livePrice.sourceMode === "LIVE" && livePrice.price > 0
+                  ? formatInstrumentPrice(position.instrument, livePrice.price)
+                  : livePrice.sourceMode}
+              </span>
+              <span className={`text-[8px] font-mono px-1 py-0.5 rounded ${
+                livePrice.sourceMode === "LIVE"
+                  ? "text-emerald-400 bg-emerald-500/10"
+                  : "text-muted-foreground bg-muted/30"
+              }`}>
+                {livePrice.sourceMode === "LIVE" ? "LIVE" : livePrice.sourceMode}
+              </span>
+              <span className="text-[8px] font-mono text-muted-foreground/50">
+                {livePrice.provider}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Intelligence summary line */}
+        {intelligence && intelligence.dataQuality !== "INSUFFICIENT" && (
+          <div className="flex items-center gap-2 px-1 mb-1">
+            <span className={`text-[9px] font-mono ${
+              intelligence.marketState === "TRENDING_UP" ? "text-emerald-400" :
+              intelligence.marketState === "TRENDING_DOWN" ? "text-red-400" :
+              intelligence.marketState === "VOLATILE" ? "text-amber-400" :
+              "text-muted-foreground"
+            }`}>
+              {intelligence.marketState === "TRENDING_UP" && "▲ "}
+              {intelligence.marketState === "TRENDING_DOWN" && "▼ "}
+              {intelligence.marketState === "VOLATILE" && "⚡ "}
+              {intelligence.marketState.replace(/_/g, " ")}
+            </span>
+            <span className="text-[8px] font-mono text-muted-foreground/50">
+              {intelligence.shortTermContext}
             </span>
           </div>
         )}
+
         <PositionProtectionPanel
           alert={effectiveAlert}
           monitoringStatus={monitoringStatus}
@@ -194,9 +247,71 @@ export function PositionProtectionDashboard() {
     },
   });
 
+  // ─── Price Observations (per instrument) ─────────────────
+  const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
+  const [activeTab, setActiveTab] = useState<"positions" | "market">("positions");
   const [showForm, setShowForm] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const prevAlertsRef = useRef<Map<string, AlertSeverity>>(new Map());
+
+  // ─── Update Price Observations from Live Data ────────────
+  useEffect(() => {
+    if (livePrices.size === 0) return;
+
+    setPriceObservations((prev) => {
+      const next = new Map(prev);
+      const now = Date.now();
+
+      for (const [instrument, state] of livePrices) {
+        if (state.sourceMode !== "LIVE" || state.price <= 0) continue;
+
+        const obs = next.get(instrument) ?? createObservationState(instrument);
+        next.set(instrument, addObservation(obs, state.price, now));
+      }
+
+      return next;
+    });
+  }, [livePrices]);
+
+  // ─── Generate Intelligence per Position ───────────────────
+  const intelligenceMap = useMemo(() => {
+    const map = new Map<string, PositionIntelligence>();
+
+    for (const pos of positions) {
+      const obs = priceObservations.get(pos.position.instrument);
+      const alert = pos.alert;
+      const live = livePrices.get(pos.position.instrument);
+
+      const currentPrice = live?.sourceMode === "LIVE" && live.price > 0
+        ? live.price
+        : pos.position.entryPrice;
+
+      const intelligence = generatePositionIntelligence({
+        position: {
+          instrument: pos.position.instrument,
+          side: pos.position.side,
+          entryPrice: pos.position.entryPrice,
+          currentPrice,
+          stopLoss: pos.position.stopLoss,
+          takeProfit: pos.position.takeProfit,
+          leverage: pos.position.leverage,
+          horizon: pos.position.horizon,
+        },
+        observationState: obs ?? createObservationState(pos.position.instrument),
+        thesisHealth: alert?.thesisHealth ?? "UNKNOWN",
+        thesisHealthScore: alert?.thesisHealthScore ?? 50,
+        severity: alert?.severity ?? "NONE",
+        actionRecommendation: alert?.actionRecommendation ?? "Hold and monitor.",
+        givebackPct: pos.giveback?.givebackPct,
+        sourceMode: live?.sourceMode ?? "UNAVAILABLE",
+        provider: live?.provider ?? "—",
+      });
+
+      map.set(pos.position.positionId, intelligence);
+    }
+
+    return map;
+  }, [positions, priceObservations, livePrices]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
@@ -408,19 +523,55 @@ export function PositionProtectionDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Position Panels */}
-      <AnimatePresence>
-        {positions.map((pos) => (
-          <PositionCard
-            key={pos.position.positionId}
-            state={pos}
-            livePrice={livePrices.get(pos.position.instrument)}
-            onRemove={() =>
-              handleRemove(pos.position.positionId, pos.position.instrument)
-            }
-          />
-        ))}
-      </AnimatePresence>
+      {/* Tab Switcher */}
+      {positions.length > 0 && (
+        <div className="flex items-center gap-1 p-0.5 bg-muted/30 rounded-lg">
+          <button
+            className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
+              activeTab === "positions"
+                ? "bg-background text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("positions")}
+          >
+            Positions ({positions.length})
+          </button>
+          <button
+            className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
+              activeTab === "market"
+                ? "bg-background text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("market")}
+          >
+            Market Overview
+          </button>
+        </div>
+      )}
+
+      {/* Positions Tab */}
+      {activeTab === "positions" && (
+        <>
+          <AnimatePresence>
+            {positions.map((pos) => (
+              <PositionCard
+                key={pos.position.positionId}
+                state={pos}
+                livePrice={livePrices.get(pos.position.instrument)}
+                intelligence={intelligenceMap.get(pos.position.positionId)}
+                onRemove={() =>
+                  handleRemove(pos.position.positionId, pos.position.instrument)
+                }
+              />
+            ))}
+          </AnimatePresence>
+        </>
+      )}
+
+      {/* Market Overview Tab */}
+      {activeTab === "market" && (
+        <MarketOverviewPanel livePrices={livePrices} />
+      )}
 
       {/* Empty State */}
       {positions.length === 0 && !showForm && (
@@ -435,10 +586,40 @@ export function PositionProtectionDashboard() {
         </div>
       )}
 
+      {/* Intelligence Footer */}
+      {intelligenceMap.size > 0 && activeTab === "positions" && (
+        <div className="grid grid-cols-2 gap-2">
+          {[...intelligenceMap.values()].slice(0, 2).map((intel) => (
+            <div key={intel.instrument} className="border border-border/30 rounded-lg p-2 space-y-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] font-mono font-semibold text-foreground">{intel.instrument}</span>
+                <span className={`text-[8px] font-mono px-1 py-0.5 rounded ${
+                  intel.confidence === "STRONG_EVIDENCE" ? "text-emerald-400 bg-emerald-500/10" :
+                  intel.confidence === "MODERATE_EVIDENCE" ? "text-blue-400 bg-blue-500/10" :
+                  "text-muted-foreground bg-muted/30"
+                }`}>
+                  {intel.confidence.replace(/_/g, " ")}
+                </span>
+              </div>
+              {intel.invalidationConditions.length > 0 && (
+                <div className="text-[8px] font-mono text-amber-400/80">
+                  Invalidation: {intel.invalidationConditions[0].description}
+                </div>
+              )}
+              {intel.nextMonitor.length > 0 && (
+                <div className="text-[8px] font-mono text-muted-foreground/60">
+                  Watch: {intel.nextMonitor[0]}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Disclaimer */}
       <div className="text-[9px] font-mono text-muted-foreground/40 pt-2 border-t border-border/20">
         Informational only. All alerts are manual-action recommendations.
-        No trades are executed automatically.
+        No trades are executed automatically. Intelligence confidence ≠ likelihood of price movement.
       </div>
     </div>
   );
