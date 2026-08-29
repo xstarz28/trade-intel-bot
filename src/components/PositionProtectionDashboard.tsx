@@ -47,6 +47,7 @@ import {
 } from "@/lib/position-protection/market-intelligence-analyzer";
 import { getInstrumentInfo, formatInstrumentPrice } from "@/lib/position-protection/instrument-registry";
 import { MarketOverviewPanel } from "./MarketOverviewPanel";
+import { IntelligenceDashboard } from "./IntelligenceDashboard";
 import { useOHLCVData } from "@/lib/position-protection/use-ohlcv-data";
 import type { TimeframeKey } from "@/lib/position-protection/multi-timeframe-engine";
 
@@ -286,7 +287,7 @@ export function PositionProtectionDashboard() {
 
   // ─── Price Observations (per instrument) ─────────────────
   const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
-  const [activeTab, setActiveTab] = useState<"positions" | "market">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "market" | "intelligence">("positions");
   const [showForm, setShowForm] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const prevAlertsRef = useRef<Map<string, AlertSeverity>>(new Map());
@@ -576,13 +577,23 @@ export function PositionProtectionDashboard() {
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
+              activeTab === "intelligence"
+                ? "bg-background text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("intelligence")}
+          >
+            Intelligence
+          </button>
+          <button
+            className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
               activeTab === "market"
                 ? "bg-background text-foreground font-semibold"
                 : "text-muted-foreground hover:text-foreground"
             }`}
             onClick={() => setActiveTab("market")}
           >
-            Market Overview
+            Market
           </button>
         </div>
       )}
@@ -624,33 +635,35 @@ export function PositionProtectionDashboard() {
         </div>
       )}
 
-      {/* Intelligence Footer */}
-      {intelligenceMap.size > 0 && activeTab === "positions" && (
-        <div className="grid grid-cols-2 gap-2">
-          {[...intelligenceMap.values()].slice(0, 2).map((intel) => (
-            <div key={intel.instrument} className="border border-border/30 rounded-lg p-2 space-y-1">
-              <div className="flex items-center gap-1.5">
-                <span className="text-[9px] font-mono font-semibold text-foreground">{intel.instrument}</span>
-                <span className={`text-[8px] font-mono px-1 py-0.5 rounded ${
-                  intel.confidence === "STRONG_EVIDENCE" ? "text-emerald-400 bg-emerald-500/10" :
-                  intel.confidence === "MODERATE_EVIDENCE" ? "text-blue-400 bg-blue-500/10" :
-                  "text-muted-foreground bg-muted/30"
-                }`}>
-                  {intel.confidence.replace(/_/g, " ")}
-                </span>
+      {/* Intelligence Tab */}
+      {activeTab === "intelligence" && positions.length > 0 && (
+        <div className="space-y-3">
+          {positions.map((pos) => {
+            const intel = intelligenceMap.get(pos.position.positionId);
+            return (
+              <div key={pos.position.positionId} className="border border-border/30 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] font-mono font-bold text-foreground">
+                    {getInstrumentInfo(pos.position.instrument)?.displayName ?? pos.position.instrument}
+                  </span>
+                  <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+                    pos.position.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+                  }`}>
+                    {pos.position.side}
+                  </span>
+                </div>
+                <IntelligenceDashboard
+                  intelligence={intel}
+                  multiDimensional={null}
+                  marketContext={null}
+                  analyticalSummary={null}
+                  whatChanged={null}
+                  positionSide={pos.position.side}
+                  instrument={pos.position.instrument}
+                />
               </div>
-              {intel.invalidationConditions.length > 0 && (
-                <div className="text-[8px] font-mono text-amber-400/80">
-                  Invalidation: {intel.invalidationConditions[0].description}
-                </div>
-              )}
-              {intel.nextMonitor.length > 0 && (
-                <div className="text-[8px] font-mono text-muted-foreground/60">
-                  Watch: {intel.nextMonitor[0]}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
