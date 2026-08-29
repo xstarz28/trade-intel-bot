@@ -10,7 +10,7 @@
  *
  * INFORMATIONAL_ONLY — never executes trades.
  */
-import React, { useEffect, useRef, useCallback, useState } from "react";
+import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -32,6 +32,7 @@ import {
   type MonitoredPositionState,
 } from "@/lib/position-protection/use-position-protection";
 import { evaluateProtection } from "@/lib/position-protection/protection-engine";
+import { useLiveProtectionPolling, type LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
 import type { AlertSeverity } from "@/lib/position-protection/types";
 import type { ProtectionEvent } from "@/lib/position-protection/realtime-types";
 
@@ -76,9 +77,11 @@ const SEVERITY_TOAST: Record<
 
 function PositionCard({
   state,
+  livePrice,
   onRemove,
 }: {
   state: MonitoredPositionState;
+  livePrice?: LiveInstrumentState;
   onRemove: () => void;
 }) {
   const { position, alert, monitoringStatus, giveback, lastUpdateAt, peakProfit } = state;
@@ -109,6 +112,26 @@ function PositionCard({
       transition={{ duration: 0.2 }}
     >
       <div className="relative">
+        {/* Live price badge */}
+        {livePrice && (
+          <div className="flex items-center gap-2 mb-1 px-1">
+            <span className="text-[10px] font-mono text-muted-foreground">
+              {livePrice.instrument}
+            </span>
+            <span className={`text-[10px] font-mono font-semibold ${
+              livePrice.sourceMode === "LIVE" ? "text-emerald-400" :
+              livePrice.sourceMode === "STALE" ? "text-amber-400" :
+              "text-red-400"
+            }`}>
+              {livePrice.sourceMode === "LIVE" && livePrice.price > 0
+                ? `$${livePrice.price.toLocaleString(undefined, { maximumFractionDigits: livePrice.price < 1 ? 6 : 2 })}`
+                : livePrice.sourceMode}
+            </span>
+            <span className="text-[9px] font-mono text-muted-foreground/50">
+              via {livePrice.provider}
+            </span>
+          </div>
+        )}
         <PositionProtectionPanel
           alert={effectiveAlert}
           monitoringStatus={monitoringStatus}
@@ -140,9 +163,36 @@ export function PositionProtectionDashboard() {
     registerPosition: registerPos,
     removePosition: removePos,
     acknowledgeAlert,
+    ingestEvent,
     persistenceAvailable,
     persistenceDegraded,
   } = usePositionProtection();
+
+  // ─── Live Market Polling ──────────────────────────────
+  // Derive unique instruments from registered positions
+  const monitoredInstruments = useMemo(
+    () => [...new Set(positions.map((p) => p.position.instrument))],
+    [positions],
+  );
+
+  const {
+    livePrices,
+    isPolling,
+    lastPollAt,
+    totalPolls,
+    successfulPolls,
+    failedPolls,
+    lastError,
+  } = useLiveProtectionPolling(monitoredInstruments, {
+    enabled: monitoredInstruments.length > 0,
+    pollIntervalMs: 30_000,
+    onEvent: (events) => {
+      // Feed real market events into the protection pipeline
+      for (const event of events) {
+        ingestEvent(event);
+      }
+    },
+  });
 
   const [showForm, setShowForm] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -279,6 +329,40 @@ export function PositionProtectionDashboard() {
                 : "local only"}
           </div>
 
+          {/* Live data indicator */}
+          {monitoredInstruments.length > 0 && (
+            <div
+              className={`flex items-center gap-1 text-[10px] font-mono ${
+                lastError
+                  ? "text-amber-400"
+                  : isPolling && successfulPolls > 0
+                    ? "text-emerald-400"
+                    : isPolling
+                      ? "text-blue-400"
+                      : "text-muted-foreground"
+              }`}
+            >
+              <div
+                className={`size-1.5 rounded-full ${
+                  lastError
+                    ? "bg-amber-400"
+                    : isPolling && successfulPolls > 0
+                      ? "bg-emerald-400"
+                      : isPolling
+                        ? "bg-blue-400 animate-pulse"
+                        : "bg-muted-foreground"
+                }`}
+              />
+              {lastError
+                ? "data degraded"
+                : isPolling && successfulPolls > 0
+                  ? `live (${successfulPolls})`
+                  : isPolling
+                    ? "connecting"
+                    : "no data"}
+            </div>
+          )}
+
           {/* Notification toggle */}
           <Button
             variant="ghost"
@@ -330,6 +414,7 @@ export function PositionProtectionDashboard() {
           <PositionCard
             key={pos.position.positionId}
             state={pos}
+            livePrice={livePrices.get(pos.position.instrument)}
             onRemove={() =>
               handleRemove(pos.position.positionId, pos.position.instrument)
             }
