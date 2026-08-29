@@ -48,6 +48,11 @@ import {
 import { getInstrumentInfo, formatInstrumentPrice } from "@/lib/position-protection/instrument-registry";
 import { MarketOverviewPanel } from "./MarketOverviewPanel";
 import { IntelligenceDashboard } from "./IntelligenceDashboard";
+import {
+  buildTimeline,
+  createSnapshot,
+  type HistoricalTimeline,
+} from "@/lib/position-protection/historical-intelligence";
 import { UserIntelligenceFeed } from "./UserIntelligenceFeed";
 import {
   extractUserPositions,
@@ -302,6 +307,7 @@ export function PositionProtectionDashboard() {
   // ─── Price Observations (per instrument) ─────────────────
   const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
   const [activeTab, setActiveTab] = useState<"positions" | "feed" | "intelligence" | "market">("positions");
+  const [timelines, setTimelines] = useState<Map<string, HistoricalTimeline>>(new Map());
   const [showForm, setShowForm] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const prevAlertsRef = useRef<Map<string, AlertSeverity>>(new Map());
@@ -440,6 +446,40 @@ export function PositionProtectionDashboard() {
 
     return map;
   }, [positions, priceObservations, livePrices]);
+
+  // ─── Build Historical Timelines from Intelligence ───────
+  useEffect(() => {
+    if (intelligenceMap.size === 0) return;
+
+    setTimelines(prev => {
+      const next = new Map(prev);
+      for (const [posId, intel] of intelligenceMap) {
+        const existing = next.get(posId) ?? null;
+        const snapshot = createSnapshot({
+          positionId: posId,
+          instrument: intel.instrument,
+          side: intel.side,
+          thesisState: intel.thesisHealth,
+          evidenceQuality: intel.confidence,
+          marketRegime: intel.marketState,
+          h1Trend: intel.h1Analysis?.trend ?? "UNKNOWN",
+          m15Trend: intel.m15Analysis?.trend ?? "UNKNOWN",
+          m5Trend: intel.m5Analysis?.trend ?? "UNKNOWN",
+          mtfAlignment: intel.mtfConfluence?.allAligned ? "ALIGNED" : "CONFLICT",
+          momentum: intel.h1Analysis?.momentum ?? "UNKNOWN",
+          volatility: intel.h1Analysis?.volatility ?? "UNKNOWN",
+          structure: intel.h1Analysis?.structure ?? "INSUFFICIENT_DATA",
+          supportingCount: intel.evidence.filter(e => e.direction === "supporting").length,
+          conflictingCount: intel.evidence.filter(e => e.direction === "conflicting").length,
+          invalidationCondition: intel.invalidationConditions[0]?.description ?? "—",
+          watchNext: intel.nextMonitor[0] ?? "—",
+          dataAvailability: intel.dataQuality,
+        });
+        next.set(posId, buildTimeline(existing, snapshot));
+      }
+      return next;
+    });
+  }, [intelligenceMap]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
@@ -764,6 +804,7 @@ export function PositionProtectionDashboard() {
                   whatChanged={null}
                   positionSide={pos.position.side}
                   instrument={pos.position.instrument}
+                  historicalTimeline={timelines.get(pos.position.positionId) ?? null}
                 />
               </div>
             );
