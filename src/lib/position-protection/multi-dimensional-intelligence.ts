@@ -14,6 +14,8 @@
 
 import type { PositionSide } from "./types";
 import type { MTFConfluence, TimeframeAnalysis, MarketRegime } from "./multi-timeframe-engine";
+import type { NewsSynthesis } from "./news-intelligence";
+import type { FundamentalSynthesis, CatalystAnalysis, EconomicEvent } from "./fundamental-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // DATA AVAILABILITY
@@ -318,6 +320,8 @@ export function buildHierarchicalEvidence(
   crossAssetCtx: CrossAssetContext,
   derivativesCtx: DerivativesContext,
   positionSide: PositionSide,
+  newsCtx?: NewsSynthesis | null,
+  fundamentalCtx?: FundamentalSynthesis | null,
 ): HierarchicalEvidence[] {
   const evidence: HierarchicalEvidence[] = [];
   const isLong = positionSide === "LONG";
@@ -429,6 +433,42 @@ export function buildHierarchicalEvidence(
       direction: derivativesCtx.positionImpact as "SUPPORTING" | "CONFLICTING",
       strength: "WEAK",
       source: "Derivatives",
+    });
+  }
+
+  // ─── NEWS CONTEXT ───
+  if (newsCtx && newsCtx.availability === "AVAILABLE" && newsCtx.newsStance !== "INSUFFICIENT" && newsCtx.newsStance !== "NEUTRAL") {
+    evidence.push({
+      tier: "CONTEXT",
+      category: "NEWS",
+      description: newsCtx.description,
+      direction: (newsCtx.newsStance === "SUPPORTING" ? "SUPPORTING" : newsCtx.newsStance === "CONFLICTING" ? "CONFLICTING" : "NEUTRAL") as "SUPPORTING" | "CONFLICTING",
+      strength: "WEAK",
+      source: "News",
+    });
+  }
+
+  // ─── FUNDAMENTAL CONTEXT ───
+  if (fundamentalCtx && fundamentalCtx.availability === "AVAILABLE" && fundamentalCtx.fundamentalStance !== "INSUFFICIENT" && fundamentalCtx.fundamentalStance !== "NEUTRAL") {
+    evidence.push({
+      tier: "CONTEXT",
+      category: "FUNDAMENTAL",
+      description: fundamentalCtx.description,
+      direction: (fundamentalCtx.fundamentalStance === "SUPPORTING" ? "SUPPORTING" : fundamentalCtx.fundamentalStance === "CONFLICTING" ? "CONFLICTING" : "NEUTRAL") as "SUPPORTING" | "CONFLICTING",
+      strength: "WEAK",
+      source: "Fundamentals",
+    });
+  }
+
+  // ─── CATALYST CONTEXT ───
+  if (fundamentalCtx?.catalyst && (fundamentalCtx.catalyst.status === "HIGH_IMPACT_EVENT_APPROACHING" || fundamentalCtx.catalyst.status === "ACTIVE_CATALYST")) {
+    evidence.push({
+      tier: "CONTEXT",
+      category: "CATALYST",
+      description: fundamentalCtx.catalyst.description,
+      direction: "NEUTRAL",
+      strength: "MODERATE",
+      source: "EconomicCalendar",
     });
   }
 
@@ -548,6 +588,10 @@ export interface MultiDimensionalSynthesis {
   crossAsset: CrossAssetContext;
   /** Derivatives context. */
   derivatives: DerivativesContext;
+  /** News context. */
+  news: NewsSynthesis | null;
+  /** Fundamental context. */
+  fundamentals: FundamentalSynthesis | null;
   /** Hierarchical evidence (primary > secondary > context). */
   evidence: HierarchicalEvidence[];
   /** Scenario synthesis. */
@@ -570,6 +614,8 @@ export function synthesizeMultiDimensionalIntelligence(input: {
   fundingRate?: number | null;
   oiChange?: number | null;
   liquidationSpike?: boolean;
+  news?: NewsSynthesis | null;
+  fundamentals?: FundamentalSynthesis | null;
 }): MultiDimensionalSynthesis {
   const { instrument, side, confluence, vixPrice, otherPrices, fundingRate, oiChange, liquidationSpike } = input;
 
@@ -588,8 +634,12 @@ export function synthesizeMultiDimensionalIntelligence(input: {
     side,
   );
 
+  // News & fundamentals (optional — passed in if available)
+  const news = input.news ?? null;
+  const fundamentals = input.fundamentals ?? null;
+
   // Evidence hierarchy
-  const evidence = buildHierarchicalEvidence(confluence, macro, crossAsset, derivatives, side);
+  const evidence = buildHierarchicalEvidence(confluence, macro, crossAsset, derivatives, side, news, fundamentals);
 
   // Scenarios
   const scenarios = generateScenarios(side, confluence, evidence);
@@ -600,6 +650,8 @@ export function synthesizeMultiDimensionalIntelligence(input: {
     { dimension: "MACRO", availability: macro.availability, description: "Macro/risk regime" },
     { dimension: "CROSS_ASSET", availability: crossAsset.availability, description: "Cross-asset relationships" },
     { dimension: "DERIVATIVES", availability: derivatives.availability, description: "Crypto derivatives data" },
+    { dimension: "NEWS", availability: news?.availability === "AVAILABLE" ? "AVAILABLE" : news?.availability === "LIMITED" ? "LIMITED" : "UNAVAILABLE", description: "News intelligence" },
+    { dimension: "FUNDAMENTALS", availability: fundamentals?.availability === "AVAILABLE" ? "AVAILABLE" : fundamentals?.availability === "LIMITED" ? "LIMITED" : "UNAVAILABLE", description: "Fundamental/macro data" },
   ];
 
   // Evidence quality
@@ -622,6 +674,8 @@ export function synthesizeMultiDimensionalIntelligence(input: {
     macro,
     crossAsset,
     derivatives,
+    news,
+    fundamentals,
     evidence,
     scenarios,
     dimensions,
