@@ -623,3 +623,313 @@ export const COMPONENT_LABELS: Record<RuntimeComponent, string> = {
   NOTIFICATION_PERSISTENCE: "Notifications",
   HISTORICAL_PERSISTENCE: "Historical Persistence",
 };
+
+// ═══════════════════════════════════════════════════════════════
+// PHASE 100 — RUNTIME HEALTH EVENTS
+// ═══════════════════════════════════════════════════════════════
+
+/** Error classification for provider failures */
+export type ErrorCategory =
+  | "NONE"
+  | "NETWORK"
+  | "RATE_LIMIT"
+  | "AUTH"
+  | "PROVIDER_UNAVAILABLE"
+  | "INVALID_RESPONSE"
+  | "TIMEOUT"
+  | "UNKNOWN";
+
+/** Maximum health event message length */
+export const MAX_RUNTIME_HEALTH_MESSAGE_LENGTH = 300;
+
+/** Maximum events in the bounded buffer */
+export const MAX_RUNTIME_HEALTH_EVENTS = 200;
+
+/**
+ * A single runtime health event.
+ * Records actual provider/pipeline execution outcome.
+ */
+export interface RuntimeHealthEvent {
+  /** Which component this event relates to */
+  component: RuntimeComponent;
+  /** Health status observed */
+  status: RuntimeHealthStatus;
+  /** When this event occurred */
+  timestamp: number;
+  /** Provider/source name */
+  source?: string;
+  /** What operation was performed */
+  operation?: string;
+  /** How long the operation took in ms */
+  durationMs?: number;
+  /** Error category if failed */
+  errorCategory?: ErrorCategory;
+  /** Sanitized human-readable message */
+  message?: string;
+}
+
+/**
+ * Normalize an error into an ErrorCategory.
+ * Pure function — no side effects.
+ */
+export function classifyError(error: unknown): ErrorCategory {
+  if (!error) return "UNKNOWN";
+  const msg = typeof error === "string" ? error.toLowerCase() : (error as Error)?.message?.toLowerCase?.() ?? "";
+
+  if (msg.includes("rate limit") || msg.includes("429") || msg.includes("too many requests")) {
+    return "RATE_LIMIT";
+  }
+  if (msg.includes("timeout") || msg.includes("aborted")) {
+    return "TIMEOUT";
+  }
+  if (msg.includes("network") || msg.includes("fetch") || msg.includes("econnrefused") || msg.includes("enotfound")) {
+    return "NETWORK";
+  }
+  if (msg.includes("auth") || msg.includes("401") || msg.includes("403") || msg.includes("unauthorized")) {
+    return "AUTH";
+  }
+  if (msg.includes("unavailable") || msg.includes("503") || msg.includes("502")) {
+    return "PROVIDER_UNAVAILABLE";
+  }
+  if (msg.includes("invalid") || msg.includes("parse") || msg.includes("unexpected")) {
+    return "INVALID_RESPONSE";
+  }
+  return "UNKNOWN";
+}
+
+/**
+ * Normalize an error category into a RuntimeHealthStatus.
+ * Pure function.
+ */
+export function errorCategoryToStatus(category: ErrorCategory): RuntimeHealthStatus {
+  switch (category) {
+    case "NONE":
+      return "HEALTHY";
+    case "RATE_LIMIT":
+    case "TIMEOUT":
+    case "NETWORK":
+      return "DEGRADED";
+    case "AUTH":
+    case "PROVIDER_UNAVAILABLE":
+      return "UNAVAILABLE";
+    case "INVALID_RESPONSE":
+    case "UNKNOWN":
+    default:
+      return "DEGRADED";
+  }
+}
+
+/**
+ * Create a RuntimeHealthEvent from an actual execution outcome.
+ * Pure deterministic function — only records what actually happened.
+ */
+export function normalizeRuntimeHealthEvent(params: {
+  component: RuntimeComponent;
+  source?: string;
+  operation?: string;
+  success: boolean;
+  durationMs?: number;
+  error?: unknown;
+  message?: string;
+  timestamp?: number;
+}): RuntimeHealthEvent {
+  const { component, source, operation, success, durationMs, error, message, timestamp } = params;
+
+  if (success) {
+    return {
+      component,
+      status: "HEALTHY",
+      timestamp: timestamp ?? Date.now(),
+      source,
+      operation,
+      durationMs,
+      errorCategory: "NONE",
+      message: message ? truncateEventMessage(message) : "Operation successful",
+    };
+  }
+
+  const errorCategory = classifyError(error);
+  const status = errorCategoryToStatus(errorCategory);
+  const sanitizedMsg = message
+    ? truncateEventMessage(message)
+    : truncateEventMessage(`Failed: ${String(error).slice(0, 100)}`);
+
+  return {
+    component,
+    status,
+    timestamp: timestamp ?? Date.now(),
+    source,
+    operation,
+    durationMs,
+    errorCategory,
+    message: sanitizedMsg,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HEALTH AGGREGATION FROM EVENTS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Aggregate runtime health events into component health records.
+ * Uses the most recent relevant event per component.
+ * Pure deterministic function.
+ *
+ * Precedence:
+ * - Most recent event wins
+ * - If most recent is SUCCESS → component HEALTHY
+ * - If most recent is FAILURE → component DEGRADED/UNAVAILABLE per error category
+ * - If no events for component → UNKNOWN
+ * - Old events are not treated as current health
+ */
+export function aggregateRuntimeHealth(
+  events: RuntimeHealthEvent[],
+  now: number,
+): RuntimeHealthComponent[] {
+  const components: RuntimeComponent[] = [
+    "MARKET_DATA", "OHLCV", "NEWS", "MACRO", "CROSS_ASSET",
+    "INTELLIGENCE_ENGINE", "PORTFOLIO_INTELLIGENCE",
+    "ALERT_RULE_ENGINE", "NOTIFICATION_PERSISTENCE", "HISTORICAL_PERSISTENCE",
+  ];
+
+  return components.map((component) => {
+    const componentEvents = events
+      .filter((e) => e.component === component)
+      .sort((a, b) => b.timestamp - a.timestamp);
+
+    if (componentEvents.length === 0) {
+      return {
+        component,
+        status: "UNKNOWN" as RuntimeHealthStatus,
+        consecutiveFailures: 0,
+        message: "No runtime execution observed",
+        freshness: "UNKNOWN" as DataFreshness,
+      };
+    }
+
+    const latest = componentEvents[0];
+    const lastSuccess = componentEvents.find((e) => e.status === "HEALTHY");
+    const lastFailure = componentEvents.find((e) => e.status !== "HEALTHY");
+
+    // Count consecutive failures from most recent
+    let consecutiveFailures = 0;
+    for (const evt of componentEvents) {
+      if (evt.status === "HEALTHY") break;
+      consecutiveFailures++;
+    }
+
+    const dataAgeMs = lastSuccess ? now - lastSuccess.timestamp : undefined;
+    const freshness = dataAgeMs !== undefined ? classifyFreshness(dataAgeMs) : "UNKNOWN" as DataFreshness;
+
+    // Truncate consecutive failures message
+    const msg = latest.message ?? (latest.status === "HEALTHY" ? "Operating normally" : "Recent failure");
+
+    return {
+      component,
+      status: latest.status,
+      lastSuccessAt: lastSuccess?.timestamp,
+      lastFailureAt: lastFailure?.timestamp,
+      lastAttemptAt: latest.timestamp,
+      consecutiveFailures,
+      message: truncateEventMessage(msg),
+      source: latest.source,
+      dataAgeMs,
+      freshness,
+    };
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HEALTH TRANSITION DETECTION
+// ═══════════════════════════════════════════════════════════════
+
+export interface HealthTransition {
+  component: RuntimeComponent;
+  previous: RuntimeHealthStatus;
+  current: RuntimeHealthStatus;
+  timestamp: number;
+}
+
+/**
+ * Detect health transitions between two snapshots.
+ * Pure deterministic function.
+ */
+export function detectHealthTransitions(
+  previous: RuntimeHealthSnapshot,
+  current: RuntimeHealthSnapshot,
+): HealthTransition[] {
+  const transitions: HealthTransition[] = [];
+  const prevMap = new Map(previous.components.map((c) => [c.component, c.status]));
+
+  for (const comp of current.components) {
+    const prevStatus = prevMap.get(comp.component);
+    if (prevStatus && prevStatus !== comp.status) {
+      transitions.push({
+        component: comp.component,
+        previous: prevStatus,
+        current: comp.status,
+        timestamp: current.timestamp,
+      });
+    }
+  }
+
+  return transitions;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PERSISTENCE DECISION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Deterministic decision: should we persist this health snapshot?
+ *
+ * Persist when:
+ * - first valid snapshot (no previous)
+ * - overall status changed
+ * - any component status changed
+ * - core provider changed state
+ * - intelligence cycle health changed
+ * - recovery from failure
+ *
+ * Skip when:
+ * - state is materially identical
+ * - only timestamps changed
+ */
+export function shouldPersistRuntimeHealth(
+  previous: RuntimeHealthSnapshot | null | undefined,
+  current: RuntimeHealthSnapshot,
+): boolean {
+  // First valid snapshot
+  if (!previous) return true;
+
+  // Overall status changed
+  if (previous.overallStatus !== current.overallStatus) return true;
+
+  // Component status changes
+  const prevCompMap = new Map(previous.components.map((c) => [c.component, c.status]));
+  for (const comp of current.components) {
+    const prevStatus = prevCompMap.get(comp.component);
+    if (prevStatus !== comp.status) return true;
+  }
+
+  // Intelligence cycle status changed
+  if (previous.intelligenceCycleStatus !== current.intelligenceCycleStatus) return true;
+
+  // Alert pipeline status changed
+  if (previous.alertPipelineStatus !== current.alertPipelineStatus) return true;
+
+  // Persistence status changed
+  if (previous.persistenceStatus !== current.persistenceStatus) return true;
+
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function truncateEventMessage(msg: string): string {
+  return msg.length > MAX_RUNTIME_HEALTH_MESSAGE_LENGTH
+    ? msg.slice(0, MAX_RUNTIME_HEALTH_MESSAGE_LENGTH) + "..."
+    : msg;
+}
