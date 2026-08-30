@@ -62,6 +62,26 @@ export interface PreviousStateStore {
   newsStance: Map<string, "CONFLICTING" | "SUPPORTING" | "NEUTRAL" | "UNAVAILABLE">;
   /** Previous data availability per instrument */
   dataAvailability: Map<string, string>;
+  /** Previous portfolio snapshot for portfolio-scope transition detection */
+  portfolioSnapshot?: PortfolioSnapshot;
+}
+
+/**
+ * Deterministic portfolio state snapshot.
+ * Contains only fields derived from PortfolioIntelligence.
+ */
+export interface PortfolioSnapshot {
+  dominantThesisState: string;
+  riskContext: string;
+  evidenceQuality: string;
+  alignmentCount: number;
+  conflictCount: number;
+  strongConflictCount: number;
+  totalPositions: number;
+  healthyPositions: number;
+  deterioratingPositions: number;
+  invalidatedPositions: number;
+  dataAvailability: string;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -73,6 +93,26 @@ export interface PreviousStateStore {
  * This is the "current" snapshot used for transition detection.
  * Pure function — no side effects.
  */
+/**
+ * Extract a deterministic PortfolioSnapshot from PortfolioIntelligence.
+ * Used for portfolio-scope transition detection.
+ */
+export function extractPortfolioSnapshot(portfolio: PortfolioIntelligence): PortfolioSnapshot {
+  return {
+    dominantThesisState: portfolio.summary.dominantPortfolioState,
+    riskContext: portfolio.riskContext,
+    evidenceQuality: portfolio.summary.portfolioEvidenceQuality,
+    alignmentCount: portfolio.alignments.length,
+    conflictCount: portfolio.conflicts.length,
+    strongConflictCount: portfolio.conflicts.filter((c) => c.strength === "STRONG").length,
+    totalPositions: portfolio.summary.totalPositions,
+    healthyPositions: portfolio.summary.healthyPositions,
+    deterioratingPositions: portfolio.summary.deterioratingPositions,
+    invalidatedPositions: portfolio.summary.invalidatedPositions,
+    dataAvailability: portfolio.dataAvailability.technical,
+  };
+}
+
 export function extractSnapshot(intel: PositionIntelligence): RuleSnapshot {
   return {
     thesisState: intel.thesisHealth,
