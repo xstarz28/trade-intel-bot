@@ -58,7 +58,15 @@ import { PortfolioIntelligenceView } from "./PortfolioIntelligence";
 import { CustomAlertRulesPanel } from "./CustomAlertRulesPanel";
 import { NotificationCenter } from "./NotificationCenter";
 import { RuntimeHealthDashboard } from "./RuntimeHealthDashboard";
-import { type RuntimeHealthInput } from "@/lib/position-protection/runtime-health";
+import { type RuntimeHealthInput, type RuntimeComponent } from "@/lib/position-protection/runtime-health";
+import {
+  createHealthEventBuffer,
+  recordProviderResult,
+  shouldPersistFromBuffer,
+  markPersisted,
+  buildSnapshotFromBuffer,
+  type HealthEventBuffer,
+} from "@/lib/position-protection/health-event-buffer";
 import {
   evaluateAlertRuntimeBridge,
   buildInitialStateStore,
@@ -361,6 +369,32 @@ export function PositionProtectionDashboard() {
 
       return next;
     });
+
+    // Phase 100: Record market data health events from actual polling results
+    const buf = healthBufferRef.current;
+    let anySuccess = false;
+    let anyFailure = false;
+    for (const [, state] of livePrices) {
+      if (state.success && state.price > 0) {
+        anySuccess = true;
+        healthBufferRef.current = recordProviderResult(buf, {
+          component: "MARKET_DATA",
+          source: state.provider,
+          operation: `Price fetch: ${state.instrument}`,
+          success: true,
+        });
+      } else if (!state.success) {
+        anyFailure = true;
+        healthBufferRef.current = recordProviderResult(buf, {
+          component: "MARKET_DATA",
+          source: state.provider,
+          operation: `Price fetch: ${state.instrument}`,
+          success: false,
+          error: state.error,
+          message: state.error,
+        });
+      }
+    }
   }, [livePrices]);
 
   // ─── Phase 90: Convex Historical Intelligence Persistence ──
@@ -485,6 +519,46 @@ export function PositionProtectionDashboard() {
     return map;
   }, [positions, priceObservations, livePrices]);
 
+  // Phase 100: Record intelligence engine health events
+  useEffect(() => {
+    if (intelligenceMap.size === 0 && positions.length === 0) return;
+    const now = Date.now();
+    const analyzed = intelligenceMap.size;
+    const total = positions.length;
+    const success = analyzed > 0 && analyzed >= total;
+    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+      component: "INTELLIGENCE_ENGINE",
+      operation: `Analyzed ${analyzed}/${total} positions`,
+      success,
+      message: `${analyzed}/${total} positions analyzed`,
+    });
+  }, [intelligenceMap.size, positions.length]);
+
+  // Phase 100: Record portfolio intelligence health events
+  useEffect(() => {
+    if (intelligenceMap.size < 2) return;
+    const intelArray = Array.from(intelligenceMap.values());
+    try {
+      const start = Date.now();
+      const portfolio = generatePortfolioIntelligence(intelArray);
+      const duration = Date.now() - start;
+      healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        component: "PORTFOLIO_INTELLIGENCE",
+        operation: "Portfolio analysis",
+        success: true,
+        durationMs: duration,
+        message: `${portfolio.summary.totalPositions} positions analyzed`,
+      });
+    } catch {
+      healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        component: "PORTFOLIO_INTELLIGENCE",
+        operation: "Portfolio analysis",
+        success: false,
+        message: "Portfolio intelligence generation failed",
+      });
+    }
+  }, [intelligenceMap]);
+
   // ─── Phase 91: Reactive Convex Historical Timeline Queries ──
   // One query per position, reactive — automatically updates when Convex data changes
   const positionIds = useMemo(() => positions.map(p => p.position.positionId), [positions]);
@@ -531,6 +605,8 @@ export function PositionProtectionDashboard() {
   const triggerRecordsRef = useRef<Map<string, RuleTriggerRecord>>(new Map());
   const bridgeInitializedRef = useRef(false);
   const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
+  const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
+  const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
 
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
   useEffect(() => {
@@ -572,12 +648,38 @@ export function PositionProtectionDashboard() {
         // Persist meaningful changes to Convex (fire-and-forget)
         if (decision.shouldPersistSnapshot && !stale) {
           lastPersistedRef.current.set(posId, snapshotIdentity(snapshot));
-          saveSnapshotMut(snapshotToArgs(snapshot)).catch(() => {});
+          saveSnapshotMut(snapshotToArgs(snapshot)).then(() => {
+            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+              component: "HISTORICAL_PERSISTENCE",
+              operation: "Save snapshot",
+              success: true,
+            });
+          }).catch((err) => {
+            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+              component: "HISTORICAL_PERSISTENCE",
+              operation: "Save snapshot",
+              success: false,
+              error: err,
+            });
+          });
         }
         if (decision.shouldPersistEvents && decision.newEvents.length > 0 && !stale) {
           saveEventsMut(eventsToArgs(
             posId, intel.instrument, intel.side, decision.newEvents,
-          )).catch(() => {});
+          )).then(() => {
+            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+              component: "HISTORICAL_PERSISTENCE",
+              operation: "Save events",
+              success: true,
+            });
+          }).catch((err) => {
+            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+              component: "HISTORICAL_PERSISTENCE",
+              operation: "Save events",
+              success: false,
+              error: err,
+            });
+          });
         }
 
         // Phase 91: Build local timeline (optimistic layer)
@@ -662,6 +764,14 @@ export function PositionProtectionDashboard() {
     prevStateRef.current = { ...prevState, snapshots: result.updatedPreviousSnapshots };
     diagnosticsRef.current = applyDiagnosticRetention([...diagnosticsRef.current, ...result.diagnostics], MAX_DIAGNOSTIC_EVENTS);
 
+    // Phase 100: Record alert pipeline health
+    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+      component: "ALERT_RULE_ENGINE",
+      operation: `Evaluated ${typedRules.length} rules`,
+      success: true,
+      message: `${typedRules.length} rules evaluated, ${result.notifications.length} notifications generated`,
+    });
+
     // Persist notifications to Convex (fire-and-forget, rate-limit safe)
     for (const notif of result.notifications) {
       createNotificationMut({
@@ -680,7 +790,23 @@ export function PositionProtectionDashboard() {
         impact: notif.impact,
         source: notif.source,
         condition: notif.condition,
-      }).catch(() => {});
+      }).then(() => {
+        // Phase 100: Record notification persistence success
+        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+          component: "NOTIFICATION_PERSISTENCE",
+          operation: "Persist notification",
+          success: true,
+        });
+      }).catch((err) => {
+        // Phase 100: Record notification persistence failure
+        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+          component: "NOTIFICATION_PERSISTENCE",
+          operation: "Persist notification",
+          success: false,
+          error: err,
+          message: "Notification persistence failed",
+        });
+      });
     }
   }, [intelligenceMap, alertRules, createNotificationMut]);
 
@@ -709,6 +835,38 @@ export function PositionProtectionDashboard() {
       prevStateRef.current = cleanedState;
     }
   }, [positions]);
+
+  // Phase 100: Automatic health persistence
+  useEffect(() => {
+    if (intelligenceMap.size === 0 && positions.length === 0) return;
+    const now = Date.now();
+    const snapshotToPersist = shouldPersistFromBuffer(healthBufferRef.current, now);
+    if (snapshotToPersist) {
+      healthBufferRef.current = markPersisted(healthBufferRef.current, snapshotToPersist);
+      saveHealthMut({
+        timestamp: snapshotToPersist.timestamp,
+        overallStatus: snapshotToPersist.overallStatus,
+        components: snapshotToPersist.components.map((c) => ({
+          component: c.component,
+          status: c.status,
+          lastSuccessAt: c.lastSuccessAt,
+          lastFailureAt: c.lastFailureAt,
+          lastAttemptAt: c.lastAttemptAt,
+          consecutiveFailures: c.consecutiveFailures,
+          message: c.message,
+          source: c.source,
+          dataAgeMs: c.dataAgeMs,
+          freshness: c.freshness,
+        })),
+        intelligenceCycleStatus: snapshotToPersist.intelligenceCycleStatus,
+        alertPipelineStatus: snapshotToPersist.alertPipelineStatus,
+        persistenceStatus: snapshotToPersist.persistenceStatus,
+        providerAvailability: snapshotToPersist.providerAvailability,
+        staleComponents: snapshotToPersist.staleComponents,
+        unavailableComponents: snapshotToPersist.unavailableComponents,
+      }).catch(() => {});
+    }
+  }, [intelligenceMap, positions.length, saveHealthMut]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
