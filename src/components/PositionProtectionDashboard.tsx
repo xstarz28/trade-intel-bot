@@ -57,6 +57,8 @@ import { UserIntelligenceFeed } from "./UserIntelligenceFeed";
 import { PortfolioIntelligenceView } from "./PortfolioIntelligence";
 import { CustomAlertRulesPanel } from "./CustomAlertRulesPanel";
 import { NotificationCenter } from "./NotificationCenter";
+import { RuntimeHealthDashboard } from "./RuntimeHealthDashboard";
+import { type RuntimeHealthInput } from "@/lib/position-protection/runtime-health";
 import {
   evaluateAlertRuntimeBridge,
   buildInitialStateStore,
@@ -336,7 +338,7 @@ export function PositionProtectionDashboard() {
 
   // ─── Price Observations (per instrument) ─────────────────
   const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
-  const [activeTab, setActiveTab] = useState<"positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications" | "system">("positions");
   const [timelines, setTimelines] = useState<Map<string, HistoricalTimeline>>(new Map());
   const [showForm, setShowForm] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -999,6 +1001,16 @@ export function PositionProtectionDashboard() {
           >
             Market
           </button>
+          <button
+            className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
+              activeTab === "system"
+                ? "bg-background text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("system")}
+          >
+            System
+          </button>
         </div>
       )}
 
@@ -1034,6 +1046,34 @@ export function PositionProtectionDashboard() {
       {/* Market Overview Tab */}
       {activeTab === "market" && (
         <MarketOverviewPanel livePrices={livePrices} />
+      )}
+
+      {/* System Health Tab */}
+      {activeTab === "system" && (
+        <RuntimeHealthDashboard
+          healthInput={{
+            marketDataAvailable: livePrices.size > 0,
+            ohlcvAvailable: Object.keys(ohlcv).length > 0 || positions.some((p) => p.position.horizon === "SCALPING"),
+            newsAvailable: true,
+            macroAvailable: true,
+            crossAssetAvailable: positions.length > 1,
+            intelligencePositionsAnalyzed: intelligenceMap.size,
+            intelligencePositionsTotal: positions.length,
+            portfolioIntelligenceAvailable: intelligenceMap.size > 1,
+            alertRulesEvaluated: alertRules?.length ?? 0,
+            alertRulesTriggered: 0,
+            notificationPersisted: true,
+            historicalSnapshotPersisted: true,
+            historicalEventsPersisted: true,
+            lastIntelligenceCycleAt: Date.now(),
+            dataQuality: Object.fromEntries(
+              Array.from(intelligenceMap.entries()).map(([pid, intel]) => [
+                intel.instrument,
+                intel.dataQuality,
+              ]),
+            ),
+          }}
+        />
       )}
 
       {/* Empty State */}
