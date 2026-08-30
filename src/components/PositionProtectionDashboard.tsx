@@ -530,6 +530,12 @@ export function PositionProtectionDashboard() {
     return map;
   }, [positions, priceObservations, livePrices]);
 
+  // Phase 103: Compute portfolio intelligence once, share between health recording and alert bridge
+  const portfolioIntel = useMemo(() => {
+    const intelArray = Array.from(intelligenceMap.values());
+    return intelArray.length > 0 ? generatePortfolioIntelligence(intelArray) : undefined;
+  }, [intelligenceMap]);
+
   // Phase 100: Record intelligence engine health events
   useEffect(() => {
     if (intelligenceMap.size === 0 && positions.length === 0) return;
@@ -545,30 +551,16 @@ export function PositionProtectionDashboard() {
     });
   }, [intelligenceMap.size, positions.length]);
 
-  // Phase 100: Record portfolio intelligence health events
+  // Phase 100: Record portfolio intelligence health events (uses memoized portfolioIntel)
   useEffect(() => {
-    if (intelligenceMap.size < 2) return;
-    const intelArray = Array.from(intelligenceMap.values());
-    try {
-      const start = Date.now();
-      const portfolio = generatePortfolioIntelligence(intelArray);
-      const duration = Date.now() - start;
-      healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
-        component: "PORTFOLIO_INTELLIGENCE",
-        operation: "Portfolio analysis",
-        success: true,
-        durationMs: duration,
-        message: `${portfolio.summary.totalPositions} positions analyzed`,
-      });
-    } catch {
-      healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
-        component: "PORTFOLIO_INTELLIGENCE",
-        operation: "Portfolio analysis",
-        success: false,
-        message: "Portfolio intelligence generation failed",
-      });
-    }
-  }, [intelligenceMap]);
+    if (!portfolioIntel) return;
+    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+      component: "PORTFOLIO_INTELLIGENCE",
+      operation: "Portfolio analysis",
+      success: true,
+      message: `${portfolioIntel.summary.totalPositions} positions analyzed`,
+    });
+  }, [portfolioIntel]);
 
   // ─── Phase 91: Reactive Convex Historical Timeline Queries ──
   // One query per position, reactive — automatically updates when Convex data changes
@@ -752,16 +744,15 @@ export function PositionProtectionDashboard() {
 
     const prevState = prevStateRef.current ?? buildInitialStateStore(intelligenceMap);
 
-    // Generate portfolio intelligence from current position data
-    const intelArray = Array.from(intelligenceMap.values());
-    const portfolioIntel = intelArray.length > 0 ? generatePortfolioIntelligence(intelArray) : undefined;
+    // Use memoized portfolio intelligence (computed once per intelligenceMap update)
+    const currentPortfolioIntel = portfolioIntel;
 
     // Run the deterministic evaluation bridge
     const result = evaluateAlertRuntimeBridge(
       {
         rules: typedRules,
         intelligenceMap,
-        portfolioIntelligence: portfolioIntel,
+        portfolioIntelligence: currentPortfolioIntel,
         previousMacroRegime: undefined,
         macroRegime: undefined,
       },
