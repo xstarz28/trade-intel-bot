@@ -213,6 +213,42 @@ const schema = defineSchema(
       .index("by_user_position", ["userId", "positionId"])
       .index("by_user_position_ts", ["userId", "positionId", "timestamp"]),
 
+    // Phase 93 — Custom alert rules
+    alertRules: defineTable({
+      userId: v.id("users"),
+      ruleId: v.string(),
+      name: v.string(),
+      enabled: v.boolean(),
+      scope: v.string(), // POSITION | INSTRUMENT | PORTFOLIO | GLOBAL
+      instrument: v.optional(v.string()),
+      positionId: v.optional(v.string()),
+      condition: v.string(),
+      severity: v.string(), // INFO | LOW | MEDIUM | HIGH | CRITICAL
+      cooldownMs: v.number(),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_user_rule", ["userId", "ruleId"]),
+
+    // Phase 93 — Custom rule alert history
+    ruleAlertHistory: defineTable({
+      userId: v.id("users"),
+      alertId: v.string(),
+      ruleId: v.string(),
+      ruleName: v.string(),
+      positionId: v.optional(v.string()),
+      instrument: v.optional(v.string()),
+      condition: v.string(),
+      severity: v.string(),
+      description: v.string(),
+      previousState: v.optional(v.string()),
+      currentState: v.optional(v.string()),
+      timestamp: v.number(),
+    })
+      .index("by_user", ["userId", "timestamp"])
+      .index("by_user_rule", ["userId", "ruleId", "timestamp"]),
+
     // Phase 90 — Historical intelligence events
     historicalEvents: defineTable({
       userId: v.id("users"),
