@@ -249,6 +249,31 @@ const schema = defineSchema(
       .index("by_user", ["userId", "timestamp"])
       .index("by_user_rule", ["userId", "ruleId", "timestamp"]),
 
+    // Phase 94 — Intelligence notifications
+    notifications: defineTable({
+      userId: v.id("users"),
+      notificationId: v.string(),
+      alertIdentity: v.string(),
+      ruleId: v.string(),
+      ruleName: v.string(),
+      timestamp: v.number(),
+      instrument: v.optional(v.string()),
+      positionId: v.optional(v.string()),
+      side: v.optional(v.string()),
+      severity: v.string(),
+      title: v.string(),
+      message: v.string(),
+      category: v.string(),
+      impact: v.string(),
+      read: v.boolean(),
+      dismissed: v.boolean(),
+      source: v.string(),
+      condition: v.string(),
+    })
+      .index("by_user", ["userId", "timestamp"])
+      .index("by_user_read", ["userId", "read", "timestamp"])
+      .index("by_user_notif", ["userId", "notificationId"]),
+
     // Phase 90 — Historical intelligence events
     historicalEvents: defineTable({
       userId: v.id("users"),
