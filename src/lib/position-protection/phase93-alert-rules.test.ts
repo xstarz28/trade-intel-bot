@@ -354,7 +354,7 @@ describe("Thesis transitions", () => {
     const rule = makeRule({ condition: "THESIS_STATE_CHANGED" });
     const ctx = makeCtx([makeIntel()], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "CAUTION", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -363,7 +363,7 @@ describe("Thesis transitions", () => {
     const rule = makeRule({ condition: "THESIS_STATE_CHANGED" });
     const ctx = makeCtx([makeIntel()], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results).toHaveLength(0);
   });
@@ -372,7 +372,7 @@ describe("Thesis transitions", () => {
     const rule = makeRule({ condition: "THESIS_BECAME_INVALIDATED" });
     const ctx = makeCtx([makeIntel({ thesisHealth: "INVALIDATED" })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -387,7 +387,7 @@ describe("Regime transitions", () => {
     const rule = makeRule({ condition: "REGIME_CHANGED" });
     const ctx = makeCtx([makeIntel({ ohlcvRegime: "PULLBACK" })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -396,7 +396,7 @@ describe("Regime transitions", () => {
     const rule = makeRule({ condition: "REGIME_CHANGED" });
     const ctx = makeCtx([makeIntel({ ohlcvRegime: "TRENDING_UP" })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results).toHaveLength(0);
   });
@@ -411,7 +411,7 @@ describe("Timeframe trend transitions", () => {
     const rule = makeRule({ condition: "H1_TREND_CHANGED" });
     const ctx = makeCtx([makeIntel({ h1Analysis: { trend: "BEARISH" } as any })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", h1Trend: "BULLISH", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -420,7 +420,7 @@ describe("Timeframe trend transitions", () => {
     const rule = makeRule({ condition: "M15_TREND_CHANGED" });
     const ctx = makeCtx([makeIntel({ m15Analysis: { trend: "BEARISH" } as any })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", m15Trend: "BULLISH", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -429,7 +429,7 @@ describe("Timeframe trend transitions", () => {
     const rule = makeRule({ condition: "M5_TREND_CHANGED" });
     const ctx = makeCtx([makeIntel({ m5Analysis: { trend: "BULLISH" } as any })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", m5Trend: "BEARISH", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -444,7 +444,7 @@ describe("Structure transition", () => {
     const rule = makeRule({ condition: "STRUCTURE_CHANGED" });
     const ctx = makeCtx([makeIntel({ ohlcvRegime: "PULLBACK" })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", structure: "TRENDING_UP", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -459,7 +459,7 @@ describe("Momentum transition", () => {
     const rule = makeRule({ condition: "MOMENTUM_CHANGED" });
     const ctx = makeCtx([makeIntel({ shortTermContext: "BEARISH" })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", momentum: "BULLISH", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -474,7 +474,7 @@ describe("Volatility transition", () => {
     const rule = makeRule({ condition: "VOLATILITY_CHANGED" });
     const ctx = makeCtx([makeIntel({ volatilityContext: "HIGH" })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", volatility: "LOW", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -489,7 +489,7 @@ describe("Evidence quality", () => {
     const rule = makeRule({ condition: "EVIDENCE_QUALITY_CHANGED" });
     const ctx = makeCtx([makeIntel({ confidence: "STRONG_EVIDENCE" })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -505,7 +505,7 @@ describe("News conflict/support", () => {
     const ctx = makeCtx([makeIntel()], undefined, {
       previousNewsStance: new Map([["BTC/USDT", "SUPPORTING"]]),
       newsStance: new Map([["BTC/USDT", "CONFLICTING"]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -515,7 +515,7 @@ describe("News conflict/support", () => {
     const ctx = makeCtx([makeIntel()], undefined, {
       previousNewsStance: new Map([["BTC/USDT", "NEUTRAL"]]),
       newsStance: new Map([["BTC/USDT", "SUPPORTING"]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -525,7 +525,7 @@ describe("News conflict/support", () => {
     const ctx = makeCtx([makeIntel()], undefined, {
       previousNewsStance: new Map([["BTC/USDT", "CONFLICTING"]]),
       newsStance: new Map([["BTC/USDT", "CONFLICTING"]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results).toHaveLength(0);
   });
@@ -594,7 +594,7 @@ describe("Data unavailable / recovery", () => {
     const rule = makeRule({ condition: "DATA_BECAME_UNAVAILABLE" });
     const ctx = makeCtx([makeIntel({ dataQuality: "UNAVAILABLE" })], undefined, {
       previousDataAvailability: new Map([["BTC/USDT", "SUFFICIENT"]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -603,7 +603,7 @@ describe("Data unavailable / recovery", () => {
     const rule = makeRule({ condition: "DATA_RECOVERED" });
     const ctx = makeCtx([makeIntel({ dataQuality: "SUFFICIENT" })], undefined, {
       previousDataAvailability: new Map([["BTC/USDT", "UNAVAILABLE"]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -693,8 +693,8 @@ describe("Cooldown / re-trigger", () => {
     const records = new Map<string, RuleTriggerRecord>([
       ["rule-1:pos-1", { ruleId: "rule-1", positionId: "pos-1", lastTriggeredAt: 1000, lastConditionTrue: true }],
     ]);
-    expect(shouldTriggerAlert(rule, records, 5001)).toBe(true);
-    expect(shouldTriggerAlert(rule, records, 5999)).toBe(false);
+    expect(shouldTriggerAlert(rule, records, 6000)).toBe(true);
+    expect(shouldTriggerAlert(rule, records, 4999)).toBe(false);
   });
 });
 
@@ -710,7 +710,7 @@ describe("Multiple rules evaluation", () => {
     ];
     const ctx = makeCtx([makeIntel({ ohlcvRegime: "PULLBACK" })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "CAUTION", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const { alerts, updatedRecords } = evaluateRules(rules, ctx, new Map(), Date.now());
     expect(alerts.length).toBeGreaterThanOrEqual(1);
     expect(updatedRecords.size).toBeGreaterThanOrEqual(1);
@@ -722,7 +722,7 @@ describe("Multiple rules evaluation", () => {
     );
     const ctx = makeCtx([makeIntel()], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "CAUTION", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const { alerts } = evaluateRules(rules, ctx, new Map(), Date.now());
     expect(alerts.length).toBeLessThanOrEqual(MAX_ALERTS_PER_EVALUATION);
   });
@@ -769,7 +769,7 @@ describe("Determinism", () => {
     const rule = makeRule({ condition: "THESIS_STATE_CHANGED" });
     const ctx = makeCtx([makeIntel()], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "CAUTION", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const r1 = evaluateRule(rule, ctx);
     const r2 = evaluateRule(rule, ctx);
     expect(r1.length).toBe(r2.length);
@@ -786,7 +786,7 @@ describe("Missing previous state", () => {
     const rule = makeRule({ condition: "THESIS_STATE_CHANGED" });
     const ctx = makeCtx([makeIntel()], undefined, {
       previousSnapshots: undefined,
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results).toHaveLength(0);
   });
@@ -847,7 +847,7 @@ describe("Supporting/conflicting evidence changes", () => {
     const rule = makeRule({ condition: "SUPPORTING_EVIDENCE_CHANGED" });
     const ctx = makeCtx([makeIntel({      evidence: [{ direction: "supporting", category: "TECHNICAL", description: "t", strength: "MODERATE" }, { direction: "supporting", category: "STRUCTURE", description: "s", strength: "MODERATE" }] })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 0, conflictingCount: 0 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -856,7 +856,7 @@ describe("Supporting/conflicting evidence changes", () => {
     const rule = makeRule({ condition: "CONFLICTING_EVIDENCE_CHANGED" });
     const ctx = makeCtx([makeIntel({      evidence: [{ direction: "conflicting", category: "TECHNICAL", description: "t", strength: "MODERATE" }, { direction: "conflicting", category: "STRUCTURE", description: "s", strength: "MODERATE" }] })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 0, conflictingCount: 0 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results[0]?.triggered).toBe(true);
   });
@@ -903,7 +903,7 @@ describe("Bounded evaluation", () => {
     );
     const ctx = makeCtx([makeIntel()], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "CAUTION", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const { alerts } = evaluateRules(rules, ctx, new Map(), Date.now());
     expect(alerts.length).toBeLessThanOrEqual(MAX_ALERTS_PER_EVALUATION);
   });
