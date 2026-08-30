@@ -58,6 +58,12 @@ import { PortfolioIntelligenceView } from "./PortfolioIntelligence";
 import { CustomAlertRulesPanel } from "./CustomAlertRulesPanel";
 import { NotificationCenter } from "./NotificationCenter";
 import {
+  evaluateAlertRuntimeBridge,
+  buildInitialStateStore,
+  type PreviousStateStore,
+} from "@/lib/position-protection/alert-runtime-bridge";
+import type { RuleTriggerRecord } from "@/lib/position-protection/alert-rule-engine";
+import {
   extractUserPositions,
   buildUserIntelligenceFeed,
   boundFeed,
@@ -511,6 +517,12 @@ export function PositionProtectionDashboard() {
   // Track last-persisted snapshot identity to prevent redundant saves
   const lastPersistedRef = useRef<Map<string, string>>(new Map());
 
+  // ─── Phase 95: Runtime Alert Evaluation Bridge ──────────────
+  const alertRules = useQuery(api.alertRules.listRules);
+  const prevStateRef = useRef<PreviousStateStore | null>(null);
+  const triggerRecordsRef = useRef<Map<string, RuleTriggerRecord>>(new Map());
+  const bridgeInitializedRef = useRef(false);
+
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
   useEffect(() => {
     if (intelligenceMap.size === 0) return;
@@ -592,6 +604,86 @@ export function PositionProtectionDashboard() {
       return next;
     });
   }, [intelligenceMap, convTimelines, saveSnapshotMut, saveEventsMut]);
+
+  // ─── Phase 95: Runtime Alert Evaluation Bridge ────────────
+  const createNotificationMut = useMutation(api.notifications.createNotification);
+
+  useEffect(() => {
+    if (intelligenceMap.size === 0) return;
+    if (!alertRules || alertRules.length === 0) return;
+
+    // Cast Convex records to AlertRule[] (scope/type fields are stored as strings)
+    const typedRules = alertRules as unknown as import("@/lib/position-protection/alert-rule-engine").AlertRule[];
+
+    const now = Date.now();
+
+    // Initialize previous state on first run (seeds without generating false transitions)
+    if (!bridgeInitializedRef.current) {
+      prevStateRef.current = buildInitialStateStore(intelligenceMap);
+      bridgeInitializedRef.current = true;
+      return;
+    }
+
+    const prevState = prevStateRef.current ?? buildInitialStateStore(intelligenceMap);
+
+    // Run the deterministic evaluation bridge
+    const result = evaluateAlertRuntimeBridge(
+      {
+        rules: typedRules,
+        intelligenceMap,
+        previousMacroRegime: undefined,
+        macroRegime: undefined,
+      },
+      prevState,
+      triggerRecordsRef.current,
+      now,
+    );
+
+    // Update refs for next cycle
+    triggerRecordsRef.current = result.updatedTriggerRecords;
+    prevStateRef.current = { ...prevState, snapshots: result.updatedPreviousSnapshots };
+
+    // Persist notifications to Convex (fire-and-forget, rate-limit safe)
+    for (const notif of result.notifications) {
+      createNotificationMut({
+        notificationId: notif.notificationId,
+        alertIdentity: notif.alertIdentity,
+        ruleId: notif.ruleId,
+        ruleName: notif.ruleName,
+        timestamp: notif.timestamp,
+        instrument: notif.instrument,
+        positionId: notif.positionId,
+        side: notif.side,
+        severity: notif.severity,
+        title: notif.title,
+        message: notif.message,
+        category: notif.category,
+        impact: notif.impact,
+        source: notif.source,
+        condition: notif.condition,
+      }).catch(() => {});
+    }
+  }, [intelligenceMap, alertRules, createNotificationMut]);
+
+  // ─── Phase 95: Reset bridge state when positions are removed ──
+  useEffect(() => {
+    const ps = prevStateRef.current;
+    if (!ps) return;
+    const currentIds = new Set(positions.map((p) => p.position.positionId));
+    const prevIds = Array.from(ps.snapshots.keys());
+    let changed = false;
+    for (const pid of prevIds) {
+      if (!currentIds.has(pid)) {
+        ps.snapshots.delete(pid);
+        changed = true;
+        triggerRecordsRef.current.delete(`${pid}:global`);
+      }
+    }
+    if (changed) {
+      // Force ref update by reassigning the object reference
+      prevStateRef.current = { snapshots: new Map(ps.snapshots), newsStance: ps.newsStance, dataAvailability: ps.dataAvailability };
+    }
+  }, [positions]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
