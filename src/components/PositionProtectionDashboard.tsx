@@ -60,6 +60,9 @@ import { NotificationCenter } from "./NotificationCenter";
 import {
   evaluateAlertRuntimeBridge,
   buildInitialStateStore,
+  removePositionTriggerRecords,
+  cleanStaleInstrumentState,
+  cleanStaleRuleTriggerRecords,
   type PreviousStateStore,
 } from "@/lib/position-protection/alert-runtime-bridge";
 import type { RuleTriggerRecord } from "@/lib/position-protection/alert-rule-engine";
@@ -618,6 +621,10 @@ export function PositionProtectionDashboard() {
 
     const now = Date.now();
 
+    // Clean stale rule trigger records when rules change
+    const activeRuleIds = new Set(typedRules.map((r) => r.ruleId));
+    triggerRecordsRef.current = cleanStaleRuleTriggerRecords(triggerRecordsRef.current, activeRuleIds);
+
     // Initialize previous state on first run (seeds without generating false transitions)
     if (!bridgeInitializedRef.current) {
       prevStateRef.current = buildInitialStateStore(intelligenceMap);
@@ -671,7 +678,7 @@ export function PositionProtectionDashboard() {
     }
   }, [intelligenceMap, alertRules, createNotificationMut]);
 
-  // ─── Phase 95: Reset bridge state when positions are removed ──
+  // ─── Phase 95/97: Reset bridge state when positions are removed ──
   useEffect(() => {
     const ps = prevStateRef.current;
     if (!ps) return;
@@ -680,14 +687,20 @@ export function PositionProtectionDashboard() {
     let changed = false;
     for (const pid of prevIds) {
       if (!currentIds.has(pid)) {
-        ps.snapshots.delete(pid);
+        // Clean up all trigger records for this position
+        triggerRecordsRef.current = removePositionTriggerRecords(triggerRecordsRef.current, pid);
         changed = true;
-        triggerRecordsRef.current.delete(`${pid}:global`);
       }
     }
     if (changed) {
-      // Force ref update by reassigning the object reference
-      prevStateRef.current = { snapshots: new Map(ps.snapshots), newsStance: ps.newsStance, dataAvailability: ps.dataAvailability };
+      // Rebuild previous state from current positions
+      const activeInstruments = new Set(positions.map((p) => p.position.instrument));
+      const cleanedSnapshots = new Map(ps.snapshots);
+      for (const pid of prevIds) {
+        if (!currentIds.has(pid)) cleanedSnapshots.delete(pid);
+      }
+      const cleanedState = cleanStaleInstrumentState({ snapshots: cleanedSnapshots, newsStance: ps.newsStance, dataAvailability: ps.dataAvailability }, activeInstruments);
+      prevStateRef.current = cleanedState;
     }
   }, [positions]);
 
