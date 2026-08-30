@@ -62,12 +62,12 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     pnlPct: 8.3,
     thesisHealth: "HEALTHY",
     thesisHealthScore: 80,
-    severity: "LOW",
+    severity: "WATCH",
     actionRecommendation: "HOLD",
     evidence: [],
     independentSignalCount: 0,
     confidence: "MODERATE_EVIDENCE",
-    pullbackClassification: "NOT_PULLBACK",
+    pullbackClassification: "NORMAL_PULLBACK",
     invalidationConditions: [],
     nextMonitor: [],
     dataQuality: "SUFFICIENT",
@@ -96,7 +96,7 @@ function makePortfolio(overrides: Partial<PortfolioIntelligence> = {}): Portfoli
     watchItems: [],
     marketContext: "",
     riskContext: "LOW_CONCERN",
-    dataAvailability: "AVAILABLE",
+    dataAvailability: { technical: "AVAILABLE", macro: "AVAILABLE", news: "AVAILABLE", derivatives: "UNAVAILABLE", fundamentals: "UNAVAILABLE" },
     generatedAt: Date.now(),
     ...overrides,
   };
@@ -106,11 +106,14 @@ function makeCtx(
   positions?: PositionIntelligence[],
   portfolio?: PortfolioIntelligence,
   overrides: Partial<RuleEvaluationContext> = {},
+  /** Position IDs to use as map keys. Falls back to instrument names. */
+  positionIds?: string[],
 ): RuleEvaluationContext {
   const posMap = new Map<string, PositionIntelligence>();
   if (positions) {
-    for (const p of positions) {
-      posMap.set(p.instrument, p);
+    for (let i = 0; i < positions.length; i++) {
+      const key = positionIds?.[i] ?? positions[i].instrument;
+      posMap.set(key, positions[i]);
     }
   }
   return {
@@ -196,7 +199,7 @@ describe("Position scope", () => {
     const rule = makeRule({ scope: "POSITION", positionId: "pos-1", condition: "THESIS_STATE_CHANGED" });
     const ctx = makeCtx([makeIntel()], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "CAUTION", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results.length).toBeGreaterThanOrEqual(1);
     expect(results[0].triggered).toBe(true);
@@ -237,7 +240,7 @@ describe("Portfolio scope", () => {
     const rule = makeRule({ scope: "PORTFOLIO", condition: "PORTFOLIO_CONCENTRATION_DETECTED" });
     const portfolio = makePortfolio({
       alignments: [
-        { positions: ["BTC LONG", "ETH LONG"], alignmentType: "CONCENTRATION", description: "Crypto LONG concentration", strength: "STRONG" },
+        { instruments: ["BTC LONG", "ETH LONG"], alignmentType: "CONCENTRATION", description: "Crypto LONG concentration", strength: "STRONG" },
       ],
     });
     const ctx = makeCtx([], portfolio);
@@ -277,7 +280,7 @@ describe("Global scope", () => {
       previousSnapshots: new Map([
         ["pos-1", { thesisState: "CAUTION", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }],
       ]),
-    });
+    }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
     // CAUTION→HEALTHY on pos-1 should trigger
     expect(results.length).toBeGreaterThanOrEqual(1);
@@ -294,7 +297,7 @@ describe("LONG/SHORT symmetry", () => {
     const intel = makeIntel({ instrument: "BTC/USDT", side: "LONG", thesisHealth: "DETERIORATING" });
     const ctx = makeCtx([intel], undefined, {
       previousSnapshots: new Map([["long-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["long-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
@@ -304,7 +307,7 @@ describe("LONG/SHORT symmetry", () => {
     const intel = makeIntel({ instrument: "BTC/USDT", side: "SHORT", thesisHealth: "DETERIORATING" });
     const ctx = makeCtx([intel], undefined, {
       previousSnapshots: new Map([["short-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_DOWN", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 3, conflictingCount: 1 }]]),
-    });
+    }, ["short-1"]);
     const results = evaluateRule(rule, ctx);
     expect(results.length).toBeGreaterThanOrEqual(1);
   });
@@ -557,7 +560,7 @@ describe("Portfolio concentration", () => {
     const rule = makeRule({ scope: "PORTFOLIO", condition: "PORTFOLIO_CONCENTRATION_DETECTED" });
     const portfolio = makePortfolio({
       alignments: [
-        { positions: ["BTC LONG", "ETH LONG"], alignmentType: "CONCENTRATION", description: "Crypto LONG concentration", strength: "STRONG" },
+        { instruments: ["BTC LONG", "ETH LONG"], alignmentType: "CONCENTRATION", description: "Crypto LONG concentration", strength: "STRONG" },
       ],
     });
     const ctx = makeCtx([], portfolio);
@@ -842,7 +845,7 @@ describe("Cross-asset conflict", () => {
 describe("Supporting/conflicting evidence changes", () => {
   it("SUPPORTING_EVIDENCE_CHANGED triggers when supporting count changes by >= 2", () => {
     const rule = makeRule({ condition: "SUPPORTING_EVIDENCE_CHANGED" });
-    const ctx = makeCtx([makeIntel({ evidence: [{ direction: "supporting", category: "TECHNICAL", explanation: "t", strength: "MODERATE" }, { direction: "supporting", category: "STRUCTURE", explanation: "s", strength: "MODERATE" }] })], undefined, {
+    const ctx = makeCtx([makeIntel({      evidence: [{ direction: "supporting", category: "TECHNICAL", description: "t", strength: "MODERATE" }, { direction: "supporting", category: "STRUCTURE", description: "s", strength: "MODERATE" }] })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 0, conflictingCount: 0 }]]),
     });
     const results = evaluateRule(rule, ctx);
@@ -851,7 +854,7 @@ describe("Supporting/conflicting evidence changes", () => {
 
   it("CONFLICTING_EVIDENCE_CHANGED triggers when conflicting count changes by >= 2", () => {
     const rule = makeRule({ condition: "CONFLICTING_EVIDENCE_CHANGED" });
-    const ctx = makeCtx([makeIntel({ evidence: [{ direction: "conflicting", category: "TECHNICAL", explanation: "t", strength: "MODERATE" }, { direction: "conflicting", category: "STRUCTURE", explanation: "s", strength: "MODERATE" }] })], undefined, {
+    const ctx = makeCtx([makeIntel({      evidence: [{ direction: "conflicting", category: "TECHNICAL", description: "t", strength: "MODERATE" }, { direction: "conflicting", category: "STRUCTURE", description: "s", strength: "MODERATE" }] })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", supportingCount: 0, conflictingCount: 0 }]]),
     });
     const results = evaluateRule(rule, ctx);
