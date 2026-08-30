@@ -15,7 +15,16 @@ import {
   SEVERITY_BG,
   CATEGORY_LABELS,
   type Notification,
+  type NotificationCategory,
+  type NotificationSeverity,
 } from "../lib/position-protection/notification-engine";
+import {
+  filterNotificationsByPreferences,
+  DEFAULT_PREFERENCES,
+  ALL_CATEGORIES,
+  type NotificationPreferences,
+  type PreferenceScope,
+} from "../lib/position-protection/notification-preferences";
 
 const SEVERITY_ORDER: Record<string, number> = {
   INFO: 0,
@@ -45,16 +54,48 @@ function formatTimestamp(ts: number): string {
 
 export function NotificationCenter() {
   const [filter, setFilter] = useState<NotificationFilter>("ALL");
+  const [showPrefs, setShowPrefs] = useState(false);
   const notifications = useQuery(api.notifications.getNotifications, { limit: 100 });
   const unreadCount = useQuery(api.notifications.getUnreadCount);
   const markRead = useMutation(api.notifications.markNotificationRead);
   const markAllRead = useMutation(api.notifications.markAllNotificationsRead);
 
+  // Phase 98: Notification preferences
+  const rawPrefs = useQuery(api.notificationPreferences.getPreferences);
+  const savePrefsMut = useMutation(api.notificationPreferences.savePreferences);
+  const resetPrefsMut = useMutation(api.notificationPreferences.resetPreferences);
+
+  const prefs: NotificationPreferences = useMemo(() => {
+    if (!rawPrefs) return DEFAULT_PREFERENCES;
+    return {
+      minimumSeverity: (rawPrefs as any).minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
+      enabledCategories: (rawPrefs as any).enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
+      enabledScopes: (rawPrefs as any).enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
+      mutedRuleIds: (rawPrefs as any).mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
+      enabledInstruments: (rawPrefs as any).enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
+      mutedInstruments: (rawPrefs as any).mutedInstruments ?? DEFAULT_PREFERENCES.mutedInstruments,
+      showReadNotifications: (rawPrefs as any).showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
+      showDismissedNotifications: (rawPrefs as any).showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
+    };
+  }, [rawPrefs]);
+
   const filtered = useMemo(() => {
     if (!notifications) return [];
-    // Convex records match Notification shape with _id/_creationTime extras
-    return filterNotifications(notifications as unknown as Notification[], filter);
-  }, [notifications, filter]);
+    const all = notifications as unknown as Notification[];
+    // Apply preference-based filtering first, then UI filter
+    const byPrefs = filterNotificationsByPreferences(all, prefs);
+    return filterNotifications(byPrefs, filter);
+  }, [notifications, filter, prefs]);
+
+  // Phase 98: Visible unread count (preference-filtered)
+  const visibleUnreadCount = useMemo(() => {
+    if (!notifications) return 0;
+    const all = notifications as unknown as Notification[];
+    return filterNotificationsByPreferences(
+      all.filter((n) => !n.read),
+      prefs,
+    ).length;
+  }, [notifications, prefs]);
 
   const isLoading = notifications === undefined;
 
@@ -64,20 +105,30 @@ export function NotificationCenter() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h3 className="text-sm font-mono font-semibold">Notifications</h3>
-          {unreadCount !== undefined && unreadCount > 0 && (
+          {visibleUnreadCount > 0 && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500/20 text-red-400 text-[10px] font-mono font-bold">
-              {unreadCount}
+              {visibleUnreadCount}
             </span>
           )}
         </div>
-        {unreadCount !== undefined && unreadCount > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => markAllRead()}
-            className="text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setShowPrefs(!showPrefs)}
+            className={`text-[10px] font-mono py-1 px-2 rounded-md transition-colors ${
+              showPrefs ? "bg-background text-foreground font-semibold border border-border/50" : "text-muted-foreground hover:text-foreground"
+            }`}
           >
-            Mark all read
+            {showPrefs ? "Hide Prefs" : "Preferences"}
           </button>
-        )}
+          {unreadCount !== undefined && unreadCount > 0 && (
+            <button
+              onClick={() => markAllRead()}
+              className="text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Mark all read
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
@@ -100,6 +151,169 @@ export function NotificationCenter() {
           </button>
         ))}
       </div>
+
+      {/* Phase 98: Preferences Panel */}
+      {showPrefs && (
+        <div className="space-y-3 p-3 rounded-lg border border-border/40 bg-muted/20">
+          <div className="text-[10px] font-mono font-semibold text-muted-foreground">PREFERENCES</div>
+
+          {/* Minimum Severity */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-mono text-muted-foreground/70">Minimum Severity</div>
+            <div className="flex gap-1">
+              {["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"].map((sev) => (
+                <button
+                  key={sev}
+                  onClick={() => {
+                    const updated = { ...prefs, minimumSeverity: sev as NotificationSeverity };
+                    savePrefsMut({
+                      minimumSeverity: updated.minimumSeverity,
+                      enabledCategories: updated.enabledCategories,
+                      enabledScopes: updated.enabledScopes,
+                      mutedRuleIds: updated.mutedRuleIds,
+                      enabledInstruments: updated.enabledInstruments,
+                      mutedInstruments: updated.mutedInstruments,
+                      showReadNotifications: updated.showReadNotifications,
+                      showDismissedNotifications: updated.showDismissedNotifications,
+                    });
+                  }}
+                  className={`text-[9px] font-mono py-0.5 px-1.5 rounded transition-colors ${
+                    prefs.minimumSeverity === sev
+                      ? "bg-background text-foreground font-semibold border border-border/50"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {sev}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Categories */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="text-[9px] font-mono text-muted-foreground/70">Categories</div>
+              <button
+                onClick={() => {
+                  const updated = {
+                    ...prefs,
+                    enabledCategories: prefs.enabledCategories.length === ALL_CATEGORIES.length ? [] : [...ALL_CATEGORIES],
+                  };
+                  savePrefsMut({
+                    minimumSeverity: updated.minimumSeverity,
+                    enabledCategories: updated.enabledCategories,
+                    enabledScopes: updated.enabledScopes,
+                    mutedRuleIds: updated.mutedRuleIds,
+                    enabledInstruments: updated.enabledInstruments,
+                    mutedInstruments: updated.mutedInstruments,
+                    showReadNotifications: updated.showReadNotifications,
+                    showDismissedNotifications: updated.showDismissedNotifications,
+                  });
+                }}
+                className="text-[9px] font-mono text-muted-foreground hover:text-foreground"
+              >
+                {prefs.enabledCategories.length === ALL_CATEGORIES.length ? "Disable All" : "Enable All"}
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {ALL_CATEGORIES.map((cat) => {
+                const isEnabled = prefs.enabledCategories.length === 0 || prefs.enabledCategories.includes(cat);
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => {
+                      let newCats: NotificationCategory[];
+                      if (prefs.enabledCategories.length === 0) {
+                        // All enabled → disable this one
+                        newCats = ALL_CATEGORIES.filter((c) => c !== cat);
+                      } else if (prefs.enabledCategories.includes(cat)) {
+                        newCats = prefs.enabledCategories.filter((c) => c !== cat);
+                      } else {
+                        newCats = [...prefs.enabledCategories, cat];
+                      }
+                      const updated = { ...prefs, enabledCategories: newCats };
+                      savePrefsMut({
+                        minimumSeverity: updated.minimumSeverity,
+                        enabledCategories: updated.enabledCategories,
+                        enabledScopes: updated.enabledScopes,
+                        mutedRuleIds: updated.mutedRuleIds,
+                        enabledInstruments: updated.enabledInstruments,
+                        mutedInstruments: updated.mutedInstruments,
+                        showReadNotifications: updated.showReadNotifications,
+                        showDismissedNotifications: updated.showDismissedNotifications,
+                      });
+                    }}
+                    className={`text-[9px] font-mono py-0.5 px-1.5 rounded transition-colors ${
+                      isEnabled
+                        ? "bg-background text-foreground border border-border/50"
+                        : "text-muted-foreground/40"
+                    }`}
+                  >
+                    {CATEGORY_LABELS[cat] ?? cat}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Display */}
+          <div className="space-y-1">
+            <div className="text-[9px] font-mono text-muted-foreground/70">Display</div>
+            <div className="flex gap-3">
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={prefs.showReadNotifications}
+                  onChange={(e) => {
+                    const updated = { ...prefs, showReadNotifications: e.target.checked };
+                    savePrefsMut({
+                      minimumSeverity: updated.minimumSeverity,
+                      enabledCategories: updated.enabledCategories,
+                      enabledScopes: updated.enabledScopes,
+                      mutedRuleIds: updated.mutedRuleIds,
+                      enabledInstruments: updated.enabledInstruments,
+                      mutedInstruments: updated.mutedInstruments,
+                      showReadNotifications: updated.showReadNotifications,
+                      showDismissedNotifications: updated.showDismissedNotifications,
+                    });
+                  }}
+                  className="size-3 accent-primary"
+                />
+                <span className="text-[9px] font-mono text-muted-foreground">Show read</span>
+              </label>
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={prefs.showDismissedNotifications}
+                  onChange={(e) => {
+                    const updated = { ...prefs, showDismissedNotifications: e.target.checked };
+                    savePrefsMut({
+                      minimumSeverity: updated.minimumSeverity,
+                      enabledCategories: updated.enabledCategories,
+                      enabledScopes: updated.enabledScopes,
+                      mutedRuleIds: updated.mutedRuleIds,
+                      enabledInstruments: updated.enabledInstruments,
+                      mutedInstruments: updated.mutedInstruments,
+                      showReadNotifications: updated.showReadNotifications,
+                      showDismissedNotifications: updated.showDismissedNotifications,
+                    });
+                  }}
+                  className="size-3 accent-primary"
+                />
+                <span className="text-[9px] font-mono text-muted-foreground">Show dismissed</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Reset */}
+          <button
+            onClick={() => resetPrefsMut()}
+            className="text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          >
+            Reset to defaults
+          </button>
+        </div>
+      )}
 
       {/* Loading */}
       {isLoading && (
