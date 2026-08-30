@@ -290,3 +290,62 @@ export function removePositionFromState(
   snapshots.delete(positionId);
   return { ...state, snapshots };
 }
+
+/**
+ * Clean up all trigger records related to a specific position.
+ * Removes both position-scoped and global-scoped trigger records.
+ */
+export function removePositionTriggerRecords(
+  triggerRecords: Map<string, RuleTriggerRecord>,
+  positionId: string,
+): Map<string, RuleTriggerRecord> {
+  const cleaned = new Map(triggerRecords);
+  for (const key of cleaned.keys()) {
+    if (key.endsWith(":" + positionId) || key.includes(":" + positionId + ":") || key === positionId + ":global") {
+      cleaned.delete(key);
+    }
+  }
+  return cleaned;
+}
+
+/**
+ * Clean up stale previous state entries for instruments no longer tracked.
+ * Removes newsStance and dataAvailability entries for removed instruments.
+ */
+export function cleanStaleInstrumentState(
+  state: PreviousStateStore,
+  activeInstruments: Set<string>,
+): PreviousStateStore {
+  const newsStance = new Map(state.newsStance);
+  const dataAvailability = new Map(state.dataAvailability);
+
+  for (const key of newsStance.keys()) {
+    if (!activeInstruments.has(key)) {
+      newsStance.delete(key);
+    }
+  }
+  for (const key of dataAvailability.keys()) {
+    if (!activeInstruments.has(key)) {
+      dataAvailability.delete(key);
+    }
+  }
+
+  return { ...state, newsStance, dataAvailability };
+}
+
+/**
+ * Clean up trigger records for rules that no longer exist.
+ * Removes trigger records whose ruleId prefix is not in the active rules set.
+ */
+export function cleanStaleRuleTriggerRecords(
+  triggerRecords: Map<string, RuleTriggerRecord>,
+  activeRuleIds: Set<string>,
+): Map<string, RuleTriggerRecord> {
+  const cleaned = new Map(triggerRecords);
+  for (const [key, record] of cleaned) {
+    if (!activeRuleIds.has(record.ruleId)) {
+      cleaned.delete(key);
+    }
+  }
+  return cleaned;
+}
