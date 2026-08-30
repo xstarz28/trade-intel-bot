@@ -67,6 +67,8 @@ import {
 } from "@/lib/position-protection/alert-runtime-bridge";
 import type { RuleTriggerRecord } from "@/lib/position-protection/alert-rule-engine";
 import { generatePortfolioIntelligence } from "@/lib/position-protection/portfolio-intelligence";
+import type { AlertDiagnosticEvent } from "@/lib/position-protection/alert-observability";
+import { applyDiagnosticRetention, MAX_DIAGNOSTIC_EVENTS } from "@/lib/position-protection/alert-observability";
 import {
   extractUserPositions,
   buildUserIntelligenceFeed,
@@ -526,6 +528,7 @@ export function PositionProtectionDashboard() {
   const prevStateRef = useRef<PreviousStateStore | null>(null);
   const triggerRecordsRef = useRef<Map<string, RuleTriggerRecord>>(new Map());
   const bridgeInitializedRef = useRef(false);
+  const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
 
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
   useEffect(() => {
@@ -655,6 +658,7 @@ export function PositionProtectionDashboard() {
     // Update refs for next cycle
     triggerRecordsRef.current = result.updatedTriggerRecords;
     prevStateRef.current = { ...prevState, snapshots: result.updatedPreviousSnapshots };
+    diagnosticsRef.current = applyDiagnosticRetention([...diagnosticsRef.current, ...result.diagnostics], MAX_DIAGNOSTIC_EVENTS);
 
     // Persist notifications to Convex (fire-and-forget, rate-limit safe)
     for (const notif of result.notifications) {

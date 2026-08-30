@@ -23,11 +23,25 @@ import type {
 } from "./alert-rule-engine";
 import {
   evaluateRules,
+  evaluateRule,
+  shouldTriggerAlert,
+  alertIdentity,
   type RuleCondition,
 } from "./alert-rule-engine";
 import { buildNotification, type Notification } from "./notification-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import type { PortfolioIntelligence } from "./portfolio-intelligence";
+import {
+  type AlertDiagnosticEvent,
+  buildSkipDiagnostic,
+  buildCooldownDiagnostic,
+  buildTriggerDiagnostic,
+  buildNotificationDiagnostic,
+  buildPipelineCycleDiagnostic,
+  buildPipelineErrorDiagnostic,
+  buildCleanupDiagnostic,
+  type SkipReason,
+} from "./alert-observability";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -53,6 +67,8 @@ export interface RuntimeBridgeResult {
   updatedTriggerRecords: Map<string, RuleTriggerRecord>;
   /** Updated previous snapshots (caller must store for next cycle) */
   updatedPreviousSnapshots: Map<string, RuleSnapshot>;
+  /** Diagnostic events describing what the pipeline did */
+  diagnostics: AlertDiagnosticEvent[];
 }
 
 export interface PreviousStateStore {
@@ -151,14 +167,22 @@ export function evaluateAlertRuntimeBridge(
   now: number,
 ): RuntimeBridgeResult {
   const { rules, intelligenceMap, portfolioIntelligence, previousMacroRegime, macroRegime } = input;
+  const diagnostics: AlertDiagnosticEvent[] = [];
 
   // Filter to enabled rules only
+  const disabledRules = rules.filter((r) => !r.enabled);
+  for (const rule of disabledRules) {
+    diagnostics.push(buildSkipDiagnostic(rule, "RULE_DISABLED"));
+  }
+
   const activeRules = rules.filter((r) => r.enabled);
   if (activeRules.length === 0) {
+    diagnostics.push(buildPipelineCycleDiagnostic(rules.length, 0, 0, now));
     return {
       notifications: [],
       updatedTriggerRecords: triggerRecords,
       updatedPreviousSnapshots: new Map(previousState.snapshots),
+      diagnostics,
     };
   }
 
@@ -174,29 +198,108 @@ export function evaluateAlertRuntimeBridge(
     previousDataAvailability: previousState.dataAvailability,
   };
 
-  // Evaluate rules (Phase 93 engine — pure, handles cooldown/dedup)
-  const { alerts, updatedRecords } = evaluateRules(
-    activeRules,
-    ctx,
-    triggerRecords,
-    now,
-  );
+  // Per-rule evaluation with diagnostics
+  let updatedRecords = new Map(triggerRecords);
+  const triggeredAlerts: Array<{ rule: typeof activeRules[0]; alertId: string; positionId?: string; instrument?: string }> = [];
+  let evaluatedCount = 0;
+  let cooldownBlockedCount = 0;
+  let dedupCount = 0;
+  let triggeredCount = 0;
 
-  // Convert RuleAlerts → Notifications
-  const notifications: Notification[] = [];
-  for (const alert of alerts) {
-    // Determine side from position
-    let side: "LONG" | "SHORT" | "NONE" = "NONE";
-    if (alert.positionId) {
-      const intel = intelligenceMap.get(alert.positionId);
-      if (intel) {
-        side = intel.side;
-      }
+  for (const rule of activeRules) {
+    evaluatedCount++;
+
+    // Check cooldown
+    const cooldownOk = shouldTriggerAlert(rule, updatedRecords, now);
+    if (!cooldownOk) {
+      diagnostics.push(buildCooldownDiagnostic(rule));
+      cooldownBlockedCount++;
+      continue;
     }
+
+    // Evaluate rule conditions
+    const evalResults = evaluateRule(rule, ctx);
+
+    if (evalResults.length === 0) {
+      // Condition not met — no diagnostic needed (normal)
+      continue;
+    }
+
+    // Rule triggered — determine position context
+    for (const er of evalResults) {
+      let posId: string | undefined;
+      let inst: string | undefined;
+      let side: "LONG" | "SHORT" | "NONE" = "NONE";
+
+      if (rule.scope === "POSITION" && rule.positionId) {
+        posId = rule.positionId;
+        const intel = intelligenceMap.get(rule.positionId);
+        inst = intel?.instrument;
+        side = intel?.side ?? "NONE";
+      } else if (rule.scope === "INSTRUMENT" && rule.instrument) {
+        inst = rule.instrument;
+        for (const [pid, i] of intelligenceMap) {
+          if (i.instrument === rule.instrument) {
+            posId = pid;
+            side = i.side;
+            break;
+          }
+        }
+      }
+
+      const identity = alertIdentity(rule.ruleId, posId, rule.condition, now);
+      diagnostics.push(buildTriggerDiagnostic(rule, identity, { positionId: posId, instrument: inst, side }));
+      triggeredAlerts.push({ rule, alertId: identity, positionId: posId, instrument: inst });
+      triggeredCount++;
+
+      // Update trigger record
+      const key = `${rule.ruleId}:${rule.positionId ?? "global"}`;
+      updatedRecords = new Map(updatedRecords);
+      updatedRecords.set(key, {
+        ruleId: rule.ruleId,
+        positionId: rule.positionId,
+        lastTriggeredAt: now,
+        lastConditionTrue: true,
+      });
+    }
+  }
+
+  // Convert triggered alerts → notifications
+  const notifications: Notification[] = [];
+  for (const ta of triggeredAlerts) {
+    let side: "LONG" | "SHORT" | "NONE" = "NONE";
+    if (ta.positionId) {
+      const intel = intelligenceMap.get(ta.positionId);
+      if (intel) side = intel.side;
+    }
+
+    // Reconstruct RuleAlert for buildNotification
+    const alert = {
+      alertId: ta.alertId,
+      ruleId: ta.rule.ruleId,
+      ruleName: ta.rule.name,
+      userId: ta.rule.userId,
+      positionId: ta.positionId,
+      instrument: ta.instrument,
+      condition: ta.rule.condition,
+      severity: ta.rule.severity,
+      description: `${ta.rule.name} triggered`,
+      timestamp: now,
+      source: "CUSTOM_RULE" as const,
+    };
 
     const notification = buildNotification(alert, side, now);
     notifications.push(notification);
+    diagnostics.push(buildNotificationDiagnostic(ta.alertId, notification.notificationId, "CREATED", {
+      instrument: ta.instrument,
+      positionId: ta.positionId,
+      side,
+      severity: ta.rule.severity,
+    }));
   }
+
+  // Pipeline cycle summary
+  diagnostics.push(buildPipelineCycleDiagnostic(rules.length, evaluatedCount, triggeredCount, now));
 
   // Update previous snapshots for next cycle
   const updatedSnapshots = new Map(previousState.snapshots);
@@ -208,6 +311,7 @@ export function evaluateAlertRuntimeBridge(
     notifications,
     updatedTriggerRecords: updatedRecords,
     updatedPreviousSnapshots: updatedSnapshots,
+    diagnostics,
   };
 }
 
