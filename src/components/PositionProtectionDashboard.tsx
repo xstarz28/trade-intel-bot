@@ -107,7 +107,7 @@ import {
   type PersistedEvent,
 } from "@/lib/position-protection/persistent-history-engine";
 import { detectChanges } from "@/lib/position-protection/historical-intelligence";
-import { useOHLCVData } from "@/lib/position-protection/use-ohlcv-data";
+import { useOHLCVData, type OHLCVHealthEvent } from "@/lib/position-protection/use-ohlcv-data";
 import type { TimeframeKey } from "@/lib/position-protection/multi-timeframe-engine";
 
 // ═══════════════════════════════════════════════════════════════
@@ -342,6 +342,17 @@ export function PositionProtectionDashboard() {
     enabled: monitoredInstruments.length > 0,
     timeframes: ["M5", "M15", "H1"],
     refreshIntervalMs: 120_000,
+    onHealthEvent: useCallback((event: OHLCVHealthEvent) => {
+      healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        component: event.component,
+        source: event.source,
+        operation: event.operation,
+        success: event.success,
+        durationMs: event.durationMs,
+        error: event.error,
+        message: event.message,
+      });
+    }, []),
   });
 
   // ─── Price Observations (per instrument) ─────────────────
@@ -836,13 +847,18 @@ export function PositionProtectionDashboard() {
     }
   }, [positions]);
 
+  // Phase 102: Guard against recursive persistence loops
+  const isPersistingHealthRef = useRef(false);
+
   // Phase 100: Automatic health persistence
   useEffect(() => {
     if (intelligenceMap.size === 0 && positions.length === 0) return;
+    if (isPersistingHealthRef.current) return; // prevent recursive loop
     const now = Date.now();
     const snapshotToPersist = shouldPersistFromBuffer(healthBufferRef.current, now);
     if (snapshotToPersist) {
       healthBufferRef.current = markPersisted(healthBufferRef.current, snapshotToPersist);
+      isPersistingHealthRef.current = true;
       saveHealthMut({
         timestamp: snapshotToPersist.timestamp,
         overallStatus: snapshotToPersist.overallStatus,
@@ -864,7 +880,12 @@ export function PositionProtectionDashboard() {
         providerAvailability: snapshotToPersist.providerAvailability,
         staleComponents: snapshotToPersist.staleComponents,
         unavailableComponents: snapshotToPersist.unavailableComponents,
-      }).catch(() => {});
+      }).then(() => {
+        isPersistingHealthRef.current = false;
+      }).catch(() => {
+        isPersistingHealthRef.current = false;
+        // Do NOT record a health event for persistence failure — prevents recursive loop
+      });
     }
   }, [intelligenceMap, positions.length, saveHealthMut]);
 

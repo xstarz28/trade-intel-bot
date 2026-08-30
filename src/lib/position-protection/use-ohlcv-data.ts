@@ -47,12 +47,23 @@ export interface UseOHLCVResult extends OHLCVState {
   refresh: () => void;
 }
 
+export interface OHLCVHealthEvent {
+  component: "OHLCV";
+  success: boolean;
+  source: string;
+  operation: string;
+  durationMs?: number;
+  error?: string;
+  message?: string;
+}
+
 export function useOHLCVData(
   instruments: string[],
   options?: {
     timeframes?: TimeframeKey[];
     enabled?: boolean;
     refreshIntervalMs?: number;
+    onHealthEvent?: (event: OHLCVHealthEvent) => void;
   },
 ): UseOHLCVResult {
   const timeframes = options?.timeframes ?? DEFAULT_TIMEFRAMES;
@@ -69,10 +80,11 @@ export function useOHLCVData(
     fetchCount: 0,
     errorCount: 0,
     lastError: undefined,
-  });
-
-  const stateRef = useRef(state);
+  });  const stateRef = useRef(state);
   stateRef.current = state;
+
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const fetchOHLCV = useCallback(async () => {
     if (!enabled || instruments.length === 0) return;
@@ -105,15 +117,19 @@ export function useOHLCVData(
       : instruments.slice(0, MAX_INSTRUMENTS_PER_FETCH);
 
     setState((prev) => ({ ...prev, isFetching: true }));
+    const fetchStart = Date.now();
+    const onHealthEvent = optionsRef.current?.onHealthEvent;
 
     try {
       const results = await fetchCandles({
         instruments: batch,
         timeframes,
         outputsize: MAX_CANDLES_PER_TIMEFRAME,
-      });
+      });      const now = Date.now();
+      const fetchDuration = now - fetchStart;
+      const fetchErrors = results.filter((r: any) => !r.success);
+      const fetchSuccesses = results.filter((r: any) => r.success);
 
-      const now = Date.now();
       setState((prev) => {
         const newData = new Map(prev.data);
         const newConfluence = new Map(prev.confluence);
@@ -156,19 +172,32 @@ export function useOHLCVData(
           }
         }
 
-        const errors = results.filter((r: any) => !r.success);
-        const successes = results.filter((r: any) => r.success);
-
         return {
           data: newData,
           confluence: newConfluence,
           isFetching: false,
           lastFetchAt: now,
           fetchCount: prev.fetchCount + 1,
-          errorCount: prev.errorCount + errors.length,
-          lastError: errors.length > 0 ? errors[0].error : prev.lastError,
+          errorCount: prev.errorCount + fetchErrors.length,
+          lastError: fetchErrors.length > 0 ? fetchErrors[0].error : prev.lastError,
         };
       });
+
+      // Phase 102: Direct OHLCV health event from actual fetch result
+      if (onHealthEvent) {
+        const firstError = fetchErrors[0];
+        onHealthEvent({
+          component: "OHLCV",
+          success: fetchSuccesses.length > 0 && fetchErrors.length === 0,
+          source: "TwelveData",
+          operation: `OHLCV fetch: ${batch.join(", ")}`,
+          durationMs: fetchDuration,
+          error: firstError?.error,
+          message: fetchSuccesses.length > 0
+            ? `${fetchSuccesses.length}/${results.length} instruments succeeded`
+            : `${fetchErrors.length} instruments failed`,
+        });
+      }
     } catch (err: any) {
       setState((prev) => ({
         ...prev,
@@ -176,6 +205,19 @@ export function useOHLCVData(
         errorCount: prev.errorCount + 1,
         lastError: err?.message ?? "Fetch failed",
       }));
+
+      // Phase 102: Record OHLCV fetch failure
+      if (onHealthEvent) {
+        onHealthEvent({
+          component: "OHLCV",
+          success: false,
+          source: "TwelveData",
+          operation: `OHLCV fetch: ${batch.join(", ")}`,
+          durationMs: Date.now() - fetchStart,
+          error: err?.message ?? "Fetch failed",
+          message: "OHLCV fetch failed",
+        });
+      }
     }
   }, [instruments.join(","), timeframes.join(","), enabled, fetchCandles]);
 
