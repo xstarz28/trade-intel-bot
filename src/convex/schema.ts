@@ -274,6 +274,21 @@ const schema = defineSchema(
       .index("by_user_read", ["userId", "read", "timestamp"])
       .index("by_user_notif", ["userId", "notificationId"]),
 
+    // Phase 98 — Notification preferences
+    notificationPreferences: defineTable({
+      userId: v.id("users"),
+      minimumSeverity: v.string(),
+      enabledCategories: v.array(v.string()),
+      enabledScopes: v.array(v.string()),
+      mutedRuleIds: v.array(v.string()),
+      enabledInstruments: v.array(v.string()),
+      mutedInstruments: v.array(v.string()),
+      showReadNotifications: v.boolean(),
+      showDismissedNotifications: v.boolean(),
+      updatedAt: v.number(),
+    })
+      .index("by_user", ["userId"]),
+
     // Phase 90 — Historical intelligence events
     historicalEvents: defineTable({
       userId: v.id("users"),
