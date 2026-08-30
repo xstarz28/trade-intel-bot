@@ -305,6 +305,32 @@ const schema = defineSchema(
     })
       .index("by_user_position", ["userId", "positionId"])
       .index("by_user_position_ts", ["userId", "positionId", "timestamp"]),
+
+    // Phase 99 — Runtime health snapshots
+    runtimeHealthSnapshots: defineTable({
+      userId: v.id("users"),
+      timestamp: v.number(),
+      overallStatus: v.string(),
+      components: v.array(v.object({
+        component: v.string(),
+        status: v.string(),
+        lastSuccessAt: v.optional(v.number()),
+        lastFailureAt: v.optional(v.number()),
+        lastAttemptAt: v.optional(v.number()),
+        consecutiveFailures: v.number(),
+        message: v.string(),
+        source: v.optional(v.string()),
+        dataAgeMs: v.optional(v.number()),
+        freshness: v.string(),
+      })),
+      intelligenceCycleStatus: v.string(),
+      alertPipelineStatus: v.string(),
+      persistenceStatus: v.string(),
+      providerAvailability: v.record(v.string(), v.string()),
+      staleComponents: v.array(v.string()),
+      unavailableComponents: v.array(v.string()),
+    })
+      .index("by_user", ["userId", "timestamp"]),
   },
   {
     schemaValidation: false,
