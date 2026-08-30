@@ -63,6 +63,7 @@ import {
   type PreviousStateStore,
 } from "@/lib/position-protection/alert-runtime-bridge";
 import type { RuleTriggerRecord } from "@/lib/position-protection/alert-rule-engine";
+import { generatePortfolioIntelligence } from "@/lib/position-protection/portfolio-intelligence";
 import {
   extractUserPositions,
   buildUserIntelligenceFeed,
@@ -626,11 +627,16 @@ export function PositionProtectionDashboard() {
 
     const prevState = prevStateRef.current ?? buildInitialStateStore(intelligenceMap);
 
+    // Generate portfolio intelligence from current position data
+    const intelArray = Array.from(intelligenceMap.values());
+    const portfolioIntel = intelArray.length > 0 ? generatePortfolioIntelligence(intelArray) : undefined;
+
     // Run the deterministic evaluation bridge
     const result = evaluateAlertRuntimeBridge(
       {
         rules: typedRules,
         intelligenceMap,
+        portfolioIntelligence: portfolioIntel,
         previousMacroRegime: undefined,
         macroRegime: undefined,
       },
