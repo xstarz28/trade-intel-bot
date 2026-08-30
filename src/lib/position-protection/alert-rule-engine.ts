@@ -41,6 +41,21 @@ export type RuleCondition =
   | "DATA_BECAME_UNAVAILABLE"
   | "DATA_RECOVERED";
 
+/** Snapshot type used for previous-state comparison in rule evaluation. */
+export interface RuleSnapshot {
+  thesisState: string;
+  marketRegime: string;
+  evidenceQuality: string;
+  structure?: string;
+  momentum?: string;
+  volatility?: string;
+  h1Trend?: string;
+  m15Trend?: string;
+  m5Trend?: string;
+  supportingCount: number;
+  conflictingCount: number;
+}
+
 export interface AlertRule {
   ruleId: string;
   userId: string;
@@ -75,7 +90,7 @@ export interface RuleAlert {
 export interface RuleEvaluationContext {
   positionIntelligence: Map<string, PositionIntelligence>;
   portfolioIntelligence?: PortfolioIntelligence;
-  previousSnapshots?: Map<string, { thesisState: string; marketRegime: string; evidenceQuality: string }>;
+  previousSnapshots?: Map<string, RuleSnapshot>;
   previousNewsStance?: Map<string, "CONFLICTING" | "SUPPORTING" | "NEUTRAL" | "UNAVAILABLE">;
   newsStance?: Map<string, "CONFLICTING" | "SUPPORTING" | "NEUTRAL" | "UNAVAILABLE">;
   previousMacroRegime?: string;
@@ -219,7 +234,7 @@ function evalRegimeChanged(
   intel: PositionIntelligence,
   prev: { marketRegime: string } | undefined,
 ): EvalResult {
-  const currentRegime = intel.ohlcvRegime?.label ?? "UNKNOWN";
+  const currentRegime = (typeof intel.ohlcvRegime === "string" ? intel.ohlcvRegime : "UNKNOWN") ?? "UNKNOWN";
   if (!prev) return { triggered: false, description: "" };
   const triggered = prev.marketRegime !== currentRegime;
   return {
@@ -234,7 +249,7 @@ function evalRegimeChanged(
 
 function evalTrendChanged(
   intel: PositionIntelligence,
-  prev: { h1Trend?: string; m15Trend?: string; m5Trend?: string } | undefined,
+  prev: RuleSnapshot | undefined,
   tf: "h1" | "m15" | "m5",
   condition: RuleCondition,
 ): EvalResult {
@@ -242,8 +257,8 @@ function evalTrendChanged(
   const analysis = intel[tfKey] as { trend?: string } | undefined;
   const currentTrend = analysis?.trend ?? "UNKNOWN";
   if (!prev) return { triggered: false, description: "" };
-  const prevKey = `${tf}Trend` as keyof typeof prev;
-  const prevTrend = (prev as Record<string, string | undefined>)[prevKey] ?? "UNKNOWN";
+  const prevKey = `${tf}Trend` as keyof RuleSnapshot;
+  const prevTrend = (prev[prevKey] as string | undefined) ?? "UNKNOWN";
   const triggered = prevTrend !== currentTrend;
   const tfLabel = tf.toUpperCase();
   return {
@@ -258,9 +273,9 @@ function evalTrendChanged(
 
 function evalStructureChanged(
   intel: PositionIntelligence,
-  prev: { structure?: string } | undefined,
+  prev: RuleSnapshot | undefined,
 ): EvalResult {
-  const currentStructure = intel.ohlcvRegime?.label ?? "UNKNOWN";
+  const currentStructure = (typeof intel.ohlcvRegime === "string" ? intel.ohlcvRegime : "UNKNOWN") ?? "UNKNOWN";
   if (!prev) return { triggered: false, description: "" };
   const triggered = prev.structure !== undefined && prev.structure !== currentStructure;
   return {
@@ -275,7 +290,7 @@ function evalStructureChanged(
 
 function evalMomentumChanged(
   intel: PositionIntelligence,
-  prev: { momentum?: string } | undefined,
+  prev: RuleSnapshot | undefined,
 ): EvalResult {
   const currentMomentum = intel.shortTermContext ?? "UNKNOWN";
   if (!prev) return { triggered: false, description: "" };
@@ -292,7 +307,7 @@ function evalMomentumChanged(
 
 function evalVolatilityChanged(
   intel: PositionIntelligence,
-  prev: { volatility?: string } | undefined,
+  prev: RuleSnapshot | undefined,
 ): EvalResult {
   const currentVol = intel.volatilityContext ?? "UNKNOWN";
   if (!prev) return { triggered: false, description: "" };
@@ -539,7 +554,7 @@ export function evaluateRule(
 function evaluatePositionCondition(
   condition: RuleCondition,
   intel: PositionIntelligence,
-  prev: { thesisState: string; marketRegime: string; evidenceQuality: string; structure?: string; momentum?: string; volatility?: string; supportingCount: number; conflictingCount: number } | undefined,
+  prev: RuleSnapshot | undefined,
   prevNews?: "CONFLICTING" | "SUPPORTING" | "NEUTRAL" | "UNAVAILABLE",
   news?: "CONFLICTING" | "SUPPORTING" | "NEUTRAL" | "UNAVAILABLE",
   prevData?: string,
