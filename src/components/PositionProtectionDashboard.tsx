@@ -55,6 +55,7 @@ import {
 } from "@/lib/position-protection/historical-intelligence";
 import { UserIntelligenceFeed } from "./UserIntelligenceFeed";
 import { PortfolioIntelligenceView } from "./PortfolioIntelligence";
+import { CustomAlertRulesPanel } from "./CustomAlertRulesPanel";
 import {
   extractUserPositions,
   buildUserIntelligenceFeed,
@@ -322,7 +323,7 @@ export function PositionProtectionDashboard() {
 
   // ─── Price Observations (per instrument) ─────────────────
   const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
-  const [activeTab, setActiveTab] = useState<"positions" | "feed" | "portfolio" | "intelligence" | "market">("positions");
+  const [activeTab, setActiveTab] = useState<"positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market">("positions");
   const [timelines, setTimelines] = useState<Map<string, HistoricalTimeline>>(new Map());
   const [showForm, setShowForm] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -854,6 +855,16 @@ export function PositionProtectionDashboard() {
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
+              activeTab === "alerts"
+                ? "bg-background text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => setActiveTab("alerts")}
+          >
+            Alerts
+          </button>
+          <button
+            className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
               activeTab === "market"
                 ? "bg-background text-foreground font-semibold"
                 : "text-muted-foreground hover:text-foreground"
@@ -882,6 +893,11 @@ export function PositionProtectionDashboard() {
             ))}
           </AnimatePresence>
         </>
+      )}
+
+      {/* Alerts Tab */}
+      {activeTab === "alerts" && (
+        <CustomAlertRulesPanel />
       )}
 
       {/* Market Overview Tab */}
