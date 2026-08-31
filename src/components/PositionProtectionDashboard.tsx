@@ -430,6 +430,21 @@ export function PositionProtectionDashboard() {
   const [feedNews, setFeedNews] = useState<Map<string, NewsItem[]>>(new Map());
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
 
+  // Fetch treasury yields (nominal + real/TIPS) — slow-moving macro data, fetched once
+  const [treasuryData, setTreasuryData] = useState<import("../lib/data/treasury").TreasuryData | null>(null);
+  const fetchTreasury = useAction(api.treasury.fetchTreasuryYields);
+  useEffect(() => {
+    let cancelled = false;
+    fetchTreasury()
+      .then((result) => {
+        if (!cancelled && result.success) {
+          setTreasuryData(result.data);
+        }
+      })
+      .catch(() => { /* provider failure → treasuryData stays null */ });
+    return () => { cancelled = true; };
+  }, [fetchTreasury]);
+
   // Fetch news for user's instruments (rate-limit safe: one at a time)
   useEffect(() => {
     if (userPositions.length === 0) return;
@@ -1224,6 +1239,7 @@ export function PositionProtectionDashboard() {
           intel={intelligenceMap.get(selectedPositionId)!}
           newsItems={feedNews.get(intelligenceMap.get(selectedPositionId)!.instrument)}
           livePrices={livePrices}
+          treasuryData={treasuryData ?? undefined}
           onBack={() => setSelectedPositionId(null)}
         />
       )}
