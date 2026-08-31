@@ -1,0 +1,1133 @@
+/**
+ * Phase 110 — Fundamental Regime & Macro Transmission Engine
+ *
+ * Deterministic, evidence-first fundamental analysis layer.
+ * Pure functions — no side effects, no network calls.
+ * Reuses existing MacroContext, CrossAssetContext, NewsItem, NewsRelevance.
+ * No fabricated data. No probability claims. No auto-execution.
+ */
+
+import type { PositionSide } from "./types";
+import type { MacroContext, CrossAssetContext, RiskRegime } from "./multi-dimensional-intelligence";
+import type { NewsItem, NewsRelevance, NewsCategory } from "./news-intelligence";
+
+// ═══════════════════════════════════════════════════════════════
+// DOMAIN TYPES
+// ═══════════════════════════════════════════════════════════════
+
+export type DimensionAvailability = "AVAILABLE" | "UNAVAILABLE" | "INSUFFICIENT_EVIDENCE";
+export type EvidenceDirection = "SUPPORTING" | "CONFLICTING" | "NEUTRAL" | "UNAVAILABLE";
+export type AssetClass = "GOLD" | "SILVER" | "CRYPTO" | "FOREX" | "EQUITIES" | "OIL" | "COMMODITIES";
+
+export type InflationRegime =
+  | "DISINFLATIONARY"
+  | "STABLE"
+  | "RISING"
+  | "HIGH"
+  | "ACCELERATING"
+  | "INSUFFICIENT_DATA";
+
+export type InflationDriver = "DEMAND_DRIVEN" | "SUPPLY_DRIVEN" | "MIXED" | "INSUFFICIENT_DATA";
+
+export type RateRegime =
+  | "EASING"
+  | "NEUTRAL"
+  | "TIGHTENING"
+  | "RESTRICTIVE"
+  | "TRANSITIONING"
+  | "INSUFFICIENT_DATA";
+
+export type RealYieldRegime =
+  | "REAL_YIELD_RISING"
+  | "REAL_YIELD_FALLING"
+  | "REAL_YIELD_STABLE"
+  | "UNAVAILABLE";
+
+export type CurrencyRegime =
+  | "STRENGTHENING"
+  | "WEAKENING"
+  | "STABLE"
+  | "VOLATILE"
+  | "UNAVAILABLE";
+
+export type LiquidityRegime =
+  | "EASY"
+  | "NEUTRAL"
+  | "TIGHTENING"
+  | "STRESS"
+  | "UNAVAILABLE";
+
+export type GrowthRegime =
+  | "EXPANDING"
+  | "SLOWING"
+  | "CONTRACTING"
+  | "RECOVERING"
+  | "UNAVAILABLE";
+
+export type EnergyRegime =
+  | "SUPPLY_DISRUPTION"
+  | "DEMAND_DRIVEN"
+  | "BALANCED"
+  | "OIL_SHOCK"
+  | "UNAVAILABLE";
+
+export type GeopoliticalRegime =
+  | "LOW"
+  | "ELEVATED"
+  | "HIGH"
+  | "ESCALATING"
+  | "DE_ESCALATING"
+  | "INSUFFICIENT_DATA";
+
+export type OverallRegime =
+  | "RISK_ON"
+  | "RISK_OFF"
+  | "MIXED"
+  | "STRESSED"
+  | "RECOVERY"
+  | "INSUFFICIENT_DATA";
+
+export interface FundamentalDimension {
+  name: string;
+  status: DimensionAvailability;
+  description: string;
+}
+
+export interface FundamentalEvidence {
+  dimension: string;
+  direction: EvidenceDirection;
+  description: string;
+  source: string;
+}
+
+export interface FundamentalRegime {
+  /** Overall macro regime classification. */
+  overallRegime: OverallRegime;
+  /** Individual dimension statuses. */
+  dimensions: FundamentalDimension[];
+  /** Inflation regime. */
+  inflationRegime: InflationRegime;
+  /** Inflation driver classification. */
+  inflationDriver: InflationDriver;
+  /** Rate regime. */
+  rateRegime: RateRegime;
+  /** Real yield regime. */
+  realYieldRegime: RealYieldRegime;
+  /** Currency regime (USD). */
+  currencyRegime: CurrencyRegime;
+  /** Liquidity regime. */
+  liquidityRegime: LiquidityRegime;
+  /** Growth regime. */
+  growthRegime: GrowthRegime;
+  /** Energy regime. */
+  energyRegime: EnergyRegime;
+  /** Geopolitical regime. */
+  geopoliticalRegime: GeopoliticalRegime;
+  /** Available dimension count. */
+  availableDimensionCount: number;
+  /** Unavailable dimension count. */
+  unavailableDimensionCount: number;
+  /** Data quality overall. */
+  dataQuality: DimensionAvailability;
+  /** When this regime was generated. */
+  generatedAt: number;
+}
+
+export interface AssetFundamentalContext {
+  /** Asset class. */
+  asset: AssetClass;
+  /** Fundamental assessment. */
+  fundamentalAssessment: EvidenceDirection;
+  /** Supporting evidence items. */
+  supportingEvidence: FundamentalEvidence[];
+  /** Conflicting evidence items. */
+  conflictingEvidence: FundamentalEvidence[];
+  /** Neutral evidence items. */
+  neutralEvidence: FundamentalEvidence[];
+  /** Unavailable dimensions. */
+  unavailableDimensions: string[];
+  /** Dominant macro drivers. */
+  dominantMacroDrivers: string[];
+  /** Conflicting macro drivers. */
+  conflictingMacroDrivers: string[];
+  /** Transmission explanation. */
+  transmissionExplanation: string;
+  /** What could change the assessment. */
+  whatCouldChangeAssessment: string[];
+  /** What to monitor. */
+  whatToMonitor: string[];
+  /** Data quality. */
+  dataQuality: DimensionAvailability;
+}
+
+export interface TechnicalFundamentalAlignment {
+  technicalDirection: EvidenceDirection;
+  fundamentalDirection: EvidenceDirection;
+  alignment: "BOTH_SUPPORTING" | "BOTH_CONFLICTING" | "TECHNICAL_SUPPORTING_FUNDAMENTAL_CONFLICTING" | "TECHNICAL_CONFLICTING_FUNDAMENTAL_SUPPORTING" | "INSUFFICIENT_DATA";
+  description: string;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INPUT MODEL
+// ═══════════════════════════════════════════════════════════════
+
+export interface FundamentalRegimeInput {
+  /** Existing macro context from multi-dimensional intelligence. */
+  macroContext?: MacroContext | null;
+  /** Existing cross-asset context. */
+  crossAssetContext?: CrossAssetContext | null;
+  /** News items related to the instrument/portfolio. */
+  newsItems?: NewsItem[];
+  /** News relevance assessments. */
+  newsRelevance?: NewsRelevance[];
+  /** VIX level (redundant with macroContext but provided for direct access). */
+  vixLevel?: number | null;
+  /** USD index if available. */
+  usdIndex?: number | null;
+  /** DXY trend description if available. */
+  dxyTrend?: string | null;
+  /** Oil price if available. */
+  oilPrice?: number | null;
+  /** Oil change description if available. */
+  oilChange?: string | null;
+  /** Gold price (for gold-specific analysis). */
+  goldPrice?: number | null;
+  /** Bond yield description if available. */
+  bondYieldDescription?: string | null;
+  /** Real yield description if available. */
+  realYieldDescription?: string | null;
+  /** Inflation description if available. */
+  inflationDescription?: string | null;
+  /** Rate description if available. */
+  rateDescription?: string | null;
+  /** Growth description if available. */
+  growthDescription?: string | null;
+  /** Liquidity description if available. */
+  liquidityDescription?: string | null;
+  /** Geopolitical description if available. */
+  geopoliticalDescription?: string | null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD FUNDAMENTAL REGIME
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Build a deterministic fundamental regime from available data sources.
+ * Pure function — no side effects.
+ */
+export function buildFundamentalRegime(
+  input: FundamentalRegimeInput,
+  now: number = Date.now(),
+): FundamentalRegime {
+  const dimensions: FundamentalDimension[] = [];
+
+  // ─── VIX / Risk Sentiment ───
+  const vix = input.vixLevel ?? input.macroContext?.vixLevel ?? null;
+  if (vix !== null && vix > 0) {
+    dimensions.push({
+      name: "RISK_SENTIMENT",
+      status: "AVAILABLE",
+      description: `VIX at ${vix.toFixed(1)}`,
+    });
+  } else {
+    dimensions.push({
+      name: "RISK_SENTIMENT",
+      status: "UNAVAILABLE",
+      description: "VIX data unavailable",
+    });
+  }
+
+  // ─── Inflation ───
+  if (input.inflationDescription) {
+    dimensions.push({
+      name: "INFLATION",
+      status: "AVAILABLE",
+      description: input.inflationDescription,
+    });
+  } else {
+    dimensions.push({
+      name: "INFLATION",
+      status: "UNAVAILABLE",
+      description: "Inflation data unavailable",
+    });
+  }
+
+  // ─── Interest Rates / Central Bank ───
+  if (input.rateDescription) {
+    dimensions.push({
+      name: "INTEREST_RATES",
+      status: "AVAILABLE",
+      description: input.rateDescription,
+    });
+  } else {
+    dimensions.push({
+      name: "INTEREST_RATES",
+      status: "UNAVAILABLE",
+      description: "Interest rate data unavailable",
+    });
+  }
+
+  // ─── Real Yields ───
+  if (input.realYieldDescription) {
+    dimensions.push({
+      name: "REAL_YIELDS",
+      status: "AVAILABLE",
+      description: input.realYieldDescription,
+    });
+  } else {
+    dimensions.push({
+      name: "REAL_YIELDS",
+      status: "UNAVAILABLE",
+      description: "Real yield data unavailable",
+    });
+  }
+
+  // ─── Currency / USD ───
+  if (input.dxyTrend || input.usdIndex !== null && input.usdIndex !== undefined) {
+    const desc = input.dxyTrend ?? `USD index: ${input.usdIndex}`;
+    dimensions.push({
+      name: "CURRENCY_STRENGTH",
+      status: "AVAILABLE",
+      description: desc,
+    });
+  } else {
+    dimensions.push({
+      name: "CURRENCY_STRENGTH",
+      status: "UNAVAILABLE",
+      description: "USD/DXY data unavailable",
+    });
+  }
+
+  // ─── Liquidity ───
+  if (input.liquidityDescription) {
+    dimensions.push({
+      name: "LIQUIDITY",
+      status: "AVAILABLE",
+      description: input.liquidityDescription,
+    });
+  } else {
+    dimensions.push({
+      name: "LIQUIDITY",
+      status: "UNAVAILABLE",
+      description: "Liquidity data unavailable",
+    });
+  }
+
+  // ─── Growth ───
+  if (input.growthDescription) {
+    dimensions.push({
+      name: "GROWTH",
+      status: "AVAILABLE",
+      description: input.growthDescription,
+    });
+  } else {
+    dimensions.push({
+      name: "GROWTH",
+      status: "UNAVAILABLE",
+      description: "Growth data unavailable",
+    });
+  }
+
+  // ─── Energy / Oil ───
+  if (input.oilChange || input.oilPrice !== null && input.oilPrice !== undefined) {
+    const desc = input.oilChange ?? `Oil: ${input.oilPrice}`;
+    dimensions.push({
+      name: "ENERGY",
+      status: "AVAILABLE",
+      description: desc,
+    });
+  } else {
+    dimensions.push({
+      name: "ENERGY",
+      status: "UNAVAILABLE",
+      description: "Energy data unavailable",
+    });
+  }
+
+  // ─── Geopolitical ───
+  if (input.geopoliticalDescription) {
+    dimensions.push({
+      name: "GEOPOLITICAL_RISK",
+      status: "AVAILABLE",
+      description: input.geopoliticalDescription,
+    });
+  } else {
+    dimensions.push({
+      name: "GEOPOLITICAL_RISK",
+      status: "UNAVAILABLE",
+      description: "Geopolitical data unavailable",
+    });
+  }
+
+  // ─── Cross-Asset ───
+  if (input.crossAssetContext) {
+    dimensions.push({
+      name: "CROSS_ASSET",
+      status: input.crossAssetContext.positionImpact !== "UNAVAILABLE" ? "AVAILABLE" : "UNAVAILABLE",
+      description: `Correlation: ${input.crossAssetContext.correlationState}`,
+    });
+  } else {
+    dimensions.push({
+      name: "CROSS_ASSET",
+      status: "UNAVAILABLE",
+      description: "Cross-asset data unavailable",
+    });
+  }
+
+  // ─── News / Events ───
+  const newsCount = input.newsItems?.length ?? 0;
+  if (newsCount > 0) {
+    dimensions.push({
+      name: "NEWS_EVENTS",
+      status: "AVAILABLE",
+      description: `${newsCount} news item(s) available`,
+    });
+  } else {
+    dimensions.push({
+      name: "NEWS_EVENTS",
+      status: "UNAVAILABLE",
+      description: "No news data available",
+    });
+  }
+
+  // ─── Classify regimes ───
+  const inflationRegime = classifyInflation(input.inflationDescription);
+  const inflationDriver = classifyInflationDriver(input.inflationDescription);
+  const rateRegime = classifyRateRegime(input.rateDescription);
+  const realYieldRegime = classifyRealYieldRegime(input.realYieldDescription);
+  const currencyRegime = classifyCurrencyRegime(input.dxyTrend, input.usdIndex);
+  const liquidityRegime = classifyLiquidityRegime(input.liquidityDescription);
+  const growthRegime = classifyGrowthRegime(input.growthDescription);
+  const energyRegime = classifyEnergyRegime(input.oilChange, input.oilPrice);
+  const geopoliticalRegime = classifyGeopoliticalRegime(input.geopoliticalDescription);
+
+  const availableDimensionCount = dimensions.filter((d) => d.status === "AVAILABLE").length;
+  const unavailableDimensionCount = dimensions.filter((d) => d.status !== "AVAILABLE").length;
+  const totalDimensions = dimensions.length;
+
+  const dataQuality: DimensionAvailability =
+    availableDimensionCount >= totalDimensions * 0.6
+      ? "AVAILABLE"
+      : availableDimensionCount >= totalDimensions * 0.3
+        ? "INSUFFICIENT_EVIDENCE"
+        : "UNAVAILABLE";
+
+  const overallRegime = classifyOverallRegime(
+    vix,
+    input.macroContext?.riskRegime,
+    liquidityRegime,
+    growthRegime,
+    geopoliticalRegime,
+    dataQuality,
+  );
+
+  return {
+    overallRegime,
+    dimensions,
+    inflationRegime,
+    inflationDriver,
+    rateRegime,
+    realYieldRegime,
+    currencyRegime,
+    liquidityRegime,
+    growthRegime,
+    energyRegime,
+    geopoliticalRegime,
+    availableDimensionCount,
+    unavailableDimensionCount,
+    dataQuality,
+    generatedAt: now,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// REGIME CLASSIFIERS
+// ═══════════════════════════════════════════════════════════════
+
+function classifyInflation(desc: string | null | undefined): InflationRegime {
+  if (!desc) return "INSUFFICIENT_DATA";
+  const lower = desc.toLowerCase();
+  if (lower.includes("disinflat")) return "DISINFLATIONARY";
+  if (lower.includes("accelerat")) return "ACCELERATING";
+  if (lower.includes("high") || lower.includes("elevated")) return "HIGH";
+  if (lower.includes("rising") || lower.includes("increasing")) return "RISING";
+  if (lower.includes("stable") || lower.includes("moderate") || lower.includes("target")) return "STABLE";
+  return "INSUFFICIENT_DATA";
+}
+
+function classifyInflationDriver(desc: string | null | undefined): InflationDriver {
+  if (!desc) return "INSUFFICIENT_DATA";
+  const lower = desc.toLowerCase();
+  if (lower.includes("supply") && lower.includes("demand")) return "MIXED";
+  if (lower.includes("supply")) return "SUPPLY_DRIVEN";
+  if (lower.includes("demand")) return "DEMAND_DRIVEN";
+  return "INSUFFICIENT_DATA";
+}
+
+function classifyRateRegime(desc: string | null | undefined): RateRegime {
+  if (!desc) return "INSUFFICIENT_DATA";
+  const lower = desc.toLowerCase();
+  if (lower.includes("easing") || lower.includes("cut") || lower.includes("dovish")) return "EASING";
+  if (lower.includes("tightening") || lower.includes("hike") || lower.includes("hiking") || lower.includes("hawkish")) return "TIGHTENING";
+  if (lower.includes("restrictive") || lower.includes("above neutral")) return "RESTRICTIVE";
+  if (lower.includes("transition")) return "TRANSITIONING";
+  if (lower.includes("neutral") || lower.includes("steady")) return "NEUTRAL";
+  return "INSUFFICIENT_DATA";
+}
+
+function classifyRealYieldRegime(desc: string | null | undefined): RealYieldRegime {
+  if (!desc) return "UNAVAILABLE";
+  const lower = desc.toLowerCase();
+  if (lower.includes("rising") || lower.includes("increasing")) return "REAL_YIELD_RISING";
+  if (lower.includes("falling") || lower.includes("declining") || lower.includes("dropping")) return "REAL_YIELD_FALLING";
+  if (lower.includes("stable") || lower.includes("flat")) return "REAL_YIELD_STABLE";
+  return "UNAVAILABLE";
+}
+
+function classifyCurrencyRegime(
+  dxyTrend: string | null | undefined,
+  usdIndex: number | null | undefined,
+): CurrencyRegime {
+  if (dxyTrend) {
+    const lower = dxyTrend.toLowerCase();
+    if (lower.includes("strength") || lower.includes("rising") || lower.includes("appreciat")) return "STRENGTHENING";
+    if (lower.includes("weak") || lower.includes("falling") || lower.includes("declin")) return "WEAKENING";
+    if (lower.includes("volatile")) return "VOLATILE";
+    if (lower.includes("stable")) return "STABLE";
+  }
+  if (usdIndex !== null && usdIndex !== undefined && usdIndex > 0) {
+    return "STABLE"; // Has a value but no trend info
+  }
+  return "UNAVAILABLE";
+}
+
+function classifyLiquidityRegime(desc: string | null | undefined): LiquidityRegime {
+  if (!desc) return "UNAVAILABLE";
+  const lower = desc.toLowerCase();
+  if (lower.includes("tighten")) return "TIGHTENING";
+  if (lower.includes("stress") || lower.includes("crisis")) return "STRESS";
+  if (lower.includes("easy") || lower.includes("expansion") || lower.includes("loose")) return "EASY";
+  if (lower.includes("neutral") || lower.includes("normal")) return "NEUTRAL";
+  return "UNAVAILABLE";
+}
+
+function classifyGrowthRegime(desc: string | null | undefined): GrowthRegime {
+  if (!desc) return "UNAVAILABLE";
+  const lower = desc.toLowerCase();
+  if (lower.includes("contract") || lower.includes("recession")) return "CONTRACTING";
+  if (lower.includes("slow")) return "SLOWING";
+  if (lower.includes("recover")) return "RECOVERING";
+  if (lower.includes("expand") || lower.includes("grow") || lower.includes("strong")) return "EXPANDING";
+  return "UNAVAILABLE";
+}
+
+function classifyEnergyRegime(
+  oilChange: string | null | undefined,
+  oilPrice: number | null | undefined,
+): EnergyRegime {
+  if (oilChange) {
+    const lower = oilChange.toLowerCase();
+    if (lower.includes("shock") || lower.includes("spike") || lower.includes("surge")) return "OIL_SHOCK";
+    if (lower.includes("disrupt") || lower.includes("supply cut")) return "SUPPLY_DISRUPTION";
+    if (lower.includes("demand")) return "DEMAND_DRIVEN";
+    if (lower.includes("balanced") || lower.includes("stable")) return "BALANCED";
+  }
+  if (oilPrice !== null && oilPrice !== undefined && oilPrice > 0) {
+    return "BALANCED"; // Has a value but no event
+  }
+  return "UNAVAILABLE";
+}
+
+function classifyGeopoliticalRegime(desc: string | null | undefined): GeopoliticalRegime {
+  if (!desc) return "INSUFFICIENT_DATA";
+  const lower = desc.toLowerCase();
+  if (lower.includes("de-escalat") || lower.includes("ceasefire") || lower.includes("peace")) return "DE_ESCALATING";
+  if (lower.includes("escalat") || lower.includes("war") || lower.includes("conflict")) return "ESCALATING";
+  if (lower.includes("high") || lower.includes("severe") || lower.includes("critical")) return "HIGH";
+  if (lower.includes("elevated") || lower.includes("moderate")) return "ELEVATED";
+  if (lower.includes("low") || lower.includes("calm")) return "LOW";
+  return "INSUFFICIENT_DATA";
+}
+
+function classifyOverallRegime(
+  vix: number | null,
+  riskRegime: RiskRegime | undefined,
+  liquidity: LiquidityRegime,
+  growth: GrowthRegime,
+  geopolitical: GeopoliticalRegime,
+  dataQuality: DimensionAvailability,
+): OverallRegime {
+  if (dataQuality === "UNAVAILABLE") return "INSUFFICIENT_DATA";
+
+  // Use existing MacroContext risk regime as primary signal
+  if (riskRegime === "RISK_OFF") return "RISK_OFF";
+  if (riskRegime === "RISK_ON") {
+    // Check for stress/growth override
+    if (liquidity === "STRESS") return "STRESSED";
+    if (growth === "CONTRACTING") return "STRESSED";
+    return "RISK_ON";
+  }
+
+  // Override based on individual regimes
+  if (liquidity === "STRESS" || growth === "CONTRACTING") return "STRESSED";
+  if (geopolitical === "ESCALATING" || geopolitical === "HIGH") return "STRESSED";
+  if (growth === "RECOVERING") return "RECOVERY";
+
+  return "MIXED";
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ASSET TRANSMISSION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Build fundamental context for a specific asset class.
+ * Pure function — deterministic transmission mapping.
+ */
+export function buildAssetFundamentalContext(
+  asset: AssetClass,
+  regime: FundamentalRegime,
+): AssetFundamentalContext {
+  const supporting: FundamentalEvidence[] = [];
+  const conflicting: FundamentalEvidence[] = [];
+  const neutral: FundamentalEvidence[] = [];
+  const unavailable: string[] = [];
+  const dominant: string[] = [];
+  const conflictingDrivers: string[] = [];
+
+  const transmissions = getAssetTransmissions(asset);
+
+  for (const tx of transmissions) {
+    const dir = tx.evaluate(regime);
+    const evidence: FundamentalEvidence = {
+      dimension: tx.dimension,
+      direction: dir,
+      description: tx.describe(regime),
+      source: tx.source,
+    };
+
+    switch (dir) {
+      case "SUPPORTING":
+        supporting.push(evidence);
+        dominant.push(tx.dimension);
+        break;
+      case "CONFLICTING":
+        conflicting.push(evidence);
+        conflictingDrivers.push(tx.dimension);
+        break;
+      case "NEUTRAL":
+        neutral.push(evidence);
+        break;
+      case "UNAVAILABLE":
+        unavailable.push(tx.dimension);
+        break;
+    }
+  }
+
+  // Determine overall assessment
+  let fundamentalAssessment: EvidenceDirection;
+  if (regime.dataQuality === "UNAVAILABLE") {
+    fundamentalAssessment = "UNAVAILABLE";
+  } else if (conflicting.length > supporting.length) {
+    fundamentalAssessment = "CONFLICTING";
+  } else if (supporting.length > conflicting.length) {
+    fundamentalAssessment = "SUPPORTING";
+  } else {
+    fundamentalAssessment = "NEUTRAL";
+  }
+
+  const whatCouldChange = buildWhatCouldChange(asset, regime);
+  const whatToMonitor = buildWhatToMonitor(asset, regime);
+
+  return {
+    asset,
+    fundamentalAssessment,
+    supportingEvidence: supporting,
+    conflictingEvidence: conflicting,
+    neutralEvidence: neutral,
+    unavailableDimensions: unavailable,
+    dominantMacroDrivers: dominant,
+    conflictingMacroDrivers: conflictingDrivers,
+    transmissionExplanation: buildTransmissionExplanation(asset, supporting, conflicting),
+    whatCouldChangeAssessment: whatCouldChange,
+    whatToMonitor,
+    dataQuality: regime.dataQuality,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TRANSMISSION RULES PER ASSET
+// ═══════════════════════════════════════════════════════════════
+
+interface TransmissionRule {
+  dimension: string;
+  source: string;
+  evaluate: (r: FundamentalRegime) => EvidenceDirection;
+  describe: (r: FundamentalRegime) => string;
+}
+
+function getAssetTransmissions(asset: AssetClass): TransmissionRule[] {
+  switch (asset) {
+    case "GOLD":
+      return goldTransmissions();
+    case "SILVER":
+      return silverTransmissions();
+    case "CRYPTO":
+      return cryptoTransmissions();
+    case "FOREX":
+      return forexTransmissions();
+    case "EQUITIES":
+      return equitiesTransmissions();
+    case "OIL":
+      return oilTransmissions();
+    case "COMMODITIES":
+      return commodityTransmissions();
+    default:
+      return [];
+  }
+}
+
+function goldTransmissions(): TransmissionRule[] {
+  return [
+    {
+      dimension: "Real Yields",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.realYieldRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.realYieldRegime === "REAL_YIELD_FALLING" ? "SUPPORTING" :
+               r.realYieldRegime === "REAL_YIELD_RISING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.realYieldRegime === "REAL_YIELD_FALLING"
+        ? "Falling real yields are supportive for non-yielding stores of value"
+        : r.realYieldRegime === "REAL_YIELD_RISING"
+          ? "Rising real yields create headwinds for gold"
+          : "Real yields are stable — neutral for gold",
+    },
+    {
+      dimension: "Currency (USD)",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.currencyRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.currencyRegime === "WEAKENING" ? "SUPPORTING" :
+               r.currencyRegime === "STRENGTHENING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.currencyRegime === "WEAKENING"
+        ? "Weakening USD is supportive for gold priced in dollars"
+        : r.currencyRegime === "STRENGTHENING"
+          ? "Strengthening USD creates headwinds for gold"
+          : "USD is stable — neutral for gold",
+    },
+    {
+      dimension: "Inflation",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.inflationRegime === "INSUFFICIENT_DATA") return "UNAVAILABLE";
+        return (r.inflationRegime === "RISING" || r.inflationRegime === "HIGH" || r.inflationRegime === "ACCELERATING")
+          ? "SUPPORTING" : "NEUTRAL";
+      },
+      describe: (r) => (r.inflationRegime === "RISING" || r.inflationRegime === "HIGH")
+        ? "Elevated inflation supports gold as an inflation hedge"
+        : "Inflation is not elevated — limited gold-specific signal",
+    },
+    {
+      dimension: "Geopolitical Risk",
+      source: "NEWS",
+      evaluate: (r) => {
+        if (r.geopoliticalRegime === "INSUFFICIENT_DATA") return "UNAVAILABLE";
+        return (r.geopoliticalRegime === "ESCALATING" || r.geopoliticalRegime === "HIGH")
+          ? "SUPPORTING" : "NEUTRAL";
+      },
+      describe: (r) => (r.geopoliticalRegime === "ESCALATING" || r.geopoliticalRegime === "HIGH")
+        ? "Elevated geopolitical risk supports safe-haven demand for gold"
+        : "Geopolitical risk is not elevated — limited safe-haven signal",
+    },
+    {
+      dimension: "Risk Sentiment",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.overallRegime === "INSUFFICIENT_DATA") return "UNAVAILABLE";
+        return r.overallRegime === "RISK_OFF" ? "SUPPORTING" :
+               r.overallRegime === "RISK_ON" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.overallRegime === "RISK_OFF"
+        ? "Risk-off environment supports safe-haven gold demand"
+        : r.overallRegime === "RISK_ON"
+          ? "Risk-on environment reduces safe-haven demand for gold"
+          : "Mixed risk environment — limited directional signal for gold",
+    },
+  ];
+}
+
+function silverTransmissions(): TransmissionRule[] {
+  return [
+    {
+      dimension: "Gold Relationship",
+      source: "CROSS_ASSET",
+      evaluate: (r) => r.dataQuality === "UNAVAILABLE" ? "UNAVAILABLE" : "NEUTRAL",
+      describe: () => "Silver partially tracks gold but with higher volatility — relationship is context-dependent",
+    },
+    {
+      dimension: "Growth",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.growthRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.growthRegime === "EXPANDING" ? "SUPPORTING" :
+               r.growthRegime === "CONTRACTING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.growthRegime === "EXPANDING"
+        ? "Industrial demand from growth supports silver"
+        : r.growthRegime === "CONTRACTING"
+          ? "Contracting growth reduces industrial silver demand"
+          : "Growth conditions are neutral for silver",
+    },
+    {
+      dimension: "Currency (USD)",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.currencyRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.currencyRegime === "WEAKENING" ? "SUPPORTING" :
+               r.currencyRegime === "STRENGTHENING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.currencyRegime === "WEAKENING"
+        ? "Weakening USD is supportive for silver"
+        : r.currencyRegime === "STRENGTHENING"
+          ? "Strengthening USD creates headwinds for silver"
+          : "USD is stable — neutral for silver",
+    },
+  ];
+}
+
+function cryptoTransmissions(): TransmissionRule[] {
+  return [
+    {
+      dimension: "Liquidity",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.liquidityRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.liquidityRegime === "EASY" ? "SUPPORTING" :
+               r.liquidityRegime === "STRESS" || r.liquidityRegime === "TIGHTENING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.liquidityRegime === "EASY"
+        ? "Easy monetary conditions are supportive for risk assets including crypto"
+        : r.liquidityRegime === "STRESS"
+          ? "Liquidity stress creates headwinds for crypto"
+          : "Liquidity conditions are neutral for crypto",
+    },
+    {
+      dimension: "Risk Sentiment",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.overallRegime === "INSUFFICIENT_DATA") return "UNAVAILABLE";
+        return r.overallRegime === "RISK_ON" ? "SUPPORTING" :
+               r.overallRegime === "RISK_OFF" || r.overallRegime === "STRESSED" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.overallRegime === "RISK_ON"
+        ? "Risk-on environment is supportive for crypto"
+        : r.overallRegime === "RISK_OFF" || r.overallRegime === "STRESSED"
+          ? "Risk-off environment creates headwinds for crypto"
+          : "Mixed risk environment — limited directional signal for crypto",
+    },
+    {
+      dimension: "Real Yields",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.realYieldRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.realYieldRegime === "REAL_YIELD_FALLING" ? "SUPPORTING" :
+               r.realYieldRegime === "REAL_YIELD_RISING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.realYieldRegime === "REAL_YIELD_FALLING"
+        ? "Falling real yields reduce the opportunity cost of holding non-yielding crypto"
+        : r.realYieldRegime === "REAL_YIELD_RISING"
+          ? "Rising real yields increase the opportunity cost of holding crypto"
+          : "Real yields are neutral for crypto",
+    },
+    {
+      dimension: "Currency (USD)",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.currencyRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.currencyRegime === "WEAKENING" ? "SUPPORTING" :
+               r.currencyRegime === "STRENGTHENING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.currencyRegime === "WEAKENING"
+        ? "Weakening USD can be supportive for crypto"
+        : r.currencyRegime === "STRENGTHENING"
+          ? "Strengthening USD creates headwinds for crypto"
+          : "USD is stable — neutral for crypto",
+    },
+  ];
+}
+
+function forexTransmissions(): TransmissionRule[] {
+  return [
+    {
+      dimension: "Interest Rate Differential",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.rateRegime === "INSUFFICIENT_DATA") return "UNAVAILABLE";
+        return "NEUTRAL"; // Requires relative comparison, not absolute
+      },
+      describe: () => "Rate regime is available but forex requires relative rate comparison — context-dependent",
+    },
+    {
+      dimension: "Growth Differential",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.growthRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return "NEUTRAL"; // Requires relative comparison
+      },
+      describe: () => "Growth regime is available but forex requires relative growth comparison",
+    },
+  ];
+}
+
+function equitiesTransmissions(): TransmissionRule[] {
+  return [
+    {
+      dimension: "Interest Rates",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.rateRegime === "INSUFFICIENT_DATA") return "UNAVAILABLE";
+        return r.rateRegime === "TIGHTENING" || r.rateRegime === "RESTRICTIVE" ? "CONFLICTING" :
+               r.rateRegime === "EASING" ? "SUPPORTING" : "NEUTRAL";
+      },
+      describe: (r) => r.rateRegime === "TIGHTENING"
+        ? "Tightening monetary policy compresses equity valuations"
+        : r.rateRegime === "EASING"
+          ? "Easing monetary policy supports equity valuations"
+          : "Rate regime is neutral for equities",
+    },
+    {
+      dimension: "Growth",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.growthRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.growthRegime === "EXPANDING" ? "SUPPORTING" :
+               r.growthRegime === "CONTRACTING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.growthRegime === "EXPANDING"
+        ? "Expanding growth supports corporate earnings"
+        : r.growthRegime === "CONTRACTING"
+          ? "Contracting growth pressures corporate earnings"
+          : "Growth conditions are neutral for equities",
+    },
+    {
+      dimension: "Risk Sentiment",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.overallRegime === "INSUFFICIENT_DATA") return "UNAVAILABLE";
+        return r.overallRegime === "RISK_ON" ? "SUPPORTING" :
+               r.overallRegime === "RISK_OFF" || r.overallRegime === "STRESSED" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.overallRegime === "RISK_ON"
+        ? "Risk-on environment supports equity risk appetite"
+        : r.overallRegime === "RISK_OFF"
+          ? "Risk-off environment reduces equity risk appetite"
+          : "Risk conditions are mixed for equities",
+    },
+    {
+      dimension: "Liquidity",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.liquidityRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.liquidityRegime === "EASY" ? "SUPPORTING" :
+               r.liquidityRegime === "STRESS" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.liquidityRegime === "EASY"
+        ? "Easy liquidity conditions support equity markets"
+        : r.liquidityRegime === "STRESS"
+          ? "Liquidity stress creates headwinds for equities"
+          : "Liquidity conditions are neutral for equities",
+    },
+  ];
+}
+
+function oilTransmissions(): TransmissionRule[] {
+  return [
+    {
+      dimension: "Energy Supply",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.energyRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.energyRegime === "SUPPLY_DISRUPTION" || r.energyRegime === "OIL_SHOCK" ? "SUPPORTING" :
+               r.energyRegime === "BALANCED" ? "NEUTRAL" : "NEUTRAL";
+      },
+      describe: (r) => r.energyRegime === "SUPPLY_DISRUPTION"
+        ? "Supply disruption creates upward oil price pressure"
+        : r.energyRegime === "OIL_SHOCK"
+          ? "Oil shock conditions create strong upward price pressure"
+          : "Energy supply conditions are balanced",
+    },
+    {
+      dimension: "Growth",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.growthRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.growthRegime === "EXPANDING" ? "SUPPORTING" :
+               r.growthRegime === "CONTRACTING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.growthRegime === "EXPANDING"
+        ? "Expanding growth supports energy demand"
+        : r.growthRegime === "CONTRACTING"
+          ? "Contracting growth reduces energy demand"
+          : "Growth conditions are neutral for oil",
+    },
+    {
+      dimension: "Geopolitical Risk",
+      source: "NEWS",
+      evaluate: (r) => {
+        if (r.geopoliticalRegime === "INSUFFICIENT_DATA") return "UNAVAILABLE";
+        return (r.geopoliticalRegime === "ESCALATING" || r.geopoliticalRegime === "HIGH")
+          ? "SUPPORTING" : "NEUTRAL";
+      },
+      describe: (r) => (r.geopoliticalRegime === "ESCALATING" || r.geopoliticalRegime === "HIGH")
+        ? "Geopolitical risk in energy-producing regions supports oil prices"
+        : "Geopolitical risk is not elevated for energy markets",
+    },
+    {
+      dimension: "Currency (USD)",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.currencyRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.currencyRegime === "WEAKENING" ? "SUPPORTING" :
+               r.currencyRegime === "STRENGTHENING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.currencyRegime === "WEAKENING"
+        ? "Weakening USD supports nominal commodity prices"
+        : r.currencyRegime === "STRENGTHENING"
+          ? "Strengthening USD creates headwinds for oil"
+          : "USD is stable — neutral for oil",
+    },
+  ];
+}
+
+function commodityTransmissions(): TransmissionRule[] {
+  return [
+    {
+      dimension: "Growth",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.growthRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.growthRegime === "EXPANDING" ? "SUPPORTING" :
+               r.growthRegime === "CONTRACTING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.growthRegime === "EXPANDING"
+        ? "Expanding growth supports commodity demand"
+        : r.growthRegime === "CONTRACTING"
+          ? "Contracting growth reduces commodity demand"
+          : "Growth conditions are neutral for commodities",
+    },
+    {
+      dimension: "Currency (USD)",
+      source: "MACRO",
+      evaluate: (r) => {
+        if (r.currencyRegime === "UNAVAILABLE") return "UNAVAILABLE";
+        return r.currencyRegime === "WEAKENING" ? "SUPPORTING" :
+               r.currencyRegime === "STRENGTHENING" ? "CONFLICTING" : "NEUTRAL";
+      },
+      describe: (r) => r.currencyRegime === "WEAKENING"
+        ? "Weakening USD supports commodity prices"
+        : r.currencyRegime === "STRENGTHENING"
+          ? "Strengthening USD creates headwinds for commodities"
+          : "USD is stable — neutral for commodities",
+    },
+  ];
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function buildTransmissionExplanation(
+  asset: AssetClass,
+  supporting: FundamentalEvidence[],
+  conflicting: FundamentalEvidence[],
+): string {
+  if (supporting.length === 0 && conflicting.length === 0) {
+    return `No strong fundamental signal for ${asset} from available macro data.`;
+  }
+  const parts: string[] = [];
+  if (supporting.length > 0) {
+    parts.push(`${supporting.length} factor(s) support the asset`);
+  }
+  if (conflicting.length > 0) {
+    parts.push(`${conflicting.length} factor(s) conflict with the asset`);
+  }
+  return parts.join(". ") + ".";
+}
+
+function buildWhatCouldChange(asset: AssetClass, regime: FundamentalRegime): string[] {
+  const items: string[] = [];
+  if (regime.inflationRegime === "INSUFFICIENT_DATA") {
+    items.push("Inflation data becoming available could shift the fundamental picture");
+  }
+  if (regime.realYieldRegime === "UNAVAILABLE") {
+    items.push("Real yield data becoming available would clarify the transmission picture");
+  }
+  if (regime.overallRegime === "INSUFFICIENT_DATA") {
+    items.push("Additional macro data would improve regime classification");
+  }
+  if (regime.geopoliticalRegime === "ESCALATING" || regime.geopoliticalRegime === "HIGH") {
+    items.push("Geopolitical de-escalation could shift safe-haven dynamics");
+  }
+  return items;
+}
+
+function buildWhatToMonitor(asset: AssetClass, regime: FundamentalRegime): string[] {
+  const items: string[] = [];
+  if (regime.rateRegime === "TRANSITIONING") {
+    items.push("Central bank policy transition — monitor for rate direction clarity");
+  }
+  if (regime.inflationRegime === "ACCELERATING" || regime.inflationRegime === "RISING") {
+    items.push("Inflation trajectory — monitor for persistence or reversal");
+  }
+  if (regime.liquidityRegime === "STRESS") {
+    items.push("Liquidity conditions — monitor for stress escalation or recovery");
+  }
+  if (regime.geopoliticalRegime === "ESCALATING") {
+    items.push("Geopolitical developments — monitor for escalation or de-escalation");
+  }
+  if (items.length === 0) {
+    items.push("Continue monitoring macro regime for meaningful changes");
+  }
+  return items;
+}
+
+/**
+ * Determine technical vs fundamental alignment.
+ */
+export function assessTechnicalFundamentalAlignment(
+  technicalDirection: EvidenceDirection,
+  fundamentalDirection: EvidenceDirection,
+): TechnicalFundamentalAlignment {
+  let alignment: TechnicalFundamentalAlignment["alignment"];
+  let description: string;
+
+  if (technicalDirection === "UNAVAILABLE" || fundamentalDirection === "UNAVAILABLE") {
+    alignment = "INSUFFICIENT_DATA";
+    description = "Insufficient data to determine technical/fundamental alignment";
+  } else if (technicalDirection === "SUPPORTING" && fundamentalDirection === "SUPPORTING") {
+    alignment = "BOTH_SUPPORTING";
+    description = "Both technical and fundamental evidence support the position";
+  } else if (technicalDirection === "CONFLICTING" && fundamentalDirection === "CONFLICTING") {
+    alignment = "BOTH_CONFLICTING";
+    description = "Both technical and fundamental evidence conflict with the position";
+  } else if (technicalDirection === "SUPPORTING" && fundamentalDirection === "CONFLICTING") {
+    alignment = "TECHNICAL_SUPPORTING_FUNDAMENTAL_CONFLICTING";
+    description = "Technical structure supports the position while fundamental conditions create headwinds";
+  } else if (technicalDirection === "CONFLICTING" && fundamentalDirection === "SUPPORTING") {
+    alignment = "TECHNICAL_CONFLICTING_FUNDAMENTAL_SUPPORTING";
+    description = "Technical structure conflicts with the position while fundamental conditions are supportive";
+  } else {
+    alignment = "INSUFFICIENT_DATA";
+    description = "Mixed or neutral signals from both technical and fundamental analysis";
+  }
+
+  return {
+    technicalDirection,
+    fundamentalDirection,
+    alignment,
+    description,
+  };
+}
