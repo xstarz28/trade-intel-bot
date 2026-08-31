@@ -42,6 +42,15 @@ import {
   getDecisionSupportSummary,
   type PositionDecisionSupport,
 } from "@/lib/position-protection/decision-support";
+import {
+  buildFundamentalRegime,
+  buildAssetFundamentalContext,
+  assessTechnicalFundamentalAlignment,
+  type FundamentalRegimeInput,
+  type FundamentalRegime,
+  type AssetFundamentalContext,
+} from "@/lib/position-protection/fundamental-regime";
+import type { AssetClass } from "@/lib/position-protection/fundamental-regime";
 
 // ═══════════════════════════════════════════════════════════════
 // PROPS
@@ -592,6 +601,165 @@ export function TraderWorkspace({
 // DECISION SUPPORT PANEL
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// FUNDAMENTAL CONTEXT PANEL
+// ═══════════════════════════════════════════════════════════════
+
+function FundamentalContextPanel({ intel }: { intel: PositionIntelligence }) {
+  const assetClass: AssetClass = intel.assetClass === "crypto" ? "CRYPTO"
+    : intel.assetClass === "forex" ? "FOREX"
+    : intel.assetClass === "equity" ? "EQUITIES"
+    : intel.assetClass === "commodity" ? (intel.instrument.includes("OIL") ? "OIL" : "COMMODITIES")
+    : intel.instrument.includes("XAU") ? "GOLD"
+    : intel.instrument.includes("XAG") ? "SILVER"
+    : "CRYPTO";
+
+  const regime = useMemo(() => buildFundamentalRegime({}), []);
+  const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
+
+  // Determine technical direction from evidence
+  const techSupporting = intel.evidence.filter((e) => e.direction === "supporting").length;
+  const techConflicting = intel.evidence.filter((e) => e.direction === "conflicting").length;
+  const techDir = techSupporting > techConflicting ? "SUPPORTING" : techConflicting > techSupporting ? "CONFLICTING" : "NEUTRAL";
+  const alignment = assessTechnicalFundamentalAlignment(techDir as any, assetCtx.fundamentalAssessment);
+
+  const regimeColor: Record<string, string> = {
+    RISK_ON: "text-emerald-400",
+    RISK_OFF: "text-red-400",
+    MIXED: "text-amber-400",
+    STRESSED: "text-red-400",
+    RECOVERY: "text-blue-400",
+    INSUFFICIENT_DATA: "text-muted-foreground",
+  };
+
+  const dirColor: Record<string, string> = {
+    SUPPORTING: "text-emerald-400",
+    CONFLICTING: "text-red-400",
+    NEUTRAL: "text-muted-foreground",
+    UNAVAILABLE: "text-muted-foreground/50",
+  };
+
+  const alignColor: Record<string, string> = {
+    BOTH_SUPPORTING: "text-emerald-400",
+    BOTH_CONFLICTING: "text-red-400",
+    TECHNICAL_SUPPORTING_FUNDAMENTAL_CONFLICTING: "text-amber-400",
+    TECHNICAL_CONFLICTING_FUNDAMENTAL_SUPPORTING: "text-blue-400",
+    INSUFFICIENT_DATA: "text-muted-foreground",
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Macro Regime Overview */}
+      <WorkspaceSection title="MACRO REGIME" icon={<Globe className="size-3" />}>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[8px] font-mono text-muted-foreground/50">Overall:</span>
+            <span className={`text-[9px] font-mono font-semibold ${regimeColor[regime.overallRegime] ?? "text-muted-foreground"}`}>
+              {regime.overallRegime.replace(/_/g, " ")}
+            </span>
+            <span className="text-[7px] font-mono text-muted-foreground/40">
+              ({regime.availableDimensionCount}/{regime.dimensions.length} dimensions)
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {regime.dimensions.map((d, i) => (
+              <span key={i} className={`text-[7px] font-mono px-1.5 py-0.5 rounded ${
+                d.status === "AVAILABLE" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+              }`}>
+                {d.name.replace(/_/g, " ")} {d.status === "AVAILABLE" ? "✓" : "✗"}
+              </span>
+            ))}
+          </div>
+        </div>
+      </WorkspaceSection>
+
+      {/* Inflation / Rate / Yield / Currency */}
+      <WorkspaceSection title="INFLATION / RATES / YIELDS / CURRENCY" icon={<BarChart3 className="size-3" />}>
+        <div className="grid grid-cols-2 gap-1.5 text-[8px] font-mono">
+          <div><span className="text-muted-foreground/50">Inflation:</span> <span className="text-foreground">{regime.inflationRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">Driver:</span> <span className="text-foreground">{regime.inflationDriver.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">Rates:</span> <span className="text-foreground">{regime.rateRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">Real Yields:</span> <span className="text-foreground">{regime.realYieldRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">USD:</span> <span className="text-foreground">{regime.currencyRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">Liquidity:</span> <span className="text-foreground">{regime.liquidityRegime.replace(/_/g, " ")}</span></div>
+        </div>
+      </WorkspaceSection>
+
+      {/* Growth / Energy / Geopolitical */}
+      <WorkspaceSection title="GROWTH / ENERGY / GEOPOLITICAL" icon={<Activity className="size-3" />}>
+        <div className="grid grid-cols-3 gap-1.5 text-[8px] font-mono">
+          <div><span className="text-muted-foreground/50">Growth:</span> <span className="text-foreground">{regime.growthRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">Energy:</span> <span className="text-foreground">{regime.energyRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">Geopolitical:</span> <span className="text-foreground">{regime.geopoliticalRegime.replace(/_/g, " ")}</span></div>
+        </div>
+      </WorkspaceSection>
+
+      {/* Asset Fundamental Evidence */}
+      <WorkspaceSection title={`${assetClass} FUNDAMENTAL EVIDENCE`} icon={<Crosshair className="size-3" />}>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-[8px] font-mono text-muted-foreground/50">Assessment:</span>
+            <span className={`text-[9px] font-mono font-semibold ${dirColor[assetCtx.fundamentalAssessment] ?? "text-muted-foreground"}`}>
+              {assetCtx.fundamentalAssessment}
+            </span>
+          </div>
+          {assetCtx.supportingEvidence.map((e, i) => (
+            <div key={`s-${i}`} className="flex items-start gap-1.5">
+              <span className="text-[8px] text-emerald-400 mt-0.5">✓</span>
+              <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{e.description}</span>
+            </div>
+          ))}
+          {assetCtx.conflictingEvidence.map((e, i) => (
+            <div key={`c-${i}`} className="flex items-start gap-1.5">
+              <span className="text-[8px] text-red-400 mt-0.5">✗</span>
+              <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{e.description}</span>
+            </div>
+          ))}
+          {assetCtx.neutralEvidence.map((e, i) => (
+            <div key={`n-${i}`} className="flex items-start gap-1.5">
+              <span className="text-[8px] text-muted-foreground mt-0.5">—</span>
+              <span className="text-[8px] font-mono text-muted-foreground/70 leading-relaxed">{e.description}</span>
+            </div>
+          ))}
+        </div>
+      </WorkspaceSection>
+
+      {/* Technical vs Fundamental Alignment */}
+      <WorkspaceSection title="TECHNICAL vs FUNDAMENTAL" icon={<AlertTriangle className="size-3" />}>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[8px] font-mono text-muted-foreground/50">Alignment:</span>
+            <span className={`text-[9px] font-mono font-semibold ${alignColor[alignment.alignment] ?? "text-muted-foreground"}`}>
+              {alignment.alignment.replace(/_/g, " ")}
+            </span>
+          </div>
+          <div className="text-[8px] font-mono text-muted-foreground">{alignment.description}</div>
+        </div>
+      </WorkspaceSection>
+
+      {/* What Could Change / Monitor */}
+      {(assetCtx.whatCouldChangeAssessment.length > 0 || assetCtx.whatToMonitor.length > 0) && (
+        <WorkspaceSection title="WHAT COULD CHANGE / MONITOR" icon={<Eye className="size-3" />}>
+          <div className="space-y-0.5">
+            {assetCtx.whatCouldChangeAssessment.map((item, i) => (
+              <div key={`w-${i}`} className="flex items-start gap-1.5">
+                <span className="text-[8px] text-amber-400 mt-0.5">⚡</span>
+                <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{item}</span>
+              </div>
+            ))}
+            {assetCtx.whatToMonitor.map((item, i) => (
+              <div key={`m-${i}`} className="flex items-start gap-1.5">
+                <span className="text-[8px] text-blue-400 mt-0.5">→</span>
+                <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{item}</span>
+              </div>
+            ))}
+          </div>
+        </WorkspaceSection>
+      )}
+    </div>
+  );
+}
+
 function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel: PositionIntelligence }) {
   const ds = useMemo(() => buildDecisionSupport(positionId, intel), [positionId, intel]);
   const summary = useMemo(() => getDecisionSupportSummary(ds), [ds]);
@@ -828,6 +996,9 @@ export function PositionDetail({ positionId, intel, onBack }: PositionDetailProp
           </div>
         </WorkspaceSection>
       )}
+
+      {/* Fundamental Context */}
+      <FundamentalContextPanel intel={intel} />
 
       {/* Decision Support */}
       <DecisionSupportPanel positionId={positionId} intel={intel} />
