@@ -1219,6 +1219,7 @@ export function PositionProtectionDashboard() {
           positionId={selectedPositionId}
           intel={intelligenceMap.get(selectedPositionId)!}
           newsItems={feedNews.get(intelligenceMap.get(selectedPositionId)!.instrument)}
+          livePrices={livePrices}
           onBack={() => setSelectedPositionId(null)}
         />
       )}

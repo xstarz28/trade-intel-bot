@@ -54,6 +54,8 @@ import {
 } from "@/lib/position-protection/fundamental-regime";
 import type { AssetClass } from "@/lib/position-protection/fundamental-regime";
 import type { NewsItem } from "@/lib/position-protection/news-intelligence";
+import { classifyMacroContext, analyzeCrossAssetContext, type MacroContext, type CrossAssetContext } from "@/lib/position-protection/multi-dimensional-intelligence";
+import type { LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
 import {
   buildFundamentalCausalResult,
   buildAssetCausalContext,
@@ -617,13 +619,44 @@ export function TraderWorkspace({
 // FUNDAMENTAL CONTEXT PANEL
 // ═══════════════════════════════════════════════════════════════
 
-function FundamentalContextPanel({ intel, newsItems }: { intel: PositionIntelligence; newsItems?: NewsItem[] }) {
+function FundamentalContextPanel({ intel, newsItems, livePrices }: { intel: PositionIntelligence; newsItems?: NewsItem[]; livePrices?: Map<string, LiveInstrumentState> }) {
   const assetClass: AssetClass = mapInstrumentToAssetClass(intel.instrument);
+
+  // ─── MacroContext from VIX (existing producer, no duplicate fetch) ───
+  const macroContext = useMemo((): MacroContext | null => {
+    if (!livePrices) return null;
+    // VIX is stored as ^VIX by Yahoo Finance macro fetch
+    const vixState = livePrices.get("^VIX") ?? livePrices.get("VIX");
+    if (!vixState || vixState.sourceMode !== "LIVE" || vixState.price <= 0) return null;
+    return classifyMacroContext(vixState.price, intel.side, intel.assetClass);
+  }, [livePrices, intel.side, intel.assetClass]);
+
+  // ─── CrossAssetContext from other positions (existing producer, no duplicate) ───
+  const crossAssetContext = useMemo((): CrossAssetContext | null => {
+    if (!livePrices || livePrices.size < 2) return null;
+    const otherPrices = new Map<string, { trend: "BULLISH" | "BEARISH" | "NEUTRAL" | "UNKNOWN"; assetClass: string }>();
+    for (const [inst, state] of livePrices) {
+      if (inst === intel.instrument) continue;
+      if (state.sourceMode !== "LIVE" || state.price <= 0) continue;
+      const instInfo = getInstrumentInfo(inst);
+      const cls = instInfo?.assetClass ?? "crypto";
+      // Derive trend from 24h change
+      let trend: "BULLISH" | "BEARISH" | "NEUTRAL" | "UNKNOWN" = "UNKNOWN";
+      if (state.change24h !== undefined) {
+        if (state.change24h > 1) trend = "BULLISH";
+        else if (state.change24h < -1) trend = "BEARISH";
+        else trend = "NEUTRAL";
+      }
+      otherPrices.set(inst, { trend, assetClass: cls });
+    }
+    if (otherPrices.size === 0) return null;
+    return analyzeCrossAssetContext(intel.instrument, intel.side, otherPrices);
+  }, [livePrices, intel.instrument, intel.side]);
 
   const regimeInput = useMemo(() => buildFundamentalInputFromPositionIntel(
     { instrument: intel.instrument, assetClass: intel.assetClass, shortTermContext: intel.shortTermContext, mediumTermContext: intel.mediumTermContext, evidence: intel.evidence },
-    { newsItems },
-  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems]);
+    { newsItems, macroContext, crossAssetContext },
+  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, macroContext, crossAssetContext]);
   const regime = useMemo(() => buildFundamentalRegime(regimeInput), [regimeInput]);
   const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
   const causalResult = useMemo(() => buildFundamentalCausalResult(regime), [regime]);
@@ -974,10 +1007,11 @@ interface PositionDetailProps {
   positionId: string;
   intel: PositionIntelligence;
   newsItems?: NewsItem[];
+  livePrices?: Map<string, LiveInstrumentState>;
   onBack: () => void;
 }
 
-export function PositionDetail({ positionId, intel, newsItems, onBack }: PositionDetailProps) {
+export function PositionDetail({ positionId, intel, newsItems, livePrices, onBack }: PositionDetailProps) {
   const info = getInstrumentInfo(intel.instrument);
 
   return (
@@ -1083,7 +1117,7 @@ export function PositionDetail({ positionId, intel, newsItems, onBack }: Positio
       )}
 
       {/* Fundamental Context */}
-      <FundamentalContextPanel intel={intel} newsItems={newsItems} />
+      <FundamentalContextPanel intel={intel} newsItems={newsItems} livePrices={livePrices} />
 
       {/* Decision Support */}
       <DecisionSupportPanel positionId={positionId} intel={intel} />
