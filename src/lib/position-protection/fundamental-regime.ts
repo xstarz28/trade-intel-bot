@@ -10,6 +10,7 @@
 import type { PositionSide } from "./types";
 import type { MacroContext, CrossAssetContext, RiskRegime } from "./multi-dimensional-intelligence";
 import type { NewsItem, NewsRelevance, NewsCategory } from "./news-intelligence";
+import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // DOMAIN TYPES
@@ -28,6 +29,44 @@ export type InflationRegime =
   | "INSUFFICIENT_DATA";
 
 export type InflationDriver = "DEMAND_DRIVEN" | "SUPPLY_DRIVEN" | "MIXED" | "INSUFFICIENT_DATA";
+
+export type InflationExpectationSurprise = "ABOVE_EXPECTATION" | "BELOW_EXPECTATION" | "IN_LINE" | "UNAVAILABLE";
+
+export type PolicyRateRegime = "EASING" | "NEUTRAL" | "TIGHTENING" | "RESTRICTIVE" | "TRANSITIONING" | "INSUFFICIENT_DATA";
+
+/**
+ * Structured inflation observation from actual economic data.
+ * All fields optional — missing data is explicitly UNAVAILABLE, never fabricated.
+ */
+export interface InflationObservation {
+  /** Actual released value (e.g., CPI YoY 3.2%). */
+  actual?: number | null;
+  /** Previous released value. */
+  previous?: number | null;
+  /** Forecast/consensus value. */
+  forecast?: number | null;
+  /** Metric name (e.g., "CPI YoY", "Core PCE MoM"). */
+  metric?: string | null;
+  /** Data availability. */
+  availability: DimensionAvailability;
+}
+
+/**
+ * Structured policy-rate observation.
+ * Distinguished from US10Y (market yield) — this is the central bank policy rate.
+ */
+export interface PolicyRateObservation {
+  /** Current policy rate value (e.g., 5.25%). */
+  current?: number | null;
+  /** Previous policy rate value. */
+  previous?: number | null;
+  /** Expected/forecast policy rate. */
+  forecast?: number | null;
+  /** Rate decision classification if available. */
+  decision?: "RATE_HIKE" | "RATE_CUT" | "HOLD" | "UNKNOWN" | null;
+  /** Data availability. */
+  availability: DimensionAvailability;
+}
 
 export type RateRegime =
   | "EASING"
@@ -123,6 +162,14 @@ export interface FundamentalRegime {
   energyRegime: EnergyRegime;
   /** Geopolitical regime. */
   geopoliticalRegime: GeopoliticalRegime;
+  /** Inflation expectation surprise (derived from actual vs forecast). */
+  inflationExpectationSurprise: InflationExpectationSurprise;
+  /** Policy-rate regime (central bank rate, separate from US10Y market yield). */
+  policyRateRegime: PolicyRateRegime;
+  /** Number of structured economic data points available. */
+  structuredDataPointCount: number;
+  /** Number of economic calendar events available. */
+  economicEventCount: number;
   /** Available dimension count. */
   availableDimensionCount: number;
   /** Unavailable dimension count. */
@@ -210,6 +257,14 @@ export interface FundamentalRegimeInput {
   liquidityDescription?: string | null;
   /** Geopolitical description if available. */
   geopoliticalDescription?: string | null;
+  /** Structured economic data points (CPI, PCE, etc.) from existing providers. */
+  fundamentalDataPoints?: FundamentalDataPoint[];
+  /** Economic calendar events (FOMC, CPI release, etc.). */
+  economicEvents?: EconomicEvent[];
+  /** Structured inflation observation (actual/previous/forecast). */
+  inflationObservation?: InflationObservation;
+  /** Structured policy-rate observation (separate from US10Y market yield). */
+  policyRateObservation?: PolicyRateObservation;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -285,6 +340,14 @@ options: {
     us10y?: { value: number; change24h?: number } | null;
     wti?: { value: number; change24h?: number } | null;
   } | null;
+  /** Structured economic data points from existing providers. */
+  fundamentalDataPoints?: FundamentalDataPoint[];
+  /** Economic calendar events from existing providers. */
+  economicEvents?: EconomicEvent[];
+  /** Structured inflation observation (actual/previous/forecast). */
+  inflationObservation?: InflationObservation;
+  /** Structured policy-rate observation (central bank rate). */
+  policyRateObservation?: PolicyRateObservation;
 } = {},
 ): FundamentalRegimeInput {
   const input: FundamentalRegimeInput = {};
@@ -345,6 +408,20 @@ options: {
     input.newsRelevance = options.newsRelevance;
   }
 
+  // Pass through structured economic data (OBSERVED from providers)
+  if (options.fundamentalDataPoints && options.fundamentalDataPoints.length > 0) {
+    input.fundamentalDataPoints = options.fundamentalDataPoints;
+  }
+  if (options.economicEvents && options.economicEvents.length > 0) {
+    input.economicEvents = options.economicEvents;
+  }
+  if (options.inflationObservation) {
+    input.inflationObservation = options.inflationObservation;
+  }
+  if (options.policyRateObservation) {
+    input.policyRateObservation = options.policyRateObservation;
+  }
+
   // Extract context descriptions from intelligence where available
   // These are OBSERVED — derived from the existing intelligence engine
   if (intel.shortTermContext) {
@@ -368,6 +445,43 @@ options: {
     }
     if (ctx.includes("geopolit") || ctx.includes("conflict") || ctx.includes("sanction")) {
       input.geopoliticalDescription = intel.mediumTermContext;
+    }
+  }
+
+  // Extract inflation observations from fundamental data points if not explicitly provided
+  if (!input.inflationObservation && input.fundamentalDataPoints && input.fundamentalDataPoints.length > 0) {
+    const inflationDP = input.fundamentalDataPoints.find(
+      (dp) => dp.category === "INFLATION" && (dp.metric.toLowerCase().includes("cpi") || dp.metric.toLowerCase().includes("pce") || dp.metric.toLowerCase().includes("inflation")),
+    );
+    if (inflationDP) {
+      const actual = typeof inflationDP.value === "number" ? inflationDP.value : null;
+      const previous = typeof inflationDP.previous === "number" ? inflationDP.previous : null;
+      const forecast = typeof inflationDP.expected === "number" ? inflationDP.expected : null;
+      input.inflationObservation = {
+        actual,
+        previous,
+        forecast,
+        metric: inflationDP.metric,
+        availability: actual !== null ? "AVAILABLE" : "UNAVAILABLE",
+      };
+    }
+  }
+
+  // Extract policy-rate observations from economic events if not explicitly provided
+  if (!input.policyRateObservation && input.economicEvents && input.economicEvents.length > 0) {
+    const rateEvent = input.economicEvents.find(
+      (e) => e.name.toLowerCase().includes("rate") || e.name.toLowerCase().includes("fomc") || e.name.toLowerCase().includes("central bank"),
+    );
+    if (rateEvent) {
+      const actual = typeof rateEvent.previous === "number" ? rateEvent.previous : null;
+      const forecast = typeof rateEvent.expected === "number" ? rateEvent.expected : null;
+      input.policyRateObservation = {
+        current: actual,
+        previous: null,
+        forecast,
+        decision: null,
+        availability: actual !== null ? "AVAILABLE" : "UNAVAILABLE",
+      };
     }
   }
 
@@ -558,11 +672,45 @@ export function buildFundamentalRegime(
     });
   }
 
+  // ─── Structured Economic Data ───
+  const structuredDataCount = input.fundamentalDataPoints?.length ?? 0;
+  if (structuredDataCount > 0) {
+    dimensions.push({
+      name: "STRUCTURED_ECONOMIC_DATA",
+      status: "AVAILABLE",
+      description: `${structuredDataCount} structured economic data point(s) available`,
+    });
+  } else {
+    dimensions.push({
+      name: "STRUCTURED_ECONOMIC_DATA",
+      status: "UNAVAILABLE",
+      description: "No structured economic data available",
+    });
+  }
+
+  // ─── Economic Calendar Events ───
+  const economicEventCount = input.economicEvents?.length ?? 0;
+  if (economicEventCount > 0) {
+    dimensions.push({
+      name: "ECONOMIC_EVENTS",
+      status: "AVAILABLE",
+      description: `${economicEventCount} economic event(s) available`,
+    });
+  } else {
+    dimensions.push({
+      name: "ECONOMIC_EVENTS",
+      status: "UNAVAILABLE",
+      description: "No economic calendar events available",
+    });
+  }
+
   // ─── Classify regimes ───
-  const inflationRegime = classifyInflation(input.inflationDescription);
+  const inflationRegime = classifyInflation(input.inflationDescription, input.inflationObservation);
   const inflationDriver = classifyInflationDriver(input.inflationDescription);
+  const inflationExpectationSurprise = classifyInflationExpectationSurprise(input.inflationObservation);
   const rateRegime = classifyRateRegime(input.rateDescription, input.us10yYield, input.us10yChange);
-  const realYieldRegime = classifyRealYieldRegime(input.realYieldDescription, input.us10yChange, input.inflationDescription);
+  const policyRateRegime = classifyPolicyRateRegime(input.policyRateObservation);
+  const realYieldRegime = classifyRealYieldRegime(input.realYieldDescription, input.us10yChange, input.inflationDescription, input.inflationObservation);
   const currencyRegime = classifyCurrencyRegime(input.dxyTrend, input.usdIndex);
   const liquidityRegime = classifyLiquidityRegime(input.liquidityDescription);
   const growthRegime = classifyGrowthRegime(input.growthDescription);
@@ -589,18 +737,25 @@ export function buildFundamentalRegime(
     dataQuality,
   );
 
+  const structuredDataPointCount = input.fundamentalDataPoints?.length ?? 0;
+  const economicEventCountFinal = input.economicEvents?.length ?? 0;
+
   return {
     overallRegime,
     dimensions,
     inflationRegime,
     inflationDriver,
+    inflationExpectationSurprise,
     rateRegime,
+    policyRateRegime,
     realYieldRegime,
     currencyRegime,
     liquidityRegime,
     growthRegime,
     energyRegime,
     geopoliticalRegime,
+    structuredDataPointCount,
+    economicEventCount: economicEventCountFinal,
     availableDimensionCount,
     unavailableDimensionCount,
     dataQuality,
@@ -612,14 +767,42 @@ export function buildFundamentalRegime(
 // REGIME CLASSIFIERS
 // ═══════════════════════════════════════════════════════════════
 
-function classifyInflation(desc: string | null | undefined): InflationRegime {
-  if (!desc) return "INSUFFICIENT_DATA";
-  const lower = desc.toLowerCase();
-  if (lower.includes("disinflat")) return "DISINFLATIONARY";
-  if (lower.includes("accelerat")) return "ACCELERATING";
-  if (lower.includes("high") || lower.includes("elevated")) return "HIGH";
-  if (lower.includes("rising") || lower.includes("increasing")) return "RISING";
-  if (lower.includes("stable") || lower.includes("moderate") || lower.includes("target")) return "STABLE";
+/**
+ * Classify inflation regime.
+ * Structured data takes precedence when available (OBSERVED).
+ * Falls back to text-based classification (DERIVED from intelligence keywords).
+ */
+function classifyInflation(
+  desc: string | null | undefined,
+  obs?: InflationObservation,
+): InflationRegime {
+  // Structured data precedence (OBSERVED)
+  if (obs && obs.availability === "AVAILABLE" && obs.actual !== null && obs.actual !== undefined) {
+    // Use actual vs previous for trend — absolute pp change since CPI is already a percentage
+    if (obs.previous !== null && obs.previous !== undefined && typeof obs.actual === "number" && typeof obs.previous === "number") {
+      const ppDiff = obs.actual - obs.previous;
+      if (ppDiff < -0.3) return "DISINFLATIONARY";
+      if (ppDiff > 1.0) return "ACCELERATING";
+      if (ppDiff > 0.2) return "RISING";
+      // Small change → classify by absolute level
+    }
+    // Absolute level classification (CPI YoY %)
+    if (typeof obs.actual === "number") {
+      if (obs.actual >= 5) return "HIGH";
+      if (obs.actual >= 3) return "RISING";
+      if (obs.actual >= 1.5) return "STABLE";
+      return "DISINFLATIONARY";
+    }
+  }
+  // Text-based fallback (backward compatible)
+  if (desc) {
+    const lower = desc.toLowerCase();
+    if (lower.includes("disinflat")) return "DISINFLATIONARY";
+    if (lower.includes("accelerat")) return "ACCELERATING";
+    if (lower.includes("high") || lower.includes("elevated")) return "HIGH";
+    if (lower.includes("rising") || lower.includes("increasing")) return "RISING";
+    if (lower.includes("stable") || lower.includes("moderate") || lower.includes("target")) return "STABLE";
+  }
   return "INSUFFICIENT_DATA";
 }
 
@@ -666,10 +849,16 @@ function classifyRateRegime(
  * Derives direction from US10Y change + inflation regime where possible.
  * Never fabricates: returns UNAVAILABLE when evidence is insufficient.
  */
+/**
+ * Classify real-yield regime.
+ * Real yield = nominal yield - inflation expectations.
+ * Uses structured inflation data when available for more precise derivation.
+ */
 function classifyRealYieldRegime(
   desc: string | null | undefined,
   us10yChange: number | null | undefined,
   inflationDesc: string | null | undefined,
+  inflationObs?: InflationObservation,
 ): RealYieldRegime {
   // Explicit text-based classification (backward compatible)
   if (desc) {
@@ -678,19 +867,25 @@ function classifyRealYieldRegime(
     if (lower.includes("falling") || lower.includes("declining") || lower.includes("dropping")) return "REAL_YIELD_FALLING";
     if (lower.includes("stable") || lower.includes("flat")) return "REAL_YIELD_STABLE";
   }
-  // DERIVED: nominal yield change + inflation direction → real-yield pressure
-  // This is a derived interpretation, not an observed fact.
+  // DERIVED with structured inflation data (more precise)
+  // Uses absolute pp change since CPI is a percentage
+  if (us10yChange !== null && us10yChange !== undefined && inflationObs && inflationObs.availability === "AVAILABLE" && inflationObs.actual !== null && inflationObs.actual !== undefined && inflationObs.previous !== null && inflationObs.previous !== undefined && typeof inflationObs.actual === "number" && typeof inflationObs.previous === "number") {
+    const inflationDirection = inflationObs.actual - inflationObs.previous;
+    // Nominal yield rising + inflation falling → real yields rising
+    if (us10yChange > 3 && inflationDirection < -0.2) return "REAL_YIELD_RISING";
+    // Nominal yield falling + inflation rising → real yields falling
+    if (us10yChange < -3 && inflationDirection > 0.2) return "REAL_YIELD_FALLING";
+    // Both moving same direction → ambiguous
+    return "UNAVAILABLE";
+  }
+  // DERIVED: nominal yield change + inflation text → real-yield pressure
   if (us10yChange !== null && us10yChange !== undefined && inflationDesc) {
     const inflLower = inflationDesc.toLowerCase();
     const isFallingInflation = inflLower.includes("disinflat") || inflLower.includes("falling") || inflLower.includes("declining");
     const isStableInflation = inflLower.includes("stable") || inflLower.includes("moderate") || inflLower.includes("target");
     const isRisingInflation = inflLower.includes("rising") || inflLower.includes("increasing") || inflLower.includes("accelerat") || inflLower.includes("high") || inflLower.includes("elevated");
-
-    // Nominal yield rising + inflation stable/falling → real yields likely rising
     if (us10yChange > 3 && (isStableInflation || isFallingInflation)) return "REAL_YIELD_RISING";
-    // Nominal yield falling + inflation stable/rising → real yields likely falling
     if (us10yChange < -3 && (isStableInflation || isRisingInflation)) return "REAL_YIELD_FALLING";
-    // Both moving same direction → ambiguous, insufficient evidence
     return "UNAVAILABLE";
   }
   return "UNAVAILABLE";
@@ -758,6 +953,47 @@ function classifyGeopoliticalRegime(desc: string | null | undefined): Geopolitic
   if (lower.includes("high") || lower.includes("severe") || lower.includes("critical")) return "HIGH";
   if (lower.includes("elevated") || lower.includes("moderate")) return "ELEVATED";
   if (lower.includes("low") || lower.includes("calm")) return "LOW";
+  return "INSUFFICIENT_DATA";
+}
+
+/**
+ * Classify inflation expectation surprise from structured data.
+ * DERIVED — not an observation itself, but a comparison of observation vs expectation.
+ * No probability claims. Only ABOVE/BELOW/IN_LINE/UNAVAILABLE.
+ */
+function classifyInflationExpectationSurprise(
+  obs?: InflationObservation,
+): InflationExpectationSurprise {
+  if (!obs || obs.availability !== "AVAILABLE") return "UNAVAILABLE";
+  if (obs.actual === null || obs.actual === undefined || obs.forecast === null || obs.forecast === undefined) return "UNAVAILABLE";
+  if (typeof obs.actual !== "number" || typeof obs.forecast !== "number") return "UNAVAILABLE";
+  const diff = obs.actual - obs.forecast;
+  const threshold = Math.abs(obs.forecast) * 0.005; // 0.5% relative threshold
+  if (diff > threshold) return "ABOVE_EXPECTATION";
+  if (diff < -threshold) return "BELOW_EXPECTATION";
+  return "IN_LINE";
+}
+
+/**
+ * Classify central bank policy-rate regime.
+ * This is DISTINCT from US10Y (market yield).
+ * Policy rate = central bank decision. US10Y = market-priced yield.
+ */
+function classifyPolicyRateRegime(obs?: PolicyRateObservation): PolicyRateRegime {
+  if (!obs || obs.availability !== "AVAILABLE") return "INSUFFICIENT_DATA";
+  // Use explicit decision classification if available (OBSERVED)
+  if (obs.decision === "RATE_HIKE") return "TIGHTENING";
+  if (obs.decision === "RATE_CUT") return "EASING";
+  if (obs.decision === "HOLD") return "NEUTRAL";
+  // Derive from rate change direction (DERIVED)
+  if (obs.current !== null && obs.current !== undefined && obs.previous !== null && obs.previous !== undefined && typeof obs.current === "number" && typeof obs.previous === "number") {
+    const diff = obs.current - obs.previous;
+    if (diff > 0.1) return "TIGHTENING";
+    if (diff < -0.1) return "EASING";
+    return "NEUTRAL";
+  }
+  // Has value but no directional info
+  if (obs.current !== null && obs.current !== undefined) return "NEUTRAL";
   return "INSUFFICIENT_DATA";
 }
 
