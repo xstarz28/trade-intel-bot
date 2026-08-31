@@ -730,8 +730,18 @@ function FundamentalContextPanel({ intel, newsItems, livePrices }: { intel: Posi
               {regime.overallRegime.replace(/_/g, " ")}
             </span>
             <span className="text-[7px] font-mono text-muted-foreground/40">
-              ({regime.availableDimensionCount}/{regime.dimensions.length} dimensions)
+              ({regime.availableDimensionCount}/{regime.dimensions.length} dims)
             </span>
+            {regime.structuredDataPointCount > 0 && (
+              <span className="text-[7px] font-mono text-emerald-400/60">
+                {regime.structuredDataPointCount} econ data
+              </span>
+            )}
+            {regime.economicEventCount > 0 && (
+              <span className="text-[7px] font-mono text-blue-400/60">
+                {regime.economicEventCount} events
+              </span>
+            )}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {regime.dimensions.map((d, i) => (
@@ -749,8 +759,18 @@ function FundamentalContextPanel({ intel, newsItems, livePrices }: { intel: Posi
       <WorkspaceSection title="INFLATION / RATES / YIELDS / CURRENCY" icon={<BarChart3 className="size-3" />}>
         <div className="grid grid-cols-2 gap-1.5 text-[8px] font-mono">
           <div><span className="text-muted-foreground/50">Inflation:</span> <span className="text-foreground">{regime.inflationRegime.replace(/_/g, " ")}</span></div>
+          {regimeInput.inflationObservation?.actual != null && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground/50">Observed:</span> <span className="text-foreground">{regimeInput.inflationObservation.metric ?? "Inflation"} {regimeInput.inflationObservation.actual}%</span>
+              {regimeInput.inflationObservation.previous != null && <span className="text-muted-foreground/40"> (prev {regimeInput.inflationObservation.previous}%)</span>}
+              {regimeInput.inflationObservation.forecast != null && <span className="text-muted-foreground/40"> (fcst {regimeInput.inflationObservation.forecast}%)</span>}
+              <span className="text-[7px] text-muted-foreground/30 ml-1">[observed]</span>
+            </div>
+          )}
+          <div><span className="text-muted-foreground/50">Infl. Surprise:</span> <span className="text-foreground">{regime.inflationExpectationSurprise.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Driver:</span> <span className="text-foreground">{regime.inflationDriver.replace(/_/g, " ")}</span></div>
-          <div><span className="text-muted-foreground/50">Rates:</span> <span className="text-foreground">{regime.rateRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">Market Rates:</span> <span className="text-foreground">{regime.rateRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">Policy Rate:</span> <span className="text-foreground">{regime.policyRateRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Real Yields:</span> <span className="text-foreground">{regime.realYieldRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">USD:</span> <span className="text-foreground">{regime.currencyRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Liquidity:</span> <span className="text-foreground">{regime.liquidityRegime.replace(/_/g, " ")}</span></div>
