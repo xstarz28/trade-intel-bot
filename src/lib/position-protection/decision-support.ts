@@ -17,7 +17,7 @@ import type { PortfolioIntelligence, ThesisState } from "./portfolio-intelligenc
 // TYPES
 // ═══════════════════════════════════════════════════════════════
 
-export type EvidenceClassification = "SUPPORTING" | "CONFICTING" | "NEUTRAL" | "UNAVAILABLE";
+export type EvidenceClassification = "SUPPORTING" | "CONFLICTING" | "NEUTRAL" | "UNAVAILABLE";
 export type ThesisTransition = "STABLE" | "IMPROVING" | "DETERIORATING" | "FLIPPED" | "INSUFFICIENT_DATA";
 export type InvalidationStatus = "NOT_APPROACHING" | "APPROACHING" | "TRIGGERED" | "UNAVAILABLE";
 export type WatchPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
@@ -122,7 +122,7 @@ export function buildDecisionSupport(
 ): PositionDecisionSupport {
   const evidenceClassified = classifyAllEvidence(intel);
   const supporting = evidenceClassified.filter((e) => e.classification === "SUPPORTING");
-  const conflicting = evidenceClassified.filter((e) => e.classification === "CONFICTING");
+  const conflicting = evidenceClassified.filter((e) => e.classification === "CONFLICTING");
   const neutral = evidenceClassified.filter((e) => e.classification === "NEUTRAL");
 
   const invalidation = deriveInvalidationConditions(intel);
@@ -171,7 +171,7 @@ export function classifyEvidence(
       sourceDimension = evidence.category;
       break;
     case "conflicting":
-      classification = "CONFICTING";
+      classification = "CONFLICTING";
       sourceDimension = evidence.category;
       break;
     case "neutral":
@@ -368,7 +368,7 @@ export function deriveWatchItems(
   }
 
   // Conflicting evidence
-  const conflictingCount = evidenceClassified.filter((e) => e.classification === "CONFICTING").length;
+  const conflictingCount = evidenceClassified.filter((e) => e.classification === "CONFLICTING").length;
   if (conflictingCount >= 2) {
     items.push({
       priority: conflictingCount >= 3 ? "HIGH" : "MEDIUM",
@@ -411,7 +411,7 @@ export function deriveWatchItems(
 
   // Structure broken
   const structureEvidence = evidenceClassified.find(
-    (e) => e.sourceDimension === "STRUCTURE" && e.classification === "CONFICTING",
+    (e) => e.sourceDimension === "STRUCTURE" && e.classification === "CONFLICTING",
   );
   if (structureEvidence) {
     items.push({
@@ -529,9 +529,9 @@ export function getDecisionSupportSummary(
   if (ds.dataQuality === "UNAVAILABLE" || ds.dataQuality === "INSUFFICIENT_EVIDENCE") {
     overallAssessment = "INSUFFICIENT_DATA";
   } else if (ds.conflictingEvidence.length > ds.supportingEvidence.length) {
-    overallAssessment = "EVIDENCE_WEIGHTED_CONFLICTING";
+    overallAssessment = "COUNT_CONFLICTING";
   } else if (ds.supportingEvidence.length > ds.conflictingEvidence.length) {
-    overallAssessment = "EVIDENCE_WEIGHTED_SUPPORTING";
+    overallAssessment = "COUNT_SUPPORTING";
   } else {
     overallAssessment = "MIXED_EVIDENCE";
   }

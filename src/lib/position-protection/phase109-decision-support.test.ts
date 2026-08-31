@@ -186,7 +186,7 @@ describe("Phase 109: Evidence Classification", () => {
   it("conflicting evidence classified correctly", () => {
     const evidence = makeEvidence({ direction: "conflicting" });
     const classified = classifyEvidence(evidence, "LONG");
-    expect(classified.classification).toBe("CONFICTING");
+    expect(classified.classification).toBe("CONFLICTING");
   });
 
   it("neutral evidence classified correctly", () => {
@@ -249,6 +249,59 @@ describe("Phase 109: LONG/SHORT Symmetry", () => {
 
     expect(longDS.thesis).toBe("STABLE");
     expect(shortDS.thesis).toBe("STABLE");
+  });
+
+  it("LONG and SHORT classify evidence identically for same direction", () => {
+    const supporting = makeEvidence({ direction: "supporting" });
+    const conflicting = makeEvidence({ direction: "conflicting" });
+
+    const longS = classifyEvidence(supporting, "LONG");
+    const shortS = classifyEvidence(supporting, "SHORT");
+    const longC = classifyEvidence(conflicting, "LONG");
+    const shortC = classifyEvidence(conflicting, "SHORT");
+
+    expect(longS.classification).toBe("SUPPORTING");
+    expect(shortS.classification).toBe("SUPPORTING");
+    expect(longC.classification).toBe("CONFLICTING");
+    expect(shortC.classification).toBe("CONFLICTING");
+  });
+
+  it("evidence classification does not assume directional bias", () => {
+    // A supporting evidence item is SUPPORTING regardless of position side
+    const evidence = makeEvidence({ direction: "supporting", description: "Volume confirmed" });
+    expect(classifyEvidence(evidence, "LONG").classification).toBe("SUPPORTING");
+    expect(classifyEvidence(evidence, "SHORT").classification).toBe("SUPPORTING");
+  });
+
+  it("evidence count symmetry for LONG and SHORT with identical evidence", () => {
+    const evidence = [
+      makeEvidence({ direction: "supporting" }),
+      makeEvidence({ direction: "supporting" }),
+      makeEvidence({ direction: "conflicting" }),
+    ];
+    const longIntel = makeIntel({ side: "LONG", evidence });
+    const shortIntel = makeIntel({ side: "SHORT", evidence });
+
+    const longDS = buildDecisionSupport("pos-long", longIntel, now);
+    const shortDS = buildDecisionSupport("pos-short", shortIntel, now);
+
+    expect(longDS.supportingEvidence.length).toBe(shortDS.supportingEvidence.length);
+    expect(longDS.conflictingEvidence.length).toBe(shortDS.conflictingEvidence.length);
+  });
+
+  it("getDecisionSupportSummary uses count-based classification, not strength-weighted", () => {
+    // The function compares counts of supporting vs conflicting evidence
+    // It does NOT weight by evidence strength (STRONG/MODERATE/WEAK)
+    const intel = makeIntel({
+      evidence: [
+        makeEvidence({ direction: "supporting", strength: "WEAK" }),
+        makeEvidence({ direction: "conflicting", strength: "STRONG" }),
+      ],
+    });
+    const ds = buildDecisionSupport("pos-1", intel, now);
+    const summary = getDecisionSupportSummary(ds);
+    // 1 supporting vs 1 conflicting → MIXED_EVIDENCE (not weighted by strength)
+    expect(summary.overallAssessment).toBe("MIXED_EVIDENCE");
   });
 });
 
@@ -362,6 +415,47 @@ describe("Phase 109: Thesis Transitions", () => {
     const r2 = detectThesisTransition("HEALTHY", "CAUTION");
     expect(r1).toBe(r2);
   });
+
+  // FLIPPED semantics: FLIPPED means thesis-health boundary crossing
+  // (HEALTHY ↔ DETERIORATING+), NOT LONG→SHORT or SHORT→LONG
+  it("FLIPPED = HEALTHY → DETERIORATING (boundary crossing)", () => {
+    expect(detectThesisTransition("HEALTHY", "DETERIORATING")).toBe("FLIPPED");
+  });
+
+  it("FLIPPED = DETERIORATING → HEALTHY (boundary crossing back)", () => {
+    expect(detectThesisTransition("DETERIORATING", "HEALTHY")).toBe("FLIPPED");
+  });
+
+  it("HEALTHY → SEVERELY_DETERIORATING = FLIPPED (extreme crossing)", () => {
+    expect(detectThesisTransition("HEALTHY", "SEVERELY_DETERIORATING")).toBe("FLIPPED");
+  });
+
+  it("SEVERELY_DETERIORATING → HEALTHY = FLIPPED (extreme crossing back)", () => {
+    expect(detectThesisTransition("SEVERELY_DETERIORATING", "HEALTHY")).toBe("FLIPPED");
+  });
+
+  it("STABLE → DETERIORATING = DETERIORATING (not FLIPPED, moderate decline)", () => {
+    // STABLE (rank 3) → DETERIORATING (rank 5): moderate decline, not boundary flip
+    expect(detectThesisTransition("STABLE", "DETERIORATING")).toBe("DETERIORATING");
+  });
+
+  it("FLIPPED is about thesis health, not position direction", () => {
+    // LONG and SHORT with same health transition produce identical results
+    // detectThesisTransition does not receive side — it operates on thesis states only
+    expect(detectThesisTransition("HEALTHY", "DETERIORATING")).toBe("FLIPPED");
+    expect(detectThesisTransition("HEALTHY", "DETERIORATING")).toBe("FLIPPED");
+  });
+
+  it("LONG→SHORT with same health does not produce FLIPPED", () => {
+    // Side change is not a thesis health transition
+    // detectThesisTransition only compares thesis states, not sides
+    // With same thesis, any side change is STABLE
+    expect(detectThesisTransition("HEALTHY", "HEALTHY")).toBe("STABLE");
+  });
+
+  it("SHORT→LONG with same health does not produce FLIPPED", () => {
+    expect(detectThesisTransition("HEALTHY", "HEALTHY")).toBe("STABLE");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -440,13 +534,54 @@ describe("Phase 109: Invalidation Model", () => {
     });
     const conditions = deriveInvalidationConditions(intel);
     expect(conditions[0].status).toBe("TRIGGERED");
-  });
-
-  it("no invalidation conditions = empty", () => {
+  });  it("no invalidation conditions = empty", () => {
     const intel = makeIntel({ invalidationConditions: [] });
     const conditions = deriveInvalidationConditions(intel);
     expect(conditions).toHaveLength(0);
   });
+
+  it("distancePct < 0 + approaching = APPROACHING", () => {
+    const intel = makeIntel({
+      invalidationConditions: [makeInvalidation({ approaching: true, distancePct: -1.5 })],
+    });
+    const conditions = deriveInvalidationConditions(intel);
+    expect(conditions[0].status).toBe("APPROACHING");
+  });
+
+  it("distancePct < 0 + not approaching = NOT_APPROACHING", () => {
+    const intel = makeIntel({
+      invalidationConditions: [makeInvalidation({ approaching: false, distancePct: -5 })],
+    });
+    const conditions = deriveInvalidationConditions(intel);
+    expect(conditions[0].status).toBe("NOT_APPROACHING");
+  });
+
+  it("distancePct === 0 + not approaching = NOT_APPROACHING", () => {
+    const intel = makeIntel({
+      invalidationConditions: [makeInvalidation({ approaching: false, distancePct: 0 })],
+    });
+    const conditions = deriveInvalidationConditions(intel);
+    expect(conditions[0].status).toBe("NOT_APPROACHING");
+  });
+
+  it("all six boundary states produce deterministic output", () => {
+    const cases: Array<[number, boolean, string]> = [
+      [5, false, "NOT_APPROACHING"],
+      [5, true, "APPROACHING"],
+      [0, true, "TRIGGERED"],
+      [0, false, "NOT_APPROACHING"],
+      [-1, true, "APPROACHING"],
+      [-1, false, "NOT_APPROACHING"],
+    ];
+    for (const [dist, approaching, expected] of cases) {
+      const intel = makeIntel({
+        invalidationConditions: [makeInvalidation({ approaching, distancePct: dist })],
+      });
+      const conditions = deriveInvalidationConditions(intel);
+      expect(conditions[0].status).toBe(expected);
+    }
+  });
+
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -593,7 +728,7 @@ describe("Phase 109: Data Quality", () => {
     });
     const ds = buildDecisionSupport("pos-1", intel, now);
     const summary = getDecisionSupportSummary(ds);
-    expect(summary.overallAssessment).toBe("EVIDENCE_WEIGHTED_SUPPORTING");
+    expect(summary.overallAssessment).toBe("COUNT_SUPPORTING");
   });
 
   it("evidence-weighted assessment with more conflicting", () => {
@@ -606,7 +741,7 @@ describe("Phase 109: Data Quality", () => {
     });
     const ds = buildDecisionSupport("pos-1", intel, now);
     const summary = getDecisionSupportSummary(ds);
-    expect(summary.overallAssessment).toBe("EVIDENCE_WEIGHTED_CONFLICTING");
+    expect(summary.overallAssessment).toBe("COUNT_CONFLICTING");
   });
 });
 
