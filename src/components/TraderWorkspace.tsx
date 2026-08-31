@@ -51,6 +51,12 @@ import {
   type AssetFundamentalContext,
 } from "@/lib/position-protection/fundamental-regime";
 import type { AssetClass } from "@/lib/position-protection/fundamental-regime";
+import {
+  buildFundamentalCausalResult,
+  buildAssetCausalContext,
+  type FundamentalCausalResult,
+  type AssetCausalContext,
+} from "@/lib/position-protection/fundamental-transmission";
 
 // ═══════════════════════════════════════════════════════════════
 // PROPS
@@ -616,6 +622,8 @@ function FundamentalContextPanel({ intel }: { intel: PositionIntelligence }) {
 
   const regime = useMemo(() => buildFundamentalRegime({}), []);
   const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
+  const causalResult = useMemo(() => buildFundamentalCausalResult(regime), [regime]);
+  const assetCausalCtx = useMemo(() => buildAssetCausalContext(assetClass, regime, causalResult.transmissions), [assetClass, regime, causalResult.transmissions]);
 
   // Determine technical direction from evidence
   const techSupporting = intel.evidence.filter((e) => e.direction === "supporting").length;
@@ -629,6 +637,10 @@ function FundamentalContextPanel({ intel }: { intel: PositionIntelligence }) {
     MIXED: "text-amber-400",
     STRESSED: "text-red-400",
     RECOVERY: "text-blue-400",
+    REFLATION: "text-emerald-400",
+    STAGFLATION: "text-red-400",
+    DISINFLATION: "text-blue-400",
+    CONTRACTION: "text-red-400",
     INSUFFICIENT_DATA: "text-muted-foreground",
   };
 
@@ -736,6 +748,74 @@ function FundamentalContextPanel({ intel }: { intel: PositionIntelligence }) {
           <div className="text-[8px] font-mono text-muted-foreground">{alignment.description}</div>
         </div>
       </WorkspaceSection>
+
+      {/* Fundamental Causal Transmission */}
+      {causalResult.transmissions.length > 0 && (
+        <WorkspaceSection title="FUNDAMENTAL TRANSMISSION" icon={<Zap className="size-3" />}>
+          <div className="space-y-2">
+            {/* Macro Regime */}
+            <div className="flex items-center gap-2">
+              <span className="text-[8px] font-mono text-muted-foreground/50">Regime:</span>
+              <span className={`text-[9px] font-mono font-semibold ${regimeColor[causalResult.macroRegime] ?? "text-muted-foreground"}`}>
+                {causalResult.macroRegime.replace(/_/g, " ")}
+              </span>
+            </div>
+
+            {/* Supporting Forces */}
+            {assetCausalCtx.supportingEvidence.length > 0 && (
+              <div>
+                <div className="text-[7px] font-mono text-emerald-400/70 mb-0.5">SUPPORTING</div>
+                {assetCausalCtx.supportingEvidence.map((e, i) => (
+                  <div key={`ts-${i}`} className="flex items-start gap-1.5">
+                    <span className="text-[8px] text-emerald-400 mt-0.5">✓</span>
+                    <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{e.description}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Conflicting Forces */}
+            {assetCausalCtx.conflictingEvidence.length > 0 && (
+              <div>
+                <div className="text-[7px] font-mono text-red-400/70 mb-0.5">CONFLICTING</div>
+                {assetCausalCtx.conflictingEvidence.map((e, i) => (
+                  <div key={`tc-${i}`} className="flex items-start gap-1.5">
+                    <span className="text-[8px] text-red-400 mt-0.5">✗</span>
+                    <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{e.description}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Transmission Explanation */}
+            {assetCausalCtx.transmissionExplanation && (
+              <div className="text-[8px] font-mono text-muted-foreground/70 italic">
+                {assetCausalCtx.transmissionExplanation}
+              </div>
+            )}
+
+            {/* Causal Chain (top 3 derived steps) */}
+            {assetCausalCtx.causalTrace.steps.filter((s) => s.provenance === "DERIVED").slice(0, 3).length > 0 && (
+              <div>
+                <div className="text-[7px] font-mono text-muted-foreground/50 mb-0.5">CAUSAL CHAIN</div>
+                {assetCausalCtx.causalTrace.steps.filter((s) => s.provenance === "DERIVED").slice(0, 3).map((s, i) => (
+                  <div key={`chain-${i}`} className="flex items-start gap-1.5">
+                    <span className="text-[7px] text-muted-foreground/40 mt-0.5">{i + 1}.</span>
+                    <span className="text-[7px] font-mono text-muted-foreground/60 leading-relaxed">{s.description}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Data Availability */}
+            {assetCausalCtx.unavailableDimensions.length > 0 && (
+              <div className="text-[7px] font-mono text-amber-400/60">
+                Unavailable: {assetCausalCtx.unavailableDimensions.join(", ").replace(/_/g, " ")}
+              </div>
+            )}
+          </div>
+        </WorkspaceSection>
+      )}
 
       {/* What Could Change / Monitor */}
       {(assetCtx.whatCouldChangeAssessment.length > 0 || assetCtx.whatToMonitor.length > 0) && (
