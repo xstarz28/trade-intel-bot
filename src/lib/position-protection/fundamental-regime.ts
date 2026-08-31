@@ -192,6 +192,10 @@ export interface FundamentalRegimeInput {
   oilChange?: string | null;
   /** Gold price (for gold-specific analysis). */
   goldPrice?: number | null;
+  /** US 10Y yield level if available. */
+  us10yYield?: number | null;
+  /** US 10Y yield 24h change (bps) if available. */
+  us10yChange?: number | null;
   /** Bond yield description if available. */
   bondYieldDescription?: string | null;
   /** Real yield description if available. */
@@ -275,9 +279,42 @@ options: {
   newsRelevance?: NewsRelevance[];
   macroContext?: MacroContext | null;
   crossAssetContext?: CrossAssetContext | null;
+  /** Numeric macro observations from live market infrastructure. */
+  macroObservations?: {
+    dxy?: { value: number; change24h?: number } | null;
+    us10y?: { value: number; change24h?: number } | null;
+    wti?: { value: number; change24h?: number } | null;
+  } | null;
 } = {},
 ): FundamentalRegimeInput {
   const input: FundamentalRegimeInput = {};
+
+  // Pass through numeric macro observations (Observed: actual market values)
+  if (options.macroObservations) {
+    if (options.macroObservations.dxy) {
+      input.usdIndex = options.macroObservations.dxy.value;
+      if (options.macroObservations.dxy.change24h !== undefined) {
+        const chg = options.macroObservations.dxy.change24h;
+        input.dxyTrend = chg > 0.3 ? "DXY strengthening" : chg < -0.3 ? "DXY weakening" : "DXY stable";
+      }
+    }
+    if (options.macroObservations.us10y) {
+      input.us10yYield = options.macroObservations.us10y.value;
+      input.us10yChange = options.macroObservations.us10y.change24h ?? null;
+      // Derive bond yield description from numeric observation
+      if (!input.bondYieldDescription) {
+        const y = options.macroObservations.us10y.value;
+        input.bondYieldDescription = `US 10Y yield at ${y.toFixed(2)}%`;
+      }
+    }
+    if (options.macroObservations.wti) {
+      input.oilPrice = options.macroObservations.wti.value;
+      if (options.macroObservations.wti.change24h !== undefined) {
+        const chg = options.macroObservations.wti.change24h;
+        input.oilChange = chg > 2 ? "Oil price rising significantly" : chg < -2 ? "Oil price declining" : "Oil price stable balanced";
+      }
+    }
+  }
 
   // Pass through macro context if available
   if (options.macroContext) {
@@ -524,8 +561,8 @@ export function buildFundamentalRegime(
   // ─── Classify regimes ───
   const inflationRegime = classifyInflation(input.inflationDescription);
   const inflationDriver = classifyInflationDriver(input.inflationDescription);
-  const rateRegime = classifyRateRegime(input.rateDescription);
-  const realYieldRegime = classifyRealYieldRegime(input.realYieldDescription);
+  const rateRegime = classifyRateRegime(input.rateDescription, input.us10yYield, input.us10yChange);
+  const realYieldRegime = classifyRealYieldRegime(input.realYieldDescription, input.us10yChange, input.inflationDescription);
   const currencyRegime = classifyCurrencyRegime(input.dxyTrend, input.usdIndex);
   const liquidityRegime = classifyLiquidityRegime(input.liquidityDescription);
   const growthRegime = classifyGrowthRegime(input.growthDescription);
@@ -595,23 +632,67 @@ function classifyInflationDriver(desc: string | null | undefined): InflationDriv
   return "INSUFFICIENT_DATA";
 }
 
-function classifyRateRegime(desc: string | null | undefined): RateRegime {
-  if (!desc) return "INSUFFICIENT_DATA";
-  const lower = desc.toLowerCase();
-  if (lower.includes("easing") || lower.includes("cut") || lower.includes("dovish")) return "EASING";
-  if (lower.includes("tightening") || lower.includes("hike") || lower.includes("hiking") || lower.includes("hawkish")) return "TIGHTENING";
-  if (lower.includes("restrictive") || lower.includes("above neutral")) return "RESTRICTIVE";
-  if (lower.includes("transition")) return "TRANSITIONING";
-  if (lower.includes("neutral") || lower.includes("steady")) return "NEUTRAL";
+function classifyRateRegime(
+  desc: string | null | undefined,
+  us10yYield: number | null | undefined,
+  us10yChange: number | null | undefined,
+): RateRegime {
+  // Text-based classification (backward compatible)
+  if (desc) {
+    const lower = desc.toLowerCase();
+    if (lower.includes("easing") || lower.includes("cut") || lower.includes("dovish")) return "EASING";
+    if (lower.includes("tightening") || lower.includes("hike") || lower.includes("hiking") || lower.includes("hawkish")) return "TIGHTENING";
+    if (lower.includes("restrictive") || lower.includes("above neutral")) return "RESTRICTIVE";
+    if (lower.includes("transition")) return "TRANSITIONING";
+    if (lower.includes("neutral") || lower.includes("steady")) return "NEUTRAL";
+  }
+  // Numeric US10Y classification (Observed: nominal yield change direction)
+  if (us10yChange !== null && us10yChange !== undefined) {
+    // yield change in bps: positive = rising yields = tightening pressure
+    if (us10yChange > 5) return "TIGHTENING";
+    if (us10yChange < -5) return "EASING";
+    return "NEUTRAL";
+  }
+  // Has yield level but no change — can only confirm availability
+  if (us10yYield !== null && us10yYield !== undefined && us10yYield > 0) {
+    return "NEUTRAL"; // Has value but no directional info
+  }
   return "INSUFFICIENT_DATA";
 }
 
-function classifyRealYieldRegime(desc: string | null | undefined): RealYieldRegime {
-  if (!desc) return "UNAVAILABLE";
-  const lower = desc.toLowerCase();
-  if (lower.includes("rising") || lower.includes("increasing")) return "REAL_YIELD_RISING";
-  if (lower.includes("falling") || lower.includes("declining") || lower.includes("dropping")) return "REAL_YIELD_FALLING";
-  if (lower.includes("stable") || lower.includes("flat")) return "REAL_YIELD_STABLE";
+/**
+ * Classify real-yield regime.
+ * Real yield = nominal yield - inflation expectations.
+ * Derives direction from US10Y change + inflation regime where possible.
+ * Never fabricates: returns UNAVAILABLE when evidence is insufficient.
+ */
+function classifyRealYieldRegime(
+  desc: string | null | undefined,
+  us10yChange: number | null | undefined,
+  inflationDesc: string | null | undefined,
+): RealYieldRegime {
+  // Explicit text-based classification (backward compatible)
+  if (desc) {
+    const lower = desc.toLowerCase();
+    if (lower.includes("rising") || lower.includes("increasing")) return "REAL_YIELD_RISING";
+    if (lower.includes("falling") || lower.includes("declining") || lower.includes("dropping")) return "REAL_YIELD_FALLING";
+    if (lower.includes("stable") || lower.includes("flat")) return "REAL_YIELD_STABLE";
+  }
+  // DERIVED: nominal yield change + inflation direction → real-yield pressure
+  // This is a derived interpretation, not an observed fact.
+  if (us10yChange !== null && us10yChange !== undefined && inflationDesc) {
+    const inflLower = inflationDesc.toLowerCase();
+    const isFallingInflation = inflLower.includes("disinflat") || inflLower.includes("falling") || inflLower.includes("declining");
+    const isStableInflation = inflLower.includes("stable") || inflLower.includes("moderate") || inflLower.includes("target");
+    const isRisingInflation = inflLower.includes("rising") || inflLower.includes("increasing") || inflLower.includes("accelerat") || inflLower.includes("high") || inflLower.includes("elevated");
+
+    // Nominal yield rising + inflation stable/falling → real yields likely rising
+    if (us10yChange > 3 && (isStableInflation || isFallingInflation)) return "REAL_YIELD_RISING";
+    // Nominal yield falling + inflation stable/rising → real yields likely falling
+    if (us10yChange < -3 && (isStableInflation || isRisingInflation)) return "REAL_YIELD_FALLING";
+    // Both moving same direction → ambiguous, insufficient evidence
+    return "UNAVAILABLE";
+  }
   return "UNAVAILABLE";
 }
 
