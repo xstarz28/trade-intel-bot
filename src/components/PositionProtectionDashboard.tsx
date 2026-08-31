@@ -1205,6 +1205,7 @@ export function PositionProtectionDashboard() {
           healthSnapshot={healthSnapshot}
           alertCount={alertRules?.length ?? 0}
           unreadCount={0}
+          feedNews={feedNews}
           onSelectPosition={(pid) => setSelectedPositionId(pid)}
           onSelectPortfolio={() => setActiveTab("portfolio")}
           onSelectAlerts={() => setActiveTab("alerts")}
@@ -1217,6 +1218,7 @@ export function PositionProtectionDashboard() {
         <PositionDetail
           positionId={selectedPositionId}
           intel={intelligenceMap.get(selectedPositionId)!}
+          newsItems={feedNews.get(intelligenceMap.get(selectedPositionId)!.instrument)}
           onBack={() => setSelectedPositionId(null)}
         />
       )}

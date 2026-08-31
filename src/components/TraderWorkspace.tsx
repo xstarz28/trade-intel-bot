@@ -46,11 +46,14 @@ import {
   buildFundamentalRegime,
   buildAssetFundamentalContext,
   assessTechnicalFundamentalAlignment,
+  buildFundamentalInputFromPositionIntel,
+  mapInstrumentToAssetClass,
   type FundamentalRegimeInput,
   type FundamentalRegime,
   type AssetFundamentalContext,
 } from "@/lib/position-protection/fundamental-regime";
 import type { AssetClass } from "@/lib/position-protection/fundamental-regime";
+import type { NewsItem } from "@/lib/position-protection/news-intelligence";
 import {
   buildFundamentalCausalResult,
   buildAssetCausalContext,
@@ -73,6 +76,8 @@ interface TraderWorkspaceProps {
   alertCount: number;
   /** Unread notification count. */
   unreadCount: number;
+  /** News items by instrument. */
+  feedNews?: Map<string, NewsItem[]>;
   /** Navigate to a position's detail. */
   onSelectPosition: (positionId: string) => void;
   /** Navigate to portfolio view. */
@@ -411,6 +416,7 @@ export function TraderWorkspace({
   healthSnapshot,
   alertCount,
   unreadCount,
+  feedNews,
   onSelectPosition,
   onSelectPortfolio,
   onSelectAlerts,
@@ -611,16 +617,14 @@ export function TraderWorkspace({
 // FUNDAMENTAL CONTEXT PANEL
 // ═══════════════════════════════════════════════════════════════
 
-function FundamentalContextPanel({ intel }: { intel: PositionIntelligence }) {
-  const assetClass: AssetClass = intel.assetClass === "crypto" ? "CRYPTO"
-    : intel.assetClass === "forex" ? "FOREX"
-    : intel.assetClass === "equity" ? "EQUITIES"
-    : intel.assetClass === "commodity" ? (intel.instrument.includes("OIL") ? "OIL" : "COMMODITIES")
-    : intel.instrument.includes("XAU") ? "GOLD"
-    : intel.instrument.includes("XAG") ? "SILVER"
-    : "CRYPTO";
+function FundamentalContextPanel({ intel, newsItems }: { intel: PositionIntelligence; newsItems?: NewsItem[] }) {
+  const assetClass: AssetClass = mapInstrumentToAssetClass(intel.instrument);
 
-  const regime = useMemo(() => buildFundamentalRegime({}), []);
+  const regimeInput = useMemo(() => buildFundamentalInputFromPositionIntel(
+    { instrument: intel.instrument, assetClass: intel.assetClass, shortTermContext: intel.shortTermContext, mediumTermContext: intel.mediumTermContext, evidence: intel.evidence },
+    { newsItems },
+  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems]);
+  const regime = useMemo(() => buildFundamentalRegime(regimeInput), [regimeInput]);
   const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
   const causalResult = useMemo(() => buildFundamentalCausalResult(regime), [regime]);
   const assetCausalCtx = useMemo(() => buildAssetCausalContext(assetClass, regime, causalResult.transmissions), [assetClass, regime, causalResult.transmissions]);
@@ -969,10 +973,11 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
 interface PositionDetailProps {
   positionId: string;
   intel: PositionIntelligence;
+  newsItems?: NewsItem[];
   onBack: () => void;
 }
 
-export function PositionDetail({ positionId, intel, onBack }: PositionDetailProps) {
+export function PositionDetail({ positionId, intel, newsItems, onBack }: PositionDetailProps) {
   const info = getInstrumentInfo(intel.instrument);
 
   return (
