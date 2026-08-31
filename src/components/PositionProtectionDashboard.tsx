@@ -315,7 +315,11 @@ export function PositionProtectionDashboard() {
   // ─── Live Market Polling ──────────────────────────────
   // Derive unique instruments from registered positions
   const monitoredInstruments = useMemo(
-    () => [...new Set(positions.map((p) => p.position.instrument))],
+    () => [...new Set([
+      ...positions.map((p) => p.position.instrument),
+      // Macro instruments for fundamental intelligence (fetched via Yahoo Finance — free, no key)
+      "VIX", "DXY", "US10Y", "WTI",
+    ])],
     [positions],
   );
 

@@ -53,7 +53,7 @@ import {
   type AssetFundamentalContext,
 } from "@/lib/position-protection/fundamental-regime";
 import type { AssetClass } from "@/lib/position-protection/fundamental-regime";
-import type { NewsItem } from "@/lib/position-protection/news-intelligence";
+import { classifyNewsRelevance, type NewsItem, type NewsRelevance } from "@/lib/position-protection/news-intelligence";
 import { classifyMacroContext, analyzeCrossAssetContext, type MacroContext, type CrossAssetContext } from "@/lib/position-protection/multi-dimensional-intelligence";
 import type { LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
 import {
@@ -653,10 +653,33 @@ function FundamentalContextPanel({ intel, newsItems, livePrices }: { intel: Posi
     return analyzeCrossAssetContext(intel.instrument, intel.side, otherPrices);
   }, [livePrices, intel.instrument, intel.side]);
 
+  // ─── News relevance classification (existing function, no duplicate fetch) ───
+  const newsRelevance = useMemo((): NewsRelevance[] | null => {
+    if (!newsItems || newsItems.length === 0) return null;
+    return newsItems.map((item) => classifyNewsRelevance(item, intel.instrument, intel.side));
+  }, [newsItems, intel.instrument, intel.side]);
+
+  // ─── Numeric macro observations from livePrices (no duplicate fetch) ───
+  const macroObservations = useMemo(() => {
+    if (!livePrices) return null;
+    const dxyState = livePrices.get("DXY") ?? livePrices.get("DX-Y.NYB");
+    const us10yState = livePrices.get("US10Y") ?? livePrices.get("^TNX");
+    const wtiState = livePrices.get("WTI") ?? livePrices.get("CL=F") ?? livePrices.get("CL");
+    const dxy = dxyState && dxyState.sourceMode === "LIVE" && dxyState.price > 0
+      ? { value: dxyState.price, change24h: dxyState.change24h } : null;
+    const us10y = us10yState && us10yState.sourceMode === "LIVE" && us10yState.price > 0
+      ? { value: us10yState.price, change24h: us10yState.change24h } : null;
+    const wti = wtiState && wtiState.sourceMode === "LIVE" && wtiState.price > 0
+      ? { value: wtiState.price, change24h: wtiState.change24h } : null;
+    // Only return if at least one observation is available
+    if (!dxy && !us10y && !wti) return null;
+    return { dxy, us10y, wti };
+  }, [livePrices]);
+
   const regimeInput = useMemo(() => buildFundamentalInputFromPositionIntel(
     { instrument: intel.instrument, assetClass: intel.assetClass, shortTermContext: intel.shortTermContext, mediumTermContext: intel.mediumTermContext, evidence: intel.evidence },
-    { newsItems, macroContext, crossAssetContext },
-  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, macroContext, crossAssetContext]);
+    { newsItems, newsRelevance: newsRelevance ?? undefined, macroContext, crossAssetContext, macroObservations },
+  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations]);
   const regime = useMemo(() => buildFundamentalRegime(regimeInput), [regimeInput]);
   const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
   const causalResult = useMemo(() => buildFundamentalCausalResult(regime), [regime]);
