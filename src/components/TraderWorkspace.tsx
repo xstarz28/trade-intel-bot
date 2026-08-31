@@ -619,7 +619,7 @@ export function TraderWorkspace({
 // FUNDAMENTAL CONTEXT PANEL
 // ═══════════════════════════════════════════════════════════════
 
-function FundamentalContextPanel({ intel, newsItems, livePrices }: { intel: PositionIntelligence; newsItems?: NewsItem[]; livePrices?: Map<string, LiveInstrumentState> }) {
+function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData }: { intel: PositionIntelligence; newsItems?: NewsItem[]; livePrices?: Map<string, LiveInstrumentState>; treasuryData?: import("../lib/data/treasury").TreasuryData }) {
   const assetClass: AssetClass = mapInstrumentToAssetClass(intel.instrument);
 
   // ─── MacroContext from VIX (existing producer, no duplicate fetch) ───
@@ -678,8 +678,8 @@ function FundamentalContextPanel({ intel, newsItems, livePrices }: { intel: Posi
 
   const regimeInput = useMemo(() => buildFundamentalInputFromPositionIntel(
     { instrument: intel.instrument, assetClass: intel.assetClass, shortTermContext: intel.shortTermContext, mediumTermContext: intel.mediumTermContext, evidence: intel.evidence },
-    { newsItems, newsRelevance: newsRelevance ?? undefined, macroContext, crossAssetContext, macroObservations },
-  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations]);
+    { newsItems, newsRelevance: newsRelevance ?? undefined, macroContext, crossAssetContext, macroObservations, treasuryContext: treasuryData ?? undefined },
+  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations, treasuryData]);
   const regime = useMemo(() => buildFundamentalRegime(regimeInput), [regimeInput]);
   const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
   const causalResult = useMemo(() => buildFundamentalCausalResult(regime), [regime]);
@@ -772,6 +772,13 @@ function FundamentalContextPanel({ intel, newsItems, livePrices }: { intel: Posi
           <div><span className="text-muted-foreground/50">Market Rates:</span> <span className="text-foreground">{regime.rateRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Policy Rate:</span> <span className="text-foreground">{regime.policyRateRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Real Yields:</span> <span className="text-foreground">{regime.realYieldRegime.replace(/_/g, " ")}</span></div>
+          {treasuryData?.available && treasuryData.latest.real?.real["10Y"] !== undefined && (
+            <div className="col-span-2">
+              <span className="text-muted-foreground/50">TIPS 10Y:</span> <span className="text-sky-300">{treasuryData.latest.real.real["10Y"].toFixed(2)}%</span>
+              <span className="text-[7px] text-muted-foreground/30 ml-1">[observed]</span>
+              <span className="text-[7px] text-muted-foreground/30 ml-1">{treasuryData.freshness}</span>
+            </div>
+          )}
           <div><span className="text-muted-foreground/50">USD:</span> <span className="text-foreground">{regime.currencyRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Liquidity:</span> <span className="text-foreground">{regime.liquidityRegime.replace(/_/g, " ")}</span></div>
         </div>
@@ -1051,10 +1058,11 @@ interface PositionDetailProps {
   intel: PositionIntelligence;
   newsItems?: NewsItem[];
   livePrices?: Map<string, LiveInstrumentState>;
+  treasuryData?: import("../lib/data/treasury").TreasuryData;
   onBack: () => void;
 }
 
-export function PositionDetail({ positionId, intel, newsItems, livePrices, onBack }: PositionDetailProps) {
+export function PositionDetail({ positionId, intel, newsItems, livePrices, treasuryData, onBack }: PositionDetailProps) {
   const info = getInstrumentInfo(intel.instrument);
 
   return (
@@ -1160,7 +1168,7 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, onBac
       )}
 
       {/* Fundamental Context */}
-      <FundamentalContextPanel intel={intel} newsItems={newsItems} livePrices={livePrices} />
+      <FundamentalContextPanel intel={intel} newsItems={newsItems} livePrices={livePrices} treasuryData={treasuryData} />
 
       {/* Decision Support */}
       <DecisionSupportPanel positionId={positionId} intel={intel} />

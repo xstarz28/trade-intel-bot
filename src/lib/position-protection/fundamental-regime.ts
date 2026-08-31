@@ -11,6 +11,7 @@ import type { PositionSide } from "./types";
 import type { MacroContext, CrossAssetContext, RiskRegime } from "./multi-dimensional-intelligence";
 import type { NewsItem, NewsRelevance, NewsCategory } from "./news-intelligence";
 import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
+import type { TreasuryData } from "../../lib/data/treasury";
 
 // ═══════════════════════════════════════════════════════════════
 // DOMAIN TYPES
@@ -265,6 +266,8 @@ export interface FundamentalRegimeInput {
   inflationObservation?: InflationObservation;
   /** Structured policy-rate observation (separate from US10Y market yield). */
   policyRateObservation?: PolicyRateObservation;
+  /** Treasury yield context (nominal + real/TIPS from home.treasury.gov). */
+  treasuryContext?: TreasuryData;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -348,6 +351,8 @@ options: {
   inflationObservation?: InflationObservation;
   /** Structured policy-rate observation (central bank rate). */
   policyRateObservation?: PolicyRateObservation;
+  /** Treasury yield context (nominal + real/TIPS from home.treasury.gov). */
+  treasuryContext?: TreasuryData;
 } = {},
 ): FundamentalRegimeInput {
   const input: FundamentalRegimeInput = {};
@@ -420,6 +425,9 @@ options: {
   }
   if (options.policyRateObservation) {
     input.policyRateObservation = options.policyRateObservation;
+  }
+  if (options.treasuryContext && options.treasuryContext.available) {
+    input.treasuryContext = options.treasuryContext;
   }
 
   // Extract context descriptions from intelligence where available
@@ -710,7 +718,7 @@ export function buildFundamentalRegime(
   const inflationExpectationSurprise = classifyInflationExpectationSurprise(input.inflationObservation);
   const rateRegime = classifyRateRegime(input.rateDescription, input.us10yYield, input.us10yChange);
   const policyRateRegime = classifyPolicyRateRegime(input.policyRateObservation);
-  const realYieldRegime = classifyRealYieldRegime(input.realYieldDescription, input.us10yChange, input.inflationDescription, input.inflationObservation);
+  const realYieldRegime = classifyRealYieldRegime(input.realYieldDescription, input.us10yChange, input.inflationDescription, input.inflationObservation, input.treasuryContext);
   const currencyRegime = classifyCurrencyRegime(input.dxyTrend, input.usdIndex);
   const liquidityRegime = classifyLiquidityRegime(input.liquidityDescription);
   const growthRegime = classifyGrowthRegime(input.growthDescription);
@@ -859,13 +867,22 @@ function classifyRealYieldRegime(
   us10yChange: number | null | undefined,
   inflationDesc: string | null | undefined,
   inflationObs?: InflationObservation,
+  treasuryData?: TreasuryData,
 ): RealYieldRegime {
-  // Explicit text-based classification (backward compatible)
-  if (desc) {
-    const lower = desc.toLowerCase();
-    if (lower.includes("rising") || lower.includes("increasing")) return "REAL_YIELD_RISING";
-    if (lower.includes("falling") || lower.includes("declining") || lower.includes("dropping")) return "REAL_YIELD_FALLING";
-    if (lower.includes("stable") || lower.includes("flat")) return "REAL_YIELD_STABLE";
+  // OBSERVED: Actual TIPS real-yield data from Treasury feed (takes precedence)
+  if (treasuryData && treasuryData.available && treasuryData.latest.real) {
+    const real10Y = treasuryData.latest.real.real["10Y"];
+    const prevReal = treasuryData.previous?.real?.real["10Y"];
+    if (real10Y !== undefined) {
+      if (prevReal !== undefined) {
+        const realDiff = real10Y - prevReal;
+        if (realDiff > 0.03) return "REAL_YIELD_RISING";
+        if (realDiff < -0.03) return "REAL_YIELD_FALLING";
+        return "REAL_YIELD_STABLE";
+      }
+      // Has real yield but no previous — can only confirm availability
+      return "REAL_YIELD_STABLE";
+    }
   }
   // DERIVED with structured inflation data (more precise)
   // Uses absolute pp change since CPI is a percentage
@@ -877,6 +894,13 @@ function classifyRealYieldRegime(
     if (us10yChange < -3 && inflationDirection > 0.2) return "REAL_YIELD_FALLING";
     // Both moving same direction → ambiguous
     return "UNAVAILABLE";
+  }
+  // Text-based classification (backward compatible fallback)
+  if (desc) {
+    const lower = desc.toLowerCase();
+    if (lower.includes("rising") || lower.includes("increasing")) return "REAL_YIELD_RISING";
+    if (lower.includes("falling") || lower.includes("declining") || lower.includes("dropping")) return "REAL_YIELD_FALLING";
+    if (lower.includes("stable") || lower.includes("flat")) return "REAL_YIELD_STABLE";
   }
   // DERIVED: nominal yield change + inflation text → real-yield pressure
   if (us10yChange !== null && us10yChange !== undefined && inflationDesc) {
