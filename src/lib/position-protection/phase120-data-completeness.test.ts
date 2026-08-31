@@ -18,7 +18,6 @@ import {
 
 function makeBase(overrides: Partial<FundamentalRegimeInput> = {}): FundamentalRegimeInput {
   return {
-    instrument: "XAUUSD",
     ...overrides,
   };
 }
