@@ -69,7 +69,7 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     pnlPct: 8.33,
     thesisHealth: "HEALTHY",
     thesisHealthScore: 80,
-    severity: "LOW",
+    severity: "WATCH",
     actionRecommendation: "MONITOR",
     evidence: [
       makeEvidence({ direction: "supporting", description: "H1 trend bullish" }),
@@ -78,7 +78,7 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     ],
     independentSignalCount: 3,
     confidence: "STRONG_EVIDENCE",
-    pullbackClassification: "NONE",
+    pullbackClassification: "NORMAL_PULLBACK",
     invalidationConditions: [
       makeInvalidation({ description: "Close below 58000" }),
     ],
