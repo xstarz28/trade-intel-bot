@@ -209,6 +209,136 @@ export interface FundamentalRegimeInput {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// DETERMINISTIC INSTRUMENT → ASSET CLASS MAPPING
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Deterministic instrument-to-asset-class mapping.
+ * Conservative — unknown instruments return "COMMODITIES" as fallback
+ * since that is the broadest safe classification.
+ * Pure function.
+ */
+export function mapInstrumentToAssetClass(instrument: string): AssetClass {
+  const sym = instrument.toUpperCase().trim().replace(/[^A-Z0-9]/g, "");
+
+  // GOLD
+  if (sym === "XAUUSD" || sym === "XAU" || sym.includes("GOLD")) return "GOLD";
+
+  // SILVER
+  if (sym === "XAGUSD" || sym === "XAG" || sym.includes("SILVER")) return "SILVER";
+
+  // OIL — check before generic commodities
+  if (sym === "USOIL" || sym === "WTI" || sym === "CL" || sym.includes("CRUDE")) return "OIL";
+  if (sym === "UKOIL" || sym === "BRENT" || sym.includes("BRENT")) return "OIL";
+
+  // CRYPTO
+  if (sym === "BTCUSD" || sym === "BTC" || sym === "XBTUSD" || sym === "XBT") return "CRYPTO";
+  if (sym === "ETHUSD" || sym === "ETH" || sym === "ETHUSDT") return "CRYPTO";
+  if (sym.includes("USD") && (sym.startsWith("BTC") || sym.startsWith("ETH") ||
+      sym.startsWith("SOL") || sym.startsWith("DOGE") || sym.startsWith("XRP") ||
+      sym.startsWith("ADA") || sym.startsWith("AVAX") || sym.startsWith("DOT"))) return "CRYPTO";
+
+  // FOREX — major pairs
+  if (/^(EUR|GBP|JPY|CHF|AUD|NZD|CAD|USD)[A-Z]{3}$/.test(sym)) return "FOREX";
+  if (/^[A-Z]{6}$/.test(sym) && (sym.includes("USD") || sym.includes("EUR") || sym.includes("GBP") || sym.includes("JPY"))) return "FOREX";
+
+  // EQUITIES — common equity tickers
+  if (/^[A-Z]{1,5}$/.test(sym) && !sym.includes("USD") && !sym.includes("EUR")) {
+    // Could be an equity ticker — check common patterns
+    // Equities are typically 1-5 letter US tickers
+    return "EQUITIES";
+  }
+
+  // Fallback
+  return "COMMODITIES";
+}
+
+// ═══════════════════════════════════════════════════════════════
+// BUILD FUNDAMENTAL INPUT FROM POSITION INTELLIGENCE
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Build FundamentalRegimeInput from available PositionIntelligence data.
+ * Only passes through data that actually exists — never fabricates.
+ * Pure function.
+ */
+export function buildFundamentalInputFromPositionIntel(intel: {
+  instrument: string;
+  assetClass: string;
+  shortTermContext?: string;
+  mediumTermContext?: string;
+  volatilityContext?: string;
+  evidence?: Array<{ category: string; description: string; direction: string }>;
+},
+options: {
+  newsItems?: NewsItem[];
+  newsRelevance?: NewsRelevance[];
+  macroContext?: MacroContext | null;
+  crossAssetContext?: CrossAssetContext | null;
+} = {},
+): FundamentalRegimeInput {
+  const input: FundamentalRegimeInput = {};
+
+  // Pass through macro context if available
+  if (options.macroContext) {
+    input.macroContext = options.macroContext;
+    input.vixLevel = options.macroContext.vixLevel;
+    // VIX narrative may contain macro context clues
+    if (options.macroContext.narrative) {
+      const narr = options.macroContext.narrative.toLowerCase();
+      if (narr.includes("liquidity") || narr.includes("monetary conditions")) {
+        input.liquidityDescription = options.macroContext.narrative;
+      }
+      if (narr.includes("geopolit") || narr.includes("conflict") || narr.includes("sanction")) {
+        input.geopoliticalDescription = options.macroContext.narrative;
+      }
+    }
+  }
+
+  // Pass through cross-asset context if available
+  if (options.crossAssetContext) {
+    input.crossAssetContext = options.crossAssetContext;
+  }
+
+  // Pass through news items if available
+  if (options.newsItems && options.newsItems.length > 0) {
+    input.newsItems = options.newsItems;
+  }
+  if (options.newsRelevance && options.newsRelevance.length > 0) {
+    input.newsRelevance = options.newsRelevance;
+  }
+
+  // Extract context descriptions from intelligence where available
+  // These are OBSERVED — derived from the existing intelligence engine
+  if (intel.shortTermContext) {
+    // Short-term context may contain trend/volatility info
+    const ctx = intel.shortTermContext.toLowerCase();
+    if (ctx.includes("inflation") || ctx.includes("price pressure") || ctx.includes("cost")) {
+      input.inflationDescription = intel.shortTermContext;
+    }
+    if (ctx.includes("rate") || ctx.includes("yield") || ctx.includes("monetary")) {
+      input.rateDescription = intel.shortTermContext;
+    }
+  }
+
+  if (intel.mediumTermContext) {
+    const ctx = intel.mediumTermContext.toLowerCase();
+    if (ctx.includes("growth") || ctx.includes("expansion") || ctx.includes("contraction") || ctx.includes("recession")) {
+      input.growthDescription = intel.mediumTermContext;
+    }
+    if (ctx.includes("liquidity") || ctx.includes("monetary conditions")) {
+      input.liquidityDescription = intel.mediumTermContext;
+    }
+    if (ctx.includes("geopolit") || ctx.includes("conflict") || ctx.includes("sanction")) {
+      input.geopoliticalDescription = intel.mediumTermContext;
+    }
+  }
+
+  // If no descriptions were extracted, leave them undefined (UNAVAILABLE)
+  return input;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // BUILD FUNDAMENTAL REGIME
 // ═══════════════════════════════════════════════════════════════
 
