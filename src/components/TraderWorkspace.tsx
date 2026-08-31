@@ -619,7 +619,7 @@ export function TraderWorkspace({
 // FUNDAMENTAL CONTEXT PANEL
 // ═══════════════════════════════════════════════════════════════
 
-function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData }: { intel: PositionIntelligence; newsItems?: NewsItem[]; livePrices?: Map<string, LiveInstrumentState>; treasuryData?: import("../lib/data/treasury").TreasuryData }) {
+function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, calendarData }: { intel: PositionIntelligence; newsItems?: NewsItem[]; livePrices?: Map<string, LiveInstrumentState>; treasuryData?: import("../lib/data/treasury").TreasuryData; calendarData?: import("../lib/data/calendar-types").EconomicCalendarData }) {
   const assetClass: AssetClass = mapInstrumentToAssetClass(intel.instrument);
 
   // ─── MacroContext from VIX (existing producer, no duplicate fetch) ───
@@ -659,6 +659,114 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData }:
     return newsItems.map((item) => classifyNewsRelevance(item, intel.instrument, intel.side));
   }, [newsItems, intel.instrument, intel.side]);
 
+  // ─── Parse TickAtlas calendar events into fundamental data ───
+  const { fundamentalDataPoints, economicEvents, parsedInflationObs, parsedPolicyRateObs } = useMemo(() => {
+    if (!calendarData || !calendarData.events || calendarData.events.length === 0) {
+      return { fundamentalDataPoints: undefined, economicEvents: undefined, parsedInflationObs: undefined, parsedPolicyRateObs: undefined };
+    }
+    const fps: import("@/lib/position-protection/fundamental-intelligence").FundamentalDataPoint[] = [];
+    const evts: import("@/lib/position-protection/fundamental-intelligence").EconomicEvent[] = [];
+    let inflObs: import("@/lib/position-protection/fundamental-regime").InflationObservation | undefined;
+    let policyObs: import("@/lib/position-protection/fundamental-regime").PolicyRateObservation | undefined;
+
+    for (const ev of calendarData.events) {
+      const name = (ev.event || "").toLowerCase();
+      const cat = (ev.category || "").toLowerCase();
+      const isCPI = name.includes("cpi") || cat.includes("inflation");
+      const isFOMC = name.includes("fomc") || name.includes("fed funds") || name.includes("rate decision") || cat.includes("interest rate");
+      const isGDP = name.includes("gdp") || cat.includes("gdp");
+      const isEmployment = name.includes("nfp") || name.includes("non-farm") || name.includes("employment") || name.includes("unemployment") || cat.includes("employment");
+      const isPMI = name.includes("pmi") || name.includes("ism");
+
+      // Map to FundamentalDataPoint category
+      let category: import("@/lib/position-protection/fundamental-intelligence").FundamentalCategory = "OTHER";
+      if (isCPI) category = "INFLATION";
+      else if (isFOMC) category = "INTEREST_RATE";
+      else if (isGDP) category = "GDP";
+      else if (isEmployment) category = "EMPLOYMENT";
+      else if (isPMI) category = "INDUSTRIAL_PRODUCTION";
+
+      // Create FundamentalDataPoint if has actual value
+      if (ev.actual !== undefined && ev.actual !== null) {
+        const actualNum = typeof ev.actual === "number" ? ev.actual : parseFloat(String(ev.actual));
+        const prevNum = ev.previous !== undefined && ev.previous !== null ? (typeof ev.previous === "number" ? ev.previous : parseFloat(String(ev.previous))) : null;
+        const fcstNum = ev.forecast !== undefined && ev.forecast !== null ? (typeof ev.forecast === "number" ? ev.forecast : parseFloat(String(ev.forecast))) : null;
+        if (!isNaN(actualNum)) {
+          fps.push({
+            metric: ev.event,
+            value: actualNum,
+            previous: prevNum,
+            expected: fcstNum,
+            timestamp: ev.datetime,
+            source: ev.source,
+            freshness: "FRESH",
+            category,
+            relatedInstruments: ["*"],
+            sourceMode: "LIVE",
+          });
+        }
+      }
+
+      // Create EconomicEvent
+      evts.push({
+        name: ev.event,
+        timestamp: ev.datetime,
+        currency: ev.currency,
+        importance: ev.importance === 3 ? "CRITICAL" : ev.importance === 2 ? "HIGH" : "MODERATE",
+        relatedInstruments: ["*"],
+        previous: ev.previous !== undefined ? (typeof ev.previous === "number" ? ev.previous : parseFloat(String(ev.previous)) || null) : null,
+        expected: ev.forecast !== undefined ? (typeof ev.forecast === "number" ? ev.forecast : parseFloat(String(ev.forecast)) || null) : null,
+        source: ev.source,
+        sourceMode: "LIVE",
+      });
+
+      // Extract CPI observation
+      if (isCPI && !inflObs && ev.actual !== undefined) {
+        const actualNum = typeof ev.actual === "number" ? ev.actual : parseFloat(String(ev.actual));
+        const prevNum = ev.previous !== undefined && ev.previous !== null ? (typeof ev.previous === "number" ? ev.previous : parseFloat(String(ev.previous))) : null;
+        const fcstNum = ev.forecast !== undefined && ev.forecast !== null ? (typeof ev.forecast === "number" ? ev.forecast : parseFloat(String(ev.forecast))) : null;
+        if (!isNaN(actualNum)) {
+          inflObs = {
+            actual: actualNum,
+            previous: prevNum,
+            forecast: fcstNum,
+            metric: ev.event,
+            availability: "AVAILABLE",
+          };
+        }
+      }
+
+      // Extract FOMC/policy rate observation
+      if (isFOMC && !policyObs) {
+        const actualNum = ev.actual !== undefined && ev.actual !== null ? (typeof ev.actual === "number" ? ev.actual : parseFloat(String(ev.actual))) : null;
+        const prevNum = ev.previous !== undefined && ev.previous !== null ? (typeof ev.previous === "number" ? ev.previous : parseFloat(String(ev.previous))) : null;
+        const fcstNum = ev.forecast !== undefined && ev.forecast !== null ? (typeof ev.forecast === "number" ? ev.forecast : parseFloat(String(ev.forecast))) : null;
+        if (actualNum !== null && !isNaN(actualNum)) {
+          let decision: import("@/lib/position-protection/fundamental-regime").PolicyRateObservation["decision"] = null;
+          if (prevNum !== null && !isNaN(prevNum)) {
+            if (actualNum > prevNum + 0.01) decision = "RATE_HIKE";
+            else if (actualNum < prevNum - 0.01) decision = "RATE_CUT";
+            else decision = "HOLD";
+          }
+          policyObs = {
+            current: actualNum,
+            previous: prevNum,
+            forecast: fcstNum,
+            decision,
+            availability: "AVAILABLE",
+          };
+        }
+      }
+    }
+
+    return {
+      fundamentalDataPoints: fps.length > 0 ? fps : undefined,
+      economicEvents: evts.length > 0 ? evts : undefined,
+      parsedInflationObs: inflObs,
+      parsedPolicyRateObs: policyObs,
+    };
+  }, [calendarData]);
+
   // ─── Numeric macro observations from livePrices (no duplicate fetch) ───
   const macroObservations = useMemo(() => {
     if (!livePrices) return null;
@@ -678,8 +786,8 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData }:
 
   const regimeInput = useMemo(() => buildFundamentalInputFromPositionIntel(
     { instrument: intel.instrument, assetClass: intel.assetClass, shortTermContext: intel.shortTermContext, mediumTermContext: intel.mediumTermContext, evidence: intel.evidence },
-    { newsItems, newsRelevance: newsRelevance ?? undefined, macroContext, crossAssetContext, macroObservations, treasuryContext: treasuryData ?? undefined },
-  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations, treasuryData]);
+    { newsItems, newsRelevance: newsRelevance ?? undefined, macroContext, crossAssetContext, macroObservations, treasuryContext: treasuryData ?? undefined, fundamentalDataPoints, economicEvents, inflationObservation: parsedInflationObs, policyRateObservation: parsedPolicyRateObs },
+  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations, treasuryData, fundamentalDataPoints, economicEvents, parsedInflationObs, parsedPolicyRateObs]);
   const regime = useMemo(() => buildFundamentalRegime(regimeInput), [regimeInput]);
   const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
   const causalResult = useMemo(() => buildFundamentalCausalResult(regime), [regime]);
@@ -790,6 +898,11 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData }:
           <div><span className="text-muted-foreground/50">Growth:</span> <span className="text-foreground">{regime.growthRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Energy:</span> <span className="text-foreground">{regime.energyRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Geopolitical:</span> <span className="text-foreground">{regime.geopoliticalRegime.replace(/_/g, " ")}</span></div>
+          {regime.economicEventCount > 0 && (
+            <div className="col-span-3">
+              <span className="text-muted-foreground/50">Econ Events:</span> <span className="text-foreground">{regime.economicEventCount} events from calendar</span>
+            </div>
+          )}
         </div>
       </WorkspaceSection>
 
@@ -1059,10 +1172,11 @@ interface PositionDetailProps {
   newsItems?: NewsItem[];
   livePrices?: Map<string, LiveInstrumentState>;
   treasuryData?: import("../lib/data/treasury").TreasuryData;
+  calendarData?: import("../lib/data/calendar-types").EconomicCalendarData;
   onBack: () => void;
 }
 
-export function PositionDetail({ positionId, intel, newsItems, livePrices, treasuryData, onBack }: PositionDetailProps) {
+export function PositionDetail({ positionId, intel, newsItems, livePrices, treasuryData, calendarData, onBack }: PositionDetailProps) {
   const info = getInstrumentInfo(intel.instrument);
 
   return (
@@ -1168,7 +1282,7 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
       )}
 
       {/* Fundamental Context */}
-      <FundamentalContextPanel intel={intel} newsItems={newsItems} livePrices={livePrices} treasuryData={treasuryData} />
+      <FundamentalContextPanel intel={intel} newsItems={newsItems} livePrices={livePrices} treasuryData={treasuryData} calendarData={calendarData} />
 
       {/* Decision Support */}
       <DecisionSupportPanel positionId={positionId} intel={intel} />
