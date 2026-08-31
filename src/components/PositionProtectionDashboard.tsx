@@ -58,6 +58,7 @@ import { PortfolioIntelligenceView } from "./PortfolioIntelligence";
 import { CustomAlertRulesPanel } from "./CustomAlertRulesPanel";
 import { NotificationCenter } from "./NotificationCenter";
 import { RuntimeHealthDashboard } from "./RuntimeHealthDashboard";
+import { TraderWorkspace, PositionDetail } from "./TraderWorkspace";
 import { type RuntimeHealthInput, type RuntimeComponent } from "@/lib/position-protection/runtime-health";
 import {
   createHealthEventBuffer,
@@ -357,7 +358,8 @@ export function PositionProtectionDashboard() {
 
   // ─── Price Observations (per instrument) ─────────────────
   const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
-  const [activeTab, setActiveTab] = useState<"positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications" | "system">("positions");
+  const [activeTab, setActiveTab] = useState<"workspace" | "positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications" | "system">("workspace");
+  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [timelines, setTimelines] = useState<Map<string, HistoricalTimeline>>(new Map());
   const [showForm, setShowForm] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -610,6 +612,7 @@ export function PositionProtectionDashboard() {
   const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
   const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
   const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
+  const healthSnapshot = useMemo(() => buildSnapshotFromBuffer(healthBufferRef.current, Date.now()), [intelligenceMap]);
 
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
   useEffect(() => {
@@ -1103,11 +1106,21 @@ export function PositionProtectionDashboard() {
         <div className="flex items-center gap-1 p-0.5 bg-muted/30 rounded-lg">
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
+              activeTab === "workspace"
+                ? "bg-background text-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+            onClick={() => { setActiveTab("workspace"); setSelectedPositionId(null); }}
+          >
+            Overview
+          </button>
+          <button
+            className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
               activeTab === "positions"
                 ? "bg-background text-foreground font-semibold"
                 : "text-muted-foreground hover:text-foreground"
             }`}
-            onClick={() => setActiveTab("positions")}
+            onClick={() => { setActiveTab("positions"); setSelectedPositionId(null); }}
           >
             Positions ({positions.length})
           </button>
@@ -1182,6 +1195,30 @@ export function PositionProtectionDashboard() {
             System
           </button>
         </div>
+      )}
+
+      {/* Workspace Tab */}
+      {activeTab === "workspace" && !selectedPositionId && (
+        <TraderWorkspace
+          intelligenceMap={intelligenceMap}
+          portfolioIntel={portfolioIntel ?? null}
+          healthSnapshot={healthSnapshot}
+          alertCount={alertRules?.length ?? 0}
+          unreadCount={0}
+          onSelectPosition={(pid) => setSelectedPositionId(pid)}
+          onSelectPortfolio={() => setActiveTab("portfolio")}
+          onSelectAlerts={() => setActiveTab("alerts")}
+          onSelectSystem={() => setActiveTab("system")}
+        />
+      )}
+
+      {/* Position Detail View */}
+      {activeTab === "workspace" && selectedPositionId && intelligenceMap.has(selectedPositionId) && (
+        <PositionDetail
+          positionId={selectedPositionId}
+          intel={intelligenceMap.get(selectedPositionId)!}
+          onBack={() => setSelectedPositionId(null)}
+        />
       )}
 
       {/* Positions Tab */}
