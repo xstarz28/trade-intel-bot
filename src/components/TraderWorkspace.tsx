@@ -1083,7 +1083,7 @@ export function PositionDetail({ positionId, intel, newsItems, onBack }: Positio
       )}
 
       {/* Fundamental Context */}
-      <FundamentalContextPanel intel={intel} />
+      <FundamentalContextPanel intel={intel} newsItems={newsItems} />
 
       {/* Decision Support */}
       <DecisionSupportPanel positionId={positionId} intel={intel} />
