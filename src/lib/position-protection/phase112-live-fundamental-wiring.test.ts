@@ -10,6 +10,7 @@ import {
   mapInstrumentToAssetClass,
   buildFundamentalInputFromPositionIntel,
   buildFundamentalRegime,
+  buildAssetFundamentalContext,
   type FundamentalRegimeInput,
   type AssetClass,
 } from "./fundamental-regime";
@@ -666,5 +667,157 @@ describe("Safety invariants", () => {    const fullInput: FundamentalRegimeInput
     const origVix = input.vixLevel;
     buildFundamentalRegime(input);
     expect(input.vixLevel).toBe(origVix);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// 11. LIVE WIRING — NEWS REACHES REGIME
+// ═══════════════════════════════════════════════════════════════
+
+describe("Live wiring — news reaches regime", () => {
+  const now = Date.now();
+
+  const mockNewsItems: NewsItem[] = [
+    {
+      id: "n1",
+      headline: "Fed signals rate cuts",
+      timestamp: now,
+      source: "Reuters",
+      relatedInstruments: ["BTCUSD"],
+      assetClass: "macro" as const,
+      category: "MONETARY_POLICY" as any,
+      sentiment: "BULLISH" as any,
+      impactStrength: "HIGH" as any,
+      freshness: "FRESH" as any,
+      sourceMode: "LIVE" as any,
+    },
+    {
+      id: "n2",
+      headline: "Geopolitical tensions escalate in Middle East",
+      timestamp: now,
+      source: "Bloomberg",
+      relatedInstruments: ["XAUUSD"],
+      assetClass: "macro" as const,
+      category: "GEOPOLITICAL" as any,
+      sentiment: "BULLISH" as any,
+      impactStrength: "MODERATE" as any,
+      freshness: "FRESH" as any,
+      sourceMode: "LIVE" as any,
+    },
+  ];
+
+  it("news items make NEWS_EVENTS dimension AVAILABLE", () => {
+    const input = buildFundamentalInputFromPositionIntel(
+      { instrument: "BTCUSD", assetClass: "crypto", shortTermContext: "Rate expectations shifting" },
+      { newsItems: mockNewsItems },
+    );
+    const regime = buildFundamentalRegime(input);
+    const newsDim = regime.dimensions.find((d) => d.name === "NEWS_EVENTS");
+    expect(newsDim?.status).toBe("AVAILABLE");
+  });
+
+  it("no news items leaves NEWS_EVENTS dimension UNAVAILABLE", () => {
+    const input = buildFundamentalInputFromPositionIntel(
+      { instrument: "BTCUSD", assetClass: "crypto" },
+    );
+    const regime = buildFundamentalRegime(input);
+    const newsDim = regime.dimensions.find((d) => d.name === "NEWS_EVENTS");
+    expect(newsDim?.status).toBe("UNAVAILABLE");
+  });
+
+  it("news items flow through full pipeline to causal transmissions", () => {
+    const input = buildFundamentalInputFromPositionIntel(
+      {
+        instrument: "XAUUSD",
+        assetClass: "commodity",
+        shortTermContext: "Inflation rising due to supply constraints",
+        mediumTermContext: "Geopolitical tensions escalating",
+      },
+      { newsItems: mockNewsItems },
+    );
+    const regime = buildFundamentalRegime(input);
+    const causalResult = buildFundamentalCausalResult(regime);
+
+    // News should contribute to at least one available dimension
+    expect(regime.availableDimensionCount).toBeGreaterThanOrEqual(1);
+
+    // Causal result should exist and not throw
+    expect(causalResult.transmissions).toBeDefined();
+    expect(causalResult.macroRegime).toBeDefined();
+    expect(causalResult.dataQuality).toBeDefined();
+  });
+
+  it("news items enrich asset fundamental context for gold with geopolitical escalation", () => {
+    const input = buildFundamentalInputFromPositionIntel(
+      {
+        instrument: "XAUUSD",
+        assetClass: "commodity",
+        mediumTermContext: "Geopolitical conflict escalating",
+      },
+      { newsItems: mockNewsItems },
+    );
+    const regime = buildFundamentalRegime(input);
+
+    // With geopolitical + inflation data, gold should get supporting evidence
+    const assetCtx = buildAssetFundamentalContext("GOLD", regime);
+    expect(assetCtx.asset).toBe("GOLD");
+    expect(assetCtx.supportingEvidence.length + assetCtx.conflictingEvidence.length + assetCtx.neutralEvidence.length)
+      .toBeGreaterThan(0);
+  });
+
+  it("news + macro narrative both feed into regime dimensions", () => {
+    const macroCtx = {
+      vixLevel: 35,
+      riskRegime: "RISK_OFF" as const,
+      vixDescription: "VIX elevated",
+      positionImpact: "CONFLICTING" as const,
+      narrative: "Geopolitical tensions driving risk-off",
+      availability: "AVAILABLE" as const,
+    };
+    const input = buildFundamentalInputFromPositionIntel(
+      {
+        instrument: "BTCUSD",
+        assetClass: "crypto",
+        shortTermContext: "Inflation expectations rising",
+        mediumTermContext: "Growth slowing",
+      },
+      { newsItems: mockNewsItems, macroContext: macroCtx },
+    );
+    const regime = buildFundamentalRegime(input);
+
+    // Should have multiple available dimensions from macro + news + context
+    expect(regime.availableDimensionCount).toBeGreaterThanOrEqual(3);
+    expect(regime.dataQuality).not.toBe("UNAVAILABLE");
+  });
+
+  it("buildFundamentalInputFromPositionIntel does not fabricate news when none provided", () => {
+    const input = buildFundamentalInputFromPositionIntel(
+      { instrument: "BTCUSD", assetClass: "crypto" },
+    );
+    expect(input.newsItems).toBeUndefined();
+    expect(input.newsRelevance).toBeUndefined();
+  });
+
+  it("pipeline is deterministic with news items", () => {
+    const input = buildFundamentalInputFromPositionIntel(
+      { instrument: "BTCUSD", assetClass: "crypto", shortTermContext: "Inflation rising" },
+      { newsItems: mockNewsItems },
+    );
+    const runs = Array.from({ length: 5 }, () => {
+      const regime = buildFundamentalRegime(input);
+      const causal = buildFundamentalCausalResult(regime);
+      return {
+        overallRegime: regime.overallRegime,
+        availableDimensions: regime.availableDimensionCount,
+        transmissionCount: causal.transmissions.length,
+        macroRegime: causal.macroRegime,
+      };
+    });
+    for (let i = 1; i < runs.length; i++) {
+      expect(runs[i].overallRegime).toBe(runs[0].overallRegime);
+      expect(runs[i].availableDimensions).toBe(runs[0].availableDimensions);
+      expect(runs[i].transmissionCount).toBe(runs[0].transmissionCount);
+      expect(runs[i].macroRegime).toBe(runs[0].macroRegime);
+    }
   });
 });
