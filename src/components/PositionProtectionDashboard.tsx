@@ -445,6 +445,24 @@ export function PositionProtectionDashboard() {
     return () => { cancelled = true; };
   }, [fetchTreasury]);
 
+  // Fetch economic calendar (TickAtlas) — shared across positions
+  const [calendarData, setCalendarData] = useState<import("../lib/data/calendar-types").EconomicCalendarData | null>(null);
+  const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
+  useEffect(() => {
+    if (userPositions.length === 0) return;
+    let cancelled = false;
+    // Use first position's instrument/type for calendar fetch (shared macro data)
+    const firstPos = userPositions[0];
+    fetchCalendar({ instrument: firstPos.instrument, instrumentType: firstPos.assetClass })
+      .then((result) => {
+        if (!cancelled && result.success) {
+          setCalendarData(result.data ?? null);
+        }
+      })
+      .catch(() => { /* provider failure → calendarData stays null */ });
+    return () => { cancelled = true; };
+  }, [fetchCalendar, userPositions.length > 0 ? userPositions[0]?.instrument : null, userPositions.length > 0 ? userPositions[0]?.assetClass : null]);
+
   // Fetch news for user's instruments (rate-limit safe: one at a time)
   useEffect(() => {
     if (userPositions.length === 0) return;
@@ -1240,6 +1258,7 @@ export function PositionProtectionDashboard() {
           newsItems={feedNews.get(intelligenceMap.get(selectedPositionId)!.instrument)}
           livePrices={livePrices}
           treasuryData={treasuryData ?? undefined}
+          calendarData={calendarData ?? undefined}
           onBack={() => setSelectedPositionId(null)}
         />
       )}
