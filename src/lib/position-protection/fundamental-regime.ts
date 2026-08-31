@@ -69,6 +69,70 @@ export interface PolicyRateObservation {
   availability: DimensionAvailability;
 }
 
+/**
+ * Structured growth observation from economic calendar events.
+ * Uses GDP, PMI, ISM, retail sales, and other growth indicators.
+ */
+export interface GrowthObservation {
+  /** GDP actual value (if available). */
+  gdpActual?: number | null;
+  /** GDP previous value. */
+  gdpPrevious?: number | null;
+  /** GDP forecast. */
+  gdpForecast?: number | null;
+  /** PMI actual value (if available). */
+  pmiActual?: number | null;
+  /** PMI previous value. */
+  pmiPrevious?: number | null;
+  /** ISM actual value (if available). */
+  ismActual?: number | null;
+  /** ISM previous value. */
+  ismPrevious?: number | null;
+  /** Retail sales actual (if available). */
+  retailSalesActual?: number | null;
+  /** Retail sales previous. */
+  retailSalesPrevious?: number | null;
+  /** Number of growth indicators available. */
+  dataPointCount: number;
+  /** Data availability. */
+  availability: DimensionAvailability;
+}
+
+/**
+ * Structured employment observation from economic calendar events.
+ * Uses NFP, unemployment rate, and other labor indicators.
+ */
+export interface EmploymentObservation {
+  /** NFP/Non-Farm Payrolls actual (in thousands). */
+  nfpActual?: number | null;
+  /** NFP previous. */
+  nfpPrevious?: number | null;
+  /** NFP forecast. */
+  nfpForecast?: number | null;
+  /** Unemployment rate actual (%). */
+  unemploymentActual?: number | null;
+  /** Unemployment previous. */
+  unemploymentPrevious?: number | null;
+  /** Unemployment forecast. */
+  unemploymentForecast?: number | null;
+  /** Data availability. */
+  availability: DimensionAvailability;
+}
+
+/**
+ * Structured consumer confidence observation.
+ */
+export interface ConsumerConfidenceObservation {
+  /** Consumer confidence actual. */
+  actual?: number | null;
+  /** Consumer confidence previous. */
+  previous?: number | null;
+  /** Consumer confidence forecast. */
+  forecast?: number | null;
+  /** Data availability. */
+  availability: DimensionAvailability;
+}
+
 export type RateRegime =
   | "EASING"
   | "NEUTRAL"
@@ -159,6 +223,10 @@ export interface FundamentalRegime {
   liquidityRegime: LiquidityRegime;
   /** Growth regime. */
   growthRegime: GrowthRegime;
+  /** Employment regime (from structured economic data). */
+  employmentRegime: "STRONG" | "STABLE" | "WEAKENING" | "STRESSED" | "UNAVAILABLE";
+  /** Consumer confidence regime (from structured economic data). */
+  consumerConfidenceRegime: "STRONG" | "STABLE" | "WEAKENING" | "UNAVAILABLE";
   /** Energy regime. */
   energyRegime: EnergyRegime;
   /** Geopolitical regime. */
@@ -268,6 +336,12 @@ export interface FundamentalRegimeInput {
   policyRateObservation?: PolicyRateObservation;
   /** Treasury yield context (nominal + real/TIPS from home.treasury.gov). */
   treasuryContext?: TreasuryData;
+  /** Structured growth observation from economic events. */
+  growthObservation?: GrowthObservation;
+  /** Structured employment observation from economic events. */
+  employmentObservation?: EmploymentObservation;
+  /** Structured consumer confidence observation. */
+  consumerConfidenceObservation?: ConsumerConfidenceObservation;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -353,6 +427,12 @@ options: {
   policyRateObservation?: PolicyRateObservation;
   /** Treasury yield context (nominal + real/TIPS from home.treasury.gov). */
   treasuryContext?: TreasuryData;
+  /** Structured growth observation from economic events. */
+  growthObservation?: GrowthObservation;
+  /** Structured employment observation from economic events. */
+  employmentObservation?: EmploymentObservation;
+  /** Structured consumer confidence observation. */
+  consumerConfidenceObservation?: ConsumerConfidenceObservation;
 } = {},
 ): FundamentalRegimeInput {
   const input: FundamentalRegimeInput = {};
@@ -429,6 +509,10 @@ options: {
   if (options.treasuryContext && options.treasuryContext.available) {
     input.treasuryContext = options.treasuryContext;
   }
+  // Pass through structured growth/employment/consumer observations
+  if (options.growthObservation) input.growthObservation = options.growthObservation;
+  if (options.employmentObservation) input.employmentObservation = options.employmentObservation;
+  if (options.consumerConfidenceObservation) input.consumerConfidenceObservation = options.consumerConfidenceObservation;
 
   // Extract context descriptions from intelligence where available
   // These are OBSERVED — derived from the existing intelligence engine
@@ -721,7 +805,9 @@ export function buildFundamentalRegime(
   const realYieldRegime = classifyRealYieldRegime(input.realYieldDescription, input.us10yChange, input.inflationDescription, input.inflationObservation, input.treasuryContext);
   const currencyRegime = classifyCurrencyRegime(input.dxyTrend, input.usdIndex);
   const liquidityRegime = classifyLiquidityRegime(input.liquidityDescription);
-  const growthRegime = classifyGrowthRegime(input.growthDescription);
+  const growthRegime = classifyGrowthRegime(input.growthDescription, input.growthObservation);
+  const employmentRegime = classifyEmploymentRegime(input.employmentObservation);
+  const consumerConfidenceRegime = classifyConsumerConfidence(input.consumerConfidenceObservation);
   const energyRegime = classifyEnergyRegime(input.oilChange, input.oilPrice);
   const geopoliticalRegime = classifyGeopoliticalRegime(input.geopoliticalDescription);
 
@@ -760,6 +846,8 @@ export function buildFundamentalRegime(
     currencyRegime,
     liquidityRegime,
     growthRegime,
+    employmentRegime,
+    consumerConfidenceRegime,
     energyRegime,
     geopoliticalRegime,
     structuredDataPointCount,
@@ -942,13 +1030,92 @@ function classifyLiquidityRegime(desc: string | null | undefined): LiquidityRegi
   return "UNAVAILABLE";
 }
 
-function classifyGrowthRegime(desc: string | null | undefined): GrowthRegime {
-  if (!desc) return "UNAVAILABLE";
-  const lower = desc.toLowerCase();
-  if (lower.includes("contract") || lower.includes("recession")) return "CONTRACTING";
-  if (lower.includes("slow")) return "SLOWING";
-  if (lower.includes("recover")) return "RECOVERING";
-  if (lower.includes("expand") || lower.includes("grow") || lower.includes("strong")) return "EXPANDING";
+/**
+ * Classify growth regime.
+ * Uses structured GrowthObservation when available (OBSERVED data takes precedence).
+ * Falls back to text-based classification.
+ */
+function classifyGrowthRegime(
+  desc: string | null | undefined,
+  growthObs?: GrowthObservation,
+): GrowthRegime {
+  // OBSERVED: Structured growth data from economic calendar events
+  if (growthObs && growthObs.availability === "AVAILABLE" && growthObs.dataPointCount > 0) {
+    // PMI/ISM: >50 = expansion, <50 = contraction
+    const pmiVal = growthObs.pmiActual ?? growthObs.ismActual;
+    const pmiPrev = growthObs.pmiPrevious ?? growthObs.ismPrevious;
+    if (pmiVal !== null && pmiVal !== undefined && typeof pmiVal === "number") {
+      if (pmiVal >= 55) return "EXPANDING";
+      if (pmiVal >= 50 && pmiPrev !== null && pmiPrev !== undefined && typeof pmiPrev === "number") {
+        if (pmiVal > pmiPrev) return "EXPANDING"; // Improving
+        if (pmiVal < pmiPrev) return "SLOWING"; // Still >50 but decelerating
+        return "EXPANDING";
+      }
+      if (pmiVal >= 50) return "EXPANDING";
+      if (pmiVal >= 45) return "SLOWING";
+      return "CONTRACTING";
+    }
+    // GDP: positive = expanding, negative = contracting
+    if (growthObs.gdpActual !== null && growthObs.gdpActual !== undefined && typeof growthObs.gdpActual === "number") {
+      if (growthObs.gdpActual > 3) return "EXPANDING";
+      if (growthObs.gdpActual > 0) return "EXPANDING";
+      if (growthObs.gdpActual > -1) return "SLOWING";
+      return "CONTRACTING";
+    }
+  }
+  // Text-based fallback
+  if (desc) {
+    const lower = desc.toLowerCase();
+    if (lower.includes("contract") || lower.includes("recession")) return "CONTRACTING";
+    if (lower.includes("slow")) return "SLOWING";
+    if (lower.includes("recover")) return "RECOVERING";
+    if (lower.includes("expand") || lower.includes("grow") || lower.includes("strong")) return "EXPANDING";
+  }
+  return "UNAVAILABLE";
+}
+
+/**
+ * Classify employment regime.
+ * Uses structured EmploymentObservation when available.
+ * DERIVED from actual provider data — never fabricated.
+ */
+function classifyEmploymentRegime(
+  obs?: EmploymentObservation,
+): "STRONG" | "STABLE" | "WEAKENING" | "STRESSED" | "UNAVAILABLE" {
+  if (!obs || obs.availability !== "AVAILABLE") return "UNAVAILABLE";
+
+  // NFP: >200k = strong, 100-200k = stable, <100k = weakening, negative = stressed
+  if (obs.nfpActual !== null && obs.nfpActual !== undefined && typeof obs.nfpActual === "number") {
+    if (obs.nfpActual >= 200) return "STRONG";
+    if (obs.nfpActual >= 100) return "STABLE";
+    if (obs.nfpActual >= 0) return "WEAKENING";
+    return "STRESSED";
+  }
+
+  // Unemployment: <4% = strong, 4-5% = stable, 5-6% = weakening, >6% = stressed
+  if (obs.unemploymentActual !== null && obs.unemploymentActual !== undefined && typeof obs.unemploymentActual === "number") {
+    if (obs.unemploymentActual < 4) return "STRONG";
+    if (obs.unemploymentActual < 5) return "STABLE";
+    if (obs.unemploymentActual < 6) return "WEAKENING";
+    return "STRESSED";
+  }
+
+  return "UNAVAILABLE";
+}
+
+/**
+ * Classify consumer confidence.
+ * DERIVED from actual provider data.
+ */
+function classifyConsumerConfidence(
+  obs?: ConsumerConfidenceObservation,
+): "STRONG" | "STABLE" | "WEAKENING" | "UNAVAILABLE" {
+  if (!obs || obs.availability !== "AVAILABLE") return "UNAVAILABLE";
+  if (obs.actual !== null && obs.actual !== undefined && typeof obs.actual === "number") {
+    if (obs.actual >= 110) return "STRONG";
+    if (obs.actual >= 90) return "STABLE";
+    return "WEAKENING";
+  }
   return "UNAVAILABLE";
 }
 

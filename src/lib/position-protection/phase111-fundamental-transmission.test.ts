@@ -50,6 +50,8 @@ function makeRegime(overrides: Partial<FundamentalRegime> = {}): FundamentalRegi
     currencyRegime: "UNAVAILABLE",
     liquidityRegime: "UNAVAILABLE",
     growthRegime: "UNAVAILABLE",
+    employmentRegime: "UNAVAILABLE",
+    consumerConfidenceRegime: "UNAVAILABLE",
     energyRegime: "UNAVAILABLE",
     geopoliticalRegime: "INSUFFICIENT_DATA",
     inflationExpectationSurprise: "UNAVAILABLE",

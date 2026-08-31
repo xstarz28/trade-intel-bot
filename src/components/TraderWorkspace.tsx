@@ -784,10 +784,96 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
     return { dxy, us10y, wti };
   }, [livePrices]);
 
+  // Parse growth observations from calendar events
+  const parsedGrowthObs = useMemo(() => {
+    if (!calendarData || !calendarData.events || calendarData.events.length === 0) return undefined;
+    const events = calendarData.events;
+    const growthEvents = events.filter(e =>
+      e.status !== "upcoming" && e.actual !== undefined && (
+        e.event.toLowerCase().includes("gdp") ||
+        e.event.toLowerCase().includes("pmi") ||
+        e.event.toLowerCase().includes("ism") ||
+        e.event.toLowerCase().includes("retail sales")
+      )
+    );
+    if (growthEvents.length === 0) return undefined;
+    let gdpActual: number | null = null, gdpPrevious: number | null = null, gdpForecast: number | null = null;
+    let pmiActual: number | null = null, pmiPrevious: number | null = null;
+    let ismActual: number | null = null, ismPrevious: number | null = null;
+    let retailActual: number | null = null, retailPrevious: number | null = null;
+    for (const evt of growthEvents) {
+      const name = evt.event.toLowerCase();
+      const actual = typeof evt.actual === "number" ? evt.actual : parseFloat(String(evt.actual));
+      const previous = typeof evt.previous === "number" ? evt.previous : parseFloat(String(evt.previous));
+      const forecast = typeof evt.forecast === "number" ? evt.forecast : parseFloat(String(evt.forecast));
+      if (name.includes("gdp") && !isNaN(actual)) {
+        gdpActual = actual; gdpPrevious = isNaN(previous) ? null : previous; gdpForecast = isNaN(forecast) ? null : forecast;
+      } else if (name.includes("pmi") && !isNaN(actual)) {
+        pmiActual = actual; pmiPrevious = isNaN(previous) ? null : previous;
+      } else if (name.includes("ism") && !isNaN(actual)) {
+        ismActual = actual; ismPrevious = isNaN(previous) ? null : previous;
+      } else if (name.includes("retail") && !isNaN(actual)) {
+        retailActual = actual; retailPrevious = isNaN(previous) ? null : previous;
+      }
+    }
+    const dataPointCount = [gdpActual, pmiActual, ismActual, retailActual].filter(v => v !== null).length;
+    if (dataPointCount === 0) return undefined;
+    return { gdpActual, gdpPrevious, gdpForecast, pmiActual, pmiPrevious, ismActual, ismPrevious, retailSalesActual: retailActual, retailSalesPrevious: retailPrevious, dataPointCount, availability: "AVAILABLE" as const };
+  }, [calendarData]);
+
+  // Parse employment observations from calendar events
+  const parsedEmploymentObs = useMemo(() => {
+    if (!calendarData || !calendarData.events || calendarData.events.length === 0) return undefined;
+    const events = calendarData.events;
+    const empEvents = events.filter(e =>
+      e.status !== "upcoming" && e.actual !== undefined && (
+        e.event.toLowerCase().includes("non-farm") ||
+        e.event.toLowerCase().includes("nfp") ||
+        e.event.toLowerCase().includes("unemployment") ||
+        e.event.toLowerCase().includes("employment")
+      )
+    );
+    if (empEvents.length === 0) return undefined;
+    let nfpActual: number | null = null, nfpPrevious: number | null = null, nfpForecast: number | null = null;
+    let unempActual: number | null = null, unempPrevious: number | null = null, unempForecast: number | null = null;
+    for (const evt of empEvents) {
+      const name = evt.event.toLowerCase();
+      const actual = typeof evt.actual === "number" ? evt.actual : parseFloat(String(evt.actual));
+      const previous = typeof evt.previous === "number" ? evt.previous : parseFloat(String(evt.previous));
+      const forecast = typeof evt.forecast === "number" ? evt.forecast : parseFloat(String(evt.forecast));
+      if ((name.includes("non-farm") || name.includes("nfp")) && !isNaN(actual)) {
+        nfpActual = actual; nfpPrevious = isNaN(previous) ? null : previous; nfpForecast = isNaN(forecast) ? null : forecast;
+      } else if (name.includes("unemployment") && !isNaN(actual)) {
+        unempActual = actual; unempPrevious = isNaN(previous) ? null : previous; unempForecast = isNaN(forecast) ? null : forecast;
+      }
+    }
+    const hasData = nfpActual !== null || unempActual !== null;
+    if (!hasData) return undefined;
+    return { nfpActual, nfpPrevious, nfpForecast, unemploymentActual: unempActual, unemploymentPrevious: unempPrevious, unemploymentForecast: unempForecast, availability: "AVAILABLE" as const };
+  }, [calendarData]);
+
+  // Parse consumer confidence from calendar events
+  const parsedConsumerConfObs = useMemo(() => {
+    if (!calendarData || !calendarData.events || calendarData.events.length === 0) return undefined;
+    const events = calendarData.events;
+    const ccEvent = events.find(e =>
+      e.status !== "upcoming" && e.actual !== undefined && (
+        e.event.toLowerCase().includes("consumer confidence") ||
+        e.event.toLowerCase().includes("consumer sentiment")
+      )
+    );
+    if (!ccEvent) return undefined;
+    const actual = typeof ccEvent.actual === "number" ? ccEvent.actual : parseFloat(String(ccEvent.actual));
+    const previous = typeof ccEvent.previous === "number" ? ccEvent.previous : parseFloat(String(ccEvent.previous));
+    const forecast = typeof ccEvent.forecast === "number" ? ccEvent.forecast : parseFloat(String(ccEvent.forecast));
+    if (isNaN(actual)) return undefined;
+    return { actual, previous: isNaN(previous) ? null : previous, forecast: isNaN(forecast) ? null : forecast, availability: "AVAILABLE" as const };
+  }, [calendarData]);
+
   const regimeInput = useMemo(() => buildFundamentalInputFromPositionIntel(
     { instrument: intel.instrument, assetClass: intel.assetClass, shortTermContext: intel.shortTermContext, mediumTermContext: intel.mediumTermContext, evidence: intel.evidence },
-    { newsItems, newsRelevance: newsRelevance ?? undefined, macroContext, crossAssetContext, macroObservations, treasuryContext: treasuryData ?? undefined, fundamentalDataPoints, economicEvents, inflationObservation: parsedInflationObs, policyRateObservation: parsedPolicyRateObs },
-  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations, treasuryData, fundamentalDataPoints, economicEvents, parsedInflationObs, parsedPolicyRateObs]);
+    { newsItems, newsRelevance: newsRelevance ?? undefined, macroContext, crossAssetContext, macroObservations, treasuryContext: treasuryData ?? undefined, fundamentalDataPoints, economicEvents, inflationObservation: parsedInflationObs, policyRateObservation: parsedPolicyRateObs, growthObservation: parsedGrowthObs, employmentObservation: parsedEmploymentObs, consumerConfidenceObservation: parsedConsumerConfObs },
+  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations, treasuryData, fundamentalDataPoints, economicEvents, parsedInflationObs, parsedPolicyRateObs, parsedGrowthObs, parsedEmploymentObs, parsedConsumerConfObs]);
   const regime = useMemo(() => buildFundamentalRegime(regimeInput), [regimeInput]);
   const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
   const causalResult = useMemo(() => buildFundamentalCausalResult(regime), [regime]);
