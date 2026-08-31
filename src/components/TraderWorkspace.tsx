@@ -37,6 +37,11 @@ import type { PositionIntelligence } from "@/lib/position-protection/market-inte
 import type { PortfolioIntelligence } from "@/lib/position-protection/portfolio-intelligence";
 import type { RuntimeHealthSnapshot } from "@/lib/position-protection/runtime-health";
 import { getInstrumentInfo } from "@/lib/position-protection/instrument-registry";
+import {
+  buildDecisionSupport,
+  getDecisionSupportSummary,
+  type PositionDecisionSupport,
+} from "@/lib/position-protection/decision-support";
 
 // ═══════════════════════════════════════════════════════════════
 // PROPS
@@ -584,6 +589,132 @@ export function TraderWorkspace({
 }
 
 // ═══════════════════════════════════════════════════════════════
+// DECISION SUPPORT PANEL
+// ═══════════════════════════════════════════════════════════════
+
+function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel: PositionIntelligence }) {
+  const ds = useMemo(() => buildDecisionSupport(positionId, intel), [positionId, intel]);
+  const summary = useMemo(() => getDecisionSupportSummary(ds), [ds]);
+
+  const overallColor = summary.overallAssessment.includes("SUPPORTING")
+    ? "text-emerald-400"
+    : summary.overallAssessment.includes("CONFLICTING")
+      ? "text-red-400"
+      : summary.overallAssessment === "INSUFFICIENT_DATA"
+        ? "text-muted-foreground"
+        : "text-amber-400";
+
+  return (
+    <div className="space-y-3">
+      {/* Current Assessment */}
+      <WorkspaceSection title="DECISION SUPPORT — CURRENT ASSESSMENT" icon={<Crosshair className="size-3" />}>
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[8px] font-mono text-muted-foreground/50">Thesis:</span>
+            <ThesisBadge thesis={ds.thesisHealth} />
+            <span className="text-[8px] font-mono text-muted-foreground/50">({ds.score}/100)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[8px] font-mono text-muted-foreground/50">Assessment:</span>
+            <span className={`text-[9px] font-mono font-semibold ${overallColor}`}>{summary.overallAssessment.replace(/_/g, " ")}</span>
+          </div>
+          <div className="flex items-center gap-3 text-[8px] font-mono">
+            <span className="text-emerald-400">{summary.supportingCount} supporting</span>
+            <span className="text-red-400">{summary.conflictingCount} conflicting</span>
+            <span className="text-muted-foreground">{summary.neutralCount} neutral</span>
+          </div>
+        </div>
+      </WorkspaceSection>
+
+      {/* Supporting Evidence */}
+      {ds.supportingEvidence.length > 0 && (
+        <WorkspaceSection title="SUPPORTING EVIDENCE" icon={<CheckCircle className="size-3" />}>
+          <div className="space-y-0.5">
+            {ds.supportingEvidence.map((e, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className="text-[8px] text-emerald-400 mt-0.5">✓</span>
+                <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{e.description}</span>
+                <span className="text-[7px] font-mono text-muted-foreground/40 ml-auto">{e.strength}</span>
+              </div>
+            ))}
+          </div>
+        </WorkspaceSection>
+      )}
+
+      {/* Conflicting Evidence */}
+      {ds.conflictingEvidence.length > 0 && (
+        <WorkspaceSection title="CONFLICTING EVIDENCE" icon={<AlertTriangle className="size-3" />}>
+          <div className="space-y-0.5">
+            {ds.conflictingEvidence.map((e, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className="text-[8px] text-red-400 mt-0.5">✗</span>
+                <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{e.description}</span>
+                <span className="text-[7px] font-mono text-muted-foreground/40 ml-auto">{e.strength}</span>
+              </div>
+            ))}
+          </div>
+        </WorkspaceSection>
+      )}
+
+      {/* What Could Change This Assessment */}
+      {ds.invalidationConditions.length > 0 && (
+        <WorkspaceSection title="WHAT COULD CHANGE THIS ASSESSMENT" icon={<AlertTriangle className="size-3" />}>
+          <div className="space-y-0.5">
+            {ds.invalidationConditions.map((ic, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className="text-[8px] text-amber-400 mt-0.5">⚡</span>
+                <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{ic.description}</span>
+                <span className={`text-[7px] font-mono ml-auto ${
+                  ic.status === "TRIGGERED" ? "text-red-400" :
+                  ic.status === "APPROACHING" ? "text-amber-400" : "text-muted-foreground/40"
+                }`}>{ic.status.replace(/_/g, " ")}</span>
+              </div>
+            ))}
+          </div>
+        </WorkspaceSection>
+      )}
+
+      {/* What To Monitor */}
+      {ds.watchItems.length > 0 && (
+        <WorkspaceSection title="WHAT TO MONITOR" icon={<Eye className="size-3" />}>
+          <div className="space-y-0.5">
+            {ds.watchItems.map((w, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className={`text-[8px] mt-0.5 ${
+                  w.priority === "CRITICAL" ? "text-red-400" :
+                  w.priority === "HIGH" ? "text-amber-400" : "text-blue-400"
+                }`}>→</span>
+                <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{w.description}</span>
+                <span className={`text-[7px] font-mono ml-auto ${
+                  w.priority === "CRITICAL" ? "text-red-400" :
+                  w.priority === "HIGH" ? "text-amber-400" : "text-muted-foreground/40"
+                }`}>{w.priority}</span>
+              </div>
+            ))}
+          </div>
+        </WorkspaceSection>
+      )}
+
+      {/* Data Availability */}
+      <WorkspaceSection title="DATA AVAILABILITY" icon={<Info className="size-3" />}>
+        <div className="flex flex-wrap gap-1.5">
+          {ds.availableDimensions.map((d, i) => (
+            <span key={i} className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
+              {d.dimension.replace(/_/g, " ")} ✓
+            </span>
+          ))}
+          {ds.unavailableDimensions.map((d, i) => (
+            <span key={i} className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-red-500/10 text-red-400">
+              {d.dimension.replace(/_/g, " ")} ✗
+            </span>
+          ))}
+        </div>
+      </WorkspaceSection>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // POSITION DETAIL VIEW
 // ═══════════════════════════════════════════════════════════════
 
@@ -697,6 +828,9 @@ export function PositionDetail({ positionId, intel, onBack }: PositionDetailProp
           </div>
         </WorkspaceSection>
       )}
+
+      {/* Decision Support */}
+      <DecisionSupportPanel positionId={positionId} intel={intel} />
 
       {/* Disclaimer */}
       <div className="text-[8px] font-mono text-muted-foreground/40 pt-1 border-t border-border/20">
