@@ -33,11 +33,28 @@ function formatAge(ms: number | undefined): string {
   return `${Math.floor(ms / 86_400_000)}d`;
 }
 
-function formatTimestamp(ts: number | undefined): string {
+/** Localized component label lookup */
+function getComponentLabel(t: ReturnType<typeof useI18n>["t"], component: RuntimeComponent): string {
+  const map: Record<RuntimeComponent, string> = {
+    MARKET_DATA: t.system.componentsMarketData,
+    OHLCV: t.system.componentsOhlcv,
+    NEWS: t.system.componentsNews,
+    MACRO: t.system.componentsMacro,
+    CROSS_ASSET: t.system.componentsCrossAsset,
+    INTELLIGENCE_ENGINE: t.system.componentsIntelligence,
+    PORTFOLIO_INTELLIGENCE: t.system.componentsPortfolio,
+    ALERT_RULE_ENGINE: t.system.componentsAlertRules,
+    NOTIFICATION_PERSISTENCE: t.system.componentsNotifications,
+    HISTORICAL_PERSISTENCE: t.system.componentsHistorical,
+  };
+  return map[component] ?? COMPONENT_LABELS[component] ?? component;
+}
+
+function formatTimestamp(ts: number | undefined, t: ReturnType<typeof useI18n>["t"]): string {
   if (ts === undefined) return "—";
   const now = Date.now();
   const diff = now - ts;
-  if (diff < 60_000) return "just now";
+  if (diff < 60_000) return t.system.justNow;
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
   return new Date(ts).toLocaleDateString();
@@ -121,7 +138,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {showHistory ? "Hide History" : "History"}
+            {showHistory ? t.system.hideHistory : t.system.history}
           </button>
         </div>
       </div>
@@ -136,9 +153,9 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
       {/* No data */}
       {!isLoading && !snapshot && (
         <div className="flex flex-col items-center justify-center py-8 text-center">
-          <p className="text-xs font-mono text-muted-foreground">No health data available</p>
+          <p className="text-xs font-mono text-muted-foreground">{t.system.noHealthData}</p>
           <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
-            Health metrics will appear after intelligence runs
+            {t.system.healthMetricsHint}
           </p>
         </div>
       )}
@@ -148,15 +165,15 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
           {/* Pipeline Status */}
           <div className="grid grid-cols-3 gap-2">
             <PipelineStatusCard
-              label="Intelligence"
+              label={t.system.intelligenceLabel}
               status={snapshot.intelligenceCycleStatus}
             />
             <PipelineStatusCard
-              label="Alerts"
+              label={t.system.alertsLabel}
               status={snapshot.alertPipelineStatus}
             />
             <PipelineStatusCard
-              label="Persistence"
+              label={t.system.persistence}
               status={snapshot.persistenceStatus}
             />
           </div>
@@ -164,7 +181,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
           {/* Component List */}
           <div className="space-y-1">
             <div className="text-[10px] font-mono font-semibold text-muted-foreground">
-              COMPONENTS
+              {t.system.components}
             </div>
             {snapshot.components.map((comp) => (
               <ComponentRow key={comp.component} component={comp} />
@@ -175,7 +192,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
           {Object.keys(snapshot.providerAvailability).length > 0 && (
             <div className="space-y-1">
               <div className="text-[10px] font-mono font-semibold text-muted-foreground">
-                PROVIDERS
+                {t.system.providers}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {Object.entries(snapshot.providerAvailability).map(([name, status]) => (
@@ -193,19 +210,19 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
           {/* Warnings */}
           {snapshot.staleComponents.length > 0 && (
             <div className="text-[10px] font-mono text-amber-400/80">
-              Stale: {snapshot.staleComponents.map((c) => COMPONENT_LABELS[c] ?? c).join(", ")}
+              {t.system.staleLabel} {snapshot.staleComponents.map((c) => getComponentLabel(t, c) ?? c).join(", ")}
             </div>
           )}
           {snapshot.unavailableComponents.length > 0 && (
             <div className="text-[10px] font-mono text-red-400/80">
-              Unavailable:{" "}
-              {snapshot.unavailableComponents.map((c) => COMPONENT_LABELS[c] ?? c).join(", ")}
+              {t.system.unavailableLabel}{" "}
+              {snapshot.unavailableComponents.map((c) => getComponentLabel(t, c) ?? c).join(", ")}
             </div>
           )}
 
           {/* Last updated */}
           <div className="text-[9px] font-mono text-muted-foreground/50">
-            Updated: {formatTimestamp(snapshot.timestamp)}
+            {t.system.updatedLabel} {formatTimestamp(snapshot.timestamp, t)}
           </div>
         </>
       )}
@@ -214,7 +231,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
       {showHistory && healthHistory && healthHistory.length > 0 && (
         <div className="space-y-1">
           <div className="text-[10px] font-mono font-semibold text-muted-foreground">
-            HISTORY (last {healthHistory.length})
+            {t.system.historyCount.replace("{count}", String(healthHistory.length))}
           </div>
           {healthHistory.map((snap) => (
             <div
@@ -224,10 +241,10 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
               <span className={HEALTH_STATUS_COLOR[snap.overallStatus as RuntimeHealthStatus]}>
                 {snap.overallStatus}
               </span>
-              <span className="text-muted-foreground/60">{formatTimestamp(snap.timestamp)}</span>
+              <span className="text-muted-foreground/60">{formatTimestamp(snap.timestamp, t)}</span>
               {(snap.unavailableComponents as string[]).length > 0 && (
                 <span className="text-red-400/60">
-                  ({(snap.unavailableComponents as string[]).length} unavailable)
+                  {t.system.unavailableCount.replace("{count}", String((snap.unavailableComponents as string[]).length))}
                 </span>
               )}
             </div>
@@ -272,6 +289,7 @@ function ComponentRow({
     dataAgeMs?: number;
   };
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center gap-2 py-1 px-2 rounded-md hover:bg-muted/20 transition-colors">
       {/* Status dot */}
@@ -289,7 +307,7 @@ function ComponentRow({
 
       {/* Name */}
       <span className="text-[10px] font-mono text-foreground min-w-[120px]">
-        {COMPONENT_LABELS[component.component] ?? component.component}
+        {component.component}
       </span>
 
       {/* Source */}
@@ -311,7 +329,7 @@ function ComponentRow({
 
       {/* Last success */}
       <span className="text-[9px] font-mono text-muted-foreground/50 min-w-[50px] text-right">
-        {formatTimestamp(component.lastSuccessAt)}
+        {formatTimestamp(component.lastSuccessAt, t)}
       </span>
     </div>
   );
