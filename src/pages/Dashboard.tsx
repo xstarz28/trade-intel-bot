@@ -24,6 +24,7 @@ import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield } from "lucide-rea
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
+import { InvestorWorkspace } from "@/components/InvestorWorkspace";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -77,12 +78,14 @@ const INITIAL_STEPS: LoadingStep[] = [
 ];
 
 type DashboardTab = "analysis" | "protection";
+type InvestorTab = "portfolio" | "intelligence" | "analysis";
 type WorkspaceMode = "trader" | "investor";
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<DashboardTab>("analysis");
+  const [investorTab, setInvestorTab] = useState<InvestorTab>("portfolio");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
     try {
       const saved = localStorage.getItem("workspaceMode");
@@ -95,6 +98,7 @@ export default function Dashboard() {
     try { localStorage.setItem("workspaceMode", mode); } catch {}
     // Reset tab to default for the target workspace
     if (mode === "trader") setActiveTab("analysis");
+    if (mode === "investor") setInvestorTab("portfolio");
   }, []);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
@@ -715,10 +719,35 @@ export default function Dashboard() {
                 </Button>
               </>
             ) : (
-              <Button variant="default" size="sm" className="h-7 text-[10px] font-mono gap-1">
-                <Briefcase className="size-3" />
-                Portfolio
-              </Button>
+              <>
+                <Button
+                  variant={investorTab === "portfolio" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 text-[10px] font-mono gap-1"
+                  onClick={() => setInvestorTab("portfolio")}
+                >
+                  <Briefcase className="size-3" />
+                  Portfolio
+                </Button>
+                <Button
+                  variant={investorTab === "intelligence" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 text-[10px] font-mono gap-1"
+                  onClick={() => setInvestorTab("intelligence")}
+                >
+                  <BarChart3 className="size-3" />
+                  Intelligence
+                </Button>
+                <Button
+                  variant={investorTab === "analysis" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 text-[10px] font-mono gap-1"
+                  onClick={() => setInvestorTab("analysis")}
+                >
+                  <Terminal className="size-3" />
+                  Analysis
+                </Button>
+              </>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -743,7 +772,11 @@ export default function Dashboard() {
 
       {/* Main */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
-        {activeTab === "protection" ? (
+        {workspaceMode === "investor" && investorTab === "portfolio" ? (
+          <InvestorWorkspace />
+        ) : workspaceMode === "investor" && investorTab === "intelligence" ? (
+          <PositionProtectionDashboard />
+        ) : activeTab === "protection" ? (
           <PositionProtectionDashboard />
         ) : (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
