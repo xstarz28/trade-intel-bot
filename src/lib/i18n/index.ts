@@ -24,6 +24,7 @@ import { DEFAULT_LOCALE, ALL_LOCALES } from "./types";
 import en from "./en";
 import id from "./id";
 import es from "./es";
+import pt from "./pt";
 import {
   SUPPORTED_LOCALES,
   LOCALE_REGISTRY,
@@ -41,6 +42,7 @@ const RESOURCE_MAP: Record<string, Translations> = {
   en,
   id,
   es,
+  pt,
 };
 
 /**

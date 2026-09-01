@@ -48,41 +48,44 @@ describe("locale registry", () => {
     expect(codes).toContain("zh");
   });
 
-  it("en, id, and es are enabled", () => {
+  it("en, id, es, and pt are enabled", () => {
     expect(isLocaleEnabled("en")).toBe(true);
     expect(isLocaleEnabled("id")).toBe(true);
     expect(isLocaleEnabled("es")).toBe(true);
+    expect(isLocaleEnabled("pt")).toBe(true);
   });
 
-  it("fr, pt, de, ja, ko, zh are not yet enabled", () => {
+  it("fr, de, ja, ko, zh are not yet enabled", () => {
     expect(isLocaleEnabled("fr")).toBe(false);
-    expect(isLocaleEnabled("pt")).toBe(false);
     expect(isLocaleEnabled("de")).toBe(false);
     expect(isLocaleEnabled("ja")).toBe(false);
     expect(isLocaleEnabled("ko")).toBe(false);
     expect(isLocaleEnabled("zh")).toBe(false);
   });
 
-  it("en, id, and es are available (have translation resources)", () => {
+  it("en, id, es, and pt are available (have translation resources)", () => {
     expect(isLocaleAvailable("en")).toBe(true);
     expect(isLocaleAvailable("id")).toBe(true);
     expect(isLocaleAvailable("es")).toBe(true);
+    expect(isLocaleAvailable("pt")).toBe(true);
   });
 
-  it("getEnabledLocales returns en, id, and es", () => {
+  it("getEnabledLocales returns en, id, es, and pt", () => {
     const enabled = getEnabledLocales();
-    expect(enabled.length).toBe(3);
+    expect(enabled.length).toBe(4);
     expect(enabled.map((l) => l.locale)).toContain("en");
     expect(enabled.map((l) => l.locale)).toContain("id");
     expect(enabled.map((l) => l.locale)).toContain("es");
+    expect(enabled.map((l) => l.locale)).toContain("pt");
   });
 
-  it("getAvailableLocales returns en, id, and es", () => {
+  it("getAvailableLocales returns en, id, es, and pt", () => {
     const available = getAvailableLocales();
-    expect(available.length).toBe(3);
+    expect(available.length).toBe(4);
     expect(available.map((l) => l.locale)).toContain("en");
     expect(available.map((l) => l.locale)).toContain("id");
     expect(available.map((l) => l.locale)).toContain("es");
+    expect(available.map((l) => l.locale)).toContain("pt");
   });
 });
 
@@ -115,6 +118,16 @@ describe("locale metadata", () => {
     expect(esMeta?.direction).toBe("ltr");
     expect(esMeta?.enabled).toBe(true);
     expect(esMeta?.available).toBe(true);
+  });
+
+  it("getLocaleMetadata returns correct metadata for pt", () => {
+    const ptMeta = getLocaleMetadata("pt");
+    expect(ptMeta).toBeDefined();
+    expect(ptMeta?.nativeName).toBe("Português");
+    expect(ptMeta?.englishName).toBe("Portuguese");
+    expect(ptMeta?.direction).toBe("ltr");
+    expect(ptMeta?.enabled).toBe(true);
+    expect(ptMeta?.available).toBe(true);
   });
 
   it("getLocaleMetadata returns undefined for unknown locale", () => {
@@ -163,6 +176,42 @@ describe("browser locale normalization", () => {
     expect(normalizeBrowserLocale("es-PE")).toBe("es");
   });
 
+  it("normalizes pt to pt", () => {
+    expect(normalizeBrowserLocale("pt")).toBe("pt");
+  });
+
+  it("normalizes pt-BR to pt", () => {
+    expect(normalizeBrowserLocale("pt-BR")).toBe("pt");
+  });
+
+  it("normalizes pt-PT to pt", () => {
+    expect(normalizeBrowserLocale("pt-PT")).toBe("pt");
+  });
+
+  it("normalizes pt-AO to pt", () => {
+    expect(normalizeBrowserLocale("pt-AO")).toBe("pt");
+  });
+
+  it("normalizes pt-MZ to pt", () => {
+    expect(normalizeBrowserLocale("pt-MZ")).toBe("pt");
+  });
+
+  it("normalizes pt-CV to pt", () => {
+    expect(normalizeBrowserLocale("pt-CV")).toBe("pt");
+  });
+
+  it("normalizes pt-GW to pt", () => {
+    expect(normalizeBrowserLocale("pt-GW")).toBe("pt");
+  });
+
+  it("normalizes pt-ST to pt", () => {
+    expect(normalizeBrowserLocale("pt-ST")).toBe("pt");
+  });
+
+  it("normalizes pt-TL to pt", () => {
+    expect(normalizeBrowserLocale("pt-TL")).toBe("pt");
+  });
+
   it("normalizes fr-FR to null (not enabled)", () => {
     expect(normalizeBrowserLocale("fr-FR")).toBeNull();
   });
@@ -171,9 +220,7 @@ describe("browser locale normalization", () => {
     expect(normalizeBrowserLocale("de-DE")).toBeNull();
   });
 
-  it("normalizes pt-BR to null (not enabled)", () => {
-    expect(normalizeBrowserLocale("pt-BR")).toBeNull();
-  });
+
 
   it("normalizes zh-CN to null (not enabled)", () => {
     expect(normalizeBrowserLocale("zh-CN")).toBeNull();
@@ -207,6 +254,10 @@ describe("locale display names", () => {
 
   it("getLocaleDisplayName returns native name for es", () => {
     expect(getLocaleDisplayName("es")).toBe("Español");
+  });
+
+  it("getLocaleDisplayName returns native name for pt", () => {
+    expect(getLocaleDisplayName("pt")).toBe("Português");
   });
 
   it("getLocaleDisplayName returns native name for planned locales", () => {
@@ -245,6 +296,14 @@ describe("types consistency", () => {
     }
   });
 
+  it("SUPPORTED_LOCALES includes en, id, es, pt", () => {
+    expect(SUPPORTED_LOCALES).toContain("en");
+    expect(SUPPORTED_LOCALES).toContain("id");
+    expect(SUPPORTED_LOCALES).toContain("es");
+    expect(SUPPORTED_LOCALES).toContain("pt");
+    expect(SUPPORTED_LOCALES.length).toBe(4);
+  });
+
   it("DEFAULT_LOCALE is in ALL_LOCALES", () => {
     expect(ALL_LOCALES).toContain(DEFAULT_LOCALE);
   });
@@ -260,11 +319,12 @@ describe("types consistency", () => {
     expect(SUPPORTED_LOCALES.sort()).toEqual(enabledCodes.sort());
   });
 
-  it("SUPPORTED_LOCALES includes en, id, es", () => {
+  it("SUPPORTED_LOCALES includes en, id, es, pt", () => {
     expect(SUPPORTED_LOCALES).toContain("en");
     expect(SUPPORTED_LOCALES).toContain("id");
     expect(SUPPORTED_LOCALES).toContain("es");
-    expect(SUPPORTED_LOCALES.length).toBe(3);
+    expect(SUPPORTED_LOCALES).toContain("pt");
+    expect(SUPPORTED_LOCALES.length).toBe(4);
   });
 });
 
@@ -480,6 +540,45 @@ describe("Spanish (es) integration", () => {
 
   it("SUPPORTED_LOCALES includes es", () => {
     expect(SUPPORTED_LOCALES).toContain("es");
-    expect(SUPPORTED_LOCALES.length).toBe(3);
+    expect(SUPPORTED_LOCALES.length).toBe(4);
+  });
+});
+
+// ─── Portuguese Integration Tests ─────────────────────────────
+
+describe("Portuguese (pt) integration", () => {
+  it("pt locale is enabled and available", () => {
+    expect(isLocaleEnabled("pt")).toBe(true);
+    expect(isLocaleAvailable("pt")).toBe(true);
+  });
+
+  it("pt metadata is correct", () => {
+    const meta = getLocaleMetadata("pt");
+    expect(meta).toBeDefined();
+    expect(meta?.locale).toBe("pt");
+    expect(meta?.nativeName).toBe("Português");
+    expect(meta?.englishName).toBe("Portuguese");
+    expect(meta?.direction).toBe("ltr");
+    expect(meta?.enabled).toBe(true);
+    expect(meta?.available).toBe(true);
+  });
+
+  it("all Portuguese regional variants normalize to pt", () => {
+    expect(normalizeBrowserLocale("pt")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-BR")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-PT")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-AO")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-MZ")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-CV")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-GW")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-ST")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-TL")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-MO")).toBe("pt");
+    expect(normalizeBrowserLocale("pt-GQ")).toBe("pt");
+  });
+
+  it("SUPPORTED_LOCALES includes pt", () => {
+    expect(SUPPORTED_LOCALES).toContain("pt");
+    expect(SUPPORTED_LOCALES.length).toBe(4);
   });
 });
