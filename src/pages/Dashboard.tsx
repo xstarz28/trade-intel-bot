@@ -24,6 +24,13 @@ import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield } from "lucide-rea
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { BarChart3, Briefcase } from "lucide-react";
 
 /** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
 function fromDbRecord(record: any): AnalysisResult {
@@ -70,11 +77,25 @@ const INITIAL_STEPS: LoadingStep[] = [
 ];
 
 type DashboardTab = "analysis" | "protection";
+type WorkspaceMode = "trader" | "investor";
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<DashboardTab>("analysis");
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
+    try {
+      const saved = localStorage.getItem("workspaceMode");
+      if (saved === "trader" || saved === "investor") return saved;
+    } catch {}
+    return "trader";
+  });
+  const handleWorkspaceChange = useCallback((mode: WorkspaceMode) => {
+    setWorkspaceMode(mode);
+    try { localStorage.setItem("workspaceMode", mode); } catch {}
+    // Reset tab to default for the target workspace
+    if (mode === "trader") setActiveTab("analysis");
+  }, []);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(INITIAL_STEPS);
@@ -645,30 +666,60 @@ export default function Dashboard() {
             <div>
               <h1 className="text-sm font-bold tracking-tight font-mono">
                 XstarzG<span className="text-muted-foreground"> · </span>
-                <span className="text-primary">Trader</span>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="text-primary hover:text-primary/80 transition-colors cursor-pointer">
+                      {workspaceMode === "trader" ? "Trader" : "Investor"}
+                      <span className="ml-1 text-[8px] opacity-60">▼</span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="font-mono">
+                    <DropdownMenuItem onClick={() => handleWorkspaceChange("trader")}>
+                      <BarChart3 className="size-3.5 mr-2" />
+                      Trading
+                      {workspaceMode === "trader" && <span className="ml-auto text-primary text-[10px]">●</span>}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleWorkspaceChange("investor")}>
+                      <Briefcase className="size-3.5 mr-2" />
+                      Investing
+                      {workspaceMode === "investor" && <span className="ml-auto text-primary text-[10px]">●</span>}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </h1>
-              <p className="text-[10px] text-muted-foreground -mt-0.5 font-mono">chief market strategist</p>
+              <p className="text-[10px] text-muted-foreground -mt-0.5 font-mono">
+                {workspaceMode === "trader" ? "chief market strategist" : "long-term investment analyst"}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <Button
-              variant={activeTab === "analysis" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-[10px] font-mono gap-1"
-              onClick={() => setActiveTab("analysis")}
-            >
-              <Terminal className="size-3" />
-              Analysis
-            </Button>
-            <Button
-              variant={activeTab === "protection" ? "default" : "ghost"}
-              size="sm"
-              className="h-7 text-[10px] font-mono gap-1"
-              onClick={() => setActiveTab("protection")}
-            >
-              <Shield className="size-3" />
-              Protection
-            </Button>
+            {workspaceMode === "trader" ? (
+              <>
+                <Button
+                  variant={activeTab === "analysis" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 text-[10px] font-mono gap-1"
+                  onClick={() => setActiveTab("analysis")}
+                >
+                  <Terminal className="size-3" />
+                  Analysis
+                </Button>
+                <Button
+                  variant={activeTab === "protection" ? "default" : "ghost"}
+                  size="sm"
+                  className="h-7 text-[10px] font-mono gap-1"
+                  onClick={() => setActiveTab("protection")}
+                >
+                  <Shield className="size-3" />
+                  Protection
+                </Button>
+              </>
+            ) : (
+              <Button variant="default" size="sm" className="h-7 text-[10px] font-mono gap-1">
+                <Briefcase className="size-3" />
+                Portfolio
+              </Button>
+            )}
           </div>
           <div className="flex items-center gap-3">
           </div>
