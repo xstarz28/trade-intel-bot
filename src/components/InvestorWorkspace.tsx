@@ -130,7 +130,7 @@ export function InvestorWorkspace() {
       </div>
 
       {portfolio === null ? (
-        <Section title="PORTFOLIO" icon={<Briefcase className="size-3" />}>
+        <Section title={t.investor.portfolio} icon={<Briefcase className="size-3" />}>
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="flex size-12 items-center justify-center rounded-xl bg-muted/50 mb-3">
               <Briefcase className="size-5 text-muted-foreground/40" />
@@ -154,7 +154,7 @@ export function InvestorWorkspace() {
                   <div className="text-lg font-bold font-mono text-foreground">
                     {portfolio.total}
                   </div>
-                  <div className="text-[8px] text-muted-foreground font-mono">Positions</div>
+                  <div className="text-[8px] text-muted-foreground font-mono">{t.investor.positions}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-bold font-mono text-emerald-400">

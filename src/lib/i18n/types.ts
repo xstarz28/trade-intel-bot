@@ -102,6 +102,7 @@ export interface Translations {
     investmentIntelligence: string;
     noExecution: string;
     manualAction: string;
+    portfolio: string;
   };
 
   // ─── Position Protection ───────────────────────────────────
@@ -116,6 +117,30 @@ export interface Translations {
     confidenceNotProbability: string;
     removeFromMonitoring: string;
     positionsCount: string;
+    title: string;
+    instrumentLabel: string;
+    sideLabel: string;
+    horizonLabel: string;
+    entryPriceLabel: string;
+    stopLossLabel: string;
+    takeProfitLabel: string;
+    leverageLabel: string;
+    note: string;
+    notePlaceholder: string;
+    confirmRemove: string;
+    technicalIntelligence: string;
+    mtfAnalysis: string;
+    fundamentalIntelligence: string;
+    macroIntelligence: string;
+    crossAssetIntelligence: string;
+    causalTransmission: string;
+    techFundAlignment: string;
+    decisionSupportTitle: string;
+    invalidationConditions: string;
+    watchItems: string;
+    alertsTitle: string;
+    notificationsTitle: string;
+    portfolioIntelligence: string;
   };
 
   // ─── Intelligence ──────────────────────────────────────────
@@ -231,6 +256,7 @@ export interface Translations {
     intelligenceCycle: string;
     alertPipeline: string;
     persistence: string;
+    allOperational: string;
   };
 
   // ─── Analysis ───────────────────────────────────────────────
@@ -354,7 +380,31 @@ export interface Translations {
     oilShock: string;
     low: string;
     elevated: string;
-    escalating: string;    deescalating: string;
+    escalating: string;
+    deescalating: string;
+    overall: string;
+    inflationLabel: string;
+    inflationSurprise: string;
+    driver: string;
+    marketRates: string;
+    policyRateLabel: string;
+    realYields: string;
+    usd: string;
+    liquidityLabel: string;
+    tips10y: string;
+    observedLabel: string;
+    econEvents: string;
+    growthLabel: string;
+    energyLabel: string;
+    geopolitical: string;
+    assessment: string;
+    alignmentLabel: string;
+    regimeLabel: string;
+    supportingForces: string;
+    conflictingForces: string;
+    causalChain: string;
+    unavailableLabel: string;
+    fundamentalEvidenceLabel: string;
   };
 
   // ─── Trader Workspace Sections ──────────────────────────
@@ -368,7 +418,59 @@ export interface Translations {
     decisionSupport: string;
     evidenceTrace: string;
     currentAssessment: string;
+    activeAlerts: string;
+    unread: string;
+    dominant: string;
+    noPositionsRegistered: string;
+    viewAll: string;
+    details: string;
+    unavailableDataWarning: string;
+    positionMetrics: string;
+    marketContext: string;
+    entry: string;
+    current: string;
+    pnl: string;
+    sl: string;
+    tp: string;
+    shortTerm: string;
+    mediumTerm: string;
+    volatility: string;
+    positionDisclaimer: string;
+    evidenceBasedDisclaimer: string;
+    viewAlerts: string;
+    systemHealthBtn: string;
   };
 
-
+  // ─── Journal ─────────────────────────────────────────────
+  journal: {
+    title: string;
+    createEntry: string;
+    backToDashboard: string;
+    createJournalEntry: string;
+    snapshotDescription: string;
+    journalAsTrade: string;
+    journalAsObservation: string;
+    entryReason: string;
+    thesisAtEntry: string;
+    confirmationObserved: string;
+    invalidationObserved: string;
+    whatWentRight: string;
+    whatWentWrong: string;
+    lessons: string;
+    notes: string;
+    engineAnalysisSnapshot: string;
+    trade: string;
+    actions: string;
+    review: string;
+    done: string;
+    edit: string;
+    total: string;
+    open: string;
+    closed: string;
+    planned: string;
+    filterInstrument: string;
+    allStatus: string;
+    noJournalEntries: string;
+    noEntriesMatchFilters: string;
+  };
 }
