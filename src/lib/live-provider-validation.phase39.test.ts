@@ -541,14 +541,28 @@ describe("Phase 39 — US Treasury Public Endpoint (Live)", () => {
   }
 
   it("fetches nominal yield curve XML", async () => {
-    const month = getCurrentMonthKey();
-    const url = `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value_month=${month}`;
-    const res = await safeFetch(url, { headers: { Accept: "text/xml" } });
-    if (res && res.ok) {
-      const text = await res.text();
-      expect(text.includes("<entry>")).toBe(true);
+    // Try current month first, fall back to previous month (data may not be
+    // published yet at the start of a new month).
+    const BASE = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml";
+    const currentMonth = getCurrentMonthKey();
+    const prevMonth = getLastMonthKey();
 
-      // Verify pure parser works on live data
+    let text: string | null = null;
+    for (const m of [currentMonth, prevMonth]) {
+      const res = await safeFetch(
+        `${BASE}?data=daily_treasury_yield_curve&field_tdr_date_value_month=${m}`,
+        { headers: { Accept: "text/xml" } },
+      );
+      if (res && res.ok) {
+        const body = await res.text();
+        if (body.includes("<entry>")) {
+          text = body;
+          break;
+        }
+      }
+    }
+
+    if (text) {
       const points = parseTreasuryXml(text, "nominal");
       expect(points.length).toBeGreaterThan(0);
       const latest = points[points.length - 1];
@@ -560,24 +574,38 @@ describe("Phase 39 — US Treasury Public Endpoint (Live)", () => {
       expect(latest.nominal["2Y"]).toBeGreaterThan(0);
       expect(latest.nominal["2Y"]).toBeLessThan(20);
     } else {
-      console.log("[Phase 39] Treasury endpoint unreachable from test environment");
+      console.log("[Phase 39] Treasury endpoint unreachable or no entries for current/previous month");
     }
   }, TIMEOUT_MS);
 
   it("fetches real yield curve XML", async () => {
-    const month = getCurrentMonthKey();
-    const url = `https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_real_yield_curve&field_tdr_date_value_month=${month}`;
-    const res = await safeFetch(url, { headers: { Accept: "text/xml" } });
-    if (res && res.ok) {
-      const text = await res.text();
-      if (text.includes("<entry>")) {
-        const points = parseTreasuryXml(text, "real");
-        expect(points.length).toBeGreaterThan(0);
-        const latest = points[points.length - 1];
-        expect(latest.observationDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    // Try current month first, fall back to previous month.
+    const BASE = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml";
+    const currentMonth = getCurrentMonthKey();
+    const prevMonth = getLastMonthKey();
+
+    let text: string | null = null;
+    for (const m of [currentMonth, prevMonth]) {
+      const res = await safeFetch(
+        `${BASE}?data=daily_treasury_real_yield_curve&field_tdr_date_value_month=${m}`,
+        { headers: { Accept: "text/xml" } },
+      );
+      if (res && res.ok) {
+        const body = await res.text();
+        if (body.includes("<entry>")) {
+          text = body;
+          break;
+        }
       }
+    }
+
+    if (text) {
+      const points = parseTreasuryXml(text, "real");
+      expect(points.length).toBeGreaterThan(0);
+      const latest = points[points.length - 1];
+      expect(latest.observationDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     } else {
-      console.log("[Phase 39] Treasury real yield endpoint unreachable");
+      console.log("[Phase 39] Treasury real yield endpoint unreachable or no entries for current/previous month");
     }
   }, TIMEOUT_MS);
 
