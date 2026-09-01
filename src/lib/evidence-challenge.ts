@@ -899,7 +899,7 @@ function buildThesisModifiers(
     weaknesseners.push("Continuation exhausted — new entries carry elevated risk");
   }
   if (regime?.exhaustionSignals && regime.exhaustionSignals.length > 0) {
-    weaknesseners.push(`${regime.exhaustionSignals.length} exhaustion signal(s) — reversal/correction probability elevated`);
+    weaknesseners.push(`${regime.exhaustionSignals.length} exhaustion signal(s) — reversal/correction risk elevated`);
   }
   if (fundamental?.alignment === "CONFLICTING") {
     weaknesseners.push("Fundamental conflict with technical thesis");
