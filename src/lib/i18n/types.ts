@@ -42,6 +42,7 @@ export interface Translations {
 
   // ─── Navigation ────────────────────────────────────────────
   nav: {
+    overview: string;
     analysis: string;
     protection: string;
     portfolio: string;
@@ -108,10 +109,13 @@ export interface Translations {
     noPositions: string;
     noPositionsHint: string;
     addPosition: string;
+    cancel: string;
     overview: string;
     informationalOnly: string;
     noAutoExecute: string;
     confidenceNotProbability: string;
+    removeFromMonitoring: string;
+    positionsCount: string;
   };
 
   // ─── Intelligence ──────────────────────────────────────────
@@ -153,6 +157,129 @@ export interface Translations {
     thesisState: string;
     invalidation: string;
     watchItems: string;
+  };
+
+  // ─── Alert Rules ────────────────────────────────────────────
+  alerts: {
+    title: string;
+    createRule: string;
+    editRule: string;
+    deleteRule: string;
+    ruleName: string;
+    condition: string;
+    severity: string;
+    scope: string;
+    instrument: string;
+    position: string;
+    cooldown: string;
+    enabled: string;
+    disabled: string;
+    save: string;
+    cancel: string;
+    noRules: string;
+    noRulesHint: string;
+    positionScope: string;
+    instrumentScope: string;
+    portfolioScope: string;
+    globalScope: string;
+    info: string;
+    low: string;
+    medium: string;
+    high: string;
+    critical: string;
+  };
+
+  // ─── Notifications ──────────────────────────────────────────
+  notifications: {
+    title: string;
+    markAllRead: string;
+    dismiss: string;
+    noNotifications: string;
+    noUnread: string;
+    unread: string;
+    read: string;
+    ago: string;
+    now: string;
+    minutes: string;
+    hours: string;
+    days: string;
+  };
+
+  // ─── Market Overview ────────────────────────────────────────
+  market: {
+    title: string;
+    live: string;
+    stale: string;
+    unavailable: string;
+    vix: string;
+    dxy: string;
+    us10y: string;
+    wti: string;
+    noData: string;
+  };
+
+  // ─── System / Runtime Health ────────────────────────────────
+  system: {
+    title: string;
+    overallStatus: string;
+    healthy: string;
+    degraded: string;
+    failed: string;
+    components: string;
+    lastUpdate: string;
+    noData: string;
+    intelligenceCycle: string;
+    alertPipeline: string;
+    persistence: string;
+  };
+
+  // ─── Analysis ───────────────────────────────────────────────
+  analysis: {
+    runAnalysis: string;
+    analyzing: string;
+    selectInstrument: string;
+    timeframe: string;
+    noResult: string;
+    confidence: string;
+    bias: string;
+    recommendation: string;
+    bullish: string;
+    bearish: string;
+    noTrade: string;
+    long: string;
+    short: string;
+    technicalSummary: string;
+    fundamentalSummary: string;
+    keyLevels: string;
+    support: string;
+    resistance: string;
+    invalidationLevel: string;
+    riskNote: string;
+    dataCompleteness: string;
+  };
+
+  // ─── Forms ──────────────────────────────────────────────────
+  forms: {
+    required: string;
+    optional: string;
+    invalid: string;
+    enterPrice: string;
+    enterInstrument: string;
+    selectSide: string;
+    selectHorizon: string;
+    selectTimeframe: string;
+  };
+
+  // ─── Empty States ───────────────────────────────────────────
+  emptyStates: {
+    noPositions: string;
+    noAlerts: string;
+    noNotifications: string;
+    noNews: string;
+    noMarketData: string;
+    noAnalysis: string;
+    noHistory: string;
+    selectToBegin: string;
   };
 
   // ─── Status Labels ─────────────────────────────────────────
@@ -227,7 +354,21 @@ export interface Translations {
     oilShock: string;
     low: string;
     elevated: string;
-    escalating: string;
-    deescalating: string;
+    escalating: string;    deescalating: string;
   };
+
+  // ─── Trader Workspace Sections ──────────────────────────
+  trader: {
+    portfolioOverview: string;
+    positions: string;
+    portfolioContext: string;
+    dataQuality: string;
+    systemHealth: string;
+    actions: string;
+    decisionSupport: string;
+    evidenceTrace: string;
+    currentAssessment: string;
+  };
+
+
 }

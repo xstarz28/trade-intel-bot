@@ -1,11 +1,12 @@
 /**
- * Phase 79 — Market Overview Panel
+ * Phase 79 — {t.market.title} Panel
  *
  * Multi-instrument market-wide view using the universal instrument registry.
  * Shows all supported instruments with live prices, market state, and data freshness.
  */
 
 import React, { useMemo } from "react";
+import { useI18n } from "@/lib/i18n";
 import {
   TrendingUp,
   TrendingDown,
@@ -109,6 +110,7 @@ interface MarketOverviewPanelProps {
 }
 
 export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
+  const { t } = useI18n();
   // Group instruments by asset class
   const grouped = useMemo(() => {
     const allSymbols = getAllInstruments();

@@ -13,6 +13,7 @@
  */
 
 import React, { useMemo } from "react";
+import { useI18n } from "@/lib/i18n";
 import {
   Shield,
   AlertTriangle,
@@ -424,6 +425,7 @@ export function TraderWorkspace({
   onSelectAlerts,
   onSelectSystem,
 }: TraderWorkspaceProps) {
+  const { t } = useI18n();
   const positions = useMemo(() => Array.from(intelligenceMap.entries()), [intelligenceMap]);
 
   // Thesis distribution
@@ -456,7 +458,7 @@ export function TraderWorkspace({
   return (
     <div className="space-y-3">
       {/* ─── Overview Stats ─── */}
-      <WorkspaceSection title="PORTFOLIO OVERVIEW" icon={<Layers className="size-3" />}>
+      <WorkspaceSection title={t.trader.portfolioOverview} icon={<Layers className="size-3" />}>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="text-center p-2 rounded bg-muted/20">
             <div className="text-lg font-bold font-mono text-foreground">{positions.length}</div>
@@ -489,7 +491,7 @@ export function TraderWorkspace({
 
       {/* ─── Position List ─── */}
       <WorkspaceSection
-        title="POSITIONS"
+        title={t.trader.positions}
         icon={<Crosshair className="size-3" />}
         action={
           <Button
@@ -523,7 +525,7 @@ export function TraderWorkspace({
       {/* ─── Portfolio Context (if available) ─── */}
       {portfolioIntel && (
         <WorkspaceSection
-          title="PORTFOLIO CONTEXT"
+          title={t.trader.portfolioContext}
           icon={<BarChart3 className="size-3" />}
           action={
             <Button
@@ -544,7 +546,7 @@ export function TraderWorkspace({
       )}
 
       {/* ─── Data Quality ─── */}
-      <WorkspaceSection title="DATA QUALITY" icon={<Eye className="size-3" />}>
+      <WorkspaceSection title={t.trader.dataQuality} icon={<Eye className="size-3" />}>
         <div className="flex flex-wrap gap-2">
           {Object.entries(dataQuality).map(([quality, count]) => (
             <div key={quality} className="flex items-center gap-1">
@@ -562,7 +564,7 @@ export function TraderWorkspace({
 
       {/* ─── System Health ─── */}
       <WorkspaceSection
-        title="SYSTEM HEALTH"
+        title={t.trader.systemHealth}
         icon={<Activity className="size-3" />}
         action={
           <Button
@@ -579,7 +581,7 @@ export function TraderWorkspace({
       </WorkspaceSection>
 
       {/* ─── Quick Actions ─── */}
-      <WorkspaceSection title="ACTIONS" icon={<Zap className="size-3" />}>
+      <WorkspaceSection title={t.trader.actions} icon={<Zap className="size-3" />}>
         <div className="flex flex-wrap gap-2">
           <Button
             variant="outline"
@@ -620,6 +622,7 @@ export function TraderWorkspace({
 // ═══════════════════════════════════════════════════════════════
 
 function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, calendarData }: { intel: PositionIntelligence; newsItems?: NewsItem[]; livePrices?: Map<string, LiveInstrumentState>; treasuryData?: import("../lib/data/treasury").TreasuryData; calendarData?: import("../lib/data/calendar-types").EconomicCalendarData }) {
+  const { t } = useI18n();
   const assetClass: AssetClass = mapInstrumentToAssetClass(intel.instrument);
 
   // ─── MacroContext from VIX (existing producer, no duplicate fetch) ───
@@ -916,7 +919,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
   return (
     <div className="space-y-3">
       {/* Macro Regime Overview */}
-      <WorkspaceSection title="MACRO REGIME" icon={<Globe className="size-3" />}>
+      <WorkspaceSection title={t.macro.regime} icon={<Globe className="size-3" />}>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-[8px] font-mono text-muted-foreground/50">Overall:</span>
@@ -950,7 +953,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
       </WorkspaceSection>
 
       {/* Inflation / Rate / Yield / Currency */}
-      <WorkspaceSection title="INFLATION / RATES / YIELDS / CURRENCY" icon={<BarChart3 className="size-3" />}>
+      <WorkspaceSection title={t.fundamental.inflationRatesYieldsCurrency} icon={<BarChart3 className="size-3" />}>
         <div className="grid grid-cols-2 gap-1.5 text-[8px] font-mono">
           <div><span className="text-muted-foreground/50">Inflation:</span> <span className="text-foreground">{regime.inflationRegime.replace(/_/g, " ")}</span></div>
           {regimeInput.inflationObservation?.actual != null && (
@@ -979,7 +982,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
       </WorkspaceSection>
 
       {/* Growth / Energy / Geopolitical */}
-      <WorkspaceSection title="GROWTH / ENERGY / GEOPOLITICAL" icon={<Activity className="size-3" />}>
+      <WorkspaceSection title={t.fundamental.growthEnergyGeopolitical} icon={<Activity className="size-3" />}>
         <div className="grid grid-cols-3 gap-1.5 text-[8px] font-mono">
           <div><span className="text-muted-foreground/50">Growth:</span> <span className="text-foreground">{regime.growthRegime.replace(/_/g, " ")}</span></div>
           <div><span className="text-muted-foreground/50">Energy:</span> <span className="text-foreground">{regime.energyRegime.replace(/_/g, " ")}</span></div>
@@ -1023,7 +1026,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
       </WorkspaceSection>
 
       {/* Technical vs Fundamental Alignment */}
-      <WorkspaceSection title="TECHNICAL vs FUNDAMENTAL" icon={<AlertTriangle className="size-3" />}>
+      <WorkspaceSection title={t.fundamental.technicalVsFundamental} icon={<AlertTriangle className="size-3" />}>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-[8px] font-mono text-muted-foreground/50">Alignment:</span>
@@ -1037,7 +1040,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
 
       {/* Fundamental Causal Transmission */}
       {causalResult.transmissions.length > 0 && (
-        <WorkspaceSection title="FUNDAMENTAL TRANSMISSION" icon={<Zap className="size-3" />}>
+        <WorkspaceSection title={t.fundamental.fundamentalTransmission} icon={<Zap className="size-3" />}>
           <div className="space-y-2">
             {/* Macro Regime */}
             <div className="flex items-center gap-2">
@@ -1105,7 +1108,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
 
       {/* What Could Change / Monitor */}
       {(assetCtx.whatCouldChangeAssessment.length > 0 || assetCtx.whatToMonitor.length > 0) && (
-        <WorkspaceSection title="WHAT COULD CHANGE / MONITOR" icon={<Eye className="size-3" />}>
+        <WorkspaceSection title={t.fundamental.whatCouldChangeMonitor} icon={<Eye className="size-3" />}>
           <div className="space-y-0.5">
             {assetCtx.whatCouldChangeAssessment.map((item, i) => (
               <div key={`w-${i}`} className="flex items-start gap-1.5">
@@ -1127,6 +1130,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
 }
 
 function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel: PositionIntelligence }) {
+  const { t } = useI18n();
   const ds = useMemo(() => buildDecisionSupport(positionId, intel), [positionId, intel]);
   const summary = useMemo(() => getDecisionSupportSummary(ds), [ds]);
 
@@ -1141,7 +1145,7 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
   return (
     <div className="space-y-3">
       {/* Current Assessment */}
-      <WorkspaceSection title="DECISION SUPPORT — CURRENT ASSESSMENT" icon={<Crosshair className="size-3" />}>
+      <WorkspaceSection title={`${t.trader.decisionSupport} — ${t.trader.currentAssessment}`} icon={<Crosshair className="size-3" />}>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-[8px] font-mono text-muted-foreground/50">Thesis:</span>
@@ -1162,7 +1166,7 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
 
       {/* Supporting Evidence */}
       {ds.supportingEvidence.length > 0 && (
-        <WorkspaceSection title="SUPPORTING EVIDENCE" icon={<CheckCircle className="size-3" />}>
+        <WorkspaceSection title={t.decision.supportingEvidence} icon={<CheckCircle className="size-3" />}>
           <div className="space-y-0.5">
             {ds.supportingEvidence.map((e, i) => (
               <div key={i} className="flex items-start gap-1.5">
@@ -1177,7 +1181,7 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
 
       {/* Conflicting Evidence */}
       {ds.conflictingEvidence.length > 0 && (
-        <WorkspaceSection title="CONFLICTING EVIDENCE" icon={<AlertTriangle className="size-3" />}>
+        <WorkspaceSection title={t.decision.conflictingEvidence} icon={<AlertTriangle className="size-3" />}>
           <div className="space-y-0.5">
             {ds.conflictingEvidence.map((e, i) => (
               <div key={i} className="flex items-start gap-1.5">
@@ -1192,7 +1196,7 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
 
       {/* What Could Change This Assessment */}
       {ds.invalidationConditions.length > 0 && (
-        <WorkspaceSection title="WHAT COULD CHANGE THIS ASSESSMENT" icon={<AlertTriangle className="size-3" />}>
+        <WorkspaceSection title={t.decision.whatCouldChange} icon={<AlertTriangle className="size-3" />}>
           <div className="space-y-0.5">
             {ds.invalidationConditions.map((ic, i) => (
               <div key={i} className="flex items-start gap-1.5">
@@ -1210,7 +1214,7 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
 
       {/* What To Monitor */}
       {ds.watchItems.length > 0 && (
-        <WorkspaceSection title="WHAT TO MONITOR" icon={<Eye className="size-3" />}>
+        <WorkspaceSection title={t.decision.whatToMonitor} icon={<Eye className="size-3" />}>
           <div className="space-y-0.5">
             {ds.watchItems.map((w, i) => (
               <div key={i} className="flex items-start gap-1.5">
@@ -1230,7 +1234,7 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
       )}
 
       {/* Data Availability */}
-      <WorkspaceSection title="DATA AVAILABILITY" icon={<Info className="size-3" />}>
+      <WorkspaceSection title={t.decision.dataAvailability} icon={<Info className="size-3" />}>
         <div className="flex flex-wrap gap-1.5">
           {ds.availableDimensions.map((d, i) => (
             <span key={i} className="text-[7px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">
@@ -1263,6 +1267,7 @@ interface PositionDetailProps {
 }
 
 export function PositionDetail({ positionId, intel, newsItems, livePrices, treasuryData, calendarData, onBack }: PositionDetailProps) {
+  const { t } = useI18n();
   const info = getInstrumentInfo(intel.instrument);
 
   return (
@@ -1285,12 +1290,12 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
       </div>
 
       {/* Evidence Trace */}
-      <WorkspaceSection title="EVIDENCE TRACE" icon={<Layers className="size-3" />}>
+      <WorkspaceSection title={t.trader.evidenceTrace} icon={<Layers className="size-3" />}>
         <EvidenceTrace intel={intel} />
       </WorkspaceSection>
 
       {/* Position Metrics */}
-      <WorkspaceSection title="POSITION METRICS" icon={<BarChart3 className="size-3" />}>
+      <WorkspaceSection title={t.trader.positions + " METRICS"} icon={<BarChart3 className="size-3" />}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[8px] font-mono">
           <div>
             <span className="text-muted-foreground/50">Entry: </span>
@@ -1322,7 +1327,7 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
       </WorkspaceSection>
 
       {/* Context */}
-      <WorkspaceSection title="MARKET CONTEXT" icon={<Globe className="size-3" />}>
+      <WorkspaceSection title={t.market.title + " CONTEXT"} icon={<Globe className="size-3" />}>
         <div className="space-y-1 text-[8px] font-mono">
           <div>
             <span className="text-muted-foreground/50">Short-term: </span>
@@ -1341,7 +1346,7 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
 
       {/* Invalidation Conditions */}
       {intel.invalidationConditions.length > 0 && (
-        <WorkspaceSection title="WHAT COULD CHANGE THIS ASSESSMENT" icon={<AlertTriangle className="size-3" />}>
+        <WorkspaceSection title={t.decision.whatCouldChange} icon={<AlertTriangle className="size-3" />}>
           <div className="space-y-0.5">
             {intel.invalidationConditions.map((ic, i) => (
               <div key={i} className="flex items-start gap-1.5">
@@ -1355,7 +1360,7 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
 
       {/* What to Monitor */}
       {intel.nextMonitor.length > 0 && (
-        <WorkspaceSection title="WHAT TO MONITOR" icon={<Eye className="size-3" />}>
+        <WorkspaceSection title={t.decision.whatToMonitor} icon={<Eye className="size-3" />}>
           <div className="space-y-0.5">
             {intel.nextMonitor.map((item, i) => (
               <div key={i} className="flex items-start gap-1.5">

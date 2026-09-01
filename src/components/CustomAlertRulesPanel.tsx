@@ -5,6 +5,7 @@
  * CRUD via Convex mutations. No auto-execution. INFORMATIONAL_ONLY.
  */
 import React, { useState, useCallback, useMemo } from "react";
+import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -66,6 +67,7 @@ function NewRuleForm({
     positionId?: string;
   }) => void;
 }) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [scope, setScope] = useState<RuleScope>("POSITION");
   const [condition, setCondition] = useState<RuleCondition>("THESIS_STATE_CHANGED");
@@ -116,7 +118,7 @@ function NewRuleForm({
         {/* Name */}
         <div>
           <label className="text-[9px] font-mono text-muted-foreground block mb-1">
-            Rule Name
+            {t.alerts.ruleName}
           </label>
           <input
             type="text"
@@ -130,7 +132,7 @@ function NewRuleForm({
         {/* Scope */}
         <div>
           <label className="text-[9px] font-mono text-muted-foreground block mb-1">
-            Scope
+            {t.alerts.scope}
           </label>
           <div className="flex gap-1">
             {SCOPE_OPTIONS.map((s) => (
@@ -186,7 +188,7 @@ function NewRuleForm({
         {/* Condition */}
         <div>
           <label className="text-[9px] font-mono text-muted-foreground block mb-1">
-            Condition
+            {t.alerts.condition}
           </label>
           <select
             value={condition}
@@ -204,7 +206,7 @@ function NewRuleForm({
         {/* Severity */}
         <div>
           <label className="text-[9px] font-mono text-muted-foreground block mb-1">
-            Severity
+            {t.alerts.severity}
           </label>
           <div className="flex gap-1">
             {SEVERITY_OPTIONS.map((sev) => (
@@ -226,7 +228,7 @@ function NewRuleForm({
         {/* Cooldown */}
         <div>
           <label className="text-[9px] font-mono text-muted-foreground block mb-1">
-            Cooldown
+            {t.alerts.cooldown}
           </label>
           <div className="flex gap-1">
             {COOLDOWN_PRESETS.map((p) => (
@@ -253,7 +255,7 @@ function NewRuleForm({
           onClick={handleSubmit}
         >
           <Plus className="size-3" />
-          Create Rule
+          {t.alerts.createRule}
         </Button>
       </div>
     </motion.div>
@@ -373,6 +375,7 @@ function RuleRow({
 // ═══════════════════════════════════════════════════════════════
 
 export function CustomAlertRulesPanel() {
+  const { t } = useI18n();
   const [showForm, setShowForm] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
 
@@ -504,8 +507,7 @@ export function CustomAlertRulesPanel() {
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <Bell className="size-5 text-muted-foreground/30 mb-2" />
           <p className="text-[10px] font-mono text-muted-foreground max-w-xs">
-            No alert rules configured. Create a rule to get notified when
-            intelligence conditions change.
+            {t.alerts.noRules} {t.alerts.noRulesHint}
           </p>
         </div>
       ) : (

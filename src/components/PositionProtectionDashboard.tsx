@@ -11,6 +11,7 @@
  * INFORMATIONAL_ONLY — never executes trades.
  */
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import { useI18n } from "@/lib/i18n";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -161,6 +162,7 @@ function PositionCard({
   intelligence?: PositionIntelligence;
   onRemove: () => void;
 }) {
+  const { t } = useI18n();
   const { position, alert, monitoringStatus, giveback, lastUpdateAt, peakProfit } = state;
 
   // Generate a default alert if none exists yet
@@ -288,7 +290,7 @@ function PositionCard({
           size="sm"
           className="absolute top-2 right-12 h-6 w-6 p-0 text-muted-foreground hover:text-red-400"
           onClick={onRemove}
-          title="Remove from monitoring"
+          title={t.protection.removeFromMonitoring}
         >
           <Trash2 className="size-3" />
         </Button>
@@ -302,6 +304,7 @@ function PositionCard({
 // ═══════════════════════════════════════════════════════════════
 
 export function PositionProtectionDashboard() {
+  const { t, txi } = useI18n();
   const {
     positions,
     registerPosition: registerPos,
@@ -1116,7 +1119,7 @@ export function PositionProtectionDashboard() {
             onClick={() => setShowForm(!showForm)}
           >
             <Plus className="size-3" />
-            {showForm ? "Cancel" : "Add Position"}
+            {showForm ? t.protection.cancel : t.protection.addPosition}
           </Button>
         </div>
       </div>
@@ -1149,7 +1152,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => { setActiveTab("workspace"); setSelectedPositionId(null); }}
           >
-            Overview
+            {t.nav.overview}
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
@@ -1159,7 +1162,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => { setActiveTab("positions"); setSelectedPositionId(null); }}
           >
-            Positions ({positions.length})
+            {t.nav.positions} ({positions.length})
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
@@ -1169,7 +1172,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => setActiveTab("feed")}
           >
-            Feed
+            {t.nav.feed}
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
@@ -1179,7 +1182,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => setActiveTab("portfolio")}
           >
-            Portfolio
+            {t.nav.portfolio}
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
@@ -1189,7 +1192,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => setActiveTab("intelligence")}
           >
-            Intelligence
+            {t.nav.intelligence}
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
@@ -1199,7 +1202,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => setActiveTab("alerts")}
           >
-            Rules
+            {t.nav.rules}
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
@@ -1209,7 +1212,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => setActiveTab("notifications")}
           >
-            Alerts
+            {t.nav.alerts}
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
@@ -1219,7 +1222,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => setActiveTab("market")}
           >
-            Market
+            {t.nav.market}
           </button>
           <button
             className={`flex-1 text-[10px] font-mono py-1.5 px-2 rounded-md transition-colors ${
@@ -1229,7 +1232,7 @@ export function PositionProtectionDashboard() {
             }`}
             onClick={() => setActiveTab("system")}
           >
-            System
+            {t.nav.system}
           </button>
         </div>
       )}
@@ -1332,8 +1335,7 @@ export function PositionProtectionDashboard() {
             <Shield className="size-5 text-muted-foreground/40" />
           </div>
           <p className="text-xs font-mono text-muted-foreground max-w-xs">
-            No positions being monitored. Click &quot;Add Position&quot; to register an open
-            position for real-time profit protection.
+            {t.protection.noPositionsHint}
           </p>
         </div>
       )}
@@ -1385,8 +1387,7 @@ export function PositionProtectionDashboard() {
 
       {/* Disclaimer */}
       <div className="text-[9px] font-mono text-muted-foreground/40 pt-2 border-t border-border/20">
-        Informational only. All alerts are manual-action recommendations.
-        No trades are executed automatically. Intelligence confidence ≠ likelihood of price movement.
+        {t.global.disclaimer}
       </div>
     </div>
   );
