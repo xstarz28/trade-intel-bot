@@ -7,6 +7,7 @@
  * INFORMATIONAL_ONLY — never modifies trades.
  */
 import React, { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import {
   Shield,
   AlertTriangle,
@@ -416,6 +417,7 @@ export function PositionProtectionPanel({
   givebackAcceleration,
   peakProfit,
 }: PositionProtectionPanelProps) {
+  const { t } = useI18n();
   const [expanded, setExpanded] = useState(true);
   const cfg = SEVERITY_CONFIG[alert.severity] ?? SEVERITY_CONFIG.NONE;
   const statusCfg = STATUS_CONFIG[monitoringStatus];
@@ -547,7 +549,7 @@ export function PositionProtectionPanel({
           {/* Supporting evidence */}
           {alert.supportingEvidence.length > 0 && (
             <Section
-              title="Supporting Evidence"
+              title={t.protection.supportingEvidence}
               defaultOpen={alert.severity === "NONE"}
             >
               {alert.supportingEvidence.map((e, i) => (
@@ -561,7 +563,7 @@ export function PositionProtectionPanel({
 
           {/* Conflicting evidence */}
           {alert.conflictingEvidence.length > 0 && (
-            <Section title="Conflicting Evidence" defaultOpen>
+            <Section title={t.protection.conflictingEvidence} defaultOpen>
               {alert.conflictingEvidence.map((e, i) => (
                 <div key={i} className="flex items-start gap-2 py-0.5">
                   <AlertTriangle className="size-3 text-amber-400 mt-0.5 shrink-0" />
@@ -573,7 +575,7 @@ export function PositionProtectionPanel({
 
           {/* Missing data */}
           {alert.missingData.length > 0 && (
-            <Section title="Missing Critical Data">
+            <Section title={t.protection.missingCriticalData}>
               {alert.missingData.map((e, i) => (
                 <div key={i} className="text-amber-400/80">
                   • {e}
@@ -593,7 +595,7 @@ export function PositionProtectionPanel({
 
           {/* Alert timeline */}
           {alertHistory.length > 0 && (
-            <Section title="Alert Timeline" defaultOpen>
+            <Section title={t.protection.alertTimeline} defaultOpen>
               <AlertTimeline history={alertHistory} />
             </Section>
           )}

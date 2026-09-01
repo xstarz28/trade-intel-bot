@@ -6,6 +6,7 @@
  */
 
 import React, { useMemo } from "react";
+import { useI18n } from "@/lib/i18n";
 import { motion } from "framer-motion";
 import {
   Shield,
@@ -127,6 +128,7 @@ export function PositionProtectionControlCenter({
   providerHealth,
   diagnostics,
 }: ControlCenterProps) {
+  const { t } = useI18n();
   const stats = useMemo(() => {
     const total = positions.length;
     const profitable = positions.filter(
@@ -216,19 +218,19 @@ export function PositionProtectionControlCenter({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         <div className="rounded-lg border border-border/50 bg-muted/30 px-2.5 py-2 text-center">
           <p className="text-lg font-bold font-mono">{stats.total}</p>
-          <p className="text-[9px] text-muted-foreground font-mono">Positions</p>
+          <p className="text-[9px] text-muted-foreground font-mono">{t.protection.positionsLabel}</p>
         </div>
         <div className="rounded-lg border border-border/50 bg-muted/30 px-2.5 py-2 text-center">
           <p className="text-lg font-bold font-mono text-emerald-400">{stats.profitable}</p>
-          <p className="text-[9px] text-muted-foreground font-mono">Profitable</p>
+          <p className="text-[9px] text-muted-foreground font-mono">{t.protection.profitable}</p>
         </div>
         <div className="rounded-lg border border-border/50 bg-muted/30 px-2.5 py-2 text-center">
           <p className="text-lg font-bold font-mono text-amber-400">{stats.watch + stats.caution}</p>
-          <p className="text-[9px] text-muted-foreground font-mono">Watch / Caution</p>
+          <p className="text-[9px] text-muted-foreground font-mono">{t.protection.watchCaution}</p>
         </div>
         <div className="rounded-lg border border-border/50 bg-muted/30 px-2.5 py-2 text-center">
           <p className="text-lg font-bold font-mono text-red-400">{stats.critical}</p>
-          <p className="text-[9px] text-muted-foreground font-mono">Critical</p>
+          <p className="text-[9px] text-muted-foreground font-mono">{t.protection.criticalLabel}</p>
         </div>
       </div>
 

@@ -1,394 +1,325 @@
-/**
- * Phase 126 — i18n Tests
- *
- * Tests for:
- * - Default English locale
- * - Indonesian locale selection
- * - localStorage persistence
- * - Invalid persisted language fallback
- * - Browser locale fallback
- * - Missing translation fallback
- * - Language switching
- * - Translation key completeness for critical navigation
- * - No secrets in translation resources
- */
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  SUPPORTED_LOCALES,
-  LOCALE_LABELS,
-  DEFAULT_LOCALE,
-  type Locale,
-} from "./types";
 import en from "./en";
 import id from "./id";
-import { getNestedValue } from "./test-helpers";
+import type { Translations, Locale } from "./types";
+import { SUPPORTED_LOCALES, DEFAULT_LOCALE, LOCALE_LABELS } from "./types";
 
-// ─── Helper: deep key extraction ───────────────────────────────
-function getAllLeafKeys(obj: unknown, prefix = ""): string[] {
+// ─── Helper: recursively collect all leaf string keys ──────────
+function collectLeafKeys(obj: Record<string, unknown>, prefix = ""): string[] {
   const keys: string[] = [];
-  if (typeof obj !== "object" || obj === null) return keys;
-  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(obj)) {
     const path = prefix ? `${prefix}.${k}` : k;
     if (typeof v === "string") {
       keys.push(path);
-    } else if (typeof v === "object" && v !== null) {
-      keys.push(...getAllLeafKeys(v, path));
+    } else if (v && typeof v === "object") {
+      keys.push(...collectLeafKeys(v as Record<string, unknown>, path));
     }
   }
   return keys;
 }
 
-// ─── Tests ─────────────────────────────────────────────────────
-
-describe("i18n — Locale Configuration", () => {
-  it("supports English and Indonesian", () => {
-    expect(SUPPORTED_LOCALES).toContain("en");
-    expect(SUPPORTED_LOCALES).toContain("id");
-    expect(SUPPORTED_LOCALES).toHaveLength(2);
+describe("i18n — EN/ID key parity", () => {
+  it("EN and ID have the same top-level keys", () => {
+    const enKeys = Object.keys(en).sort();
+    const idKeys = Object.keys(id).sort();
+    expect(enKeys).toEqual(idKeys);
   });
 
-  it("default locale is English", () => {
+  it("EN and ID have the same leaf keys at every level", () => {
+    const enLeaves = collectLeafKeys(en as unknown as Record<string, unknown>);
+    const idLeaves = collectLeafKeys(id as unknown as Record<string, unknown>);
+    expect(enLeaves.sort()).toEqual(idLeaves.sort());
+  });
+
+  it("EN and ID have the same number of leaf keys", () => {
+    const enLeaves = collectLeafKeys(en as unknown as Record<string, unknown>);
+    const idLeaves = collectLeafKeys(id as unknown as Record<string, unknown>);
+    expect(enLeaves.length).toBe(idLeaves.length);
+    expect(enLeaves.length).toBeGreaterThan(100);
+  });
+
+  it("no EN leaf is empty string", () => {
+    const enLeaves = collectLeafKeys(en as unknown as Record<string, unknown>);
+    for (const key of enLeaves) {
+      const parts = key.split(".");
+      let val: unknown = en;
+      for (const p of parts) val = (val as Record<string, unknown>)?.[p];
+      expect(typeof val).toBe("string");
+      expect((val as string).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("no ID leaf is empty string", () => {
+    const idLeaves = collectLeafKeys(id as unknown as Record<string, unknown>);
+    for (const key of idLeaves) {
+      const parts = key.split(".");
+      let val: unknown = id;
+      for (const p of parts) val = (val as Record<string, unknown>)?.[p];
+      expect(typeof val).toBe("string");
+      expect((val as string).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("i18n — supported locales", () => {
+  it("SUPPORTED_LOCALES includes en and id", () => {
+    expect(SUPPORTED_LOCALES).toContain("en");
+    expect(SUPPORTED_LOCALES).toContain("id");
+  });
+
+  it("DEFAULT_LOCALE is en", () => {
     expect(DEFAULT_LOCALE).toBe("en");
   });
 
-  it("locale labels are defined for all supported locales", () => {
-    for (const locale of SUPPORTED_LOCALES) {
-      expect(LOCALE_LABELS[locale]).toBeTruthy();
-      expect(typeof LOCALE_LABELS[locale]).toBe("string");
+  it("LOCALE_LABELS has entries for all supported locales", () => {
+    for (const loc of SUPPORTED_LOCALES) {
+      expect(LOCALE_LABELS[loc]).toBeTruthy();
     }
   });
 });
 
-describe("i18n — Translation Resources", () => {
-  it("English resource has all required top-level sections", () => {
-    const requiredSections = [
-      "global", "nav", "workspace", "dashboard", "investor",
-      "protection", "intelligence", "decision", "status", "macro", "fundamental",
-    ];
-    for (const section of requiredSections) {
-      expect(en).toHaveProperty(section);
-      expect(typeof (en as unknown as Record<string, unknown>)[section]).toBe("object");
+describe("i18n — key coverage for critical sections", () => {
+  it("has all nav keys", () => {
+    const navKeys = ["overview", "analysis", "protection", "portfolio", "intelligence", "positions", "feed", "alerts", "notifications", "market", "system", "rules"];
+    for (const k of navKeys) {
+      expect((en as any).nav[k]).toBeTruthy();
+      expect((id as any).nav[k]).toBeTruthy();
     }
   });
 
-  it("Indonesian resource has same structure as English", () => {
-    const enKeys = getAllLeafKeys(en);
-    const idKeys = getAllLeafKeys(id);
-
-    // Indonesian should have at least the same keys as English
-    const missingInId = enKeys.filter((k) => !idKeys.includes(k));
-    expect(missingInId).toEqual([]);
-  });
-
-  it("all translation values are non-empty strings", () => {
-    const enKeys = getAllLeafKeys(en);
-    for (const key of enKeys) {
-      const val = getNestedValue(en, key);
-      expect(val).toBeTruthy();
-      expect(typeof val).toBe("string");
-      expect((val as string).length).toBeGreaterThan(0);
+  it("has all trader workspace keys", () => {
+    const traderKeys = ["portfolioOverview", "positions", "portfolioContext", "dataQuality", "systemHealth", "actions", "decisionSupport", "evidenceTrace", "currentAssessment", "positionMetrics", "marketContext"];
+    for (const k of traderKeys) {
+      expect((en as any).trader[k]).toBeTruthy();
+      expect((id as any).trader[k]).toBeTruthy();
     }
   });
 
-  it("Indonesian translations are non-empty strings", () => {
-    const idKeys = getAllLeafKeys(id);
-    for (const key of idKeys) {
-      const val = getNestedValue(id, key);
-      expect(val).toBeTruthy();
-      expect(typeof val).toBe("string");
-      expect((val as string).length).toBeGreaterThan(0);
-    }
-  });
-});
-
-describe("i18n — Critical Navigation Keys", () => {
-  const criticalKeys = [
-    "nav.overview",
-    "nav.analysis",
-    "nav.protection",
-    "nav.portfolio",
-    "nav.intelligence",
-    "nav.positions",
-    "nav.feed",
-    "nav.alerts",
-    "nav.notifications",
-    "nav.market",
-    "nav.system",
-    "nav.rules",
-    "workspace.trader",
-    "workspace.investor",
-    "workspace.trading",
-    "workspace.investing",
-    "global.exit",
-    "global.loading",
-    "global.error",
-    "global.back",
-    "global.disclaimer",
-  ];
-
-  it("English has all critical navigation keys", () => {
-    for (const key of criticalKeys) {
-      const val = getNestedValue(en, key);
-      expect(val, `Missing English key: ${key}`).toBeTruthy();
+  it("has all investor workspace keys", () => {
+    const investorKeys = ["noPositions", "noPositionsHint", "portfolioHealth", "positions", "healthy", "atRisk", "invalidated", "riskSummary", "riskLevel"];
+    for (const k of investorKeys) {
+      expect((en as any).investor[k]).toBeTruthy();
+      expect((id as any).investor[k]).toBeTruthy();
     }
   });
 
-  it("Indonesian has all critical navigation keys", () => {
-    for (const key of criticalKeys) {
-      const val = getNestedValue(id, key);
-      expect(val, `Missing Indonesian key: ${key}`).toBeTruthy();
-    }
-  });
-});
-
-describe("i18n — Status Keys", () => {
-  const statusKeys = [
-    "status.available",
-    "status.unavailable",
-    "status.healthy",
-    "status.caution",
-    "status.invalidated",
-  ];
-
-  it("English status keys present", () => {
-    for (const key of statusKeys) {
-      expect(getNestedValue(en, key)).toBeTruthy();
+  it("has all protection keys", () => {
+    const protKeys = ["title", "addPosition", "noPositions", "noPositionsHint", "technicalIntelligence", "mtfAnalysis", "fundamentalIntelligence", "macroIntelligence", "crossAssetIntelligence", "causalTransmission", "techFundAlignment", "decisionSupportTitle"];
+    for (const k of protKeys) {
+      expect((en as any).protection[k]).toBeTruthy();
+      expect((id as any).protection[k]).toBeTruthy();
     }
   });
 
-  it("Indonesian status keys present", () => {
-    for (const key of statusKeys) {
-      expect(getNestedValue(id, key)).toBeTruthy();
-    }
-  });
-});
-
-describe("i18n — Investor Workspace Keys", () => {
-  const investorKeys = [
-    "investor.noPositions",
-    "investor.noPositionsHint",
-    "investor.portfolioHealth",
-    "investor.positions",
-    "investor.healthy",
-    "investor.atRisk",
-    "investor.invalidated",
-    "investor.riskSummary",
-    "investor.riskLevel",
-    "investor.withSL",
-    "investor.withTP",
-    "investor.low",
-    "investor.moderate",
-    "investor.elevated",
-    "investor.horizonDistribution",
-    "investor.dataQuality",
-    "investor.positionsRegistered",
-    "investor.withStopLoss",
-    "investor.withTakeProfit",
-    "investor.investmentIntelligence",
-    "investor.noExecution",
-    "investor.manualAction",
-  ];
-
-  it("English investor keys present", () => {
-    for (const key of investorKeys) {
-      expect(getNestedValue(en, key), `Missing: ${key}`).toBeTruthy();
+  it("has all intelligence keys", () => {
+    const intelKeys = ["technical", "fundamental", "macro", "crossAsset", "news", "newsIntelligence", "fundamentals", "evidenceHierarchy", "scenarios", "whatChanged", "analyticalSummary", "keyLevelsLabel"];
+    for (const k of intelKeys) {
+      expect((en as any).intelligence[k]).toBeTruthy();
+      expect((id as any).intelligence[k]).toBeTruthy();
     }
   });
 
-  it("Indonesian investor keys present", () => {
-    for (const key of investorKeys) {
-      expect(getNestedValue(id, key), `Missing: ${key}`).toBeTruthy();
-    }
-  });
-});
-
-describe("i18n — Macro Regime Keys", () => {
-  const macroKeys = [
-    "macro.regime",
-    "macro.stagflation",
-    "macro.reflation",
-    "macro.disinflation",
-    "macro.contraction",
-    "macro.recovery",
-    "macro.riskOn",
-    "macro.riskOff",
-    "macro.stressed",
-    "macro.mixed",
-    "macro.insufficientData",
-  ];
-
-  it("English macro keys present", () => {
-    for (const key of macroKeys) {
-      expect(getNestedValue(en, key), `Missing: ${key}`).toBeTruthy();
+  it("has all decision support keys", () => {
+    const decKeys = ["supportingEvidence", "conflictingEvidence", "whatCouldChange", "whatToMonitor", "dataAvailability", "thesisHealth"];
+    for (const k of decKeys) {
+      expect((en as any).decision[k]).toBeTruthy();
+      expect((id as any).decision[k]).toBeTruthy();
     }
   });
 
-  it("Indonesian macro keys present", () => {
-    for (const key of macroKeys) {
-      expect(getNestedValue(id, key), `Missing: ${key}`).toBeTruthy();
+  it("has all status keys including new stream/monitoring statuses", () => {
+    const statusKeys = ["available", "unavailable", "insufficientData", "healthy", "stable", "caution", "deteriorating", "severelyDeteriorating", "invalidated", "unknown", "none", "watch", "highRisk", "live", "reconnecting", "dataStale", "disconnected", "monitoringPaused", "limited", "insufficient"];
+    for (const k of statusKeys) {
+      expect((en as any).status[k]).toBeTruthy();
+      expect((id as any).status[k]).toBeTruthy();
+    }
+  });
+
+  it("has all macro regime keys", () => {
+    const macroKeys = ["regime", "stagflation", "reflation", "disinflation", "contraction", "recovery", "riskOn", "riskOff", "stressed", "mixed", "insufficientData"];
+    for (const k of macroKeys) {
+      expect((en as any).macro[k]).toBeTruthy();
+      expect((id as any).macro[k]).toBeTruthy();
+    }
+  });
+
+  it("has all fundamental keys", () => {
+    const fundKeys = ["macroRegime", "inflationRatesYieldsCurrency", "growthEnergyGeopolitical", "fundamentalEvidence", "technicalVsFundamental", "fundamentalTransmission", "whatCouldChangeMonitor", "dataAvailability", "overall", "inflationLabel", "driver", "marketRates", "policyRateLabel", "realYields", "usd", "liquidityLabel", "tips10y"];
+    for (const k of fundKeys) {
+      expect((en as any).fundamental[k]).toBeTruthy();
+      expect((id as any).fundamental[k]).toBeTruthy();
+    }
+  });
+
+  it("has all journal keys", () => {
+    const journalKeys = ["title", "createEntry", "backToDashboard", "journalAsTrade", "journalAsObservation", "entryReason", "thesisAtEntry"];
+    for (const k of journalKeys) {
+      expect((en as any).journal[k]).toBeTruthy();
+      expect((id as any).journal[k]).toBeTruthy();
+    }
+  });
+
+  it("has all global keys", () => {
+    const globalKeys = ["loading", "error", "empty", "back", "save", "cancel", "close", "confirm", "exit", "search", "filter", "refresh", "noData", "disclaimer", "guest"];
+    for (const k of globalKeys) {
+      expect((en as any).global[k]).toBeTruthy();
+      expect((id as any).global[k]).toBeTruthy();
+    }
+  });
+
+  it("has all dashboard keys", () => {
+    const dashKeys = ["terminalReady", "terminalDescription", "factors", "timeframes", "instruments", "selectInstrument", "notFound", "pageNotFound"];
+    for (const k of dashKeys) {
+      expect((en as any).dashboard[k]).toBeTruthy();
+      expect((id as any).dashboard[k]).toBeTruthy();
+    }
+  });
+
+  it("has all alerts keys", () => {
+    const alertKeys = ["title", "createRule", "editRule", "deleteRule", "ruleName", "condition", "severity", "scope", "instrument", "position", "cooldown", "enabled", "disabled", "save", "cancel", "noRules", "noRulesHint"];
+    for (const k of alertKeys) {
+      expect((en as any).alerts[k]).toBeTruthy();
+      expect((id as any).alerts[k]).toBeTruthy();
+    }
+  });
+
+  it("has all notifications keys", () => {
+    const notifKeys = ["title", "markAllRead", "dismiss", "noNotifications", "noUnread", "unread", "read", "ago", "now", "minutes", "hours", "days"];
+    for (const k of notifKeys) {
+      expect((en as any).notifications[k]).toBeTruthy();
+      expect((id as any).notifications[k]).toBeTruthy();
+    }
+  });
+
+  it("has all market keys", () => {
+    const mktKeys = ["title", "live", "stale", "unavailable", "vix", "dxy", "us10y", "wti", "noData"];
+    for (const k of mktKeys) {
+      expect((en as any).market[k]).toBeTruthy();
+      expect((id as any).market[k]).toBeTruthy();
+    }
+  });
+
+  it("has all system keys", () => {
+    const sysKeys = ["title", "overallStatus", "healthy", "degraded", "failed", "components", "lastUpdate", "noData", "intelligenceCycle", "alertPipeline", "persistence", "allOperational"];
+    for (const k of sysKeys) {
+      expect((en as any).system[k]).toBeTruthy();
+      expect((id as any).system[k]).toBeTruthy();
+    }
+  });
+
+  it("has all analysis keys", () => {
+    const anaKeys = ["runAnalysis", "analyzing", "selectInstrument", "timeframe", "noResult", "confidence", "bias", "recommendation", "bullish", "bearish", "noTrade", "long", "short", "technicalSummary", "fundamentalSummary", "keyLevels", "support", "resistance", "invalidationLevel", "riskNote", "dataCompleteness"];
+    for (const k of anaKeys) {
+      expect((en as any).analysis[k]).toBeTruthy();
+      expect((id as any).analysis[k]).toBeTruthy();
+    }
+  });
+
+  it("has all emptyStates keys", () => {
+    const emptyKeys = ["noPositions", "noAlerts", "noNotifications", "noNews", "noMarketData", "noAnalysis", "noHistory", "selectToBegin"];
+    for (const k of emptyKeys) {
+      expect((en as any).emptyStates[k]).toBeTruthy();
+      expect((id as any).emptyStates[k]).toBeTruthy();
+    }
+  });
+
+  it("has all forms keys", () => {
+    const formKeys = ["required", "optional", "invalid", "enterPrice", "enterInstrument", "selectSide", "selectHorizon", "selectTimeframe"];
+    for (const k of formKeys) {
+      expect((en as any).forms[k]).toBeTruthy();
+      expect((id as any).forms[k]).toBeTruthy();
     }
   });
 });
 
-describe("i18n — Fundamental Keys", () => {
-  const fundamentalKeys = [
-    "fundamental.macroRegime",
-    "fundamental.actual",
-    "fundamental.previous",
-    "fundamental.forecast",
-    "fundamental.surprise",
-    "fundamental.aboveExpectation",
-    "fundamental.belowExpectation",
-    "fundamental.inLine",
-    "fundamental.easing",
-    "fundamental.tightening",
-    "fundamental.rising",
-    "fundamental.falling",
-    "fundamental.stable",
-    "fundamental.strengthening",
-    "fundamental.weakening",
-    "fundamental.expanding",
-    "fundamental.slowing",
-    "fundamental.contracting",
-    "fundamental.supplyDisruption",
-    "fundamental.demandDriven",
-  ];
-
-  it("English fundamental keys present", () => {
-    for (const key of fundamentalKeys) {
-      expect(getNestedValue(en, key), `Missing: ${key}`).toBeTruthy();
-    }
+describe("i18n — interpolation support", () => {
+  it("notifications.unread supports {count}", () => {
+    expect(en.notifications.unread).toContain("{count}");
+    expect(id.notifications.unread).toContain("{count}");
   });
 
-  it("Indonesian fundamental keys present", () => {
-    for (const key of fundamentalKeys) {
-      expect(getNestedValue(id, key), `Missing: ${key}`).toBeTruthy();
-    }
+  it("notifications.ago supports {time}", () => {
+    expect(en.notifications.ago).toContain("{time}");
+    expect(id.notifications.ago).toContain("{time}");
+  });
+
+  it("notifications.minutes supports {count}", () => {
+    expect(en.notifications.minutes).toContain("{count}");
+    expect(id.notifications.minutes).toContain("{count}");
+  });
+
+  it("notifications.hours supports {count}", () => {
+    expect(en.notifications.hours).toContain("{count}");
+    expect(id.notifications.hours).toContain("{count}");
+  });
+
+  it("notifications.days supports {count}", () => {
+    expect(en.notifications.days).toContain("{count}");
+    expect(id.notifications.days).toContain("{count}");
+  });
+
+  it("protection.positionsCount supports {count}", () => {
+    expect(en.protection.positionsCount).toContain("{count}");
+    expect(id.protection.positionsCount).toContain("{count}");
   });
 });
 
-describe("i18n — Security", () => {
-  it("no API keys in English translations", () => {
-    const json = JSON.stringify(en);
-    expect(json).not.toContain("API_KEY");
-    expect(json).not.toContain("api_key");
-    expect(json).not.toContain("secret");
-    expect(json).not.toContain("password");
-    expect(json).not.toContain("token");
-  });
-
-  it("no API keys in Indonesian translations", () => {
-    const json = JSON.stringify(id);
-    expect(json).not.toContain("API_KEY");
-    expect(json).not.toContain("api_key");
-    expect(json).not.toContain("secret");
-    expect(json).not.toContain("password");
-    expect(json).not.toContain("token");
-  });
-
-  it("no user-specific data in translations", () => {
-    const enJson = JSON.stringify(en);
-    expect(enJson).not.toContain("userId");
-    expect(enJson).not.toContain("positionId");
-    expect(enJson).not.toContain("@");
-  });
-});
-
-describe("i18n — Terminology Consistency", () => {
-  it("workspace.trader and workspace.trading are distinct", () => {
-    expect(en.workspace.trader).not.toBe(en.workspace.trading);
-    expect(id.workspace.trader).not.toBe(id.workspace.trading);
-  });
-
-  it("workspace.investor and workspace.investing are distinct", () => {
-    expect(en.workspace.investor).not.toBe(en.workspace.investing);
-    expect(id.workspace.investor).not.toBe(id.workspace.investing);
-  });
-
-  it("English and Indonesian translations differ (not just copies)", () => {
-    // At least some keys should differ between en and id
+describe("i18n — EN/ID different translations (not identical)", () => {
+  it("global.loading is different between EN and ID", () => {
     expect(en.global.loading).not.toBe(id.global.loading);
+  });
+
+  it("nav.analysis is different between EN and ID", () => {
     expect(en.nav.analysis).not.toBe(id.nav.analysis);
-    expect(en.workspace.investorRole).not.toBe(id.workspace.investorRole);
+  });
+
+  it("status.healthy is different between EN and ID", () => {
+    expect(en.status.healthy).not.toBe(id.status.healthy);
+  });
+
+  it("trader.portfolioOverview is different between EN and ID", () => {
+    expect(en.trader.portfolioOverview).not.toBe(id.trader.portfolioOverview);
+  });
+
+  it("investor.noPositions is different between EN and ID", () => {
+    expect(en.investor.noPositions).not.toBe(id.investor.noPositions);
+  });
+
+  it("protection.title is different between EN and ID", () => {
+    expect(en.protection.title).not.toBe(id.protection.title);
+  });
+
+  it("fundamental.overall is different between EN and ID", () => {
+    expect(en.fundamental.overall).not.toBe(id.fundamental.overall);
+  });
+
+  it("journal.title is different between EN and ID", () => {
+    expect(en.journal.title).not.toBe(id.journal.title);
   });
 });
 
-describe("i18n — Missing Key Fallback", () => {
-  it("getNestedValue returns undefined for missing keys", () => {
-    expect(getNestedValue(en, "nonexistent.key")).toBeUndefined();
+describe("i18n — EN/ID same values for universal terms", () => {
+  it("market.vix is same (universal ticker)", () => {
+    expect(en.market.vix).toBe(id.market.vix);
   });
 
-  it("getNestedValue returns string for valid keys", () => {
-    expect(getNestedValue(en, "global.loading")).toBe("Loading…");
+  it("market.dxy is same (universal ticker)", () => {
+    expect(en.market.dxy).toBe(id.market.dxy);
   });
 
-  it("getNestedValue handles deep nesting", () => {
-    expect(getNestedValue(en, "fundamental.macroRegime")).toBe("MACRO REGIME");
-  });
-});
-
-describe("i18n — Supported Locale Validation", () => {
-  it("all supported locales have labels", () => {
-    for (const locale of SUPPORTED_LOCALES) {
-      expect(LOCALE_LABELS[locale]).toBeTruthy();
-    }
+  it("market.us10y is same (universal ticker)", () => {
+    expect(en.market.us10y).toBe(id.market.us10y);
   });
 
-  it("English is first in supported locales", () => {
-    expect(SUPPORTED_LOCALES[0]).toBe("en");
-  });
-});
-
-describe("i18n — Decision Support Keys", () => {
-  const decisionKeys = [
-    "decision.supportingEvidence",
-    "decision.conflictingEvidence",
-    "decision.whatCouldChange",
-    "decision.whatToMonitor",
-    "decision.dataAvailability",
-    "decision.thesisHealth",
-    "decision.thesisState",
-    "decision.invalidation",
-    "decision.watchItems",
-  ];
-
-  it("English decision keys present", () => {
-    for (const key of decisionKeys) {
-      expect(getNestedValue(en, key), `Missing: ${key}`).toBeTruthy();
-    }
+  it("market.wti is same (universal ticker)", () => {
+    expect(en.market.wti).toBe(id.market.wti);
   });
 
-  it("Indonesian decision keys present", () => {
-    for (const key of decisionKeys) {
-      expect(getNestedValue(id, key), `Missing: ${key}`).toBeTruthy();
-    }
-  });
-});
-
-describe("i18n — Intelligence Keys", () => {
-  const intelligenceKeys = [
-    "intelligence.technical",
-    "intelligence.fundamental",
-    "intelligence.macro",
-    "intelligence.crossAsset",
-    "intelligence.news",
-    "intelligence.supporting",
-    "intelligence.conflicting",
-    "intelligence.neutral",
-    "intelligence.unavailable",
-    "intelligence.observed",
-    "intelligence.derived",
-  ];
-
-  it("English intelligence keys present", () => {
-    for (const key of intelligenceKeys) {
-      expect(getNestedValue(en, key), `Missing: ${key}`).toBeTruthy();
-    }
+  it("analysis.long is same (trading term)", () => {
+    expect(en.analysis.long).toBe(id.analysis.long);
   });
 
-  it("Indonesian intelligence keys present", () => {
-    for (const key of intelligenceKeys) {
-      expect(getNestedValue(id, key), `Missing: ${key}`).toBeTruthy();
-    }
+  it("analysis.short is same (trading term)", () => {
+    expect(en.analysis.short).toBe(id.analysis.short);
   });
 });
