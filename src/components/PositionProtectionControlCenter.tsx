@@ -247,7 +247,7 @@ export function PositionProtectionControlCenter({
         {stats.providersDown > 0 && (
           <span className="text-amber-400">{stats.providersDown} degraded</span>
         )}
-        {stats.anyStale && <span className="text-orange-400">stale data detected</span>}
+        {stats.anyStale && <span className="text-orange-400">{t.system.staleDataDetected}</span>}
         {diagnostics && (
           <span className="flex items-center gap-1">
             <Activity className="size-3" />

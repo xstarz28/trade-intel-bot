@@ -193,6 +193,7 @@ const id: Translations = {
     invalidation: "Pembatalan",
     nextLevel: "Level Berikutnya",
     catalyst: "KATALIS",
+    sensitivity: "sensitivitas",
     primary: "PRIMER",
     secondary: "SEKUNDER",
     contextLabel: "KONTEKS",
@@ -309,6 +310,7 @@ const id: Translations = {
     alertPipeline: "Pipeline Peringatan",
     persistence: "Persistensi",
     allOperational: "Semua komponen beroperasi",
+    staleDataDetected: "data stale terdeteksi",
   },
 
   // ─── Analysis ───────────────────────────────────────────────

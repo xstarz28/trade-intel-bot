@@ -208,7 +208,7 @@ function FundamentalIntelligenceSection({ fundamentals }: { fundamentals: Fundam
                   fundamentals!.catalyst.positionSensitivity === "HIGH" ? "bg-amber-500/20 text-amber-400" :
                   "bg-muted/30 text-muted-foreground"
                 }`}>
-                  {fundamentals!.catalyst.positionSensitivity} sensitivity
+                  {fundamentals!.catalyst.positionSensitivity} {t.intelligence.sensitivity}
                 </span>
               </div>
               <p className="text-[8px] font-mono text-muted-foreground/80">
