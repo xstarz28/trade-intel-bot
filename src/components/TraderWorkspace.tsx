@@ -425,7 +425,7 @@ export function TraderWorkspace({
   onSelectAlerts,
   onSelectSystem,
 }: TraderWorkspaceProps) {
-  const { t } = useI18n();
+  const { t, txi } = useI18n();
   const positions = useMemo(() => Array.from(intelligenceMap.entries()), [intelligenceMap]);
 
   // Thesis distribution
@@ -462,19 +462,19 @@ export function TraderWorkspace({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="text-center p-2 rounded bg-muted/20">
             <div className="text-lg font-bold font-mono text-foreground">{positions.length}</div>
-            <div className="text-[8px] font-mono text-muted-foreground/60">Positions</div>
+            <div className="text-[8px] font-mono text-muted-foreground/60">{t.trader.positions}</div>
           </div>
           <div className="text-center p-2 rounded bg-muted/20">
             <div className="text-lg font-bold font-mono text-foreground">{alertCount}</div>
-            <div className="text-[8px] font-mono text-muted-foreground/60">Active Alerts</div>
+            <div className="text-[8px] font-mono text-muted-foreground/60">{t.trader.activeAlerts}</div>
           </div>
           <div className="text-center p-2 rounded bg-muted/20">
             <div className="text-lg font-bold font-mono text-foreground">{unreadCount}</div>
-            <div className="text-[8px] font-mono text-muted-foreground/60">Unread</div>
+            <div className="text-[8px] font-mono text-muted-foreground/60">{t.trader.unread}</div>
           </div>
           <div className="text-center p-2 rounded bg-muted/20">
             <ThesisBadge thesis={dominantState} />
-            <div className="text-[8px] font-mono text-muted-foreground/60 mt-0.5">Dominant</div>
+            <div className="text-[8px] font-mono text-muted-foreground/60 mt-0.5">{t.trader.dominant}</div>
           </div>
         </div>
 
@@ -500,13 +500,13 @@ export function TraderWorkspace({
             className="h-5 text-[8px] font-mono"
             onClick={onSelectPortfolio}
           >
-            View All
+            {t.trader.viewAll}
           </Button>
         }
       >
         {positions.length === 0 ? (
           <div className="text-[8px] font-mono text-muted-foreground/50 py-2 text-center">
-            No positions registered
+            {t.trader.noPositionsRegistered}
           </div>
         ) : (
           <div className="space-y-1">
@@ -534,7 +534,7 @@ export function TraderWorkspace({
               className="h-5 text-[8px] font-mono"
               onClick={onSelectPortfolio}
             >
-              Details
+              {t.trader.details}
             </Button>
           }
         >
@@ -557,7 +557,7 @@ export function TraderWorkspace({
         </div>
         {dataQuality["UNAVAILABLE"] && (
           <div className="text-[8px] font-mono text-amber-400/80 mt-1">
-            ⚠ Some positions have unavailable data — intelligence may be limited
+            {t.trader.unavailableDataWarning}
           </div>
         )}
       </WorkspaceSection>
@@ -572,11 +572,10 @@ export function TraderWorkspace({
             size="sm"
             className="h-5 text-[8px] font-mono"
             onClick={onSelectSystem}
-          >
-            Details
-          </Button>
-        }
-      >
+          >            {t.trader.details}
+            </Button>
+          }
+        >
         <SystemHealthSummary health={healthSnapshot} />
       </WorkspaceSection>
 
@@ -590,7 +589,7 @@ export function TraderWorkspace({
             onClick={onSelectAlerts}
           >
             <Bell className="size-2.5 mr-1" />
-            View Alerts ({unreadCount})
+            {txi("trader.viewAlerts", { count: unreadCount })}
           </Button>
           <Button
             variant="outline"
@@ -599,15 +598,14 @@ export function TraderWorkspace({
             onClick={onSelectSystem}
           >
             <Activity className="size-2.5 mr-1" />
-            System Health
+            {t.trader.systemHealthBtn}
           </Button>
         </div>
       </WorkspaceSection>
 
       {/* ─── Disclaimer ─── */}
       <div className="text-[8px] font-mono text-muted-foreground/40 pt-1 border-t border-border/20">
-        Informational only. No trades are executed automatically.
-        All intelligence is evidence-based — confidence ≠ probability of price movement.
+        {t.trader.evidenceBasedDisclaimer}
       </div>
     </div>
   );
@@ -1275,7 +1273,7 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
       {/* Header */}
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="sm" className="h-6 text-[8px] font-mono" onClick={onBack}>
-          ← Back
+          {t.global.back}
         </Button>
         <span className="text-[11px] font-mono font-bold text-foreground">
           {info?.displayName ?? intel.instrument}
@@ -1295,31 +1293,31 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
       </WorkspaceSection>
 
       {/* Position Metrics */}
-      <WorkspaceSection title={t.trader.positions + " METRICS"} icon={<BarChart3 className="size-3" />}>
+      <WorkspaceSection title={t.trader.positionMetrics} icon={<BarChart3 className="size-3" />}>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[8px] font-mono">
           <div>
-            <span className="text-muted-foreground/50">Entry: </span>
+            <span className="text-muted-foreground/50">{t.trader.entry} </span>
             <span className="text-foreground">{intel.entryPrice.toLocaleString()}</span>
           </div>
           <div>
-            <span className="text-muted-foreground/50">Current: </span>
+            <span className="text-muted-foreground/50">{t.trader.current} </span>
             <span className="text-foreground">{intel.currentPrice.toLocaleString()}</span>
           </div>
           <div>
-            <span className="text-muted-foreground/50">PnL: </span>
+            <span className="text-muted-foreground/50">{t.trader.pnl} </span>
             <span className={intel.pnlPct >= 0 ? "text-emerald-400" : "text-red-400"}>
               {intel.pnlPct >= 0 ? "+" : ""}{intel.pnlPct.toFixed(2)}%
             </span>
           </div>
           {intel.stopLoss && (
             <div>
-              <span className="text-muted-foreground/50">SL: </span>
+              <span className="text-muted-foreground/50">{t.trader.sl} </span>
               <span className="text-foreground">{intel.stopLoss.toLocaleString()}</span>
             </div>
           )}
           {intel.takeProfit && (
             <div>
-              <span className="text-muted-foreground/50">TP: </span>
+              <span className="text-muted-foreground/50">{t.trader.tp} </span>
               <span className="text-foreground">{intel.takeProfit.toLocaleString()}</span>
             </div>
           )}
@@ -1327,18 +1325,18 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
       </WorkspaceSection>
 
       {/* Context */}
-      <WorkspaceSection title={t.market.title + " CONTEXT"} icon={<Globe className="size-3" />}>
+      <WorkspaceSection title={t.trader.marketContext} icon={<Globe className="size-3" />}>
         <div className="space-y-1 text-[8px] font-mono">
           <div>
-            <span className="text-muted-foreground/50">Short-term: </span>
+            <span className="text-muted-foreground/50">{t.trader.shortTerm} </span>
             <span className="text-foreground">{intel.shortTermContext}</span>
           </div>
           <div>
-            <span className="text-muted-foreground/50">Medium-term: </span>
+            <span className="text-muted-foreground/50">{t.trader.mediumTerm} </span>
             <span className="text-foreground">{intel.mediumTermContext}</span>
           </div>
           <div>
-            <span className="text-muted-foreground/50">Volatility: </span>
+            <span className="text-muted-foreground/50">{t.trader.volatility} </span>
             <span className="text-foreground">{intel.volatilityContext}</span>
           </div>
         </div>
@@ -1380,7 +1378,7 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
 
       {/* Disclaimer */}
       <div className="text-[8px] font-mono text-muted-foreground/40 pt-1 border-t border-border/20">
-        Evidence-based intelligence. No execution commands. Manual action required for any trade.
+        {t.trader.positionDisclaimer}
       </div>
     </div>
   );
