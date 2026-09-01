@@ -9,6 +9,7 @@
  */
 
 import React, { useMemo, useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import {
@@ -48,6 +49,7 @@ interface RuntimeHealthDashboardProps {
 }
 
 export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardProps) {
+  const { t } = useI18n();
   const [showHistory, setShowHistory] = useState(false);
 
   const latestHealth = useQuery(api.runtimeHealth.getLatestRuntimeHealth);
@@ -99,7 +101,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-mono font-semibold">System Health</h3>
+          <h3 className="text-sm font-mono font-semibold">{t.system.title}</h3>
           {snapshot && (
             <span
               className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${HEALTH_STATUS_BG[snapshot.overallStatus]}`}

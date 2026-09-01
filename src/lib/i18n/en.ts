@@ -20,6 +20,7 @@ const en: Translations = {
   },
 
   nav: {
+    overview: "Overview",
     analysis: "Analysis",
     protection: "Protection",
     portfolio: "Portfolio",
@@ -84,10 +85,13 @@ const en: Translations = {
     noPositionsHint:
       'Click "Add Position" to register an open position for real-time profit protection.',
     addPosition: "Add Position",
+    cancel: "Cancel",
     overview: "Overview",
     informationalOnly: "Informational only.",
     noAutoExecute: "No trades are executed automatically.",
     confidenceNotProbability: "Intelligence confidence ≠ likelihood of price movement.",
+    removeFromMonitoring: "Remove from monitoring",
+    positionsCount: "{count} positions",
   },
 
   intelligence: {
@@ -145,6 +149,129 @@ const en: Translations = {
     highRisk: "HIGH_RISK",
   },
 
+  // ─── Alert Rules ────────────────────────────────────────────
+  alerts: {
+    title: "Custom Alert Rules",
+    createRule: "Create Rule",
+    editRule: "Edit Rule",
+    deleteRule: "Delete Rule",
+    ruleName: "Rule Name",
+    condition: "Condition",
+    severity: "Severity",
+    scope: "Scope",
+    instrument: "Instrument",
+    position: "Position",
+    cooldown: "Cooldown (ms)",
+    enabled: "Enabled",
+    disabled: "Disabled",
+    save: "Save Rule",
+    cancel: "Cancel",
+    noRules: "No alert rules configured.",
+    noRulesHint: "Create a rule to get notified when conditions are met.",
+    positionScope: "Position",
+    instrumentScope: "Instrument",
+    portfolioScope: "Portfolio",
+    globalScope: "Global",
+    info: "INFO",
+    low: "LOW",
+    medium: "MEDIUM",
+    high: "HIGH",
+    critical: "CRITICAL",
+  },
+
+  // ─── Notifications ──────────────────────────────────────────
+  notifications: {
+    title: "Notifications",
+    markAllRead: "Mark all read",
+    dismiss: "Dismiss",
+    noNotifications: "No notifications yet.",
+    noUnread: "All caught up!",
+    unread: "{count} unread",
+    read: "Read",
+    ago: "{time} ago",
+    now: "now",
+    minutes: "{count}m",
+    hours: "{count}h",
+    days: "{count}d",
+  },
+
+  // ─── Market Overview ────────────────────────────────────────
+  market: {
+    title: "Market Overview",
+    live: "LIVE",
+    stale: "STALE",
+    unavailable: "UNAVAILABLE",
+    vix: "VIX",
+    dxy: "DXY",
+    us10y: "US 10Y",
+    wti: "WTI",
+    noData: "No market data available.",
+  },
+
+  // ─── System / Runtime Health ────────────────────────────────
+  system: {
+    title: "System Health",
+    overallStatus: "Overall Status",
+    healthy: "Healthy",
+    degraded: "Degraded",
+    failed: "Failed",
+    components: "Components",
+    lastUpdate: "Last Update",
+    noData: "No health data available.",
+    intelligenceCycle: "Intelligence Cycle",
+    alertPipeline: "Alert Pipeline",
+    persistence: "Persistence",
+  },
+
+  // ─── Analysis ───────────────────────────────────────────────
+  analysis: {
+    runAnalysis: "Run Analysis",
+    analyzing: "Analyzing…",
+    selectInstrument: "Select an instrument",
+    timeframe: "Timeframe",
+    noResult: "No analysis result yet.",
+    confidence: "Confidence",
+    bias: "Bias",
+    recommendation: "Recommendation",
+    bullish: "Bullish",
+    bearish: "Bearish",
+    noTrade: "No Trade",
+    long: "LONG",
+    short: "SHORT",
+    technicalSummary: "Technical Summary",
+    fundamentalSummary: "Fundamental Summary",
+    keyLevels: "Key Levels",
+    support: "Support",
+    resistance: "Resistance",
+    invalidationLevel: "Invalidation",
+    riskNote: "Risk Note",
+    dataCompleteness: "Data Completeness",
+  },
+
+  // ─── Forms ──────────────────────────────────────────────────
+  forms: {
+    required: "Required",
+    optional: "Optional",
+    invalid: "Invalid value",
+    enterPrice: "Enter price",
+    enterInstrument: "Enter instrument",
+    selectSide: "Select side",
+    selectHorizon: "Select horizon",
+    selectTimeframe: "Select timeframe",
+  },
+
+  // ─── Empty States ───────────────────────────────────────────
+  emptyStates: {
+    noPositions: "No positions registered.",
+    noAlerts: "No alerts configured.",
+    noNotifications: "No notifications.",
+    noNews: "No news available.",
+    noMarketData: "No market data available.",
+    noAnalysis: "No analysis results.",
+    noHistory: "No history yet.",
+    selectToBegin: "Select an instrument to begin.",
+  },
+
   macro: {
     regime: "MACRO REGIME",
     stagflation: "STAGFLATION",
@@ -200,6 +327,19 @@ const en: Translations = {
     elevated: "ELEVATED",
     escalating: "ESCALATING",
     deescalating: "DEESCALATING",
+  },
+
+  // ─── Trader Workspace Sections ──────────────────────────
+  trader: {
+    portfolioOverview: "PORTFOLIO OVERVIEW",
+    positions: "POSITIONS",
+    portfolioContext: "PORTFOLIO CONTEXT",
+    dataQuality: "DATA QUALITY",
+    systemHealth: "SYSTEM HEALTH",
+    actions: "ACTIONS",
+    decisionSupport: "DECISION SUPPORT",
+    evidenceTrace: "EVIDENCE TRACE",
+    currentAssessment: "CURRENT ASSESSMENT",
   },
 };
 

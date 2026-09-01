@@ -73,6 +73,8 @@ interface I18nContextValue {
   t: Translations;
   /** Raw key lookup — returns translated string or the key itself as fallback. */
   tx: (key: string) => string;
+  /** Translate with interpolation: txi("positions.count", { count: 4 }) → "4 positions" */
+  txi: (key: string, vars?: Record<string, string | number>) => string;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
@@ -107,9 +109,26 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     [t],
   );
 
+  /**
+   * Translate with interpolation: txi("positions.count", { count: 4 })
+   * Supports {var} placeholders in translation strings.
+   */
+  const txi = useCallback(
+    (key: string, vars?: Record<string, string | number>): string => {
+      let translated = tx(key);
+      if (vars) {
+        for (const [k, v] of Object.entries(vars)) {
+          translated = translated.replace(new RegExp(`\{${k}\}`, "g"), String(v));
+        }
+      }
+      return translated;
+    },
+    [tx],
+  );
+
   const value = useMemo<I18nContextValue>(
-    () => ({ locale, setLocale, t, tx }),
-    [locale, setLocale, t, tx],
+    () => ({ locale, setLocale, t, tx, txi }),
+    [locale, setLocale, t, tx, txi],
   );
 
   return React.createElement(I18nContext.Provider, { value }, children);

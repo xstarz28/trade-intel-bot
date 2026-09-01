@@ -20,6 +20,7 @@ const id: Translations = {
   },
 
   nav: {
+    overview: "Ringkasan",
     analysis: "Analisis",
     protection: "Proteksi",
     portfolio: "Portofolio",
@@ -87,11 +88,14 @@ const id: Translations = {
     noPositionsHint:
       'Klik "Tambah Posisi" untuk mendaftarkan posisi terbuka untuk perlindungan keuntungan real-time.',
     addPosition: "Tambah Posisi",
+    cancel: "Batal",
     overview: "Ringkasan",
     informationalOnly: "Hanya untuk informasi.",
     noAutoExecute: "Tidak ada perdagangan yang dieksekusi secara otomatis.",
     confidenceNotProbability:
       "Kepercayaan analisis ≠ kemungkinan pergerakan harga.",
+    removeFromMonitoring: "Hapus dari pemantauan",
+    positionsCount: "{count} posisi",
   },
 
   intelligence: {
@@ -147,6 +151,129 @@ const id: Translations = {
     none: "TIDAK ADA",
     watch: "PERHATIAN",
     highRisk: "RISIKO TINGGI",
+  },
+
+  // ─── Alert Rules ────────────────────────────────────────────
+  alerts: {
+    title: "Aturan Peringatan Khusus",
+    createRule: "Buat Aturan",
+    editRule: "Edit Aturan",
+    deleteRule: "Hapus Aturan",
+    ruleName: "Nama Aturan",
+    condition: "Kondisi",
+    severity: "Tingkat Keparahan",
+    scope: "Cakupan",
+    instrument: "Instrumen",
+    position: "Posisi",
+    cooldown: "Cooldown (ms)",
+    enabled: "Aktif",
+    disabled: "Nonaktif",
+    save: "Simpan Aturan",
+    cancel: "Batal",
+    noRules: "Belum ada aturan peringatan.",
+    noRulesHint: "Buat aturan untuk mendapat notifikasi ketika kondisi terpenuhi.",
+    positionScope: "Posisi",
+    instrumentScope: "Instrumen",
+    portfolioScope: "Portofolio",
+    globalScope: "Global",
+    info: "INFO",
+    low: "RENDAH",
+    medium: "SEDANG",
+    high: "TINGGI",
+    critical: "KRITIS",
+  },
+
+  // ─── Notifications ──────────────────────────────────────────
+  notifications: {
+    title: "Notifikasi",
+    markAllRead: "Tandai semua sudah dibaca",
+    dismiss: "Abaikan",
+    noNotifications: "Belum ada notifikasi.",
+    noUnread: "Semua sudah dibaca!",
+    unread: "{count} belum dibaca",
+    read: "Dibaca",
+    ago: "{time} lalu",
+    now: "sekarang",
+    minutes: "{count}m",
+    hours: "{count}j",
+    days: "{count}h",
+  },
+
+  // ─── Market Overview ────────────────────────────────────────
+  market: {
+    title: "Ringkasan Pasar",
+    live: "LIVE",
+    stale: "STALE",
+    unavailable: "TIDAK TERSEDIA",
+    vix: "VIX",
+    dxy: "DXY",
+    us10y: "US 10Y",
+    wti: "WTI",
+    noData: "Tidak ada data pasar tersedia.",
+  },
+
+  // ─── System / Runtime Health ────────────────────────────────
+  system: {
+    title: "Kesehatan Sistem",
+    overallStatus: "Status Keseluruhan",
+    healthy: "Sehat",
+    degraded: "Menurun",
+    failed: "Gagal",
+    components: "Komponen",
+    lastUpdate: "Pembaruan Terakhir",
+    noData: "Tidak ada data kesehatan tersedia.",
+    intelligenceCycle: "Siklus Inteligensi",
+    alertPipeline: "Pipeline Peringatan",
+    persistence: "Persistensi",
+  },
+
+  // ─── Analysis ───────────────────────────────────────────────
+  analysis: {
+    runAnalysis: "Jalankan Analisis",
+    analyzing: "Menganalisis…",
+    selectInstrument: "Pilih instrumen",
+    timeframe: "Timeframe",
+    noResult: "Belum ada hasil analisis.",
+    confidence: "Kepercayaan",
+    bias: "Bias",
+    recommendation: "Rekomendasi",
+    bullish: "Bullish",
+    bearish: "Bearish",
+    noTrade: "Tidak Ada Perdagangan",
+    long: "LONG",
+    short: "SHORT",
+    technicalSummary: "Ringkasan Teknikal",
+    fundamentalSummary: "Ringkasan Fundamental",
+    keyLevels: "Level Kunci",
+    support: "Support",
+    resistance: "Resistance",
+    invalidationLevel: "Pembatalan",
+    riskNote: "Catatan Risiko",
+    dataCompleteness: "Kelengkapan Data",
+  },
+
+  // ─── Forms ──────────────────────────────────────────────────
+  forms: {
+    required: "Wajib",
+    optional: "Opsional",
+    invalid: "Nilai tidak valid",
+    enterPrice: "Masukkan harga",
+    enterInstrument: "Masukkan instrumen",
+    selectSide: "Pilih sisi",
+    selectHorizon: "Pilih horizon",
+    selectTimeframe: "Pilih timeframe",
+  },
+
+  // ─── Empty States ───────────────────────────────────────────
+  emptyStates: {
+    noPositions: "Belum ada posisi terdaftar.",
+    noAlerts: "Belum ada peringatan dikonfigurasi.",
+    noNotifications: "Tidak ada notifikasi.",
+    noNews: "Tidak ada berita tersedia.",
+    noMarketData: "Tidak ada data pasar tersedia.",
+    noAnalysis: "Tidak ada hasil analisis.",
+    noHistory: "Belum ada riwayat.",
+    selectToBegin: "Pilih instrumen untuk memulai.",
   },
 
   macro: {
@@ -205,6 +332,19 @@ const id: Translations = {
     elevated: "TINGGI",
     escalating: "MENINGKAT",
     deescalating: "MENURUN",
+  },
+
+  // ─── Trader Workspace Sections ──────────────────────────
+  trader: {
+    portfolioOverview: "RINGKASAN PORTOFOLIO",
+    positions: "POSISI",
+    portfolioContext: "KONTEKS PORTOFOLIO",
+    dataQuality: "KUALITAS DATA",
+    systemHealth: "KESEHATAN SISTEM",
+    actions: "AKSI",
+    decisionSupport: "DUKUNGAN KEPUTUSAN",
+    evidenceTrace: "JEJAK BUKTI",
+    currentAssessment: "PENILAIAN SAAT INI",
   },
 };
 

@@ -6,6 +6,7 @@
  */
 
 import React, { useState, useMemo } from "react";
+import { useI18n } from "@/lib/i18n";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { NotificationFilter } from "../lib/position-protection/notification-engine";
@@ -53,6 +54,7 @@ function formatTimestamp(ts: number): string {
 }
 
 export function NotificationCenter() {
+  const { t } = useI18n();
   const [filter, setFilter] = useState<NotificationFilter>("ALL");
   const [showPrefs, setShowPrefs] = useState(false);
   const notifications = useQuery(api.notifications.getNotifications, { limit: 100 });
@@ -104,7 +106,7 @@ export function NotificationCenter() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-mono font-semibold">Notifications</h3>
+          <h3 className="text-sm font-mono font-semibold">{t.notifications.title}</h3>
           {visibleUnreadCount > 0 && (
             <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500/20 text-red-400 text-[10px] font-mono font-bold">
               {visibleUnreadCount}
@@ -125,7 +127,7 @@ export function NotificationCenter() {
               onClick={() => markAllRead()}
               className="text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
             >
-              Mark all read
+              {t.notifications.markAllRead}
             </button>
           )}
         </div>
@@ -327,8 +329,8 @@ export function NotificationCenter() {
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <p className="text-xs font-mono text-muted-foreground">
             {filter === "UNREAD"
-              ? "No unread notifications"
-              : "No notifications yet"}
+              ? t.notifications.noUnread
+              : t.notifications.noNotifications}
           </p>
           <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
             Intelligence alerts will appear here
