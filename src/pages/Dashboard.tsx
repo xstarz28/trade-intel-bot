@@ -751,8 +751,6 @@ export default function Dashboard() {
             )}
           </div>
           <div className="flex items-center gap-3">
-          </div>
-          <div className="flex items-center gap-3">
             <span className="text-[11px] text-muted-foreground font-mono hidden sm:block">
               {user?.name || user?.email || "guest"}
             </span>
