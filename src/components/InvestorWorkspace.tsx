@@ -15,7 +15,6 @@
 import React, { useMemo } from "react";
 import {
   Briefcase,
-  Globe,
   Shield,
   AlertTriangle,
   CheckCircle,
@@ -24,11 +23,6 @@ import {
   Activity,
   Layers,
 } from "lucide-react";
-import {
-  type PortfolioIntelligence,
-  type PortfolioExposure,
-  type PortfolioWatchItem,
-} from "@/lib/position-protection/portfolio-intelligence";
 import {
   usePositionProtection,
 } from "@/lib/position-protection/use-position-protection";
@@ -76,232 +70,6 @@ const HEALTH_COLORS: Record<string, string> = {
   UNKNOWN: "text-muted-foreground",
 };
 
-const PRIORITY_COLORS: Record<string, string> = {
-  CRITICAL: "text-red-400 bg-red-500/10",
-  HIGH: "text-orange-400 bg-orange-500/10",
-  MEDIUM: "text-amber-400 bg-amber-500/10",
-  LOW: "text-muted-foreground bg-muted/30",
-};
-
-const EXPOSURE_COLORS: Record<string, string> = {
-  LARGE: "text-red-400",
-  MODERATE: "text-amber-400",
-  SMALL: "text-emerald-400",
-  MINIMAL: "text-muted-foreground",
-};
-
-// ═══════════════════════════════════════════════════════════════
-// PORTFOLIO HEALTH PANEL
-// ═══════════════════════════════════════════════════════════════
-
-function PortfolioHealthPanel({ portfolio }: { portfolio: PortfolioIntelligence }) {
-  const { summary, exposure } = portfolio;
-
-  return (
-    <div className="space-y-3">
-      <Section title="PORTFOLIO HEALTH" icon={<Briefcase className="size-3" />}>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div className="text-center">
-            <div className={`text-lg font-bold font-mono ${HEALTH_COLORS[summary.dominantPortfolioState] ?? "text-muted-foreground"}`}>
-              {summary.totalPositions}
-            </div>
-            <div className="text-[8px] text-muted-foreground font-mono">Positions</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-bold font-mono text-emerald-400">
-              {summary.healthyPositions}
-            </div>
-            <div className="text-[8px] text-muted-foreground font-mono">Healthy</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-bold font-mono text-amber-400">
-              {summary.cautionPositions + summary.deterioratingPositions}
-            </div>
-            <div className="text-[8px] text-muted-foreground font-mono">At Risk</div>
-          </div>
-          <div className="text-center">
-            <div className="text-lg font-bold font-mono text-red-400">
-              {summary.invalidatedPositions}
-            </div>
-            <div className="text-[8px] text-muted-foreground font-mono">Invalidated</div>
-          </div>
-        </div>
-        <div className="mt-2 text-center">
-          <span className={`text-[10px] font-mono font-semibold ${HEALTH_COLORS[summary.dominantPortfolioState] ?? "text-muted-foreground"}`}>
-            {summary.dominantPortfolioState.replace(/_/g, " ")}
-          </span>
-          <span className="text-[8px] text-muted-foreground font-mono ml-2">
-            · {summary.portfolioEvidenceQuality}
-          </span>
-        </div>
-      </Section>
-
-      {/* Position Exposure */}
-      {exposure.length > 0 && (
-        <Section title="POSITIONS" icon={<Layers className="size-3" />}>
-          <div className="space-y-1.5">
-            {exposure.map((pos: PortfolioExposure) => (
-              <div
-                key={pos.instrument}
-                className="flex items-center gap-2 p-2 rounded border border-border/30 hover:bg-muted/50 text-[9px] font-mono transition-colors"
-              >
-                <span className="w-16 shrink-0 font-semibold text-foreground">{pos.instrument}</span>
-                <span className={`px-1.5 py-0.5 rounded text-[8px] ${pos.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
-                  {pos.side}
-                </span>
-                <span className={HEALTH_COLORS[pos.thesisState] ?? "text-muted-foreground"}>
-                  {pos.thesisState.replace(/_/g, " ")}
-                </span>
-                <span className={`ml-auto ${EXPOSURE_COLORS[pos.exposureCategory] ?? "text-muted-foreground"}`}>
-                  {pos.exposureCategory}
-                </span>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// ALIGNMENT & CONFLICTS PANEL
-// ═══════════════════════════════════════════════════════════════
-
-function AlignmentPanel({ portfolio }: { portfolio: PortfolioIntelligence }) {
-  const { alignments, conflicts } = portfolio;
-
-  if (alignments.length === 0 && conflicts.length === 0) return null;
-
-  return (
-    <div className="space-y-3">
-      {alignments.length > 0 && (
-        <Section title="THESIS ALIGNMENT" icon={<CheckCircle className="size-3" />}>
-          <div className="space-y-1.5">
-            {alignments.map((a, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[8px] font-mono">
-                <CheckCircle className="size-3 text-emerald-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-emerald-400">{a.instruments.join(" ↔ ")}</span>
-                  <span className="text-muted-foreground ml-1">— {a.description}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {conflicts.length > 0 && (
-        <Section title="POSITION CONFLICTS" icon={<AlertTriangle className="size-3" />}>
-          <div className="space-y-1.5">
-            {conflicts.map((c, i) => (
-              <div key={i} className="flex items-start gap-1.5 text-[8px] font-mono">
-                <AlertTriangle className="size-3 text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <span className="text-amber-400">{c.positionA} ↔ {c.positionB}</span>
-                  <span className="text-muted-foreground ml-1">— {c.description}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Section>
-      )}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// MACRO CONTEXT PANEL
-// ═══════════════════════════════════════════════════════════════
-
-function MacroContextPanel({ portfolio }: { portfolio: PortfolioIntelligence }) {
-  const { dataAvailability } = portfolio;
-
-  const dims = [
-    { label: "Technical", state: dataAvailability.technical },
-    { label: "Macro", state: dataAvailability.macro },
-    { label: "Fundamentals", state: dataAvailability.fundamentals },
-    { label: "News", state: dataAvailability.news },
-    { label: "Derivatives", state: dataAvailability.derivatives },
-  ];
-
-  return (
-    <Section title="DATA COVERAGE" icon={<Globe className="size-3" />}>
-      <div className="grid grid-cols-5 gap-1.5">
-        {dims.map((d) => (
-          <div key={d.label} className="text-center p-1.5 rounded bg-muted/30">
-            <div className={`text-[8px] font-mono font-semibold ${
-              d.state === "AVAILABLE" ? "text-emerald-400" :
-              d.state === "LIMITED" ? "text-amber-400" :
-              "text-muted-foreground"
-            }`}>
-              {d.state}
-            </div>
-            <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{d.label}</div>
-          </div>
-        ))}
-      </div>
-      {portfolio.marketContext && (
-        <p className="text-[8px] font-mono text-muted-foreground mt-2 leading-relaxed">
-          {portfolio.marketContext}
-        </p>
-      )}
-    </Section>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// WATCH ITEMS PANEL
-// ═══════════════════════════════════════════════════════════════
-
-function WatchItemsPanel({ portfolio }: { portfolio: PortfolioIntelligence }) {
-  const { watchItems } = portfolio;
-
-  if (watchItems.length === 0) return null;
-
-  return (
-    <Section title="WHAT TO MONITOR" icon={<Eye className="size-3" />}>
-      <div className="space-y-1">
-        {watchItems.map((w: PortfolioWatchItem, i: number) => (
-          <div key={i} className="flex items-start gap-1.5 text-[8px] font-mono">
-            <span className={`mt-0.5 ${
-              w.priority === "CRITICAL" ? "text-red-400" :
-              w.priority === "HIGH" ? "text-amber-400" : "text-blue-400"
-            }`}>→</span>
-            <span className="text-muted-foreground shrink-0 font-semibold w-12">{w.instrument}</span>
-            <span className="text-muted-foreground">{w.reason}</span>
-          </div>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
-// RISK CONTEXT PANEL
-// ═══════════════════════════════════════════════════════════════
-
-function RiskContextPanel({ portfolio }: { portfolio: PortfolioIntelligence }) {
-  const { riskContext } = portfolio;
-
-  const riskColor =
-    riskContext === "LOW_CONCERN" ? "text-emerald-400" :
-    riskContext === "MIXED" ? "text-amber-400" :
-    riskContext === "ELEVATED_CONCERN" ? "text-red-400" :
-    "text-muted-foreground";
-
-  return (
-    <Section title="RISK CONTEXT" icon={<Shield className="size-3" />}>
-      <div className="flex items-center gap-1.5 text-[8px] font-mono">
-        <span className="text-muted-foreground">Portfolio risk:</span>
-        <span className={`font-semibold ${riskColor}`}>
-          {riskContext.replace(/_/g, " ")}
-        </span>
-      </div>
-    </Section>
-  );
-}
-
 // ═══════════════════════════════════════════════════════════════
 // MAIN INVESTOR WORKSPACE
 // ═══════════════════════════════════════════════════════════════
@@ -310,15 +78,10 @@ export function InvestorWorkspace() {
   // Fetch positions from Convex
   const { positions: registeredPositions } = usePositionProtection();
 
-  // Build portfolio intelligence from raw registered positions
+  // Build portfolio summary from raw registered positions
   const portfolio = useMemo(() => {
-    // Convert registered positions to the minimal shape PortfolioIntelligence needs
-    // by constructing lightweight PositionIntelligence-like objects
     if (registeredPositions.length === 0) return null;
 
-    // We need PositionIntelligence[] for generatePortfolioIntelligence
-    // But PositionIntelligence requires complex computation.
-    // Instead, build a minimal portfolio summary directly.
     const total = registeredPositions.length;
     const healthy = registeredPositions.filter(
       (p) => p.alert === null || p.alert?.severity === "NONE" || p.alert?.severity === "WATCH",
@@ -415,32 +178,26 @@ export function InvestorWorkspace() {
             {/* Position List */}
             <Section title="POSITIONS" icon={<Layers className="size-3" />}>
               <div className="space-y-1.5">
-                {portfolio.positions.map((pos) => {
-                  const pnlPct = pos.entryPrice > 0
-                    ? ((pos.entryPrice - pos.entryPrice) / pos.entryPrice) * 100 * (pos.side === "LONG" ? 1 : -1)
-                    : 0;
-
-                  return (
-                    <div
-                      key={pos.instrument}
-                      className="flex items-center gap-2 p-2 rounded border border-border/30 hover:bg-muted/50 text-[9px] font-mono transition-colors"
-                    >
-                      <span className="w-16 shrink-0 font-semibold text-foreground">{pos.instrument}</span>
-                      <span className={`px-1.5 py-0.5 rounded text-[8px] ${pos.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
-                        {pos.side}
-                      </span>
-                      <span className={`text-[8px] ${HEALTH_COLORS[pos.severity] ?? "text-muted-foreground"}`}>
-                        {pos.severity.replace(/_/g, " ")}
-                      </span>
-                      <span className="ml-auto text-muted-foreground text-[8px]">{pos.horizon}</span>
-                    </div>
-                  );
-                })}
+                {portfolio.positions.map((pos) => (
+                  <div
+                    key={pos.instrument}
+                    className="flex items-center gap-2 p-2 rounded border border-border/30 hover:bg-muted/50 text-[9px] font-mono transition-colors"
+                  >
+                    <span className="w-16 shrink-0 font-semibold text-foreground">{pos.instrument}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[8px] ${pos.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
+                      {pos.side}
+                    </span>
+                    <span className={`text-[8px] ${HEALTH_COLORS[pos.severity] ?? "text-muted-foreground"}`}>
+                      {pos.severity.replace(/_/g, " ")}
+                    </span>
+                    <span className="ml-auto text-muted-foreground text-[8px]">{pos.horizon}</span>
+                  </div>
+                ))}
               </div>
             </Section>
           </div>
 
-          {/* Right: Risk + Context + Watch */}
+          {/* Right: Risk + Context */}
           <div className="lg:col-span-7 space-y-3">
             {/* Risk Summary */}
             <Section title="RISK SUMMARY" icon={<Shield className="size-3" />}>
@@ -471,7 +228,7 @@ export function InvestorWorkspace() {
             {/* Horizon Distribution */}
             <Section title="HORIZON DISTRIBUTION" icon={<BarChart3 className="size-3" />}>
               <div className="space-y-1">
-                {["SCALPING", "INTRADAY", "SWING", "INVESTING"].map((h) => {
+                {(["SCALPING", "INTRADAY", "SWING", "INVESTING"] as const).map((h) => {
                   const count = portfolio.positions.filter((p) => p.horizon === h).length;
                   if (count === 0) return null;
                   return (
