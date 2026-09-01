@@ -25,7 +25,8 @@ import {
   formatPnL,
   parseLocaleNumber,
 } from "./format";
-import { ALL_LOCALES, SUPPORTED_LOCALES, DEFAULT_LOCALE, LOCALE_LABELS } from "./types";
+import { ALL_LOCALES, DEFAULT_LOCALE } from "./types";
+import { SUPPORTED_LOCALES, LOCALE_LABELS } from "./locales";
 
 // ─── Locale Registry Tests ─────────────────────────────────────
 
