@@ -106,10 +106,11 @@ function IntelSection({
 // ═══════════════════════════════════════════════════════════════
 
 function NewsIntelligenceSection({ news }: { news: NewsSynthesis | null }) {
+  const { t } = useI18n();
   const available = news !== null && news.availability !== "UNAVAILABLE";
 
   return (
-    <IntelSection title="NEWS INTELLIGENCE" icon={<Newspaper className="size-3" />} available={available}>
+    <IntelSection title={t.intelligence.newsIntelligence} icon={<Newspaper className="size-3" />} available={available}>
       {!available ? null : (
         <>
           {/* News stance */}
@@ -166,10 +167,11 @@ function NewsItemCard({ item }: { item: NewsRelevance }) {
 // ═══════════════════════════════════════════════════════════════
 
 function FundamentalIntelligenceSection({ fundamentals }: { fundamentals: FundamentalSynthesis | null }) {
+  const { t } = useI18n();
   const available = fundamentals !== null && fundamentals.availability !== "UNAVAILABLE";
 
   return (
-    <IntelSection title="FUNDAMENTALS" icon={<TrendingUp className="size-3" />} available={available}>
+    <IntelSection title={t.intelligence.fundamentals} icon={<TrendingUp className="size-3" />} available={available}>
       {!available ? null : (
         <>
           <div className="flex items-center gap-2 mb-1.5">
@@ -201,7 +203,7 @@ function FundamentalIntelligenceSection({ fundamentals }: { fundamentals: Fundam
             <div className="mt-2 px-2 py-1.5 bg-amber-500/5 border border-amber-500/20 rounded">
               <div className="flex items-center gap-1.5 mb-0.5">
                 <Zap className="size-2.5 text-amber-400" />
-                <span className="text-[9px] font-mono font-semibold text-amber-400">CATALYST</span>
+                <span className="text-[9px] font-mono font-semibold text-amber-400">{t.intelligence.catalyst}</span>
                 <span className={`text-[8px] font-mono px-1 py-0.5 rounded ${
                   fundamentals!.catalyst.positionSensitivity === "HIGH" ? "bg-amber-500/20 text-amber-400" :
                   "bg-muted/30 text-muted-foreground"
@@ -248,26 +250,27 @@ function FundamentalCard({ interp }: { interp: FundamentalInterpretation }) {
 // ═══════════════════════════════════════════════════════════════
 
 function EvidenceHierarchySection({ evidence }: { evidence: HierarchicalEvidence[] }) {
-  const primary = evidence.filter(e => e.tier === "PRIMARY");
-  const secondary = evidence.filter(e => e.tier === "SECONDARY");
-  const context = evidence.filter(e => e.tier === "CONTEXT");
+  const { t } = useI18n();
+  const primary = evidence.filter(e => e.tier === t.intelligence.primary);
+  const secondary = evidence.filter(e => e.tier === t.intelligence.secondary);
+  const context = evidence.filter(e => e.tier === t.intelligence.contextLabel);
 
   const hasEvidence = primary.length > 0 || secondary.length > 0 || context.length > 0;
 
   return (
-    <IntelSection title="EVIDENCE HIERARCHY" icon={<Layers className="size-3" />} available={hasEvidence}>
+    <IntelSection title={t.intelligence.evidenceHierarchy} icon={<Layers className="size-3" />} available={hasEvidence}>
       {!hasEvidence ? (
         <p className="text-[9px] font-mono text-muted-foreground/60">No evidence available.</p>
       ) : (
         <div className="space-y-2">
           {primary.length > 0 && (
-            <EvidenceTier label="PRIMARY" items={primary} color="text-amber-400" />
+            <EvidenceTier label={t.intelligence.primary} items={primary} color="text-amber-400" />
           )}
           {secondary.length > 0 && (
-            <EvidenceTier label="SECONDARY" items={secondary} color="text-blue-400" />
+            <EvidenceTier label={t.intelligence.secondary} items={secondary} color="text-blue-400" />
           )}
           {context.length > 0 && (
-            <EvidenceTier label="CONTEXT" items={context} color="text-muted-foreground" />
+            <EvidenceTier label={t.intelligence.contextLabel} items={context} color="text-muted-foreground" />
           )}
         </div>
       )}
@@ -315,23 +318,24 @@ function EvidenceTier({
 // ═══════════════════════════════════════════════════════════════
 
 function ScenariosSection({ scenarios }: { scenarios: ScenarioSynthesis }) {
+  const { t } = useI18n();
   return (
-    <IntelSection title="SCENARIOS" icon={<GitBranch className="size-3" />}>
+    <IntelSection title={t.intelligence.scenarios} icon={<GitBranch className="size-3" />}>
       <div className="space-y-2">
         <ScenarioCard
-          label="BASE CASE"
+          label={t.intelligence.baseCase}
           scenario={scenarios.baseCase}
           color="text-emerald-400"
           bgColor="bg-emerald-500/5 border-emerald-500/20"
         />
         <ScenarioCard
-          label="ALTERNATIVE"
+          label={t.intelligence.alternative}
           scenario={scenarios.alternativeCase}
           color="text-amber-400"
           bgColor="bg-amber-500/5 border-amber-500/20"
         />
         <ScenarioCard
-          label="INVALIDATION"
+          label={t.intelligence.invalidationScenario}
           scenario={scenarios.invalidationCase}
           color="text-red-400"
           bgColor="bg-red-500/5 border-red-500/20"
@@ -375,10 +379,11 @@ function ScenarioCard({
 // ═══════════════════════════════════════════════════════════════
 
 function WhatChangedSection({ changes }: { changes: string[] | null | undefined }) {
+  const { t } = useI18n();
   const hasChanges = changes != null && changes.length > 0;
 
   return (
-    <IntelSection title="WHAT CHANGED" icon={<RefreshCw className="size-3" />} available={hasChanges || changes === null}>
+    <IntelSection title={t.intelligence.whatChanged} icon={<RefreshCw className="size-3" />} available={hasChanges || changes === null}>
       {changes === null ? (
         <p className="text-[9px] font-mono text-muted-foreground/60">Awaiting first analysis.</p>
       ) : !hasChanges ? (
@@ -405,6 +410,7 @@ function WhatChangedSection({ changes }: { changes: string[] | null | undefined 
 // ═══════════════════════════════════════════════════════════════
 
 function DimensionStatusPanel({ dimensions }: { dimensions: DimensionStatus[] }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {dimensions.map((dim, i) => (
@@ -440,6 +446,7 @@ function AnalyticalSummarySection({
 }) {
   if (!intelligence) return null;
 
+  const { t } = useI18n();
   const thesisLabel = intelligence.thesisHealth ?? "UNKNOWN";
   const thesisColor =
     thesisLabel === "HEALTHY" || thesisLabel === "STABLE" ? "text-emerald-400" :
@@ -449,7 +456,7 @@ function AnalyticalSummarySection({
     "text-muted-foreground";
 
   return (
-    <IntelSection title="ANALYTICAL SUMMARY" icon={<Target className="size-3" />}>
+    <IntelSection title={t.intelligence.analyticalSummary} icon={<Target className="size-3" />}>
       <div className="space-y-1.5">
         {/* Market */}
         <div className="text-[9px] font-mono">
@@ -502,20 +509,21 @@ function AnalyticalSummarySection({
 // ═══════════════════════════════════════════════════════════════
 
 function KeyLevelsSection({ intelligence }: { intelligence?: PositionIntelligence | null }) {
+  const { t } = useI18n();
   if (!intelligence) return null;
 
   return (
-    <IntelSection title="KEY LEVELS" icon={<Shield className="size-3" />}>
+    <IntelSection title={t.intelligence.keyLevelsLabel} icon={<Shield className="size-3" />}>
       <div className="space-y-1 text-[8px] font-mono">
         {intelligence.invalidationConditions.length > 0 && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground/60">Invalidation</span>
+            <span className="text-muted-foreground/60">{t.intelligence.invalidation}</span>
             <span className="text-red-400/80">{intelligence.invalidationConditions[0].description}</span>
           </div>
         )}
         {intelligence.nextMonitor.length > 0 && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground/60">Next Level</span>
+            <span className="text-muted-foreground/60">{t.intelligence.nextLevel}</span>
             <span className="text-foreground/70">{intelligence.nextMonitor[0]}</span>
           </div>
         )}

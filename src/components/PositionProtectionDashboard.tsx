@@ -1102,7 +1102,7 @@ export function PositionProtectionDashboard() {
             size="sm"
             className="h-6 w-6 p-0"
             onClick={() => setNotificationsEnabled(!notificationsEnabled)}
-            title={notificationsEnabled ? "Disable toasts" : "Enable toasts"}
+            title={notificationsEnabled ? t.protection.disableToasts : t.protection.enableToasts}
           >
             {notificationsEnabled ? (
               <Bell className="size-3 text-primary" />

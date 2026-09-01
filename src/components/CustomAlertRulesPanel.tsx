@@ -287,6 +287,7 @@ function RuleRow({
   onToggle: (ruleId: string, enabled: boolean) => void;
   onDelete: (ruleId: string) => void;
 }) {
+  const { t } = useI18n();
   const cooldownLabel = useMemo(() => {
     const ms = rule.cooldownMs;
     if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
@@ -344,7 +345,7 @@ function RuleRow({
         <button
           className="shrink-0 text-muted-foreground/40 hover:text-red-400 transition-colors"
           onClick={() => onDelete(rule.ruleId)}
-          title="Delete rule"
+          title={t.protection.deleteRule}
         >
           <Trash2 className="size-3" />
         </button>

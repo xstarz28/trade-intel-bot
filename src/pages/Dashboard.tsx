@@ -772,7 +772,7 @@ export default function Dashboard() {
             </DropdownMenu>
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
             <span className="text-[11px] text-muted-foreground font-mono hidden sm:block">
-              {user?.name || user?.email || "guest"}
+              {user?.name || user?.email || t.global.guest}
             </span>
             <Separator orientation="vertical" className="h-5 hidden sm:block" />
             <Button

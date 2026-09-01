@@ -38,6 +38,9 @@ export interface Translations {
     refresh: string;
     noData: string;
     disclaimer: string;
+    guest: string;
+    previewRuntimeError: string;
+    unknownRuntimeError: string;
   };
 
   // ─── Navigation ────────────────────────────────────────────
@@ -76,6 +79,16 @@ export interface Translations {
     timeframes: string;
     instruments: string;
     selectInstrument: string;
+    detectingInstrument: string;
+    fetchingMarketData: string;
+    fetchingIntelligence: string;
+    calculatingIndicators: string;
+    generatingBias: string;
+    dataFetchFailed: string;
+    providerNotConfigured: string;
+    checkApiKey: string;
+    notFound: string;
+    pageNotFound: string;
   };
 
   // ─── Investor Workspace ────────────────────────────────────
@@ -141,6 +154,27 @@ export interface Translations {
     alertsTitle: string;
     notificationsTitle: string;
     portfolioIntelligence: string;
+    controlCenter: string;
+    positionsLabel: string;
+    profitable: string;
+    watchCaution: string;
+    criticalLabel: string;
+    connected: string;
+    monitoring: string;
+    supportingEvidence: string;
+    conflictingEvidence: string;
+    missingCriticalData: string;
+    alertTimeline: string;
+    monitoringPaused: string;
+    disableToasts: string;
+    enableToasts: string;
+    currentProfit: string;
+    giveback: string;
+    peakProfit: string;
+    protectionRef: string;
+    disableRule: string;
+    enableRule: string;
+    deleteRule: string;
   };
 
   // ─── Intelligence ──────────────────────────────────────────
@@ -169,6 +203,23 @@ export interface Translations {
     insufficientData: string;
     observed: string;
     derived: string;
+    newsIntelligence: string;
+    fundamentals: string;
+    evidenceHierarchy: string;
+    scenarios: string;
+    whatChanged: string;
+    analyticalSummary: string;
+    keyLevelsLabel: string;
+    historicalTimeline: string;
+    invalidation: string;
+    nextLevel: string;
+    catalyst: string;
+    primary: string;
+    secondary: string;
+    contextLabel: string;
+    baseCase: string;
+    alternative: string;
+    invalidationScenario: string;
   };
 
   // ─── Decision Support ──────────────────────────────────────
@@ -323,6 +374,13 @@ export interface Translations {
     none: string;
     watch: string;
     highRisk: string;
+    live: string;
+    reconnecting: string;
+    dataStale: string;
+    disconnected: string;
+    monitoringPaused: string;
+    limited: string;
+    insufficient: string;
   };
 
   // ─── Macro Regime ──────────────────────────────────────────
@@ -439,6 +497,11 @@ export interface Translations {
     evidenceBasedDisclaimer: string;
     viewAlerts: string;
     systemHealthBtn: string;
+    thesisDistribution: string;
+    conflicts: string;
+    alignments: string;
+    watchList: string;
+    monitor: string;
   };
 
   // ─── Journal ─────────────────────────────────────────────

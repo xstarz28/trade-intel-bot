@@ -292,6 +292,7 @@ function PortfolioDrillDown({
   portfolioIntel: PortfolioIntelligence;
   intelligenceMap: Map<string, PositionIntelligence>;
 }) {
+  const { t } = useI18n();
   const conflicts = portfolioIntel.conflicts ?? [];
   const alignments = portfolioIntel.alignments ?? [];
   const watchItems = portfolioIntel.watchItems ?? [];
@@ -323,7 +324,7 @@ function PortfolioDrillDown({
       {/* Conflicts */}
       {conflicts.length > 0 && (
         <div className="space-y-1">
-          <span className="text-[8px] font-mono text-red-400 uppercase">Conflicts</span>
+          <span className="text-[8px] font-mono text-red-400 uppercase">{t.trader.conflicts}</span>
           {conflicts.map((c: any, i: number) => (
             <div key={i} className="text-[8px] font-mono text-muted-foreground p-1.5 rounded bg-red-500/5 border border-red-500/10">
               {c.description ?? `${c.positionA ?? "?"} vs ${c.positionB ?? "?"}`}
@@ -335,7 +336,7 @@ function PortfolioDrillDown({
       {/* Alignments */}
       {alignments.length > 0 && (
         <div className="space-y-1">
-          <span className="text-[8px] font-mono text-emerald-400 uppercase">Alignments</span>
+          <span className="text-[8px] font-mono text-emerald-400 uppercase">{t.trader.alignments}</span>
           {alignments.map((a: any, i: number) => (
             <div key={i} className="text-[8px] font-mono text-muted-foreground p-1.5 rounded bg-emerald-500/5 border border-emerald-500/10">
               {a.description ?? `${(a.positions ?? []).join(" + ")}`}
@@ -347,10 +348,10 @@ function PortfolioDrillDown({
       {/* Watch list */}
       {watchItems.length > 0 && (
         <div className="space-y-1">
-          <span className="text-[8px] font-mono text-amber-400 uppercase">Watch List</span>
+          <span className="text-[8px] font-mono text-amber-400 uppercase">{t.trader.watchList}</span>
           {watchItems.slice(0, 5).map((w: any, i: number) => (
             <div key={i} className="text-[8px] font-mono text-muted-foreground p-1.5 rounded bg-amber-500/5 border border-amber-500/10">
-              {w.instrument ? `${w.instrument}: ` : ""}{w.description ?? w.reason ?? "Monitor"}
+              {w.instrument ? `${w.instrument}: ` : ""}{w.description ?? w.reason ?? t.trader.monitor}
             </div>
           ))}
         </div>
