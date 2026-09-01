@@ -583,6 +583,6 @@ describe("i18n — Spanish financial terminology", () => {
   it("disclaimer is translated and meaningful", () => {
     expect(es.global.disclaimer).toContain("informativos");
     expect(es.global.disclaimer).toContain("automáticamente");
-    expect(es.global.disclaimer).toContain("evidencia");
+    expect(es.global.disclaimer).toContain("análisis");
   });
 });
