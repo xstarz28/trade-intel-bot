@@ -70,17 +70,19 @@ interface LoadingStep {
   status: "pending" | "active" | "done" | "error";
 }
 
-const INITIAL_STEPS: LoadingStep[] = [
-  { label: "Detecting instrument", status: "pending" },
-  { label: "Fetching market data", status: "pending" },
-  { label: "Fetching intelligence data", status: "pending" },
-  { label: "Calculating indicators", status: "pending" },
-  { label: "Generating bias", status: "pending" },
-];
-
 type DashboardTab = "analysis" | "protection";
 type InvestorTab = "portfolio" | "intelligence" | "analysis";
 type WorkspaceMode = "trader" | "investor";
+
+function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
+  return [
+    { label: t.dashboard.detectingInstrument, status: "pending" },
+    { label: t.dashboard.fetchingMarketData, status: "pending" },
+    { label: t.dashboard.fetchingIntelligence, status: "pending" },
+    { label: t.dashboard.calculatingIndicators, status: "pending" },
+    { label: t.dashboard.generatingBias, status: "pending" },
+  ];
+}
 
 export default function Dashboard() {
   const { user, signOut } = useAuth();
@@ -104,7 +106,7 @@ export default function Dashboard() {
   }, []);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
-  const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(INITIAL_STEPS);
+  const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(getInitialSteps(t));
   const [fetchError, setFetchError] = useState<string | null>(null);
   // Phase 14 P3 — run identity: a slow/abandoned analysis run must NEVER
   // overwrite the result of a newer run (stale-result mixing guard).
@@ -146,7 +148,7 @@ export default function Dashboard() {
       setFetchError(null);
 
       // Reset loading steps
-      setLoadingSteps(INITIAL_STEPS.map((s) => ({ ...s, status: "pending" as const })));
+      setLoadingSteps(getInitialSteps(t).map((s) => ({ ...s, status: "pending" as const })));
 
       try {
         // Step 1: Detecting instrument

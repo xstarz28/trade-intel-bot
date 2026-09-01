@@ -214,6 +214,7 @@ export interface Translations {
     invalidation: string;
     nextLevel: string;
     catalyst: string;
+    sensitivity: string;
     primary: string;
     secondary: string;
     contextLabel: string;
@@ -308,6 +309,7 @@ export interface Translations {
     alertPipeline: string;
     persistence: string;
     allOperational: string;
+    staleDataDetected: string;
   };
 
   // ─── Analysis ───────────────────────────────────────────────

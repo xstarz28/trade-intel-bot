@@ -189,6 +189,7 @@ const en: Translations = {
     invalidation: "Invalidation",
     nextLevel: "Next Level",
     catalyst: "CATALYST",
+    sensitivity: "sensitivity",
     primary: "PRIMARY",
     secondary: "SECONDARY",
     contextLabel: "CONTEXT",
@@ -305,6 +306,7 @@ const en: Translations = {
     alertPipeline: "Alert Pipeline",
     persistence: "Persistence",
     allOperational: "All components operational",
+    staleDataDetected: "stale data detected",
   },
 
   // ─── Analysis ───────────────────────────────────────────────
