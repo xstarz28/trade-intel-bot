@@ -115,6 +115,24 @@ export const LOCALE_REGISTRY: LocaleMetadata[] = [
   },
 ];
 
+// ─── Derived Constants (single source of truth) ───────────────
+
+/**
+ * All enabled locale codes, derived from the registry.
+ * This is the canonical source — types.ts re-exports it for consumers.
+ */
+export const SUPPORTED_LOCALES: Locale[] = LOCALE_REGISTRY
+  .filter((l) => l.enabled)
+  .map((l) => l.locale);
+
+/**
+ * Native display labels for all locales, derived from the registry.
+ * Used by the language selector.
+ */
+export const LOCALE_LABELS: Record<Locale, string> = Object.fromEntries(
+  LOCALE_REGISTRY.map((l) => [l.locale, l.nativeName]),
+) as Record<Locale, string>;
+
 // ─── Helpers ───────────────────────────────────────────────────
 
 /** Get metadata for a specific locale */

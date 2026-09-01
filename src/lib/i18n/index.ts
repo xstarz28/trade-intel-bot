@@ -20,11 +20,12 @@ import React, {
   useMemo,
 } from "react";
 import type { Locale, Translations } from "./types";
-import { SUPPORTED_LOCALES, DEFAULT_LOCALE, LOCALE_LABELS, ALL_LOCALES } from "./types";
+import { DEFAULT_LOCALE, ALL_LOCALES } from "./types";
 import en from "./en";
 import id from "./id";
 import es from "./es";
 import {
+  SUPPORTED_LOCALES,
   LOCALE_REGISTRY,
   getLocaleMetadata,
   getEnabledLocales,
@@ -96,9 +97,7 @@ function isSupportedLocale(value: string): value is Locale {
   return (SUPPORTED_LOCALES as string[]).includes(value);
 }
 
-function isKnownLocale(value: string): value is Locale {
-  return (ALL_LOCALES as string[]).includes(value);
-}
+
 
 // ─── Resolve initial locale ────────────────────────────────────
 
@@ -243,12 +242,12 @@ function getNestedValue(obj: unknown, path: string): string | undefined {
 
 export type { Locale, Translations };
 export {
-  SUPPORTED_LOCALES,
   ALL_LOCALES,
-  LOCALE_LABELS,
   DEFAULT_LOCALE,
 } from "./types";
 export {
+  SUPPORTED_LOCALES,
+  LOCALE_LABELS,
   LOCALE_REGISTRY,
   getLocaleMetadata,
   getEnabledLocales,

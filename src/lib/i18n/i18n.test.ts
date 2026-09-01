@@ -3,7 +3,8 @@ import en from "./en";
 import id from "./id";
 import es from "./es";
 import type { Translations, Locale } from "./types";
-import { SUPPORTED_LOCALES, DEFAULT_LOCALE, LOCALE_LABELS } from "./types";
+import { SUPPORTED_LOCALES, LOCALE_LABELS } from "./locales";
+import { DEFAULT_LOCALE } from "./types";
 
 // ─── Helper: recursively collect all leaf string keys ──────────
 function collectLeafKeys(obj: Record<string, unknown>, prefix = ""): string[] {
