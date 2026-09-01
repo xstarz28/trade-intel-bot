@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import en from "./en";
 import id from "./id";
 import es from "./es";
+import pt from "./pt";
 import type { Translations, Locale } from "./types";
 import { SUPPORTED_LOCALES, LOCALE_LABELS } from "./locales";
 import { DEFAULT_LOCALE } from "./types";
@@ -129,35 +130,40 @@ describe("i18n — ID/ES key parity", () => {
   });
 });
 
-// ─── All Three Languages Key Parity ────────────────────────────
+// ─── All Four Languages Key Parity ────────────────────────────
 
-describe("i18n — EN/ID/ES triple parity", () => {
-  it("all three languages have the same leaf key count", () => {
+describe("i18n — EN/ID/ES/PT quadruple parity", () => {
+  it("all four languages have the same leaf key count", () => {
     const enCount = countLeafKeys(en as unknown as Record<string, unknown>);
     const idCount = countLeafKeys(id as unknown as Record<string, unknown>);
     const esCount = countLeafKeys(es as unknown as Record<string, unknown>);
+    const ptCount = countLeafKeys(pt as unknown as Record<string, unknown>);
     expect(enCount).toBe(idCount);
     expect(idCount).toBe(esCount);
+    expect(esCount).toBe(ptCount);
     expect(enCount).toBeGreaterThan(400);
   });
 
-  it("all three languages have the same leaf keys", () => {
+  it("all four languages have the same leaf keys", () => {
     const enLeaves = collectLeafKeys(en as unknown as Record<string, unknown>).sort();
     const idLeaves = collectLeafKeys(id as unknown as Record<string, unknown>).sort();
     const esLeaves = collectLeafKeys(es as unknown as Record<string, unknown>).sort();
+    const ptLeaves = collectLeafKeys(pt as unknown as Record<string, unknown>).sort();
     expect(enLeaves).toEqual(idLeaves);
     expect(idLeaves).toEqual(esLeaves);
+    expect(esLeaves).toEqual(ptLeaves);
   });
 });
 
 // ─── Supported Locales ─────────────────────────────────────────
 
 describe("i18n — supported locales", () => {
-  it("SUPPORTED_LOCALES includes en, id, es", () => {
+  it("SUPPORTED_LOCALES includes en, id, es, pt", () => {
     expect(SUPPORTED_LOCALES).toContain("en");
     expect(SUPPORTED_LOCALES).toContain("id");
     expect(SUPPORTED_LOCALES).toContain("es");
-    expect(SUPPORTED_LOCALES.length).toBe(3);
+    expect(SUPPORTED_LOCALES).toContain("pt");
+    expect(SUPPORTED_LOCALES.length).toBe(4);
   });
 
   it("DEFAULT_LOCALE is en", () => {
@@ -353,42 +359,49 @@ describe("i18n — interpolation support", () => {
     expect(en.notifications.unread).toContain("{count}");
     expect(id.notifications.unread).toContain("{count}");
     expect(es.notifications.unread).toContain("{count}");
+    expect(pt.notifications.unread).toContain("{count}");
   });
 
   it("notifications.ago supports {time} in all languages", () => {
     expect(en.notifications.ago).toContain("{time}");
     expect(id.notifications.ago).toContain("{time}");
     expect(es.notifications.ago).toContain("{time}");
+    expect(pt.notifications.ago).toContain("{time}");
   });
 
   it("notifications.minutes supports {count} in all languages", () => {
     expect(en.notifications.minutes).toContain("{count}");
     expect(id.notifications.minutes).toContain("{count}");
     expect(es.notifications.minutes).toContain("{count}");
+    expect(pt.notifications.minutes).toContain("{count}");
   });
 
   it("notifications.hours supports {count} in all languages", () => {
     expect(en.notifications.hours).toContain("{count}");
     expect(id.notifications.hours).toContain("{count}");
     expect(es.notifications.hours).toContain("{count}");
+    expect(pt.notifications.hours).toContain("{count}");
   });
 
   it("notifications.days supports {count} in all languages", () => {
     expect(en.notifications.days).toContain("{count}");
     expect(id.notifications.days).toContain("{count}");
     expect(es.notifications.days).toContain("{count}");
+    expect(pt.notifications.days).toContain("{count}");
   });
 
   it("protection.positionsCount supports {count} in all languages", () => {
     expect(en.protection.positionsCount).toContain("{count}");
     expect(id.protection.positionsCount).toContain("{count}");
     expect(es.protection.positionsCount).toContain("{count}");
+    expect(pt.protection.positionsCount).toContain("{count}");
   });
 
   it("trader.viewAlerts supports {count} in all languages", () => {
     expect(en.trader.viewAlerts).toContain("{count}");
     expect(id.trader.viewAlerts).toContain("{count}");
     expect(es.trader.viewAlerts).toContain("{count}");
+    expect(pt.trader.viewAlerts).toContain("{count}");
   });
 });
 
@@ -403,12 +416,20 @@ describe("i18n — EN/ID/ES different translations (not identical)", () => {
     expect(en.global.loading).not.toBe(es.global.loading);
   });
 
+  it("global.loading is different between EN and PT", () => {
+    expect(en.global.loading).not.toBe(pt.global.loading);
+  });
+
   it("nav.analysis is different between EN and ID", () => {
     expect(en.nav.analysis).not.toBe(id.nav.analysis);
   });
 
   it("nav.analysis is different between EN and ES", () => {
     expect(en.nav.analysis).not.toBe(es.nav.analysis);
+  });
+
+  it("nav.analysis is different between EN and PT", () => {
+    expect(en.nav.analysis).not.toBe(pt.nav.analysis);
   });
 
   it("status.healthy is different between EN and ID", () => {
@@ -419,12 +440,20 @@ describe("i18n — EN/ID/ES different translations (not identical)", () => {
     expect(en.status.healthy).not.toBe(es.status.healthy);
   });
 
+  it("status.healthy is different between EN and PT", () => {
+    expect(en.status.healthy).not.toBe(pt.status.healthy);
+  });
+
   it("trader.portfolioOverview is different between EN and ID", () => {
     expect(en.trader.portfolioOverview).not.toBe(id.trader.portfolioOverview);
   });
 
   it("trader.portfolioOverview is different between EN and ES", () => {
     expect(en.trader.portfolioOverview).not.toBe(es.trader.portfolioOverview);
+  });
+
+  it("trader.portfolioOverview is different between EN and PT", () => {
+    expect(en.trader.portfolioOverview).not.toBe(pt.trader.portfolioOverview);
   });
 
   it("investor.noPositions is different between EN and ID", () => {
@@ -435,12 +464,20 @@ describe("i18n — EN/ID/ES different translations (not identical)", () => {
     expect(en.investor.noPositions).not.toBe(es.investor.noPositions);
   });
 
+  it("investor.noPositions is different between EN and PT", () => {
+    expect(en.investor.noPositions).not.toBe(pt.investor.noPositions);
+  });
+
   it("protection.title is different between EN and ID", () => {
     expect(en.protection.title).not.toBe(id.protection.title);
   });
 
   it("protection.title is different between EN and ES", () => {
     expect(en.protection.title).not.toBe(es.protection.title);
+  });
+
+  it("protection.title is different between EN and PT", () => {
+    expect(en.protection.title).not.toBe(pt.protection.title);
   });
 
   it("fundamental.overall is different between EN and ID", () => {
@@ -451,12 +488,20 @@ describe("i18n — EN/ID/ES different translations (not identical)", () => {
     expect(en.fundamental.overall).not.toBe(es.fundamental.overall);
   });
 
+  it("fundamental.overall is different between EN and PT", () => {
+    expect(en.fundamental.overall).not.toBe(pt.fundamental.overall);
+  });
+
   it("journal.title is different between EN and ID", () => {
     expect(en.journal.title).not.toBe(id.journal.title);
   });
 
   it("journal.title is different between EN and ES", () => {
     expect(en.journal.title).not.toBe(es.journal.title);
+  });
+
+  it("journal.title is different between EN and PT", () => {
+    expect(en.journal.title).not.toBe(pt.journal.title);
   });
 });
 
@@ -466,31 +511,37 @@ describe("i18n — same values for universal terms across all languages", () => 
   it("market.vix is same (universal ticker)", () => {
     expect(en.market.vix).toBe(id.market.vix);
     expect(en.market.vix).toBe(es.market.vix);
+    expect(en.market.vix).toBe(pt.market.vix);
   });
 
   it("market.dxy is same (universal ticker)", () => {
     expect(en.market.dxy).toBe(id.market.dxy);
     expect(en.market.dxy).toBe(es.market.dxy);
+    expect(en.market.dxy).toBe(pt.market.dxy);
   });
 
   it("market.us10y is same (universal ticker)", () => {
     expect(en.market.us10y).toBe(id.market.us10y);
     expect(en.market.us10y).toBe(es.market.us10y);
+    expect(en.market.us10y).toBe(pt.market.us10y);
   });
 
   it("market.wti is same (universal ticker)", () => {
     expect(en.market.wti).toBe(id.market.wti);
     expect(en.market.wti).toBe(es.market.wti);
+    expect(en.market.wti).toBe(pt.market.wti);
   });
 
   it("analysis.long is same (trading term)", () => {
     expect(en.analysis.long).toBe(id.analysis.long);
     expect(en.analysis.long).toBe(es.analysis.long);
+    expect(en.analysis.long).toBe(pt.analysis.long);
   });
 
   it("analysis.short is same (trading term)", () => {
     expect(en.analysis.short).toBe(id.analysis.short);
     expect(en.analysis.short).toBe(es.analysis.short);
+    expect(en.analysis.short).toBe(pt.analysis.short);
   });
 });
 
@@ -585,5 +636,99 @@ describe("i18n — Spanish financial terminology", () => {
     expect(es.global.disclaimer).toContain("informativos");
     expect(es.global.disclaimer).toContain("automáticamente");
     expect(es.global.disclaimer).toContain("análisis");
+  });
+});
+
+// ─── Portuguese Financial Terminology Tests ───────────────────
+
+describe("i18n — Portuguese financial terminology", () => {
+  it("Stop Loss is preserved as standard trading term in Portuguese", () => {
+    expect(pt.protection.stopLossLabel).toBe("Stop Loss");
+    expect(pt.analysis.support).toBe("Suporte");
+    expect(pt.analysis.resistance).toBe("Resistência");
+  });
+
+  it("Take Profit is preserved as standard trading term in Portuguese", () => {
+    expect(pt.protection.takeProfitLabel).toBe("Take Profit");
+  });
+
+  it("Bullish/Bearish are translated as Altista/Baixista", () => {
+    expect(pt.analysis.bullish).toBe("Altista");
+    expect(pt.analysis.bearish).toBe("Baixista");
+  });
+
+  it("Long/Short are preserved as standard trading terms", () => {
+    expect(pt.analysis.long).toBe("LONG");
+    expect(pt.analysis.short).toBe("SHORT");
+  });
+
+  it("portfolio uses Portfólio in Portuguese", () => {
+    expect(pt.investor.portfolio).toBe("PORTFÓLIO");
+    expect(pt.investor.portfolioHealth).toContain("PORTFÓLIO");
+  });
+
+  it("position uses Posição in Portuguese", () => {
+    expect(pt.investor.positions).toBe("POSIÇÕES");
+    expect(pt.protection.positionsLabel).toBe("Posições");
+  });
+
+  it("leverage uses Alavancagem in Portuguese", () => {
+    expect(pt.protection.leverageLabel).toBe("Alavancagem");
+  });
+
+  it("entry price uses Preço de Entrada in Portuguese", () => {
+    expect(pt.protection.entryPriceLabel).toBe("Preço de Entrada");
+  });
+
+  it("market structure terms are translated", () => {
+    expect(pt.intelligence.liquidity).toBe("Liquidez");
+    expect(pt.intelligence.inflation).toBe("Inflação");
+    expect(pt.intelligence.growth).toBe("Crescimento");
+  });
+
+  it("decision support terms are translated", () => {
+    expect(pt.decision.supportingEvidence).toContain("EVIDÊNCIA");
+    expect(pt.decision.conflictingEvidence).toContain("EVIDÊNCIA");
+    expect(pt.decision.whatCouldChange).toContain("MUDAR");
+    expect(pt.decision.whatToMonitor).toContain("MONITORAR");
+  });
+
+  it("alerts and notifications are translated", () => {
+    expect(pt.alerts.title).toContain("Alerta");
+    expect(pt.notifications.title).toBe("Notificações");
+  });
+
+  it("fundamental terms are translated", () => {
+    expect(pt.intelligence.policyRate).toBe("Taxa de Política Monetária");
+    expect(pt.intelligence.realYield).toBe("Rendimento Real");
+    expect(pt.intelligence.economicCalendar).toBe("Calendário Econômico");
+  });
+
+  it("status labels are translated", () => {
+    expect(pt.status.available).toBe("DISPONÍVEL");
+    expect(pt.status.unavailable).toBe("INDISPONÍVEL");
+    expect(pt.status.healthy).toBe("SAUDÁVEL");
+    expect(pt.status.caution).toBe("PRECAUÇÃO");
+    expect(pt.status.invalidated).toBe("INVALIDADA");
+  });
+
+  it("workspace labels are translated", () => {
+    expect(pt.workspace.trader).toBe("Trader");
+    expect(pt.workspace.investor).toBe("Investidor");
+    expect(pt.workspace.trading).toBe("Trading");
+    expect(pt.workspace.investing).toBe("Investimento");
+  });
+
+  it("intelligence provenance labels are translated", () => {
+    expect(pt.intelligence.observed).toBe("OBSERVADO");
+    expect(pt.intelligence.derived).toBe("DERIVADO");
+    expect(pt.intelligence.unavailable).toBe("INDISPONÍVEL");
+    expect(pt.intelligence.insufficientData).toBe("DADOS_INSUFICIENTES");
+  });
+
+  it("disclaimer is translated and meaningful", () => {
+    expect(pt.global.disclaimer).toContain("informativos");
+    expect(pt.global.disclaimer).toContain("automaticamente");
+    expect(pt.global.disclaimer).toContain("análise");
   });
 });

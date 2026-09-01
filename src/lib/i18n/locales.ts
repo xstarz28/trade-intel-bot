@@ -78,8 +78,8 @@ export const LOCALE_REGISTRY: LocaleMetadata[] = [
     nativeName: "Português",
     englishName: "Portuguese",
     direction: "ltr",
-    enabled: false,
-    available: false,
+    enabled: true,
+    available: true,
   },
   {
     locale: "de",
