@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * Phase 67 — Market Data Health Panel
@@ -36,8 +37,8 @@ interface MarketDataHealthPanelProps {
   pollingActive: boolean;
 }
 
-function formatTimestamp(ts: number | null): string {
-  if (ts === null) return "Never";
+function formatTimestamp(ts: number | null, neverLabel: string): string {
+  if (ts === null) return neverLabel;
   const diff = Date.now() - ts;
   if (diff < 60_000) return `${Math.floor(diff / 1000)}s ago`;
   if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`;
@@ -55,38 +56,35 @@ function getStatusColor(status: ProviderHealthInfo["status"]): string {
   }
 }
 
-function getDataQualityInfo(dataQuality: DataQualityState) {
+function getDataQualityInfo(dataQuality: DataQualityState, t: ReturnType<typeof useI18n>["t"]) {
   switch (dataQuality) {
     case "LIVE":
       return {
         label: "LIVE",
         icon: "🟢",
         color: "text-emerald-400",
-        message: "Market data is fresh and current.",
+        message: t.system.freshMessage,
       };
     case "DEGRADED":
       return {
         label: "DEGRADED",
         icon: "🟡",
         color: "text-amber-400",
-        message:
-          "Protection intelligence is operating with incomplete market evidence.",
+        message: t.system.degradedMessage,
       };
     case "STALE":
       return {
         label: "STALE",
         icon: "🔴",
         color: "text-red-400",
-        message:
-          "Protection intelligence is operating with stale market data. Current evidence may not reflect actual market conditions.",
+        message: t.system.staleMessage,
       };
     case "UNAVAILABLE":
       return {
         label: "UNAVAILABLE",
         icon: "⚪",
         color: "text-zinc-400",
-        message:
-          "Market data is unavailable. Protection monitoring is limited.",
+        message: t.system.unavailableMessage,
       };
   }
 }
@@ -98,7 +96,8 @@ export function MarketDataHealthPanel({
   pollingActive,
 }: MarketDataHealthPanelProps) {
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
-  const qualityInfo = useMemo(() => getDataQualityInfo(dataQuality), [dataQuality]);
+  const { t } = useI18n();
+  const qualityInfo = useMemo(() => getDataQualityInfo(dataQuality, t), [dataQuality, t]);
 
   const connectedCount = providers.filter(
     (p) => p.status === "CONNECTED"
@@ -114,7 +113,7 @@ export function MarketDataHealthPanel({
     <Card className="bg-zinc-900/50 border-zinc-800">
       <CardHeader className="pb-3">
         <CardTitle className="text-sm font-medium text-zinc-300 flex items-center gap-2">
-          📡 Market Data Health
+          📡 {t.system.marketDataHealthTitle}
           <Badge
             variant="outline"
             className={`text-xs ${qualityInfo.color}`}
@@ -134,21 +133,21 @@ export function MarketDataHealthPanel({
         {/* Summary Row */}
         <div className="flex gap-3 text-xs">
           <span className="text-emerald-400">
-            {connectedCount} connected
+            {connectedCount} {t.system.connectedCount}
           </span>
           <span className="text-amber-400">
-            {degradedCount} degraded
+            {degradedCount} {t.system.degradedCount}
           </span>
           <span className="text-red-400">
-            {unavailableCount} unavailable
+            {unavailableCount} {t.system.unavailableStatusLabel}
           </span>
         </div>
 
         {/* Polling Status */}
         <div className="flex items-center gap-2 text-xs text-zinc-400">
-          <span>Mode: {pollingActive ? "POLLING" : "STOPPED"}</span>
+          <span>{t.system.modeLabel} {pollingActive ? t.system.pollingLabel : t.system.stoppedLabel}</span>
           <span>•</span>
-          <span>Last update: {formatTimestamp(lastMarketUpdate)}</span>
+          <span>{t.system.lastUpdateLabel} {formatTimestamp(lastMarketUpdate, t.system.neverLabel)}</span>
         </div>
 
         {/* Provider List */}
@@ -181,10 +180,10 @@ export function MarketDataHealthPanel({
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-[10px] text-zinc-500">
-                  <span>{formatTimestamp(provider.lastSuccessfulUpdate)}</span>
+                  <span>{formatTimestamp(provider.lastSuccessfulUpdate, t.system.neverLabel)}</span>
                   {provider.consecutiveFailures > 0 && (
                     <span className="text-amber-400">
-                      {provider.consecutiveFailures} failures
+                      {provider.consecutiveFailures} {t.system.failuresLabel}
                     </span>
                   )}
                 </div>
@@ -194,16 +193,16 @@ export function MarketDataHealthPanel({
               {expandedProvider === provider.provider && (
                 <div className="mt-2 pt-2 border-t border-zinc-700/30 space-y-1 text-[10px] text-zinc-400">
                   <div className="flex justify-between">
-                    <span>Freshness:</span>
+                    <span>{t.system.freshnessLabel}</span>
                     <span>{provider.freshness}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Recovery:</span>
+                    <span>{t.system.recoveryLabel}</span>
                     <span>{provider.recoveryState}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Instruments:</span>
-                    <span>{provider.instrumentsServed.length} active</span>
+                    <span>{t.system.instrumentsLabel}</span>
+                    <span>{provider.instrumentsServed.length} {t.system.activeLabel}</span>
                   </div>
                   {provider.instrumentsServed.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-1">
@@ -226,7 +225,7 @@ export function MarketDataHealthPanel({
 
         {providers.length === 0 && (
           <div className="text-xs text-zinc-500 text-center py-2">
-            No providers configured
+            {t.system.noProvidersConfigured}
           </div>
         )}
       </CardContent>
