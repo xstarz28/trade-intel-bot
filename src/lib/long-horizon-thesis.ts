@@ -775,7 +775,7 @@ function buildScenarios(
     primaryScenario = `${dirLabel} continuation — structural trend remains intact with cycle support. Continuation preferred if MTF alignment holds and structural level is defended.`;
     alternateScenario = `${dirLabel.charAt(0).toUpperCase() + dirLabel.slice(1)} correction within the larger trend — healthy retracement before potential continuation.`;
   } else if (cycle === "MATURE_TREND") {
-    primaryScenario = `${dirLabel} trend continuation — but maturity increases the probability of consolidation or correction. Continuation requires stronger structural confirmation.`;
+    primaryScenario = `${dirLabel} trend continuation — but maturity increases the risk of consolidation or correction. Continuation requires stronger structural confirmation.`;
     alternateScenario = `Correction or range transition — mature trends often consolidate before next directional move. ${opposite} structural break would shift the assessment.`;
   } else if (cycle === "LATE_TREND") {
     primaryScenario = `${dirLabel} continuation is possible but late in the cycle. Extension risk is elevated. Fresh confirmation required before new entries.`;
