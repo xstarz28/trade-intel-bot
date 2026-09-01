@@ -16,7 +16,7 @@ export type Locale = "en" | "id" | "es" | "fr" | "pt" | "de" | "ja" | "ko" | "zh
 export const ALL_LOCALES: Locale[] = ["en", "id", "es", "fr", "pt", "de", "ja", "ko", "zh"];
 
 /** Only currently enabled locales (have translation resources) */
-export const SUPPORTED_LOCALES: Locale[] = ["en", "id"];
+export const SUPPORTED_LOCALES: Locale[] = ["en", "id", "es"];
 
 /** Display labels for enabled locales */
 export const LOCALE_LABELS: Record<Locale, string> = {

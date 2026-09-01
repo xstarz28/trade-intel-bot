@@ -23,6 +23,7 @@ import type { Locale, Translations } from "./types";
 import { SUPPORTED_LOCALES, DEFAULT_LOCALE, LOCALE_LABELS, ALL_LOCALES } from "./types";
 import en from "./en";
 import id from "./id";
+import es from "./es";
 import {
   LOCALE_REGISTRY,
   getLocaleMetadata,
@@ -38,6 +39,7 @@ import {
 const RESOURCE_MAP: Record<string, Translations> = {
   en,
   id,
+  es,
 };
 
 /**

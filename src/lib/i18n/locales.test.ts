@@ -47,13 +47,13 @@ describe("locale registry", () => {
     expect(codes).toContain("zh");
   });
 
-  it("en and id are enabled", () => {
+  it("en, id, and es are enabled", () => {
     expect(isLocaleEnabled("en")).toBe(true);
     expect(isLocaleEnabled("id")).toBe(true);
+    expect(isLocaleEnabled("es")).toBe(true);
   });
 
-  it("es, fr, pt, de, ja, ko, zh are not yet enabled", () => {
-    expect(isLocaleEnabled("es")).toBe(false);
+  it("fr, pt, de, ja, ko, zh are not yet enabled", () => {
     expect(isLocaleEnabled("fr")).toBe(false);
     expect(isLocaleEnabled("pt")).toBe(false);
     expect(isLocaleEnabled("de")).toBe(false);
@@ -62,21 +62,26 @@ describe("locale registry", () => {
     expect(isLocaleEnabled("zh")).toBe(false);
   });
 
-  it("en and id are available (have translation resources)", () => {
+  it("en, id, and es are available (have translation resources)", () => {
     expect(isLocaleAvailable("en")).toBe(true);
     expect(isLocaleAvailable("id")).toBe(true);
+    expect(isLocaleAvailable("es")).toBe(true);
   });
 
-  it("getEnabledLocales returns only en and id", () => {
+  it("getEnabledLocales returns en, id, and es", () => {
     const enabled = getEnabledLocales();
-    expect(enabled.length).toBe(2);
-    expect(enabled.map((l) => l.locale)).toEqual(["en", "id"]);
+    expect(enabled.length).toBe(3);
+    expect(enabled.map((l) => l.locale)).toContain("en");
+    expect(enabled.map((l) => l.locale)).toContain("id");
+    expect(enabled.map((l) => l.locale)).toContain("es");
   });
 
-  it("getAvailableLocales returns only en and id", () => {
+  it("getAvailableLocales returns en, id, and es", () => {
     const available = getAvailableLocales();
-    expect(available.length).toBe(2);
-    expect(available.map((l) => l.locale)).toEqual(["en", "id"]);
+    expect(available.length).toBe(3);
+    expect(available.map((l) => l.locale)).toContain("en");
+    expect(available.map((l) => l.locale)).toContain("id");
+    expect(available.map((l) => l.locale)).toContain("es");
   });
 });
 
@@ -92,13 +97,23 @@ describe("locale metadata", () => {
     }
   });
 
-  it("getLocaleMetadata returns correct metadata", () => {
+  it("getLocaleMetadata returns correct metadata for en", () => {
     const enMeta = getLocaleMetadata("en");
     expect(enMeta).toBeDefined();
     expect(enMeta?.nativeName).toBe("English");
     expect(enMeta?.englishName).toBe("English");
     expect(enMeta?.direction).toBe("ltr");
     expect(enMeta?.enabled).toBe(true);
+  });
+
+  it("getLocaleMetadata returns correct metadata for es", () => {
+    const esMeta = getLocaleMetadata("es");
+    expect(esMeta).toBeDefined();
+    expect(esMeta?.nativeName).toBe("Español");
+    expect(esMeta?.englishName).toBe("Spanish");
+    expect(esMeta?.direction).toBe("ltr");
+    expect(esMeta?.enabled).toBe(true);
+    expect(esMeta?.available).toBe(true);
   });
 
   it("getLocaleMetadata returns undefined for unknown locale", () => {
@@ -121,6 +136,30 @@ describe("browser locale normalization", () => {
 
   it("normalizes en-GB to en", () => {
     expect(normalizeBrowserLocale("en-GB")).toBe("en");
+  });
+
+  it("normalizes es-ES to es", () => {
+    expect(normalizeBrowserLocale("es-ES")).toBe("es");
+  });
+
+  it("normalizes es-MX to es", () => {
+    expect(normalizeBrowserLocale("es-MX")).toBe("es");
+  });
+
+  it("normalizes es-AR to es", () => {
+    expect(normalizeBrowserLocale("es-AR")).toBe("es");
+  });
+
+  it("normalizes es-CO to es", () => {
+    expect(normalizeBrowserLocale("es-CO")).toBe("es");
+  });
+
+  it("normalizes es-CL to es", () => {
+    expect(normalizeBrowserLocale("es-CL")).toBe("es");
+  });
+
+  it("normalizes es-PE to es", () => {
+    expect(normalizeBrowserLocale("es-PE")).toBe("es");
   });
 
   it("normalizes fr-FR to null (not enabled)", () => {
@@ -165,8 +204,11 @@ describe("locale display names", () => {
     expect(getLocaleDisplayName("id")).toBe("Bahasa Indonesia");
   });
 
-  it("getLocaleDisplayName returns native name for planned locales", () => {
+  it("getLocaleDisplayName returns native name for es", () => {
     expect(getLocaleDisplayName("es")).toBe("Español");
+  });
+
+  it("getLocaleDisplayName returns native name for planned locales", () => {
     expect(getLocaleDisplayName("fr")).toBe("Français");
     expect(getLocaleDisplayName("de")).toBe("Deutsch");
     expect(getLocaleDisplayName("ja")).toBe("日本語");
@@ -216,6 +258,13 @@ describe("types consistency", () => {
     const enabledCodes = getEnabledLocales().map((l) => l.locale);
     expect(SUPPORTED_LOCALES.sort()).toEqual(enabledCodes.sort());
   });
+
+  it("SUPPORTED_LOCALES includes en, id, es", () => {
+    expect(SUPPORTED_LOCALES).toContain("en");
+    expect(SUPPORTED_LOCALES).toContain("id");
+    expect(SUPPORTED_LOCALES).toContain("es");
+    expect(SUPPORTED_LOCALES.length).toBe(3);
+  });
 });
 
 // ─── Number Formatting Tests ───────────────────────────────────
@@ -225,9 +274,22 @@ describe("financial formatting — numbers", () => {
     expect(formatNumber(1234567.89, "en")).toBe("1,234,567.89");
   });
 
+  it("formatNumber formats with es locale", () => {
+    const result = formatNumber(1234567.89, "es");
+    // Spanish uses dots for thousands, comma for decimal
+    expect(result).toContain("1.234.567");
+    expect(result).toContain("89");
+  });
+
   it("formatDecimal formats with fixed decimals", () => {
     expect(formatDecimal(1.23456, "en", 2)).toBe("1.23");
     expect(formatDecimal(1.2, "en", 4)).toBe("1.2000");
+  });
+
+  it("formatDecimal formats with es locale", () => {
+    const result = formatDecimal(1.23, "es", 2);
+    expect(result).toContain("1");
+    expect(result).toContain("23");
   });
 
   it("formatCompact abbreviates large numbers", () => {
@@ -265,6 +327,11 @@ describe("financial formatting — currency", () => {
     const result = formatCurrency(1500000, "IDR", "id");
     expect(result).toContain("Rp");
   });
+
+  it("formatCurrency works with es locale", () => {
+    const result = formatCurrency(1234.56, "USD", "es");
+    expect(result).toContain("$");
+  });
 });
 
 describe("financial formatting — dates", () => {
@@ -273,6 +340,12 @@ describe("financial formatting — dates", () => {
     const result = formatShortDate(date, "en");
     expect(result).toBeTruthy();
     expect(typeof result).toBe("string");
+  });
+
+  it("formatShortDate works with es locale", () => {
+    const date = new Date("2024-01-15");
+    const result = formatShortDate(date, "es");
+    expect(result).toBeTruthy();
   });
 
   it("formatDateTime includes time", () => {
@@ -302,6 +375,13 @@ describe("financial formatting — trading-specific", () => {
   it("formatPrice for forex", () => {
     const result = formatPrice(1.0856, "en", "forex");
     expect(result).toContain("1.0856");
+  });
+
+  it("formatPrice for es locale preserves numeric value", () => {
+    const result = formatPrice(65432.10, "es", "crypto");
+    // Should contain the numeric value regardless of locale
+    expect(result).toContain("65");
+    expect(result).toContain("432");
   });
 
   it("formatPnL positive", () => {
@@ -352,5 +432,53 @@ describe("LOCALE_LABELS completeness", () => {
     const labels = ALL_LOCALES.map((l) => LOCALE_LABELS[l]);
     const unique = new Set(labels);
     expect(unique.size).toBe(labels.length);
+  });
+});
+
+// ─── Spanish Integration Tests ─────────────────────────────────
+
+describe("Spanish (es) integration", () => {
+  it("es locale is enabled and available", () => {
+    expect(isLocaleEnabled("es")).toBe(true);
+    expect(isLocaleAvailable("es")).toBe(true);
+  });
+
+  it("es metadata is correct", () => {
+    const meta = getLocaleMetadata("es");
+    expect(meta).toBeDefined();
+    expect(meta?.locale).toBe("es");
+    expect(meta?.nativeName).toBe("Español");
+    expect(meta?.englishName).toBe("Spanish");
+    expect(meta?.direction).toBe("ltr");
+    expect(meta?.enabled).toBe(true);
+    expect(meta?.available).toBe(true);
+  });
+
+  it("all Spanish regional variants normalize to es", () => {
+    expect(normalizeBrowserLocale("es")).toBe("es");
+    expect(normalizeBrowserLocale("es-ES")).toBe("es");
+    expect(normalizeBrowserLocale("es-MX")).toBe("es");
+    expect(normalizeBrowserLocale("es-AR")).toBe("es");
+    expect(normalizeBrowserLocale("es-CO")).toBe("es");
+    expect(normalizeBrowserLocale("es-CL")).toBe("es");
+    expect(normalizeBrowserLocale("es-PE")).toBe("es");
+    expect(normalizeBrowserLocale("es-VE")).toBe("es");
+    expect(normalizeBrowserLocale("es-EC")).toBe("es");
+    expect(normalizeBrowserLocale("es-UY")).toBe("es");
+    expect(normalizeBrowserLocale("es-PY")).toBe("es");
+    expect(normalizeBrowserLocale("es-BO")).toBe("es");
+    expect(normalizeBrowserLocale("es-CR")).toBe("es");
+    expect(normalizeBrowserLocale("es-PA")).toBe("es");
+    expect(normalizeBrowserLocale("es-GT")).toBe("es");
+    expect(normalizeBrowserLocale("es-HN")).toBe("es");
+    expect(normalizeBrowserLocale("es-SV")).toBe("es");
+    expect(normalizeBrowserLocale("es-NI")).toBe("es");
+    expect(normalizeBrowserLocale("es-DO")).toBe("es");
+    expect(normalizeBrowserLocale("es-CU")).toBe("es");
+  });
+
+  it("SUPPORTED_LOCALES includes es", () => {
+    expect(SUPPORTED_LOCALES).toContain("es");
+    expect(SUPPORTED_LOCALES.length).toBe(3);
   });
 });
