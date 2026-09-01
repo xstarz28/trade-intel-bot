@@ -103,6 +103,7 @@ describe("i18n — Translation Resources", () => {
 
 describe("i18n — Critical Navigation Keys", () => {
   const criticalKeys = [
+    "nav.overview",
     "nav.analysis",
     "nav.protection",
     "nav.portfolio",
@@ -113,6 +114,7 @@ describe("i18n — Critical Navigation Keys", () => {
     "nav.notifications",
     "nav.market",
     "nav.system",
+    "nav.rules",
     "workspace.trader",
     "workspace.investor",
     "workspace.trading",
