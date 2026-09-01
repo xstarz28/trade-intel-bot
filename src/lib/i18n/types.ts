@@ -6,15 +6,32 @@
  * Nested objects are allowed for grouping but leaves are always strings.
  */
 
-export type Locale = "en" | "id";
+/**
+ * Supported locale codes.
+ * Extend this union when adding new languages.
+ */
+export type Locale = "en" | "id" | "es" | "fr" | "pt" | "de" | "ja" | "ko" | "zh";
 
+/** All locales (including planned but not yet enabled) */
+export const ALL_LOCALES: Locale[] = ["en", "id", "es", "fr", "pt", "de", "ja", "ko", "zh"];
+
+/** Only currently enabled locales (have translation resources) */
 export const SUPPORTED_LOCALES: Locale[] = ["en", "id"];
 
+/** Display labels for enabled locales */
 export const LOCALE_LABELS: Record<Locale, string> = {
   en: "English",
   id: "Bahasa Indonesia",
+  es: "Español",
+  fr: "Français",
+  pt: "Português",
+  de: "Deutsch",
+  ja: "日本語",
+  ko: "한국어",
+  zh: "中文",
 };
 
+/** Default fallback locale */
 export const DEFAULT_LOCALE: Locale = "en";
 
 /**
