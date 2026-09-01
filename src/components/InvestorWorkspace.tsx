@@ -13,6 +13,7 @@
  * INFORMATIONAL_ONLY — never executes trades.
  */
 import React, { useMemo } from "react";
+import { useI18n } from "@/lib/i18n";
 import {
   Briefcase,
   Shield,
@@ -75,6 +76,7 @@ const HEALTH_COLORS: Record<string, string> = {
 // ═══════════════════════════════════════════════════════════════
 
 export function InvestorWorkspace() {
+  const { t } = useI18n();
   // Fetch positions from Convex
   const { positions: registeredPositions } = usePositionProtection();
 
@@ -121,9 +123,9 @@ export function InvestorWorkspace() {
       {/* Investor Header */}
       <div className="flex items-center gap-2 text-[11px] font-mono font-semibold text-foreground">
         <Briefcase className="size-4 text-primary" />
-        Investor Workspace
+        {t.workspace.investorWorkspaceTitle}
         <span className="text-[8px] text-muted-foreground font-normal ml-2">
-          Long-horizon portfolio intelligence · 1–3 year emphasis
+          {t.workspace.investorWorkspaceSubtitle}
         </span>
       </div>
 
@@ -134,10 +136,10 @@ export function InvestorWorkspace() {
               <Briefcase className="size-5 text-muted-foreground/40" />
             </div>
             <h3 className="text-sm font-semibold text-foreground font-mono">
-              No Positions Registered
+              {t.investor.noPositions}
             </h3>
             <p className="mt-1.5 text-[10px] text-muted-foreground max-w-xs font-mono">
-              Register positions in the Intelligence tab to populate your portfolio view.
+              {t.investor.noPositionsHint}
             </p>
           </div>
         </Section>
@@ -146,7 +148,7 @@ export function InvestorWorkspace() {
           {/* Left: Portfolio Overview */}
           <div className="lg:col-span-5 space-y-3">
             {/* Portfolio Health */}
-            <Section title="PORTFOLIO HEALTH" icon={<Briefcase className="size-3" />}>
+            <Section title={t.investor.portfolioHealth} icon={<Briefcase className="size-3" />}>
               <div className="grid grid-cols-2 gap-2">
                 <div className="text-center">
                   <div className="text-lg font-bold font-mono text-foreground">
@@ -158,25 +160,25 @@ export function InvestorWorkspace() {
                   <div className="text-lg font-bold font-mono text-emerald-400">
                     {portfolio.healthy}
                   </div>
-                  <div className="text-[8px] text-muted-foreground font-mono">Healthy</div>
+                  <div className="text-[8px] text-muted-foreground font-mono">{t.investor.healthy}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-bold font-mono text-amber-400">
                     {portfolio.caution + portfolio.highRisk}
                   </div>
-                  <div className="text-[8px] text-muted-foreground font-mono">At Risk</div>
+                  <div className="text-[8px] text-muted-foreground font-mono">{t.investor.atRisk}</div>
                 </div>
                 <div className="text-center">
                   <div className="text-lg font-bold font-mono text-red-400">
                     {portfolio.invalidated}
                   </div>
-                  <div className="text-[8px] text-muted-foreground font-mono">Invalidated</div>
+                  <div className="text-[8px] text-muted-foreground font-mono">{t.investor.invalidated}</div>
                 </div>
               </div>
             </Section>
 
             {/* Position List */}
-            <Section title="POSITIONS" icon={<Layers className="size-3" />}>
+            <Section title={t.investor.positions} icon={<Layers className="size-3" />}>
               <div className="space-y-1.5">
                 {portfolio.positions.map((pos) => (
                   <div
@@ -200,33 +202,30 @@ export function InvestorWorkspace() {
           {/* Right: Risk + Context */}
           <div className="lg:col-span-7 space-y-3">
             {/* Risk Summary */}
-            <Section title="RISK SUMMARY" icon={<Shield className="size-3" />}>
+            <Section title={t.investor.riskSummary} icon={<Shield className="size-3" />}>
               <div className="grid grid-cols-3 gap-2">
                 <div className="text-center p-2 rounded bg-muted/30">
                   <div className={`text-sm font-bold font-mono ${
                     portfolio.caution + portfolio.highRisk > 0 ? "text-amber-400" : "text-emerald-400"
                   }`}>
                     {portfolio.caution + portfolio.highRisk === 0 ? "LOW" : portfolio.highRisk > 0 ? "ELEVATED" : "MODERATE"}
-                  </div>
-                  <div className="text-[7px] text-muted-foreground font-mono mt-0.5">Risk Level</div>
+                  </div>                    <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.riskLevel}</div>
                 </div>
                 <div className="text-center p-2 rounded bg-muted/30">
                   <div className="text-sm font-bold font-mono text-foreground">
                     {portfolio.positions.filter((p) => p.stopLoss).length}/{portfolio.total}
-                  </div>
-                  <div className="text-[7px] text-muted-foreground font-mono mt-0.5">With SL</div>
+                  </div>                    <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.withSL}</div>
                 </div>
                 <div className="text-center p-2 rounded bg-muted/30">
                   <div className="text-sm font-bold font-mono text-foreground">
                     {portfolio.positions.filter((p) => p.takeProfit).length}/{portfolio.total}
-                  </div>
-                  <div className="text-[7px] text-muted-foreground font-mono mt-0.5">With TP</div>
+                  </div>                    <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.withTP}</div>
                 </div>
               </div>
             </Section>
 
             {/* Horizon Distribution */}
-            <Section title="HORIZON DISTRIBUTION" icon={<BarChart3 className="size-3" />}>
+            <Section title={t.investor.horizonDistribution} icon={<BarChart3 className="size-3" />}>
               <div className="space-y-1">
                 {(["SCALPING", "INTRADAY", "SWING", "INVESTING"] as const).map((h) => {
                   const count = portfolio.positions.filter((p) => p.horizon === h).length;
@@ -248,13 +247,13 @@ export function InvestorWorkspace() {
             </Section>
 
             {/* Data Quality */}
-            <Section title="DATA QUALITY" icon={<Activity className="size-3" />}>
+            <Section title={t.investor.dataQuality} icon={<Activity className="size-3" />}>
               <div className="flex items-center gap-1.5 text-[8px] font-mono text-muted-foreground">
-                <span>Positions registered: {portfolio.total}</span>
+                <span>{t.investor.positionsRegistered}: {portfolio.total}</span>
                 <span>·</span>
-                <span>With stop-loss: {portfolio.positions.filter((p) => p.stopLoss).length}</span>
+                <span>{t.investor.withStopLoss}: {portfolio.positions.filter((p) => p.stopLoss).length}</span>
                 <span>·</span>
-                <span>With take-profit: {portfolio.positions.filter((p) => p.takeProfit).length}</span>
+                <span>{t.investor.withTakeProfit}: {portfolio.positions.filter((p) => p.takeProfit).length}</span>
               </div>
             </Section>
           </div>
@@ -263,7 +262,7 @@ export function InvestorWorkspace() {
 
       {/* Footer disclaimer */}
       <div className="text-[8px] font-mono text-muted-foreground/40 pt-1 border-t border-border/20">
-        Investment intelligence · Evidence-based analysis · No execution commands · Manual action required for any trade
+        {t.investor.investmentIntelligence} · {t.investor.noExecution} · {t.investor.manualAction}
       </div>
     </div>
   );

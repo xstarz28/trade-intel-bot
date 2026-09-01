@@ -20,11 +20,12 @@ import { scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
-import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield } from "lucide-react";
+import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
+import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -84,6 +85,7 @@ type WorkspaceMode = "trader" | "investor";
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { locale, setLocale, t } = useI18n();
   const [activeTab, setActiveTab] = useState<DashboardTab>("analysis");
   const [investorTab, setInvestorTab] = useState<InvestorTab>("portfolio");
   const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
@@ -751,6 +753,24 @@ export default function Dashboard() {
             )}
           </div>
           <div className="flex items-center gap-3">
+            {/* Language selector */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1 text-muted-foreground hover:text-foreground h-7">
+                  <Globe className="size-3.5" />
+                  <span className="text-[10px] font-mono uppercase hidden sm:inline">{locale}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="font-mono">
+                {SUPPORTED_LOCALES.map((loc) => (
+                  <DropdownMenuItem key={loc} onClick={() => setLocale(loc)}>
+                    {LOCALE_LABELS[loc]}
+                    {locale === loc && <span className="ml-auto text-primary text-[10px]">●</span>}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Separator orientation="vertical" className="h-5 hidden sm:block" />
             <span className="text-[11px] text-muted-foreground font-mono hidden sm:block">
               {user?.name || user?.email || "guest"}
             </span>
@@ -762,7 +782,7 @@ export default function Dashboard() {
               className="gap-1.5 text-muted-foreground hover:text-foreground"
             >
               <LogOut className="size-3.5" />
-              <span className="hidden sm:inline text-xs font-mono">exit</span>
+              <span className="hidden sm:inline text-xs font-mono">{t.global.exit}</span>
             </Button>
           </div>
         </div>

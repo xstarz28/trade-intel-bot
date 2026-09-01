@@ -59,6 +59,7 @@ import { ConvexReactClient } from "convex/react";
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router";
+import { I18nProvider } from "@/lib/i18n";
 import "./index.css";
 
 // Static imports — React.lazy chunks fail to load in the Freebuff
@@ -133,6 +134,7 @@ createRoot(document.getElementById("root")!).render(
       <ToolbarErrorBoundary>
         <VlyToolbar />
       </ToolbarErrorBoundary>
+      <I18nProvider>
       <ConvexAuthProvider client={convex}>
         <MemoryRouter initialEntries={["/"]}>
           <Routes>
@@ -162,6 +164,7 @@ createRoot(document.getElementById("root")!).render(
         </MemoryRouter>
         <Toaster />
       </ConvexAuthProvider>
+      </I18nProvider>
     </RootErrorBoundary>
   </StrictMode>,
 );
