@@ -161,3 +161,83 @@ export function mapDimension(
     default: return dimension;
   }
 }
+
+// ─── Macro Regime Mapping ───────────────────────────────────
+
+/** Map macro regime value to translated display label. */
+export function mapRegimeValue(
+  value: string,
+  t: Translations,
+): string {
+  switch (value) {
+    case "EASING": return t.fundamental.easing;
+    case "NEUTRAL": return t.intelligence.neutral;
+    case "TIGHTENING": return t.fundamental.tightening;
+    case "RESTRICTIVE": return t.fundamental.restrictive;
+    case "TRANSITIONING": return t.fundamental.transitioning;
+    case "RISING": return t.fundamental.rising;
+    case "FALLING": return t.fundamental.falling;
+    case "STABLE": return t.fundamental.stable;
+    case "STRENGTHENING": return t.fundamental.strengthening;
+    case "WEAKENING": return t.fundamental.weakening;
+    case "VOLATILE": return t.fundamental.volatile;
+    case "EXPANDING": return t.fundamental.expanding;
+    case "SLOWING": return t.fundamental.slowing;
+    case "CONTRACTING": return t.fundamental.contracting;
+    case "RECOVERING": return t.fundamental.recovering;
+    case "BALANCED": return t.fundamental.balanced;
+    case "SUPPLY_DISRUPTION": return t.fundamental.supplyDisruption;
+    case "DEMAND_DRIVEN": return t.fundamental.demandDriven;
+    case "OIL_SHOCK": return t.fundamental.oilShock;
+    case "ESCALATING": return t.fundamental.escalating;
+    case "DEESCALATING": return t.fundamental.deescalating;
+    case "STRESSED": return t.macro.stressed;
+    case "RISK_ON": return t.macro.riskOn;
+    case "RISK_OFF": return t.macro.riskOff;
+    case "MIXED": return t.macro.mixed;
+    case "STAGFLATION": return t.macro.stagflation;
+    case "REFLATION": return t.macro.reflation;
+    case "DISINFLATION": return t.macro.disinflation;
+    case "CONTRACTION": return t.macro.contraction;
+    case "RECOVERY": return t.macro.recovery;
+    default: return value.replace(/_/g, " ");
+  }
+}
+
+// ─── Runtime Health Component Mapping ───────────────────────
+
+/** Map runtime health component name to translated display label. */
+export function mapComponentName(
+  component: string,
+  t: Translations,
+): string {
+  switch (component) {
+    case "MARKET_DATA": return t.system.componentsMarketData;
+    case "OHLCV": return t.system.componentsOhlcv;
+    case "NEWS": return t.system.componentsNews;
+    case "MACRO": return t.system.componentsMacro;
+    case "CROSS_ASSET": return t.system.componentsCrossAsset;
+    case "INTELLIGENCE": return t.system.componentsIntelligence;
+    case "PORTFOLIO": return t.system.componentsPortfolio;
+    case "ALERT_RULES": return t.system.componentsAlertRules;
+    case "NOTIFICATIONS": return t.system.componentsNotifications;
+    case "HISTORICAL": return t.system.componentsHistorical;
+    default: return component.replace(/_/g, " ");
+  }
+}
+
+// ─── Intelligence Cycle Status Mapping ──────────────────────
+
+/** Map intelligence cycle status to translated display label. */
+export function mapIntelligenceStatus(
+  status: string,
+  t: Translations,
+): string {
+  switch (status) {
+    case "HEALTHY": return t.status.healthy;
+    case "DEGRADED": return t.status.degraded;
+    case "UNAVAILABLE": return t.status.unavailable;
+    case "UNKNOWN": return t.status.unknown;
+    default: return status.replace(/_/g, " ");
+  }
+}
