@@ -235,9 +235,44 @@ export function mapIntelligenceStatus(
 ): string {
   switch (status) {
     case "HEALTHY": return t.status.healthy;
-    case "DEGRADED": return t.status.degraded;
+    case "DEGRADED": return t.system.degraded;
     case "UNAVAILABLE": return t.status.unavailable;
     case "UNKNOWN": return t.status.unknown;
     default: return status.replace(/_/g, " ");
+  }
+}
+
+// ─── Sensitivity Mapping ────────────────────────────────────
+
+/** Map position sensitivity enum to translated display label. */
+export function mapSensitivity(
+  sensitivity: string,
+  t: Translations,
+): string {
+  switch (sensitivity) {
+    case "HIGH": return t.investor.elevated;
+    case "MODERATE": return t.investor.moderate;
+    case "LOW": return t.investor.low;
+    case "UNKNOWN": return t.status.unknown;
+    default: return sensitivity;
+  }
+}
+
+// ─── Market State Mapping ───────────────────────────────────
+
+/** Map market state enum (with underscores) to translated display label. */
+export function mapMarketState(
+  marketState: string,
+  t: Translations,
+): string {
+  switch (marketState) {
+    case "TRENDING_BULLISH": return t.analysis.bullish;
+    case "TRENDING_BEARISH": return t.analysis.bearish;
+    case "RANGING": return t.analysis.noTrade;
+    case "VOLATILE_EXPANSION": return t.fundamental.volatile;
+    case "VOLATILE_CONTRACTION": return t.fundamental.contracting;
+    case "INSUFFICIENT_DATA": return t.intelligence.insufficientData;
+    case "UNKNOWN": return t.status.unknown;
+    default: return marketState.replace(/_/g, " ");
   }
 }
