@@ -224,6 +224,13 @@ const pt: Translations = {
     stanceMixed: "MISTO",
     stanceNeutral: "NEUTRO",
     stanceInsufficient: "INSUFICIENTE",
+    stanceUnknown: "DESCONHECIDO",
+    relevanceDirect: "DIRETO",
+    relevanceHigh: "ALTA",
+    relevanceModerate: "MODERADA",
+    relevanceLow: "BAIXA",
+    relevanceIrrelevant: "IRRELEVANTE",
+    relevanceUnknown: "DESCONHECIDO",
     invalidationScenario: "INVALIDAÇÃO",
   },
 
