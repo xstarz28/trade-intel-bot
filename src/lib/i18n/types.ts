@@ -226,6 +226,35 @@ export interface Translations {
     baseCase: string;
     alternative: string;
     invalidationScenario: string;
+    // IntelSection
+    unavailableBadge: string;
+    dataUnavailableMessage: string;
+    noEvidence: string;
+    // Analytical summary labels
+    marketLabel: string;
+    positionLabel: string;
+    thesisLabel: string;
+    whyLabel: string;
+    invalidationLabel: string;
+    watchLabel: string;
+    confidenceLabel: string;
+    // What changed
+    awaitingFirstAnalysis: string;
+    noMaterialChange: string;
+    // News item
+    relevanceLabel: string;
+    impactLabel: string;
+    // Position impact mapping
+    impactSupporting: string;
+    impactConflicting: string;
+    impactNeutral: string;
+    impactInsufficient: string;
+    // News stance mapping
+    stanceSupporting: string;
+    stanceConflicting: string;
+    stanceMixed: string;
+    stanceNeutral: string;
+    stanceInsufficient: string;
   };
 
   // ─── Decision Support ──────────────────────────────────────

@@ -79,6 +79,7 @@ function IntelSection({
   children: React.ReactNode;
   available?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="border border-border/30 rounded-lg overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 bg-muted/20">
@@ -86,14 +87,14 @@ function IntelSection({
         <span className="text-[10px] font-mono font-semibold text-foreground">{title}</span>
         {!available && (
           <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">
-            UNAVAILABLE
+            {t.intelligence.unavailableBadge}
           </span>
         )}
       </div>
       <div className="px-3 py-2 space-y-1">
         {available ? children : (
           <p className="text-[9px] font-mono text-muted-foreground/60">
-            Data unavailable — provider not connected or no data supplied.
+            {t.intelligence.dataUnavailableMessage}
           </p>
         )}
       </div>
@@ -145,6 +146,7 @@ function NewsIntelligenceSection({ news }: { news: NewsSynthesis | null }) {
 }
 
 function NewsItemCard({ item }: { item: NewsRelevance }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-start gap-2 px-2 py-1.5 bg-muted/20 rounded text-[8px] font-mono">
       <span className={`mt-0.5 size-1.5 rounded-full shrink-0 ${
@@ -155,7 +157,7 @@ function NewsItemCard({ item }: { item: NewsRelevance }) {
       <div className="flex-1 min-w-0">
         <div className="text-foreground/80 truncate">{item.reason}</div>
         <div className="text-muted-foreground/60 mt-0.5">
-          Relevance: {item.relevance} · Impact: {item.positionImpact}
+          {t.intelligence.relevanceLabel} {item.relevance} · {t.intelligence.impactLabel} {item.positionImpact}
         </div>
       </div>
     </div>
@@ -260,7 +262,7 @@ function EvidenceHierarchySection({ evidence }: { evidence: HierarchicalEvidence
   return (
     <IntelSection title={t.intelligence.evidenceHierarchy} icon={<Layers className="size-3" />} available={hasEvidence}>
       {!hasEvidence ? (
-        <p className="text-[9px] font-mono text-muted-foreground/60">No evidence available.</p>
+        <p className="text-[9px] font-mono text-muted-foreground/60">{t.intelligence.noEvidence}</p>
       ) : (
         <div className="space-y-2">
           {primary.length > 0 && (
@@ -385,11 +387,11 @@ function WhatChangedSection({ changes }: { changes: string[] | null | undefined 
   return (
     <IntelSection title={t.intelligence.whatChanged} icon={<RefreshCw className="size-3" />} available={hasChanges || changes === null}>
       {changes === null ? (
-        <p className="text-[9px] font-mono text-muted-foreground/60">Awaiting first analysis.</p>
+        <p className="text-[9px] font-mono text-muted-foreground/60">{t.intelligence.awaitingFirstAnalysis}</p>
       ) : !hasChanges ? (
         <div className="flex items-center gap-1.5 text-[9px] font-mono text-emerald-400/70">
           <CheckCircle className="size-2.5" />
-          No material change since last analysis.
+          {t.intelligence.noMaterialChange}
         </div>
       ) : (
         <div className="space-y-1">
@@ -460,41 +462,41 @@ function AnalyticalSummarySection({
       <div className="space-y-1.5">
         {/* Market */}
         <div className="text-[9px] font-mono">
-          <span className="text-muted-foreground/60">MARKET: </span>
+          <span className="text-muted-foreground/60">{t.intelligence.marketLabel}</span>
           <span className="text-foreground/80">{intelligence.marketState.replace(/_/g, " ")}</span>
         </div>
         {/* Position */}
         <div className="text-[9px] font-mono">
-          <span className="text-muted-foreground/60">POSITION: </span>
+          <span className="text-muted-foreground/60">{t.intelligence.positionLabel}</span>
           <span className="text-foreground/80">{side} {instrument}</span>
         </div>
         {/* Thesis */}
         <div className="text-[9px] font-mono">
-          <span className="text-muted-foreground/60">THESIS: </span>
+          <span className="text-muted-foreground/60">{t.intelligence.thesisLabel}</span>
           <span className={`font-semibold ${thesisColor}`}>{thesisLabel}</span>
         </div>
         {/* Why */}
         <div className="text-[9px] font-mono leading-relaxed">
-          <span className="text-muted-foreground/60">WHY: </span>
+          <span className="text-muted-foreground/60">{t.intelligence.whyLabel}</span>
           <span className="text-foreground/70">{intelligence.shortTermContext}</span>
         </div>
         {/* Invalidation */}
         {intelligence.invalidationConditions.length > 0 && (
           <div className="text-[9px] font-mono">
-            <span className="text-red-400/60">INVALIDATION: </span>
+            <span className="text-red-400/60">{t.intelligence.invalidationLabel}</span>
             <span className="text-foreground/70">{intelligence.invalidationConditions[0].description}</span>
           </div>
         )}
         {/* Watch Next */}
         {intelligence.nextMonitor.length > 0 && (
           <div className="text-[9px] font-mono">
-            <span className="text-blue-400/60">WATCH: </span>
+            <span className="text-blue-400/60">{t.intelligence.watchLabel}</span>
             <span className="text-foreground/70">{intelligence.nextMonitor[0]}</span>
           </div>
         )}
         {/* Confidence */}
         <div className="text-[9px] font-mono">
-          <span className="text-muted-foreground/60">CONFIDENCE: </span>
+          <span className="text-muted-foreground/60">{t.intelligence.confidenceLabel}</span>
           <span className="text-foreground/70">
             {intelligence.confidence.replace(/_/g, " ")}
           </span>
