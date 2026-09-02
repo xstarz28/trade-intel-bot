@@ -268,6 +268,38 @@ export interface Translations {
     confidenceWeak: string;
     confidenceInsufficient: string;
     derivatives: string;
+    // Decision context
+    actionLabel: string;
+    actionRecommendation: string;
+    pullbackLabel: string;
+    pullbackNormal: string;
+    pullbackEarlyCorrection: string;
+    pullbackDeterioration: string;
+    pullbackStructuralReversal: string;
+    pullbackShockReversal: string;
+    pullbackInsufficientData: string;
+    dataQualityLabel: string;
+    dataQualityInsufficient: string;
+    observationCount: string;
+    supportingCount: string;
+    conflictingCount: string;
+    allWatchItems: string;
+    allInvalidations: string;
+    evidenceSummaryLabel: string;
+    thesisSupportLabel: string;
+    thesisConflictLabel: string;
+    whatWouldChangeLabel: string;
+    riskProtectionLabel: string;
+    positionMetricsLabel: string;
+    technicalContextLabel: string;
+    fundamentalContextLabel: string;
+    macroContextLabel: string;
+    crossAssetContextLabel: string;
+    scenarioBaseLabel: string;
+    scenarioAltLabel: string;
+    scenarioInvalidLabel: string;
+    noDataYet: string;
+    insufficientEvidence: string;
   };
 
   // ─── Decision Support ──────────────────────────────────────

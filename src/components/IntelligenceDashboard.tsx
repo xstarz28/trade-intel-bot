@@ -260,12 +260,25 @@ function EvidenceHierarchySection({ evidence }: { evidence: HierarchicalEvidence
   const context = evidence.filter(e => e.tier === t.intelligence.contextLabel);
 
   const hasEvidence = primary.length > 0 || secondary.length > 0 || context.length > 0;
+  const totalSupporting = evidence.filter(e => e.direction === "SUPPORTING").length;
+  const totalConflicting = evidence.filter(e => e.direction === "CONFLICTING").length;
 
   return (
     <IntelSection title={t.intelligence.evidenceHierarchy} icon={<Layers className="size-3" />} available={hasEvidence}>
       {!hasEvidence ? (
         <p className="text-[9px] font-mono text-muted-foreground/60">{t.intelligence.noEvidence}</p>
       ) : (
+        <>
+        {/* Evidence Summary Bar */}
+        {(totalSupporting > 0 || totalConflicting > 0) && (
+          <div className="flex items-center gap-2 text-[8px] font-mono mb-1.5">
+            <span className="text-emerald-400/80">{totalSupporting} {t.intelligence.supporting}</span>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="text-red-400/80">{totalConflicting} {t.intelligence.conflicting}</span>
+            <span className="text-muted-foreground/40">·</span>
+            <span className="text-muted-foreground/60">{evidence.length} total</span>
+          </div>
+        )}
         <div className="space-y-2">
           {primary.length > 0 && (
             <EvidenceTier label={t.intelligence.primary} items={primary} color="text-amber-400" />
@@ -277,6 +290,7 @@ function EvidenceHierarchySection({ evidence }: { evidence: HierarchicalEvidence
             <EvidenceTier label={t.intelligence.contextLabel} items={context} color="text-muted-foreground" />
           )}
         </div>
+        </>
       )}
     </IntelSection>
   );
@@ -460,6 +474,11 @@ function AnalyticalSummarySection({
     thesisLabel === "INVALIDATED" ? "text-red-400" :
     "text-muted-foreground";
 
+  const actionColor =
+    intelligence.actionRecommendation.includes("NO_TRADE") || intelligence.actionRecommendation.includes("WAIT") ? "text-amber-400" :
+    intelligence.actionRecommendation.includes("WATCH") ? "text-blue-400" :
+    "text-emerald-400";
+
   return (
     <IntelSection title={t.intelligence.analyticalSummary} icon={<Target className="size-3" />}>
       <div className="space-y-1.5">
@@ -478,25 +497,16 @@ function AnalyticalSummarySection({
           <span className="text-muted-foreground/60">{t.intelligence.thesisLabel}</span>
           <span className={`font-semibold ${thesisColor}`}>{mapThesisHealth(thesisLabel, t)}</span>
         </div>
+        {/* Action Recommendation */}
+        <div className="text-[9px] font-mono">
+          <span className="text-muted-foreground/60">{t.intelligence.actionLabel}: </span>
+          <span className={`font-semibold ${actionColor}`}>{intelligence.actionRecommendation.replace(/_/g, " ")}</span>
+        </div>
         {/* Why */}
         <div className="text-[9px] font-mono leading-relaxed">
           <span className="text-muted-foreground/60">{t.intelligence.whyLabel}</span>
           <span className="text-foreground/70">{intelligence.shortTermContext}</span>
         </div>
-        {/* Invalidation */}
-        {intelligence.invalidationConditions.length > 0 && (
-          <div className="text-[9px] font-mono">
-            <span className="text-red-400/60">{t.intelligence.invalidationLabel}</span>
-            <span className="text-foreground/70">{intelligence.invalidationConditions[0].description}</span>
-          </div>
-        )}
-        {/* Watch Next */}
-        {intelligence.nextMonitor.length > 0 && (
-          <div className="text-[9px] font-mono">
-            <span className="text-blue-400/60">{t.intelligence.watchLabel}</span>
-            <span className="text-foreground/70">{intelligence.nextMonitor[0]}</span>
-          </div>
-        )}
         {/* Confidence */}
         <div className="text-[9px] font-mono">
           <span className="text-muted-foreground/60">{t.intelligence.confidenceLabel}</span>
@@ -504,6 +514,58 @@ function AnalyticalSummarySection({
             {mapConfidence(intelligence.confidence, t)}
           </span>
         </div>
+        {/* Evidence Summary */}
+        {intelligence.evidence.length > 0 && (
+          <div className="text-[9px] font-mono">
+            <span className="text-muted-foreground/60">{t.intelligence.evidenceSummaryLabel}: </span>
+            <span className="text-emerald-400/80">{intelligence.evidence.filter(e => e.direction === "supporting").length} {t.intelligence.supporting}</span>
+            <span className="text-muted-foreground/40"> · </span>
+            <span className="text-red-400/80">{intelligence.evidence.filter(e => e.direction === "conflicting").length} {t.intelligence.conflicting}</span>
+          </div>
+        )}
+        {/* Data Quality */}
+        <div className="text-[9px] font-mono">
+          <span className="text-muted-foreground/60">{t.intelligence.dataQualityLabel}: </span>
+          <span className="text-foreground/70">{intelligence.observationCount} {t.intelligence.observationCount}</span>
+        </div>
+        {/* Pullback Classification */}
+        {intelligence.pullbackClassification !== "NORMAL_PULLBACK" && intelligence.pullbackClassification !== "INSUFFICIENT_DATA" && (
+          <div className="text-[9px] font-mono">
+            <span className="text-muted-foreground/60">{t.intelligence.pullbackLabel}: </span>
+            <span className="text-amber-400/80">{
+              intelligence.pullbackClassification === "EARLY_CORRECTION" ? t.intelligence.pullbackEarlyCorrection :
+              intelligence.pullbackClassification === "MEANINGFUL_DETERIORATION" ? t.intelligence.pullbackDeterioration :
+              intelligence.pullbackClassification === "STRUCTURAL_REVERSAL" ? t.intelligence.pullbackStructuralReversal :
+              intelligence.pullbackClassification === "SHOCK_REVERSAL" ? t.intelligence.pullbackShockReversal :
+              String(intelligence.pullbackClassification).replace(/_/g, " ")
+            }</span>
+          </div>
+        )}
+        {/* Invalidation (all) */}
+        {intelligence.invalidationConditions.length > 0 && (
+          <div className="text-[9px] font-mono space-y-0.5">
+            <span className="text-red-400/60">{t.intelligence.invalidationLabel}</span>
+            {intelligence.invalidationConditions.map((cond, i) => (
+              <div key={i} className="flex items-start gap-1">
+                <span className="text-red-400/40 mt-px">•</span>
+                <span className="text-foreground/70">{cond.description}</span>
+                {cond.approaching && <span className="text-red-400/60">⚠</span>}
+              </div>
+            ))}
+          </div>
+        )}
+        {/* Watch Next (all) */}
+        {intelligence.nextMonitor.length > 0 && (
+          <div className="text-[9px] font-mono space-y-0.5">
+            <span className="text-blue-400/60">{t.intelligence.watchLabel}</span>
+            {intelligence.nextMonitor.map((item, i) => (
+              <div key={i} className="flex items-start gap-1">
+                <span className="text-blue-400/40 mt-px">•</span>
+                <span className="text-foreground/70">{item}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </IntelSection>
   );
@@ -513,24 +575,74 @@ function AnalyticalSummarySection({
 // KEY LEVELS (from intelligence)
 // ═══════════════════════════════════════════════════════════════
 
-function KeyLevelsSection({ intelligence }: { intelligence?: PositionIntelligence | null }) {
+function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: PositionIntelligence | null; side: "LONG" | "SHORT"; instrument: string }) {
   const { t } = useI18n();
   if (!intelligence) return null;
 
+  const isLong = intelligence.side === "LONG";
   return (
     <IntelSection title={t.intelligence.keyLevelsLabel} icon={<Shield className="size-3" />}>
       <div className="space-y-1 text-[8px] font-mono">
-        {intelligence.invalidationConditions.length > 0 && (
+        {/* Position Metrics */}
+        <div className="flex justify-between">
+          <span className="text-muted-foreground/60">{t.intelligence.positionMetricsLabel}</span>
+          <span className="text-foreground/70">{side} {instrument}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground/60">{t.trader.entry}</span>
+          <span className="text-foreground/70">{intelligence.entryPrice}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground/60">{t.trader.current}</span>
+          <span className="text-foreground/70">{intelligence.currentPrice}</span>
+        </div>
+        {intelligence.pnlPct !== 0 && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground/60">{t.intelligence.invalidation}</span>
-            <span className="text-red-400/80">{intelligence.invalidationConditions[0].description}</span>
+            <span className="text-muted-foreground/60">{t.trader.pnl}</span>
+            <span className={intelligence.pnlPct > 0 ? "text-emerald-400" : "text-red-400"}>{intelligence.pnlPct > 0 ? "+" : ""}{intelligence.pnlPct.toFixed(2)}%</span>
           </div>
         )}
-        {intelligence.nextMonitor.length > 0 && (
+        {intelligence.stopLoss !== undefined && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground/60">{t.intelligence.nextLevel}</span>
-            <span className="text-foreground/70">{intelligence.nextMonitor[0]}</span>
+            <span className="text-muted-foreground/60">{t.trader.sl}</span>
+            <span className="text-red-400/80">{intelligence.stopLoss}</span>
           </div>
+        )}
+        {intelligence.takeProfit !== undefined && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground/60">{t.trader.tp}</span>
+            <span className="text-emerald-400/80">{intelligence.takeProfit}</span>
+          </div>
+        )}
+        {intelligence.rMultiple !== undefined && (
+          <div className="flex justify-between">
+            <span className="text-muted-foreground/60">R-Multiple</span>
+            <span className="text-foreground/70">{intelligence.rMultiple.toFixed(2)}R</span>
+          </div>
+        )}
+        {/* Invalidation conditions */}
+        {intelligence.invalidationConditions.length > 0 && (
+          <>
+            <div className="border-t border-border/30 my-1" />
+            {intelligence.invalidationConditions.map((cond, i) => (
+              <div key={i} className="flex justify-between">
+                <span className="text-red-400/60">{t.intelligence.invalidation}</span>
+                <span className="text-foreground/70">{cond.description}</span>
+              </div>
+            ))}
+          </>
+        )}
+        {/* Watch items */}
+        {intelligence.nextMonitor.length > 0 && (
+          <>
+            <div className="border-t border-border/30 my-1" />
+            {intelligence.nextMonitor.map((item, i) => (
+              <div key={i} className="flex justify-between">
+                <span className="text-blue-400/60">{t.intelligence.nextLevel}</span>
+                <span className="text-foreground/70">{item}</span>
+              </div>
+            ))}
+          </>
         )}
       </div>
     </IntelSection>
@@ -585,7 +697,7 @@ export function IntelligenceDashboard({
       <FundamentalIntelligenceSection fundamentals={multiDimensional?.fundamentals ?? null} />
 
       {/* Key Levels */}
-      <KeyLevelsSection intelligence={intelligence} />
+      <KeyLevelsSection intelligence={intelligence} side={positionSide} instrument={instrument} />
 
       {/* Historical Intelligence Timeline */}
       {historicalTimeline && (
