@@ -223,6 +223,13 @@ const id: Translations = {
     stanceMixed: "CAMPURAN",
     stanceNeutral: "NETRAL",
     stanceInsufficient: "TIDAK_MEMADAI",
+    stanceUnknown: "TIDAK_DIKETAHUI",
+    relevanceDirect: "LANGSUNG",
+    relevanceHigh: "TINGGI",
+    relevanceModerate: "SEDANG",
+    relevanceLow: "RENDAH",
+    relevanceIrrelevant: "TIDAK_RELEVAN",
+    relevanceUnknown: "TIDAK_DIKETAHUI",
   },
 
   decision: {

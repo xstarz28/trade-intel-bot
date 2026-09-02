@@ -255,6 +255,14 @@ export interface Translations {
     stanceMixed: string;
     stanceNeutral: string;
     stanceInsufficient: string;
+    stanceUnknown: string;
+    // Relevance mapping
+    relevanceDirect: string;
+    relevanceHigh: string;
+    relevanceModerate: string;
+    relevanceLow: string;
+    relevanceIrrelevant: string;
+    relevanceUnknown: string;
   };
 
   // ─── Decision Support ──────────────────────────────────────

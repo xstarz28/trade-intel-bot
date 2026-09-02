@@ -219,6 +219,13 @@ const en: Translations = {
     stanceMixed: "MIXED",
     stanceNeutral: "NEUTRAL",
     stanceInsufficient: "INSUFFICIENT",
+    stanceUnknown: "UNKNOWN",
+    relevanceDirect: "DIRECT",
+    relevanceHigh: "HIGH",
+    relevanceModerate: "MODERATE",
+    relevanceLow: "LOW",
+    relevanceIrrelevant: "IRRELEVANT",
+    relevanceUnknown: "UNKNOWN",
   },
 
   decision: {

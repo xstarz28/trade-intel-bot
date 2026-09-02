@@ -16,6 +16,7 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
+import { mapStance, mapPositionImpact, mapDirection, mapRelevance } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   TrendingUp,
@@ -122,10 +123,10 @@ function NewsIntelligenceSection({ news }: { news: NewsSynthesis | null }) {
               news!.newsStance === "MIXED" ? "text-amber-400 bg-amber-500/10" :
               "text-muted-foreground bg-muted/30"
             }`}>
-              {news!.newsStance}
+              {mapStance(news!.newsStance, t)}
             </span>
             <span className="text-[8px] font-mono text-muted-foreground/60">
-              {news!.supportingCount} supporting · {news!.conflictingCount} conflicting
+              {news!.supportingCount} {t.intelligence.supporting} · {news!.conflictingCount} {t.intelligence.conflicting}
             </span>
           </div>
           <p className="text-[9px] font-mono text-muted-foreground/80 leading-relaxed">
@@ -157,7 +158,7 @@ function NewsItemCard({ item }: { item: NewsRelevance }) {
       <div className="flex-1 min-w-0">
         <div className="text-foreground/80 truncate">{item.reason}</div>
         <div className="text-muted-foreground/60 mt-0.5">
-          {t.intelligence.relevanceLabel} {item.relevance} · {t.intelligence.impactLabel} {item.positionImpact}
+          {t.intelligence.relevanceLabel} {mapRelevance(item.relevance, t)} · {t.intelligence.impactLabel} {mapPositionImpact(item.positionImpact, t)}
         </div>
       </div>
     </div>
@@ -183,10 +184,10 @@ function FundamentalIntelligenceSection({ fundamentals }: { fundamentals: Fundam
               fundamentals!.fundamentalStance === "MIXED" ? "text-amber-400 bg-amber-500/10" :
               "text-muted-foreground bg-muted/30"
             }`}>
-              {fundamentals!.fundamentalStance}
+              {mapStance(fundamentals!.fundamentalStance, t)}
             </span>
             <span className="text-[8px] font-mono text-muted-foreground/60">
-              {fundamentals!.supportingCount} supporting · {fundamentals!.conflictingCount} conflicting
+              {fundamentals!.supportingCount} {t.intelligence.supporting} · {fundamentals!.conflictingCount} {t.intelligence.conflicting}
             </span>
           </div>
           <p className="text-[9px] font-mono text-muted-foreground/80 leading-relaxed">
@@ -241,7 +242,7 @@ function FundamentalCard({ interp }: { interp: FundamentalInterpretation }) {
         interp.positionImpact === "CONFLICTING" ? "text-red-400 bg-red-500/10" :
         "text-muted-foreground bg-muted/30"
       }`}>
-        {interp.positionImpact}
+        {mapPositionImpact(interp.positionImpact, t)}
       </span>
     </div>
   );
@@ -306,7 +307,7 @@ function EvidenceTier({
               item.direction === "CONFLICTING" ? "text-red-400/60" :
               "text-muted-foreground/40"
             }`}>
-              {item.direction}
+              {mapDirection(item.direction, t)}
             </span>
           </div>
         ))}
