@@ -16,7 +16,7 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension } from "@/lib/i18n/enum-mapping";
+import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension, mapSensitivity, mapMarketState } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   TrendingUp,
@@ -211,7 +211,7 @@ function FundamentalIntelligenceSection({ fundamentals }: { fundamentals: Fundam
                   fundamentals!.catalyst.positionSensitivity === "HIGH" ? "bg-amber-500/20 text-amber-400" :
                   "bg-muted/30 text-muted-foreground"
                 }`}>
-                  {fundamentals!.catalyst.positionSensitivity} {t.intelligence.sensitivity}
+                  {mapSensitivity(fundamentals!.catalyst.positionSensitivity, t)} {t.intelligence.sensitivity}
                 </span>
               </div>
               <p className="text-[8px] font-mono text-muted-foreground/80">
@@ -466,7 +466,7 @@ function AnalyticalSummarySection({
         {/* Market */}
         <div className="text-[9px] font-mono">
           <span className="text-muted-foreground/60">{t.intelligence.marketLabel}</span>
-          <span className="text-foreground/80">{intelligence.marketState.replace(/_/g, " ")}</span>
+          <span className="text-foreground/80">{mapMarketState(intelligence.marketState, t)}</span>
         </div>
         {/* Position */}
         <div className="text-[9px] font-mono">
