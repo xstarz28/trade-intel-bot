@@ -231,6 +231,11 @@ const pt: Translations = {
     relevanceLow: "BAIXA",
     relevanceIrrelevant: "IRRELEVANTE",
     relevanceUnknown: "DESCONHECIDO",
+    confidenceStrong: "Evidência Forte",
+    confidenceModerate: "Evidência Moderada",
+    confidenceWeak: "Evidência Fraca",
+    confidenceInsufficient: "Evidência Insuficiente",
+    derivatives: "Derivativos",
     invalidationScenario: "INVALIDAÇÃO",
   },
 

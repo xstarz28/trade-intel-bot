@@ -230,6 +230,11 @@ const id: Translations = {
     relevanceLow: "RENDAH",
     relevanceIrrelevant: "TIDAK_RELEVAN",
     relevanceUnknown: "TIDAK_DIKETAHUI",
+    confidenceStrong: "Bukti Kuat",
+    confidenceModerate: "Bukti Sedang",
+    confidenceWeak: "Bukti Lemah",
+    confidenceInsufficient: "Bukti Tidak Memadai",
+    derivatives: "Turunan",
   },
 
   decision: {
