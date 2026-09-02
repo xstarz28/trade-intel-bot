@@ -110,3 +110,54 @@ export function mapConflictingCount(
 ): string {
   return `${count} ${t.intelligence.conflicting}`;
 }
+
+// ─── Thesis Health Mapping ──────────────────────────────────
+
+/** Map thesis health enum to translated display label. */
+export function mapThesisHealth(
+  thesisHealth: string,
+  t: Translations,
+): string {
+  switch (thesisHealth) {
+    case "HEALTHY": return t.status.healthy;
+    case "STABLE": return t.status.stable;
+    case "DETERIORATING": return t.status.deteriorating;
+    case "SEVERELY_DETERIORATING": return t.status.severelyDeteriorating;
+    case "INVALIDATED": return t.status.invalidated;
+    default: return thesisHealth.replace(/_/g, " ");
+  }
+}
+
+// ─── Confidence Mapping ─────────────────────────────────────
+
+/** Map confidence level enum to translated display label. */
+export function mapConfidence(
+  confidence: string,
+  t: Translations,
+): string {
+  switch (confidence) {
+    case "STRONG_EVIDENCE": return t.intelligence.confidenceStrong;
+    case "MODERATE_EVIDENCE": return t.intelligence.confidenceModerate;
+    case "WEAK_EVIDENCE": return t.intelligence.confidenceWeak;
+    case "INSUFFICIENT_EVIDENCE": return t.intelligence.confidenceInsufficient;
+    default: return confidence.replace(/_/g, " ");
+  }
+}
+
+// ─── Dimension Mapping ──────────────────────────────────────
+
+/** Map dimension name enum to translated display label. */
+export function mapDimension(
+  dimension: string,
+  t: Translations,
+): string {
+  switch (dimension) {
+    case "TECHNICAL": return t.intelligence.technical;
+    case "MACRO": return t.intelligence.macro;
+    case "CROSS_ASSET": return t.intelligence.crossAsset;
+    case "DERIVATIVES": return t.intelligence.derivatives;
+    case "NEWS": return t.intelligence.news;
+    case "FUNDAMENTALS": return t.intelligence.fundamentals;
+    default: return dimension;
+  }
+}

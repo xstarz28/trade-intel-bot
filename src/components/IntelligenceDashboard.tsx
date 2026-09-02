@@ -16,7 +16,7 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import { mapStance, mapPositionImpact, mapDirection, mapRelevance } from "@/lib/i18n/enum-mapping";
+import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   TrendingUp,
@@ -226,6 +226,7 @@ function FundamentalIntelligenceSection({ fundamentals }: { fundamentals: Fundam
 }
 
 function FundamentalCard({ interp }: { interp: FundamentalInterpretation }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-start gap-2 px-2 py-1.5 bg-muted/20 rounded text-[8px] font-mono">
       <span className={`mt-0.5 size-1.5 rounded-full shrink-0 ${
@@ -290,6 +291,7 @@ function EvidenceTier({
   items: HierarchicalEvidence[];
   color: string;
 }) {
+  const { t } = useI18n();
   return (
     <div>
       <div className={`text-[8px] font-mono font-semibold ${color} mb-0.5`}>{label}</div>
@@ -427,7 +429,7 @@ function DimensionStatusPanel({ dimensions }: { dimensions: DimensionStatus[] })
           }`}
           title={dim.description}
         >
-          {dim.dimension}: {dim.availability}
+          {mapDimension(dim.dimension, t)}: {mapAvailability(dim.availability, t)}
         </span>
       ))}
     </div>
@@ -474,7 +476,7 @@ function AnalyticalSummarySection({
         {/* Thesis */}
         <div className="text-[9px] font-mono">
           <span className="text-muted-foreground/60">{t.intelligence.thesisLabel}</span>
-          <span className={`font-semibold ${thesisColor}`}>{thesisLabel}</span>
+          <span className={`font-semibold ${thesisColor}`}>{mapThesisHealth(thesisLabel, t)}</span>
         </div>
         {/* Why */}
         <div className="text-[9px] font-mono leading-relaxed">
@@ -499,7 +501,7 @@ function AnalyticalSummarySection({
         <div className="text-[9px] font-mono">
           <span className="text-muted-foreground/60">{t.intelligence.confidenceLabel}</span>
           <span className="text-foreground/70">
-            {intelligence.confidence.replace(/_/g, " ")}
+            {mapConfidence(intelligence.confidence, t)}
           </span>
         </div>
       </div>

@@ -231,6 +231,11 @@ const es: Translations = {
     relevanceLow: "BAJA",
     relevanceIrrelevant: "IRRELEVANTE",
     relevanceUnknown: "DESCONOCIDO",
+    confidenceStrong: "Evidencia Fuerte",
+    confidenceModerate: "Evidencia Moderada",
+    confidenceWeak: "Evidencia Débil",
+    confidenceInsufficient: "Evidencia Insuficiente",
+    derivatives: "Derivados",
     invalidationScenario: "INVALIDACIÓN",
   },
 

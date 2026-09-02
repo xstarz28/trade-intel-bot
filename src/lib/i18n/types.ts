@@ -263,6 +263,11 @@ export interface Translations {
     relevanceLow: string;
     relevanceIrrelevant: string;
     relevanceUnknown: string;
+    confidenceStrong: string;
+    confidenceModerate: string;
+    confidenceWeak: string;
+    confidenceInsufficient: string;
+    derivatives: string;
   };
 
   // ─── Decision Support ──────────────────────────────────────
