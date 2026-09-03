@@ -143,6 +143,28 @@ export interface Translations {
     multiplePositions: string;
     portfolioInfo: string;
     globalMacroCaution: string;
+    // Portfolio monitoring summary (Phase 144)
+    monitorSummary: string;
+    monitorInfo: string;
+    monitorStateLabel: string;
+    monitorIdle: string;
+    monitorStable: string;
+    monitorWatch: string;
+    monitorElevated: string;
+    monitorSevere: string;
+    monitorReasonNoPositions: string;
+    monitorReasonInvalidated: string;
+    monitorReasonConflict: string;
+    monitorReasonHighRisk: string;
+    monitorReasonCaution: string;
+    monitorReasonInsufficientData: string;
+    monitorReasonUnavailable: string;
+    monitorReasonPartialCoverage: string;
+    monitorReasonMacroCaution: string;
+    monitorReasonMacroStale: string;
+    monitorReasonMacroLimited: string;
+    monitorReasonMacroUnavailable: string;
+    monitorReasonConcentration: string;
     // Horizon labels
     horizonScalping: string;
     horizonIntraday: string;
