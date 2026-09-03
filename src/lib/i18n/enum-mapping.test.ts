@@ -29,6 +29,7 @@ import {
   mapSeverity,
   mapRiskLevel,
   mapHorizon,
+  mapMarketState,
 } from "./enum-mapping";
 
 const LOCALES: Record<string, Translations> = { en, id, es, pt };
@@ -176,5 +177,33 @@ describe("Phase 138 — existing mappings remain intact", () => {
   it("mapped text never leaks raw placeholders", () => {
     const label = mapThesisHealth("HEALTHY", en);
     expect(label).not.toContain("{");
+  });
+
+  // ─── Market state labels (actual MarketIntelligenceSummary domain) ────
+  it("maps the real market-state domain in every locale", () => {
+    expectDomainMapped(mapMarketState, [
+      "TRENDING_UP",
+      "TRENDING_DOWN",
+      "RANGING",
+      "VOLATILE",
+      "INSUFFICIENT_DATA",
+      "UNKNOWN",
+    ]);
+  });
+
+  it("keeps market-state semantics stable", () => {
+    expect(mapMarketState("TRENDING_UP", en)).toBe(en.analysis.bullish);
+    expect(mapMarketState("TRENDING_DOWN", id)).toBe(id.analysis.bearish);
+    expect(mapMarketState("RANGING", es)).toBe(es.intelligence.ranging);
+    expect(mapMarketState("VOLATILE", pt)).toBe(pt.intelligence.volatilityLabel);
+    expect(mapMarketState("INSUFFICIENT_DATA", en)).toBe(en.intelligence.insufficientData);
+  });
+
+  it("market-state mapping never fabricates a label for unknown states", () => {
+    for (const locale of Object.values(LOCALES)) {
+      const label = mapMarketState("SOME_FUTURE_MARKET_STATE", locale);
+      expect(typeof label).toBe("string");
+      expect(label.length).toBeGreaterThan(0);
+    }
   });
 });

@@ -91,6 +91,8 @@ const en: Translations = {
     investmentIntelligence: "Investment intelligence · Evidence-based analysis",
     noExecution: "No execution commands",
     manualAction: "Manual action required for any trade",
+    positionThesis: "POSITION THESIS",
+    intelUnavailable: "No thesis intelligence for this position yet.",
     portfolio: "PORTFOLIO",
     // Horizon labels
     horizonScalping: "Scalping",

@@ -333,12 +333,17 @@ export function mapMarketState(
   t: Translations,
 ): string {
   switch (marketState) {
+    // MarketIntelligenceSummary domain (price-observation-engine)
+    case "TRENDING_UP": return t.analysis.bullish;
+    case "TRENDING_DOWN": return t.analysis.bearish;
+    case "VOLATILE": return t.intelligence.volatilityLabel;
+    case "RANGING": return t.intelligence.ranging;
+    case "INSUFFICIENT_DATA": return t.intelligence.insufficientData;
+    // Legacy/other-surface values
     case "TRENDING_BULLISH": return t.analysis.bullish;
     case "TRENDING_BEARISH": return t.analysis.bearish;
-    case "RANGING": return t.analysis.noTrade;
     case "VOLATILE_EXPANSION": return t.fundamental.volatile;
     case "VOLATILE_CONTRACTION": return t.fundamental.contracting;
-    case "INSUFFICIENT_DATA": return t.intelligence.insufficientData;
     case "UNKNOWN": return t.status.unknown;
     default: return marketState.replace(/_/g, " ");
   }
