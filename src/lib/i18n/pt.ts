@@ -96,6 +96,8 @@ const pt: Translations = {
     noExecution: "Sem comandos de execução",
     manualAction:
       "Ação manual necessária para qualquer operação",
+    positionThesis: "TESE DA POSIÇÃO",
+    intelUnavailable: "Ainda não há inteligência de tese para esta posição.",
     portfolio: "PORTFÓLIO",
     horizonScalping: "Scalping",
     horizonIntraday: "Intraday",

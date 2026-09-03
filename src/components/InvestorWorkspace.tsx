@@ -10,24 +10,43 @@
  * - Investment-grade opportunities (1–3 year emphasis)
  * - Risk attribution and data quality
  *
+ * Phase 139 — per-position thesis intelligence.
+ * InvestorWorkspace now consumes the SAME per-position intelligence map the
+ * protection dashboard derives (usePositionIntelligence → the single
+ * derivation path). Each position card shows ONLY its own intelligence
+ * record (strict positionId association) — never a sibling's.
+ *
  * INFORMATIONAL_ONLY — never executes trades.
  */
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import { mapSeverity, mapRiskLevel, mapHorizon } from "@/lib/i18n/enum-mapping";
+import {
+  mapSeverity,
+  mapRiskLevel,
+  mapHorizon,
+  mapThesisHealth,
+  mapConfidence,
+  mapMarketState,
+  mapAvailability,
+} from "@/lib/i18n/enum-mapping";
 import {
   Briefcase,
   Shield,
   AlertTriangle,
-  CheckCircle,
   Eye,
   BarChart3,
   Activity,
   Layers,
+  Brain,
 } from "lucide-react";
+import { usePositionProtection } from "@/lib/position-protection/use-position-protection";
+import { usePositionIntelligence } from "@/lib/position-protection/use-position-intelligence";
 import {
-  usePositionProtection,
-} from "@/lib/position-protection/use-position-protection";
+  associateInvestorIntelligence,
+  classifyIntelAvailability,
+  type InvestorIntelRow,
+} from "@/lib/position-protection/investor-intelligence-view";
+import { getInstrumentInfo } from "@/lib/position-protection/instrument-registry";
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION COMPONENT
@@ -72,14 +91,214 @@ const HEALTH_COLORS: Record<string, string> = {
   UNKNOWN: "text-muted-foreground",
 };
 
+const SEVERITY_COLORS: Record<string, string> = {
+  NONE: "text-emerald-400 bg-emerald-500/10",
+  WATCH: "text-blue-400 bg-blue-500/10",
+  CAUTION: "text-amber-400 bg-amber-500/10",
+  HIGH_RISK: "text-orange-400 bg-orange-500/10",
+  INVALIDATED: "text-red-400 bg-red-500/10",
+};
+
+const THESIS_COLORS: Record<string, string> = {
+  HEALTHY: "text-emerald-400 bg-emerald-500/10",
+  STABLE: "text-blue-400 bg-blue-500/10",
+  CAUTION: "text-amber-400 bg-amber-500/10",
+  DETERIORATING: "text-orange-400 bg-orange-500/10",
+  SEVERELY_DETERIORATING: "text-red-400 bg-red-500/10",
+  INVALIDATED: "text-red-400 bg-red-500/15 border border-red-500/30",
+  INSUFFICIENT_DATA: "text-muted-foreground bg-muted/30",
+  UNKNOWN: "text-muted-foreground bg-muted/30",
+};
+
+const DATA_STATUS_COLORS: Record<string, string> = {
+  AVAILABLE: "text-emerald-400 bg-emerald-500/10",
+  LIMITED: "text-amber-400 bg-amber-500/10",
+  INSUFFICIENT: "text-red-400 bg-red-500/10",
+  UNAVAILABLE: "text-muted-foreground bg-muted/30",
+};
+
+// ═══════════════════════════════════════════════════════════════
+// PER-POSITION THESIS CARD
+// ═══════════════════════════════════════════════════════════════
+// Shows ONLY the intelligence record associated with this exact positionId.
+// Thesis (intelligence engine) and protection severity stay visually and
+// semantically separate — HIGH_RISK protection never reads as a bearish thesis.
+
+function PositionThesisCard({ row }: { row: InvestorIntelRow }) {
+  const { t } = useI18n();
+  const intel = row.intel;
+  const info = getInstrumentInfo(row.instrument);
+  const dataStatus = classifyIntelAvailability(intel);
+
+  const supporting = intel?.evidence.filter((e) => e.direction === "supporting") ?? [];
+  const conflicting = intel?.evidence.filter((e) => e.direction === "conflicting") ?? [];
+  const neutralCount = intel?.evidence.filter((e) => e.direction === "neutral").length ?? 0;
+
+  return (
+    <div className="border border-border/30 rounded-lg p-3 space-y-2">
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-mono font-bold text-foreground">
+          {info?.displayName ?? row.instrument}
+        </span>
+        <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+          row.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+        }`}>
+          {row.side}
+        </span>
+        <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">
+          {mapHorizon(row.horizon, t)}
+        </span>
+        <span className="ml-auto flex items-center gap-1.5">
+          {intel && intel.sourceMode !== "LIVE" && (
+            <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+              intel.sourceMode === "STALE"
+                ? "text-amber-400 bg-amber-500/10"
+                : intel.sourceMode === "UNAVAILABLE"
+                  ? "text-red-400 bg-red-500/10"
+                  : "text-muted-foreground bg-muted/30"
+            }`}>
+              {mapAvailability(intel.sourceMode, t)}
+            </span>
+          )}
+          <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+            DATA_STATUS_COLORS[dataStatus] ?? "text-muted-foreground bg-muted/30"
+          }`}>
+            {mapAvailability(dataStatus, t)}
+          </span>
+        </span>
+      </div>
+
+      {intel ? (
+        <>
+          {/* Thesis health (engine) vs Protection severity — separate fields */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
+            <span className="text-muted-foreground/60">{t.decision.thesisHealth}:</span>
+            <span className={`px-1.5 py-0.5 rounded text-[8px] font-semibold ${
+              THESIS_COLORS[row.thesisHealth] ?? "text-muted-foreground bg-muted/30"
+            }`}>
+              {mapThesisHealth(row.thesisHealth, t).replace(/_/g, " ")}
+            </span>
+            <span className="text-muted-foreground/50">({row.thesisHealthScore}/100)</span>
+            <span className="text-muted-foreground/60 ml-1">{t.intelligence.riskProtectionLabel}:</span>
+            <span className={`px-1.5 py-0.5 rounded text-[8px] font-semibold ${
+              SEVERITY_COLORS[row.severity] ?? "text-muted-foreground bg-muted/30"
+            }`}>
+              {mapSeverity(row.severity, t).replace(/_/g, " ")}
+            </span>
+          </div>
+
+          {/* Market state + confidence + observation count */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono text-muted-foreground">
+            <span>{t.intelligence.marketLabel}{mapMarketState(intel.marketState, t)}</span>
+            <span>{t.intelligence.confidenceLabel}{mapConfidence(intel.confidence, t)}</span>
+            <span>{t.intelligence.observationCount}: {intel.observationCount}</span>
+          </div>
+
+          {/* Evidence summary (existing structured evidence only) */}
+          <div className="flex flex-wrap items-center gap-x-3 text-[9px] font-mono">
+            <span className="text-emerald-400">✓ {t.intelligence.supportingCountLabel}: {supporting.length}</span>
+            <span className="text-red-400">✗ {t.intelligence.conflictingCountLabel}: {conflicting.length}</span>
+            <span className="text-muted-foreground">{t.intelligence.neutralCountLabel}: {neutralCount}</span>
+          </div>
+
+          {/* Evidence items (engine prose, unchanged) */}
+          {(supporting.length > 0 || conflicting.length > 0) && (
+            <div className="space-y-0.5">
+              {supporting.slice(0, 2).map((e, i) => (
+                <div key={`s-${i}`} className="flex items-start gap-1.5">
+                  <span className="text-[8px] text-emerald-400 mt-0.5">✓</span>
+                  <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{e.description}</span>
+                </div>
+              ))}
+              {conflicting.slice(0, 2).map((e, i) => (
+                <div key={`c-${i}`} className="flex items-start gap-1.5">
+                  <span className="text-[8px] text-red-400 mt-0.5">✗</span>
+                  <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{e.description}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Invalidation (existing conditions only — never invented) */}
+          {intel.invalidationConditions.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-[8px] font-mono font-semibold text-muted-foreground/70 uppercase tracking-wide">
+                {t.decision.invalidation}
+              </div>
+              {intel.invalidationConditions.slice(0, 3).map((cond, i) => (
+                <div key={`inv-${i}`} className="flex items-start gap-1.5">
+                  <span className={`text-[8px] mt-0.5 ${cond.approaching ? "text-amber-400" : "text-muted-foreground/50"}`}>
+                    {cond.approaching ? "▲" : "·"}
+                  </span>
+                  <span className={`text-[8px] font-mono leading-relaxed ${
+                    cond.approaching ? "text-amber-400/90" : "text-muted-foreground"
+                  }`}>
+                    {cond.description}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Watch / what-to-monitor (engine output, unchanged) */}
+          {intel.nextMonitor.length > 0 && (
+            <div className="space-y-0.5">
+              <div className="text-[8px] font-mono font-semibold text-muted-foreground/70 uppercase tracking-wide">
+                {t.decision.whatToMonitor}
+              </div>
+              {intel.nextMonitor.slice(0, 3).map((item, i) => (
+                <div key={`mon-${i}`} className="flex items-start gap-1.5">
+                  <span className="text-[8px] text-muted-foreground/50 mt-0.5">·</span>
+                  <span className="text-[8px] font-mono text-muted-foreground leading-relaxed">{item}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Explicit insuffiency state — never converted to neutral/bullish */}
+          {dataStatus === "INSUFFICIENT" && (
+            <div className="flex items-center gap-1.5 text-[8px] font-mono text-muted-foreground/70">
+              <AlertTriangle className="size-3 text-amber-400/80" />
+              {t.intelligence.insufficientEvidence}
+            </div>
+          )}
+        </>
+      ) : (
+        /* No intelligence record exists for THIS position — explicit state. */
+        <div className="flex items-center gap-1.5 text-[8px] font-mono text-muted-foreground/70 py-1">
+          <Eye className="size-3" />
+          {t.investor.intelUnavailable}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════
 // MAIN INVESTOR WORKSPACE
 // ═══════════════════════════════════════════════════════════════
 
 export function InvestorWorkspace() {
   const { t } = useI18n();
-  // Fetch positions from Convex
-  const { positions: registeredPositions } = usePositionProtection();
+  // Fetch positions from Convex (protection state)
+  const {
+    positions: registeredPositions,
+    ingestEvent,
+  } = usePositionProtection();
+
+  // Same per-position intelligence derivation used by the protection
+  // dashboard — the single intelligence source of truth. Strict positionId
+  // association happens in associateInvestorIntelligence below.
+  const { intelligenceMap } = usePositionIntelligence(registeredPositions, {
+    // Feed live quotes into the protection pipeline so the protection state
+    // shown here stays fresh — identical to the protection dashboard wiring.
+    onLiveEvent: (events) => {
+      for (const event of events) {
+        ingestEvent(event);
+      }
+    },
+  });
 
   // Build portfolio summary from raw registered positions
   const portfolio = useMemo(() => {
@@ -106,6 +325,7 @@ export function InvestorWorkspace() {
       highRisk,
       invalidated,
       positions: registeredPositions.map((p) => ({
+        positionId: p.position.positionId,
         instrument: p.position.instrument,
         side: p.position.side,
         severity: p.alert?.severity ?? "NONE",
@@ -118,6 +338,12 @@ export function InvestorWorkspace() {
       })),
     };
   }, [registeredPositions]);
+
+  // Strict per-position join: each row carries ONLY its own intelligence.
+  const thesisRows = useMemo(
+    () => associateInvestorIntelligence(registeredPositions, intelligenceMap),
+    [registeredPositions, intelligenceMap],
+  );
 
   return (
     <div className="space-y-4">
@@ -183,7 +409,7 @@ export function InvestorWorkspace() {
               <div className="space-y-1.5">
                 {portfolio.positions.map((pos) => (
                   <div
-                    key={pos.instrument}
+                    key={pos.positionId}
                     className="flex items-center gap-2 p-2 rounded border border-border/30 hover:bg-muted/50 text-[9px] font-mono transition-colors"
                   >
                     <span className="w-16 shrink-0 font-semibold text-foreground">{pos.instrument}</span>
@@ -213,17 +439,20 @@ export function InvestorWorkspace() {
                       portfolio.caution + portfolio.highRisk === 0 ? "LOW" : portfolio.highRisk > 0 ? "ELEVATED" : "MODERATE",
                       t,
                     )}
-                  </div>                    <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.riskLevel}</div>
+                  </div>
+                  <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.riskLevel}</div>
                 </div>
                 <div className="text-center p-2 rounded bg-muted/30">
                   <div className="text-sm font-bold font-mono text-foreground">
                     {portfolio.positions.filter((p) => p.stopLoss).length}/{portfolio.total}
-                  </div>                    <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.withSL}</div>
+                  </div>
+                  <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.withSL}</div>
                 </div>
                 <div className="text-center p-2 rounded bg-muted/30">
                   <div className="text-sm font-bold font-mono text-foreground">
                     {portfolio.positions.filter((p) => p.takeProfit).length}/{portfolio.total}
-                  </div>                    <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.withTP}</div>
+                  </div>
+                  <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.withTP}</div>
                 </div>
               </div>
             </Section>
@@ -262,6 +491,17 @@ export function InvestorWorkspace() {
             </Section>
           </div>
         </div>
+      )}
+
+      {/* Per-Position Thesis Intelligence — only when positions exist */}
+      {thesisRows.length > 0 && (
+        <Section title={t.investor.positionThesis} icon={<Brain className="size-3" />}>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+            {thesisRows.map((row) => (
+              <PositionThesisCard key={row.positionId} row={row} />
+            ))}
+          </div>
+        </Section>
       )}
 
       {/* Footer disclaimer */}

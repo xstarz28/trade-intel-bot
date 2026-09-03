@@ -33,19 +33,13 @@ import {
   type MonitoredPositionState,
 } from "@/lib/position-protection/use-position-protection";
 import { evaluateProtection } from "@/lib/position-protection/protection-engine";
-import { useLiveProtectionPolling, type LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
+import { type LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
 import type { AlertSeverity } from "@/lib/position-protection/types";
 import type { ProtectionEvent } from "@/lib/position-protection/realtime-types";
 import {
-  type PriceObservationState,
-  createObservationState,
-  addObservation,
-  buildMarketIntelligence,
-} from "@/lib/position-protection/price-observation-engine";
-import {
-  generatePositionIntelligence,
   type PositionIntelligence,
 } from "@/lib/position-protection/market-intelligence-analyzer";
+import { usePositionIntelligence } from "@/lib/position-protection/use-position-intelligence";
 import { getInstrumentInfo, formatInstrumentPrice } from "@/lib/position-protection/instrument-registry";
 import { MarketOverviewPanel } from "./MarketOverviewPanel";
 import { IntelligenceDashboard } from "./IntelligenceDashboard";
@@ -109,8 +103,7 @@ import {
   type PersistedEvent,
 } from "@/lib/position-protection/persistent-history-engine";
 import { detectChanges } from "@/lib/position-protection/historical-intelligence";
-import { useOHLCVData, type OHLCVHealthEvent } from "@/lib/position-protection/use-ohlcv-data";
-import type { TimeframeKey } from "@/lib/position-protection/multi-timeframe-engine";
+import { type OHLCVHealthEvent } from "@/lib/position-protection/use-ohlcv-data";
 
 // ═══════════════════════════════════════════════════════════════
 // SEVERITY → TOAST CONFIG
@@ -315,42 +308,26 @@ export function PositionProtectionDashboard() {
     persistenceDegraded,
   } = usePositionProtection();
 
-  // ─── Live Market Polling ──────────────────────────────
-  // Derive unique instruments from registered positions
-  const monitoredInstruments = useMemo(
-    () => [...new Set([
-      ...positions.map((p) => p.position.instrument),
-      // Macro instruments for fundamental intelligence (fetched via Yahoo Finance — free, no key)
-      "VIX", "DXY", "US10Y", "WTI",
-    ])],
-    [positions],
-  );
-
+  // ─── Shared Position Intelligence ───────────────────────
+  // Single derivation of the per-position intelligence map, shared with the
+  // investor workspace so the intelligence engine is never run twice by
+  // different surfaces for the same positions. Keyed strictly by positionId.
   const {
+    intelligenceMap,
+    monitoredInstruments,
     livePrices,
+    ohlcv,
     isPolling,
-    lastPollAt,
-    totalPolls,
     successfulPolls,
-    failedPolls,
     lastError,
-  } = useLiveProtectionPolling(monitoredInstruments, {
-    enabled: monitoredInstruments.length > 0,
-    pollIntervalMs: 30_000,
-    onEvent: (events) => {
+  } = usePositionIntelligence(positions, {
+    onLiveEvent: (events) => {
       // Feed real market events into the protection pipeline
       for (const event of events) {
         ingestEvent(event);
       }
     },
-  });
-
-  // ─── OHLCV Data (MTF candles) ─────────────────────────
-  const ohlcv = useOHLCVData(monitoredInstruments, {
-    enabled: monitoredInstruments.length > 0,
-    timeframes: ["M5", "M15", "H1"],
-    refreshIntervalMs: 120_000,
-    onHealthEvent: useCallback((event: OHLCVHealthEvent) => {
+    onOHLCVHealthEvent: useCallback((event: OHLCVHealthEvent) => {
       healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
         component: event.component,
         source: event.source,
@@ -362,9 +339,6 @@ export function PositionProtectionDashboard() {
       });
     }, []),
   });
-
-  // ─── Price Observations (per instrument) ─────────────────
-  const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
   const [activeTab, setActiveTab] = useState<"workspace" | "positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications" | "system">("workspace");
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
   const [timelines, setTimelines] = useState<Map<string, HistoricalTimeline>>(new Map());
@@ -372,25 +346,10 @@ export function PositionProtectionDashboard() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const prevAlertsRef = useRef<Map<string, AlertSeverity>>(new Map());
 
-  // ─── Update Price Observations from Live Data ────────────
+  // ─── Phase 100: Record market data health from actual polling results ──
   useEffect(() => {
     if (livePrices.size === 0) return;
 
-    setPriceObservations((prev) => {
-      const next = new Map(prev);
-      const now = Date.now();
-
-      for (const [instrument, state] of livePrices) {
-        if (state.sourceMode !== "LIVE" || state.price <= 0) continue;
-
-        const obs = next.get(instrument) ?? createObservationState(instrument);
-        next.set(instrument, addObservation(obs, state.price, now));
-      }
-
-      return next;
-    });
-
-    // Phase 100: Record market data health events from actual polling results
     const buf = healthBufferRef.current;
     let anySuccess = false;
     let anyFailure = false;
@@ -532,45 +491,8 @@ export function PositionProtectionDashboard() {
   }, [userPositions, feedNews]);
 
   // ─── Generate Intelligence per Position ───────────────────
-  const intelligenceMap = useMemo(() => {
-    const map = new Map<string, PositionIntelligence>();
-
-    for (const pos of positions) {
-      const obs = priceObservations.get(pos.position.instrument);
-      const alert = pos.alert;
-      const live = livePrices.get(pos.position.instrument);
-
-      const currentPrice = live?.sourceMode === "LIVE" && live.price > 0
-        ? live.price
-        : pos.position.entryPrice;
-
-      const intelligence = generatePositionIntelligence({
-        position: {
-          instrument: pos.position.instrument,
-          side: pos.position.side,
-          entryPrice: pos.position.entryPrice,
-          currentPrice,
-          stopLoss: pos.position.stopLoss,
-          takeProfit: pos.position.takeProfit,
-          leverage: pos.position.leverage,
-          horizon: pos.position.horizon,
-        },
-        observationState: obs ?? createObservationState(pos.position.instrument),
-        thesisHealth: alert?.thesisHealth ?? "UNKNOWN",
-        thesisHealthScore: alert?.thesisHealthScore ?? 50,
-        severity: alert?.severity ?? "NONE",
-        actionRecommendation: alert?.actionRecommendation ?? "Hold and monitor.",
-        givebackPct: pos.giveback?.givebackPct,
-        sourceMode: live?.sourceMode ?? "UNAVAILABLE",
-        provider: live?.provider ?? "—",
-        mtfConfluence: ohlcv.confluence.get(pos.position.instrument),
-      });
-
-      map.set(pos.position.positionId, intelligence);
-    }
-
-    return map;
-  }, [positions, priceObservations, livePrices]);
+  // (derivation lives in usePositionIntelligence — shared with the investor
+  //  workspace so the intelligence engine is never duplicated)
 
   // Phase 103: Compute portfolio intelligence once, share between health recording and alert bridge
   const portfolioIntel = useMemo(() => {

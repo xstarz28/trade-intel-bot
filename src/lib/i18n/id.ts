@@ -94,6 +94,8 @@ const id: Translations = {
       "Inteligensi investasi · Analisis berbasis bukti",
     noExecution: "Tidak ada perintah eksekusi",
     manualAction: "Tindakan manual diperlukan untuk setiap perdagangan",
+    positionThesis: "TESIS POSISI",
+    intelUnavailable: "Intelijen tesis untuk posisi ini belum tersedia.",
     portfolio: "PORTOFOLIO",
     horizonScalping: "Scalping",
     horizonIntraday: "Intraday",

@@ -96,6 +96,8 @@ const es: Translations = {
     noExecution: "Sin órdenes de ejecución",
     manualAction:
       "Acción manual requerida para cualquier operación",
+    positionThesis: "TESIS DE LA POSICIÓN",
+    intelUnavailable: "Aún no hay inteligencia de tesis para esta posición.",
     portfolio: "PORTAFOLIO",
     horizonScalping: "Scalping",
     horizonIntraday: "Intraday",

@@ -120,6 +120,9 @@ export interface Translations {
     investmentIntelligence: string;
     noExecution: string;
     manualAction: string;
+    // Per-position thesis intelligence (Phase 139)
+    positionThesis: string;
+    intelUnavailable: string;
     portfolio: string;
     // Horizon labels
     horizonScalping: string;
