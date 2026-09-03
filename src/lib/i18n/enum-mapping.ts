@@ -340,6 +340,23 @@ export function mapSensitivity(
   }
 }
 
+// ─── Investor Monitor-State Mapping (Phase 144) ──────────────
+
+/** Map investor portfolio monitor state to a translated display label. */
+export function mapMonitorState(
+  state: string,
+  t: Translations,
+): string {
+  switch (state) {
+    case "IDLE": return t.investor.monitorIdle;
+    case "STABLE": return t.investor.monitorStable;
+    case "WATCH": return t.investor.monitorWatch;
+    case "ELEVATED": return t.investor.monitorElevated;
+    case "SEVERE": return t.investor.monitorSevere;
+    default: return state.replace(/_/g, " ");
+  }
+}
+
 // ─── Investor Decision-State Mapping (Phase 141) ─────────────
 
 /** Map investor decision-synthesis state to a translated display label. */

@@ -677,26 +677,26 @@ export default function Dashboard() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="text-primary hover:text-primary/80 transition-colors cursor-pointer">
-                      {workspaceMode === "trader" ? "Trader" : "Investor"}
+                      {workspaceMode === "trader" ? t.workspace.trader : t.workspace.investor}
                       <span className="ml-1 text-[8px] opacity-60">▼</span>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="font-mono">
                     <DropdownMenuItem onClick={() => handleWorkspaceChange("trader")}>
                       <BarChart3 className="size-3.5 mr-2" />
-                      Trading
+                      {t.workspace.trading}
                       {workspaceMode === "trader" && <span className="ml-auto text-primary text-[10px]">●</span>}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => handleWorkspaceChange("investor")}>
                       <Briefcase className="size-3.5 mr-2" />
-                      Investing
+                      {t.workspace.investing}
                       {workspaceMode === "investor" && <span className="ml-auto text-primary text-[10px]">●</span>}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </h1>
               <p className="text-[10px] text-muted-foreground -mt-0.5 font-mono">
-                {workspaceMode === "trader" ? "chief market strategist" : "long-term investment analyst"}
+                {workspaceMode === "trader" ? t.workspace.traderRole : t.workspace.investorRole}
               </p>
             </div>
           </div>
@@ -710,7 +710,7 @@ export default function Dashboard() {
                   onClick={() => setActiveTab("analysis")}
                 >
                   <Terminal className="size-3" />
-                  Analysis
+                  {t.nav.analysis}
                 </Button>
                 <Button
                   variant={activeTab === "protection" ? "default" : "ghost"}
@@ -719,7 +719,7 @@ export default function Dashboard() {
                   onClick={() => setActiveTab("protection")}
                 >
                   <Shield className="size-3" />
-                  Protection
+                  {t.nav.protection}
                 </Button>
               </>
             ) : (
@@ -731,7 +731,7 @@ export default function Dashboard() {
                   onClick={() => setInvestorTab("portfolio")}
                 >
                   <Briefcase className="size-3" />
-                  Portfolio
+                  {t.nav.portfolio}
                 </Button>
                 <Button
                   variant={investorTab === "intelligence" ? "default" : "ghost"}
@@ -740,7 +740,7 @@ export default function Dashboard() {
                   onClick={() => setInvestorTab("intelligence")}
                 >
                   <BarChart3 className="size-3" />
-                  Intelligence
+                  {t.nav.intelligence}
                 </Button>
                 <Button
                   variant={investorTab === "analysis" ? "default" : "ghost"}
@@ -749,7 +749,7 @@ export default function Dashboard() {
                   onClick={() => setInvestorTab("analysis")}
                 >
                   <Terminal className="size-3" />
-                  Analysis
+                  {t.nav.analysis}
                 </Button>
               </>
             )}
@@ -912,24 +912,23 @@ export default function Dashboard() {
                     <Terminal className="size-7 text-muted-foreground/40" />
                   </div>
                   <h3 className="text-base font-semibold text-foreground font-mono">
-                    Terminal Ready
+                    {t.dashboard.terminalReady}
                   </h3>
                   <p className="mt-1.5 text-sm text-muted-foreground max-w-sm font-mono">
-                    Pilih instrumen dan run analysis — struktur, liquidity, positioning
-                    dan fundamental diambil otomatis dari backend.
+                    {t.dashboard.terminalDescription}
                   </p>
                   <div className="mt-6 grid grid-cols-3 gap-3 max-w-sm">
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
                       <p className="text-lg font-bold text-primary font-mono">4</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">faktor</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{t.dashboard.factors}</p>
                     </div>
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
                       <p className="text-lg font-bold text-primary font-mono">5</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">timeframes</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{t.dashboard.timeframes}</p>
                     </div>
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
                       <p className="text-lg font-bold text-primary font-mono">∞</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">instrumen</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{t.dashboard.instruments}</p>
                     </div>
                   </div>
                 </motion.div>

@@ -30,6 +30,7 @@ import {
   mapAvailability,
   mapDecisionState,
   mapCoverage,
+  mapMonitorState,
 } from "@/lib/i18n/enum-mapping";
 import {
   Briefcase,
@@ -67,6 +68,11 @@ import {
   buildInvestorPortfolioSummary,
   type InvestorPortfolioSummary,
 } from "@/lib/position-protection/investor-portfolio-summary";
+import {
+  buildInvestorMonitorState,
+  type InvestorMonitorState,
+  type MonitorReasonCode,
+} from "@/lib/position-protection/investor-portfolio-monitor";
 import {
   formatInstrumentPrice,
   getInstrumentInfo,
@@ -160,6 +166,14 @@ const MACRO_STATUS_COLORS: Record<string, string> = {
   LIMITED: "text-blue-400 bg-blue-500/10",
   STALE: "text-amber-400 bg-amber-500/10",
   UNAVAILABLE: "text-muted-foreground bg-muted/30",
+};
+
+const MONITOR_STATE_COLORS: Record<string, string> = {
+  IDLE: "text-muted-foreground bg-muted/30",
+  STABLE: "text-emerald-400 bg-emerald-500/10",
+  WATCH: "text-amber-400 bg-amber-500/10",
+  ELEVATED: "text-orange-400 bg-orange-500/10",
+  SEVERE: "text-red-400 bg-red-500/10",
 };
 
 // ═══════════════════════════════════════════════════════════════
@@ -279,6 +293,87 @@ function DecisionContextSection({ rows }: { rows: { row: InvestorIntelRow; synth
       </div>
       <p className="text-[8px] font-mono text-muted-foreground/40 mt-2">
         {t.investor.decisionInfo}
+      </p>
+    </Section>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PORTFOLIO MONITOR (Phase 144)
+// ═══════════════════════════════════════════════════════════════
+// Deterministic categorical watch state over the Phase 143 summary + the
+// Phase 141 syntheses. Reads existing aggregated states only — never
+// recalculates, never recommends, never touches the alert pipeline.
+
+const MONITOR_REASON_COLORS: Record<MonitorReasonCode, string> = {
+  NO_POSITIONS: "text-muted-foreground bg-muted/30",
+  INVALIDATED: "text-red-400 bg-red-500/10",
+  PORTFOLIO_CONFLICT: "text-red-400 bg-red-500/10",
+  HIGH_RISK_PROTECTION: "text-orange-400 bg-orange-500/10",
+  CAUTION_POSITIONS: "text-amber-400 bg-amber-500/10",
+  INSUFFICIENT_DATA: "text-muted-foreground bg-muted/30",
+  UNAVAILABLE_INTEL: "text-muted-foreground bg-muted/30",
+  PARTIAL_COVERAGE: "text-amber-400 bg-amber-500/10",
+  GLOBAL_MACRO_CAUTION: "text-amber-400 bg-amber-500/10",
+  MACRO_STALE: "text-amber-400 bg-amber-500/10",
+  MACRO_LIMITED: "text-blue-400 bg-blue-500/10",
+  MACRO_UNAVAILABLE: "text-muted-foreground bg-muted/30",
+  CONCENTRATION: "text-sky-400 bg-sky-500/10",
+};
+
+function monitorReasonLabel(code: MonitorReasonCode, t: ReturnType<typeof useI18n>["t"]): string {
+  switch (code) {
+    case "NO_POSITIONS": return t.investor.monitorReasonNoPositions;
+    case "INVALIDATED": return t.investor.monitorReasonInvalidated;
+    case "PORTFOLIO_CONFLICT": return t.investor.monitorReasonConflict;
+    case "HIGH_RISK_PROTECTION": return t.investor.monitorReasonHighRisk;
+    case "CAUTION_POSITIONS": return t.investor.monitorReasonCaution;
+    case "INSUFFICIENT_DATA": return t.investor.monitorReasonInsufficientData;
+    case "UNAVAILABLE_INTEL": return t.investor.monitorReasonUnavailable;
+    case "PARTIAL_COVERAGE": return t.investor.monitorReasonPartialCoverage;
+    case "GLOBAL_MACRO_CAUTION": return t.investor.monitorReasonMacroCaution;
+    case "MACRO_STALE": return t.investor.monitorReasonMacroStale;
+    case "MACRO_LIMITED": return t.investor.monitorReasonMacroLimited;
+    case "MACRO_UNAVAILABLE": return t.investor.monitorReasonMacroUnavailable;
+    case "CONCENTRATION": return t.investor.monitorReasonConcentration;
+    default: return String(code).replace(/_/g, " ");
+  }
+}
+
+function PortfolioMonitorStrip({ monitor }: { monitor: InvestorMonitorState }) {
+  const { t } = useI18n();
+  const stateLabel = mapMonitorState(monitor.state, t);
+
+  return (
+    <Section title={t.investor.monitorSummary} icon={<Eye className="size-3" />}>
+      <div className="flex flex-wrap items-center gap-1.5 mb-1">
+        <span className="text-[8px] font-mono text-muted-foreground/60">
+          {t.investor.monitorStateLabel}:
+        </span>
+        <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded ${
+          MONITOR_STATE_COLORS[monitor.state] ?? "text-muted-foreground bg-muted/30"
+        }`}>
+          {stateLabel}
+        </span>
+      </div>
+
+      {/* Deterministic reasons — each grounded in an existing aggregated field */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {monitor.reasons.map((r) => (
+          <span
+            key={r.code}
+            className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+              MONITOR_REASON_COLORS[r.code] ?? "text-muted-foreground bg-muted/30"
+            }`}
+          >
+            {monitorReasonLabel(r.code, t)}
+            {r.count > 0 ? ` · ${r.count}` : ""}
+          </span>
+        ))}
+      </div>
+
+      <p className="text-[8px] font-mono text-muted-foreground/40 mt-2">
+        {t.investor.monitorInfo}
       </p>
     </Section>
   );
@@ -769,6 +864,13 @@ export function InvestorWorkspace() {
     [synthesisRows, macroCtx],
   );
 
+  // Portfolio monitor (Phase 144) — deterministic watch state over the
+  // SAME summary + syntheses. Reads existing states only; no recalculation.
+  const monitorState = useMemo(
+    () => buildInvestorMonitorState(portfolioSummary, synthesisRows.map((r) => r.synthesis)),
+    [portfolioSummary, synthesisRows],
+  );
+
   return (
     <div className="space-y-4">
       {/* Investor Header */}
@@ -915,6 +1017,11 @@ export function InvestorWorkspace() {
             </Section>
           </div>
         </div>
+      )}
+
+      {/* Portfolio monitor — only when positions exist */}
+      {registeredPositions.length > 0 && (
+        <PortfolioMonitorStrip monitor={monitorState} />
       )}
 
       {/* Portfolio-level summary — only when positions exist */}
