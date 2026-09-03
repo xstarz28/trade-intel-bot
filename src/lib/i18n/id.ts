@@ -580,6 +580,23 @@ const id: Translations = {
   },
 
   // ─── Empty States ───────────────────────────────────────────
+  // ─── Instrument Entry Form (Phase 145) ────────────────────
+  entryForm: {
+    instrumentLabel: "instrumen",
+    typeLabel: "jenis",
+    timeframeLabel: "timeframe",
+    styleLabel: "gaya trading",
+    analyzing: "menganalisis...",
+    runLabel: "jalankan analisis",
+    backendNote: "data diambil otomatis dari backend",
+    registerTitle: "Daftarkan Posisi untuk Pemantauan",
+    currentPrice: "Harga Saat Ini",
+    stopLossOptional: "Stop Loss (opsional)",
+    takeProfitOptional: "Take Profit (opsional)",
+    leverageOptional: "Leverage (opsional)",
+    registerButton: "Daftarkan Posisi",
+  },
+
   emptyStates: {
     noPositions: "Belum ada posisi terdaftar.",
     noAlerts: "Belum ada peringatan dikonfigurasi.",

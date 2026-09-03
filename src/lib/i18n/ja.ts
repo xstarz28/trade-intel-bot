@@ -585,6 +585,23 @@ const ja: Translations = {
   },
 
   // ─── Empty States ───────────────────────────────────────────
+  // ─── Instrument Entry Form (Phase 145) ────────────────────
+  entryForm: {
+    instrumentLabel: "銘柄",
+    typeLabel: "種類",
+    timeframeLabel: "時間足",
+    styleLabel: "トレードスタイル",
+    analyzing: "分析中...",
+    runLabel: "分析を実行",
+    backendNote: "データはバックエンドから自動的に収集されます",
+    registerTitle: "監視用にポジションを登録",
+    currentPrice: "現在価格",
+    stopLossOptional: "ストップロス（任意）",
+    takeProfitOptional: "利確（任意）",
+    leverageOptional: "レバレッジ（任意）",
+    registerButton: "ポジションを登録",
+  },
+
   emptyStates: {
     noPositions: "ポジションが登録されていません。",
     noAlerts: "アラートが設定されていません。",

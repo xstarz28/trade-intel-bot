@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useI18n } from "@/lib/i18n";
 import { TRADING_STYLES, type TradingStyle } from "@/lib/trading-style";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,6 +59,7 @@ function loadPersistedForm(): PersistedForm {
 }
 
 export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps) {
+  const { t } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
 
   useEffect(() => {
@@ -104,7 +106,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
               $ new-analysis
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
-              pilih instrumen dan run analysis — data diambil otomatis
+              {t.dashboard.terminalDescription}
             </p>
           </div>
         </div>
@@ -139,7 +141,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
           <div className="grid grid-cols-3 gap-3">
             <div className="col-span-1">
               <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                instrument
+                {t.entryForm.instrumentLabel}
               </Label>
               <div className="relative">
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-primary/60 font-mono">$</span>
@@ -154,7 +156,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
             </div>
             <div>
               <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                type
+                {t.entryForm.typeLabel}
               </Label>
               <Select
                 value={form.instrumentType}
@@ -173,7 +175,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
             </div>
             <div>
               <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                timeframe
+                {t.entryForm.timeframeLabel}
               </Label>
               <Select
                 value={form.timeframe}
@@ -197,7 +199,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
               requirements only, never market facts. */}
           <div>
             <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-              trading style
+              {t.entryForm.styleLabel}
             </Label>
             <div className="grid grid-cols-3 gap-2">
               {TRADING_STYLES.map((st) => (
@@ -227,18 +229,18 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
               {isAnalyzing ? (
                 <>
                   <div className="size-4 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
-                  analyzing...
+                  {t.entryForm.analyzing}
                 </>
               ) : (
                 <>
                   <Zap className="size-4" />
-                  run analysis
+                  {t.entryForm.runLabel}
                 </>
               )}
             </Button>
             <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-mono">
               <AlertCircle className="size-3" />
-              <span>data diambil otomatis via backend</span>
+              <span>{t.entryForm.backendNote}</span>
             </div>
           </div>
         </form>

@@ -158,12 +158,11 @@ describe("i18n — EN/ID/ES/PT quadruple parity", () => {
 // ─── Supported Locales ─────────────────────────────────────────
 
 describe("i18n — supported locales", () => {
-  it("SUPPORTED_LOCALES includes en, id, es, pt", () => {
-    expect(SUPPORTED_LOCALES).toContain("en");
-    expect(SUPPORTED_LOCALES).toContain("id");
-    expect(SUPPORTED_LOCALES).toContain("es");
-    expect(SUPPORTED_LOCALES).toContain("pt");
-    expect(SUPPORTED_LOCALES.length).toBe(4);
+  it("SUPPORTED_LOCALES includes all nine canonical locales", () => {
+    for (const code of ["en", "id", "es", "pt", "fr", "de", "ja", "ko", "zh"]) {
+      expect(SUPPORTED_LOCALES).toContain(code);
+    }
+    expect(SUPPORTED_LOCALES.length).toBe(9);
   });
 
   it("DEFAULT_LOCALE is en", () => {

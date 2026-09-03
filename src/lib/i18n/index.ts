@@ -25,6 +25,11 @@ import en from "./en";
 import id from "./id";
 import es from "./es";
 import pt from "./pt";
+import fr from "./fr";
+import de from "./de";
+import ja from "./ja";
+import ko from "./ko";
+import zh from "./zh";
 import {
   SUPPORTED_LOCALES,
   LOCALE_REGISTRY,
@@ -37,12 +42,17 @@ import {
 
 // ─── Resource registry ─────────────────────────────────────────
 
-/** Lazy-loaded resource map — only loads enabled locales */
+/** Lazy-loaded resource map — loads all nine enabled locales */
 const RESOURCE_MAP: Record<string, Translations> = {
   en,
   id,
   es,
   pt,
+  fr,
+  de,
+  ja,
+  ko,
+  zh,
 };
 
 /**

@@ -48,44 +48,32 @@ describe("locale registry", () => {
     expect(codes).toContain("zh");
   });
 
-  it("en, id, es, and pt are enabled", () => {
-    expect(isLocaleEnabled("en")).toBe(true);
-    expect(isLocaleEnabled("id")).toBe(true);
-    expect(isLocaleEnabled("es")).toBe(true);
-    expect(isLocaleEnabled("pt")).toBe(true);
+  it("all nine locales are enabled (Phase 145 — 9-locale completion)", () => {
+    const NINE: Locale[] = ["en", "id", "es", "pt", "fr", "de", "ja", "ko", "zh"];
+    for (const code of NINE) {
+      expect(isLocaleEnabled(code)).toBe(true);
+    }
   });
 
-  it("fr, de, ja, ko, zh are not yet enabled", () => {
-    expect(isLocaleEnabled("fr")).toBe(false);
-    expect(isLocaleEnabled("de")).toBe(false);
-    expect(isLocaleEnabled("ja")).toBe(false);
-    expect(isLocaleEnabled("ko")).toBe(false);
-    expect(isLocaleEnabled("zh")).toBe(false);
+  it("all nine locales are available (have complete translation resources)", () => {
+    const NINE: Locale[] = ["en", "id", "es", "pt", "fr", "de", "ja", "ko", "zh"];
+    for (const code of NINE) {
+      expect(isLocaleAvailable(code)).toBe(true);
+    }
   });
 
-  it("en, id, es, and pt are available (have translation resources)", () => {
-    expect(isLocaleAvailable("en")).toBe(true);
-    expect(isLocaleAvailable("id")).toBe(true);
-    expect(isLocaleAvailable("es")).toBe(true);
-    expect(isLocaleAvailable("pt")).toBe(true);
-  });
-
-  it("getEnabledLocales returns en, id, es, and pt", () => {
+  it("getEnabledLocales returns exactly the nine canonical locales", () => {
     const enabled = getEnabledLocales();
-    expect(enabled.length).toBe(4);
-    expect(enabled.map((l) => l.locale)).toContain("en");
-    expect(enabled.map((l) => l.locale)).toContain("id");
-    expect(enabled.map((l) => l.locale)).toContain("es");
-    expect(enabled.map((l) => l.locale)).toContain("pt");
+    expect(enabled.length).toBe(9);
+    const codes = enabled.map((l) => l.locale).sort();
+    expect(codes).toEqual(["de", "en", "es", "fr", "id", "ja", "ko", "pt", "zh"]);
   });
 
-  it("getAvailableLocales returns en, id, es, and pt", () => {
+  it("getAvailableLocales returns exactly the nine canonical locales", () => {
     const available = getAvailableLocales();
-    expect(available.length).toBe(4);
-    expect(available.map((l) => l.locale)).toContain("en");
-    expect(available.map((l) => l.locale)).toContain("id");
-    expect(available.map((l) => l.locale)).toContain("es");
-    expect(available.map((l) => l.locale)).toContain("pt");
+    expect(available.length).toBe(9);
+    const codes = available.map((l) => l.locale).sort();
+    expect(codes).toEqual(["de", "en", "es", "fr", "id", "ja", "ko", "pt", "zh"]);
   });
 });
 
@@ -212,26 +200,36 @@ describe("browser locale normalization", () => {
     expect(normalizeBrowserLocale("pt-TL")).toBe("pt");
   });
 
-  it("normalizes fr-FR to null (not enabled)", () => {
-    expect(normalizeBrowserLocale("fr-FR")).toBeNull();
+  it("normalizes fr-FR to fr", () => {
+    expect(normalizeBrowserLocale("fr-FR")).toBe("fr");
   });
 
-  it("normalizes de-DE to null (not enabled)", () => {
-    expect(normalizeBrowserLocale("de-DE")).toBeNull();
+  it("normalizes de-DE to de", () => {
+    expect(normalizeBrowserLocale("de-DE")).toBe("de");
   });
 
-
-
-  it("normalizes zh-CN to null (not enabled)", () => {
-    expect(normalizeBrowserLocale("zh-CN")).toBeNull();
+  it("normalizes zh-CN to zh (Simplified Chinese)", () => {
+    expect(normalizeBrowserLocale("zh-CN")).toBe("zh");
   });
 
-  it("normalizes ja-JP to null (not enabled)", () => {
-    expect(normalizeBrowserLocale("ja-JP")).toBeNull();
+  it("normalizes zh-TW to zh (base-code match)", () => {
+    expect(normalizeBrowserLocale("zh-TW")).toBe("zh");
   });
 
-  it("normalizes ko-KR to null (not enabled)", () => {
-    expect(normalizeBrowserLocale("ko-KR")).toBeNull();
+  it("normalizes ja-JP to ja", () => {
+    expect(normalizeBrowserLocale("ja-JP")).toBe("ja");
+  });
+
+  it("normalizes ko-KR to ko", () => {
+    expect(normalizeBrowserLocale("ko-KR")).toBe("ko");
+  });
+
+  it("normalizes fr, de, ja, ko, zh base codes", () => {
+    expect(normalizeBrowserLocale("fr")).toBe("fr");
+    expect(normalizeBrowserLocale("de")).toBe("de");
+    expect(normalizeBrowserLocale("ja")).toBe("ja");
+    expect(normalizeBrowserLocale("ko")).toBe("ko");
+    expect(normalizeBrowserLocale("zh")).toBe("zh");
   });
 
   it("returns null for completely unknown locales", () => {
@@ -260,7 +258,7 @@ describe("locale display names", () => {
     expect(getLocaleDisplayName("pt")).toBe("Português");
   });
 
-  it("getLocaleDisplayName returns native name for planned locales", () => {
+  it("getLocaleDisplayName returns native name for all nine locales", () => {
     expect(getLocaleDisplayName("fr")).toBe("Français");
     expect(getLocaleDisplayName("de")).toBe("Deutsch");
     expect(getLocaleDisplayName("ja")).toBe("日本語");
@@ -270,7 +268,7 @@ describe("locale display names", () => {
 });
 
 describe("locale direction", () => {
-  it("all current locales are LTR", () => {
+  it("all nine locales are LTR", () => {
     expect(getLocaleDirection("en")).toBe("ltr");
     expect(getLocaleDirection("id")).toBe("ltr");
     expect(getLocaleDirection("es")).toBe("ltr");
@@ -296,12 +294,11 @@ describe("types consistency", () => {
     }
   });
 
-  it("SUPPORTED_LOCALES includes en, id, es, pt", () => {
-    expect(SUPPORTED_LOCALES).toContain("en");
-    expect(SUPPORTED_LOCALES).toContain("id");
-    expect(SUPPORTED_LOCALES).toContain("es");
-    expect(SUPPORTED_LOCALES).toContain("pt");
-    expect(SUPPORTED_LOCALES.length).toBe(4);
+  it("SUPPORTED_LOCALES includes all nine canonical locales", () => {
+    for (const code of ["en", "id", "es", "pt", "fr", "de", "ja", "ko", "zh"]) {
+      expect(SUPPORTED_LOCALES).toContain(code);
+    }
+    expect(SUPPORTED_LOCALES.length).toBe(9);
   });
 
   it("DEFAULT_LOCALE is in ALL_LOCALES", () => {
@@ -319,12 +316,11 @@ describe("types consistency", () => {
     expect(SUPPORTED_LOCALES.sort()).toEqual(enabledCodes.sort());
   });
 
-  it("SUPPORTED_LOCALES includes en, id, es, pt", () => {
-    expect(SUPPORTED_LOCALES).toContain("en");
-    expect(SUPPORTED_LOCALES).toContain("id");
-    expect(SUPPORTED_LOCALES).toContain("es");
-    expect(SUPPORTED_LOCALES).toContain("pt");
-    expect(SUPPORTED_LOCALES.length).toBe(4);
+  it("SUPPORTED_LOCALES includes all nine canonical locales", () => {
+    for (const code of ["en", "id", "es", "pt", "fr", "de", "ja", "ko", "zh"]) {
+      expect(SUPPORTED_LOCALES).toContain(code);
+    }
+    expect(SUPPORTED_LOCALES.length).toBe(9);
   });
 });
 
@@ -540,7 +536,7 @@ describe("Spanish (es) integration", () => {
 
   it("SUPPORTED_LOCALES includes es", () => {
     expect(SUPPORTED_LOCALES).toContain("es");
-    expect(SUPPORTED_LOCALES.length).toBe(4);
+    expect(SUPPORTED_LOCALES.length).toBe(9);
   });
 });
 
@@ -579,6 +575,6 @@ describe("Portuguese (pt) integration", () => {
 
   it("SUPPORTED_LOCALES includes pt", () => {
     expect(SUPPORTED_LOCALES).toContain("pt");
-    expect(SUPPORTED_LOCALES.length).toBe(4);
+    expect(SUPPORTED_LOCALES.length).toBe(9);
   });
 });
