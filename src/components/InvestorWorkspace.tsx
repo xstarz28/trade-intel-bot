@@ -29,6 +29,7 @@ import {
   mapMarketState,
   mapAvailability,
   mapDecisionState,
+  mapCoverage,
 } from "@/lib/i18n/enum-mapping";
 import {
   Briefcase,
@@ -62,6 +63,10 @@ import {
   buildInvestorDecisionSynthesis,
   type InvestorDecisionSynthesis,
 } from "@/lib/position-protection/investor-decision-synthesis";
+import {
+  buildInvestorPortfolioSummary,
+  type InvestorPortfolioSummary,
+} from "@/lib/position-protection/investor-portfolio-summary";
 import {
   formatInstrumentPrice,
   getInstrumentInfo,
@@ -274,6 +279,116 @@ function DecisionContextSection({ rows }: { rows: { row: InvestorIntelRow; synth
       </div>
       <p className="text-[8px] font-mono text-muted-foreground/40 mt-2">
         {t.investor.decisionInfo}
+      </p>
+    </Section>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PORTFOLIO-LEVEL SUMMARY (Phase 143)
+// ═══════════════════════════════════════════════════════════════
+// Deterministic categorical aggregation of the EXISTING per-position
+// decision syntheses. Counts only — no percentages, no new analysis.
+
+function PortfolioSummarySection({ summary }: { summary: InvestorPortfolioSummary }) {
+  const { t } = useI18n();
+
+  const stateChips: Array<{ label: string; count: number; color?: string }> = [
+    { label: mapDecisionState("ALIGNED", t), count: summary.stateCounts.aligned, color: DECISION_STATE_COLORS.ALIGNED },
+    { label: mapDecisionState("CONFLICT", t), count: summary.stateCounts.conflict, color: DECISION_STATE_COLORS.CONFLICT },
+    { label: mapDecisionState("CAUTION", t), count: summary.stateCounts.caution, color: DECISION_STATE_COLORS.CAUTION },
+    { label: mapDecisionState("INSUFFICIENT_DATA", t), count: summary.stateCounts.insufficientData, color: DECISION_STATE_COLORS.INSUFFICIENT_DATA },
+    { label: mapDecisionState("UNAVAILABLE", t), count: summary.stateCounts.unavailable, color: DECISION_STATE_COLORS.UNAVAILABLE },
+  ].filter((c) => c.count > 0);
+
+  const severityChips: Array<{ label: string; count: number; color?: string }> = [
+    { label: mapSeverity("NONE", t), count: summary.protectionCounts.none, color: SEVERITY_COLORS.NONE },
+    { label: mapSeverity("WATCH", t), count: summary.protectionCounts.watch, color: SEVERITY_COLORS.WATCH },
+    { label: mapSeverity("CAUTION", t), count: summary.protectionCounts.caution, color: SEVERITY_COLORS.CAUTION },
+    { label: mapSeverity("HIGH_RISK", t), count: summary.protectionCounts.highRisk, color: SEVERITY_COLORS.HIGH_RISK },
+    { label: mapSeverity("INVALIDATED", t), count: summary.protectionCounts.invalidated, color: SEVERITY_COLORS.INVALIDATED },
+  ].filter((c) => c.count > 0);
+
+  return (
+    <Section title={t.investor.portfolioSummary} icon={<Layers className="size-3" />}>
+      {/* Dominant categorical portfolio state */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-2">
+        <span className="text-[8px] font-mono text-muted-foreground/60">
+          {t.investor.portfolioState}:
+        </span>
+        <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded ${
+          DECISION_STATE_COLORS[summary.state] ?? "text-muted-foreground bg-muted/30"
+        }`}>
+          {mapDecisionState(summary.state, t).replace(/_/g, " ")}
+        </span>
+        {/* Coverage — derived only from usable-intelligence share */}
+        <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+          summary.coverage === "FULL"
+            ? DATA_STATUS_COLORS.AVAILABLE
+            : summary.coverage === "PARTIAL"
+              ? DATA_STATUS_COLORS.LIMITED
+              : DATA_STATUS_COLORS.UNAVAILABLE
+        }`}>
+          {mapCoverage(summary.coverage, t)}
+        </span>
+        {summary.globalMacroCaution && (
+          <span className="text-[8px] font-mono px-1.5 py-0.5 rounded text-amber-400 bg-amber-500/10">
+            <Globe className="size-3 inline mr-1" />
+            {t.investor.globalMacroCaution}
+          </span>
+        )}
+      </div>
+
+      {/* Decision-state counts (direct aggregation — never percentages) */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {stateChips.map((c) => (
+          <span key={c.label} className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${c.color ?? "text-muted-foreground bg-muted/30"}`}>
+            {c.label} · {c.count}
+          </span>
+        ))}
+      </div>
+
+      {/* Protection-risk counts (existing severities, verbatim) */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-[8px] font-mono text-muted-foreground/60">
+        <span>{t.intelligence.riskProtectionLabel}:</span>
+        {severityChips.map((c) => (
+          <span key={c.label} className={`px-1.5 py-0.5 rounded font-semibold ${c.color ?? "text-muted-foreground bg-muted/30"}`}>
+            {c.label} · {c.count}
+          </span>
+        ))}
+        {summary.invalidatedCount > 0 && (
+          <span className="px-1.5 py-0.5 rounded font-semibold text-red-400 bg-red-500/10">
+            {t.investor.invalidated} · {summary.invalidatedCount}
+          </span>
+        )}
+      </div>
+
+      {/* Coverage / data-quality line (structural counts only) */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[8px] font-mono text-muted-foreground/60">
+        <span>{t.investor.usableIntel}: {summary.usableIntelCount}/{summary.totalMonitored}</span>
+        <span>·</span>
+        <span>{t.investor.insufficientIntel}: {summary.insufficientIntelCount}</span>
+        <span>·</span>
+        <span>{t.investor.unavailableIntel}: {summary.unavailableCount}</span>
+      </div>
+
+      {/* Instrument concentration (only instruments with 2+ positions) */}
+      {summary.concentration.entries.length > 0 && (
+        <div className="mt-2">
+          <div className="text-[8px] font-mono font-semibold text-muted-foreground/70 uppercase tracking-wide">
+            {t.investor.concentration}
+          </div>
+          <div className="text-[8px] font-mono text-muted-foreground/60 mt-0.5">
+            {t.investor.multiplePositions}:{" "}
+            {summary.concentration.entries
+              .map((e) => `${e.instrument} (${e.positionCount})`)
+              .join(", ")}
+          </div>
+        </div>
+      )}
+
+      <p className="text-[8px] font-mono text-muted-foreground/40 mt-2">
+        {t.investor.portfolioInfo}
       </p>
     </Section>
   );
@@ -647,6 +762,13 @@ export function InvestorWorkspace() {
     [thesisRows, macroCtx],
   );
 
+  // Portfolio-level aggregation (Phase 143) — deterministic categorical
+  // summary of the ALREADY-CREATED per-position syntheses. Counts only.
+  const portfolioSummary = useMemo(
+    () => buildInvestorPortfolioSummary(synthesisRows.map((r) => r.synthesis), macroCtx),
+    [synthesisRows, macroCtx],
+  );
+
   return (
     <div className="space-y-4">
       {/* Investor Header */}
@@ -793,6 +915,11 @@ export function InvestorWorkspace() {
             </Section>
           </div>
         </div>
+      )}
+
+      {/* Portfolio-level summary — only when positions exist */}
+      {registeredPositions.length > 0 && (
+        <PortfolioSummarySection summary={portfolioSummary} />
       )}
 
       {/* Global Macro / Cross-Asset Context — only when positions exist */}

@@ -101,6 +101,16 @@ const en: Translations = {
     decisionStateConflict: "Conflict",
     decisionInfo: "Synthesis reflects currently available evidence only.",
     portfolio: "PORTFOLIO",
+    // Portfolio-level aggregation (Phase 143)
+    portfolioSummary: "PORTFOLIO SUMMARY",
+    portfolioState: "Portfolio State",
+    usableIntel: "Usable intelligence",
+    insufficientIntel: "Insufficient intelligence",
+    unavailableIntel: "Unavailable",
+    concentration: "CONCENTRATION",
+    multiplePositions: "Instruments with multiple positions",
+    portfolioInfo: "Portfolio state aggregates existing per-position decision states only — no new market analysis is performed.",
+    globalMacroCaution: "Global macro caution",
     // Horizon labels
     horizonScalping: "Scalping",
     horizonIntraday: "Intraday",

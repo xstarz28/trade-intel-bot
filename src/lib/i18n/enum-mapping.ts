@@ -93,6 +93,21 @@ export function mapAvailability(
   }
 }
 
+// ─── Portfolio Coverage Mapping (Phase 143) ──────────────────
+
+/** Map portfolio intelligence coverage to a translated display label. */
+export function mapCoverage(
+  coverage: string,
+  t: Translations,
+): string {
+  switch (coverage) {
+    case "FULL": return t.status.available;
+    case "PARTIAL": return t.status.limited;
+    case "EMPTY": return t.status.unavailable;
+    default: return coverage.replace(/_/g, " ");
+  }
+}
+
 // ─── Short Count Display ────────────────────────────────────
 
 /** Get a short localized count display for supporting/conflicting. */
