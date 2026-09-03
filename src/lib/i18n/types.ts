@@ -121,6 +121,11 @@ export interface Translations {
     noExecution: string;
     manualAction: string;
     portfolio: string;
+    // Horizon labels
+    horizonScalping: string;
+    horizonIntraday: string;
+    horizonSwing: string;
+    horizonInvesting: string;
   };
 
   // ─── Position Protection ───────────────────────────────────
@@ -180,6 +185,33 @@ export interface Translations {
     disableRule: string;
     enableRule: string;
     deleteRule: string;
+    // Protection panel labels
+    protectionReference: string;
+    protectionTimeline: string;
+    alertHistory: string;
+    eventsCount: string;
+    noEventsRecorded: string;
+    protectionAction: string;
+    whyNow: string;
+    profitStatusLabel: string;
+    changedLabel: string;
+    confirmationsLabel: string;
+    stillSupportingLabel: string;
+    missingLabel: string;
+    pause: string;
+    resume: string;
+    remove: string;
+    ack: string;
+    monitoringGap: string;
+    lastMarketUpdate: string;
+    disclaimersNoAuto: string;
+    disclaimersNotAdvice: string;
+    disclaimersConfidence: string;
+    abnormalPriceAcceleration: string;
+    givebackAccelerationLabel: string;
+    dataStaleWarning: string;
+    reconnectingMessage: string;
+    monitoringPausedMessage: string;
   };
 
   // ─── Intelligence ──────────────────────────────────────────
@@ -268,6 +300,55 @@ export interface Translations {
     confidenceWeak: string;
     confidenceInsufficient: string;
     derivatives: string;
+    // Trend/direction display
+    trending: string;
+    ranging: string;
+    // Analytical context panel labels
+    marketStructure: string;
+    volatilityLabel: string;
+    breadth: string;
+    valuation: string;
+    riskRegime: string;
+    missing: string;
+    dimensionsCount: string;
+    // Portfolio intelligence section labels
+    portfolioSummary: string;
+    marketContextHeader: string;
+    alignmentsHeader: string;
+    conflictsHeader: string;
+    exposureHeader: string;
+    watchNextHeader: string;
+    dataStatusHeader: string;
+    dominantLabel: string;
+    riskLabel: string;
+    evidenceLabel: string;
+    registerPositionsMessage: string;
+    positionsLabel: string;
+    healthyLabel: string;
+    cautionLabel: string;
+    deterioratingLabel: string;
+    invalidatedLabel: string;
+    noDataLabel: string;
+    // Feed section labels
+    intelligenceFeed: string;
+    noRelevantNews: string;
+    noPositionsMonitorHint: string;
+    multiLabel: string;
+    noRelevantNewsList: string;
+    crossPositionCatalyst: string;
+    supportingCountLabel: string;
+    conflictingCountLabel: string;
+    neutralCountLabel: string;
+    // Score breakdown labels
+    scoreVeryBearish: string;
+    scoreBearish: string;
+    scoreNeutralLabel: string;
+    scoreBullish: string;
+    scoreVeryBullish: string;
+    factorStructure: string;
+    factorIndicators: string;
+    factorFundamentals: string;
+    factorSentiment: string;
     // Decision context
     actionLabel: string;
     actionRecommendation: string;
@@ -630,6 +711,17 @@ export interface Translations {
     alignments: string;
     watchList: string;
     monitor: string;
+    thesisLabel: string;
+    trendLabel: string;
+    evidenceSummary: string;
+    systemLabel: string;
+    noHealthData: string;
+    allOperational: string;
+    evidenceTraceThesisLabel: string;
+    supportingLabel: string;
+    conflictingLabel: string;
+    neutralLabel: string;
+    totalLabel: string;
   };
 
   // ─── Journal ─────────────────────────────────────────────
