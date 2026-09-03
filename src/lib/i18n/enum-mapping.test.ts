@@ -30,6 +30,7 @@ import {
   mapRiskLevel,
   mapHorizon,
   mapMarketState,
+  mapDecisionState,
 } from "./enum-mapping";
 
 const LOCALES: Record<string, Translations> = { en, id, es, pt };
@@ -204,6 +205,34 @@ describe("Phase 138 — existing mappings remain intact", () => {
       const label = mapMarketState("SOME_FUTURE_MARKET_STATE", locale);
       expect(typeof label).toBe("string");
       expect(label.length).toBeGreaterThan(0);
+    }
+  });
+
+  // ─── Investor decision-state labels (Phase 141) ──────────────────────
+  it("maps every decision state in every locale", () => {
+    expectDomainMapped(mapDecisionState, [
+      "ALIGNED",
+      "CONFLICT",
+      "CAUTION",
+      "INSUFFICIENT_DATA",
+      "UNAVAILABLE",
+    ]);
+  });
+
+  it("keeps decision-state semantics stable", () => {
+    expect(mapDecisionState("ALIGNED", en)).toBe(en.investor.decisionStateAligned);
+    expect(mapDecisionState("CONFLICT", id)).toBe(id.investor.decisionStateConflict);
+    expect(mapDecisionState("CAUTION", pt)).toBe(pt.status.caution);
+    expect(mapDecisionState("INSUFFICIENT_DATA", es)).toBe(es.status.insufficientData);
+    expect(mapDecisionState("UNAVAILABLE", en)).toBe(en.status.unavailable);
+  });
+
+  it("unknown decision states never produce blank output", () => {
+    for (const locale of Object.values(LOCALES)) {
+      const label = mapDecisionState("SOME_FUTURE_STATE", locale);
+      expect(typeof label).toBe("string");
+      expect(label.length).toBeGreaterThan(0);
+      expect(label).not.toContain("{");
     }
   });
 });

@@ -127,6 +127,11 @@ export interface Translations {
     macroContext: string;
     macroScopeNote: string;
     macroUnavailable: string;
+    // Investor decision synthesis (Phase 141)
+    decisionContext: string;
+    decisionStateAligned: string;
+    decisionStateConflict: string;
+    decisionInfo: string;
     portfolio: string;
     // Horizon labels
     horizonScalping: string;

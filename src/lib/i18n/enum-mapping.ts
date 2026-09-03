@@ -325,6 +325,23 @@ export function mapSensitivity(
   }
 }
 
+// ─── Investor Decision-State Mapping (Phase 141) ─────────────
+
+/** Map investor decision-synthesis state to a translated display label. */
+export function mapDecisionState(
+  state: string,
+  t: Translations,
+): string {
+  switch (state) {
+    case "ALIGNED": return t.investor.decisionStateAligned;
+    case "CONFLICT": return t.investor.decisionStateConflict;
+    case "CAUTION": return t.status.caution;
+    case "INSUFFICIENT_DATA": return t.status.insufficientData;
+    case "UNAVAILABLE": return t.status.unavailable;
+    default: return state.replace(/_/g, " ");
+  }
+}
+
 // ─── Market State Mapping ───────────────────────────────────
 
 /** Map market state enum (with underscores) to translated display label. */

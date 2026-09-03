@@ -205,6 +205,22 @@ export function selectUpcomingEvents(
     }));
 }
 
+// ─── Macro risk (calendar module's own derived assessment) ─────────────
+
+export type MacroRiskLevelView = "low" | "medium" | "high";
+
+/**
+ * The calendar module already derives a global macro-risk assessment from
+ * upcoming high-impact events. The investor view reuses that derived level
+ * verbatim (never recomputed here).
+ */
+export function selectMacroRisk(
+  calendarData: EconomicCalendarData | null,
+): MacroRiskLevelView | null {
+  const level = calendarData?.macroRisk?.level;
+  return level === "low" || level === "medium" || level === "high" ? level : null;
+}
+
 // ─── Aggregated investor macro context ────────────────────────────────
 
 export interface InvestorMacroContext {
@@ -214,6 +230,11 @@ export interface InvestorMacroContext {
   rates: TreasuryRatesView;
   /** Global upcoming macro events. NOT keyed to any position. */
   events: UpcomingEventView[];
+  /**
+   * Global macro-risk level derived by the calendar module (verbatim), or
+   * null when the calendar provider did not supply one.
+   */
+  macroRisk: MacroRiskLevelView | null;
   /**
    * true when at least one macro evidence item is present somewhere.
    * Drives the explicit empty/unavailable state in the UI.
@@ -246,6 +267,7 @@ export function buildInvestorMacroContext(
     quotes,
     rates,
     events,
+    macroRisk: selectMacroRisk(calendarData),
     hasAnyData,
     liveQuoteCount: quotes.filter((q) => q.status === "LIVE").length,
   };
