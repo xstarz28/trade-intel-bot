@@ -55,8 +55,6 @@ export const LOCALE_REGISTRY: LocaleMetadata[] = [
     enabled: true,
     available: true,
   },
-
-  // ─── Planned (not yet enabled) ────────────────────────────
   {
     locale: "es",
     nativeName: "Español",
@@ -70,8 +68,8 @@ export const LOCALE_REGISTRY: LocaleMetadata[] = [
     nativeName: "Français",
     englishName: "French",
     direction: "ltr",
-    enabled: false,
-    available: false,
+    enabled: true,
+    available: true,
   },
   {
     locale: "pt",
@@ -86,32 +84,32 @@ export const LOCALE_REGISTRY: LocaleMetadata[] = [
     nativeName: "Deutsch",
     englishName: "German",
     direction: "ltr",
-    enabled: false,
-    available: false,
+    enabled: true,
+    available: true,
   },
   {
     locale: "ja",
     nativeName: "日本語",
     englishName: "Japanese",
     direction: "ltr",
-    enabled: false,
-    available: false,
+    enabled: true,
+    available: true,
   },
   {
     locale: "ko",
     nativeName: "한국어",
     englishName: "Korean",
     direction: "ltr",
-    enabled: false,
-    available: false,
+    enabled: true,
+    available: true,
   },
   {
     locale: "zh",
     nativeName: "中文",
     englishName: "Chinese",
     direction: "ltr",
-    enabled: false,
-    available: false,
+    enabled: true,
+    available: true,
   },
 ];
 

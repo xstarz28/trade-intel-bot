@@ -23,7 +23,7 @@ export function mapStance(
     case "MIXED": return t.intelligence.stanceMixed;
     case "NEUTRAL": return t.intelligence.stanceNeutral;
     case "INSUFFICIENT": return t.intelligence.stanceInsufficient;
-    default: return stance;
+    default: return stance.replace(/_/g, " ");
   }
 }
 
@@ -39,7 +39,7 @@ export function mapPositionImpact(
     case "CONFLICTING": return t.intelligence.impactConflicting;
     case "NEUTRAL": return t.intelligence.impactNeutral;
     case "INSUFFICIENT": return t.intelligence.impactInsufficient;
-    default: return impact;
+    default: return impact.replace(/_/g, " ");
   }
 }
 
@@ -54,7 +54,7 @@ export function mapDirection(
     case "SUPPORTING": return t.intelligence.impactSupporting;
     case "CONFLICTING": return t.intelligence.impactConflicting;
     case "NEUTRAL": return t.intelligence.impactNeutral;
-    default: return direction;
+    default: return direction.replace(/_/g, " ");
   }
 }
 
@@ -72,7 +72,7 @@ export function mapRelevance(
     case "LOW": return t.intelligence.relevanceLow;
     case "IRRELEVANT": return t.intelligence.relevanceIrrelevant;
     case "UNKNOWN": return t.intelligence.relevanceUnknown;
-    default: return relevance;
+    default: return relevance.replace(/_/g, " ");
   }
 }
 
@@ -89,7 +89,7 @@ export function mapAvailability(
     case "INSUFFICIENT": return t.status.insufficient;
     case "STALE": return t.status.dataStale;
     case "UNAVAILABLE": return t.status.unavailable;
-    default: return availability;
+    default: return availability.replace(/_/g, " ");
   }
 }
 
@@ -190,7 +190,7 @@ export function mapRiskLevel(
     case "LOW": return t.investor.low;
     case "MODERATE": return t.investor.moderate;
     case "ELEVATED": return t.investor.elevated;
-    default: return level;
+    default: return level.replace(/_/g, " ");
   }
 }
 
@@ -240,7 +240,7 @@ export function mapDimension(
     case "DERIVATIVES": return t.intelligence.derivatives;
     case "NEWS": return t.intelligence.news;
     case "FUNDAMENTALS": return t.intelligence.fundamentals;
-    default: return dimension;
+    default: return dimension.replace(/_/g, " ");
   }
 }
 
@@ -336,7 +336,7 @@ export function mapSensitivity(
     case "MODERATE": return t.investor.moderate;
     case "LOW": return t.investor.low;
     case "UNKNOWN": return t.status.unknown;
-    default: return sensitivity;
+    default: return sensitivity.replace(/_/g, " ");
   }
 }
 

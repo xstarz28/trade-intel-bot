@@ -584,6 +584,23 @@ const de: Translations = {
   },
 
   // ─── Empty States ───────────────────────────────────────────
+  // ─── Instrument Entry Form (Phase 145) ────────────────────
+  entryForm: {
+    instrumentLabel: "Instrument",
+    typeLabel: "Typ",
+    timeframeLabel: "Zeitrahmen",
+    styleLabel: "Handelsstil",
+    analyzing: "analysiere...",
+    runLabel: "Analyse ausführen",
+    backendNote: "Daten werden automatisch vom Backend zusammengestellt",
+    registerTitle: "Position zur Überwachung registrieren",
+    currentPrice: "Aktueller Preis",
+    stopLossOptional: "Stop Loss (optional)",
+    takeProfitOptional: "Take Profit (optional)",
+    leverageOptional: "Hebel (optional)",
+    registerButton: "Position registrieren",
+  },
+
   emptyStates: {
     noPositions: "Keine Positionen registriert.",
     noAlerts: "Keine Alarme konfiguriert.",

@@ -585,6 +585,23 @@ const fr: Translations = {
   },
 
   // ─── Empty States ───────────────────────────────────────────
+  // ─── Instrument Entry Form (Phase 145) ────────────────────
+  entryForm: {
+    instrumentLabel: "instrument",
+    typeLabel: "type",
+    timeframeLabel: "unité de temps",
+    styleLabel: "style de trading",
+    analyzing: "analyse en cours...",
+    runLabel: "lancer l'analyse",
+    backendNote: "données assemblées automatiquement depuis le backend",
+    registerTitle: "Enregistrer la Position pour Surveillance",
+    currentPrice: "Prix Actuel",
+    stopLossOptional: "Stop Loss (facultatif)",
+    takeProfitOptional: "Take Profit (facultatif)",
+    leverageOptional: "Effet de levier (facultatif)",
+    registerButton: "Enregistrer la Position",
+  },
+
   emptyStates: {
     noPositions: "Aucune position enregistrée.",
     noAlerts: "Aucune alerte configurée.",

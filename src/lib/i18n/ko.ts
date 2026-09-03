@@ -584,6 +584,23 @@ const ko: Translations = {
   },
 
   // ─── Empty States ───────────────────────────────────────────
+  // ─── Instrument Entry Form (Phase 145) ────────────────────
+  entryForm: {
+    instrumentLabel: "종목",
+    typeLabel: "유형",
+    timeframeLabel: "타임프레임",
+    styleLabel: "트레이딩 스타일",
+    analyzing: "분석 중...",
+    runLabel: "분석 실행",
+    backendNote: "데이터는 백엔드에서 자동으로 수집됩니다",
+    registerTitle: "모니터링용 포지션 등록",
+    currentPrice: "현재 가격",
+    stopLossOptional: "손절 (선택사항)",
+    takeProfitOptional: "익절 (선택사항)",
+    leverageOptional: "레버리지 (선택사항)",
+    registerButton: "포지션 등록",
+  },
+
   emptyStates: {
     noPositions: "등록된 포지션이 없습니다.",
     noAlerts: "구성된 알림이 없습니다.",

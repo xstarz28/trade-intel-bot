@@ -600,6 +600,23 @@ export interface Translations {
     selectTimeframe: string;
   };
 
+  // ─── Instrument Entry Form (Phase 145) ──────────────────────
+  entryForm: {
+    instrumentLabel: string;
+    typeLabel: string;
+    timeframeLabel: string;
+    styleLabel: string;
+    analyzing: string;
+    runLabel: string;
+    backendNote: string;
+    registerTitle: string;
+    currentPrice: string;
+    stopLossOptional: string;
+    takeProfitOptional: string;
+    leverageOptional: string;
+    registerButton: string;
+  };
+
   // ─── Empty States ───────────────────────────────────────────
   emptyStates: {
     noPositions: string;
