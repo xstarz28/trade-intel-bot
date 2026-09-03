@@ -243,9 +243,13 @@ describe("synthesis — conflict-aware decision states", () => {
     expect(s.macro.status).toBe("LIMITED");
   });
 
-  it("R8: limited macro (events only) still allows ALIGNED when thesis/protection are clean", () => {
+  it("R8 (Phase 142 hardening): events-only (LIMITED) macro is partial context — never ALIGNED", () => {
+    // An upcoming calendar event with otherwise unavailable market data must
+    // not manufacture market confirmation.
     const s = buildInvestorDecisionSynthesis(makeRow(), macroLimitedEvents());
-    expect(s.state).toBe("ALIGNED");
+    expect(s.state).toBe("CAUTION");
+    expect(s.state).not.toBe("ALIGNED");
+    expect(s.macro.status).toBe("LIMITED");
     expect(s.macro.eventCount).toBeGreaterThan(0);
   });
 });
