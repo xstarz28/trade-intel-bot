@@ -14,6 +14,7 @@
  */
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
+import { mapSeverity, mapRiskLevel, mapHorizon } from "@/lib/i18n/enum-mapping";
 import {
   Briefcase,
   Shield,
@@ -190,9 +191,9 @@ export function InvestorWorkspace() {
                       {pos.side}
                     </span>
                     <span className={`text-[8px] ${HEALTH_COLORS[pos.severity] ?? "text-muted-foreground"}`}>
-                      {pos.severity.replace(/_/g, " ")}
+                      {mapSeverity(pos.severity, t).replace(/_/g, " ")}
                     </span>
-                    <span className="ml-auto text-muted-foreground text-[8px]">{pos.horizon}</span>
+                    <span className="ml-auto text-muted-foreground text-[8px]">{mapHorizon(pos.horizon, t)}</span>
                   </div>
                 ))}
               </div>
@@ -208,7 +209,10 @@ export function InvestorWorkspace() {
                   <div className={`text-sm font-bold font-mono ${
                     portfolio.caution + portfolio.highRisk > 0 ? "text-amber-400" : "text-emerald-400"
                   }`}>
-                    {portfolio.caution + portfolio.highRisk === 0 ? "LOW" : portfolio.highRisk > 0 ? "ELEVATED" : "MODERATE"}
+                    {mapRiskLevel(
+                      portfolio.caution + portfolio.highRisk === 0 ? "LOW" : portfolio.highRisk > 0 ? "ELEVATED" : "MODERATE",
+                      t,
+                    )}
                   </div>                    <div className="text-[7px] text-muted-foreground font-mono mt-0.5">{t.investor.riskLevel}</div>
                 </div>
                 <div className="text-center p-2 rounded bg-muted/30">
@@ -232,7 +236,7 @@ export function InvestorWorkspace() {
                   if (count === 0) return null;
                   return (
                     <div key={h} className="flex items-center gap-2 text-[8px] font-mono">
-                      <span className="w-16 text-muted-foreground">{h}</span>
+                      <span className="w-16 text-muted-foreground">{mapHorizon(h, t)}</span>
                       <div className="flex-1 h-1.5 bg-muted/30 rounded overflow-hidden">
                         <div
                           className="h-full bg-primary/60 rounded"

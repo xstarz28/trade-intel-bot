@@ -14,6 +14,7 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
+import { mapThesisHealth, mapTrendLabel, mapAvailability, mapConfidence } from "@/lib/i18n/enum-mapping";
 import {
   Shield,
   AlertTriangle,
@@ -125,6 +126,7 @@ function WorkspaceSection({
 // ═══════════════════════════════════════════════════════════════
 
 function ThesisBadge({ thesis }: { thesis: string }) {
+  const { t } = useI18n();
   const colors: Record<string, string> = {
     HEALTHY: "text-emerald-400 bg-emerald-500/10",
     STABLE: "text-blue-400 bg-blue-500/10",
@@ -136,7 +138,7 @@ function ThesisBadge({ thesis }: { thesis: string }) {
   };
   return (
     <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${colors[thesis] ?? "text-muted-foreground bg-muted/30"}`}>
-      {thesis.replace(/_/g, " ")}
+      {mapThesisHealth(thesis, t).replace(/_/g, " ")}
     </span>
   );
 }
@@ -146,6 +148,7 @@ function ThesisBadge({ thesis }: { thesis: string }) {
 // ═══════════════════════════════════════════════════════════════
 
 function TrendBadge({ label, trend }: { label: string; trend?: string }) {
+  const { t } = useI18n();
   if (!trend || trend === "UNKNOWN") {
     return (
       <div className="flex items-center gap-1">
@@ -158,7 +161,7 @@ function TrendBadge({ label, trend }: { label: string; trend?: string }) {
   return (
     <div className="flex items-center gap-1">
       <span className="text-[8px] font-mono text-muted-foreground/50">{label}:</span>
-      <span className={`text-[8px] font-mono font-semibold ${color}`}>{trend}</span>
+      <span className={`text-[8px] font-mono font-semibold ${color}`}>{mapTrendLabel(trend, t)}</span>
     </div>
   );
 }
@@ -168,6 +171,7 @@ function TrendBadge({ label, trend }: { label: string; trend?: string }) {
 // ═══════════════════════════════════════════════════════════════
 
 function DataQualityBadge({ quality }: { quality: string }) {
+  const { t } = useI18n();
   const colors: Record<string, string> = {
     AVAILABLE: "text-emerald-400 bg-emerald-500/10",
     STRONG_EVIDENCE: "text-emerald-400 bg-emerald-500/10",
@@ -177,9 +181,14 @@ function DataQualityBadge({ quality }: { quality: string }) {
     INSUFFICIENT: "text-muted-foreground bg-muted/30",
     UNAVAILABLE: "text-red-400 bg-red-500/10",
   };
+  // Evidence-quality values and availability values map through their own
+  // semantic display mappings; unknown values degrade to a readable label.
+  const mapped = quality.endsWith("_EVIDENCE")
+    ? mapConfidence(quality, t)
+    : mapAvailability(quality, t);
   return (
     <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${colors[quality] ?? "text-muted-foreground bg-muted/30"}`}>
-      {quality.replace(/_/g, " ")}
+      {mapped.replace(/_/g, " ")}
     </span>
   );
 }
@@ -189,6 +198,7 @@ function DataQualityBadge({ quality }: { quality: string }) {
 // ═══════════════════════════════════════════════════════════════
 
 function EvidenceTrace({ intel }: { intel: PositionIntelligence }) {
+  const { t } = useI18n();
   const supporting = intel.evidence.filter((e) => e.direction === "supporting");
   const conflicting = intel.evidence.filter((e) => e.direction === "conflicting");
   const neutral = intel.evidence.filter((e) => e.direction === "neutral");
@@ -197,7 +207,7 @@ function EvidenceTrace({ intel }: { intel: PositionIntelligence }) {
     <div className="space-y-2">
       {/* Thesis */}
       <div className="flex items-center gap-2">
-        <span className="text-[8px] font-mono text-muted-foreground/50 uppercase">Thesis:</span>
+        <span className="text-[8px] font-mono text-muted-foreground/50 uppercase">{t.trader.evidenceTraceThesisLabel}:</span>
         <ThesisBadge thesis={intel.thesisHealth} />
         <span className="text-[8px] font-mono text-muted-foreground/50">({intel.thesisHealthScore}/100)</span>
       </div>
@@ -211,9 +221,9 @@ function EvidenceTrace({ intel }: { intel: PositionIntelligence }) {
 
       {/* Evidence counts */}
       <div className="flex items-center gap-3">
-        <span className="text-[8px] font-mono text-emerald-400">Supporting: {supporting.length}</span>
-        <span className="text-[8px] font-mono text-red-400">Conflicting: {conflicting.length}</span>
-        <span className="text-[8px] font-mono text-muted-foreground">Neutral: {neutral.length}</span>
+        <span className="text-[8px] font-mono text-emerald-400">{t.trader.supportingLabel}: {supporting.length}</span>
+        <span className="text-[8px] font-mono text-red-400">{t.trader.conflictingLabel}: {conflicting.length}</span>
+        <span className="text-[8px] font-mono text-muted-foreground">{t.trader.neutralLabel}: {neutral.length}</span>
       </div>
 
       {/* Evidence items */}
@@ -1156,9 +1166,9 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
             <span className={`text-[9px] font-mono font-semibold ${overallColor}`}>{summary.overallAssessment.replace(/_/g, " ")}</span>
           </div>
           <div className="flex items-center gap-3 text-[8px] font-mono">
-            <span className="text-emerald-400">{summary.supportingCount} supporting</span>
-            <span className="text-red-400">{summary.conflictingCount} conflicting</span>
-            <span className="text-muted-foreground">{summary.neutralCount} neutral</span>
+            <span className="text-emerald-400">{summary.supportingCount} {t.trader.supportingLabel}</span>
+            <span className="text-red-400">{summary.conflictingCount} {t.trader.conflictingLabel}</span>
+            <span className="text-muted-foreground">{summary.neutralCount} {t.trader.neutralLabel}</span>
           </div>
         </div>
       </WorkspaceSection>

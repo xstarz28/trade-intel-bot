@@ -121,10 +121,77 @@ export function mapThesisHealth(
   switch (thesisHealth) {
     case "HEALTHY": return t.status.healthy;
     case "STABLE": return t.status.stable;
+    case "CAUTION": return t.status.caution;
     case "DETERIORATING": return t.status.deteriorating;
     case "SEVERELY_DETERIORATING": return t.status.severelyDeteriorating;
     case "INVALIDATED": return t.status.invalidated;
+    case "INSUFFICIENT_DATA": return t.status.insufficientData;
+    case "UNKNOWN": return t.status.unknown;
     default: return thesisHealth.replace(/_/g, " ");
+  }
+}
+
+// ─── Trend Mapping ───────────────────────────────────────────
+
+/** Map MTF/timeframe trend classification to translated display label. */
+export function mapTrendLabel(
+  trend: string,
+  t: Translations,
+): string {
+  switch (trend) {
+    case "BULLISH": return t.analysis.bullish;
+    case "BEARISH": return t.analysis.bearish;
+    case "NEUTRAL": return t.intelligence.neutral;
+    case "UNKNOWN": return t.status.unknown;
+    default: return trend.replace(/_/g, " ");
+  }
+}
+
+// ─── Protection Severity Mapping ─────────────────────────────
+
+/** Map protection severity enum to translated display label. */
+export function mapSeverity(
+  severity: string,
+  t: Translations,
+): string {
+  switch (severity) {
+    case "NONE": return t.status.none;
+    case "WATCH": return t.status.watch;
+    case "CAUTION": return t.status.caution;
+    case "HIGH_RISK": return t.status.highRisk;
+    case "INVALIDATED": return t.status.invalidated;
+    default: return severity.replace(/_/g, " ");
+  }
+}
+
+// ─── Investor Risk Level Mapping ─────────────────────────────
+
+/** Map portfolio risk-level label to translated display label. */
+export function mapRiskLevel(
+  level: string,
+  t: Translations,
+): string {
+  switch (level) {
+    case "LOW": return t.investor.low;
+    case "MODERATE": return t.investor.moderate;
+    case "ELEVATED": return t.investor.elevated;
+    default: return level;
+  }
+}
+
+// ─── Horizon Mapping ─────────────────────────────────────────
+
+/** Map investment-horizon enum to translated display label. */
+export function mapHorizon(
+  horizon: string,
+  t: Translations,
+): string {
+  switch (horizon) {
+    case "SCALPING": return t.investor.horizonScalping;
+    case "INTRADAY": return t.investor.horizonIntraday;
+    case "SWING": return t.investor.horizonSwing;
+    case "INVESTING": return t.investor.horizonInvesting;
+    default: return horizon.replace(/_/g, " ");
   }
 }
 
