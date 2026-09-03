@@ -31,8 +31,15 @@
  *     → INSUFFICIENT_DATA. Macro context NEVER manufactures conviction for
  *       an insufficient thesis (rule R3 outranks macro rules).
  *
+ * R3b The engine's own intelligence data-quality is INSUFFICIENT (or an
+ *     unknown/future quality value — classified conservatively as
+ *     insufficient)
+ *     → INSUFFICIENT_DATA. A contradictory "healthy thesis + zero usable
+ *       observations" input must fail conservatively (Phase 142 hardening);
+ *       the position's thesis/protection values are still echoed verbatim.
+ *
  * R4  Protection HIGH_RISK
- *     → if thesis HEALTHY/STABLE and macro status is AVAILABLE or LIMITED:
+ *     → if thesis HEALTHY/STABLE and macro status is AVAILABLE:
  *       CONFLICT (healthy thesis vs high protection risk = explicit domain
  *       disagreement — never collapsed into "healthy").
  *     → otherwise: CAUTION (protection risk preserved; context incomplete,
@@ -50,13 +57,19 @@
  *       global context; it is never stored as position-specific).
  *
  * R8  Thesis HEALTHY/STABLE AND protection NONE/WATCH
- *     AND macro status AVAILABLE or LIMITED
- *     → ALIGNED.
+ *     AND macro status AVAILABLE
+ *     → ALIGNED. ALIGNED requires FRESH macro evidence (a LIVE quote or a
+ *       FRESH official Treasury reading). LIMITED/partial macro (e.g. only
+ *       upcoming calendar events, DELAYED Treasury) is NOT enough to call
+ *       the overall picture aligned — partial global context falls through
+ *       to CAUTION below (Phase 142 hardening: "no fresh sources must not
+ *       produce ALIGNED solely from stale/partial context").
  *
  * R9  anything else → CAUTION (conservative default; never false certainty).
  * ─────────────────────────────────────────────────────────────────────
  */
 
+import { classifyIntelAvailability } from "./investor-intelligence-view";
 import type { InvestorIntelRow } from "./investor-intelligence-view";
 import type { InvestorMacroContext } from "./investor-macro-context";
 
@@ -85,6 +98,7 @@ export type SynthesisFlag =
   | "THESIS_INVALIDATED"
   | "THESIS_INSUFFICIENT"
   | "THESIS_UNKNOWN"
+  | "DATA_INSUFFICIENT"
   | "PROTECTION_NONE"
   | "PROTECTION_WATCH"
   | "PROTECTION_CAUTION"
@@ -227,11 +241,16 @@ export function buildInvestorDecisionSynthesis(
   } else if (thesisHealth === "INSUFFICIENT_DATA" || thesisHealth === "UNKNOWN") {
     // R3 — insufficient thesis dominates; macro never manufactures conviction.
     state = "INSUFFICIENT_DATA";
+  } else if (row.intel && classifyIntelAvailability(row.intel) === "INSUFFICIENT") {
+    // R3b — engine data-quality insufficiency gates ALIGNED (Phase 142).
+    flags.push("DATA_INSUFFICIENT");
+    state = "INSUFFICIENT_DATA";
   } else if (severity === "HIGH_RISK") {
-    // R4
+    // R4 — the explicit healthy-vs-HIGH_RISK conflict claim requires FRESH
+    // global macro evidence; with partial macro the claim is withheld (CAUTION).
     state =
       (thesisHealth === "HEALTHY" || thesisHealth === "STABLE") &&
-      (macroStatus === "AVAILABLE" || macroStatus === "LIMITED")
+      macroStatus === "AVAILABLE"
         ? "CONFLICT"
         : "CAUTION";
   } else if (
@@ -250,9 +269,9 @@ export function buildInvestorDecisionSynthesis(
   } else if (
     (thesisHealth === "HEALTHY" || thesisHealth === "STABLE") &&
     (severity === "NONE" || severity === "WATCH") &&
-    (macroStatus === "AVAILABLE" || macroStatus === "LIMITED")
+    macroStatus === "AVAILABLE"
   ) {
-    // R8
+    // R8 — ALIGNED requires fresh global macro evidence (Phase 142).
     state = "ALIGNED";
   } else {
     // R9 — conservative default.
