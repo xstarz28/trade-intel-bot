@@ -8,6 +8,8 @@
  * INFORMATIONAL_ONLY — never executes trades.
  */
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
+import { mapHorizon } from "@/lib/i18n/enum-mapping";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Shield, Plus, Loader2 } from "lucide-react";
@@ -42,6 +44,7 @@ function generatePositionId(instrument: string): string {
 }
 
 export function PositionRegistrationForm({ onRegister, disabled }: PositionRegistrationFormProps) {
+  const { t } = useI18n();
   const [instrument, setInstrument] = useState("");
   const [side, setSide] = useState<"LONG" | "SHORT">("LONG");
   const [entryPrice, setEntryPrice] = useState("");
@@ -92,13 +95,13 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
     <form onSubmit={handleSubmit} className="space-y-3">
       <div className="flex items-center gap-2 text-xs font-mono font-semibold text-foreground">
         <Shield className="size-3.5 text-primary" />
-        Register Position for Monitoring
+        {t.entryForm.registerTitle}
       </div>
 
       {/* Instrument + Side */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">Instrument</label>
+          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">{t.protection.instrumentLabel}</label>
           <Input
             value={instrument}
             onChange={(e) => setInstrument(e.target.value)}
@@ -108,7 +111,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
           />
         </div>
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">Side</label>
+          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">{t.protection.sideLabel}</label>
           <div className="flex gap-1">
             <Button
               type="button"
@@ -137,7 +140,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
       {/* Entry + Current Price */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">Entry Price</label>
+          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">{t.protection.entryPriceLabel}</label>
           <Input
             type="number"
             step="any"
@@ -149,7 +152,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
           />
         </div>
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">Current Price</label>
+          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">{t.entryForm.currentPrice}</label>
           <Input
             type="number"
             step="any"
@@ -165,7 +168,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
       {/* SL + TP */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">Stop Loss (optional)</label>
+          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">{t.entryForm.stopLossOptional}</label>
           <Input
             type="number"
             step="any"
@@ -177,7 +180,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
           />
         </div>
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">Take Profit (optional)</label>
+          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">{t.entryForm.takeProfitOptional}</label>
           <Input
             type="number"
             step="any"
@@ -193,7 +196,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
       {/* Leverage + Horizon */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">Leverage (optional)</label>
+          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">{t.entryForm.leverageOptional}</label>
           <Input
             type="number"
             step="any"
@@ -205,7 +208,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
           />
         </div>
         <div>
-          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">Horizon</label>
+          <label className="text-[10px] font-mono text-muted-foreground mb-1 block">{t.protection.horizonLabel}</label>
           <select
             value={horizon}
             onChange={(e) => setHorizon(e.target.value as typeof horizon)}
@@ -213,7 +216,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
             disabled={disabled}
           >
             {HORIZON_OPTIONS.map((h) => (
-              <option key={h.value} value={h.value}>{h.label}</option>
+              <option key={h.value} value={h.value}>{mapHorizon(h.value, t)}</option>
             ))}
           </select>
         </div>
@@ -230,7 +233,7 @@ export function PositionRegistrationForm({ onRegister, disabled }: PositionRegis
         ) : (
           <Plus className="size-3" />
         )}
-        Register Position
+        {t.entryForm.registerButton}
       </Button>
     </form>
   );

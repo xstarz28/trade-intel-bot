@@ -184,6 +184,9 @@ export interface Translations {
     confidenceNotProbability: string;
     removeFromMonitoring: string;
     positionsCount: string;
+    monitoredCount: string;
+    alertsCount: string;
+    criticalCount: string;
     title: string;
     instrumentLabel: string;
     sideLabel: string;
