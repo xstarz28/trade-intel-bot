@@ -108,8 +108,8 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 674 leaves", () => {
-    expect(enCount).toBe(674);
+  it("EN is the canonical structural reference with 690 leaves", () => {
+    expect(enCount).toBe(690);
   });
 
   for (const code of NINE) {
@@ -366,9 +366,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 674 canonical keys with non-empty values", () => {
+  it("zh has all 690 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(674);
+    expect(zhLeaves.length).toBe(690);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

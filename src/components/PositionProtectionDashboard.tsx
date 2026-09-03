@@ -296,7 +296,7 @@ function PositionCard({
 // ═══════════════════════════════════════════════════════════════
 
 export function PositionProtectionDashboard() {
-  const { t, txi } = useI18n();
+  const { t, tx, txi } = useI18n();
   const {
     positions,
     registerPosition: registerPos,
@@ -910,13 +910,16 @@ export function PositionProtectionDashboard() {
           </div>
           <div>
             <h2 className="text-sm font-mono font-bold tracking-tight">
-              Position Protection
+              {tx("protection.title")}
             </h2>
             <p className="text-[10px] font-mono text-muted-foreground">
-              {activeCount} monitored · {alertCount} alerts
+              {txi("protection.monitoredCount", { count: activeCount })}
+              {" · "}
+              {txi("protection.alertsCount", { count: alertCount })}
               {highRiskCount > 0 && (
                 <span className="text-orange-400 ml-1">
-                  · {highRiskCount} critical
+                  {" · "}
+                  {txi("protection.criticalCount", { count: highRiskCount })}
                 </span>
               )}
             </p>
