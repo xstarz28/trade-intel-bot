@@ -76,12 +76,11 @@ import { generatePortfolioIntelligence } from "@/lib/position-protection/portfol
 import type { AlertDiagnosticEvent } from "@/lib/position-protection/alert-observability";
 import { applyDiagnosticRetention, MAX_DIAGNOSTIC_EVENTS } from "@/lib/position-protection/alert-observability";
 import {
-  extractUserPositions,
   buildUserIntelligenceFeed,
   boundFeed,
   type UserIntelligenceFeed as FeedType,
-  type UserPosition,
 } from "@/lib/position-protection/user-intelligence-feed";
+import { useMacroContextData } from "@/lib/position-protection/use-macro-context-data";
 import {
   classifyNewsFreshness,
   type NewsItem,
@@ -382,48 +381,15 @@ export function PositionProtectionDashboard() {
   const deleteHistoryMut = useMutation(api.historicalIntelligence.deleteHistoryForPosition);
   const pruneHistoryMut = useMutation(api.historicalIntelligence.pruneHistory);
 
-  // ─── User Intelligence Feed ────────────────────────────────
-  const userPositions = useMemo(
-    () => extractUserPositions(positions.map(p => ({ instrument: p.position.instrument, side: p.position.side as "LONG" | "SHORT" }))),
-    [positions],
-  );
+  // ─── Shared Macro Context Data ───────────────────────────
+  // Treasury yields + economic calendar are fetched once per mounted
+  // instance here and shared with the investor workspace (the surfaces are
+  // mutually exclusive tabs — no duplicate fetches can occur).
+  const { treasuryData, calendarData, userPositions } = useMacroContextData(positions);
 
   // Fetch news for each unique instrument via Convex action
   const [feedNews, setFeedNews] = useState<Map<string, NewsItem[]>>(new Map());
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
-
-  // Fetch treasury yields (nominal + real/TIPS) — slow-moving macro data, fetched once
-  const [treasuryData, setTreasuryData] = useState<import("../lib/data/treasury").TreasuryData | null>(null);
-  const fetchTreasury = useAction(api.treasury.fetchTreasuryYields);
-  useEffect(() => {
-    let cancelled = false;
-    fetchTreasury()
-      .then((result) => {
-        if (!cancelled && result.success) {
-          setTreasuryData(result.data);
-        }
-      })
-      .catch(() => { /* provider failure → treasuryData stays null */ });
-    return () => { cancelled = true; };
-  }, [fetchTreasury]);
-
-  // Fetch economic calendar (TickAtlas) — shared across positions
-  const [calendarData, setCalendarData] = useState<import("../lib/data/calendar-types").EconomicCalendarData | null>(null);
-  const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
-  useEffect(() => {
-    if (userPositions.length === 0) return;
-    let cancelled = false;
-    // Use first position's instrument/type for calendar fetch (shared macro data)
-    const firstPos = userPositions[0];
-    fetchCalendar({ instrument: firstPos.instrument, instrumentType: firstPos.assetClass })
-      .then((result) => {
-        if (!cancelled && result.success) {
-          setCalendarData(result.data ?? null);
-        }
-      })
-      .catch(() => { /* provider failure → calendarData stays null */ });
-    return () => { cancelled = true; };
-  }, [fetchCalendar, userPositions.length > 0 ? userPositions[0]?.instrument : null, userPositions.length > 0 ? userPositions[0]?.assetClass : null]);
 
   // Fetch news for user's instruments (rate-limit safe: one at a time)
   useEffect(() => {
