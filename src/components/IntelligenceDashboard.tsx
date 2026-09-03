@@ -16,7 +16,7 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension, mapSensitivity, mapMarketState } from "@/lib/i18n/enum-mapping";
+import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension, mapSensitivity, mapMarketState, mapSeverity } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   TrendingUp,
@@ -479,6 +479,14 @@ function AnalyticalSummarySection({
     intelligence.actionRecommendation.includes("WATCH") ? "text-blue-400" :
     "text-emerald-400";
 
+  const severityColor: Record<string, string> = {
+    NONE: "text-emerald-400",
+    WATCH: "text-blue-400",
+    CAUTION: "text-amber-400",
+    HIGH_RISK: "text-orange-400",
+    INVALIDATED: "text-red-400",
+  };
+
   return (
     <IntelSection title={t.intelligence.analyticalSummary} icon={<Target className="size-3" />}>
       <div className="space-y-1.5">
@@ -502,6 +510,13 @@ function AnalyticalSummarySection({
           <span className="text-muted-foreground/60">{t.intelligence.actionLabel}: </span>
           <span className={`font-semibold ${actionColor}`}>{intelligence.actionRecommendation.replace(/_/g, " ")}</span>
         </div>
+        {/* Risk / Protection */}
+        <div className="text-[9px] font-mono">
+          <span className="text-muted-foreground/60">{t.intelligence.riskProtectionLabel}: </span>
+          <span className={`font-semibold ${severityColor[intelligence.severity] ?? "text-muted-foreground"}`}>
+            {mapSeverity(intelligence.severity, t).replace(/_/g, " ")}
+          </span>
+        </div>
         {/* Why */}
         <div className="text-[9px] font-mono leading-relaxed">
           <span className="text-muted-foreground/60">{t.intelligence.whyLabel}</span>
@@ -521,6 +536,28 @@ function AnalyticalSummarySection({
             <span className="text-emerald-400/80">{intelligence.evidence.filter(e => e.direction === "supporting").length} {t.intelligence.supporting}</span>
             <span className="text-muted-foreground/40"> · </span>
             <span className="text-red-400/80">{intelligence.evidence.filter(e => e.direction === "conflicting").length} {t.intelligence.conflicting}</span>
+          </div>
+        )}
+        {/* Evidence items (supporting vs conflicting vs neutral) */}
+        {intelligence.evidence.length > 0 && (
+          <div className="space-y-0.5 text-[8px] font-mono">
+            {intelligence.evidence.slice(0, 6).map((e, i) => (
+              <div key={i} className="flex items-start gap-1.5">
+                <span className={`mt-0.5 size-1.5 rounded-full shrink-0 ${
+                  e.direction === "supporting" ? "bg-emerald-400" :
+                  e.direction === "conflicting" ? "bg-red-400" :
+                  "bg-muted-foreground/40"
+                }`} />
+                <span className="text-foreground/70 leading-relaxed">{e.description}</span>
+                <span className={`text-[7px] ml-auto shrink-0 ${
+                  e.direction === "supporting" ? "text-emerald-400/60" :
+                  e.direction === "conflicting" ? "text-red-400/60" :
+                  "text-muted-foreground/40"
+                }`}>
+                  {mapDirection(e.direction.toUpperCase(), t)}
+                </span>
+              </div>
+            ))}
           </div>
         )}
         {/* Data Quality */}
