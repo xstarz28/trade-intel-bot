@@ -123,6 +123,10 @@ export interface Translations {
     // Per-position thesis intelligence (Phase 139)
     positionThesis: string;
     intelUnavailable: string;
+    // Global macro/cross-asset context (Phase 140)
+    macroContext: string;
+    macroScopeNote: string;
+    macroUnavailable: string;
     portfolio: string;
     // Horizon labels
     horizonScalping: string;

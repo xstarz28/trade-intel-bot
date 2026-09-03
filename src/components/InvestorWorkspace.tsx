@@ -38,15 +38,28 @@ import {
   Activity,
   Layers,
   Brain,
+  Globe,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from "lucide-react";
 import { usePositionProtection } from "@/lib/position-protection/use-position-protection";
 import { usePositionIntelligence } from "@/lib/position-protection/use-position-intelligence";
+import { useMacroContextData } from "@/lib/position-protection/use-macro-context-data";
 import {
   associateInvestorIntelligence,
   classifyIntelAvailability,
   type InvestorIntelRow,
 } from "@/lib/position-protection/investor-intelligence-view";
-import { getInstrumentInfo } from "@/lib/position-protection/instrument-registry";
+import {
+  buildInvestorMacroContext,
+  type InvestorMacroContext,
+  type MacroQuoteView,
+} from "@/lib/position-protection/investor-macro-context";
+import {
+  formatInstrumentPrice,
+  getInstrumentInfo,
+} from "@/lib/position-protection/instrument-registry";
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION COMPONENT
@@ -116,6 +129,133 @@ const DATA_STATUS_COLORS: Record<string, string> = {
   INSUFFICIENT: "text-red-400 bg-red-500/10",
   UNAVAILABLE: "text-muted-foreground bg-muted/30",
 };
+
+const TREASURY_FRESH_COLORS: Record<string, string> = {
+  FRESH: "text-emerald-400 bg-emerald-500/10",
+  DELAYED: "text-amber-400 bg-amber-500/10",
+  STALE: "text-red-400 bg-red-500/10",
+};
+
+// ═══════════════════════════════════════════════════════════════
+// GLOBAL MACRO / CROSS-ASSET CONTEXT (Phase 140)
+// ═══════════════════════════════════════════════════════════════
+// Portfolio-level context assembled ONLY from already-fetched shared state
+// (live macro quotes, US Treasury curve, economic calendar). No fetch, no
+// calculation, no per-position keying — macro context is global by design.
+
+function QuoteChip({ quote }: { quote: MacroQuoteView }) {
+  const { t } = useI18n();
+  if (quote.status === "UNAVAILABLE") return null;
+
+  const labels = {
+    VIX: t.market.vix,
+    DXY: t.market.dxy,
+    US10Y: t.market.us10y,
+    WTI: t.market.wti,
+  } as const;
+
+  const isLive = quote.status === "LIVE";
+  const chg = quote.change24h;
+
+  return (
+    <div className="flex items-center gap-1.5 rounded border border-border/30 bg-card/30 px-2 py-1.5 text-[9px] font-mono">
+      <span className="font-semibold text-foreground">{labels[quote.symbol]}</span>
+      <span className="text-muted-foreground">
+        {quote.value !== null ? formatInstrumentPrice(quote.symbol, quote.value) : "—"}
+      </span>
+      {quote.value !== null && chg !== null && chg !== undefined && (
+        <span className={chg > 0 ? "text-emerald-400" : chg < 0 ? "text-red-400" : "text-muted-foreground"}>
+          {chg > 0 ? <TrendingUp className="size-3 inline" /> : chg < 0 ? <TrendingDown className="size-3 inline" /> : <Minus className="size-3 inline" />}
+          {Math.abs(chg).toFixed(1)}%
+        </span>
+      )}
+      <span className={`px-1 py-0.5 rounded text-[7px] font-semibold ${
+        isLive
+          ? "text-emerald-400 bg-emerald-500/10"
+          : "text-amber-400 bg-amber-500/10"
+      }`}>
+        {isLive ? t.market.live : mapAvailability(quote.status, t)}
+      </span>
+    </div>
+  );
+}
+
+function MacroContextSection({ ctx }: { ctx: InvestorMacroContext }) {
+  const { t } = useI18n();
+
+  return (
+    <Section title={t.investor.macroContext} icon={<Globe className="size-3" />}>
+      <p className="text-[8px] font-mono text-muted-foreground/50 mb-2">
+        {t.investor.macroScopeNote}
+      </p>
+
+      {!ctx.hasAnyData ? (
+        <div className="flex items-center gap-1.5 text-[8px] font-mono text-muted-foreground/70 py-1">
+          <Eye className="size-3" />
+          {t.investor.macroUnavailable}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {/* Live macro quotes (verbatim provider values) */}
+          <div className="flex flex-wrap gap-1.5">
+            {ctx.quotes.map((q) => (
+              <QuoteChip key={q.symbol} quote={q} />
+            ))}
+          </div>
+
+          {/* Official US Treasury curve (only tenors actually reported) */}
+          {ctx.rates.rows.length > 0 && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
+              {ctx.rates.rows.map((row) => (
+                <span key={row.tenor}>
+                  <span className="text-muted-foreground/60">
+                    {row.tenor === "REAL_10Y" ? t.fundamental.realYields : row.tenor}
+                  </span>{" "}
+                  <span className={row.tenor === "REAL_10Y" ? "text-sky-300" : "text-foreground"}>
+                    {row.value.toFixed(2)}%
+                  </span>
+                </span>
+              ))}
+              {ctx.rates.freshness && (
+                <span className={`px-1 py-0.5 rounded text-[7px] font-semibold ${
+                  TREASURY_FRESH_COLORS[ctx.rates.freshness] ?? "text-muted-foreground bg-muted/30"
+                }`}>
+                  {ctx.rates.freshness === "STALE" ? mapAvailability("STALE", t) : ctx.rates.freshness}
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Nearest upcoming macro events (schedule data only) */}
+          {ctx.events.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-[8px] font-mono font-semibold text-muted-foreground/70 uppercase tracking-wide">
+                {t.macro.economicEvents}
+              </div>
+              {ctx.events.map((e, i) => (
+                <div key={`${e.event}-${e.datetime}-${i}`} className="flex items-center gap-1.5 text-[8px] font-mono">
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="text-foreground/90 font-medium">{e.event}</span>
+                  <span className="text-muted-foreground/60">
+                    {e.currency}{e.country ? ` · ${e.country}` : ""}
+                  </span>
+                  <span className="text-muted-foreground/40 ml-auto">
+                    {new Date(e.datetime).toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Section>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════
 // PER-POSITION THESIS CARD
@@ -290,7 +430,7 @@ export function InvestorWorkspace() {
   // Same per-position intelligence derivation used by the protection
   // dashboard — the single intelligence source of truth. Strict positionId
   // association happens in associateInvestorIntelligence below.
-  const { intelligenceMap } = usePositionIntelligence(registeredPositions, {
+  const { intelligenceMap, livePrices } = usePositionIntelligence(registeredPositions, {
     // Feed live quotes into the protection pipeline so the protection state
     // shown here stays fresh — identical to the protection dashboard wiring.
     onLiveEvent: (events) => {
@@ -299,6 +439,10 @@ export function InvestorWorkspace() {
       }
     },
   });
+
+  // Shared macro context inputs (treasury + calendar) — same single fetch
+  // path the protection dashboard uses; surfaces are mutually exclusive tabs.
+  const { treasuryData, calendarData } = useMacroContextData(registeredPositions);
 
   // Build portfolio summary from raw registered positions
   const portfolio = useMemo(() => {
@@ -343,6 +487,13 @@ export function InvestorWorkspace() {
   const thesisRows = useMemo(
     () => associateInvestorIntelligence(registeredPositions, intelligenceMap),
     [registeredPositions, intelligenceMap],
+  );
+
+  // Global macro context — pure selection from the shared macro state. It is
+  // intentionally NOT keyed to any position (portfolio-level context).
+  const macroCtx = useMemo(
+    () => buildInvestorMacroContext(livePrices, treasuryData, calendarData),
+    [livePrices, treasuryData, calendarData],
   );
 
   return (
@@ -491,6 +642,11 @@ export function InvestorWorkspace() {
             </Section>
           </div>
         </div>
+      )}
+
+      {/* Global Macro / Cross-Asset Context — only when positions exist */}
+      {registeredPositions.length > 0 && (
+        <MacroContextSection ctx={macroCtx} />
       )}
 
       {/* Per-Position Thesis Intelligence — only when positions exist */}
