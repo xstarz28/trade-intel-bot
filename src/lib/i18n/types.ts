@@ -133,6 +133,16 @@ export interface Translations {
     decisionStateConflict: string;
     decisionInfo: string;
     portfolio: string;
+    // Portfolio-level aggregation (Phase 143)
+    portfolioSummary: string;
+    portfolioState: string;
+    usableIntel: string;
+    insufficientIntel: string;
+    unavailableIntel: string;
+    concentration: string;
+    multiplePositions: string;
+    portfolioInfo: string;
+    globalMacroCaution: string;
     // Horizon labels
     horizonScalping: string;
     horizonIntraday: string;
