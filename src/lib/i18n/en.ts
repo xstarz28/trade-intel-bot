@@ -96,6 +96,10 @@ const en: Translations = {
     macroContext: "MACRO / CROSS-ASSET CONTEXT",
     macroScopeNote: "Global context — applies to the whole portfolio, not a single position.",
     macroUnavailable: "Macro context unavailable — no macro data available right now.",
+    decisionContext: "INVESTOR DECISION CONTEXT",
+    decisionStateAligned: "Aligned",
+    decisionStateConflict: "Conflict",
+    decisionInfo: "Synthesis reflects currently available evidence only.",
     portfolio: "PORTFOLIO",
     // Horizon labels
     horizonScalping: "Scalping",

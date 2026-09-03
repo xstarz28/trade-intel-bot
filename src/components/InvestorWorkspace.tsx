@@ -28,6 +28,7 @@ import {
   mapConfidence,
   mapMarketState,
   mapAvailability,
+  mapDecisionState,
 } from "@/lib/i18n/enum-mapping";
 import {
   Briefcase,
@@ -42,6 +43,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Gauge,
 } from "lucide-react";
 import { usePositionProtection } from "@/lib/position-protection/use-position-protection";
 import { usePositionIntelligence } from "@/lib/position-protection/use-position-intelligence";
@@ -56,6 +58,10 @@ import {
   type InvestorMacroContext,
   type MacroQuoteView,
 } from "@/lib/position-protection/investor-macro-context";
+import {
+  buildInvestorDecisionSynthesis,
+  type InvestorDecisionSynthesis,
+} from "@/lib/position-protection/investor-decision-synthesis";
 import {
   formatInstrumentPrice,
   getInstrumentInfo,
@@ -135,6 +141,143 @@ const TREASURY_FRESH_COLORS: Record<string, string> = {
   DELAYED: "text-amber-400 bg-amber-500/10",
   STALE: "text-red-400 bg-red-500/10",
 };
+
+const DECISION_STATE_COLORS: Record<string, string> = {
+  ALIGNED: "text-emerald-400 bg-emerald-500/10",
+  CONFLICT: "text-red-400 bg-red-500/10",
+  CAUTION: "text-amber-400 bg-amber-500/10",
+  INSUFFICIENT_DATA: "text-muted-foreground bg-muted/30",
+  UNAVAILABLE: "text-muted-foreground bg-muted/30",
+};
+
+const MACRO_STATUS_COLORS: Record<string, string> = {
+  AVAILABLE: "text-emerald-400 bg-emerald-500/10",
+  LIMITED: "text-blue-400 bg-blue-500/10",
+  STALE: "text-amber-400 bg-amber-500/10",
+  UNAVAILABLE: "text-muted-foreground bg-muted/30",
+};
+
+// ═══════════════════════════════════════════════════════════════
+// INVESTOR DECISION CONTEXT (Phase 141)
+// ═══════════════════════════════════════════════════════════════
+// Deterministic categorical summary of THIS position's evidence picture.
+// The synthesis never computes new market metrics — chips below simply
+// surface its state + the domain states it was derived from.
+
+function DecisionChip({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <span className="flex items-center gap-1 text-[8px] font-mono text-muted-foreground/60">
+      {label}:{" "}
+      <span className={`px-1.5 py-0.5 rounded font-semibold ${color ?? "text-muted-foreground bg-muted/30"}`}>
+        {value}
+      </span>
+    </span>
+  );
+}
+
+function SynthesisRow({ row, synthesis }: { row: InvestorIntelRow; synthesis: InvestorDecisionSynthesis }) {
+  const { t } = useI18n();
+  const info = getInstrumentInfo(row.instrument);
+  const macroOutOfAlignment =
+    synthesis.macro.status !== "AVAILABLE" || synthesis.macro.globalCaution;
+
+  return (
+    <div className="border border-border/30 rounded-lg p-3 space-y-2">
+      {/* Header */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10px] font-mono font-bold text-foreground">
+          {info?.displayName ?? row.instrument}
+        </span>
+        <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
+          row.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
+        }`}>
+          {row.side}
+        </span>
+        <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">
+          {mapHorizon(row.horizon, t)}
+        </span>
+        {/* Overall deterministic state — visually dominant chip */}
+        <span className={`ml-auto text-[9px] font-mono font-bold px-2 py-0.5 rounded ${
+          DECISION_STATE_COLORS[synthesis.state] ?? "text-muted-foreground bg-muted/30"
+        }`}>
+          {mapDecisionState(synthesis.state, t).replace(/_/g, " ")}
+        </span>
+      </div>
+
+      {/* Domain decomposition (existing states — never merged away) */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <DecisionChip
+          label={t.decision.thesisHealth}
+          value={mapThesisHealth(synthesis.thesis.health, t).replace(/_/g, " ")}
+          color={THESIS_COLORS[synthesis.thesis.health] ?? "text-muted-foreground bg-muted/30"}
+        />
+        <DecisionChip
+          label={t.intelligence.riskProtectionLabel}
+          value={mapSeverity(synthesis.protection.severity, t).replace(/_/g, " ")}
+          color={SEVERITY_COLORS[synthesis.protection.severity] ?? "text-muted-foreground bg-muted/30"}
+        />
+        {/* Global macro chip only when it affects the picture (avoids noise) */}
+        {macroOutOfAlignment && (
+          <DecisionChip
+            label={t.intelligence.macroContextLabel}
+            value={
+              synthesis.macro.globalCaution
+                ? mapDecisionState("CAUTION", t)
+                : mapAvailability(synthesis.macro.status, t)
+            }
+            color={
+              synthesis.macro.globalCaution
+                ? MACRO_STATUS_COLORS.STALE
+                : MACRO_STATUS_COLORS[synthesis.macro.status] ?? "text-muted-foreground bg-muted/30"
+            }
+          />
+        )}
+        {row.intel && (
+          <DecisionChip
+            label={t.intelligence.dataQualityLabel}
+            value={mapAvailability(classifyIntelAvailability(row.intel), t)}
+            color={
+              DATA_STATUS_COLORS[classifyIntelAvailability(row.intel)] ?? "text-muted-foreground bg-muted/30"
+            }
+          />
+        )}
+      </div>
+
+      {/* Deterministic conflict cue — strictly from the decision table */}
+      {synthesis.state === "CONFLICT" && (
+        <div className="flex items-center gap-1.5 text-[8px] font-mono">
+          <AlertTriangle className="size-3 text-red-400/80" />
+          <span className="text-red-400/90">
+            {t.investor.decisionStateConflict}: {mapThesisHealth(synthesis.thesis.health, t).replace(/_/g, " ")} / {mapSeverity(synthesis.protection.severity, t).replace(/_/g, " ")}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DecisionContextSection({ rows }: { rows: { row: InvestorIntelRow; synthesis: InvestorDecisionSynthesis }[] }) {
+  const { t } = useI18n();
+  const anyGlobalCaution = rows.some((r) => r.synthesis.macro.globalCaution);
+  return (
+    <Section title={t.investor.decisionContext} icon={<Gauge className="size-3" />}>
+      {anyGlobalCaution && (
+        <div className="flex items-center gap-1.5 text-[8px] font-mono text-amber-400/90 mb-2">
+          <Globe className="size-3" />
+          {t.investor.macroScopeNote}
+        </div>
+      )}
+      <div className="space-y-2">
+        {rows.map(({ row, synthesis }) => (
+          <SynthesisRow key={row.positionId} row={row} synthesis={synthesis} />
+        ))}
+      </div>
+      <p className="text-[8px] font-mono text-muted-foreground/40 mt-2">
+        {t.investor.decisionInfo}
+      </p>
+    </Section>
+  );
+}
 
 // ═══════════════════════════════════════════════════════════════
 // GLOBAL MACRO / CROSS-ASSET CONTEXT (Phase 140)
@@ -496,6 +639,14 @@ export function InvestorWorkspace() {
     [livePrices, treasuryData, calendarData],
   );
 
+  // Investor decision synthesis — pure categorical layer over the SAME
+  // position-specific rows + the SAME global macro context. Deterministic;
+  // computes no new market metrics.
+  const synthesisRows = useMemo(
+    () => thesisRows.map((row) => ({ row, synthesis: buildInvestorDecisionSynthesis(row, macroCtx) })),
+    [thesisRows, macroCtx],
+  );
+
   return (
     <div className="space-y-4">
       {/* Investor Header */}
@@ -647,6 +798,11 @@ export function InvestorWorkspace() {
       {/* Global Macro / Cross-Asset Context — only when positions exist */}
       {registeredPositions.length > 0 && (
         <MacroContextSection ctx={macroCtx} />
+      )}
+
+      {/* Investor Decision Context — only when positions exist */}
+      {synthesisRows.length > 0 && (
+        <DecisionContextSection rows={synthesisRows} />
       )}
 
       {/* Per-Position Thesis Intelligence — only when positions exist */}
