@@ -781,6 +781,97 @@ const pt: Translations = {
     noJournalEntries: "Nenhuma entrada no diário ainda.",
     noEntriesMatchFilters: "Nenhuma entrada corresponde aos filtros.",
   },
+
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: "Histórico",
+    emptyHint: "Execute uma análise para ver os resultados aqui.",
+  },
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: "Oportunidades de Mercado",
+    staticBadge: "ESTÁTICO",
+    rankedCount: "{count} classificados",
+    excludedCount: "{count} excluídos",
+    lastScan: "última varredura: {time}",
+    scanMeta: "{scanned} varridos · {live} com dados ao vivo · {duration}ms",
+    radarMeta: "{scanned} varridos, {fresh}F/{delayed}D/{stale}S/{unavailable}U",
+    filters: "Filtros",
+    filterAssetClass: "classe de ativo",
+    filterRegion: "região",
+    allOption: "Todos",
+    allRegions: "Todas as Regiões",
+    globalOption: "Global",
+    scanning: "Analisando instrumentos…",
+    noOpportunity: "Nenhuma Oportunidade Clara",
+    noOpportunityHint: "A evidência de mercado atual não sustenta uma classificação forte para este horizonte.",
+    noSuitableHint: "Nenhum instrumento adequado encontrado. Conecte fontes de dados ao vivo para varredura em tempo real.",
+    expiredInvalidated: "{expired} expirados · {invalidated} invalidados",
+    changesSinceScan: "mudanças desde a última varredura",
+    scoreLabel: "pontuação",
+    confidenceLabel: "confiança",
+    spreadLabel: "spread",
+    supportingLabel: "suporta",
+    conflictsLabel: "conflitos",
+    missingLabel: "faltando",
+    invalidationLabel: "invalidação",
+    risksLabel: "riscos",
+    coverageLabel: "cobertura: {value}",
+    updatedLabel: "atualizado: {time}",
+    analysisLabel: "análise: {value}",
+    lessLabel: "menos",
+    moreLabel: "mais",
+    whyThisAsset: "por que este ativo?",
+    showExcluded: "Mostrar excluídos ({count})",
+    hideExcluded: "Ocultar excluídos ({count})",
+    rankingDisclaimer:
+      "As recomendações são classificações analíticas baseadas na evidência disponível e não são previsões garantidas de lucro.",
+    rankingConfidenceNote: "A confiança reflete coerência analítica, NÃO probabilidade de lucro.",
+    liveScanNote: "A varredura ao vivo usa dados atuais de mercado.",
+    horizon1_4Weeks: "1–4 Semanas",
+    horizon1_3Months: "1–3 Meses",
+    horizon3_6Months: "3–6 Meses",
+    horizon6_12Months: "6–12 Meses",
+    horizon1_3Years: "1–3 Anos",
+    horizon3PlusYears: "3+ Anos",
+    freshness: {
+      fresh: "FRESCO",
+      delayed: "DIFERIDO",
+      stale: "DESATUALIZADO",
+      unavailable: "INDISPONÍVEL",
+    },
+    suitability: {
+      topOpportunity: "OPORTUNIDADE PRINCIPAL",
+      watchlist: "LISTA DE OBSERVAÇÃO",
+      neutral: "NEUTRO",
+      excluded: "EXCLUÍDO",
+      insufficientData: "DADOS INSUFICIENTES",
+    },
+    completeness: {
+      full: "COMPLETO",
+      partial: "PARCIAL",
+      minimal: "MÍNIMO",
+      none: "NENHUM",
+    },
+  },
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: "pontuação de confluência",
+    candlesCount: "{count} velas",
+    noTradeRejected: "sem trade — setup rejeitado",
+    informationalNotDirectional: "informativo — não é evidência direcional",
+    evidenceNotProbability: "(força da evidência — não uma probabilidade)",
+    fromYourInputs: "(dos seus inputs — não é aconselhamento)",
+    crossAssetRegimeNote:
+      "O macro entre ativos fornece contexto de regime — não sinais preditivos.",
+    fundamentalContextNote:
+      "Métricas fundamentalistas são contexto informacional — a avaliação não estabelece timing de forma independente.",
+    derivativesContextNote:
+      "Estoques, estrutura futura e COT são evidência contextual — não sinais direcionais automáticos.",
+    saveJournalCta: "Salve esta análise no seu diário de trading para revisão posterior.",
+  },
 };
 
 export default pt;

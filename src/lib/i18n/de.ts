@@ -779,6 +779,97 @@ const de: Translations = {
     noJournalEntries: "Noch keine Journaleinträge.",
     noEntriesMatchFilters: "Keine Einträge entsprechen den Filtern.",
   },
+
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: "Verlauf",
+    emptyHint: "Führen Sie eine Analyse aus, um Ergebnisse hier zu sehen.",
+  },
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: "Marktchancen",
+    staticBadge: "STATISCH",
+    rankedCount: "{count} eingestuft",
+    excludedCount: "{count} ausgeschlossen",
+    lastScan: "letzter Scan: {time}",
+    scanMeta: "{scanned} gescannt · {live} mit Live-Daten · {duration}ms",
+    radarMeta: "{scanned} gescannt, {fresh}F/{delayed}D/{stale}S/{unavailable}U",
+    filters: "Filter",
+    filterAssetClass: "Anlageklasse",
+    filterRegion: "Region",
+    allOption: "Alle",
+    allRegions: "Alle Regionen",
+    globalOption: "Global",
+    scanning: "Instrumente werden gescannt…",
+    noOpportunity: "Keine Klare Chance",
+    noOpportunityHint: "Die aktuelle Marktevidenz unterstützt keine starke Einstufung für diesen Zeithorizont.",
+    noSuitableHint: "Keine passenden Instrumente gefunden. Verbinden Sie Live-Datenquellen für den Echtzeit-Scan.",
+    expiredInvalidated: "{expired} abgelaufen · {invalidated} ungültig",
+    changesSinceScan: "Änderungen seit dem letzten Scan",
+    scoreLabel: "Punktzahl",
+    confidenceLabel: "Konfidenz",
+    spreadLabel: "Spread",
+    supportingLabel: "unterstützend",
+    conflictsLabel: "Widersprüche",
+    missingLabel: "fehlend",
+    invalidationLabel: "Ungültigkeit",
+    risksLabel: "Risiken",
+    coverageLabel: "Abdeckung: {value}",
+    updatedLabel: "aktualisiert: {time}",
+    analysisLabel: "Analyse: {value}",
+    lessLabel: "weniger",
+    moreLabel: "mehr",
+    whyThisAsset: "warum dieses Instrument?",
+    showExcluded: "Ausgeschlossene anzeigen ({count})",
+    hideExcluded: "Ausgeschlossene ausblenden ({count})",
+    rankingDisclaimer:
+      "Empfehlungen sind analytische Einstufungen auf Grundlage der verfügbaren Evidenz und keine garantierten Gewinnvorhersagen.",
+    rankingConfidenceNote: "Die Konfidenz spiegelt die analytische Kohärenz wider, KEINE Gewinnwahrscheinlichkeit.",
+    liveScanNote: "Der Live-Scan nutzt aktuelle Marktdaten.",
+    horizon1_4Weeks: "1–4 Wochen",
+    horizon1_3Months: "1–3 Monate",
+    horizon3_6Months: "3–6 Monate",
+    horizon6_12Months: "6–12 Monate",
+    horizon1_3Years: "1–3 Jahre",
+    horizon3PlusYears: "3+ Jahre",
+    freshness: {
+      fresh: "AKTUELL",
+      delayed: "VERZÖGERT",
+      stale: "VERALTET",
+      unavailable: "NICHT VERFÜGBAR",
+    },
+    suitability: {
+      topOpportunity: "TOP-CHANCE",
+      watchlist: "BEOBACHTUNGSLISTE",
+      neutral: "NEUTRAL",
+      excluded: "AUSGESCHLOSSEN",
+      insufficientData: "UNZUREICHENDE DATEN",
+    },
+    completeness: {
+      full: "VOLLSTÄNDIG",
+      partial: "TEILWEISE",
+      minimal: "MINIMAL",
+      none: "KEINE",
+    },
+  },
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: "Konfluenz-Punktzahl",
+    candlesCount: "{count} Kerzen",
+    noTradeRejected: "kein Trade — Setup abgelehnt",
+    informationalNotDirectional: "informativer Hinweis — keine Richtungs-Evidenz",
+    evidenceNotProbability: "(Evidenzstärke — keine Wahrscheinlichkeit)",
+    fromYourInputs: "(aus Ihren Eingaben — keine Beratung)",
+    crossAssetRegimeNote:
+      "Cross-Asset-Makro liefert Regimekontext — keine prognostischen Signale.",
+    fundamentalContextNote:
+      "Fundamentale Kennzahlen sind informativer Kontext — die Bewertung begründet für sich allein kein Timing.",
+    derivativesContextNote:
+      "Lagerbestände, Futures-Struktur und COT sind kontextuelle Evidenz — keine automatischen Richtungssignale.",
+    saveJournalCta: "Speichern Sie diese Analyse zur späteren Überprüfung in Ihrem Trading-Journal.",
+  },
 };
 
 export default de;

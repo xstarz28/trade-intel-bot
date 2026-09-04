@@ -4,6 +4,8 @@ import { Separator } from "@/components/ui/separator";
 import { ScoreBreakdown } from "@/components/ScoreBreakdown";
 import type { AnalysisResult as AnalysisResultType } from "@/types/analysis";
 import { cn, getTimeAgo } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
+import { mapTrendLabel } from "@/lib/i18n/enum-mapping";
 import {
   TrendingUp,
   TrendingDown,
@@ -81,6 +83,7 @@ function formatTime(timestamp: number): string {
 }
 
 export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
+  const { t, tx, txi } = useI18n();
   const biasConfig = BIAS_CONFIG[result.bias];
   const BiasIcon = biasConfig.icon;
   const completenessConfig = COMPLETENESS_CONFIG[result.dataCompleteness];
@@ -112,11 +115,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className={cn("text-sm font-semibold font-mono", biasConfig.color)}>
-                    BIAS: {result.bias}
+                    BIAS: {mapTrendLabel(result.bias, t)}
                   </span>
                   {result.recommendation === "NO_TRADE" ? (
                     <Badge className="text-[10px] font-mono bg-red-500/15 text-red-400 border border-red-500/30">
-                      ⛔ NO TRADE
+                      ⛔ {tx("analysis.noTrade")}
                     </Badge>
                   ) : (
                     <Badge
@@ -127,12 +130,14 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                           : "bg-red-500/15 text-red-400 border-red-500/30",
                       )}
                     >
-                      {result.recommendation === "LONG" ? "▲ LONG" : "▼ SHORT"}
+                      {result.recommendation === "LONG"
+                        ? `▲ ${tx("analysis.long")}`
+                        : `▼ ${tx("analysis.short")}`}
                     </Badge>
                   )}
                   {result.conviction && (
                     <Badge variant="outline" className={cn("text-[10px] font-mono", conviction.color)}>
-                      Conviction: {result.conviction}
+                      {tx("analysisResult.convictionPrefix")} {result.conviction}
                     </Badge>
                   )}
                 </div>
@@ -143,7 +148,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 {result.confidence}
                 <span className="text-sm font-medium text-muted-foreground">%</span>
               </div>
-              <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">confluence score</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">{tx("analysisResult.confluenceScore")}</p>
             </div>
           </div>
 
@@ -178,7 +183,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             {tech && tech.dataPoints > 0 && (
               <Badge variant="outline" className="text-[10px] font-mono border-border/50">
                 <Activity className="size-3 mr-1" />
-                {tech.dataPoints} candles
+                {txi("analysisResult.candlesCount", { count: tech.dataPoints })}
               </Badge>
             )}
           </div>
@@ -208,7 +213,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardContent className="px-4 py-3">
               <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
                 <span className="text-primary/60">$</span> data-quality
-                <span className="text-muted-foreground/50"> · informational — not directional evidence</span>
+                <span className="text-muted-foreground/50">{" · "}{tx("analysisResult.informationalNotDirectional")}</span>
               </p>
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <Badge className={cn("text-[10px] font-mono", STATUS_COLORS[primaryStatus] ?? "bg-muted/30 text-muted-foreground border-border/50")}>
@@ -694,7 +699,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-red-500/25 bg-red-500/5">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
-              <h4 className="text-xs font-mono font-semibold text-red-400">⛔ no-trade — setup rejected</h4>
+              <h4 className="text-xs font-mono font-semibold text-red-400">⛔ {tx("analysisResult.noTradeRejected")}</h4>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
@@ -754,7 +759,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   ))}
                 <div className="pt-1 text-[10px] font-mono text-muted-foreground">
                   conviction {result.decisionTrace.convictionBreakdown.final} · {result.decisionTrace.convictionBreakdown.band ?? "informational"}{" "}
-                  <span className="text-muted-foreground/50">(evidence strength — not a probability)</span>
+                  <span className="text-muted-foreground/50">{tx("analysisResult.evidenceNotProbability")}</span>
                 </div>
               </div>
             )}

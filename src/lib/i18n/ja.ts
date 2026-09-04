@@ -780,6 +780,97 @@ const ja: Translations = {
     noJournalEntries: "ジャーナルエントリーはまだありません。",
     noEntriesMatchFilters: "フィルターに一致するエントリーがありません。",
   },
+
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: "履歴",
+    emptyHint: "分析を実行すると、ここに結果が表示されます。",
+  },
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: "市場の機会",
+    staticBadge: "静的",
+    rankedCount: "{count}件ランク付け済み",
+    excludedCount: "{count}件除外",
+    lastScan: "最終スキャン: {time}",
+    scanMeta: "{scanned}件スキャン · {live}件ライブデータ · {duration}ms",
+    radarMeta: "{scanned}件スキャン, {fresh}F/{delayed}D/{stale}S/{unavailable}U",
+    filters: "フィルター",
+    filterAssetClass: "資産クラス",
+    filterRegion: "地域",
+    allOption: "すべて",
+    allRegions: "すべての地域",
+    globalOption: "グローバル",
+    scanning: "インストルメントをスキャン中…",
+    noOpportunity: "明確な機会なし",
+    noOpportunityHint: "現在の市場エビデンスは、この期間帯での強いランク付けを支持していません。",
+    noSuitableHint: "該当するインストルメントが見つかりませんでした。リアルタイムスキャンにはライブデータソースを接続してください。",
+    expiredInvalidated: "{expired}件期限切れ · {invalidated}件無効",
+    changesSinceScan: "前回スキャンからの変化",
+    scoreLabel: "スコア",
+    confidenceLabel: "確信度",
+    spreadLabel: "スプレッド",
+    supportingLabel: "支持",
+    conflictsLabel: "対立",
+    missingLabel: "欠落",
+    invalidationLabel: "無効化条件",
+    risksLabel: "リスク",
+    coverageLabel: "カバレッジ: {value}",
+    updatedLabel: "更新: {time}",
+    analysisLabel: "分析: {value}",
+    lessLabel: "閉じる",
+    moreLabel: "詳細",
+    whyThisAsset: "なぜこの資産か？",
+    showExcluded: "除外を表示 ({count})",
+    hideExcluded: "除外を非表示 ({count})",
+    rankingDisclaimer:
+      "推奨は入手可能なエビデンスに基づく分析上のランク付けであり、利益の保証された予測ではありません。",
+    rankingConfidenceNote: "確信度は分析の整合性を反映したものであり、利益の確率ではありません。",
+    liveScanNote: "ライブスキャンは現在の市場データを使用します。",
+    horizon1_4Weeks: "1〜4週間",
+    horizon1_3Months: "1〜3か月",
+    horizon3_6Months: "3〜6か月",
+    horizon6_12Months: "6〜12か月",
+    horizon1_3Years: "1〜3年",
+    horizon3PlusYears: "3年以上",
+    freshness: {
+      fresh: "最新",
+      delayed: "遅延",
+      stale: "陳腐化",
+      unavailable: "利用不可",
+    },
+    suitability: {
+      topOpportunity: "最有力",
+      watchlist: "ウォッチリスト",
+      neutral: "中立",
+      excluded: "除外",
+      insufficientData: "データ不足",
+    },
+    completeness: {
+      full: "完全",
+      partial: "部分",
+      minimal: "最小",
+      none: "なし",
+    },
+  },
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: "コンフルエンススコア",
+    candlesCount: "{count}本のローソク",
+    noTradeRejected: "トレードなし — セットアップ却下",
+    informationalNotDirectional: "情報提供 — 方向性のエビデンスではありません",
+    evidenceNotProbability: "(エビデンスの強さ — 確率ではありません)",
+    fromYourInputs: "(入力に基づく情報 — 助言ではありません)",
+    crossAssetRegimeNote:
+      "クロスアセットのマクロはレジームの文脈を提供します — 予測シグナルではありません。",
+    fundamentalContextNote:
+      "ファンダメンタル指標は情報提供の文脈です — バリュエーションだけでタイミングを判断するものではありません。",
+    derivativesContextNote:
+      "在庫、先物構造、COTは文脈上のエビデンスです — 自動的な方向シグナルではありません。",
+    saveJournalCta: "この分析をトレードジャーナルに保存して、後で確認できます。",
+  },
 };
 
 export default ja;

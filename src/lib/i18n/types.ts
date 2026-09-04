@@ -620,6 +620,93 @@ export interface Translations {
     registerButton: string;
   };
 
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: string;
+    emptyHint: string;
+  };
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: string;
+    staticBadge: string;
+    rankedCount: string;
+    excludedCount: string;
+    lastScan: string;
+    scanMeta: string;
+    radarMeta: string;
+    filters: string;
+    filterAssetClass: string;
+    filterRegion: string;
+    allOption: string;
+    allRegions: string;
+    globalOption: string;
+    scanning: string;
+    noOpportunity: string;
+    noOpportunityHint: string;
+    noSuitableHint: string;
+    expiredInvalidated: string;
+    changesSinceScan: string;
+    scoreLabel: string;
+    confidenceLabel: string;
+    spreadLabel: string;
+    supportingLabel: string;
+    conflictsLabel: string;
+    missingLabel: string;
+    invalidationLabel: string;
+    risksLabel: string;
+    coverageLabel: string;
+    updatedLabel: string;
+    analysisLabel: string;
+    lessLabel: string;
+    moreLabel: string;
+    whyThisAsset: string;
+    showExcluded: string;
+    hideExcluded: string;
+    rankingDisclaimer: string;
+    rankingConfidenceNote: string;
+    liveScanNote: string;
+    horizon1_4Weeks: string;
+    horizon1_3Months: string;
+    horizon3_6Months: string;
+    horizon6_12Months: string;
+    horizon1_3Years: string;
+    horizon3PlusYears: string;
+    freshness: {
+      fresh: string;
+      delayed: string;
+      stale: string;
+      unavailable: string;
+    };
+    suitability: {
+      topOpportunity: string;
+      watchlist: string;
+      neutral: string;
+      excluded: string;
+      insufficientData: string;
+    };
+    completeness: {
+      full: string;
+      partial: string;
+      minimal: string;
+      none: string;
+    };
+  };
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: string;
+    candlesCount: string;
+    noTradeRejected: string;
+    informationalNotDirectional: string;
+    evidenceNotProbability: string;
+    fromYourInputs: string;
+    crossAssetRegimeNote: string;
+    fundamentalContextNote: string;
+    derivativesContextNote: string;
+    saveJournalCta: string;
+  };
+
   // ─── Empty States ───────────────────────────────────────────
   emptyStates: {
     noPositions: string;

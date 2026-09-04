@@ -779,6 +779,97 @@ const ko: Translations = {
     noJournalEntries: "아직 일지 항목이 없습니다.",
     noEntriesMatchFilters: "필터와 일치하는 항목이 없습니다.",
   },
+
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: "기록",
+    emptyHint: "분석을 실행하면 결과가 여기에 표시됩니다.",
+  },
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: "시장 기회",
+    staticBadge: "정적",
+    rankedCount: "{count}개 순위 지정",
+    excludedCount: "{count}개 제외",
+    lastScan: "마지막 스캔: {time}",
+    scanMeta: "{scanned}개 스캔 · {live}개 라이브 데이터 · {duration}ms",
+    radarMeta: "{scanned}개 스캔, {fresh}F/{delayed}D/{stale}S/{unavailable}U",
+    filters: "필터",
+    filterAssetClass: "자산 클래스",
+    filterRegion: "지역",
+    allOption: "전체",
+    allRegions: "전체 지역",
+    globalOption: "글로벌",
+    scanning: "인스트루먼트 스캔 중…",
+    noOpportunity: "명확한 기회 없음",
+    noOpportunityHint: "현재 시장 증거는 이 기간에 대한 강한 순위를 뒷받침하지 않습니다.",
+    noSuitableHint: "적합한 인스트루먼트가 없습니다. 실시간 스캔을 위해 라이브 데이터 소스를 연결하세요.",
+    expiredInvalidated: "{expired}개 만료 · {invalidated}개 무효",
+    changesSinceScan: "지난 스캔 이후 변경 사항",
+    scoreLabel: "점수",
+    confidenceLabel: "확신도",
+    spreadLabel: "스프레드",
+    supportingLabel: "지지",
+    conflictsLabel: "상충",
+    missingLabel: "누락",
+    invalidationLabel: "무효화 조건",
+    risksLabel: "리스크",
+    coverageLabel: "커버리지: {value}",
+    updatedLabel: "업데이트: {time}",
+    analysisLabel: "분석: {value}",
+    lessLabel: "접기",
+    moreLabel: "자세히",
+    whyThisAsset: "왜 이 자산인가?",
+    showExcluded: "제외 항목 표시 ({count})",
+    hideExcluded: "제외 항목 숨기기 ({count})",
+    rankingDisclaimer:
+      "추천은 사용 가능한 증거에 기반한 분석적 순위이며 수익을 보장하는 예측이 아닙니다.",
+    rankingConfidenceNote: "확신도는 분석적 일관성을 반영하며 수익 확률이 아닙니다.",
+    liveScanNote: "라이브 스캔은 현재 시장 데이터를 사용합니다.",
+    horizon1_4Weeks: "1~4주",
+    horizon1_3Months: "1~3개월",
+    horizon3_6Months: "3~6개월",
+    horizon6_12Months: "6~12개월",
+    horizon1_3Years: "1~3년",
+    horizon3PlusYears: "3년 이상",
+    freshness: {
+      fresh: "최신",
+      delayed: "지연",
+      stale: "오래됨",
+      unavailable: "사용 불가",
+    },
+    suitability: {
+      topOpportunity: "최우선 기회",
+      watchlist: "관심 목록",
+      neutral: "중립",
+      excluded: "제외됨",
+      insufficientData: "데이터 부족",
+    },
+    completeness: {
+      full: "완전",
+      partial: "부분",
+      minimal: "최소",
+      none: "없음",
+    },
+  },
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: "컨플루언스 점수",
+    candlesCount: "캔들 {count}개",
+    noTradeRejected: "거래 없음 — 셋업 거부됨",
+    informationalNotDirectional: "정보 제공 — 방향성 증거가 아님",
+    evidenceNotProbability: "(증거 강도 — 확률이 아님)",
+    fromYourInputs: "(입력 내용 기반 — 조언이 아님)",
+    crossAssetRegimeNote:
+      "교차 자산 매크로는 레짐 맥락을 제공합니다 — 예측 신호가 아닙니다.",
+    fundamentalContextNote:
+      "펀더멘털 지표는 정보 제공용 맥락입니다 — 밸류에이션만으로 타이밍을 정하지 않습니다.",
+    derivativesContextNote:
+      "재고, 선물 구조, COT는 맥락적 증거입니다 — 자동 방향 신호가 아닙니다.",
+    saveJournalCta: "이 분석을 트레이딩 저널에 저장해 나중에 검토하세요.",
+  },
 };
 
 export default ko;
