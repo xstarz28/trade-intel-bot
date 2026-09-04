@@ -31,6 +31,7 @@ import {
   mapDecisionState,
   mapCoverage,
   mapMonitorState,
+  mapFreshness,
 } from "@/lib/i18n/enum-mapping";
 import {
   Briefcase,
@@ -573,7 +574,7 @@ function MacroContextSection({ ctx }: { ctx: InvestorMacroContext }) {
                 <span className={`px-1 py-0.5 rounded text-[7px] font-semibold ${
                   TREASURY_FRESH_COLORS[ctx.rates.freshness] ?? "text-muted-foreground bg-muted/30"
                 }`}>
-                  {ctx.rates.freshness === "STALE" ? mapAvailability("STALE", t) : ctx.rates.freshness}
+                  {mapFreshness(ctx.rates.freshness, t)}
                 </span>
               )}
             </div>
