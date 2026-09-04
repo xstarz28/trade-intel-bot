@@ -312,6 +312,9 @@ const zh: Translations = {
     confidenceModerate: "中等证据",
     confidenceWeak: "弱证据",
     confidenceInsufficient: "证据不足",
+    confidenceHigh: "高",
+    confidenceMedium: "中",
+    confidenceLow: "低",
     derivatives: "衍生品",
     trending: "趋势中",
     ranging: "区间震荡",
@@ -866,7 +869,15 @@ const zh: Translations = {
       "基本面指标仅为信息背景 — 估值本身不能独立决定入场时机。",
     derivativesContextNote:
       "库存、期货结构与COT属背景性证据 — 并非自动方向信号。",
+    forexContextNote:
+      "利率差异、COT持仓与DXY属背景性证据 — 并非自动方向信号。",
     saveJournalCta: "将本次分析保存到你的交易日志，供日后查看。",
+    convictionPrefix: "确信度:",
+    dataFull: "完整数据",
+    dataPartial: "部分数据",
+    dataLimited: "有限数据",
+    riskNoteDisclaimer:
+      "这是决策支持工具，不是财务建议。采取任何行动前请自行核实。",
   },
 };
 

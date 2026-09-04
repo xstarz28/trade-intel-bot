@@ -308,6 +308,9 @@ const id: Translations = {
     confidenceModerate: "Bukti Sedang",
     confidenceWeak: "Bukti Lemah",
     confidenceInsufficient: "Bukti Tidak Memadai",
+    confidenceHigh: "Tinggi",
+    confidenceMedium: "Sedang",
+    confidenceLow: "Rendah",
     derivatives: "Turunan",
     trending: "Sedang Tren",
     ranging: "Ranging",
@@ -863,7 +866,15 @@ const id: Translations = {
       "Metrik fundamental adalah konteks informasional — valuasi tidak berdiri sendiri menentukan waktu masuk.",
     derivativesContextNote:
       "Persediaan, struktur futures, dan COT adalah bukti kontekstual — bukan sinyal arah otomatis.",
+    forexContextNote:
+      "Selisih suku bunga, posisi COT, dan DXY adalah bukti kontekstual — bukan sinyal arah otomatis.",
     saveJournalCta: "Simpan analisis ini ke jurnal trading Anda untuk ditinjau kembali.",
+    convictionPrefix: "conviction:",
+    dataFull: "data lengkap",
+    dataPartial: "data parsial",
+    dataLimited: "data terbatas",
+    riskNoteDisclaimer:
+      "Ini adalah alat pendukung keputusan, bukan nasihat keuangan. Verifikasi secara mandiri sebelum mengambil tindakan apa pun.",
   },
 };
 

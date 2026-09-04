@@ -108,8 +108,8 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 690 leaves", () => {
-    expect(enCount).toBe(690);
+  it("EN is the canonical structural reference with 768 leaves", () => {
+    expect(enCount).toBe(768);
   });
 
   for (const code of NINE) {
@@ -142,7 +142,20 @@ describe("placeholder parity across all 9 locales", () => {
   );
 
   it("EN placeholders are a strict subset of the known vocabulary", () => {
-    const known = ["{count}", "{time}"];
+    const known = [
+      "{count}",
+      "{time}",
+      "{value}",
+      "{scanned}",
+      "{live}",
+      "{duration}",
+      "{fresh}",
+      "{delayed}",
+      "{stale}",
+      "{unavailable}",
+      "{expired}",
+      "{invalidated}",
+    ];
     for (const [, set] of enPlaceholders) {
       for (const p of set) {
         expect(known).toContain(p);
@@ -225,7 +238,7 @@ describe("enum-mapping coverage over all 9 locales", () => {
   const mappings: Array<[string, (v: string, t: Translations) => string, string[]]> = [
     ["mapAvailability", mapAvailability, ["AVAILABLE", "LIMITED", "INSUFFICIENT", "STALE", "UNAVAILABLE"]],
     ["mapComponentName", mapComponentName, ["MARKET_DATA", "OHLCV", "NEWS", "MACRO", "CROSS_ASSET", "INTELLIGENCE", "PORTFOLIO", "ALERT_RULES", "NOTIFICATIONS", "HISTORICAL"]],
-    ["mapConfidence", mapConfidence, ["STRONG_EVIDENCE", "MODERATE_EVIDENCE", "WEAK_EVIDENCE", "INSUFFICIENT_EVIDENCE"]],
+    ["mapConfidence", mapConfidence, ["STRONG_EVIDENCE", "MODERATE_EVIDENCE", "WEAK_EVIDENCE", "INSUFFICIENT_EVIDENCE", "HIGH", "MEDIUM", "LOW", "UNAVAILABLE"]],
     ["mapCoverage", mapCoverage, ["FULL", "PARTIAL", "EMPTY"]],
     ["mapDecisionState", mapDecisionState, ["ALIGNED", "CONFLICT", "CAUTION", "INSUFFICIENT_DATA", "UNAVAILABLE"]],
     ["mapDirection", mapDirection, ["SUPPORTING", "CONFLICTING", "NEUTRAL"]],
@@ -241,7 +254,7 @@ describe("enum-mapping coverage over all 9 locales", () => {
     ["mapSeverity", mapSeverity, ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"]],
     ["mapStance", mapStance, ["SUPPORTING", "CONFLICTING", "MIXED", "NEUTRAL", "INSUFFICIENT"]],
     ["mapThesisHealth", mapThesisHealth, ["HEALTHY", "STABLE", "CAUTION", "DETERIORATING", "SEVERELY_DETERIORATING", "INVALIDATED", "INSUFFICIENT_DATA", "UNKNOWN"]],
-    ["mapTrendLabel", mapTrendLabel, ["BULLISH", "BEARISH", "NEUTRAL", "UNKNOWN"]],
+    ["mapTrendLabel", mapTrendLabel, ["BULLISH", "BEARISH", "NEUTRAL", "MIXED", "UNKNOWN"]],
   ];
 
   it("every known enum value maps to a non-empty label in every locale", () => {
@@ -366,9 +379,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 690 canonical keys with non-empty values", () => {
+  it("zh has all 768 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(690);
+    expect(zhLeaves.length).toBe(768);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

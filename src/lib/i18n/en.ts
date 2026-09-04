@@ -305,6 +305,9 @@ const en: Translations = {
     confidenceModerate: "Moderate Evidence",
     confidenceWeak: "Weak Evidence",
     confidenceInsufficient: "Insufficient Evidence",
+    confidenceHigh: "High",
+    confidenceMedium: "Medium",
+    confidenceLow: "Low",
     derivatives: "Derivatives",
     trending: "Trending",
     ranging: "Ranging",
@@ -859,7 +862,15 @@ const en: Translations = {
       "Fundamental metrics are informational context — valuation does not independently establish timing.",
     derivativesContextNote:
       "Inventory, futures structure, and COT are contextual evidence — not automatic directional signals.",
+    forexContextNote:
+      "Rate differential, COT positioning, and DXY are contextual evidence — not automatic directional signals.",
     saveJournalCta: "Save this analysis to your trade journal for later review.",
+    convictionPrefix: "conviction:",
+    dataFull: "full data",
+    dataPartial: "partial data",
+    dataLimited: "limited data",
+    riskNoteDisclaimer:
+      "This is a decision-support tool, not financial advice. Verify independently before taking any action.",
   },
 };
 

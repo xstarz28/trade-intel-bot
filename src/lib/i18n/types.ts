@@ -346,6 +346,9 @@ export interface Translations {
     confidenceModerate: string;
     confidenceWeak: string;
     confidenceInsufficient: string;
+    confidenceHigh: string;
+    confidenceMedium: string;
+    confidenceLow: string;
     derivatives: string;
     // Trend/direction display
     trending: string;
@@ -704,7 +707,13 @@ export interface Translations {
     crossAssetRegimeNote: string;
     fundamentalContextNote: string;
     derivativesContextNote: string;
+    forexContextNote: string;
     saveJournalCta: string;
+    convictionPrefix: string;
+    dataFull: string;
+    dataPartial: string;
+    dataLimited: string;
+    riskNoteDisclaimer: string;
   };
 
   // ─── Empty States ───────────────────────────────────────────

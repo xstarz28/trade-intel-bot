@@ -88,7 +88,7 @@ describe("Phase 138 — safe fallbacks for unknown enum values", () => {
 // ─── Trend labels ─────────────────────────────────────────────────────
 describe("Phase 138 — mapTrendLabel", () => {
   it("maps every MTF trend classification in every locale", () => {
-    expectDomainMapped(mapTrendLabel, ["BULLISH", "BEARISH", "NEUTRAL", "UNKNOWN"]);
+    expectDomainMapped(mapTrendLabel, ["BULLISH", "BEARISH", "NEUTRAL", "MIXED", "UNKNOWN"]);
   });
 
   it("maps BULLISH to the localized bullish term", () => {
@@ -171,6 +171,10 @@ describe("Phase 138 — existing mappings remain intact", () => {
       "MODERATE_EVIDENCE",
       "WEAK_EVIDENCE",
       "INSUFFICIENT_EVIDENCE",
+      "HIGH",
+      "MEDIUM",
+      "LOW",
+      "UNAVAILABLE",
     ]);
     expectDomainMapped(mapDimension, ["TECHNICAL", "MACRO", "CROSS_ASSET", "DERIVATIVES", "NEWS", "FUNDAMENTALS"]);
   });

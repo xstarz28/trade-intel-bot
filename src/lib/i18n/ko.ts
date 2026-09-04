@@ -312,6 +312,9 @@ const ko: Translations = {
     confidenceModerate: "중간 증거",
     confidenceWeak: "약한 증거",
     confidenceInsufficient: "불충분한 증거",
+    confidenceHigh: "높음",
+    confidenceMedium: "중간",
+    confidenceLow: "낮음",
     derivatives: "파생상품",
     trending: "추세 중",
     ranging: "횡보",
@@ -868,7 +871,15 @@ const ko: Translations = {
       "펀더멘털 지표는 정보 제공용 맥락입니다 — 밸류에이션만으로 타이밍을 정하지 않습니다.",
     derivativesContextNote:
       "재고, 선물 구조, COT는 맥락적 증거입니다 — 자동 방향 신호가 아닙니다.",
+    forexContextNote:
+      "금리 차이, COT 포지셔닝, DXY는 맥락적 증거입니다 — 자동 방향 신호가 아닙니다.",
     saveJournalCta: "이 분석을 트레이딩 저널에 저장해 나중에 검토하세요.",
+    convictionPrefix: "확신도:",
+    dataFull: "완전한 데이터",
+    dataPartial: "부분 데이터",
+    dataLimited: "제한된 데이터",
+    riskNoteDisclaimer:
+      "이것은 의사결정 지원 도구이지 금융 조언이 아닙니다. 조치를 취하기 전에 반드시 직접 검증하세요.",
   },
 };
 

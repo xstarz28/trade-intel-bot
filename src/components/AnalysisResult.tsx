@@ -5,7 +5,7 @@ import { ScoreBreakdown } from "@/components/ScoreBreakdown";
 import type { AnalysisResult as AnalysisResultType } from "@/types/analysis";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
-import { mapTrendLabel } from "@/lib/i18n/enum-mapping";
+import { mapTrendLabel, mapConfidence } from "@/lib/i18n/enum-mapping";
 import {
   TrendingUp,
   TrendingDown,
@@ -42,9 +42,15 @@ const BIAS_CONFIG = {
 } as const;
 
 const COMPLETENESS_CONFIG = {
-  full: { label: "full data", color: "bg-emerald-500/15 text-emerald-400", icon: CheckCircle2 },
-  partial: { label: "partial data", color: "bg-amber-500/15 text-amber-400", icon: Info },
-  limited: { label: "limited data", color: "bg-red-500/15 text-red-400", icon: AlertTriangle },
+  full: { color: "bg-emerald-500/15 text-emerald-400", icon: CheckCircle2 },
+  partial: { color: "bg-amber-500/15 text-amber-400", icon: Info },
+  limited: { color: "bg-red-500/15 text-red-400", icon: AlertTriangle },
+} as const;
+
+const COMPLETENESS_LABEL_KEYS = {
+  full: "analysisResult.dataFull",
+  partial: "analysisResult.dataPartial",
+  limited: "analysisResult.dataLimited",
 } as const;
 
 /** Qualitative conviction level — replaces accuracy claims. Reflects actual
@@ -137,7 +143,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   )}
                   {result.conviction && (
                     <Badge variant="outline" className={cn("text-[10px] font-mono", conviction.color)}>
-                      {tx("analysisResult.convictionPrefix")} {result.conviction}
+                      {tx("analysisResult.convictionPrefix")} {mapConfidence(result.conviction, t)}
                     </Badge>
                   )}
                 </div>
@@ -178,7 +184,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             </div>
             <Badge className={cn("text-[10px] font-mono", completenessConfig.color)}>
               <CompletenessIcon className="size-3 mr-1" />
-              {completenessConfig.label}
+              {tx(COMPLETENESS_LABEL_KEYS[result.dataCompleteness])}
             </Badge>
             {tech && tech.dataPoints > 0 && (
               <Badge variant="outline" className="text-[10px] font-mono border-border/50">
@@ -1532,7 +1538,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
               <span className="text-primary/60">$</span> position-sizing{" "}
-              <span className="text-muted-foreground/50">(from your inputs — not advice)</span>
+              <span className="text-muted-foreground/50">{tx("analysisResult.fromYourInputs")}</span>
             </p>
             <div className="grid grid-cols-3 gap-3">
               <div className="text-center">
@@ -1644,7 +1650,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   "bg-muted/30 text-muted-foreground"
                 )}
               >
-                {result.sentimentData.label}
+                {mapTrendLabel(result.sentimentData.label, t)}
               </Badge>
               <Badge variant="outline" className="text-[10px] font-mono border-border/50">
                 {result.sentimentData.articleCount} articles
@@ -1705,7 +1711,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <span className="text-primary/60">$</span> macro-context
               </h4>
               <Badge variant="outline" className="text-[10px] font-mono border-border/50">
-                {result.macroData.confidence}
+                {mapConfidence(result.macroData.confidence, t)}
               </Badge>
             </div>
           </CardHeader>
@@ -1908,7 +1914,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </p>
           <Separator className="my-3 bg-amber-500/10" />
           <p className="text-[11px] text-amber-300/50 font-mono italic">
-            This is a decision-support tool, not financial advice. Verify independently before taking any action.
+            {tx("analysisResult.riskNoteDisclaimer")}
           </p>
         </CardContent>
       </Card>
@@ -1929,7 +1935,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   "bg-red-500/15 text-red-400"
                 )}
               >
-                {result.derivativesData.confidence} confidence
+                {mapConfidence(result.derivativesData.confidence, t)} {t.analysis.confidence}
               </Badge>
             </div>
           </CardHeader>
@@ -2412,7 +2418,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                   </div>
                   <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
-                    Rate differential, COT positioning, and DXY are contextual evidence — not automatic directional signals.
+                    {tx("analysisResult.forexContextNote")}
                   </p>
                 </div>
               )}
@@ -2461,7 +2467,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     </p>
                   )}
                   <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed mt-1">
-                    Fundamental metrics are informational context — valuation does not independently establish timing.
+                    {tx("analysisResult.fundamentalContextNote")}
                   </p>
                 </div>
               )}
@@ -2511,7 +2517,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     </p>
                   )}
                   <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed mt-1">
-                    Inventory, futures structure, and COT are contextual evidence — not automatic directional signals.
+                    {tx("analysisResult.derivativesContextNote")}
                   </p>
                 </div>
               )}
@@ -2564,7 +2570,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     </p>
                   )}
                   <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed mt-1">
-                    Cross-asset macro provides regime context — not predictive signals.
+                    {tx("analysisResult.crossAssetRegimeNote")}
                   </p>
                 </div>
               )}
@@ -2709,7 +2715,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardContent className="py-3">
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-mono text-muted-foreground">
-              Save this analysis to your trade journal for later review.
+              {tx("analysisResult.saveJournalCta")}
             </span>
           </div>
         </CardContent>

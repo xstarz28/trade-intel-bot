@@ -309,6 +309,9 @@ const pt: Translations = {
     confidenceModerate: "Evidência Moderada",
     confidenceWeak: "Evidência Fraca",
     confidenceInsufficient: "Evidência Insuficiente",
+    confidenceHigh: "Alta",
+    confidenceMedium: "Média",
+    confidenceLow: "Baixa",
     derivatives: "Derivativos",
     trending: "Em Tendência",
     ranging: "Lateral",
@@ -870,7 +873,15 @@ const pt: Translations = {
       "Métricas fundamentalistas são contexto informacional — a avaliação não estabelece timing de forma independente.",
     derivativesContextNote:
       "Estoques, estrutura futura e COT são evidência contextual — não sinais direcionais automáticos.",
+    forexContextNote:
+      "O diferencial de juros, o posicionamento COT e o DXY são evidência contextual — não sinais direcionais automáticos.",
     saveJournalCta: "Salve esta análise no seu diário de trading para revisão posterior.",
+    convictionPrefix: "convicção:",
+    dataFull: "dados completos",
+    dataPartial: "dados parciais",
+    dataLimited: "dados limitados",
+    riskNoteDisclaimer:
+      "Esta é uma ferramenta de apoio à decisão, não um conselho financeiro. Verifique de forma independente antes de tomar qualquer ação.",
   },
 };
 

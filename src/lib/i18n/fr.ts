@@ -313,6 +313,9 @@ const fr: Translations = {
     confidenceModerate: "Preuves Modérées",
     confidenceWeak: "Preuves Faibles",
     confidenceInsufficient: "Preuves Insuffisantes",
+    confidenceHigh: "Élevée",
+    confidenceMedium: "Moyenne",
+    confidenceLow: "Faible",
     derivatives: "Dérivés",
     trending: "En Tendance",
     ranging: "En Range",
@@ -869,7 +872,15 @@ const fr: Translations = {
       "Les mesures fondamentales sont un contexte informatif — la valorisation n'établit pas à elle seule le timing.",
     derivativesContextNote:
       "Stocks, structure des futures et COT sont des preuves contextuelles — pas des signaux directionnels automatiques.",
+    forexContextNote:
+      "L'écart de taux, le positionnement COT et le DXY sont des preuves contextuelles — pas des signaux directionnels automatiques.",
     saveJournalCta: "Enregistrez cette analyse dans votre journal de trading pour la revoir plus tard.",
+    convictionPrefix: "conviction :",
+    dataFull: "données complètes",
+    dataPartial: "données partielles",
+    dataLimited: "données limitées",
+    riskNoteDisclaimer:
+      "Cet outil aide à la décision, ce n'est pas un conseil financier. Vérifiez de manière indépendante avant toute action.",
   },
 };
 

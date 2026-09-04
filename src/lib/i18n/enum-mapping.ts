@@ -159,6 +159,7 @@ export function mapTrendLabel(
     case "BULLISH": return t.analysis.bullish;
     case "BEARISH": return t.analysis.bearish;
     case "NEUTRAL": return t.intelligence.neutral;
+    case "MIXED": return t.intelligence.stanceMixed;
     case "UNKNOWN": return t.status.unknown;
     default: return trend.replace(/_/g, " ");
   }
@@ -225,11 +226,17 @@ export function mapConfidence(
   confidence: string,
   t: Translations,
 ): string {
-  switch (confidence) {
+  // Normalized so lowercase provider values (e.g. "high") and uppercase
+  // engine values (e.g. "STRONG_EVIDENCE") map identically.
+  switch (confidence.toUpperCase()) {
     case "STRONG_EVIDENCE": return t.intelligence.confidenceStrong;
     case "MODERATE_EVIDENCE": return t.intelligence.confidenceModerate;
     case "WEAK_EVIDENCE": return t.intelligence.confidenceWeak;
     case "INSUFFICIENT_EVIDENCE": return t.intelligence.confidenceInsufficient;
+    case "HIGH": return t.intelligence.confidenceHigh;
+    case "MEDIUM": return t.intelligence.confidenceMedium;
+    case "LOW": return t.intelligence.confidenceLow;
+    case "UNAVAILABLE": return t.status.unavailable;
     default: return confidence.replace(/_/g, " ");
   }
 }
