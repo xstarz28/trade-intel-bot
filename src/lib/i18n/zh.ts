@@ -777,6 +777,97 @@ const zh: Translations = {
     noJournalEntries: "暂无日志条目。",
     noEntriesMatchFilters: "没有符合筛选条件的条目。",
   },
+
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: "历史",
+    emptyHint: "运行一次分析即可在此查看结果。",
+  },
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: "市场机会",
+    staticBadge: "静态",
+    rankedCount: "{count} 个已排名",
+    excludedCount: "{count} 个已排除",
+    lastScan: "上次扫描：{time}",
+    scanMeta: "扫描 {scanned} 个 · {live} 个有实时数据 · {duration}ms",
+    radarMeta: "扫描 {scanned} 个，{fresh}F/{delayed}D/{stale}S/{unavailable}U",
+    filters: "筛选",
+    filterAssetClass: "资产类别",
+    filterRegion: "区域",
+    allOption: "全部",
+    allRegions: "所有区域",
+    globalOption: "全球",
+    scanning: "正在扫描标的…",
+    noOpportunity: "暂无明确机会",
+    noOpportunityHint: "当前市场证据不足以支持该周期的高强度排名。",
+    noSuitableHint: "未找到合适的标的。连接实时数据源以进行实时扫描。",
+    expiredInvalidated: "{expired} 个已到期 · {invalidated} 个已失效",
+    changesSinceScan: "上次扫描以来的变化",
+    scoreLabel: "得分",
+    confidenceLabel: "置信度",
+    spreadLabel: "点差",
+    supportingLabel: "支撑",
+    conflictsLabel: "冲突",
+    missingLabel: "缺失",
+    invalidationLabel: "失效条件",
+    risksLabel: "风险",
+    coverageLabel: "覆盖：{value}",
+    updatedLabel: "更新于：{time}",
+    analysisLabel: "分析：{value}",
+    lessLabel: "收起",
+    moreLabel: "更多",
+    whyThisAsset: "为何选择该资产？",
+    showExcluded: "显示已排除 ({count})",
+    hideExcluded: "隐藏已排除 ({count})",
+    rankingDisclaimer:
+      "推荐是基于现有证据的分析性排名，并非有保证的盈利预测。",
+    rankingConfidenceNote: "置信度反映分析一致性，而非盈利概率。",
+    liveScanNote: "实时扫描使用当前市场数据。",
+    horizon1_4Weeks: "1–4 周",
+    horizon1_3Months: "1–3 个月",
+    horizon3_6Months: "3–6 个月",
+    horizon6_12Months: "6–12 个月",
+    horizon1_3Years: "1–3 年",
+    horizon3PlusYears: "3 年以上",
+    freshness: {
+      fresh: "新鲜",
+      delayed: "延迟",
+      stale: "过期",
+      unavailable: "不可用",
+    },
+    suitability: {
+      topOpportunity: "首选机会",
+      watchlist: "关注列表",
+      neutral: "中性",
+      excluded: "已排除",
+      insufficientData: "数据不足",
+    },
+    completeness: {
+      full: "完整",
+      partial: "部分",
+      minimal: "最少",
+      none: "无",
+    },
+  },
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: "汇聚得分",
+    candlesCount: "{count} 根K线",
+    noTradeRejected: "不交易 — 设置被拒绝",
+    informationalNotDirectional: "仅供参考 — 非方向性证据",
+    evidenceNotProbability: "（证据强度 — 并非概率）",
+    fromYourInputs: "（基于你的输入 — 并非建议）",
+    crossAssetRegimeNote:
+      "跨资产宏观提供市场状态背景 — 并非预测信号。",
+    fundamentalContextNote:
+      "基本面指标仅为信息背景 — 估值本身不能独立决定入场时机。",
+    derivativesContextNote:
+      "库存、期货结构与COT属背景性证据 — 并非自动方向信号。",
+    saveJournalCta: "将本次分析保存到你的交易日志，供日后查看。",
+  },
 };
 
 export default zh;

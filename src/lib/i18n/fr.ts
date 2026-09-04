@@ -780,6 +780,97 @@ const fr: Translations = {
     noJournalEntries: "Aucune entrée de journal pour l'instant.",
     noEntriesMatchFilters: "Aucune entrée ne correspond aux filtres.",
   },
+
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: "Historique",
+    emptyHint: "Lancez une analyse pour voir les résultats ici.",
+  },
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: "Opportunités de Marché",
+    staticBadge: "STATIQUE",
+    rankedCount: "{count} classés",
+    excludedCount: "{count} exclus",
+    lastScan: "dernier scan : {time}",
+    scanMeta: "{scanned} scannés · {live} avec données live · {duration}ms",
+    radarMeta: "{scanned} scannés, {fresh}F/{delayed}D/{stale}S/{unavailable}U",
+    filters: "Filtres",
+    filterAssetClass: "classe d'actif",
+    filterRegion: "région",
+    allOption: "Tous",
+    allRegions: "Toutes les Régions",
+    globalOption: "Global",
+    scanning: "Analyse des instruments…",
+    noOpportunity: "Aucune Opportunité Claire",
+    noOpportunityHint: "Les preuves de marché actuelles ne soutiennent pas un classement fort pour cet horizon.",
+    noSuitableHint: "Aucun instrument adapté trouvé. Connectez des sources de données live pour une analyse en temps réel.",
+    expiredInvalidated: "{expired} expirés · {invalidated} invalidés",
+    changesSinceScan: "changements depuis le dernier scan",
+    scoreLabel: "score",
+    confidenceLabel: "confiance",
+    spreadLabel: "spread",
+    supportingLabel: "favorable",
+    conflictsLabel: "contradictions",
+    missingLabel: "manquants",
+    invalidationLabel: "invalidation",
+    risksLabel: "risques",
+    coverageLabel: "couverture : {value}",
+    updatedLabel: "mis à jour : {time}",
+    analysisLabel: "analyse : {value}",
+    lessLabel: "moins",
+    moreLabel: "plus",
+    whyThisAsset: "pourquoi cet actif ?",
+    showExcluded: "Afficher les exclus ({count})",
+    hideExcluded: "Masquer les exclus ({count})",
+    rankingDisclaimer:
+      "Les recommandations sont des classements analytiques fondés sur les preuves disponibles et ne sont pas des prédictions garanties de profit.",
+    rankingConfidenceNote: "La confiance reflète la cohérence analytique, PAS la probabilité de profit.",
+    liveScanNote: "L'analyse live utilise les données de marché actuelles.",
+    horizon1_4Weeks: "1 à 4 Semaines",
+    horizon1_3Months: "1 à 3 Mois",
+    horizon3_6Months: "3 à 6 Mois",
+    horizon6_12Months: "6 à 12 Mois",
+    horizon1_3Years: "1 à 3 Ans",
+    horizon3PlusYears: "3+ Ans",
+    freshness: {
+      fresh: "RÉCENT",
+      delayed: "DIFFÉRÉ",
+      stale: "OBSOLÈTE",
+      unavailable: "INDISPONIBLE",
+    },
+    suitability: {
+      topOpportunity: "OPPORTUNITÉ PRINCIPALE",
+      watchlist: "SURVEILLANCE",
+      neutral: "NEUTRE",
+      excluded: "EXCLU",
+      insufficientData: "DONNÉES INSUFFISANTES",
+    },
+    completeness: {
+      full: "COMPLET",
+      partial: "PARTIEL",
+      minimal: "MINIMAL",
+      none: "AUCUN",
+    },
+  },
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: "score de confluence",
+    candlesCount: "{count} bougies",
+    noTradeRejected: "sans trade — setup rejeté",
+    informationalNotDirectional: "informatif — pas une preuve directionnelle",
+    evidenceNotProbability: "(force des preuves — pas une probabilité)",
+    fromYourInputs: "(à partir de vos entrées — pas un conseil)",
+    crossAssetRegimeNote:
+      "Le macro cross-asset fournit un contexte de régime — pas des signaux prédictifs.",
+    fundamentalContextNote:
+      "Les mesures fondamentales sont un contexte informatif — la valorisation n'établit pas à elle seule le timing.",
+    derivativesContextNote:
+      "Stocks, structure des futures et COT sont des preuves contextuelles — pas des signaux directionnels automatiques.",
+    saveJournalCta: "Enregistrez cette analyse dans votre journal de trading pour la revoir plus tard.",
+  },
 };
 
 export default fr;

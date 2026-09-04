@@ -774,6 +774,97 @@ const id: Translations = {
     noJournalEntries: "Belum ada entri jurnal.",
     noEntriesMatchFilters: "Tidak ada entri yang cocok dengan filter.",
   },
+
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: "Riwayat",
+    emptyHint: "Jalankan analisis untuk melihat hasilnya di sini.",
+  },
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: "Peluang Pasar",
+    staticBadge: "STATIS",
+    rankedCount: "{count} terperingkat",
+    excludedCount: "{count} dikecualikan",
+    lastScan: "pemindaian terakhir: {time}",
+    scanMeta: "{scanned} dipindai · {live} dengan data live · {duration}ms",
+    radarMeta: "{scanned} dipindai, {fresh}F/{delayed}D/{stale}S/{unavailable}U",
+    filters: "Filter",
+    filterAssetClass: "kelas aset",
+    filterRegion: "wilayah",
+    allOption: "Semua",
+    allRegions: "Semua Wilayah",
+    globalOption: "Global",
+    scanning: "Memindai instrumen…",
+    noOpportunity: "Tidak Ada Peluang yang Jelas",
+    noOpportunityHint: "Bukti pasar saat ini tidak mendukung peringkat kuat untuk horizon ini.",
+    noSuitableHint: "Tidak ditemukan instrumen yang sesuai. Hubungkan sumber data live untuk pemindaian waktu nyata.",
+    expiredInvalidated: "{expired} kedaluwarsa · {invalidated} invalid",
+    changesSinceScan: "perubahan sejak pemindaian terakhir",
+    scoreLabel: "skor",
+    confidenceLabel: "keyakinan",
+    spreadLabel: "spread",
+    supportingLabel: "mendukung",
+    conflictsLabel: "konflik",
+    missingLabel: "hilang",
+    invalidationLabel: "invalidasi",
+    risksLabel: "risiko",
+    coverageLabel: "cakupan: {value}",
+    updatedLabel: "diperbarui: {time}",
+    analysisLabel: "analisis: {value}",
+    lessLabel: "lebih sedikit",
+    moreLabel: "lebih banyak",
+    whyThisAsset: "mengapa aset ini?",
+    showExcluded: "Tampilkan yang dikecualikan ({count})",
+    hideExcluded: "Sembunyikan yang dikecualikan ({count})",
+    rankingDisclaimer:
+      "Rekomendasi adalah peringkat analitis berdasarkan bukti yang tersedia, bukan prediksi keuntungan yang dijamin.",
+    rankingConfidenceNote: "Keyakinan mencerminkan koherensi analitis, BUKAN probabilitas keuntungan.",
+    liveScanNote: "Pemindaian live menggunakan data pasar terkini.",
+    horizon1_4Weeks: "1–4 Minggu",
+    horizon1_3Months: "1–3 Bulan",
+    horizon3_6Months: "3–6 Bulan",
+    horizon6_12Months: "6–12 Bulan",
+    horizon1_3Years: "1–3 Tahun",
+    horizon3PlusYears: "3+ Tahun",
+    freshness: {
+      fresh: "SEGAR",
+      delayed: "TERTUNDA",
+      stale: "USANG",
+      unavailable: "TIDAK TERSEDIA",
+    },
+    suitability: {
+      topOpportunity: "PELUANG TERATAS",
+      watchlist: "PANTAUAN",
+      neutral: "NETRAL",
+      excluded: "DIKECUALIKAN",
+      insufficientData: "DATA TIDAK CUKUP",
+    },
+    completeness: {
+      full: "LENGKAP",
+      partial: "SEBAGIAN",
+      minimal: "MINIMAL",
+      none: "TIDAK ADA",
+    },
+  },
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: "skor konfluensi",
+    candlesCount: "{count} candle",
+    noTradeRejected: "tanpa trading — setup ditolak",
+    informationalNotDirectional: "informasional — bukan bukti arah",
+    evidenceNotProbability: "(kekuatan bukti — bukan probabilitas)",
+    fromYourInputs: "(dari input Anda — bukan saran)",
+    crossAssetRegimeNote:
+      "Makro lintas aset menyediakan konteks rezim — bukan sinyal prediktif.",
+    fundamentalContextNote:
+      "Metrik fundamental adalah konteks informasional — valuasi tidak berdiri sendiri menentukan waktu masuk.",
+    derivativesContextNote:
+      "Persediaan, struktur futures, dan COT adalah bukti kontekstual — bukan sinyal arah otomatis.",
+    saveJournalCta: "Simpan analisis ini ke jurnal trading Anda untuk ditinjau kembali.",
+  },
 };
 
 export default id;

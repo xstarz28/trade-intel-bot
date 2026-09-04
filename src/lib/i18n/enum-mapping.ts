@@ -153,7 +153,9 @@ export function mapTrendLabel(
   trend: string,
   t: Translations,
 ): string {
-  switch (trend) {
+  // Normalized so title-case and lowercase domain values (e.g. "Bullish")
+  // map identically to the canonical uppercase enum values.
+  switch (trend.toUpperCase()) {
     case "BULLISH": return t.analysis.bullish;
     case "BEARISH": return t.analysis.bearish;
     case "NEUTRAL": return t.intelligence.neutral;
@@ -206,6 +208,12 @@ export function mapHorizon(
     case "INTRADAY": return t.investor.horizonIntraday;
     case "SWING": return t.investor.horizonSwing;
     case "INVESTING": return t.investor.horizonInvesting;
+    case "1-4_WEEKS": return t.marketPanel.horizon1_4Weeks;
+    case "1-3_MONTHS": return t.marketPanel.horizon1_3Months;
+    case "3-6_MONTHS": return t.marketPanel.horizon3_6Months;
+    case "6-12_MONTHS": return t.marketPanel.horizon6_12Months;
+    case "1-3_YEARS": return t.marketPanel.horizon1_3Years;
+    case "3+_YEARS": return t.marketPanel.horizon3PlusYears;
     default: return horizon.replace(/_/g, " ");
   }
 }
@@ -395,5 +403,54 @@ export function mapMarketState(
     case "VOLATILE_CONTRACTION": return t.fundamental.contracting;
     case "UNKNOWN": return t.status.unknown;
     default: return marketState.replace(/_/g, " ");
+  }
+}
+
+// ─── Market Data Freshness Mapping (Phase 146) ───────────────
+
+/** Map market-data freshness enum to translated display label. */
+export function mapFreshness(
+  freshness: string,
+  t: Translations,
+): string {
+  switch (freshness) {
+    case "FRESH": return t.marketPanel.freshness.fresh;
+    case "DELAYED": return t.marketPanel.freshness.delayed;
+    case "STALE": return t.marketPanel.freshness.stale;
+    case "UNAVAILABLE": return t.marketPanel.freshness.unavailable;
+    default: return freshness.replace(/_/g, " ");
+  }
+}
+
+// ─── Recommendation Suitability Mapping (Phase 146) ──────────
+
+/** Map recommendation suitability enum to translated display label. */
+export function mapSuitability(
+  suitability: string,
+  t: Translations,
+): string {
+  switch (suitability) {
+    case "TOP_OPPORTUNITY": return t.marketPanel.suitability.topOpportunity;
+    case "WATCHLIST": return t.marketPanel.suitability.watchlist;
+    case "NEUTRAL": return t.marketPanel.suitability.neutral;
+    case "EXCLUDED": return t.marketPanel.suitability.excluded;
+    case "INSUFFICIENT_DATA": return t.marketPanel.suitability.insufficientData;
+    default: return suitability.replace(/_/g, " ");
+  }
+}
+
+// ─── Data Completeness Mapping (Phase 146) ───────────────────
+
+/** Map data-completeness enum to translated display label. */
+export function mapCompleteness(
+  completeness: string,
+  t: Translations,
+): string {
+  switch (completeness) {
+    case "FULL": return t.marketPanel.completeness.full;
+    case "PARTIAL": return t.marketPanel.completeness.partial;
+    case "MINIMAL": return t.marketPanel.completeness.minimal;
+    case "NONE": return t.marketPanel.completeness.none;
+    default: return completeness.replace(/_/g, " ");
   }
 }

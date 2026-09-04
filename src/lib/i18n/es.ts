@@ -781,6 +781,97 @@ const es: Translations = {
     noJournalEntries: "Aún no hay entradas en el diario.",
     noEntriesMatchFilters: "Ninguna entrada coincide con los filtros.",
   },
+
+  // ─── Analysis History Panel (Phase 146) ─────────────────────
+  analysisHistory: {
+    title: "Historial",
+    emptyHint: "Ejecuta un análisis para ver los resultados aquí.",
+  },
+
+  // ─── Market Opportunities Panel (Phase 146) ─────────────────
+  marketPanel: {
+    title: "Oportunidades de Mercado",
+    staticBadge: "ESTÁTICO",
+    rankedCount: "{count} clasificados",
+    excludedCount: "{count} excluidos",
+    lastScan: "último escaneo: {time}",
+    scanMeta: "{scanned} escaneados · {live} con datos en vivo · {duration}ms",
+    radarMeta: "{scanned} escaneados, {fresh}F/{delayed}D/{stale}S/{unavailable}U",
+    filters: "Filtros",
+    filterAssetClass: "clase de activo",
+    filterRegion: "región",
+    allOption: "Todos",
+    allRegions: "Todas las Regiones",
+    globalOption: "Global",
+    scanning: "Escaneando instrumentos…",
+    noOpportunity: "Sin Oportunidad Clara",
+    noOpportunityHint: "La evidencia de mercado actual no respalda una clasificación sólida para este horizonte.",
+    noSuitableHint: "No se encontraron instrumentos adecuados. Conecta fuentes de datos en vivo para el escaneo en tiempo real.",
+    expiredInvalidated: "{expired} caducados · {invalidated} invalidados",
+    changesSinceScan: "cambios desde el último escaneo",
+    scoreLabel: "puntuación",
+    confidenceLabel: "confianza",
+    spreadLabel: "spread",
+    supportingLabel: "soporta",
+    conflictsLabel: "conflictos",
+    missingLabel: "faltantes",
+    invalidationLabel: "invalidación",
+    risksLabel: "riesgos",
+    coverageLabel: "cobertura: {value}",
+    updatedLabel: "actualizado: {time}",
+    analysisLabel: "análisis: {value}",
+    lessLabel: "menos",
+    moreLabel: "más",
+    whyThisAsset: "¿por qué este activo?",
+    showExcluded: "Mostrar excluidos ({count})",
+    hideExcluded: "Ocultar excluidos ({count})",
+    rankingDisclaimer:
+      "Las recomendaciones son clasificaciones analíticas basadas en la evidencia disponible y no son predicciones garantizadas de ganancias.",
+    rankingConfidenceNote: "La confianza refleja coherencia analítica, NO probabilidad de ganancia.",
+    liveScanNote: "El escaneo en vivo usa datos de mercado actuales.",
+    horizon1_4Weeks: "1–4 Semanas",
+    horizon1_3Months: "1–3 Meses",
+    horizon3_6Months: "3–6 Meses",
+    horizon6_12Months: "6–12 Meses",
+    horizon1_3Years: "1–3 Años",
+    horizon3PlusYears: "3+ Años",
+    freshness: {
+      fresh: "FRESCO",
+      delayed: "RETRASADO",
+      stale: "DESACTUALIZADO",
+      unavailable: "NO DISPONIBLE",
+    },
+    suitability: {
+      topOpportunity: "OPORTUNIDAD PRINCIPAL",
+      watchlist: "LISTA DE SEGUIMIENTO",
+      neutral: "NEUTRAL",
+      excluded: "EXCLUIDO",
+      insufficientData: "DATOS INSUFICIENTES",
+    },
+    completeness: {
+      full: "COMPLETO",
+      partial: "PARCIAL",
+      minimal: "MÍNIMO",
+      none: "NINGUNO",
+    },
+  },
+
+  // ─── Analysis Result Panel — Top-Level Chrome (Phase 146) ───
+  analysisResult: {
+    confluenceScore: "puntuación de confluencia",
+    candlesCount: "{count} velas",
+    noTradeRejected: "sin operación — setup rechazado",
+    informationalNotDirectional: "informativo — no es evidencia direccional",
+    evidenceNotProbability: "(fortaleza de la evidencia — no una probabilidad)",
+    fromYourInputs: "(de tus entradas — no es asesoramiento)",
+    crossAssetRegimeNote:
+      "El macro entre activos aporta contexto de régimen — no señales predictivas.",
+    fundamentalContextNote:
+      "Las métricas fundamentales son contexto informativo — la valoración no establece el momento por sí sola.",
+    derivativesContextNote:
+      "Inventario, estructura de futuros y COT son evidencia contextual — no señales direccionales automáticas.",
+    saveJournalCta: "Guarda este análisis en tu diario de trading para revisarlo después.",
+  },
 };
 
 export default es;

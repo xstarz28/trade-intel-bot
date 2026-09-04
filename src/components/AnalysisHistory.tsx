@@ -3,6 +3,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnalysisResult } from "@/types/analysis";
 import { cn, getTimeAgo } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
+import { mapTrendLabel } from "@/lib/i18n/enum-mapping";
 import { History, TrendingUp, TrendingDown, Minus, Clock } from "lucide-react";
 
 interface AnalysisHistoryProps {
@@ -26,6 +28,8 @@ const BIAS_COLORS = {
 
 
 export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHistoryProps) {
+  const { t, tx } = useI18n();
+
   if (analyses.length === 0) {
     return (
       <Card className="border-border/50">
@@ -33,9 +37,9 @@ export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHist
           <div className="flex size-10 items-center justify-center rounded-full bg-muted/30 mb-3">
             <History className="size-5 text-muted-foreground/50" />
           </div>
-          <p className="text-xs font-mono font-medium text-muted-foreground">no history yet</p>
+          <p className="text-xs font-mono font-medium text-muted-foreground">{tx("emptyStates.noHistory")}</p>
           <p className="text-[11px] text-muted-foreground/50 mt-1 font-mono">
-            run an analysis to see results here
+            {tx("analysisHistory.emptyHint")}
           </p>
         </CardContent>
       </Card>
@@ -47,7 +51,10 @@ export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHist
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
           <History className="size-3.5 text-muted-foreground" />
-          <CardTitle className="text-[11px] font-mono font-semibold text-muted-foreground">$ history</CardTitle>
+          <CardTitle className="text-[11px] font-mono font-semibold text-muted-foreground">
+            {"$ "}
+            {tx("analysisHistory.title")}
+          </CardTitle>
           <Badge variant="outline" className="text-[10px] font-mono ml-auto border-border/50">
             {analyses.length}
           </Badge>
@@ -78,7 +85,7 @@ export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHist
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className={cn("text-[11px] font-mono font-medium", BIAS_COLORS[a.bias])}>
-                        {a.bias.toLowerCase()}
+                        {mapTrendLabel(a.bias, t)}
                       </span>
                       <span className="text-[10px] text-muted-foreground font-mono">
                         {a.confidence}%
