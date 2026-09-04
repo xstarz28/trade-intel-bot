@@ -10,6 +10,7 @@
 
 import React, { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
+import { mapIntelligenceStatus } from "@/lib/i18n/enum-mapping";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import {
@@ -124,7 +125,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
               className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${HEALTH_STATUS_BG[snapshot.overallStatus]}`}
             >
               <span className={HEALTH_STATUS_COLOR[snapshot.overallStatus]}>
-                {snapshot.overallStatus}
+                {mapIntelligenceStatus(snapshot.overallStatus, t)}
               </span>
             </span>
           )}
@@ -239,7 +240,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
               className="flex items-center gap-2 text-[9px] font-mono py-1"
             >
               <span className={HEALTH_STATUS_COLOR[snap.overallStatus as RuntimeHealthStatus]}>
-                {snap.overallStatus}
+                {mapIntelligenceStatus(snap.overallStatus, t)}
               </span>
               <span className="text-muted-foreground/60">{formatTimestamp(snap.timestamp, t)}</span>
               {(snap.unavailableComponents as string[]).length > 0 && (
@@ -264,12 +265,13 @@ function PipelineStatusCard({
   label: string;
   status: RuntimeHealthStatus;
 }) {
+  const { t } = useI18n();
   return (
     <div
       className={`flex flex-col items-center gap-1 p-2 rounded-lg border border-border/30 ${HEALTH_STATUS_BG[status]}`}
     >
       <span className={`text-[10px] font-mono font-semibold ${HEALTH_STATUS_COLOR[status]}`}>
-        {status}
+        {mapIntelligenceStatus(status, t)}
       </span>
       <span className="text-[9px] font-mono text-muted-foreground">{label}</span>
     </div>

@@ -36,24 +36,37 @@ import {
   normalizeBrowserLocale,
 } from "./locales";
 import {
+  mapAlignmentType,
+  mapAssessment,
   mapAvailability,
+  mapCompleteness,
   mapComponentName,
   mapConfidence,
+  mapConflictType,
   mapCoverage,
   mapDecisionState,
   mapDirection,
+  mapFreshness,
   mapHorizon,
   mapIntelligenceStatus,
+  mapInvalidationStatus,
   mapMarketState,
   mapMonitorState,
+  mapPortfolioRisk,
   mapPositionImpact,
+  mapPriority,
+  mapPullbackClassification,
   mapRegimeValue,
   mapRelevance,
   mapRiskLevel,
   mapSensitivity,
   mapSeverity,
+  mapSide,
   mapStance,
+  mapStrength,
+  mapSuitability,
   mapThesisHealth,
+  mapTimelineEventType,
   mapTrendLabel,
 } from "./enum-mapping";
 import { formatNumber, formatPercentFromDecimal, formatCurrency } from "./format";
@@ -108,8 +121,8 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 768 leaves", () => {
-    expect(enCount).toBe(768);
+  it("EN is the canonical structural reference with 832 leaves", () => {
+    expect(enCount).toBe(832);
   });
 
   for (const code of NINE) {
@@ -155,6 +168,10 @@ describe("placeholder parity across all 9 locales", () => {
       "{unavailable}",
       "{expired}",
       "{invalidated}",
+      "{instrument}",
+      "{side}",
+      "{horizon}",
+      "{list}",
     ];
     for (const [, set] of enPlaceholders) {
       for (const p of set) {
@@ -179,6 +196,15 @@ describe("placeholder parity across all 9 locales", () => {
     const keys = [
       "protection.positionsCount",
       "protection.eventsCount",
+      "protection.registeredToast",
+      "protection.registeredToastDesc",
+      "protection.removedToast",
+      "protection.dataLive",
+      "protection.peakProfitGivenBack",
+      "portfolio.alignments",
+      "portfolio.conflicts",
+      "portfolio.watchNext",
+      "intelligence.feedNoRelevantNews",
       "notifications.unread",
       "notifications.ago",
       "notifications.minutes",
@@ -236,24 +262,37 @@ describe("locale normalization and fallback", () => {
 
 describe("enum-mapping coverage over all 9 locales", () => {
   const mappings: Array<[string, (v: string, t: Translations) => string, string[]]> = [
-    ["mapAvailability", mapAvailability, ["AVAILABLE", "LIMITED", "INSUFFICIENT", "STALE", "UNAVAILABLE"]],
+    ["mapAlignmentType", mapAlignmentType, ["REGIME_MATCH", "HTF_ALIGNMENT", "CONCENTRATION", "DIRECTIONAL_CONCENTRATION"]],
+    ["mapAssessment", mapAssessment, ["COUNT_SUPPORTING", "COUNT_CONFLICTING", "MIXED_EVIDENCE", "INSUFFICIENT_DATA", "SUPPORTING", "CONFLICTING", "NEUTRAL", "UNAVAILABLE"]],
+    ["mapAvailability", mapAvailability, ["AVAILABLE", "LIMITED", "INSUFFICIENT", "STALE", "UNAVAILABLE", "LIVE", "SIMULATED"]],
+    ["mapCompleteness", mapCompleteness, ["FULL", "PARTIAL", "MINIMAL", "NONE"]],
     ["mapComponentName", mapComponentName, ["MARKET_DATA", "OHLCV", "NEWS", "MACRO", "CROSS_ASSET", "INTELLIGENCE", "PORTFOLIO", "ALERT_RULES", "NOTIFICATIONS", "HISTORICAL"]],
     ["mapConfidence", mapConfidence, ["STRONG_EVIDENCE", "MODERATE_EVIDENCE", "WEAK_EVIDENCE", "INSUFFICIENT_EVIDENCE", "HIGH", "MEDIUM", "LOW", "UNAVAILABLE"]],
+    ["mapConflictType", mapConflictType, ["DIRECT_DIRECTIONAL", "EVIDENCE_CONFLICT", "REGIME"]],
     ["mapCoverage", mapCoverage, ["FULL", "PARTIAL", "EMPTY"]],
     ["mapDecisionState", mapDecisionState, ["ALIGNED", "CONFLICT", "CAUTION", "INSUFFICIENT_DATA", "UNAVAILABLE"]],
     ["mapDirection", mapDirection, ["SUPPORTING", "CONFLICTING", "NEUTRAL"]],
+    ["mapFreshness", mapFreshness, ["FRESH", "RECENT", "DELAYED", "STALE", "UNAVAILABLE"]],
     ["mapHorizon", mapHorizon, ["SCALPING", "INTRADAY", "SWING", "INVESTING"]],
     ["mapIntelligenceStatus", mapIntelligenceStatus, ["HEALTHY", "DEGRADED", "UNAVAILABLE", "UNKNOWN"]],
+    ["mapInvalidationStatus", mapInvalidationStatus, ["NOT_APPROACHING", "APPROACHING", "TRIGGERED", "UNAVAILABLE"]],
     ["mapMarketState", mapMarketState, ["TRENDING_UP", "TRENDING_DOWN", "VOLATILE", "RANGING", "INSUFFICIENT_DATA", "UNKNOWN"]],
     ["mapMonitorState", mapMonitorState, ["IDLE", "STABLE", "WATCH", "ELEVATED", "SEVERE"]],
+    ["mapPortfolioRisk", mapPortfolioRisk, ["LOW_CONCERN", "MIXED", "ELEVATED_CONCERN", "INSUFFICIENT_DATA"]],
     ["mapPositionImpact", mapPositionImpact, ["SUPPORTING", "CONFLICTING", "NEUTRAL", "INSUFFICIENT"]],
+    ["mapPriority", mapPriority, ["CRITICAL", "HIGH", "MEDIUM", "LOW"]],
+    ["mapPullbackClassification", mapPullbackClassification, ["NORMAL_PULLBACK", "EARLY_CORRECTION", "MEANINGFUL_DETERIORATION", "STRUCTURAL_REVERSAL", "SHOCK_REVERSAL", "INSUFFICIENT_DATA"]],
     ["mapRegimeValue", mapRegimeValue, ["EASING", "NEUTRAL", "TIGHTENING", "RESTRICTIVE", "TRANSITIONING", "RISING", "FALLING", "STABLE", "STRENGTHENING", "WEAKENING", "VOLATILE", "EXPANDING", "SLOWING", "CONTRACTING", "RECOVERING", "BALANCED", "SUPPLY_DISRUPTION", "DEMAND_DRIVEN", "OIL_SHOCK", "ESCALATING", "DEESCALATING", "STRESSED", "RISK_ON", "RISK_OFF", "MIXED", "STAGFLATION", "REFLATION", "DISINFLATION", "CONTRACTION", "RECOVERY"]],
     ["mapRelevance", mapRelevance, ["DIRECT", "HIGH", "MODERATE", "LOW", "IRRELEVANT", "UNKNOWN"]],
     ["mapRiskLevel", mapRiskLevel, ["LOW", "MODERATE", "ELEVATED"]],
     ["mapSensitivity", mapSensitivity, ["HIGH", "MODERATE", "LOW", "UNKNOWN"]],
     ["mapSeverity", mapSeverity, ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"]],
+    ["mapSide", mapSide, ["LONG", "SHORT"]],
     ["mapStance", mapStance, ["SUPPORTING", "CONFLICTING", "MIXED", "NEUTRAL", "INSUFFICIENT"]],
+    ["mapStrength", mapStrength, ["STRONG", "MODERATE", "WEAK"]],
+    ["mapSuitability", mapSuitability, ["TOP_OPPORTUNITY", "WATCHLIST", "NEUTRAL", "EXCLUDED", "INSUFFICIENT_DATA"]],
     ["mapThesisHealth", mapThesisHealth, ["HEALTHY", "STABLE", "CAUTION", "DETERIORATING", "SEVERELY_DETERIORATING", "INVALIDATED", "INSUFFICIENT_DATA", "UNKNOWN"]],
+    ["mapTimelineEventType", mapTimelineEventType, ["INITIAL_ANALYSIS", "THESIS_CHANGE", "REGIME_CHANGE", "TIMEFRAME_CHANGE", "STRUCTURE_CHANGE", "MOMENTUM_CHANGE", "VOLATILITY_CHANGE", "EVIDENCE_CHANGE", "NEWS_CHANGE", "MACRO_CHANGE", "DATA_QUALITY_CHANGE"]],
     ["mapTrendLabel", mapTrendLabel, ["BULLISH", "BEARISH", "NEUTRAL", "MIXED", "UNKNOWN"]],
   ];
 
@@ -367,6 +406,72 @@ describe("financial formatting smoke across the new locales", () => {
   });
 });
 
+// ─── Phase 147 decision-surface wiring ─────────────────────────
+
+describe("Phase 147 — decision-surface enum wiring", () => {
+  it("position side stays a universal terminal term but zh localizes it", () => {
+    for (const code of NINE) {
+      expect(mapSide("LONG", RESOURCES[code]).length).toBeGreaterThan(0);
+      expect(mapSide("SHORT", RESOURCES[code]).length).toBeGreaterThan(0);
+    }
+    // zh localizes LONG/SHORT; other locales keep the universal terms.
+    expect(mapSide("LONG", RESOURCES.zh)).toBe("做多");
+    expect(mapSide("SHORT", RESOURCES.zh)).toBe("做空");
+    expect(mapSide("LONG", RESOURCES.en)).toBe("LONG");
+  });
+
+  it("pullback classification covers the full engine domain in every locale", () => {
+    const domain = [
+      "NORMAL_PULLBACK", "EARLY_CORRECTION", "MEANINGFUL_DETERIORATION",
+      "STRUCTURAL_REVERSAL", "SHOCK_REVERSAL", "INSUFFICIENT_DATA",
+    ];
+    for (const value of domain) {
+      for (const code of NINE) {
+        const label = mapPullbackClassification(value, RESOURCES[code]);
+        expect(label.length, `${value} @ ${code}`).toBeGreaterThan(0);
+        expect(label).not.toMatch(/_/);
+      }
+    }
+  });
+
+  it("portfolio aggregation state enums resolve through mappings in every locale", () => {
+    // dominantPortfolioState (ThesisState), evidence quality, risk context,
+    // alignment/conflict types and priority all resolve through mappings.
+    // (EN telegraphic tokens that intentionally keep underscores — e.g.
+    // SEVERELY_DETERIORATING — are display-normalized at call sites.)
+    for (const code of NINE) {
+      expect(mapThesisHealth("SEVERELY_DETERIORATING", RESOURCES[code]).replace(/_/g, " ")).not.toMatch(/_/);
+      expect(mapConfidence("STRONG_EVIDENCE", RESOURCES[code]).length).toBeGreaterThan(0);
+      expect(mapPortfolioRisk("ELEVATED_CONCERN", RESOURCES[code])).not.toMatch(/_/);
+      expect(mapAlignmentType("DIRECTIONAL_CONCENTRATION", RESOURCES[code])).not.toMatch(/_/);
+      expect(mapConflictType("DIRECT_DIRECTIONAL", RESOURCES[code])).not.toMatch(/_/);
+      expect(mapPriority("CRITICAL", RESOURCES[code]).replace(/_/g, " ")).not.toMatch(/_/);
+    }
+  });
+
+  it("timeline event types map to labels in every locale with no underscore", () => {
+    for (const code of NINE) {
+      for (const value of [
+        "INITIAL_ANALYSIS", "THESIS_CHANGE", "REGIME_CHANGE",
+        "TIMEFRAME_CHANGE", "STRUCTURE_CHANGE", "MOMENTUM_CHANGE",
+        "VOLATILITY_CHANGE", "EVIDENCE_CHANGE", "NEWS_CHANGE",
+        "MACRO_CHANGE", "DATA_QUALITY_CHANGE",
+      ]) {
+        expect(mapTimelineEventType(value, RESOURCES[code])).not.toMatch(/_/);
+      }
+    }
+  });
+
+  it("market-data source modes and news freshness map without raw leakage", () => {
+    for (const code of NINE) {
+      expect(mapAvailability("SIMULATED", RESOURCES[code])).not.toMatch(/_/);
+      expect(mapFreshness("RECENT", RESOURCES[code])).not.toMatch(/_/);
+    }
+    // SIMULATED is translated everywhere except where intentionally identical.
+    expect(mapAvailability("SIMULATED", RESOURCES.zh)).toBe("模拟");
+  });
+});
+
 // ─── ZH explicit verification ──────────────────────────────────
 
 describe("ZH (Simplified Chinese) — explicit verification", () => {
@@ -379,9 +484,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 768 canonical keys with non-empty values", () => {
+  it("zh has all 832 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(768);
+    expect(zhLeaves.length).toBe(832);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

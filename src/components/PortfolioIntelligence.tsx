@@ -2,6 +2,7 @@
  * Phase 92 — Portfolio Intelligence Dashboard Component
  *
  * Displays portfolio-level intelligence aggregating all registered positions.
+ * Phase 147 — fully localized through the centralized i18n layer.
  */
 
 import React, { useMemo } from "react";
@@ -17,6 +18,18 @@ import {
   TrendingDown,
   Minus,
 } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
+import {
+  mapThesisHealth,
+  mapConfidence,
+  mapPortfolioRisk,
+  mapAlignmentType,
+  mapConflictType,
+  mapSide,
+  mapPriority,
+  mapAvailability,
+  mapDimension,
+} from "@/lib/i18n/enum-mapping";
 import { generatePortfolioIntelligence, type PortfolioIntelligence } from "@/lib/position-protection/portfolio-intelligence";
 import type { PositionIntelligence } from "@/lib/position-protection/market-intelligence-analyzer";
 
@@ -58,6 +71,7 @@ interface PortfolioIntelligenceProps {
 }
 
 export function PortfolioIntelligenceView({ positions }: PortfolioIntelligenceProps) {
+  const { t, txi } = useI18n();
   const intel: PortfolioIntelligence | null = useMemo(
     () => positions.length > 0 ? generatePortfolioIntelligence(positions) : null,
     [positions],
@@ -70,7 +84,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
           <Shield className="size-5 text-muted-foreground/40" />
         </div>
         <p className="text-xs font-mono text-muted-foreground max-w-xs">
-          Register positions to see portfolio-level intelligence.
+          {t.portfolio.empty}
         </p>
       </div>
     );
@@ -83,41 +97,41 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
       {/* ─── PORTFOLIO SUMMARY ─── */}
       <div className="border border-border/30 rounded-lg p-3">
         <h4 className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-          PORTFOLIO SUMMARY
+          {t.portfolio.summary}
         </h4>
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 text-[10px] font-mono">
           <div className="text-center">
             <div className="text-lg font-bold text-foreground">{intel.summary.totalPositions}</div>
-            <div className="text-muted-foreground">positions</div>
+            <div className="text-muted-foreground">{t.portfolio.positions}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-bold text-emerald-400">{intel.summary.healthyPositions}</div>
-            <div className="text-muted-foreground">healthy</div>
+            <div className="text-muted-foreground">{t.portfolio.healthy}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-bold text-amber-400">{intel.summary.cautionPositions}</div>
-            <div className="text-muted-foreground">caution</div>
+            <div className="text-muted-foreground">{t.portfolio.caution}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-bold text-orange-400">{intel.summary.deterioratingPositions}</div>
-            <div className="text-muted-foreground">deteriorating</div>
+            <div className="text-muted-foreground">{t.portfolio.deteriorating}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-bold text-red-400">{intel.summary.invalidatedPositions}</div>
-            <div className="text-muted-foreground">invalidated</div>
+            <div className="text-muted-foreground">{t.portfolio.invalidated}</div>
           </div>
           <div className="text-center">
             <div className="text-lg font-bold text-muted-foreground">{intel.summary.unavailablePositions}</div>
-            <div className="text-muted-foreground">no data</div>
+            <div className="text-muted-foreground">{t.portfolio.noData}</div>
           </div>
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <span className="text-[9px] font-mono text-muted-foreground">DOMINANT:</span>
+          <span className="text-[9px] font-mono text-muted-foreground">{t.portfolio.dominant}:</span>
           <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${STATE_COLORS[intel.summary.dominantPortfolioState] ?? ""}`}>
-            {intel.summary.dominantPortfolioState.replace(/_/g, " ")}
+            {mapThesisHealth(intel.summary.dominantPortfolioState, t)}
           </span>
           <span className="text-[9px] font-mono text-muted-foreground">
-            Evidence: {intel.summary.portfolioEvidenceQuality.replace(/_/g, " ")}
+            {t.portfolio.evidence}: {mapConfidence(intel.summary.portfolioEvidenceQuality, t)}
           </span>
         </div>
       </div>
@@ -125,15 +139,15 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
       {/* ─── MARKET CONTEXT ─── */}
       <div className="border border-border/30 rounded-lg p-3">
         <h4 className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
-          MARKET CONTEXT
+          {t.portfolio.marketContext}
         </h4>
         <p className="text-[10px] font-mono text-foreground/80 leading-relaxed">
           {intel.marketContext}
         </p>
         <div className="mt-1.5 flex items-center gap-2">
-          <span className="text-[9px] font-mono text-muted-foreground">RISK:</span>
+          <span className="text-[9px] font-mono text-muted-foreground">{t.portfolio.risk}:</span>
           <span className={`text-[9px] font-mono font-semibold ${RISK_COLORS[intel.riskContext] ?? ""}`}>
-            {intel.riskContext.replace(/_/g, " ")}
+            {mapPortfolioRisk(intel.riskContext, t)}
           </span>
         </div>
       </div>
@@ -143,7 +157,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
         <div className="border border-border/30 rounded-lg p-3">
           <h4 className="text-[10px] font-mono font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
             <Link className="size-3" />
-            ALIGNMENTS ({intel.alignments.length})
+            {txi("portfolio.alignments", { count: intel.alignments.length })}
           </h4>
           <div className="space-y-1.5">
             {intel.alignments.map((a, i) => (
@@ -153,7 +167,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
                   a.strength === "MODERATE" ? "text-blue-400 bg-blue-500/10" :
                   "text-muted-foreground bg-muted/30"
                 }`}>
-                  {a.alignmentType.replace(/_/g, " ")}
+                  {mapAlignmentType(a.alignmentType, t)}
                 </span>
                 <span className="text-foreground/80">{a.description}</span>
               </div>
@@ -167,7 +181,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
         <div className="border border-border/30 rounded-lg p-3">
           <h4 className="text-[10px] font-mono font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
             <Unlink className="size-3" />
-            CONFLICTS ({intel.conflicts.length})
+            {txi("portfolio.conflicts", { count: intel.conflicts.length })}
           </h4>
           <div className="space-y-1.5">
             {intel.conflicts.map((c, i) => (
@@ -177,7 +191,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
                   c.strength === "MODERATE" ? "text-amber-400 bg-amber-500/10" :
                   "text-muted-foreground bg-muted/30"
                 }`}>
-                  {c.conflictType.replace(/_/g, " ")}
+                  {mapConflictType(c.conflictType, t)}
                 </span>
                 <span className="text-foreground/80">{c.description}</span>
               </div>
@@ -189,7 +203,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
       {/* ─── EXPOSURE ─── */}
       <div className="border border-border/30 rounded-lg p-3">
         <h4 className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-          EXPOSURE
+          {t.portfolio.exposure}
         </h4>
         <div className="space-y-1">
           {intel.exposure.map((e, i) => (
@@ -198,10 +212,10 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
               <span className={`shrink-0 px-1.5 py-0.5 rounded ${
                 e.side === "LONG" ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"
               }`}>
-                {e.side}
+                {mapSide(e.side, t)}
               </span>
               <span className={`px-1.5 py-0.5 rounded ${STATE_COLORS[e.thesisState] ?? ""}`}>
-                {e.thesisState.replace(/_/g, " ")}
+                {mapThesisHealth(e.thesisState, t)}
               </span>
               <span className="text-muted-foreground truncate flex-1">{e.portfolioImpact}</span>
             </div>
@@ -214,7 +228,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
         <div className="border border-border/30 rounded-lg p-3">
           <h4 className="text-[10px] font-mono font-semibold text-muted-foreground mb-2 flex items-center gap-1.5">
             <Eye className="size-3" />
-            WATCH NEXT ({intel.watchItems.length})
+            {txi("portfolio.watchNext", { count: intel.watchItems.length })}
           </h4>
           <div className="space-y-1.5">
             {intel.watchItems.map((w, i) => (
@@ -225,7 +239,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
                   {i + 1}.
                 </span>
                 <span className={`shrink-0 px-1.5 py-0.5 rounded ${PRIORITY_COLORS[w.priority] ?? ""}`}>
-                  {w.priority}
+                  {mapPriority(w.priority, t)}
                 </span>
                 <span className="text-foreground/80">
                   <span className="font-semibold">{w.instrument}</span> — {w.reason}
@@ -239,7 +253,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
       {/* ─── DATA STATUS ─── */}
       <div className="border border-border/30 rounded-lg p-3">
         <h4 className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-          DATA STATUS
+          {t.portfolio.dataStatus}
         </h4>
         <div className="flex flex-wrap gap-2 text-[9px] font-mono">
           {Object.entries(intel.dataAvailability).map(([key, value]) => (
@@ -248,7 +262,7 @@ export function PortfolioIntelligenceView({ positions }: PortfolioIntelligencePr
               value === "LIMITED" ? "text-amber-400 bg-amber-500/10" :
               "text-muted-foreground bg-muted/30"
             }`}>
-              {key}: {value}
+              {mapDimension(key, t)}: {mapAvailability(value, t)}
             </span>
           ))}
         </div>

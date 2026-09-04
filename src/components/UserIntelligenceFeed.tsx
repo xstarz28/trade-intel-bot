@@ -7,6 +7,8 @@
  */
 
 import React from "react";
+import { useI18n } from "@/lib/i18n";
+import { mapTrendLabel, mapFreshness, mapAvailability, mapSide, mapPositionImpact } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   Zap,
@@ -37,16 +39,17 @@ interface UserIntelligenceFeedProps {
 // ═══════════════════════════════════════════════════════════════
 
 export function UserIntelligenceFeed({ feed }: UserIntelligenceFeedProps) {
+  const { t, txi } = useI18n();
   if (!feed || feed.availability === "UNAVAILABLE") {
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 mb-2">
           <Newspaper className="size-3.5 text-primary" />
-          <span className="text-xs font-mono font-bold text-foreground">INTELLIGENCE FEED</span>
+          <span className="text-xs font-mono font-bold text-foreground">{t.intelligence.feedHeader}</span>
         </div>
         <div className="border border-border/30 rounded-lg p-4 text-center">
           <p className="text-[10px] font-mono text-muted-foreground/60">
-            {feed?.description ?? "No positions being monitored. Register a position to see relevant intelligence."}
+            {feed?.description ?? `${t.protection.noPositions} ${t.protection.noPositionsHint}`}
           </p>
         </div>
       </div>
@@ -61,7 +64,7 @@ export function UserIntelligenceFeed({ feed }: UserIntelligenceFeedProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Newspaper className="size-3.5 text-primary" />
-          <span className="text-xs font-mono font-bold text-foreground">INTELLIGENCE FEED</span>
+          <span className="text-xs font-mono font-bold text-foreground">{t.intelligence.feedHeader}</span>
           {feed.items.length > 0 && (
             <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">
               {feed.items.length}
@@ -80,7 +83,7 @@ export function UserIntelligenceFeed({ feed }: UserIntelligenceFeedProps) {
       {feed.items.length === 0 ? (
         <div className="border border-border/30 rounded-lg p-4 text-center">
           <p className="text-[10px] font-mono text-muted-foreground/60">
-            NO MATERIAL NEWS for monitored instruments.
+            {t.intelligence.feedNoMaterialNews}
           </p>
         </div>
       ) : (
@@ -94,7 +97,7 @@ export function UserIntelligenceFeed({ feed }: UserIntelligenceFeedProps) {
       {/* Instruments without news */}
       {stats.instrumentsWithoutNews.length > 0 && (
         <div className="text-[8px] font-mono text-muted-foreground/40 px-1">
-          No relevant news: {stats.instrumentsWithoutNews.join(", ")}
+          {txi("intelligence.feedNoRelevantNews", { list: stats.instrumentsWithoutNews.join(", ") })}
         </div>
       )}
     </div>
@@ -106,6 +109,7 @@ export function UserIntelligenceFeed({ feed }: UserIntelligenceFeedProps) {
 // ═══════════════════════════════════════════════════════════════
 
 function FeedItemCard({ item }: { item: FeedItem }) {
+  const { t } = useI18n();
   const isMultiPosition = item.positionImpacts.length > 1;
 
   return (
@@ -144,7 +148,7 @@ function FeedItemCard({ item }: { item: FeedItem }) {
           <>
             <span>·</span>
             <span className={item.sentiment === "BULLISH" ? "text-emerald-400/60" : "text-red-400/60"}>
-              {item.sentiment}
+              {mapTrendLabel(item.sentiment, t)}
             </span>
           </>
         )}
@@ -158,6 +162,7 @@ function FeedItemCard({ item }: { item: FeedItem }) {
 // ═══════════════════════════════════════════════════════════════
 
 function PositionTag({ impact }: { impact: import("@/lib/position-protection/user-intelligence-feed").PositionImpact }) {
+  const { t } = useI18n();
   const sideColor = impact.side === "LONG"
     ? "text-emerald-400 bg-emerald-500/10"
     : "text-red-400 bg-red-500/10";
@@ -171,8 +176,8 @@ function PositionTag({ impact }: { impact: import("@/lib/position-protection/use
   return (
     <span className={`inline-flex items-center gap-1 text-[8px] font-mono px-1.5 py-0.5 rounded ${sideColor}`}>
       <span className="font-semibold">{impact.instrument}</span>
-      <span>{impact.side}</span>
-      <span className={`${impactColor} ml-0.5`}>· {impact.positionImpact}</span>
+      <span>{mapSide(impact.side, t)}</span>
+      <span className={`${impactColor} ml-0.5`}>· {mapPositionImpact(impact.positionImpact, t)}</span>
     </span>
   );
 }
@@ -182,12 +187,13 @@ function PositionTag({ impact }: { impact: import("@/lib/position-protection/use
 // ═══════════════════════════════════════════════════════════════
 
 function CrossPositionAlert({ catalysts }: { catalysts: CrossPositionCatalyst[] }) {
+  const { t } = useI18n();
   return (
     <div className="border border-amber-500/20 bg-amber-500/5 rounded-lg px-3 py-2">
       <div className="flex items-center gap-1.5 mb-1">
         <Zap className="size-2.5 text-amber-400" />
         <span className="text-[9px] font-mono font-semibold text-amber-400">
-          CROSS-POSITION CATALYST{catalysts.length > 1 ? "S" : ""}
+          {t.intelligence.catalystHeader}
         </span>
       </div>
       {catalysts.map((c, i) => (
@@ -204,16 +210,17 @@ function CrossPositionAlert({ catalysts }: { catalysts: CrossPositionCatalyst[] 
 // ═══════════════════════════════════════════════════════════════
 
 function FeedStatsBar({ stats }: { stats: FeedStats }) {
+  const { t } = useI18n();
   return (
     <div className="flex items-center gap-1.5 text-[8px] font-mono">
       {stats.supportingCount > 0 && (
-        <span className="text-emerald-400/60">{stats.supportingCount} supporting</span>
+        <span className="text-emerald-400/60">{stats.supportingCount} {t.intelligence.supporting}</span>
       )}
       {stats.conflictingCount > 0 && (
-        <span className="text-red-400/60">{stats.conflictingCount} conflicting</span>
+        <span className="text-red-400/60">{stats.conflictingCount} {t.intelligence.conflicting}</span>
       )}
       {stats.neutralCount > 0 && (
-        <span className="text-muted-foreground/40">{stats.neutralCount} neutral</span>
+        <span className="text-muted-foreground/40">{stats.neutralCount} {t.intelligence.neutral}</span>
       )}
     </div>
   );
@@ -224,18 +231,20 @@ function FeedStatsBar({ stats }: { stats: FeedStats }) {
 // ═══════════════════════════════════════════════════════════════
 
 function FreshnessBadge({ freshness }: { freshness: string }) {
+  const { t } = useI18n();
   const color =
     freshness === "FRESH" ? "text-emerald-400/60" :
     freshness === "RECENT" ? "text-blue-400/60" :
     freshness === "STALE" ? "text-amber-400/60" :
     "text-muted-foreground/40";
-  return <span className={color}>{freshness}</span>;
+  return <span className={color}>{mapFreshness(freshness, t)}</span>;
 }
 
 function SourceModeBadge({ mode }: { mode: string }) {
+  const { t } = useI18n();
   const color =
     mode === "LIVE" ? "text-emerald-400/60" :
     mode === "STALE" ? "text-amber-400/60" :
     "text-muted-foreground/40";
-  return <span className={color}>{mode}</span>;
+  return <span className={color}>{mapAvailability(mode, t)}</span>;
 }

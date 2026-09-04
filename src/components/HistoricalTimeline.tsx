@@ -8,6 +8,8 @@
  */
 
 import React from "react";
+import { useI18n } from "@/lib/i18n";
+import { mapTimelineEventType, mapStrength } from "@/lib/i18n/enum-mapping";
 import {
   Clock,
   ArrowRight,
@@ -40,11 +42,12 @@ interface HistoricalTimelineProps {
 // ═══════════════════════════════════════════════════════════════
 
 export function HistoricalTimelineView({ timeline }: HistoricalTimelineProps) {
+  const { t, txi } = useI18n();
   if (!timeline || !timeline.latestSnapshot) {
     return (
       <div className="border border-border/30 rounded-lg p-4 text-center">
         <p className="text-[10px] font-mono text-muted-foreground/60">
-          No historical data yet. Intelligence will appear after the first polling cycle.
+          {t.system.noHealthData}. {t.system.healthMetricsHint}.
         </p>
       </div>
     );
@@ -70,9 +73,9 @@ export function HistoricalTimelineView({ timeline }: HistoricalTimelineProps) {
         <div className="border border-border/30 rounded-lg overflow-hidden">
           <div className="flex items-center gap-2 px-3 py-2 bg-muted/20">
             <Clock className="size-3 text-primary" />
-            <span className="text-[10px] font-mono font-semibold text-foreground">TIMELINE</span>
+            <span className="text-[10px] font-mono font-semibold text-foreground">{t.intelligence.historicalTimeline}</span>
             <span className="text-[8px] font-mono text-muted-foreground/60 ml-auto">
-              {events.length} events
+              {txi("protection.eventsCount", { count: events.length })}
             </span>
           </div>
           <div className="px-3 py-2 space-y-1.5 max-h-64 overflow-y-auto">
@@ -197,6 +200,7 @@ function SummaryView({ summary }: { summary: HistoricalSummary }) {
 // ═══════════════════════════════════════════════════════════════
 
 function TimelineEventCard({ event }: { event: HistoricalEvent }) {
+  const { t } = useI18n();
   const time = new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   const icon = getEventIcon(event.eventType);
@@ -208,13 +212,13 @@ function TimelineEventCard({ event }: { event: HistoricalEvent }) {
       <span className={`${color} mt-0.5 shrink-0`}>{icon}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1">
-          <span className={`font-semibold ${color}`}>{event.eventType.replace(/_/g, " ")}</span>
+          <span className={`font-semibold ${color}`}>{mapTimelineEventType(event.eventType, t)}</span>
           <span className={`text-[7px] px-1 py-0.5 rounded ${
             event.strength === "STRONG" ? "bg-amber-500/10 text-amber-400" :
             event.strength === "MODERATE" ? "bg-blue-500/10 text-blue-400" :
             "bg-muted/30 text-muted-foreground"
           }`}>
-            {event.strength}
+            {mapStrength(event.strength, t)}
           </span>
         </div>
         <div className="text-foreground/70 mt-0.5">{event.description}</div>
