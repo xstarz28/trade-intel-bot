@@ -313,6 +313,9 @@ const ja: Translations = {
     confidenceModerate: "中程度のエビデンス",
     confidenceWeak: "弱いエビデンス",
     confidenceInsufficient: "不十分なエビデンス",
+    confidenceHigh: "高い",
+    confidenceMedium: "中程度",
+    confidenceLow: "低い",
     derivatives: "デリバティブ",
     trending: "トレンド中",
     ranging: "レンジ相場",
@@ -869,7 +872,15 @@ const ja: Translations = {
       "ファンダメンタル指標は情報提供の文脈です — バリュエーションだけでタイミングを判断するものではありません。",
     derivativesContextNote:
       "在庫、先物構造、COTは文脈上のエビデンスです — 自動的な方向シグナルではありません。",
+    forexContextNote:
+      "金利差、COTポジション、DXYは文脈上のエビデンスです — 自動的な方向シグナルではありません。",
     saveJournalCta: "この分析をトレードジャーナルに保存して、後で確認できます。",
+    convictionPrefix: "確信度:",
+    dataFull: "完全なデータ",
+    dataPartial: "部分的なデータ",
+    dataLimited: "限定的なデータ",
+    riskNoteDisclaimer:
+      "これは意思決定支援ツールであり、金融アドバイスではありません。行動を起こす前に必ず独自に検証してください。",
   },
 };
 

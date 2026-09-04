@@ -312,6 +312,9 @@ const de: Translations = {
     confidenceModerate: "Mäßige Belege",
     confidenceWeak: "Schwache Belege",
     confidenceInsufficient: "Unzureichende Belege",
+    confidenceHigh: "Hoch",
+    confidenceMedium: "Mittel",
+    confidenceLow: "Niedrig",
     derivatives: "Derivate",
     trending: "Im Trend",
     ranging: "Seitwärts",
@@ -868,7 +871,15 @@ const de: Translations = {
       "Fundamentale Kennzahlen sind informativer Kontext — die Bewertung begründet für sich allein kein Timing.",
     derivativesContextNote:
       "Lagerbestände, Futures-Struktur und COT sind kontextuelle Evidenz — keine automatischen Richtungssignale.",
+    forexContextNote:
+      "Zinsdifferenz, COT-Positionierung und DXY sind kontextuelle Evidenz — keine automatischen Richtungssignale.",
     saveJournalCta: "Speichern Sie diese Analyse zur späteren Überprüfung in Ihrem Trading-Journal.",
+    convictionPrefix: "Conviction:",
+    dataFull: "vollständige Daten",
+    dataPartial: "partielle Daten",
+    dataLimited: "begrenzte Daten",
+    riskNoteDisclaimer:
+      "Dies ist ein Entscheidungsunterstützungstool, keine Finanzberatung. Verifizieren Sie eigenständig, bevor Sie Maßnahmen ergreifen.",
   },
 };
 
