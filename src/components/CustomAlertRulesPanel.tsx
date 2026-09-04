@@ -6,6 +6,7 @@
  */
 import React, { useState, useCallback, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
+import { mapPriority, mapScope } from "@/lib/i18n/enum-mapping";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -145,7 +146,7 @@ function NewRuleForm({
                 }`}
                 onClick={() => setScope(s)}
               >
-                {s}
+                {mapScope(s, t)}
               </button>
             ))}
           </div>
@@ -219,7 +220,7 @@ function NewRuleForm({
                 }`}
                 onClick={() => setSeverity(sev)}
               >
-                {sev}
+                {mapPriority(sev, t)}
               </button>
             ))}
           </div>
@@ -322,7 +323,7 @@ function RuleRow({
               {rule.name}
             </span>
             <span className="text-[9px] font-mono text-muted-foreground px-1 py-0.5 rounded bg-muted/30 shrink-0">
-              {rule.scope}
+              {mapScope(rule.scope, t)}
             </span>
           </div>
         </div>
@@ -333,7 +334,7 @@ function RuleRow({
             SEVERITY_BG[rule.severity as RuleSeverity] ?? "bg-muted/30"
           } ${SEVERITY_COLORS[rule.severity as RuleSeverity] ?? "text-muted-foreground"}`}
         >
-          {rule.severity}
+          {mapPriority(rule.severity, t)}
         </span>
 
         {/* Cooldown */}
@@ -566,7 +567,7 @@ export function CustomAlertRulesPanel() {
                           SEVERITY_BG[alert.severity as RuleSeverity] ?? "bg-muted/30"
                         } ${SEVERITY_COLORS[alert.severity as RuleSeverity] ?? "text-muted-foreground"}`}
                       >
-                        {alert.severity}
+                        {mapPriority(alert.severity, t)}
                       </span>
                       <div className="flex-1 min-w-0">
                         <p className="text-[9px] font-mono text-foreground truncate">

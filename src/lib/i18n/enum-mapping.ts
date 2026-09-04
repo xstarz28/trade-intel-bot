@@ -528,7 +528,24 @@ export function mapPriority(
     case "HIGH": return t.alerts.high;
     case "MEDIUM": return t.alerts.medium;
     case "LOW": return t.alerts.low;
+    case "INFO": return t.alerts.info;
     default: return priority.replace(/_/g, " ");
+  }
+}
+
+// ─── Alert Rule Scope Mapping (Phase 147) ─────────────────────
+
+/** Map alert-rule scope enum to a translated display label. */
+export function mapScope(
+  scope: string,
+  t: Translations,
+): string {
+  switch (scope) {
+    case "POSITION": return t.alerts.positionScope;
+    case "INSTRUMENT": return t.alerts.instrumentScope;
+    case "PORTFOLIO": return t.alerts.portfolioScope;
+    case "GLOBAL": return t.alerts.globalScope;
+    default: return scope.replace(/_/g, " ");
   }
 }
 

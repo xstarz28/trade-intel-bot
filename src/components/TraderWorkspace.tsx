@@ -25,6 +25,7 @@ import {
   mapAssessment,
   mapInvalidationStatus,
   mapPriority,
+  mapFreshness,
 } from "@/lib/i18n/enum-mapping";
 import {
   Shield,
@@ -994,7 +995,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
             <div className="col-span-2">
               <span className="text-muted-foreground/50">{t.fundamental.tips10y}</span> <span className="text-sky-300">{treasuryData.latest.real.real["10Y"].toFixed(2)}%</span>
               <span className="text-[7px] text-muted-foreground/30 ml-1">{t.fundamental.observedLabel}</span>
-              <span className="text-[7px] text-muted-foreground/30 ml-1">{treasuryData.freshness}</span>
+              <span className="text-[7px] text-muted-foreground/30 ml-1">{mapFreshness(treasuryData.freshness, t)}</span>
             </div>
           )}
           <div><span className="text-muted-foreground/50">{t.fundamental.usd}</span> <span className="text-foreground">{mapRegimeValue(regime.currencyRegime, t)}</span></div>

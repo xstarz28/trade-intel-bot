@@ -7,6 +7,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
+import { mapPriority } from "@/lib/i18n/enum-mapping";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { NotificationFilter } from "../lib/position-protection/notification-engine";
@@ -145,7 +146,9 @@ export function NotificationCenter() {
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {opt.label}
+            {opt.value === "ALL" || opt.value === "UNREAD"
+              ? opt.label
+              : mapPriority(opt.value, t)}
             {opt.value === "UNREAD" &&
               unreadCount !== undefined &&
               unreadCount > 0 &&
@@ -185,7 +188,7 @@ export function NotificationCenter() {
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {sev}
+                  {mapPriority(sev, t)}
                 </button>
               ))}
             </div>
@@ -370,7 +373,7 @@ export function NotificationCenter() {
                     SEVERITY_COLOR[notif.severity as keyof typeof SEVERITY_COLOR] ?? "text-muted-foreground"
                   }`}
                 >
-                  {notif.severity}
+                  {mapPriority(notif.severity, t)}
                 </span>
                 <span className="text-[10px] font-mono text-muted-foreground">
                   {notif.title}
