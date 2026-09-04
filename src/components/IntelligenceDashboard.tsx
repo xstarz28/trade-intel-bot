@@ -16,7 +16,7 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension, mapSensitivity, mapMarketState, mapSeverity } from "@/lib/i18n/enum-mapping";
+import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension, mapSensitivity, mapMarketState, mapSeverity, mapPullbackClassification, mapSide } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   TrendingUp,
@@ -498,7 +498,7 @@ function AnalyticalSummarySection({
         {/* Position */}
         <div className="text-[9px] font-mono">
           <span className="text-muted-foreground/60">{t.intelligence.positionLabel}</span>
-          <span className="text-foreground/80">{side} {instrument}</span>
+          <span className="text-foreground/80">{mapSide(side, t)} {instrument}</span>
         </div>
         {/* Thesis */}
         <div className="text-[9px] font-mono">
@@ -569,13 +569,7 @@ function AnalyticalSummarySection({
         {intelligence.pullbackClassification !== "NORMAL_PULLBACK" && intelligence.pullbackClassification !== "INSUFFICIENT_DATA" && (
           <div className="text-[9px] font-mono">
             <span className="text-muted-foreground/60">{t.intelligence.pullbackLabel}: </span>
-            <span className="text-amber-400/80">{
-              intelligence.pullbackClassification === "EARLY_CORRECTION" ? t.intelligence.pullbackEarlyCorrection :
-              intelligence.pullbackClassification === "MEANINGFUL_DETERIORATION" ? t.intelligence.pullbackDeterioration :
-              intelligence.pullbackClassification === "STRUCTURAL_REVERSAL" ? t.intelligence.pullbackStructuralReversal :
-              intelligence.pullbackClassification === "SHOCK_REVERSAL" ? t.intelligence.pullbackShockReversal :
-              String(intelligence.pullbackClassification).replace(/_/g, " ")
-            }</span>
+            <span className="text-amber-400/80">{mapPullbackClassification(intelligence.pullbackClassification, t)}</span>
           </div>
         )}
         {/* Invalidation (all) */}
@@ -623,7 +617,7 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
         {/* Position Metrics */}
         <div className="flex justify-between">
           <span className="text-muted-foreground/60">{t.intelligence.positionMetricsLabel}</span>
-          <span className="text-foreground/70">{side} {instrument}</span>
+          <span className="text-foreground/70">{mapSide(side, t)} {instrument}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground/60">{t.trader.entry}</span>

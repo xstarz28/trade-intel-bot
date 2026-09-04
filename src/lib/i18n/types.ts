@@ -259,6 +259,24 @@ export interface Translations {
     dataStaleWarning: string;
     reconnectingMessage: string;
     monitoringPausedMessage: string;
+    riskSignalsElevated: string;
+    peakProfitGivenBack: string;
+    events: string;
+    dropped: string;
+    shockLabel: string;
+    registeredToast: string;
+    registeredToastDesc: string;
+    removedToast: string;
+    toastThesisHealthy: string;
+    toastHealthyDesc: string;
+    toastThesisInvalidated: string;
+    persistencePersisted: string;
+    persistenceLocalOnly: string;
+    persistenceDegraded: string;
+    dataDegraded: string;
+    dataLive: string;
+    dataConnecting: string;
+    dataNoData: string;
   };
 
   // ─── Intelligence ──────────────────────────────────────────
@@ -431,6 +449,10 @@ export interface Translations {
     scenarioInvalidLabel: string;
     noDataYet: string;
     insufficientEvidence: string;
+    catalystHeader: string;
+    feedHeader: string;
+    feedNoMaterialNews: string;
+    feedNoRelevantNews: string;
   };
 
   // ─── Decision Support ──────────────────────────────────────
@@ -444,6 +466,9 @@ export interface Translations {
     thesisState: string;
     invalidation: string;
     watchItems: string;
+    invalidationStatusNotApproaching: string;
+    invalidationStatusApproaching: string;
+    invalidationStatusTriggered: string;
   };
 
   // ─── Alert Rules ────────────────────────────────────────────
@@ -677,6 +702,7 @@ export interface Translations {
     horizon3PlusYears: string;
     freshness: {
       fresh: string;
+      recent: string;
       delayed: string;
       stale: string;
       unavailable: string;
@@ -748,6 +774,7 @@ export interface Translations {
     dataStale: string;
     disconnected: string;
     monitoringPaused: string;
+    simulated: string;
     limited: string;
     insufficient: string;
   };
@@ -801,6 +828,8 @@ export interface Translations {
     slowing: string;
     contracting: string;
     recovering: string;
+    accelerating: string;
+    supplyDriven: string;
     supplyDisruption: string;
     demandDriven: string;
     balanced: string;
@@ -915,5 +944,48 @@ export interface Translations {
     allStatus: string;
     noJournalEntries: string;
     noEntriesMatchFilters: string;
+  };
+
+  // ─── Portfolio Intelligence ─────────────────────────────────
+  portfolio: {
+    empty: string;
+    summary: string;
+    positions: string;
+    healthy: string;
+    caution: string;
+    deteriorating: string;
+    invalidated: string;
+    noData: string;
+    dominant: string;
+    evidence: string;
+    marketContext: string;
+    risk: string;
+    alignments: string;
+    conflicts: string;
+    exposure: string;
+    watchNext: string;
+    dataStatus: string;
+    alignmentRegimeMatch: string;
+    alignmentHtfAlignment: string;
+    alignmentConcentration: string;
+    alignmentDirectionalConcentration: string;
+    conflictDirectDirectional: string;
+    conflictEvidenceConflict: string;
+    conflictRegime: string;
+  };
+
+  // ─── Historical Timeline ────────────────────────────────────
+  timeline: {
+    initialAnalysis: string;
+    thesisChange: string;
+    regimeChange: string;
+    timeframeChange: string;
+    structureChange: string;
+    momentumChange: string;
+    volatilityChange: string;
+    evidenceChange: string;
+    newsChange: string;
+    macroChange: string;
+    dataQualityChange: string;
   };
 }

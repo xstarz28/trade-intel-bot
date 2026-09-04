@@ -31,6 +31,14 @@ import {
   mapHorizon,
   mapMarketState,
   mapDecisionState,
+  mapSide,
+  mapPullbackClassification,
+  mapStrength,
+  mapTimelineEventType,
+  mapAlignmentType,
+  mapConflictType,
+  mapPortfolioRisk,
+  mapPriority,
 } from "./enum-mapping";
 
 const LOCALES: Record<string, Translations> = { en, id, es, pt };
@@ -214,7 +222,7 @@ describe("Phase 138 — existing mappings remain intact", () => {
 
   // ─── Investor decision-state labels (Phase 141) ──────────────────────
   it("maps every decision state in every locale", () => {
-    expectDomainMapped(mapDecisionState, [
+    expectDomainMapped(mapDecisionState,    [
       "ALIGNED",
       "CONFLICT",
       "CAUTION",
@@ -238,5 +246,64 @@ describe("Phase 138 — existing mappings remain intact", () => {
       expect(label.length).toBeGreaterThan(0);
       expect(label).not.toContain("{");
     }
+  });
+});
+
+// ─── Phase 147 — decision-surface wiring ────────────────────────
+describe("Phase 147 — decision-surface wiring mappings", () => {
+  it("mapSide covers LONG/SHORT in every locale with a safe fallback", () => {
+    expectDomainMapped(mapSide, ["LONG", "SHORT"]);
+    expect(mapSide("LONG", en)).toBe(en.analysis.long);
+    expect(mapSide("SHORT", en)).toBe(en.analysis.short);
+    const unknown = mapSide("SOME_FUTURE_SIDE", en);
+    expect(typeof unknown).toBe("string");
+    expect(unknown.length).toBeGreaterThan(0);
+    expect(unknown).not.toMatch(/_/);
+  });
+
+  it("mapPullbackClassification covers the full engine domain", () => {
+    expectDomainMapped(mapPullbackClassification, [
+      "NORMAL_PULLBACK", "EARLY_CORRECTION", "MEANINGFUL_DETERIORATION",
+      "STRUCTURAL_REVERSAL", "SHOCK_REVERSAL", "INSUFFICIENT_DATA",
+    ]);
+    expect(mapPullbackClassification("EARLY_CORRECTION", en)).toBe(en.intelligence.pullbackEarlyCorrection);
+    expect(mapPullbackClassification("SHOCK_REVERSAL", en)).toBe(en.intelligence.pullbackShockReversal);
+  });
+
+  it("mapStrength maps change strength without raw leakage", () => {
+    expectDomainMapped(mapStrength, ["STRONG", "MODERATE", "WEAK"]);
+    expect(mapStrength("STRONG", en)).toBe(en.alerts.high);
+    expect(mapStrength("MODERATE", id)).toBe(id.alerts.medium);
+    expect(mapStrength("WEAK", pt)).toBe(pt.alerts.low);
+  });
+
+  it("mapTimelineEventType maps the full 11-value domain", () => {
+    expectDomainMapped(mapTimelineEventType, [
+      "INITIAL_ANALYSIS", "THESIS_CHANGE", "REGIME_CHANGE",
+      "TIMEFRAME_CHANGE", "STRUCTURE_CHANGE", "MOMENTUM_CHANGE",
+      "VOLATILITY_CHANGE", "EVIDENCE_CHANGE", "NEWS_CHANGE",
+      "MACRO_CHANGE", "DATA_QUALITY_CHANGE",
+    ]);
+    expect(mapTimelineEventType("THESIS_CHANGE", en)).toBe(en.timeline.thesisChange);
+    expect(mapTimelineEventType("DATA_QUALITY_CHANGE", es)).toBe(es.timeline.dataQualityChange);
+  });
+
+  it("mapAlignmentType / mapConflictType cover portfolio domains", () => {
+    expectDomainMapped(mapAlignmentType, [
+      "REGIME_MATCH", "HTF_ALIGNMENT", "CONCENTRATION", "DIRECTIONAL_CONCENTRATION",
+    ]);
+    expectDomainMapped(mapConflictType, [
+      "DIRECT_DIRECTIONAL", "EVIDENCE_CONFLICT", "REGIME",
+    ]);
+    expect(mapAlignmentType("REGIME_MATCH", en)).toBe(en.portfolio.alignmentRegimeMatch);
+    expect(mapConflictType("EVIDENCE_CONFLICT", pt)).toBe(pt.portfolio.conflictEvidenceConflict);
+  });
+
+  it("mapPortfolioRisk / mapPriority / mapAvailability(SIMULATED) resolve", () => {
+    expectDomainMapped(mapPortfolioRisk, ["LOW_CONCERN", "MIXED", "ELEVATED_CONCERN", "INSUFFICIENT_DATA"]);
+    expectDomainMapped(mapPriority, ["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
+    expectDomainMapped(mapAvailability, ["AVAILABLE", "LIMITED", "INSUFFICIENT", "STALE", "UNAVAILABLE", "LIVE", "SIMULATED"]);
+    expect(mapAvailability("SIMULATED", en)).toBe(en.status.simulated);
+    expect(mapPortfolioRisk("ELEVATED_CONCERN", en)).toBe(en.investor.elevated);
   });
 });

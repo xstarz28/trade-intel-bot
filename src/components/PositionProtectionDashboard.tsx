@@ -12,6 +12,14 @@
  */
 import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
+import {
+  mapSide,
+  mapAvailability,
+  mapMarketState,
+  mapTrendLabel,
+  mapSeverity,
+  mapHorizon,
+} from "@/lib/i18n/enum-mapping";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -194,7 +202,7 @@ function PositionCard({
             <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
               position.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
             }`}>
-              {position.side}
+              {mapSide(position.side, t)}
             </span>
           </div>
           {livePrice && (
@@ -206,14 +214,14 @@ function PositionCard({
               }`}>
                 {livePrice.sourceMode === "LIVE" && livePrice.price > 0
                   ? formatInstrumentPrice(position.instrument, livePrice.price)
-                  : livePrice.sourceMode}
+                  : mapAvailability(livePrice.sourceMode, t)}
               </span>
               <span className={`text-[8px] font-mono px-1 py-0.5 rounded ${
                 livePrice.sourceMode === "LIVE"
                   ? "text-emerald-400 bg-emerald-500/10"
                   : "text-muted-foreground bg-muted/30"
               }`}>
-                {livePrice.sourceMode === "LIVE" ? "LIVE" : livePrice.sourceMode}
+                {livePrice.sourceMode === "LIVE" ? t.status.live : mapAvailability(livePrice.sourceMode, t)}
               </span>
               <span className="text-[8px] font-mono text-muted-foreground/50">
                 {livePrice.provider}
@@ -234,7 +242,7 @@ function PositionCard({
                 intelligence.ohlcvRegime === "PULLBACK" ? "text-blue-400 bg-blue-500/10" :
                 "text-muted-foreground bg-muted/30"
               }`}>
-                {intelligence.ohlcvRegime.replace(/_/g, " ")}
+                {mapMarketState(intelligence.ohlcvRegime, t)}
               </span>
             )}
             {/* MTF trend badges */}
@@ -243,7 +251,7 @@ function PositionCard({
                 intelligence.h1Analysis.trend === "BULLISH" ? "text-emerald-400" :
                 intelligence.h1Analysis.trend === "BEARISH" ? "text-red-400" : "text-muted-foreground"
               }`}>
-                H1:{intelligence.h1Analysis.trend}
+                H1:{mapTrendLabel(intelligence.h1Analysis.trend, t)}
               </span>
             )}
             {intelligence.m15Analysis && intelligence.m15Analysis.trend !== "UNKNOWN" && (
@@ -251,7 +259,7 @@ function PositionCard({
                 intelligence.m15Analysis.trend === "BULLISH" ? "text-emerald-400" :
                 intelligence.m15Analysis.trend === "BEARISH" ? "text-red-400" : "text-muted-foreground"
               }`}>
-                M15:{intelligence.m15Analysis.trend}
+                M15:{mapTrendLabel(intelligence.m15Analysis.trend, t)}
               </span>
             )}
             {intelligence.m5Analysis && intelligence.m5Analysis.trend !== "UNKNOWN" && (
@@ -259,12 +267,12 @@ function PositionCard({
                 intelligence.m5Analysis.trend === "BULLISH" ? "text-emerald-400" :
                 intelligence.m5Analysis.trend === "BEARISH" ? "text-red-400" : "text-muted-foreground"
               }`}>
-                M5:{intelligence.m5Analysis.trend}
+                M5:{mapTrendLabel(intelligence.m5Analysis.trend, t)}
               </span>
             )}
             {!intelligence.ohlcvRegime && (
               <span className="text-[9px] font-mono text-muted-foreground">
-                {intelligence.marketState.replace(/_/g, " ")}
+                {mapMarketState(intelligence.marketState, t)}
               </span>
             )}
           </div>
@@ -827,20 +835,20 @@ export function PositionProtectionDashboard() {
         const side = pos.position.side;
 
         if (newSeverity === "NONE") {
-          toast.success(`${instrument} ${side} — Thesis healthy`, {
-            description: "Position protection status returned to healthy.",
+          toast.success(`${instrument} ${mapSide(side, t)} — ${t.protection.toastThesisHealthy}`, {
+            description: t.protection.toastHealthyDesc,
             icon: <CheckCircle className="size-4 text-emerald-400" />,
             duration: 3000,
           });
         } else if (newSeverity === "INVALIDATED") {
-          toast.error(`${instrument} ${side} — Thesis invalidated`, {
+          toast.error(`${instrument} ${mapSide(side, t)} — ${t.protection.toastThesisInvalidated}`, {
             description: pos.alert.alertMessage,
             icon: toastCfg.icon,
             duration: 0,
             className: toastCfg.className,
           });
         } else {
-          toast(`${instrument} ${side} — ${newSeverity.replace("_", " ")}`, {
+          toast(`${instrument} ${mapSide(side, t)} — ${mapSeverity(newSeverity, t)}`, {
             description: pos.alert.actionRecommendation,
             icon: toastCfg.icon,
             duration: toastCfg.duration,
@@ -858,8 +866,11 @@ export function PositionProtectionDashboard() {
     (reg: PositionRegistration) => {
       registerPos(reg);
       setShowForm(false);
-      toast.success(`${reg.instrument} registered for monitoring`, {
-        description: `${reg.side} position — ${reg.horizon} horizon`,
+      toast.success(txi("protection.registeredToast", { instrument: reg.instrument }), {
+        description: txi("protection.registeredToastDesc", {
+          side: mapSide(reg.side, t),
+          horizon: mapHorizon(reg.horizon, t),
+        }),
         icon: <Shield className="size-4 text-primary" />,
         duration: 3000,
       });
@@ -880,7 +891,7 @@ export function PositionProtectionDashboard() {
         next.delete(positionId);
         return next;
       });
-      toast.info(`${instrument} removed from monitoring`, {
+      toast.info(txi("protection.removedToast", { instrument }), {
         icon: <BellOff className="size-4" />,
         duration: 3000,
       });
@@ -947,10 +958,10 @@ export function PositionProtectionDashboard() {
               }`}
             />
             {persistenceDegraded
-              ? "degraded"
+              ? t.protection.persistenceDegraded
               : persistenceAvailable
-                ? "persisted"
-                : "local only"}
+                ? t.protection.persistencePersisted
+                : t.protection.persistenceLocalOnly}
           </div>
 
           {/* Live data indicator */}
@@ -978,12 +989,12 @@ export function PositionProtectionDashboard() {
                 }`}
               />
               {lastError
-                ? "data degraded"
+                ? t.protection.dataDegraded
                 : isPolling && successfulPolls > 0
-                  ? `live (${successfulPolls})`
+                  ? txi("protection.dataLive", { count: successfulPolls })
                   : isPolling
-                    ? "connecting"
-                    : "no data"}
+                    ? t.protection.dataConnecting
+                    : t.protection.dataNoData}
             </div>
           )}
 
@@ -1257,7 +1268,7 @@ export function PositionProtectionDashboard() {
                   <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
                     pos.position.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
                   }`}>
-                    {pos.position.side}
+                    {mapSide(pos.position.side, t)}
                   </span>
                 </div>
                 <IntelligenceDashboard

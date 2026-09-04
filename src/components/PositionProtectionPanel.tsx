@@ -8,6 +8,7 @@
  */
 import React, { useState } from "react";
 import { useI18n } from "@/lib/i18n";
+import { mapSeverity, mapThesisHealth } from "@/lib/i18n/enum-mapping";
 import {
   Shield,
   AlertTriangle,
@@ -125,11 +126,19 @@ const STATUS_CONFIG: Record<
 // ACCELERATION LEVEL STYLES
 // ═══════════════════════════════════════════════════════════════
 
-const ACCEL_CONFIG: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
-  NORMAL: { color: "text-emerald-400", icon: <Gauge className="size-3" />, label: "Normal" },
-  ELEVATED: { color: "text-amber-400", icon: <Gauge className="size-3" />, label: "Elevated" },
-  HIGH: { color: "text-red-400", icon: <Gauge className="size-3" />, label: "High" },
+const ACCEL_CONFIG: Record<string, { color: string; icon: React.ReactNode }> = {
+  NORMAL: { color: "text-emerald-400", icon: <Gauge className="size-3" /> },
+  ELEVATED: { color: "text-amber-400", icon: <Gauge className="size-3" /> },
+  HIGH: { color: "text-red-400", icon: <Gauge className="size-3" /> },
 };
+
+function accelLabel(level: string, t: ReturnType<typeof useI18n>["t"]): string {
+  switch (level) {
+    case "ELEVATED": return t.investor.elevated;
+    case "HIGH": return t.alerts.high;
+    default: return t.status.none;
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // SECTION
@@ -168,6 +177,30 @@ function Section({
 }
 
 // ═══════════════════════════════════════════════════════════════
+// LOCALIZED LABEL HELPERS
+// ═══════════════════════════════════════════════════════════════
+
+function monitoringStatusLabel(status: string, t: ReturnType<typeof useI18n>["t"]): string {
+  switch (status) {
+    case "LIVE": return t.status.live;
+    case "RECONNECTING": return t.status.reconnecting;
+    case "DATA_STALE": return t.status.dataStale;
+    case "PAUSED": return t.status.monitoringPaused;
+    default: return status.replace(/_/g, " ");
+  }
+}
+
+function streamStatusLabel(status: string, t: ReturnType<typeof useI18n>["t"]): string {
+  switch (status) {
+    case "LIVE": return t.status.live;
+    case "DISCONNECTED": return t.status.disconnected;
+    case "RECONNECTING": return t.status.reconnecting;
+    case "DATA_STALE": return t.status.dataStale;
+    default: return status.replace(/_/g, " ");
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PROFIT METRICS SUB-COMPONENT
 // ═══════════════════════════════════════════════════════════════
 
@@ -180,10 +213,11 @@ function ProfitMetrics({
   giveback?: GivebackState;
   peakProfit?: number;
 }) {
+  const { t } = useI18n();
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
       <div className="bg-background/50 rounded-lg p-2 border border-border/20">
-        <div className="text-[9px] text-muted-foreground">Current Profit</div>
+        <div className="text-[9px] text-muted-foreground">{t.protection.currentProfit}</div>
         <div
           className={`font-semibold ${alert.profit.unrealizedPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}
         >
@@ -193,7 +227,7 @@ function ProfitMetrics({
         </div>
       </div>
       <div className="bg-background/50 rounded-lg p-2 border border-border/20">
-        <div className="text-[9px] text-muted-foreground">Giveback</div>
+        <div className="text-[9px] text-muted-foreground">{t.protection.giveback}</div>
         <div
           className={`font-semibold ${giveback && giveback.givebackPct > 30 ? "text-red-400" : giveback && giveback.givebackPct > 15 ? "text-amber-400" : "text-emerald-400"}`}
         >
@@ -201,14 +235,14 @@ function ProfitMetrics({
         </div>
       </div>
       <div className="bg-background/50 rounded-lg p-2 border border-border/20">
-        <div className="text-[9px] text-muted-foreground">Peak Profit</div>
+        <div className="text-[9px] text-muted-foreground">{t.protection.peakProfit}</div>
         <div className="text-foreground font-semibold">
           {peakProfit !== undefined ? `+${peakProfit.toFixed(2)}` : "—"}
         </div>
       </div>
       {alert.protectionReference !== undefined && (
         <div className="bg-background/50 rounded-lg p-2 border border-border/20">
-          <div className="text-[9px] text-muted-foreground">Protection Ref</div>
+          <div className="text-[9px] text-muted-foreground">{t.protection.protectionRef}</div>
           <div className="text-foreground font-semibold">
             {alert.protectionReference.toFixed(2)}
           </div>
@@ -233,6 +267,7 @@ function ConnectionStatusBar({
   lastMarketUpdateAt?: number;
   reconciliation?: ReconciliationResult;
 }) {
+  const { t } = useI18n();
   const statusLabel = streamHealth?.status ?? "DISCONNECTED";
   const isLive = statusLabel === "LIVE";
 
@@ -246,17 +281,17 @@ function ConnectionStatusBar({
             <WifiOff className="size-3 text-red-400" />
           )}
           <span className={isLive ? "text-emerald-400" : "text-red-400"}>
-            {statusLabel}
+            {streamStatusLabel(statusLabel, t)}
           </span>
         </div>
         {streamHealth && (
           <>
             <span className="text-muted-foreground">
-              Events: {streamHealth.eventsReceived}
+              {t.protection.events}: {streamHealth.eventsReceived}
             </span>
             {streamHealth.eventsDropped > 0 && (
               <span className="text-amber-400">
-                Dropped: {streamHealth.eventsDropped}
+                {t.protection.dropped}: {streamHealth.eventsDropped}
               </span>
             )}
           </>
@@ -267,14 +302,14 @@ function ConnectionStatusBar({
       {monitoringGapMs !== undefined && monitoringGapMs > 0 && (
         <div className="text-[10px] font-mono text-amber-400">
           <RotateCcw className="size-3 inline mr-1" />
-          Monitoring gap: {(monitoringGapMs / 1000).toFixed(0)}s
+          {t.protection.monitoringGap}: {(monitoringGapMs / 1000).toFixed(0)}s
         </div>
       )}
 
       {/* Last market update */}
       {lastMarketUpdateAt !== undefined && lastMarketUpdateAt > 0 && (
         <div className="text-[10px] font-mono text-muted-foreground">
-          Last market update:{" "}
+          {t.protection.lastMarketUpdate}:{" "}
           {new Date(lastMarketUpdateAt).toLocaleTimeString("en-US", {
             hour12: false,
           })}
@@ -304,6 +339,7 @@ function AccelerationDisplay({
   priceAcceleration?: AccelerationResult;
   givebackAcceleration?: AccelerationResult;
 }) {
+  const { t } = useI18n();
   if (!priceAcceleration && !givebackAcceleration) return null;
 
   return (
@@ -313,7 +349,7 @@ function AccelerationDisplay({
           className={`flex items-center gap-1 px-2 py-0.5 rounded ${priceAcceleration.level === "HIGH" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400"}`}
         >
           <Gauge className="size-3" />
-          Price {ACCEL_CONFIG[priceAcceleration.level]?.label}:{" "}
+          {t.protection.abnormalPriceAcceleration} — {accelLabel(priceAcceleration.level, t)}:{" "}
           {Math.abs(priceAcceleration.rate).toFixed(2)}/s
         </div>
       )}
@@ -322,7 +358,7 @@ function AccelerationDisplay({
           className={`flex items-center gap-1 px-2 py-0.5 rounded ${givebackAcceleration.level === "HIGH" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400"}`}
         >
           <TrendingDown className="size-3" />
-          Giveback {ACCEL_CONFIG[givebackAcceleration.level]?.label}:{" "}
+          {t.protection.givebackAccelerationLabel} — {accelLabel(givebackAcceleration.level, t)}:{" "}
           {givebackAcceleration.rate.toFixed(2)}/s
         </div>
       )}
@@ -339,6 +375,7 @@ function AlertTimeline({
 }: {
   history: AlertHistoryEntry[];
 }) {
+  const { t } = useI18n();
   if (history.length === 0) return null;
 
   return (
@@ -360,7 +397,7 @@ function AlertTimeline({
               })}
             </span>
             <span className={`${cfg.color} font-semibold shrink-0`}>
-              {cfg.label}
+              {mapSeverity(entry.severity, t).replace(/_/g, " ")}
             </span>
             <span className="text-foreground truncate">{entry.reason}</span>
           </div>
@@ -417,7 +454,7 @@ export function PositionProtectionPanel({
   givebackAcceleration,
   peakProfit,
 }: PositionProtectionPanelProps) {
-  const { t } = useI18n();
+  const { t, txi } = useI18n();
   const [expanded, setExpanded] = useState(true);
   const cfg = SEVERITY_CONFIG[alert.severity] ?? SEVERITY_CONFIG.NONE;
   const statusCfg = STATUS_CONFIG[monitoringStatus];
@@ -447,7 +484,7 @@ export function PositionProtectionPanel({
               className={`flex items-center gap-1.5 text-xs font-mono font-semibold ${cfg.color}`}
             >
               {cfg.icon}
-              {cfg.label}
+              {mapSeverity(alert.severity, t).replace(/_/g, " ")}
             </div>
           </div>
         </div>
@@ -457,7 +494,7 @@ export function PositionProtectionPanel({
             className={`flex items-center gap-1 text-[10px] font-mono ${statusCfg.color}`}
           >
             {statusCfg.icon}
-            {statusCfg.label}
+            {monitoringStatusLabel(monitoringStatus, t)}
           </div>
           <div>
             <div className="text-[10px] font-mono text-muted-foreground">
@@ -466,7 +503,7 @@ export function PositionProtectionPanel({
             <div
               className={`text-xs font-mono font-semibold ${HEALTH_COLORS[alert.thesisHealth]}`}
             >
-              {alert.thesisHealth.replace(/_/g, " ")}
+              {mapThesisHealth(alert.thesisHealth, t).replace(/_/g, " ")}
             </div>
           </div>
         </div>
@@ -496,10 +533,10 @@ export function PositionProtectionPanel({
               {statusCfg.icon}
               <span className="ml-1">
                 {monitoringStatus === "DATA_STALE"
-                  ? "Data is stale — alerts may be delayed"
+                  ? t.protection.dataStaleWarning
                   : monitoringStatus === "RECONNECTING"
-                    ? "Reconnecting to provider..."
-                    : "Monitoring is paused"}
+                    ? t.protection.reconnectingMessage
+                    : t.protection.monitoringPausedMessage}
               </span>
             </div>
           )}
@@ -516,7 +553,7 @@ export function PositionProtectionPanel({
                 <Zap className="size-3 text-primary mt-0.5 shrink-0" />
                 <div>
                   <div className="text-[10px] font-mono font-semibold text-primary">
-                    PROTECTION ACTION
+                    {t.protection.protectionAction.toUpperCase()}
                   </div>
                   <div className="text-xs font-mono text-foreground">
                     {alert.actionRecommendation}
@@ -526,11 +563,11 @@ export function PositionProtectionPanel({
               {(alert.severity === "HIGH_RISK" ||
                 alert.severity === "INVALIDATED") && (
                 <div className="text-[10px] font-mono text-muted-foreground pl-5">
-                  Why now:{" "}
+                  {t.protection.whyNow}{" "}
                   {alert.conflictingEvidence.slice(0, 3).join("; ") ||
-                    "Multiple evidence signals indicate elevated risk."}
+                    t.protection.riskSignalsElevated}
                   {giveback && giveback.givebackPct > 0
-                    ? `. ${giveback.givebackPct.toFixed(0)}% of peak profit given back.`
+                    ? ` ${txi("protection.peakProfitGivenBack", { value: giveback.givebackPct.toFixed(0) })}`
                     : ""}
                 </div>
               )}
@@ -589,7 +626,7 @@ export function PositionProtectionPanel({
             <div
               className={`text-xs font-mono px-2 py-1 rounded ${alert.shock.state === "SHOCK" ? "bg-red-500/10 text-red-400" : "bg-amber-500/10 text-amber-400"}`}
             >
-              ⚡ Shock: {alert.shock.description}
+              ⚡ {t.protection.shockLabel}: {alert.shock.description}
             </div>
           )}
 
@@ -604,7 +641,7 @@ export function PositionProtectionPanel({
           {lastUpdateAt && (
             <div className="flex items-center gap-1.5 text-[10px] font-mono text-muted-foreground">
               <Clock className="size-3" />
-              Last update:{" "}
+              {t.system.lastUpdate}:{" "}
               {new Date(lastUpdateAt).toLocaleTimeString("en-US", {
                 hour12: false,
               })}
@@ -613,8 +650,8 @@ export function PositionProtectionPanel({
 
           {/* Disclaimer */}
           <div className="text-[9px] font-mono text-muted-foreground/50 pt-2 border-t border-border/20">
-            Informational only. This is not financial advice. Does not
-            auto-execute trades. Classification confidence ≠ likelihood of price movement.
+            {t.protection.informationalOnly} {t.protection.disclaimersNotAdvice}{" "}
+            {t.protection.disclaimersNoAuto} {t.protection.disclaimersConfidence}
           </div>
         </div>
       )}

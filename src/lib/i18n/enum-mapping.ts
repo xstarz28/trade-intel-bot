@@ -89,6 +89,8 @@ export function mapAvailability(
     case "INSUFFICIENT": return t.status.insufficient;
     case "STALE": return t.status.dataStale;
     case "UNAVAILABLE": return t.status.unavailable;
+    case "LIVE": return t.status.live;
+    case "SIMULATED": return t.status.simulated;
     default: return availability.replace(/_/g, " ");
   }
 }
@@ -248,7 +250,9 @@ export function mapDimension(
   dimension: string,
   t: Translations,
 ): string {
-  switch (dimension) {
+  // Normalized so lowercase data-availability keys (e.g. "technical")
+  // map identically to the canonical uppercase enum values.
+  switch (dimension.toUpperCase()) {
     case "TECHNICAL": return t.intelligence.technical;
     case "MACRO": return t.intelligence.macro;
     case "CROSS_ASSET": return t.intelligence.crossAsset;
@@ -295,8 +299,20 @@ export function mapRegimeValue(
     case "STAGFLATION": return t.macro.stagflation;
     case "REFLATION": return t.macro.reflation;
     case "DISINFLATION": return t.macro.disinflation;
+    case "DISINFLATIONARY": return t.macro.disinflation;
     case "CONTRACTION": return t.macro.contraction;
     case "RECOVERY": return t.macro.recovery;
+    case "INSUFFICIENT_DATA": return t.status.insufficientData;
+    case "UNAVAILABLE": return t.status.unavailable;
+    case "HIGH": return t.fundamental.elevated;
+    case "ACCELERATING": return t.fundamental.accelerating;
+    case "SUPPLY_DRIVEN": return t.fundamental.supplyDriven;
+    case "REAL_YIELD_RISING": return t.fundamental.rising;
+    case "REAL_YIELD_FALLING": return t.fundamental.falling;
+    case "REAL_YIELD_STABLE": return t.fundamental.stable;
+    case "EASY": return t.fundamental.easing;
+    case "STRESS": return t.macro.stressed;
+    case "DE_ESCALATING": return t.fundamental.deescalating;
     default: return value.replace(/_/g, " ");
   }
 }
@@ -402,6 +418,7 @@ export function mapMarketState(
     case "TRENDING_DOWN": return t.analysis.bearish;
     case "VOLATILE": return t.intelligence.volatilityLabel;
     case "RANGING": return t.intelligence.ranging;
+    case "PULLBACK": return t.intelligence.pullbackLabel;
     case "INSUFFICIENT_DATA": return t.intelligence.insufficientData;
     // Legacy/other-surface values
     case "TRENDING_BULLISH": return t.analysis.bullish;
@@ -422,6 +439,7 @@ export function mapFreshness(
 ): string {
   switch (freshness) {
     case "FRESH": return t.marketPanel.freshness.fresh;
+    case "RECENT": return t.marketPanel.freshness.recent;
     case "DELAYED": return t.marketPanel.freshness.delayed;
     case "STALE": return t.marketPanel.freshness.stale;
     case "UNAVAILABLE": return t.marketPanel.freshness.unavailable;
@@ -459,5 +477,174 @@ export function mapCompleteness(
     case "MINIMAL": return t.marketPanel.completeness.minimal;
     case "NONE": return t.marketPanel.completeness.none;
     default: return completeness.replace(/_/g, " ");
+  }
+}
+
+// ─── Decision Assessment Mapping (Phase 147) ──────────────────
+
+/** Map decision-support overall assessment to a translated display label. */
+export function mapAssessment(
+  assessment: string,
+  t: Translations,
+): string {
+  switch (assessment) {
+    case "COUNT_SUPPORTING": return t.intelligence.supporting;
+    case "COUNT_CONFLICTING": return t.intelligence.conflicting;
+    case "MIXED_EVIDENCE": return t.intelligence.stanceMixed;
+    case "INSUFFICIENT_DATA": return t.status.insufficientData;
+    case "SUPPORTING": return t.intelligence.supporting;
+    case "CONFLICTING": return t.intelligence.conflicting;
+    case "NEUTRAL": return t.intelligence.neutral;
+    case "UNAVAILABLE": return t.status.unavailable;
+    default: return assessment.replace(/_/g, " ");
+  }
+}
+
+// ─── Invalidation Status Mapping (Phase 147) ──────────────────
+
+/** Map invalidation-condition status to a translated display label. */
+export function mapInvalidationStatus(
+  status: string,
+  t: Translations,
+): string {
+  switch (status) {
+    case "NOT_APPROACHING": return t.decision.invalidationStatusNotApproaching;
+    case "APPROACHING": return t.decision.invalidationStatusApproaching;
+    case "TRIGGERED": return t.decision.invalidationStatusTriggered;
+    case "UNAVAILABLE": return t.status.unavailable;
+    default: return status.replace(/_/g, " ");
+  }
+}
+
+// ─── Priority Mapping (Phase 147) ─────────────────────────────
+
+/** Map watch/alert priority enum to a translated display label. */
+export function mapPriority(
+  priority: string,
+  t: Translations,
+): string {
+  switch (priority) {
+    case "CRITICAL": return t.alerts.critical;
+    case "HIGH": return t.alerts.high;
+    case "MEDIUM": return t.alerts.medium;
+    case "LOW": return t.alerts.low;
+    default: return priority.replace(/_/g, " ");
+  }
+}
+
+// ─── Portfolio Risk Context Mapping (Phase 147) ───────────────
+
+/** Map portfolio risk-context enum to a translated display label. */
+export function mapPortfolioRisk(
+  risk: string,
+  t: Translations,
+): string {
+  switch (risk) {
+    case "LOW_CONCERN": return t.investor.low;
+    case "MIXED": return t.intelligence.stanceMixed;
+    case "ELEVATED_CONCERN": return t.investor.elevated;
+    case "INSUFFICIENT_DATA": return t.status.insufficientData;
+    default: return risk.replace(/_/g, " ");
+  }
+}
+
+// ─── Position Side Mapping (Phase 147) ─────────────────────────
+
+/** Map position side enum to a translated display label. */
+export function mapSide(
+  side: string,
+  t: Translations,
+): string {
+  switch (side.toUpperCase()) {
+    case "LONG": return t.analysis.long;
+    case "SHORT": return t.analysis.short;
+    default: return side.replace(/_/g, " ");
+  }
+}
+
+// ─── Pullback Classification Mapping (Phase 147) ───────────────
+
+/** Map pullback classification enum to a translated display label. */
+export function mapPullbackClassification(
+  classification: string,
+  t: Translations,
+): string {
+  switch (classification) {
+    case "NORMAL_PULLBACK": return t.intelligence.pullbackNormal;
+    case "EARLY_CORRECTION": return t.intelligence.pullbackEarlyCorrection;
+    case "MEANINGFUL_DETERIORATION": return t.intelligence.pullbackDeterioration;
+    case "STRUCTURAL_REVERSAL": return t.intelligence.pullbackStructuralReversal;
+    case "SHOCK_REVERSAL": return t.intelligence.pullbackShockReversal;
+    case "INSUFFICIENT_DATA": return t.intelligence.pullbackInsufficientData;
+    default: return classification.replace(/_/g, " ");
+  }
+}
+
+// ─── Change Strength Mapping (Phase 147) ───────────────────────
+
+/** Map timeline change-strength enum to a translated display label. */
+export function mapStrength(
+  strength: string,
+  t: Translations,
+): string {
+  switch (strength.toUpperCase()) {
+    case "STRONG": return t.alerts.high;
+    case "MODERATE": return t.alerts.medium;
+    case "WEAK": return t.alerts.low;
+    default: return strength.replace(/_/g, " ");
+  }
+}
+
+// ─── Timeline Event Type Mapping (Phase 147) ───────────────────
+
+/** Map historical timeline event type to a translated display label. */
+export function mapTimelineEventType(
+  eventType: string,
+  t: Translations,
+): string {
+  switch (eventType) {
+    case "INITIAL_ANALYSIS": return t.timeline.initialAnalysis;
+    case "THESIS_CHANGE": return t.timeline.thesisChange;
+    case "REGIME_CHANGE": return t.timeline.regimeChange;
+    case "TIMEFRAME_CHANGE": return t.timeline.timeframeChange;
+    case "STRUCTURE_CHANGE": return t.timeline.structureChange;
+    case "MOMENTUM_CHANGE": return t.timeline.momentumChange;
+    case "VOLATILITY_CHANGE": return t.timeline.volatilityChange;
+    case "EVIDENCE_CHANGE": return t.timeline.evidenceChange;
+    case "NEWS_CHANGE": return t.timeline.newsChange;
+    case "MACRO_CHANGE": return t.timeline.macroChange;
+    case "DATA_QUALITY_CHANGE": return t.timeline.dataQualityChange;
+    default: return eventType.replace(/_/g, " ");
+  }
+}
+
+// ─── Portfolio Alignment Type Mapping (Phase 147) ──────────────
+
+/** Map portfolio alignment type to a translated display label. */
+export function mapAlignmentType(
+  alignmentType: string,
+  t: Translations,
+): string {
+  switch (alignmentType) {
+    case "REGIME_MATCH": return t.portfolio.alignmentRegimeMatch;
+    case "HTF_ALIGNMENT": return t.portfolio.alignmentHtfAlignment;
+    case "CONCENTRATION": return t.portfolio.alignmentConcentration;
+    case "DIRECTIONAL_CONCENTRATION": return t.portfolio.alignmentDirectionalConcentration;
+    default: return alignmentType.replace(/_/g, " ");
+  }
+}
+
+// ─── Portfolio Conflict Type Mapping (Phase 147) ───────────────
+
+/** Map portfolio conflict type to a translated display label. */
+export function mapConflictType(
+  conflictType: string,
+  t: Translations,
+): string {
+  switch (conflictType) {
+    case "DIRECT_DIRECTIONAL": return t.portfolio.conflictDirectDirectional;
+    case "EVIDENCE_CONFLICT": return t.portfolio.conflictEvidenceConflict;
+    case "REGIME": return t.portfolio.conflictRegime;
+    default: return conflictType.replace(/_/g, " ");
   }
 }

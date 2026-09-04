@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { useI18n } from "@/lib/i18n";
+import { mapIntelligenceStatus, mapFreshness } from "@/lib/i18n/enum-mapping";
 
 /**
  * Phase 67 — Market Data Health Panel
@@ -173,7 +174,7 @@ export function MarketDataHealthPanel({
                     variant="outline"
                     className={`text-[10px] ${getStatusColor(provider.status)}`}
                   >
-                    {provider.status}
+                    {mapIntelligenceStatus(provider.status, t)}
                   </Badge>
                   <span className="text-[10px] text-zinc-500">
                     {provider.role}
@@ -194,7 +195,7 @@ export function MarketDataHealthPanel({
                 <div className="mt-2 pt-2 border-t border-zinc-700/30 space-y-1 text-[10px] text-zinc-400">
                   <div className="flex justify-between">
                     <span>{t.system.freshnessLabel}</span>
-                    <span>{provider.freshness}</span>
+                    <span>{mapFreshness(provider.freshness, t)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>{t.system.recoveryLabel}</span>

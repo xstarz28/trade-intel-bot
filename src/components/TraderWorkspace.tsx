@@ -14,7 +14,18 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import { mapThesisHealth, mapTrendLabel, mapAvailability, mapConfidence } from "@/lib/i18n/enum-mapping";
+import {
+  mapThesisHealth,
+  mapTrendLabel,
+  mapAvailability,
+  mapConfidence,
+  mapIntelligenceStatus,
+  mapComponentName,
+  mapRegimeValue,
+  mapAssessment,
+  mapInvalidationStatus,
+  mapPriority,
+} from "@/lib/i18n/enum-mapping";
 import {
   Shield,
   AlertTriangle,
@@ -375,10 +386,11 @@ function PortfolioDrillDown({
 // ═══════════════════════════════════════════════════════════════
 
 function SystemHealthSummary({ health }: { health: RuntimeHealthSnapshot | null }) {
+  const { t } = useI18n();
   if (!health) {
     return (
       <div className="text-[8px] font-mono text-muted-foreground/50">
-        No health data available
+        {t.trader.noHealthData}
       </div>
     );
   }
@@ -395,9 +407,9 @@ function SystemHealthSummary({ health }: { health: RuntimeHealthSnapshot | null 
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-2">
-        <span className="text-[9px] font-mono font-semibold text-foreground">System:</span>
+        <span className="text-[9px] font-mono font-semibold text-foreground">{t.trader.systemLabel}:</span>
         <span className={`text-[9px] font-mono font-bold ${statusColor[health.overallStatus] ?? "text-muted-foreground"}`}>
-          {health.overallStatus}
+          {mapIntelligenceStatus(health.overallStatus, t)}
         </span>
       </div>
 
@@ -406,15 +418,15 @@ function SystemHealthSummary({ health }: { health: RuntimeHealthSnapshot | null 
           {degraded.map((c) => (
             <div key={c.component} className="flex items-center gap-1.5">
               <span className={`text-[8px] font-mono ${statusColor[c.status]}`}>●</span>
-              <span className="text-[8px] font-mono text-muted-foreground">{c.component.replace(/_/g, " ")}</span>
-              <span className="text-[7px] font-mono text-muted-foreground/50">({c.status})</span>
+              <span className="text-[8px] font-mono text-muted-foreground">{mapComponentName(c.component, t)}</span>
+              <span className="text-[7px] font-mono text-muted-foreground/50">({mapIntelligenceStatus(c.status, t)})</span>
             </div>
           ))}
         </div>
       )}
 
       {degraded.length === 0 && health.overallStatus === "HEALTHY" && (
-        <span className="text-[8px] font-mono text-emerald-400/60">All components operational</span>
+        <span className="text-[8px] font-mono text-emerald-400/60">{t.trader.allOperational}</span>
       )}
     </div>
   );
@@ -931,21 +943,21 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
       <WorkspaceSection title={t.macro.regime} icon={<Globe className="size-3" />}>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-[8px] font-mono text-muted-foreground/50">Overall:</span>
+            <span className="text-[8px] font-mono text-muted-foreground/50">{t.fundamental.overall}</span>
             <span className={`text-[9px] font-mono font-semibold ${regimeColor[regime.overallRegime] ?? "text-muted-foreground"}`}>
-              {regime.overallRegime.replace(/_/g, " ")}
+              {mapRegimeValue(regime.overallRegime, t)}
             </span>
             <span className="text-[7px] font-mono text-muted-foreground/40">
               ({regime.availableDimensionCount}/{regime.dimensions.length} dims)
             </span>
             {regime.structuredDataPointCount > 0 && (
               <span className="text-[7px] font-mono text-emerald-400/60">
-                {regime.structuredDataPointCount} econ data
+                {regime.structuredDataPointCount} {t.fundamental.econEvents}
               </span>
             )}
             {regime.economicEventCount > 0 && (
               <span className="text-[7px] font-mono text-blue-400/60">
-                {regime.economicEventCount} events
+                {regime.economicEventCount} {t.macro.economicEvents}
               </span>
             )}
           </div>
@@ -964,41 +976,41 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
       {/* Inflation / Rate / Yield / Currency */}
       <WorkspaceSection title={t.fundamental.inflationRatesYieldsCurrency} icon={<BarChart3 className="size-3" />}>
         <div className="grid grid-cols-2 gap-1.5 text-[8px] font-mono">
-          <div><span className="text-muted-foreground/50">Inflation:</span> <span className="text-foreground">{regime.inflationRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.inflationLabel}</span> <span className="text-foreground">{mapRegimeValue(regime.inflationRegime, t)}</span></div>
           {regimeInput.inflationObservation?.actual != null && (
             <div className="col-span-2">
-              <span className="text-muted-foreground/50">Observed:</span> <span className="text-foreground">{regimeInput.inflationObservation.metric ?? "Inflation"} {regimeInput.inflationObservation.actual}%</span>
+              <span className="text-muted-foreground/50">{t.fundamental.inflationLabel} </span> <span className="text-foreground">{regimeInput.inflationObservation.metric ?? t.fundamental.inflationLabel} {regimeInput.inflationObservation.actual}%</span>
               {regimeInput.inflationObservation.previous != null && <span className="text-muted-foreground/40"> (prev {regimeInput.inflationObservation.previous}%)</span>}
               {regimeInput.inflationObservation.forecast != null && <span className="text-muted-foreground/40"> (fcst {regimeInput.inflationObservation.forecast}%)</span>}
-              <span className="text-[7px] text-muted-foreground/30 ml-1">[observed]</span>
+              <span className="text-[7px] text-muted-foreground/30 ml-1">{t.fundamental.observedLabel}</span>
             </div>
           )}
-          <div><span className="text-muted-foreground/50">Infl. Surprise:</span> <span className="text-foreground">{regime.inflationExpectationSurprise.replace(/_/g, " ")}</span></div>
-          <div><span className="text-muted-foreground/50">Driver:</span> <span className="text-foreground">{regime.inflationDriver.replace(/_/g, " ")}</span></div>
-          <div><span className="text-muted-foreground/50">Market Rates:</span> <span className="text-foreground">{regime.rateRegime.replace(/_/g, " ")}</span></div>
-          <div><span className="text-muted-foreground/50">Policy Rate:</span> <span className="text-foreground">{regime.policyRateRegime.replace(/_/g, " ")}</span></div>
-          <div><span className="text-muted-foreground/50">Real Yields:</span> <span className="text-foreground">{regime.realYieldRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.inflationSurprise}</span> <span className="text-foreground">{mapRegimeValue(regime.inflationExpectationSurprise, t)}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.driver}</span> <span className="text-foreground">{mapRegimeValue(regime.inflationDriver, t)}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.marketRates}</span> <span className="text-foreground">{mapRegimeValue(regime.rateRegime, t)}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.policyRateLabel}</span> <span className="text-foreground">{mapRegimeValue(regime.policyRateRegime, t)}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.realYields}</span> <span className="text-foreground">{mapRegimeValue(regime.realYieldRegime, t)}</span></div>
           {treasuryData?.available && treasuryData.latest.real?.real["10Y"] !== undefined && (
             <div className="col-span-2">
-              <span className="text-muted-foreground/50">TIPS 10Y:</span> <span className="text-sky-300">{treasuryData.latest.real.real["10Y"].toFixed(2)}%</span>
-              <span className="text-[7px] text-muted-foreground/30 ml-1">[observed]</span>
+              <span className="text-muted-foreground/50">{t.fundamental.tips10y}</span> <span className="text-sky-300">{treasuryData.latest.real.real["10Y"].toFixed(2)}%</span>
+              <span className="text-[7px] text-muted-foreground/30 ml-1">{t.fundamental.observedLabel}</span>
               <span className="text-[7px] text-muted-foreground/30 ml-1">{treasuryData.freshness}</span>
             </div>
           )}
-          <div><span className="text-muted-foreground/50">USD:</span> <span className="text-foreground">{regime.currencyRegime.replace(/_/g, " ")}</span></div>
-          <div><span className="text-muted-foreground/50">Liquidity:</span> <span className="text-foreground">{regime.liquidityRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.usd}</span> <span className="text-foreground">{mapRegimeValue(regime.currencyRegime, t)}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.liquidityLabel}</span> <span className="text-foreground">{mapRegimeValue(regime.liquidityRegime, t)}</span></div>
         </div>
       </WorkspaceSection>
 
       {/* Growth / Energy / Geopolitical */}
       <WorkspaceSection title={t.fundamental.growthEnergyGeopolitical} icon={<Activity className="size-3" />}>
         <div className="grid grid-cols-3 gap-1.5 text-[8px] font-mono">
-          <div><span className="text-muted-foreground/50">Growth:</span> <span className="text-foreground">{regime.growthRegime.replace(/_/g, " ")}</span></div>
-          <div><span className="text-muted-foreground/50">Energy:</span> <span className="text-foreground">{regime.energyRegime.replace(/_/g, " ")}</span></div>
-          <div><span className="text-muted-foreground/50">Geopolitical:</span> <span className="text-foreground">{regime.geopoliticalRegime.replace(/_/g, " ")}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.growthLabel}</span> <span className="text-foreground">{mapRegimeValue(regime.growthRegime, t)}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.energyLabel}</span> <span className="text-foreground">{mapRegimeValue(regime.energyRegime, t)}</span></div>
+          <div><span className="text-muted-foreground/50">{t.fundamental.geopolitical}</span> <span className="text-foreground">{mapRegimeValue(regime.geopoliticalRegime, t)}</span></div>
           {regime.economicEventCount > 0 && (
             <div className="col-span-3">
-              <span className="text-muted-foreground/50">Econ Events:</span> <span className="text-foreground">{regime.economicEventCount} events from calendar</span>
+              <span className="text-muted-foreground/50">{t.macro.economicEvents}:</span> <span className="text-foreground">{regime.economicEventCount} {t.macro.economicEvents}</span>
             </div>
           )}
         </div>
@@ -1008,9 +1020,9 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
       <WorkspaceSection title={`${assetClass} FUNDAMENTAL EVIDENCE`} icon={<Crosshair className="size-3" />}>
         <div className="space-y-1.5">
           <div className="flex items-center gap-2">
-            <span className="text-[8px] font-mono text-muted-foreground/50">Assessment:</span>
+            <span className="text-[8px] font-mono text-muted-foreground/50">{t.fundamental.assessment}</span>
             <span className={`text-[9px] font-mono font-semibold ${dirColor[assetCtx.fundamentalAssessment] ?? "text-muted-foreground"}`}>
-              {assetCtx.fundamentalAssessment}
+              {mapAssessment(assetCtx.fundamentalAssessment, t)}
             </span>
           </div>
           {assetCtx.supportingEvidence.map((e, i) => (
@@ -1038,7 +1050,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
       <WorkspaceSection title={t.fundamental.technicalVsFundamental} icon={<AlertTriangle className="size-3" />}>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-[8px] font-mono text-muted-foreground/50">Alignment:</span>
+            <span className="text-[8px] font-mono text-muted-foreground/50">{t.fundamental.alignmentLabel}</span>
             <span className={`text-[9px] font-mono font-semibold ${alignColor[alignment.alignment] ?? "text-muted-foreground"}`}>
               {alignment.alignment.replace(/_/g, " ")}
             </span>
@@ -1053,16 +1065,16 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
           <div className="space-y-2">
             {/* Macro Regime */}
             <div className="flex items-center gap-2">
-              <span className="text-[8px] font-mono text-muted-foreground/50">Regime:</span>
+              <span className="text-[8px] font-mono text-muted-foreground/50">{t.fundamental.regimeLabel}</span>
               <span className={`text-[9px] font-mono font-semibold ${regimeColor[causalResult.macroRegime] ?? "text-muted-foreground"}`}>
-                {causalResult.macroRegime.replace(/_/g, " ")}
+                {mapRegimeValue(causalResult.macroRegime, t)}
               </span>
             </div>
 
             {/* Supporting Forces */}
             {assetCausalCtx.supportingEvidence.length > 0 && (
               <div>
-                <div className="text-[7px] font-mono text-emerald-400/70 mb-0.5">SUPPORTING</div>
+                <div className="text-[7px] font-mono text-emerald-400/70 mb-0.5">{t.fundamental.supportingForces}</div>
                 {assetCausalCtx.supportingEvidence.map((e, i) => (
                   <div key={`ts-${i}`} className="flex items-start gap-1.5">
                     <span className="text-[8px] text-emerald-400 mt-0.5">✓</span>
@@ -1075,7 +1087,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
             {/* Conflicting Forces */}
             {assetCausalCtx.conflictingEvidence.length > 0 && (
               <div>
-                <div className="text-[7px] font-mono text-red-400/70 mb-0.5">CONFLICTING</div>
+                <div className="text-[7px] font-mono text-red-400/70 mb-0.5">{t.fundamental.conflictingForces}</div>
                 {assetCausalCtx.conflictingEvidence.map((e, i) => (
                   <div key={`tc-${i}`} className="flex items-start gap-1.5">
                     <span className="text-[8px] text-red-400 mt-0.5">✗</span>
@@ -1095,7 +1107,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
             {/* Causal Chain (top 3 derived steps) */}
             {assetCausalCtx.causalTrace.steps.filter((s) => s.provenance === "DERIVED").slice(0, 3).length > 0 && (
               <div>
-                <div className="text-[7px] font-mono text-muted-foreground/50 mb-0.5">CAUSAL CHAIN</div>
+                <div className="text-[7px] font-mono text-muted-foreground/50 mb-0.5">{t.fundamental.causalChain}</div>
                 {assetCausalCtx.causalTrace.steps.filter((s) => s.provenance === "DERIVED").slice(0, 3).map((s, i) => (
                   <div key={`chain-${i}`} className="flex items-start gap-1.5">
                     <span className="text-[7px] text-muted-foreground/40 mt-0.5">{i + 1}.</span>
@@ -1108,7 +1120,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
             {/* Data Availability */}
             {assetCausalCtx.unavailableDimensions.length > 0 && (
               <div className="text-[7px] font-mono text-amber-400/60">
-                Unavailable: {assetCausalCtx.unavailableDimensions.join(", ").replace(/_/g, " ")}
+                {t.fundamental.unavailableLabel} {assetCausalCtx.unavailableDimensions.join(", ").replace(/_/g, " ")}
               </div>
             )}
           </div>
@@ -1157,13 +1169,13 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
       <WorkspaceSection title={`${t.trader.decisionSupport} — ${t.trader.currentAssessment}`} icon={<Crosshair className="size-3" />}>
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-[8px] font-mono text-muted-foreground/50">Thesis:</span>
+            <span className="text-[8px] font-mono text-muted-foreground/50">{t.trader.thesisLabel}:</span>
             <ThesisBadge thesis={ds.thesisHealth} />
             <span className="text-[8px] font-mono text-muted-foreground/50">({ds.score}/100)</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[8px] font-mono text-muted-foreground/50">Assessment:</span>
-            <span className={`text-[9px] font-mono font-semibold ${overallColor}`}>{summary.overallAssessment.replace(/_/g, " ")}</span>
+            <span className="text-[8px] font-mono text-muted-foreground/50">{t.fundamental.assessment}</span>
+            <span className={`text-[9px] font-mono font-semibold ${overallColor}`}>{mapAssessment(summary.overallAssessment, t)}</span>
           </div>
           <div className="flex items-center gap-3 text-[8px] font-mono">
             <span className="text-emerald-400">{summary.supportingCount} {t.trader.supportingLabel}</span>
@@ -1214,7 +1226,7 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
                 <span className={`text-[7px] font-mono ml-auto ${
                   ic.status === "TRIGGERED" ? "text-red-400" :
                   ic.status === "APPROACHING" ? "text-amber-400" : "text-muted-foreground/40"
-                }`}>{ic.status.replace(/_/g, " ")}</span>
+                }`}>{mapInvalidationStatus(ic.status, t)}</span>
               </div>
             ))}
           </div>
@@ -1235,7 +1247,7 @@ function DecisionSupportPanel({ positionId, intel }: { positionId: string; intel
                 <span className={`text-[7px] font-mono ml-auto ${
                   w.priority === "CRITICAL" ? "text-red-400" :
                   w.priority === "HIGH" ? "text-amber-400" : "text-muted-foreground/40"
-                }`}>{w.priority}</span>
+                }`}>{mapPriority(w.priority, t)}</span>
               </div>
             ))}
           </div>
