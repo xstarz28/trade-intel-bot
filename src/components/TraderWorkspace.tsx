@@ -26,6 +26,7 @@ import {
   mapInvalidationStatus,
   mapPriority,
   mapFreshness,
+  mapSide,
 } from "@/lib/i18n/enum-mapping";
 import {
   Shield,
@@ -272,6 +273,7 @@ function PositionRow({
   intel: PositionIntelligence;
   onClick: () => void;
 }) {
+  const { t } = useI18n();
   const info = getInstrumentInfo(intel.instrument);
   return (
     <button
@@ -286,7 +288,7 @@ function PositionRow({
           <span className={`text-[8px] font-mono px-1 py-0.5 rounded ${
             intel.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
           }`}>
-            {intel.side}
+            {mapSide(intel.side, t)}
           </span>
           <ThesisBadge thesis={intel.thesisHealth} />
         </div>
@@ -1305,7 +1307,7 @@ export function PositionDetail({ positionId, intel, newsItems, livePrices, treas
         <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
           intel.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
         }`}>
-          {intel.side}
+          {mapSide(intel.side, t)}
         </span>
         <ThesisBadge thesis={intel.thesisHealth} />
         <DataQualityBadge quality={intel.dataQuality} />

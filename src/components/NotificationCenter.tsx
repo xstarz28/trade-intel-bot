@@ -7,7 +7,7 @@
 
 import React, { useState, useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import { mapPriority } from "@/lib/i18n/enum-mapping";
+import { mapPriority, mapSide } from "@/lib/i18n/enum-mapping";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { NotificationFilter } from "../lib/position-protection/notification-engine";
@@ -401,7 +401,7 @@ export function NotificationCenter() {
                       notif.side === "LONG" ? "text-emerald-400" : "text-red-400"
                     }`}
                   >
-                    {notif.side}
+                    {mapSide(notif.side, t)}
                   </span>
                 )}
                 <span className="text-[9px] font-mono text-muted-foreground/50 ml-auto">

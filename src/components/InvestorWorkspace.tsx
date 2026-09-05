@@ -32,6 +32,7 @@ import {
   mapCoverage,
   mapMonitorState,
   mapFreshness,
+  mapSide,
 } from "@/lib/i18n/enum-mapping";
 import {
   Briefcase,
@@ -211,7 +212,7 @@ function SynthesisRow({ row, synthesis }: { row: InvestorIntelRow; synthesis: In
         <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
           row.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
         }`}>
-          {row.side}
+          {mapSide(row.side, t)}
         </span>
         <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">
           {mapHorizon(row.horizon, t)}
@@ -638,7 +639,7 @@ function PositionThesisCard({ row }: { row: InvestorIntelRow }) {
         <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${
           row.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"
         }`}>
-          {row.side}
+          {mapSide(row.side, t)}
         </span>
         <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-muted/30 text-muted-foreground">
           {mapHorizon(row.horizon, t)}
@@ -941,7 +942,7 @@ export function InvestorWorkspace() {
                   >
                     <span className="w-16 shrink-0 font-semibold text-foreground">{pos.instrument}</span>
                     <span className={`px-1.5 py-0.5 rounded text-[8px] ${pos.side === "LONG" ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
-                      {pos.side}
+                      {mapSide(pos.side, t)}
                     </span>
                     <span className={`text-[8px] ${HEALTH_COLORS[pos.severity] ?? "text-muted-foreground"}`}>
                       {mapSeverity(pos.severity, t).replace(/_/g, " ")}
