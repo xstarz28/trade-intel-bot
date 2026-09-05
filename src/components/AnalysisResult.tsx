@@ -5,7 +5,7 @@ import { ScoreBreakdown } from "@/components/ScoreBreakdown";
 import type { AnalysisResult as AnalysisResultType } from "@/types/analysis";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
-import { mapTrendLabel, mapConfidence } from "@/lib/i18n/enum-mapping";
+import { mapTrendLabel, mapConfidence, mapFreshness } from "@/lib/i18n/enum-mapping";
 import {
   TrendingUp,
   TrendingDown,
@@ -465,7 +465,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       : "text-red-400",
                 )}
               >
-                {result.treasuryContext.freshness}
+                {mapFreshness(result.treasuryContext.freshness, t)}
               </span>
               <span className="text-muted-foreground/50"> · obs: {result.treasuryContext.latest.nominal.observationDate}</span>
             </p>
@@ -517,7 +517,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       : "text-red-400",
                 )}
               >
-                {result.cotContext.freshness}
+                {mapFreshness(result.cotContext.freshness, t)}
               </span>
               <span className="text-muted-foreground/50"> · report: {result.cotContext.latest.reportDate}</span>
             </p>
@@ -562,7 +562,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       : "text-red-400",
                 )}
               >
-                {result.eiaContext.freshness}
+                {mapFreshness(result.eiaContext.freshness, t)}
               </span>
               <span className="text-muted-foreground/50">
                 {" "}
@@ -625,7 +625,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   result.executionContext.freshness === "FRESH" ? "text-emerald-400" : "text-red-400",
                 )}
               >
-                {result.executionContext.freshness}
+                {mapFreshness(result.executionContext.freshness, t)}
               </span>
             </p>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-muted-foreground/80">

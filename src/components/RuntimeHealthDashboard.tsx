@@ -309,7 +309,7 @@ function ComponentRow({
 
       {/* Name */}
       <span className="text-[10px] font-mono text-foreground min-w-[120px]">
-        {component.component}
+        {getComponentLabel(t, component.component)}
       </span>
 
       {/* Source */}
