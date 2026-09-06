@@ -13,10 +13,11 @@
  *   - Diagnostics never contain credentials or secrets.
  */
 
-import type { DataCapability } from "../types";
+import type { AssetClass, DataCapability } from "../types";
 import { resolveInstrument, getProviderSymbol } from "../instruments";
 import {
   routeProviderRequest,
+  routeProviderNativeRequest,
   recordProviderHealth,
   resetProviderHealth,
 } from "../routing-engine";
@@ -165,6 +166,7 @@ export interface LiveRequestParams {
   providerNative?: {
     provider: string;
     providerInstrumentId: string;
+    assetClass: AssetClass;
   };
 }
 
@@ -251,6 +253,37 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
       });
     }
 
+    // Provider-native capability routing must happen BEFORE any HTTP request.
+    // This prevents unsupported native requests from reaching a provider at all.
+    const nativeRoute = routeProviderNativeRequest(
+      providerId,
+      params.capability,
+      params.providerNative.assetClass,
+    );
+
+    if (!nativeRoute) {
+      return finish("UNSUPPORTED", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        failureReason:
+          `Provider "${providerId}" does not support capability "${params.capability}" ` +
+          `for provider-native instrument "${providerSymbol}".`,
+      });
+    }
+
+    if (
+      nativeRoute.healthStatus === "UNAVAILABLE" ||
+      nativeRoute.healthStatus === "UNSUPPORTED"
+    ) {
+      return finish("UNAVAILABLE", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        failureReason:
+          `Provider "${providerId}" is currently unavailable for native ` +
+          `capability "${params.capability}".`,
+      });
+    }
+
     const endpoint = getEndpoint(providerId);
     if (!endpoint.buildUrl(providerSymbol, params)) {
       return finish("UNSUPPORTED", {
@@ -317,37 +350,149 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     }
 
     const nativeEndpoint = getEndpoint(providerId);
-    const parsed = endpoint.extract(response.json, providerSymbol, params);
+    const parsed = nativeEndpoint.extract(response.json, {
+      ...params,
+      providerSymbol,
+    });
 
     if (!parsed.symbol && !parsed.candles?.length && !parsed.quote) {
-      return finish("LIVE_PARTIAL", {
+      return finish("MALFORMED_RESPONSE", {
         provider: providerId,
         symbolUsed: providerSymbol,
         latencyMs,
         receivedAt: Date.now(),
-        failureReason: "Provider response contained no validated market data.",
+        failureReason: "Provider response contained no recognizable market data.",
       });
     }
 
-    if (parsed.symbol && parsed.symbol !== providerSymbol) {
-      return finish("PROVIDER_ERROR", {
+    if (parsed.symbol !== undefined && parsed.symbol !== null) {
+      const identityCheck = verifySymbolIdentityWithCandidates(
+        params.instrument,
+        parsed.symbol,
+        [providerSymbol],
+      );
+      if (!identityCheck.passed) {
+        return finish("MALFORMED_RESPONSE", {
+          provider: providerId,
+          symbolUsed: providerSymbol,
+          latencyMs,
+          receivedAt: Date.now(),
+          failureReason: `Identity mismatch: ${identityCheck.reason}. No substitution was performed.`,
+        });
+      }
+    }
+
+    if (parsed.quote) {
+      const qv = validateQuote(parsed.quote, { now });
+      if (!qv.valid) {
+        return finish("MALFORMED_RESPONSE", {
+          provider: providerId,
+          symbolUsed: providerSymbol,
+          latencyMs,
+          receivedAt: Date.now(),
+          failureReason: `Quote failed validation: ${qv.issues.join("; ")}`,
+        });
+      }
+
+      recordProviderHealth({
+        providerId,
+        status: "AVAILABLE",
+        responseTimeMs: latencyMs,
+      });
+
+      cacheSet(
+        {
+          instrument: params.instrument,
+          capability: params.capability,
+          providerId,
+        },
+        parsed.quote,
+        "FRESH",
+      );
+
+      return finish("LIVE_VERIFIED", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        latencyMs,
+        quote: parsed.quote,
+      });
+    }
+
+    if (parsed.candles) {
+      if (parsed.candles.length === 0) {
+        return finish("MALFORMED_RESPONSE", {
+          provider: providerId,
+          symbolUsed: providerSymbol,
+          latencyMs,
+          receivedAt: Date.now(),
+          failureReason: "Provider returned zero usable records.",
+        });
+      }
+
+      const validation = validateOhlcvSeries(parsed.candles, { now });
+      const accepted = parsed.candles.filter(
+        (_, i) => !validation.rejectedIndices.includes(i),
+      );
+
+      if (validation.valid) {
+        recordProviderHealth({
+          providerId,
+          status: "AVAILABLE",
+          responseTimeMs: latencyMs,
+        });
+
+        cacheSet(
+          {
+            instrument: params.instrument,
+            capability: params.capability,
+            providerId,
+          },
+          accepted,
+          "FRESH",
+        );
+
+        return finish("LIVE_VERIFIED", {
+          provider: providerId,
+          symbolUsed: providerSymbol,
+          latencyMs,
+          candles: accepted,
+        });
+      }
+
+      if (accepted.length > 0) {
+        recordProviderHealth({
+          providerId,
+          status: "DEGRADED",
+          error: "partial invalid records",
+        });
+
+        return finish("LIVE_PARTIAL", {
+          provider: providerId,
+          symbolUsed: providerSymbol,
+          latencyMs,
+          candles: accepted,
+          failureReason:
+            `${validation.rejectedCount} of ${validation.totalRecords} records rejected: ` +
+            `${validation.issues.map((i) => i.reason).join(", ")}.`,
+        });
+      }
+
+      return finish("MALFORMED_RESPONSE", {
         provider: providerId,
         symbolUsed: providerSymbol,
         latencyMs,
         receivedAt: Date.now(),
         failureReason:
-          `Provider echoed instrument "${parsed.symbol}" instead of requested ` +
-          `"${providerSymbol}". No substitution was performed.`,
+          `All ${validation.totalRecords} records failed validation.`,
       });
     }
 
-    return finish("LIVE_VERIFIED", {
+    return finish("MALFORMED_RESPONSE", {
       provider: providerId,
       symbolUsed: providerSymbol,
-      candles: parsed.candles,
-      quote: parsed.quote,
       latencyMs,
       receivedAt: Date.now(),
+      failureReason: "No recognizable market data payload in response.",
     });
   }
 
@@ -381,6 +526,12 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     );
     return finish(credMissing ? "CREDENTIAL_MISSING" : "UNAVAILABLE", {
       failureReason: route.unavailableReason ?? "No available route.",
+    });
+  }
+
+  if (!best) {
+    return finish("UNAVAILABLE", {
+      failureReason: "No available provider route.",
     });
   }
 
@@ -488,6 +639,16 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
 
   // 10. Verify symbol identity when the provider echoes one
   if (extracted.symbol !== undefined && extracted.symbol !== null) {
+    if (!canonical) {
+      return finish("UNAVAILABLE", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        latencyMs,
+        receivedAt: Date.now(),
+        failureReason:
+          "Canonical instrument identity is required for the generic provider route.",
+      });
+    }
     const identityCheck = verifySymbolIdentityWithCandidates(
       params.instrument,
       extracted.symbol,
