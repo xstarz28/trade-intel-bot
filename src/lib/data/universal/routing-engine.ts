@@ -354,6 +354,47 @@ export function routeProviderRequest(
 }
 
 /**
+ * Phase 152 — Route a provider-native instrument without requiring
+ * registration in the universal canonical instrument registry.
+ *
+ * This path is metadata/capability routing only. It never substitutes
+ * the provider-native instrument ID and never creates directional evidence.
+ */
+export function routeProviderNativeRequest(
+  providerId: string,
+  capability: DataCapability,
+  assetClass: AssetClass,
+): EnhancedProviderRoute | undefined {
+  const spec = PROVIDER_SPECS.find((p) => p.id === providerId);
+  if (!spec) return undefined;
+
+  const status = computeProviderStatus(spec, capability, assetClass);
+  if (status === "UNSUPPORTED") return undefined;
+
+  const health = healthStore.get(spec.id);
+  const quality =
+    spec.capabilities.find(
+      (c) =>
+        c.capability === capability &&
+        c.assetClasses.includes(assetClass),
+    )?.quality ?? "UNAVAILABLE";
+
+  return {
+    providerId: spec.id,
+    providerName: spec.name,
+    capability,
+    quality: quality as any,
+    credentialsAvailable: spec.authRequired
+      ? spec.credentialsAvailable
+      : true,
+    maxFreshnessMs: undefined,
+    healthStatus: status,
+    avgResponseTimeMs: health?.avgResponseTimeMs,
+    consecutiveFailures: health?.consecutiveFailures ?? 0,
+  };
+}
+
+/**
  * Get all registered provider specs.
  */
 export function getAllProviderSpecs(): ProviderSpec[] {
