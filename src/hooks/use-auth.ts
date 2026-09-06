@@ -5,14 +5,13 @@ import { useConvexAuth, useQuery } from "convex/react";
 
 /**
  * Three-phase auth state machine. There are exactly three stable states,
- * and the phase transitions exactly once during the app lifecycle:
+ * and the phase follows Convex's auth state after initial resolution:
  *
  *   "initializing" → "authenticated"   (session found)
  *   "initializing" → "unauthenticated" (no session)
  *
- * Once the phase leaves "initializing" it never returns to it.
- * This eliminates flicker caused by independent boolean flags
- * resolving at different ticks.
+ * The phase never returns to "initializing" after the initial session check.
+ * Interactive sign-in and sign-out are allowed to update the settled phase.
  *
  * Phase resolution is based solely on Convex's auth token state
  * (useConvexAuth). The user query is fetched separately and does
@@ -35,12 +34,12 @@ export function useAuth() {
     // it may still be loading when the token is already valid.
     if (isAuthLoading) return;
 
-    // Compute the target phase exactly once.
+    // Compute the target phase from Convex's current token state.
     const target: AuthPhase = isAuthenticated ? "authenticated" : "unauthenticated";
 
-    // Only set if we haven't already settled — prevents StrictMode
-    // double-fire from re-triggering a phase change.
-    if (phaseRef.current === "initializing") {
+    // Ignore duplicate effects, but allow interactive sign-in/sign-out to
+    // update the settled phase after the initial session check.
+    if (phaseRef.current !== target) {
       phaseRef.current = target;
       setPhase(target);
     }

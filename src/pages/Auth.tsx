@@ -103,6 +103,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       console.error("Guest login error:", error);
       console.error("Error details:", JSON.stringify(error, null, 2));
       setError(`Failed to sign in as guest: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -126,7 +127,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       <Terminal className="size-6 text-primary" />
                     </div>
                   </div>
-                <CardTitle className="text-lg font-mono">gilfan/trading-agent</CardTitle>
+                <CardTitle className="text-lg font-mono">Xstarz Analysis</CardTitle>
                 <CardDescription className="font-mono text-xs">
                   sign in to access your bias analysis
                 </CardDescription>

@@ -673,7 +673,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-tight font-mono">
-                XstarzG<span className="text-muted-foreground"> · </span>
+                Xstarz Analysis<span className="text-muted-foreground"> · </span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="text-primary hover:text-primary/80 transition-colors cursor-pointer">

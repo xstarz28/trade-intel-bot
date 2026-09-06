@@ -74,8 +74,7 @@ export default function Landing() {
               <Terminal className="size-4 text-primary" />
             </div>
             <span className="text-sm font-bold tracking-tight font-mono">
-              XstarzG<span className="text-muted-foreground"> · </span>
-              <span className="text-primary">Trader</span>
+              <span className="text-primary">Xstarz Analysis</span>
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -105,8 +104,7 @@ export default function Landing() {
             </Badge>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] font-mono">
-              <span className="text-primary">XstarzG</span>{" "}
-              <span className="text-foreground">Trader</span>
+              <span className="text-primary">Xstarz Analysis</span>
               <br />
               <span className="text-lg sm:text-xl lg:text-2xl font-semibold text-muted-foreground">
                 Chief Market Strategist
@@ -343,7 +341,7 @@ export default function Landing() {
                 Not Financial Advice
               </p>
               <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-                XstarzG Trader adalah decision-support tool. Tidak mengeksekusi trade,
+                Xstarz Analysis adalah decision-support tool. Tidak mengeksekusi trade,
                 tidak menjamin profit, dan bukan nasihat keuangan berlisensi.
                 Selalu verifikasi independen dan kelola risiko Anda sendiri.
               </p>
@@ -379,8 +377,7 @@ export default function Landing() {
               <Terminal className="size-3 text-primary" />
             </div>
             <span className="text-xs font-semibold font-mono">
-              XstarzG<span className="text-muted-foreground"> · </span>
-              <span className="text-primary">Trader</span>
+              <span className="text-primary">Xstarz Analysis</span>
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground font-mono">
