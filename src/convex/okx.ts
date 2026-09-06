@@ -12,6 +12,7 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { mapInstrumentToOkx, parseOkxResponse } from "../lib/risk/okx-spec";
+import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "../lib/data/universal/okx-discovery";
 import {
   buildExecutionData,
   parseOkxOrderBook,
@@ -96,5 +97,19 @@ export const fetchOkxOrderBook = action({
     } catch (e) {
       return { success: false as const, error: `network failure: ${String(e).slice(0, 120)}` };
     }
+  },
+});
+
+
+/**
+ * Phase 150 — OKX public universal instrument discovery.
+ * Metadata only; no API key, prices, direction, or recommendations.
+ */
+export const discoverOkxInstruments = action({
+  args: {},
+  handler: async (_ctx) => {
+    return discoverOkxInstrumentsPure(
+      (url) => fetch(url, { headers: { Accept: "application/json" } }),
+    );
   },
 });

@@ -157,6 +157,15 @@ export interface LiveRequestParams {
   transport: Transport;
   readEnv?: EnvReader;
   now?: number;
+  /**
+   * Provider-native identity discovered from that provider.
+   * When supplied, this is an exact provider instrument ID and must never
+   * be substituted with another symbol.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
 }
 
 export interface LiveRequestResult {
@@ -216,18 +225,144 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     return result;
   };
 
-  // 1. Resolve canonical instrument
+  // 1. Resolve identity.
+  // Canonical registry remains the normal path. A provider-native identity
+  // is allowed only when explicitly supplied for that same provider.
   const canonical = resolveInstrument(params.instrument);
-  if (!canonical) {
+
+  if (!canonical && !params.providerNative) {
     return finish("UNAVAILABLE", {
       failureReason: `Instrument "${params.instrument}" is not registered in the universal registry.`,
     });
   }
 
-  // 2. Route via routing engine
-  const route = routeProviderRequest(params.instrument, params.capability);
+  // Provider-native identities bypass canonical registry resolution ONLY for
+  // the explicitly supplied provider. They never enter the generic router.
+  if (!canonical && params.providerNative) {
+    const providerId = params.providerNative.provider;
+    const providerSymbol = params.providerNative.providerInstrumentId;
+
+    const cred = checkCredentials(providerId, params.readEnv);
+    if (cred && !cred.available && cred.authRequired) {
+      return finish("CREDENTIAL_MISSING", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        failureReason: `Required credentials not configured: ${cred.missingEnvVarNames.join(", ")}.`,
+      });
+    }
+
+    const endpoint = getEndpoint(providerId);
+    if (!endpoint.buildUrl(providerSymbol, params)) {
+      return finish("UNSUPPORTED", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        failureReason: `Provider "${providerId}" has no live endpoint for "${params.capability}" in this phase.`,
+      });
+    }
+
+    const url = endpoint.buildUrl(providerSymbol, params);
+    const t0 = Date.now();
+
+    let response: TransportResponse;
+    try {
+      response = await params.transport(url);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return finish("NETWORK_UNAVAILABLE", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        latencyMs: Date.now() - t0,
+        receivedAt: Date.now(),
+        failureReason: `Network failure: ${msg}`,
+      });
+    }
+
+    const latencyMs = Date.now() - t0;
+
+    if (response.status === 429) {
+      return finish("RATE_LIMITED", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        latencyMs,
+        receivedAt: Date.now(),
+        failureReason: "Provider responded HTTP 429 (rate limit).",
+      });
+    }
+
+    if (!response.ok) {
+      return finish("PROVIDER_ERROR", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        latencyMs,
+        receivedAt: Date.now(),
+        failureReason: `Provider responded HTTP ${response.status}.`,
+      });
+    }
+
+    // Provider-native requests are deliberately isolated from the generic
+    // canonical router. The request above has already been executed using
+    // the exact provider-native instrument ID.
+    //
+    // Parse and validate the response using the same provider endpoint
+    // contract, without resolving/substituting the instrument through the
+    // universal registry.
+    if (response.json === undefined || response.json === null) {
+      return finish("PROVIDER_ERROR", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        latencyMs,
+        receivedAt: Date.now(),
+        failureReason: "Provider returned an empty response body.",
+      });
+    }
+
+    const nativeEndpoint = getEndpoint(providerId);
+    const parsed = endpoint.extract(response.json, providerSymbol, params);
+
+    if (!parsed.symbol && !parsed.candles?.length && !parsed.quote) {
+      return finish("LIVE_PARTIAL", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        latencyMs,
+        receivedAt: Date.now(),
+        failureReason: "Provider response contained no validated market data.",
+      });
+    }
+
+    if (parsed.symbol && parsed.symbol !== providerSymbol) {
+      return finish("PROVIDER_ERROR", {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        latencyMs,
+        receivedAt: Date.now(),
+        failureReason:
+          `Provider echoed instrument "${parsed.symbol}" instead of requested ` +
+          `"${providerSymbol}". No substitution was performed.`,
+      });
+    }
+
+    return finish("LIVE_VERIFIED", {
+      provider: providerId,
+      symbolUsed: providerSymbol,
+      candles: parsed.candles,
+      quote: parsed.quote,
+      latencyMs,
+      receivedAt: Date.now(),
+    });
+  }
+
+  // 2. Canonical routing remains unchanged for registry instruments.
+  const route = canonical
+    ? routeProviderRequest(params.instrument, params.capability)
+    : {
+        routes: [],
+        bestRoute: undefined,
+        available: true,
+        unavailableReason: undefined,
+      };
+
   const best = route.bestRoute;
-  if (!best) {
+  if (!best && canonical) {
     const anyUnsupported =
       route.routes.length > 0 && route.routes.every((r) => r.healthStatus === "UNSUPPORTED");
     if (anyUnsupported || route.routes.length === 0) {
