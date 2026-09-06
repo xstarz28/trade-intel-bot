@@ -112,6 +112,10 @@ export default function Dashboard() {
   // overwrite the result of a newer run (stale-result mixing guard).
   const runTokenRef = useRef(0);
 
+  // Phase 153 — retain the latest verified live market snapshot per instrument.
+  // This is runtime-only state and is intentionally NOT reconstructed from history.
+  const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
+
   // Convex persistence
   const saveAnalysis = useMutation(api.analyses.save);
   const dbHistory = useQuery(api.analyses.list);
@@ -509,6 +513,34 @@ export default function Dashboard() {
 
         const result = runAnalysis(enrichedInput);
 
+        // Phase 153 — retain the actual provider-backed market snapshot used
+        // by this successful analysis. History remains persistence only and
+        // must never be promoted to LIVE data.
+        liveSourceRef.current.set(result.instrument, {
+          instrument: result.instrument,
+          assetClass:
+            input.instrumentType === "crypto"
+              ? "crypto"
+              : input.instrumentType === "forex"
+                ? "forex"
+                : input.instrumentType === "stock"
+                  ? "equity"
+                  : input.instrumentType === "commodity"
+                    ? "commodity"
+                    : input.instrumentType === "indices"
+                      ? "indices"
+                      : "macro",
+          marketData: marketDataResult.data,
+          technicalData: marketDataResult.technical,
+          analysisResult: result,
+          derivativesData: derivativesResult?.data,
+          calendarData: calendarResult?.data,
+          treasuryData,
+          cotData,
+          eiaData,
+          universalIntelligence: enrichedInput.universalIntelligenceContext,
+        });
+
         await new Promise((r) => setTimeout(r, 150));
         updateStep(4, "done");
 
@@ -570,28 +602,12 @@ export default function Dashboard() {
     ? dbHistory.map(fromDbRecord)
     : [];
 
-  // Phase 50 — Build live candidate sources from analysis history.
-  // Each past analysis becomes a LiveCandidateSource with its actual data,
-  // enabling the live scanner to produce evidence-based rankings.
-  const liveSources: LiveCandidateSource[] = useMemo(() => {
-    if (history.length === 0) return [];
-    // Deduplicate by instrument, keep most recent analysis per instrument
-    const byInstrument = new Map<string, AnalysisResult>();
-    for (const h of history) {
-      const existing = byInstrument.get(h.instrument);
-      if (!existing || (h.timestamp ?? 0) > (existing.timestamp ?? 0)) {
-        byInstrument.set(h.instrument, h);
-      }
-    }
-    return Array.from(byInstrument.values()).map((ar) => {
-      const assetClass = ar.instrumentType === "crypto" ? "crypto" : ar.instrumentType === "forex" ? "forex" : ar.instrumentType === "stock" ? "equity" : ar.instrumentType === "commodity" ? "commodity" : ar.instrumentType === "indices" ? "indices" : "macro";
-      return {
-        instrument: ar.instrument,
-        assetClass: assetClass as LiveCandidateSource["assetClass"],
-        analysisResult: ar,
-      } as LiveCandidateSource;
-    });
-  }, [history]);
+  // Phase 153 — live candidate sources come ONLY from verified runtime
+  // provider-backed snapshots. Persisted history is never treated as LIVE.
+  const liveSources: LiveCandidateSource[] = useMemo(
+    () => Array.from(liveSourceRef.current.values()),
+    [currentResult],
+  );
 
   // Phase 50 — Live scan result from available sources
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
