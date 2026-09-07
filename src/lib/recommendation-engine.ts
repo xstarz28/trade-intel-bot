@@ -615,20 +615,17 @@ export function scoreCandidate(
   // Compute data quality component
   const dq = evaluateDataQuality(c);
 
-  // Weighted asset-class score
-  let weightedScore = 0;
-  let totalWeight = 0;
   const reasons: string[] = [];
   const conflicts: string[] = [];
 
   for (const comp of assetComponents) {
-    weightedScore += comp.score * (comp.weight / 10);
-    totalWeight += comp.weight / 10;
     if (comp.score >= 60) reasons.push(comp.reason);
     else if (comp.score < 40) conflicts.push(comp.reason);
   }
 
-  // Apply horizon weights to asset-class score
+  // Apply horizon weights to asset-class evidence.
+  // Every matching evidence item contributes independently according to
+  // its declared component weight and the horizon weight for its category.
   let horizonAdjusted = 0;
   let horizonWeightSum = 0;
 
@@ -636,26 +633,36 @@ export function scoreCandidate(
   horizonAdjusted += dq.score * weights.dataQuality;
   horizonWeightSum += weights.dataQuality;
 
+  const addEvidence = (
+    components: ScoreComponent[],
+    categoryWeight: number,
+    matcher: (reason: string) => boolean,
+  ) => {
+    if (categoryWeight <= 0) return;
+
+    for (const comp of components) {
+      if (!matcher(comp.reason)) continue;
+
+      const effectiveWeight = (comp.weight / 10) * categoryWeight;
+      horizonAdjusted += comp.score * effectiveWeight;
+      horizonWeightSum += effectiveWeight;
+    }
+  };
+
   // HTF structure
-  const htfComp = assetComponents.find(r => r.reason.includes("HTF"));
-  if (htfComp) {
-    horizonAdjusted += htfComp.score * weights.htfStructure;
-    horizonWeightSum += weights.htfStructure;
-  }
+  addEvidence(assetComponents, weights.htfStructure, (reason) =>
+    reason.includes("HTF"),
+  );
 
   // MTF alignment
-  const mtfComp = assetComponents.find(r => r.reason.includes("MTF"));
-  if (mtfComp) {
-    horizonAdjusted += mtfComp.score * weights.mtfAlignment;
-    horizonWeightSum += weights.mtfAlignment;
-  }
+  addEvidence(assetComponents, weights.mtfAlignment, (reason) =>
+    reason.includes("MTF"),
+  );
 
   // Market regime
-  const regimeComp = assetComponents.find(r => r.reason.includes("regime"));
-  if (regimeComp) {
-    horizonAdjusted += regimeComp.score * weights.marketRegime;
-    horizonWeightSum += weights.marketRegime;
-  }
+  addEvidence(assetComponents, weights.marketRegime, (reason) =>
+    reason.includes("regime"),
+  );
 
   // Volatility
   if (c.atr && c.atr > 0) {
@@ -671,25 +678,37 @@ export function scoreCandidate(
   }
 
   // Fundamentals
-  const fundComp = assetComponents.find(r => r.reason.includes("fundamental") || r.reason.includes("P/E") || r.reason.includes("revenue") || r.reason.includes("margin"));
-  if (fundComp) {
-    horizonAdjusted += fundComp.score * weights.fundamentals;
-    horizonWeightSum += weights.fundamentals;
-  }
+  addEvidence(
+    assetComponents,
+    weights.fundamentals,
+    (reason) =>
+      reason.includes("fundamental") ||
+      reason.includes("P/E") ||
+      reason.includes("revenue") ||
+      reason.includes("margin"),
+  );
 
   // Macro
-  const macroComp = assetComponents.find(r => r.reason.includes("macro") || r.reason.includes("DXY") || r.reason.includes("risk") || r.reason.includes("rate diff") || r.reason.includes("yield diff"));
-  if (macroComp) {
-    horizonAdjusted += macroComp.score * weights.macro;
-    horizonWeightSum += weights.macro;
-  }
+  addEvidence(
+    assetComponents,
+    weights.macro,
+    (reason) =>
+      reason.includes("macro") ||
+      reason.includes("DXY") ||
+      reason.includes("risk") ||
+      reason.includes("rate diff") ||
+      reason.includes("yield diff"),
+  );
 
   // Derivatives
-  const derivComp = assetComponents.find(r => r.reason.includes("derivatives") || r.reason.includes("funding") || r.reason.includes("COT"));
-  if (derivComp) {
-    horizonAdjusted += derivComp.score * weights.derivatives;
-    horizonWeightSum += weights.derivatives;
-  }
+  addEvidence(
+    assetComponents,
+    weights.derivatives,
+    (reason) =>
+      reason.includes("derivatives") ||
+      reason.includes("funding") ||
+      reason.includes("COT"),
+  );
 
   // R:R
   if (c.riskReward && c.riskReward > 0) {
