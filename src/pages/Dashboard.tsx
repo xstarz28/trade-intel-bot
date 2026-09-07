@@ -651,18 +651,32 @@ export default function Dashboard() {
           priority: 1,
           refreshIntervalMs: 300_000,
         },
-        snapshot: ar?.priceSnapshot ? {
-          instrument: ls.instrument,
+        snapshot: ls.marketData ? {
+          instrument: ls.marketData.instrument,
           assetClass: ls.assetClass,
-          price: ar.priceSnapshot.price,
-          ohlcvAvailable: true,
-          availableTimeframes: ["H1", "H4", "D1"],
-          htfBias: ar.bias === "Bullish" ? "long" : ar.bias === "Bearish" ? "short" : "neutral",
+          price: ls.marketData.price.price,
+          ohlcvAvailable: ls.marketData.candles.length > 0,
+          availableTimeframes: ls.marketData.candles.length > 0
+            ? [ls.marketData.timeframe]
+            : [],
+          htfBias: ar?.bias === "Bullish"
+            ? "long"
+            : ar?.bias === "Bearish"
+              ? "short"
+              : "neutral",
           marketRegime: "UNKNOWN",
-          provider: ar.priceSnapshot.source ?? "unknown",
-          observedAt: ar.priceSnapshot.timestamp ?? Date.now(),
-          freshness: "FRESH",
-          quality: "DEGRADED",
+          provider: ls.marketData.provider,
+          observedAt: ls.marketData.price.timestamp || ls.marketData.fetchTimestamp,
+          freshness: ls.marketData.dataFreshness === "realtime"
+            ? "FRESH"
+            : ls.marketData.dataFreshness === "delayed"
+              ? "DELAYED"
+              : ls.marketData.dataFreshness === "stale"
+                ? "STALE"
+                : "UNAVAILABLE",
+          quality: ls.marketData.dataFreshness === "unavailable"
+            ? "UNAVAILABLE"
+            : "VERIFIED",
         } : null,
         analysisResult: ar ? {
           confidence: ar.confidence,
