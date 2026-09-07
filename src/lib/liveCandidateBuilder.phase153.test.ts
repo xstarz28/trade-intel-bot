@@ -20,6 +20,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         },
         candles: Array.from({ length: 210 }, (_, i) => ({
           time: now - i * 60_000,
+          timestamp: now - i * 60_000,
           open: 100000,
           high: 100100,
           low: 99900,
