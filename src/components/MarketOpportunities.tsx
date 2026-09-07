@@ -470,7 +470,9 @@ export function MarketOpportunities({
   }, [radarResult, currentHorizon, regionFilter, assetFilter]);
 
   const useRadar = radarOpps.length > 0;
-  const isLive = !!liveSources && liveSources.length > 0 || useRadar;
+  // LIVE means the current scan contains verified live/delayed market data.
+  // Radar presence or merely having cached liveSources must never promote the badge.
+  const isLive = (scanResult?.totalWithLiveData ?? 0) > 0;
   const scanTimestamp = scanResult?.timestamp ?? radarResult?.timestamp;
 
   const handleRefresh = useCallback(() => {
