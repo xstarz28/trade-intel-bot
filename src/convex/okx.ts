@@ -13,6 +13,7 @@ import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { mapInstrumentToOkx, parseOkxResponse } from "../lib/risk/okx-spec";
 import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "../lib/data/universal/okx-discovery";
+import { acquireProviderNativeLiveData, acquireBatchProviderNativeLiveData } from "../lib/market-radar/provider-registry";
 import {
   buildExecutionData,
   parseOkxOrderBook,
@@ -110,6 +111,62 @@ export const discoverOkxInstruments = action({
   handler: async (_ctx) => {
     return discoverOkxInstrumentsPure(
       (url) => fetch(url, { headers: { Accept: "application/json" } }),
+    );
+  },
+});
+
+
+/**
+ * Phase 156 — Batch acquisition for discovered OKX instruments.
+ *
+ * The discovery list is provider-native metadata; only successful OHLCV
+ * acquisition becomes live evidence.
+ */
+export const acquireOkxNativeLiveDataBatch = action({
+  args: {
+    instruments: v.array(
+      v.object({
+        instrument: v.string(),
+        providerInstrumentId: v.string(),
+        assetClass: v.literal("crypto"),
+      }),
+    ),
+    concurrency: v.optional(v.number()),
+  },
+  handler: async (_ctx, args) => {
+    return acquireBatchProviderNativeLiveData(
+      args.instruments.map((input) => ({
+        ...input,
+        provider: "okx",
+        assetClass: input.assetClass,
+      })),
+      undefined,
+      Math.max(1, Math.min(Math.floor(args.concurrency ?? 5), 10)),
+    );
+  },
+});
+
+
+/**
+ * Phase 156 — OKX provider-native live OHLCV acquisition.
+ * Uses the exact discovered OKX instrument ID.
+ * Discovery metadata is never treated as price/live evidence.
+ */
+export const acquireOkxNativeLiveData = action({
+  args: {
+    instrument: v.string(),
+    providerInstrumentId: v.string(),
+    assetClass: v.literal("crypto"),
+  },
+  handler: async (_ctx, args) => {
+    return acquireProviderNativeLiveData(
+      {
+        instrument: args.instrument,
+        provider: "okx",
+        providerInstrumentId: args.providerInstrumentId,
+        assetClass: args.assetClass,
+      },
+      undefined,
     );
   },
 });

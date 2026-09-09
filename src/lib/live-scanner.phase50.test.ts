@@ -48,8 +48,6 @@ import {
 
 import {
   scanInstruments,
-  getScanUniverse,
-  DEFAULT_SCAN_UNIVERSE,
   type ScanConfig,
   type ScanResult,
 } from "./liveScanner";
@@ -414,10 +412,16 @@ describe("K — IDX Ranking", () => {
     expect(ranked.map(r => r.instrument).sort()).toEqual(["BBCA", "BBRI", "TLKM"]);
   });
 
-  it("IDX equities are in default scan universe", () => {
-    const universe = getScanUniverse(["equity"]);
-    const idxEntries = universe.filter(e => ["BBCA", "BBRI", "TLKM", "BMRI"].includes(e.instrument));
-    expect(idxEntries.length).toBe(4);
+  it("accepts IDX equities directly without a built-in universe", () => {
+    const sources = [
+      makeSource({ instrument: "BBCA", assetClass: "equity" }),
+      makeSource({ instrument: "BBRI", assetClass: "equity" }),
+      makeSource({ instrument: "TLKM", assetClass: "equity" }),
+      makeSource({ instrument: "BMRI", assetClass: "equity" }),
+    ];
+    const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
+    const ranked = result.results.get("SWING")!.rankedInstruments;
+    expect(ranked.map(r => r.instrument).sort()).toEqual(["BBCA", "BBRI", "BMRI", "TLKM"]);
   });
 });
 
@@ -458,9 +462,14 @@ describe("M — Index Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("N — Macro Context", () => {
-  it("DXY is included in scan universe", () => {
-    const universe = getScanUniverse(["macro"]);
-    expect(universe.some(e => e.instrument === "DXY")).toBe(true);
+  it("accepts arbitrary macro instruments directly", () => {
+    const sources = [
+      makeSource({ instrument: "DXY", assetClass: "macro" }),
+      makeSource({ instrument: "US10Y", assetClass: "macro" }),
+    ];
+    const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
+    const ranked = result.results.get("SWING")!.rankedInstruments;
+    expect(ranked.map(r => r.instrument).sort()).toEqual(["DXY", "US10Y"]);
   });
 });
 
@@ -753,15 +762,10 @@ describe("AC — Empty Universe", () => {
     expect(result.results.size).toBe(2);
   });
 
-  it("getScanUniverse returns all when no filter", () => {
-    const universe = getScanUniverse();
-    expect(universe.length).toBe(DEFAULT_SCAN_UNIVERSE.length);
-  });
-
-  it("getScanUniverse filters by asset class", () => {
-    const universe = getScanUniverse(["crypto"]);
-    expect(universe.every(e => e.assetClass === "crypto")).toBe(true);
-    expect(universe.length).toBeGreaterThan(0);
+  it("empty sources remain an explicit empty scan", () => {
+    const result = scanInstruments([], { horizons: ["INTRADAY"], maxResults: 10 });
+    expect(result.totalScanned).toBe(0);
+    expect(result.totalWithLiveData).toBe(0);
   });
 });
 

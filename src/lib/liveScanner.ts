@@ -77,6 +77,41 @@ function meetsFreshness(freshness: string, maxAllowed: string): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// ROTATING DISCOVERY ACQUISITION
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Select a deterministic rotating batch from a discovered universe.
+ *
+ * This is NOT a whitelist and does not rank instruments. Every discovered
+ * instrument remains eligible; the cursor only controls which instruments
+ * receive acquisition work in the current cycle.
+ */
+export function selectRotatingDiscoveryBatch<T>(
+  discovered: readonly T[],
+  cursor: number,
+  budget: number,
+): { batch: T[]; nextCursor: number } {
+  if (discovered.length === 0 || budget <= 0) {
+    return { batch: [], nextCursor: 0 };
+  }
+
+  const normalizedCursor =
+    ((cursor % discovered.length) + discovered.length) % discovered.length;
+
+  const count = Math.min(Math.floor(budget), discovered.length);
+  const batch = Array.from(
+    { length: count },
+    (_, index) => discovered[(normalizedCursor + index) % discovered.length],
+  );
+
+  return {
+    batch,
+    nextCursor: (normalizedCursor + count) % discovered.length,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
 // CANDIDATE PRE-PROCESSING
 // ═══════════════════════════════════════════════════════════════
 
@@ -167,57 +202,4 @@ export function scanInstruments(
     durationMs: Date.now() - startTime,
     providerErrors,
   };
-}
-
-// ═══════════════════════════════════════════════════════════════
-// DEFAULT SCAN UNIVERSE
-// ═══════════════════════════════════════════════════════════════
-
-export interface ScanUniverseEntry {
-  instrument: string;
-  assetClass: AssetClass;
-}
-
-/** Default instruments to scan — covers all asset classes with key representatives. */
-export const DEFAULT_SCAN_UNIVERSE: ScanUniverseEntry[] = [
-  // Crypto
-  { instrument: "BTC/USD", assetClass: "crypto" },
-  { instrument: "ETH/USD", assetClass: "crypto" },
-  { instrument: "SOL/USD", assetClass: "crypto" },
-  { instrument: "DOGE/USD", assetClass: "crypto" },
-  // Forex
-  { instrument: "EUR/USD", assetClass: "forex" },
-  { instrument: "GBP/USD", assetClass: "forex" },
-  { instrument: "USD/JPY", assetClass: "forex" },
-  { instrument: "USD/IDR", assetClass: "forex" },
-  // Equities — US
-  { instrument: "AAPL", assetClass: "equity" },
-  { instrument: "MSFT", assetClass: "equity" },
-  { instrument: "NVDA", assetClass: "equity" },
-  { instrument: "TSLA", assetClass: "equity" },
-  // Equities — IDX
-  { instrument: "BBCA", assetClass: "equity" },
-  { instrument: "BBRI", assetClass: "equity" },
-  { instrument: "TLKM", assetClass: "equity" },
-  { instrument: "BMRI", assetClass: "equity" },
-  // Commodities
-  { instrument: "XAU/USD", assetClass: "commodity" },
-  { instrument: "XAG/USD", assetClass: "commodity" },
-  { instrument: "WTI", assetClass: "commodity" },
-  { instrument: "BRENT", assetClass: "commodity" },
-  // Indices
-  { instrument: "SPX", assetClass: "indices" },
-  { instrument: "NDX", assetClass: "indices" },
-  { instrument: "DJI", assetClass: "indices" },
-  { instrument: "IHSG", assetClass: "indices" },
-  // Macro
-  { instrument: "DXY", assetClass: "macro" },
-];
-
-/**
- * Create a scan universe filtered by asset classes.
- */
-export function getScanUniverse(assetClasses?: AssetClass[]): ScanUniverseEntry[] {
-  if (!assetClasses || assetClasses.length === 0) return DEFAULT_SCAN_UNIVERSE;
-  return DEFAULT_SCAN_UNIVERSE.filter(e => assetClasses.includes(e.assetClass));
 }

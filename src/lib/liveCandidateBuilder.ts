@@ -27,10 +27,15 @@ import type { EiaData } from "./data/eia";
 // ═══════════════════════════════════════════════════════════════
 
 export interface LiveCandidateSource {
-  /** Instrument canonical ID. */
+  /** Candidate/display instrument identifier. For provider-native candidates this is the exact provider instrument ID. */
   instrument: string;
   /** Asset class. */
   assetClass: AssetClass;
+  /** Exact provider-native identity when the source came from native discovery. */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
   /** Market data from provider (if available). */
   marketData?: MarketData;
   /** Technical data computed from candles (if available). */

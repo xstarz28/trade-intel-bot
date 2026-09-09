@@ -240,7 +240,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
 
   // Provider-native identities bypass canonical registry resolution ONLY for
   // the explicitly supplied provider. They never enter the generic router.
-  if (!canonical && params.providerNative) {
+  if (params.providerNative) {
     const providerId = params.providerNative.provider;
     const providerSymbol = params.providerNative.providerInstrumentId;
 

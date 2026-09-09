@@ -22,7 +22,6 @@ import {
 } from "@/lib/recommendation-engine";
 import {
   scanInstruments,
-  getScanUniverse,
   type ScanConfig,
   type ScanResult,
 } from "@/lib/liveScanner";
