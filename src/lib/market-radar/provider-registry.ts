@@ -26,6 +26,7 @@ import {
 import { type LiveStatus, isLiveStatus } from "@/lib/data/universal/live/types";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { MarketSnapshot, FreshnessLevel } from "@/lib/market-radar/types";
+import type { OhlcvCandle } from "@/lib/data/market-types";
 import { assessFreshness } from "@/lib/market-radar/freshness";
 
 // ═══════════════════════════════════════════════════════════════
@@ -597,8 +598,11 @@ export function selectBestAdapter(
 export interface LiveAcquisitionResult {
   instrument: string;
   assetClass: AssetClass;
+  providerInstrumentId?: string;
   snapshot: MarketSnapshot | null;
+  candles?: OhlcvCandle[];
   provider: string;
+  fetchedAt: number;
   success: boolean;
   error?: string;
   latencyMs: number;
@@ -623,6 +627,7 @@ export async function acquireLiveData(
     return {
       instrument,
       assetClass,
+      fetchedAt: Date.now(),
       snapshot: null,
       provider: "none",
       success: false,
@@ -639,6 +644,7 @@ export async function acquireLiveData(
         assetClass,
         snapshot,
         provider: adapter.id,
+        fetchedAt: Date.now(),
         success: true,
         latencyMs: Date.now() - startTime,
       };
@@ -646,6 +652,7 @@ export async function acquireLiveData(
     return {
       instrument,
       assetClass,
+      fetchedAt: Date.now(),
       snapshot: null,
       provider: adapter.id,
       success: false,
@@ -656,6 +663,7 @@ export async function acquireLiveData(
     return {
       instrument,
       assetClass,
+      fetchedAt: Date.now(),
       snapshot: null,
       provider: adapter.id,
       success: false,
@@ -663,6 +671,144 @@ export async function acquireLiveData(
       latencyMs: Date.now() - startTime,
     };
   }
+}
+
+/**
+ * Phase 156 — Acquire live data for a provider-native instrument.
+ *
+ * Provider-native identity is preserved exactly. This path bypasses
+ * canonical registry resolution and generic adapter symbol mapping.
+ * Discovery metadata alone is never treated as live evidence.
+ */
+export async function acquireProviderNativeLiveData(
+  input: {
+    instrument: string;
+    provider: string;
+    providerInstrumentId: string;
+    assetClass: AssetClass;
+  },
+  readEnv?: EnvReader,
+  transport: Transport = defaultTransport,
+): Promise<LiveAcquisitionResult> {
+  const startTime = Date.now();
+
+  const result = await executeLiveRequest({
+    instrument: input.instrument,
+    capability: "ohlcv",
+    timeframe: "1h",
+    count: 100,
+    transport,
+    readEnv,
+    providerNative: {
+      provider: input.provider,
+      providerInstrumentId: input.providerInstrumentId,
+      assetClass: input.assetClass,
+    },
+  });
+
+  const candles = result.candles ?? [];
+  const latest = candles[candles.length - 1];
+
+  if (
+    (result.status !== "LIVE_VERIFIED" &&
+      result.status !== "LIVE_PARTIAL") ||
+    !latest ||
+    !Number.isFinite(latest.close) ||
+    latest.close <= 0
+  ) {
+    return {
+      instrument: input.instrument,
+      assetClass: input.assetClass,
+      providerInstrumentId: input.providerInstrumentId,
+      snapshot: null,
+      provider: result.provider ?? input.provider,
+      fetchedAt: result.receivedAt ?? Date.now(),
+      success: false,
+      error: result.failureReason ?? `Live request status: ${result.status}`,
+      latencyMs: result.latencyMs ?? Date.now() - startTime,
+    };
+  }
+
+  const observedAt = latest.timestamp;
+  const freshness = assessFreshness(observedAt, Date.now());
+
+  return {
+    instrument: input.instrument,
+    assetClass: input.assetClass,
+    providerInstrumentId: input.providerInstrumentId,
+    snapshot: {
+      instrument: input.instrument,
+      assetClass: input.assetClass,
+      price: latest.close,
+      ohlcvAvailable: true,
+      availableTimeframes: ["H1"],
+      provider: result.provider ?? input.provider,
+      observedAt,
+      freshness,
+      quality: result.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
+    },
+    candles: candles.map((candle) => ({
+      ...candle,
+      volume: candle.volume ?? 0,
+    })),
+    provider: result.provider ?? input.provider,
+    fetchedAt: result.receivedAt ?? Date.now(),
+    success: true,
+    ...(result.failureReason ? { error: result.failureReason } : {}),
+    latencyMs: result.latencyMs ?? Date.now() - startTime,
+  };
+}
+
+/**
+ * Phase 156 — Convert verified provider-native OHLCV into the normalized
+ * MarketData shape consumed by LiveCandidateBuilder.
+ *
+ * No technical/fundamental evidence is invented here. Only verified
+ * provider OHLCV and the provider-native identity are carried forward.
+ */
+export function providerNativeAcquisitionToMarketData(
+  result: LiveAcquisitionResult,
+): import("../data/market-types").MarketData | null {
+  const candles = result.candles ?? [];
+  if (!result.success || !result.snapshot || candles.length === 0) {
+    return null;
+  }
+
+  const freshness =
+    result.snapshot.freshness === "FRESH"
+      ? "realtime"
+      : result.snapshot.freshness === "DELAYED"
+        ? "delayed"
+        : result.snapshot.freshness === "STALE"
+          ? "stale"
+          : "unavailable";
+
+  const instrumentType =
+    result.assetClass === "crypto"
+      ? "crypto"
+      : result.assetClass === "forex"
+        ? "forex"
+        : result.assetClass === "equity"
+          ? "stock"
+          : result.assetClass === "commodity"
+            ? "commodity"
+            : "indices";
+
+  return {
+    instrument: result.instrument,
+    instrumentType,
+    provider: result.provider,
+    fetchTimestamp: result.fetchedAt,
+    price: {
+      price: result.snapshot.price,
+      timestamp: result.snapshot.observedAt,
+      source: result.provider,
+    },
+    candles,
+    timeframe: "1h",
+    dataFreshness: freshness,
+    ...(result.error ? { error: result.error } : {}),
+  };
 }
 
 /**
@@ -683,6 +829,40 @@ export async function acquireBatchLiveData(
     );
     results.push(...batchResults);
   }
+  return results;
+}
+
+/**
+ * Phase 156 — Batch acquire live data for provider-native instruments.
+ *
+ * Preserves each provider's exact native instrument identity.
+ * This path never falls through canonical instrument resolution.
+ */
+export async function acquireBatchProviderNativeLiveData(
+  instruments: {
+    instrument: string;
+    provider: string;
+    providerInstrumentId: string;
+    assetClass: AssetClass;
+  }[],
+  readEnv?: EnvReader,
+  concurrency = 5,
+  transport: Transport = defaultTransport,
+): Promise<LiveAcquisitionResult[]> {
+  const results: LiveAcquisitionResult[] = [];
+
+  for (let i = 0; i < instruments.length; i += concurrency) {
+    const batch = instruments.slice(i, i + concurrency);
+
+    const batchResults = await Promise.all(
+      batch.map((input) =>
+        acquireProviderNativeLiveData(input, readEnv, transport),
+      ),
+    );
+
+    results.push(...batchResults);
+  }
+
   return results;
 }
 
