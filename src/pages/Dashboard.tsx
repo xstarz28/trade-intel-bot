@@ -16,7 +16,7 @@ import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { mergeVerifiedLiveSources, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
@@ -155,22 +155,12 @@ export default function Dashboard() {
         const { providerNativeAcquisitionToMarketData } =
           await import("@/lib/market-radar/provider-registry");
 
-        for (const result of acquired) {
-          if (!result.success) continue;
-
-          const marketData = providerNativeAcquisitionToMarketData(result);
-          if (!marketData) continue;
-
-          liveSourceRef.current.set(result.instrument, {
-            instrument: result.instrument,
-            assetClass: result.assetClass,
-            providerNative: {
-              provider: result.provider,
-              providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-            },
-            marketData,
-          });
-        }
+        const retainedSources = mergeVerifiedLiveSources(
+          liveSourceRef.current,
+          acquired,
+          providerNativeAcquisitionToMarketData,
+        );
+        liveSourceRef.current = retainedSources;
 
         setLiveSourcesVersion((version) => version + 1);
 
@@ -717,22 +707,12 @@ export default function Dashboard() {
       const { providerNativeAcquisitionToMarketData } =
         await import("@/lib/market-radar/provider-registry");
 
-      for (const result of acquired) {
-        if (!result.success) continue;
-
-        const marketData = providerNativeAcquisitionToMarketData(result);
-        if (!marketData) continue;
-
-        liveSourceRef.current.set(result.instrument, {
-          instrument: result.instrument,
-          assetClass: result.assetClass,
-          providerNative: {
-            provider: result.provider,
-            providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-          },
-          marketData,
-        });
-      }
+      const retainedSources = mergeVerifiedLiveSources(
+        liveSourceRef.current,
+        acquired,
+        providerNativeAcquisitionToMarketData,
+      );
+      liveSourceRef.current = retainedSources;
 
       setLiveSourcesVersion((version) => version + 1);
 
@@ -755,17 +735,21 @@ export default function Dashboard() {
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
   const radarStateRef = useRef<RadarState | null>(null);
 
-  // Auto-scan when live sources change
-  useMemo(() => {
-    if (liveSources.length > 0) {
-      const config = { horizons: ["INTRADAY" as const, "SWING" as const], maxResults: 10 };
-      const result = scanInstruments(liveSources, config);
-      setScanResult(result);
-    }
+  // Auto-scan when live sources change.
+  // This is a side effect, so keep it in useEffect rather than useMemo.
+  useEffect(() => {
+    if (liveSources.length === 0) return;
+
+    const config = {
+      horizons: ["INTRADAY" as const, "SWING" as const],
+      maxResults: 10,
+    };
+    const result = scanInstruments(liveSources, config);
+    setScanResult(result);
   }, [liveSources]);
 
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
-  useMemo(() => {
+  useEffect(() => {
     if (liveSources.length === 0) return;
     // Build radar candidate sources from analysis history
     const radarSources: RadarCandidateSource[] = liveSources.map(ls => {
