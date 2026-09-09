@@ -203,3 +203,49 @@ export function scanInstruments(
     providerErrors,
   };
 }
+
+/**
+ * Merge verified provider-native acquisitions into the retained live-source map.
+ *
+ * Only successful acquisitions that produce valid MarketData are retained.
+ * Existing sources remain untouched when an acquisition fails or is invalid.
+ * Provider-native identity is preserved exactly; no canonicalization or substitution.
+ */
+export function mergeVerifiedLiveSources(
+  retained: ReadonlyMap<string, LiveCandidateSource>,
+  acquired: readonly {
+    instrument: string;
+    assetClass: AssetClass;
+    providerInstrumentId?: string;
+    provider: string;
+    success: boolean;
+    snapshot: import("./market-radar/types").MarketSnapshot | null;
+    candles?: import("./data/market-types").OhlcvCandle[];
+    fetchedAt: number;
+    latencyMs: number;
+    error?: string;
+  }[],
+  convert: (result: (typeof acquired)[number]) => LiveCandidateSource["marketData"] | null,
+): Map<string, LiveCandidateSource> {
+  const next = new Map(retained);
+
+  for (const result of acquired) {
+    if (!result.success) continue;
+    if (!result.providerInstrumentId) continue;
+
+    const marketData = convert(result);
+    if (!marketData) continue;
+
+    next.set(result.instrument, {
+      instrument: result.instrument,
+      assetClass: result.assetClass,
+      providerNative: {
+        provider: result.provider,
+        providerInstrumentId: result.providerInstrumentId,
+      },
+      marketData,
+    });
+  }
+
+  return next;
+}
