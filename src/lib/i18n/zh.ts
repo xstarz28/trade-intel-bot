@@ -748,6 +748,7 @@ const zh: Translations = {
     entry: "入场：",
     current: "当前：",
     pnl: "盈亏：",
+    rMultiple: "R 倍数",
     sl: "止损：",
     tp: "止盈：",
     shortTerm: "短期：",

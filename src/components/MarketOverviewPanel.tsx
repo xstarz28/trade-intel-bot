@@ -7,13 +7,7 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import {
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Activity,
-  Globe,
-} from "lucide-react";
+import { Globe } from "lucide-react";
 import {
   getAllInstruments,
   getInstrumentInfo,
@@ -51,13 +45,21 @@ function InstrumentRow({
   info: InstrumentInfo;
   liveState?: LiveInstrumentState;
 }) {
-  const price = liveState?.price ?? 0;
+  // A price is only usable if the provider actually reported a finite,
+  // positive number. `?? 0` alone let NaN/Infinity through, which rendered as
+  // the literal string "NaN" next to a provider name.
+  const rawPrice = liveState?.price;
+  const hasUsablePrice =
+    typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0;
+  const price = hasUsablePrice ? rawPrice : 0;
   const sourceMode = liveState?.sourceMode ?? "UNAVAILABLE";
   const provider = liveState?.provider ?? info.primaryProvider;
 
-  const isLive = sourceMode === "LIVE" && price > 0;
-  const isStale = sourceMode === "STALE";
-  const isUnavailable = sourceMode === "UNAVAILABLE" || price === 0;
+  const isLive = sourceMode === "LIVE" && hasUsablePrice;
+  const isStale = sourceMode === "STALE" && hasUsablePrice;
+  // Simulated data is never real market data: show it as unavailable rather
+  // than letting a synthetic number sit in a price column unlabelled.
+  const isUnavailable = !hasUsablePrice || sourceMode === "UNAVAILABLE" || sourceMode === "SIMULATED";
 
   // Determine price color based on source mode
   const priceColor = isLive
@@ -129,7 +131,16 @@ export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
   const totalLive = useMemo(() => {
     let count = 0;
     for (const [, state] of livePrices) {
-      if (state.sourceMode === "LIVE" && state.price > 0) count++;
+      // Must match the per-row definition of "live" exactly, otherwise the
+      // "N/M live" counter can claim more live feeds than are displayed.
+      if (
+        state.sourceMode === "LIVE" &&
+        typeof state.price === "number" &&
+        Number.isFinite(state.price) &&
+        state.price > 0
+      ) {
+        count++;
+      }
     }
     return count;
   }, [livePrices]);
@@ -142,7 +153,7 @@ export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Globe className="size-3.5 text-primary" />
-          <h3 className="text-xs font-mono font-semibold">Market Overview</h3>
+          <h3 className="text-xs font-mono font-semibold">{t.market.title}</h3>
         </div>
         <span className="text-[9px] font-mono text-muted-foreground">
           {totalLive}/{totalInstruments} live

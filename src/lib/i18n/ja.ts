@@ -752,6 +752,7 @@ const ja: Translations = {
     entry: "エントリー：",
     current: "現在：",
     pnl: "PnL：",
+    rMultiple: "Rマルチプル",
     sl: "SL：",
     tp: "TP：",
     shortTerm: "短期：",

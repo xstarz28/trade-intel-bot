@@ -751,6 +751,7 @@ const ko: Translations = {
     entry: "진입:",
     current: "현재:",
     pnl: "PnL:",
+    rMultiple: "R 배수",
     sl: "SL:",
     tp: "TP:",
     shortTerm: "단기:",

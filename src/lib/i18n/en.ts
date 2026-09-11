@@ -742,6 +742,7 @@ const en: Translations = {
     entry: "Entry:",
     current: "Current:",
     pnl: "PnL:",
+    rMultiple: "R-Multiple",
     sl: "SL:",
     tp: "TP:",
     shortTerm: "Short-term:",

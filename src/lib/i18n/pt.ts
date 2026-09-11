@@ -750,6 +750,7 @@ const pt: Translations = {
     entry: "Entrada:",
     current: "Atual:",
     pnl: "PnL:",
+    rMultiple: "Múltiplo R",
     sl: "SL:",
     tp: "TP:",
     shortTerm: "Curto prazo:",

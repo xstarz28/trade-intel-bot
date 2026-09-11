@@ -886,6 +886,7 @@ export interface Translations {
     entry: string;
     current: string;
     pnl: string;
+    rMultiple: string;
     sl: string;
     tp: string;
     shortTerm: string;
