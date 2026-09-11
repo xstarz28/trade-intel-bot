@@ -841,12 +841,11 @@ export const runProtectedAnalysis = action({
         });
       }
 
-      // The provider actions report their own acquisition mode. When a leg
-      // does not surface one, fall back to `observed-now` rather than
-      // guessing a cache hit: over-reporting reuse would understate provider
-      // load, but falsely reporting a NEW OBSERVATION is the dangerous
-      // direction, so the fallback is the honest-but-conservative one only
-      // for genuinely uncached legs.
+      // The provider actions report their own acquisition mode. A cached leg
+      // that reports NEITHER a mode NOR an observation timestamp performed no
+      // completed cache read — it degraded internally while still returning a
+      // success envelope. Claiming `observed-now` there would fabricate
+      // provider contact, so such a leg is reported as `unavailable`.
       const reported = outcome.acquisition;
       const mode =
         reported === "cache-reused" ||
@@ -867,6 +866,14 @@ export const runProtectedAnalysis = action({
           observedAt,
           attached: attachedKey !== undefined,
           usedByEngine,
+        });
+      }
+
+      if (mode === undefined && typeof outcome.observedAt !== "number") {
+        return legFromFailure({
+          provider: outcome.provider,
+          dataset: meta.dataset,
+          outcome: { status: "failed", category: "unavailable" },
         });
       }
 

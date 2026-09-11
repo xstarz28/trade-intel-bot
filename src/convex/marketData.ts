@@ -29,7 +29,7 @@ import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../l
  * candidate resolves, probing is skipped for 24h instead of every analysis.
  */
 import { getProviderCache } from "../lib/data/provider-cache-registry";
-import { combineAcquisitions, oldestObservation } from "../lib/data/provenance-diagnostics";
+import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
 
 let dxyResolvedSymbol: string | null = null;
 let dxyAllCandidatesFailedAt: number | null = null;
@@ -408,7 +408,7 @@ export const fetchMarketData = action({
         // Phase 178d — one honest mode for the whole action: `cache-reused`
         // only if EVERY candle read was reused. The oldest observation
         // governs the age, so a single fresh read cannot mask older data.
-        acquisition: combineAcquisitions(candleAcquisitions),
+        acquisition: envelopeAcquisition(candleAcquisitions),
         observedAt: oldestObservation(candleObservations),
       };
     } catch (err: any) {

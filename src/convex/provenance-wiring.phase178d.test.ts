@@ -366,6 +366,100 @@ describe("the protected fan-out emits acquisition provenance", () => {
 });
 
 // ═══════════════════════════════════════════════════════════
+// Integrity fix — a degraded action must not fabricate contact
+// ═══════════════════════════════════════════════════════════
+
+describe("an action with zero completed cache reads claims nothing", () => {
+  it("Alpha Vantage with a dead transport does not report observed-now", async () => {
+    // REACHABILITY PROOF. News is non-critical, so the handler swallows the
+    // transport error and still returns `success: true`. Before the fix that
+    // envelope carried `acquisition: "observed-now"` with `observedAt:
+    // undefined` — provider contact claimed with no evidence behind it.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes("alphavantage")) throw new Error("socket hang up");
+        const body = responder(url);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => body,
+          text: async () => JSON.stringify(body),
+        } as unknown as Response;
+      }),
+    );
+
+    const result = (await handlerOf<
+      { instrument: string; instrumentType: string },
+      { success: boolean; acquisition?: string; observedAt?: number }
+    >(fetchIntelligence)(ctx(), {
+      instrument: "BTC/USDT",
+      instrumentType: "crypto",
+    })) as { success: boolean; acquisition?: string; observedAt?: number };
+
+    // The action still succeeds (graceful degradation is correct)...
+    expect(result.success).toBe(true);
+    // ...but it must make NO acquisition claim.
+    expect(result.acquisition).toBeUndefined();
+    expect(result.observedAt).toBeUndefined();
+  });
+
+  it("the fan-out reports such a leg as unavailable, never as an observation", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes("alphavantage")) throw new Error("socket hang up");
+        const body = responder(url);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => body,
+          text: async () => JSON.stringify(body),
+        } as unknown as Response;
+      }),
+    );
+
+    captureLogs();
+    await runAnalysis(ctx(), CRYPTO);
+    releaseLogs();
+
+    const av = legLines().find((l) => l.startsWith("alpha-vantage/"));
+    expect(av).toBeDefined();
+    expect(av).not.toContain("observed-now");
+    expect(av).not.toContain("cache-reused");
+    expect(av).toContain("unavailable");
+    // A leg with no observation must carry no age.
+    expect(av).not.toMatch(/age \d/);
+  });
+
+  it("a fabricated observation cannot re-enter through the totals", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: unknown) => {
+        const url = String(input);
+        if (url.includes("alphavantage")) throw new Error("socket hang up");
+        const body = responder(url);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => body,
+          text: async () => JSON.stringify(body),
+        } as unknown as Response;
+      }),
+    );
+
+    captureLogs();
+    await runAnalysis(ctx(), CRYPTO);
+    releaseLogs();
+
+    const totals = lines.find((l) => l.startsWith("totals:"));
+    expect(totals).toMatch(/[1-9]\d* unavailable/);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════
 // Identity and freshness in diagnostics
 // ═══════════════════════════════════════════════════════════
 
