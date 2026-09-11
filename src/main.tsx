@@ -58,7 +58,7 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { BrowserRouter, Route, Routes } from "react-router";
 import { I18nProvider } from "@/lib/i18n";
 import "./index.css";
 
@@ -131,12 +131,27 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
-      <ToolbarErrorBoundary>
-        <VlyToolbar />
-      </ToolbarErrorBoundary>
+      {/*
+        Development-only. The toolbar is an editor affordance: it injects a
+        floating overlay and links out to the build platform, neither of which
+        belongs in a shipped product. Gating on import.meta.env.DEV also lets
+        the bundler tree-shake it out of the production build.
+      */}
+      {import.meta.env.DEV && (
+        <ToolbarErrorBoundary>
+          <VlyToolbar />
+        </ToolbarErrorBoundary>
+      )}
       <I18nProvider>
       <ConvexAuthProvider client={convex}>
-        <MemoryRouter initialEntries={["/"]}>
+        {/*
+          BrowserRouter, not MemoryRouter: MemoryRouter keeps routing state in
+          memory only, so the address bar never updates, deep links such as
+          /dashboard 404 on load, and reload plus browser back/forward all drop
+          the user back to the landing page. Real URLs are also required for
+          the post-auth ?returnTo flow to mean anything.
+        */}
+        <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route
@@ -161,7 +176,7 @@ createRoot(document.getElementById("root")!).render(
             />
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </MemoryRouter>
+        </BrowserRouter>
         <Toaster />
       </ConvexAuthProvider>
       </I18nProvider>
