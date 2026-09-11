@@ -112,7 +112,51 @@ Prerequisites: `npx convex dev` running, `.env` populated from
 - The main JS chunk exceeds 1,000 kB. Non-fatal, but worth code-splitting
   before launch.
 
+### ACTION REQUIRED before production — rotate the leaked OTP key
+
+A third-party API key for the OTP email service was committed in
+`src/convex/auth/emailOtp.ts` and is present in this repository's git history.
+
+Phase 165 removed the literal from the source and moved it to the
+`OTP_EMAIL_API_KEY` environment variable, but **removing it from the working
+tree does not remove it from history** — the value is still recoverable from
+earlier commits, and this repository has been pushed.
+
+Before launch you must:
+
+1. **Rotate/revoke the key** at the provider (`auth.freebuff.app`). This is the
+   only step that actually neutralizes the exposure; assume the old value is
+   compromised.
+2. Set the new value as `OTP_EMAIL_API_KEY` in the Convex deployment
+   environment (not in the client bundle — anything prefixed `VITE_` ships to
+   the browser).
+3. Optionally purge the value from history (`git filter-repo` or BFG) and
+   force-push. Do this only after rotating; it rewrites commit hashes.
+
+Related hardening shipped in the same phase: the handler previously threw
+`JSON.stringify(error)`, which serialized the whole axios error — including the
+request headers carrying the key and the OTP itself — into the error message.
+It now reports the HTTP status only.
+
 ### Resolved
+
+- **Stream cursor cross-user read (fixed in Phase 165).** `streamCursors` rows
+  carry a `userId`, but the table's only index was `by_provider_instrument` and
+  `positionProtection.getCursor` had no authentication check at all. Any signed-in
+  user could read another user's stream position by requesting the same
+  provider/instrument pair, and `saveCursor`'s upsert could patch a row
+  belonging to a different user. Fixed with a `by_user_provider_instrument`
+  index and user-scoped lookups in both handlers.
+
+- **OKX derivatives were silently undiscoverable (fixed in Phase 165).**
+  `discoverOkxInstruments` requested SPOT, SWAP and FUTURES, then rejected every
+  row lacking `baseCcy`/`quoteCcy`. Per the OKX v5 API those fields are
+  populated for SPOT only; derivatives express the pair through `uly`. The
+  result was that 100% of perpetuals and futures were discarded without a
+  warning, so they could never reach the scanner — the failure was invisible
+  because discovery still "succeeded" with a non-empty spot list. Found by
+  running the real pipeline against an injected transport rather than by
+  reading tests.
 
 - **`src/convex/auth/emailOtp.ts` TypeScript errors (fixed in Phase 164).**
   Three long-standing errors (`TS2353` on `id`, two `TS7031`) broke
