@@ -38,6 +38,8 @@ const CG_BASE = "https://open-api-v3.coinglass.com/api";
 
 async function cgFetch(path: string, apiKey: string): Promise<any> {
   const res = await fetch(`${CG_BASE}${path}`, {
+    // Phase 177 — HTTP deadline below the 8s coinglass leg budget.
+    signal: AbortSignal.timeout(7_000),
     headers: {
       accept: "application/json",
       cg_api_key: apiKey,

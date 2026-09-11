@@ -35,6 +35,8 @@ export const fetchOkxInstrumentSpec = action({
     try {
       const res = await fetch(`${ENDPOINT}?instType=SWAP&instId=${encodeURIComponent(instId)}`, {
         headers: { Accept: "application/json" },
+        // Phase 177 — HTTP deadline below the 6s okx-instrument-spec budget.
+        signal: AbortSignal.timeout(5_000),
       });
       if (!res.ok) {
         return { success: false as const, error: `OKX endpoint returned HTTP ${res.status}.` };
@@ -83,7 +85,11 @@ export const fetchOkxOrderBook = action({
     try {
       const res = await fetch(
         `https://www.okx.com/api/v5/market/books?instId=${encodeURIComponent(instId)}&sz=50`,
-        { headers: { Accept: "application/json" } },
+        {
+          headers: { Accept: "application/json" },
+          // Phase 177 — HTTP deadline below the 6s okx-order-book budget.
+          signal: AbortSignal.timeout(5_000),
+        },
       );
       if (!res.ok) {
         return { success: false as const, error: `OKX order book returned HTTP ${res.status}.` };

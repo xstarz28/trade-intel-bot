@@ -32,7 +32,11 @@ export const fetchCotPositioning = action({
       const url =
         `${DATASET}?market_and_exchange_names=${encodeURIComponent(mapping.sourceInstrument)}` +
         `&%24order=report_date_as_yyyy_mm_dd%20DESC&%24limit=2`;
-      const res = await fetch(url, { headers: { Accept: "application/json" } });
+      const res = await fetch(url, {
+        headers: { Accept: "application/json" },
+        // Phase 177 — HTTP deadline below the 8s cftc leg budget.
+        signal: AbortSignal.timeout(7_000),
+      });
       if (!res.ok) {
         return { success: false as const, error: `CFTC endpoint returned HTTP ${res.status}.` };
       }

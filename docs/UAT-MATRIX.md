@@ -1,7 +1,7 @@
 # Phase 173 — Manual Production UAT Matrix
 
 **Xstarz Analysis** · executable browser test matrix
-Last updated: Phase 176 (2026-09-11).
+Last updated: Phase 177 (2026-09-11).
 
 ---
 
@@ -191,6 +191,11 @@ calm market.**
 | 9.19 | P2, crypto instrument | Run an analysis on `BTC-USDT-SWAP` and inspect the Convex logs | Every provider action receives the instrument id byte-for-byte. | Any canonicalisation or substitution. **Stop and report.** | AUTO | ☐ |
 | 9.20 | P2 | Run an analysis while one secondary provider key is unset | Analysis completes; that provider's context is absent and disclosed, not defaulted. | A fabricated/default value appears. **Stop and report.** | AUTO | ☐ |
 | 9.21 | P2 | Time a full analysis and compare against the pre-176 baseline | Latency is comparable — providers are fetched in one parallel wave. | Latency grows roughly with provider count (serialized). | AUTO | ☐ |
+| 9.22 | P2 | In the Convex dashboard, block/deconfigure one secondary provider and run an analysis | Analysis completes within ~15s; that provider is reported unavailable, others unaffected. | The analysis hangs or all providers fail together. **Stop and report.** | AUTO | ☐ |
+| 9.23 | P2 | Inspect the Convex logs for the `fanout ...` summary line after an analysis | Each provider shows status + duration; no API key or token appears. | Any credential fragment in logs. **Stop and report.** | AUTO | ☐ |
+| 9.24 | P2 | Compare logged per-provider durations against the Phase 177 budget table | Observed durations sit inside their budgets; re-tune if not. | A provider routinely hits its budget (mis-sized). | AUTO | ☐ |
+| 9.25 | P2 | Trigger an Alpha Vantage rate limit (repeat analyses quickly) | Leg reports rate-limited; it is NOT retried; other providers still return. | Retry storm, or the rate limit changes the verdict. **Stop and report.** | AUTO | ☐ |
+| 9.26 | P2, crypto | Run an analysis while OKX is unreachable | Sizing reports specification unavailable; no fabricated contract values. | Invented contractSize/quantityStep. **Stop and report.** | AUTO | ☐ |
 
 ## 10. Journal, positions, and protection lifecycle
 

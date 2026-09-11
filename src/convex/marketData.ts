@@ -57,6 +57,10 @@ async function fetchCandles(
 ): Promise<OhlcvCandle[]> {
   const res = await fetch(
     `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${mapTimeframe(tf)}&outputsize=${outputsize}&apikey=${apiKey}`,
+    // Phase 177 — per-request deadline. market-data issues several of these
+    // (multi-timeframe batch + bounded DXY probe), so each must be short
+    // enough that the whole leg stays inside its 12s budget.
+    { signal: AbortSignal.timeout(6_000) },
   );
   const json = await res.json();
   if (json.code) {
@@ -122,6 +126,8 @@ export const fetchMarketData = action({
       // Live quote — NON-fatal: never discard successful candle data
       const quoteRes = await fetch(
         `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+        // Phase 177 — non-fatal leg; a hung quote must not hold the analysis.
+        { signal: AbortSignal.timeout(5_000) },
       )
         .then((r) => r.json())
         .catch(() => ({}));
@@ -347,6 +353,8 @@ export const fetchFxRate = action({
       try {
         const res = await fetch(
           `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(pair)}&apikey=${apiKey}`,
+          // Phase 177 — HTTP deadline below the 6s fx-rate leg budget.
+          { signal: AbortSignal.timeout(5_000) },
         ).then((r) => r.json());
         if (!res || res.code || res.close === undefined) return null;
         const rate = parseFloat(res.close);
