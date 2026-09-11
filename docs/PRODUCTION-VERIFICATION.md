@@ -140,6 +140,33 @@ Related hardening shipped in the same phase: the handler previously threw
 request headers carrying the key and the OTP itself — into the error message.
 It now reports the HTTP status only.
 
+### Silent-failure patterns found in Phases 170–171 — read this one too
+
+Three defects in this batch shared one shape: **the broken value made a
+comparison false, and a false comparison looks like "nothing to report".**
+
+- `NaN <= 0` is **false**, so every `typeof x !== "number" || x <= 0`
+  validator in `position-registration.ts` accepted `NaN` and `Infinity` as
+  valid prices.
+- `NaN < 2` is **false**, so an unguarded distance-to-stop did not render a
+  visibly wrong warning — it *silently dropped* the "approaching stop loss"
+  warning entirely.
+- Both `NaN > peak` and `NaN < peak` are **false**, so a `NaN` unrealized P/L
+  silently disabled **giveback protection** in `protection-engine.ts` instead
+  of surfacing an error.
+
+Standing caution: **a guard written as `x <= 0` does not reject non-finite
+numbers.** Use `Number.isFinite(x) && x > 0`. When a numeric field can
+legitimately be unknown, type it `number | undefined` rather than defaulting
+it to `0` — TypeScript then forces every consumer to decide what "unknown"
+means, which is how all nine `unrealizedPnL` call sites were found. A default
+of `0` is not neutral on a trading surface: it reads as "breaking even",
+"at the stop", or "no giveback".
+
+Related: `parseFloat` is not a validator. `parseFloat("12abc")` is `12`, and
+`parseFloat(x) || 0` turns unparseable input into a price the user never
+typed.
+
 ### Test-collection gap (fixed in Phase 166) — read this one
 
 `vitest.config.ts` had `include: ["src/**/*.test.ts"]`, which never matched
@@ -156,6 +183,34 @@ covers what it actually collects.** Check the collected-file count, not just
 the pass rate.
 
 ### Resolved
+
+- **Phase 169 — no entitlement system existed.** There was no table, no
+  counter and no enforcement anywhere in the codebase, so any free-tier limit
+  would have been client-side and therefore decorative. Now server-authoritative
+  in `src/convex/entitlements.ts` against an `entitlements` table keyed by
+  userId. Only actionable BUY/SELL/LONG/SHORT results are charged — WAIT and
+  NO_TRADE are always free, so the pricing model cannot create pressure to
+  manufacture recommendations.
+- **Phase 169 — open redirect via `?returnTo=`.** The guard
+  `startsWith("/") && !startsWith("//")` accepted `/\evil.com`, which browsers
+  normalise into a protocol-relative URL to another origin. Replaced with
+  `src/lib/routing/safe-redirect.ts`; 15 attack vectors pinned as tests.
+- **Phase 169 — `MemoryRouter` in production.** Deep links, reload and browser
+  back/forward were all broken; the address bar never updated. Switched to
+  `BrowserRouter` and added the required host rewrite (`public/_redirects`,
+  `vercel.json`).
+- **Phase 169 — build-platform branding shipped to users.** "secured by
+  freebuff.com" on the sign-in card, an "Open editor" button in the error
+  dialog, and a `[Freebuff ...]` runtime log tag. The editor toolbar was
+  mounted unconditionally and only caught by grepping `dist/`; it is now gated
+  behind `import.meta.env.DEV`. `grep -c "freebuff.com" dist/assets/*.js` is 0
+  across every chunk. The locale storage key was renamed with a one-time
+  legacy read so existing users keep their language.
+- **Phase 170 — fabricated prices on the entry path.** `formatInstrumentPrice`
+  rendered `NaN`, `∞` and `0.00000`; the last is the dangerous one because it
+  reads as a real quote rather than an error.
+- **Phase 171 — giveback protection silently disabled by a NaN P/L.** See the
+  silent-failure section above.
 
 - **Enum mappers crashed on missing data (fixed in Phase 166).** All 34
   `map*` helpers in `src/lib/i18n/enum-mapping.ts` ended in
