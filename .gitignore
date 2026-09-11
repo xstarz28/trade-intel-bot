@@ -25,3 +25,4 @@ src/convex/_generated
 # Local tooling noise
 .DS_Store
 *.log
+*.bak

@@ -65,12 +65,31 @@ function getResource(locale: Locale): Translations {
 
 // ─── localStorage helpers ──────────────────────────────────────
 
-const STORAGE_KEY = "freebuff:locale";
+const STORAGE_KEY = "xstarz:locale";
+
+/**
+ * Key used before the product was renamed. Still read once so that an
+ * existing user's saved language survives the rename instead of silently
+ * reverting to the browser default.
+ */
+const LEGACY_STORAGE_KEY = "freebuff:locale";
 
 function readPersistedLocale(): Locale | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw && isSupportedLocale(raw)) return raw;
+
+    // One-time migration off the legacy key.
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy && isSupportedLocale(legacy)) {
+      persistLocale(legacy);
+      try {
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      } catch {
+        // Non-fatal: the value has already been copied across.
+      }
+      return legacy;
+    }
   } catch {
     // localStorage unavailable (SSR, private mode, etc.)
   }

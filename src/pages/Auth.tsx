@@ -16,29 +16,22 @@ import {
 
 import { useAuth } from "@/hooks/use-auth";
 import logo from "@/assets/logo.svg";
-import { ArrowRight, Loader2, Mail, Terminal, UserX } from "lucide-react";
+import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
+import { resolveSafeRedirect } from "@/lib/routing/safe-redirect";
 
 interface AuthProps {
   redirectAfterAuth?: string;
-}
-
-function resolveRedirectAfterAuth(
-  returnTo: string | null,
-  fallback = "/dashboard",
-) {
-  if (returnTo?.startsWith("/") && !returnTo.startsWith("//")) {
-    return returnTo;
-  }
-  return fallback;
 }
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirect = resolveRedirectAfterAuth(
+  // `returnTo` is attacker-controllable; resolveSafeRedirect refuses anything
+  // that could leave this origin. See src/lib/routing/safe-redirect.ts.
+  const redirect = resolveSafeRedirect(
     searchParams.get("returnTo"),
     redirectAfterAuth,
   );
@@ -63,11 +56,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       setIsLoading(false);
     } catch (error) {
       console.error("Email sign-in error:", error);
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Failed to send verification code. Please try again.",
-      );
+      setError("Could not send the verification code. Please try again.");
       setIsLoading(false);
     }
   };
@@ -100,9 +89,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       // Do NOT navigate here — the useEffect above handles redirect
       // once isAuthenticated is true.
     } catch (error) {
-      console.error("Guest login error:", error);
-      console.error("Error details:", JSON.stringify(error, null, 2));
-      setError(`Failed to sign in as guest: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Log for diagnostics, but never surface a raw provider error to the
+      // user: those strings can carry request details and configuration hints.
+      console.error("Guest sign-in error:", error);
+      setError("Could not start a guest session. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -120,12 +110,18 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
             <>
               <CardHeader className="text-center">
               <div className="flex justify-center">
-                    <div
-                      className="flex size-12 items-center justify-center rounded-xl bg-primary/15 cursor-pointer"
+                    <button
+                      type="button"
+                      aria-label="Xstarz Analysis home"
+                      className="flex size-12 items-center justify-center overflow-hidden rounded-xl bg-primary/15"
                       onClick={() => navigate("/")}
                     >
-                      <Terminal className="size-6 text-primary" />
-                    </div>
+                      <img
+                        src={logo}
+                        alt=""
+                        className="size-12 rounded-xl object-cover"
+                      />
+                    </button>
                   </div>
                 <CardTitle className="text-lg font-mono">Xstarz Analysis</CardTitle>
                 <CardDescription className="font-mono text-xs">
@@ -275,7 +271,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           )}
 
           <div className="py-4 px-6 text-[11px] font-mono text-center text-muted-foreground bg-muted border-t rounded-b-lg">
-            secured by freebuff.com
+            Decision support only — Xstarz Analysis never places trades.
           </div>
         </Card>
         </div>
