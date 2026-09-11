@@ -50,8 +50,12 @@ export interface EvidenceItem {
 
 export interface InvalidationCondition {
   description: string;
-  /** Current price distance to invalidation level as %. */
-  distancePct: number;
+  /**
+   * Current price distance to the invalidation level, as a percentage.
+   * `undefined` when it cannot be computed (e.g. no usable entry price) —
+   * an unknown distance must not be reported as a number.
+   */
+  distancePct?: number;
   /** Whether we are close to invalidation. */
   approaching: boolean;
 }
@@ -214,16 +218,27 @@ export function generatePositionIntelligence(
     const reward = isLong
       ? position.currentPrice - position.entryPrice
       : position.entryPrice - position.currentPrice;
-    rMultiple = reward / risk;
+    // risk can still be 0 if the two differ only below float precision.
+    // An R-multiple of Infinity is not a risk measurement.
+    const candidate = reward / risk;
+    rMultiple = Number.isFinite(candidate) ? candidate : undefined;
   }
 
-  const distanceToSL = position.stopLoss !== undefined
-    ? `${Math.abs(((position.currentPrice - position.stopLoss) / position.entryPrice) * 100).toFixed(2)}%`
-    : undefined;
+  // These divide by entryPrice, so they need the same guard pnlPct already
+  // has. With a zero or non-finite entry price the expression yields
+  // "Infinity%" or "NaN%", which renders as a real distance-to-stop.
+  const hasUsableEntry =
+    Number.isFinite(position.entryPrice) && position.entryPrice > 0;
 
-  const distanceToTP = position.takeProfit !== undefined
-    ? `${Math.abs(((position.takeProfit - position.currentPrice) / position.entryPrice) * 100).toFixed(2)}%`
-    : undefined;
+  const distanceToSL =
+    position.stopLoss !== undefined && hasUsableEntry
+      ? `${Math.abs(((position.currentPrice - position.stopLoss) / position.entryPrice) * 100).toFixed(2)}%`
+      : undefined;
+
+  const distanceToTP =
+    position.takeProfit !== undefined && hasUsableEntry
+      ? `${Math.abs(((position.takeProfit - position.currentPrice) / position.entryPrice) * 100).toFixed(2)}%`
+      : undefined;
 
   // ─── Market Context ───
   const shortTermContext = describeTrend(signals.shortTermTrend, "short-term", position.side);
@@ -440,11 +455,15 @@ function buildInvalidationConditions(
 
   // SL hit
   if (position.stopLoss !== undefined) {
-    const dist = Math.abs(((position.currentPrice - position.stopLoss) / position.entryPrice) * 100);
+    // A non-finite distance must not be reported as a real one. Note that
+    // `NaN < 2` is false, so an unguarded NaN here would silently DROP the
+    // "approaching stop loss" warning rather than raise it.
+    const rawDist = Math.abs(((position.currentPrice - position.stopLoss) / position.entryPrice) * 100);
+    const dist = Number.isFinite(rawDist) ? rawDist : undefined;
     conditions.push({
       description: `Stop loss at ${formatInstrumentPrice(position.instrument, position.stopLoss)}`,
       distancePct: dist,
-      approaching: dist < 2,
+      approaching: dist !== undefined && dist < 2,
     });
   }
 

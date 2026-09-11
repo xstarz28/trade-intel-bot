@@ -219,7 +219,13 @@ function ProfitMetrics({
       <div className="bg-background/50 rounded-lg p-2 border border-border/20">
         <div className="text-[9px] text-muted-foreground">{t.protection.currentProfit}</div>
         <div
-          className={`font-semibold ${alert.profit.unrealizedPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}
+          className={`font-semibold ${
+            alert.profit.unrealizedPnL === undefined
+              ? "text-muted-foreground"
+              : alert.profit.unrealizedPnL >= 0
+                ? "text-emerald-400"
+                : "text-red-400"
+          }`}
         >
           {alert.profit.rMultiple !== undefined
             ? `${alert.profit.rMultiple >= 0 ? "+" : ""}${alert.profit.rMultiple.toFixed(2)}R`
@@ -474,7 +480,10 @@ export function PositionProtectionPanel({
                 {alert.instrument}
               </span>
               <span className="text-[10px] font-mono text-muted-foreground">
-                {alert.profit.unrealizedPnL >= 0 ? "+" : ""}
+                {alert.profit.unrealizedPnL !== undefined &&
+                alert.profit.unrealizedPnL >= 0
+                  ? "+"
+                  : ""}
                 {alert.profit.rMultiple !== undefined
                   ? `${alert.profit.rMultiple.toFixed(2)}R`
                   : `${alert.profit.distanceFromEntryPct.toFixed(2)}%`}
