@@ -113,3 +113,54 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.5 0 0 / 0.5);
 }
+
+
+/* ─────────────────────────────────────────────────────────────
+   Phase 179 — native shell adaptations (Android + iOS).
+
+   Applied ONLY when the Capacitor shell adds `.native-shell` to <html>, so
+   the browser build renders exactly as before. This is layout plumbing, not
+   a UI redesign: no colours, spacing scales or components are changed.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+html.native-shell body {
+  /* Keep content clear of the notch, status bar and home indicator. */
+  padding-top: var(--safe-top);
+  padding-bottom: var(--safe-bottom);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  /* A native app must not rubber-band the whole document. */
+  overscroll-behavior-y: none;
+}
+
+html.native-shell {
+  /* Prevent the iOS "select to copy" long-press on chrome, while leaving
+     real text content selectable below. */
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html.native-shell input,
+html.native-shell textarea,
+html.native-shell [contenteditable="true"] {
+  /* Text entry must stay selectable and must not trigger iOS auto-zoom:
+     16px is the threshold below which Safari zooms the viewport on focus. */
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+  font-size: max(16px, 1rem);
+}
+
+html.native-shell button,
+html.native-shell a[role="button"],
+html.native-shell [role="tab"] {
+  /* Minimum comfortable touch target without changing visual sizing. */
+  min-height: 44px;
+}

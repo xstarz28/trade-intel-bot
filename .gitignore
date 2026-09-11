@@ -26,3 +26,12 @@ src/convex/_generated
 .DS_Store
 *.log
 *.bak
+
+# Phase 179 — mobile signing material. NEVER commit these.
+android/keystore.properties
+*.jks
+*.keystore
+*.mobileprovision
+*.p12
+*.cer
+ios/App/Pods/

@@ -56,6 +56,11 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
+import {
+  initNativeShell,
+  isNativeShell,
+  nativePlatform,
+} from "@/lib/mobile/native-shell";
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router";
@@ -127,6 +132,22 @@ class RootErrorBoundary extends React.Component<
 }
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+
+/*
+  Phase 179 — native shell bootstrap (Android + iOS).
+
+  Marks <html> so the safe-area CSS applies, then initialises status bar,
+  splash dismissal, the Android hardware back button and deep-link handling.
+  In a browser `initNativeShell()` returns immediately and adds no class, so
+  the web build is byte-for-byte unaffected in behaviour.
+
+  Intentionally fire-and-forget: native chrome must never delay first paint,
+  and a plugin failure must never prevent the app from starting.
+*/
+if (isNativeShell()) {
+  document.documentElement.classList.add("native-shell", `platform-${nativePlatform()}`);
+}
+void initNativeShell();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

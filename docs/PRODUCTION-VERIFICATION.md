@@ -1070,6 +1070,107 @@ missing provider evidence, and no confidence/freshness fallback.
 
 ---
 
+### Phase 179 — cross-platform mobile packaging (Android + iOS)
+
+#### Architecture: Capacitor 7 wrapping the existing web build
+
+The Vite/React app remains the **single** product UI and business-logic
+source. Capacitor packages the same `dist/` bundle into a native shell on both
+platforms, so there is no second UI, no React Native rewrite, and no risk of
+Android and iOS behaviour diverging: one `npm run mobile:sync` updates both.
+
+The alternative — React Native — was rejected because it would require
+reimplementing every screen and would fork the analysis UI from the web app,
+which contradicts the standing "no duplicate engines" rule.
+
+The WebView loads from a real origin (`https://localhost` on Android,
+`capacitor://localhost` on iOS) rather than `file://`. That is what preserves
+**BrowserRouter**: `file://` has no path semantics and would have forced Hash
+or Memory routing, both explicitly rejected in Phase 169 because they break
+`?returnTo` and deep links. It also gives `localStorage` (`freebuff:locale`) a
+stable origin and keeps Convex under a secure context.
+
+| Item | Android | iOS |
+|---|---|---|
+| Identity | applicationId `app.xstarz.analysis` | bundle id `app.xstarz.analysis` |
+| Min platform | minSdk 23, target/compile SDK 35 | iOS 14+, portrait-only on iPhone |
+| Permissions | **INTERNET only** | **none** (zero privacy keys) |
+| Deep links | App Links, `autoVerify=true` | Universal Links via `App.entitlements` |
+| Icons/splash | adaptive icon + 5 densities, brand `#0B1220` | 1024 AppIcon + splash imageset |
+| Signing | `keystore.properties` (git-ignored) | placeholders only |
+
+#### A packaging bug this phase found and fixed
+
+`vite.config.ts` used `base: './'` for the preview iframe. With BrowserRouter
+in a native shell, a deep link to `/dashboard` makes the WebView resolve
+`./assets/index.js` against `/dashboard/` — a 404 and a blank app. The mobile
+build now sets `base: '/'` via `MOBILE_BUILD=1`, and a test asserts the copied
+`index.html` in **both** native projects uses absolute asset paths.
+
+A second bug was found by the tests: custom-scheme deep links
+(`app.xstarz.analysis://dashboard`) parse with the route in the **host** and an
+empty `pathname`, so the original guard rejected every one of them. Fixed in
+`safeInAppPath`.
+
+#### Security posture
+
+- **No provider acquisition moved client-side.** The mobile clients call
+  Convex exactly as the web client does; every provider key stays server-side.
+  Test-enforced: no provider host or key name appears in either native project.
+- **`allowBackup="false"` + `data_extraction_rules.xml`** — Android
+  auto-backup would otherwise copy the authenticated WebView session into the
+  user's Google account.
+- **Default `FileProvider` removed.** No product feature reads or shares
+  device files, so the component was unnecessary attack surface.
+- **Deep links cannot become an open redirect.** `safeInAppPath` accepts only
+  same-app, single-slash absolute paths, mirroring the Phase 169b rules;
+  `//evil.com`, `javascript:`, `data:` and `file:` are rejected. Route
+  protection is unchanged — a deep link into `/dashboard` hits the same
+  `RequireAuth` guard, so an unauthenticated link redirects to `/auth`.
+- **`scripts/verify-mobile-artifacts.mjs`** scans `dist/` and both native
+  projects for credentials, localhost/dev-server dependencies, editor
+  branding, and unjustified permissions. Mutation-tested: planting a provider
+  key, adding CAMERA, setting `server.url`, or re-enabling `allowBackup` each
+  fail the scan.
+
+Two scanner findings were investigated and confirmed **false positives**, and
+production was deliberately NOT changed for either: a literal
+`"http://localhost"` inside React Router's internal `createPath` fallback, and
+a `console.warn("[VlyToolbar] …")` label in an error boundary. The toolbar
+component itself is tree-shaken out (0 references to `vly-toolbar-readonly` or
+any vly endpoint in `dist/`). The scanner was made precise instead.
+
+#### Build status — honest scope
+
+| Check | Result |
+|---|---|
+| Web build (`npm run build`) | **PASS** |
+| Mobile web build (`MOBILE_BUILD=1`) | **PASS** — absolute asset paths |
+| `cap sync` to both platforms | **PASS** |
+| Android project structure (Gradle 8.11.1, XML well-formed) | **PASS** (static) |
+| iOS project structure (pbxproj, Info.plist, entitlements) | **PASS** (static) |
+| Artifact scan (secrets/permissions/dev deps) | **PASS** |
+| **Android APK build** | **BLOCKED** — no JDK and no Android SDK; `apt-get` needs root. Verified, not assumed. |
+| **iOS build** | **BLOCKED** — sandbox is Linux; no macOS, no Xcode, no CocoaPods. |
+| **Any physical device / simulator run** | **BLOCKED** — no device access; developer has no iPhone. |
+
+**Android APK build success ≠ iOS readiness ≠ production release readiness.**
+None of the three is claimed here.
+
+#### Externally required before a store build
+
+1. Publish `/.well-known/assetlinks.json` with the **release** certificate
+   SHA-256 (Android App Links stay unverified until then).
+2. Publish `/.well-known/apple-app-site-association` containing
+   `TEAMID.app.xstarz.analysis`, served as `application/json` with no redirect.
+3. Replace the `xstarz.app` placeholder host in `strings.xml` and
+   `App.entitlements` with the production domain.
+4. Generate a release keystore on the release machine (never in this repo).
+5. Apple Developer Program membership and an Apple Team ID.
+6. A macOS machine or macOS CI runner for any iOS build.
+
+---
+
 #### Scope honesty — what "shared" means here
 
 The registry (`src/lib/data/provider-cache-registry.ts`) is a module-level

@@ -324,3 +324,62 @@ real observable behaviour.
 **Release rule:** any `FAIL` on a row marked *"Stop and report"* is a hard
 release blocker. Outstanding `BLOCKED` rows mean the corresponding capability
 is **NOT VERIFIED** — it must never be reported as working.
+
+## 14. Mobile packaging — Android & iOS (Phase 179)
+
+Capacitor wraps the SAME web build on both platforms, so analysis, entitlement,
+provenance and route protection are shared code and cannot diverge by design.
+These rows verify the WRAPPER, not the engine.
+
+**Status legend for this section**
+- `HUMAN` — needs a physical Android device. The agent cannot drive one.
+- `BLOCKED` — cannot be executed at all in this environment. Android release
+  build and every iOS row are blocked: this sandbox is Linux with **no JDK,
+  no Android SDK, no macOS, no Xcode**, and the developer has **no iPhone**.
+
+**No mobile row below has been executed. Nothing here is claimed as PASS.**
+
+### Android
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 14A.1 | APK installed | Install the debug APK on an Android device | Installs as "Xstarz Analysis" with the blue chart launcher icon; no Capacitor branding. | Default Capacitor icon, wrong name, or install failure. | HUMAN | ☐ |
+| 14A.2 | app installed | Cold launch from the launcher | Splash shows, then the landing page. No white flash, no blank screen. | Blank/white screen — usually an asset-path failure. | HUMAN | ☐ |
+| 14A.3 | app open | Navigate to /auth and request an OTP | OTP arrives and sign-in completes. | No email, or auth silently fails. | HUMAN | ☐ |
+| 14A.4 | signed in | Force-quit and relaunch | Session persists; user lands authenticated. | Session lost on every cold start. | HUMAN | ☐ |
+| 14A.5 | signed in | Open the dashboard and run one analysis | Analysis returns from the SERVER; evidence shows provider provenance. | Any provider called directly from the device. | HUMAN | ☐ |
+| 14A.6 | signed in | Open the journal | Journal loads and entries persist. | Route 404s inside the shell. | HUMAN | ☐ |
+| 14A.7 | guest | Consume both free profit signals, request a third | Entitlement lock shows upgrade prompt; no third signal. | A third chargeable signal is delivered. | HUMAN | ☐ |
+| 14A.8 | signed out | Tap an https://<host>/dashboard link | App opens and redirects to /auth (route guard intact). | Deep link renders the dashboard while signed out. **Stop and report.** | HUMAN | ☐ |
+| 14A.9 | signed in | Tap an https://<host>/journal link | App opens directly on the journal. | Link opens the browser instead, or lands on the landing page. | HUMAN | ☐ |
+| 14A.10 | app open | Enable airplane mode, then run an analysis | Explicit unavailable/degraded state; no price, no direction, no fabricated freshness. | Any cached or invented value shown as live. **Stop and report.** | HUMAN | ☐ |
+| 14A.11 | offline state | Restore connectivity and retry | Analysis recovers and reports a NEW observation. | Stale evidence reported as newly observed. | HUMAN | ☐ |
+| 14A.12 | app open | Background the app 5 minutes, then foreground | Session and route restored; no forced reload to landing. | App restarts into a logged-out state. | HUMAN | ☐ |
+| 14A.13 | signed in | Press hardware BACK on /dashboard with no history | App stays open (backs within the app), does not exit. | App exits from an interior route. | HUMAN | ☐ |
+| 14A.14 | signed in | Press hardware BACK on the landing page | App exits cleanly. | App traps the user. | HUMAN | ☐ |
+| 14A.15 | signed in | Log out | Session cleared; protected routes redirect to /auth. | Protected route still renders after logout. **Stop and report.** | HUMAN | ☐ |
+| 14A.16 | installed | Uninstall, reinstall, launch | Starts signed out; no session survives reinstall. | A session survives reinstall. | HUMAN | ☐ |
+| 14A.17 | release build | Inspect the release APK/AAB | No provider key, no localhost, no debug flag, one permission (INTERNET). | Any secret, dev endpoint, or extra permission. **Stop and report.** | BLOCKED | ☐ |
+| 14A.18 | toolchain | Build the debug APK (`./gradlew assembleDebug`) | APK produced. | Build failure. | BLOCKED | ☐ |
+
+### iOS
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 14I.1 | IPA installed | Install on an iPhone | Installs as "Xstarz Analysis" with the correct icon. | Wrong icon/name or install failure. | BLOCKED | ☐ |
+| 14I.2 | app installed | Cold launch | Splash then landing page; content clears the notch and home indicator. | Content under the notch, or a blank screen. | BLOCKED | ☐ |
+| 14I.3 | app open | Sign in via OTP | Sign-in completes. | Auth fails inside the WKWebView. | BLOCKED | ☐ |
+| 14I.4 | signed in | Force-quit and relaunch | Session persists. | Session lost every launch. | BLOCKED | ☐ |
+| 14I.5 | signed in | Run one analysis | Server-side analysis with provenance. | Any direct provider call from the device. | BLOCKED | ☐ |
+| 14I.6 | signed in | Open the journal | Journal loads. | Route fails inside the shell. | BLOCKED | ☐ |
+| 14I.7 | guest | Exhaust the free signals | Entitlement lock identical to Android and web. | Divergent entitlement behaviour. | BLOCKED | ☐ |
+| 14I.8 | signed out | Tap a universal link to /dashboard | Redirects to /auth. | Dashboard renders while signed out. **Stop and report.** | BLOCKED | ☐ |
+| 14I.9 | signed in | Tap a universal link to /journal | Opens the journal in-app. | Opens Safari instead (association not verified). | BLOCKED | ☐ |
+| 14I.10 | app open | Enable airplane mode and run an analysis | Explicit degraded state; nothing fabricated. | Fabricated price/freshness. **Stop and report.** | BLOCKED | ☐ |
+| 14I.11 | offline | Restore connectivity and retry | Recovers with a new observation. | Stale data labelled live. | BLOCKED | ☐ |
+| 14I.12 | app open | Background then foreground | Session and route restored. | Forced restart to landing. | BLOCKED | ☐ |
+| 14I.13 | signed in | Focus a text input | Keyboard does not cover the field; no viewport auto-zoom. | Input hidden behind the keyboard, or the page zooms. | BLOCKED | ☐ |
+| 14I.14 | signed in | Log out | Session cleared; protected routes redirect. | Protected route renders after logout. | BLOCKED | ☐ |
+| 14I.15 | installed | Delete, reinstall, launch | Starts signed out. | Session survives reinstall. | BLOCKED | ☐ |
+| 14I.16 | macOS toolchain | `pod install` then build in Xcode | Project builds. | Build failure. | BLOCKED | ☐ |
+| 14I.17 | release build | Inspect the IPA | No secret, no localhost, no privacy permission. | Any secret or unexpected permission. **Stop and report.** | BLOCKED | ☐ |
