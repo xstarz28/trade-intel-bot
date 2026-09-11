@@ -551,6 +551,155 @@ would make Premium free.
 
 ---
 
+### Phase 178 — provider cache, quota and freshness integrity
+
+Phase 177 bounded the fan-out in time. Phase 178 bounds it in **provider
+quota**, without letting a cache turn old data into fresh evidence.
+
+The governing rule: **a cache hit reduces provider load; it is never evidence
+of a new observation.** "Cached", "fresh", "live" and "provider-observed" are
+kept as four separate properties.
+
+#### Cache inventory
+
+| # | Location | Scope | Datasets | Key | TTL | Dedup |
+|---|---|---|---|---|---|---|
+| 1 | `src/convex/alphaVantage.ts` | per action instance | news-sentiment, fundamentals | `news:{type}:{ticker}`, `fund:{type}:{ticker}` | 10 min | no |
+| 2 | `src/convex/coinglass.ts` | per action instance | derivatives (OI, funding, L/S, liquidations) | `deriv:{instrument}:{symbol}` | 10 min | no |
+| 3 | `src/convex/tradingEconomics.ts` | per action instance | economic calendar | `cal:{INSTRUMENT}:{type}` | 20 min | no |
+| 4 | `src/convex/marketData.ts` | per action instance | DXY comparator symbol resolution | module variable | memo + 24 h negative marker | n/a |
+| 5 | `src/lib/market-radar/cache.ts` | radar engine | provider capabilities | `provider:instrument:capability[:timeframe]` | per entry | yes (`dedupPromises`) |
+| 6 | `src/lib/data/universal/cache.ts` | universal layer | per-capability | canonical instrument + capability + provider | per capability | no |
+| 7 | `src/lib/data/provider-cache.ts` | **new in 178** | all 13 datasets | structural `ProviderCacheKey` | per dataset | yes (single-flight) |
+
+`treasury.ts`, `eia.ts`, `cot.ts` and `okx.ts` have **no** module cache. That
+is deliberate and now test-pinned: Treasury/EIA/COT are low-frequency
+government datasets already bounded by the fan-out, and OKX order-book depth
+must never be reused across analyses.
+
+**All caches are per-process.** They live in the module scope of a Convex
+action instance. They cut load within an instance and across concurrent
+callers on that instance; there is **no cross-instance or distributed cache**,
+and none is claimed. A cold instance always re-acquires.
+
+#### Cache-key defects found and fixed
+
+Three real collisions were proven by exercising the actual key expressions,
+not by reading them:
+
+- **CoinGlass — quote-currency collision.** `deriv:${symbol}` truncated the
+  instrument to its base symbol, so `BTC/USDT` and `BTC/USD` shared one entry.
+  A USDT-margined funding rate could be served for a USD-quoted request. Now
+  keyed on the full instrument identity.
+- **Alpha Vantage — asset-class collision.** `news:${ticker}` omitted the
+  instrument type, so a crypto symbol and an identically named equity ticker
+  shared an entry. Now qualified by `instrumentType`.
+- **TickAtlas — case duplication.** `cal:` keys were case-sensitive, so
+  `EUR/USD` and `eur/usd` produced two entries and two calls for identical
+  data — pure waste against a rate-limited provider. Now normalised.
+
+Instrument identity is never canonicalised into a lossy generic symbol.
+`BTC-USDT-SWAP` stays byte-exact in the key; only genuinely case-insensitive
+dimensions (`instrumentType`, `timeframe`) are normalised.
+
+#### TTL rationale
+
+TTLs are per-dataset, derived from real update cadence — there is no global
+TTL, because a funding rate and a COT report do not age at the same speed.
+
+| Dataset | TTL | Fresh window | Why |
+|---|---|---|---|
+| order-book | 5 s | 10 s | changes continuously; a stale book would misfire the scalping veto |
+| quote | 20 s | 60 s | must stay close to live |
+| ohlcv | 60 s | 5 min | candle granularity |
+| derivatives | 60 s | 5 min | exchange funding/OI cadence |
+| fx-rate | 5 min | 15 min | affects sizing arithmetic only |
+| news-sentiment | 10 min | 30 min | matches existing Alpha Vantage behaviour |
+| calendar | 20 min | 1 h | scheduled events; matches existing TickAtlas TTL |
+| macro | 1 h | 3 h | macro series update slowly |
+| treasury | 6 h | 24 h | daily yield-curve publication |
+| eia | 6 h | 24 h | **weekly** petroleum status report |
+| cot | 12 h | 7 d | **weekly** CFTC report, published Fridays |
+| fundamentals | 24 h | 7 d | quarterly filings; static intraday |
+| instrument-spec | 24 h | 7 d | contract metadata rarely changes |
+
+Long TTLs are safe **only because freshness is recomputed from `observedAt` on
+every read**. A long TTL means "we may reuse this", never "this is current".
+The fresh window is always ≥ the TTL: TTL governs *reuse*, the fresh window
+governs *labelling*.
+
+#### Freshness and provenance
+
+Every cache entry stores `observedAt` — when the **provider** observed the
+data — separately from `cachedAt` and the read time. Evidence age is always
+`readAt − observedAt`. A cache hit never rewrites `observedAt`.
+
+Consequences, all test-pinned:
+
+- An entry observed at T0 and read at T1 reports age T1−T0, **not** T1−cachedAt.
+- The same entry decays FRESH → DELAYED → STALE → HISTORICAL purely because
+  time passed, with no refetch.
+- Data observed 30 days ago is labelled HISTORICAL even on a cache hit; it
+  cannot become realtime by being read from memory.
+- Provider identity and exact OKX native identity survive a hit unchanged.
+
+The three shipping Convex caches return the stored payload **verbatim**, so
+the `timestamp` each provider embedded at fetch time is preserved. They do not
+rebuild the object on a hit, which is what would reset the clock.
+
+One residual nuance, recorded honestly: the calendar and derivatives payloads
+carry a `freshness` **string label computed at fetch time**. That label is
+frozen and does not decay on a cache hit. It is currently **not** read by any
+decision path — the analysis engine derives price staleness from
+`md.price.timestamp`, order-book freshness from the exchange timestamp, and
+event risk from absolute `datetime > now` comparisons re-evaluated on every
+run. So no frozen label can currently promote stale data. Any future consumer
+of `calendarData.freshness` **must** recompute from `timestamp` instead.
+
+#### Single-flight and quota
+
+`ProviderCache` deduplicates concurrent misses on the same key: 20 simultaneous
+identical requests produce **one** provider call, verified with real promises
+and real scheduling. Distinct keys are never merged. A single-flight join is
+explicitly *not* reported as a cache hit — the provider was called; the caller
+merely shared the result.
+
+Rate-limit interaction:
+
+- A cache hit consumes **no** provider quota.
+- A 429 is never stored, so it can never become valid evidence.
+- A failed in-flight request does not poison unrelated keys.
+- A failure is never cached: the next permitted attempt retries cleanly.
+- Concurrent misses do not multiply exposure — that is the point of
+  single-flight, and it directly protects the low-budget providers.
+
+#### Negative caching
+
+The only negative cache is the DXY comparator probe in `marketData.ts`. It is
+bounded to 24 h, stores a **timestamp only** (it cannot express a direction),
+and on a cached failure it *skips probing* — the comparator becomes `null` and
+the correlation block is omitted. It never fabricates a comparator series.
+Every other failure path stores nothing at all.
+
+#### Cross-user isolation
+
+No user-owned value may enter a shared provider cache. `assertNoUserData()`
+walks a payload before it is stored and **throws** on `accountEquity`,
+`riskPercent`, `accountCurrency`, `userId`, `email` or `instrumentSpec`,
+including nested occurrences. Cache keys are built only from public provider
+dimensions, so two users analysing the same instrument share public evidence
+and nothing else. This complements Phase 176: those three account fields are
+client-trusted *inputs*, never cacheable *evidence*.
+
+#### Sandbox limits
+
+Cache behaviour is verified against injected clocks and injected transports.
+**No provider quota was measured against a live endpoint** — all provider
+hosts are firewalled here. The quota reduction claimed above is structural
+(call counts under test), not an observed billing delta. See UAT 13.1–13.6.
+
+---
+
 ## 5. Known issues
 
 - The main JS chunk exceeds 1,000 kB. Non-fatal, but worth code-splitting
