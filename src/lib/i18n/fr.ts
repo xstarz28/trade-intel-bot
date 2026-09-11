@@ -956,6 +956,7 @@ const fr: Translations = {
     dataQualityChange: "Changement de Qualité des Données",
   },
   entitlement: {
+    invalidInput: "Données d'analyse incomplètes — instrument, type et unité de temps sont requis.",
     signInRequired: "Connectez-vous pour lancer une analyse.",
     trialLabel: "Essai",
     premiumLabel: "Premium",

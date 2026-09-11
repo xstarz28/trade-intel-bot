@@ -956,6 +956,7 @@ const ja: Translations = {
     dataQualityChange: "データ品質変化",
   },
   entitlement: {
+    invalidInput: "分析入力が不完全です。銘柄・種別・時間軸が必要です。",
     signInRequired: "分析を実行するにはサインインしてください。",
     trialLabel: "トライアル",
     premiumLabel: "プレミアム",

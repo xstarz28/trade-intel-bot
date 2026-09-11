@@ -950,6 +950,7 @@ const id: Translations = {
     dataQualityChange: "Perubahan Kualitas Data",
   },
   entitlement: {
+    invalidInput: "Input analisis tidak lengkap — instrumen, tipe, dan kerangka waktu wajib diisi.",
     signInRequired: "Masuk untuk menjalankan analisis.",
     trialLabel: "Uji Coba",
     premiumLabel: "Premium",

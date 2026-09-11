@@ -953,6 +953,7 @@ const zh: Translations = {
     dataQualityChange: "数据质量变化",
   },
   entitlement: {
+    invalidInput: "分析输入不完整——需要品种、类型和时间周期。",
     signInRequired: "请登录后运行分析。",
     trialLabel: "试用",
     premiumLabel: "高级版",

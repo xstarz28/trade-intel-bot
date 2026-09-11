@@ -955,6 +955,7 @@ const de: Translations = {
     dataQualityChange: "Datenqualitätsänderung",
   },
   entitlement: {
+    invalidInput: "Analyse-Eingabe unvollständig — Instrument, Typ und Zeitrahmen sind erforderlich.",
     signInRequired: "Melden Sie sich an, um eine Analyse auszuführen.",
     trialLabel: "Test",
     premiumLabel: "Premium",

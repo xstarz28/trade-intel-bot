@@ -1,7 +1,7 @@
 # Phase 173 — Manual Production UAT Matrix
 
 **Xstarz Analysis** · executable browser test matrix
-Last updated: Phase 174 (2026-09-11).
+Last updated: Phase 175 (2026-09-11).
 
 ---
 
@@ -180,6 +180,11 @@ calm market.**
 | 9.8 | 9.7 | With the lock showing, open devtools → Network → inspect the `runProtectedAnalysis` response body | The response contains **no** `recommendation`, `tradePlan`, `conviction`, `bias` or `positionSizing` — only the locked stub. | Any directional field present in the payload. **Critical row — stop and report.** | AUTO | ☐ |
 | 9.9 | 9.7 | Still exhausted, run an analysis that resolves to NO_TRADE | Delivered in full with its reasoning; the counter does not move. | Locked, or charged. | AUTO | ☐ |
 | 9.10 | 9.7 | In the console, call the consume mutation directly claiming `WAIT` | No directional result is obtainable by any client call. | A directional payload is obtainable. **Stop and report.** | AUTO | ☐ |
+| 9.11 | P1,P2, signed in | In devtools, intercept the `runProtectedAnalysis` request and replace `input.marketData.price.price` with `99999` | The returned decision uses the **real** provider price, not 99999. | The forged price appears in the result. **Stop and report.** | AUTO | ☐ |
+| 9.12 | 9.11 | Intercept and flip `input.technicalData.structure` to the opposite (`HH/HL` ↔ `LH/LL`) | The verdict is unchanged — the server re-acquires its own technicals. | The direction flips. **Stop and report.** | AUTO | ☐ |
+| 9.13 | 9.11 | Intercept and set `input.marketData.provider` to a different provider name | `dataSource` in the result reports the **real** acquiring provider. | The forged provider name is echoed back. | AUTO | ☐ |
+| 9.14 | 9.11 | Intercept and back-date all candles ~30 days while setting `dataFreshness: "realtime"` | Freshness/quality reflect the server's own acquisition, not the client's claim. | Stale data reported as fresh/full. **Stop and report.** | AUTO | ☐ |
+| 9.15 | P4 offline | Block the market-data provider, then run an analysis | Explicit degradation (no trade plan, reduced completeness). No fabricated price or invented decision. | A confident decision with no live data. **Stop and report.** | AUTO | ☐ |
 
 ## 10. Journal, positions, and protection lifecycle
 

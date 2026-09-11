@@ -622,6 +622,13 @@ export default function Dashboard() {
         // Phase 174 — the engine runs on the SERVER, behind the entitlement
         // boundary. For an exhausted guest the directional fields are never
         // serialized to this client at all.
+        //
+        // Phase 175 — the server also RE-ACQUIRES the provider evidence itself
+        // and discards whatever this client sends for marketData /
+        // technicalData / intelligence / derivatives / calendar / treasury /
+        // COT / EIA / execution / spec / FX. Those fields are transmitted only
+        // so the local preview panels keep working; they are inert on the
+        // trusted decision path and cannot influence the verdict.
         const protectedResponse = await runProtectedAnalysis({
           input: enrichedInput as unknown,
         });
@@ -629,6 +636,13 @@ export default function Dashboard() {
         if (protectedResponse.status === "UNAUTHENTICATED") {
           if (!isStaleRun()) {
             setFetchError(t.entitlement.signInRequired);
+          }
+          return;
+        }
+
+        if (protectedResponse.status === "INVALID_INPUT") {
+          if (!isStaleRun()) {
+            setFetchError(t.entitlement.invalidInput);
           }
           return;
         }

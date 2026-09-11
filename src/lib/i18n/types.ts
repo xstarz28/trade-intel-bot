@@ -992,6 +992,7 @@ export interface Translations {
 
   /** Phase 174 — entitlement surface. Server-authoritative values only. */
   entitlement: {
+    invalidInput: string;
     signInRequired: string;
     trialLabel: string;
     premiumLabel: string;
