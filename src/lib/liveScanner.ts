@@ -196,7 +196,9 @@ export function scanInstruments(
   }
 
   // Build candidates from sources
-  const candidates = filtered.map(s => buildCandidateFromSource(s));
+  // Pass the scan timestamp so freshness gating is deterministic and
+  // consistent across every candidate in this scan.
+  const candidates = filtered.map(s => buildCandidateFromSource(s, now));
 
   // Scan each horizon
   const results = new Map<TradingMode | InvestorHorizon, UniversalRecommendationResult>();

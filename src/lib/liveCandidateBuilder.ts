@@ -68,12 +68,26 @@ export interface LiveCandidateSource {
 // FRESHNESS ASSESSMENT
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Tolerance for benign clock skew between our clock and a provider's.
+ * A few seconds of drift is normal; more than this is not trustworthy.
+ */
+const FUTURE_TIMESTAMP_TOLERANCE_MS = 60_000;
+
 function assessFreshness(
   timestamp: number | undefined,
   now: number,
 ): "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" {
   if (!timestamp) return "UNAVAILABLE";
   const ageMs = now - timestamp;
+
+  // A timestamp meaningfully in the future cannot be verified as live data.
+  // Treating it as FRESH would let clock skew or a malformed provider
+  // payload promote unverifiable data into the scanner. Refuse it instead.
+  if (ageMs < -FUTURE_TIMESTAMP_TOLERANCE_MS) return "UNAVAILABLE";
+
+  // Within tolerance, treat mild skew as "just now" rather than negative age.
+  if (ageMs < 0) return "FRESH";
   if (ageMs < 5 * 60_000) return "FRESH";         // < 5 min
   if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
   if (ageMs < 24 * 60 * 60_000) return "STALE";   // < 24 hours
@@ -189,8 +203,15 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
 // MAIN BUILDER
 // ═══════════════════════════════════════════════════════════════
 
-export function buildCandidateFromSource(source: LiveCandidateSource): CandidateInput {
-  const now = Date.now();
+/**
+ * @param now Evaluation timestamp. Callers that need deterministic results
+ *   (the scanner, tests, replay) MUST pass this; otherwise freshness is
+ *   assessed against the wall clock and results are not reproducible.
+ */
+export function buildCandidateFromSource(
+  source: LiveCandidateSource,
+  now: number = Date.now(),
+): CandidateInput {
   const tech = source.technicalData;
   const ar = source.analysisResult;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
@@ -229,6 +250,8 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     freshness,
     providerCoverage,
     ...(source.correlationKey ? { correlationKey: source.correlationKey } : {}),
+    // Preserve the exact provider-native identity end to end.
+    ...(source.providerNative ? { providerNative: source.providerNative } : {}),
 
     // Structure
     htfBias: extractHtfBias(tech),

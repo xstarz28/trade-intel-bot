@@ -43,6 +43,18 @@ export type DataCompletenessLevel = "FULL" | "PARTIAL" | "MINIMAL" | "NONE";
 export interface CandidateInput {
   /** Canonical instrument ID (e.g. "BTC/USD", "EUR/USD", "AAPL"). */
   instrument: string;
+  /**
+   * Phase 162 — exact provider-native identity when this candidate came
+   * from provider discovery.
+   *
+   * Carried through scoring so a recommendation always states which
+   * provider and which native instrument it is actually about. Never used
+   * as evidence and never affects the score.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
   /** Detected asset class. */
   assetClass: AssetClass;
   /** Current price (from last known data, 0 if unavailable). */
@@ -144,6 +156,17 @@ export interface CandidateInput {
 export interface RankedInstrument {
   /** Canonical instrument ID. */
   instrument: string;
+  /**
+   * Phase 162 — the provider and exact native instrument this ranking is
+   * about, when it originated from provider discovery.
+   *
+   * Without this the user cannot tell WHICH venue's instrument was
+   * analysed, and two venues' instruments could be confused for one.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
   /** Asset class. */
   assetClass: AssetClass;
   /** Rank position (1 = highest). */
@@ -875,6 +898,8 @@ export function generateRecommendation(
 
     rankedInstruments.push({
       instrument: c.instrument,
+      // Provider-native identity travels with the opportunity, unchanged.
+      ...(c.providerNative ? { providerNative: c.providerNative } : {}),
       assetClass: c.assetClass,
       rank: i + 1,
       analyticalScore: result.analyticalScore,
