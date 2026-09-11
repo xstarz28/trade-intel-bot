@@ -989,4 +989,21 @@ export interface Translations {
     macroChange: string;
     dataQualityChange: string;
   };
+
+  /** Phase 174 — entitlement surface. Server-authoritative values only. */
+  entitlement: {
+    signInRequired: string;
+    trialLabel: string;
+    premiumLabel: string;
+    signalsRemaining: string;
+    signalsRemainingOne: string;
+    signalsExhausted: string;
+    unlimited: string;
+    lockedTitle: string;
+    lockedBody: string;
+    lockedNotWait: string;
+    upgradeCta: string;
+    upgradeComingSoon: string;
+    freeAlways: string;
+  };
 }

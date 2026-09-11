@@ -955,6 +955,21 @@ const ja: Translations = {
     macroChange: "マクロ変化",
     dataQualityChange: "データ品質変化",
   },
+  entitlement: {
+    signInRequired: "分析を実行するにはサインインしてください。",
+    trialLabel: "トライアル",
+    premiumLabel: "プレミアム",
+    signalsRemaining: "無料シグナル残り{count}件",
+    signalsRemainingOne: "無料シグナル残り1件",
+    signalsExhausted: "無料シグナルを使い切りました",
+    unlimited: "無制限",
+    lockedTitle: "実行可能シグナルはロック中",
+    lockedBody: "この分析は{instrument}の実行可能シグナルを生成しました。無料枠を使い切っています。",
+    lockedNotWait: "これは待機・見送りの判断ではありません。方向性は変更されず、保留されています。",
+    upgradeCta: "プレミアムで解除",
+    upgradeComingSoon: "プレミアムはまだ利用できません。",
+    freeAlways: "待機・見送りの結果は常に無料です。",
+  },
 };
 
 export default ja;

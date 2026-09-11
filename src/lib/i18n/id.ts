@@ -949,6 +949,21 @@ const id: Translations = {
     macroChange: "Perubahan Makro",
     dataQualityChange: "Perubahan Kualitas Data",
   },
+  entitlement: {
+    signInRequired: "Masuk untuk menjalankan analisis.",
+    trialLabel: "Uji Coba",
+    premiumLabel: "Premium",
+    signalsRemaining: "{count} sinyal gratis tersisa",
+    signalsRemainingOne: "1 sinyal gratis tersisa",
+    signalsExhausted: "Sinyal gratis telah digunakan",
+    unlimited: "Tanpa batas",
+    lockedTitle: "Sinyal actionable terkunci",
+    lockedBody: "Analisis ini menghasilkan sinyal actionable untuk {instrument}. Jatah gratis Anda telah habis.",
+    lockedNotWait: "Ini bukan keputusan Tunggu atau Tanpa Transaksi — arahnya ditahan, bukan diubah.",
+    upgradeCta: "Buka dengan Premium",
+    upgradeComingSoon: "Premium belum tersedia.",
+    freeAlways: "Hasil Tunggu dan Tanpa Transaksi selalu gratis.",
+  },
 };
 
 export default id;

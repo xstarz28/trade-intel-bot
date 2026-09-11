@@ -132,16 +132,27 @@ export const getMyEntitlement = query({
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Consume one profit signal, atomically, and report whether it was allowed.
+ * DEPRECATED (Phase 174) — SUPERSEDED by
+ * `api.protectedAnalysis.runProtectedAnalysis`. Do not use for gating.
  *
- * The client tells us what the engine produced; it does NOT tell us whether
- * it is entitled. Both the "is this chargeable" and the "may they have it"
- * decisions are made here.
+ * ## Why this is not a security boundary
  *
- * Returns `allowed: false` when the guest allowance is exhausted — the caller
- * must then withhold the actionable recommendation. It deliberately does not
- * substitute a WAIT, because presenting a locked BUY as a WAIT would corrupt
- * the decision record.
+ * This mutation trusts the CLIENT to report what the engine produced. When the
+ * engine also ran on the client, that was bypassable in two trivial ways:
+ *
+ *   1. Report `"WAIT"` → `NOT_CHARGEABLE`, nothing consumed, yet the caller
+ *      still holds the real LONG/SHORT it computed locally.
+ *   2. Never call this at all → nothing consumed, result still in hand.
+ *
+ * Neither needs special tooling; the mutation is callable from the console.
+ * The fix was architectural, not another check: the engine now runs server-side
+ * in `protectedAnalysis.ts`, chargeability is derived from the engine's OWN
+ * output, and the directional payload is never serialized to an unentitled
+ * client. See `docs/PRODUCTION-VERIFICATION.md`.
+ *
+ * Retained only for the existing Phase 169/172 test-suites, which pin the
+ * accounting rules. It must NOT be wired into any delivery path: an actionable
+ * decision may only reach a user through the protected action above.
  */
 export const consumeProfitSignal = mutation({
   args: {

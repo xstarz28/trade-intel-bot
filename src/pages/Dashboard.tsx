@@ -5,7 +5,11 @@ import { InstrumentInput } from "@/components/InstrumentInput";
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
-import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
+// Phase 174 — runAnalysis is deliberately NOT imported here. The directional
+// decision is produced server-side behind the entitlement boundary
+// (api.protectedAnalysis.runProtectedAnalysis), so an unentitled client never
+// receives the payload in the first place.
+import type { AnalysisInput } from "@/lib/analysis-engine";
 import type { AnalysisResult } from "@/types/analysis";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
@@ -34,6 +38,7 @@ import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
+import { EntitlementBadge, LockedSignalNotice } from "@/components/EntitlementBadge";
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
 import {
   DropdownMenu,
@@ -115,6 +120,11 @@ export default function Dashboard() {
   }, []);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
+  // Phase 174 — set when the server withheld an actionable signal.
+  const [entitlementNotice, setEntitlementNotice] = useState<{
+    locked: true;
+    instrument: string;
+  } | null>(null);
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(getInitialSteps(t));
   const [fetchError, setFetchError] = useState<string | null>(null);
   // Phase 14 P3 — run identity: a slow/abandoned analysis run must NEVER
@@ -212,6 +222,10 @@ export default function Dashboard() {
 
   // Convex persistence
   const saveAnalysis = useMutation(api.analyses.save);
+  // Phase 174 — server-authoritative entitlement. The UI renders whatever the
+  // server reports; it never computes plan or remaining allowance itself.
+  const runProtectedAnalysis = useAction(api.protectedAnalysis.runProtectedAnalysis);
+  const serverEntitlement = useQuery(api.entitlements.getMyEntitlement);
   const dbHistory = useQuery(api.analyses.list);
 
   // Convex actions for server-side data fetching
@@ -605,7 +619,38 @@ export default function Dashboard() {
           }
         }
 
-        const result = runAnalysis(enrichedInput);
+        // Phase 174 — the engine runs on the SERVER, behind the entitlement
+        // boundary. For an exhausted guest the directional fields are never
+        // serialized to this client at all.
+        const protectedResponse = await runProtectedAnalysis({
+          input: enrichedInput as unknown,
+        });
+
+        if (protectedResponse.status === "UNAUTHENTICATED") {
+          if (!isStaleRun()) {
+            setFetchError(t.entitlement.signInRequired);
+          }
+          return;
+        }
+
+        setEntitlementNotice(
+          protectedResponse.status === "LOCKED"
+            ? {
+                locked: true,
+                instrument:
+                  (protectedResponse.result as { instrument?: string } | null)
+                    ?.instrument ?? enrichedInput.instrument,
+              }
+            : null,
+        );
+
+        if (protectedResponse.status === "LOCKED") {
+          // A locked signal is NOT a WAIT and must never be rendered as one.
+          if (!isStaleRun()) setCurrentResult(null);
+          return;
+        }
+
+        const result = protectedResponse.result as unknown as AnalysisResult;
 
         // Phase 153 — retain the actual provider-backed market snapshot used
         // by this successful analysis. History remains persistence only and
@@ -685,7 +730,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep, runProtectedAnalysis, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
@@ -893,6 +938,9 @@ export default function Dashboard() {
             )}
           </div>
           <div className="flex items-center gap-3">
+            {/* Phase 174 — server-authoritative entitlement state. */}
+            <EntitlementBadge entitlement={serverEntitlement ?? undefined} />
+
             {/* Language selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1029,6 +1077,17 @@ export default function Dashboard() {
                       </p>
                     </div>
                   )}
+                </motion.div>
+              ) : entitlementNotice ? (
+                <motion.div
+                  key="entitlement-locked"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* Server withheld an actionable signal. Never rendered as WAIT. */}
+                  <LockedSignalNotice instrument={entitlementNotice.instrument} />
                 </motion.div>
               ) : currentResult ? (
                 <motion.div

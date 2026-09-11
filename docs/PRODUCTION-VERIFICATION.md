@@ -4,7 +4,7 @@ This document records what has been **verified**, what is **unverified**, and
 what **cannot be verified** by automated agent runs. It is deliberately
 conservative: anything not actually executed and observed is not marked PASS.
 
-Last updated: Phase 173 (2026-09-11).
+Last updated: Phase 174 (2026-09-11).
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: Phase 173 (2026-09-11).
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Unit + integration test suite | **PASS** | 7,878 tests / 210 files, 0 failures (Phase 173) |
+| Unit + integration test suite | **PASS** | 7,966 tests / 214 files, 0 failures (Phase 174) |
 | Component (jsdom) render suites | **PASS** | Collected for the first time in Phase 166 — see below |
 | TypeScript compile | **PASS** | `tsc -b` exit 0, fully clean |
 | Production build | **PASS** | `npm run build` (`tsc -b && vite build`) exit 0 |
@@ -22,6 +22,8 @@ Last updated: Phase 173 (2026-09-11).
 | Convex deployment runtime | **NOT VERIFIED** | No deployment URL configured here |
 | Browser / manual E2E | **CANNOT BE DONE BY AGENT** | Requires a human clicking through the UI — matrix in [`UAT-MATRIX.md`](./UAT-MATRIX.md) |
 | Manual UAT execution | **NOT VERIFIED** | Matrix authored in Phase 173; **zero rows executed** so far |
+| Entitlement enforcement boundary | **PASS (static + unit + bundle)** | Engine moved server-side; 148 entitlement tests; client bundle no longer contains decision logic |
+| Entitlement runtime on a deployment | **NOT VERIFIED** | No Convex deployment here — see Phase 174 caveat |
 | Light/dark theme follows system | **NOT IMPLEMENTED** | Dark is hardcoded — see Phase 173 findings |
 | Convex authorization boundary | **PASS (static + unit)** | All 65 exported fns audited; 8 credentialed actions now guarded |
 
@@ -123,15 +125,85 @@ it is a design decision rather than a bug.
 | F3 | **Light mode does not exist.** `index.html` hardcodes `class="dark"`, the `.dark` CSS block is empty, and `:root` carries the dark palette, so "light/dark follows system" is unimplemented. | **OPEN — NOT IMPLEMENTED.** Requires authoring and reviewing a second full palette; tracked as a product decision. |
 | F4 | The 404 page used `text-gray-900` / `text-gray-600` against the dark background (`oklch(0.1)`) — near-black on near-black, effectively invisible. | **Fixed** — now uses `text-foreground` / `text-muted-foreground`. |
 
-### Entitlement surface — scope note
+### Phase 174 — entitlement is now a real delivery boundary
 
-`src/convex/entitlements.ts` is implemented and covered by 30 automated tests
-(including concurrency under Convex's serializable OCC). **It has no UI
-consumer yet** — nothing in `src/` outside the backend and its tests calls
-`getMyEntitlement` or `consumeProfitSignal`. Entitlement enforcement is
-therefore verifiable **server-side only** (matrix §9, rows 9.1–9.4, executed
-via the Convex dashboard/CLI). The user-facing rows 9.5–9.6 are expected to be
-BLOCKED until that wiring lands.
+The Phase 173 note below is superseded: entitlements are wired to the UI **and**
+to a server-side enforcement boundary.
+
+#### The vulnerability that was found and closed
+
+Phase 169 made the entitlement *counter* server-authoritative. It did not make
+the *decision* server-authoritative, and that gap was fully bypassable:
+
+1. `runAnalysis()` ran **in the browser**, so the directional decision existed
+   client-side the instant it was computed — before any mutation ran.
+2. `consumeProfitSignal({ recommendation })` asked the **client** to report what
+   the engine had produced.
+
+So a caller could report `"WAIT"`, receive `NOT_CHARGEABLE`, spend nothing, and
+still hold the LONG — or skip the mutation entirely. Neither required special
+tooling: the mutation is callable from the devtools console and the engine
+shipped in the bundle. Any UI-only lock would have been decoration over an
+already-delivered payload.
+
+Adding another client-side check would not have fixed this. The fix is
+architectural:
+
+```
+client sends INPUTS
+  -> server runs the engine            (src/convex/protectedAnalysis.ts)
+  -> server derives chargeability from the ENGINE's own output
+  -> server reads its own entitlement row
+  -> internal mutation consumes atomically (serializable OCC)
+  -> gate returns either the full result or a locked stub
+```
+
+For an exhausted guest the directional recommendation, trade plan and sizing
+are **never serialized to that client at all**. There is nothing to un-hide in
+devtools and nothing to intercept on the wire.
+
+#### Evidence
+
+| Claim | How it was verified |
+| --- | --- |
+| Engine no longer ships to the client | `npm run build`, then grep the bundle: `structural stop is hit`, `calculateBias`, `assessDataCompleteness`, `computePositionSizing`, `buildAnalystThesis`, `VETO` all **0 occurrences**. Main chunk fell 1,406,946 → 1,253,374 bytes (≈154 KB of decision logic removed). |
+| Locked payload leaks nothing | 19 protected fields asserted absent; the serialized payload is checked to contain no direction, level, or bias token. |
+| A lying client cannot get a free signal | Claiming `WAIT` while the engine returned `LONG` still yields `LOCKED` when exhausted, and is still **charged** when allowed. |
+| A locked signal is never a WAIT | Asserted the payload contains neither `WAIT` nor `NO_TRADE`, and that `recommendation` is absent rather than replaced. |
+| Redaction fails safe | The locked payload is **built from an allowlist**, not stripped. A newly added upstream field is withheld by default; this is covered by a test that adds an unknown directional field. |
+| Reload / storage reset cannot restore quota | Counter is a DB row keyed by userId; no client value is read. |
+| Concurrency | Serializable OCC modelled; a deliberately non-transactional control test proves the assertions are not vacuous. |
+| UI never invents state | Renders nothing until the server query resolves; does not clamp or recompute the server's numbers. |
+
+Total entitlement coverage: **148 tests** across 7 files.
+
+#### What is NOT proven
+
+- **No deployed runtime verification.** There is no Convex deployment in this
+  environment, so the boundary is verified by unit + static + bundle evidence,
+  not by an authenticated end-to-end call. UAT §9 must still be executed.
+- **`_generated/api.d.ts` was hand-extended.** `npx convex codegen` requires a
+  deployment. The entries for `entitlements` and `protectedAnalysis` were added
+  manually in the generated file's own format. **Run `npx convex dev` once
+  before release** to regenerate it authoritatively.
+- **`src/convex/tsconfig.json` gained a `@/*` path mapping** so server functions
+  can import the shared engine. Verified to bundle cleanly with esbuild
+  (`platform=neutral`, 0 unresolved imports), but not yet executed on a real
+  Convex deployment.
+- `consumeProfitSignal` is retained and **marked DEPRECATED**. It is no longer
+  on any delivery path, but it still exists and still trusts its argument; it
+  must not be re-wired into one.
+
+#### Deliberately not built
+
+No pricing, currency, plan tiers, payment provider, or billing webhooks. The
+upgrade button is inert and labelled as unavailable. `grantPremium` remains
+admin-only and is intentionally not client-callable — a client-callable grant
+would make Premium free.
+
+---
+
+### Entitlement surface — Phase 173 scope note (SUPERSEDED by Phase 174)
 
 ---
 
