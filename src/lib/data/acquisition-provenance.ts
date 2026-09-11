@@ -116,9 +116,68 @@ export function isCacheReuse(p: AcquisitionProvenance): boolean {
   return p.mode === "cache-reused";
 }
 
-/** True when this leg consumed provider quota. */
-export function consumedQuota(p: AcquisitionProvenance): boolean {
+/**
+ * ─────────────────────────────────────────────────────────────────
+ * Phase 178d — quota semantics, stated explicitly.
+ *
+ * `consumedQuota()` was ambiguous: it could mean "this caller caused a
+ * provider request" or "this result originated from a request that cost
+ * quota". Those differ for exactly one mode — `observed-shared` — and that
+ * is precisely the mode single-flight creates, so the ambiguity was load-
+ * bearing rather than academic.
+ *
+ * DEFINITION CHOSEN: (A) attribution to the caller.
+ *
+ * A single-flight join did NOT cause a provider request; it reused a request
+ * another caller had already started. Charging it to this caller would
+ * double-count one HTTP call across N callers and overstate provider load,
+ * which is the opposite of what this telemetry exists to measure.
+ *
+ * `consumedQuota` is therefore replaced by two precise predicates, because
+ * both questions are legitimate and must not share one name.
+ * ─────────────────────────────────────────────────────────────────
+ */
+
+/**
+ * (A) Did THIS caller cause a provider request?
+ *
+ * True only when this caller initiated the HTTP call. A single-flight join is
+ * FALSE: the request existed already. Summing this across the legs of one
+ * analysis gives the exact number of provider requests that analysis caused.
+ */
+export function quotaChargeAttributableToCaller(
+  p: AcquisitionProvenance,
+): boolean {
   return p.mode === "observed-now" || p.mode === "uncached-by-design";
+}
+
+/**
+ * (B) Did this result ultimately come from a quota-consuming request?
+ *
+ * True for a single-flight join too, because the underlying bytes were paid
+ * for by some request. Use this to answer "is this evidence backed by a real
+ * provider call?", never to count provider load.
+ */
+export function originatedFromProviderRequest(
+  p: AcquisitionProvenance,
+): boolean {
+  return (
+    p.mode === "observed-now" ||
+    p.mode === "observed-shared" ||
+    p.mode === "uncached-by-design"
+  );
+}
+
+/** Was the provider contacted at any point to produce this value? */
+export function providerContacted(p: AcquisitionProvenance): boolean {
+  return originatedFromProviderRequest(p);
+}
+
+/** Was this result shared from another caller's in-flight request? */
+export function sharedWithConcurrentCallers(
+  p: AcquisitionProvenance,
+): boolean {
+  return p.mode === "observed-shared";
 }
 
 /**

@@ -91,6 +91,14 @@ export interface CalendarResult {
   data?: EconomicCalendarData;
   error?: string;
   errorCode?: "API_UNAVAILABLE" | "RATE_LIMIT" | "AUTH_ERROR" | "NO_DATA";
+  /**
+   * Phase 178d — how this result was obtained, reported by the provider
+   * cache. Diagnostics only; never a substitute for the payload's own
+   * observation timestamp.
+   */
+  acquisition?: "observed-now" | "observed-shared" | "cache-reused";
+  /** Phase 178d — original provider observation time, preserved across hits. */
+  observedAt?: number;
 }
 
 /** Mapping of currency pairs to relevant country/currency codes. */

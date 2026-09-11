@@ -210,6 +210,15 @@ export interface CachedEvidence<T> {
   ageMs: number;
   /** True when this read was served from cache rather than a provider call. */
   fromCache: boolean;
+  /**
+   * Phase 178d — how this value was obtained, reported by the cache itself.
+   *
+   * `fromCache` cannot express the difference between a caller that started a
+   * provider request and one that joined another caller's in-flight request:
+   * both are `false`. Diagnostics must never infer that difference from
+   * timing, so the cache states it directly.
+   */
+  acquisition: "observed-now" | "observed-shared" | "cache-reused";
   /** Derived from `ageMs`, never stored. */
   freshness: EvidenceFreshness;
 }
@@ -298,7 +307,7 @@ export class ProviderCache {
     if (entry) {
       if (readAt < entry.expiresAt) {
         this.stats.hits++;
-        return this.present<T>(entry, readAt, true);
+        return this.present<T>(entry, readAt, "cache-reused");
       }
       // Expired: drop it and re-acquire. Never serve it as current.
       this.store.delete(serialized);
@@ -325,7 +334,7 @@ export class ProviderCache {
         this.now(),
         // A single-flight join is NOT a cache hit: the provider was called,
         // this caller simply shared the result.
-        false,
+        "observed-shared",
       );
     }
 
@@ -356,7 +365,7 @@ export class ProviderCache {
     try {
       const result = (await flight) as { data: T; observedAt: number } | null;
       if (!result) return null;
-      return this.present<T>(this.store.get(serialized)!, this.now(), false);
+      return this.present<T>(this.store.get(serialized)!, this.now(), "observed-now");
     } finally {
       this.inFlight.delete(serialized);
     }
@@ -373,14 +382,15 @@ export class ProviderCache {
       this.stats.expired++;
       return null;
     }
-    return this.present<T>(entry, readAt, true);
+    return this.present<T>(entry, readAt, "cache-reused");
   }
 
   private present<T>(
     entry: StoredEntry,
     readAt: number,
-    fromCache: boolean,
+    acquisition: "observed-now" | "observed-shared" | "cache-reused",
   ): CachedEvidence<T> {
+    const fromCache = acquisition === "cache-reused";
     // Age is measured from the PROVIDER's observation, not from `cachedAt`
     // and not from `readAt` alone.
     const ageMs = readAt - entry.observedAt;
@@ -393,6 +403,7 @@ export class ProviderCache {
       readAt,
       ageMs,
       fromCache,
+      acquisition,
       freshness: deriveFreshness(entry.dataset, ageMs),
     };
   }

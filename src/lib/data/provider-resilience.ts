@@ -71,6 +71,17 @@ export interface ProviderOutcome<T = unknown> {
   /** How many attempts were made (1 = no retry). */
   attempts: number;
   /**
+   * Phase 178d — how a SUCCESSFUL leg's data was obtained, as reported by the
+   * cache rather than inferred from timing. Absent on failures and on legs
+   * that do not pass through the provider cache.
+   */
+  acquisition?: "observed-now" | "observed-shared" | "cache-reused";
+  /**
+   * Phase 178d — the provider's own observation time, when the leg can supply
+   * one. A cache hit carries the ORIGINAL observation, never the read time.
+   */
+  observedAt?: number;
+  /**
    * Whether the engine actually consumed this evidence. Set by the caller
    * after attachment, so diagnostics distinguish "acquired" from "used".
    */
@@ -226,7 +237,22 @@ export interface LegOptions<T> {
    * The work. Receives an AbortSignal so a cooperating transport can cancel
    * the real request rather than leaving it running behind a lost race.
    */
-  run: (signal: AbortSignal) => Promise<{ success: boolean; data?: T; error?: string } | null | undefined>;
+  run: (signal: AbortSignal) => Promise<
+    | {
+        success: boolean;
+        data?: T;
+        error?: string;
+        /**
+         * Phase 178d — acquisition provenance, passed straight through to the
+         * outcome. Supplied by providers that route through the cache; absent
+         * otherwise, and never synthesized here.
+         */
+        acquisition?: "observed-now" | "observed-shared" | "cache-reused";
+        observedAt?: number;
+      }
+    | null
+    | undefined
+  >;
   budgetMs?: number;
   /**
    * Bounded retries. Defaults to 0 (no retry). A rate-limited response is
@@ -299,6 +325,14 @@ export async function runProviderLeg<T>(
           timedOut: false,
           rateLimited: false,
           attempts,
+          // Passed through verbatim. `runProviderLeg` never invents a mode:
+          // if the leg did not report one, the field stays absent.
+          ...(result.acquisition !== undefined
+            ? { acquisition: result.acquisition }
+            : {}),
+          ...(typeof result.observedAt === "number"
+            ? { observedAt: result.observedAt }
+            : {}),
         };
       }
 

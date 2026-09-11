@@ -91,6 +91,9 @@ export const fetchOkxInstrumentSpec = action({
           instruments: evidence.data.instruments,
           parseWarnings: evidence.data.parseWarnings,
         },
+        // Phase 178d — reported by the cache, not inferred.
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
       };
     } catch (err) {
       return {

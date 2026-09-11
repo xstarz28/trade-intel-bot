@@ -293,7 +293,12 @@ export const fetchCalendar = action({
         };
       }
       // Verbatim payload: `timestamp` remains the original observation time.
-      return { success: true, data: evidence.data };
+      return {
+        success: true,
+        data: evidence.data,
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
+      };
     } catch (err: any) {
       const msg = String(err?.message ?? "unknown error");
       if (msg.startsWith("RATE_LIMIT")) {

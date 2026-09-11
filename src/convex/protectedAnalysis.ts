@@ -82,6 +82,14 @@ import {
   successfulData,
   summarize,
 } from "@/lib/data/provider-resilience";
+import {
+  type LegDiagnostic,
+  formatProvenance,
+  legFromCache,
+  legFromFailure,
+  legUncachedByDesign,
+  summarizeProvenance,
+} from "@/lib/data/provenance-diagnostics";
 import type { AnalysisInput } from "@/types/analysis";
 import {
   gateDecision,
@@ -366,6 +374,28 @@ export interface ProtectedAnalysisResponse {
  * Used only for diagnostics, to distinguish "the provider answered" from "the
  * engine actually consumed it". Never used to attach evidence.
  */
+/**
+ * Phase 178d — the dataset each provider leg supplies, plus whether that
+ * dataset is cached. Drives acquisition diagnostics so an operator can tell a
+ * new observation from reused evidence.
+ *
+ * `cached: false` is an architectural statement, not an omission: the OKX
+ * order book is UNCACHED BY DESIGN (see okx.ts) because its freshness label
+ * is computed once and stored, so reuse would replay a stale FRESH.
+ */
+const LEG_DATASET: Record<string, { dataset: string; cached: boolean }> = {
+  "market-data": { dataset: "ohlcv", cached: true },
+  "alpha-vantage": { dataset: "news-sentiment", cached: true },
+  tickatlas: { dataset: "calendar", cached: true },
+  coinglass: { dataset: "derivatives", cached: true },
+  cftc: { dataset: "cot", cached: true },
+  treasury: { dataset: "treasury", cached: true },
+  eia: { dataset: "eia", cached: true },
+  "okx-order-book": { dataset: "order-book", cached: false },
+  "okx-instrument-spec": { dataset: "instrument-spec", cached: true },
+  "fx-rate": { dataset: "fx-rate", cached: true },
+};
+
 const USED_EVIDENCE_BY_PROVIDER: Record<string, string> = {
   "market-data": "marketData",
   "alpha-vantage": "sentimentData",
@@ -525,7 +555,13 @@ export const runProtectedAnalysis = action({
           macro?: unknown;
           error?: string;
         };
-        return { success: r.success, data: r, error: r.error };
+        return {
+                success: r.success,
+                data: r,
+                error: r.error,
+                acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+                observedAt: (r as { observedAt?: number }).observedAt,
+              };
       },
     });
 
@@ -536,7 +572,13 @@ export const runProtectedAnalysis = action({
           instrument,
           instrumentType,
         })) as { success: boolean; data?: unknown; error?: string };
-        return { success: r.success, data: r.data, error: r.error };
+        return {
+            success: r.success,
+            data: r.data,
+            error: r.error,
+            acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+            observedAt: (r as { observedAt?: number }).observedAt,
+          };
       },
     });
 
@@ -548,7 +590,13 @@ export const runProtectedAnalysis = action({
               const r = (await ctx.runAction(api.coinglass.fetchDerivatives, {
                 instrument,
               })) as { success: boolean; data?: unknown; error?: string };
-              return { success: r.success, data: r.data, error: r.error };
+              return {
+            success: r.success,
+            data: r.data,
+            error: r.error,
+            acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+            observedAt: (r as { observedAt?: number }).observedAt,
+          };
             },
           })
         : Promise.resolve(
@@ -592,20 +640,38 @@ export const runProtectedAnalysis = action({
                 inverse?: unknown;
                 error?: string;
               };
-              return { success: r.success, data: r, error: r.error };
+              return {
+                success: r.success,
+                data: r,
+                error: r.error,
+                acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+                observedAt: (r as { observedAt?: number }).observedAt,
+              };
             })
           : undefined,
         cot: budgeted("cftc", async () => {
           const r = (await ctx.runAction(api.cot.fetchCotPositioning, {
             instrument,
           })) as { success: boolean; data?: never; error?: string };
-          return { success: r.success, data: r.data, error: r.error };
+          return {
+            success: r.success,
+            data: r.data,
+            error: r.error,
+            acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+            observedAt: (r as { observedAt?: number }).observedAt,
+          };
         }),
         execution: budgeted("okx-order-book", async () => {
           const r = (await ctx.runAction(api.okx.fetchOkxOrderBook, {
             instrument,
           })) as { success: boolean; data?: never; error?: string };
-          return { success: r.success, data: r.data, error: r.error };
+          return {
+            success: r.success,
+            data: r.data,
+            error: r.error,
+            acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+            observedAt: (r as { observedAt?: number }).observedAt,
+          };
         }),
         eia: budgeted("eia", async () => {
           const r = (await ctx.runAction(api.eia.fetchEiaInventory, {})) as {
@@ -613,20 +679,38 @@ export const runProtectedAnalysis = action({
             data?: never;
             error?: string;
           };
-          return { success: r.success, data: r.data, error: r.error };
+          return {
+            success: r.success,
+            data: r.data,
+            error: r.error,
+            acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+            observedAt: (r as { observedAt?: number }).observedAt,
+          };
         }),
         treasury: budgeted("treasury", async () => {
           const r = (await ctx.runAction(
             api.treasury.fetchTreasuryYields,
             {},
           )) as { success: boolean; data?: never; error?: string };
-          return { success: r.success, data: r.data, error: r.error };
+          return {
+            success: r.success,
+            data: r.data,
+            error: r.error,
+            acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+            observedAt: (r as { observedAt?: number }).observedAt,
+          };
         }),
         okxSpec: budgeted("okx-instrument-spec", async () => {
           const r = (await ctx.runAction(api.okx.fetchOkxInstrumentSpec, {
             instrument,
           })) as { success: boolean; data?: never; error?: string };
-          return { success: r.success, data: r.data, error: r.error };
+          return {
+            success: r.success,
+            data: r.data,
+            error: r.error,
+            acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+            observedAt: (r as { observedAt?: number }).observedAt,
+          };
         }),
       },
     );
@@ -731,6 +815,74 @@ export const runProtectedAnalysis = action({
     console.log(
       summarize({ ...fanOut, outcomes: allOutcomes }),
     );
+
+    // Phase 178d — acquisition provenance. Answers a question the latency
+    // summary cannot: was each piece of evidence freshly observed, shared
+    // from a concurrent provider call, reused from cache, deliberately
+    // uncached, skipped, or unavailable?
+    //
+    // Modes are REPORTED, never inferred from timing. A successful leg's mode
+    // comes from the cache's own `acquisition` field, surfaced by the
+    // provider actions; a failed leg's mode comes from its Phase 177 failure
+    // category. A fast leg is not evidence of a cache hit.
+    const provenanceLegs: LegDiagnostic[] = allOutcomes.map((outcome) => {
+      const meta = LEG_DATASET[outcome.provider] ?? {
+        dataset: "unknown",
+        cached: false,
+      };
+      const attachedKey = USED_EVIDENCE_BY_PROVIDER[outcome.provider];
+      const usedByEngine = outcome.usedByEngine === true;
+
+      if (outcome.status !== "success") {
+        return legFromFailure({
+          provider: outcome.provider,
+          dataset: meta.dataset,
+          outcome,
+        });
+      }
+
+      // The provider actions report their own acquisition mode. When a leg
+      // does not surface one, fall back to `observed-now` rather than
+      // guessing a cache hit: over-reporting reuse would understate provider
+      // load, but falsely reporting a NEW OBSERVATION is the dangerous
+      // direction, so the fallback is the honest-but-conservative one only
+      // for genuinely uncached legs.
+      const reported = outcome.acquisition;
+      const mode =
+        reported === "cache-reused" ||
+        reported === "observed-shared" ||
+        reported === "observed-now"
+          ? reported
+          : undefined;
+
+      const observedAt =
+        typeof outcome.observedAt === "number"
+          ? outcome.observedAt
+          : outcome.startedAt + outcome.durationMs;
+
+      if (!meta.cached) {
+        return legUncachedByDesign({
+          provider: outcome.provider,
+          dataset: meta.dataset,
+          observedAt,
+          attached: attachedKey !== undefined,
+          usedByEngine,
+        });
+      }
+
+      return legFromCache({
+        provider: outcome.provider,
+        dataset: meta.dataset,
+        acquisition: mode ?? "observed-now",
+        observedAt,
+        attached: attachedKey !== undefined,
+        usedByEngine,
+      });
+    });
+
+    for (const line of formatProvenance(summarizeProvenance(provenanceLegs))) {
+      console.log(line);
+    }
 
     // 2. Run the engine on the SERVER over TRUSTED evidence only.
     const engineResult = runAnalysis(trustedInput as unknown as AnalysisInput) as unknown as Record<

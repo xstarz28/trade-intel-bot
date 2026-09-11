@@ -74,7 +74,12 @@ export const fetchCotPositioning = action({
       if (!ctx.available) {
         return { success: false as const, error: ctx.reason };
       }
-      return { success: true as const, data: ctx };
+      return {
+        success: true as const,
+        data: ctx,
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
+      };
     } catch (err) {
       return {
         success: false as const,
