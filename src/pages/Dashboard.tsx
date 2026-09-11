@@ -623,12 +623,18 @@ export default function Dashboard() {
         // boundary. For an exhausted guest the directional fields are never
         // serialized to this client at all.
         //
-        // Phase 175 — the server also RE-ACQUIRES the provider evidence itself
+        // Phase 175/176 — the server RE-ACQUIRES all provider evidence itself
         // and discards whatever this client sends for marketData /
         // technicalData / intelligence / derivatives / calendar / treasury /
-        // COT / EIA / execution / spec / FX. Those fields are transmitted only
-        // so the local preview panels keep working; they are inert on the
-        // trusted decision path and cannot influence the verdict.
+        // COT / EIA / execution / OKX spec / FX, plus the free-text
+        // newsContext and economicEvents fields and any client-supplied
+        // instrumentSpec. Those are transmitted only so the local preview
+        // panels keep working; they are inert on the trusted decision path.
+        //
+        // Only intent reaches the engine: instrument, instrumentType,
+        // timeframe, tradingStyle, requestedTimeframe, styleNotes, and the
+        // user's own risk parameters (accountEquity, riskPercent,
+        // accountCurrency).
         const protectedResponse = await runProtectedAnalysis({
           input: enrichedInput as unknown,
         });

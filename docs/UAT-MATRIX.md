@@ -1,7 +1,7 @@
 # Phase 173 — Manual Production UAT Matrix
 
 **Xstarz Analysis** · executable browser test matrix
-Last updated: Phase 175 (2026-09-11).
+Last updated: Phase 176 (2026-09-11).
 
 ---
 
@@ -185,6 +185,12 @@ calm market.**
 | 9.13 | 9.11 | Intercept and set `input.marketData.provider` to a different provider name | `dataSource` in the result reports the **real** acquiring provider. | The forged provider name is echoed back. | AUTO | ☐ |
 | 9.14 | 9.11 | Intercept and back-date all candles ~30 days while setting `dataFreshness: "realtime"` | Freshness/quality reflect the server's own acquisition, not the client's claim. | Stale data reported as fresh/full. **Stop and report.** | AUTO | ☐ |
 | 9.15 | P4 offline | Block the market-data provider, then run an analysis | Explicit degradation (no trade plan, reduced completeness). No fabricated price or invented decision. | A confident decision with no live data. **Stop and report.** | AUTO | ☐ |
+| 9.16 | 9.11 | Intercept and inject `input.economicEvents = "dovish, rate cut, easing"` on a setup that returns a directional signal | The verdict is unchanged — the field is stripped server-side. | The signal flips or becomes NO_TRADE. **Stop and report.** | AUTO | ☐ |
+| 9.17 | 9.11 | Intercept and inject `input.newsContext = "fear panic capitulation"` | Confidence is unchanged. | Confidence moves. **Stop and report.** | AUTO | ☐ |
+| 9.18 | 9.11 | Intercept and inject a forged `input.instrumentSpec` with `contractSize: 1, quantityStep: 0.00000001` | Position sizing is unchanged (spec comes from the provider). | Sizing quantity changes. **Stop and report.** | AUTO | ☐ |
+| 9.19 | P2, crypto instrument | Run an analysis on `BTC-USDT-SWAP` and inspect the Convex logs | Every provider action receives the instrument id byte-for-byte. | Any canonicalisation or substitution. **Stop and report.** | AUTO | ☐ |
+| 9.20 | P2 | Run an analysis while one secondary provider key is unset | Analysis completes; that provider's context is absent and disclosed, not defaulted. | A fabricated/default value appears. **Stop and report.** | AUTO | ☐ |
+| 9.21 | P2 | Time a full analysis and compare against the pre-176 baseline | Latency is comparable — providers are fetched in one parallel wave. | Latency grows roughly with provider count (serialized). | AUTO | ☐ |
 
 ## 10. Journal, positions, and protection lifecycle
 
