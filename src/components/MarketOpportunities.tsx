@@ -27,6 +27,7 @@ import {
 } from "@/lib/liveScanner";
 import type { LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import type { AssetClass } from "@/lib/data/universal/types";
+import { matchesRegionFilter } from "@/lib/market-region";
 import type { RadarScanResult, RadarOpportunity, OpportunityDiff, QualityTier } from "@/lib/market-radar/types";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -432,22 +433,9 @@ export function MarketOpportunities({
   // Filter by region (post-scan, since regions aren't in the scan config)
   const filteredRanked = useMemo(() => {
     if (regionFilter === "all") return result.rankedInstruments;
-    return result.rankedInstruments.filter((item) => {
-      const inst = item.instrument.toUpperCase();
-      if (regionFilter === "us") {
-        // US equities (no .JK suffix, not crypto/forex/commodity/index/macro)
-        return item.assetClass === "equity" && !inst.endsWith(".JK");
-      }
-      if (regionFilter === "idx") {
-        // IDX equities (BBCA, BBRI, etc.) or instruments ending in .JK
-        return item.assetClass === "equity" && (inst.endsWith(".JK") || ["BBCA", "BBRI", "TLKM", "BMRI", "BBNI", "GOTO"].includes(inst));
-      }
-      if (regionFilter === "global") {
-        // Crypto, forex, commodities, indices, macro
-        return ["crypto", "forex", "commodity", "indices", "macro"].includes(item.assetClass);
-      }
-      return true;
-    });
+    return result.rankedInstruments.filter((item) =>
+      matchesRegionFilter(item, regionFilter),
+    );
   }, [result.rankedInstruments, regionFilter]);
 
   // Phase 51: radar-based opportunities
@@ -455,14 +443,9 @@ export function MarketOpportunities({
     if (!radarResult) return [];
     const opps = radarResult.results.get(currentHorizon);
     if (!opps) return [];
-    // Filter by region
+    // Filter by region using provider-reported metadata (never a symbol list).
     if (regionFilter === "all") return opps;
-    return opps.filter(o => {
-      if (regionFilter === "idx") return o.region === "idx";
-      if (regionFilter === "us") return o.region === "us";
-      if (regionFilter === "global") return !o.region || o.region === "global" || o.region === "asia" || o.region === "europe";
-      return true;
-    }).filter(o => {
+    return opps.filter(o => matchesRegionFilter(o, regionFilter)).filter(o => {
       if (assetFilter === "all") return true;
       return o.assetClass === assetFilter;
     });

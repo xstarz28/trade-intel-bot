@@ -345,6 +345,10 @@ export function scanRadar(
           instrument: source.universe.instrument,
           assetClass: source.universe.assetClass,
           region: source.universe.region,
+          // Provider-native identity travels with the opportunity, unchanged.
+          ...(source.universe.providerNative
+            ? { providerNative: source.universe.providerNative }
+            : {}),
           lifecycle: "EXPIRED",
           qualityTier: "X",
           score: 0,
@@ -397,6 +401,10 @@ export function scanRadar(
         instrument: source.universe.instrument,
         assetClass: source.universe.assetClass,
         region: source.universe.region,
+        // Provider-native identity travels with the opportunity, unchanged.
+        ...(source.universe.providerNative
+          ? { providerNative: source.universe.providerNative }
+          : {}),
         lifecycle,
         qualityTier,
         score: scored.score,

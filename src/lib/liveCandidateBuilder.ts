@@ -44,6 +44,15 @@ export interface LiveCandidateSource {
    * It is never directional evidence and never merges two identities.
    */
   correlationKey?: string;
+  /**
+   * Phase 165 — venue/region as reported by the PROVIDER during discovery.
+   *
+   * Exists so the UI never has to infer region by pattern-matching symbol
+   * names (which is a hidden whitelist: any instrument not in the pattern
+   * list gets mislabelled, and new listings are silently wrong).
+   * Undefined means "the provider did not tell us", not "global".
+   */
+  region?: string;
   /** Market data from provider (if available). */
   marketData?: MarketData;
   /** Technical data computed from candles (if available). */
@@ -252,6 +261,7 @@ export function buildCandidateFromSource(
     ...(source.correlationKey ? { correlationKey: source.correlationKey } : {}),
     // Preserve the exact provider-native identity end to end.
     ...(source.providerNative ? { providerNative: source.providerNative } : {}),
+    ...(source.region ? { region: source.region } : {}),
 
     // Structure
     htfBias: extractHtfBias(tech),

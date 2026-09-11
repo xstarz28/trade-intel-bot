@@ -16,6 +16,18 @@ export const emailOtp = Email({
     return generateRandomString(random, alphabet, 6);
   },
   async sendVerificationRequest({ identifier: email, token }) {
+    // The OTP delivery key is read from the environment. It was previously
+    // hardcoded here and committed to source control; the literal is kept out
+    // of the repository now. Configure OTP_EMAIL_API_KEY in the Convex
+    // deployment environment.
+    const apiKey = process.env.OTP_EMAIL_API_KEY;
+    if (!apiKey) {
+      // Fail loudly rather than silently not sending a sign-in code.
+      throw new Error(
+        "OTP email delivery is not configured: OTP_EMAIL_API_KEY is missing.",
+      );
+    }
+
     try {
       await axios.post(
         "https://auth.freebuff.app/send_otp",
@@ -26,12 +38,18 @@ export const emailOtp = Email({
         },
         {
           headers: {
-            "x-api-key": "***REMOVED-ROTATED-CREDENTIAL***",
+            "x-api-key": apiKey,
           },
         },
       );
     } catch (error) {
-      throw new Error(JSON.stringify(error));
+      // Never echo the request (it carries the OTP and the API key) into an
+      // error message that could reach a client or a log sink.
+      const status =
+        axios.isAxiosError(error) && error.response
+          ? ` (HTTP ${error.response.status})`
+          : "";
+      throw new Error(`Failed to send verification email${status}.`);
     }
   },
 });
