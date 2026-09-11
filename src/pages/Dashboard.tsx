@@ -127,6 +127,14 @@ export default function Dashboard() {
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
   const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
 
+  // Provider/acquisition failures from the most recent discovery cycle.
+  //
+  // These must survive into every subsequent scan of the same sources. A
+  // re-scan that omits them reports degraded === false, which renders an
+  // outage as a healthy, quiet market — exactly the "provider availability
+  // becomes evidence" failure the integrity rules forbid.
+  const cycleProviderErrorsRef = useRef<string[]>([]);
+
   // Phase 156 — provider-native universal discovery.
   // Discovery metadata alone is NEVER considered live evidence.
   const discoverOkxInstruments = useAction(api.okx.discoverOkxInstruments);
@@ -177,18 +185,11 @@ export default function Dashboard() {
 
     pipelineStateRef.current = step.state;
     liveSourceRef.current = step.state.liveSources;
+    cycleProviderErrorsRef.current = [...discoveryErrors, ...step.providerErrors];
+    // Bumping the version re-runs the scan effect below, which is the single
+    // place that builds a ScanResult. Scanning here as well would produce two
+    // results for one cycle, and the later one would win.
     setLiveSourcesVersion((version) => version + 1);
-
-    setScanResult(
-      scanInstruments(step.liveSources, {
-        horizons: ["INTRADAY", "SWING"],
-        maxResults: 10,
-        maxPerCorrelationGroup: 2,
-        // Carry real acquisition/discovery failures into the scan so a
-        // thin result is reported as degraded, not as a quiet market.
-        providerErrors: [...discoveryErrors, ...step.providerErrors],
-      }),
-    );
   }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
 
   useEffect(() => {
@@ -722,13 +723,19 @@ export default function Dashboard() {
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
   const radarStateRef = useRef<RadarState | null>(null);
 
-  // Auto-scan when live sources change
-  useMemo(() => {
-    if (liveSources.length > 0) {
-      const config = { horizons: ["INTRADAY" as const, "SWING" as const], maxResults: 10 };
-      const result = scanInstruments(liveSources, config);
-      setScanResult(result);
-    }
+  // Sole scan site: re-runs whenever the retained live sources change.
+  //
+  // It always carries the current cycle's provider errors, so a degraded scan
+  // stays visibly degraded no matter how many times the sources are re-scanned.
+  useEffect(() => {
+    setScanResult(
+      scanInstruments(liveSources, {
+        horizons: ["INTRADAY", "SWING"],
+        maxResults: 10,
+        maxPerCorrelationGroup: 2,
+        providerErrors: cycleProviderErrorsRef.current,
+      }),
+    );
   }, [liveSources]);
 
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
@@ -957,6 +964,7 @@ export default function Dashboard() {
                   providerCoverage: "PARTIAL",
                 } as CandidateInput))}
                 liveSources={liveSources}
+                providerErrors={cycleProviderErrorsRef.current}
                 isScanning={isScanning}
                 scanResult={scanResult ?? undefined}
                 radarResult={radarResult ?? undefined}
