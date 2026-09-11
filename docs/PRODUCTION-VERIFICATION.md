@@ -863,6 +863,118 @@ fresh one.
 
 ---
 
+### Phase 178d — acquisition provenance and diagnostic wiring
+
+Phase 178c decided *what* to cache. Phase 178d makes those decisions
+**observable**: an operator can read one protected analysis and tell, per
+provider, whether the evidence was freshly observed, shared from a concurrent
+provider call, reused from cache, deliberately uncached, skipped, or
+unavailable — with no mode falsely implying a new observation.
+
+**Modes are reported, never inferred.** A successful leg's mode comes from
+`ProviderCache.acquisition`, surfaced by the provider action and passed
+through `runProviderLeg` verbatim. A failed leg's mode comes from its Phase
+177 failure category. Latency is never used as evidence of a cache hit.
+
+#### Diagnostic schema
+
+Per leg (`LegDiagnostic`):
+
+| Field | Meaning |
+|---|---|
+| `provider`, `dataset` | identity, verbatim |
+| `instrument` | provider-native identity where applicable |
+| `mode` | one of the eight acquisition modes |
+| `observedAt` | provider observation time; **absent** when nothing was observed |
+| `usedAt` | when this analysis used the value |
+| `evidenceAgeMs` | `usedAt − observedAt`; absent without an observation |
+| `providerContacted` | the provider was reached, directly or via a shared call |
+| `quotaChargeAttributableToCaller` | **this** caller caused a provider request |
+| `sharedWithConcurrentCallers` | joined another caller's in-flight request |
+| `acquired` / `attached` / `usedByEngine` | three separate facts, never conflated |
+
+Plus a totals line: requests caused, cache reuses, shared, uncached-by-design,
+unavailable — all derived from the runtime.
+
+#### `observed-shared` and quota semantics (resolved)
+
+`consumedQuota()` was ambiguous: "this caller caused a request" and "this
+result came from a quota-consuming request" differ for exactly one mode —
+`observed-shared` — which is the mode single-flight creates. The ambiguity was
+load-bearing, so the function was **replaced** by two precise predicates:
+
+- **`quotaChargeAttributableToCaller`** — definition (A). True only when this
+  caller initiated the HTTP call. A single-flight join is **false**: the
+  request already existed, and charging it would double-count one call across
+  N callers, overstating provider load.
+- **`originatedFromProviderRequest`** / **`providerContacted`** — definition
+  (B). True for a join too, because the bytes were paid for by some request.
+  Use it to ask "is this evidence backed by a real provider call?", never to
+  count load.
+
+Both are test-pinned so the distinction cannot silently regress.
+
+#### Provider-by-provider provenance (measured on the real fan-out)
+
+| Provider | Dataset | Cold | Warm | Concurrent | Cache | TTL | Freshness source | Contacted? | Used by engine? |
+|---|---|---|---|---|---|---|---|---|---|
+| market-data | ohlcv + quote | `observed-now` | `cache-reused` | `observed-shared` | yes | 60 s / 20 s | candle + quote timestamps | when not reused | yes |
+| alpha-vantage | news-sentiment | `observed-now` | `cache-reused` | `observed-shared` | yes | 10 min | article timestamps | when not reused | yes |
+| tickatlas | calendar | `observed-now` | `cache-reused` | `observed-shared` | yes | 20 min | event datetimes (live) | when not reused | yes |
+| coinglass | derivatives | `observed-now` | `cache-reused` | `observed-shared` | yes | 60 s | payload timestamp | when not reused | crypto only |
+| cftc | cot | `observed-now` | `cache-reused` | `observed-shared` | yes | 12 h | report date, re-derived | when not reused | fx/commodity |
+| treasury | treasury | `observed-now` | `cache-reused` | `observed-shared` | yes | 6 h | observation date, re-derived | when not reused | fx/commodity |
+| eia | eia | `observed-now` | `cache-reused` | `observed-shared` | yes | 6 h | observation date, re-derived | when not reused | oil only |
+| okx-instrument-spec | instrument-spec | `observed-now` | `cache-reused` | `observed-shared` | yes | 24 h | acquisition time (static) | when not reused | crypto sizing |
+| fx-rate | fx-rate | `observed-now` | `cache-reused` | `observed-shared` | yes | 5 min | quote timestamp | when not reused | cross-currency |
+| **okx-order-book** | order-book | `uncached-by-design` | `uncached-by-design` | `uncached-by-design` | **never** | — | exchange `ts`, 30 s | **always** | crypto scalping |
+
+Sample output, derived from a real warm crypto run (values come from the
+runtime, not hardcoded):
+
+```
+market-data/ohlcv = cache-reused(age 34ms, used)
+alpha-vantage/news-sentiment = cache-reused(age 35ms, used)
+tickatlas/calendar = cache-reused(age 33ms, used)
+coinglass/derivatives = cache-reused(age 34ms, used)
+okx-instrument-spec/instrument-spec = cache-reused(age 36ms, used)
+okx-order-book/order-book = uncached-by-design(age 8ms, used)
+totals: 1 provider request(s) caused, 5 reused from cache, 0 shared, 1 uncached-by-design, 0 unavailable
+```
+
+#### Composite legs
+
+`fetchMarketData` and `fetchIntelligence` perform several cache reads each.
+They report **one** mode via `combineAcquisitions`, which fails safe:
+`cache-reused` only when *every* read was reused, `observed-now` when any read
+caused a request. The age uses `oldestObservation`, so one fresh read cannot
+mask an older component. The bias is deliberate — over-reporting provider
+contact understates the cache's benefit, while under-reporting it would
+fabricate freshness.
+
+A defect this surfaced: before the composite handling, three legs reported
+`observed-now` on warm runs because they never surfaced a mode and silently
+took the fallback. It was found by reading real runtime output, not by reading
+code.
+
+#### Order book — provenance confirms the 178c decision
+
+Every use reports `uncached-by-design` and the leg is test-pinned to **never**
+report `cache-reused`, across repeated runs. Marking it cacheable in the
+dataset map fails the suite.
+
+#### Safety
+
+Diagnostics are credential-free (`looksLikeCredential` guards the output) and
+carry no user identifier, account equity, risk percent or account currency.
+Verified by running a real analysis with those values set and asserting they
+never appear in any emitted line.
+
+**Scope:** these diagnostics describe ONE action instance. They do not imply
+distributed or global cache behaviour — see the scope note below.
+
+---
+
 #### Scope honesty — what "shared" means here
 
 The registry (`src/lib/data/provider-cache-registry.ts`) is a module-level

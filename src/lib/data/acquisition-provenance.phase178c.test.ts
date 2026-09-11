@@ -8,7 +8,8 @@
 import { describe, expect, it } from "vitest";
 import {
   type AcquisitionMode,
-  consumedQuota,
+  originatedFromProviderRequest,
+  quotaChargeAttributableToCaller,
   describeProvenance,
   isCacheReuse,
   isNewObservation,
@@ -25,7 +26,7 @@ describe("acquisition provenance distinguishes observation from reuse", () => {
     });
     expect(isNewObservation(p)).toBe(true);
     expect(isCacheReuse(p)).toBe(false);
-    expect(consumedQuota(p)).toBe(true);
+    expect(quotaChargeAttributableToCaller(p)).toBe(true);
   });
 
   it("a cache reuse is NOT a new observation and consumes no quota", () => {
@@ -35,7 +36,8 @@ describe("acquisition provenance distinguishes observation from reuse", () => {
     });
     expect(isNewObservation(p)).toBe(false);
     expect(isCacheReuse(p)).toBe(true);
-    expect(consumedQuota(p)).toBe(false);
+    expect(quotaChargeAttributableToCaller(p)).toBe(false);
+    expect(originatedFromProviderRequest(p)).toBe(false);
   });
 
   it("evidence age is usedAt - observedAt", () => {
@@ -71,7 +73,7 @@ describe("acquisition provenance distinguishes observation from reuse", () => {
       observedAt: T0, usedAt: T0,
     });
     expect(isNewObservation(p)).toBe(true);
-    expect(consumedQuota(p)).toBe(true);
+    expect(quotaChargeAttributableToCaller(p)).toBe(true);
   });
 
   it("a single-flight join is an observation, not a cache hit", () => {
@@ -81,8 +83,10 @@ describe("acquisition provenance distinguishes observation from reuse", () => {
     });
     expect(isNewObservation(p)).toBe(true);
     expect(isCacheReuse(p)).toBe(false);
-    // The provider WAS called; this caller merely shared the result.
-    expect(consumedQuota(p)).toBe(false);
+    // Phase 178d — the two questions are now distinct and both asserted:
+    // this caller caused no request, but the bytes DID come from one.
+    expect(quotaChargeAttributableToCaller(p)).toBe(false);
+    expect(originatedFromProviderRequest(p)).toBe(true);
   });
 
   it("a reuse is described as a reuse, never as fresh", () => {

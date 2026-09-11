@@ -24,6 +24,7 @@ import type {
 // supplies per-dataset TTLs, single-flight dedup, observedAt preservation and
 // the user-owned-data guard. Scope is per action instance — see the registry.
 import { getProviderCache } from "../lib/data/provider-cache-registry";
+import { combineAcquisitions, oldestObservation } from "../lib/data/provenance-diagnostics";
 
 // ── Alpha Vantage API ───────────────────────────────────────────
 
@@ -113,6 +114,10 @@ export const fetchIntelligence = action({
       // same key collapse to one acquisition via single-flight.
       let articles: NewsArticle[] = [];
       let sentiment: SentimentData | undefined;
+      // Phase 178d — record how each cache read resolved so the action can
+      // report one honest mode instead of implying a fresh observation.
+      const acquisitions: Array<"observed-now" | "observed-shared" | "cache-reused"> = [];
+      const observations: number[] = [];
 
       {
         try {
@@ -144,6 +149,10 @@ export const fetchIntelligence = action({
             },
           );
           articles = evidence?.data ?? [];
+          if (evidence) {
+            acquisitions.push(evidence.acquisition);
+            observations.push(evidence.observedAt);
+          }
           sentiment = aggregateFromArticles(articles, "alpha-vantage");
         } catch (err: any) {
           if (String(err?.message).startsWith("RATE_LIMIT")) {
@@ -201,6 +210,10 @@ export const fetchIntelligence = action({
               },
             );
             fundamentals = evidence?.data;
+            if (evidence) {
+              acquisitions.push(evidence.acquisition);
+              observations.push(evidence.observedAt);
+            }
           } catch (err: any) {
             if (String(err?.message).startsWith("RATE_LIMIT")) {
               return {
@@ -242,6 +255,9 @@ export const fetchIntelligence = action({
           fundamentals: fundamentals?.available ?? false,
           macro: macro.confidence !== "unavailable",
         },
+        // `cache-reused` only when every read was reused.
+        acquisition: combineAcquisitions(acquisitions),
+        observedAt: oldestObservation(observations),
       };
     } catch (err: any) {
       return {

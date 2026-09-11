@@ -165,7 +165,13 @@ export const fetchDerivatives = action({
       }
       // The payload is returned verbatim on a hit, so `data.timestamp` stays
       // the ORIGINAL provider observation time — never reset to now.
-      return { success: true, data: evidence.data };
+      return {
+        success: true,
+        data: evidence.data,
+        // Phase 178d — reported by the cache, not inferred from timing.
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
+      };
     } catch (err: any) {
       // Phase 178b — preserve the original classification that the fetcher
       // threw. Collapsing a 429 into API_UNAVAILABLE would lose the

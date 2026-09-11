@@ -29,6 +29,7 @@ import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../l
  * candidate resolves, probing is skipped for 24h instead of every analysis.
  */
 import { getProviderCache } from "../lib/data/provider-cache-registry";
+import { combineAcquisitions, oldestObservation } from "../lib/data/provenance-diagnostics";
 
 let dxyResolvedSymbol: string | null = null;
 let dxyAllCandidatesFailedAt: number | null = null;
@@ -64,6 +65,22 @@ function mapTimeframe(tf: string): string {
  * A throw propagates out of the fetcher, so a 429 or auth failure is never
  * stored — the existing error classification below is unchanged.
  */
+/**
+ * Phase 178d — per-request acquisition trace.
+ *
+ * `fetchCandles` is called several times per analysis (setup timeframe, HTF
+ * context, comparator). Each read records how it was obtained so the action
+ * can report ONE honest mode instead of assuming a fresh observation.
+ */
+type AcqMode = "observed-now" | "observed-shared" | "cache-reused";
+let candleAcquisitions: AcqMode[] = [];
+let candleObservations: number[] = [];
+
+function resetCandleTrace(): void {
+  candleAcquisitions = [];
+  candleObservations = [];
+}
+
 async function fetchCandles(
   symbol: string,
   tf: string,
@@ -83,6 +100,10 @@ async function fetchCandles(
       observedAt: Date.now(),
     }),
   );
+  if (evidence) {
+    candleAcquisitions.push(evidence.acquisition);
+    candleObservations.push(evidence.observedAt);
+  }
   return evidence?.data ?? [];
 }
 
@@ -143,6 +164,7 @@ export const fetchMarketData = action({
     }
 
     const symbol = args.instrument.toUpperCase().trim();
+    resetCandleTrace();
 
     try {
       // Primary (setup) timeframe — errors classified precisely (429, auth…)
@@ -160,16 +182,46 @@ export const fetchMarketData = action({
         return { success: false as const, error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" as const };
       }
 
-      // Live quote — NON-fatal: never discard successful candle data
-      const quoteRes = await fetch(
-        `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
-        // Phase 177 — non-fatal leg; a hung quote must not hold the analysis.
-        { signal: AbortSignal.timeout(5_000) },
-      )
-        .then((r) => r.json())
-        .catch(() => ({}));
+      // Live quote — NON-fatal: never discard successful candle data.
+      //
+      // Phase 178d — cached under the `quote` dataset (20s TTL), the shortest
+      // TTL of any cached dataset here. This is the most freshness-sensitive
+      // value in the analysis, so the window is deliberately tight: it
+      // collapses the duplicate quote calls two back-to-back analyses would
+      // make, without letting a price outlive its meaning. The engine
+      // independently rejects prices older than its style budget, and the
+      // cached payload carries its original observation time, so a reused
+      // quote ages honestly rather than appearing newly observed.
+      const quoteEvidence = await getProviderCache()
+        .fetch<Record<string, unknown>>(
+          {
+            provider: "twelve-data",
+            dataset: "quote",
+            instrument: symbol,
+            instrumentType: args.instrumentType,
+          },
+          async () => {
+            const fetched = await fetch(
+              `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+              // Phase 177 — non-fatal leg; a hung quote must not hold the analysis.
+              { signal: AbortSignal.timeout(5_000) },
+            ).then((r) => r.json());
+            // No usable quote: cache nothing, fall back to the last candle.
+            if (!fetched || fetched.close === undefined) return null;
+            return { data: fetched as Record<string, unknown>, observedAt: Date.now() };
+          },
+        )
+        .catch(() => null);
+      const quoteRes: Record<string, unknown> = quoteEvidence?.data ?? {};
+      if (quoteEvidence) {
+        candleAcquisitions.push(quoteEvidence.acquisition);
+        candleObservations.push(quoteEvidence.observedAt);
+      }
 
-      const price = quoteRes.close ? parseFloat(quoteRes.close) : candles[candles.length - 1].close;
+      const price =
+        quoteRes.close !== undefined
+          ? parseFloat(String(quoteRes.close))
+          : candles[candles.length - 1].close;
 
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
@@ -353,6 +405,11 @@ export const fetchMarketData = action({
           dataFreshness: "delayed" as const,
         },
         technical,
+        // Phase 178d — one honest mode for the whole action: `cache-reused`
+        // only if EVERY candle read was reused. The oldest observation
+        // governs the age, so a single fresh read cannot mask older data.
+        acquisition: combineAcquisitions(candleAcquisitions),
+        observedAt: oldestObservation(candleObservations),
       };
     } catch (err: any) {
       return {
@@ -440,6 +497,8 @@ export const fetchFxRate = action({
       success: true as const,
       direct: evidence.data.direct,
       inverse: evidence.data.inverse,
+      acquisition: evidence.acquisition,
+      observedAt: evidence.observedAt,
     };
   },
 });
