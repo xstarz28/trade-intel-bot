@@ -17,20 +17,11 @@ import type {
   LiquidationData,
 } from "../lib/data/derivatives-types";
 
-// ── In-memory cache (10 min TTL) ────────────────────────────────
-const cache = new Map<string, { data: any; expiresAt: number }>();
-const CACHE_TTL = 10 * 60 * 1000;
-
-function getCached<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) return entry.data as T;
-  cache.delete(key);
-  return null;
-}
-
-function setCache(key: string, data: any): void {
-  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
-}
+// ── Phase 178b — authoritative provider cache ───────────────────
+// Replaces this module's private Map cache. Derivatives are keyed on the FULL
+// provider-native instrument (not the truncated base symbol), so BTC/USDT,
+// BTC/USD and BTC-USDT-SWAP can never share an entry.
+import { getProviderCache } from "../lib/data/provider-cache-registry";
 
 // ── CoinGlass API ───────────────────────────────────────────────
 
@@ -93,17 +84,18 @@ export const fetchDerivatives = action({
     const symbol = mapSymbolForCG(args.instrument);
 
     try {
-      // Phase 178 — key on the FULL instrument identity, not the truncated
-      // base symbol. `deriv:${symbol}` mapped BTC/USDT and BTC/USD onto the
-      // same entry, so one quote currency's funding rate could be served for
-      // another. The upstream request still uses `symbol`; only the cache
-      // identity is widened.
-      const cacheKey = `deriv:${args.instrument.toUpperCase().trim()}:${symbol}`;
-      const cached = getCached<CryptoDerivativesData>(cacheKey);
-      if (cached) {
-        return { success: true, data: cached };
-      }
-
+      // Phase 178b — the ENTIRE acquisition runs inside the cache fetcher, so
+      // a hit skips all four upstream calls and 20 concurrent callers collapse
+      // to one acquisition instead of four-per-caller.
+      const evidence = await getProviderCache().fetch<CryptoDerivativesData>(
+        {
+          provider: "coinglass",
+          dataset: "derivatives",
+          instrument: args.instrument,
+          instrumentType: "crypto",
+          qualifier: symbol,
+        },
+        async () => {
       // Fetch all datasets in parallel
       const [oiResult, fundingResult, lsResult, liqResult] = await Promise.allSettled([
         fetchOpenInterest(symbol, apiKey),
@@ -117,21 +109,16 @@ export const fetchDerivatives = action({
       const longShort = lsResult.status === "fulfilled" ? lsResult.value : undefined;
       const liquidations = liqResult.status === "fulfilled" ? liqResult.value : undefined;
 
-      // Check for rate limit errors
+      // Phase 178b — a provider failure must THROW out of the cache fetcher.
+      // Returning an error envelope here would let `ProviderCache` store a
+      // 429 as if it were evidence. Throwing leaves the cache untouched; the
+      // catch below turns it back into the action's error envelope.
       for (const result of [oiResult, fundingResult, lsResult, liqResult]) {
         if (result.status === "rejected" && String(result.reason?.message).startsWith("RATE_LIMIT")) {
-          return {
-            success: false,
-            error: "CoinGlass rate limit exceeded.",
-            errorCode: "RATE_LIMIT",
-          };
+          throw new Error("RATE_LIMIT: CoinGlass rate limit exceeded.");
         }
         if (result.status === "rejected" && String(result.reason?.message).startsWith("AUTH_ERROR")) {
-          return {
-            success: false,
-            error: "CoinGlass authentication failed.",
-            errorCode: "AUTH_ERROR",
-          };
+          throw new Error("AUTH_ERROR: CoinGlass authentication failed.");
         }
       }
 
@@ -166,12 +153,41 @@ export const fetchDerivatives = action({
         interpretation,
       };
 
-      setCache(cacheKey, data);
-      return { success: true, data };
+          return { data, observedAt: data.timestamp };
+        },
+      );
+      if (!evidence) {
+        return {
+          success: false,
+          error: "CoinGlass returned no derivatives data.",
+          errorCode: "NO_DATA",
+        };
+      }
+      // The payload is returned verbatim on a hit, so `data.timestamp` stays
+      // the ORIGINAL provider observation time — never reset to now.
+      return { success: true, data: evidence.data };
     } catch (err: any) {
+      // Phase 178b — preserve the original classification that the fetcher
+      // threw. Collapsing a 429 into API_UNAVAILABLE would lose the
+      // rate-limit signal Phase 177 depends on.
+      const msg = String(err?.message ?? "unknown error");
+      if (msg.startsWith("RATE_LIMIT")) {
+        return {
+          success: false,
+          error: "CoinGlass rate limit exceeded.",
+          errorCode: "RATE_LIMIT",
+        };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return {
+          success: false,
+          error: "CoinGlass authentication failed.",
+          errorCode: "AUTH_ERROR",
+        };
+      }
       return {
         success: false,
-        error: `Derivatives fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Derivatives fetch failed: ${msg}`,
         errorCode: "API_UNAVAILABLE",
       };
     }

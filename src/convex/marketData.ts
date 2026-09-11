@@ -28,6 +28,8 @@ import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../l
  * instance). Failure caching protects the Twelve Data rate budget: when no
  * candidate resolves, probing is skipped for 24h instead of every analysis.
  */
+import { getProviderCache } from "../lib/data/provider-cache-registry";
+
 let dxyResolvedSymbol: string | null = null;
 let dxyAllCandidatesFailedAt: number | null = null;
 
@@ -49,7 +51,42 @@ function mapTimeframe(tf: string): string {
 }
 
 /** Fetch + normalize candles for one timeframe. Throws on failure. */
+/**
+ * Phase 178b — every OHLCV request in this module funnels through here, so
+ * this is the single place to enforce cache identity for candle data.
+ *
+ * The key carries the provider-native symbol, the timeframe AND the requested
+ * bar count: a 210-bar setup series and a 100-bar HTF series are different
+ * responses and must not share an entry. Concurrent identical requests
+ * collapse to one acquisition, which matters because a single analysis asks
+ * for the setup timeframe, higher-timeframe context and a comparator series.
+ *
+ * A throw propagates out of the fetcher, so a 429 or auth failure is never
+ * stored — the existing error classification below is unchanged.
+ */
 async function fetchCandles(
+  symbol: string,
+  tf: string,
+  outputsize: number,
+  apiKey: string,
+): Promise<OhlcvCandle[]> {
+  const evidence = await getProviderCache().fetch<OhlcvCandle[]>(
+    {
+      provider: "twelve-data",
+      dataset: "ohlcv",
+      instrument: symbol,
+      timeframe: tf,
+      qualifier: `bars=${outputsize}`,
+    },
+    async () => ({
+      data: await fetchCandlesUncached(symbol, tf, outputsize, apiKey),
+      observedAt: Date.now(),
+    }),
+  );
+  return evidence?.data ?? [];
+}
+
+async function fetchCandlesUncached(
   symbol: string,
   tf: string,
   outputsize: number,
@@ -365,19 +402,45 @@ export const fetchFxRate = action({
       }
     };
 
-    // Parallel — a failing leg never blocks or corrupts the other.
-    const [direct, inverse] = await Promise.all([
-      fetchPair(`${from}/${to}`),
-      fetchPair(`${to}/${from}`),
-    ]);
+    // Phase 178b — routed through the authoritative provider cache. The key
+    // carries the conversion DIRECTION, so USD>EUR and EUR>USD are distinct
+    // entries. A hit performs no HTTP call and consumes no Twelve Data quota;
+    // concurrent identical conversions collapse to one acquisition.
+    type FxLeg = { rate: number; timestamp: number; source: string; pair: string } | null;
+    const evidence = await getProviderCache().fetch<{ direct: FxLeg; inverse: FxLeg }>(
+      {
+        provider: "twelve-data",
+        dataset: "fx-rate",
+        qualifier: `${from}>${to}`,
+      },
+      async () => {
+        // Parallel — a failing leg never blocks or corrupts the other.
+        const [direct, inverse] = await Promise.all([
+          fetchPair(`${from}/${to}`),
+          fetchPair(`${to}/${from}`),
+        ]);
+        // Nothing usable: return null so no entry is stored. An absent FX
+        // quote must never be cached as if it were a rate.
+        if (!direct && !inverse) return null;
+        return {
+          data: { direct, inverse },
+          // Observation time of the real quote, preserved across later hits.
+          observedAt: direct?.timestamp ?? inverse?.timestamp ?? Date.now(),
+        };
+      },
+    );
 
-    if (!direct && !inverse) {
+    if (!evidence) {
       return {
         success: false as const,
         error: `no FX quote available for ${from}/${to} from the provider`,
       };
     }
-    return { success: true as const, direct, inverse };
+    return {
+      success: true as const,
+      direct: evidence.data.direct,
+      inverse: evidence.data.inverse,
+    };
   },
 });
 

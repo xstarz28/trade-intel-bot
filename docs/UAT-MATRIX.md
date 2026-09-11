@@ -266,6 +266,12 @@ timestamps and freshness labels, not just the numbers.
 | 13A.6 | signed in | Continue from 13A.5 until the TTL expires while the provider is still down | The affected evidence degrades to unavailable/stale; the decision degrades gracefully; no fabricated values. | Expired cache silently reused, or invented data. **Stop and report.** | EXT-BLOCKED | ☐ |
 | 13A.7 | signed in | Analyse `BTC/USDT`, then immediately analyse `BTC/USD` | The two return **different** derivatives evidence (different quote currency). | Identical funding/OI for both — a cache-key collision. **Stop and report.** | EXT-BLOCKED | ☐ |
 | 13A.8 | signed in | Analyse the same pair on H1, then on H4 | Timeframe-specific candles differ; no cross-timeframe reuse. | Identical candle data across timeframes. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.9 | signed in | Analyse the same ticker symbol as a crypto and as an equity (e.g. `BTC/USD` then a `BTC` stock) | Each returns its own asset class's news; no cross-class reuse. | Crypto news shown for the equity or vice versa. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.10 | signed in | After any cached analysis, read the displayed observation/"as of" time | It shows the ORIGINAL provider observation time, not the moment of the refresh. | Observation time equals the refresh time on a cache hit. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.11 | signed in | Force a stale cached response (wait past the fresh window, stay inside TTL) | Evidence is shown with its true age and is **not** labelled LIVE/FRESH. | Stale cached data presented as live. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.12 | signed in | Trigger a provider 429, then re-run the analysis | The 429 is not retained; the retry reaches the provider and can succeed. | Rate-limit response cached and replayed as evidence. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.13 | two users | User A runs an analysis with account equity set; User B analyses the same instrument | B sees the same public market evidence but none of A's equity/risk/currency or position size. | Any personalised value crossing users. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.14 | signed in | Compare a cold analysis against an immediate repeat | The repeat is faster and the recommendation is unchanged. | The verdict changes purely because data came from cache. **Stop and report.** | EXT-BLOCKED | ☐ |
 
 **Why EXT-BLOCKED:** every provider host is firewalled in the build
 environment, so no cache row can be executed here. Quota reduction is verified

@@ -15,16 +15,10 @@ import type {
 } from "../lib/data/calendar-types";
 import { getRelevantCurrencies, calculateMacroRisk } from "../lib/data/calendar-types";
 
-// ── In-memory cache (20 min TTL) ────────────────────────────────
-const cache = new Map<string, { data: EconomicCalendarData; expiresAt: number }>();
-const CACHE_TTL = 20 * 60 * 1000;
-
-function getCached(key: string): EconomicCalendarData | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) return entry.data;
-  cache.delete(key);
-  return null;
-}
+// ── Phase 178b — authoritative provider cache ───────────────────
+// Replaces this module's private Map cache so calendar evidence shares one
+// set of TTL / freshness / single-flight semantics with every other provider.
+import { getProviderCache } from "../lib/data/provider-cache-registry";
 
 // ── TickAtlas API ────────────────────────────────────────────────
 
@@ -159,26 +153,26 @@ export const fetchCalendar = action({
       };
     }
 
-    // Phase 178 — normalise case. The calendar response depends on the
-    // resolved currency set, which is case-insensitive, so `EUR/USD` and
-    // `eur/usd` previously produced two entries and two provider calls for
-    // identical data. Instrument identity is not lost: it is only normalised
-    // for the CACHE KEY of a currency-derived dataset, never for the request.
-    const cacheKey = `cal:${args.instrument.toUpperCase().trim()}:${args.instrumentType.toLowerCase()}`;
-    const cached = getCached(cacheKey);
-    if (cached) {
-      return { success: true, data: cached };
-    }
-
+    // Phase 178b — the whole acquisition runs inside the cache fetcher.
+    // The instrument is upper-cased for the KEY only (the calendar response
+    // depends on the resolved currency set, which is case-insensitive), so
+    // `EUR/USD` and `eur/usd` no longer cause two calls for identical data.
+    // The request itself still uses the caller's exact instrument.
     try {
+      const evidence = await getProviderCache().fetch<EconomicCalendarData>(
+        {
+          provider: "tickatlas",
+          dataset: "calendar",
+          instrument: args.instrument.toUpperCase().trim(),
+          instrumentType: args.instrumentType,
+        },
+        async () => {
       // Determine relevant currencies for this instrument
       const relevantCurrencies = getRelevantCurrencies(args.instrument, args.instrumentType);
       if (relevantCurrencies.length === 0) {
-        return {
-          success: false,
-          error: "No relevant currencies determined for this instrument.",
-          errorCode: "NO_DATA",
-        };
+        // Phase 178b — nothing to acquire. Return null so the cache stores
+        // no entry: an absent currency mapping is not evidence.
+        return null;
       }
 
       const countryParam = relevantCurrencies
@@ -203,12 +197,11 @@ export const fetchCalendar = action({
           rawEvents = result.data;
         }
       } catch (err: any) {
-        if (String(err?.message).startsWith("RATE_LIMIT")) {
-          return { success: false, error: "TickAtlas rate limit exceeded.", errorCode: "RATE_LIMIT" };
-        }
-        if (String(err?.message).startsWith("AUTH_ERROR")) {
-          return { success: false, error: "TickAtlas authentication failed.", errorCode: "AUTH_ERROR" };
-        }
+        // Phase 178b — rethrow out of the cache fetcher so a 429 or auth
+        // failure is never stored as evidence. Re-classified by the outer
+        // catch into the action's error envelope.
+        const m = String(err?.message);
+        if (m.startsWith("RATE_LIMIT") || m.startsWith("AUTH_ERROR")) throw err;
       }
 
       // Also fetch recently released high-impact events (last 7 days)
@@ -289,12 +282,29 @@ export const fetchCalendar = action({
         availability,
       };
 
-      cache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL });
-      return { success: true, data };
+          return { data, observedAt: data.timestamp };
+        },
+      );
+      if (!evidence) {
+        return {
+          success: false,
+          error: "Calendar provider returned no data.",
+          errorCode: "NO_DATA",
+        };
+      }
+      // Verbatim payload: `timestamp` remains the original observation time.
+      return { success: true, data: evidence.data };
     } catch (err: any) {
+      const msg = String(err?.message ?? "unknown error");
+      if (msg.startsWith("RATE_LIMIT")) {
+        return { success: false, error: "TickAtlas rate limit exceeded.", errorCode: "RATE_LIMIT" };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return { success: false, error: "TickAtlas authentication failed.", errorCode: "AUTH_ERROR" };
+      }
       return {
         success: false,
-        error: `Calendar fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Calendar fetch failed: ${msg}`,
         errorCode: "API_UNAVAILABLE",
       };
     }
