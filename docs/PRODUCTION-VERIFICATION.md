@@ -1004,6 +1004,72 @@ distributed or global cache behaviour — see the scope note below.
 
 ---
 
+### Phase 178e — protected-path default/fallback integrity sweep
+
+A final audit of every `??` / `||` / empty-value fallback on the protected
+decision path: client input → `protectedAnalysis` → provider acquisition →
+cache/provenance → evidence attachment → engine → entitlement gate → response.
+
+**142 fallback sites audited across 4,809 lines. 2 dangerous, both fixed.**
+Each site was traced to its semantic consumer; pattern-matching alone decides
+nothing, and most `?? 0` sites are mathematically neutral.
+
+#### Defect 1 — malformed OHLC became a believable market structure
+
+`parseFloat` on a malformed field yields `NaN`, which was returned inside a
+`success: true` envelope. Measured before the fix: a provider returning
+`"n/a"` for every OHLC field produced `success=true` with `close=NaN` — an
+invalid market structure presented as valid evidence, which indicators then
+propagate silently.
+
+Fixed in `fetchCandles`: rows without finite `timestamp/open/high/low/close`
+are **dropped**, and if *no* row survives the action fails with "provider
+returned no numerically valid candles". Rows are dropped rather than defaulted
+because there is no honest substitute for a missing price — a zero would be a
+believable lie. Verified: 210 rows with every 50th corrupted → 205 clean
+candles, no NaN; all-corrupt → explicit failure.
+
+#### Defect 2 — order book aged from request time, not the exchange
+
+`fetchOkxOrderBook` never returned an `observedAt`, so fan-out diagnostics
+fell back to request-completion time. Measured: a snapshot the exchange
+stamped **12,002 ms** ago was reported as ~5 ms old — a stale book presented
+as freshly observed, violating the Phase 178d §7 rule that `observedAt` must
+be the provider's own observation when it exposes one.
+
+Fixed: the action now reports `snapshotTs` (the exchange timestamp) as
+`observedAt`, and omits it entirely when the book is unusable. Provenance and
+the freshness gate now derive from the same basis — pinned by a test asserting
+`observedAt === data.snapshotTs`.
+
+#### Legitimate defaults explicitly RETAINED
+
+| Site | Why it cannot fabricate evidence |
+|---|---|
+| `volume \|\| 0` (candles) | Volume is genuinely absent from many spot-forex feeds. The consumer `computeVolumeProfile` refuses to build a profile when total volume is zero and states why; `analyzeVolume` reports `unknown` below 20 candles. Test-pinned both ways. |
+| `sentimentScore ?? 0` (Alpha Vantage) | Applied only to articles already filtered by `sentimentScore !== undefined`; arithmetically unreachable. |
+| `relevanceScore ?? 0.5` | Sort tie-break only. Cannot alter direction, confidence, or evidence. |
+| `profitSignalsUsed ?? 0` | Entitlement counter for a user with no row yet — the correct starting count, and the gate is fail-closed. |
+| `?? Date.now()` (FX `observedAt`) | Dead branch: `fetchPair` always sets `timestamp` and returns `null` otherwise. Retained as a type-level guard, not a live path. |
+| `mode ?? "observed-now"` (fan-out) | Now reachable only when `observedAt` **is** a finite number, i.e. a real observation whose mode went unreported. The no-evidence case returns `unavailable` before this line. |
+
+#### Defence in depth discovered by mutation testing
+
+Fabricating a timestamp in `legFromFailure` changed **nothing** — because
+`recordProvenance` independently refuses to attach an observation to a mode
+outside `CARRIES_EVIDENCE`. That second layer was real but **untested**, so a
+later refactor could have removed it silently. It is now pinned directly:
+removing layer 2 fails 2 tests, removing both fails 6.
+
+#### Confirmed absent on the protected path
+
+No directional default (`?? "BUY"`/`"SELL"`/`"LONG"`/`"SHORT"`), no
+`?? "live"` / `"fresh"` / `"verified"` / `"success"`, no default provider
+identity, no `allowed` default in the entitlement gate, no `return true` on
+missing provider evidence, and no confidence/freshness fallback.
+
+---
+
 #### Scope honesty — what "shared" means here
 
 The registry (`src/lib/data/provider-cache-registry.ts`) is a module-level

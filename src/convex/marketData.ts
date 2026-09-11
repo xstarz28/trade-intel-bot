@@ -126,16 +126,43 @@ async function fetchCandlesUncached(
   }
   const values: TdCandle[] = json.values ?? [];
   if (values.length === 0) throw new Error("no candle data returned");
-  return values
-    .reverse()
-    .map((c) => ({
-      timestamp: new Date(c.datetime).getTime(),
-      open: parseFloat(c.open),
-      high: parseFloat(c.high),
-      low: parseFloat(c.low),
-      close: parseFloat(c.close),
-      volume: parseFloat(c.volume) || 0,
-    }));
+
+  // Phase 178e — a malformed OHLC field parses to NaN. Passing that through
+  // would hand the engine an invalid market structure that still LOOKS like
+  // evidence: indicators silently propagate NaN, and a NaN high/low is not a
+  // price anyone can act on. Such rows are DROPPED rather than defaulted,
+  // because there is no honest substitute for a missing price.
+  //
+  // `volume` is treated differently on purpose: it is genuinely absent from
+  // many spot-forex feeds, and the downstream consumers already handle a zero
+  // total explicitly (`computeVolumeProfile` refuses to build a profile and
+  // reports why). A zero volume therefore cannot fabricate evidence, while a
+  // zero PRICE could.
+  const parsed = values.reverse().map((c) => ({
+    timestamp: new Date(c.datetime).getTime(),
+    open: parseFloat(c.open),
+    high: parseFloat(c.high),
+    low: parseFloat(c.low),
+    close: parseFloat(c.close),
+    volume: parseFloat(c.volume) || 0,
+  }));
+
+  const usable = parsed.filter(
+    (c) =>
+      Number.isFinite(c.timestamp) &&
+      Number.isFinite(c.open) &&
+      Number.isFinite(c.high) &&
+      Number.isFinite(c.low) &&
+      Number.isFinite(c.close),
+  );
+
+  // Every row was malformed: the provider returned no usable prices at all.
+  // Fail explicitly instead of returning a plausible-looking empty series.
+  if (usable.length === 0) {
+    throw new Error("provider returned no numerically valid candles");
+  }
+
+  return usable;
 }
 
 export const fetchMarketData = action({

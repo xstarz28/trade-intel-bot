@@ -176,7 +176,20 @@ export const fetchOkxOrderBook = action({
       }
       const parsed = parseOkxOrderBook(json);
       const data = buildExecutionData(parsed, Date.now(), Date.now());
-      return { success: data.available as boolean, data } as { success: boolean; data: ExecutionData };
+      // Phase 178e — report the EXCHANGE timestamp as the observation time.
+      // Diagnostics previously fell back to request-completion time, which
+      // understates the true age of the book: a snapshot the exchange stamped
+      // 12s ago was reported as milliseconds old. `snapshotTs` is the same
+      // basis the freshness gate uses, so provenance and the gate now agree.
+      const snapshotTs =
+        data.available === true && Number.isFinite(data.snapshotTs)
+          ? data.snapshotTs
+          : undefined;
+      return {
+        success: data.available as boolean,
+        data,
+        ...(snapshotTs !== undefined ? { observedAt: snapshotTs } : {}),
+      } as { success: boolean; data: ExecutionData; observedAt?: number };
     } catch (e) {
       return { success: false as const, error: `network failure: ${String(e).slice(0, 120)}` };
     }
