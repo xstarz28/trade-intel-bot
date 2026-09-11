@@ -4,7 +4,7 @@ This document records what has been **verified**, what is **unverified**, and
 what **cannot be verified** by automated agent runs. It is deliberately
 conservative: anything not actually executed and observed is not marked PASS.
 
-Last updated: Phase 167.
+Last updated: Phase 173 (2026-09-11).
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: Phase 167.
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Unit + integration test suite | **PASS** | 7,674 tests / 198 files, 0 failures |
+| Unit + integration test suite | **PASS** | 7,878 tests / 210 files, 0 failures (Phase 173) |
 | Component (jsdom) render suites | **PASS** | Collected for the first time in Phase 166 — see below |
 | TypeScript compile | **PASS** | `tsc -b` exit 0, fully clean |
 | Production build | **PASS** | `npm run build` (`tsc -b && vite build`) exit 0 |
@@ -20,7 +20,9 @@ Last updated: Phase 167.
 | Live provider calls | **NOT VERIFIED** | Outbound market-data hosts are blocked in the agent sandbox |
 | Credentialed providers | **NOT VERIFIED** | No API keys present in this environment |
 | Convex deployment runtime | **NOT VERIFIED** | No deployment URL configured here |
-| Browser / manual E2E | **CANNOT BE DONE BY AGENT** | Requires a human clicking through the UI |
+| Browser / manual E2E | **CANNOT BE DONE BY AGENT** | Requires a human clicking through the UI — matrix in [`UAT-MATRIX.md`](./UAT-MATRIX.md) |
+| Manual UAT execution | **NOT VERIFIED** | Matrix authored in Phase 173; **zero rows executed** so far |
+| Light/dark theme follows system | **NOT IMPLEMENTED** | Dark is hardcoded — see Phase 173 findings |
 | Convex authorization boundary | **PASS (static + unit)** | All 65 exported fns audited; 8 credentialed actions now guarded |
 
 > **Nothing in the "NOT VERIFIED" rows should be reported as working.**
@@ -86,26 +88,50 @@ pass** and the summary says so explicitly.
 
 ---
 
-## 4. Manual browser E2E checklist
+## 4. Manual browser E2E — see the UAT matrix
 
 This portion **must** be done by a human; the agent cannot drive a browser.
+Nothing here may be reported as PASS on the strength of automated tests alone.
 
-Prerequisites: `npx convex dev` running, `.env` populated from
-`.env.example`, then `npm run dev`.
+The former short checklist has been replaced by a full executable matrix:
 
-- [ ] App loads with no console errors
-- [ ] Sign-in completes and the session persists across a hard refresh
-- [ ] Dashboard performs a discovery cycle and lists instruments
-- [ ] Instrument ids shown are provider-native (e.g. `BTC-USDT`), not
-      canonicalized
-- [ ] A scan produces rankings, or an explicit WAIT / no-opportunity state
-- [ ] No recommendation appears when no live data was acquired
-- [ ] Disconnecting the network mid-session shows a degraded state, and
-      previously acquired data is retained rather than wiped
-- [ ] Reconnecting recovers without a manual reload
-- [ ] Deep links to a specific instrument resolve correctly
-- [ ] Layout is usable at mobile width
-- [ ] Light/dark follows the system setting
+> **[`docs/UAT-MATRIX.md`](./UAT-MATRIX.md)** — 13 sections, ~90 numbered tests.
+
+Each row carries a prerequisite, an exact browser action, an expected result,
+an explicit failure condition, and a PASS / FAIL / BLOCKED field. Rows are
+tagged `AUTO` (asserted by the automated suite, still to be confirmed in a
+browser), `HUMAN` (needs a person), or `EXT-BLOCKED` (needs a live provider or
+a deployed Convex backend, neither of which exists in the agent sandbox).
+
+Prerequisites are listed in section 0 of that document. In the agent sandbox
+P1–P4 are **not satisfied** (no `VITE_CONVEX_URL`, OKX/CoinGecko firewalled),
+so every provider- and backend-dependent row is `EXT-BLOCKED` here.
+
+**Current execution status: 0 of ~90 rows executed.** Until a human runs it,
+browser behaviour is NOT VERIFIED.
+
+### Phase 173 — defects found while grounding the matrix
+
+Writing each step against real observable behaviour surfaced four defects.
+Three were fixed with regression tests; one is documented and deferred because
+it is a design decision rather than a bug.
+
+| # | Finding | Status |
+| --- | --- | --- |
+| F1 | The refresh control was gated on `liveSources.length > 0`, so the empty state left by a failed first discovery cycle had **no retry affordance**. With no polling interval and no other caller of the discovery cycle, the only escape was a manual page reload — and the screen read as "no opportunities" rather than "retry available". | **Fixed** — handler always passed (6 regression tests). |
+| F2 | `<html lang>` never followed the active locale: `index.html` hardcodes `lang="en"`, so all 9 locales were announced to screen readers and indexed as English. WCAG 3.1.1 (Language of Page). | **Fixed** — the i18n provider syncs `documentElement.lang` (11 regression tests). |
+| F3 | **Light mode does not exist.** `index.html` hardcodes `class="dark"`, the `.dark` CSS block is empty, and `:root` carries the dark palette, so "light/dark follows system" is unimplemented. | **OPEN — NOT IMPLEMENTED.** Requires authoring and reviewing a second full palette; tracked as a product decision. |
+| F4 | The 404 page used `text-gray-900` / `text-gray-600` against the dark background (`oklch(0.1)`) — near-black on near-black, effectively invisible. | **Fixed** — now uses `text-foreground` / `text-muted-foreground`. |
+
+### Entitlement surface — scope note
+
+`src/convex/entitlements.ts` is implemented and covered by 30 automated tests
+(including concurrency under Convex's serializable OCC). **It has no UI
+consumer yet** — nothing in `src/` outside the backend and its tests calls
+`getMyEntitlement` or `consumeProfitSignal`. Entitlement enforcement is
+therefore verifiable **server-side only** (matrix §9, rows 9.1–9.4, executed
+via the Convex dashboard/CLI). The user-facing rows 9.5–9.6 are expected to be
+BLOCKED until that wiring lands.
 
 ---
 

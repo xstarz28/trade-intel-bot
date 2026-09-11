@@ -15,6 +15,7 @@
 import React, {
   createContext,
   useContext,
+  useEffect,
   useState,
   useCallback,
   useMemo,
@@ -171,6 +172,18 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(resolveInitialLocale);
+
+  // Keep <html lang> in sync with the active locale.
+  //
+  // index.html hardcodes lang="en", so without this every one of the 9 locales
+  // was announced to screen readers as English and indexed as English. Screen
+  // readers pick pronunciation rules from this attribute, so a Japanese or
+  // Korean UI was being read with English phonetics.
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = locale;
+    }
+  }, [locale]);
 
   const setLocale = useCallback((next: Locale) => {
     // Only allow setting enabled locales

@@ -968,7 +968,7 @@ export default function Dashboard() {
                 isScanning={isScanning}
                 scanResult={scanResult ?? undefined}
                 radarResult={radarResult ?? undefined}
-                onRefresh={liveSources.length > 0 ? handleScanRefresh : undefined}
+                onRefresh={handleScanRefresh}
               />
             </div>
           </div>
