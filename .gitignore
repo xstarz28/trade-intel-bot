@@ -1,4 +1,27 @@
-.env.local
+# Dependencies
 node_modules
+
+# Build output
 dist
+
+# Generated
 src/convex/_generated
+
+# Environment / secrets
+# `.env.example` is intentionally tracked; every other env file is not.
+.env
+.env.*
+!.env.example
+
+# Credentials
+*.pem
+*.key
+*.p12
+*.keystore
+*.jks
+.netrc
+.git-credentials
+
+# Local tooling noise
+.DS_Store
+*.log

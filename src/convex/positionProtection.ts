@@ -267,11 +267,16 @@ export const saveCursor = mutation({
     const user = await resolveUser(ctx);
     if (!user) throw new Error("User not authenticated");
 
-    // Upsert: find existing cursor for this provider/instrument
+    // Upsert: find THIS USER's cursor for this provider/instrument.
+    // The lookup must be user-scoped; a provider/instrument-only query can
+    // match another user's row and overwrite it.
     const existing = await ctx.db
       .query("streamCursors")
-      .withIndex("by_provider_instrument", (q: any) =>
-        q.eq("provider", args.provider).eq("instrument", args.instrument)
+      .withIndex("by_user_provider_instrument", (q: any) =>
+        q
+          .eq("userId", user._id)
+          .eq("provider", args.provider)
+          .eq("instrument", args.instrument)
       )
       .unique();
 
@@ -302,10 +307,19 @@ export const getCursor = query({
     instrument: v.string(),
   },
   handler: async (ctx, args) => {
+    // Requires authentication and returns only the caller's own cursor.
+    // Previously this had no auth check and queried by provider/instrument
+    // alone, so one user could read another user's stream position.
+    const user = await resolveUser(ctx);
+    if (!user) return null;
+
     return await ctx.db
       .query("streamCursors")
-      .withIndex("by_provider_instrument", (q: any) =>
-        q.eq("provider", args.provider).eq("instrument", args.instrument)
+      .withIndex("by_user_provider_instrument", (q: any) =>
+        q
+          .eq("userId", user._id)
+          .eq("provider", args.provider)
+          .eq("instrument", args.instrument)
       )
       .unique();
   },

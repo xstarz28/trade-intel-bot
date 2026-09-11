@@ -741,7 +741,13 @@ export default function Dashboard() {
         universe: {
           instrument: ls.instrument,
           assetClass: ls.assetClass,
-          region: ls.assetClass === "equity" ? (ls.instrument.includes("BBCA") || ls.instrument.includes("BBRI") || ls.instrument.includes("TLKM") || ls.instrument.includes("BMRI") || ls.instrument.includes("BBNI") || ls.instrument.includes("GOTO") ? "idx" : "us") : "global",
+          // Region comes from provider discovery metadata. It is deliberately
+          // NOT inferred by pattern-matching symbol names: that is a hidden
+          // whitelist which mislabels every instrument outside the list and
+          // silently gets new listings wrong. Undefined = provider did not say.
+          ...(ls.region ? { region: ls.region } : {}),
+          // Preserve exact provider-native identity into the radar.
+          ...(ls.providerNative ? { providerNative: ls.providerNative } : {}),
           requiredCapabilities: ["ohlcv", "quote"],
           priority: 1,
           refreshIntervalMs: 300_000,

@@ -55,6 +55,11 @@ export interface CandidateInput {
     provider: string;
     providerInstrumentId: string;
   };
+  /**
+   * Phase 165 — venue/region as reported by the provider during discovery.
+   * Never inferred from the symbol name. Undefined = provider did not say.
+   */
+  region?: string;
   /** Detected asset class. */
   assetClass: AssetClass;
   /** Current price (from last known data, 0 if unavailable). */
@@ -167,6 +172,11 @@ export interface RankedInstrument {
     provider: string;
     providerInstrumentId: string;
   };
+  /**
+   * Phase 165 — venue/region reported by the provider, when known.
+   * Enables region filtering from real metadata instead of a symbol whitelist.
+   */
+  region?: string;
   /** Asset class. */
   assetClass: AssetClass;
   /** Rank position (1 = highest). */
@@ -900,6 +910,7 @@ export function generateRecommendation(
       instrument: c.instrument,
       // Provider-native identity travels with the opportunity, unchanged.
       ...(c.providerNative ? { providerNative: c.providerNative } : {}),
+      ...(c.region ? { region: c.region } : {}),
       assetClass: c.assetClass,
       rank: i + 1,
       analyticalScore: result.analyticalScore,

@@ -108,6 +108,12 @@ export function toAcquisitionResults(
         providerInstrumentId: discovered.providerInstrumentId,
         assetClass: discovered.assetClass,
         success: false,
+        // Carry the provider's real reason so the degraded scan is auditable.
+        error:
+          item.error ??
+          (item.success
+            ? "provider reported success but returned no usable snapshot"
+            : "acquisition failed"),
       });
       continue;
     }
@@ -121,6 +127,9 @@ export function toAcquisitionResults(
         providerInstrumentId: discovered.providerInstrumentId,
       },
       correlationKey: deriveCorrelationKey(discovered),
+      // Region as the PROVIDER reported it during discovery. Absent when the
+      // provider did not say — never guessed from the symbol name.
+      ...(discovered.region ? { region: discovered.region } : {}),
       marketData,
     };
 
@@ -142,6 +151,7 @@ export function toAcquisitionResults(
       providerInstrumentId: instrument.providerInstrumentId,
       assetClass: instrument.assetClass,
       success: false,
+      error: "provider returned no result for this instrument",
     });
   }
 

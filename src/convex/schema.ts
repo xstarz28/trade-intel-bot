@@ -185,6 +185,10 @@ const schema = defineSchema(
       lastTimestamp: v.number(),
       lastSequence: v.optional(v.number()),
     })
+      // User-scoped lookup. The cursor rows carry a userId, so the index must
+      // include it — otherwise a provider/instrument lookup can return another
+      // user's row.
+      .index("by_user_provider_instrument", ["userId", "provider", "instrument"])
       .index("by_provider_instrument", ["provider", "instrument"]),
 
     // Phase 90 — Historical intelligence snapshots
