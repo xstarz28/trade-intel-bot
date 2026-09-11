@@ -93,7 +93,12 @@ export const fetchDerivatives = action({
     const symbol = mapSymbolForCG(args.instrument);
 
     try {
-      const cacheKey = `deriv:${symbol}`;
+      // Phase 178 — key on the FULL instrument identity, not the truncated
+      // base symbol. `deriv:${symbol}` mapped BTC/USDT and BTC/USD onto the
+      // same entry, so one quote currency's funding rate could be served for
+      // another. The upstream request still uses `symbol`; only the cache
+      // identity is widened.
+      const cacheKey = `deriv:${args.instrument.toUpperCase().trim()}:${symbol}`;
       const cached = getCached<CryptoDerivativesData>(cacheKey);
       if (cached) {
         return { success: true, data: cached };

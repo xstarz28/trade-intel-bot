@@ -159,7 +159,12 @@ export const fetchCalendar = action({
       };
     }
 
-    const cacheKey = `cal:${args.instrument}:${args.instrumentType}`;
+    // Phase 178 — normalise case. The calendar response depends on the
+    // resolved currency set, which is case-insensitive, so `EUR/USD` and
+    // `eur/usd` previously produced two entries and two provider calls for
+    // identical data. Instrument identity is not lost: it is only normalised
+    // for the CACHE KEY of a currency-derived dataset, never for the request.
+    const cacheKey = `cal:${args.instrument.toUpperCase().trim()}:${args.instrumentType.toLowerCase()}`;
     const cached = getCached(cacheKey);
     if (cached) {
       return { success: true, data: cached };

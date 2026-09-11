@@ -113,7 +113,10 @@ export const fetchIntelligence = action({
 
     try {
       // Fetch news sentiment (works for all asset types)
-      const newsCacheKey = `news:${ticker}`;
+      // Phase 178 — include instrumentType. `news:${ticker}` alone would let
+      // a crypto symbol and an identically-named equity ticker share one
+      // entry, serving one asset class's news for another.
+      const newsCacheKey = `news:${args.instrumentType}:${ticker}`;
       let articles: NewsArticle[] = [];
       let sentiment: SentimentData | undefined;
 
@@ -162,7 +165,7 @@ export const fetchIntelligence = action({
       let fundamentals: FundamentalData | undefined;
 
       if (args.instrumentType === "stock") {
-        const fundCacheKey = `fund:${ticker}`;
+        const fundCacheKey = `fund:${args.instrumentType}:${ticker}`;
         const cachedFund = getCached<FundamentalData>(fundCacheKey);
         if (cachedFund) {
           fundamentals = cachedFund;

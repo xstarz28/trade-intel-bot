@@ -250,6 +250,29 @@ device emulation **and** at least one real phone.
 
 ---
 
+## 13A. Provider cache, quota and freshness (Phase 178)
+
+These rows exist to catch the failure mode that unit tests cannot fully prove:
+a cache that quietly presents **old data as current**. Watch the displayed
+timestamps and freshness labels, not just the numbers.
+
+| # | Prereq | Action | Expected result | Failure condition | Coverage | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| 13A.1 | signed in | Run an analysis, then press refresh 5× in ~30 s | Repeated runs stay responsive; the displayed observation time does **not** jump forward on every press. | Observation time resets to "now" on each refresh while no new provider data was fetched. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.2 | signed in | Analyse the same instrument 3× in a row | Later runs return noticeably faster (cache hits), and the evidence age **increases** across runs. | Evidence age resets to zero, or the age is not shown. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.3 | 2 browsers/users | Start two analyses of the same instrument simultaneously | Both complete; neither shows the other's account equity, risk percent, or position size. | Any personalised value leaking between sessions. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.4 | signed in | Analyse an instrument, wait past its dataset TTL (e.g. >20 min for calendar), analyse again | A real re-acquisition occurs; the observation time advances only now. | Data older than its TTL still presented as current. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.5 | signed in | Run an analysis, then take a provider offline and re-run within TTL | Cached evidence may be reused, but it is labelled with its true age — never as live/fresh. | Cached data shown as "live" during a provider outage. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.6 | signed in | Continue from 13A.5 until the TTL expires while the provider is still down | The affected evidence degrades to unavailable/stale; the decision degrades gracefully; no fabricated values. | Expired cache silently reused, or invented data. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.7 | signed in | Analyse `BTC/USDT`, then immediately analyse `BTC/USD` | The two return **different** derivatives evidence (different quote currency). | Identical funding/OI for both — a cache-key collision. **Stop and report.** | EXT-BLOCKED | ☐ |
+| 13A.8 | signed in | Analyse the same pair on H1, then on H4 | Timeframe-specific candles differ; no cross-timeframe reuse. | Identical candle data across timeframes. **Stop and report.** | EXT-BLOCKED | ☐ |
+
+**Why EXT-BLOCKED:** every provider host is firewalled in the build
+environment, so no cache row can be executed here. Quota reduction is verified
+structurally (call counts under test), never as an observed billing delta.
+
+---
+
 ## 14. Findings raised while building this matrix
 
 Four defects were found and three were fixed while grounding these steps in
