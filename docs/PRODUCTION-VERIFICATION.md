@@ -4,7 +4,7 @@ This document records what has been **verified**, what is **unverified**, and
 what **cannot be verified** by automated agent runs. It is deliberately
 conservative: anything not actually executed and observed is not marked PASS.
 
-Last updated: Phase 164.
+Last updated: Phase 167.
 
 ---
 
@@ -12,7 +12,8 @@ Last updated: Phase 164.
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Unit + integration test suite | **PASS** | 7,529 tests / 187 files, 0 failures |
+| Unit + integration test suite | **PASS** | 7,674 tests / 198 files, 0 failures |
+| Component (jsdom) render suites | **PASS** | Collected for the first time in Phase 166 — see below |
 | TypeScript compile | **PASS** | `tsc -b` exit 0, fully clean |
 | Production build | **PASS** | `npm run build` (`tsc -b && vite build`) exit 0 |
 | Lint | **PASS (no new)** | Error count unchanged from baseline on every touched file |
@@ -20,6 +21,7 @@ Last updated: Phase 164.
 | Credentialed providers | **NOT VERIFIED** | No API keys present in this environment |
 | Convex deployment runtime | **NOT VERIFIED** | No deployment URL configured here |
 | Browser / manual E2E | **CANNOT BE DONE BY AGENT** | Requires a human clicking through the UI |
+| Convex authorization boundary | **PASS (static + unit)** | All 65 exported fns audited; 8 credentialed actions now guarded |
 
 > **Nothing in the "NOT VERIFIED" rows should be reported as working.**
 > They are not known-broken either — they are simply untested here.
@@ -138,7 +140,51 @@ Related hardening shipped in the same phase: the handler previously threw
 request headers carrying the key and the OTP itself — into the error message.
 It now reports the HTTP status only.
 
+### Test-collection gap (fixed in Phase 166) — read this one
+
+`vitest.config.ts` had `include: ["src/**/*.test.ts"]`, which never matched
+`.test.tsx`. The two component render suites — the only tests in the repo that
+mount a real React component — were therefore collected by **no run at all**.
+They had silently rotted, and every assertion in them was dead.
+
+This matters beyond those two files: it means a green suite was never evidence
+about UI behaviour. Enabling them (split `unit`/`ui` vitest projects, jsdom for
+`.tsx`) immediately exposed four real defects, listed under Resolved below.
+
+Treat this as the standing caution for this project: **a passing suite only
+covers what it actually collects.** Check the collected-file count, not just
+the pass rate.
+
 ### Resolved
+
+- **Enum mappers crashed on missing data (fixed in Phase 166).** All 34
+  `map*` helpers in `src/lib/i18n/enum-mapping.ts` ended in
+  `default: return value.replace(...)`, and five called `.toUpperCase()` on
+  the switch subject. The module docstring promised the opposite ("never
+  undefined, blank, or crash"). Any absent field threw a TypeError that took
+  down the whole localized surface.
+
+- **IntelligenceDashboard hard-crashed on absent fields (fixed in Phase 166).**
+  `actionRecommendation` and `pnlPct` were dereferenced unguarded; `pnlPct !== 0`
+  also passes for `undefined`. An absent recommendation now reads UNAVAILABLE
+  and an absent PnL is omitted rather than shown as a fabricated `0.00%`.
+
+- **"What changed" reported present data as unavailable (fixed in Phase 166).**
+  An empty array — meaning "compared, nothing changed" — was rendered as
+  "provider not connected". Empty, missing and null are now three distinct
+  states.
+
+- **MarketOverviewPanel could print "NaN" as a price (fixed in Phase 166).**
+  `price ?? 0` let NaN/Infinity through, rendering the literal string beside a
+  green LIVE badge. `SIMULATED` was also unhandled. A price is now shown only
+  for a finite positive number, simulated data is treated as unavailable, and
+  the "N/M live" counter uses the same rule as the rows.
+
+- **Credentialed Convex actions were publicly callable (fixed in Phase 167).**
+  Eight actions proxying Alpha Vantage, CoinGlass, EIA, Trading Economics and
+  Twelve Data had no authorization check, so an anonymous caller could exhaust
+  a paid quota or use the deployment as a free API proxy. All eight now
+  require an identity before the key is read; guest sign-in satisfies it.
 
 - **Stream cursor cross-user read (fixed in Phase 165).** `streamCursors` rows
   carry a `userId`, but the table's only index was `by_provider_instrument` and
