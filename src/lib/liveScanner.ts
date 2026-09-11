@@ -41,6 +41,16 @@ export interface ScanConfig {
    * disables the cap, preserving pre-Phase-158 behaviour.
    */
   maxPerCorrelationGroup?: number;
+  /**
+   * Phase 161 — provider/acquisition failures observed while assembling
+   * `sources` for this scan.
+   *
+   * The scanner cannot see upstream failures on its own: a provider outage
+   * simply yields fewer sources, which is indistinguishable from a market
+   * with fewer opportunities. Passing them in keeps a degraded scan
+   * visibly degraded.
+   */
+  providerErrors?: string[];
 }
 
 export interface ScanResult {
@@ -58,6 +68,14 @@ export interface ScanResult {
   durationMs: number;
   /** Provider errors encountered. */
   providerErrors: string[];
+  /**
+   * Phase 161 — true when this scan ran with known provider failures.
+   *
+   * A degraded scan is still a real scan of real data; it simply covers
+   * less of the market than usual. Callers must be able to distinguish
+   * "few opportunities exist" from "we could not look properly".
+   */
+  degraded: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -167,7 +185,9 @@ export function scanInstruments(
 ): ScanResult {
   const startTime = Date.now();
   const now = config.now ?? Date.now();
-  const providerErrors: string[] = [];
+  // Upstream acquisition/discovery failures are carried through verbatim so
+  // the caller can see WHY a scan is thin.
+  const providerErrors: string[] = [...(config.providerErrors ?? [])];
 
   // Filter by asset class
   let filtered = sources;
@@ -251,5 +271,6 @@ export function scanInstruments(
     timestamp: now,
     durationMs: Date.now() - startTime,
     providerErrors,
+    degraded: providerErrors.length > 0,
   };
 }

@@ -149,6 +149,11 @@ export default function Dashboard() {
     const discovered = providerResults
       .filter((r) => r.success)
       .flatMap((r) => r.instruments);
+    // A provider that failed discovery outright is reported explicitly; its
+    // previously acquired instruments are retained by the pipeline.
+    const discoveryErrors = providerResults
+      .filter((r) => !r.success)
+      .map((r) => `${r.provider}: ${r.error ?? "discovery failed"}`);
 
     const step = await runDiscoveryPipelineStep({
       state: pipelineStateRef.current,
@@ -179,6 +184,9 @@ export default function Dashboard() {
         horizons: ["INTRADAY", "SWING"],
         maxResults: 10,
         maxPerCorrelationGroup: 2,
+        // Carry real acquisition/discovery failures into the scan so a
+        // thin result is reported as degraded, not as a quiet market.
+        providerErrors: [...discoveryErrors, ...step.providerErrors],
       }),
     );
   }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
