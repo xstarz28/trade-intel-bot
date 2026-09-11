@@ -1,7 +1,7 @@
 # Phase 173 — Manual Production UAT Matrix
 
 **Xstarz Analysis** · executable browser test matrix
-Last updated: Phase 173 (2026-09-11).
+Last updated: Phase 174 (2026-09-11).
 
 ---
 
@@ -162,13 +162,11 @@ calm market.**
 
 ## 9. Entitlement (guest / free-signal limit / Premium)
 
-> **Scope note — read before executing.** The entitlement backend
-> (`src/convex/entitlements.ts`) is implemented and covered by 30 automated
-> tests, including concurrency behaviour. **It currently has no UI consumer**:
-> no component calls `getMyEntitlement` or `consumeProfitSignal`. So rows 9.1–9.4
-> are *server-observable only* and must be exercised through the Convex
-> dashboard/CLI, not by clicking. Rows 9.5–9.6 record that the UI surface does
-> not exist yet — they are expected to be `BLOCKED` until the wiring phase.
+> **Updated in Phase 174.** Entitlement is now wired to the UI *and* enforced
+> at a server-side delivery boundary: `runAnalysis` executes inside the Convex
+> action `protectedAnalysis.runProtectedAnalysis`, and an unentitled client
+> never receives the directional payload. Rows 9.5–9.10 are now executable in a
+> browser. Rows 9.1–9.4 remain server-observable via the Convex dashboard.
 
 | # | Prereq | Action | Expected result | Failure condition | Coverage | Result |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -176,8 +174,12 @@ calm market.**
 | 9.2 | P1,P2, signed in | Call `consumeProfitSignal` with a `BUY` recommendation 3× | First two → `CONSUMED`; third → `FREE_ALLOWANCE_EXHAUSTED`. | A third free profit signal is granted. | AUTO | ☐ |
 | 9.3 | P1,P2 | Call it with `WAIT` / `NO_TRADE` | `NOT_CHARGEABLE` — never consumes allowance. | Non-directional output burns quota. | AUTO | ☐ |
 | 9.4 | 9.2 | After exhaustion, reload the app and clear `localStorage` | Limit still enforced — it is **server-side**. | Reload or storage reset restores free signals. **Stop and report.** | AUTO | ☐ |
-| 9.5 | signed in | Look for a remaining-signals indicator in the UI | *Expected `BLOCKED` — not yet wired.* | — | HUMAN | ☐ |
-| 9.6 | signed in | Look for an upgrade/Premium surface | *Expected `BLOCKED` — pricing is deliberately deferred to a later phase.* | — | HUMAN | ☐ |
+| 9.5 | signed in | Look at the dashboard header | A **Trial** badge shows the remaining free signals, matching the server. | No badge, or a count that disagrees with the DB row. | AUTO | ☐ |
+| 9.6 | 9.5 | Run analyses until a directional result is produced twice | The counter decrements only on directional results. | WAIT/NO_TRADE decrements it. | AUTO | ☐ |
+| 9.7 | 9.6 | Run one more analysis that produces a directional result | An explicit **"Actionable signal locked"** panel appears, stating it is *not* a Wait/No-Trade verdict, with an inert upgrade button and no price. | A WAIT is shown instead, or a price appears. **Stop and report.** | AUTO | ☐ |
+| 9.8 | 9.7 | With the lock showing, open devtools → Network → inspect the `runProtectedAnalysis` response body | The response contains **no** `recommendation`, `tradePlan`, `conviction`, `bias` or `positionSizing` — only the locked stub. | Any directional field present in the payload. **Critical row — stop and report.** | AUTO | ☐ |
+| 9.9 | 9.7 | Still exhausted, run an analysis that resolves to NO_TRADE | Delivered in full with its reasoning; the counter does not move. | Locked, or charged. | AUTO | ☐ |
+| 9.10 | 9.7 | In the console, call the consume mutation directly claiming `WAIT` | No directional result is obtainable by any client call. | A directional payload is obtainable. **Stop and report.** | AUTO | ☐ |
 
 ## 10. Journal, positions, and protection lifecycle
 

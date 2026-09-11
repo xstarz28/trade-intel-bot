@@ -945,6 +945,21 @@ const en: Translations = {
     macroChange: "Macro Change",
     dataQualityChange: "Data Quality Change",
   },
+  entitlement: {
+    signInRequired: "Sign in to run an analysis.",
+    trialLabel: "Trial",
+    premiumLabel: "Premium",
+    signalsRemaining: "{count} free signals left",
+    signalsRemainingOne: "1 free signal left",
+    signalsExhausted: "Free signals used",
+    unlimited: "Unlimited",
+    lockedTitle: "Actionable signal locked",
+    lockedBody: "This analysis produced an actionable signal for {instrument}. Your free allowance is used up.",
+    lockedNotWait: "This is not a Wait or No-Trade verdict — the direction is withheld, not changed.",
+    upgradeCta: "Unlock with Premium",
+    upgradeComingSoon: "Premium is not available yet.",
+    freeAlways: "Wait and No-Trade results are always free.",
+  },
 };
 
 export default en;

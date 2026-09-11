@@ -956,6 +956,21 @@ const pt: Translations = {
     macroChange: "Mudança Macro",
     dataQualityChange: "Mudança de Qualidade de Dados",
   },
+  entitlement: {
+    signInRequired: "Entre para executar uma análise.",
+    trialLabel: "Teste",
+    premiumLabel: "Premium",
+    signalsRemaining: "{count} sinais gratuitos restantes",
+    signalsRemainingOne: "1 sinal gratuito restante",
+    signalsExhausted: "Sinais gratuitos esgotados",
+    unlimited: "Ilimitado",
+    lockedTitle: "Sinal acionável bloqueado",
+    lockedBody: "Esta análise produziu um sinal acionável para {instrument}. Sua cota gratuita acabou.",
+    lockedNotWait: "Este não é um veredito de Aguardar ou Não Operar — a direção é retida, não alterada.",
+    upgradeCta: "Desbloquear com Premium",
+    upgradeComingSoon: "Premium ainda não está disponível.",
+    freeAlways: "Resultados Aguardar e Não Operar são sempre gratuitos.",
+  },
 };
 
 export default pt;

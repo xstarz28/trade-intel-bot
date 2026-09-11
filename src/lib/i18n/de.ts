@@ -954,6 +954,21 @@ const de: Translations = {
     macroChange: "Makroänderung",
     dataQualityChange: "Datenqualitätsänderung",
   },
+  entitlement: {
+    signInRequired: "Melden Sie sich an, um eine Analyse auszuführen.",
+    trialLabel: "Test",
+    premiumLabel: "Premium",
+    signalsRemaining: "Noch {count} kostenlose Signale",
+    signalsRemainingOne: "Noch 1 kostenloses Signal",
+    signalsExhausted: "Kostenlose Signale aufgebraucht",
+    unlimited: "Unbegrenzt",
+    lockedTitle: "Handelbares Signal gesperrt",
+    lockedBody: "Diese Analyse ergab ein handelbares Signal für {instrument}. Ihr kostenloses Kontingent ist aufgebraucht.",
+    lockedNotWait: "Dies ist kein Warten- oder Kein-Trade-Urteil — die Richtung wird zurückgehalten, nicht geändert.",
+    upgradeCta: "Mit Premium freischalten",
+    upgradeComingSoon: "Premium ist noch nicht verfügbar.",
+    freeAlways: "Warten- und Kein-Trade-Ergebnisse sind immer kostenlos.",
+  },
 };
 
 export default de;

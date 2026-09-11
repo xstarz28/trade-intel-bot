@@ -952,6 +952,21 @@ const zh: Translations = {
     macroChange: "宏观变化",
     dataQualityChange: "数据质量变化",
   },
+  entitlement: {
+    signInRequired: "请登录后运行分析。",
+    trialLabel: "试用",
+    premiumLabel: "高级版",
+    signalsRemaining: "剩余 {count} 个免费信号",
+    signalsRemainingOne: "剩余 1 个免费信号",
+    signalsExhausted: "免费信号已用完",
+    unlimited: "无限制",
+    lockedTitle: "可执行信号已锁定",
+    lockedBody: "本次分析为 {instrument} 生成了可执行信号。您的免费额度已用完。",
+    lockedNotWait: "这不是“观望”或“不交易”的结论——方向被保留，而非被更改。",
+    upgradeCta: "升级高级版解锁",
+    upgradeComingSoon: "高级版尚未推出。",
+    freeAlways: "观望与不交易的结果始终免费。",
+  },
 };
 
 export default zh;

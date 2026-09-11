@@ -954,6 +954,21 @@ const ko: Translations = {
     macroChange: "매크로 변화",
     dataQualityChange: "데이터 품질 변화",
   },
+  entitlement: {
+    signInRequired: "분석을 실행하려면 로그인하세요.",
+    trialLabel: "체험",
+    premiumLabel: "프리미엄",
+    signalsRemaining: "무료 시그널 {count}개 남음",
+    signalsRemainingOne: "무료 시그널 1개 남음",
+    signalsExhausted: "무료 시그널을 모두 사용했습니다",
+    unlimited: "무제한",
+    lockedTitle: "실행 가능 시그널 잠김",
+    lockedBody: "이 분석은 {instrument}에 대한 실행 가능 시그널을 생성했습니다. 무료 한도를 모두 사용했습니다.",
+    lockedNotWait: "대기 또는 거래 없음 판정이 아닙니다. 방향은 변경된 것이 아니라 보류된 것입니다.",
+    upgradeCta: "프리미엄으로 잠금 해제",
+    upgradeComingSoon: "프리미엄은 아직 제공되지 않습니다.",
+    freeAlways: "대기 및 거래 없음 결과는 항상 무료입니다.",
+  },
 };
 
 export default ko;
