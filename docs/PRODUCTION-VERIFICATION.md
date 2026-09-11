@@ -4,7 +4,7 @@ This document records what has been **verified**, what is **unverified**, and
 what **cannot be verified** by automated agent runs. It is deliberately
 conservative: anything not actually executed and observed is not marked PASS.
 
-Last updated: Phase 175 (2026-09-11).
+Last updated: Phase 176 (2026-09-11).
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: Phase 175 (2026-09-11).
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Unit + integration test suite | **PASS** | 8,022 tests / 217 files, 0 failures (Phase 175) |
+| Unit + integration test suite | **PASS** | 8,100 tests / 219 files, 0 failures (Phase 176) |
 | Component (jsdom) render suites | **PASS** | Collected for the first time in Phase 166 — see below |
 | TypeScript compile | **PASS** | `tsc -b` exit 0, fully clean |
 | Production build | **PASS** | `npm run build` (`tsc -b && vite build`) exit 0 |
@@ -25,7 +25,8 @@ Last updated: Phase 175 (2026-09-11).
 | Entitlement enforcement boundary | **PASS (static + unit + bundle)** | Engine moved server-side; 148 entitlement tests; client bundle no longer contains decision logic |
 | Entitlement runtime on a deployment | **BLOCKED BY ENVIRONMENT** | Convex control plane unreachable from the sandbox — see Phase 175 |
 | Convex codegen (authoritative) | **BLOCKED BY ENVIRONMENT** | `npx convex dev/codegen` needs the control plane; TLS blocked |
-| Evidence provenance (client tampering) | **PASS (unit + static)** | Client-supplied provider evidence is stripped; server re-acquires — see Phase 175 |
+| Evidence provenance (client tampering) | **PASS (code-level + mocked)** | ALL provider evidence stripped; server re-acquires — see Phase 176 |
+| Secondary providers behind server provenance | **PASS (mocked only)** | 9 provider actions wired server-side; live endpoints unverified |
 | Light/dark theme follows system | **NOT IMPLEMENTED** | Dark is hardcoded — see Phase 173 findings |
 | Convex authorization boundary | **PASS (static + unit)** | All 65 exported fns audited; 8 credentialed actions now guarded |
 
@@ -126,6 +127,119 @@ it is a design decision rather than a bug.
 | F2 | `<html lang>` never followed the active locale: `index.html` hardcodes `lang="en"`, so all 9 locales were announced to screen readers and indexed as English. WCAG 3.1.1 (Language of Page). | **Fixed** — the i18n provider syncs `documentElement.lang` (11 regression tests). |
 | F3 | **Light mode does not exist.** `index.html` hardcodes `class="dark"`, the `.dark` CSS block is empty, and `:root` carries the dark palette, so "light/dark follows system" is unimplemented. | **OPEN — NOT IMPLEMENTED.** Requires authoring and reviewing a second full palette; tracked as a product decision. |
 | F4 | The 404 page used `text-gray-900` / `text-gray-600` against the dark background (`oklch(0.1)`) — near-black on near-black, effectively invisible. | **Fixed** — now uses `text-foreground` / `text-muted-foreground`. |
+
+### Phase 176 — complete evidence provenance + secondary provider acquisition
+
+#### Verification categories used below
+
+| Category | Meaning |
+| --- | --- |
+| **Code-level verified** | Proven by executing real code paths in this repo |
+| **Mocked provider verified** | Provider contract modelled with injected thunks; live endpoint NOT contacted |
+| **Deployed runtime verified** | Executed against a real Convex deployment — **none of this phase is** |
+| **Blocked by environment** | Cannot be attempted here at all |
+
+#### A. The loophole Phase 175 left open
+
+Phase 175 classified `newsContext` and `economicEvents` as "user intent" on the
+reasoning that they are the user's own narrative. **That was wrong**, and the
+Phase 175 documentation asserted it without testing it.
+
+`analysis-engine.ts` keyword-scores both strings as *directional fallback
+evidence* whenever provider intelligence/calendar data is absent — across the
+trend score (line ~318), the fundamental score (~459), the sentiment score
+(~599), evidence naming (~179), data-completeness flags (~625/~629) and the
+SWING fundamental-context gate (~1015).
+
+Measured against the repo's proven LONG fixture with **server-acquired** market
+data, varying only the client string:
+
+| Client string | Decision |
+| --- | --- |
+| `"Fed signals hawkish stance, rate hike"` | `LONG`, conf 45 |
+| `"dovish, rate cut, easing"` | **`NO_TRADE`** |
+| `"weak gdp, recession"` | **`NO_TRADE`** |
+| `"fear panic capitulation"` | `LONG`, conf **57** |
+| `"greed euphoria fomo"` | `LONG`, conf **37** |
+| both weaponised | **`NO_TRADE`**, bias **Neutral**, conf **31** |
+
+A 26-point confidence swing, a bias flip and outright trade cancellation from
+unverifiable client text. `instrumentSpec` was equally mis-classified:
+`resolveInstrumentSpec()` lets an explicit spec override verified OKX metadata
+field-by-field, and a forged `contractSize: 1 / quantityStep: 1e-8` changed
+computed position quantity from **0 to 20** on an identical trade plan.
+
+#### B. Field classification (authoritative)
+
+| Category | Fields | Trusted from client? |
+| --- | --- | --- |
+| **1. User intent** | `instrument`, `instrumentType`, `timeframe`, `tradingStyle`, `requestedTimeframe`, `styleNotes` | **Yes** |
+| **1b. User-owned risk parameters** | `accountEquity`, `riskPercent`, `accountCurrency` | **Yes** — scale sizing arithmetic; cannot create a market fact |
+| **2. Provider-backed evidence** | `marketData`, `technicalData`, `sentimentData`, `fundamentalData`, `macroData`, `derivativesData`, `calendarData`, `treasuryData`, `cotData`, `eiaData`, `executionData`, `cryptoIntelligenceContext`, `universalIntelligenceContext`, `fxRates`, **`newsContext`**, **`economicEvents`** | **No** |
+| **3. Derived/manual overrides** | `currentPrice`, `recentHigh`, `recentLow`, `fundingRate`, `openInterest` | **No** |
+| **4. Provider/broker specification** | `okxSpecData`, **`instrumentSpec`** | **No** |
+
+`requestedTimeframe` and `styleNotes` are display-only provenance (they feed
+`styleInfo` for the UI's "TF fallback" label) and are safe as intent.
+A contract test asserts **every** optional field on `AnalysisInput` appears in
+exactly one list, so an unclassified future field fails the build.
+
+#### C. Secondary providers now behind server provenance
+
+All nine are invoked through their **existing** Convex actions — no business
+logic, symbol mapping or key handling was duplicated:
+
+| Provider | Action | Condition |
+| --- | --- | --- |
+| Alpha Vantage | `api.alphaVantage.fetchIntelligence` | always |
+| Trading Economics / TickAtlas | `api.tradingEconomics.fetchCalendar` | always |
+| CoinGlass | `api.coinglass.fetchDerivatives` | crypto |
+| CFTC COT | `api.cot.fetchCotPositioning` | forex/commodity, non-scalping |
+| US Treasury | `api.treasury.fetchTreasuryYields` | forex/commodity, non-scalping |
+| EIA | `api.eia.fetchEiaInventory` | oil commodities, non-scalping |
+| OKX order book | `api.okx.fetchOkxOrderBook` | crypto, non-swing |
+| OKX instrument spec | `api.okx.fetchOkxInstrumentSpec` | crypto |
+| Twelve Data FX | `api.marketData.fetchFxRate` | account ccy ≠ quote ccy |
+
+The conditional policy reuses the Phase 15 pure module
+`fetchOptionalSlowData`, so per-asset/per-style rules, at-most-once invocation
+and non-fatal semantics are provably identical to the client path they replace.
+
+Invariants held: provider failure → field simply absent (never a default, never
+directional); provider-native ids forwarded byte-for-byte (`BTC-USDT-SWAP`
+unchanged); no whitelist or instrument ceiling; FX quote currency now derived
+from the symbol rather than a client-supplied spec.
+
+#### D. What is proven, and what is not
+
+**Code-level verified**
+- 46 provenance tests: all 11 required proofs, including per-field attacks on
+  every field claimed trusted.
+- **Mutation-tested**: reverting only the classification makes **12** of them
+  fail, so they genuinely detect the Phase 175 bug rather than merely passing.
+- 9 Phase 175 tamper tests still pass, realigned so the fundamental context
+  arrives from the server instead of the client.
+
+**Mocked provider verified**
+- 27 secondary-acquisition tests: wiring, conditional policy, at-most-once
+  invocation, thrown-error / `success:false` / missing-key handling, identity
+  preservation, no-duplicate-logic and no-whitelist checks.
+
+**NOT verified (deployed runtime)**
+- No live provider endpoint was contacted (all firewalled here).
+- No authenticated end-to-end call was made.
+- Real provider latency/rate-limit behaviour under the new server-side fan-out
+  is **unmeasured**. The server now issues up to 9 provider calls per analysis
+  where the client previously did. They are issued in a **single parallel
+  wave** (asserted by test), so the shape matches the client's former
+  concurrency rather than serializing — but wall-clock latency and provider
+  rate-limit headroom still need observation on a real deployment (UAT 9.21).
+
+**Blocked by environment**
+- Convex codegen. Per instruction, `src/convex/_generated/*` was **not**
+  hand-edited in this phase (verified: zero diff since `af4d346`).
+
+---
 
 ### Phase 175 — deployed-runtime attempt + evidence provenance
 

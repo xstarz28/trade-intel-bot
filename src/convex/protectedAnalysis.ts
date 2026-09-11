@@ -72,6 +72,8 @@ import type { Id } from "./_generated/dataModel";
 import { action, internalMutation } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { runAnalysis } from "@/lib/analysis-engine";
+import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
+import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import type { AnalysisInput } from "@/types/analysis";
 import {
   gateDecision,
@@ -255,6 +257,34 @@ export const CLIENT_UNTRUSTED_EVIDENCE_FIELDS = [
   "recentLow",
   "fundingRate",
   "openInterest",
+  // ── Phase 176 ──
+  // Reclassified from "trusted user intent" after a counterfactual audit
+  // proved they are DIRECTIONAL EVIDENCE, not narrative.
+  //
+  // The engine keyword-scores both strings as a fallback whenever provider
+  // intelligence/calendar data is absent (analysis-engine.ts: trend score,
+  // fundamental score, sentiment score, evidence naming, data-completeness
+  // flags, and the SWING fundamental-context gate). Measured against the
+  // repo's own proven LONG fixture with server-acquired market data:
+  //
+  //   "Fed signals hawkish stance, rate hike"  -> LONG,     conf 45
+  //   "dovish, rate cut, easing"               -> NO_TRADE
+  //   "weak gdp, recession"                    -> NO_TRADE
+  //   "fear panic capitulation"                -> LONG,     conf 57
+  //   "greed euphoria fomo"                    -> LONG,     conf 37
+  //   both weaponised                          -> NO_TRADE, bias Neutral, 31
+  //
+  // A 26-point confidence swing and outright trade cancellation from
+  // unverifiable client text. Provider-backed calendar/news data is acquired
+  // server-side instead; these free-text fields never reach the engine.
+  "newsContext",
+  "economicEvents",
+  // Provider/broker CONTRACT SPECIFICATION — not a user preference.
+  // resolveInstrumentSpec() lets an explicit spec override verified OKX
+  // metadata field-by-field, so a forged contractSize/quantityStep silently
+  // rewrites position sizing (measured: quantity 0 -> 20 on the same plan).
+  // The server acquires this from OKX instead.
+  "instrumentSpec",
 ] as const;
 
 /**
@@ -270,12 +300,12 @@ export const CLIENT_TRUSTED_INPUT_FIELDS = [
   "tradingStyle",
   "requestedTimeframe",
   "styleNotes",
+  // User-owned RISK PARAMETERS. These describe the user's own account, not
+  // the market. They scale sizing arithmetic but cannot create or alter a
+  // market fact, a bias, a recommendation or a confidence score.
   "accountEquity",
   "riskPercent",
   "accountCurrency",
-  "instrumentSpec",
-  "newsContext",
-  "economicEvents",
 ] as const;
 
 /**
@@ -383,7 +413,7 @@ export const runProtectedAnalysis = action({
     // Server-side acquisition. Provider-native identity is passed through
     // unchanged; the provider's own response supplies price, candles and the
     // provider name.
-    const acquired = (await ctx.runAction(api.marketData.fetchMarketData, {
+    const acquiredPromise = ctx.runAction(api.marketData.fetchMarketData, {
       instrument,
       instrumentType: instrumentType as
         | "forex"
@@ -392,12 +422,148 @@ export const runProtectedAnalysis = action({
         | "commodity"
         | "indices",
       timeframe,
-    })) as {
+    }) as Promise<{
       success: boolean;
       data?: unknown;
       technical?: unknown;
       error?: string;
+    }>;
+
+    // ── Phase 176: secondary evidence, also server-acquired ──
+    //
+    // Every provider below is invoked through its EXISTING Convex action, so
+    // provider semantics, symbol mapping, caching and error handling are the
+    // ones already in production — no business logic is duplicated here.
+    //
+    // Each leg is independent and non-fatal. A provider that is unconfigured,
+    // rate-limited or down contributes NOTHING; it never becomes directional
+    // evidence, and the engine's existing degradation path reports it.
+    const assetClass = instrumentType as
+      | "forex"
+      | "crypto"
+      | "stock"
+      | "commodity"
+      | "indices";
+
+    const settle = async <T>(leg: Promise<T>): Promise<T | undefined> => {
+      try {
+        return await leg;
+      } catch {
+        return undefined; // disclosed by the engine, never synthesized
+      }
     };
+
+    // ── ONE parallel acquisition wave ──
+    //
+    // Market data, the fast intelligence legs and the conditional slow legs
+    // are all issued together so the server never serializes provider latency.
+    // This mirrors the concurrency the client previously had; it is not a new
+    // performance profile.
+    //
+    // The slow/conditional legs run through the SAME pure policy module the
+    // client used (Phase 15), so the per-asset/per-style conditional rules,
+    // the at-most-once invocation guarantee and the non-fatal semantics are
+    // provably identical — see src/lib/data/optional-providers.ts.
+    //
+    // FX conversion applies only when the user named an account currency that
+    // differs from the instrument's quote currency. The quote currency comes
+    // from the SYMBOL, never from a client-supplied instrumentSpec.
+    let fxPair: { from: string; to: string } | undefined;
+    const accountCurrency =
+      typeof trustedInput.accountCurrency === "string"
+        ? trustedInput.accountCurrency
+        : undefined;
+    if (accountCurrency) {
+      const quoteCcy = parseSymbolCurrencies(instrument).quote;
+      const acct = accountCurrency.toUpperCase();
+      if (quoteCcy && quoteCcy.toUpperCase() !== acct) {
+        fxPair = { from: quoteCcy, to: acct };
+      }
+    }
+
+    const [acquired, intelligence, calendar, derivatives, slow] =
+      await Promise.all([
+        acquiredPromise.catch(
+          () =>
+            ({ success: false }) as {
+              success: boolean;
+              data?: unknown;
+              technical?: unknown;
+            },
+        ),
+        settle(
+          ctx.runAction(api.alphaVantage.fetchIntelligence, {
+            instrument,
+            instrumentType: assetClass,
+          }) as Promise<{
+            success: boolean;
+            sentiment?: unknown;
+            fundamentals?: unknown;
+            macro?: unknown;
+          }>,
+        ),
+        settle(
+          ctx.runAction(api.tradingEconomics.fetchCalendar, {
+            instrument,
+            instrumentType,
+          }) as Promise<{ success: boolean; data?: unknown }>,
+        ),
+        assetClass === "crypto"
+          ? settle(
+              ctx.runAction(api.coinglass.fetchDerivatives, {
+                instrument,
+              }) as Promise<{ success: boolean; data?: unknown }>,
+            )
+          : Promise.resolve(undefined),
+        fetchOptionalSlowData(
+          {
+            instrumentType: assetClass,
+            instrument,
+            tradingStyle:
+              typeof trustedInput.tradingStyle === "string"
+                ? trustedInput.tradingStyle
+                : undefined,
+            // The client can no longer assert a complete spec, so the OKX
+            // specification leg is always eligible for crypto.
+            hasCompleteSpec: false,
+          },
+          {
+            fx: fxPair
+              ? () =>
+                  ctx.runAction(api.marketData.fetchFxRate, {
+                    from: fxPair!.from,
+                    to: fxPair!.to,
+                  }) as Promise<{
+                    success: boolean;
+                    direct?: never;
+                    inverse?: never;
+                  }>
+              : undefined,
+            cot: () =>
+              ctx.runAction(api.cot.fetchCotPositioning, {
+                instrument,
+              }) as Promise<{ success: boolean; data?: never }>,
+            execution: () =>
+              ctx.runAction(api.okx.fetchOkxOrderBook, {
+                instrument,
+              }) as Promise<{ success: boolean; data?: never }>,
+            eia: () =>
+              ctx.runAction(api.eia.fetchEiaInventory, {}) as Promise<{
+                success: boolean;
+                data?: never;
+              }>,
+            treasury: () =>
+              ctx.runAction(api.treasury.fetchTreasuryYields, {}) as Promise<{
+                success: boolean;
+                data?: never;
+              }>,
+            okxSpec: () =>
+              ctx.runAction(api.okx.fetchOkxInstrumentSpec, {
+                instrument,
+              }) as Promise<{ success: boolean; data?: never }>,
+          },
+        ),
+      ]);
 
     // Acquisition failure is NOT fabricated around: the engine simply receives
     // no market data and degrades explicitly, exactly as before.
@@ -406,6 +572,38 @@ export const runProtectedAnalysis = action({
       if (acquired.technical !== undefined) {
         trustedInput.technicalData = acquired.technical;
       }
+    }
+
+    // Only genuinely acquired evidence is attached. `undefined` stays
+    // `undefined` — absence is the honest signal the engine already handles.
+    if (intelligence?.success) {
+      if (intelligence.sentiment !== undefined) {
+        trustedInput.sentimentData = intelligence.sentiment;
+      }
+      if (intelligence.fundamentals !== undefined) {
+        trustedInput.fundamentalData = intelligence.fundamentals;
+      }
+      if (intelligence.macro !== undefined) {
+        trustedInput.macroData = intelligence.macro;
+      }
+    }
+    if (calendar?.success && calendar.data !== undefined) {
+      trustedInput.calendarData = calendar.data;
+    }
+    if (derivatives?.success && derivatives.data !== undefined) {
+      trustedInput.derivativesData = derivatives.data;
+    }
+    if (slow.fxRates !== undefined) trustedInput.fxRates = slow.fxRates;
+    if (slow.cotData !== undefined) trustedInput.cotData = slow.cotData;
+    if (slow.executionData !== undefined) {
+      trustedInput.executionData = slow.executionData;
+    }
+    if (slow.eiaData !== undefined) trustedInput.eiaData = slow.eiaData;
+    if (slow.treasuryData !== undefined) {
+      trustedInput.treasuryData = slow.treasuryData;
+    }
+    if (slow.okxSpecData !== undefined) {
+      trustedInput.okxSpecData = slow.okxSpecData;
     }
 
     // 2. Run the engine on the SERVER over TRUSTED evidence only.

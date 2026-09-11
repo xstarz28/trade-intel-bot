@@ -58,11 +58,29 @@ function honestTech(
   } as TechnicalData;
 }
 
-/** Intent the client legitimately supplies. */
+/**
+ * Intent the client legitimately supplies.
+ *
+ * Phase 176: `economicEvents` was REMOVED from this payload. It used to live
+ * here because Phase 175 classified it as user intent, but a counterfactual
+ * audit proved the engine keyword-scores it as directional evidence. It is now
+ * stripped like any other provider-backed field, so a client cannot supply it
+ * at all — the server acquires calendar data instead (see SERVER_CONTEXT).
+ */
 const INTENT = {
   instrument: "EUR/USD",
   instrumentType: "forex",
   timeframe: "H4",
+};
+
+/**
+ * Fundamental context the SERVER acquired. Phase 175's baseline reached LONG
+ * only because the client's `economicEvents` string supplied the fundamental
+ * leg; now that the string is untrusted, the same context has to arrive from
+ * the server side for the baseline to hold. That is precisely the point of the
+ * fix: identical evidence, trustworthy origin.
+ */
+const SERVER_CONTEXT = {
   economicEvents: "Fed signals hawkish stance, rate hike",
 };
 
@@ -77,6 +95,8 @@ function serverRun(
   const trusted = stripClientEvidence(clientPayload);
   trusted.marketData = acquired.data;
   trusted.technicalData = acquired.technical;
+  // Server-acquired secondary context (Phase 176).
+  Object.assign(trusted, SERVER_CONTEXT);
   return runAnalysis(trusted as unknown as AnalysisInput);
 }
 
