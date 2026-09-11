@@ -16,21 +16,14 @@ import type {
   IntelligenceResult,
 } from "../lib/data/intelligence-types";
 
-// ── Simple in-memory cache (resets per Convex action instance) ──
-// For production, use Convex scheduled functions or a database cache.
-const cache = new Map<string, { data: any; expiresAt: number }>();
-const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
-
-function getCached<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) return entry.data as T;
-  cache.delete(key);
-  return null;
-}
-
-function setCache(key: string, data: any): void {
-  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
-}
+// ── Phase 178b — authoritative provider cache ───────────────────
+// This module previously kept its own `Map` cache. That created split cache
+// authority: the Phase 178 provenance guarantees lived in `ProviderCache`
+// while the real runtime path used a private Map with different semantics.
+// Both news and fundamentals now go through the ONE shared cache, which
+// supplies per-dataset TTLs, single-flight dedup, observedAt preservation and
+// the user-owned-data guard. Scope is per action instance — see the registry.
+import { getProviderCache } from "../lib/data/provider-cache-registry";
 
 // ── Alpha Vantage API ───────────────────────────────────────────
 
@@ -112,31 +105,45 @@ export const fetchIntelligence = action({
     const ticker = mapTickerForAV(args.instrument, args.instrumentType);
 
     try {
-      // Fetch news sentiment (works for all asset types)
-      // Phase 178 — include instrumentType. `news:${ticker}` alone would let
-      // a crypto symbol and an identically-named equity ticker share one
-      // entry, serving one asset class's news for another.
-      const newsCacheKey = `news:${args.instrumentType}:${ticker}`;
+      // Fetch news sentiment (works for all asset types).
+      // Phase 178b — served through the authoritative cache. The key carries
+      // provider + dataset + native instrument + asset class, so a crypto
+      // symbol and an identically-named equity ticker cannot collide. A hit
+      // performs no HTTP call and consumes no quota; concurrent misses on the
+      // same key collapse to one acquisition via single-flight.
       let articles: NewsArticle[] = [];
       let sentiment: SentimentData | undefined;
 
-      const cachedNews = getCached<NewsArticle[]>(newsCacheKey);
-      if (cachedNews) {
-        articles = cachedNews;
-        sentiment = aggregateFromArticles(articles, "alpha-vantage");
-      } else {
+      {
         try {
-          const newsJson = await avFetch(
+          const evidence = await getProviderCache().fetch<NewsArticle[]>(
             {
-              function: "NEWS_SENTIMENT",
-              tickers: ticker,
-              sort: "LATEST",
-              limit: "20",
+              provider: "alpha-vantage",
+              dataset: "news-sentiment",
+              instrument: args.instrument,
+              instrumentType: args.instrumentType,
+              qualifier: ticker,
             },
-            apiKey,
+            async () => {
+              const newsJson = await avFetch(
+                {
+                  function: "NEWS_SENTIMENT",
+                  tickers: ticker,
+                  sort: "LATEST",
+                  limit: "20",
+                },
+                apiKey,
+              );
+              return {
+                data: normalizeNewsFromAV(newsJson, ticker),
+                // Acquisition time of the REAL provider call. A later cache
+                // hit reuses this value rather than resetting it to now, so
+                // evidence age keeps growing across hits.
+                observedAt: Date.now(),
+              };
+            },
           );
-          articles = normalizeNewsFromAV(newsJson, ticker);
-          setCache(newsCacheKey, articles);
+          articles = evidence?.data ?? [];
           sentiment = aggregateFromArticles(articles, "alpha-vantage");
         } catch (err: any) {
           if (String(err?.message).startsWith("RATE_LIMIT")) {
@@ -165,23 +172,35 @@ export const fetchIntelligence = action({
       let fundamentals: FundamentalData | undefined;
 
       if (args.instrumentType === "stock") {
-        const fundCacheKey = `fund:${args.instrumentType}:${ticker}`;
-        const cachedFund = getCached<FundamentalData>(fundCacheKey);
-        if (cachedFund) {
-          fundamentals = cachedFund;
-        } else {
+        {
           try {
-            const [overviewJson, earningsJson] = await Promise.all([
-              avFetch({ function: "OVERVIEW", symbol: avSymbol }, apiKey),
-              avFetch({ function: "EARNINGS", symbol: avSymbol }, apiKey),
-            ]);
-            fundamentals = normalizeFundamentalsFromAV(
-              overviewJson,
-              earningsJson,
-              args.instrumentType,
-              ticker,
+            // Phase 178b — distinct dataset, therefore a distinct cache key:
+            // news and fundamentals for the same ticker never share an entry.
+            const evidence = await getProviderCache().fetch<FundamentalData>(
+              {
+                provider: "alpha-vantage",
+                dataset: "fundamentals",
+                instrument: args.instrument,
+                instrumentType: args.instrumentType,
+                qualifier: ticker,
+              },
+              async () => {
+                const [overviewJson, earningsJson] = await Promise.all([
+                  avFetch({ function: "OVERVIEW", symbol: avSymbol }, apiKey),
+                  avFetch({ function: "EARNINGS", symbol: avSymbol }, apiKey),
+                ]);
+                return {
+                  data: normalizeFundamentalsFromAV(
+                    overviewJson,
+                    earningsJson,
+                    args.instrumentType,
+                    ticker,
+                  ),
+                  observedAt: Date.now(),
+                };
+              },
             );
-            setCache(fundCacheKey, fundamentals);
+            fundamentals = evidence?.data;
           } catch (err: any) {
             if (String(err?.message).startsWith("RATE_LIMIT")) {
               return {

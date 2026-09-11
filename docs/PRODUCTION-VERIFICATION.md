@@ -560,17 +560,48 @@ The governing rule: **a cache hit reduces provider load; it is never evidence
 of a new observation.** "Cached", "fresh", "live" and "provider-observed" are
 kept as four separate properties.
 
-#### Cache inventory
+#### Cache inventory (as integrated in Phase 178b)
 
-| # | Location | Scope | Datasets | Key | TTL | Dedup |
-|---|---|---|---|---|---|---|
-| 1 | `src/convex/alphaVantage.ts` | per action instance | news-sentiment, fundamentals | `news:{type}:{ticker}`, `fund:{type}:{ticker}` | 10 min | no |
-| 2 | `src/convex/coinglass.ts` | per action instance | derivatives (OI, funding, L/S, liquidations) | `deriv:{instrument}:{symbol}` | 10 min | no |
-| 3 | `src/convex/tradingEconomics.ts` | per action instance | economic calendar | `cal:{INSTRUMENT}:{type}` | 20 min | no |
-| 4 | `src/convex/marketData.ts` | per action instance | DXY comparator symbol resolution | module variable | memo + 24 h negative marker | n/a |
-| 5 | `src/lib/market-radar/cache.ts` | radar engine | provider capabilities | `provider:instrument:capability[:timeframe]` | per entry | yes (`dedupPromises`) |
-| 6 | `src/lib/data/universal/cache.ts` | universal layer | per-capability | canonical instrument + capability + provider | per capability | no |
-| 7 | `src/lib/data/provider-cache.ts` | **new in 178** | all 13 datasets | structural `ProviderCacheKey` | per dataset | yes (single-flight) |
+Phase 178 shipped `ProviderCache` **beside** the runtime: the Convex actions
+kept private `Map` caches, so none of the provenance guarantees were on the
+path `runProtectedAnalysis` actually executes. Phase 178b removed that split.
+Every provider cache on the protected path is now the same object.
+
+| # | Location | Scope | Datasets | Cache authority | Dedup |
+|---|---|---|---|---|---|
+| 1 | `src/convex/alphaVantage.ts` | per action instance | news-sentiment, fundamentals | **`ProviderCache`** (legacy Map removed) | yes |
+| 2 | `src/convex/coinglass.ts` | per action instance | derivatives (OI, funding, L/S, liquidations) | **`ProviderCache`** (legacy Map removed) | yes |
+| 3 | `src/convex/tradingEconomics.ts` | per action instance | economic calendar | **`ProviderCache`** (legacy Map removed) | yes |
+| 4 | `src/convex/marketData.ts` | per action instance | OHLCV (all call sites), FX rate | **`ProviderCache`** (newly cached) | yes |
+| 5 | `src/convex/marketData.ts` | per action instance | DXY comparator symbol resolution | module memo + 24 h negative marker | n/a |
+| 6 | `src/lib/market-radar/cache.ts` | radar engine (not the protected path) | provider capabilities | `RadarCache` | yes |
+| 7 | `src/lib/data/universal/cache.ts` | universal layer (not the protected path) | per-capability | separate store | no |
+| 8 | `src/lib/data/provider-cache-registry.ts` | **the authority** | all 13 datasets | single shared `ProviderCache` | yes |
+
+`treasury.ts`, `eia.ts`, `cot.ts` and `okx.ts` have **no** cache — deliberate
+and test-pinned. Treasury/EIA/COT are low-frequency government datasets
+already bounded by the fan-out, and OKX order-book depth must never be reused
+across analyses.
+
+Items 6 and 7 are retained because they serve the **radar/universal engines,
+not `runProtectedAnalysis`**. They cannot disagree with the authority on the
+protected path because they are not on it. That separation is asserted by
+tests rather than assumed.
+
+#### Measured provider-load reduction (Phase 178b)
+
+Counted as real outbound `fetch` calls made by the actual
+`runProtectedAnalysis` handler against a deterministic mocked transport:
+
+| Scenario | Provider calls | Result |
+|---|---|---|
+| First analysis (cold cache) | 10 | baseline |
+| Same analysis repeated | 1 | **90% reduction** |
+| Same analysis, different user | 1 | public evidence shared |
+| 3 concurrent identical analyses (cold) | 11 | vs 30 uncached |
+
+The recommendation is byte-identical across cached and uncached runs, so the
+saving does not come from degrading the decision.
 
 `treasury.ts`, `eia.ts`, `cot.ts` and `okx.ts` have **no** module cache. That
 is deliberate and now test-pinned: Treasury/EIA/COT are low-frequency
@@ -581,6 +612,20 @@ must never be reused across analyses.
 action instance. They cut load within an instance and across concurrent
 callers on that instance; there is **no cross-instance or distributed cache**,
 and none is claimed. A cold instance always re-acquires.
+
+#### Evidence levels — what is and is not proven
+
+| Level | Claim | Status |
+|---|---|---|
+| **A** | `ProviderCache` behaves correctly in isolation | **Verified** — 47 unit tests |
+| **B** | Production provider handlers use it | **Verified** — real `_handler` invocations, 26 tests, outbound calls counted |
+| **C** | `runProtectedAnalysis` benefits from it | **Verified** — real handler, 10 provider calls → 1 on repeat |
+| **D** | Deployed runtime verified | **NOT VERIFIED** — no Convex deployment or credentials here |
+
+B and C are proven by invoking the **real exported handlers** and counting the
+HTTP calls they make, not by constructing a cache in a test. The suites are
+mutation-tested: disabling cache reads fails 7 tests, and disabling
+single-flight fails exactly the three 20-concurrent-request tests.
 
 #### Cache-key defects found and fixed
 
@@ -664,6 +709,21 @@ and real scheduling. Distinct keys are never merged. A single-flight join is
 explicitly *not* reported as a cache hit — the provider was called; the caller
 merely shared the result.
 
+Phase 178b proves this on the production handlers, not just the class. Driving
+the real exported actions with a counting transport:
+
+| Handler | 20 concurrent identical requests | Upstream calls |
+|---|---|---|
+| `alphaVantage.fetchIntelligence` | 1 acquisition | 1 |
+| `coinglass.fetchDerivatives` | 1 acquisition wave | ≤ 4 (OI, funding, L/S, liquidations) |
+| `tradingEconomics.fetchCalendar` | 1 acquisition wave | ≤ 4 |
+| `marketData.fetchFxRate` | 1 acquisition | ≤ 2 (direct + inverse) |
+
+Every OHLCV request in `marketData.ts` funnels through one `fetchCandles`
+chokepoint, which is cached on provider + symbol + timeframe + bar count. A
+210-bar setup series and a 100-bar HTF series are therefore distinct entries —
+reusing one for the other would silently corrupt higher-timeframe context.
+
 Rate-limit interaction:
 
 - A cache hit consumes **no** provider quota.
@@ -691,12 +751,26 @@ dimensions, so two users analysing the same instrument share public evidence
 and nothing else. This complements Phase 176: those three account fields are
 client-trusted *inputs*, never cacheable *evidence*.
 
+#### Scope honesty — what "shared" means here
+
+The registry (`src/lib/data/provider-cache-registry.ts`) is a module-level
+singleton, which in Convex means **one action instance / one V8 isolate**. It
+deduplicates work within that instance, including across concurrent callers on
+it. It is **not distributed**: a cold instance re-acquires, and two instances
+do not share entries.
+
+No global or cross-instance quota reduction is claimed. Achieving that would
+need external coordination (a Convex table or an external store) and is
+deliberately out of scope. The measured 90% reduction is a **per-instance**
+figure.
+
 #### Sandbox limits
 
 Cache behaviour is verified against injected clocks and injected transports.
 **No provider quota was measured against a live endpoint** — all provider
-hosts are firewalled here. The quota reduction claimed above is structural
-(call counts under test), not an observed billing delta. See UAT 13.1–13.6.
+hosts are firewalled here. The quota reduction reported above is a real count
+of outbound calls made by the production handlers under test, not an observed
+billing delta. See UAT 13A.
 
 ---
 
