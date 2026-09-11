@@ -16,7 +16,16 @@ import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import {
+  createPipelineState,
+  runDiscoveryPipelineStep,
+  type DiscoveryPipelineState,
+} from "@/lib/discovery/pipeline";
+import {
+  normalizeOkxDiscoveryAction,
+  toAcquisitionResults,
+} from "@/lib/discovery/runtime";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
@@ -112,10 +121,10 @@ export default function Dashboard() {
   // overwrite the result of a newer run (stale-result mixing guard).
   const runTokenRef = useRef(0);
 
-  // Phase 153 — retain the latest verified live market snapshot per instrument.
-  // This is runtime-only state and is intentionally NOT reconstructed from history.
+  // Phase 153/158 — verified live snapshots live inside the discovery
+  // pipeline state. Runtime-only; never reconstructed from persisted history.
+  const pipelineStateRef = useRef<DiscoveryPipelineState>(createPipelineState());
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  const discoveryCursorRef = useRef(0);
   const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
 
   // Phase 156 — provider-native universal discovery.
@@ -123,72 +132,73 @@ export default function Dashboard() {
   const discoverOkxInstruments = useAction(api.okx.discoverOkxInstruments);
   const acquireOkxNativeLiveDataBatch = useAction(api.okx.acquireOkxNativeLiveDataBatch);
 
+  /**
+   * Phase 158 — one universal discovery→acquisition cycle.
+   *
+   * Discovery metadata is never live evidence; only verified acquisitions
+   * become live sources. A failed cycle never destroys retained data.
+   */
+  const runDiscoveryCycle = useCallback(async () => {
+    const providerResults = [
+      normalizeOkxDiscoveryAction(await discoverOkxInstruments()),
+    ];
+
+    const succeededProviders = providerResults
+      .filter((r) => r.success)
+      .map((r) => r.provider);
+    const discovered = providerResults
+      .filter((r) => r.success)
+      .flatMap((r) => r.instruments);
+
+    const step = await runDiscoveryPipelineStep({
+      state: pipelineStateRef.current,
+      discovered,
+      succeededProviders,
+      batchSize: 20,
+      now: Date.now(),
+      acquire: async (batch) => {
+        const raw = await acquireOkxNativeLiveDataBatch({
+          instruments: batch.map((item) => ({
+            // Exact provider-native instId — never canonicalized.
+            instrument: item.providerInstrumentId,
+            providerInstrumentId: item.providerInstrumentId,
+            assetClass: "crypto" as const,
+          })),
+          concurrency: 5,
+        });
+        return toAcquisitionResults(batch, raw as never);
+      },
+    });
+
+    pipelineStateRef.current = step.state;
+    liveSourceRef.current = step.state.liveSources;
+    setLiveSourcesVersion((version) => version + 1);
+
+    setScanResult(
+      scanInstruments(step.liveSources, {
+        horizons: ["INTRADAY", "SWING"],
+        maxResults: 10,
+        maxPerCorrelationGroup: 2,
+      }),
+    );
+  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
+
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const discovery = await discoverOkxInstruments();
-        if (cancelled || !discovery.success || discovery.instruments.length === 0) return;
-
-        const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-          discovery.instruments,
-          discoveryCursorRef.current,
-          20,
-        );
-        discoveryCursorRef.current = nextCursor;
-
-        const nativeInputs = batch.map((item) => ({
-          // Keep the exact OKX instId. Never canonicalize/substitute it.
-          instrument: item.instId,
-          providerInstrumentId: item.instId,
-          assetClass: "crypto" as const,
-        }));
-
-        const acquired = await acquireOkxNativeLiveDataBatch({
-          instruments: nativeInputs,
-          concurrency: 5,
-        });
-
-        if (cancelled) return;
-
-        const { providerNativeAcquisitionToMarketData } =
-          await import("@/lib/market-radar/provider-registry");
-
-        for (const result of acquired) {
-          if (!result.success) continue;
-
-          const marketData = providerNativeAcquisitionToMarketData(result);
-          if (!marketData) continue;
-
-          liveSourceRef.current.set(result.instrument, {
-            instrument: result.instrument,
-            assetClass: result.assetClass,
-            providerNative: {
-              provider: result.provider,
-              providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-            },
-            marketData,
-          });
-        }
-
-        setLiveSourcesVersion((version) => version + 1);
-
-        setScanResult(
-          scanInstruments(
-            Array.from(liveSourceRef.current.values()),
-            { horizons: ["INTRADAY", "SWING"], maxResults: 10 },
-          ),
-        );
+        await runDiscoveryCycle();
       } catch {
         // Discovery/acquisition failure is non-fatal. Manual analysis remains available.
       }
+      if (cancelled) return;
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
+  }, [runDiscoveryCycle]);
 
 
   // Convex persistence
@@ -692,64 +702,13 @@ export default function Dashboard() {
     setIsScanning(true);
 
     try {
-      const discovery = await discoverOkxInstruments();
-      if (!discovery.success || discovery.instruments.length === 0) return;
-
-      const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-        discovery.instruments,
-        discoveryCursorRef.current,
-        20,
-      );
-      discoveryCursorRef.current = nextCursor;
-
-      const nativeInputs = batch.map((item) => ({
-        // Keep the exact OKX instId. Never canonicalize/substitute.
-        instrument: item.instId,
-        providerInstrumentId: item.instId,
-        assetClass: "crypto" as const,
-      }));
-
-      const acquired = await acquireOkxNativeLiveDataBatch({
-        instruments: nativeInputs,
-        concurrency: 5,
-      });
-
-      const { providerNativeAcquisitionToMarketData } =
-        await import("@/lib/market-radar/provider-registry");
-
-      for (const result of acquired) {
-        if (!result.success) continue;
-
-        const marketData = providerNativeAcquisitionToMarketData(result);
-        if (!marketData) continue;
-
-        liveSourceRef.current.set(result.instrument, {
-          instrument: result.instrument,
-          assetClass: result.assetClass,
-          providerNative: {
-            provider: result.provider,
-            providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-          },
-          marketData,
-        });
-      }
-
-      setLiveSourcesVersion((version) => version + 1);
-
-      const config = {
-        horizons: ["INTRADAY" as const, "SWING" as const],
-        maxResults: 10,
-      };
-      setScanResult(
-        scanInstruments(
-          Array.from(liveSourceRef.current.values()),
-          config,
-        ),
-      );
+      await runDiscoveryCycle();
+    } catch {
+      // A failed refresh keeps the previously retained live sources intact.
     } finally {
       setIsScanning(false);
     }
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
+  }, [runDiscoveryCycle]);
 
   // Phase 51 — Radar state for autonomous scanning
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);

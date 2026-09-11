@@ -16,6 +16,7 @@ import type { AssetClass } from "./data/universal/types";
 import type { CandidateInput, TradingMode, InvestorHorizon, UniversalRecommendationResult } from "./recommendation-engine";
 import { generateRecommendation, discoverCandidates } from "./recommendation-engine";
 import { buildCandidateFromSource, type LiveCandidateSource } from "./liveCandidateBuilder";
+import { limitByCorrelationGroup } from "./discovery/correlation";
 
 // ═══════════════════════════════════════════════════════════════
 // SCANNER TYPES
@@ -32,6 +33,14 @@ export interface ScanConfig {
   maxResults?: number;
   /** Current timestamp override for determinism. */
   now?: number;
+  /**
+   * Phase 158 — max instruments per derived correlation group in the
+   * ranked output (e.g. BTC spot + BTC perp + BTC future are one group).
+   *
+   * Applies only to candidates carrying a `correlationKey`. Undefined or 0
+   * disables the cap, preserving pre-Phase-158 behaviour.
+   */
+  maxPerCorrelationGroup?: number;
 }
 
 export interface ScanResult {
@@ -180,6 +189,47 @@ export function scanInstruments(
     const result = generateRecommendation(eligible, horizon, {
       maxResults: config.maxResults ?? 10,
     });
+
+    // Phase 158 — cap correlated exposure in the ranked output.
+    // Ranking order is preserved; only surplus correlated entries are
+    // removed, and each removal is reported explicitly.
+    if (config.maxPerCorrelationGroup && config.maxPerCorrelationGroup > 0) {
+      const keyByInstrument = new Map(
+        eligible
+          .filter((c) => c.correlationKey)
+          .map((c) => [c.instrument, c.correlationKey!] as const),
+      );
+
+      const kept = limitByCorrelationGroup(
+        result.rankedInstruments,
+        (ranked) => keyByInstrument.get(ranked.instrument),
+        config.maxPerCorrelationGroup,
+      );
+
+      if (kept.length !== result.rankedInstruments.length) {
+        const keptSet = new Set(kept.map((r) => r.instrument));
+        for (const ranked of result.rankedInstruments) {
+          if (keptSet.has(ranked.instrument)) continue;
+          allExcluded.push({
+            instrument: ranked.instrument,
+            reason: `correlated exposure limit reached for group ${
+              keyByInstrument.get(ranked.instrument) ?? "unknown"
+            }`,
+          });
+          result.excludedInstruments.push({
+            instrument: ranked.instrument,
+            reason: `correlated exposure limit reached for group ${
+              keyByInstrument.get(ranked.instrument) ?? "unknown"
+            }`,
+          });
+        }
+        // Re-rank so positions stay contiguous (1..n).
+        result.rankedInstruments = kept.map((ranked, index) => ({
+          ...ranked,
+          rank: index + 1,
+        }));
+      }
+    }
 
     // Merge excluded instruments from freshness gates
     result.excludedInstruments = [
