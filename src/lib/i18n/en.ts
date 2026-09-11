@@ -946,6 +946,7 @@ const en: Translations = {
     dataQualityChange: "Data Quality Change",
   },
   entitlement: {
+    invalidInput: "Analysis input incomplete — instrument, type and timeframe are required.",
     signInRequired: "Sign in to run an analysis.",
     trialLabel: "Trial",
     premiumLabel: "Premium",

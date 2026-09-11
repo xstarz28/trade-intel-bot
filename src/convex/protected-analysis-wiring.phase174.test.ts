@@ -70,9 +70,14 @@ describe("ordering: consume before deliver, fail closed", () => {
   });
 
   it("an unauthenticated caller returns before the engine runs", () => {
+    // Phase 175 renamed the engine argument (args.input -> trustedInput) when
+    // server-side evidence acquisition landed. The ordering property is
+    // unchanged; only the identifier moved.
     const guardAt = SERVER.indexOf('status: "UNAUTHENTICATED"');
-    const engineAt = SERVER.indexOf("runAnalysis(args.input");
+    const engineAt = SERVER.indexOf("runAnalysis(trustedInput");
+
     expect(guardAt).toBeGreaterThan(-1);
+    expect(engineAt).toBeGreaterThan(-1);
     expect(guardAt).toBeLessThan(engineAt);
   });
 

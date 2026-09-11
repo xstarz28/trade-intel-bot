@@ -957,6 +957,7 @@ const es: Translations = {
     dataQualityChange: "Cambio de Calidad de Datos",
   },
   entitlement: {
+    invalidInput: "Datos de análisis incompletos: se requieren instrumento, tipo y marco temporal.",
     signInRequired: "Inicia sesión para ejecutar un análisis.",
     trialLabel: "Prueba",
     premiumLabel: "Premium",

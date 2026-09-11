@@ -40,12 +40,37 @@
  *
  * Entitlement is consumed *before* the result is returned. If the consume step
  * fails, nothing is delivered — the boundary fails closed.
+ *
+ * ## Phase 175 — evidence provenance
+ *
+ * Moving the engine server-side closed the *entitlement* hole but not an
+ * *integrity* one: the action accepted the full `AnalysisInput` from the
+ * client, including provider-backed evidence. That was exploitable — a client
+ * could invent a price the provider never returned, flip market structure to
+ * reverse the verdict, relabel the payload with another provider's name, or
+ * back-date month-old candles as `realtime` and still receive a
+ * `dataCompleteness: "full"` result.
+ *
+ * The fix is provenance, not a checksum: the **server re-acquires the decisive
+ * evidence itself** (price, candles, derived technicals) from the instrument
+ * identifiers, and overwrites whatever the client sent. Client-supplied
+ * `marketData`/`technicalData` is therefore inert on the trusted path.
+ *
+ * What the client may still supply is *intent* — instrument, timeframe,
+ * trading style, and the user's own risk inputs (account equity, risk percent)
+ * — none of which is provider evidence.
+ *
+ * Provider-native identity is preserved exactly: the instrument string is
+ * passed through unchanged and the provider's own response supplies the id and
+ * provider name. Missing-data behaviour is unchanged — when acquisition fails
+ * the engine receives no market data and degrades explicitly, which is why
+ * this cannot fabricate evidence.
  */
 
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { action, internalMutation } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { runAnalysis } from "@/lib/analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 import {
@@ -197,6 +222,80 @@ export const resolveCallerId = internalMutation({
 });
 
 // ═══════════════════════════════════════════════════════════════
+// EVIDENCE PROVENANCE
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Fields the client is NEVER trusted for on the decision path.
+ *
+ * These are provider-backed evidence: they must originate from a server-side
+ * acquisition, not from the caller. Anything listed here is stripped from the
+ * incoming input before the engine sees it.
+ *
+ * Exported so the test-suite asserts against the same list the server uses.
+ */
+export const CLIENT_UNTRUSTED_EVIDENCE_FIELDS = [
+  "marketData",
+  "technicalData",
+  "sentimentData",
+  "fundamentalData",
+  "macroData",
+  "derivativesData",
+  "calendarData",
+  "treasuryData",
+  "cotData",
+  "eiaData",
+  "executionData",
+  "okxSpecData",
+  "cryptoIntelligenceContext",
+  "universalIntelligenceContext",
+  "fxRates",
+  "currentPrice",
+  "recentHigh",
+  "recentLow",
+  "fundingRate",
+  "openInterest",
+] as const;
+
+/**
+ * Intent/parameter fields the client legitimately controls.
+ *
+ * None of these is provider evidence: they select *what* to analyse and *how*,
+ * or describe the user's own account. They cannot invent market facts.
+ */
+export const CLIENT_TRUSTED_INPUT_FIELDS = [
+  "instrument",
+  "instrumentType",
+  "timeframe",
+  "tradingStyle",
+  "requestedTimeframe",
+  "styleNotes",
+  "accountEquity",
+  "riskPercent",
+  "accountCurrency",
+  "instrumentSpec",
+  "newsContext",
+  "economicEvents",
+] as const;
+
+/**
+ * Strip every untrusted evidence field from a client-supplied input.
+ *
+ * Built up from an allowlist rather than deleted from the original, so a field
+ * added to `AnalysisInput` later is untrusted by default. Failing closed is the
+ * only safe direction here.
+ */
+export function stripClientEvidence(
+  input: Record<string, unknown>,
+): Record<string, unknown> {
+  const clean: Record<string, unknown> = {};
+  for (const key of CLIENT_TRUSTED_INPUT_FIELDS) {
+    if (input[key] !== undefined) clean[key] = input[key];
+  }
+  return clean;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // PUBLIC: run an analysis behind the entitlement boundary
 // ═══════════════════════════════════════════════════════════════
 
@@ -210,7 +309,7 @@ export const resolveCallerId = internalMutation({
  */
 /** Response shape of {@link runProtectedAnalysis}. */
 export interface ProtectedAnalysisResponse {
-  status: "UNAUTHENTICATED" | "DELIVERED" | "LOCKED";
+  status: "UNAUTHENTICATED" | "INVALID_INPUT" | "DELIVERED" | "LOCKED";
   entitlement: {
     authenticated: boolean;
     plan: Plan;
@@ -254,9 +353,63 @@ export const runProtectedAnalysis = action({
       };
     }
 
-    // 1. Run the engine on the SERVER. This is the only place the directional
-    //    decision is produced for a delivery path.
-    const engineResult = runAnalysis(args.input as AnalysisInput) as unknown as Record<
+    // 1. Establish TRUSTED evidence.
+    //
+    // Everything provider-backed the client sent is discarded, then the server
+    // acquires the decisive evidence itself. A forged price, a flipped market
+    // structure, a relabelled provider or a back-dated "realtime" candle set
+    // therefore cannot reach the engine.
+    const rawInput = (args.input ?? {}) as Record<string, unknown>;
+    const trustedInput = stripClientEvidence(rawInput);
+
+    const instrument = String(trustedInput.instrument ?? "").trim();
+    const instrumentType = String(trustedInput.instrumentType ?? "");
+    const timeframe = String(trustedInput.timeframe ?? "");
+
+    if (!instrument || !instrumentType || !timeframe) {
+      return {
+        status: "INVALID_INPUT" as const,
+        entitlement: {
+          authenticated: true,
+          plan: "GUEST" as Plan,
+          remaining: null,
+          limit: FREE_PROFIT_SIGNAL_LIMIT,
+          upgradeRequired: false,
+        },
+        result: null,
+      };
+    }
+
+    // Server-side acquisition. Provider-native identity is passed through
+    // unchanged; the provider's own response supplies price, candles and the
+    // provider name.
+    const acquired = (await ctx.runAction(api.marketData.fetchMarketData, {
+      instrument,
+      instrumentType: instrumentType as
+        | "forex"
+        | "crypto"
+        | "stock"
+        | "commodity"
+        | "indices",
+      timeframe,
+    })) as {
+      success: boolean;
+      data?: unknown;
+      technical?: unknown;
+      error?: string;
+    };
+
+    // Acquisition failure is NOT fabricated around: the engine simply receives
+    // no market data and degrades explicitly, exactly as before.
+    if (acquired.success) {
+      trustedInput.marketData = acquired.data;
+      if (acquired.technical !== undefined) {
+        trustedInput.technicalData = acquired.technical;
+      }
+    }
+
+    // 2. Run the engine on the SERVER over TRUSTED evidence only.
+    const engineResult = runAnalysis(trustedInput as unknown as AnalysisInput) as unknown as Record<
       string,
       unknown
     >;

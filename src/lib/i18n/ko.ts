@@ -955,6 +955,7 @@ const ko: Translations = {
     dataQualityChange: "데이터 품질 변화",
   },
   entitlement: {
+    invalidInput: "분석 입력이 불완전합니다. 종목, 유형, 시간대가 필요합니다.",
     signInRequired: "분석을 실행하려면 로그인하세요.",
     trialLabel: "체험",
     premiumLabel: "프리미엄",

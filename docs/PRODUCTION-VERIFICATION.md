@@ -4,7 +4,7 @@ This document records what has been **verified**, what is **unverified**, and
 what **cannot be verified** by automated agent runs. It is deliberately
 conservative: anything not actually executed and observed is not marked PASS.
 
-Last updated: Phase 174 (2026-09-11).
+Last updated: Phase 175 (2026-09-11).
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: Phase 174 (2026-09-11).
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Unit + integration test suite | **PASS** | 7,966 tests / 214 files, 0 failures (Phase 174) |
+| Unit + integration test suite | **PASS** | 8,022 tests / 217 files, 0 failures (Phase 175) |
 | Component (jsdom) render suites | **PASS** | Collected for the first time in Phase 166 — see below |
 | TypeScript compile | **PASS** | `tsc -b` exit 0, fully clean |
 | Production build | **PASS** | `npm run build` (`tsc -b && vite build`) exit 0 |
@@ -23,7 +23,9 @@ Last updated: Phase 174 (2026-09-11).
 | Browser / manual E2E | **CANNOT BE DONE BY AGENT** | Requires a human clicking through the UI — matrix in [`UAT-MATRIX.md`](./UAT-MATRIX.md) |
 | Manual UAT execution | **NOT VERIFIED** | Matrix authored in Phase 173; **zero rows executed** so far |
 | Entitlement enforcement boundary | **PASS (static + unit + bundle)** | Engine moved server-side; 148 entitlement tests; client bundle no longer contains decision logic |
-| Entitlement runtime on a deployment | **NOT VERIFIED** | No Convex deployment here — see Phase 174 caveat |
+| Entitlement runtime on a deployment | **BLOCKED BY ENVIRONMENT** | Convex control plane unreachable from the sandbox — see Phase 175 |
+| Convex codegen (authoritative) | **BLOCKED BY ENVIRONMENT** | `npx convex dev/codegen` needs the control plane; TLS blocked |
+| Evidence provenance (client tampering) | **PASS (unit + static)** | Client-supplied provider evidence is stripped; server re-acquires — see Phase 175 |
 | Light/dark theme follows system | **NOT IMPLEMENTED** | Dark is hardcoded — see Phase 173 findings |
 | Convex authorization boundary | **PASS (static + unit)** | All 65 exported fns audited; 8 credentialed actions now guarded |
 
@@ -124,6 +126,134 @@ it is a design decision rather than a bug.
 | F2 | `<html lang>` never followed the active locale: `index.html` hardcodes `lang="en"`, so all 9 locales were announced to screen readers and indexed as English. WCAG 3.1.1 (Language of Page). | **Fixed** — the i18n provider syncs `documentElement.lang` (11 regression tests). |
 | F3 | **Light mode does not exist.** `index.html` hardcodes `class="dark"`, the `.dark` CSS block is empty, and `:root` carries the dark palette, so "light/dark follows system" is unimplemented. | **OPEN — NOT IMPLEMENTED.** Requires authoring and reviewing a second full palette; tracked as a product decision. |
 | F4 | The 404 page used `text-gray-900` / `text-gray-600` against the dark background (`oklch(0.1)`) — near-black on near-black, effectively invisible. | **Fixed** — now uses `text-foreground` / `text-muted-foreground`. |
+
+### Phase 175 — deployed-runtime attempt + evidence provenance
+
+#### A. Deployed-runtime verification: **BLOCKED BY ENVIRONMENT — NOT PASS**
+
+Goal A could not be executed. This is reported as blocked, not as a pass, and
+nothing in this document claims a deployed check succeeded.
+
+What was attempted, and the literal outcome:
+
+| Step | Result |
+| --- | --- |
+| Locate deployment config | No `.env.local`; no `CONVEX_DEPLOYMENT` / `VITE_CONVEX_URL` in the environment; no `~/.convex` credentials |
+| `npx convex codegen` | `✖ No CONVEX_DEPLOYMENT set` |
+| `npx convex dev --once` | `✖ Failed to fetch latest backend version` → `Client network socket disconnected before secure TLS connection was established` |
+| Reach control plane | `api.convex.dev`, `dashboard.convex.dev`, `provision.convex.dev` all return HTTP `000` (connection refused/blocked) |
+
+The sandbox has no outbound TLS to Convex, and no deployment credentials are
+present. Consequently **all** of the following remain unverified and must be
+executed by a human against a real deployment:
+
+- authenticated end-to-end entitlement calls
+- unauthenticated request returning before engine execution
+- allowance consumption / WAIT / NO_TRADE accounting at runtime
+- exhausted-guest LOCKED response over the wire
+- Premium and expired-Premium behaviour at runtime
+- concurrency against the real database
+- **UAT row 9.8 — inspecting the actual browser Network payload**
+
+No artifacts were left behind by the attempt (no `.env.local`, no partial
+config, clean `git status`).
+
+> **Generated-code caveat.** Because codegen requires the control plane,
+> `src/convex/_generated/api.d.ts` still carries the Phase 174 hand-added
+> entries. It was **not** further hand-edited in this phase. A new guard suite
+> (`generated-api-integrity.phase175.test.ts`, 9 tests) now asserts the
+> declared module set matches the modules on disk exactly, so drift fails
+> loudly. Note that `api.js` exports `anyApi` — a runtime proxy — so runtime
+> function resolution never depended on the hand edit; only TypeScript types
+> did. **Still run `npx convex dev` once before release to regenerate
+> authoritatively.**
+
+#### B. Evidence provenance: a real integrity defect, found and fixed
+
+Phase 174 closed the *entitlement* hole. It left an *integrity* hole:
+`runProtectedAnalysis` accepted the entire `AnalysisInput` from the client —
+including provider-backed evidence — via `input: v.any()`.
+
+**Demonstrated against the real engine, using this repo's own proven LONG
+fixture, before the fix:**
+
+| Tamper | Observed result |
+| --- | --- |
+| Honest provider data | `LONG`, entry 100, SL 95, TP 110, `dataSource: twelve-data` |
+| Flip structure `HH/HL` → `LH/LL` | Verdict reverses (bias `Bullish` → `Bearish`) |
+| Invent price `99999` the provider never returned | `LONG` **with entry 99999** |
+| Relabel `provider` as `"okx"` | Result reports `dataSource: "okx"` |
+| Back-date candles 30 days, keep `dataFreshness: "realtime"` | `dataCompleteness: "full"`, **no staleness flag** |
+
+That violates live-data integrity on three counts at once: fabricated evidence,
+historical data presented as live, and forged provider identity — while
+entitlement was still correctly enforced. Entitlement and integrity are
+independent boundaries, and only the first had been closed.
+
+**Fix — provenance, not a checksum.** The server now:
+
+1. strips every provider-backed field from the client input
+   (`stripClientEvidence`, built from an allowlist so a field added later is
+   untrusted **by default**), then
+2. re-acquires the decisive evidence itself via `api.marketData.fetchMarketData`
+   using only the instrument identifiers, and
+3. runs the engine over that trusted payload.
+
+Client-supplied `marketData`, `technicalData`, sentiment, fundamentals, macro,
+derivatives, calendar, treasury, COT, EIA, execution, OKX spec, crypto/universal
+intelligence, FX rates and the manual price/high/low/funding/OI overrides are
+therefore **inert on the trusted decision path**.
+
+The client still controls *intent* — instrument, instrument type, timeframe,
+trading style, and the user's own risk inputs (account equity, risk percent,
+account currency, instrument spec). None of that is provider evidence.
+
+Invariants preserved and asserted:
+
+- **Provider-native identity** passes through byte-for-byte; no canonicalisation,
+  no substitution (`BTC-USDT-SWAP` stays `BTC-USDT-SWAP`).
+- **No fabrication.** When acquisition fails, nothing is attached and the engine
+  degrades explicitly — verified to yield `NO_TRADE` with no trade plan and
+  non-`full` completeness, never a synthetic price or empty-candle fallback.
+- **No hardcoded whitelist** was introduced; routing is unchanged.
+- **Entitlement ordering unchanged**: unauthenticated guard → strip → acquire →
+  engine → chargeability → atomic consume → gate.
+
+**Evidence:** 38 provenance-contract tests + 9 counterfactual tamper tests that
+re-run all five attacks against the fix and assert the tampered result is
+byte-identical to the honest one.
+
+**Residual gap — CONCRETE, measured, not silently ignored.**
+
+Only `fetchMarketData` (price, candles, derived technicals) is re-acquired
+server-side today. The remaining secondary providers — Alpha Vantage
+intelligence, CoinGlass derivatives, Trading Economics calendar, Treasury, COT,
+EIA, OKX order book and instrument spec — are currently **stripped and not
+re-supplied**. They therefore cannot be forged, which is the correct fail-closed
+posture, but they are also unavailable to the server engine.
+
+This is not cosmetic. Measured on the standard fixture, secondary context can
+flip the verdict outright:
+
+| Input | Result |
+| --- | --- |
+| Price + technicals only | `NO_TRADE`, confidence 48, 4 data flags |
+| Same, plus event context | `LONG`, confidence 45, 3 data flags |
+
+So the current state is **integrity-safe but context-reduced**: decisions are
+honest and un-forgeable, yet the engine sees less evidence than the
+pre-Phase-175 client-assembled path provided. Position sizing that depends on
+`instrumentSpec`/`fxRates` is likewise affected — those stay client-supplied as
+user/account parameters, and remain flagged for review.
+
+Note `newsContext` / `economicEvents` are deliberately still client-trusted:
+they are the *user's own* narrative input, not a provider assertion, and the
+engine treats them as such. They must never be relabelled as provider evidence.
+
+Closing this gap — server-side acquisition for every secondary provider, with
+the same provenance guarantees — is the subject of the next phase.
+
+---
 
 ### Phase 174 — entitlement is now a real delivery boundary
 
