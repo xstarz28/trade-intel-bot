@@ -33,6 +33,8 @@ const TA_BASE = "https://tickatlas.com/v1";
 async function taFetch(path: string, apiKey: string): Promise<any> {
   const url = `${TA_BASE}${path}`;
   const res = await fetch(url, {
+    // Phase 177 — HTTP deadline below the 8s tickatlas leg budget.
+    signal: AbortSignal.timeout(7_000),
     headers: {
       "X-API-Key": apiKey,
       accept: "application/json",

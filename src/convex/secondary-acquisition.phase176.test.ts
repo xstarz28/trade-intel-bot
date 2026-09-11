@@ -188,17 +188,48 @@ describe("conditional provider policy is preserved", () => {
     // The server must not serialize provider latency. The client previously
     // fanned these out concurrently; the server-side path must match, or a
     // slow provider would stall every analysis.
-    expect(SERVER.match(/await Promise\.all\(\[/g)).toHaveLength(1);
+    // Phase 177: the wave is now `runFanOut([...])`, which awaits all legs
+    // together under an overall deadline. Exactly one wave must exist.
+    expect(SERVER.match(/await runFanOut\(\[/g)).toHaveLength(1);
     expect(SERVER).not.toContain("const slow = await fetchOptionalSlowData");
 
-    // Market data is started before the wave and awaited inside it.
-    expect(SERVER.indexOf("acquiredPromise = ctx.runAction")).toBeLessThan(
-      SERVER.indexOf("await Promise.all(["),
-    );
+    // Every leg is CREATED (promise started) before the wave is awaited.
+    // If a leg were constructed after the await, it would be serialized.
+    const waveAt = SERVER.indexOf("await runFanOut([");
+    for (const leg of [
+      'provider: "market-data"',
+      'provider: "alpha-vantage"',
+      'provider: "tickatlas"',
+      'provider: "coinglass"',
+      "fetchOptionalSlowData(",
+    ]) {
+      expect(SERVER.indexOf(leg)).toBeLessThan(waveAt);
+    }
   });
 
-  it("a market-data rejection cannot crash the wave", () => {
-    expect(SERVER).toContain("acquiredPromise.catch(");
+  it("a failing leg cannot crash the wave", () => {
+    // runProviderLeg never rejects — a failure is returned as an outcome.
+    expect(SERVER).toContain("runProviderLeg");
+    expect(SERVER).toContain("successfulData(");
+  });
+
+  it("every provider leg is issued under an explicit deadline", () => {
+    // Each named provider must go through runProviderLeg (which applies a
+    // budget), not through a bare ctx.runAction.
+    for (const provider of [
+      "market-data",
+      "alpha-vantage",
+      "tickatlas",
+      "coinglass",
+      "cftc",
+      "treasury",
+      "eia",
+      "okx-order-book",
+      "okx-instrument-spec",
+      "fx-rate",
+    ]) {
+      expect(SERVER).toContain(`"${provider}"`);
+    }
   });
 
   it("the OKX spec leg is now always eligible for crypto", () => {

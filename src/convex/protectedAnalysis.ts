@@ -74,6 +74,14 @@ import { api, internal } from "./_generated/api";
 import { runAnalysis } from "@/lib/analysis-engine";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
+import {
+  type ProviderOutcome,
+  runFanOut,
+  runProviderLeg,
+  skippedLeg,
+  successfulData,
+  summarize,
+} from "@/lib/data/provider-resilience";
 import type { AnalysisInput } from "@/types/analysis";
 import {
   gateDecision,
@@ -352,6 +360,25 @@ export interface ProtectedAnalysisResponse {
   result: Record<string, unknown> | LockedDecisionPayload | null;
 }
 
+/**
+ * Which AnalysisInput field each provider ultimately populates.
+ *
+ * Used only for diagnostics, to distinguish "the provider answered" from "the
+ * engine actually consumed it". Never used to attach evidence.
+ */
+const USED_EVIDENCE_BY_PROVIDER: Record<string, string> = {
+  "market-data": "marketData",
+  "alpha-vantage": "sentimentData",
+  tickatlas: "calendarData",
+  coinglass: "derivativesData",
+  cftc: "cotData",
+  treasury: "treasuryData",
+  eia: "eiaData",
+  "okx-order-book": "executionData",
+  "okx-instrument-spec": "okxSpecData",
+  "fx-rate": "fxRates",
+};
+
 export const runProtectedAnalysis = action({
   args: {
     /**
@@ -413,31 +440,6 @@ export const runProtectedAnalysis = action({
     // Server-side acquisition. Provider-native identity is passed through
     // unchanged; the provider's own response supplies price, candles and the
     // provider name.
-    const acquiredPromise = ctx.runAction(api.marketData.fetchMarketData, {
-      instrument,
-      instrumentType: instrumentType as
-        | "forex"
-        | "crypto"
-        | "stock"
-        | "commodity"
-        | "indices",
-      timeframe,
-    }) as Promise<{
-      success: boolean;
-      data?: unknown;
-      technical?: unknown;
-      error?: string;
-    }>;
-
-    // ── Phase 176: secondary evidence, also server-acquired ──
-    //
-    // Every provider below is invoked through its EXISTING Convex action, so
-    // provider semantics, symbol mapping, caching and error handling are the
-    // ones already in production — no business logic is duplicated here.
-    //
-    // Each leg is independent and non-fatal. A provider that is unconfigured,
-    // rate-limited or down contributes NOTHING; it never becomes directional
-    // evidence, and the engine's existing degradation path reports it.
     const assetClass = instrumentType as
       | "forex"
       | "crypto"
@@ -445,20 +447,45 @@ export const runProtectedAnalysis = action({
       | "commodity"
       | "indices";
 
-    const settle = async <T>(leg: Promise<T>): Promise<T | undefined> => {
-      try {
-        return await leg;
-      } catch {
-        return undefined; // disclosed by the engine, never synthesized
-      }
-    };
+    // Phase 177 — every provider call is issued under an explicit deadline.
+    // `ctx.runAction` cannot be aborted mid-flight, so the budget bounds how
+    // long THIS analysis waits; the abandoned action is left to Convex. The
+    // point is that a hung provider can no longer stall the user's request.
+    const acquiredLeg = runProviderLeg<{
+      data?: unknown;
+      technical?: unknown;
+    }>({
+      provider: "market-data",
+      run: async () => {
+        const r = (await ctx.runAction(api.marketData.fetchMarketData, {
+          instrument,
+          instrumentType: instrumentType as
+            | "forex"
+            | "crypto"
+            | "stock"
+            | "commodity"
+            | "indices",
+          timeframe,
+        })) as {
+          success: boolean;
+          data?: unknown;
+          technical?: unknown;
+          error?: string;
+        };
+        return {
+          success: r.success,
+          data: { data: r.data, technical: r.technical },
+          error: r.error,
+        };
+      },
+    });
 
-    // ── ONE parallel acquisition wave ──
+    // ── ONE parallel acquisition wave, now bounded ──
     //
     // Market data, the fast intelligence legs and the conditional slow legs
     // are all issued together so the server never serializes provider latency.
-    // This mirrors the concurrency the client previously had; it is not a new
-    // performance profile.
+    // Each leg carries its own deadline; the whole wave carries an overall
+    // backstop. Legs that already finished are never discarded.
     //
     // The slow/conditional legs run through the SAME pure policy module the
     // client used (Phase 15), so the per-asset/per-style conditional rules,
@@ -481,102 +508,189 @@ export const runProtectedAnalysis = action({
       }
     }
 
-    const [acquired, intelligence, calendar, derivatives, slow] =
-      await Promise.all([
-        acquiredPromise.catch(
-          () =>
-            ({ success: false }) as {
-              success: boolean;
-              data?: unknown;
-              technical?: unknown;
+    const intelligenceLeg = runProviderLeg<{
+      sentiment?: unknown;
+      fundamentals?: unknown;
+      macro?: unknown;
+    }>({
+      provider: "alpha-vantage",
+      run: async () => {
+        const r = (await ctx.runAction(api.alphaVantage.fetchIntelligence, {
+          instrument,
+          instrumentType: assetClass,
+        })) as {
+          success: boolean;
+          sentiment?: unknown;
+          fundamentals?: unknown;
+          macro?: unknown;
+          error?: string;
+        };
+        return { success: r.success, data: r, error: r.error };
+      },
+    });
+
+    const calendarLeg = runProviderLeg<unknown>({
+      provider: "tickatlas",
+      run: async () => {
+        const r = (await ctx.runAction(api.tradingEconomics.fetchCalendar, {
+          instrument,
+          instrumentType,
+        })) as { success: boolean; data?: unknown; error?: string };
+        return { success: r.success, data: r.data, error: r.error };
+      },
+    });
+
+    const derivativesLeg =
+      assetClass === "crypto"
+        ? runProviderLeg<unknown>({
+            provider: "coinglass",
+            run: async () => {
+              const r = (await ctx.runAction(api.coinglass.fetchDerivatives, {
+                instrument,
+              })) as { success: boolean; data?: unknown; error?: string };
+              return { success: r.success, data: r.data, error: r.error };
             },
-        ),
-        settle(
-          ctx.runAction(api.alphaVantage.fetchIntelligence, {
+          })
+        : Promise.resolve(
+            skippedLeg("coinglass", "not a crypto instrument"),
+          );
+
+    // Bounded provider thunk for the Phase 15 policy module. The policy still
+    // decides WHETHER a leg runs; the budget decides how long we wait for it.
+    const budgeted =
+      <T>(provider: string, call: () => Promise<{ success: boolean; data?: T; error?: string }>) =>
+      async (): Promise<{ success: boolean; data?: T }> => {
+        const outcome = await runProviderLeg<T>({ provider, run: call });
+        slowOutcomes.push(outcome);
+        return outcome.status === "success"
+          ? { success: true, data: outcome.data }
+          : { success: false };
+      };
+    const slowOutcomes: ProviderOutcome[] = [];
+
+    const slowLeg = fetchOptionalSlowData(
+      {
+        instrumentType: assetClass,
+        instrument,
+        tradingStyle:
+          typeof trustedInput.tradingStyle === "string"
+            ? trustedInput.tradingStyle
+            : undefined,
+        // The client can no longer assert a complete spec, so the OKX
+        // specification leg is always eligible for crypto.
+        hasCompleteSpec: false,
+      },
+      {
+        fx: fxPair
+          ? budgeted("fx-rate", async () => {
+              const r = (await ctx.runAction(api.marketData.fetchFxRate, {
+                from: fxPair!.from,
+                to: fxPair!.to,
+              })) as {
+                success: boolean;
+                direct?: unknown;
+                inverse?: unknown;
+                error?: string;
+              };
+              return { success: r.success, data: r, error: r.error };
+            })
+          : undefined,
+        cot: budgeted("cftc", async () => {
+          const r = (await ctx.runAction(api.cot.fetchCotPositioning, {
             instrument,
-            instrumentType: assetClass,
-          }) as Promise<{
+          })) as { success: boolean; data?: never; error?: string };
+          return { success: r.success, data: r.data, error: r.error };
+        }),
+        execution: budgeted("okx-order-book", async () => {
+          const r = (await ctx.runAction(api.okx.fetchOkxOrderBook, {
+            instrument,
+          })) as { success: boolean; data?: never; error?: string };
+          return { success: r.success, data: r.data, error: r.error };
+        }),
+        eia: budgeted("eia", async () => {
+          const r = (await ctx.runAction(api.eia.fetchEiaInventory, {})) as {
             success: boolean;
-            sentiment?: unknown;
-            fundamentals?: unknown;
-            macro?: unknown;
-          }>,
-        ),
-        settle(
-          ctx.runAction(api.tradingEconomics.fetchCalendar, {
+            data?: never;
+            error?: string;
+          };
+          return { success: r.success, data: r.data, error: r.error };
+        }),
+        treasury: budgeted("treasury", async () => {
+          const r = (await ctx.runAction(
+            api.treasury.fetchTreasuryYields,
+            {},
+          )) as { success: boolean; data?: never; error?: string };
+          return { success: r.success, data: r.data, error: r.error };
+        }),
+        okxSpec: budgeted("okx-instrument-spec", async () => {
+          const r = (await ctx.runAction(api.okx.fetchOkxInstrumentSpec, {
             instrument,
-            instrumentType,
-          }) as Promise<{ success: boolean; data?: unknown }>,
-        ),
-        assetClass === "crypto"
-          ? settle(
-              ctx.runAction(api.coinglass.fetchDerivatives, {
-                instrument,
-              }) as Promise<{ success: boolean; data?: unknown }>,
-            )
-          : Promise.resolve(undefined),
-        fetchOptionalSlowData(
-          {
-            instrumentType: assetClass,
-            instrument,
-            tradingStyle:
-              typeof trustedInput.tradingStyle === "string"
-                ? trustedInput.tradingStyle
-                : undefined,
-            // The client can no longer assert a complete spec, so the OKX
-            // specification leg is always eligible for crypto.
-            hasCompleteSpec: false,
-          },
-          {
-            fx: fxPair
-              ? () =>
-                  ctx.runAction(api.marketData.fetchFxRate, {
-                    from: fxPair!.from,
-                    to: fxPair!.to,
-                  }) as Promise<{
-                    success: boolean;
-                    direct?: never;
-                    inverse?: never;
-                  }>
-              : undefined,
-            cot: () =>
-              ctx.runAction(api.cot.fetchCotPositioning, {
-                instrument,
-              }) as Promise<{ success: boolean; data?: never }>,
-            execution: () =>
-              ctx.runAction(api.okx.fetchOkxOrderBook, {
-                instrument,
-              }) as Promise<{ success: boolean; data?: never }>,
-            eia: () =>
-              ctx.runAction(api.eia.fetchEiaInventory, {}) as Promise<{
-                success: boolean;
-                data?: never;
-              }>,
-            treasury: () =>
-              ctx.runAction(api.treasury.fetchTreasuryYields, {}) as Promise<{
-                success: boolean;
-                data?: never;
-              }>,
-            okxSpec: () =>
-              ctx.runAction(api.okx.fetchOkxInstrumentSpec, {
-                instrument,
-              }) as Promise<{ success: boolean; data?: never }>,
-          },
-        ),
-      ]);
+          })) as { success: boolean; data?: never; error?: string };
+          return { success: r.success, data: r.data, error: r.error };
+        }),
+      },
+    );
+
+    // The fx thunk is typed loosely by the policy module; re-narrow here.
+    const slowLegTyped = slowLeg as Promise<
+      Awaited<ReturnType<typeof fetchOptionalSlowData>>
+    >;
+
+    const fanOut = await runFanOut([
+      acquiredLeg,
+      intelligenceLeg,
+      calendarLeg,
+      derivativesLeg,
+      slowLegTyped.then(
+        (data) =>
+          ({
+            provider: "optional-slow-group",
+            status: "success",
+            data,
+            startedAt: Date.now(),
+            durationMs: 0,
+            timedOut: false,
+            rateLimited: false,
+            attempts: 1,
+          }) as ProviderOutcome,
+      ),
+    ]);
+
+    const [acquiredOutcome, intelOutcome, calendarOutcome, derivOutcome, slowOutcome] =
+      fanOut.outcomes;
+
+    const acquired = successfulData(
+      acquiredOutcome as ProviderOutcome<{ data?: unknown; technical?: unknown }>,
+    );
+    const intelligence = successfulData(
+      intelOutcome as ProviderOutcome<{
+        sentiment?: unknown;
+        fundamentals?: unknown;
+        macro?: unknown;
+      }>,
+    );
+    const calendar = successfulData(calendarOutcome);
+    const derivatives = successfulData(derivOutcome);
+    const slow =
+      successfulData(
+        slowOutcome as ProviderOutcome<
+          Awaited<ReturnType<typeof fetchOptionalSlowData>>
+        >,
+      ) ?? {};
 
     // Acquisition failure is NOT fabricated around: the engine simply receives
     // no market data and degrades explicitly, exactly as before.
-    if (acquired.success) {
+    if (acquired?.data !== undefined) {
       trustedInput.marketData = acquired.data;
       if (acquired.technical !== undefined) {
         trustedInput.technicalData = acquired.technical;
       }
     }
 
-    // Only genuinely acquired evidence is attached. `undefined` stays
-    // `undefined` — absence is the honest signal the engine already handles.
-    if (intelligence?.success) {
+    // Only genuinely acquired evidence is attached. A timeout, a rate limit or
+    // any other failure attaches NOTHING — absence is the honest signal the
+    // engine already handles, and it is never a default or a fabricated value.
+    if (intelligence) {
       if (intelligence.sentiment !== undefined) {
         trustedInput.sentimentData = intelligence.sentiment;
       }
@@ -587,12 +701,8 @@ export const runProtectedAnalysis = action({
         trustedInput.macroData = intelligence.macro;
       }
     }
-    if (calendar?.success && calendar.data !== undefined) {
-      trustedInput.calendarData = calendar.data;
-    }
-    if (derivatives?.success && derivatives.data !== undefined) {
-      trustedInput.derivativesData = derivatives.data;
-    }
+    if (calendar !== undefined) trustedInput.calendarData = calendar;
+    if (derivatives !== undefined) trustedInput.derivativesData = derivatives;
     if (slow.fxRates !== undefined) trustedInput.fxRates = slow.fxRates;
     if (slow.cotData !== undefined) trustedInput.cotData = slow.cotData;
     if (slow.executionData !== undefined) {
@@ -605,6 +715,22 @@ export const runProtectedAnalysis = action({
     if (slow.okxSpecData !== undefined) {
       trustedInput.okxSpecData = slow.okxSpecData;
     }
+
+    // Structured, credential-free latency diagnostics. Records which legs were
+    // actually consumed by the engine, so "acquired" and "used" stay distinct.
+    const allOutcomes: ProviderOutcome[] = [
+      ...fanOut.outcomes.filter((o) => o.provider !== "optional-slow-group"),
+      ...slowOutcomes,
+    ];
+    for (const outcome of allOutcomes) {
+      outcome.usedByEngine =
+        outcome.status === "success" &&
+        USED_EVIDENCE_BY_PROVIDER[outcome.provider] !== undefined &&
+        trustedInput[USED_EVIDENCE_BY_PROVIDER[outcome.provider]] !== undefined;
+    }
+    console.log(
+      summarize({ ...fanOut, outcomes: allOutcomes }),
+    );
 
     // 2. Run the engine on the SERVER over TRUSTED evidence only.
     const engineResult = runAnalysis(trustedInput as unknown as AnalysisInput) as unknown as Record<

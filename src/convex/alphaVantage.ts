@@ -38,7 +38,10 @@ const AV_BASE = "https://www.alphavantage.co/query";
 
 async function avFetch(params: Record<string, string>, apiKey: string): Promise<any> {
   const qs = new URLSearchParams({ ...params, apikey: apiKey }).toString();
-  const res = await fetch(`${AV_BASE}?${qs}`);
+  const res = await fetch(`${AV_BASE}?${qs}`, {
+    // Phase 177 — HTTP deadline below the 8s alpha-vantage leg budget.
+    signal: AbortSignal.timeout(7_000),
+  });
   if (!res.ok) {
     throw new Error(`Alpha Vantage HTTP ${res.status}: ${res.statusText}`);
   }

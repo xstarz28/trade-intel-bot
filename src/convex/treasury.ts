@@ -28,6 +28,8 @@ function monthKey(d: Date): string {
 async function fetchFeed(data: string, yyyymm: string): Promise<string | undefined> {
   try {
     const res = await fetch(`${BASE}?data=${data}&field_tdr_date_value_month=${yyyymm}`, {
+      // Phase 177 — HTTP deadline; four legs share the 10s treasury budget.
+      signal: AbortSignal.timeout(8_000),
       headers: { Accept: "text/xml" },
     });
     if (!res.ok) return undefined;

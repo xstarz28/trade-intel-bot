@@ -4,7 +4,7 @@ This document records what has been **verified**, what is **unverified**, and
 what **cannot be verified** by automated agent runs. It is deliberately
 conservative: anything not actually executed and observed is not marked PASS.
 
-Last updated: Phase 176 (2026-09-11).
+Last updated: Phase 177 (2026-09-11).
 
 ---
 
@@ -12,7 +12,7 @@ Last updated: Phase 176 (2026-09-11).
 
 | Area | Status | Evidence |
 | --- | --- | --- |
-| Unit + integration test suite | **PASS** | 8,100 tests / 219 files, 0 failures (Phase 176) |
+| Unit + integration test suite | **PASS** | 8,173 tests / 221 files, 0 failures (Phase 177) |
 | Component (jsdom) render suites | **PASS** | Collected for the first time in Phase 166 — see below |
 | TypeScript compile | **PASS** | `tsc -b` exit 0, fully clean |
 | Production build | **PASS** | `npm run build` (`tsc -b && vite build`) exit 0 |
@@ -27,6 +27,8 @@ Last updated: Phase 176 (2026-09-11).
 | Convex codegen (authoritative) | **BLOCKED BY ENVIRONMENT** | `npx convex dev/codegen` needs the control plane; TLS blocked |
 | Evidence provenance (client tampering) | **PASS (code-level + mocked)** | ALL provider evidence stripped; server re-acquires — see Phase 176 |
 | Secondary providers behind server provenance | **PASS (mocked only)** | 9 provider actions wired server-side; live endpoints unverified |
+| Provider fan-out bounded (timeouts/deadline) | **PASS (code-level + mocked)** | Per-leg budgets + overall deadline + real AbortSignal — see Phase 177 |
+| Provider latency against LIVE endpoints | **BLOCKED BY ENVIRONMENT** | All provider hosts firewalled; real latency unmeasured (UAT 9.21) |
 | Light/dark theme follows system | **NOT IMPLEMENTED** | Dark is hardcoded — see Phase 173 findings |
 | Convex authorization boundary | **PASS (static + unit)** | All 65 exported fns audited; 8 credentialed actions now guarded |
 
@@ -127,6 +129,104 @@ it is a design decision rather than a bug.
 | F2 | `<html lang>` never followed the active locale: `index.html` hardcodes `lang="en"`, so all 9 locales were announced to screen readers and indexed as English. WCAG 3.1.1 (Language of Page). | **Fixed** — the i18n provider syncs `documentElement.lang` (11 regression tests). |
 | F3 | **Light mode does not exist.** `index.html` hardcodes `class="dark"`, the `.dark` CSS block is empty, and `:root` carries the dark palette, so "light/dark follows system" is unimplemented. | **OPEN — NOT IMPLEMENTED.** Requires authoring and reviewing a second full palette; tracked as a product decision. |
 | F4 | The 404 page used `text-gray-900` / `text-gray-600` against the dark background (`oklch(0.1)`) — near-black on near-black, effectively invisible. | **Fixed** — now uses `text-foreground` / `text-muted-foreground`. |
+
+### Phase 177 — provider fan-out resilience
+
+#### The defect
+
+Phase 176 put nine provider acquisitions in front of the decision engine.
+An audit of the transport layer found that **none of the eight provider modules
+set a fetch deadline**. Convex actions may run up to 30 minutes on the Convex
+runtime, so a single hung provider socket could stall a user's analysis
+effectively indefinitely, with no bound and no diagnostic.
+
+#### Timeout architecture (two independent layers)
+
+| Layer | Mechanism | Purpose |
+| --- | --- | --- |
+| **Transport** | `AbortSignal.timeout(...)` on every provider `fetch` | Genuinely cancels the socket. The work does not outlive the wait. |
+| **Leg** | `runProviderLeg()` per-provider budget | Bounds how long *this analysis* waits, and classifies the failure. |
+| **Wave** | `runFanOut()` overall deadline | Backstop if several legs misbehave at once. |
+
+The transport deadline is deliberately set **below** its leg budget so the
+socket dies before the leg gives up — otherwise aborting would be cosmetic.
+This is asserted by test, not assumed.
+
+#### Latency budgets and their rationale
+
+Budgets are derived from the observed shape of each provider action, not chosen
+to make tests convenient:
+
+| Provider | Leg budget | HTTP deadline | Why |
+| --- | --- | --- | --- |
+| `market-data` | 12s | 6s / 5s | Slowest by construction: a multi-timeframe `allSettled` batch **plus** a bounded sequential DXY probe and a comparison fetch. Also the only leg whose absence forces `NO_TRADE`. |
+| `treasury` | 10s | 8s | Four `fetchFeed` legs in one `Promise.all` against a slow government host. |
+| `eia` | 10s | 8s | Three product legs in one `Promise.all`, government host. |
+| `alpha-vantage` | 8s | 7s | Documented ~5 req/min budget; a request can queue before responding. |
+| `tickatlas` | 8s | 7s | Calendar assembly across the relevant currencies. |
+| `coinglass` | 8s | 7s | Parallel derivative datasets. |
+| `cftc` | 8s | 7s | Single Socrata query, historically slow to first byte. |
+| `okx-order-book` | 6s | 5s | Single low-latency exchange endpoint. |
+| `okx-instrument-spec` | 6s | 5s | Single low-latency exchange endpoint. |
+| `fx-rate` | 6s | 5s | One quote lookup. |
+| **Overall wave** | **15s** | — | Slowest leg (12s) + ~3s headroom for dispatch across ten `ctx.runAction` boundaries. |
+
+The overall deadline is a **backstop, not the primary mechanism**: per-leg
+budgets should always fire first. The sum of all budgets is ~82s; the wave is
+bounded at 15s **because it is parallel**, and that gap is exactly the property
+under test.
+
+#### Failure taxonomy
+
+Every leg yields an outcome recording provider, start, duration, budget,
+attempts, and one of: `timeout`, `network`, `rate-limit`, `invalid-response`,
+`unavailable`, `deadline-exceeded`, `skipped`.
+
+`skipped` (conditional policy declined to run the leg) is **structurally
+distinct** from `failed`, and a provider that returns an empty-but-valid
+dataset stays a **success** — so "nothing happened" is never confused with
+"we never heard back".
+
+#### Rate limiting
+
+Providers already classify their own rate-limit responses (Alpha Vantage
+`Note`/`Information`, CoinGlass code 429, TickAtlas HTTP 429, Twelve Data
+`[429]`). Phase 177 maps those into the `rate-limit` category and **never
+retries a rate-limited provider within one analysis**, even when retries are
+otherwise permitted. Retries default to **zero**; the fan-out providers contain
+no retry loops, so there is no infinite-retry path. A rate limit contributes no
+data and is never directional.
+
+#### Evidence semantics under failure
+
+A failed leg carries **no `data` property at all** — not an empty object, not a
+zero, not `available: true`. Asserted directly: the serialized outcome of a
+timeout contains no `"available":true`, `"quality":"VERIFIED"` or
+`"fresh":true`. A timeout also cannot alter another provider's freshness or
+provenance, and no outcome is ever attributed to a different provider.
+
+#### Observability
+
+Each leg records provider, start time, duration, budget, status, category,
+rate-limit flag, attempt count, and **whether the engine actually consumed it**
+(`usedByEngine`) — so "acquired" and "used" stay distinguishable. Diagnostics
+pass through `redactDiagnostic()`, which strips `apikey`/`token`/`secret` query
+parameters and long opaque tokens before anything is logged.
+
+#### What is proven, and what is not
+
+**Code-level / mocked verified** — 50 resilience tests + 22 integration tests,
+using REAL timers and REAL elapsed wall-clock time for the bounding assertions
+(a fake-timer test can prove logic but cannot prove boundedness). Includes:
+three hung providers do not triple the wait; four hung legs stay under one
+slowest-budget; completed results survive the overall deadline.
+
+**NOT verified** — real provider latency. Every provider host is firewalled in
+this environment, so the budgets are *derived and bounded*, not *measured
+against live endpoints*. First deployment should compare observed durations
+against the table above and re-tune. UAT 9.21 covers this.
+
+---
 
 ### Phase 176 — complete evidence provenance + secondary provider acquisition
 

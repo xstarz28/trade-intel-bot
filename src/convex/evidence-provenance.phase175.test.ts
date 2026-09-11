@@ -218,8 +218,13 @@ describe("the server acquires evidence itself", () => {
 
   it("degrades explicitly when acquisition fails — never fabricates", () => {
     // The assignment is guarded by success; there is no synthetic fallback.
-    const idx = SERVER.indexOf("if (acquired.success)");
-    expect(idx).toBeGreaterThan(-1);
+    // Phase 177 replaced the raw `if (acquired.success)` guard with an
+    // outcome-based guard: `successfulData()` returns undefined for any
+    // non-success outcome, and the attachment is gated on the payload being
+    // genuinely present. The property is unchanged — evidence is attached
+    // only when the provider really returned it.
+    expect(SERVER).toContain("successfulData(");
+    expect(SERVER).toContain("if (acquired?.data !== undefined)");
 
     expect(SERVER).not.toMatch(/candles:\s*\[\s*\]\s*,?\s*\/\/\s*fallback/i);
     expect(SERVER).not.toMatch(/price:\s*0\b/);

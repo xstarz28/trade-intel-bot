@@ -37,7 +37,11 @@ async function fetchProductLeg(
       `&facets%5Bproduct%5D%5B%5D=${encodeURIComponent(productId)}` +
       `&facets%5Bprocess%5D%5B%5D=STA&facets%5Barea%5D%5B%5D=NUS-Z00` +
       `&sort%5B0%5D%5Bcolumn%5D=period&sort%5B0%5D%5Bdirection%5D=desc&length=2`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      // Phase 177 — HTTP deadline; three legs share the 10s eia budget.
+      signal: AbortSignal.timeout(8_000),
+    });
     if (!res.ok) {
       // Try to surface the provider's own error message when present.
       let detail = `HTTP ${res.status}`;
