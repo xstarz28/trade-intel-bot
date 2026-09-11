@@ -24,7 +24,7 @@ import type {
 // supplies per-dataset TTLs, single-flight dedup, observedAt preservation and
 // the user-owned-data guard. Scope is per action instance — see the registry.
 import { getProviderCache } from "../lib/data/provider-cache-registry";
-import { combineAcquisitions, oldestObservation } from "../lib/data/provenance-diagnostics";
+import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
 
 // ── Alpha Vantage API ───────────────────────────────────────────
 
@@ -256,7 +256,7 @@ export const fetchIntelligence = action({
           macro: macro.confidence !== "unavailable",
         },
         // `cache-reused` only when every read was reused.
-        acquisition: combineAcquisitions(acquisitions),
+        acquisition: envelopeAcquisition(acquisitions),
         observedAt: oldestObservation(observations),
       };
     } catch (err: any) {

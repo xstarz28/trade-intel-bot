@@ -957,6 +957,35 @@ A defect this surfaced: before the composite handling, three legs reported
 took the fallback. It was found by reading real runtime output, not by reading
 code.
 
+#### Integrity fix — an empty composite cannot imply provider contact
+
+`combineAcquisitions([])` originally returned `observed-now`. An empty list
+means **no cache read completed**, which is no evidence any provider was
+contacted, so that value fabricated contact and violated the phase invariant.
+
+It was **reachable in production**, not merely a defensive branch. Measured
+against the real `fetchIntelligence` handler with a dead transport: news is
+non-critical, so the handler swallows the error and still returns
+`success: true` — carrying `acquisition: "observed-now"` with
+`observedAt: undefined`. A claimed fresh observation backed by nothing.
+
+Because the state is legitimate, the fix does **not** throw (that would turn a
+survivable degradation into a hard failure). Resolution, at three layers:
+
+1. `combineAcquisitions([])` → **`unavailable`**, which already exists in
+   `AcquisitionMode` as "provider returned no usable data". No mode was
+   invented; the return type widens only to a member the model already defines.
+2. `envelopeAcquisition()` → **`undefined`** for action envelopes, which can
+   structurally carry only the three success modes. An absent field is the
+   honest representation of "this action makes no claim".
+3. The fan-out reports a cached leg with **neither** a mode **nor** an
+   `observedAt` as `unavailable` rather than defaulting to `observed-now`,
+   closing the same fabrication one level up.
+
+`unavailable` is excluded from `NEW_OBSERVATION` and from every quota
+predicate, so a degraded leg can no longer imply contact or consume quota.
+Pinned by 21 tests; reintroducing the original return value fails 7.
+
 #### Order book — provenance confirms the 178c decision
 
 Every use reports `uncached-by-design` and the leg is test-pinned to **never**

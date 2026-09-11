@@ -314,14 +314,54 @@ export { describeProvenance };
  *
  * The bias is deliberate: over-reporting provider contact understates the
  * cache's benefit, while under-reporting it would fabricate freshness.
+ *
+ * ─────────────────────────────────────────────────────────────────
+ * EMPTY INPUT (Phase 178d integrity fix)
+ *
+ * An empty list means NO cache read completed, which is no evidence that any
+ * provider was contacted. Returning `observed-now` for it — as this function
+ * originally did — fabricated provider contact and violated the core Phase
+ * 178d invariant that modes are reported, never inferred.
+ *
+ * This is NOT a defensive branch: it is reachable in production. When the
+ * Alpha Vantage news transport dies, the handler swallows the error (news is
+ * non-critical), no cache read completes, and the action still returns
+ * `success: true`. Measured before the fix: `acquisition: "observed-now"`
+ * with `observedAt: undefined` — a claimed fresh observation backed by
+ * nothing.
+ *
+ * So an empty composite IS a legitimate runtime state and must not throw.
+ * It resolves to `unavailable`, which already exists in `AcquisitionMode` as
+ * the "provider returned no usable data" state — no invented mode, and the
+ * return type widens only to a member the type model already defines.
+ * `unavailable` is excluded from NEW_OBSERVATION and from every quota
+ * predicate, so a degraded leg can no longer imply provider contact.
+ * ─────────────────────────────────────────────────────────────────
  */
 export function combineAcquisitions(
   modes: Array<"observed-now" | "observed-shared" | "cache-reused">,
-): "observed-now" | "observed-shared" | "cache-reused" {
-  if (modes.length === 0) return "observed-now";
+): "observed-now" | "observed-shared" | "cache-reused" | "unavailable" {
+  // No completed cache read: nothing was observed, shared, or reused.
+  if (modes.length === 0) return "unavailable";
   if (modes.some((m) => m === "observed-now")) return "observed-now";
   if (modes.some((m) => m === "observed-shared")) return "observed-shared";
   return "cache-reused";
+}
+
+/**
+ * Phase 178d integrity fix — the mode an ACTION ENVELOPE should carry.
+ *
+ * Envelopes (`IntelligenceResult`, `MarketDataResult`, ...) describe a
+ * successful provider result, so they can only carry the three acquisition
+ * modes. When no cache read completed there is no such mode: `undefined` is
+ * returned so the envelope makes NO claim, rather than asserting contact that
+ * did not happen. The fan-out treats an absent mode as unreported.
+ */
+export function envelopeAcquisition(
+  modes: Array<"observed-now" | "observed-shared" | "cache-reused">,
+): "observed-now" | "observed-shared" | "cache-reused" | undefined {
+  const combined = combineAcquisitions(modes);
+  return combined === "unavailable" ? undefined : combined;
 }
 
 /**
