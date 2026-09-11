@@ -145,6 +145,14 @@ interface MarketOpportunitiesProps {
   candidates: CandidateInput[];
   /** Live candidate sources for real-time scanning (Phase 50). */
   liveSources?: LiveCandidateSource[];
+  /**
+   * Provider/acquisition failures for the current cycle.
+   *
+   * Required whenever `liveSources` is supplied without a `scanResult`:
+   * scanning without them reports degraded === false, which renders a
+   * provider outage as a healthy, quiet market.
+   */
+  providerErrors?: string[];
   /** Whether a scan is in progress. */
   isScanning?: boolean;
   /** Last scan result (Phase 50). */
@@ -386,6 +394,7 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
 export function MarketOpportunities({
   candidates,
   liveSources,
+  providerErrors,
   isScanning = false,
   scanResult: externalScanResult,
   radarResult,
@@ -412,12 +421,15 @@ export function MarketOpportunities({
         horizons: [currentHorizon],
         maxResults: 10,
         assetClasses: assetFilter !== "all" ? [assetFilter] : undefined,
+        // Carried through so a locally computed scan degrades identically to
+        // the one the Dashboard computes.
+        providerErrors,
       };
       return scanInstruments(liveSources, scanConfig);
     }
 
     return null;
-  }, [liveSources, currentHorizon, assetFilter, externalScanResult]);
+  }, [liveSources, currentHorizon, assetFilter, externalScanResult, providerErrors]);
 
   // Get ranked result for current horizon
   const result: UniversalRecommendationResult = useMemo(() => {
