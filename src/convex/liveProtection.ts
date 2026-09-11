@@ -13,6 +13,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 
 // ═══════════════════════════════════════════════════════════════
@@ -386,7 +387,10 @@ export const fetchLiveProtectionQuote = action({
   args: {
     instruments: v.array(v.string()),
   },
-  handler: async (_ctx, args): Promise<LiveQuoteResult[]> => {
+  handler: async (ctx, args): Promise<LiveQuoteResult[]> => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const results: LiveQuoteResult[] = [];
     const now = Date.now();
 
@@ -668,6 +672,9 @@ export const fetchOHLCVCandles = action({
     outputsize: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<OHLCVResult[]> => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.TWELVE_DATA_API_KEY;
     if (!apiKey) {
       return args.instruments.map((inst) => ({

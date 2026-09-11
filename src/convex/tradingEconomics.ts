@@ -5,6 +5,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import type {
   EconomicEvent,
@@ -142,7 +143,10 @@ export const fetchCalendar = action({
     instrument: v.string(),
     instrumentType: v.string(),
   },
-  handler: async (_ctx, args): Promise<CalendarResult> => {
+  handler: async (ctx, args): Promise<CalendarResult> => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.TICKATLAS_API_KEY;
     if (!apiKey) {
       return {

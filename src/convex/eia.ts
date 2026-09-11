@@ -19,6 +19,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import { buildEiaContext, parseEiaResponse } from "../lib/data/eia";
 
@@ -57,7 +58,10 @@ async function fetchProductLeg(
 
 export const fetchEiaInventory = action({
   args: {},
-  handler: async (_ctx) => {
+  handler: async (actionCtx) => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(actionCtx);
+
     const now = Date.now();
     const apiKey = process.env.EIA_API_KEY;
     if (!apiKey) {
