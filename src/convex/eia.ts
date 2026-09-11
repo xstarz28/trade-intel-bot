@@ -22,6 +22,7 @@ import { action } from "./_generated/server";
 import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import { buildEiaContext, parseEiaResponse } from "../lib/data/eia";
+import { getProviderCache } from "../lib/data/provider-cache-registry";
 
 const BASE = "https://api.eia.gov/v2/petroleum/sto/data/";
 const PRODUCT_IDS = ["EPC0", "EPM0", "EPD0"] as const;
@@ -66,7 +67,6 @@ export const fetchEiaInventory = action({
     // Requires a signed-in identity: this action spends a server-side API key.
     await requireIdentity(actionCtx);
 
-    const now = Date.now();
     const apiKey = process.env.EIA_API_KEY;
     if (!apiKey) {
       return {
@@ -76,8 +76,32 @@ export const fetchEiaInventory = action({
       };
     }
 
-    const legs = await Promise.all(PRODUCT_IDS.map((p) => fetchProductLeg(p, apiKey)));
-    const ctx = buildEiaContext(legs, now, now);
+    // Phase 178c — the EIA Weekly Petroleum Status Report is published ONCE
+    // per week (Wednesdays). Re-fetching every product leg per analysis cannot
+    // produce new data, so the raw legs are cached for 6h.
+    //
+    // The RAW LEGS are cached, not the built context: `buildEiaContext`
+    // recomputes freshness from the observation date against the current clock
+    // on every read, so a cached report decays honestly and a hit can never
+    // present an old release as newly published.
+    const evidence = await getProviderCache().fetch<Awaited<ReturnType<typeof fetchProductLeg>>[]>(
+      {
+        provider: "eia",
+        dataset: "eia",
+        qualifier: PRODUCT_IDS.join(","),
+      },
+      async () => {
+        const acquired = await Promise.all(
+          PRODUCT_IDS.map((p) => fetchProductLeg(p, apiKey)),
+        );
+        return { data: acquired, observedAt: Date.now() };
+      },
+    );
+    if (!evidence) {
+      return { success: false as const, error: "EIA returned no data." };
+    }
+    // Freshness derived at READ time from the observation date.
+    const ctx = buildEiaContext(evidence.data, Date.now(), Date.now());
     if (!ctx.available) {
       return { success: false as const, error: ctx.reason };
     }

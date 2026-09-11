@@ -313,3 +313,98 @@ describe("measured provider-load reduction", () => {
     expect(urls.filter((u) => u.includes("time_series")).length).toBeGreaterThan(0);
   });
 });
+
+// ═══════════════════════════════════════════════════════════
+// Phase 178c — the uncached-by-design leg stays uncached
+// ═══════════════════════════════════════════════════════════
+
+import { fetchCotPositioning } from "./cot";
+import { fetchTreasuryYields } from "./treasury";
+import { fetchEiaInventory } from "./eia";
+import { fetchOkxInstrumentSpec, fetchOkxOrderBook } from "./okx";
+
+describe("full protected path after Phase 178c", () => {
+  /** Extends the 178b dispatch table with the remaining legs. */
+  function fullCtx(subject = "user_A") {
+    const table: Record<string, (c: never, a: never) => Promise<unknown>> = {
+      ...REAL_HANDLERS,
+      "cot:fetchCotPositioning": handlerOf(fetchCotPositioning) as never,
+      "treasury:fetchTreasuryYields": handlerOf(fetchTreasuryYields) as never,
+      "eia:fetchEiaInventory": handlerOf(fetchEiaInventory) as never,
+      "okx:fetchOkxInstrumentSpec": handlerOf(fetchOkxInstrumentSpec) as never,
+      "okx:fetchOkxOrderBook": handlerOf(fetchOkxOrderBook) as never,
+    };
+    const c = {
+      auth: { getUserIdentity: async () => ({ subject, issuer: "test" }) },
+      runMutation: async () => "user_stub" as unknown,
+      runQuery: async () => null,
+      runAction: async (ref: unknown, args: unknown) => {
+        let name = "";
+        try {
+          name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+        } catch {
+          return { success: false, error: "unresolvable" };
+        }
+        const fn = table[name];
+        if (!fn) return { success: false, error: "not wired" };
+        return fn(c as never, args as never);
+      },
+    };
+    return c as never;
+  }
+
+  beforeEach(() => {
+    process.env.EIA_API_KEY = "test-key";
+  });
+
+  it("a warm forex analysis reaches the providers far less", async () => {
+    await runAnalysisHandler(fullCtx(), ANALYSIS_ARGS);
+    const cold = urls.length;
+
+    urls = [];
+    await runAnalysisHandler(fullCtx(), ANALYSIS_ARGS);
+    const warm = urls.length;
+
+    expect(cold).toBeGreaterThanOrEqual(6);
+    expect(warm).toBeLessThanOrEqual(cold / 2);
+  });
+
+  it("a warm crypto analysis still re-observes the order book", async () => {
+    const cryptoArgs = {
+      input: {
+        instrument: "BTC/USDT",
+        instrumentType: "crypto" as const,
+        timeframe: "M5",
+        tradingStyle: "scalping" as const,
+      },
+    };
+
+    await runAnalysisHandler(fullCtx(), cryptoArgs);
+    urls = [];
+    await runAnalysisHandler(fullCtx(), cryptoArgs);
+
+    // Everything cacheable is cached, so the residual traffic is the
+    // deliberately uncached order book — microstructure must be observed
+    // afresh for every analysis.
+    const books = urls.filter((u) => u.includes("market/books"));
+    expect(books.length).toBeGreaterThan(0);
+  });
+
+  it("the instrument specification is NOT re-fetched on a warm crypto run", async () => {
+    const cryptoArgs = {
+      input: {
+        instrument: "BTC/USDT",
+        instrumentType: "crypto" as const,
+        timeframe: "M5",
+        tradingStyle: "scalping" as const,
+      },
+    };
+
+    await runAnalysisHandler(fullCtx(), cryptoArgs);
+    urls = [];
+    await runAnalysisHandler(fullCtx(), cryptoArgs);
+
+    // Contract metadata is near-static; only the book should be re-observed.
+    expect(urls.filter((u) => u.includes("public/instruments")).length).toBe(0);
+  });
+});

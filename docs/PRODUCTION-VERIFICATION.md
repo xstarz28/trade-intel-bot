@@ -751,6 +751,118 @@ dimensions, so two users analysing the same instrument share public evidence
 and nothing else. This complements Phase 176: those three account fields are
 client-trusted *inputs*, never cacheable *evidence*.
 
+### Phase 178c — remaining protected-path providers
+
+Phase 178b integrated the cache for Alpha Vantage, CoinGlass, the calendar and
+market data. Phase 178c decides the remaining legs **provider by provider**.
+The goal was never "cache everything": each decision follows from how that
+dataset's freshness is computed and how the engine consumes it.
+
+#### The deciding question
+
+There is exactly one structural difference between the providers that are safe
+to cache and the one that is not:
+
+> Is the freshness label **re-derived from the provider's observation date at
+> read time**, or **computed once and stored in the payload**?
+
+Treasury, EIA and COT re-derive: `classifyMacroFreshness(observationDate, now)`,
+`classifyCotFreshness(reportDate, now)` and `classifyEiaFreshness(...)` all take
+the current clock as an argument. A cached payload therefore decays honestly —
+measured: a report dated 3 days ago classifies `FRESH` today and `STALE` when
+evaluated 60 days later, with no refetch.
+
+The OKX order book does the opposite: `buildExecutionData` classifies the
+snapshot against `EXECUTION_STALE_MS` (30 s) **at build time** and writes
+`"FRESH"` or `"STALE"` into the payload. Measured: the same snapshot built 60 s
+later classifies `STALE`. A cache hit would replay the earlier frozen label.
+
+#### Final decision table
+
+| Provider | Dataset | Cache? | TTL | Freshness window | Key | Rationale |
+|---|---|---|---|---|---|---|
+| Twelve Data | ohlcv | **Yes** | 60 s | 5 min | provider+symbol+timeframe+bar count | candle granularity; bar count is part of identity |
+| Twelve Data | fx-rate | **Yes** | 5 min | 15 min | provider+dataset+`FROM>TO` | conversion direction is part of identity |
+| Alpha Vantage | news-sentiment | **Yes** | 10 min | 30 min | provider+dataset+instrument+asset class | headlines do not change per second |
+| Alpha Vantage | fundamentals | **Yes** | 24 h | 7 d | provider+dataset+instrument+asset class | quarterly filings; static intraday |
+| TickAtlas | calendar | **Yes** | 20 min | 1 h | provider+dataset+INSTRUMENT+type | scheduled events; case-normalised |
+| CoinGlass | derivatives | **Yes** | 60 s | 5 min | provider+dataset+full instrument | exchange funding/OI cadence |
+| US Treasury | treasury | **Yes** (178c) | 6 h | 24 h | provider+dataset+month partitions | **published once per business day** |
+| EIA | eia | **Yes** (178c) | 6 h | 24 h | provider+dataset+product ids | **WPSR published weekly (Wed)** |
+| CFTC | cot | **Yes** (178c) | 12 h | 7 d | provider+dataset+**CFTC contract** | **published weekly (Fri)**; aliases share a contract |
+| OKX | instrument-spec | **Yes** (178c) | 24 h | 7 d | provider+dataset+exact `instId` | contract metadata, not a market observation |
+| OKX | order-book | **UNCACHED BY DESIGN** | — | 30 s (exchange ts) | — | see below |
+
+No TTL was chosen to reduce API calls. Each equals the dataset's real
+publication cadence, and each is shorter than its freshness window so reuse can
+never outlive labelling.
+
+#### OKX order book — UNCACHED BY DESIGN (mandatory decision)
+
+**Outcome A: always fresh.** The order book is never cached and never
+single-flighted. The decision is recorded in `src/convex/okx.ts` directly above
+the action so it cannot be "optimised" away by a future reader, and it is
+enforced by tests.
+
+Why:
+
+1. **Its freshness label is stored, not derived.** A cache hit would replay a
+   frozen `FRESH`, asserting microstructure that no longer exists. This is the
+   single disqualifying property, and it is proven by measurement rather than
+   argued.
+2. **That label gates real decisions**, not cosmetics:
+   - the SCALPING hard veto on extreme spread / `THIN` depth
+     (`analysis-engine.ts` ~1037, gated on `ed.freshness === "FRESH"`)
+   - the crypto execution confidence layer (~1527, same gate)
+   - slippage estimation, which walks the actual book levels
+   - the user-facing "Execution snapshot is stale" warning
+   A replayed label could veto a valid setup, or let a dead book add
+   confidence.
+3. **The budget is 30 s** from the exchange timestamp. Any TTL long enough to
+   save meaningful quota would exceed the window in which the data is true.
+4. **There is nothing to save.** The endpoint needs no API key and has no
+   per-user quota — one request per crypto analysis.
+
+**Single-flight is also deliberately not applied.** Two concurrent analyses of
+the same instrument must each observe the book at their own instant; sharing
+one snapshot would make the second act on the first's microstructure.
+
+#### Why raw payloads are cached, never built contexts
+
+Treasury, EIA and COT cache the **raw provider payloads** (XML feeds, product
+legs, Socrata rows) rather than the built context object. The context — and
+with it the freshness label — is rebuilt on every read against `Date.now()`.
+
+This is what makes a long TTL safe. A 12-hour COT entry is reused for 12 hours,
+but the report it contains is re-classified `FRESH`/`DELAYED`/`STALE` on every
+single read. A long TTL therefore means "we may reuse this", never "this is
+current" — the distinction the order book cannot make.
+
+#### Measured provider load, full protected path
+
+| Analysis | Cold | Warm | Reduction |
+|---|---|---|---|
+| Forex swing (EUR/USD H4) | 15 calls | 1 | **93%** |
+| Crypto scalping (BTC/USDT M5) | 12 calls | 2 | **83%** |
+
+The crypto residual is the order book being correctly re-observed. That is the
+intended cost of the design, not a gap.
+
+#### Acquisition provenance
+
+`src/lib/data/acquisition-provenance.ts` records **how** a leg's data was
+obtained, which the Phase 177 failure taxonomy cannot express:
+`observed-now`, `observed-shared` (single-flight join), `cache-reused`,
+`uncached-by-design`, `unavailable`, `timed-out`, `rate-limited`, `skipped`.
+
+`usedAt` is recorded separately from `observedAt` and is **never** substituted
+for it — a missing observation time stays missing rather than being back-filled
+with the time of use, which would fabricate an observation. A reuse is always
+described as "reused earlier observation … provider NOT contacted", never as a
+fresh one.
+
+---
+
 #### Scope honesty — what "shared" means here
 
 The registry (`src/lib/data/provider-cache-registry.ts`) is a module-level
