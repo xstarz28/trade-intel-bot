@@ -10,6 +10,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
@@ -87,7 +88,10 @@ export const fetchMarketData = action({
     ),
     timeframe: v.string(),
   },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.TWELVE_DATA_API_KEY;
     if (!apiKey) {
       return {
@@ -325,7 +329,10 @@ export const fetchMarketData = action({
  */
 export const fetchFxRate = action({
   args: { from: v.string(), to: v.string() },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.TWELVE_DATA_API_KEY;
     if (!apiKey) {
       return { success: false as const, error: "TWELVE_DATA_API_KEY missing" };

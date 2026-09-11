@@ -6,6 +6,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import type {
   NewsArticle,
@@ -89,7 +90,10 @@ export const fetchIntelligence = action({
       v.literal("indices"),
     ),
   },
-  handler: async (_ctx, args): Promise<IntelligenceResult> => {
+  handler: async (ctx, args): Promise<IntelligenceResult> => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
     if (!apiKey) {
       return {
