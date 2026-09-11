@@ -94,6 +94,9 @@ export default defineConfig({
     // Bind to all interfaces so WebContainer's server-ready event fires.
     host: true,
     port: 5173,
+    // Allow sandboxed/proxied preview hosts (e.g. *.e2b.app) to load the
+    // dev server. Vite blocks unknown Hosts by default.
+    allowedHosts: true,
     // Freebuff requires HMR to remain disabled in the preview iframe.
     hmr: false,
   },
