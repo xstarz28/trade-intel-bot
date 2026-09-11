@@ -9,9 +9,19 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "mobile:build": "MOBILE_BUILD=1 vite build",
+    "mobile:sync": "npm run mobile:build && cap sync",
+    "mobile:sync:android": "npm run mobile:build && cap sync android",
+    "mobile:sync:ios": "npm run mobile:build && cap sync ios",
+    "mobile:verify": "node scripts/verify-mobile-artifacts.mjs"
   },
   "dependencies": {
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/core": "^7.6.9",
+    "@capacitor/keyboard": "^7.0.6",
+    "@capacitor/splash-screen": "^7.0.5",
+    "@capacitor/status-bar": "^7.0.6",
     "@convex-dev/auth": "^0.0.90",
     "@hookform/resolvers": "^5.2.2",
     "@jridgewell/trace-mapping": "^0.3.31",
@@ -73,6 +83,9 @@
   },
   "devDependencies": {
     "@auth/core": "^0.37.4",
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/cli": "^7.6.9",
+    "@capacitor/ios": "^7.6.9",
     "@eslint/js": "^9.39.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^7.0.1",

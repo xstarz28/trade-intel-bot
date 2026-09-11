@@ -8,7 +8,14 @@ import { defineConfig } from "vite";
 export default defineConfig({
   // Relative base so all asset URLs resolve inside the preview iframe
   // instead of leaking to the parent domain.
-  base: './',
+  //
+  // Phase 179 — the mobile build MUST override this to an absolute '/'.
+  // Capacitor serves the bundle over a real origin and the app uses
+  // BrowserRouter, so a deep link to `/dashboard` makes the browser resolve
+  // a relative `./assets/x.js` against `/dashboard/`, which 404s and yields a
+  // blank screen. Absolute asset paths resolve identically from every route.
+  // Set MOBILE_BUILD=1 (see `npm run mobile:build`) to switch.
+  base: process.env.MOBILE_BUILD === '1' ? '/' : './',
   plugins: [vlyPlugin(), react(), tailwindcss()],
   resolve: {
     alias: {
