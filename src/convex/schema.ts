@@ -335,6 +335,25 @@ const schema = defineSchema(
       unavailableComponents: v.array(v.string()),
     })
       .index("by_user", ["userId", "timestamp"]),
+
+    // Phase 169 — Commercial entitlement.
+    //
+    // Server-authoritative. The free-signal counter MUST live here rather
+    // than in localStorage: a client-side counter is reset by a reload, a
+    // private window, clearing storage, or simply calling the backend
+    // directly, which would make the free tier effectively unlimited.
+    //
+    // One row per user, created lazily on first use.
+    entitlements: defineTable({
+      userId: v.id("users"),
+      /** "GUEST" | "PREMIUM" — resolved server-side, never sent by the client. */
+      plan: v.string(),
+      /** Actionable profit signals consumed. Monotonic; never decremented. */
+      profitSignalsUsed: v.number(),
+      /** When the current Premium period ends, if any. */
+      premiumUntil: v.optional(v.number()),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
   },
   {
     schemaValidation: false,
