@@ -115,6 +115,12 @@ export interface CandidateInput {
   // ── Dedup / scoring ──
   /** Dependency groups already counted (to avoid double-counting). */
   dependencyGroupsUsed?: string[];
+  /**
+   * Phase 158 — correlation grouping key derived from provider-native
+   * metadata. Used only to cap correlated exposure in ranking output.
+   * Never directional evidence.
+   */
+  correlationKey?: string;
 
   // ── Evaluation metadata ──
   /** Analysis result confidence (0-100) if analysis was run. */

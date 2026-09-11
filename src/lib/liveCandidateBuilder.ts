@@ -36,6 +36,14 @@ export interface LiveCandidateSource {
     provider: string;
     providerInstrumentId: string;
   };
+  /**
+   * Phase 158 — correlation grouping key derived from provider-native
+   * metadata (asset class + base asset).
+   *
+   * Used ONLY to cap how many correlated instruments surface together.
+   * It is never directional evidence and never merges two identities.
+   */
+  correlationKey?: string;
   /** Market data from provider (if available). */
   marketData?: MarketData;
   /** Technical data computed from candles (if available). */
@@ -220,6 +228,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     hasLiveData,
     freshness,
     providerCoverage,
+    ...(source.correlationKey ? { correlationKey: source.correlationKey } : {}),
 
     // Structure
     htfBias: extractHtfBias(tech),

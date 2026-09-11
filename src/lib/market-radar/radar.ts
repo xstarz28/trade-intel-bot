@@ -33,7 +33,10 @@ import {
   meetsFreshness,
   HORIZON_REFRESH_PRIORITY,
 } from "./types";
-import { DEFAULT_UNIVERSE, CORRELATION_CLUSTERS } from "./universe";
+// Phase 158: DEFAULT_UNIVERSE is deliberately NOT imported here.
+// The radar scans the sources it is given; it never enumerates a static
+// instrument list. Only correlation metadata is consumed from this module.
+import { CORRELATION_CLUSTERS } from "./universe";
 import { buildRadarCandidate, type RadarCandidateSource } from "./candidate-builder";
 import {
   checkFreshnessEligibility,
