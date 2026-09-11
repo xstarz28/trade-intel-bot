@@ -18,6 +18,7 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { buildTreasuryContext } from "../lib/data/treasury";
+import { getProviderCache } from "../lib/data/provider-cache-registry";
 
 const BASE = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml";
 
@@ -48,13 +49,41 @@ export const fetchTreasuryYields = action({
     const lastMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
     const prevMonth = monthKey(lastMonthDate);
 
-    // Four independent legs — allSettled semantics via per-leg try/catch.
-    const [nomThis, nomPrev, realThis, realPrev] = await Promise.all([
-      fetchFeed("daily_treasury_yield_curve", thisMonth),
-      fetchFeed("daily_treasury_yield_curve", prevMonth),
-      fetchFeed("daily_treasury_real_yield_curve", thisMonth),
-      fetchFeed("daily_treasury_real_yield_curve", prevMonth),
-    ]);
+    // Phase 178c — the Treasury publishes the yield curve ONCE per business
+    // day, so re-fetching four XML feeds on every analysis cannot yield new
+    // information. Cached for 6h, keyed on the two month-partitions actually
+    // requested (the URL dimensions), so a month rollover is a new key.
+    //
+    // The RAW FEED PAYLOADS are cached, not the built context:
+    // `buildTreasuryContext` recomputes freshness from the observation date
+    // against the current clock on every read, so a cached curve ages
+    // honestly and a hit never makes an old observation look new.
+    const evidence = await getProviderCache().fetch<(string | undefined)[]>(
+      {
+        provider: "us-treasury",
+        dataset: "treasury",
+        qualifier: `${thisMonth},${prevMonth}`,
+      },
+      async () => {
+        // Four independent legs — allSettled semantics via per-leg try/catch.
+        const legs = await Promise.all([
+          fetchFeed("daily_treasury_yield_curve", thisMonth),
+          fetchFeed("daily_treasury_yield_curve", prevMonth),
+          fetchFeed("daily_treasury_real_yield_curve", thisMonth),
+          fetchFeed("daily_treasury_real_yield_curve", prevMonth),
+        ]);
+        // Every leg failed: acquire nothing rather than cache an empty curve.
+        if (legs.every((l) => l === undefined)) return null;
+        return { data: legs, observedAt: Date.now() };
+      },
+    );
+    if (!evidence) {
+      return {
+        success: false as const,
+        error: "Treasury feeds unavailable — no yield curve could be acquired.",
+      };
+    }
+    const [nomThis, nomPrev, realThis, realPrev] = evidence.data;
 
     const ctx = buildTreasuryContext([nomThis, nomPrev], [realThis, realPrev], Date.now());
     if (!ctx.available) {
