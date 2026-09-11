@@ -746,6 +746,7 @@ const id: Translations = {
     entry: "Masuk:",
     current: "Saat ini:",
     pnl: "PnL:",
+    rMultiple: "R-Multiple",
     sl: "SL:",
     tp: "TP:",
     shortTerm: "Jangka pendek:",

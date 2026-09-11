@@ -6,8 +6,10 @@
  * quality and slow-macro provenance. Presentation ONLY — the component is
  * rendered with a REAL engine result and never computes decisions itself.
  */
+import React from "react";
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { I18nProvider } from "@/lib/i18n";
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { runAnalysis } from "./analysis-engine";
 import {
@@ -23,6 +25,11 @@ import type { AnalysisInput } from "@/types/analysis";
 type RunSpec = Parameters<typeof assemble>[0] & Record<string, unknown>;
 const run = (spec: RunSpec = {}) =>
   runAnalysis({ ...assemble(spec), ...spec } as never);
+
+// AnalysisResultDisplay consumes the i18n context, so every render must be
+// wrapped in the provider exactly as the application does.
+const render = (ui: React.ReactElement) =>
+  rtlRender(<I18nProvider>{ui}</I18nProvider>);
 
 const BULL = {
   structure: "HH/HL" as const,

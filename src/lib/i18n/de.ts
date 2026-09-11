@@ -751,6 +751,7 @@ const de: Translations = {
     entry: "Einstieg:",
     current: "Aktuell:",
     pnl: "PnL:",
+    rMultiple: "R-Vielfaches",
     sl: "SL:",
     tp: "TP:",
     shortTerm: "Kurzfristig:",
