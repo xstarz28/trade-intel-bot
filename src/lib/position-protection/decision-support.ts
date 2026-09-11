@@ -37,7 +37,8 @@ export interface InvalidationConditionDetailed {
   currentState: string;
   invalidatingState: string;
   status: InvalidationStatus;
-  distancePct: number;
+  /** Undefined when the distance could not be computed. */
+  distancePct?: number;
 }
 
 export interface WatchItem {
@@ -320,7 +321,10 @@ export function deriveInvalidationConditions(
     return {
       description: ic.description,
       sourceDimension: "PROTECTION",
-      currentState: `Distance: ${ic.distancePct.toFixed(2)}%`,
+      currentState:
+        ic.distancePct === undefined
+          ? "Distance: unavailable"
+          : `Distance: ${ic.distancePct.toFixed(2)}%`,
       invalidatingState: ic.description,
       status,
       distancePct: ic.distancePct,

@@ -300,13 +300,26 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
   const isProfit = profit.profitState === "PROFITABLE" || profit.profitState === "STRONGLY_PROFITABLE";
   const currentProfit = profit.unrealizedPnL;
 
+  // When the live P/L is unknown, the previously recorded peak must be left
+  // untouched. Overwriting or comparing against an unknown value would either
+  // erase a real peak or silently skip the giveback check — note that every
+  // comparison against NaN is false, which is exactly how this failed before.
   let peakProfitSeen = input.monitoringState?.peakProfitSeen;
-  if (isProfit && (peakProfitSeen === undefined || currentProfit > peakProfitSeen)) {
+  if (
+    currentProfit !== undefined &&
+    isProfit &&
+    (peakProfitSeen === undefined || currentProfit > peakProfitSeen)
+  ) {
     peakProfitSeen = currentProfit;
   }
 
   // Recalculate giveback if we have peak
-  if (peakProfitSeen !== undefined && peakProfitSeen > 0 && currentProfit < peakProfitSeen) {
+  if (
+    currentProfit !== undefined &&
+    peakProfitSeen !== undefined &&
+    peakProfitSeen > 0 &&
+    currentProfit < peakProfitSeen
+  ) {
     profit.peakProfit = peakProfitSeen;
     profit.givebackPct = ((peakProfitSeen - currentProfit) / peakProfitSeen) * 100;
   }
