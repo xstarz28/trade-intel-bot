@@ -135,10 +135,97 @@ Before launch you must:
 3. Optionally purge the value from history (`git filter-repo` or BFG) and
    force-push. Do this only after rotating; it rewrites commit hashes.
 
+#### Phase 172 — measured exposure scope
+
+Re-verified by scanning every reachable commit. Reported as counts only; the
+value itself is never printed by the audit.
+
+| Check | Result |
+| --- | --- |
+| Literal in the current working tree | **absent** |
+| Literal in tracked files on this branch | **absent** |
+| Literal in the built bundle (`dist/`) | **absent** |
+| Literal in `.env.example`, fixtures, docs, tests | **absent** |
+| Commits still containing the literal | **9** |
+| Distinct file path across those commits | `src/convex/auth/emailOtp.ts` |
+| Literal in the **`origin/main` working tree** | **PRESENT** |
+
+The last row is the important one and is easy to miss: `origin/main` is still
+at `51c9dde`, which predates the Phase 165 removal. The credential is therefore
+not merely in history on `main` — it is in `main`'s **current checked-out
+source**. Anyone cloning the default branch today gets the live key in plain
+text. This is an additional reason not to treat `main` as production-ready.
+
+#### Safe remediation order (after rotation, never before)
+
+Rewriting shared history invalidates every existing clone and all open PRs, so
+this is deliberately NOT automated here. Run it only once the key is revoked.
+
+```bash
+# 0. PREREQUISITE: revoke the old key at the provider first.
+#    Until that is done, purging history only hides the exposure.
+
+# 1. Merge the remediated branch so main no longer serves the literal.
+git switch main && git merge --ff-only arena/01a08e67-trade-intel-bot
+
+# 2. Back up before rewriting.
+git clone --mirror <remote-url> repo-backup.git
+
+# 3. Purge the literal from every commit. Put the value in a local
+#    replacements file; do NOT commit that file.
+#    echo 'literal:<OLD_KEY>==>OTP_EMAIL_API_KEY_REMOVED' > /tmp/replace.txt
+git filter-repo --replace-text /tmp/replace.txt
+
+# 4. Force-push all refs, then have every collaborator re-clone.
+git push --force --all && git push --force --tags
+```
+
+After step 4, re-run the scan to confirm zero matches remain:
+
+```bash
+git rev-list --all | while read c; do
+  git grep -qI "<OLD_KEY>" "$c" -- 2>/dev/null && echo "STILL PRESENT: $c"
+done
+```
+
+Note that GitHub retains unreferenced objects for a period even after a force
+push, so rotation — not history rewriting — remains the step that actually
+neutralizes the exposure.
+
 Related hardening shipped in the same phase: the handler previously threw
 `JSON.stringify(error)`, which serialized the whole axios error — including the
 request headers carrying the key and the OTP itself — into the error message.
 It now reports the HTTP status only.
+
+### Phase 172 — discovery → scanner path verified (mocked transport)
+
+The full runtime path was exercised end to end against the REAL production
+functions, in the same order `Dashboard.runDiscoveryCycle` calls them:
+
+```
+okx-discovery.discoverOkxInstruments(transport)      raw OKX JSON
+  -> runtime.normalizeOkxDiscoveryAction()
+  -> pipeline.runDiscoveryPipelineStep()
+       -> registry.selectAcquirableInstruments()      capability/state filter
+       -> liveScanner.selectRotatingDiscoveryBatch()  per-cycle budget
+       -> runtime.toAcquisitionResults()              identity re-binding
+  -> liveScanner.scanInstruments()                    ranked output
+```
+
+Only two seams are injected: the HTTP transport and the acquisition callback —
+exactly the seam the Convex action occupies in production. No pipeline logic is
+re-implemented in the test.
+
+`selectRotatingDiscoveryBatch` **is** wired into the runtime path
+(`discovery/pipeline.ts:160`), not merely a test helper. It is a per-cycle work
+budget, not a whitelist: the cursor wraps modulo the discovered set, and
+coverage was proven exhaustive for set sizes 3/5/7/11 against budgets 1/2/4 —
+the awkward non-dividing combinations where starvation bugs hide.
+
+**Live provider verification remains externally BLOCKED.** OKX and CoinGecko
+are firewalled in the sandbox, so the transport is deterministic and mocked.
+That proves our wiring, not OKX uptime, and must not be reported as live
+provider verification.
 
 ### Silent-failure patterns found in Phases 170–171 — read this one too
 
