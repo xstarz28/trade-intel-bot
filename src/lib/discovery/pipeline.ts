@@ -44,10 +44,22 @@ export interface DiscoveryPipelineState {
   liveSources: Map<string, LiveCandidateSource>;
   /** Rotation cursor so acquisition work spreads over the whole universe. */
   cursor: number;
+  /**
+   * Phase 161 — providers seen succeeding at least once.
+   *
+   * Lets a provider that succeeded before and is now absent be reported as
+   * a failure, instead of its disappearance going unnoticed.
+   */
+  knownProviders: string[];
 }
 
 export function createPipelineState(): DiscoveryPipelineState {
-  return { tracked: new Map(), liveSources: new Map(), cursor: 0 };
+  return {
+    tracked: new Map(),
+    liveSources: new Map(),
+    cursor: 0,
+    knownProviders: [],
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -64,6 +76,8 @@ export interface NativeAcquisitionResult {
   source?: LiveCandidateSource;
   /** Observation timestamp of the acquired data. */
   observedAt?: number;
+  /** Why the acquisition failed. Surfaced to the scanner, never hidden. */
+  error?: string;
 }
 
 export type NativeAcquisitionFn = (
@@ -96,6 +110,13 @@ export interface PipelineStepResult {
   acquired: number;
   /** Instruments dropped because they expired or were delisted. */
   evicted: string[];
+  /**
+   * Phase 161 — provider-attributed failures from this cycle.
+   *
+   * Reported so a degraded scan is visibly degraded instead of silently
+   * looking like a healthy scan that simply found fewer opportunities.
+   */
+  providerErrors: string[];
 }
 
 /**
@@ -143,17 +164,28 @@ export async function runDiscoveryPipelineStep(
   );
 
   // 3. Acquire. Failures are outcomes, never exceptions that lose state.
+  const providerErrors: string[] = [];
+
+  // Discovery-level failures are reported before acquisition even starts.
+  for (const provider of state.knownProviders) {
+    if (!succeededProviders.includes(provider)) {
+      providerErrors.push(`${provider}: discovery failed this cycle`);
+    }
+  }
+
   let results: NativeAcquisitionResult[] = [];
   if (batch.length > 0) {
     try {
       results = await acquire(batch);
-    } catch {
+    } catch (err) {
       // Total acquisition failure = every attempted instrument failed.
+      const reason = err instanceof Error ? err.message : "acquisition threw";
       results = batch.map((instrument) => ({
         provider: instrument.provider,
         providerInstrumentId: instrument.providerInstrumentId,
         assetClass: instrument.assetClass,
         success: false,
+        error: reason,
       }));
     }
   }
@@ -173,6 +205,15 @@ export async function runDiscoveryPipelineStep(
 
     // Failure: record it, but do NOT touch the retained live source.
     outcomes.push({ key, success: false });
+
+    // Attribute the failure to its provider and native id so a degraded
+    // scan is auditable rather than silently smaller.
+    const retained = liveSources.has(key) ? " (previous data retained)" : "";
+    providerErrors.push(
+      `${result.provider}: ${result.providerInstrumentId} acquisition failed${
+        result.error ? ` — ${result.error}` : ""
+      }${retained}`,
+    );
   }
 
   tracked = applyAcquisitionOutcomes(tracked, outcomes, now);
@@ -186,11 +227,16 @@ export async function runDiscoveryPipelineStep(
     tracked.delete(key);
   }
 
+  const knownProviders = Array.from(
+    new Set([...state.knownProviders, ...succeededProviders]),
+  ).sort();
+
   return {
-    state: { tracked, liveSources, cursor: nextCursor },
+    state: { tracked, liveSources, cursor: nextCursor, knownProviders },
     liveSources: Array.from(liveSources.values()),
     attempted: batch.length,
     acquired: results.filter((r) => r.success).length,
     evicted,
+    providerErrors,
   };
 }
