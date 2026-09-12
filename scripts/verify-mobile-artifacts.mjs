@@ -14,9 +14,9 @@
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { join, extname } from "node:path";
+import { extname, join, sep } from "node:path";
 
-const ROOT = process.cwd();
+const ROOT = process.cwd().split(sep).join("/");
 const problems = [];
 const notes = [];
 
@@ -42,7 +42,12 @@ const walk = (dir, out = []) => {
     const full = join(dir, entry);
     const st = statSync(full);
     if (st.isDirectory()) walk(full, out);
-    else out.push(full);
+    // Phase 182: normalise to forward slashes. This scanner runs on a Windows
+    // runner too, where join() yields backslashes — which silently broke both
+    // the relative-path exemption and dotenv detection, because every pattern
+    // here is written with "/". Normalising once at the source keeps the rest
+    // of the file platform-independent.
+    else out.push(full.split(sep).join("/"));
   }
   return out;
 };
