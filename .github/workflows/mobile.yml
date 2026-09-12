@@ -39,8 +39,6 @@ name: Mobile packaging
 #   vitest.config.ts, vitest.live.config.ts
 #                             test-runner config; not a build input
 #   .gitignore                VCS metadata
-#   isolate/**                stale committed build OUTPUT from an older
-#                             revision; not an input to anything
 #
 # Everything else triggers, including src/**, public/**, index.html,
 # package.json, package-lock.json, vite.config.ts, postcss.config.cjs,
@@ -65,7 +63,6 @@ on:
       - ".gitignore"
       - "vitest.config.ts"
       - "vitest.live.config.ts"
-      - "isolate/**"
   pull_request:
     paths-ignore: *non_build_inputs
 

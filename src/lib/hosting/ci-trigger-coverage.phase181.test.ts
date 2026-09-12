@@ -207,7 +207,6 @@ describe("Phase 181 — mobile workflow trigger coverage", () => {
     ["eslint.config.js", "vite build does not run eslint"],
     ["vitest.config.ts", "test-runner config is not a build input"],
     [".gitignore", "VCS metadata"],
-    ["isolate/assets/index-CWTi03nT.js", "stale committed build output"],
   ];
 
   it.each(mustNotTrigger)("skips mobile validation for %s (%s)", (file) => {

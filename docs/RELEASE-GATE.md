@@ -20,8 +20,8 @@ RC commit `dea46ef` on `arena/01a08e67-trade-intel-bot`. All timestamps UTC.
 | Gate | Status | Evidence | Environment | Timestamp |
 | --- | --- | --- | --- | --- |
 | Source/RC identity | **PASS** | `dea46ef`; build provenance embedded in the artifact matches `HEAD` | Local build | 2026-09-12T04:40Z |
-| Secret rotation | **BLOCKED** | Credential live in 9 commits incl. `origin/main` tip; rotation needs `auth.freebuff.app` access | External vendor | 2026-09-12T04:20Z |
-| History remediation | **BLOCKED** | Must follow rotation. Repo is shallow/grafted — `filter-repo` needs a full mirror clone | External | 2026-09-12T04:20Z |
+| Secret rotation | **BLOCKED** | Credential live in **270** commits (corrected in Phase 184) incl. `origin/main` tip; rotation needs `auth.freebuff.app` access | External vendor | 2026-09-12T05:10Z |
+| History remediation | **BLOCKED** | Gated behind rotation. Procedure **rehearsed and verified** on a disposable mirror: 0 credential blobs, 306/306 commits preserved, exactly 1 source blob changed | Sandbox rehearsal | 2026-09-12T05:20Z |
 | Convex codegen | **BLOCKED** | `npx convex codegen` → "No CONVEX_DEPLOYMENT set"; control plane HTTP 000 | Sandbox | 2026-09-12T04:22Z |
 | Convex deployment | **BLOCKED** | `provision/api/dashboard.convex.dev` all HTTP 000 (TLS allowlist) | Sandbox | 2026-09-12T04:15Z |
 | Evidence D | **BLOCKED** | Requires a deployed backend; mocks explicitly do not count | — | 2026-09-12T04:15Z |

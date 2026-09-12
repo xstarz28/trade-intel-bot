@@ -693,7 +693,54 @@ RC `dea46ef`. All timestamps 2026-09-12 UTC.
 
 ---
 
-## 21. Sign-off
+## 21. Phase 184 — credential scope correction and rewrite rehearsal
+
+RC `be98364`. 2026-09-12 UTC. The security blocker remains ACTIVE: rotation is
+operator-gated and has not been confirmed.
+
+### Executed
+
+| ID | Step | Environment | Result | Evidence | Status |
+|---|---|---|---|---|---|
+| 21.1 | Restore full history | Sandbox | PASS | `git fetch --unshallow`: 1 → **306** reachable commits | AUTOMATED |
+| 21.2 | Re-audit affected commits | Sandbox | PASS | **270** affected (previous figure of 9 was a shallow-clone artifact) | AUTOMATED |
+| 21.3 | Enumerate affected refs | Sandbox | PASS | 7 refs reach the credential, incl. previously invisible `phase-157-live-discovery-lifecycle` | AUTOMATED |
+| 21.4 | Blob-level scan of all objects | Sandbox | PASS | 3,324 objects / 1,670 text blobs → **1 distinct blob**, one path | AUTOMATED |
+| 21.5 | Commit-message scan | Sandbox | PASS | 0 occurrences | AUTOMATED |
+| 21.6 | Tag-object scan | Sandbox | PASS | 0 occurrences | AUTOMATED |
+| 21.7 | Mirror backup | Sandbox | PASS | `/home/user/backup-mirror-be98364.git`, fsck clean, 306 commits, 7 refs | AUTOMATED |
+| 21.8 | **Rewrite rehearsal** (disposable copy) | Sandbox | PASS | `filter-repo` exit 0; 306/306 commits preserved; 4 refs rewritten | AUTOMATED |
+| 21.9 | Post-rewrite zero-match (rehearsal) | Sandbox | PASS | **0** credential blobs | AUTOMATED |
+| 21.10 | Rewrite is surgical | Sandbox | PASS | Exactly **1** source blob changed; RC tip tree hash **identical** | AUTOMATED |
+| 21.11 | History scanner: fails when dirty | Sandbox | PASS | Exit 1 on the real repository today | AUTOMATED |
+| 21.12 | History scanner: passes when clean | Rehearsed mirror | PASS | Exit 0 | AUTOMATED |
+| 21.13 | History scanner: refuses shallow clones | Sandbox | PASS | Depth-1 clone → refuses with exit 1 instead of reporting clean | AUTOMATED |
+| 21.14 | `isolate/` dependency review | Sandbox | PASS | No build, deploy, test or packaging dependency | AUTOMATED |
+| 21.15 | `isolate/` removal | Sandbox | PASS | 11 tracked files deleted; CI filter and its test updated | AUTOMATED |
+| 21.16 | Clean build after removal | Sandbox | PASS | `tsc -b` 0, `vite build` 0 | AUTOMATED |
+| 21.17 | Current-tree credential scan | Sandbox | PASS | 0 occurrences | AUTOMATED |
+| 21.18 | Web artifact credential scan | Sandbox | PASS | 15 `dist/` files, 0 occurrences | AUTOMATED |
+| 21.19 | Mobile artifact scan | Sandbox | PASS | `mobile:verify` PASS | AUTOMATED |
+| 21.20 | Full gate suite | Sandbox | PASS | 234 test files, tsc 0, build 0, lint 1517 = baseline | AUTOMATED |
+
+### Blocked — operator action required
+
+| ID | Step | Blocking dependency | Status |
+|---|---|---|---|
+| 21.21 | Rotate the OTP credential | Operator + `auth.freebuff.app` | BLOCKED |
+| 21.22 | Configure replacement in Convex | Operator + deployment | BLOCKED |
+| 21.23 | Revoke the old credential | Operator | BLOCKED |
+| 21.24 | Verify the old credential returns 401/403 | Operator | BLOCKED |
+| 21.25 | Execute the real history rewrite | Gated behind 21.24 | BLOCKED |
+| 21.26 | Force-push rewritten refs | Gated behind 21.25 | BLOCKED |
+| 21.27 | New RC tag `rc-184` on rewritten history | Gated behind 21.26 | BLOCKED |
+| 21.28 | Rebuild and re-verify provenance | Gated behind 21.27 | BLOCKED |
+
+**Phase 184 totals: 20 executed and PASS, 8 blocked, 0 failed, 0 manufactured.**
+
+---
+
+## 22. Sign-off
 
 | Field | Value |
 | --- | --- |
