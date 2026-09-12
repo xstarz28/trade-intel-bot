@@ -111,3 +111,29 @@ security, backend and runtime gates may not be BLOCKED — three of them are.
 - **F3 light mode** — post-RC product gap, per the existing documented
   classification. Not changed in this phase.
 - **ARM64 Windows** — documented, not built, not claimed.
+
+## Phase 186 — deployment pipeline status
+
+The deployment pipeline is prepared and validated. No deployment exists.
+
+| Item | Status |
+| --- | --- |
+| Convex control plane reachable from the build environment | NO (HTTP 000) |
+| `CONVEX_DEPLOYMENT` configured | NO |
+| `npx convex codegen` executed against a real deployment | BLOCKED |
+| Staging/preview deployment | BLOCKED |
+| Production deployment | BLOCKED — and gated on Phase 184 regardless |
+| Configuration preflight (`npm run convex:preflight`) | READY, mutation-tested |
+| Evidence Level D | NOT ACHIEVED |
+
+Two independent reasons block a production deployment. Clearing one does not
+clear the other:
+
+1. **Environment** — no Convex credentials and no network egress to the
+   control plane from this environment.
+2. **Security (Phase 184)** — the compromised OTP credential is still live and
+   still reachable in Git history. This gate holds even if a deployment
+   becomes technically possible.
+
+A successful deployment would be evidence that the backend runs. It would not
+be permission to release.
