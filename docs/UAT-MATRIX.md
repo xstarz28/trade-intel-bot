@@ -717,6 +717,7 @@ operator-gated and has not been confirmed.
 | 21.13 | History scanner: refuses shallow clones | Sandbox | PASS | Depth-1 clone → **exit 2**, refuses instead of reporting clean | AUTOMATED |
 | 21.13a | Scanner exit codes are unambiguous | Sandbox | PASS | 0 clean / **1 found** / **2 refused** — verified all three | AUTOMATED |
 | 21.13b | CI history job runs on full history | GitHub Actions | PASS | Run 34692174870: scanned and **failed correctly** (credential reachable) | AUTOMATED |
+| 21.13c | CI job must not report false green | GitHub Actions | PASS | A `::warning::` variant made the job read **success** while the credential was still reachable; corrected to fail. Caught by checking the job conclusion, not the step output | AUTOMATED |
 | 21.14 | `isolate/` dependency review | Sandbox | PASS | No build, deploy, test or packaging dependency | AUTOMATED |
 | 21.15 | `isolate/` removal | Sandbox | PASS | 11 tracked files deleted; CI filter and its test updated | AUTOMATED |
 | 21.16 | Clean build after removal | Sandbox | PASS | `tsc -b` 0, `vite build` 0 | AUTOMATED |
