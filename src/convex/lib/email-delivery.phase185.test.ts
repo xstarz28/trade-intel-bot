@@ -398,11 +398,11 @@ describe("11b. the throttle is actually WIRED INTO the auth provider", () => {
   // `sendVerificationRequest` ignored the throttle entirely. Testing a guard
   // in isolation proves the guard works, not that anything calls it. These
   // tests drive the real provider callback.
-  // `vi.resetModules()` makes emailOtp import a FRESH copy of the throttle
-  // module — a different instance from the one imported at the top of this
-  // file. Without restoring the registry afterwards, the statically imported
-  // throttle tests would observe unrelated state. Learned the hard way: this
-  // leaked into an unrelated test and failed it.
+  //
+  // Phase 187: the allowance moved into the database, so the callback now
+  // needs an ActionCtx. The fake ctx below routes runMutation into the SAME
+  // policy functions the real mutation uses, so these still prove the
+  // provider consults the limiter — the assertion that actually matters.
   afterEach(() => {
     vi.resetModules();
     resetResendThrottleForTests();
@@ -411,8 +411,17 @@ describe("11b. the throttle is actually WIRED INTO the auth provider", () => {
   const loadProvider = async () => {
     vi.resetModules();
     const mod = await import("../auth/emailOtp");
-    return mod.emailOtp as unknown as {
-      sendVerificationRequest: (args: { identifier: string; token: string }) => Promise<void>;
+    const { makeDurableLimiterStub } = await import("./testing/durableLimiterStub");
+    const stub = makeDurableLimiterStub();
+    const provider = mod.emailOtp as unknown as {
+      sendVerificationRequest: (
+        args: { identifier: string; token: string },
+        ctx: unknown,
+      ) => Promise<void>;
+    };
+    return {
+      sendVerificationRequest: (args: { identifier: string; token: string }) =>
+        provider.sendVerificationRequest(args, stub.ctx),
     };
   };
 

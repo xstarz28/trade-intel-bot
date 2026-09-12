@@ -25,6 +25,7 @@ import type * as marketData from "../marketData.js";
 import type * as notificationPreferences from "../notificationPreferences.js";
 import type * as notifications from "../notifications.js";
 import type * as okx from "../okx.js";
+import type * as otpLimiter from "../otpLimiter.js";
 import type * as positionProtection from "../positionProtection.js";
 import type * as protectedAnalysis from "../protectedAnalysis.js";
 import type * as runtimeHealth from "../runtimeHealth.js";
@@ -56,6 +57,7 @@ declare const fullApi: ApiFromModules<{
   notificationPreferences: typeof notificationPreferences;
   notifications: typeof notifications;
   okx: typeof okx;
+  otpLimiter: typeof otpLimiter;
   positionProtection: typeof positionProtection;
   protectedAnalysis: typeof protectedAnalysis;
   runtimeHealth: typeof runtimeHealth;

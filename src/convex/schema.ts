@@ -354,6 +354,24 @@ const schema = defineSchema(
       premiumUntil: v.optional(v.number()),
       updatedAt: v.number(),
     }).index("by_user", ["userId"]),
+
+    /**
+     * Phase 187 — durable OTP resend limiting.
+     *
+     * Authoritative across every Convex instance, which the previous
+     * in-memory Map could not be. Written by exactly one mutation
+     * (`otpLimiter.consumeResendAllowance`) so check-and-record stay atomic.
+     *
+     * Stores a SHA-256 hash of the normalised email, never the address.
+     */
+    otpResendBuckets: defineTable({
+      /** SHA-256 hex of the normalised identifier. */
+      identityHash: v.string(),
+      /** Send times inside the rolling window; pruned on every read. */
+      sendTimestamps: v.array(v.number()),
+      /** Most recent send, used for retention/cleanup. */
+      lastSendAt: v.number(),
+    }).index("by_identity", ["identityHash"]),
   },
   {
     schemaValidation: false,
