@@ -244,7 +244,13 @@ describe("5-8. failures never leak the OTP, the key or the recipient", () => {
     await sendXstarzVerificationEmail(
       { recipient: RECIPIENT, otp: OTP, expiryMinutes: 10 },
       {
-        env: validEnv({ XSTARZ_EMAIL_TRANSPORT: "console", XSTARZ_EMAIL_API_KEY: undefined }),
+        // Phase 185b: console is production-forbidden, so this dev-only test
+        // must declare a development deployment.
+        env: validEnv({
+          XSTARZ_DEPLOYMENT_ENV: "development",
+          XSTARZ_EMAIL_TRANSPORT: "console",
+          XSTARZ_EMAIL_API_KEY: undefined,
+        }),
         logger: (m) => logged.push(m),
       },
     );
@@ -411,6 +417,9 @@ describe("11b. the throttle is actually WIRED INTO the auth provider", () => {
   };
 
   const configureEnv = () => {
+    // Phase 185b: the console transport is rejected in production, and an
+    // unset XSTARZ_DEPLOYMENT_ENV resolves to production by design.
+    process.env.XSTARZ_DEPLOYMENT_ENV = "development";
     process.env.XSTARZ_EMAIL_TRANSPORT = "console";
     process.env.XSTARZ_EMAIL_SENDER_ADDRESS = "no-reply@xstarz-placeholder.invalid";
     process.env.XSTARZ_EMAIL_SENDER_NAME = "Xstarz Analysis";
@@ -449,6 +458,7 @@ describe("11b. the throttle is actually WIRED INTO the auth provider", () => {
   });
 
   it("surfaces a delivery failure as a category, never as the OTP", async () => {
+    process.env.XSTARZ_DEPLOYMENT_ENV = "development";
     process.env.XSTARZ_EMAIL_TRANSPORT = "resend";
     process.env.XSTARZ_EMAIL_API_KEY = "";
     process.env.XSTARZ_EMAIL_SENDER_ADDRESS = "";
@@ -531,7 +541,9 @@ describe("15. session model is unchanged by this phase", () => {
     const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     // The hardcoded default issuer is gone: no ambient external trust.
     expect(code).not.toContain('"https://freebuff.com"');
-    expect(code).toContain("VLY_CONVEX_AUTH_ISSUER");
+    // Phase 185b moved the decision behind an explicit policy, so the config
+    // no longer reads the variable inline at all.
+    expect(code).toContain("resolveFederatedIssuer");
   });
 });
 

@@ -1,36 +1,30 @@
 import type { AuthConfig } from "convex/server";
+import { resolveFederatedIssuer } from "./lib/issuerPolicy";
 
 /**
- * Federated sign-in from the legacy hosting platform.
+ * Trusted token issuers.
  *
- * This entry trusts an EXTERNAL issuer: any party controlling that issuer's
- * JWKS can mint a token this deployment will accept as a signed-in user. That
- * is acceptable while the project is previewed on that platform, and not
- * acceptable in production for a product that owns its own identity.
+ * A trusted issuer can mint identities this deployment accepts, so the set is
+ * decided by an explicit policy rather than by reading a variable inline.
+ * See `lib/issuerPolicy.ts` for the reasoning and `docs/AUTHENTICATION.md` for
+ * the operator-facing rules.
  *
- * Phase 185 therefore made it opt-in. It is included only when
- * `VLY_CONVEX_AUTH_ISSUER` is explicitly set, so a production deployment that
- * does not set it trusts exactly one issuer: itself.
- *
- * This is intentionally NOT deleted outright — the preview environment still
- * uses it, and removing it would break the platform the project is developed
- * on. Making it explicit removes the ambient trust without breaking the
- * workflow.
+ * Production trusts only itself. Preview and development may opt into the
+ * legacy platform federation, because the hosting preview still requires it.
  */
-const federatedIssuer = process.env.VLY_CONVEX_AUTH_ISSUER?.trim();
+const federation = resolveFederatedIssuer((key) => process.env[key]);
 
-const federatedProvider =
-  federatedIssuer && federatedIssuer.length > 0
-    ? [
-        {
-          type: "customJwt" as const,
-          issuer: federatedIssuer,
-          jwks: `${federatedIssuer}/api/web/.well-known/jwks.json`,
-          applicationID: "vly-convex",
-          algorithm: "RS256" as const,
-        },
-      ]
-    : [];
+const federatedProvider = federation.federated
+  ? [
+      {
+        type: "customJwt" as const,
+        issuer: federation.issuer,
+        jwks: federation.jwks,
+        applicationID: "vly-convex",
+        algorithm: "RS256" as const,
+      },
+    ]
+  : [];
 
 export default {
   providers: [
