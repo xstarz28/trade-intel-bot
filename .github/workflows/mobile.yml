@@ -102,7 +102,18 @@ jobs:
       # must never be committed.
       - name: Assemble debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          set -euo pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$APK" || { echo "::error::no APK produced"; exit 1; }
+          # A real APK is a zip; verify structure and that the web assets and
+          # the expected application id are actually inside it.
+          unzip -l "$APK" | grep -q 'assets/public/index.html' \
+            || { echo "::error::web assets missing from the APK"; exit 1; }
+          unzip -p "$APK" assets/public/index.html | grep -q 'src="/assets/' \
+            || { echo "::error::APK uses a relative asset base"; exit 1; }
+          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
 
       - name: Verify packaged artifacts contain no secrets
         run: npm run mobile:verify
@@ -132,9 +143,19 @@ jobs:
       - name: Build web assets and sync into the native project
         run: npm run mobile:sync:ios
 
+      # Phase 181: assert the step did real work. A previous run completed
+      # `pod install` in ONE SECOND, which is not plausible when Pods/ is not
+      # committed — exactly the shape of a false green. Verifying the outputs
+      # exist turns "the command exited 0" into "the dependencies are present".
       - name: Install CocoaPods dependencies
         working-directory: ios/App
-        run: pod install --repo-update
+        run: |
+          set -euo pipefail
+          pod install --repo-update
+          test -f Podfile.lock       || { echo "::error::Podfile.lock missing — pod install did nothing"; exit 1; }
+          test -d Pods               || { echo "::error::Pods/ missing — pod install did nothing"; exit 1; }
+          test -d App.xcworkspace    || { echo "::error::App.xcworkspace missing"; exit 1; }
+          echo "Pods installed: $(ls Pods | wc -l) entries"
 
       # CODE_SIGNING_ALLOWED=NO keeps this a pure compile check: it proves the
       # project is structurally sound without requiring an Apple Developer
@@ -142,14 +163,26 @@ jobs:
       - name: Compile for simulator (unsigned)
         working-directory: ios/App
         run: |
+          set -euo pipefail
           xcodebuild \
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-output \
             CODE_SIGNING_ALLOWED=NO \
             build
+          # Prove a binary was actually produced, not just that the tool
+          # exited 0 after deciding there was nothing to do.
+          APP=$(find build-output -name 'App.app' -type d | head -1)
+          test -n "$APP" || { echo "::error::xcodebuild produced no App.app"; exit 1; }
+          test -f "$APP/App" || { echo "::error::App.app contains no executable"; exit 1; }
+          echo "Built: $APP"
+          # The web assets must be inside the bundle, or the app ships empty.
+          test -f "$APP/public/index.html" || { echo "::error::web assets missing from the iOS bundle"; exit 1; }
+          grep -q 'src="/assets/' "$APP/public/index.html" || { echo "::error::iOS bundle uses a relative asset base"; exit 1; }
+          echo "Web assets present with an absolute base."
 
       - name: Verify packaged artifacts contain no secrets
         run: npm run mobile:verify
