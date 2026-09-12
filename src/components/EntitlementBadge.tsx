@@ -50,8 +50,18 @@ export function EntitlementBadge({
     );
   }
 
-  const remaining = entitlement.remaining ?? 0;
-  const exhausted = remaining <= 0;
+  // Phase 188 — a GUEST whose `remaining` the server did not supply is
+  // UNKNOWN, not exhausted.
+  //
+  // The previous `?? 0` collapsed "no number available" into "zero left",
+  // which renders "Free signals used" to a user who may have their full
+  // allowance. That is the UI manufacturing entitlement state, and it is
+  // reachable: the protected action returns `remaining: null` for an
+  // authenticated caller on INVALID_INPUT. Render only the plan when the
+  // count is unknown, and never a fabricated zero.
+  const remaining = entitlement.remaining;
+  const countKnown = typeof remaining === "number" && Number.isFinite(remaining);
+  const exhausted = countKnown && remaining <= 0;
 
   return (
     <Badge
@@ -64,14 +74,16 @@ export function EntitlementBadge({
     >
       {exhausted && <Lock className="size-3" />}
       {t.entitlement.trialLabel}
-      <span>
-        ·{" "}
-        {exhausted
-          ? t.entitlement.signalsExhausted
-          : remaining === 1
-            ? t.entitlement.signalsRemainingOne
-            : txi("entitlement.signalsRemaining", { count: remaining })}
-      </span>
+      {countKnown && (
+        <span>
+          ·{" "}
+          {exhausted
+            ? t.entitlement.signalsExhausted
+            : remaining === 1
+              ? t.entitlement.signalsRemainingOne
+              : txi("entitlement.signalsRemaining", { count: remaining })}
+        </span>
+      )}
     </Badge>
   );
 }
