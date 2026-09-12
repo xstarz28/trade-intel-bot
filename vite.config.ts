@@ -2,20 +2,68 @@ import { vlyPlugin } from "@vly-ai/integrations";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
+
+/**
+ * Phase 180 — build provenance.
+ *
+ * Production must be traceable to an exact commit, so a deployed bug can be
+ * matched to source without guessing which revision shipped. Only the short
+ * SHA, branch and build time are exposed: no author, no message, no remote
+ * URL, nothing that could carry a credential.
+ *
+ * Falls back to "unknown" outside a git checkout (e.g. a CI tarball build)
+ * rather than failing the build.
+ */
+function gitInfo(): { commit: string; branch: string } {
+  const read = (cmd: string): string => {
+    try {
+      return execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    } catch {
+      return "unknown";
+    }
+  };
+  return {
+    commit: read("git rev-parse --short HEAD"),
+    branch: read("git rev-parse --abbrev-ref HEAD"),
+  };
+}
+
+const BUILD = gitInfo();
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Relative base so all asset URLs resolve inside the preview iframe
-  // instead of leaking to the parent domain.
+  // Asset base.
   //
-  // Phase 179 — the mobile build MUST override this to an absolute '/'.
-  // Capacitor serves the bundle over a real origin and the app uses
-  // BrowserRouter, so a deep link to `/dashboard` makes the browser resolve
-  // a relative `./assets/x.js` against `/dashboard/`, which 404s and yields a
-  // blank screen. Absolute asset paths resolve identically from every route.
-  // Set MOBILE_BUILD=1 (see `npm run mobile:build`) to switch.
-  base: process.env.MOBILE_BUILD === '1' ? '/' : './',
+  // Relative ('./') is required by the EDITOR PREVIEW iframe so asset URLs
+  // resolve inside the frame instead of leaking to the parent domain. That is
+  // a dev-time concern only.
+  //
+  // Absolute ('/') is required by every real deployment target, because the
+  // app uses BrowserRouter:
+  //
+  //   Phase 179 (mobile) — Capacitor serves over a real origin, so a deep
+  //   link to /dashboard resolves './assets/x.js' against '/dashboard/'.
+  //
+  //   Phase 180 (web hosting) — the SAME bug exists on production hosting and
+  //   is worse there, because the SPA rewrite ('/*' -> index.html) makes
+  //   /dashboard/assets/x.js return 200 with HTML instead of 404. The browser
+  //   then refuses the module ("Failed to load module script") and renders a
+  //   BLANK PAGE on every deep link and refresh. Measured against the real
+  //   production build served under the production rewrite contract.
+  //
+  // So: relative only for the dev preview, absolute for anything shipped.
+  base:
+    process.env.MOBILE_BUILD === '1' || process.env.NODE_ENV === 'production'
+      ? '/'
+      : './',
+  define: {
+    // Injected at build time; safe to expose (commit id, branch, timestamp).
+    __BUILD_COMMIT__: JSON.stringify(BUILD.commit),
+    __BUILD_BRANCH__: JSON.stringify(BUILD.branch),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   plugins: [vlyPlugin(), react(), tailwindcss()],
   resolve: {
     alias: {

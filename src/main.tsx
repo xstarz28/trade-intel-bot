@@ -56,6 +56,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
+import { describeBuild, isUnsafeDeploymentSource } from "@/lib/build-info";
 import {
   initNativeShell,
   isNativeShell,
@@ -131,7 +132,64 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+/*
+  Phase 180 — build provenance, emitted once at startup.
+
+  Production deploys from the hardened agent branch, NOT from `main` (whose
+  history still contains the leaked OTP credential). Logging the exact commit
+  makes "which revision is live?" answerable from a user's console alone.
+  Carries only commit/branch/timestamp — no author, remote, or env value.
+*/
+console.info(`[Xstarz Analysis] build ${describeBuild()}`);
+if (isUnsafeDeploymentSource()) {
+  console.warn(
+    "[Xstarz Analysis] This artifact was built from `main`, which is NOT a " +
+      "valid production source while the leaked credential remains in its history.",
+  );
+}
+
+/*
+  Phase 180 — fail loudly on a misconfigured deployment.
+
+  VITE_CONVEX_URL is inlined at BUILD time, so an artifact built without it is
+  permanently broken no matter how the server is configured afterwards. In
+  that state ConvexReactClient throws "No address provided" while this module
+  is still evaluating, which means React never mounts and the user sees a
+  blank page with the real cause buried in the console.
+
+  That is the same silent-blank-page failure mode as the asset-path defect
+  this phase fixed, so it gets the same treatment: render an explicit
+  operator-facing message instead of nothing at all. This is a deployment
+  misconfiguration, not a user-facing error, so it is intentionally in
+  English and not routed through i18n — the translation layer itself lives
+  inside the app that has failed to start.
+*/
+const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
+
+if (!convexUrl) {
+  const root = document.getElementById("root");
+  if (root) {
+    root.innerHTML = `
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,sans-serif;background:#0b0f19;color:#e5e7eb">
+        <div style="max-width:32rem">
+          <h1 style="font-size:1.125rem;font-weight:600;margin:0 0 8px">Xstarz Analysis is not configured</h1>
+          <p style="margin:0 0 8px;color:#9ca3af;line-height:1.5">
+            This build was produced without a backend URL, so it cannot reach the
+            analysis service. No market data can be shown.
+          </p>
+          <p style="margin:0;color:#9ca3af;line-height:1.5">
+            Set <code style="color:#93c5fd">VITE_CONVEX_URL</code> in the hosting
+            environment and rebuild. It is read at build time, not at run time.
+          </p>
+        </div>
+      </div>`;
+  }
+  throw new Error(
+    "VITE_CONVEX_URL is not set. It is inlined at build time, so this artifact must be rebuilt with the variable present.",
+  );
+}
+
+const convex = new ConvexReactClient(convexUrl);
 
 /*
   Phase 179 — native shell bootstrap (Android + iOS).

@@ -307,25 +307,7 @@ real observable behaviour.
 
 ---
 
-## 15. Sign-off
-
-| Field | Value |
-| --- | --- |
-| Executed by | |
-| Date | |
-| Build / commit | |
-| Environment (dev / preview / deployed URL) | |
-| Browser + version | |
-| Device(s) | |
-| PASS count | |
-| FAIL count | |
-| BLOCKED count | |
-
-**Release rule:** any `FAIL` on a row marked *"Stop and report"* is a hard
-release blocker. Outstanding `BLOCKED` rows mean the corresponding capability
-is **NOT VERIFIED** — it must never be reported as working.
-
-## 14. Mobile packaging — Android & iOS (Phase 179)
+## 16. Mobile packaging — Android & iOS (Phase 179)
 
 Capacitor wraps the SAME web build on both platforms, so analysis, entitlement,
 provenance and route protection are shared code and cannot diverge by design.
@@ -383,3 +365,94 @@ These rows verify the WRAPPER, not the engine.
 | 14I.15 | installed | Delete, reinstall, launch | Starts signed out. | Session survives reinstall. | BLOCKED | ☐ |
 | 14I.16 | macOS toolchain | `pod install` then build in Xcode | Project builds. | Build failure. | BLOCKED | ☐ |
 | 14I.17 | release build | Inspect the IPA | No secret, no localhost, no privacy permission. | Any secret or unexpected permission. **Stop and report.** | BLOCKED | ☐ |
+
+## 17. Hosting & deployment (Phase 180)
+
+The web client is a static SPA; the backend is a separate Convex deployment.
+Rows here verify the artifact/host contract — the part that no unit test can
+prove because it only exists once something is actually serving files.
+
+**AUTOMATED** rows are covered by `deployment.phase180.test.ts` and
+`npm run mobile:verify` and were executed. **HUMAN** rows need a browser
+against a real deployment. **BLOCKED** rows cannot run in this environment.
+
+### Deep links and refresh behaviour
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 17.1 | deployed URL | Open `/` | Landing page renders. | Blank page or 404. | HUMAN | ☐ |
+| 17.2 | deployed URL | Open `/dashboard` directly in a new tab | App loads, then routes normally (to /auth if signed out). | **Blank page** — check the console for a module MIME-type error. **Stop and report.** | HUMAN | ☐ |
+| 17.3 | on `/journal` | Press browser Refresh | Same route re-renders. | Blank page or 404. **Stop and report.** | HUMAN | ☐ |
+| 17.4 | deployed URL | Open `/no-such-route` | App's own 404 view renders (HTTP 200 + index.html). | Host's raw 404 page. | HUMAN | ☐ |
+| 17.5 | built artifact | Assert every asset ref is root-absolute | No `./assets/...` in `dist/index.html`. | Relative ref reintroduces the blank-page defect. | AUTOMATED — PASS | ☑ |
+| 17.6 | built artifact | Resolve the entry script from `/`, `/dashboard`, `/journal/entry/42` | Identical path each time. | Depth-dependent resolution. | AUTOMATED — PASS | ☑ |
+| 17.7 | repo | Compare `vercel.json` and `public/_redirects` | Both declare an equivalent 200 rewrite. | Host-dependent routing. | AUTOMATED — PASS | ☑ |
+| 17.8 | built artifact | Check asset filenames | All content-hashed. | Unhashed asset served stale after deploy. | AUTOMATED — PASS | ☑ |
+
+### Configuration and provenance
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 17.9 | deployed URL | Open the console on first load | One line: `[Xstarz Analysis] build <commit> (<branch>) built <time>`. | No provenance; live revision unknowable. | HUMAN | ☐ |
+| 17.10 | deployed URL | Confirm the logged branch | Hardened `arena/...` branch. | Built from `main` — a warning is logged; **stop and report**. | HUMAN | ☐ |
+| 17.11 | build without `VITE_CONVEX_URL` | Load the app | Explicit "not configured" screen. | Silent blank page. | AUTOMATED — PASS | ☑ |
+| 17.12 | built artifact | Scan bundles for a localhost backend | None present. | Production points at a nonexistent machine. | AUTOMATED — PASS | ☑ |
+| 17.13 | built artifact | Scan for server-only secret values and env reads | None present. | Provider key exposed. **Stop and report.** | AUTOMATED — PASS | ☑ |
+| 17.14 | deployed backend | Confirm every provider call originates server-side | No provider host appears in browser network traffic. | Client-side provider call leaks a key. **Stop and report.** | HUMAN | ☐ |
+
+### Association files
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 17.15 | deployed URL | GET `/.well-known/assetlinks.json` | Valid JSON, `application/json`, not index.html. | SPA rewrite swallows it; App Links can never verify. | HUMAN | ☐ |
+| 17.16 | deployed URL | GET `/.well-known/apple-app-site-association` | Valid JSON, `application/json`, no `.json` extension. | Same as above for Universal Links. | HUMAN | ☐ |
+| 17.17 | repo | Validate both files' structure and bundle id | `app.xstarz.analysis` in both. | Mismatched id silently breaks deep links. | AUTOMATED — PASS | ☑ |
+| 17.18 | repo | Confirm placeholders remain | Links reported CONFIGURED, **NOT VERIFIED**. | Real values present but docs/UAT still say unverified. | AUTOMATED — PASS | ☑ |
+| 17.19 | signing cert + Team ID exist | Replace placeholders, redeploy, retest on device | Links open in-app. | — | BLOCKED — no keystore, no Apple account | ☐ |
+
+### Deep-link safety
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 17.20 | app installed | Open a link to `//evil.com` | Never navigates off-origin. | Open redirect. **Stop and report.** | AUTOMATED — PASS | ☑ |
+| 17.21 | app installed | Open `javascript:`, `data:`, `file:` links | All rejected. | Script or local-file access. **Stop and report.** | AUTOMATED — PASS | ☑ |
+| 17.22 | app installed | Open a malformed custom-scheme URL | Rejected without crashing. | Unhandled exception on launch. | AUTOMATED — PASS | ☑ |
+
+### CI/CD
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 17.23 | GitHub Actions enabled | Run `ci.yml` | Tests, typecheck, build, secret scan pass; `dist/` uploaded. | Any gate fails. | BLOCKED — not executed from the sandbox | ☐ |
+| 17.24 | GitHub Actions enabled | Run `mobile.yml` → android | Debug APK builds and uploads. | Gradle failure. | BLOCKED — no JDK locally | ☐ |
+| 17.25 | GitHub Actions enabled | Run `mobile.yml` → ios | Unsigned simulator compile succeeds. | Xcode failure. | BLOCKED — no macOS locally | ☐ |
+| 17.26 | APK from CI | Install on a physical Android device | App runs. | — | BLOCKED — no device | ☐ |
+| 17.27 | iOS build | Run on a physical iPhone | App runs. | — | BLOCKED — no iPhone | ☐ |
+
+### Backend deployment
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 17.28 | unrestricted network | `npx convex deploy` | Functions deploy. | — | BLOCKED — Convex TLS blocked by allowlist | ☐ |
+| 17.29 | deployed backend | Set Class B/C variables | Providers report available. | Key missing ⇒ provider unavailable (never fabricated data). | BLOCKED | ☐ |
+| 17.30 | deployed backend | Run one analysis end-to-end | Real provenance and timestamps. | Any fabricated value. **Stop and report.** | BLOCKED | ☐ |
+| 17.31 | **credential rotated** | Confirm the old OTP key is rejected | Old key invalid. | Leaked credential still valid. **Hard release blocker.** | BLOCKED — rotation not performed | ☐ |
+
+---
+
+## 18. Sign-off
+
+| Field | Value |
+| --- | --- |
+| Executed by | |
+| Date | |
+| Build / commit | |
+| Environment (dev / preview / deployed URL) | |
+| Browser + version | |
+| Device(s) | |
+| PASS count | |
+| FAIL count | |
+| BLOCKED count | |
+
+**Release rule:** any `FAIL` on a row marked *"Stop and report"* is a hard
+release blocker. Outstanding `BLOCKED` rows mean the corresponding capability
+is **NOT VERIFIED** — it must never be reported as working.

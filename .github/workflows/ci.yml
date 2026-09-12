@@ -1,0 +1,66 @@
+# Phase 180 — continuous integration for the web artifact.
+#
+# Every gate here runs today in the development sandbox. Nothing in this file
+# depends on a deployment, a Convex control-plane connection, or a provider
+# API key, so it cannot produce a green check that overstates readiness.
+#
+# Deliberately NOT included:
+#   - deploying anywhere (deployment requires the credential rotation that is
+#     still outstanding; see docs/DEPLOYMENT.md)
+#   - any job needing a provider secret (no live provider call belongs in CI)
+name: CI
+
+on:
+  push:
+    branches: ["arena/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Test · typecheck · build · lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The build embeds the commit id for provenance; a shallow clone of
+          # depth 1 still resolves HEAD, which is all `git rev-parse` needs.
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # This project's peer graph cannot be resolved by npm's default
+      # strategy; without the legacy resolver install aborts outright.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Test suite
+        run: npm test
+
+      - name: Typecheck and production build
+        run: npm run build
+
+      # Lint is advisory: the repository carries a known warning backlog, so a
+      # hard failure here would block every change. The count is surfaced for
+      # review instead of silently discarded.
+      - name: Lint (advisory)
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Verify built artifact contains no secrets
+        run: npm run mobile:verify
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7
