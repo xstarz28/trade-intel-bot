@@ -209,11 +209,34 @@ describe("Phase 182 — desktop artifact security", () => {
 
   it("never points the packaged app at a dev server", () => {
     const c = config();
-    // devUrl is used only by `tauri dev`; it must still be a plain localhost
-    // port and never a remote host.
-    if (c.build.devUrl) {
-      expect(c.build.devUrl).toMatch(/^http:\/\/localhost:\d+$/);
-    }
+    /*
+      Phase 183 — proven by Windows CI, not by reasoning.
+
+      `tauri::generate_context!()` bakes the ENTIRE config into the compiled
+      binary. With `devUrl` in the release config, the shipped .exe contained
+      the literal string "localhost:5173" — the binary scanner caught it. A
+      release build does not USE devUrl, but shipping a dev-server URL inside
+      the executable is exactly the class of dev dependency this project
+      forbids in every other artifact.
+
+      It now lives in `tauri.dev.conf.json`, merged only by
+      `npm run desktop:dev`.
+    */
+    expect(c.build.devUrl).toBeUndefined();
+    expect((c.build as { beforeDevCommand?: string }).beforeDevCommand).toBeUndefined();
+  });
+
+  it("keeps the dev server URL in a dev-only overlay config", () => {
+    const dev = JSON.parse(
+      readFileSync(join(TAURI, "tauri.dev.conf.json"), "utf8"),
+    ) as { build: { devUrl: string; beforeDevCommand: string } };
+    expect(dev.build.devUrl).toMatch(/^http:\/\/localhost:\d+$/);
+    expect(dev.build.beforeDevCommand).toBe("npm run dev");
+
+    // And the dev overlay must be wired up, or `desktop:dev` silently loses
+    // its dev server.
+    const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+    expect(pkg.scripts["desktop:dev"]).toContain("tauri.dev.conf.json");
   });
 });
 
