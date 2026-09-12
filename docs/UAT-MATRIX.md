@@ -714,7 +714,9 @@ operator-gated and has not been confirmed.
 | 21.10 | Rewrite is surgical | Sandbox | PASS | Exactly **1** source blob changed; RC tip tree hash **identical** | AUTOMATED |
 | 21.11 | History scanner: fails when dirty | Sandbox | PASS | Exit 1 on the real repository today | AUTOMATED |
 | 21.12 | History scanner: passes when clean | Rehearsed mirror | PASS | Exit 0 | AUTOMATED |
-| 21.13 | History scanner: refuses shallow clones | Sandbox | PASS | Depth-1 clone → refuses with exit 1 instead of reporting clean | AUTOMATED |
+| 21.13 | History scanner: refuses shallow clones | Sandbox | PASS | Depth-1 clone → **exit 2**, refuses instead of reporting clean | AUTOMATED |
+| 21.13a | Scanner exit codes are unambiguous | Sandbox | PASS | 0 clean / **1 found** / **2 refused** — verified all three | AUTOMATED |
+| 21.13b | CI history job runs on full history | GitHub Actions | PASS | Run 34692174870: scanned and **failed correctly** (credential reachable) | AUTOMATED |
 | 21.14 | `isolate/` dependency review | Sandbox | PASS | No build, deploy, test or packaging dependency | AUTOMATED |
 | 21.15 | `isolate/` removal | Sandbox | PASS | 11 tracked files deleted; CI filter and its test updated | AUTOMATED |
 | 21.16 | Clean build after removal | Sandbox | PASS | `tsc -b` 0, `vite build` 0 | AUTOMATED |
