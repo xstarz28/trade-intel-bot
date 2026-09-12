@@ -11,8 +11,12 @@
  *
  *   node scripts/verify-history-clean.mjs
  *
- * Exit 0 = zero occurrences. Exit 1 = occurrences found, or the scan could not
- * be trusted.
+ * Exit codes are distinct, because "found a secret" and "could not look" are
+ * very different outcomes that must never be confused in CI:
+ *
+ *   0 - scanned successfully, zero occurrences
+ *   1 - scanned successfully, occurrences FOUND
+ *   2 - refused to scan (shallow/grafted clone); result would be meaningless
  *
  * REFUSES TO RUN on a shallow or grafted clone. That is deliberate: an earlier
  * audit reported "9 affected commits" from a shallow checkout when the true
@@ -22,7 +26,7 @@
  */
 
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { appendFileSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";
 
 /** sha256(value + "\n") — the trailing newline matches shell `echo` hashing. */
@@ -33,6 +37,17 @@ const TEXT_FILE = /\.(ts|tsx|js|mjs|cjs|json|env|txt|md|html|yml|yaml|sh|toml)$/
 
 const fingerprint = (value) =>
   createHash("sha256").update(value + "\n").digest("hex").slice(0, 16);
+
+/** Mirror the outcome into the CI job summary so it is visible without logs. */
+function summarise(verdict, detail) {
+  const file = process.env.GITHUB_STEP_SUMMARY;
+  if (!file) return;
+  try {
+    appendFileSync(file, `### History secret scan: ${verdict}\n\n${detail}\n`);
+  } catch {
+    /* summary is best-effort; never fail the scan over it */
+  }
+}
 
 const git = (args, max = 1 << 28) => {
   const r = spawnSync("git", args, { encoding: "utf8", maxBuffer: max });
@@ -52,7 +67,8 @@ function assertFullClone() {
     console.error("REFUSING TO SCAN — the result would be meaningless:");
     for (const p of problems) console.error(`  - ${p}`);
     console.error("\nRun `git fetch --unshallow` (or clone with full history) and retry.");
-    process.exit(1);
+    summarise("REFUSED", "Scan did not run — history unavailable.");
+    process.exit(2);
   }
   return commits;
 }
@@ -153,7 +169,17 @@ if (total > 0) {
   for (const m of messages) console.error(`  commit message: ${m.sha} (${m.label})`);
   for (const t of tags.hits) console.error(`  tag: ${t.tag} (${t.label})`);
   console.error("\nThe value itself is never printed. Remediate per docs/SECURITY-REMEDIATION.md.");
+  summarise(
+    "FOUND",
+    `Scanned ${commits} commits and ${blobs.scanned} text blobs. ` +
+      `**${total} occurrence(s)** of a known compromised credential remain reachable. ` +
+      `This is expected until rotation and history remediation complete.`,
+  );
   process.exit(1);
 }
 
 console.log("\nPASS — zero occurrences in reachable history.");
+summarise(
+  "CLEAN",
+  `Scanned ${commits} commits and ${blobs.scanned} text blobs. Zero occurrences.`,
+);
