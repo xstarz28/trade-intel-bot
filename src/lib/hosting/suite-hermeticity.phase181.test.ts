@@ -183,6 +183,52 @@ describe("Phase 181 — default suite hermeticity", () => {
   });
 
   /**
+   * A test must not REQUIRE git-ignored generated output.
+   *
+   * The phase179 mobile tests asserted on `android/app/src/main/assets/public`
+   * and `ios/App/App/public`, which `npx cap sync` produces and .gitignore
+   * excludes. They passed locally (a sync had been run) and failed on CI with
+   * ENOENT on a clean clone — the same shape of illusion as the network
+   * problem: local green proving nothing about a fresh checkout.
+   *
+   * Reading such a path is fine; it must simply be guarded by an existence
+   * check so the test skips instead of erroring.
+   */
+  it("never hard-requires git-ignored build output", () => {
+    const generated = [
+      "android/app/src/main/assets/public",
+      "ios/App/App/public",
+      "dist/",
+    ];
+    const files = findTestFiles(join(ROOT, "src"));
+
+    for (const file of files) {
+      const text = readFileSync(file, "utf8");
+
+      // Match an actual filesystem READ of the path, not a mention of it.
+      // A doc comment explaining that both platforms embed the same dist/ is
+      // not a dependency on dist/ existing — the same name-versus-use
+      // distinction that made the earlier secret scanner trustworthy.
+      //
+      // Strategy: strip comments, then look for the path inside a quoted
+      // string. Only real code survives the strip.
+      const code = text
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      const touches = generated.filter((g) => code.includes(g));
+      if (touches.length === 0) continue;
+
+      const guarded =
+        /existsSync|\bhas\(|it\.skip|describeBuilt|describe\.skip|capSynced|itSynced/.test(text);
+      expect(
+        guarded,
+        `${relative(ROOT, file)} reads generated output (${touches.join(", ")}) ` +
+          `without an existence guard; it will fail on a clean checkout`,
+      ).toBe(true);
+    }
+  });
+
+  /**
    * MUTATION GUARD: with phase75 removed from LIVE_ONLY, the detector must
    * flag it. Proves the check has teeth rather than trivially passing.
    */
