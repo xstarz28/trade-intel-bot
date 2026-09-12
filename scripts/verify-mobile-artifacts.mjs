@@ -128,17 +128,18 @@ for (const { label, dir } of scanTargets) {
     for (const { name, re } of SECRET_PATTERNS) {
       if (re.test(text)) problems.push(`SECRET  ${name} in ${rel}`);
     }
-    // `src-tauri/tauri.conf.json` is BUILD configuration, not a shipped
-    // artifact. Its `devUrl` is consumed only by `tauri dev`; `tauri build`
-    // bundles `frontendDist` instead, and the string never reaches the
-    // installer. Verified: localhost:5173 does not appear in dist/. Section 9
-    // below still validates devUrl's shape, so this is a narrowing of scope,
-    // not a hole — any OTHER localhost reference in that file still fails.
-    const devUrlLine = /"devUrl"\s*:\s*"http:\/\/localhost:\d+"/;
-    const scanText = rel === "src-tauri/tauri.conf.json" ? text.replace(devUrlLine, '"devUrl": ""') : text;
+    // Phase 183: the dev-server URL was MOVED OUT of the release config into
+    // `tauri.dev.conf.json`, because `generate_context!` bakes the whole
+    // config into the compiled binary — Windows CI proved `localhost:5173`
+    // was embedded in the shipped .exe. The release config is therefore held
+    // to the same standard as any other artifact, with no exemption.
+    //
+    // The dev overlay is not scanned: it is never merged into a release build
+    // (it is passed explicitly by `npm run desktop:dev`).
+    if (rel === "src-tauri/tauri.dev.conf.json") continue;
 
     for (const { name, re } of DEV_PATTERNS) {
-      if (re.test(scanText)) problems.push(`DEV-DEP ${name} in ${rel}`);
+      if (re.test(text)) problems.push(`DEV-DEP ${name} in ${rel}`);
     }
   }
   notes.push(`${label}: ${scanned} text files scanned`);
@@ -325,9 +326,14 @@ if (existsSync(tauriConf)) {
 
     // A production bundle that points at a dev server is the desktop
     // equivalent of Capacitor's server.url, and just as unacceptable.
-    const devUrl = conf.build?.devUrl ?? "";
-    if (devUrl && !/^http:\/\/localhost:\d+$/.test(devUrl)) {
-      problems.push(`DESKTOP devUrl must be a plain localhost dev server or absent (found ${devUrl})`);
+    // `generate_context!` embeds the entire config in the binary, so devUrl
+    // must not be present in the RELEASE config at all — it lives in
+    // `tauri.dev.conf.json` and is merged only by `npm run desktop:dev`.
+    if (conf.build?.devUrl !== undefined) {
+      problems.push(`DESKTOP devUrl must not appear in the release config (found ${conf.build.devUrl}) — it is baked into the compiled binary`);
+    }
+    if (conf.build?.beforeDevCommand !== undefined) {
+      problems.push("DESKTOP beforeDevCommand must not appear in the release config");
     }
 
     // Identity and naming.
