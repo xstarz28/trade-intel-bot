@@ -965,6 +965,46 @@ const id: Translations = {
     upgradeComingSoon: "Premium belum tersedia.",
     freeAlways: "Hasil Tunggu dan Tanpa Transaksi selalu gratis.",
   },
+  legal: {
+    downloadTitle: "Dapatkan Xstarz Analysis",
+    downloadIntro:
+      "Xstarz Analysis berjalan di peramban Anda dan sebagai aplikasi yang dapat dipasang. Setiap versi memakai mesin analisis dan akun yang sama.",
+    downloadWindows: "Aplikasi desktop Windows",
+    downloadWindowsDetail:
+      "Windows 10 dan 11, 64-bit. Dipasang seperti aplikasi desktop biasa dan dapat dihapus melalui Pengaturan.",
+    downloadStore: "Microsoft Store",
+    downloadStoreDetail: "Pasang dan perbarui melalui Store.",
+    downloadUnavailable: "Belum tersedia",
+    downloadOtherSurfaces: "Tersedia juga di",
+    downloadWeb: "Peramban web",
+    downloadAndroid: "Android",
+    downloadIos: "iPhone dan iPad",
+    privacyTitle: "Privasi",
+    privacyIntro:
+      "Halaman ini menjelaskan apa yang disimpan Xstarz Analysis dan alasannya.",
+    privacyDataTitle: "Yang kami simpan",
+    privacyDataBody:
+      "Identitas akun Anda, analisis dan catatan jurnal yang Anda simpan, serta preferensi antarmuka seperti bahasa. Kami tidak menjual data Anda.",
+    privacyProvidersTitle: "Penyedia data pasar",
+    privacyProvidersBody:
+      "Data pasar diminta oleh server kami, bukan langsung oleh perangkat Anda. Karena itu penyedia menerima permintaan server kami, bukan data pribadi Anda.",
+    privacyRetentionTitle: "Menyimpan dan menghapus data",
+    privacyRetentionBody:
+      "Analisis dan catatan jurnal Anda tersimpan sampai Anda menghapusnya atau menutup akun.",
+    termsTitle: "Ketentuan penggunaan",
+    termsIntro:
+      "Harap baca ketentuan ini sebelum mengandalkan apa pun yang ditampilkan Xstarz Analysis.",
+    termsNotAdviceTitle: "Ini bukan nasihat keuangan",
+    termsNotAdviceBody:
+      "Xstarz Analysis adalah alat pendukung keputusan. Alat ini menyajikan bukti dan analisis agar Anda dapat mengambil keputusan sendiri. Ini bukan nasihat keuangan, investasi, pajak, atau hukum, dan tidak ada hasil yang dijanjikan atau dijamin.",
+    termsNoExecutionTitle: "Tidak ada transaksi yang dieksekusi",
+    termsNoExecutionBody:
+      "Xstarz Analysis tidak pernah menempatkan, mengubah, atau menutup order, dan tidak terhubung ke broker mana pun. Setiap tindakan Anda lakukan sendiri secara manual.",
+    termsAccuracyTitle: "Akurasi dan ketersediaan data",
+    termsAccuracyBody:
+      "Data pasar dapat tertunda, tidak lengkap, atau tidak tersedia. Bila itu terjadi, aplikasi menyatakannya, bukan menutupi kekosongan dengan perkiraan. Anda bertanggung jawab memverifikasi apa pun yang Anda tindak lanjuti.",
+    backHome: "Kembali ke Xstarz Analysis",
+  },
 };
 
 export default id;

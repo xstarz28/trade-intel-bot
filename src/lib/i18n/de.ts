@@ -970,6 +970,46 @@ const de: Translations = {
     upgradeComingSoon: "Premium ist noch nicht verfügbar.",
     freeAlways: "Warten- und Kein-Trade-Ergebnisse sind immer kostenlos.",
   },
+  legal: {
+    downloadTitle: "Xstarz Analysis herunterladen",
+    downloadIntro:
+      "Xstarz Analysis läuft im Browser und als installierbare App. Alle Versionen nutzen dieselbe Analyse-Engine und dasselbe Konto.",
+    downloadWindows: "Windows-Desktop-App",
+    downloadWindowsDetail:
+      "Windows 10 und 11, 64-Bit. Installiert wie jede Desktop-Anwendung und lässt sich über die Einstellungen entfernen.",
+    downloadStore: "Microsoft Store",
+    downloadStoreDetail: "Über den Store installieren und aktualisieren.",
+    downloadUnavailable: "Noch nicht verfügbar",
+    downloadOtherSurfaces: "Ebenfalls verfügbar für",
+    downloadWeb: "Webbrowser",
+    downloadAndroid: "Android",
+    downloadIos: "iPhone und iPad",
+    privacyTitle: "Datenschutz",
+    privacyIntro:
+      "Diese Seite erklärt, was Xstarz Analysis speichert und warum.",
+    privacyDataTitle: "Was wir speichern",
+    privacyDataBody:
+      "Ihre Kontokennung, Ihre gespeicherten Analysen und Journaleinträge sowie Oberflächeneinstellungen wie die Sprache. Wir verkaufen Ihre Daten nicht.",
+    privacyProvidersTitle: "Marktdatenanbieter",
+    privacyProvidersBody:
+      "Marktdaten werden von unseren Servern angefragt, nie direkt von Ihrem Gerät. Anbieter erhalten daher die Anfrage unseres Servers und nicht Ihre persönlichen Daten.",
+    privacyRetentionTitle: "Aufbewahrung und Löschung",
+    privacyRetentionBody:
+      "Ihre Analysen und Journaleinträge bleiben erhalten, bis Sie sie löschen oder Ihr Konto schließen.",
+    termsTitle: "Nutzungsbedingungen",
+    termsIntro:
+      "Bitte lesen Sie diese Bedingungen, bevor Sie sich auf Angaben von Xstarz Analysis verlassen.",
+    termsNotAdviceTitle: "Dies ist keine Finanzberatung",
+    termsNotAdviceBody:
+      "Xstarz Analysis ist ein Werkzeug zur Entscheidungsunterstützung. Es stellt Belege und Analysen bereit, damit Sie selbst entscheiden. Es ist keine Finanz-, Anlage-, Steuer- oder Rechtsberatung, und es wird kein Ergebnis versprochen oder garantiert.",
+    termsNoExecutionTitle: "Es werden keine Trades ausgeführt",
+    termsNoExecutionBody:
+      "Xstarz Analysis platziert, ändert oder schließt niemals eine Order und ist mit keinem Broker verbunden. Jede Handlung führen Sie selbst manuell aus.",
+    termsAccuracyTitle: "Datengenauigkeit und Verfügbarkeit",
+    termsAccuracyBody:
+      "Marktdaten können verzögert, unvollständig oder nicht verfügbar sein. In diesem Fall weist die App darauf hin, statt die Lücke mit einer Schätzung zu füllen. Sie sind dafür verantwortlich, zu prüfen, worauf Sie reagieren.",
+    backHome: "Zurück zu Xstarz Analysis",
+  },
 };
 
 export default de;

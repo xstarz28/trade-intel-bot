@@ -968,6 +968,38 @@ const zh: Translations = {
     upgradeComingSoon: "高级版尚未推出。",
     freeAlways: "观望与不交易的结果始终免费。",
   },
+  legal: {
+    downloadTitle: "获取 Xstarz Analysis",
+    downloadIntro: "Xstarz Analysis 可在浏览器中运行，也可作为可安装的应用使用。所有版本使用相同的分析引擎和同一个账户。",
+    downloadWindows: "Windows 桌面应用",
+    downloadWindowsDetail: "Windows 10 和 11，64 位。像普通桌面应用一样安装，可在“设置”中卸载。",
+    downloadStore: "Microsoft Store",
+    downloadStoreDetail: "通过应用商店安装和更新。",
+    downloadUnavailable: "尚未提供",
+    downloadOtherSurfaces: "同时支持",
+    downloadWeb: "网页浏览器",
+    downloadAndroid: "Android",
+    downloadIos: "iPhone 和 iPad",
+    privacyTitle: "隐私",
+    privacyIntro: "本页说明 Xstarz Analysis 保存哪些信息以及原因。",
+    privacyDataTitle: "我们保存的内容",
+    privacyDataBody: "您的账户标识、您保存的分析与交易日志，以及语言等界面偏好。我们不会出售您的数据。",
+    privacyProvidersTitle: "市场数据提供方",
+    privacyProvidersBody: "市场数据由我们的服务器请求，绝不会由您的设备直接请求。因此数据提供方收到的是我们服务器的请求，而不是您的个人信息。",
+    privacyRetentionTitle: "数据保留与删除",
+    privacyRetentionBody: "您保存的分析和日志会一直保留，直到您将其删除或注销账户。",
+    termsTitle: "使用条款",
+    termsIntro: "在依据 Xstarz Analysis 显示的内容行动之前，请阅读本条款。",
+    termsNotAdviceTitle: "本产品不构成金融建议",
+    termsNotAdviceBody:
+      "Xstarz Analysis 是决策支持工具。它提供证据与分析，由您自行作出判断。它不构成金融、投资、税务或法律建议，也不承诺或保证任何结果。",
+    termsNoExecutionTitle: "不会执行任何交易",
+    termsNoExecutionBody: "Xstarz Analysis 绝不会下单、改单或平仓，也未与任何券商连接。所有操作均由您手动完成。",
+    termsAccuracyTitle: "数据准确性与可用性",
+    termsAccuracyBody:
+      "市场数据可能延迟、不完整或无法获取。出现这种情况时，应用会明确说明，而不会用估算值填补空缺。您有责任核实据以行动的任何信息。",
+    backHome: "返回 Xstarz Analysis",
+  },
 };
 
 export default zh;

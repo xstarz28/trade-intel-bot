@@ -1007,4 +1007,42 @@ export interface Translations {
     upgradeComingSoon: string;
     freeAlways: string;
   };
+
+  /**
+   * Phase 182 — public website pages (/download, /privacy, /terms).
+   *
+   * These are part of the official-website surface. They ship in the same
+   * bundle as the app, so they must be translated like everything else; no
+   * hardcoded UI strings are permitted.
+   */
+  legal: {
+    downloadTitle: string;
+    downloadIntro: string;
+    downloadWindows: string;
+    downloadWindowsDetail: string;
+    downloadStore: string;
+    downloadStoreDetail: string;
+    downloadUnavailable: string;
+    downloadOtherSurfaces: string;
+    downloadWeb: string;
+    downloadAndroid: string;
+    downloadIos: string;
+    privacyTitle: string;
+    privacyIntro: string;
+    privacyDataTitle: string;
+    privacyDataBody: string;
+    privacyProvidersTitle: string;
+    privacyProvidersBody: string;
+    privacyRetentionTitle: string;
+    privacyRetentionBody: string;
+    termsTitle: string;
+    termsIntro: string;
+    termsNotAdviceTitle: string;
+    termsNotAdviceBody: string;
+    termsNoExecutionTitle: string;
+    termsNoExecutionBody: string;
+    termsAccuracyTitle: string;
+    termsAccuracyBody: string;
+    backHome: string;
+  };
 }

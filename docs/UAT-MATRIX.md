@@ -516,7 +516,108 @@ deployment. **BLOCKED** rows cannot run from this environment.
 
 ---
 
-## 19. Sign-off
+## 19. Windows desktop (Phase 182)
+
+Tauri 2 wraps the SAME production web build as the browser and both mobile
+platforms. Analysis, entitlement, provenance, cache semantics, timestamps,
+auth and route protection are therefore identical by construction — there is
+no desktop-specific engine to diverge.
+
+**AUTOMATED** rows were executed. **HUMAN** rows need a real Windows machine.
+**BLOCKED** rows cannot run in this environment.
+
+### Architecture and artifact integrity
+
+| ID | Precondition | Step | Expected | Failure | Status | check |
+|---|---|---|---|---|---|---|
+| 19.1 | repo | Confirm `frontendDist` is the shared `dist/` | `../dist` | Desktop forks the UI | AUTOMATED - PASS | [x] |
+| 19.2 | repo | Confirm no desktop-specific analysis engine | Only the shell module exists | Second engine diverges | AUTOMATED - PASS | [x] |
+| 19.3 | repo | Confirm the shell has no HTTP client or provider host | None present | Client-side provider call | AUTOMATED - PASS | [x] |
+| 19.4 | built app | Scan config and sources for secrets | Clean | Credential shipped | AUTOMATED - PASS | [x] |
+| 19.5 | built app | Scan for localhost / dev server / sandbox host | Absent from the bundle | Dev dependency ships | AUTOMATED - PASS | [x] |
+| 19.6 | repo | Confirm no signing material committed | None | Certificate leak | AUTOMATED - PASS | [x] |
+| 19.7 | repo | Confirm capabilities grant no fs/shell/process/http | None granted | OS exposed to web content | AUTOMATED - PASS | [x] |
+| 19.8 | repo | Confirm no self-updater configured | Absent | Unsigned update channel | AUTOMATED - PASS | [x] |
+| 19.9 | CI | Scan the compiled .exe for secrets and dev endpoints | Clean | Secret in the binary | BLOCKED - runs in Windows CI | [ ] |
+
+### Packaging metadata
+
+| ID | Precondition | Step | Expected | Failure | Status | check |
+|---|---|---|---|---|---|---|
+| 19.10 | repo | Confirm product name and identifier | "Xstarz Analysis", `app.xstarz.analysis.desktop` | Wrong identity | AUTOMATED - PASS | [x] |
+| 19.11 | repo | Confirm publisher differs from product name | `Xstarz` | Microsoft Store rejection | AUTOMATED - PASS | [x] |
+| 19.12 | repo | Confirm version, copyright, descriptions | All present | Installer metadata incomplete | AUTOMATED - PASS | [x] |
+| 19.13 | repo | Confirm multi-size `.ico` | 4 or more sizes | Blurry taskbar icon | AUTOMATED - PASS | [x] |
+| 19.14 | repo | Confirm the description never claims trade execution | Decision-support wording | Product-identity violation | AUTOMATED - PASS | [x] |
+
+### Routing
+
+| ID | Precondition | Step | Expected | Failure | Status | check |
+|---|---|---|---|---|---|---|
+| 19.15 | repo | Confirm BrowserRouter preserved | No MemoryRouter/HashRouter | Deep links and returnTo break | AUTOMATED - PASS | [x] |
+| 19.16 | built dist | Confirm absolute asset base | `src="/assets/..."` | Phase 180 blank page in the desktop window | AUTOMATED - PASS | [x] |
+| 19.17 | built dist | Serve `/`, `/auth`, `/dashboard`, `/journal` | 200 + index.html; JS as text/javascript | Blank window | AUTOMATED - PASS | [x] |
+| 19.18 | built dist | Serve `/download`, `/privacy`, `/terms` | 200 + index.html | Website pages 404 | AUTOMATED - PASS | [x] |
+| 19.19 | installed app | Navigate to each route in the desktop window | Renders correctly | - | HUMAN - needs Windows | [ ] |
+| 19.20 | installed app | Deep link into `/dashboard` where the wrapper permits | Route resolves or redirects to `/auth` | Blank window | HUMAN - needs Windows | [ ] |
+
+### External navigation
+
+| ID | Precondition | Step | Expected | Failure | Status | check |
+|---|---|---|---|---|---|---|
+| 19.21 | repo | `javascript:`, `data:`, `file:`, `http:` links | All rejected | Script or local-file access | AUTOMATED - PASS | [x] |
+| 19.22 | repo | Look-alike host `xstarz.app.evil.com` | Rejected | Open redirect | AUTOMATED - PASS | [x] |
+| 19.23 | repo | Rust and TypeScript allowlists agree | Identical | UI offers links the shell refuses | AUTOMATED - PASS | [x] |
+
+### Windows CI build
+
+| ID | Precondition | Step | Expected | Failure | Status | check |
+|---|---|---|---|---|---|---|
+| 19.24 | GitHub Actions | Run the Windows job | MSI and NSIS installers produced | Build failure | BLOCKED - not yet executed | [ ] |
+| 19.25 | Windows CI | `cargo test` for the external-link allowlist | Passes | Redirect guard broken | BLOCKED | [ ] |
+| 19.26 | Windows CI | Confirm bundled assets use an absolute base | Confirmed | Blank desktop window | BLOCKED | [ ] |
+
+### Human verification on a real Windows machine
+
+| ID | Precondition | Step | Expected | Failure | Status | check |
+|---|---|---|---|---|---|---|
+| 19.27 | installer | Install on Windows 10/11 x64 | Installs as "Xstarz Analysis" with the correct icon | - | BLOCKED - no Windows machine | [ ] |
+| 19.28 | installed app | First launch | Window opens; landing page renders | Blank window | BLOCKED | [ ] |
+| 19.29 | installed app | Sign in via OTP | Sign-in completes | Auth fails in WebView2 | BLOCKED | [ ] |
+| 19.30 | signed in | Close and relaunch | Session persists | Session lost each launch | BLOCKED | [ ] |
+| 19.31 | signed in | Open the dashboard | Loads with provenance | Divergent behaviour vs web | BLOCKED | [ ] |
+| 19.32 | signed in | Open the journal | Loads | Route fails in the shell | BLOCKED | [ ] |
+| 19.33 | signed in | Run one analysis | Server-side analysis with provenance | Any direct provider call from the desktop | BLOCKED | [ ] |
+| 19.34 | guest | Exhaust the free signals | Explicit LOCKED, identical to other surfaces | Substituted WAIT | BLOCKED | [ ] |
+| 19.35 | app open | Disconnect the network and run an analysis | Explicit degraded state; nothing fabricated | Fabricated price/freshness. **Stop and report.** | BLOCKED | [ ] |
+| 19.36 | offline | Reconnect and retry | Recovers with a new observation | Stale data labelled live | BLOCKED | [ ] |
+| 19.37 | signed in | Log out | Session cleared; protected routes redirect | Protected route renders after logout | BLOCKED | [ ] |
+| 19.38 | installed app | Uninstall from Settings | Removed cleanly, no leftovers | Orphaned files or registry entries | BLOCKED | [ ] |
+| 19.39 | uninstalled | Reinstall and launch | Starts signed out | Session survives reinstall | BLOCKED | [ ] |
+| 19.40 | v0.1.0 installed | Install a higher version over it | Upgrades in place; data preserved | Downgrade or data loss | BLOCKED | [ ] |
+| 19.41 | signed installer | Confirm no SmartScreen warning | No warning | Unsigned build deters users | BLOCKED - no certificate | [ ] |
+| 19.42 | Windows ARM64 | Install and launch | Runs | - | BLOCKED - not built, not claimed | [ ] |
+
+### Microsoft Store
+
+| ID | Precondition | Step | Expected | Failure | Status | check |
+|---|---|---|---|---|---|---|
+| 19.43 | Partner Center account | Reserve the package identity | Identity reserved | - | BLOCKED - no account | [ ] |
+| 19.44 | reserved identity | Produce an MSIX with matching identity | Package validates | Rejection | BLOCKED | [ ] |
+| 19.45 | Store package | Set WebView2 to `offlineInstaller` | Store policy satisfied | Rejection | BLOCKED | [ ] |
+| 19.46 | Store listing | Supply privacy URL, screenshots, age rating | Metadata complete | - | BLOCKED - needs the official domain | [ ] |
+
+### Official website
+
+| ID | Precondition | Step | Expected | Failure | Status | check |
+|---|---|---|---|---|---|---|
+| 19.47 | repo | Confirm no invented domain or download URL | None present | Button 404s for real users | AUTOMATED - PASS | [x] |
+| 19.48 | built app | Confirm `/download` states availability honestly | Channels marked unavailable | Overstated readiness | AUTOMATED - PASS | [x] |
+| 19.49 | custom domain | Serve `/`, `/download`, `/auth`, `/privacy`, `/terms` | All resolve with no routing change | - | BLOCKED - no domain | [ ] |
+
+---
+
+## 20. Sign-off
 
 | Field | Value |
 | --- | --- |

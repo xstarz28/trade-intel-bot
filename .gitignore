@@ -35,3 +35,10 @@ android/keystore.properties
 *.p12
 *.cer
 ios/App/Pods/
+
+# Phase 182 — desktop (Tauri) build output and generated files.
+src-tauri/target/
+src-tauri/gen/
+# Windows signing material. NEVER commit these.
+*.pfx
+*.snk
