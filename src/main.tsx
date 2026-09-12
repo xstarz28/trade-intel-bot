@@ -57,6 +57,7 @@ import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import { describeBuild, isUnsafeDeploymentSource } from "@/lib/build-info";
+import { initDesktopShell } from "@/lib/desktop/desktop-shell";
 import {
   initNativeShell,
   isNativeShell,
@@ -75,6 +76,12 @@ import AuthPage from "./pages/Auth.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import { Journal } from "@/components/Journal";
 import NotFound from "./pages/NotFound.tsx";
+// Phase 182 — public website pages. Part of the official-website surface,
+// served by the same BrowserRouter and the same SPA rewrite as every other
+// route, so a real custom domain can later serve them with no routing change.
+import Download from "./pages/Download.tsx";
+import Privacy from "./pages/Privacy.tsx";
+import Terms from "./pages/Terms.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
@@ -207,6 +214,16 @@ if (isNativeShell()) {
 }
 void initNativeShell();
 
+/*
+  Phase 182 — desktop shell (Tauri, Windows first).
+
+  The fourth distribution surface. Like the mobile shells this only marks the
+  document for styling; it introduces no desktop-specific routing, no
+  desktop-specific analysis engine, and no client-side provider access. In a
+  browser this is a no-op.
+*/
+initDesktopShell();
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
@@ -253,6 +270,14 @@ createRoot(document.getElementById("root")!).render(
                 </RequireAuth>
               }
             />
+            {/*
+              Public website routes (Phase 182). Deliberately unauthenticated:
+              a prospective user must be able to read the terms, the privacy
+              statement and the download options before creating an account.
+            */}
+            <Route path="/download" element={<Download />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

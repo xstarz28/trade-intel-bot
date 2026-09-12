@@ -971,6 +971,42 @@ const ja: Translations = {
     upgradeComingSoon: "プレミアムはまだ利用できません。",
     freeAlways: "待機・見送りの結果は常に無料です。",
   },
+  legal: {
+    downloadTitle: "Xstarz Analysis を入手",
+    downloadIntro:
+      "Xstarz Analysis はブラウザーでも、インストール型アプリでも利用できます。どのバージョンも同じ分析エンジンと同じアカウントを使用します。",
+    downloadWindows: "Windows デスクトップアプリ",
+    downloadWindowsDetail:
+      "Windows 10 および 11、64 ビット。通常のデスクトップアプリと同様にインストールでき、設定からアンインストールできます。",
+    downloadStore: "Microsoft Store",
+    downloadStoreDetail: "Store からインストールおよび更新します。",
+    downloadUnavailable: "まだ利用できません",
+    downloadOtherSurfaces: "こちらでも利用できます",
+    downloadWeb: "ウェブブラウザー",
+    downloadAndroid: "Android",
+    downloadIos: "iPhone と iPad",
+    privacyTitle: "プライバシー",
+    privacyIntro: "このページでは、Xstarz Analysis が保存する情報とその理由を説明します。",
+    privacyDataTitle: "保存する情報",
+    privacyDataBody: "アカウント識別子、保存した分析とジャーナルの記録、言語などの表示設定です。お客様のデータを販売することはありません。",
+    privacyProvidersTitle: "マーケットデータ提供元",
+    privacyProvidersBody:
+      "マーケットデータは当社のサーバーが取得し、お客様の端末が直接取得することはありません。そのため提供元に渡るのは当社サーバーのリクエストであり、お客様の個人情報ではありません。",
+    privacyRetentionTitle: "データの保持と削除",
+    privacyRetentionBody: "保存した分析とジャーナルの記録は、削除するかアカウントを閉じるまで保持されます。",
+    termsTitle: "利用規約",
+    termsIntro: "Xstarz Analysis の表示内容を利用する前に、本規約をお読みください。",
+    termsNotAdviceTitle: "本サービスは金融助言ではありません",
+    termsNotAdviceBody:
+      "Xstarz Analysis は意思決定を支援するツールです。根拠と分析を提示し、判断はお客様自身が行います。金融、投資、税務、法務に関する助言ではなく、いかなる成果も約束または保証しません。",
+    termsNoExecutionTitle: "取引は執行されません",
+    termsNoExecutionBody:
+      "Xstarz Analysis が注文を発注、変更、決済することは一切なく、いかなるブローカーにも接続していません。すべての操作はお客様が手動で行います。",
+    termsAccuracyTitle: "データの正確性と可用性",
+    termsAccuracyBody:
+      "マーケットデータは遅延、欠落、または利用不可となる場合があります。その際、アプリは推定値で補わずにその旨を明示します。行動の根拠となる情報の確認はお客様の責任です。",
+    backHome: "Xstarz Analysis に戻る",
+  },
 };
 
 export default ja;

@@ -121,8 +121,11 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 847 leaves", () => {
-    expect(enCount).toBe(847);
+  it("EN is the canonical structural reference with 875 leaves", () => {
+    // 847 -> 875: Phase 182 added the `legal` section for the public website
+    // pages (/download, /privacy, /terms). Every one of the nine locales was
+    // updated in the same change, which the parity tests above enforce.
+    expect(enCount).toBe(875);
   });
 
   for (const code of NINE) {
@@ -484,9 +487,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 847 canonical keys with non-empty values", () => {
+  it("zh has all 875 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(847);
+    expect(zhLeaves.length).toBe(875);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

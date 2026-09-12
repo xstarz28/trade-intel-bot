@@ -54,12 +54,43 @@ No stage is marked PASS unless it was actually executed and observed.
 | 7 | Web deployment (real host) | **NOT EXECUTED** | needs an operator deploy |
 | 8 | Android debug APK | **PASS (CI)** | built on `ubuntu-latest`; APK contains `assets/public/index.html` with absolute base |
 | 9 | iOS compile | **PASS (CI, simulator)** | `macos-14`; Pods installed; `App.app` with executable + web assets |
+| 9a | Windows desktop package | **NOT YET RUN** | Tauri 2 job added; no Rust toolchain or Windows in the sandbox |
 | 10 | Artifact secret scans | **PASS** | `mobile:verify` across dist/, android/, ios/ |
 | 11 | Deep links | **CONFIGURED, NOT VERIFIED** | placeholders present by design |
 | 12 | Auth | **BLOCKED** | requires a deployed backend |
 | 13 | Entitlement | **PASS (unit)** / **BLOCKED (deployed)** | Phase 174 suites green; no deployed run |
 | 14 | UAT | **PARTIAL** | 12 automated executed; 9 human, 10 blocked |
 | 15 | Security | **FAIL — BLOCKER** | OTP credential unrotated |
+
+---
+
+## 2a. Cross-platform distribution matrix (Phase 182)
+
+Four surfaces, one codebase. Statuses are kept separate on purpose — collapsing
+them into a single PASS is how "it builds" becomes mistaken for "it ships".
+
+| Surface | Build | Runtime | Distribution | code-ready | CI-verified | deployed | human-tested | production-ready |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Web | Vite | Browser | Official website | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Android | Capacitor | Android WebView | APK / Play Store | ✅ | ✅ debug APK | ❌ | ❌ | ❌ |
+| iOS | Capacitor | WKWebView | App Store | ✅ | ✅ simulator compile | ❌ | ❌ | ❌ |
+| Windows | Tauri 2 | WebView2 | Microsoft Store + direct download | ✅ | ⏳ job added, not yet run | ❌ | ❌ | ❌ |
+
+Definitions, so the columns cannot be read charitably:
+
+- **code-ready** — the surface builds from this repository and its artifact
+  passes the secret/permission scans.
+- **CI-verified** — a hosted runner produced the artifact and asserted on its
+  contents. Android yields a *debug* APK; iOS is an *unsigned simulator*
+  compile. Neither is a release build.
+- **deployed** — reachable by a real user. Nothing is: Convex has never been
+  deployed and no store or download page exists.
+- **human-tested** — exercised on real hardware by a person. Nothing is.
+- **production-ready** — all of the above plus the credential rotation.
+
+**Every surface consumes the same protected decision pipeline.** The desktop
+shell has no HTTP client, no provider hostnames and no analysis code; the
+mobile shells wrap the same `dist/`. There is one UI and one backend.
 
 ---
 

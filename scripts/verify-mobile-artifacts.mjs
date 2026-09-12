@@ -45,7 +45,13 @@ const readText = (f) => {
 // Real provider keys are long opaque tokens. These patterns target the SHAPE
 // of a credential, plus the specific env names this product uses.
 const SECRET_PATTERNS = [
+  // Quoted value:  TWELVE_DATA_API_KEY: "abcd1234..."
   { name: "provider API key assignment", re: /(TWELVE_DATA|ALPHA_VANTAGE|COINGLASS|TICKATLAS|EIA|OTP_EMAIL)_API_KEY\s*[:=]\s*["'][^"']{8,}["']/i },
+  // Phase 182: bare/env-style value, e.g. a .env line or an embedded
+  // "KEY=abcd1234" inside another string. Found by mutation testing — the
+  // quoted-value pattern above missed it, so a dotenv file copied into a
+  // packaged artifact would have passed the scan.
+  { name: "provider API key (env-style value)", re: /(TWELVE_DATA|ALPHA_VANTAGE|COINGLASS|TICKATLAS|EIA|OTP_EMAIL)_API_KEY\s*=\s*[A-Za-z0-9_\-.]{8,}/i },
   { name: "bearer token", re: /Bearer\s+[A-Za-z0-9._-]{20,}/ },
   { name: "openai-style key", re: /\bsk-[A-Za-z0-9]{20,}\b/ },
   { name: "AWS access key", re: /\bAKIA[0-9A-Z]{16}\b/ },
@@ -70,6 +76,10 @@ const scanTargets = [
   { label: "web assets (dist/)", dir: join(ROOT, "dist") },
   { label: "android project", dir: join(ROOT, "android") },
   { label: "ios project", dir: join(ROOT, "ios") },
+  // Phase 182 — the desktop shell is held to the identical standard. It wraps
+  // the same dist/, so a secret that reached the web bundle would reach the
+  // Windows installer too.
+  { label: "desktop shell (src-tauri)", dir: join(ROOT, "src-tauri") },
 ];
 
 for (const { label, dir } of scanTargets) {
@@ -77,7 +87,15 @@ for (const { label, dir } of scanTargets) {
     notes.push(`${label}: not present (skipped)`);
     continue;
   }
-  const files = walk(dir).filter((f) => TEXT.has(extname(f)) || extname(f) === "");
+  // Phase 182: also scan dotenv-style files by NAME. Found by mutation
+  // testing — `.env.production` has extname ".production", which is not in
+  // the extension allowlist, so a real dotenv file copied into a packaged
+  // artifact was never read at all. That is exactly the file most likely to
+  // carry a live provider key.
+  const isEnvFile = (f) => /(^|\/)\.env(\.|$)/.test(f);
+  const files = walk(dir).filter(
+    (f) => TEXT.has(extname(f)) || extname(f) === "" || isEnvFile(f),
+  );
   let scanned = 0;
   for (const file of files) {
     const rel = file.replace(`${ROOT}/`, "");
@@ -90,8 +108,17 @@ for (const { label, dir } of scanTargets) {
     for (const { name, re } of SECRET_PATTERNS) {
       if (re.test(text)) problems.push(`SECRET  ${name} in ${rel}`);
     }
+    // `src-tauri/tauri.conf.json` is BUILD configuration, not a shipped
+    // artifact. Its `devUrl` is consumed only by `tauri dev`; `tauri build`
+    // bundles `frontendDist` instead, and the string never reaches the
+    // installer. Verified: localhost:5173 does not appear in dist/. Section 9
+    // below still validates devUrl's shape, so this is a narrowing of scope,
+    // not a hole — any OTHER localhost reference in that file still fails.
+    const devUrlLine = /"devUrl"\s*:\s*"http:\/\/localhost:\d+"/;
+    const scanText = rel === "src-tauri/tauri.conf.json" ? text.replace(devUrlLine, '"devUrl": ""') : text;
+
     for (const { name, re } of DEV_PATTERNS) {
-      if (re.test(text)) problems.push(`DEV-DEP ${name} in ${rel}`);
+      if (re.test(scanText)) problems.push(`DEV-DEP ${name} in ${rel}`);
     }
   }
   notes.push(`${label}: ${scanned} text files scanned`);
@@ -257,8 +284,100 @@ for (const { label, dir } of scanTargets) {
   }
 }
 
+// ── 9. Desktop shell configuration (Phase 182) ───────────────────
+// The desktop wrapper must load the bundled production build, never a dev
+// server, and must not widen the OS surface exposed to web content.
+const tauriConf = join(ROOT, "src-tauri/tauri.conf.json");
+if (existsSync(tauriConf)) {
+  const raw = readText(tauriConf);
+  let conf;
+  try {
+    conf = JSON.parse(raw);
+  } catch {
+    problems.push("DESKTOP tauri.conf.json is not valid JSON");
+  }
+
+  if (conf) {
+    // frontendDist must point at the shared build output.
+    if (conf.build?.frontendDist !== "../dist") {
+      problems.push(`DESKTOP frontendDist must be "../dist" (found ${JSON.stringify(conf.build?.frontendDist)}) — the desktop app must ship the same web build`);
+    }
+
+    // A production bundle that points at a dev server is the desktop
+    // equivalent of Capacitor's server.url, and just as unacceptable.
+    const devUrl = conf.build?.devUrl ?? "";
+    if (devUrl && !/^http:\/\/localhost:\d+$/.test(devUrl)) {
+      problems.push(`DESKTOP devUrl must be a plain localhost dev server or absent (found ${devUrl})`);
+    }
+
+    // Identity and naming.
+    if (conf.identifier !== "app.xstarz.analysis.desktop") {
+      problems.push(`DESKTOP identifier is ${JSON.stringify(conf.identifier)}, expected app.xstarz.analysis.desktop`);
+    }
+    if (conf.productName !== "Xstarz Analysis") {
+      problems.push(`DESKTOP productName is ${JSON.stringify(conf.productName)}, expected "Xstarz Analysis"`);
+    }
+
+    // Microsoft Store rejects a publisher equal to the product name.
+    const publisher = conf.bundle?.publisher;
+    if (!publisher) {
+      problems.push("DESKTOP bundle.publisher is required for Windows installer metadata");
+    } else if (publisher === conf.productName) {
+      problems.push("DESKTOP bundle.publisher must differ from productName (Microsoft Store requirement)");
+    }
+
+    // Version metadata must exist for upgrade/uninstall behaviour.
+    if (!/^\d+\.\d+\.\d+$/.test(conf.version ?? "")) {
+      problems.push(`DESKTOP version must be semver (found ${JSON.stringify(conf.version)})`);
+    }
+
+    // No signing material may ever be committed.
+    if (conf.bundle?.windows?.certificateThumbprint) {
+      problems.push("DESKTOP certificateThumbprint is committed — signing material must not be in source control");
+    }
+
+    // An updater endpoint would be a self-update channel; it must be a
+    // deliberate, reviewed addition rather than an accident.
+    if (conf.plugins?.updater) {
+      problems.push("DESKTOP updater plugin configured — auto-update is documented but intentionally not implemented yet");
+    }
+
+    notes.push(`desktop identifier: ${conf.identifier} (publisher: ${publisher})`);
+    notes.push(`desktop bundle targets: ${JSON.stringify(conf.bundle?.targets)}`);
+  }
+} else {
+  notes.push("desktop shell: not present (skipped)");
+}
+
+// Capability permissions: deny anything that hands the OS to web content.
+const capsDir = join(ROOT, "src-tauri/capabilities");
+if (existsSync(capsDir)) {
+  const FORBIDDEN_PERMISSION_PREFIXES = [
+    "shell:",       // process execution
+    "fs:",          // filesystem access
+    "http:",        // bypasses the app's own network layer
+    "process:",
+  ];
+  for (const file of walk(capsDir).filter((f) => extname(f) === ".json")) {
+    let cap;
+    try {
+      cap = JSON.parse(readText(file));
+    } catch {
+      problems.push(`DESKTOP capability ${file.replace(`${ROOT}/`, "")} is not valid JSON`);
+      continue;
+    }
+    const perms = (cap.permissions ?? []).map((p) => (typeof p === "string" ? p : p.identifier ?? ""));
+    for (const perm of perms) {
+      if (FORBIDDEN_PERMISSION_PREFIXES.some((pre) => perm.startsWith(pre))) {
+        problems.push(`DESKTOP capability grants "${perm}" — filesystem/shell/process/http access must not be exposed to web content`);
+      }
+    }
+    notes.push(`desktop capabilities (${cap.identifier}): ${perms.length} permission(s)`);
+  }
+}
+
 // ── Report ───────────────────────────────────────────────────────
-console.log("Phase 179 — mobile artifact verification\n");
+console.log("Artifact verification — mobile (Phase 179) + desktop (Phase 182)\n");
 for (const n of notes) console.log(`  · ${n}`);
 console.log("");
 if (problems.length === 0) {

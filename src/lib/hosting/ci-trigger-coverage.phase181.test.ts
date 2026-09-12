@@ -258,12 +258,34 @@ describe("Phase 181 — mobile workflow trigger coverage", () => {
     expect(mobile.on.pull_request?.["paths-ignore"]).toEqual(ignorePatterns);
   });
 
-  it("builds both platforms and scans artifacts on every run", () => {
-    expect(Object.keys(mobile.jobs).sort()).toEqual(["android", "ios"]);
+  it("builds every packaged platform and scans artifacts on every run", () => {
+    // Phase 182 added Windows as the fourth distribution surface. All three
+    // packaged platforms wrap the same web build, so all three are packaged
+    // and scanned by the same workflow.
+    expect(Object.keys(mobile.jobs).sort()).toEqual(["android", "ios", "windows"]);
     for (const job of Object.values(mobile.jobs)) {
       const runs = job.steps.map((s) => String(s.run ?? "")).join("\n");
       expect(runs).toContain("mobile:verify");
     }
+  });
+
+  /**
+   * Phase 182 — desktop paths must trigger packaging too.
+   *
+   * The desktop shell has its own sources (src-tauri/**) that the original
+   * Phase 181 exclude-list never contemplated. Because that list is an
+   * exclude-list rather than an include-list, they trigger automatically —
+   * this asserts the property rather than assuming it.
+   */
+  it.each([
+    ["src-tauri/tauri.conf.json", "desktop bundle configuration"],
+    ["src-tauri/src/lib.rs", "desktop shell source"],
+    ["src-tauri/Cargo.toml", "desktop dependencies"],
+    ["src-tauri/capabilities/default.json", "desktop permission set"],
+    ["src/lib/desktop/desktop-shell.ts", "desktop detection in the web layer"],
+    ["src/pages/Download.tsx", "public download page"],
+  ])("triggers packaging for %s (%s)", (file) => {
+    expect(wouldTrigger([file], ignorePatterns)).toBe(true);
   });
 });
 
