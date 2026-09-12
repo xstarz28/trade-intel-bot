@@ -16,17 +16,58 @@
 # carry a real signing fingerprint and Apple Team ID.
 name: Mobile packaging
 
+# TRIGGER STRATEGY (Phase 181 — corrected).
+#
+# The original filter listed the paths that "look mobile" (android/, ios/,
+# capacitor.config.ts, src/lib/mobile/). That was wrong, and measurably so:
+# both native apps embed the SAME dist/ produced from the whole Vite app, so a
+# change to src/pages/Dashboard.tsx alters the shipped mobile artifact while
+# matching none of those paths. Verified by building dist/ before and after a
+# web-only edit and comparing SHA-256 — the artifact changed.
+#
+# An allowlist of triggering paths is the wrong shape for this problem: it has
+# to enumerate every possible build input, and anything forgotten fails SILENTLY
+# by not running. The failure mode of an allowlist is a missed release check.
+#
+# So the filter is INVERTED. The default is to run, and we exclude only paths
+# proven not to reach the artifact. Each exclusion below is justified:
+#
+#   docs/**, **/*.md          documentation; never bundled
+#   .prettierrc/.prettierignore, eslint.config.js
+#                             formatting and lint config; `vite build` runs
+#                             neither
+#   vitest.config.ts, vitest.live.config.ts
+#                             test-runner config; not a build input
+#   .gitignore                VCS metadata
+#   isolate/**                stale committed build OUTPUT from an older
+#                             revision; not an input to anything
+#
+# Everything else triggers, including src/**, public/**, index.html,
+# package.json, package-lock.json, vite.config.ts, postcss.config.cjs,
+# tsconfig*.json, capacitor.config.ts, android/**, ios/** and scripts/**.
+#
+# Test files under src/ are NOT excluded. They do not ship, so excluding them
+# would be valid, but a redundant mobile build is cheap while a missed one is a
+# release-integrity defect. The asymmetry decides it.
+#
+# `src/lib/hosting/ci-trigger-coverage.phase181.test.ts` reproduces GitHub's
+# matching semantics and fails if a representative web path stops triggering.
 on:
   workflow_dispatch:
   push:
     branches: ["arena/**"]
-    paths:
-      - "android/**"
-      - "ios/**"
-      - "capacitor.config.ts"
-      - "src/lib/mobile/**"
-      - "scripts/verify-mobile-artifacts.mjs"
-      - ".github/workflows/mobile.yml"
+    paths-ignore: &non_build_inputs
+      - "docs/**"
+      - "**/*.md"
+      - ".prettierrc"
+      - ".prettierignore"
+      - "eslint.config.js"
+      - ".gitignore"
+      - "vitest.config.ts"
+      - "vitest.live.config.ts"
+      - "isolate/**"
+  pull_request:
+    paths-ignore: *non_build_inputs
 
 jobs:
   android:

@@ -10,13 +10,25 @@ import { defineConfig } from "vite";
  *
  * Production must be traceable to an exact commit, so a deployed bug can be
  * matched to source without guessing which revision shipped. Only the short
- * SHA, branch and build time are exposed: no author, no message, no remote
- * URL, nothing that could carry a credential.
+ * SHA, branch and commit timestamp are exposed: no author, no message, no
+ * remote URL, nothing that could carry a credential.
  *
  * Falls back to "unknown" outside a git checkout (e.g. a CI tarball build)
  * rather than failing the build.
+ *
+ * REPRODUCIBILITY (Phase 181).
+ * The build time is the COMMIT timestamp, never `new Date()`. Wall-clock time
+ * would make every build of the same source produce a different artifact,
+ * which destroys the one property that makes provenance worth having: the
+ * ability to rebuild a commit and confirm byte-for-byte that a deployed
+ * artifact really came from it. An RC you cannot re-derive is an RC you are
+ * trusting on faith.
+ *
+ * CI override: SOURCE_DATE_EPOCH (the reproducible-builds standard) is
+ * honoured when set, so a tarball build with no git metadata is still
+ * deterministic.
  */
-function gitInfo(): { commit: string; branch: string } {
+function gitInfo(): { commit: string; branch: string; time: string } {
   const read = (cmd: string): string => {
     try {
       return execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
@@ -24,9 +36,19 @@ function gitInfo(): { commit: string; branch: string } {
       return "unknown";
     }
   };
+
+  const epoch = process.env.SOURCE_DATE_EPOCH;
+  const commitEpoch = epoch ?? read("git log -1 --format=%ct");
+  const time = /^\d+$/.test(commitEpoch)
+    ? new Date(Number(commitEpoch) * 1000).toISOString()
+    : "unknown";
+
   return {
     commit: read("git rev-parse --short HEAD"),
-    branch: read("git rev-parse --abbrev-ref HEAD"),
+    // In CI the checkout is often detached, where `--abbrev-ref HEAD` yields
+    // "HEAD". GITHUB_REF_NAME carries the real branch in that case.
+    branch: process.env.GITHUB_REF_NAME ?? read("git rev-parse --abbrev-ref HEAD"),
+    time,
   };
 }
 
@@ -62,7 +84,7 @@ export default defineConfig({
     // Injected at build time; safe to expose (commit id, branch, timestamp).
     __BUILD_COMMIT__: JSON.stringify(BUILD.commit),
     __BUILD_BRANCH__: JSON.stringify(BUILD.branch),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __BUILD_TIME__: JSON.stringify(BUILD.time),
   },
   plugins: [vlyPlugin(), react(), tailwindcss()],
   resolve: {
