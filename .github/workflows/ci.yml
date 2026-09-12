@@ -103,7 +103,14 @@ jobs:
           set -e
           case "$code" in
             0) echo "Reachable history is clean." ;;
-            1) echo "::warning::Compromised credential still reachable in history. Expected until rotation and remediation complete — see docs/SECURITY-REMEDIATION.md." ;;
+            1)
+              echo "::error::Compromised credential still reachable in history. Expected until rotation and remediation complete — see docs/SECURITY-REMEDIATION.md."
+              # Must FAIL. `continue-on-error` keeps the pipeline moving, but
+              # this job has to read as red: a green tick next to a reachable
+              # compromised credential is a false green, and false greens are
+              # exactly what this repository's CI rules exist to prevent.
+              exit 1
+              ;;
             2) echo "::error::History scan could not run (shallow or grafted clone). This is a CI configuration fault, not a clean result."; exit 1 ;;
             *) echo "::error::Unexpected scanner exit code $code"; exit 1 ;;
           esac
