@@ -1009,7 +1009,103 @@ durability and production contention.
 
 ---
 
-## 26. Sign-off
+## 26. Phase 188 — Guest / free-trial product surface
+
+Evidence **C** (rendered DOM + real component paths). Physical-device and
+browser click-through remain HUMAN/BLOCKED.
+
+### Executed — AUTOMATED
+
+| ID | Check | Result |
+| --- | --- | --- |
+| 26.1 | Loading does not guess a plan | PASS |
+| 26.2 | Loading does not guess a remaining count | PASS |
+| 26.3 | Unauthenticated renders nothing, not a trial claim | PASS |
+| 26.4 | Server trial count renders exactly | PASS |
+| 26.5 | Premium renders unlimited, no finite trial count | PASS |
+| 26.6 | Premium with remaining=0 does not render exhausted | PASS |
+| 26.7 | Unknown remaining does NOT become "0 remaining" (defect 1 fixed) | PASS |
+| 26.8 | Absent remaining field treated as unknown | PASS |
+| 26.9 | A genuine server zero still renders exhausted | PASS |
+| 26.10 | Component performs no entitlement arithmetic | PASS |
+| 26.11 | Locked notice states a signal exists and is withheld | PASS |
+| 26.12 | LOCKED never rewritten as WAIT/NO_TRADE | PASS |
+| 26.13 | Locked DOM contains no LONG/SHORT/BUY/SELL (innerHTML) | PASS |
+| 26.14 | Locked DOM exposes no entry/stop/target/confidence | PASS |
+| 26.15 | No hidden-but-present actionable nodes | PASS |
+| 26.16 | Server redaction withholds every protected field | PASS |
+| 26.17 | Redaction builds from safe fields, unknown fields withheld | PASS |
+| 26.18 | WAIT and NO_TRADE are not chargeable | PASS |
+| 26.19 | Directional verdicts remain chargeable | PASS |
+| 26.20 | Locked notice states free outcomes stay free | PASS |
+| 26.21 | A WAIT verdict is delivered, never locked | PASS |
+| 26.22 | Copy does not claim usage when nothing consumed | PASS |
+| 26.23 | UI reads entitlement from the server query only | PASS |
+| 26.24 | Entitlement never persisted to localStorage/cookies | PASS |
+| 26.25 | No optimistic decrement anywhere in the UI | PASS |
+| 26.26 | Extra client plan field cannot flip badge to Premium (defect 2 fixed) | PASS |
+| 26.27 | Only the server plan value selects the Premium branch | PASS |
+| 26.28 | Client-supplied plan is not sent to the server | PASS |
+| 26.29 | Upgrade CTA mutates nothing | PASS |
+| 26.30 | Upgrade surface invents no commercial terms | PASS |
+| 26.31 | Dashboard distinguishes each server status | PASS |
+| 26.32 | Provider degradation not rendered as NO_TRADE | PASS |
+| 26.33 | Unauthenticated does not render an exhausted badge | PASS |
+| 26.34 | All nine locales define every entitlement key | PASS |
+| 26.35 | No locale falls back to the English locked sentence | PASS |
+| 26.36 | The {count} placeholder survives translation in all nine | PASS |
+| 26.37 | No hardcoded English entitlement text in the component | PASS |
+| 26.38 | Locked notice announced via role=status | PASS |
+| 26.39 | Meaning survives with icons stripped (colour-independent) | PASS |
+| 26.40 | Upgrade control is a button with a discernible label | PASS |
+| 26.41 | Inert upgrade button is genuinely disabled | PASS |
+| 26.42 | Engine never invoked from client source | PASS |
+| 26.43 | Dashboard reaches analysis only via the protected action | PASS |
+| 26.44 | Dev toolbar gated out of production | PASS |
+| 26.45 | Engine absent from the production bundle | PASS |
+| 26.46 | Toolbar internals tree-shaken from the bundle | PASS |
+| 26.47 | No provider secret in the bundle | PASS |
+
+### Mutation ledger — all caught
+
+| ID | Mutation | Failures |
+| --- | --- | --- |
+| 26.48 | M1 loading renders Premium | 3 |
+| 26.49 | M2 query failure becomes 0 remaining | 2 |
+| 26.50 | M3 LOCKED rewritten to WAIT | 1 |
+| 26.51 | M4 directional payload exposed in locked DOM | 3 |
+| 26.52 | M5 server redaction disabled | 2 |
+| 26.53 | M6 optimistic local decrement | 6 |
+| 26.54 | M7 localStorage restores allowance | 2 |
+| 26.55 | M8 client Premium claim trusted | 2 (after fix) |
+| 26.56 | M8b fuzzy plan matching | 1 |
+| 26.57 | M9 accessibility announcement removed | 1 |
+
+### HUMAN — requires a person at a device
+
+| ID | Check | Result |
+| --- | --- | --- |
+| 26.58 | Guest sees correct allowance in a real browser | NOT VERIFIED |
+| 26.59 | Allowance persists across refresh and back/forward | NOT VERIFIED |
+| 26.60 | Two tabs never show fabricated extra allowance | NOT VERIFIED |
+| 26.61 | Private window shows no carried-over trial state | NOT VERIFIED |
+| 26.62 | Locked rendering on Android | NOT VERIFIED |
+| 26.63 | Locked rendering on iOS | NOT VERIFIED |
+| 26.64 | Locked rendering on Windows desktop | NOT VERIFIED |
+| 26.65 | Screen-reader announcement on a real AT stack | NOT VERIFIED |
+
+### Blocked — Evidence D
+
+| ID | Check | Blocker | Result |
+| --- | --- | --- | --- |
+| 26.66 | Live entitlement countdown against a deployed backend | No Convex deployment | BLOCKED |
+| 26.67 | Cross-device same-identity allowance | Same | BLOCKED |
+
+**Phase 188 totals: 57 executed and PASS, 8 HUMAN/NOT VERIFIED, 2 blocked, 0 failed, 0 manufactured.**
+
+---
+
+## 27. Sign-off
 
 | Field | Value |
 | --- | --- |
