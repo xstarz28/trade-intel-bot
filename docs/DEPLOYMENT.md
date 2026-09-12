@@ -77,7 +77,8 @@ Set these in the **Convex deployment environment**. They must never appear in
 
 | Variable | Required | Effect if missing |
 | --- | --- | --- |
-| `OTP_EMAIL_API_KEY` | **Yes** | Email sign-in cannot send codes |
+| `XSTARZ_EMAIL_API_KEY` | **Yes** (unless transport is `console`) | Email sign-in cannot send codes |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | **Yes** (unless transport is `console`) | Send fails closed; no fallback sender |
 | `TWELVE_DATA_API_KEY` | No | That provider is reported unavailable |
 | `ALPHA_VANTAGE_API_KEY` | No | That provider is reported unavailable |
 | `COINGLASS_API_KEY` | No | That provider is reported unavailable |
@@ -97,8 +98,12 @@ endpoints and need no credentials.
 | --- | --- |
 | `CONVEX_SITE_URL` | Auth callback origin; must match the deployed origin |
 | `CONVEX_DEPLOYMENT` | Selects the Convex deployment for CLI operations |
-| `VLY_APP_NAME` | Display name used in OTP emails |
-| `VLY_CONVEX_AUTH_ISSUER` | Auth issuer identifier |
+| ~~`VLY_APP_NAME`~~ | **Removed in Phase 185** — labelled the retired third-party OTP email |
+| `VLY_CONVEX_AUTH_ISSUER` | Optional federated issuer. **Leave EMPTY in production** — setting it trusts an external JWKS to mint identities |
+| `XSTARZ_EMAIL_TRANSPORT` | `resend` \| `smtp2go` \| `console` |
+| `XSTARZ_EMAIL_API_KEY` | Provider credential. Server-only, never committed |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | Xstarz-owned verified sender. No default; send fails without it |
+| `XSTARZ_EMAIL_SENDER_NAME` | Defaults to `Xstarz Analysis` |
 
 ### Class D — Build-time only, never shipped
 

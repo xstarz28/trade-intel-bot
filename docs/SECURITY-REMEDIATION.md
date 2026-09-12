@@ -206,3 +206,29 @@ Recorded because each is tempting and each is wrong:
 Deployment stays **NOT READY** until Stage 1 is confirmed. This is the single
 highest-severity open item in the release-candidate audit: it is a live,
 externally reachable credential, not a theoretical exposure.
+
+---
+
+## Phase 185 — runtime dependency removed (NOT a revocation)
+
+The application no longer calls the retired third-party OTP service. The auth
+path now uses an Xstarz-owned delivery abstraction, and `OTP_EMAIL_API_KEY` is
+read nowhere in the runtime.
+
+**This does not revoke the credential and does not close this document.**
+
+| Question | Answer |
+| --- | --- |
+| Does the runtime still use the credential? | **No** — removed in Phase 185 |
+| Is the credential still valid at the vendor? | **Presumed YES** — never rotated |
+| Is it still reachable in Git history? | **YES** — 270 commits |
+| Is the blocker closed? | **NO** |
+
+A credential that is still accepted by its issuer is still a live credential,
+wherever it is or is not referenced. Rotation, revocation proof and history
+remediation remain Phase 184's responsibility and remain outstanding.
+
+One thing did improve materially: because nothing in the runtime depends on
+that credential any more, rotating it can no longer break the application. The
+riskiest part of the rotation — coordinating a key change with a live
+dependency — is gone.

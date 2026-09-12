@@ -350,7 +350,7 @@ describe("mobile clients never acquire provider data directly", () => {
     ];
     for (const f of files) {
       const text = read(f);
-      for (const key of ["TWELVE_DATA_API_KEY", "ALPHA_VANTAGE_API_KEY", "COINGLASS_API_KEY", "TICKATLAS_API_KEY", "EIA_API_KEY", "OTP_EMAIL_API_KEY"]) {
+      for (const key of ["TWELVE_DATA_API_KEY", "ALPHA_VANTAGE_API_KEY", "COINGLASS_API_KEY", "TICKATLAS_API_KEY", "EIA_API_KEY", "OTP_EMAIL_API_KEY", "XSTARZ_EMAIL_API_KEY"]) {
         expect(text).not.toContain(key);
       }
     }

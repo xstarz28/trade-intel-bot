@@ -66,12 +66,12 @@ const readText = (f) => {
 // of a credential, plus the specific env names this product uses.
 const SECRET_PATTERNS = [
   // Quoted value:  TWELVE_DATA_API_KEY: "abcd1234..."
-  { name: "provider API key assignment", re: /(TWELVE_DATA|ALPHA_VANTAGE|COINGLASS|TICKATLAS|EIA|OTP_EMAIL)_API_KEY\s*[:=]\s*["'][^"']{8,}["']/i },
+  { name: "provider API key assignment", re: /(TWELVE_DATA|ALPHA_VANTAGE|COINGLASS|TICKATLAS|EIA|OTP_EMAIL|XSTARZ_EMAIL)_API_KEY\s*[:=]\s*["'][^"']{8,}["']/i },
   // Phase 182: bare/env-style value, e.g. a .env line or an embedded
   // "KEY=abcd1234" inside another string. Found by mutation testing — the
   // quoted-value pattern above missed it, so a dotenv file copied into a
   // packaged artifact would have passed the scan.
-  { name: "provider API key (env-style value)", re: /(TWELVE_DATA|ALPHA_VANTAGE|COINGLASS|TICKATLAS|EIA|OTP_EMAIL)_API_KEY\s*=\s*[A-Za-z0-9_\-.]{8,}/i },
+  { name: "provider API key (env-style value)", re: /(TWELVE_DATA|ALPHA_VANTAGE|COINGLASS|TICKATLAS|EIA|OTP_EMAIL|XSTARZ_EMAIL)_API_KEY\s*=\s*[A-Za-z0-9_\-.]{8,}/i },
   { name: "bearer token", re: /Bearer\s+[A-Za-z0-9._-]{20,}/ },
   { name: "openai-style key", re: /\bsk-[A-Za-z0-9]{20,}\b/ },
   { name: "AWS access key", re: /\bAKIA[0-9A-Z]{16}\b/ },
@@ -264,6 +264,7 @@ if (existsSync(aasa)) {
 const SERVER_ONLY_VARS = [
   "TWELVE_DATA_API_KEY", "ALPHA_VANTAGE_API_KEY", "COINGLASS_API_KEY",
   "TICKATLAS_API_KEY", "EIA_API_KEY", "OTP_EMAIL_API_KEY",
+  "XSTARZ_EMAIL_API_KEY",
   "CONVEX_DEPLOY_KEY", "JWT_PRIVATE_KEY", "JWKS",
 ];
 //
