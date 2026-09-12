@@ -64,3 +64,32 @@ jobs:
           name: web-dist-${{ github.sha }}
           path: dist/
           retention-days: 7
+
+  # Reachable-history credential scan.
+  #
+  # Separate from `verify` because it needs the FULL history, while `verify`
+  # deliberately uses a depth-1 checkout. Detection is by fingerprint, so no
+  # credential value is stored in the repository or printed in the logs.
+  #
+  # This job is expected to FAIL until the documented rotation and history
+  # remediation are complete. That is the intended signal, not a broken build:
+  # a compromised credential is reachable in this repository's history right
+  # now, and the pipeline should say so out loud.
+  history-secret-scan:
+    name: Reachable-history secret scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 0 = full history. The scanner refuses to run on a shallow clone,
+          # because a shallow scan once reported "9 affected commits" when the
+          # real number was 270.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Scan every reachable blob, commit message and tag object
+        run: node scripts/verify-history-clean.mjs

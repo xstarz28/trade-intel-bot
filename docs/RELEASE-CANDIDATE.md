@@ -216,12 +216,33 @@ this audit, because the release requirement does not demand one.
   has an iPhone; no CI runner substitutes for one.
 - **CI green is not production readiness.** It says the code builds and
   packages, nothing about a deployment that has never existed.
-- **`isolate/`** is a stale committed build output from `main` (Phase 156). It
-  contains old Convex deployment URLs and the pre-fix relative asset base. It
-  is unreferenced and ships nowhere, but it should be deleted or ignored as
-  housekeeping.
+- **`isolate/`** was a stale committed build output from `main` (Phase 156),
+  carrying old Convex deployment URLs and the pre-fix relative asset base.
+  **Removed in Phase 184** after confirming it had no build, deploy, test or
+  packaging dependency. It was deleted outright rather than git-ignored,
+  because ignoring a tracked file leaves it in the repository and in history.
 
 ---
+
+## RC identity after history remediation
+
+`rc-181` (and the current RC commit `be98364`) point at objects that a history
+rewrite will destroy. Both become unusable the moment remediation runs.
+
+Sequence once the operator confirms the old credential is revoked:
+
+1. Rewrite history on a full mirror (`docs/SECURITY-REMEDIATION.md`).
+2. Verify zero reachable occurrences — `node scripts/verify-history-clean.mjs`
+   must exit 0.
+3. Force-push all branches and tags.
+4. Re-run every gate against the rewritten history.
+5. Rebuild, and confirm the embedded provenance matches the **new** commit.
+6. Tag the result **`rc-184`** and record the new SHA here.
+
+Until step 6 completes there is no valid release-candidate identity. Any
+artifact built before the rewrite references a commit that no longer exists,
+so its provenance cannot be validated — it must not be treated as a release
+candidate regardless of how it was produced.
 
 ## 10. Verdict
 
