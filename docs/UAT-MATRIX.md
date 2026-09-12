@@ -743,7 +743,68 @@ operator-gated and has not been confirmed.
 
 ---
 
-## 22. Sign-off
+## 22. Phase 185 — Xstarz-owned authentication and OTP delivery
+
+2026-09-12 UTC. The Phase 184 credential blocker remains ACTIVE and separate:
+removing the runtime dependency does **not** revoke the leaked credential.
+
+### Executed
+
+| ID | Step | Environment | Result | Evidence | Status |
+|---|---|---|---|---|---|
+| 22.1 | Audit Freebuff auth dependencies | Sandbox | PASS | 2 found: OTP endpoint + default trusted JWT issuer | AUTOMATED |
+| 22.2 | Remove the OTP endpoint from the runtime | Sandbox | PASS | Executable code in the auth path contains no Freebuff URL | AUTOMATED |
+| 22.3 | Make the federated issuer opt-in | Sandbox | PASS | Hardcoded `https://freebuff.com` default deleted | AUTOMATED |
+| 22.4 | Provider-neutral delivery abstraction | Sandbox | PASS | `lib/emailDelivery.ts`; vendor swap is config-only | AUTOMATED |
+| 22.5 | Valid recipient reaches the transport | Sandbox | PASS | Correct URL, Xstarz sender, OTP in body | AUTOMATED |
+| 22.6 | Missing credential fails explicitly | Sandbox | PASS | `not_configured` before any network call | AUTOMATED |
+| 22.7 | Absent vs malformed sender distinguished | Sandbox | PASS | Distinct messages; found by mutation testing | AUTOMATED |
+| 22.8 | Provider timeout fails safely | Sandbox | PASS | Classified `timeout`, no payload leaked | AUTOMATED |
+| 22.9 | Provider 429 fails safely | Sandbox | PASS | Classified `rate_limited` | AUTOMATED |
+| 22.10 | Provider 500 echoing the request | Sandbox | PASS | Neither OTP nor key in message or stack | AUTOMATED |
+| 22.11 | OTP never logged | Sandbox | PASS | Console transport logs a masked recipient only | AUTOMATED |
+| 22.12 | Recipient masked in logs | Sandbox | PASS | `tr***@example.com` | AUTOMATED |
+| 22.13 | Freebuff endpoint never called | Sandbox | PASS | Every request URL asserted against a deny-list | AUTOMATED |
+| 22.14 | Freebuff sender identity refused | Sandbox | PASS | Rejected even when set deliberately | AUTOMATED |
+| 22.15 | Resend cooldown | Sandbox | PASS | 60s enforced, retry-after reported | AUTOMATED |
+| 22.16 | Resend window cap | Sandbox | PASS | 5/hour, recovers after rollover | AUTOMATED |
+| 22.17 | Case/padding cannot evade the throttle | Sandbox | PASS | Identifier normalised | AUTOMATED |
+| 22.18 | **Throttle wired into the provider** | Sandbox | PASS | Drives the real callback; gap found by mutation testing | AUTOMATED |
+| 22.19 | Failed-attempt limit tightened | Sandbox | PASS | 5/hour vs library default of 10 | AUTOMATED |
+| 22.20 | Replayed OTP rejected | Sandbox | PASS | Convex Auth deletes the code on use | AUTOMATED |
+| 22.21 | Expired OTP rejected | Sandbox | PASS | Server-side `expirationTime` check | AUTOMATED |
+| 22.22 | Codes hashed at rest | Sandbox | PASS | `code: await sha256(code)` | AUTOMATED |
+| 22.23 | Code lifetime shortened | Sandbox | PASS | 15 → 10 minutes | AUTOMATED |
+| 22.24 | CSPRNG generation | Sandbox | PASS | `crypto.getRandomValues`; no `Math.random` | AUTOMATED |
+| 22.25 | Session model unchanged | Sandbox | PASS | Convex Auth retained; no framework swap | AUTOMATED |
+| 22.26 | Email is transactional only | Sandbox | PASS | No tracking pixel, remote image or marketing | AUTOMATED |
+| 22.27 | Email carries branding, expiry, warning | Sandbox | PASS | Asserted in both text and HTML | AUTOMATED |
+| 22.28 | OTP escaped into HTML | Sandbox | PASS | Injection attempt escaped | AUTOMATED |
+| 22.29 | OTP absent from the subject line | Sandbox | PASS | `buildSubject()` takes no argument | AUTOMATED |
+| 22.30 | Web artifact scan | Sandbox | PASS | No provider credential in `dist/` | AUTOMATED |
+| 22.31 | Android/iOS/Tauri config scan | Sandbox | PASS | `XSTARZ_EMAIL_API_KEY` added to the scanners | AUTOMATED |
+| 22.32 | Scanner mutation test | Sandbox | PASS | Planted key in `dist/` → 3 rules fired | AUTOMATED |
+| 22.33 | Obsolete env vars removed | Sandbox | PASS | `OTP_EMAIL_API_KEY`, `VLY_APP_NAME` gone from runtime | AUTOMATED |
+| 22.34 | Retained VLY vars traced | Sandbox | PASS | 3 retained, each with a documented consumer | AUTOMATED |
+| 22.35 | `_generated/` not hand-edited | Sandbox | PASS | Helpers placed in `lib/`; zero drift | AUTOMATED |
+| 22.36 | Full gate suite | Sandbox | PASS | 235 files, tsc 0, build 0, lint 1517 = baseline | AUTOMATED |
+
+### Blocked — external dependency
+
+| ID | Step | Blocking dependency | Status |
+|---|---|---|---|
+| 22.37 | Create the provider account | Operator | BLOCKED |
+| 22.38 | Purchase the Xstarz domain | Operator | BLOCKED |
+| 22.39 | SPF/DKIM/DMARC verification | Domain | BLOCKED |
+| 22.40 | Live OTP delivery to a real inbox | Account + domain + deployment | BLOCKED |
+| 22.41 | Inbox-placement check | Same | BLOCKED |
+| 22.42 | Deployed auth round trip | Convex deployment | BLOCKED |
+
+**Phase 185 totals: 36 executed and PASS, 6 blocked, 0 failed, 0 manufactured.**
+
+---
+
+## 23. Sign-off
 
 | Field | Value |
 | --- | --- |

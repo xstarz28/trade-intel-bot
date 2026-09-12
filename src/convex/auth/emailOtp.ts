@@ -1,55 +1,86 @@
 import { Email } from "@convex-dev/auth/providers/Email";
-import axios from "axios";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
+import {
+  EmailDeliveryError,
+  sendXstarzVerificationEmail,
+} from "../lib/emailDelivery";
+import { checkResendAllowed, recordResend } from "../lib/otpResendThrottle";
 
+/**
+ * How long a verification code stays valid.
+ *
+ * Shortened from 15 minutes to 10 in Phase 185. A six-digit code is only
+ * 10^6 possibilities, so its security rests on a short window plus the
+ * attempt limiting Convex Auth applies — not on the code's entropy alone.
+ */
+export const OTP_EXPIRY_MINUTES = 10;
+
+/**
+ * Email OTP sign-in.
+ *
+ * Delivery is deliberately not implemented here. This provider generates the
+ * code and hands it to the Xstarz-owned delivery abstraction, which decides
+ * which transactional provider actually sends it. Swapping vendors is an
+ * environment change, not an auth change.
+ *
+ * ## Guarantees provided by Convex Auth (not reimplemented here)
+ *
+ * Verified against `@convex-dev/auth` internals rather than assumed:
+ *
+ * - Codes are stored as SHA-256 hashes, never in plaintext
+ *   (`mutations/createVerificationCode.ts`).
+ * - A code is deleted the moment it is consumed, so replay fails
+ *   (`mutations/verifyCodeAndSignIn.ts`).
+ * - Expiry is enforced server-side against `expirationTime`.
+ * - Issuing a new code deletes the previous one for that account, so only the
+ *   newest code is ever live.
+ * - Failed sign-in attempts are rate limited per identifier
+ *   (`implementation/rateLimit.ts`).
+ *
+ * Duplicating any of that here would add a second source of truth for
+ * authentication state, which is worse than the problem it would solve.
+ */
 export const emailOtp = Email({
   id: "email-otp",
-  maxAge: 60 * 15, // 15 minutes
-  // This function can be asynchronous
+  maxAge: 60 * OTP_EXPIRY_MINUTES,
+
   async generateVerificationToken() {
+    // crypto.getRandomValues is a CSPRNG; Math.random must never appear here.
     const random: RandomReader = {
       read(bytes: Uint8Array) {
         crypto.getRandomValues(bytes);
       },
     };
-    const alphabet = "0123456789";
-    return generateRandomString(random, alphabet, 6);
+    // generateRandomString is rejection-sampled, so digits stay uniform.
+    return generateRandomString(random, "0123456789", 6);
   },
+
   async sendVerificationRequest({ identifier: email, token }) {
-    // The OTP delivery key is read from the environment. It was previously
-    // hardcoded here and committed to source control; the literal is kept out
-    // of the repository now. Configure OTP_EMAIL_API_KEY in the Convex
-    // deployment environment.
-    const apiKey = process.env.OTP_EMAIL_API_KEY;
-    if (!apiKey) {
-      // Fail loudly rather than silently not sending a sign-in code.
+    // Throttle BEFORE sending. Convex Auth limits failed verification
+    // attempts but not send requests, so without this an attacker could use
+    // the sign-in form to mail-bomb an address and burn the sending
+    // reputation of the Xstarz domain.
+    const decision = checkResendAllowed(email);
+    if (!decision.allowed) {
+      const seconds = Math.ceil(decision.retryAfterMs / 1000);
       throw new Error(
-        "OTP email delivery is not configured: OTP_EMAIL_API_KEY is missing.",
+        `Too many verification codes requested. Try again in ${seconds} seconds.`,
       );
     }
 
     try {
-      await axios.post(
-        "https://auth.freebuff.app/send_otp",
-        {
-          to: email,
-          otp: token,
-          appName: process.env.VLY_APP_NAME || "a freebuff.com application",
-        },
-        {
-          headers: {
-            "x-api-key": apiKey,
-          },
-        },
+      await sendXstarzVerificationEmail(
+        { recipient: email, otp: token, expiryMinutes: OTP_EXPIRY_MINUTES },
+        { env: (key) => process.env[key] },
       );
+      recordResend(email);
     } catch (error) {
-      // Never echo the request (it carries the OTP and the API key) into an
-      // error message that could reach a client or a log sink.
-      const status =
-        axios.isAxiosError(error) && error.response
-          ? ` (HTTP ${error.response.status})`
-          : "";
-      throw new Error(`Failed to send verification email${status}.`);
+      // Surface the category, never the payload. The underlying error can
+      // embed the request body, which carries both the OTP and the API key.
+      if (error instanceof EmailDeliveryError) {
+        throw new Error(`Failed to send verification email (${error.reason}).`);
+      }
+      throw new Error("Failed to send verification email.");
     }
   },
 });
