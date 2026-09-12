@@ -171,6 +171,92 @@ if (existsSync(distDir)) {
   }
 }
 
+// ── 7. Deep-link association files (Phase 180) ───────────────────
+// These exist so hosting can serve them, but they carry PLACEHOLDERS until
+// the release cert and Apple Team ID are known. Shipping a placeholder as if
+// it were configured would let someone believe App/Universal Links are live.
+const assetlinks = join(ROOT, "public/.well-known/assetlinks.json");
+const aasa = join(ROOT, "public/.well-known/apple-app-site-association");
+
+if (existsSync(assetlinks)) {
+  const text = readText(assetlinks);
+  try {
+    const parsed = JSON.parse(text);
+    const pkg = parsed?.[0]?.target?.package_name;
+    if (pkg !== "app.xstarz.analysis") {
+      problems.push(`DEEPLINK assetlinks.json package_name is "${pkg}", expected app.xstarz.analysis`);
+    }
+  } catch {
+    problems.push("DEEPLINK assetlinks.json is not valid JSON");
+  }
+  if (text.includes("REPLACE_WITH_RELEASE_CERT_SHA256")) {
+    notes.push("assetlinks.json: PLACEHOLDER cert fingerprint — App Links NOT verified");
+  }
+}
+
+if (existsSync(aasa)) {
+  const text = readText(aasa);
+  try {
+    const parsed = JSON.parse(text);
+    const appId = parsed?.applinks?.details?.[0]?.appID ?? "";
+    if (!appId.endsWith("app.xstarz.analysis")) {
+      problems.push(`DEEPLINK apple-app-site-association appID "${appId}" does not end with the bundle id`);
+    }
+  } catch {
+    problems.push("DEEPLINK apple-app-site-association is not valid JSON");
+  }
+  if (text.includes("REPLACE_WITH_APPLE_TEAM_ID")) {
+    notes.push("apple-app-site-association: PLACEHOLDER Team ID — Universal Links NOT verified");
+  }
+}
+
+// ── 8. Server-only variables must never reach a client artifact ──
+// Phase 180 classification D: these names must not appear in anything the
+// browser or a packaged app can read.
+const SERVER_ONLY_VARS = [
+  "TWELVE_DATA_API_KEY", "ALPHA_VANTAGE_API_KEY", "COINGLASS_API_KEY",
+  "TICKATLAS_API_KEY", "EIA_API_KEY", "OTP_EMAIL_API_KEY",
+  "CONVEX_DEPLOY_KEY", "JWT_PRIVATE_KEY", "JWKS",
+];
+//
+// IMPORTANT: a bare mention of the NAME is not a leak. The UI legitimately
+// tells an operator "Check that TWELVE_DATA_API_KEY is configured in the Keys
+// tab", and that string is translated into all nine locales. Flagging it
+// would train everyone to ignore this scanner. What matters is the VALUE
+// being assigned, or the client READING the variable — either of which means
+// a server-only secret reached the client.
+for (const { label, dir } of scanTargets) {
+  if (!existsSync(dir)) continue;
+  for (const file of walk(dir).filter((f) => TEXT.has(extname(f)))) {
+    const text = readText(file);
+    for (const v of SERVER_ONLY_VARS) {
+      // Assigned a non-empty literal: KEY="...", KEY: '...', KEY=`...`
+      const assigned = new RegExp(`${v}["'\`]?\\s*[:=]\\s*["'\`][^"'\`]{4,}`);
+      // Read from an env object in client code.
+      const read = new RegExp(`(process\\.env|import\\.meta\\.env)\\.${v}\\b`);
+      if (assigned.test(text)) {
+        problems.push(`ENV server-only ${v} has a VALUE in ${file.replace(`${ROOT}/`, "")} (${label})`);
+      } else if (read.test(text)) {
+        problems.push(`ENV client reads server-only ${v} in ${file.replace(`${ROOT}/`, "")} (${label})`);
+      }
+    }
+  }
+}
+
+// Only VITE_-prefixed variables may be inlined into a client bundle at all.
+for (const { label, dir } of scanTargets) {
+  if (!existsSync(dir)) continue;
+  for (const file of walk(dir).filter((f) => extname(f) === ".js")) {
+    const text = readText(file);
+    const inlined = [...text.matchAll(/import\.meta\.env\.([A-Z_][A-Z0-9_]*)/g)].map((m) => m[1]);
+    for (const name of new Set(inlined)) {
+      if (!name.startsWith("VITE_") && name !== "DEV" && name !== "PROD" && name !== "MODE" && name !== "SSR" && name !== "BASE_URL") {
+        problems.push(`ENV non-VITE variable ${name} read from client bundle ${file.replace(`${ROOT}/`, "")} (${label})`);
+      }
+    }
+  }
+}
+
 // ── Report ───────────────────────────────────────────────────────
 console.log("Phase 179 — mobile artifact verification\n");
 for (const n of notes) console.log(`  · ${n}`);

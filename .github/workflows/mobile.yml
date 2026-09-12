@@ -1,0 +1,120 @@
+# Phase 180 — mobile packaging builds.
+#
+# WHY THIS FILE EXISTS
+# The development sandbox has no JDK and no macOS, so the Android APK could
+# not be compiled and the iOS project could not be opened. Those were reported
+# as BLOCKED, not as passing. CI removes the blocker for Android permanently
+# and for iOS partially: a GitHub-hosted macOS runner can compile the iOS
+# project, but NO CI runner can replace testing on a physical iPhone.
+#
+# WHAT A GREEN CHECK HERE DOES AND DOES NOT MEAN
+#   Android job green  => the debug APK compiles and contains no secrets.
+#   iOS job green      => the Xcode project configures and compiles.
+#   Neither            => a signed release, a store submission, or evidence
+#                         that the app behaves correctly on real hardware.
+# App Links / Universal Links remain UNVERIFIED until the association files
+# carry a real signing fingerprint and Apple Team ID.
+name: Mobile packaging
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["arena/**"]
+    paths:
+      - "android/**"
+      - "ios/**"
+      - "capacitor.config.ts"
+      - "src/lib/mobile/**"
+      - "scripts/verify-mobile-artifacts.mjs"
+      - ".github/workflows/mobile.yml"
+
+jobs:
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # The sandbox had no JDK at all, which is the entire reason the APK
+      # build was BLOCKED rather than attempted.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Build web assets and sync into the native project
+        run: npm run mobile:sync:android
+
+      # No signing material exists in this repository by design, so only the
+      # debug variant can be produced. A release build would need secrets that
+      # must never be committed.
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Verify packaged artifacts contain no secrets
+        run: npm run mobile:verify
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+  ios:
+    name: iOS project build (compile only)
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Build web assets and sync into the native project
+        run: npm run mobile:sync:ios
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios/App
+        run: pod install --repo-update
+
+      # CODE_SIGNING_ALLOWED=NO keeps this a pure compile check: it proves the
+      # project is structurally sound without requiring an Apple Developer
+      # account, a provisioning profile, or any certificate.
+      - name: Compile for simulator (unsigned)
+        working-directory: ios/App
+        run: |
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Verify packaged artifacts contain no secrets
+        run: npm run mobile:verify
+
+      - name: State the limits of this job
+        run: |
+          echo "iOS project compiled on a macOS runner."
+          echo "This does NOT verify behaviour on a physical iPhone,"
+          echo "and does NOT constitute release or store readiness."
