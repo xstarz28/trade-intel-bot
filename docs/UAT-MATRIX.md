@@ -804,7 +804,61 @@ removing the runtime dependency does **not** revoke the leaked credential.
 
 ---
 
-## 23. Sign-off
+## 23. Phase 185b — Final authentication hardening
+
+Environment mechanism: `XSTARZ_DEPLOYMENT_ENV`, an explicit per-deployment
+Convex variable. Absent or empty resolves to `production`.
+
+### Executed
+
+| ID | Check | Evidence | Result |
+| --- | --- | --- | --- |
+| 23.1 | Unset deployment env resolves to production | Phase 185b suite | PASS |
+| 23.2 | Empty/whitespace deployment env resolves to production | Same | PASS |
+| 23.3 | Unrecognised value throws, no silent downgrade | Same | PASS |
+| 23.4 | development + console allowed | Same | PASS |
+| 23.5 | production + console rejected, no delivery result | Same | PASS |
+| 23.6 | production + console performs no fetch | Same | PASS |
+| 23.7 | production + resend valid when fully configured | Same | PASS |
+| 23.8 | production + smtp2go valid when fully configured | Same | PASS |
+| 23.9 | production + provider selected, credential missing, rejected | Same | PASS |
+| 23.10 | production + no issuer configured, self-issuer only | Same | PASS |
+| 23.11 | production + Freebuff issuer, failure | Same | PASS |
+| 23.12 | production + VLY issuer, failure | Same | PASS |
+| 23.13 | preview + explicit legacy issuer, allowed | Same | PASS |
+| 23.14 | production + arbitrary external issuer, rejected | Same | PASS |
+| 23.15 | production + malformed issuer, failure | Same | PASS |
+| 23.16 | Empty/whitespace issuer treated as absent, self-only | Same | PASS |
+| 23.17 | Production cannot silently fall back to federation | Same | PASS |
+| 23.18 | `auth.config.ts` holds no inline issuer env read | Source assertion | PASS |
+| 23.19 | Retired-host matching covers subdomains | Phase 185b suite | PASS |
+| 23.20 | Session total duration 30 days | Library source assertion | PASS |
+| 23.21 | Session inactive duration 30 days | Same | PASS |
+| 23.22 | JWT duration 1 hour | Same | PASS |
+| 23.23 | Throttle documents per-process scope honestly | Source assertion | PASS |
+| 23.24 | M1 unset-default mutation caught | 7 failures | PASS |
+| 23.25 | M2 console production check removed, caught | 4 failures | PASS |
+| 23.26 | M3 production issuer gate removed, caught | 6 failures | PASS |
+| 23.27 | M4 retired-host list emptied, caught | 3 failures | PASS |
+| 23.28 | M5 bad value silently accepted, caught | 1 failure | PASS |
+| 23.29 | Production runtime has zero Freebuff OTP dependency | Classified scan | PASS |
+| 23.30 | `dist/` free of Freebuff, `/send_otp`, provider key | Artifact scan | PASS |
+| 23.31 | Android/iOS/Tauri sources free of Freebuff | Artifact scan | PASS |
+| 23.32 | No console transport configured for production artifacts | Artifact scan | PASS |
+
+### Blocked — external dependency
+
+| ID | Check | Blocker | Result |
+| --- | --- | --- | --- |
+| 23.33 | Deployed production rejects console transport live | Convex deployment | BLOCKED |
+| 23.34 | Deployed production rejects a configured issuer live | Same | BLOCKED |
+| 23.35 | Real 30-day session expiry observed end to end | Same + elapsed time | BLOCKED |
+
+**Phase 185b totals: 32 executed and PASS, 3 blocked, 0 failed, 0 manufactured.**
+
+---
+
+## 24. Sign-off
 
 | Field | Value |
 | --- | --- |

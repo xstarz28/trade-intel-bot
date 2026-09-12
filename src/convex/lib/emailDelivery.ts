@@ -25,8 +25,13 @@
  *   It must never silently fall back to a sender the project does not own.
  */
 
+import { DEPLOYMENT_ENV_VAR, isProductionDeployment } from "./deploymentEnvironment";
+
 /** Transports supported today. Provider-neutral by construction. */
 export type EmailTransportId = "resend" | "smtp2go" | "console";
+
+/** Transports that do not actually deliver mail. Never valid in production. */
+export const NON_DELIVERING_TRANSPORTS: readonly EmailTransportId[] = ["console"];
 
 /** Why a delivery attempt failed. Safe to log and safe to return upstream. */
 export type EmailDeliveryFailureReason =
@@ -111,9 +116,23 @@ export function readEmailDeliveryConfig(env: EnvSource): EmailDeliveryConfig {
   const senderAddress = (env("XSTARZ_EMAIL_SENDER_ADDRESS") ?? "").trim();
   const senderName = (env("XSTARZ_EMAIL_SENDER_NAME") ?? XSTARZ_PRODUCT_NAME).trim();
 
-  // The console transport is for local development only: it never leaves the
-  // machine, so it needs no credential and no verified domain.
+  // The console transport delivers NOTHING while reporting success. That is
+  // useful locally and catastrophic in production: sign-in would appear to
+  // work while no user ever receives a code, and — worse — any address could
+  // be "verified" by a code that was never sent to it.
+  //
+  // A comment saying "local development only" is not a control. The
+  // configuration path itself must refuse it, and it must refuse by default
+  // (an unset XSTARZ_DEPLOYMENT_ENV resolves to production).
   if (transport === "console") {
+    if (isProductionDeployment(env)) {
+      throw new EmailDeliveryError(
+        "not_configured",
+        'The "console" email transport delivers nothing and is forbidden in production. ' +
+          `Set XSTARZ_EMAIL_TRANSPORT to a real transport (resend, smtp2go), or set ` +
+          `${DEPLOYMENT_ENV_VAR} to "development" or "preview" if this is not production.`,
+      );
+    }
     return {
       transport,
       apiKey: "",

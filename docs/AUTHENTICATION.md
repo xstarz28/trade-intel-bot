@@ -168,30 +168,99 @@ instance rather than globally. It raises the cost of casual abuse and protects
 sender reputation. It is not a complete anti-abuse system — that is Phase 187,
 which can move it to a durable store without changing the call sites.
 
+## Deployment environment: `XSTARZ_DEPLOYMENT_ENV`
+
+Two Phase 185b guards must behave differently in production than in
+development, so the backend needs to know which one it is running on.
+
+**Why not detect it automatically?** Convex exposes only `CONVEX_CLOUD_URL` and
+`CONVEX_SITE_URL` to functions. Both are `https://<name>.convex.cloud` for dev
+and production alike, the names are not distinguishable by pattern, and there
+is no `deploymentType` at runtime. `NODE_ENV` describes how the bundle was
+built, not which deployment it was pushed to, so a production deployment built
+from a dev machine would report the wrong thing. Guessing from either one would
+mean a production deployment could silently classify itself as development —
+exactly the failure this phase exists to prevent.
+
+The mechanism is therefore an explicit Convex environment variable set once per
+deployment:
+
+| Value | Console transport | Federated issuer |
+| --- | --- | --- |
+| `production` | rejected | self-issuer only; any configured issuer is refused |
+| `preview` | allowed | explicit https issuer permitted |
+| `development` | allowed | explicit https issuer permitted |
+
+Two deliberate properties:
+
+- **Absent or empty means `production`.** Forgetting the variable on a
+  production deployment keeps every restriction on. Forgetting it locally fails
+  immediately and visibly, which is the cheap direction to fail in.
+- **An unrecognised value throws.** `prod`, `staging` or a typo raises
+  `DeploymentPolicyError` rather than quietly downgrading to a permissive mode.
+
 ## Federated issuer hardening
 
 `auth.config.ts` previously trusted `https://freebuff.com` as a JWT issuer by
 default. Anyone controlling that issuer's JWKS could mint a token this
-deployment accepts as a signed-in user.
+deployment accepts as a signed-in user. Phase 185 made it opt-in; Phase 185b
+makes it impossible in production.
 
-It is now opt-in: included only when `VLY_CONVEX_AUTH_ISSUER` is explicitly
-set. A production deployment that leaves it unset trusts exactly one issuer —
-itself.
+The decision now lives in `src/convex/lib/issuerPolicy.ts`, and `auth.config.ts`
+holds no inline environment read:
 
-It was not deleted, because the preview platform still uses it and deleting it
-would break the environment the project is developed on.
+- **Production** trusts exactly one issuer: itself (`CONVEX_SITE_URL`). Any
+  value in `VLY_CONVEX_AUTH_ISSUER` is a configuration error and throws. The
+  retired hosts (`freebuff.com`, `freebuff.app`, `vly.ai`, including
+  subdomains) are named explicitly in the error; any other external issuer is
+  refused generically, because there is no approved federation mechanism.
+  Production cannot fall back to federation by any code path.
+- **Preview and development** may still federate, because the preview platform
+  requires it. The issuer must be explicitly configured and must be `https`.
+- **Empty or whitespace-only** is treated as absent everywhere, never as a
+  malformed issuer, so a blank variable degrades to self-issuer only.
+- **Malformed or non-https** values throw rather than being ignored.
 
 ## Sessions
 
-Unchanged by this phase. One backend identity model across web, Android, iOS
-and Windows, because all four load the same web application against the same
-Convex deployment.
+One backend identity model across web, Android, iOS and Windows, because all
+four load the same web application against the same Convex deployment.
 
 ```
-OTP sign-in -> session issued -> session persists -> expiry -> OTP again
+OTP sign-in -> session issued -> JWT refreshed hourly -> expiry -> OTP again
 ```
 
-Convex Auth refreshes sessions automatically, so a user is not prompted on
-every page load. This is **not** "forever login": sessions expire and
-re-authentication is required. Claiming otherwise would misrepresent the
-security model.
+The project sets no session overrides, so the `@convex-dev/auth` defaults
+apply. Read from the installed library source rather than assumed:
+
+| Setting | Value | Source |
+| --- | --- | --- |
+| Total session duration | 30 days | `DEFAULT_SESSION_TOTAL_DURATION_MS`, `implementation/sessions.ts` |
+| Inactive session duration | 30 days | `DEFAULT_SESSION_INACTIVE_DURATION_MS`, `implementation/refreshTokens.ts` |
+| JWT duration | 1 hour | `DEFAULT_JWT_DURATION_MS`, `implementation/tokens.ts` |
+
+**Refresh behaviour.** The short-lived JWT is refreshed roughly hourly using a
+refresh token, and refresh tokens rotate on use. A signed-in user is therefore
+not prompted for an OTP on page load; they re-authenticate when the session
+reaches 30 days total, or after 30 days of inactivity.
+
+This is **not** "forever login", and the phrase should not appear in product
+copy. Sessions expire and re-authentication is required. The intended UX — OTP
+once, then a persistent secure session — is already what this policy delivers,
+so there is no reason to weaken it to reduce OTP frequency.
+
+## OTP resend throttling: scope
+
+`src/convex/lib/otpResendThrottle.ts` is **in-memory and per-process**. Convex
+action instances are not singletons, so throttle state is not shared between
+them.
+
+It bounds repeated sends per instance, which stops casual abuse from a single
+caller and protects the sending domain's reputation. It does **not prevent
+distributed abuse**: an attacker whose requests land on different instances, or
+who spreads them across many addresses, is not stopped. It is not a complete
+anti-abuse system.
+
+Durable, shared-state rate limiting is Phase 187. The call sites will not
+change when it lands — only the storage behind `checkResendAllowed` and
+`recordResend`.

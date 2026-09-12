@@ -99,8 +99,9 @@ endpoints and need no credentials.
 | `CONVEX_SITE_URL` | Auth callback origin; must match the deployed origin |
 | `CONVEX_DEPLOYMENT` | Selects the Convex deployment for CLI operations |
 | ~~`VLY_APP_NAME`~~ | **Removed in Phase 185** — labelled the retired third-party OTP email |
-| `VLY_CONVEX_AUTH_ISSUER` | Optional federated issuer. **Leave EMPTY in production** — setting it trusts an external JWKS to mint identities |
-| `XSTARZ_EMAIL_TRANSPORT` | `resend` \| `smtp2go` \| `console` |
+| `XSTARZ_DEPLOYMENT_ENV` | `production` \| `preview` \| `development`. **Absent or empty means production** (fails closed). Unrecognised values throw |
+| `VLY_CONVEX_AUTH_ISSUER` | Optional federated issuer, honoured only in preview/development. **A production deployment rejects any value** and trusts only its own issuer |
+| `XSTARZ_EMAIL_TRANSPORT` | `resend` \| `smtp2go` \| `console`. **`console` is rejected in production** — it logs instead of delivering |
 | `XSTARZ_EMAIL_API_KEY` | Provider credential. Server-only, never committed |
 | `XSTARZ_EMAIL_SENDER_ADDRESS` | Xstarz-owned verified sender. No default; send fails without it |
 | `XSTARZ_EMAIL_SENDER_NAME` | Defaults to `Xstarz Analysis` |
@@ -245,3 +246,31 @@ commit id logged at startup.
 
 Convex deployments roll back from the dashboard. **Schema changes are not
 automatically reversible** — review a schema diff before deploying it.
+
+## Phase 185b — production fail-closed configuration
+
+Two settings must be correct before a production deployment can authenticate a
+real user. Both fail closed: a misconfiguration blocks sign-in rather than
+quietly permitting an insecure path.
+
+```bash
+npx convex env set XSTARZ_DEPLOYMENT_ENV production
+npx convex env set XSTARZ_EMAIL_TRANSPORT resend
+npx convex env set XSTARZ_EMAIL_API_KEY <provider key>
+npx convex env set XSTARZ_EMAIL_SENDER_ADDRESS <verified sender on an Xstarz domain>
+# VLY_CONVEX_AUTH_ISSUER must be unset on production.
+```
+
+What each guard does when it is wrong:
+
+| Misconfiguration | Result |
+| --- | --- |
+| `XSTARZ_DEPLOYMENT_ENV` unset on production | Treated as production — restrictions stay on |
+| `XSTARZ_DEPLOYMENT_ENV=prod` (typo) | `DeploymentPolicyError` — refuses to guess |
+| `XSTARZ_EMAIL_TRANSPORT=console` on production | `EmailDeliveryError(not_configured)` — no delivery result, no sign-in |
+| `XSTARZ_EMAIL_TRANSPORT=resend` with no key | Explicit failure, no silent fallback sender |
+| `VLY_CONVEX_AUTH_ISSUER` set on production | `IssuerPolicyError` — retired hosts named, others refused generically |
+
+Preview and development deployments set `XSTARZ_DEPLOYMENT_ENV` to `preview` or
+`development`, which re-enables the console transport and explicit federated
+issuers for the platform that still needs them.

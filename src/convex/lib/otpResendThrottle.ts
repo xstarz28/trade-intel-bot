@@ -13,11 +13,23 @@
  * new database table: adding persistent auth state would create a second
  * source of truth next to Convex Auth's own tables.
  *
- * Scope and honesty about it: a Convex action instance is not a singleton, so
- * this bounds abuse per instance rather than globally. It raises the cost of
- * casual abuse and protects sender reputation. It is NOT a complete anti-abuse
- * system — that is Phase 187, which can move this to a durable store without
- * changing the call sites.
+ * ## Scope — read this before relying on it
+ *
+ * This limiter is **in-memory and per-process**. A Convex action instance is
+ * not a singleton, so state is NOT shared across instances.
+ *
+ * What it does: bounds repeated sends per instance, which stops casual abuse
+ * from a single caller and protects the sending domain's reputation.
+ *
+ * What it explicitly does **not** do: it does **not prevent distributed
+ * abuse**. An attacker whose requests land on different action instances, or
+ * who spreads requests across many addresses, is not stopped by this. It is
+ * NOT a complete anti-abuse system.
+ *
+ * Closing that gap needs shared durable state (a Convex table or a rate-limit
+ * component) and is Phase 187. The call sites here will not need to change
+ * when that lands — only the storage behind `checkResendAllowed` /
+ * `recordResend`.
  */
 
 /** Minimum gap between two sends to the same address. */
