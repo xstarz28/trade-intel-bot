@@ -20,10 +20,25 @@ const ROOT = process.cwd();
 const problems = [];
 const notes = [];
 
+// Directories that are dependency or build machinery rather than shipped
+// product. `Pods` (CocoaPods) and `node_modules` were already excluded for
+// this reason; Phase 182 adds the Rust equivalents.
+//
+// `src-tauri/target` holds compiled output plus the vendored source of every
+// crate in the dependency tree, and `src-tauri/gen` holds Tauri's generated
+// JSON schemas. Both contain arbitrary third-party text — including localhost
+// URLs in schema examples — none of which ships in the installer. Scanning
+// them produced a CI failure with no security meaning, which is exactly the
+// kind of noise that teaches people to ignore a scanner.
+//
+// The shipped desktop artifacts are still scanned: the installers and the
+// compiled .exe are checked directly by the Windows CI job.
+const SKIP_DIRS = new Set(["node_modules", ".git", "Pods", "target", "gen"]);
+
 const walk = (dir, out = []) => {
   if (!existsSync(dir)) return out;
   for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === ".git" || entry === "Pods") continue;
+    if (SKIP_DIRS.has(entry)) continue;
     const full = join(dir, entry);
     const st = statSync(full);
     if (st.isDirectory()) walk(full, out);
