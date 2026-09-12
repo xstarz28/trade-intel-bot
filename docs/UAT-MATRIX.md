@@ -439,7 +439,84 @@ against a real deployment. **BLOCKED** rows cannot run in this environment.
 
 ---
 
-## 18. Sign-off
+## 18. Release-candidate audit (Phase 181)
+
+RC `155b59e` on `arena/01a08e67-trade-intel-bot`, tag `rc-181`.
+
+**AUTOMATED** rows were executed. **HUMAN** rows need a person or a real
+deployment. **BLOCKED** rows cannot run from this environment.
+
+### CI and release integrity
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 18.1 | repo | Edit a web-only file and rebuild | Mobile artifact SHA changes | Trigger filter would skip mobile validation | AUTOMATED — PASS | ☑ |
+| 18.2 | repo | Check mobile workflow triggers for web paths | src/**, public/**, package.json, vite.config.ts all trigger | Unvalidated artifact reaches release | AUTOMATED — PASS | ☑ |
+| 18.3 | repo | Restore the old mobile-only filter | Guard fails (9 tests) | Regression undetected | AUTOMATED — PASS | ☑ |
+| 18.4 | repo | Build the same commit twice | Byte-identical artifacts | Provenance unverifiable | AUTOMATED — PASS | ☑ |
+| 18.5 | repo | Scan for network-touching tests in the default suite | None unguarded | Suite passes locally, fails in CI | AUTOMATED — PASS | ☑ |
+| 18.6 | clean checkout | Run the suite with no dist/ and no cap-sync output | 233 files pass | ENOENT on a fresh clone | AUTOMATED — PASS | ☑ |
+| 18.7 | workflows | Audit continue-on-error | Only on advisory lint | A correctness gate silently passes | AUTOMATED — PASS | ☑ |
+| 18.8 | workflows | Confirm no deploy step and no provider secret | Neither present | CI bypasses the rotation blocker | AUTOMATED — PASS | ☑ |
+| 18.9 | GitHub | Run ci.yml on the RC | All gates pass on a clean checkout | — | AUTOMATED — PASS (run 34668059671) | ☑ |
+
+### Mobile artifacts
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 18.10 | GitHub | Build the Android debug APK | APK produced | — | AUTOMATED — PASS (run 34668059591) | ☑ |
+| 18.11 | APK | Confirm web assets inside with an absolute base | `assets/public/index.html` with `src="/assets/` | Blank app on device | AUTOMATED — PASS | ☑ |
+| 18.12 | GitHub macOS | `pod install` then compile | Pods/, Podfile.lock, App.app with executable | False green | AUTOMATED — PASS | ☑ |
+| 18.13 | iOS bundle | Confirm web assets with an absolute base | `public/index.html` with `src="/assets/` | Blank app on device | AUTOMATED — PASS | ☑ |
+| 18.14 | both artifacts | Secret / localhost / dev-endpoint scan | Clean | Credential shipped | AUTOMATED — PASS | ☑ |
+| 18.15 | APK from CI | Install on a physical Android device | App runs | — | BLOCKED — no device | ☐ |
+| 18.16 | iOS build | Run on a physical iPhone | App runs | — | BLOCKED — no iPhone | ☐ |
+| 18.17 | release keystore | Produce a signed release AAB | Signed bundle | — | BLOCKED — no signing material (by design) | ☐ |
+
+### Web deployment contract
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 18.18 | built dist | Request /, /auth, /dashboard, /journal | 200 + index.html | Deep link 404 | AUTOMATED — PASS | ☑ |
+| 18.19 | built dist | Request the entry JS | `text/javascript` | HTML returned; blank page | AUTOMATED — PASS | ☑ |
+| 18.20 | built dist | Request the entry CSS | `text/css` | Unstyled app | AUTOMATED — PASS | ☑ |
+| 18.21 | built dist | Scan bundles for localhost/dev endpoints | None | Production points nowhere | AUTOMATED — PASS | ☑ |
+| 18.22 | real deployment | Repeat 18.18–18.21 against the deployed URL | Same results | — | HUMAN — not executed | ☐ |
+
+### Deep links
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 18.23 | built dist | GET both `.well-known` files | 200 `application/json`, not the SPA shell | Associations can never verify | AUTOMATED — PASS | ☑ |
+| 18.24 | repo | Confirm placeholders remain | CONFIGURED / NOT VERIFIED | Overstated readiness | AUTOMATED — PASS | ☑ |
+| 18.25 | signing identity | Replace placeholders and verify on device | Links open in-app | — | BLOCKED — no keystore, no Team ID | ☐ |
+
+### Backend, auth, entitlement
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 18.26 | unrestricted network | `npx convex codegen` | Succeeds | — | BLOCKED — control plane TLS-blocked | ☐ |
+| 18.27 | deployed backend | Deploy the RC and verify schema/functions | Deploys | — | BLOCKED | ☐ |
+| 18.28 | deployed backend | Authenticated `runProtectedAnalysis` | Real provenance | — | BLOCKED | ☐ |
+| 18.29 | deployed backend | Entitlement: chargeable vs WAIT/NO_TRADE free | Phase 174 behaviour preserved | Substituted WAIT | BLOCKED | ☐ |
+| 18.30 | deployed backend | Exhausted guest receives explicit LOCKED | LOCKED, never a substituted WAIT | Silent degradation | BLOCKED | ☐ |
+| 18.31 | deployed backend | Locked-result redaction | Protected fields withheld | Leak | BLOCKED | ☐ |
+| 18.32 | deployed backend | User isolation across two accounts | No cross-read | Data leak | BLOCKED | ☐ |
+| 18.33 | deployed backend | Provider fan-out, cache, timeout, rate-limit | Modes reported honestly | Fabricated data | BLOCKED | ☐ |
+| 18.34 | deployment | Login, OTP, session persist, refresh, logout, return-to | All correct | — | BLOCKED | ☐ |
+
+### Security
+
+| ID | Precondition | Step | Expected | Failure | Status | ✔ |
+|---|---|---|---|---|---|---|
+| 18.35 | repo | Confirm the credential is absent from tree and artifacts | Absent | Shipped secret | AUTOMATED — PASS | ☑ |
+| 18.36 | repo | Confirm the hardened branch reads the env var only | `process.env`, throws if unset | Hardcoded value | AUTOMATED — PASS | ☑ |
+| 18.37 | repo | Count history commits containing the credential | 9, documented | Understated exposure | AUTOMATED — PASS | ☑ |
+| 18.38 | `auth.freebuff.app` | Rotate and confirm the old key is rejected | 401/403 | **Live credential — hard blocker** | BLOCKED — not performed | ☐ |
+
+---
+
+## 19. Sign-off
 
 | Field | Value |
 | --- | --- |

@@ -92,7 +92,9 @@ function loadWorkflow(name: string): {
       const start = match.index ?? 0;
       const end = i + 1 < names.length ? (names[i + 1].index ?? body.length) : body.length;
       const section = body.slice(start, end);
-      const steps = [...section.matchAll(/^\s+- (?:name|uses):[\s\S]*?(?=^\s+- (?:name|uses):|\Z)/gm)].map(
+      // `$` with the m flag, not `\Z` — JavaScript has no \Z, and escaping it
+      // silently matched a literal "Z" instead of end-of-input.
+      const steps = [...section.matchAll(/^\s+- (?:name|uses):[\s\S]*?(?=^\s+- (?:name|uses):|$(?![\s\S]))/gm)].map(
         (s) => {
           const block = s[0];
           const runMatch = block.match(/run:\s*(?:\|[\s\S]*?(?=\n\s{6}\S|$)|(.*))/);
