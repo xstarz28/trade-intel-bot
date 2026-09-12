@@ -348,3 +348,20 @@ old credential revoked -> history cleaned -> new RC identity -> artifacts rebuil
 
 A successful deployment is evidence that the backend runs. It is not
 permission to release. These are separate decisions and must not be conflated.
+
+## Phase 187 — hand-added generated API entry
+
+`src/convex/otpLimiter.ts` is a new Convex module. `_generated/api.d.ts` lists
+modules explicitly, and `npx convex codegen` cannot run here (Phase 186), so
+the `otpLimiter` entry was added by hand — the same precedent Phase 174 set
+for `entitlements` and `protectedAnalysis`, and the Phase 175 integrity test
+enforces that the list matches the modules on disk.
+
+Scope of the edit: two lines, an import and a map entry. It affects **types
+only**. `api.js` exports `anyApi`, a runtime proxy, so function resolution does
+not depend on the `.d.ts` at all.
+
+`auth/emailOtp.ts` references the mutation through `makeFunctionReference`
+rather than `internal.otpLimiter.*`, which is the officially supported way to
+name a function without generated types. Once codegen can run, regenerate and
+replace that reference with the generated one; the string path is identical.

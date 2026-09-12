@@ -249,7 +249,14 @@ copy. Sessions expire and re-authentication is required. The intended UX — OTP
 once, then a persistent secure session — is already what this policy delivers,
 so there is no reason to weaken it to reduce OTP frequency.
 
-## OTP resend throttling: scope
+## OTP resend throttling: scope (superseded by Phase 187)
+
+> **Updated in Phase 187.** The limiter below has been replaced by durable,
+> distributed state in the `otpResendBuckets` table, written by a single
+> atomic mutation. See `docs/ABUSE-PROTECTION.md`. The text that follows
+> describes the retired per-process design and is kept for history.
+
+### Retired design
 
 `src/convex/lib/otpResendThrottle.ts` is **in-memory and per-process**. Convex
 action instances are not singletons, so throttle state is not shared between

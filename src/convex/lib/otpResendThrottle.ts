@@ -1,6 +1,17 @@
 /**
  * Resend throttling for OTP delivery.
  *
+ * ## SUPERSEDED IN PHASE 187 — NOT ON THE AUTHORITATIVE PATH
+ *
+ * The live limiter is now `src/convex/otpLimiter.ts`, backed by the
+ * `otpResendBuckets` table, because the per-process design below could not
+ * bound abuse across Convex instances.
+ *
+ * This module is retained only because its unit tests still document the
+ * windowing semantics the durable policy reuses. **Do not re-wire it into
+ * `auth/emailOtp.ts`** — doing so would silently restore per-instance
+ * counters, and the Phase 187 suite asserts it is absent from that file.
+ *
  * Convex Auth rate-limits *failed verification attempts*. It does not limit
  * how often a code can be **requested**. Those are different abuses:
  *

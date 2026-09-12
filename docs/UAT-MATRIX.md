@@ -919,7 +919,97 @@ rows; **D BLOCKED** for every row requiring a deployed backend.
 
 ---
 
-## 25. Sign-off
+## 25. Phase 187 — Distributed abuse protection
+
+Evidence level **C** for policy and atomicity; **D BLOCKED** for real Convex
+durability and production contention.
+
+### Executed — AUTOMATED
+
+| ID | Check | Result |
+| --- | --- | --- |
+| 25.1 | Limiter state lives in a Convex table, not module memory | PASS |
+| 25.2 | Auth provider consults the durable mutation, not the in-memory throttle | PASS |
+| 25.3 | Email address never stored; only a SHA-256 identity hash | PASS |
+| 25.4 | State shared across independent backend contexts | PASS |
+| 25.5 | Limiter survives process recreation | PASS |
+| 25.6 | Allowance expires as the rolling window advances | PASS |
+| 25.7 | Expired rows reclaimable without affecting decisions | PASS |
+| 25.8 | 20 concurrent sends consume exactly the permitted number | PASS |
+| 25.9 | Cooldown enforced atomically across 10 concurrent retries | PASS |
+| 25.10 | Interleaved bursts never exceed the window ceiling | PASS |
+| 25.11 | Check-and-record are one mutation; no public query to race | PASS |
+| 25.12 | A rejected request does not extend the cooldown | PASS |
+| 25.13 | Storage failure fails closed, driven through the real provider | PASS |
+| 25.14 | Refusal ordered before delivery | PASS |
+| 25.15 | Failure message does not disclose the limiter as the cause | PASS |
+| 25.16 | Delivery failure does not refund the allowance | PASS |
+| 25.17 | Cooldown 60s, ceiling 5/hour, window 1h | PASS |
+| 25.18 | Hourly ceiling binds independently of the cooldown | PASS |
+| 25.19 | Casing/padding cannot evade the limit | PASS |
+| 25.20 | Distinct identities have independent allowances | PASS |
+| 25.21 | No competing failed-attempt counter added | PASS |
+| 25.22 | Library attempt limit configured and bounded | PASS |
+| 25.23 | Replay prevented upstream by delete-on-use | PASS |
+| 25.24 | remaining=1, 10 concurrent chargeable: exactly one consumes | PASS |
+| 25.25 | Usage monotonic; clamp can never grant allowance | PASS |
+| 25.26 | WAIT and NO_TRADE remain free | PASS |
+| 25.27 | Chargeability derived from engine output, not the client | PASS |
+| 25.28 | Forged Premium rejected; plan resolved server-side | PASS |
+| 25.29 | grantPremium not reachable from a client button; preserves usage | PASS |
+| 25.30 | Storage reset and device switch share entitlement | PASS |
+| 25.31 | Unauthenticated caller cannot consume or read allowance | PASS |
+| 25.32 | Limiter returns no counters to the caller | PASS |
+| 25.33 | Throttle message reveals only a wait time | PASS |
+| 25.34 | No OTP/key/token/address in limiter or provider source | PASS |
+| 25.35 | Limiter internal; cannot be probed by a client | PASS |
+| 25.36 | Throttle rejection does not disclose account existence | PASS |
+| 25.37 | One indexed mutation per send attempt | PASS |
+| 25.38 | Indexed read, no table scan | PASS |
+| 25.39 | Hot key cannot grow stored array without bound | PASS |
+| 25.40 | Cleanup work per invocation capped | PASS |
+| 25.41 | Phase 185b console/issuer guarantees intact | PASS |
+| 25.42 | No Freebuff OTP dependency in the runtime path | PASS |
+| 25.43 | OTP expiry policy unchanged (10 min) | PASS |
+| 25.44 | Work per analysis bounded by a fixed leg list | PASS |
+| 25.45 | 15s wave and per-provider budgets intact | PASS |
+| 25.46 | Unauthenticated rejected before provider work | PASS |
+| 25.47 | Invalid input rejected before acquisition | PASS |
+| 25.48 | Client evidence stripped before the engine runs | PASS |
+| 25.49 | Entitlement is the per-identity spend control | PASS |
+| 25.50 | No hidden retry loop amplifying provider calls | PASS |
+| 25.51 | Client artifacts contain no limiter internals | PASS |
+
+### Mutation ledger — all caught
+
+| ID | Mutation | Failures |
+| --- | --- | --- |
+| 25.52 | A1 atomicity removed (interleaved reads) | 15 |
+| 25.53 | A2 cooldown removed | 8 |
+| 25.54 | A3 hourly ceiling disabled | 4 |
+| 25.55 | A4 OTP throttle disabled entirely | 12 |
+| 25.56 | A5 allowance reset on every read | 9 |
+| 25.57 | A6 limiter failure fails open | 1 (after fix) |
+| 25.58 | A6b limiter never consulted | 4 |
+| 25.59 | A7 unlimited remaining | 11 |
+| 25.60 | A8 entitlement consumption removed | 10 |
+| 25.61 | A9 server chargeability bypassed | 18 |
+
+### Blocked — Evidence D
+
+| ID | Check | Blocker | Result |
+| --- | --- | --- | --- |
+| 25.62 | Real Convex durability of limiter state | No deployment | BLOCKED |
+| 25.63 | Multi-instance contention at production scale | Same | BLOCKED |
+| 25.64 | Real OCC retry behaviour under load | Same | BLOCKED |
+| 25.65 | Provider load behaviour under sustained abuse | Same + no provider egress | BLOCKED |
+| 25.66 | Cross-platform abuse runs against a live backend | Same | BLOCKED |
+
+**Phase 187 totals: 61 executed and PASS, 5 blocked, 0 failed, 0 manufactured.**
+
+---
+
+## 26. Sign-off
 
 | Field | Value |
 | --- | --- |
