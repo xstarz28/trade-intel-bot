@@ -222,9 +222,14 @@ jobs:
       - name: Build the shared web application
         run: npm run build
 
+      # `--locked` is deliberately NOT used: Cargo.lock is not committed
+      # (the sandbox has no Rust toolchain and crates.io is unreachable, so it
+      # cannot be generated or kept honest here). Resolving fresh in CI is the
+      # correct trade-off until a lockfile can be produced and reviewed on a
+      # machine that can actually build.
       - name: Rust unit tests (external-link allowlist)
         working-directory: src-tauri
-        run: cargo test --locked
+        run: cargo test
 
       # No signing material exists in this repository by design, so this
       # produces an UNSIGNED installer. An unsigned build is a packaging
