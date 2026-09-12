@@ -274,3 +274,77 @@ What each guard does when it is wrong:
 Preview and development deployments set `XSTARZ_DEPLOYMENT_ENV` to `preview` or
 `development`, which re-enables the console transport and explicit federated
 issuers for the platform that still needs them.
+
+## Phase 186 — deployment pipeline
+
+### Preflight before every deploy
+
+```bash
+npm run convex:preflight                       # validates process.env
+npm run convex:preflight -- --env-file .env.production.local
+npm run convex:preflight -- --json             # machine-readable, for CI
+```
+
+Exit codes: `0` valid, `1` rejected by a fail-closed policy, `2` could not
+evaluate. The script imports the real policy modules from `src/convex/lib`
+rather than restating the rules, so its verdict and the deployed backend
+cannot disagree. It reads variable **names** and presence only; credential
+values are never printed.
+
+What it validates:
+
+- the deployment environment resolves, and a typo is refused rather than guessed
+- the console transport is rejected on production
+- no federated issuer is trusted on production
+- the sender address exists and is not a retired Freebuff domain
+- every production-required variable is present
+- no server-only secret is exposed through a `VITE_`-prefixed variable
+- the retired `OTP_EMAIL_API_KEY` / `VLY_APP_NAME` are absent
+
+What it explicitly does **not** prove, and reports as NOT VERIFIED: provider
+account validity, DNS records, real email delivery, deployed runtime
+behaviour. A green preflight is not evidence that the deployment works.
+
+### Deployment order
+
+Staging first. A production deployment is never the first deployment.
+
+```bash
+# 1. Staging / preview deployment
+npx convex env set XSTARZ_DEPLOYMENT_ENV preview
+npm run convex:preflight
+npx convex deploy
+
+# 2. Verify against the deployed preview backend
+#    auth, entitlement, provenance, fan-out, cache, degradation
+
+# 3. Production — ONLY after the Phase 184 gate is cleared
+npx convex env set XSTARZ_DEPLOYMENT_ENV production
+npm run convex:preflight
+npx convex deploy --prod
+```
+
+### Codegen
+
+```bash
+npx convex dev --once      # configures CONVEX_DEPLOYMENT on first use
+npx convex codegen         # regenerates src/convex/_generated/*
+git diff --stat src/convex/_generated/
+npm test && npx tsc -b && npm run build
+```
+
+`src/convex/_generated/*` is **never** hand-edited. Only output produced by the
+official CLI is committed. The Phase 175 integrity test asserts that every
+Convex module on disk appears in `_generated/api.d.ts`, so a stale or
+hand-patched generated directory fails the suite.
+
+### Hard gate
+
+A production deployment remains **BLOCKED** until Phase 184 is cleared:
+
+```
+old credential revoked -> history cleaned -> new RC identity -> artifacts rebuilt
+```
+
+A successful deployment is evidence that the backend runs. It is not
+permission to release. These are separate decisions and must not be conflated.

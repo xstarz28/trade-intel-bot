@@ -858,7 +858,68 @@ Convex variable. Absent or empty resolves to `production`.
 
 ---
 
-## 24. Sign-off
+## 24. Phase 186 — Convex deployment + runtime verification
+
+Evidence level for this section: **C (harness-verified)** for the preflight
+rows; **D BLOCKED** for every row requiring a deployed backend.
+
+### Executed — AUTOMATED
+
+| ID | Check | Evidence | Result |
+| --- | --- | --- | --- |
+| 24.1 | Preflight script exists and is wired to `npm run convex:preflight` | Phase 186 suite | PASS |
+| 24.2 | Preflight imports real policy modules, keeps no rule copy | Source assertion | PASS |
+| 24.3 | Valid production configuration accepted, exit 0 | Subprocess run | PASS |
+| 24.4 | Green preflight still reports what it cannot prove | Subprocess run | PASS |
+| 24.5 | Production + console transport rejected | Subprocess run | PASS |
+| 24.6 | Production + Freebuff issuer rejected | Subprocess run | PASS |
+| 24.7 | Production + arbitrary external issuer rejected | Subprocess run | PASS |
+| 24.8 | Production without sender rejected | Subprocess run | PASS |
+| 24.9 | Production + Freebuff sender domain rejected | Subprocess run | PASS |
+| 24.10 | Missing provider credential = explicit config failure | Subprocess run | PASS |
+| 24.11 | Lingering `OTP_EMAIL_API_KEY` rejected | Subprocess run | PASS |
+| 24.12 | Lingering `VLY_APP_NAME` rejected | Subprocess run | PASS |
+| 24.13 | Known server secret via `VITE_` rejected | Subprocess run | PASS |
+| 24.14 | Any `VITE_` secret-shaped variable rejected | Subprocess run | PASS |
+| 24.15 | Credential values never printed in output | Subprocess run | PASS |
+| 24.16 | Absent deployment env resolves to production | Subprocess run | PASS |
+| 24.17 | Typo refused rather than guessed | Subprocess run | PASS |
+| 24.18 | Whitespace-only value treated as absent | Subprocess run | PASS |
+| 24.19 | Case/whitespace normalised for recognised values only | Subprocess run | PASS |
+| 24.20 | Normalisation never yields a permissive mode | Subprocess run | PASS |
+| 24.21 | Preview allows console + explicit legacy issuer | Subprocess run | PASS |
+| 24.22 | Preview affordances do not weaken production | Subprocess run | PASS |
+| 24.23 | P1 always-exit-0 mutation caught | 13 failures | PASS |
+| 24.24 | P2 `VITE_` sweep removed, caught | 1 failure | PASS |
+| 24.25 | P3 retired-var check disabled, caught | 2 failures | PASS |
+| 24.26 | P4 required-prod-vars disabled, caught | 1 failure | PASS |
+| 24.27 | P5 sender-domain check disabled, caught | 1 failure | PASS |
+| 24.28 | `_generated/*` unchanged, zero drift | `git status` | PASS |
+
+### Blocked — no Convex deployment (Evidence D)
+
+| ID | Check | Blocker | Result |
+| --- | --- | --- | --- |
+| 24.29 | `npx convex codegen` against a real deployment | No `CONVEX_DEPLOYMENT`; control plane unreachable | BLOCKED |
+| 24.30 | Staging/preview deployment created | Same | BLOCKED |
+| 24.31 | OTP send / verify / session / refresh / logout / re-login | Same | BLOCKED |
+| 24.32 | Entitlement charge, WAIT free, exhausted LOCKED, bypass fails | Same (Evidence C passes) | BLOCKED |
+| 24.33 | Provenance against deployed backend | Same (Evidence C passes) | BLOCKED |
+| 24.34 | Fan-out timeout / partial failure / rate limit / deadline | Same (Evidence C passes) | BLOCKED |
+| 24.35 | Cache cold / warm / single-flight / expiry / recovery | Same (Evidence C passes) | BLOCKED |
+| 24.36 | User A cannot reach user B data on a real deployment | Same (Evidence C passes) | BLOCKED |
+| 24.37 | Live provider matrix from the Convex environment | All provider hosts unreachable (HTTP 000) | BLOCKED |
+| 24.38 | Real OTP email delivered and inbox-placed | No provider account, no domain | BLOCKED |
+| 24.39 | Sender identity confirmed on a received email | Same | BLOCKED |
+| 24.40 | Cross-platform runtime against live backend | Needs deployed backend | BLOCKED |
+| 24.41 | Sender domain SPF / DKIM / DMARC verified | No registered domain | BLOCKED |
+| 24.42 | Production routes served from the real origin | Same | BLOCKED |
+
+**Phase 186 totals: 28 executed and PASS, 14 blocked, 0 failed, 0 manufactured.**
+
+---
+
+## 25. Sign-off
 
 | Field | Value |
 | --- | --- |
