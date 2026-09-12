@@ -617,7 +617,83 @@ no desktop-specific engine to diverge.
 
 ---
 
-## 20. Sign-off
+## 20. Phase 183 — external verification execution log
+
+Every row records the exact environment, date and evidence. Rows that could
+not be executed are BLOCKED with the reason, never softened into a pass.
+
+RC `dea46ef`. All timestamps 2026-09-12 UTC.
+
+### Executed — CI artifacts (real runners)
+
+| ID | Step | Environment | Result | Evidence | Status |
+|---|---|---|---|---|---|
+| 20.1 | Android debug APK build | `ubuntu-latest` | PASS | 3,809,003-byte APK; contains `assets/public/index.html` with absolute base | AUTOMATED |
+| 20.2 | Android artifact secret scan | `ubuntu-latest` | PASS | Step "Verify packaged artifacts contain no secrets" | AUTOMATED |
+| 20.3 | iOS Pods + simulator compile | `macos-14` | PASS | `App.app` with executable; web assets present | AUTOMATED |
+| 20.4 | Windows MSI + NSIS build | `windows-latest` | PASS | 2,677,090-byte installer artifact | AUTOMATED |
+| 20.5 | Windows installer existence assertion | `windows-latest` | PASS | Step "Verify installers were produced" | AUTOMATED |
+| 20.6 | Windows bundled-asset base check | `windows-latest` | PASS | Absolute `/assets/` confirmed on the real build | AUTOMATED |
+| 20.7 | Windows artifact scan | `windows-latest` | PASS | Passed only after the path-handling fix | AUTOMATED |
+| 20.8 | **Windows compiled-binary scan** | `windows-latest` | PASS | Caught `localhost:5173` in the `.exe`; passes after the dev-overlay fix | AUTOMATED |
+
+### Executed — web deployment contract (real build, local host)
+
+| ID | Step | Environment | Result | Evidence | Status |
+|---|---|---|---|---|---|
+| 20.9 | `/`, `/auth`, `/dashboard`, `/journal` | Local SPA host | PASS | 200 + `text/html` each | AUTOMATED |
+| 20.10 | `/download`, `/privacy`, `/terms` | Local SPA host | PASS | 200 + `text/html` each | AUTOMATED |
+| 20.11 | Deep nested route | Local SPA host | PASS | `/deep/nested` → 200 + HTML | AUTOMATED |
+| 20.12 | Entry JS content type | Local SPA host | PASS | `text/javascript` | AUTOMATED |
+| 20.13 | Entry CSS content type | Local SPA host | PASS | `text/css` | AUTOMATED |
+| 20.14 | `.well-known` content type | Local SPA host | PASS | `application/json`, not the SPA shell | AUTOMATED |
+| 20.15 | `/dashboard/assets/*` masquerade | Local SPA host | PASS | Never requested — every asset ref is absolute | AUTOMATED |
+| 20.16 | Build provenance matches commit | Local build | PASS | Embedded commit == `HEAD`; a stale `dist/` was detected and rebuilt | AUTOMATED |
+
+### Executed — security and configuration audit
+
+| ID | Step | Environment | Result | Evidence | Status |
+|---|---|---|---|---|---|
+| 20.17 | Count commits containing the credential | Sandbox | PASS | **9**, independently re-derived by fingerprint; matches documentation | AUTOMATED |
+| 20.18 | Identify every affected ref | Sandbox | PASS | `main`, `arena/01a08e67-…` and tag `rc-181` all reach an affected commit | AUTOMATED |
+| 20.19 | Working tree free of the credential | Sandbox | PASS | Hardened module reads `process.env` and throws if unset | AUTOMATED |
+| 20.20 | No signing material committed | Sandbox | PASS | No keystore, cert, profile or private key anywhere | AUTOMATED |
+| 20.21 | Association placeholders intact | Sandbox | PASS | Both still `REPLACE_WITH_…`; no fingerprint invented | AUTOMATED |
+| 20.22 | Android release identity/version | Sandbox | PASS | `app.xstarz.analysis`, `versionCode 1`, `versionName 1.0` | AUTOMATED |
+| 20.23 | iOS release identity/version | Sandbox | PASS | `app.xstarz.analysis`, `MARKETING_VERSION 1.0`, automatic signing | AUTOMATED |
+| 20.24 | Windows identity/version/publisher | Sandbox | PASS | `app.xstarz.analysis.desktop`, `0.1.0`, publisher `Xstarz` ≠ product name | AUTOMATED |
+| 20.25 | `_generated/` not hand-edited this phase | Sandbox | PASS | Zero drift | AUTOMATED |
+
+### Blocked — external dependency unavailable
+
+| ID | Step | Blocking dependency | Status |
+|---|---|---|---|
+| 20.26 | Rotate the OTP credential | `auth.freebuff.app` account | BLOCKED |
+| 20.27 | Verify the old credential returns 401/403 | Same | BLOCKED |
+| 20.28 | Verify OTP delivery with the replacement | Same + deployed backend | BLOCKED |
+| 20.29 | Rewrite history on all affected refs | Rotation first; full mirror clone (repo here is shallow) | BLOCKED |
+| 20.30 | `npx convex codegen` | Control plane HTTP 000 | BLOCKED |
+| 20.31 | `npx convex deploy` | Same | BLOCKED |
+| 20.32 | Set Class B/C environment variables | Deployment | BLOCKED |
+| 20.33 | Evidence D — authenticated deployed calls | Deployment | BLOCKED |
+| 20.34 | Live provider verification (9 providers) | All 7 hosts HTTP 000 | BLOCKED |
+| 20.35 | Public web deployment verification | No deployment performed | BLOCKED |
+| 20.36 | Android signed release AAB/APK | No keystore | BLOCKED |
+| 20.37 | iOS archive and signing | No Apple Developer account | BLOCKED |
+| 20.38 | Windows signed installer | No certificate | BLOCKED |
+| 20.39 | Microsoft Store package validation | No Partner Center account | BLOCKED |
+| 20.40 | Android App Links on-device verification | Needs real cert + domain | BLOCKED |
+| 20.41 | iOS Universal Links verification | Needs Team ID + domain | BLOCKED |
+| 20.42 | Android physical-device matrix | No device | BLOCKED |
+| 20.43 | **iOS physical-device matrix** | **User has no iPhone** | BLOCKED |
+| 20.44 | Windows physical-machine matrix | No Windows machine | BLOCKED |
+| 20.45 | Official-domain verification | No custom domain | BLOCKED |
+
+**Phase 183 totals: 25 executed and PASS, 20 blocked, 0 failed, 0 manufactured.**
+
+---
+
+## 21. Sign-off
 
 | Field | Value |
 | --- | --- |
