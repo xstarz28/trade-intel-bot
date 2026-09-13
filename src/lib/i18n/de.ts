@@ -920,6 +920,8 @@ const de: Translations = {
       "Zinsdifferenz, COT-Positionierung und DXY sind kontextuelle Evidenz — keine automatischen Richtungssignale.",
     saveJournalCta: "Speichern Sie diese Analyse zur späteren Überprüfung in Ihrem Trading-Journal.",
     convictionPrefix: "Conviction:",
+    tradePlanHeading: "Handelsplan",
+    marketPriceNote: "Marktpreis",
     dataFull: "vollständige Daten",
     dataPartial: "partielle Daten",
     dataLimited: "begrenzte Daten",

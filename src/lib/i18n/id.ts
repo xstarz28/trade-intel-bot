@@ -915,6 +915,8 @@ const id: Translations = {
       "Selisih suku bunga, posisi COT, dan DXY adalah bukti kontekstual — bukan sinyal arah otomatis.",
     saveJournalCta: "Simpan analisis ini ke jurnal trading Anda untuk ditinjau kembali.",
     convictionPrefix: "conviction:",
+    tradePlanHeading: "rencana-transaksi",
+    marketPriceNote: "harga pasar",
     dataFull: "data lengkap",
     dataPartial: "data parsial",
     dataLimited: "data terbatas",

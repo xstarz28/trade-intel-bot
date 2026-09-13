@@ -920,6 +920,8 @@ const ko: Translations = {
       "금리 차이, COT 포지셔닝, DXY는 맥락적 증거입니다 — 자동 방향 신호가 아닙니다.",
     saveJournalCta: "이 분석을 트레이딩 저널에 저장해 나중에 검토하세요.",
     convictionPrefix: "확신도:",
+    tradePlanHeading: "거래 계획",
+    marketPriceNote: "시장 가격",
     dataFull: "완전한 데이터",
     dataPartial: "부분 데이터",
     dataLimited: "제한된 데이터",

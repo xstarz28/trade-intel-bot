@@ -921,6 +921,8 @@ const ja: Translations = {
       "金利差、COTポジション、DXYは文脈上のエビデンスです — 自動的な方向シグナルではありません。",
     saveJournalCta: "この分析をトレードジャーナルに保存して、後で確認できます。",
     convictionPrefix: "確信度:",
+    tradePlanHeading: "取引プラン",
+    marketPriceNote: "市場価格",
     dataFull: "完全なデータ",
     dataPartial: "部分的なデータ",
     dataLimited: "限定的なデータ",

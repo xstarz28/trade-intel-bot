@@ -921,6 +921,8 @@ const pt: Translations = {
       "O diferencial de juros, o posicionamento COT e o DXY são evidência contextual — não sinais direcionais automáticos.",
     saveJournalCta: "Salve esta análise no seu diário de trading para revisão posterior.",
     convictionPrefix: "convicção:",
+    tradePlanHeading: "plano-de-operação",
+    marketPriceNote: "preço de mercado",
     dataFull: "dados completos",
     dataPartial: "dados parciais",
     dataLimited: "dados limitados",

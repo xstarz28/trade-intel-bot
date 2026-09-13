@@ -911,6 +911,8 @@ const en: Translations = {
       "Rate differential, COT positioning, and DXY are contextual evidence — not automatic directional signals.",
     saveJournalCta: "Save this analysis to your trade journal for later review.",
     convictionPrefix: "conviction:",
+    tradePlanHeading: "trade-plan",
+    marketPriceNote: "market price",
     dataFull: "full data",
     dataPartial: "partial data",
     dataLimited: "limited data",

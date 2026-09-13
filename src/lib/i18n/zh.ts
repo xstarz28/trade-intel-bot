@@ -918,6 +918,8 @@ const zh: Translations = {
       "利率差异、COT持仓与DXY属背景性证据 — 并非自动方向信号。",
     saveJournalCta: "将本次分析保存到你的交易日志，供日后查看。",
     convictionPrefix: "确信度:",
+    tradePlanHeading: "交易计划",
+    marketPriceNote: "市场价格",
     dataFull: "完整数据",
     dataPartial: "部分数据",
     dataLimited: "有限数据",

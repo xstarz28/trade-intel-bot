@@ -771,6 +771,13 @@ export interface Translations {
     forexContextNote: string;
     saveJournalCta: string;
     convictionPrefix: string;
+    /** Heading of the trade-plan card. */
+    tradePlanHeading: string;
+    /**
+     * Caption under the entry price clarifying it is the CURRENT MARKET PRICE,
+     * not a broker order. Invariant 9: nothing here is executed for the user.
+     */
+    marketPriceNote: string;
     dataFull: string;
     dataPartial: string;
     dataLimited: string;

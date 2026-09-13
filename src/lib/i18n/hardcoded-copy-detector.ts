@@ -183,11 +183,56 @@ export function hardcodedStatusTokens(source: string): string[] {
   return out;
 }
 
+/**
+ * Phase 195 — SINGLE-WORD JSX prose.
+ *
+ * `jsxTextNodes` requires two consecutive words, so a lowercase one-word label
+ * — `entry`, `support`, `invalidation`, `supporting:` — was never reported.
+ * AnalysisResult alone carried 109 of them: section headings, evidence labels
+ * and, most seriously, the `entry` / `stop loss` / `take profit` trade-plan
+ * captions. Those are risk semantics, not decoration.
+ *
+ * The rule must not fire on notation, so a token is only prose when it is:
+ *   - alphabetic (hyphens allowed for `multi-timeframe`, `trade-plan`)
+ *   - at least 4 characters (drops `vs`, `EPS`, `TVL`, `COT`, `L/S`)
+ *   - not in TECHNICAL_TOKENS, and not an indicator call like `RSI(14)`
+ *   - not ALL-CAPS (handled by hardcodedStatusTokens, avoids double-counting)
+ *
+ * A trailing colon is stripped before the check: `supporting:` is the label
+ * `supporting`, and a colon does not make it notation.
+ */
+export function singleWordJsxProse(source: string): string[] {
+  const withoutComments = stripComments(source);
+  const out: string[] = [];
+  const re = />([^<>{}]+)</g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(withoutComments)) !== null) {
+    const raw = m[1].replace(/\s+/g, " ").trim();
+    if (!raw) continue;
+    // Multi-word prose is already covered; do not report it twice.
+    if (/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(raw)) continue;
+    // Strip decorative leading glyphs and a trailing colon.
+    const text = raw.replace(/^[^\w(]+/, "").replace(/:$/, "").trim();
+    if (!text) continue;
+    // Indicator/period notation: RSI(14), SMA(50), ATR(14), unlocks (30d).
+    if (/\(/.test(text)) continue;
+    // Pure notation, units, symbols, numbers.
+    if (!/^[A-Za-z][A-Za-z-]{3,}$/.test(text)) continue;
+    if (TECHNICAL_TOKENS.has(text.toUpperCase())) continue;
+    // ALL-CAPS tokens belong to hardcodedStatusTokens.
+    if (text === text.toUpperCase()) continue;
+    if (BRAND_LITERALS.has(text)) continue;
+    out.push(text);
+  }
+  return out;
+}
+
 /** Every detectable violation in one source file. */
 export function detectHardcodedCopy(source: string): string[] {
   return [
     ...jsxTextNodes(source),
     ...hardcodedAttributes(source),
     ...hardcodedStatusTokens(source),
+    ...singleWordJsxProse(source),
   ];
 }
