@@ -778,6 +778,26 @@ export interface Translations {
      * not a broker order. Invariant 9: nothing here is executed for the user.
      */
     marketPriceNote: string;
+    /**
+     * Risk-dimension labels. These are DISTINCT risk concepts and must not be
+     * collapsed into a generic "risk warning" (§8): structural = the setup's
+     * own integrity, extension = how far price has already travelled,
+     * liquidity = fill/slippage exposure, event = scheduled catalysts.
+     */
+    structuralRisk: string;
+    extensionRisk: string;
+    liquidityRisk: string;
+    eventRisk: string;
+    /** Heading explaining why the engine returned WAIT. Non-directional. */
+    whyWait: string;
+    /** Evidence that the current move continues. */
+    continuationEvidence: string;
+    /** Evidence that the current move reverses. */
+    reversalRisk: string;
+    /** What would CONFIRM the thesis. */
+    whatConfirms: string;
+    /** What would INVALIDATE the thesis — never softened to "risk". */
+    whatInvalidates: string;
     dataFull: string;
     dataPartial: string;
     dataLimited: string;
