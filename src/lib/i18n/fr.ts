@@ -457,6 +457,14 @@ const fr: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    newAlertRule: "Nouvelle règle d'alerte",
+    positionId: "ID de position",
+    alertRules: "Règles d'alerte",
+    loadingRules: "Chargement des règles…",
+    recentAlerts: "Alertes récentes",
+    noAlertsTriggered: "Aucune alerte déclenchée pour l'instant.",
+    ruleNamePlaceholder: "p. ex. Alerte de dégradation de thèse BTC",
+    examplePrefix: "p. ex. {example}",
     title: "Règles d'Alerte Personnalisées",
     createRule: "Créer une Règle",
     editRule: "Modifier la Règle",

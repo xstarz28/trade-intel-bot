@@ -68,7 +68,7 @@ function NewRuleForm({
     positionId?: string;
   }) => void;
 }) {
-  const { t } = useI18n();
+  const { t, txi } = useI18n();
   const [name, setName] = useState("");
   const [scope, setScope] = useState<RuleScope>("POSITION");
   const [condition, setCondition] = useState<RuleCondition>("THESIS_STATE_CHANGED");
@@ -104,7 +104,7 @@ function NewRuleForm({
         <div className="flex items-center gap-2">
           <Plus className="size-3 text-primary" />
           <span className="text-[10px] font-mono font-semibold text-foreground">
-            New Alert Rule
+            {t.alerts.newAlertRule}
           </span>
           <Button
             variant="ghost"
@@ -125,7 +125,7 @@ function NewRuleForm({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. BTC Thesis Deterioration Alert"
+            placeholder={t.alerts.ruleNamePlaceholder}
             className="w-full h-7 text-[10px] font-mono rounded border border-border/50 bg-transparent px-2 placeholder:text-muted-foreground/40"
           />
         </div>
@@ -164,7 +164,7 @@ function NewRuleForm({
                   type="text"
                   value={instrument}
                   onChange={(e) => setInstrument(e.target.value)}
-                  placeholder="e.g. BTC/USDT"
+                  placeholder={txi("alerts.examplePrefix", { example: "BTC/USDT" })}
                   className="w-full h-7 text-[10px] font-mono rounded border border-border/50 bg-transparent px-2 placeholder:text-muted-foreground/40"
                 />
               </div>
@@ -172,13 +172,13 @@ function NewRuleForm({
             {scope === "POSITION" && (
               <div>
                 <label className="text-[9px] font-mono text-muted-foreground block mb-1">
-                  Position ID
+                  {t.alerts.positionId}
                 </label>
                 <input
                   type="text"
                   value={positionId}
                   onChange={(e) => setPositionId(e.target.value)}
-                  placeholder="e.g. pos-abc123"
+                  placeholder={txi("alerts.examplePrefix", { example: "pos-abc123" })}
                   className="w-full h-7 text-[10px] font-mono rounded border border-border/50 bg-transparent px-2 placeholder:text-muted-foreground/40"
                 />
               </div>
@@ -457,7 +457,7 @@ export function CustomAlertRulesPanel() {
         <div className="flex items-center gap-2">
           <Bell className="size-3.5 text-primary" />
           <span className="text-[10px] font-mono font-semibold text-foreground">
-            Alert Rules
+            {t.alerts.alertRules}
           </span>
           <span className="text-[9px] font-mono text-muted-foreground">
             {ruleCount}/{MAX_RULES_PER_USER}
@@ -502,7 +502,7 @@ export function CustomAlertRulesPanel() {
         <div className="flex items-center gap-2 py-4 justify-center">
           <RefreshCw className="size-3 animate-spin text-muted-foreground" />
           <span className="text-[10px] font-mono text-muted-foreground">
-            Loading rules...
+            {t.alerts.loadingRules}
           </span>
         </div>
       ) : rules.length === 0 ? (
@@ -537,7 +537,7 @@ export function CustomAlertRulesPanel() {
             <div className="border border-border/30 rounded-lg p-3">
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-[10px] font-mono font-semibold text-foreground">
-                  Recent Alerts
+                  {t.alerts.recentAlerts}
                 </span>
                 <span className="text-[9px] font-mono text-muted-foreground">
                   {recentAlerts?.length ?? 0}
@@ -553,7 +553,7 @@ export function CustomAlertRulesPanel() {
                 </div>
               ) : recentAlerts.length === 0 ? (
                 <p className="text-[9px] font-mono text-muted-foreground text-center py-2">
-                  No alerts triggered yet.
+                  {t.alerts.noAlertsTriggered}
                 </p>
               ) : (
                 <div className="space-y-1 max-h-60 overflow-y-auto">

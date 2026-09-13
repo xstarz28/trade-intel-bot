@@ -456,6 +456,14 @@ const de: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    newAlertRule: "Neue Alarmregel",
+    positionId: "Positions-ID",
+    alertRules: "Alarmregeln",
+    loadingRules: "Regeln werden geladen…",
+    recentAlerts: "Aktuelle Alarme",
+    noAlertsTriggered: "Noch keine Alarme ausgelöst.",
+    ruleNamePlaceholder: "z. B. BTC-Thesenverschlechterungs-Alarm",
+    examplePrefix: "z. B. {example}",
     title: "Benutzerdefinierte Alarmregeln",
     createRule: "Regel Erstellen",
     editRule: "Regel Bearbeiten",

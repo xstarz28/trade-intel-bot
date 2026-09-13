@@ -456,6 +456,14 @@ const ko: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    newAlertRule: "새 알림 규칙",
+    positionId: "포지션 ID",
+    alertRules: "알림 규칙",
+    loadingRules: "규칙 불러오는 중…",
+    recentAlerts: "최근 알림",
+    noAlertsTriggered: "아직 발생한 알림이 없습니다.",
+    ruleNamePlaceholder: "예: BTC 논거 악화 알림",
+    examplePrefix: "예: {example}",
     title: "사용자 지정 알림 규칙",
     createRule: "규칙 만들기",
     editRule: "규칙 편집",

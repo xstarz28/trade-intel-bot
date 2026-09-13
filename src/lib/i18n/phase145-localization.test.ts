@@ -121,7 +121,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 985 leaves", () => {
+  it("EN is the canonical structural reference with 993 leaves", () => {
     // 847 -> 875: Phase 182 added the `legal` section for the public website
     // pages (/download, /privacy, /terms). Every one of the nine locales was
     // updated in the same change, which the parity tests above enforce.
@@ -131,6 +131,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // which shipped an internal env var name to every client (+34 -1 = +33).
     // 908 -> 963: Phase 190 added `landing` (55). The public landing page had
     // been hardcoded — largely in Indonesian, served to all nine locales.
+    // 985 -> 993: Phase 194 localized CustomAlertRulesPanel (7 keys + examplePrefix).
     // 980 -> 985: Phase 194 localized the Journal status filter (5 keys).
     // 975 -> 980: Phase 194 localized NotificationCenter (5 keys).
     // 973 -> 975: Phase 194 added timeline.currentVsPrevious + timeline.historySummary
@@ -142,7 +143,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // 963 -> 977: Phase 191 added `provenance` (13) + `auth.restoringSession` so acquisition state
     // (observed / reused / unavailable / stale / historical / degraded) can be
     // shown to users in their own language instead of only in English logs.
-    expect(enCount).toBe(985);
+    expect(enCount).toBe(993);
   });
 
   for (const code of NINE) {
@@ -179,6 +180,9 @@ describe("placeholder parity across all 9 locales", () => {
       "{count}",
       // Phase 191 — evidence age in provenance copy.
       "{age}",
+      // Phase 194 — format hint: "e.g. {example}". The abbreviation is
+      // translated per locale; the example value is provider-native notation.
+      "{example}",
       // Phase 189 — first-run auth copy.
       "{email}",
       "{minutes}",
@@ -509,9 +513,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 985 canonical keys with non-empty values", () => {
+  it("zh has all 993 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(985);
+    expect(zhLeaves.length).toBe(993);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

@@ -457,6 +457,14 @@ const ja: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    newAlertRule: "新しいアラートルール",
+    positionId: "ポジションID",
+    alertRules: "アラートルール",
+    loadingRules: "ルールを読み込み中…",
+    recentAlerts: "最近のアラート",
+    noAlertsTriggered: "まだアラートは発生していません。",
+    ruleNamePlaceholder: "例: BTC 論拠悪化アラート",
+    examplePrefix: "例: {example}",
     title: "カスタムアラートルール",
     createRule: "ルールを作成",
     editRule: "ルールを編集",
