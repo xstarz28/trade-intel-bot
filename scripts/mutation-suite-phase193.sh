@@ -115,7 +115,7 @@ mutate "M5 drop ja market.sourceTransparency" \
 mutate "M6 badge reverted to English LIVE/STALE" \
   "perl -0pi -e 's|\{isLive \? t\.market\.live : isStale \? t\.market\.stale : \"—\"\}|{isLive ? \"LIVE\" : isStale ? \"STALE\" : \"—\"}|' '$PANEL'" \
   catch \
-  src/lib/i18n/page-localization-guard.phase189.test.ts
+  src/components/market-overview-localization.phase193.test.tsx
 
 # M7 — remove the aria-label, losing the accessible name.
 mutate "M7 badge loses its accessible name" \

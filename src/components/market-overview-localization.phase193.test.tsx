@@ -124,6 +124,51 @@ describe("193 — the source badge is localized", () => {
     expect(container.textContent).toContain(en.market.stale);
   });
 
+  it("the badge renders the LOCALE's word, not the English token", () => {
+    // NON-VACUOUS BY CONSTRUCTION.
+    //
+    // `en.market.live` is literally "LIVE", so asserting it in English passes
+    // whether or not the component reads from `t`. Phase 194 added LIVE/STALE
+    // to the detector's TECHNICAL_TOKENS (they are product notation), which
+    // legitimately stopped the static guard from flagging a hardcoded badge —
+    // and that silently removed the only thing catching mutation M6.
+    //
+    // Japanese and Chinese DO translate these words, so a hardcoded English
+    // badge is observable at runtime. This test is the behavioural
+    // replacement for the static check.
+    withLocale("ja", () => {
+      const map = new Map([[SYMBOL, state({ sourceMode: "LIVE", price: 100 })]]);
+      renderPanel(map);
+      // Scope to the BADGE: the legend deliberately keeps the LIVE/STALE
+      // tokens it explains, so a whole-container check would be ambiguous.
+      const badges = screen.getAllByLabelText(ja.market.live);
+      expect(badges.length).toBeGreaterThan(0);
+      expect(badges[0].textContent).toBe(ja.market.live);
+      expect(badges[0].textContent).not.toBe("LIVE");
+    });
+  });
+
+  it("a stale feed renders the locale's STALE word", () => {
+    withLocale("ja", () => {
+      const map = new Map([[SYMBOL, state({ sourceMode: "STALE", price: 100 })]]);
+      renderPanel(map);
+      const badges = screen.getAllByLabelText(ja.market.stale);
+      expect(badges.length).toBeGreaterThan(0);
+      expect(badges[0].textContent).toBe(ja.market.stale);
+      expect(badges[0].textContent).not.toBe("STALE");
+    });
+  });
+
+  it("the accessible name is localized too", () => {
+    // An English aria-label beside translated visible text is the exact
+    // accessibility defect §7 forbids.
+    withLocale("zh", () => {
+      const map = new Map([[SYMBOL, state({ sourceMode: "UNAVAILABLE", price: 0 })]]);
+      renderPanel(map);
+      expect(screen.getAllByLabelText(zh.market.unavailable).length).toBeGreaterThan(0);
+    });
+  });
+
   it("the badge exposes an accessible name for the unavailable case", () => {
     // "—" is meaningless to a screen reader; the aria-label carries the word.
     const map = new Map([[SYMBOL, state({ sourceMode: "UNAVAILABLE", price: 0 })]]);

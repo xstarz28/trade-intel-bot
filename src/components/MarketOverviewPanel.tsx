@@ -121,7 +121,7 @@ interface MarketOverviewPanelProps {
 }
 
 export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
-  const { t } = useI18n();
+  const { t, txi } = useI18n();
   // Group instruments by asset class
   const grouped = useMemo(() => {
     const allSymbols = getAllInstruments();
@@ -165,7 +165,7 @@ export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
           <h3 className="text-xs font-mono font-semibold">{t.market.title}</h3>
         </div>
         <span className="text-[9px] font-mono text-muted-foreground">
-          {totalLive}/{totalInstruments} live
+          {txi("market.liveCount", { live: totalLive, total: totalInstruments })}
         </span>
       </div>
 

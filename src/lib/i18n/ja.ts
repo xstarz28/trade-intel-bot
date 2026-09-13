@@ -522,6 +522,7 @@ const ja: Translations = {
     unavailable: "利用不可",
     sourceTransparency:
       "データ出所の透明性: LIVE = プロバイダーの実データ · STALE = 鮮度期限を超えたデータ · — = 利用不可",
+    liveCount: "{live}/{total} ライブ",
     vix: "VIX",
     dxy: "DXY",
     us10y: "US 10Y",

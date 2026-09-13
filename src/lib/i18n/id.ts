@@ -517,6 +517,7 @@ const id: Translations = {
     unavailable: "TIDAK TERSEDIA",
     sourceTransparency:
       "Transparansi sumber: LIVE = data provider asli · STALE = data di luar batas kesegaran · — = tidak tersedia",
+    liveCount: "{live}/{total} langsung",
     vix: "VIX",
     dxy: "DXY",
     us10y: "US 10Y",

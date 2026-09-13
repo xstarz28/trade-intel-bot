@@ -520,6 +520,7 @@ const zh: Translations = {
     unavailable: "不可用",
     sourceTransparency:
       "数据来源透明度：LIVE = 真实提供商数据 · STALE = 超出时效范围的数据 · — = 不可用",
+    liveCount: "{live}/{total} 实时",
     vix: "VIX",
     dxy: "DXY",
     us10y: "US 10Y",

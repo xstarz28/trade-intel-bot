@@ -21,7 +21,6 @@ import { describe, expect, it } from "vitest";
 // Phase 194 — the detector now lives in ONE place so the guard and the
 // debt-inventory script cannot drift apart. Logic moved verbatim.
 import {
-  BRAND_LITERALS,
   hardcodedAttributes,
   hardcodedStatusTokens,
   jsxTextNodes,

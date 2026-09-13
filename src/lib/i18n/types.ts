@@ -558,6 +558,11 @@ export interface Translations {
      * legend leaves non-English users unable to judge data currency.
      */
     sourceTransparency: string;
+    /**
+     * Live-feed counter, e.g. "3/11 live". Interpolated so word order can
+     * differ per locale — several languages place the count after the noun.
+     */
+    liveCount: string;
     vix: string;
     dxy: string;
     us10y: string;
