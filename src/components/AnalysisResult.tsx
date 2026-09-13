@@ -974,15 +974,15 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">structural risk:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.structuralRisk}</span>{" "}
                   <span className={RISK_COLORS[sc.structuralRisk]}>{sc.structuralRisk}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">extension risk:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.extensionRisk}</span>{" "}
                   <span className={RISK_COLORS[sc.extensionRisk]}>{sc.extensionRisk}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">liquidity risk:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.liquidityRisk}</span>{" "}
                   <span className={RISK_COLORS[sc.liquidityRisk]}>{sc.liquidityRisk}</span>
                 </div>
               </div>
@@ -1002,7 +1002,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* WAIT reason */}
               {sc.waitReason && (
                 <div className="rounded-lg bg-amber-500/5 border border-amber-500/15 px-3 py-2">
-                  <p className="text-[10px] font-mono font-medium text-amber-400 uppercase tracking-wider mb-0.5">why wait?</p>
+                  <p className="text-[10px] font-mono font-medium text-amber-400 uppercase tracking-wider mb-0.5">{t.analysisResult.whyWait}</p>
                   <p className="text-[11px] font-mono text-amber-300/80 leading-relaxed">{sc.waitReason}</p>
                 </div>
               )}
@@ -1010,7 +1010,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Continuation Evidence */}
               {sc.continuationEvidence.length > 0 && (
                 <div>
-                  <p className="text-[10px] font-mono font-semibold text-emerald-400 mb-1">continuation evidence</p>
+                  <p className="text-[10px] font-mono font-semibold text-emerald-400 mb-1">{t.analysisResult.continuationEvidence}</p>
                   {sc.continuationEvidence.slice(0, 4).map((e, i) => (
                     <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
                       <span className="text-emerald-400 shrink-0">+</span>
@@ -1023,7 +1023,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Reversal Evidence */}
               {sc.reversalEvidence.length > 0 && (
                 <div className="border-t border-border/30 pt-2">
-                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">reversal risk</p>
+                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">{t.analysisResult.reversalRisk}</p>
                   {sc.reversalEvidence.slice(0, 4).map((e, i) => (
                     <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
                       <span className="text-amber-400 shrink-0">−</span>
@@ -1036,7 +1036,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Confirmation Conditions */}
               {sc.confirmationConditions.length > 0 && (
                 <div className="border-t border-border/30 pt-2">
-                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">what confirms</p>
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">{t.analysisResult.whatConfirms}</p>
                   {sc.confirmationConditions.map((c, i) => (
                     <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
                       <span className="text-muted-foreground/40 shrink-0">→</span>
@@ -1049,7 +1049,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Invalidation */}
               {sc.invalidationConditions.length > 0 && (
                 <div className="border-t border-border/30 pt-2">
-                  <p className="text-[10px] font-mono font-semibold text-red-400/80 mb-1">what invalidates</p>
+                  <p className="text-[10px] font-mono font-semibold text-red-400/80 mb-1">{t.analysisResult.whatInvalidates}</p>
                   {sc.invalidationConditions.map((inv, i) => (
                     <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
                       <span className="text-red-400/60 shrink-0">✕</span>
@@ -1136,7 +1136,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <span>{ft.alignment.replace(/_/g, " ").toLowerCase()}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">event risk:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.eventRisk}</span>{" "}
                   <span>{ft.eventRisk.toLowerCase()}</span>
                 </div>
               </div>

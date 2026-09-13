@@ -320,3 +320,57 @@ describe("195 §12 — a LOCKED result exposes no actionable field", () => {
     expect(snapshotFor("ja", locked).recommendation).toBe("LONG");
   });
 });
+
+// ════════ §8 — risk vocabulary stays precise ════════
+
+describe("195 §8 — risk dimensions are distinct, never generic", () => {
+  const RISK_KEYS = ["structuralRisk", "extensionRisk", "liquidityRisk", "eventRisk"] as const;
+
+  it("the four risk dimensions are distinct strings in every locale", () => {
+    // Collapsing them into one generic "risk" label would destroy the
+    // information the trader uses to decide WHICH risk they are accepting.
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const values = RISK_KEYS.map((k) => bundle.analysisResult[k]);
+      expect(new Set(values).size, `${code} reuses the same wording`).toBe(RISK_KEYS.length);
+      for (const v of values) expect(v.length, `${code}`).toBeGreaterThan(3);
+    }
+  });
+
+  it("invalidation is never softened into a generic risk warning", () => {
+    // "what invalidates" is a thesis-death condition, not a caution.
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const invalidates = bundle.analysisResult.whatInvalidates;
+      const confirms = bundle.analysisResult.whatConfirms;
+      expect(invalidates, `${code}`).not.toBe(confirms);
+      expect(invalidates.length, `${code}`).toBeGreaterThan(3);
+    }
+  });
+
+  it("continuation and reversal remain opposites", () => {
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      expect(
+        bundle.analysisResult.continuationEvidence,
+        `${code} continuation == reversal`,
+      ).not.toBe(bundle.analysisResult.reversalRisk);
+    }
+  });
+
+  it("the WAIT explanation heading stays a question, not a directive", () => {
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const why = bundle.analysisResult.whyWait.toLowerCase();
+      for (const word of ["buy", "sell", "enter", "compra", "achat", "kaufen", "買い", "매수", "买入"]) {
+        expect(why.includes(word), `${code}.whyWait: "${why}"`).toBe(false);
+      }
+    }
+  });
+
+  it("trade-plan captions reuse the canonical financial terms", () => {
+    // §5/§16: these must be the SAME words the protection surface uses, or the
+    // product speaks two dialects of its own risk vocabulary.
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      for (const key of ["entryPriceLabel", "stopLossLabel", "takeProfitLabel"] as const) {
+        expect(bundle.protection[key].length, `${code}.protection.${key}`).toBeGreaterThan(1);
+      }
+    }
+  });
+});
