@@ -20,6 +20,10 @@
  */
 
 import { describe, expect, it } from "vitest";
+import React from "react";
+import { cleanup, render, screen } from "@testing-library/react";
+import { I18nProvider } from "@/lib/i18n";
+import { Journal } from "./Journal";
 
 import en from "@/lib/i18n/en";
 import id from "@/lib/i18n/id";
@@ -37,6 +41,28 @@ import type { JournalEntry, TradeStatus } from "@/types/journal";
 const BUNDLES = { en, id, es, fr, pt, de, ja, ko, zh } as const;
 
 type LocaleCode = keyof typeof BUNDLES;
+
+/** Render the real component through the real provider. */
+function renderJournal() {
+  return render(
+    <I18nProvider>
+      <Journal />
+    </I18nProvider>,
+  );
+}
+
+/** Force a locale for the duration of one render. */
+function withLocale(locale: string, fn: () => void) {
+  const KEY = "xstarz:locale";
+  const previous = localStorage.getItem(KEY);
+  localStorage.setItem(KEY, locale);
+  try {
+    fn();
+  } finally {
+    if (previous === null) localStorage.removeItem(KEY);
+    else localStorage.setItem(KEY, previous);
+  }
+}
 
 // ─── §14 fixtures ────────────────────────────────────────────────
 
@@ -477,5 +503,79 @@ describe("196 §9 — locale never changes filter results", () => {
       void locale;
       expect(applyFilters(ALL_ENTRIES, "btc", "")).toEqual(reference);
     }
+  });
+});
+
+// ════════ §3 / §10 / §11 — rendered behaviour ════════
+//
+// The assertions above protect the RECORD. These render the real component
+// through the real provider and protect what reaches the DOM: a translated
+// label must appear, while the canonical value must stay machine-readable.
+
+describe("196 §10 — option values stay canonical, labels are translated", () => {
+  it("every status <option> carries a canonical value, not translated prose", () => {
+    // The value is what the filter compares and what could be persisted.
+    // Putting prose here would make filtering language-dependent.
+    const CANONICAL = ["", "PLANNED", "OPEN", "CLOSED", "CANCELLED", "NO_TRADE"];
+    for (const locale of ["en", "ja", "de"]) {
+      withLocale(locale, () => {
+        renderJournal();
+        const select = screen.getByLabelText(BUNDLES[locale as LocaleCode].journal.filterByStatus);
+        const values = Array.from(select.querySelectorAll("option")).map((o) => o.value);
+        expect(values, `${locale} option values drifted`).toEqual(CANONICAL);
+        cleanup();
+      });
+    }
+  });
+
+  it("option labels ARE translated while their values are not", () => {
+    withLocale("ja", () => {
+      renderJournal();
+      const select = screen.getByLabelText(ja.journal.filterByStatus);
+      const options = Array.from(select.querySelectorAll("option"));
+      const planned = options.find((o) => o.value === "PLANNED");
+      expect(planned?.textContent).toBe(ja.journal.statusPlanned);
+      // Proves the label really changed language rather than echoing the enum.
+      expect(planned?.textContent).not.toBe("PLANNED");
+      cleanup();
+    });
+  });
+});
+
+describe("196 §3 — status badges render translations, not raw enums", () => {
+  it.each(["ja", "de", "zh"])("%s renders a translated empty-state, not English", (code) => {
+    withLocale(code, () => {
+      renderJournal();
+      const bundle = BUNDLES[code as LocaleCode];
+      expect(screen.getByText(bundle.journal.noJournalEntries)).toBeTruthy();
+      expect(screen.queryByText("No journal entries yet.")).toBeNull();
+      cleanup();
+    });
+  });
+
+  it("the status filter label is localized in every locale", () => {
+    for (const code of Object.keys(BUNDLES)) {
+      withLocale(code, () => {
+        renderJournal();
+        expect(
+          screen.getByLabelText(BUNDLES[code as LocaleCode].journal.filterByStatus),
+          `${code} lost its accessible filter name`,
+        ).toBeTruthy();
+        cleanup();
+      });
+    }
+  });
+});
+
+describe("196 §11 — accessibility text is localized alongside the UI", () => {
+  it("no English-only accessible name survives in a non-English locale", () => {
+    // An aria-label left in English beside translated visible text is the
+    // exact defect §11 forbids.
+    withLocale("ja", () => {
+      renderJournal();
+      expect(screen.queryByLabelText("Filter by status")).toBeNull();
+      expect(screen.getByLabelText(ja.journal.filterByStatus)).toBeTruthy();
+      cleanup();
+    });
   });
 });

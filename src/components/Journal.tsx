@@ -32,6 +32,7 @@ import {
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
 import { useI18n } from "@/lib/i18n";
+import { mapTradeOutcome, mapTradeStatus } from "@/lib/i18n/enum-mapping";
 
 // ── Status Colors ────────────────────────────────────────────────
 
@@ -67,7 +68,7 @@ interface JournalProps {
 // ── Main Component ───────────────────────────────────────────────
 
 export function Journal({ currentResult, onJournalCreated, onBack }: JournalProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
@@ -85,7 +86,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   };
 
   const handleCreateObservation = (result: AnalysisResult) => {
-    const entry = createObservationEntry(result, "Observation — no trade taken");
+    const entry = createObservationEntry(result, t.journal.observationNote);
     setEntries((prev) => [entry, ...prev]);
     setSelectedEntry(entry);
     setView("detail");
@@ -151,7 +152,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-mono font-semibold">{t.journal.createJournalEntry}</h3>
             <Button variant="ghost" size="sm" onClick={() => setView("list")} className="text-xs ml-auto">
-              ← Back
+              {t.global.back}
             </Button>
           </div>
         </CardHeader>
@@ -160,10 +161,10 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
             {t.journal.snapshotDescription}
           </p>
           <div className="text-xs font-mono space-y-1 p-3 rounded border border-border/30 bg-muted/30">
-            <div><span className="text-muted-foreground">instrument:</span> {currentResult.instrument}</div>
-            <div><span className="text-muted-foreground">decision:</span> {currentResult.recommendation}</div>
-            <div><span className="text-muted-foreground">bias:</span> {currentResult.bias}</div>
-            <div><span className="text-muted-foreground">confidence:</span> {currentResult.confidence}</div>
+            <div><span className="text-muted-foreground">{t.journal.snapshotInstrument}:</span> {currentResult.instrument}</div>
+            <div><span className="text-muted-foreground">{t.journal.snapshotDecision}:</span> {currentResult.recommendation}</div>
+            <div><span className="text-muted-foreground">{t.analysis.bias}:</span> {currentResult.bias}</div>
+            <div><span className="text-muted-foreground">{t.analysis.confidence}:</span> {currentResult.confidence}</div>
           </div>
           <div className="flex gap-2">
             <Button
@@ -203,18 +204,28 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-mono font-semibold">
-              {entry.instrument} — Journal
+              {entry.instrument} — {t.journal.journalSuffix}
             </h3>
-            <Badge variant="outline" className={cn("text-[10px] font-mono", STATUS_COLORS[entry.status])}>
-              {entry.status}
+            <Badge
+              variant="outline"
+              className={cn("text-[10px] font-mono", STATUS_COLORS[entry.status])}
+              aria-label={`${t.journal.statusLabel}: ${mapTradeStatus(entry.status, t)}`}
+              data-status={entry.status}
+            >
+              {mapTradeStatus(entry.status, t)}
             </Badge>
             {entry.outcome && (
-              <Badge variant="outline" className={cn("text-[10px] font-mono", OUTCOME_COLORS[entry.outcome])}>
-                {entry.outcome}
+              <Badge
+                variant="outline"
+                className={cn("text-[10px] font-mono", OUTCOME_COLORS[entry.outcome])}
+                aria-label={`${t.journal.outcomeLabel}: ${mapTradeOutcome(entry.outcome, t)}`}
+                data-outcome={entry.outcome}
+              >
+                {mapTradeOutcome(entry.outcome, t)}
               </Badge>
             )}
             <Button variant="ghost" size="sm" onClick={() => setView("list")} className="text-xs ml-auto">
-              ← Back
+              {t.global.back}
             </Button>
           </div>
         </CardHeader>
@@ -224,26 +235,26 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           <div>
             <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ {t.journal.engineAnalysisSnapshot}</h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 rounded border border-border/30 bg-muted/30">
-              <div><span className="text-muted-foreground">instrument:</span> {snap.analysisId ? entry.instrument : "—"}</div>
-              <div><span className="text-muted-foreground">decision:</span> {snap.decision}</div>
-              <div><span className="text-muted-foreground">bias:</span> {snap.bias}</div>
-              <div><span className="text-muted-foreground">confidence:</span> {snap.confidence}</div>
-              {snap.conviction && <div><span className="text-muted-foreground">conviction:</span> {snap.conviction}</div>}
-              {snap.scenario && <div><span className="text-muted-foreground">scenario:</span> {snap.scenario}</div>}
-              {snap.marketRegime && <div><span className="text-muted-foreground">regime:</span> {snap.marketRegime}</div>}
-              {snap.marketPhase && <div><span className="text-muted-foreground">phase:</span> {snap.marketPhase}</div>}
-              {snap.continuationQuality && <div><span className="text-muted-foreground">continuation:</span> {snap.continuationQuality}</div>}
-              {snap.fundamentalAlignment && <div><span className="text-muted-foreground">fundamental:</span> {snap.fundamentalAlignment}</div>}
-              {snap.actionability && <div><span className="text-muted-foreground">actionability:</span> {snap.actionability}</div>}
-              {snap.forwardPrimaryPath && <div><span className="text-muted-foreground">forward:</span> {snap.forwardPrimaryPath}</div>}
-              {snap.dataCompleteness && <div><span className="text-muted-foreground">data:</span> {snap.dataCompleteness}</div>}
-              {snap.decisionFingerprint && <div className="col-span-2 sm:col-span-3"><span className="text-muted-foreground">fingerprint:</span> {snap.decisionFingerprint}</div>}
+              <div><span className="text-muted-foreground">{t.journal.snapshotInstrument}:</span> {snap.analysisId ? entry.instrument : "—"}</div>
+              <div><span className="text-muted-foreground">{t.journal.snapshotDecision}:</span> {snap.decision}</div>
+              <div><span className="text-muted-foreground">{t.analysis.bias}:</span> {snap.bias}</div>
+              <div><span className="text-muted-foreground">{t.analysis.confidence}:</span> {snap.confidence}</div>
+              {snap.conviction && <div><span className="text-muted-foreground">{t.journal.snapshotConviction}:</span> {snap.conviction}</div>}
+              {snap.scenario && <div><span className="text-muted-foreground">{t.journal.snapshotScenario}:</span> {snap.scenario}</div>}
+              {snap.marketRegime && <div><span className="text-muted-foreground">{t.journal.snapshotRegime}:</span> {snap.marketRegime}</div>}
+              {snap.marketPhase && <div><span className="text-muted-foreground">{t.journal.snapshotPhase}:</span> {snap.marketPhase}</div>}
+              {snap.continuationQuality && <div><span className="text-muted-foreground">{t.journal.snapshotContinuation}:</span> {snap.continuationQuality}</div>}
+              {snap.fundamentalAlignment && <div><span className="text-muted-foreground">{t.journal.snapshotFundamental}:</span> {snap.fundamentalAlignment}</div>}
+              {snap.actionability && <div><span className="text-muted-foreground">{t.journal.snapshotActionability}:</span> {snap.actionability}</div>}
+              {snap.forwardPrimaryPath && <div><span className="text-muted-foreground">{t.journal.snapshotForward}:</span> {snap.forwardPrimaryPath}</div>}
+              {snap.dataCompleteness && <div><span className="text-muted-foreground">{t.journal.snapshotData}:</span> {snap.dataCompleteness}</div>}
+              {snap.decisionFingerprint && <div className="col-span-2 sm:col-span-3"><span className="text-muted-foreground">{t.journal.snapshotFingerprint}:</span> {snap.decisionFingerprint}</div>}
             </div>
             {snap.keyLevels && (
               <div className="mt-2 flex flex-wrap gap-2">
-                <Badge variant="outline" className="text-[9px] font-mono border-border/50">support: {snap.keyLevels.support}</Badge>
-                <Badge variant="outline" className="text-[9px] font-mono border-border/50">resistance: {snap.keyLevels.resistance}</Badge>
-                <Badge variant="outline" className="text-[9px] font-mono border-border/50">invalidation: {snap.keyLevels.invalidation}</Badge>
+                <Badge variant="outline" className="text-[9px] font-mono border-border/50">{t.analysis.support}: {snap.keyLevels.support}</Badge>
+                <Badge variant="outline" className="text-[9px] font-mono border-border/50">{t.analysis.resistance}: {snap.keyLevels.resistance}</Badge>
+                <Badge variant="outline" className="text-[9px] font-mono border-border/50">{t.analysis.invalidationLevel}: {snap.keyLevels.invalidation}</Badge>
               </div>
             )}
           </div>
@@ -252,10 +263,10 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
 
           {/* ── TRADE INFORMATION ── */}
           <div>
-            <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ TRADE</h4>
+            <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ {t.journal.trade}</h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div>
-                <span className="text-muted-foreground">entry:</span>{" "}
+                <span className="text-muted-foreground">{t.journal.tradeEntry}:</span>{" "}
                 {editMode ? (
                   <Input type="number" defaultValue={entry.entry ?? ""} className="h-6 text-[10px] font-mono w-24 inline-block"
                     onBlur={(e) => handleUpdateTrade(entry, "entry", parseFloat(e.target.value) || undefined)} />
@@ -264,7 +275,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                 )}
               </div>
               <div>
-                <span className="text-muted-foreground">stop:</span>{" "}
+                <span className="text-muted-foreground">{t.journal.tradeStop}:</span>{" "}
                 {editMode ? (
                   <Input type="number" defaultValue={entry.stopLoss ?? ""} className="h-6 text-[10px] font-mono w-24 inline-block"
                     onBlur={(e) => handleUpdateTrade(entry, "stopLoss", parseFloat(e.target.value) || undefined)} />
@@ -273,7 +284,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                 )}
               </div>
               <div>
-                <span className="text-muted-foreground">target:</span>{" "}
+                <span className="text-muted-foreground">{t.journal.tradeTarget}:</span>{" "}
                 {editMode ? (
                   <Input type="number" defaultValue={entry.takeProfit ?? ""} className="h-6 text-[10px] font-mono w-24 inline-block"
                     onBlur={(e) => handleUpdateTrade(entry, "takeProfit", parseFloat(e.target.value) || undefined)} />
@@ -281,11 +292,11 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                   <span>{entry.takeProfit ?? "—"}</span>
                 )}
               </div>
-              <div><span className="text-muted-foreground">R:R:</span> {entry.riskReward ?? "—"}</div>
-              <div><span className="text-muted-foreground">size:</span> {entry.positionSize ?? "—"}</div>
-              {entry.exitPrice !== undefined && <div><span className="text-muted-foreground">exit:</span> {entry.exitPrice}</div>}
-              {entry.pnl !== undefined && <div><span className="text-muted-foreground">P/L:</span> <span className={entry.pnl >= 0 ? "text-emerald-400" : "text-red-400"}>{entry.pnl}</span></div>}
-              {entry.pnlPercent !== undefined && <div><span className="text-muted-foreground">P/L%:</span> <span className={entry.pnlPercent >= 0 ? "text-emerald-400" : "text-red-400"}>{entry.pnlPercent.toFixed(2)}%</span></div>}
+              <div><span className="text-muted-foreground">{t.journal.riskReward}:</span> {entry.riskReward ?? "—"}</div>
+              <div><span className="text-muted-foreground">{t.journal.tradeSize}:</span> {entry.positionSize ?? "—"}</div>
+              {entry.exitPrice !== undefined && <div><span className="text-muted-foreground">{t.global.exit}:</span> {entry.exitPrice}</div>}
+              {entry.pnl !== undefined && <div><span className="text-muted-foreground">{t.journal.pnlLabel}:</span> <span className={entry.pnl >= 0 ? "text-emerald-400" : "text-red-400"}>{entry.pnl}</span></div>}
+              {entry.pnlPercent !== undefined && <div><span className="text-muted-foreground">{t.journal.pnlPercentLabel}:</span> <span className={entry.pnlPercent >= 0 ? "text-emerald-400" : "text-red-400"}>{entry.pnlPercent.toFixed(2)}%</span></div>}
             </div>
           </div>
 
@@ -294,7 +305,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           {/* ── LIFECYCLE ACTIONS ── */}
           {validNext.length > 0 && (
             <div>
-              <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ ACTIONS</h4>
+              <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ {t.journal.actions}</h4>
               <div className="flex flex-wrap gap-2">
                 {validNext.map((status) => (
                   <Button
@@ -303,8 +314,10 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                     variant={status === "OPEN" ? "default" : "outline"}
                     className="text-[10px] font-mono"
                     onClick={() => handleTransition(entry, status)}
+                    aria-label={`${t.journal.transitionTo}: ${mapTradeStatus(status, t)}`}
+                    data-transition={status}
                   >
-                    → {status}
+                    → {mapTradeStatus(status, t)}
                   </Button>
                 ))}
                 <Button
@@ -313,7 +326,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                   className="text-[10px] font-mono"
                   onClick={() => setEditMode(!editMode)}
                 >
-                  {editMode ? "Done" : "Edit"}
+                  {editMode ? t.journal.done : t.journal.edit}
                 </Button>
               </div>
             </div>
@@ -323,17 +336,22 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
 
           {/* ── USER REVIEW ── */}
           <div>
-            <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ REVIEW</h4>
+            <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ {t.journal.review}</h4>
             <div className="space-y-2">
+              {/*
+                The field name is the STORED key and must never be localized;
+                only the label beside it is translated (§10). Pairing them in
+                one array keeps that mapping visible at a glance.
+              */}
               {([
-                ["entryReason", "Entry Reason"],
-                ["thesisAtEntry", "Thesis at Entry"],
-                ["confirmationObserved", "Confirmation Observed"],
-                ["invalidationObserved", "Invalidation Observed"],
-                ["whatWentRight", "What Went Right"],
-                ["whatWentWrong", "What Went Wrong"],
-                ["lessons", "Lessons"],
-                ["notes", "Notes"],
+                ["entryReason", t.journal.entryReason],
+                ["thesisAtEntry", t.journal.thesisAtEntry],
+                ["confirmationObserved", t.journal.confirmationObserved],
+                ["invalidationObserved", t.journal.invalidationObserved],
+                ["whatWentRight", t.journal.whatWentRight],
+                ["whatWentWrong", t.journal.whatWentWrong],
+                ["lessons", t.journal.lessons],
+                ["notes", t.journal.notes],
               ] as [string, string][]).map(([field, label]) => (
                 <div key={field}>
                   <span className="text-muted-foreground">{label}:</span>
@@ -366,7 +384,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           <h3 className="text-sm font-mono font-semibold">{t.journal.title}</h3>
           {onBack && (
             <Button variant="ghost" size="sm" onClick={onBack} className="text-xs ml-auto">
-              ← Dashboard
+              {t.journal.backToDashboard}
             </Button>
           )}
         </div>
@@ -374,16 +392,17 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
       <CardContent className="space-y-3">
         {/* Quick Stats */}
         <div className="flex flex-wrap gap-2 text-[10px] font-mono">
-          <Badge variant="outline" className="border-border/50">total: {entries.length}</Badge>
-          <Badge variant="outline" className="border-border/50">open: {entries.filter((e) => e.status === "OPEN").length}</Badge>
-          <Badge variant="outline" className="border-border/50">closed: {entries.filter((e) => e.status === "CLOSED").length}</Badge>
-          <Badge variant="outline" className="border-border/50">planned: {entries.filter((e) => e.status === "PLANNED").length}</Badge>
+          <Badge variant="outline" className="border-border/50">{t.journal.total} {entries.length}</Badge>
+          <Badge variant="outline" className="border-border/50">{t.journal.open} {entries.filter((e) => e.status === "OPEN").length}</Badge>
+          <Badge variant="outline" className="border-border/50">{t.journal.closed} {entries.filter((e) => e.status === "CLOSED").length}</Badge>
+          <Badge variant="outline" className="border-border/50">{t.journal.planned} {entries.filter((e) => e.status === "PLANNED").length}</Badge>
         </div>
 
         {/* Filters */}
         <div className="flex gap-2">
           <Input
             placeholder={t.journal.filterInstrument}
+            aria-label={t.journal.filterInstrument}
             value={filterInstrument}
             onChange={(e) => setFilterInstrument(e.target.value)}
             className="h-7 text-[10px] font-mono w-32"
@@ -391,6 +410,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
+            aria-label={t.journal.filterByStatus}
             className="h-7 text-[10px] font-mono rounded border border-border/50 bg-transparent px-2"
           >
             <option value="">{t.journal.allStatus}</option>
@@ -405,7 +425,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         {/* Entry List */}
         {filteredEntries.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">
-            {entries.length === 0 ? "No journal entries yet." : "No entries match filters."}
+            {entries.length === 0 ? t.journal.noJournalEntries : t.journal.noEntriesMatchFilters}
           </p>
         ) : (
           <div className="space-y-1">
@@ -415,12 +435,27 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                 className="flex items-center gap-2 p-2 rounded border border-border/30 hover:bg-muted/50 cursor-pointer text-[10px] font-mono"
                 onClick={() => { setSelectedEntry(entry); setView("detail"); }}
               >
-                <span className="text-muted-foreground w-20 shrink-0">
-                  {new Date(entry.createdAt).toLocaleDateString()}
-                </span>
+                {/*
+                  §5: presentation follows the APP locale (previously it
+                  followed the browser, so a user reading Japanese could see
+                  US-ordered dates). The instant is unchanged — no timezone
+                  conversion is introduced, preserving the existing local-time
+                  convention. The machine-readable value stays ISO in dateTime.
+                */}
+                <time
+                  className="text-muted-foreground w-20 shrink-0"
+                  dateTime={new Date(entry.createdAt).toISOString()}
+                >
+                  {new Date(entry.createdAt).toLocaleDateString(locale)}
+                </time>
                 <span className="w-16 shrink-0 font-semibold">{entry.instrument}</span>
-                <Badge variant="outline" className={cn("text-[9px] font-mono", STATUS_COLORS[entry.status])}>
-                  {entry.status}
+                <Badge
+                  variant="outline"
+                  className={cn("text-[9px] font-mono", STATUS_COLORS[entry.status])}
+                  aria-label={`${t.journal.statusLabel}: ${mapTradeStatus(entry.status, t)}`}
+                  data-status={entry.status}
+                >
+                  {mapTradeStatus(entry.status, t)}
                 </Badge>
                 <span className="text-muted-foreground truncate flex-1">
                   {entry.analysisSnapshot.decision} · {entry.analysisSnapshot.scenario ?? "—"}

@@ -680,3 +680,50 @@ export function mapConflictType(
     default: return humanize(conflictType);
   }
 }
+
+// ─── Journal Lifecycle Mapping (Phase 196) ─────────────────────
+
+/**
+ * Map a journal trade status to its translated label.
+ *
+ * §3: this is the SINGLE authority for presenting a `TradeStatus`. The stored
+ * record always keeps the canonical uppercase enum — only what the user reads
+ * changes. `humanize` is the deliberate fallback so an unrecognised status
+ * degrades to a readable value instead of rendering blank.
+ */
+export function mapTradeStatus(
+  status: string | null | undefined,
+  t: Translations,
+): string {
+  switch (status) {
+    case "PLANNED": return t.journal.statusPlanned;
+    case "OPEN": return t.journal.statusOpen;
+    case "CLOSED": return t.journal.statusClosed;
+    case "CANCELLED": return t.journal.statusCancelled;
+    case "INVALIDATED": return t.journal.statusInvalidated;
+    case "NO_TRADE": return t.journal.statusNoTrade;
+    case "WAITING": return t.journal.statusWaiting;
+    default: return humanize(status);
+  }
+}
+
+/**
+ * Map a journal trade outcome to its translated label.
+ *
+ * WIN / LOSS are financial claims: the mapping is value-preserving and never
+ * derived from copy. An undefined outcome stays UNKNOWN — it must never
+ * present as BREAKEVEN (§4: unknown is not zero).
+ */
+export function mapTradeOutcome(
+  outcome: string | null | undefined,
+  t: Translations,
+): string {
+  switch (outcome) {
+    case "WIN": return t.journal.outcomeWin;
+    case "LOSS": return t.journal.outcomeLoss;
+    case "BREAKEVEN": return t.journal.outcomeBreakeven;
+    case "PARTIAL": return t.journal.outcomePartial;
+    case "UNKNOWN": return t.journal.outcomeUnknown;
+    default: return humanize(outcome);
+  }
+}
