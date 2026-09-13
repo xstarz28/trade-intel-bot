@@ -164,7 +164,7 @@ export function NotificationCenter() {
 
           {/* Minimum Severity */}
           <div className="space-y-1">
-            <div className="text-[9px] font-mono text-muted-foreground/70">Minimum Severity</div>
+            <div className="text-[9px] font-mono text-muted-foreground/70">{t.notifications.minimumSeverity}</div>
             <div className="flex gap-1">
               {["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"].map((sev) => (
                 <button
@@ -284,7 +284,7 @@ export function NotificationCenter() {
                   }}
                   className="size-3 accent-primary"
                 />
-                <span className="text-[9px] font-mono text-muted-foreground">Show read</span>
+                <span className="text-[9px] font-mono text-muted-foreground">{t.notifications.showRead}</span>
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -305,7 +305,7 @@ export function NotificationCenter() {
                   }}
                   className="size-3 accent-primary"
                 />
-                <span className="text-[9px] font-mono text-muted-foreground">Show dismissed</span>
+                <span className="text-[9px] font-mono text-muted-foreground">{t.notifications.showDismissed}</span>
               </label>
             </div>
           </div>
@@ -315,7 +315,7 @@ export function NotificationCenter() {
             onClick={() => resetPrefsMut()}
             className="text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors"
           >
-            Reset to defaults
+            {t.notifications.resetToDefaults}
           </button>
         </div>
       )}
@@ -336,7 +336,7 @@ export function NotificationCenter() {
               : t.notifications.noNotifications}
           </p>
           <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
-            Intelligence alerts will appear here
+            {t.notifications.alertsWillAppearHere}
           </p>
         </div>
       )}

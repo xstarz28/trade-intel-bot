@@ -484,6 +484,11 @@ const es: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    minimumSeverity: "Severidad mínima",
+    showRead: "Mostrar leídas",
+    showDismissed: "Mostrar descartadas",
+    resetToDefaults: "Restablecer valores predeterminados",
+    alertsWillAppearHere: "Las alertas de inteligencia aparecerán aquí",
     title: "Notificaciones",
     markAllRead: "Marcar todo como leído",
     dismiss: "Descartar",

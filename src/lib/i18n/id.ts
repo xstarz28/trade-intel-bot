@@ -482,6 +482,11 @@ const id: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    minimumSeverity: "Tingkat Keparahan Minimum",
+    showRead: "Tampilkan yang dibaca",
+    showDismissed: "Tampilkan yang ditutup",
+    resetToDefaults: "Setel ulang ke bawaan",
+    alertsWillAppearHere: "Peringatan intelijen akan muncul di sini",
     title: "Notifikasi",
     markAllRead: "Tandai semua sudah dibaca",
     dismiss: "Abaikan",

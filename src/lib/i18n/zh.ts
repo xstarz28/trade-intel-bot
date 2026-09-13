@@ -485,6 +485,11 @@ const zh: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    minimumSeverity: "最低严重级别",
+    showRead: "显示已读",
+    showDismissed: "显示已忽略",
+    resetToDefaults: "重置为默认",
+    alertsWillAppearHere: "智能提醒将显示在此处",
     title: "通知",
     markAllRead: "全部标为已读",
     dismiss: "关闭",

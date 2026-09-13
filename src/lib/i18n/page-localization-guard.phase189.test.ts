@@ -118,8 +118,6 @@ const COMPONENT_DEBT: Record<string, string> = {
     "journal entry form labels; journal.* keys exist but are unwired",
   "src/components/CustomAlertRulesPanel.tsx":
     "alert rule builder labels and placeholders",
-  "src/components/NotificationCenter.tsx":
-    "notification filter labels",
   "src/components/ProtectionAlertCenter.tsx":
     "alert centre headings and severity filters",
   "src/components/PositionProtectionControlCenter.tsx":

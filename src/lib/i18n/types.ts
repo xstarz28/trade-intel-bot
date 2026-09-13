@@ -503,6 +503,16 @@ export interface Translations {
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
     title: string;
+    /** Heading above the severity filter. */
+    minimumSeverity: string;
+    /** Toggle: include notifications already read. */
+    showRead: string;
+    /** Toggle: include notifications already dismissed. */
+    showDismissed: string;
+    /** Restores the default notification preferences. */
+    resetToDefaults: string;
+    /** Secondary line under the empty state, explaining what will appear. */
+    alertsWillAppearHere: string;
     markAllRead: string;
     dismiss: string;
     noNotifications: string;
