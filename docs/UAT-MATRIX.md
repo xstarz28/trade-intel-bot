@@ -1268,7 +1268,122 @@ in an uncommitted tree. Byte comparison (`cmp`) against the backup is now used.
 
 **Totals: 83 PASS (AUTOMATED) · 9 HUMAN — NOT VERIFIED · 3 BLOCKED.**
 
-## 28. Sign-off
+## 28. Phase 190 — Landing page localization & public-copy truthfulness
+
+Scope: `src/pages/Landing.tsx`, the nine locale catalogues, `index.html`
+metadata, and the public-route surface. The governing rule for this section is
+that a public claim is a product guarantee: it must be traceable to implemented
+behaviour, in every language.
+
+### 28.1 Localization coverage
+
+| # | Case | Method | Result |
+|---|------|--------|--------|
+| 28.1.1 | `landing` section exists in all 9 locales, 55 keys each | `public-copy-truthfulness.phase190.test.ts` | PASS |
+| 28.1.2 | Locale key sets identical (no extra/misspelled key) | Automated | PASS |
+| 28.1.3 | Canonical leaf count 908 → 963 | `phase145-localization.test.ts` | PASS |
+| 28.1.4 | No locale value empty | Automated | PASS |
+| 28.1.5 | No non-en locale falls back to the English sentence | Automated | PASS |
+| 28.1.6 | No Indonesian markers leak into the other 8 locales | Automated | PASS |
+| 28.1.7 | Every declared landing key is rendered (no dead keys) | Automated | PASS |
+| 28.1.8 | Only literal JSX text on Landing is the brand | Automated | PASS |
+| 28.1.9 | `KNOWN_UNLOCALIZED` empty; ratchet retained | `page-localization-guard.phase189.test.ts` | PASS |
+| 28.1.10 | All 6 public pages walked by the guard | Automated | PASS |
+
+### 28.2 Truthfulness of public claims
+
+| # | Claim audited | Evidence | Result |
+|---|---------------|----------|--------|
+| 28.2.1 | "institutional-grade AI" removed | Unverifiable marketing | PASS |
+| 28.2.2 | "presisi tinggi" / high-precision removed | Implied accuracy claim | PASS |
+| 28.2.3 | "+ any symbol" replaced with provider-conditional wording | No whitelist exists, but provider must answer | PASS |
+| 28.2.4 | "index futures" + US30 removed | `indices` absent from `InstrumentInput` selector | PASS |
+| 28.2.5 | Funding/OI/liquidation/long-short scoped to crypto + conditional | `coinglass.ts` gates on `COINGLASS_API_KEY` | PASS |
+| 28.2.6 | Calendar/macro conditional | `tradingEconomics.ts` gates on `TICKATLAS_API_KEY` | PASS |
+| 28.2.7 | Conviction stated as neither win rate nor probability | `ConvictionLevel` ordinal; 0 probability refs in engine | PASS |
+| 28.2.8 | No profit/accuracy/win-rate promise in any locale | Negation-aware scanner ×9 | PASS |
+| 28.2.9 | Every locale carries an explicit profit-guarantee denial | Automated ×9 | PASS |
+| 28.2.10 | No bank-grade / SOC 2 / regulated / WCAG-certified claim | Automated ×9 | PASS |
+| 28.2.11 | No blanket "real-time" claim | Automated ×9 | PASS |
+| 28.2.12 | No-fabrication guarantee present in all locales | Automated ×9 | PASS |
+| 28.2.13 | No-execution guarantee present in all locales | Automated ×9 | PASS |
+| 28.2.14 | BOS/CHoCH, FVG/order block, MTF W1→M5 claims | Verified in `analysis-engine.ts` | PASS |
+
+### 28.3 Branding, metadata, routes, accessibility
+
+| # | Case | Method | Result |
+|---|------|--------|--------|
+| 28.3.1 | No Freebuff/vly branding in public page source | Automated | PASS |
+| 28.3.2 | No env-var name or dev URL in public copy | Automated | PASS |
+| 28.3.3 | `freebuff:locale` storage key retained (migration, not branding) | Documented non-defect | NOT APPLICABLE |
+| 28.3.4 | `TWELVE_DATA_API_KEY` in registry is a name, not a secret | Documented non-defect | NOT APPLICABLE |
+| 28.3.5 | Title + description present, no untrue claim | Real `dist/index.html` | PASS |
+| 28.3.6 | No canonical/og:url inventing a domain | Automated | PASS |
+| 28.3.7 | `<html lang>` declared and follows locale | Phase 173 + automated | PASS |
+| 28.3.8 | `/`, `/auth`, `/download`, `/privacy`, `/terms`, `/nonexistent` → 200 | SPA host, real build | PASS |
+| 28.3.9 | Assets absolute, deep links survive refresh | `dist/index.html` inspected | PASS |
+| 28.3.10 | Single h1, ordered headings | Automated | PASS |
+| 28.3.11 | No hardcoded aria-label; `homeAriaLabel` translated | Automated | PASS |
+| 28.3.12 | Decorative icons `aria-hidden` | Automated | PASS |
+| 28.3.13 | No clickable-div controls | Automated | PASS |
+| 28.3.14 | Visual rendering at 320/768/1440 in all 9 locales | No headless browser in env | HUMAN |
+| 28.3.15 | Colour-contrast verification | Requires rendering | HUMAN |
+| 28.3.16 | Keyboard tab order on the public surface | Requires a browser | HUMAN |
+
+### 28.4 Layout resilience (text expansion)
+
+Worst measured expansion vs English: `signIn` ×2.00 (es "Iniciar sesión"),
+`principleCapitalTitle` ×1.92 (pt), `outputPlanLabel` ×1.90 (pt). Translations
+were **not** shortened; the layout absorbs them.
+
+| # | Case | Method | Result |
+|---|------|--------|--------|
+| 28.4.1 | Weight rows no longer `whitespace-nowrap` | Automated | PASS |
+| 28.4.2 | Hero badge wraps instead of overflowing | Automated | PASS |
+| 28.4.3 | Header brand truncates before auth buttons shrink | Automated | PASS |
+| 28.4.4 | Icons beside text cannot be squashed (`shrink-0`) | Automated | PASS |
+| 28.4.5 | No fixed pixel width constrains translated text | Automated | PASS |
+
+### 28.5 Mutation suite — `scripts/mutation-suite-phase190.sh`
+
+10 mutations applied to a byte-exact backup and verified with `cmp`; a mutation
+that changes no bytes is reported INVALID rather than passing silently.
+
+| # | Mutation | Result |
+|---|----------|--------|
+| M1 | Reinsert a hardcoded Landing string | CAUGHT |
+| M2 | Remove a landing key from `de` | CAUGHT |
+| M3 | Revert a `de` translation to English | CAUGHT |
+| M4 | Rename a key in `en` only | CAUGHT |
+| M5 | Reinsert Freebuff branding | CAUGHT |
+| M6 | Add a guaranteed-accuracy claim | CAUGHT |
+| M7 | Turn live-data wording absolute | CAUGHT |
+| M8 | Reinstate the "any symbol" promise | CAUGHT |
+| M9 | Advertise index futures | CAUGHT |
+| M10 | Invent a compliance claim | CAUGHT |
+
+**10 / 10 caught.**
+
+### 28.6 Vacuity controls
+
+| # | Control | Result |
+|---|---------|--------|
+| 28.6.1 | Bundle proven real before scanning (1.59M chars, 3/3 positive markers) | PASS |
+| 28.6.2 | Build performed with `VITE_CONVEX_URL` set — a stub build is not evidence | PASS |
+| 28.6.3 | Overclaim detector fires on 4 planted claims | PASS |
+| 28.6.4 | Overclaim detector does **not** fire on 3 honest negated forms | PASS |
+| 28.6.5 | Comment-stripping prevents a fix's own explanation from being read as a claim | PASS |
+
+### 28.7 Defects found and fixed in this phase
+
+| # | Defect | Fix |
+|---|--------|-----|
+| D1 | `ASSET_CLASS_LABEL` keyed `index` while `InstrumentType` is `indices` — label unreachable, raw union value would render | Re-keyed to `Record<InstrumentType, string>` so the compiler catches drift |
+| D2 | `homeAriaLabel` declared but never consumed (same shape as the Phase 189 dead-key leak) | Wired to the header home link; dead-key test added |
+| D3 | Header could overflow at 320px with the longest locale | Brand truncates, auth controls `shrink-0` |
+| D4 | Landing logo was a plain `<a href="/">`, forcing a full reload | Switched to react-router `Link` |
+
+## 29. Sign-off
 
 | Field | Value |
 | --- | --- |
