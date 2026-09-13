@@ -126,6 +126,81 @@ function hardcodedAttributes(source: string): string[] {
   return out;
 }
 
+/**
+ * Phase 193 — hardcoded STATUS TOKENS inside JSX expressions.
+ *
+ * `jsxTextNodes` deliberately requires two consecutive words, because single
+ * tokens are usually punctuation, units or symbols. That rule has a blind
+ * spot: a one-word *claim* rendered from an expression, e.g.
+ *
+ *   {isLive ? "LIVE" : isStale ? "STALE" : "—"}
+ *
+ * MarketOverviewPanel shipped exactly that while `market.live` / `market.stale`
+ * sat translated in all nine locales. The words are short, so the prose rule
+ * skipped them — yet LIVE/STALE is a data-provenance claim, the single most
+ * important thing a non-English user needs to read correctly.
+ *
+ * This detector is deliberately NARROW: only ALL-CAPS alphabetic tokens of
+ * 3-12 characters appearing as string literals inside a JSX expression
+ * container. It does not fire on imports, enum comparisons, object keys or
+ * `case "LIVE":` — only on values being rendered.
+ */
+const STATUS_TOKEN_ALLOWED = new Set([
+  // Untranslated-by-design vocabulary (see the i18n contract). These are
+  // instrument/timeframe/analysis notation, identical in every locale.
+  "BOS", "CHOCH", "FVG", "HTF", "LTF", "DXY", "WTI", "VIX", "SL", "TP", "RR",
+  "W1", "D1", "H4", "H1", "M15", "M5", "USD", "EUR", "JPY", "GBP", "OTP",
+  "API", "URL", "CSV", "JSON", "UTC", "ID",
+]);
+
+function hardcodedStatusTokens(source: string): string[] {
+  const withoutComments = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const out: string[] = [];
+  // Scan only JSX expression containers: `{ ... }` that contain a quoted
+  // ALL-CAPS token and sit immediately after `>` or whitespace in markup.
+  // A type annotation like `plan: "GUEST" | "PREMIUM";` also lives inside
+  // braces (the props object), so require the brace content to look like a
+  // RENDER expression: it must contain a ternary/`&&` or be a bare literal
+  // immediately following markup, and must not contain a type separator.
+  const re = /\{([^{}]*?"[A-Z][A-Z_]{2,11}"[^{}]*?)\}/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(withoutComments)) !== null) {
+    const body = m[1];
+    const tokenMatch = /"([A-Z][A-Z_]{2,11})"/.exec(body);
+    if (!tokenMatch) continue;
+    const token = tokenMatch[1];
+    if (STATUS_TOKEN_ALLOWED.has(token)) continue;
+    // Type unions / declarations, not rendered values.
+    if (/^[\s\w]*:\s*"/.test(body) || body.includes("|")) continue;
+    // Only flag values produced by a render expression.
+    if (!/\?|&&/.test(body)) continue;
+    // A COMPARISON against the token selects behaviour (a CSS class, a
+    // colour); it does not render the word. `x === "SUPPORTING" ? cls : cls`
+    // is correct code. Only flag a token that appears as a RESULT — i.e. on
+    // the right-hand side of `?` or `:` without being compared first.
+    if (new RegExp(`[=!]==?\\s*"${token}"`).test(body)) continue;
+    // Class-name payloads are styling, not copy.
+    if (/\b(?:text|bg|border|fill|stroke)-/.test(body)) continue;
+    // The token is an ENUM ARGUMENT handed to a mapper that returns
+    // translated copy — `mapSeverity("CAUTION", t)`, possibly spread over
+    // several lines with a ternary inside. That is the CORRECT localization
+    // path, so flagging it would punish good code.
+    if (/\bmap[A-Za-z]*\s*\(/.test(body)) continue;
+    // `?? "NONE"` supplies a DATA default that is then mapped downstream.
+    if (new RegExp(`\\?\\?\\s*"${token}"`).test(body)) continue;
+    // Same for a constant lookup keyed by the token: `COLORS.CAUTION`.
+    if (new RegExp(`[A-Z_]+\\.${token}\\b`).test(body)) continue;
+    // Ignore non-render contexts that legitimately use caps string literals.
+    const context = withoutComments.slice(Math.max(0, m.index - 60), m.index);
+    if (/(case|===|!==|includes|Set\(|\bkey=|import|from|type |enum )\s*$/.test(context)) continue;
+    if (/[.:]\s*$/.test(context)) continue;
+    out.push(`{…"${token}"…}`);
+  }
+  return out;
+}
+
 const PAGES = walk("src/pages");
 
 /**
@@ -173,8 +248,6 @@ const COMPONENT_DEBT: Record<string, string> = {
     "navigation menu item labels",
   "src/components/InstrumentInput.tsx":
     "one placeholder attribute on the symbol field",
-  "src/components/MarketOverviewPanel.tsx":
-    "source-transparency legend describing LIVE/STALE semantics",
   "src/components/PositionRegistrationForm.tsx":
     "one placeholder attribute on the entry form",
   "src/components/TraderWorkspace.tsx":
@@ -255,7 +328,11 @@ describe("189 — the localization guard is path-complete", () => {
     expect(clean.length).toBeGreaterThan(10);
     for (const path of clean) {
       const source = readFileSync(resolve(ROOT, path), "utf8");
-      const violations = [...jsxTextNodes(source), ...hardcodedAttributes(source)];
+      const violations = [
+        ...jsxTextNodes(source),
+        ...hardcodedAttributes(source),
+        ...hardcodedStatusTokens(source),
+      ];
       expect(violations, `new hardcoded copy in ${path}`).toEqual([]);
     }
   });
