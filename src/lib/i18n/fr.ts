@@ -522,6 +522,7 @@ const fr: Translations = {
     unavailable: "INDISPONIBLE",
     sourceTransparency:
       "Transparence de la source : LIVE = données réelles du fournisseur · STALE = données hors délai de fraîcheur · — = indisponible",
+    liveCount: "{live}/{total} en direct",
     vix: "VIX",
     dxy: "DXY",
     us10y: "US 10Y",

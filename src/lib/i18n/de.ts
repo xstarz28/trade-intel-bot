@@ -521,6 +521,7 @@ const de: Translations = {
     unavailable: "NICHT VERFÜGBAR",
     sourceTransparency:
       "Quellentransparenz: LIVE = echte Anbieterdaten · STALE = Daten außerhalb der Aktualitätsgrenze · — = nicht verfügbar",
+    liveCount: "{live}/{total} live",
     vix: "VIX",
     dxy: "DXY",
     us10y: "US 10Y",

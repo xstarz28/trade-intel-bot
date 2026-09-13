@@ -521,6 +521,7 @@ const ko: Translations = {
     unavailable: "사용 불가",
     sourceTransparency:
       "출처 투명성: LIVE = 실제 제공업체 데이터 · STALE = 최신성 기준을 벗어난 데이터 · — = 사용 불가",
+    liveCount: "{live}/{total} 실시간",
     vix: "VIX",
     dxy: "DXY",
     us10y: "US 10Y",

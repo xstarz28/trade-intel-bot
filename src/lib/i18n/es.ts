@@ -519,6 +519,7 @@ const es: Translations = {
     unavailable: "NO DISPONIBLE",
     sourceTransparency:
       "Transparencia de origen: LIVE = datos reales del proveedor · STALE = datos fuera del margen de actualidad · — = no disponible",
+    liveCount: "{live}/{total} en vivo",
     vix: "VIX",
     dxy: "DXY",
     us10y: "US 10Y",

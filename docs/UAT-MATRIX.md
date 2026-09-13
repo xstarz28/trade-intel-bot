@@ -1608,7 +1608,47 @@ prove the correct *string* is rendered, not that it *looks* right.
 **Layout rule respected.** The nine legend translations were NOT shortened to
 avoid overflow. If 31.23 finds clipping, the fix is the layout, not the copy.
 
-## 32. Sign-off
+## 32. Phase 194 — mounted-component localization burn-down
+
+Re-measured with the shared detector (`src/lib/i18n/hardcoded-copy-detector.ts`).
+The inherited figure of "14 components" was not accurate: 6 of those files are
+UNMOUNTED, and `src/pages/Dashboard.tsx` carried debt the old list never named.
+
+| # | Case | Method | Expected | Status |
+| --- | --- | --- | --- | --- |
+| 32.1 | TraderWorkspace heading localized | AUTOMATED | `t.trader.thesisDistribution` | PASS |
+| 32.2 | HistoricalTimeline headings localized | AUTOMATED | 2 timeline keys | PASS |
+| 32.3 | NotificationCenter controls localized | AUTOMATED | 5 keys | PASS |
+| 32.4 | Journal wired to existing keys | AUTOMATED | 8 reused + 5 new | PASS |
+| 32.5 | CustomAlertRulesPanel localized | AUTOMATED | 7 new + examplePrefix | PASS |
+| 32.6 | Market live-counter localized | AUTOMATED | `market.liveCount` | PASS |
+| 32.7 | Badge renders the LOCALE word (ja) | AUTOMATED | `ライブ`, not "LIVE" | PASS |
+| 32.8 | Stale badge renders locale word (ja) | AUTOMATED | `陳腐化` | PASS |
+| 32.9 | Accessible name localized (zh) | AUTOMATED | aria-label translated | PASS |
+| 32.10 | Instrument symbols NOT translated | AUTOMATED | EUR/USD, BTC/USDT intact | PASS |
+| 32.11 | Technical notation NOT translated | AUTOMATED | BOS/FVG/DXY/H4 intact | PASS |
+| 32.12 | NO TRADE preserved as an outcome | AUTOMATED | `journal.statusNoTrade` | PASS |
+| 32.13 | Nine-locale parity (994 leaves) | AUTOMATED | all locales equal | PASS |
+| 32.14 | Placeholder vocabulary declared | AUTOMATED | `{example}`, `{total}` | PASS |
+| 32.15 | Orphan-key budget respected | AUTOMATED | ratchet holds | PASS |
+| 32.16 | Mutations M1–M9 | AUTOMATED | 9/9 | PASS |
+| 32.17 | Detector has a single definition | AUTOMATED | guard + script share it | PASS |
+| 32.18 | Mobile text wrapping in 9 locales | HUMAN | no clipping | NOT VERIFIED |
+| 32.19 | Desktop label widths (Windows build) | HUMAN | no truncation | NOT VERIFIED |
+| 32.20 | Locale switching across all tabs | HUMAN | copy updates live | NOT VERIFIED |
+| 32.21 | Screen-reader announces badges | HUMAN | aria read correctly | NOT VERIFIED |
+| 32.22 | Native-speaker terminology review | HUMAN | finance wording correct | NOT VERIFIED |
+| 32.23 | AnalysisResult (51 strings) localized | AUTOMATED | remaining debt | NOT VERIFIED |
+
+**Layout note.** German and Japanese strings here are longer than the English
+originals (`Mindestschweregrad`, `インテリジェンスアラートがここに表示されます`).
+Nothing was shortened to fit — if 32.18/32.19 find clipping, the layout is what
+changes.
+
+**32.23 is the honest remaining item.** `AnalysisResult.tsx` still holds 51
+detected strings and was not localized in this phase.
+
+## 33. Sign-off
 
 | Field | Value |
 | --- | --- |

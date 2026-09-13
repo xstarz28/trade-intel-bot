@@ -514,6 +514,7 @@ const en: Translations = {
     unavailable: "UNAVAILABLE",
     sourceTransparency:
       "Source transparency: LIVE = real provider data · STALE = data outside freshness · — = unavailable",
+    liveCount: "{live}/{total} live",
     vix: "VIX",
     dxy: "DXY",
     us10y: "US 10Y",
