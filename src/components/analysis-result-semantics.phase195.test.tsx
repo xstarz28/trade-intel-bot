@@ -374,3 +374,50 @@ describe("195 §8 — risk dimensions are distinct, never generic", () => {
     }
   });
 });
+
+// ════════ §13 — thesis vocabulary keeps its three distinct concepts ════════
+
+describe("195 §13 — thesis / scenario / invalidation stay distinct", () => {
+  it("a thesis is never conflated with a scenario in any locale", () => {
+    // A thesis is a reasoned CLAIM; a scenario is a PATH price may take.
+    // Collapsing them would let a mere possibility read as the engine's view.
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const f = bundle.analysisResult.fields;
+      expect(f.primaryThesis, `${code}`).not.toBe(f.primaryScenario);
+      expect(f.counterThesis, `${code}`).not.toBe(f.alternateScenario);
+    }
+  });
+
+  it("supporting and conflicting evidence never share wording", () => {
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const f = bundle.analysisResult.fields;
+      expect(f.supporting, `${code}`).not.toBe(f.conflicting);
+      expect(f.strongestSupport, `${code}`).not.toBe(f.strongestConflict);
+      expect(f.strengthens, `${code}`).not.toBe(f.invalidatesTag);
+      expect(f.confirmation, `${code}`).not.toBe(f.invalidationLabel);
+    }
+  });
+
+  it("every section heading and field label is non-empty in every locale", () => {
+    // Guards against a partially-filled locale silently rendering "undefined".
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      for (const [k, v] of Object.entries(bundle.analysisResult.sections)) {
+        expect(typeof v, `${code}.sections.${k}`).toBe("string");
+        expect(v.trim().length, `${code}.sections.${k}`).toBeGreaterThan(0);
+      }
+      for (const [k, v] of Object.entries(bundle.analysisResult.fields)) {
+        expect(typeof v, `${code}.fields.${k}`).toBe("string");
+        expect(v.trim().length, `${code}.fields.${k}`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("institution and report acronyms survive translation", () => {
+    // §4: CFTC and EIA name a specific US agency and report. Translating them
+    // would make the provenance of the data unverifiable.
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      expect(bundle.analysisResult.sections.cftcFuturesPositioning.toUpperCase(), `${code}`).toContain("CFTC");
+      expect(bundle.analysisResult.sections.eiaInventory.toUpperCase(), `${code}`).toContain("EIA");
+    }
+  });
+});
