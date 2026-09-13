@@ -121,7 +121,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 1035 leaves", () => {
+  it("EN is the canonical structural reference with 1057 leaves", () => {
     // 847 -> 875: Phase 182 added the `legal` section for the public website
     // pages (/download, /privacy, /terms). Every one of the nine locales was
     // updated in the same change, which the parity tests above enforce.
@@ -131,6 +131,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // which shipped an internal env var name to every client (+34 -1 = +33).
     // 908 -> 963: Phase 190 added `landing` (55). The public landing page had
     // been hardcoded — largely in Indonesian, served to all nine locales.
+    // 1035 -> 1057: Phase 195 thesis/evidence field labels (22 keys).
     // 1005 -> 1035: Phase 195 terminal-style section headings (30 keys).
     // 996 -> 1005: Phase 195 risk/invalidation vocabulary (9 keys).
     // 994 -> 996: Phase 195 trade-plan section (tradePlanHeading, marketPriceNote).
@@ -148,7 +149,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // 963 -> 977: Phase 191 added `provenance` (13) + `auth.restoringSession` so acquisition state
     // (observed / reused / unavailable / stale / historical / degraded) can be
     // shown to users in their own language instead of only in English logs.
-    expect(enCount).toBe(1035);
+    expect(enCount).toBe(1057);
   });
 
   for (const code of NINE) {
@@ -520,9 +521,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 1035 canonical keys with non-empty values", () => {
+  it("zh has all 1057 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(1035);
+    expect(zhLeaves.length).toBe(1057);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

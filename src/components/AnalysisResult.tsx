@@ -752,7 +752,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {result.decisionTrace.biasCalculation.vetoApplied === false &&
                 result.decisionTrace.structuralDirection !== "none" && (
-                  <span className="text-emerald-400/80"> · structural agreement</span>
+                  <span className="text-emerald-400/80"> · {t.analysisResult.fields.structuralAgreement}</span>
                 )}
             </div>
 
@@ -830,7 +830,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <CardContent className="pt-0 space-y-3">
                   {thesis.supportingEvidence.length > 0 && (
                     <div>
-                      <p className="text-[10px] font-mono font-semibold text-emerald-400 mb-1">supporting</p>
+                      <p className="text-[10px] font-mono font-semibold text-emerald-400 mb-1">{t.analysisResult.fields.supporting}</p>
                       {thesis.supportingEvidence.slice(0, 5).map((e, i) => (
                         <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-1">
                           <span className="text-emerald-400 shrink-0">+</span>
@@ -847,7 +847,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   )}
                   {thesis.conflictingEvidence.length > 0 && (
                     <div className="border-t border-border/30 pt-2">
-                      <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">conflicting</p>
+                      <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">{t.analysisResult.fields.conflicting}</p>
                       {thesis.conflictingEvidence.slice(0, 5).map((e, i) => (
                         <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-1">
                           <span className="text-amber-400 shrink-0">−</span>
@@ -871,11 +871,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <span className="text-primary/60">$</span> {t.analysisResult.sections.thesisValidity}
                 </p>
                 <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2">
-                  <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-0.5">confirmation</p>
+                  <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-0.5">{t.analysisResult.fields.confirmation}</p>
                   <p className="text-[11px] font-mono text-muted-foreground/80 leading-relaxed">{thesis.confirmationCondition}</p>
                 </div>
                 <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2">
-                  <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-0.5">invalidation</p>
+                  <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-0.5">{t.analysisResult.fields.invalidationLabel}</p>
                   <p className="text-[11px] font-mono text-muted-foreground/80 leading-relaxed">{thesis.invalidationCondition}</p>
                 </div>
               </CardContent>
@@ -886,7 +886,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <Card className="border-amber-500/20 bg-amber-500/5">
                 <CardContent className="px-4 py-3">
                   <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">
-                    <span className="text-amber-400/60">$</span> missing-context
+                    <span className="text-amber-400/60">$</span> {t.analysisResult.fields.missingContext}
                   </p>
                   <ul className="space-y-0.5">
                     {thesis.missingInformation.map((m, i) => (
@@ -1211,8 +1211,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
                 <div><span className="text-muted-foreground">primary:</span> <span>{fp.pathStatus}</span></div>
                 <div><span className="text-muted-foreground">alternate:</span> <span className="text-muted-foreground">{fp.alternatePath.replace(/_/g, " ")}</span></div>
-                <div><span className="text-muted-foreground">structural confidence:</span> <span className={CONF_COLORS[fp.structuralConfidence]}>{fp.structuralConfidence.replace(/_/g, " ")}</span></div>
-                <div><span className="text-muted-foreground">data reliability:</span> <span>{fp.dataReliability}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.fields.structuralConfidence}</span> <span className={CONF_COLORS[fp.structuralConfidence]}>{fp.structuralConfidence.replace(/_/g, " ")}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.fields.dataReliability}</span> <span>{fp.dataReliability}</span></div>
               </div>
 
               {/* Confirmation + Invalidation */}
@@ -1328,11 +1328,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
                 <div className="rounded border border-emerald-500/15 p-2">
-                  <span className="text-emerald-400 font-semibold">primary thesis:</span>
+                  <span className="text-emerald-400 font-semibold">{t.analysisResult.fields.primaryThesis}</span>
                   <p className="mt-1 text-muted-foreground/80 leading-relaxed">{lh.primaryThesis}</p>
                 </div>
                 <div className="rounded border border-red-500/15 p-2">
-                  <span className="text-red-400 font-semibold">counter thesis:</span>
+                  <span className="text-red-400 font-semibold">{t.analysisResult.fields.counterThesis}</span>
                   <p className="mt-1 text-muted-foreground/80 leading-relaxed">{lh.counterThesis}</p>
                 </div>
               </div>
@@ -1355,8 +1355,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
-                <div><span className="text-muted-foreground">primary scenario:</span> <span>{lh.primaryScenario}</span></div>
-                <div><span className="text-muted-foreground">alternate scenario:</span> <span className="text-muted-foreground">{lh.alternateScenario}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.fields.primaryScenario}</span> <span>{lh.primaryScenario}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.fields.alternateScenario}</span> <span className="text-muted-foreground">{lh.alternateScenario}</span></div>
               </div>
 
               {lh.confirmationConditions.length > 0 && (
@@ -1445,25 +1445,25 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               {ec.strongestSupportingEvidence && (
                 <div className="text-[10px] font-mono rounded border border-emerald-500/15 p-2">
-                  <span className="text-emerald-400 font-semibold">strongest support:</span>
+                  <span className="text-emerald-400 font-semibold">{t.analysisResult.fields.strongestSupport}</span>
                   <span className="ml-1">[{ec.strongestSupportingEvidence.source}] {ec.strongestSupportingEvidence.explanation}</span>
                 </div>
               )}
               {ec.strongestConflictingEvidence && (
                 <div className="text-[10px] font-mono rounded border border-red-500/15 p-2">
-                  <span className="text-red-400 font-semibold">strongest conflict:</span>
+                  <span className="text-red-400 font-semibold">{t.analysisResult.fields.strongestConflict}</span>
                   <span className="ml-1">[{ec.strongestConflictingEvidence.source}] {ec.strongestConflictingEvidence.explanation}</span>
                 </div>
               )}
 
               <div className="text-[10px] font-mono rounded border border-border/30 p-2">
-                <span className="text-muted-foreground">counter-thesis:</span>
+                <span className="text-muted-foreground">{t.analysisResult.fields.counterThesisTag}:</span>
                 <span className="ml-1">{ec.counterThesis}</span>
               </div>
 
               {ec.doubleCountingWarnings.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-amber-400 font-semibold">double-counting warnings:</span>
+                  <span className="text-amber-400 font-semibold">{t.analysisResult.fields.doubleCountingWarnings}</span>
                   {ec.doubleCountingWarnings.map((w, i) => (
                     <span key={i} className="block text-amber-400/80">• {w.description}</span>
                   ))}
@@ -1472,7 +1472,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               {ec.missingEvidence.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">missing evidence:</span>
+                  <span className="text-muted-foreground">{t.analysisResult.fields.missingEvidence}</span>
                   {ec.missingEvidence.map((m, i) => (
                     <span key={i} className="block text-orange-300/60">• {m}</span>
                   ))}
@@ -1481,11 +1481,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
                 <div>
-                  <span className="text-emerald-400">strengthens:</span>
+                  <span className="text-emerald-400">{t.analysisResult.fields.strengthens}:</span>
                   {ec.thesisStrengtheners.slice(0, 3).map((s, i) => <span key={i} className="block text-emerald-400/70">• {s}</span>)}
                 </div>
                 <div>
-                  <span className="text-red-400">invalidates:</span>
+                  <span className="text-red-400">{t.analysisResult.fields.invalidatesTag}:</span>
                   {ec.thesisInvalidators.slice(0, 3).map((v, i) => <span key={i} className="block text-red-400/70">• {v}</span>)}
                 </div>
               </div>
@@ -1549,7 +1549,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             </p>
             <div className="grid grid-cols-3 gap-3">
               <div className="text-center">
-                <p className="text-[10px] font-mono text-muted-foreground">quantity</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.fields.quantity}</p>
                 <p className="text-sm font-bold font-mono tabular-nums text-foreground">
                   {result.positionSizing.quantity}
                 </p>
@@ -1598,7 +1598,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <AlertTriangle className="size-4 text-amber-400 mt-0.5 shrink-0" />
               <div>
                 <p className="text-[11px] font-mono font-semibold text-amber-400 mb-1">
-                  $ warnings
+                  $ {t.analysisResult.fields.warnings}
                 </p>
                 <ul className="space-y-0.5">
                   {result.dataFlags.map((flag, i) => (
@@ -1911,7 +1911,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-amber-400">
-              <span className="text-amber-400/60">$</span> risk-note
+              <span className="text-amber-400/60">$</span> {t.analysisResult.fields.riskNote}
             </h4>
           </div>
         </CardHeader>

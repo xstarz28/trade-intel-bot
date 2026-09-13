@@ -804,6 +804,35 @@ export interface Translations {
      * must be translated. Acronyms that name a specific institution or report
      * (CFTC, EIA, SR) are provider/domain notation and stay untranslated (§4).
      */
+    /**
+     * Thesis / evidence field labels. Decision vocabulary: a thesis is a
+     * reasoned claim, a scenario is a path, an invalidation kills the claim.
+     * Translations must keep those three distinct (§8/§13).
+     */
+    fields: {
+      primaryThesis: string;
+      counterThesis: string;
+      primaryScenario: string;
+      alternateScenario: string;
+      strongestSupport: string;
+      strongestConflict: string;
+      doubleCountingWarnings: string;
+      missingEvidence: string;
+      structuralConfidence: string;
+      dataReliability: string;
+      structuralAgreement: string;
+      supporting: string;
+      conflicting: string;
+      confirmation: string;
+      invalidationLabel: string;
+      missingContext: string;
+      counterThesisTag: string;
+      strengthens: string;
+      invalidatesTag: string;
+      riskNote: string;
+      warnings: string;
+      quantity: string;
+    };
     sections: {
       dataQuality: string;
       indicators: string;
