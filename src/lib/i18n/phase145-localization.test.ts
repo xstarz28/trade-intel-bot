@@ -121,7 +121,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 963 leaves", () => {
+  it("EN is the canonical structural reference with 977 leaves", () => {
     // 847 -> 875: Phase 182 added the `legal` section for the public website
     // pages (/download, /privacy, /terms). Every one of the nine locales was
     // updated in the same change, which the parity tests above enforce.
@@ -131,7 +131,10 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // which shipped an internal env var name to every client (+34 -1 = +33).
     // 908 -> 963: Phase 190 added `landing` (55). The public landing page had
     // been hardcoded — largely in Indonesian, served to all nine locales.
-    expect(enCount).toBe(963);
+    // 963 -> 977: Phase 191 added `provenance` (13) + `auth.restoringSession` so acquisition state
+    // (observed / reused / unavailable / stale / historical / degraded) can be
+    // shown to users in their own language instead of only in English logs.
+    expect(enCount).toBe(977);
   });
 
   for (const code of NINE) {
@@ -166,6 +169,8 @@ describe("placeholder parity across all 9 locales", () => {
   it("EN placeholders are a strict subset of the known vocabulary", () => {
     const known = [
       "{count}",
+      // Phase 191 — evidence age in provenance copy.
+      "{age}",
       // Phase 189 — first-run auth copy.
       "{email}",
       "{minutes}",
@@ -496,9 +501,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 963 canonical keys with non-empty values", () => {
+  it("zh has all 977 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(963);
+    expect(zhLeaves.length).toBe(977);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

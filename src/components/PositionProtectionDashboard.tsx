@@ -934,6 +934,22 @@ export function PositionProtectionDashboard() {
                 </span>
               )}
             </p>
+            {/*
+              Phase 191 — the execution boundary, stated where monitoring is
+              claimed.
+
+              `protection.noAutoExecute` and `protection.confidenceNotProbability`
+              were translated into all nine locales but rendered nowhere, so a
+              user watching live position alerts was never told that the system
+              only observes: it never closes a position, and no broker or
+              exchange is contacted. A monitoring surface that stays silent on
+              that point is exactly where an alert gets mistaken for a fill.
+            */}
+            <p className="text-[10px] font-mono text-muted-foreground/70 leading-relaxed">
+              {tx("protection.noAutoExecute")}
+              {" "}
+              {tx("protection.confidenceNotProbability")}
+            </p>
           </div>
         </div>
 

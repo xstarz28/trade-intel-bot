@@ -4,7 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { AnalysisResult } from "@/types/analysis";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
-import { mapTrendLabel } from "@/lib/i18n/enum-mapping";
+import { mapConfidence, mapTrendLabel } from "@/lib/i18n/enum-mapping";
 import { History, TrendingUp, TrendingDown, Minus, Clock } from "lucide-react";
 
 interface AnalysisHistoryProps {
@@ -26,6 +26,19 @@ const BIAS_ICONS = {
   Bearish: TrendingDown,
   Neutral: Minus,
 } as const;
+
+/**
+ * Ordinal conviction band for legacy records.
+ *
+ * Stored analyses predating the `conviction` field carry only the numeric
+ * score. The thresholds mirror `getConviction` in AnalysisResult.tsx so the
+ * two surfaces can never disagree about the same record.
+ */
+function deriveConvictionBand(confidence: number): "High" | "Medium" | "Low" {
+  if (confidence >= 70) return "High";
+  if (confidence >= 50) return "Medium";
+  return "Low";
+}
 
 const BIAS_COLORS = {
   Bullish: "text-emerald-400",
@@ -121,8 +134,19 @@ export function AnalysisHistory({
                       <span className={cn("text-[11px] font-mono font-medium", BIAS_COLORS[a.bias])}>
                         {mapTrendLabel(a.bias, t)}
                       </span>
+                      {/*
+                        Phase 191 — conviction label, not a bare percentage.
+
+                        This rendered `{a.confidence}%` next to a directional
+                        bias, which reads as "72% chance this is right".
+                        `confidence` is a clamped 20-88 confluence heuristic
+                        (analysis-engine.ts), never a probability or win rate.
+                        The result panel already shows the ordinal conviction
+                        band, so history now agrees with it instead of
+                        implying a statistic the engine does not compute.
+                      */}
                       <span className="text-[10px] text-muted-foreground font-mono">
-                        {a.confidence}%
+                        {mapConfidence(a.conviction ?? deriveConvictionBand(a.confidence), t)}
                       </span>
                     </div>
                   </div>

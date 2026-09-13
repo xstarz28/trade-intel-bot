@@ -844,7 +844,19 @@ export default function Dashboard() {
               : "neutral",
           marketRegime: "UNKNOWN",
           provider: ls.marketData.provider,
-          observedAt: ls.marketData.price.timestamp || ls.marketData.fetchTimestamp,
+          /*
+            Phase 191 — `observedAt` is the PROVIDER's observation time and is
+            never back-filled with our fetch time.
+
+            This previously read `price.timestamp || fetchTimestamp`. Those are
+            different facts: `timestamp` is when the price was last updated by
+            the provider, `fetchTimestamp` is when we asked. Coalescing them
+            means a provider that omits its timestamp gets an observation time
+            of "now", and `assessFreshness` then grades hours-old data FRESH.
+            Leaving it undefined makes freshness resolve to UNAVAILABLE, which
+            is the honest answer when the provider did not say when it looked.
+          */
+          observedAt: ls.marketData.price.timestamp || undefined,
           freshness: ls.marketData.dataFreshness === "realtime"
             ? "FRESH"
             : ls.marketData.dataFreshness === "delayed"

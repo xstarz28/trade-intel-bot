@@ -1383,7 +1383,152 @@ that changes no bytes is reported INVALID rather than passing silently.
 | D3 | Header could overflow at 320px with the longest locale | Brand truncates, auth controls `shrink-0` |
 | D4 | Landing logo was a plain `<a href="/">`, forcing a full reload | Switched to react-router `Link` |
 
-## 29. Sign-off
+## 29. Phase 191 — Authenticated-surface copy truthfulness
+
+Scope: the signed-in product. The governing rule is stricter than Phase 190's:
+a visitor who over-trusts marketing copy has lost nothing yet, while a user
+reading a position dashboard may be about to risk capital on it.
+
+### 29.1 Confidence / conviction semantics
+
+| # | Case | Method | Result |
+|---|------|--------|--------|
+| 29.1.1 | `confidence` is a clamped 20-88 confluence heuristic, not a probability | `analysis-engine.ts` L1580 | PASS |
+| 29.1.2 | No locale equates confidence/conviction with probability or win rate | Negation-aware scan ×9 | PASS |
+| 29.1.3 | Detector catches 3 planted probability claims | Automated | PASS |
+| 29.1.4 | Detector does not flag honest negations | Automated | PASS |
+| 29.1.5 | **DEFECT D1** — `AnalysisHistory` rendered a bare `{confidence}%` beside a directional bias | Fixed: ordinal conviction label | PASS |
+| 29.1.6 | History and result panel use identical conviction thresholds (70/50) | Automated | PASS |
+
+### 29.2 Provenance / freshness / cache wording
+
+Provenance modes existed since Phase 178c but only as English diagnostics. A
+`provenance` section (13 keys ×9) and `src/lib/i18n/provenance-copy.ts` now map
+acquisition state to translated, user-facing copy. Tests call the real mapping
+functions with real modes, not string constants.
+
+| # | Case | Method | Result |
+|---|------|--------|--------|
+| 29.2.1 | All 8 acquisition modes yield distinct non-empty copy ×9 | `describeAcquisitionForUser` | PASS |
+| 29.2.2 | `cache-reused` never reads as a new observation | Automated ×9 | PASS |
+| 29.2.3 | Only observed-now / observed-shared / uncached-by-design may present as current | `mayPresentAsCurrent` | PASS |
+| 29.2.4 | Failure modes never claim completeness or verification | Automated ×9 | PASS |
+| 29.2.5 | Evidence age shown only when an observation exists | Real `recordProvenance` | PASS |
+| 29.2.6 | A 1-hour-old cache hit reports its age, never "just now" | Automated | PASS |
+| 29.2.7 | `formatEvidenceAge` never reports a negative age | Automated | PASS |
+| 29.2.8 | Historical records never described as live/current | Automated ×9 | PASS |
+| 29.2.9 | Degraded described as missing evidence, not a market verdict | Automated ×9 | PASS |
+| 29.2.10 | **DEFECT D2** — system-health labels could read as market verdicts | Guarded across healthy/degraded/failed | PASS |
+| 29.2.11 | Freshness levels stay mutually distinct ×9 | Automated | PASS |
+
+### 29.3 Freshness source integrity (usedAt ≠ observedAt)
+
+| # | Case | Evidence | Result |
+|---|------|----------|--------|
+| 29.3.1 | **DEFECT D3** — `Dashboard` set `observedAt = price.timestamp \|\| fetchTimestamp` | Fetch time is not observation time; `assessFreshness` graded hours-old data FRESH | PASS (fixed) |
+| 29.3.2 | An `as RadarCandidateSource` cast was suppressing the type error | `observedAt` now optional; compiler enforces it | PASS |
+| 29.3.3 | Snapshot without observation time cannot be realtime | `provider-registry.ts` degrades to `unavailable` | PASS |
+| 29.3.4 | Missing observation recorded as sentinel 0, never `Date.now()` | Automated | PASS |
+
+### 29.4 Execution boundary
+
+| # | Case | Method | Result |
+|---|------|--------|--------|
+| 29.4.1 | **DEFECT D4** — `protection.noAutoExecute` + `protection.confidenceNotProbability` translated ×9 but rendered NOWHERE | Now rendered in the monitoring header | PASS |
+| 29.4.2 | No authenticated surface claims an order was placed | Negation-aware scan | PASS |
+| 29.4.3 | Every locale's no-auto-execute string denies automation | Automated ×9 | PASS |
+| 29.4.4 | No locale implies a broker/exchange acknowledged anything | Automated ×9 | PASS |
+| 29.4.5 | Test asserts on rendered JSX, not comments mentioning the key | Comment-stripped scan | PASS |
+
+### 29.5 LOCKED ≠ WAIT, risk, completeness, errors
+
+| # | Case | Result |
+|---|------|--------|
+| 29.5.1 | Every locale states LOCKED is not a Wait verdict | PASS |
+| 29.5.2 | Locked copy never leaks the withheld direction (LONG/SHORT/BUY/SELL) | PASS |
+| 29.5.3 | WAIT / NO_TRADE remain free | PASS |
+| 29.5.4 | No locale guarantees stops, fills or loss bounds | PASS |
+| 29.5.5 | Completeness labels distinct; none implies provider verification | PASS |
+| 29.5.6 | No locale exposes credentials, env vars, Convex internals or stack traces | PASS |
+| 29.5.7 | Distinct failure kinds keep distinct copy (outage ≠ "no data") | PASS |
+
+### 29.6 Localization
+
+| # | Case | Result |
+|---|------|--------|
+| 29.6.1 | Canonical leaves 963 → 977 (`provenance` 13 + `auth.restoringSession`) | PASS |
+| 29.6.2 | `{age}` placeholder registered and preserved ×9 | PASS |
+| 29.6.3 | No English fallback in provenance copy | PASS |
+| 29.6.4 | No Indonesian leakage into other locales | PASS |
+| 29.6.5 | **DEFECT D5** — `RequireAuth` shipped hardcoded "restoring session..." to every user | PASS (localized) |
+| 29.6.6 | Guard extended to `src/components` (was never walked) | PASS |
+| 29.6.7 | 15 components recorded in `COMPONENT_DEBT` ratchet; list may only shrink | NOT VERIFIED (deferred) |
+
+**Component localization debt is REAL and RECORDED, not hidden.** 15 of 29
+authenticated components still contain hardcoded English (AnalysisResult alone
+has 36 strings). Machine-translating trading terminology under time pressure
+would violate the Phase 190 standard, so the debt is ratcheted: files not on
+the list must stay clean, and files on it fail the suite once fixed.
+
+### 29.7 Mutation suite — `scripts/mutation-suite-phase191.sh`
+
+| # | Mutation | Result |
+|---|----------|--------|
+| M1 | confidence → probability | CAUGHT |
+| M2 | conviction → win rate | CAUGHT |
+| M3 | history shows raw `confidence%` | CAUGHT |
+| M4 | LOCKED → WAIT | CAUGHT |
+| M5 | LOCKED leaks direction | CAUGHT |
+| M6 | cache-reused → "Observed now" | CAUGHT |
+| M7 | cache allowed to present as current | CAUGHT |
+| M8 | unavailable → "complete and verified" | CAUGHT |
+| M9 | degraded → "no opportunity — wait" | CAUGHT |
+| M10 | historical → live | CAUGHT |
+| M11 | monitoring → execution | CAUGHT |
+| M12 | stop rendering the no-exec boundary | CAUGHT |
+| M13 | suggested stop → guaranteed stop | CAUGHT |
+| M14 | `observedAt` ← `fetchTimestamp` | CAUGHT |
+| M15 | no observation → realtime | CAUGHT |
+| M16 | remove a locale key | CAUGHT |
+| M17 | English fallback | CAUGHT |
+| M18 | rename `{age}` placeholder | CAUGHT |
+| M19 | plant hardcoded copy in a clean component | CAUGHT |
+
+**19 / 19 caught.** M8, M9, M12 and M13 initially SURVIVED and were fixed by
+strengthening assertions — never by weakening expectations. M9 exposed a
+second unguarded key (`system.degraded`), and M13 required matching a value
+that wraps onto a continuation line.
+
+### 29.8 Vacuity controls
+
+| # | Control | Result |
+|---|---------|--------|
+| 29.8.1 | Bundle proven real before scanning (1.6M chars, 3/3 markers) | PASS |
+| 29.8.2 | Stub `dist/` produces 4 explicit SKIPs, never a false pass | PASS (probed) |
+| 29.8.3 | Negation-aware bundle scan separates "not a win rate" from a win-rate claim | PASS |
+| 29.8.4 | A stale artifact fails the marker check (observed accidentally, then fixed) | PASS |
+
+### 29.9 Accessibility / responsive / cross-platform
+
+| # | Case | Result |
+|---|------|--------|
+| 29.9.1 | Authenticated routes `/dashboard`, `/journal` resolve under SPA rewrite | PASS |
+| 29.9.2 | No platform-specific copy or entitlement logic | PASS |
+| 29.9.3 | Visual rendering of the monitoring header at 320/768/1440 | HUMAN |
+| 29.9.4 | Screen-reader announcement of the execution-boundary line | HUMAN |
+| 29.9.5 | Keyboard traversal of authenticated surfaces | HUMAN |
+
+### 29.10 Defects found and fixed
+
+| # | Defect | Fix |
+|---|--------|-----|
+| D1 | `AnalysisHistory` rendered `{confidence}%` beside a bias — reads as a probability | Ordinal conviction label via `mapConfidence` |
+| D2 | `system.degraded` could be reworded into a market verdict | Health-state guard across all 9 locales |
+| D3 | `observedAt` fell back to `fetchTimestamp`, letting stale data grade FRESH | Observation time never back-filled; type made optional so the compiler enforces it |
+| D4 | No-auto-execution + confidence-not-probability guarantees translated but never rendered | Rendered in the position-monitoring header |
+| D5 | `RequireAuth` shipped hardcoded "restoring session..." | Localized as `auth.restoringSession` ×9 |
+
+## 30. Sign-off
 
 | Field | Value |
 | --- | --- |
