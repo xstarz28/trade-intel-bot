@@ -107,8 +107,6 @@ const PAGES = walk("src/pages");
 const COMPONENTS = walk("src/components");
 
 const COMPONENT_DEBT: Record<string, string> = {
-  "src/components/AnalysisResult.tsx":
-    "36 literal strings; the largest authenticated surface — needs a dedicated localization phase",
   "src/components/analytical-context-panel.tsx":
     "12 hardcoded title attributes plus a panel heading",
   "src/components/PositionRegistrationPanel.tsx":

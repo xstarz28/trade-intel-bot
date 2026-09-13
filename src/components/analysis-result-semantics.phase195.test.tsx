@@ -421,3 +421,162 @@ describe("195 §13 — thesis / scenario / invalidation stay distinct", () => {
     }
   });
 });
+
+// ════════ Phase 190 public-copy rule — disclaimers keep their negation ════════
+
+describe("195 §8 — provenance disclaimers stay truthful in every language", () => {
+  // These three strings exist to state what the product does NOT claim. A
+  // translation that drops the negation turns a disclaimer into a promise,
+  // which is exactly the failure the Phase 190 public-copy rule forbids.
+  // Negation markers per language. Built from the ACTUAL translations, not
+  // guessed: German negates with "weder ... noch", Japanese with the verb
+  // suffix "ません", Chinese with 并非/不.
+  const NEGATORS = [
+    "not", "no ", "never",          // en
+    "tidak", "bukan", "tanpa",      // id
+    "sin ", "no es", "tampoco",     // es
+    "não", "nem",                   // pt
+    "ne ", "n'", "pas", "aucun",    // fr
+    "nicht", "kein", "ohne", "weder", // de
+    "ません", "ではなく", "ない",     // ja
+    "않", "아닙", "없",              // ko
+    "不", "并非", "无",              // zh
+  ];
+
+  // CJK writes the same meaning in far fewer characters, so a single global
+  // character floor would either be vacuous for Latin scripts or reject a
+  // complete CJK translation. This is the "fix the layout, don't shorten the
+  // translation" rule expressed per script.
+  const MIN_LENGTH: Record<string, number> = {
+    en: 60, id: 60, es: 60, pt: 60, fr: 60, de: 60, ja: 30, ko: 30, zh: 25,
+  };
+
+  function hasNegation(value: string): boolean {
+    const v = value.toLowerCase();
+    return NEGATORS.some((n) => v.includes(n));
+  }
+
+  // Directional / promise vocabulary per language. A disclaimer may MENTION
+  // these words — that is its job — but only while negating them.
+  const DIRECTIONAL = [
+    "bullish", "bearish", "guaranteed",
+    "bullish", "alcista", "bajista", "garantizado",
+    "alta garantida", "baixa",
+    "haussier", "baissier", "garanti",
+    "bullisch", "bärisch", "garantiert", "aufwärtstrend",
+    "強気", "弱気", "保証",
+    "상승", "하락", "보장",
+    "看涨", "看跌", "保证",
+  ];
+
+  /**
+   * Every directional word must be negated WITHIN ITS OWN CLAUSE.
+   *
+   * A paragraph-wide "is there a 'not' anywhere" check is not enough: a
+   * disclaimer can keep an unrelated negation in sentence one while sentence
+   * two turns into a promise. Clause scoping also has to be script-aware —
+   * English negates BEFORE the word ("not guaranteed bullish") while Japanese
+   * and Korean negate at the end of the clause (弱気シグナルではありません),
+   * so a lookbehind window would wrongly fail correct Japanese.
+   */
+  function directionalClaimsAreNegated(value: string): boolean {
+    const clauses = value.toLowerCase().split(/[.。;；、,，]/);
+    for (const clause of clauses) {
+      const hit = DIRECTIONAL.some((w) => clause.includes(w));
+      if (hit && !NEGATORS.some((n) => clause.includes(n))) return false;
+    }
+    return true;
+  }
+
+  it("the TVL disclaimer never promises a bullish outcome", () => {
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const copy = bundle.analysisResult.labels.tvlDisclaimer;
+      expect(hasNegation(copy), `${code}.tvlDisclaimer lost its negation: "${copy}"`).toBe(true);
+      expect(
+        directionalClaimsAreNegated(copy),
+        `${code}.tvlDisclaimer states an un-negated directional claim: "${copy}"`,
+      ).toBe(true);
+      expect(copy.length, `${code} shortened the disclaimer`).toBeGreaterThanOrEqual(MIN_LENGTH[code]);
+    }
+  });
+
+  it("the unlocks disclaimer never promises a bearish outcome", () => {
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const copy = bundle.analysisResult.labels.unlocksDisclaimer;
+      expect(hasNegation(copy), `${code}.unlocksDisclaimer lost its negation: "${copy}"`).toBe(true);
+      expect(
+        directionalClaimsAreNegated(copy),
+        `${code}.unlocksDisclaimer states an un-negated directional claim: "${copy}"`,
+      ).toBe(true);
+      expect(copy.length, `${code} shortened the disclaimer`).toBeGreaterThanOrEqual(MIN_LENGTH[code]);
+    }
+  });
+
+  it("the DXY notice still says the data is unavailable and not fabricated", () => {
+    // §2 live-data integrity: this is the string that tells a trader the
+    // series is absent rather than invented.
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const copy = bundle.analysisResult.labels.dxyUnavailable;
+      expect(copy.toUpperCase(), `${code} dropped the instrument`).toContain("DXY");
+      expect(hasNegation(copy), `${code}.dxyUnavailable lost its negation: "${copy}"`).toBe(true);
+    }
+  });
+
+  it("the scenario disclaimer keeps analysis subordinate to the hierarchy", () => {
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const copy = bundle.analysisResult.labels.scenarioDisclaimer;
+      expect(hasNegation(copy), `${code}.scenarioDisclaimer lost its negation: "${copy}"`).toBe(true);
+    }
+  });
+
+  it("the evidence hierarchy keeps all eight ranks in order", () => {
+    // Dropping a rank would misrepresent how the engine weighs evidence.
+    for (const [code, bundle] of Object.entries(BUNDLES)) {
+      const copy = bundle.analysisResult.labels.evidenceHierarchy;
+      expect((copy.match(/→/g) ?? []).length, `${code} lost hierarchy arrows`).toBe(7);
+      expect(copy.toUpperCase(), `${code} dropped MTF notation`).toContain("MTF");
+    }
+  });
+});
+
+// ════════ §19 — a translated locale must actually be translated ════════
+
+describe("195 §19 — CJK locales cannot silently fall back to English", () => {
+  // ja/ko/zh use non-Latin scripts, so any pure-ASCII value is either real
+  // notation or an untranslated leftover. Listing the legitimate notation
+  // makes the leftovers detectable — a parity-by-key-count check cannot see
+  // this class of regression at all (a reverted heading keeps its key).
+  const NOTATION_ONLY = new Set(["MACD Hist", "MTF", "R:R"]);
+
+  const CJK_LOCALES = ["ja", "ko", "zh"] as const;
+
+  function isAsciiOnly(value: string): boolean {
+    return /^[\u0020-\u007E]*$/.test(value);
+  }
+
+  function assertTranslated(
+    code: (typeof CJK_LOCALES)[number],
+    group: "sections" | "fields" | "inline",
+  ): void {
+    const bundle: Record<string, string> = BUNDLES[code].analysisResult[group];
+    for (const [key, value] of Object.entries(bundle)) {
+      if (NOTATION_ONLY.has(value)) continue;
+      expect(
+        isAsciiOnly(value),
+        `${code}.${group}.${key} is still English: "${value}"`,
+      ).toBe(false);
+    }
+  }
+
+  it.each(CJK_LOCALES)("%s translates every section heading", (code) => {
+    assertTranslated(code, "sections");
+  });
+
+  it.each(CJK_LOCALES)("%s translates every field label", (code) => {
+    assertTranslated(code, "fields");
+  });
+
+  it.each(CJK_LOCALES)("%s translates the inline captions", (code) => {
+    assertTranslated(code, "inline");
+  });
+});

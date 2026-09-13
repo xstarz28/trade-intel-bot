@@ -169,7 +169,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           {priceSnap && (
             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/30">
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-mono text-muted-foreground">Price:</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.inline.priceLabel}</span>
                 <span className="text-sm font-bold font-mono tabular-nums">{formatPrice(priceSnap.price)}</span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -177,7 +177,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <span className="text-[10px] font-mono text-muted-foreground">{formatTime(priceSnap.timestamp)}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-mono text-muted-foreground">Source:</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.sourceLabel}</span>
                 <span className="text-[10px] font-mono text-primary">{result.dataSource || priceSnap.source}</span>
               </div>
             </div>
@@ -298,7 +298,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {tech.macdHistogram !== undefined && (
                 <div className="text-center">
-                  <p className="text-[10px] font-mono text-muted-foreground">MACD Hist</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.macdHist}</p>
                   <p className={cn(
                     "text-sm font-bold font-mono tabular-nums",
                     tech.macdHistogram > 0 ? "text-emerald-400" : "text-red-400"
@@ -423,7 +423,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   )}
                   {!xa?.available && dxyProxy && (
                     <span className="block text-[9px] text-muted-foreground/50">
-                      actual DXY unavailable on current provider plan — no fabricated series
+                      {t.analysisResult.labels.dxyUnavailable}
                     </span>
                   )}
                 </p>
@@ -431,7 +431,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             })()}
             {(result.keyContradictions?.filter((c) => c.severity !== "MINOR").length ?? 0) > 0 && (
               <div className="mt-2 border-t border-border/40 pt-2">
-                <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">key contradictions</p>
+                <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">{t.analysisResult.inline.keyContradictions}</p>
                 {result.keyContradictions!
                   .filter((c) => c.severity !== "MINOR")
                   .map((c, i) => (
@@ -495,7 +495,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   ) : null,
                 )
               ) : (
-                <span className="text-muted-foreground/60">real yield: unavailable</span>
+                <span className="text-muted-foreground/60">{t.analysisResult.labels.realYieldUnavailable}</span>
               )}
             </div>
             <p className="mt-1.5 text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
@@ -529,7 +529,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <span className="text-muted-foreground/50"> · report: {result.cotContext.latest.reportDate}</span>
             </p>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-muted-foreground/80">
-              <span>mapped: <span className="text-foreground">{result.cotContext.mappedAsset}</span></span>
+              <span>{t.analysisResult.labels.mapped}: <span className="text-foreground">{result.cotContext.mappedAsset}</span></span>
               <span>net non-commercial:{" "}
                 <span className="text-foreground">{result.cotContext.netNonCommercial.toLocaleString()}</span>
               </span>
@@ -637,9 +637,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             </p>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-muted-foreground/80">
               <span>bid/ask: <span className="text-foreground">{result.executionContext.bid} / {result.executionContext.ask}</span></span>
-              <span>spread: <span className="text-foreground">{result.executionContext.spreadBps.toFixed(2)} bps</span></span>
-              <span>depth L/R: <span className="text-foreground">{result.executionContext.bidDepth.toFixed(2)} / {result.executionContext.askDepth.toFixed(2)}</span> contracts</span>
-              <span>imbalance: <span className="text-foreground">{(result.executionContext.imbalance * 100).toFixed(0)}%</span></span>
+              <span>{t.analysisResult.labels.spread}: <span className="text-foreground">{result.executionContext.spreadBps.toFixed(2)} bps</span></span>
+              <span>{t.analysisResult.labels.depthLR}: <span className="text-foreground">{result.executionContext.bidDepth.toFixed(2)} / {result.executionContext.askDepth.toFixed(2)}</span> {t.analysisResult.inline.contracts}</span>
+              <span>{t.analysisResult.labels.imbalance}: <span className="text-foreground">{(result.executionContext.imbalance * 100).toFixed(0)}%</span></span>
               {result.slippageEstimate?.slippageBps !== undefined && (
                 <span>est. impact: <span className="text-foreground">~{result.slippageEstimate.slippageBps.toFixed(1)} bps</span> (estimate)</span>
               )}
@@ -693,9 +693,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <> ({result.technicalData.mtf.htfTimeframe})</>
                 )}
               </div>
-              <div>Setup: <span className="text-foreground">{result.mtfSummary.setupTimeframe}</span></div>
+              <div>{t.analysisResult.labels.setup}: <span className="text-foreground">{result.mtfSummary.setupTimeframe}</span></div>
               <div>
-                Trigger: <span className="text-foreground">{result.mtfSummary.triggerTimeframe ?? "—"}</span>
+                {t.analysisResult.labels.trigger}: <span className="text-foreground">{result.mtfSummary.triggerTimeframe ?? "—"}</span>
               </div>
             </div>
             {result.mtfSummary.unavailable.length > 0 && (
@@ -858,7 +858,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     </div>
                   )}
                   <p className="text-[9px] font-mono text-muted-foreground/40 italic">
-                    Evidence hierarchy: Structure → MTF → Liquidity → Location → Fundamental → Sentiment → Execution → Indicators
+                    {t.analysisResult.labels.evidenceHierarchy}
                   </p>
                 </CardContent>
               </Card>
@@ -956,19 +956,19 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Status Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
                 <div>
-                  <span className="text-muted-foreground">continuation:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.labels.continuation}:</span>{" "}
                   <span className={sc.continuationStatus === "confirmed" ? "text-emerald-400" : sc.continuationStatus === "developing" ? "text-amber-400" : "text-muted-foreground"}>
                     {sc.continuationStatus}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">reversal:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.labels.reversalLabel}:</span>{" "}
                   <span className={sc.reversalStatus === "confirmed" ? "text-red-400" : sc.reversalStatus === "developing" ? "text-amber-400" : "text-muted-foreground"}>
                     {sc.reversalStatus}
                   </span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">confirmation:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.fields.confirmation}:</span>{" "}
                   <span className={sc.confirmationState === "confirmed" ? "text-emerald-400" : sc.confirmationState === "developing" ? "text-amber-400" : "text-muted-foreground"}>
                     {sc.confirmationState}
                   </span>
@@ -990,11 +990,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Primary + Alternate */}
               <div className="space-y-1.5">
                 <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2">
-                  <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider mb-0.5">primary</p>
+                  <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider mb-0.5">{t.analysisResult.labels.primary}</p>
                   <p className="text-[11px] font-mono text-foreground/80 leading-relaxed">{sc.primaryScenario}</p>
                 </div>
                 <div className="rounded-lg bg-muted/10 border border-border/30 px-3 py-2">
-                  <p className="text-[10px] font-mono font-medium text-muted-foreground/60 uppercase tracking-wider mb-0.5">alternate</p>
+                  <p className="text-[10px] font-mono font-medium text-muted-foreground/60 uppercase tracking-wider mb-0.5">{t.analysisResult.labels.alternate}</p>
                   <p className="text-[11px] font-mono text-muted-foreground/70 leading-relaxed">{sc.alternateScenario}</p>
                 </div>
               </div>
@@ -1060,7 +1060,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
 
               <p className="text-[9px] font-mono text-muted-foreground/40 italic">
-                Scenario analysis is informational — it does not override the structural hierarchy, gates, or conviction.
+                {t.analysisResult.labels.scenarioDisclaimer}
               </p>
             </CardContent>
           </Card>
@@ -1124,15 +1124,15 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono">
                 <div>
-                  <span className="text-muted-foreground">direction:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.inline.directionLabel}:</span>{" "}
                   <span>{regime.currentDirection}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">transition:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.labels.transition}:</span>{" "}
                   <span>{regime.trendTransition.transitionType.replace(/_/g, " ").toLowerCase()}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">fundamental:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.inline.fundamentalLabel}:</span>{" "}
                   <span>{ft.alignment.replace(/_/g, " ").toLowerCase()}</span>
                 </div>
                 <div>
@@ -1142,17 +1142,17 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               </div>
               <div className="text-[10px] font-mono space-y-1">
                 <div>
-                  <span className="text-muted-foreground">primary:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.inline.primaryLabel}:</span>{" "}
                   <span>{pt.primaryScenario}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">alternate:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.inline.alternateLabel}:</span>{" "}
                   <span className="text-muted-foreground">{pt.alternateScenario}</span>
                 </div>
               </div>
               {regime.exhaustionSignals.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">exhaustion:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.inline.exhaustion}:</span>{" "}
                   {regime.exhaustionSignals.map((s, i) => (
                     <span key={i} className={cn("mr-2", s.severity === "strong" ? "text-red-400" : s.severity === "moderate" ? "text-amber-400" : "text-muted-foreground")}>
                       {s.signal} ({s.severity})
@@ -1209,8 +1209,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               {/* Primary + Alternate + Path Status */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
-                <div><span className="text-muted-foreground">primary:</span> <span>{fp.pathStatus}</span></div>
-                <div><span className="text-muted-foreground">alternate:</span> <span className="text-muted-foreground">{fp.alternatePath.replace(/_/g, " ")}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.inline.primaryLabel}:</span> <span>{fp.pathStatus}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.inline.alternateLabel}:</span> <span className="text-muted-foreground">{fp.alternatePath.replace(/_/g, " ")}</span></div>
                 <div><span className="text-muted-foreground">{t.analysisResult.fields.structuralConfidence}</span> <span className={CONF_COLORS[fp.structuralConfidence]}>{fp.structuralConfidence.replace(/_/g, " ")}</span></div>
                 <div><span className="text-muted-foreground">{t.analysisResult.fields.dataReliability}</span> <span>{fp.dataReliability}</span></div>
               </div>
@@ -1218,13 +1218,13 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Confirmation + Invalidation */}
               {fp.confirmationConditions.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">confirm:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.inline.confirmLabel}:</span>{" "}
                   {fp.confirmationConditions.map((c, i) => <span key={i} className="block text-emerald-400/80">• {c}</span>)}
                 </div>
               )}
               {fp.invalidationConditions.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">invalidate:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.labels.invalidateLabel}:</span>{" "}
                   {fp.invalidationConditions.map((c, i) => <span key={i} className="block text-red-400/80">• {c}</span>)}
                 </div>
               )}
@@ -1232,7 +1232,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Path Risks */}
               {fp.pathRisks.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">risks:</span>{" "}
+                  <span className="text-muted-foreground">{t.analysisResult.labels.risksLabel}:</span>{" "}
                   {fp.pathRisks.map((r, i) => <span key={i} className="block text-amber-400/80">• {r}</span>)}
                 </div>
               )}
@@ -1262,16 +1262,16 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               {/* Next Best Action */}
               <div className="text-[10px] font-mono">
-                <span className="text-muted-foreground">next:</span> <span className="text-primary/80">{fp.nextBestAction}</span>
+                <span className="text-muted-foreground">{t.analysisResult.labels.nextLabel}:</span> <span className="text-primary/80">{fp.nextBestAction}</span>
               </div>
 
               {/* Trader + Investor View */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
                 <div className="rounded border border-border/30 p-2">
-                  <span className="text-muted-foreground">trader:</span> <span>{fp.traderView}</span>
+                  <span className="text-muted-foreground">{t.analysisResult.labels.traderLabel}:</span> <span>{fp.traderView}</span>
                 </div>
                 <div className="rounded border border-border/30 p-2">
-                  <span className="text-muted-foreground">investor:</span> <span>{fp.investorView}</span>
+                  <span className="text-muted-foreground">{t.analysisResult.labels.investorLabel}:</span> <span>{fp.investorView}</span>
                 </div>
               </div>
 
@@ -1339,7 +1339,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               {lh.supportingEvidence.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">supporting:</span>
+                  <span className="text-muted-foreground">{t.analysisResult.inline.supportingLabel}:</span>
                   {lh.supportingEvidence.map((e, i) => (
                     <span key={i} className="block text-emerald-400/80">• [{e.source}] {e.explanation}</span>
                   ))}
@@ -1347,7 +1347,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {lh.conflictingEvidence.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">conflicting:</span>
+                  <span className="text-muted-foreground">{t.analysisResult.inline.conflictingLabel}:</span>
                   {lh.conflictingEvidence.map((e, i) => (
                     <span key={i} className="block text-red-400/80">• [{e.source}] {e.explanation}</span>
                   ))}
@@ -1361,42 +1361,42 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               {lh.confirmationConditions.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">confirm:</span>
+                  <span className="text-muted-foreground">{t.analysisResult.inline.confirmLabel}:</span>
                   {lh.confirmationConditions.map((c, i) => <span key={i} className="block text-emerald-400/80">• {c}</span>)}
                 </div>
               )}
               {lh.invalidationConditions.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">invalidate:</span>
+                  <span className="text-muted-foreground">{t.analysisResult.labels.invalidateLabel}:</span>
                   {lh.invalidationConditions.map((c, i) => <span key={i} className="block text-red-400/80">• {c}</span>)}
                 </div>
               )}
 
               {lh.thesisRisks.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">risks:</span>
+                  <span className="text-muted-foreground">{t.analysisResult.labels.risksLabel}:</span>
                   {lh.thesisRisks.map((r, i) => <span key={i} className="block text-amber-400/80">• {r}</span>)}
                 </div>
               )}
               {lh.missingInformation.length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-muted-foreground">missing:</span>
+                  <span className="text-muted-foreground">{t.analysisResult.inline.missingLabel}:</span>
                   {lh.missingInformation.map((m, i) => <span key={i} className="block text-orange-300/60">• {m}</span>)}
                 </div>
               )}
 
               <div className="text-[10px] font-mono space-y-1">
-                <div><span className="text-muted-foreground">fundamental:</span> <span>{lh.fundamentalContext}</span></div>
-                <div><span className="text-muted-foreground">macro:</span> <span className="text-muted-foreground/80">{lh.macroContext}</span></div>
-                <div><span className="text-muted-foreground">valuation:</span> <span className="text-muted-foreground/80">{lh.valuationContext}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.inline.fundamentalLabel}:</span> <span>{lh.fundamentalContext}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.inline.macroLabel}:</span> <span className="text-muted-foreground/80">{lh.macroContext}</span></div>
+                <div><span className="text-muted-foreground">{t.analysisResult.labels.valuation}:</span> <span className="text-muted-foreground/80">{lh.valuationContext}</span></div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
                 <div className="rounded border border-border/30 p-2">
-                  <span className="text-muted-foreground">investor:</span> <span>{lh.investorImplication}</span>
+                  <span className="text-muted-foreground">{t.analysisResult.labels.investorLabel}:</span> <span>{lh.investorImplication}</span>
                 </div>
                 <div className="rounded border border-border/30 p-2">
-                  <span className="text-muted-foreground">trader:</span> <span>{lh.traderImplication}</span>
+                  <span className="text-muted-foreground">{t.analysisResult.labels.traderLabel}:</span> <span>{lh.traderImplication}</span>
                 </div>
               </div>
 
@@ -1667,7 +1667,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardContent className="pt-0">
             <div className="flex items-center gap-4 mb-3">
               <div>
-                <p className="text-[10px] font-mono text-muted-foreground">avg score</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.avgScore}</p>
                 <p className={cn(
                   "text-sm font-bold font-mono tabular-nums",
                   result.sentimentData.averageScore > 0 ? "text-emerald-400" : result.sentimentData.averageScore < 0 ? "text-red-400" : "text-foreground"
@@ -1676,21 +1676,21 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-mono text-muted-foreground">positive</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.positive}</p>
                 <p className="text-sm font-bold font-mono text-emerald-400 tabular-nums">{result.sentimentData.breakdown.positive}</p>
               </div>
               <div>
-                <p className="text-[10px] font-mono text-muted-foreground">negative</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.negative}</p>
                 <p className="text-sm font-bold font-mono text-red-400 tabular-nums">{result.sentimentData.breakdown.negative}</p>
               </div>
               <div>
-                <p className="text-[10px] font-mono text-muted-foreground">neutral</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.neutral}</p>
                 <p className="text-sm font-bold font-mono text-muted-foreground tabular-nums">{result.sentimentData.breakdown.neutral}</p>
               </div>
             </div>
             {result.sentimentData.articles.length > 0 && (
               <div className="space-y-2">
-                <p className="text-[10px] font-mono font-medium text-muted-foreground">top headlines</p>
+                <p className="text-[10px] font-mono font-medium text-muted-foreground">{t.analysisResult.labels.topHeadlines}</p>
                 {result.sentimentData.articles.slice(0, 3).map((article, i) => (
                   <div key={i} className="flex items-start gap-2 rounded-md bg-muted/20 px-2.5 py-2">
                     <span className={cn(
@@ -1772,19 +1772,19 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {result.fundamentalData.profitMargin !== undefined && (
                 <div>
-                  <p className="text-[10px] font-mono text-muted-foreground">Margin</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.marginLabel}</p>
                   <p className="text-sm font-bold font-mono tabular-nums">{(result.fundamentalData.profitMargin * 100).toFixed(1)}%</p>
                 </div>
               )}
               {result.fundamentalData.marketCap !== undefined && (
                 <div>
-                  <p className="text-[10px] font-mono text-muted-foreground">Mkt Cap</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.mktCapShort}</p>
                   <p className="text-sm font-bold font-mono tabular-nums">${(result.fundamentalData.marketCap / 1e9).toFixed(1)}B</p>
                 </div>
               )}
               {result.fundamentalData.dividendYield !== undefined && (
                 <div>
-                  <p className="text-[10px] font-mono text-muted-foreground">Div Yield</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.divYield}</p>
                   <p className="text-sm font-bold font-mono tabular-nums">{(result.fundamentalData.dividendYield * 100).toFixed(2)}%</p>
                 </div>
               )}
@@ -1832,19 +1832,19 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2.5">
               <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-1">
-                support
+                {t.analysisResult.labels.support}
               </p>
               <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.support || "—"}</p>
             </div>
             <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2.5">
               <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-1">
-                resistance
+                {t.analysisResult.labels.resistance}
               </p>
               <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.resistance || "—"}</p>
             </div>
             <div className="rounded-lg bg-amber-500/5 border border-amber-500/15 px-3 py-2.5">
               <p className="text-[10px] font-mono font-medium text-amber-400 uppercase tracking-wider mb-1">
-                invalidation
+                {t.analysisResult.fields.invalidationLabel}
               </p>
               <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.invalidation || "—"}</p>
             </div>
@@ -1881,16 +1881,16 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   ))}
                   {obs.slice(0, 2).map((o, i) => (
                     <div key={`ob-${i}`} className="rounded border bg-violet-500/5 border-violet-500/15 px-2.5 py-1.5 text-[10px] font-mono text-violet-400/80">
-                      <span className="font-medium">order block</span>
+                      <span className="font-medium">{t.analysisResult.labels.orderBlock}</span>
                       {' '}{o.direction} {formatPrice(o.lower)}–{formatPrice(o.upper)}
                       <span className="text-muted-foreground/50"> · {o.status}</span>
                     </div>
                   ))}
                   {fvgs.slice(0, 2).map((f, i) => (
                     <div key={`fvg-${i}`} className="rounded border bg-amber-500/5 border-amber-500/15 px-2.5 py-1.5 text-[10px] font-mono text-amber-400/80">
-                      <span className="font-medium">fair value gap</span>
+                      <span className="font-medium">{t.analysisResult.labels.fairValueGap}</span>
                       {' '}{f.direction} {formatPrice(f.lower)}–{formatPrice(f.upper)}
-                      <span className="text-muted-foreground/50"> · fresh</span>
+                      <span className="text-muted-foreground/50"> · {t.analysisResult.inline.freshSuffix}</span>
                     </div>
                   ))}
                 </div>
@@ -1950,7 +1950,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
               {result.derivativesData.fundingRate && (
                 <div>
-                  <p className="text-[10px] font-mono text-muted-foreground">funding rate</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.fundingRate}</p>
                   <p className={cn(
                     "text-sm font-bold font-mono tabular-nums",
                     result.derivativesData.fundingRate.currentRate > 0.001 ? "text-red-400" :
@@ -1968,7 +1968,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {result.derivativesData.openInterest && (
                 <div>
-                  <p className="text-[10px] font-mono text-muted-foreground">open interest</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.openInterest}</p>
                   <p className="text-sm font-bold font-mono tabular-nums text-foreground">
                     {result.derivativesData.openInterest.current > 1e9
                       ? `$${(result.derivativesData.openInterest.current / 1e9).toFixed(2)}B`
@@ -2008,7 +2008,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {result.derivativesData.liquidations && (
                 <div>
-                  <p className="text-[10px] font-mono text-muted-foreground">liquidations</p>
+                  <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.liquidations}</p>
                   <p className="text-sm font-bold font-mono tabular-nums text-foreground">
                     {result.derivativesData.liquidations.totalVolume !== undefined
                       ? `$${(result.derivativesData.liquidations.totalVolume / 1e6).toFixed(1)}M`
@@ -2029,7 +2029,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             </div>
             {result.derivativesData.interpretation && (
               <div className="pt-2 border-t border-border/30">
-                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">interpretation</p>
+                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">{t.analysisResult.labels.interpretation}</p>
                 <p className="text-[11px] leading-relaxed text-muted-foreground font-mono">
                   {result.derivativesData.interpretation}
                 </p>
@@ -2101,7 +2101,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
                     {ci.derivatives.openInterest && (
                       <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">open interest</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.openInterest}</p>
                         <p className="text-sm font-bold font-mono tabular-nums text-foreground">
                           {ci.derivatives.openInterest.current > 1e9
                             ? `$${(ci.derivatives.openInterest.current / 1e9).toFixed(2)}B`
@@ -2123,7 +2123,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                     {ci.derivatives.fundingRate && (
                       <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">funding rate</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.fundingRate}</p>
                         <p className={cn("text-sm font-bold font-mono tabular-nums", ci.derivatives.fundingRate.isExtreme ? "text-amber-400" : "text-foreground")}>
                           {(ci.derivatives.fundingRate.currentRate * 100).toFixed(4)}%
                         </p>
@@ -2133,13 +2133,13 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                           </p>
                         )}
                         {ci.derivatives.fundingRate.isExtreme && (
-                          <p className="text-[10px] font-mono text-amber-400">extreme</p>
+                          <p className="text-[10px] font-mono text-amber-400">{t.analysisResult.labels.extreme}</p>
                         )}
                       </div>
                     )}
                     {ci.derivatives.liquidation && (
                       <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">liquidations</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.liquidations}</p>
                         <p className="text-sm font-bold font-mono tabular-nums text-foreground">
                           {ci.derivatives.liquidation.totalVolume !== undefined
                             ? `$${(ci.derivatives.liquidation.totalVolume / 1e6).toFixed(1)}M`
@@ -2156,7 +2156,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                     {ci.derivatives.positioning && (
                       <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">positioning</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.positioningLabel}</p>
                         {ci.derivatives.positioning.accountRatio !== undefined && (
                           <p className="text-sm font-bold font-mono tabular-nums text-foreground">
                             L/S: {ci.derivatives.positioning.accountRatio.toFixed(2)}
@@ -2218,7 +2218,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                   </div>
                   <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
-                    Fundamental activity does not independently establish future price direction. TVL expansion is supportive context, not guaranteed bullish.
+                    {t.analysisResult.labels.tvlDisclaimer}
                   </p>
                 </div>
               )}
@@ -2232,7 +2232,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
                     {ci.tokenomics.supply && (
                       <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">supply</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.supplyLabel}</p>
                         {ci.tokenomics.supply.circulatingSupply !== undefined && (
                           <p className="text-sm font-bold font-mono tabular-nums text-foreground">
                             circ: {ci.tokenomics.supply.circulatingSupply.toLocaleString()}
@@ -2270,14 +2270,14 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                   </div>
                   <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
-                    Unlocks are context, not automatic bearish signals. Impact depends on size, recipient behavior, liquidity, and market absorption.
+                    {t.analysisResult.labels.unlocksDisclaimer}
                   </p>
                 </div>
               )}
               {/* Evidence Summary */}
               {ci.evidence.length > 0 && (
                 <div className="border-t border-border/30 pt-3">
-                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">evidence</p>
+                  <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">{t.analysisResult.labels.evidenceLabel}</p>
                   <div className="space-y-1">
                     {ci.evidence.slice(0, 8).map((e, i) => (
                       <div key={i} className="flex items-start gap-2 text-[10px] font-mono">
@@ -2295,7 +2295,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Missing Information */}
               {ci.missingInformation.length > 0 && (
                 <div className="border-t border-border/30 pt-2">
-                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">missing intelligence</p>
+                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">{t.analysisResult.labels.missingIntelligence}</p>
                   {ci.missingInformation.map((m, i) => (
                     <p key={i} className="text-[10px] font-mono text-amber-300/70">{"⚠"} {m}</p>
                   ))}
@@ -2378,24 +2378,24 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {ui.forex && (
                 <div>
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                    <span className="text-sky-400/80">{"●"}</span> forex intelligence
+                    <span className="text-sky-400/80">{"●"}</span> {t.analysisResult.labels.forexIntelligence}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono mb-2">
                     {ui.forex.rates && (
                       <div>
-                        <span className="text-muted-foreground">rates:</span>{" "}
+                        <span className="text-muted-foreground">{t.analysisResult.inline.ratesLabel}:</span>{" "}
                         <span className={FRESH_COLORS[ui.forex.rates.freshness]}>{ui.forex.rates.freshness}</span>
                         {ui.forex.rates.rateDifferential !== undefined && (
-                          <span className="ml-1">· diff: <span className="text-foreground">{ui.forex.rates.rateDifferential.toFixed(1)}bp</span></span>
+                          <span className="ml-1">· {t.analysisResult.inline.diff}: <span className="text-foreground">{ui.forex.rates.rateDifferential.toFixed(1)}bp</span></span>
                         )}
                       </div>
                     )}
                     {ui.forex.yields && (
                       <div>
-                        <span className="text-muted-foreground">yields:</span>{" "}
+                        <span className="text-muted-foreground">{t.analysisResult.inline.yieldsLabel}:</span>{" "}
                         <span className={FRESH_COLORS[ui.forex.yields.freshness]}>{ui.forex.yields.freshness}</span>
                         {ui.forex.yields.yieldDifferential !== undefined && (
-                          <span className="ml-1">· spread: <span className="text-foreground">{ui.forex.yields.yieldDifferential.toFixed(1)}bp</span></span>
+                          <span className="ml-1">· {t.analysisResult.inline.spreadLabel2}: <span className="text-foreground">{ui.forex.yields.yieldDifferential.toFixed(1)}bp</span></span>
                         )}
                       </div>
                     )}
@@ -2410,7 +2410,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                     {ui.forex.macro && (
                       <div>
-                        <span className="text-muted-foreground">calendar:</span>{" "}
+                        <span className="text-muted-foreground">{t.analysisResult.labels.calendarLabel}:</span>{" "}
                         <span className={FRESH_COLORS[ui.forex.macro.freshness]}>{ui.forex.macro.freshness}</span>
                         {ui.forex.macro.upcomingEvents && (
                           <span className="ml-1">· <span className="text-foreground">{ui.forex.macro.upcomingEvents.length} events</span></span>
@@ -2419,7 +2419,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                     {ui.forex.crossAsset && (
                       <div>
-                        <span className="text-muted-foreground">cross-asset:</span>{" "}
+                        <span className="text-muted-foreground">{t.analysisResult.inline.crossAssetLabel}:</span>{" "}
                         <span className="text-foreground">DXY {ui.forex.crossAsset.dxyTrend ?? "—"} · {ui.forex.crossAsset.riskRegime ?? "—"}</span>
                       </div>
                     )}
@@ -2433,7 +2433,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {ui.equity && (
                 <div className="border-t border-border/30 pt-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                    <span className="text-purple-400/80">{"●"}</span> equity intelligence
+                    <span className="text-purple-400/80">{"●"}</span> {t.analysisResult.labels.equityIntelligence}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
                     {ui.equity.fundamentals?.peRatio !== undefined && (
@@ -2444,7 +2444,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                     {ui.equity.fundamentals?.revenueGrowth !== undefined && (
                       <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">rev growth</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.revGrowth}</p>
                         <p className={cn("text-sm font-bold font-mono tabular-nums", ui.equity.fundamentals.revenueGrowth! > 0 ? "text-emerald-400" : "text-red-400")}>
                           {(ui.equity.fundamentals.revenueGrowth! * 100).toFixed(1)}%
                         </p>
@@ -2452,13 +2452,13 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                     {ui.equity.fundamentals?.profitMargin !== undefined && (
                       <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">margin</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.marginShort}</p>
                         <p className="text-sm font-bold font-mono tabular-nums text-foreground">{(ui.equity.fundamentals.profitMargin! * 100).toFixed(1)}%</p>
                       </div>
                     )}
                     {ui.equity.fundamentals?.marketCap !== undefined && (
                       <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">mkt cap</p>
+                        <p className="text-[10px] font-mono text-muted-foreground">{t.analysisResult.labels.mktCapLower}</p>
                         <p className="text-sm font-bold font-mono tabular-nums text-foreground">${(ui.equity.fundamentals.marketCap! / 1e9).toFixed(1)}B</p>
                       </div>
                     )}
@@ -2470,7 +2470,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   )}
                   {ui.equity.valuation?.relativeValuation && (
                     <p className="text-[10px] font-mono">
-                      valuation: <span className="text-foreground">{ui.equity.valuation.relativeValuation}</span>
+                      {t.analysisResult.labels.valuation}: <span className="text-foreground">{ui.equity.valuation.relativeValuation}</span>
                     </p>
                   )}
                   <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed mt-1">
@@ -2482,12 +2482,12 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {ui.commodity && (
                 <div className="border-t border-border/30 pt-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                    <span className="text-amber-400/80">{"●"}</span> commodity intelligence
+                    <span className="text-amber-400/80">{"●"}</span> {t.analysisResult.labels.commodityIntelligence}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono mb-2">
                     {ui.commodity.inventory && (
                       <div>
-                        <span className="text-muted-foreground">inventory:</span>{" "}
+                        <span className="text-muted-foreground">{t.analysisResult.inline.inventoryLabel}:</span>{" "}
                         <span className={FRESH_COLORS[ui.commodity.inventory.freshness]}>{ui.commodity.inventory.freshness}</span>
                         {ui.commodity.inventory.changeWeekly !== undefined && (
                           <span className="ml-1">· <span className="text-foreground">{ui.commodity.inventory.changeWeekly! > 0 ? "+" : ""}{ui.commodity.inventory.changeWeekly!.toLocaleString()}</span>/wk</span>
@@ -2496,10 +2496,10 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                     {ui.commodity.futuresStructure && (
                       <div>
-                        <span className="text-muted-foreground">structure:</span>{" "}
+                        <span className="text-muted-foreground">{t.analysisResult.inline.structureLabel}:</span>{" "}
                         <span className="text-foreground">{ui.commodity.futuresStructure.structure ?? "—"}</span>
                         {ui.commodity.futuresStructure.rollYield !== undefined && (
-                          <span className="ml-1">· roll: <span className="text-foreground">{ui.commodity.futuresStructure.rollYield!.toFixed(2)}%</span></span>
+                          <span className="ml-1">· {t.analysisResult.inline.rollLabel}: <span className="text-foreground">{ui.commodity.futuresStructure.rollYield!.toFixed(2)}%</span></span>
                         )}
                       </div>
                     )}
@@ -2532,7 +2532,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {ui.crossAsset && (
                 <div className="border-t border-border/30 pt-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                    <span className="text-sky-400/80">{"●"}</span> cross-asset macro
+                    <span className="text-sky-400/80">{"●"}</span> {t.analysisResult.labels.crossAssetMacro}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] font-mono mb-2">
                     {ui.crossAsset.dxy && (
@@ -2557,7 +2557,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                     {ui.crossAsset.riskRegime && (
                       <div>
-                        <span className="text-muted-foreground">risk:</span>{" "}
+                        <span className="text-muted-foreground">{t.analysisResult.inline.riskLabel}:</span>{" "}
                         <span className={cn(
                           "text-foreground",
                           ui.crossAsset.riskRegime.regime === "risk_on" ? "text-emerald-400" :
@@ -2605,7 +2605,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Double-counting warnings */}
               {ui.dataFlags.filter((f) => f.startsWith("DOUBLE_COUNTING")).length > 0 && (
                 <div className="text-[10px] font-mono">
-                  <span className="text-amber-400">double-counting:</span>{" "}
+                  <span className="text-amber-400">{t.analysisResult.labels.doubleCounting}:</span>{" "}
                   {ui.dataFlags.filter((f) => f.startsWith("DOUBLE_COUNTING")).map((f, i) => (
                     <span key={i} className="text-amber-400/80">• {f.replace("DOUBLE_COUNTING:", "")} </span>
                   ))}
@@ -2614,7 +2614,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Missing Information */}
               {ui.missingInformation.length > 0 && (
                 <div className="border-t border-border/30 pt-2">
-                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">missing intelligence</p>
+                  <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">{t.analysisResult.labels.missingIntelligence}</p>
                   {ui.missingInformation.slice(0, 5).map((m, i) => (
                     <p key={i} className="text-[10px] font-mono text-amber-300/70">{"⚠"} {m}</p>
                   ))}
@@ -2662,7 +2662,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             {/* Upcoming High-Impact Events */}
             {result.calendarData.events.filter((e) => e.status === "upcoming" && e.importance === 3).length > 0 && (
               <div className="mb-3">
-                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">upcoming high-impact</p>
+                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">{t.analysisResult.labels.upcomingHighImpact}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {result.calendarData.events
                     .filter((e) => e.status === "upcoming" && e.importance === 3)
@@ -2685,7 +2685,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             {/* Recently Released Events with Surprises */}
             {result.calendarData.events.filter((e) => e.status === "released" && e.importance === 3 && e.actual !== undefined).length > 0 && (
               <div>
-                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">recent high-impact releases</p>
+                <p className="text-[10px] font-mono font-medium text-muted-foreground mb-1">{t.analysisResult.labels.recentHighImpactReleases}</p>
                 <div className="space-y-1">
                   {result.calendarData.events
                     .filter((e) => e.status === "released" && e.importance === 3 && e.actual !== undefined)

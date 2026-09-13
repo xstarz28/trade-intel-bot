@@ -809,6 +809,102 @@ export interface Translations {
      * reasoned claim, a scenario is a path, an invalidation kills the claim.
      * Translations must keep those three distinct (§8/§13).
      */
+    /**
+     * Remaining AnalysisResult copy: evidence captions, intelligence panels and
+     * the three provenance disclaimers. The disclaimers are TRUTHFULNESS copy —
+     * they state what the engine does NOT claim, so a translation must not
+     * weaken or drop the negation (Phase 190 public-copy rule).
+     */
+    /**
+     * Inline regime / scenario / intelligence captions. Several repeat a word
+     * that already exists elsewhere in the bundle (rates, spread, risk) but in
+     * a DIFFERENT grammatical slot, so they are separate keys: collapsing them
+     * would force one translation to serve two sentence positions.
+     */
+    inline: {
+      priceLabel: string;
+      keyContradictions: string;
+      contracts: string;
+      directionLabel: string;
+      fundamentalLabel: string;
+      primaryLabel: string;
+      alternateLabel: string;
+      exhaustion: string;
+      confirmLabel: string;
+      supportingLabel: string;
+      conflictingLabel: string;
+      missingLabel: string;
+      macroLabel: string;
+      freshSuffix: string;
+      ratesLabel: string;
+      diff: string;
+      yieldsLabel: string;
+      spreadLabel2: string;
+      crossAssetLabel: string;
+      inventoryLabel: string;
+      structureLabel: string;
+      rollLabel: string;
+      riskLabel: string;
+    };
+    labels: {
+      sourceLabel: string;
+      realYieldUnavailable: string;
+      mapped: string;
+      spread: string;
+      depthLR: string;
+      imbalance: string;
+      setup: string;
+      trigger: string;
+      primary: string;
+      alternate: string;
+      continuation: string;
+      reversalLabel: string;
+      transition: string;
+      invalidateLabel: string;
+      risksLabel: string;
+      nextLabel: string;
+      traderLabel: string;
+      investorLabel: string;
+      valuation: string;
+      support: string;
+      resistance: string;
+      orderBlock: string;
+      fairValueGap: string;
+      avgScore: string;
+      positive: string;
+      negative: string;
+      neutral: string;
+      topHeadlines: string;
+      marginLabel: string;
+      mktCapShort: string;
+      divYield: string;
+      fundingRate: string;
+      openInterest: string;
+      liquidations: string;
+      interpretation: string;
+      extreme: string;
+      positioningLabel: string;
+      supplyLabel: string;
+      evidenceLabel: string;
+      missingIntelligence: string;
+      forexIntelligence: string;
+      equityIntelligence: string;
+      commodityIntelligence: string;
+      crossAssetMacro: string;
+      calendarLabel: string;
+      revGrowth: string;
+      marginShort: string;
+      mktCapLower: string;
+      doubleCounting: string;
+      upcomingHighImpact: string;
+      recentHighImpactReleases: string;
+      macdHist: string;
+      evidenceHierarchy: string;
+      scenarioDisclaimer: string;
+      dxyUnavailable: string;
+      tvlDisclaimer: string;
+      unlocksDisclaimer: string;
+    };
     fields: {
       primaryThesis: string;
       counterThesis: string;
