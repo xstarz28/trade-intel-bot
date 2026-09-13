@@ -121,11 +121,17 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 875 leaves", () => {
+  it("EN is the canonical structural reference with 908 leaves", () => {
     // 847 -> 875: Phase 182 added the `legal` section for the public website
     // pages (/download, /privacy, /terms). Every one of the nine locales was
     // updated in the same change, which the parity tests above enforce.
-    expect(enCount).toBe(875);
+    // 875 -> 908: Phase 189 added `auth` (24) and `onboarding` (10) for the
+    // first-run journey. `src/pages/Auth.tsx` had been 100% hardcoded English
+    // until then; the keys are declared in types.ts so all nine locales are
+    // forced to supply real translations.
+    // first-run journey, and REMOVED the unused `errors.checkApiKey`, which
+    // shipped the internal env var name TWELVE_DATA_API_KEY to every client.
+    expect(enCount).toBe(908);
   });
 
   for (const code of NINE) {
@@ -160,6 +166,9 @@ describe("placeholder parity across all 9 locales", () => {
   it("EN placeholders are a strict subset of the known vocabulary", () => {
     const known = [
       "{count}",
+      // Phase 189 — first-run auth copy.
+      "{email}",
+      "{minutes}",
       "{time}",
       "{value}",
       "{scanned}",
@@ -487,9 +496,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 875 canonical keys with non-empty values", () => {
+  it("zh has all 908 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(875);
+    expect(zhLeaves.length).toBe(908);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

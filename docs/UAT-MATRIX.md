@@ -1105,7 +1105,170 @@ browser click-through remain HUMAN/BLOCKED.
 
 ---
 
-## 27. Sign-off
+## 27. Phase 189 — Onboarding & first-run experience
+
+Evidence class: **C** (automated, local). Browser/device rows remain HUMAN;
+live OTP delivery and live providers remain BLOCKED by the sandbox egress
+allow-list (npm + GitHub API only).
+
+### 27.1 Defects found and fixed
+
+| # | Defect | Severity | Status |
+|---|--------|----------|--------|
+| D1 | `src/pages/Auth.tsx` was 100% hardcoded English — no `useI18n` at all — on the first screen a new user sees. Survived 188 phases because every localization guard was an enumerated file list and none walked `src/pages/`. | High (invariant 7) | FIXED — 24 `auth` keys × 9 locales |
+| D2 | History loading collapsed to `[]`, so an unresolved Convex query rendered "No history yet". Loading presented as genuine emptiness. | High (req. 1/8) | FIXED — distinct `isLoading` branch + `role="status"` |
+| D3 | `errors.checkApiKey` shipped "Check that TWELVE_DATA_API_KEY is configured…" to every client in all 9 locales, naming internal config to end users. Key had zero consumers. | Medium (req. 14) | FIXED — key removed from types + 9 locales |
+| D4 | `console.error("Email sign-in error:", error)` logged raw rejections that can carry provider bodies, request URLs, tokens and stack traces. | Medium (req. 14) | FIXED — fixed-category `reportAuthDiagnostic`, no error binding |
+| D5 | Phase 188 bundle assertions were **vacuous**: `dist/` had been built without `VITE_CONVEX_URL`, so main.tsx short-circuited to a "not configured" notice and the artifact contained almost no app code. Every `not.toContain` passed trivially. | High (CI false-green) | FIXED — real-build detection + engine-symbol assertions |
+| D6 | `src/pages/Landing.tsx` carries ~40 hardcoded strings, much of it Indonesian prose rendered to all 9 locales. | High | OPEN — recorded in the `KNOWN_UNLOCALIZED` ratchet, scheduled next phase |
+
+### 27.2 Automated rows (AUTOMATED — Evidence C)
+
+| # | Scenario | Result |
+|---|----------|--------|
+| 1 | Unauthenticated landing shows email entry, does not navigate | PASS |
+| 2 | Auth copy explains the 6-digit code and "no password" | PASS |
+| 3 | No vendor/provider name is user-visible on the auth surface | PASS |
+| 4 | Decision-support boundary stated on the first screen | PASS |
+| 5 | No permanent-login promise anywhere in auth copy | PASS |
+| 6 | Guest path offered with an honest limit description | PASS |
+| 7 | Auth loading does NOT redirect as authenticated | PASS |
+| 8 | Loading-but-authenticated still waits for resolution | PASS |
+| 9 | Resolved session redirects without a new OTP | PASS |
+| 10 | Session restoration never re-prompts for OTP | PASS |
+| 11 | OTP step names the destination address | PASS |
+| 12 | Code validity stated (10 minutes) | PASS |
+| 13 | Stated validity equals backend `OTP_EXPIRY_MINUTES` | PASS |
+| 14 | Resend cooldown expectation set (spam folder, ~1 minute) | PASS |
+| 15 | Recovery path back to the email step exists | PASS |
+| 16 | OTP field carries an accessible label | PASS |
+| 17 | Session note says "until the session expires" | PASS |
+| 18 | Send failure shows a retryable message, no raw error | PASS |
+| 19 | No provider payload reaches ANY console channel | PASS |
+| 20 | Emitted diagnostic is a fixed safe category | PASS |
+| 21 | No catch block binds the error value on the auth path | PASS |
+| 22 | Diagnostic helper accepts no error argument | PASS |
+| 23 | Failures announced via `role="alert"` | PASS |
+| 24 | Never implies success after a failed operation | PASS |
+| 25 | Failed guest sign-in fabricates no session | PASS |
+| 26 | Deep link returns to the requested internal route | PASS |
+| 27 | External `returnTo` refused → `/dashboard` | PASS |
+| 28 | Protocol-relative and scheme tricks refused | PASS |
+| 29 | Hardened resolver used, not raw params | PASS |
+| 30 | Loading history does NOT claim the account is empty | PASS |
+| 31 | Loading announced politely (`aria-live`) | PASS |
+| 32 | Genuinely empty account still says so | PASS |
+| 33 | Dashboard derives loading from the unresolved query | PASS |
+| 34 | Every history call site forwards the loading flag | PASS |
+| 35 | Loading is a distinct branch, not a variant of empty | PASS |
+| 36 | Email field required and typed | PASS |
+| 37 | Verify button disabled until the code is complete | PASS |
+| 38 | Invalid input rejected before provider fan-out | PASS |
+| 39 | Invalid input consumes no entitlement | PASS |
+| 40 | Validation guard is reachable, not short-circuited (executed) | PASS |
+| 41 | Failed provider leg surrenders no data | PASS |
+| 42 | Skipped leg surrenders no data | PASS |
+| 43 | Timed-out leg surrenders no data | PASS |
+| 44 | Genuine success still returns data | PASS |
+| 45 | Degradation distinct from an empty result | PASS |
+| 46 | Dashboard calls only the protected action | PASS |
+| 47 | No second analysis entry point | PASS |
+| 48 | First-run guide shows the three required steps | PASS |
+| 49 | Guide states WAIT/NO_TRADE are free | PASS |
+| 50 | Guide describes LOCKED as withheld, never converted to WAIT | PASS |
+| 51 | Guide invents no commercial terms | PASS |
+| 52 | Guide hidden when history exists | PASS |
+| 53 | Guide dismissible and stays dismissed | PASS |
+| 54 | Guide gated on RESOLVED-empty, never on loading | PASS |
+| 55 | Guide renders no data of its own (no queries) | PASS |
+| 56 | Guide creates no second analysis path | PASS |
+| 57 | Guide survives blocked localStorage | PASS |
+| 58 | All 9 locales define all 24 `auth` keys | PASS |
+| 59 | All 9 locales define all 9 `onboarding` keys | PASS |
+| 60 | No locale silently falls back to the English sentence | PASS |
+| 61 | `{email}` / `{minutes}` placeholders survive translation | PASS |
+| 62 | No locale hardcodes the OTP lifetime | PASS |
+| 63 | Brand preserved untranslated in every locale | PASS |
+| 64 | No locale leaks a provider name in auth copy | PASS |
+| 65 | No hardcoded English remains in the Auth page | PASS |
+| 66 | Email input has accessible name + description | PASS |
+| 67 | Icon-only submit has a discernible label | PASS |
+| 68 | Disabled states are real attributes | PASS |
+| 69 | Secondary buttons declare `type="button"` | PASS |
+| 70 | No OTP/token/email value logged | PASS |
+| 71 | No Convex internal function name user-visible | PASS |
+| 72 | No analytics SDK added for onboarding | PASS |
+| 73 | Page guard discovers page files (non-vacuous) | PASS |
+| 74 | Page guard covers `src/pages/` | PASS |
+| 75 | Planted JSX prose is caught | PASS |
+| 76 | Planted hardcoded placeholder is caught | PASS |
+| 77 | Planted hardcoded aria-label is caught | PASS |
+| 78 | Localized expressions are not flagged | PASS |
+| 79 | Known-debt ratchet cannot rot (entry must still have violations) | PASS |
+| 80 | Bundle scanned is a real build, not a stub | PASS |
+| 81 | No engine symbol ships to the client | PASS |
+| 82 | No secret VALUE or key prefix in the bundle | PASS |
+| 83 | No user-facing string names an internal env var | PASS |
+
+### 27.3 Mutation ledger (all 8 mandated + verification)
+
+| ID | Mutation | Result | Failing tests |
+|----|----------|--------|---------------|
+| M1 | auth loading → authenticated | CAUGHT | 1 |
+| M2 | invalid input → success | CAUGHT | 1 |
+| M3 | WAIT → chargeable | CAUGHT | 2 |
+| M4 | LOCKED → WAIT | CAUGHT | 2 |
+| M5 | entitlement/history loading → zero | CAUGHT | 1 |
+| M6 | provider failure → success | CAUGHT | 3 |
+| M7 | protected deep link → external URL | CAUGHT | 1 |
+| M8 | English fallback when translation missing | CAUGHT | 1 |
+
+M2 and M6 initially **SURVIVED** and were fixed by strengthening the
+assertions, not the expectations:
+
+- **M2** — ordering assertions read source TEXT, so `if (false && …)` left the
+  text intact. Replaced with extraction and real execution of the production
+  predicate, plus a short-circuit check.
+- **M6** — nothing asserted that a non-success leg yields no data. Added five
+  behavioural tests over `successfulData`.
+
+Harness note: an earlier M7 run reported a phantom SURVIVED because the
+harness used `git diff` to confirm the mutation applied, which is meaningless
+in an uncommitted tree. Byte comparison (`cmp`) against the backup is now used.
+
+### 27.4 Vacuity probes
+
+| Probe | Expected | Observed |
+|-------|----------|----------|
+| Stub `dist/` (no `VITE_CONVEX_URL`) | bundle rows SKIP, never pass | 44 passed / **5 skipped** |
+| Engine symbol planted in real bundle | fail | **1 failed** (test 19) |
+| Planted page-level hardcoded string | caught by guard | caught |
+
+### 27.5 HUMAN (not executed by the agent)
+
+| # | Scenario | Status |
+|---|----------|--------|
+| H1 | Real browser first-run click-through | HUMAN — NOT VERIFIED |
+| H2 | Keyboard-only traversal of the auth flow | HUMAN — NOT VERIFIED |
+| H3 | Screen-reader announcement of OTP errors | HUMAN — NOT VERIFIED |
+| H4 | Session restored after real browser restart | HUMAN — NOT VERIFIED |
+| H5 | Android app restart retains session | HUMAN — NOT VERIFIED |
+| H6 | iOS app restart retains session | HUMAN — NOT VERIFIED |
+| H7 | Windows desktop restart retains session | HUMAN — NOT VERIFIED |
+| H8 | Mobile deep link resumes the intended safe route | HUMAN — NOT VERIFIED |
+| H9 | Visual review of the guide in all 9 locales | HUMAN — NOT VERIFIED |
+
+### 27.6 BLOCKED (environment)
+
+| # | Scenario | Blocker |
+|---|----------|---------|
+| B1 | Real OTP email arrives and validates | No egress to the email provider |
+| B2 | Live entitlement against a deployed Convex | No `CONVEX_DEPLOYMENT` |
+| B3 | Provider degradation against live providers | Provider hosts unreachable (HTTP 000) |
+
+**Totals: 83 PASS (AUTOMATED) · 9 HUMAN — NOT VERIFIED · 3 BLOCKED.**
+
+## 28. Sign-off
 
 | Field | Value |
 | --- | --- |

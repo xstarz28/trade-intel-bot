@@ -15,11 +15,20 @@ import {
 } from "@/components/ui/input-otp";
 
 import { useAuth } from "@/hooks/use-auth";
+import { useI18n } from "@/lib/i18n";
 import logo from "@/assets/logo.svg";
 import { ArrowRight, Loader2, Mail, UserX } from "lucide-react";
 import { Suspense, useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { resolveSafeRedirect } from "@/lib/routing/safe-redirect";
+import { reportAuthDiagnostic } from "@/lib/auth/safe-diagnostics";
+
+/**
+ * Phase 189 — kept in sync with `OTP_EXPIRY_MINUTES` in
+ * `src/convex/auth/emailOtp.ts`. Stating a lifetime the backend does not
+ * honour would be worse than stating none, so a test asserts these agree.
+ */
+const OTP_VALIDITY_MINUTES = 10;
 
 interface AuthProps {
   redirectAfterAuth?: string;
@@ -27,6 +36,7 @@ interface AuthProps {
 
 function Auth({ redirectAfterAuth }: AuthProps = {}) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const { t, txi } = useI18n();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   // `returnTo` is attacker-controllable; resolveSafeRedirect refuses anything
@@ -54,9 +64,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       await signIn("email-otp", formData);
       setStep({ email: formData.get("email") as string });
       setIsLoading(false);
-    } catch (error) {
-      console.error("Email sign-in error:", error);
-      setError("Could not send the verification code. Please try again.");
+    } catch {
+      // The error VALUE is deliberately not captured or logged: a provider
+      // rejection can embed request details, vendor identity or credentials.
+      reportAuthDiagnostic("email-code-send-failed");
+      setError(t.auth.sendFailed);
       setIsLoading(false);
     }
   };
@@ -71,12 +83,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       // Do NOT navigate here — the useEffect above handles redirect
       // once isAuthenticated is true. Navigating before Convex auth
       // fully resolves causes the double-login loop.
-    } catch (error) {
-      console.error("OTP verification error:", error);
-
-      setError("The verification code you entered is incorrect.");
+    } catch {
+      // Never log the rejection: it can echo back the submitted code.
+      reportAuthDiagnostic("otp-verification-failed");
+      setError(t.auth.codeIncorrect);
       setIsLoading(false);
-
       setOtp("");
     }
   };
@@ -88,11 +99,10 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
       await signIn("anonymous");
       // Do NOT navigate here — the useEffect above handles redirect
       // once isAuthenticated is true.
-    } catch (error) {
-      // Log for diagnostics, but never surface a raw provider error to the
-      // user: those strings can carry request details and configuration hints.
-      console.error("Guest sign-in error:", error);
-      setError("Could not start a guest session. Please try again.");
+    } catch {
+      // Fixed category only — see src/lib/auth/safe-diagnostics.ts.
+      reportAuthDiagnostic("guest-session-failed");
+      setError(t.auth.guestFailed);
     } finally {
       setIsLoading(false);
     }
@@ -112,7 +122,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
               <div className="flex justify-center">
                     <button
                       type="button"
-                      aria-label="Xstarz Analysis home"
+                      aria-label={t.auth.title}
                       className="flex size-12 items-center justify-center overflow-hidden rounded-xl bg-primary/15"
                       onClick={() => navigate("/")}
                     >
@@ -123,9 +133,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       />
                     </button>
                   </div>
-                <CardTitle className="text-lg font-mono">Xstarz Analysis</CardTitle>
+                <CardTitle className="text-lg font-mono">{t.auth.title}</CardTitle>
                 <CardDescription className="font-mono text-xs">
-                  sign in to access your bias analysis
+                  {t.auth.subtitle}
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleEmailSubmit}>
@@ -135,8 +145,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     <div className="relative flex-1">
                       <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                       <Input
+                        id="auth-email"
                         name="email"
-                        placeholder="name@example.com"
+                        aria-label={t.auth.emailLabel}
+                        aria-describedby="auth-email-help"
+                        placeholder={t.auth.emailPlaceholder}
                         type="email"
                         className="pl-9"
                         disabled={isLoading}
@@ -147,6 +160,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       type="submit"
                       variant="outline"
                       size="icon"
+                      aria-label={t.auth.continueWithEmail}
                       disabled={isLoading}
                     >
                       {isLoading ? (
@@ -156,8 +170,16 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       )}
                     </Button>
                   </div>
+                  <p
+                    id="auth-email-help"
+                    className="mt-2 text-[11px] text-muted-foreground"
+                  >
+                    {t.auth.emailHelp}
+                  </p>
                   {error && (
-                    <p className="mt-2 text-sm text-red-500">{error}</p>
+                    <p role="alert" className="mt-2 text-sm text-red-500">
+                      {error}
+                    </p>
                   )}
                   
                   <div className="mt-4">
@@ -167,7 +189,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       </div>
                       <div className="relative flex justify-center text-xs uppercase">
                         <span className="bg-background px-2 text-muted-foreground">
-                          Or
+                          {t.auth.orDivider}
                         </span>
                       </div>
                     </div>
@@ -180,8 +202,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       disabled={isLoading}
                     >
                       <UserX className="mr-2 h-4 w-4" />
-                      Continue as Guest
+                      {t.auth.continueAsGuest}
                     </Button>
+                    <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                      {t.auth.guestHelp}
+                    </p>
                   </div>
                 </CardContent>
               </form>
@@ -189,9 +214,9 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
           ) : (
             <>
               <CardHeader className="text-center mt-4">
-                <CardTitle>Check your email</CardTitle>
+                <CardTitle>{t.auth.checkEmailTitle}</CardTitle>
                 <CardDescription>
-                  We've sent a code to {step.email}
+                  {txi("auth.checkEmailBody", { email: step.email })}
                 </CardDescription>
               </CardHeader>
               <form onSubmit={handleOtpSubmit}>
@@ -204,6 +229,7 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                       value={otp}
                       onChange={setOtp}
                       maxLength={6}
+                      aria-label={t.auth.otpLabel}
                       disabled={isLoading}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && otp.length === 6 && !isLoading) {
@@ -223,19 +249,31 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     </InputOTP>
                   </div>
                   {error && (
-                    <p className="mt-2 text-sm text-red-500 text-center">
+                    <p
+                      role="alert"
+                      className="mt-2 text-sm text-red-500 text-center"
+                    >
                       {error}
                     </p>
                   )}
+                  <p className="text-[11px] text-muted-foreground text-center mt-3">
+                    {txi("auth.codeValidity", { minutes: OTP_VALIDITY_MINUTES })}
+                  </p>
                   <p className="text-sm text-muted-foreground text-center mt-4">
-                    Didn't receive a code?{" "}
+                    {t.auth.noCodeQuestion}{" "}
                     <Button
+                      type="button"
                       variant="link"
                       className="p-0 h-auto"
                       onClick={() => setStep("signIn")}
                     >
-                      Try again
+                      {t.auth.tryAgain}
                     </Button>
+                  </p>
+                  {/* Phase 189 — sets the expectation created by the Phase 187
+                      resend cooldown, so the wait does not read as a failure. */}
+                  <p className="text-[11px] text-muted-foreground/80 text-center mt-1">
+                    {t.auth.resendHint}
                   </p>
                 </CardContent>
                 <CardFooter className="flex-col gap-2">
@@ -247,11 +285,11 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Verifying...
+                        {t.auth.verifying}
                       </>
                     ) : (
                       <>
-                        Verify code
+                        {t.auth.verifyCode}
                         <ArrowRight className="ml-2 h-4 w-4" />
                       </>
                     )}
@@ -263,15 +301,18 @@ function Auth({ redirectAfterAuth }: AuthProps = {}) {
                     disabled={isLoading}
                     className="w-full"
                   >
-                    Use different email
+                    {t.auth.useDifferentEmail}
                   </Button>
+                  <p className="text-[11px] text-muted-foreground/80 text-center">
+                    {t.auth.sessionNote}
+                  </p>
                 </CardFooter>
               </form>
             </>
           )}
 
           <div className="py-4 px-6 text-[11px] font-mono text-center text-muted-foreground bg-muted border-t rounded-b-lg">
-            Decision support only — Xstarz Analysis never places trades.
+            {t.auth.disclaimer}
           </div>
         </Card>
         </div>

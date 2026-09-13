@@ -496,16 +496,38 @@ describe("188.9 — one authoritative protected analysis path", () => {
 // ════════════ 20. PRODUCTION BUNDLE ════════════
 
 describe("188.10 — the production bundle carries no bypass surface", () => {
+  /**
+   * Phase 189 correction — these assertions were VACUOUS.
+   *
+   * A build produced without `VITE_CONVEX_URL` short-circuits in main.tsx to a
+   * "not configured" notice, so `dist/` contained a ~200 kB stub with almost
+   * no application code. Every `not.toContain` trivially passed. A bundle
+   * assertion must therefore first prove the bundle is REAL.
+   */
   const distFiles = (() => {
     try {
       const dir = join(process.cwd(), "dist/assets");
-      return readdirSync(dir)
+      const files = readdirSync(dir)
         .filter((f) => f.endsWith(".js"))
         .map((f) => readFileSync(join(dir, f), "utf8"));
+      // A real build carries the app's own localized copy. If this marker is
+      // missing the artifact is a stub and must not be used as evidence.
+      const isRealBuild = files.some((js) => js.includes("never places trades"));
+      return isRealBuild ? files : null;
     } catch {
       return null;
     }
   })();
+
+  it.skipIf(distFiles === null)(
+    "the scanned bundle is a real application build, not a stub",
+    () => {
+      const all = distFiles!.join("");
+      // Anchors that only exist when the app actually compiled in.
+      expect(all).toContain("never places trades");
+      expect(all.length).toBeGreaterThan(500_000);
+    },
+  );
 
   it.skipIf(distFiles === null)(
     "19. the analysis engine is not shipped to the client",
@@ -513,8 +535,22 @@ describe("188.10 — the production bundle carries no bypass surface", () => {
       // The decisive proof for §13: even a crafted client cannot run the
       // engine locally to recover a locked direction, because the engine is
       // not in the bundle at all.
+      //
+      // Phase 189: assert on ENGINE INTERNALS, not the bare token
+      // "runAnalysis" — that substring also appears as the i18n button label
+      // `analysis.runAnalysis: "Run Analysis"`, which is copy, not code.
       for (const js of distFiles!) {
-        expect(js).not.toContain("runAnalysis");
+        for (const engineSymbol of [
+          "generateRecommendation",
+          "buildRecommendation",
+          "computeBias",
+          "CORRELATION_CLUSTERS",
+          "DEFAULT_UNIVERSE",
+        ]) {
+          expect(js, `engine symbol ${engineSymbol} shipped`).not.toContain(engineSymbol);
+        }
+        // No call site either — a label is inert, an invocation is not.
+        expect(js).not.toContain("runAnalysis(");
       }
     },
   );
@@ -533,9 +569,29 @@ describe("188.10 — the production bundle carries no bypass surface", () => {
   );
 
   it.skipIf(distFiles === null)("no provider secret reaches the bundle", () => {
+    // Phase 189: test for secret VALUES, not variable NAMES. The provider
+    // registry legitimately lists `credentialEnvVars: ["TWELVE_DATA_API_KEY"]`
+    // so the UI can say which credential is missing; the name is not a secret.
+    // A credential VALUE reaching the client would be.
+    const secretAssignment =
+      /(api[_-]?key|secret|token|password)["']?\s*[:=]\s*["'][A-Za-z0-9_-]{16,}["']/i;
     for (const js of distFiles!) {
-      expect(js).not.toContain("XSTARZ_EMAIL_API_KEY");
-      expect(js).not.toContain("TWELVE_DATA_API_KEY");
+      expect(js).not.toMatch(secretAssignment);
+      for (const prefix of ["re_live_", "re_test_", "sk_live_", "SG."]) {
+        expect(js, `key prefix ${prefix} shipped`).not.toContain(prefix);
+      }
     }
   });
+
+  it.skipIf(distFiles === null)(
+    "no user-facing string names an internal environment variable",
+    () => {
+      // Phase 189 defect: `errors.checkApiKey` shipped
+      // "Check that TWELVE_DATA_API_KEY is configured…" to every client in all
+      // nine locales. Naming internal config to end users is a disclosure.
+      for (const js of distFiles!) {
+        expect(js).not.toContain("Check that TWELVE_DATA_API_KEY");
+      }
+    },
+  );
 });

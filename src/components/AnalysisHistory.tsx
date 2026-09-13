@@ -11,6 +11,14 @@ interface AnalysisHistoryProps {
   analyses: AnalysisResult[];
   onSelect: (analysis: AnalysisResult) => void;
   selectedId?: string;
+  /**
+   * Phase 189 — true while the history query has not resolved.
+   *
+   * Without this, an unresolved query and a genuinely empty account are
+   * indistinguishable, so a first-run user is told "No history yet" before
+   * anything has been loaded. That is the UI inventing state.
+   */
+  isLoading?: boolean;
 }
 
 const BIAS_ICONS = {
@@ -27,8 +35,34 @@ const BIAS_COLORS = {
 
 
 
-export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHistoryProps) {
+export function AnalysisHistory({
+  analyses,
+  onSelect,
+  selectedId,
+  isLoading = false,
+}: AnalysisHistoryProps) {
   const { t, tx } = useI18n();
+
+  // Loading is NOT emptiness. Announce it politely and say nothing about
+  // whether any history exists.
+  if (isLoading) {
+    return (
+      <Card className="border-border/50">
+        <CardContent
+          className="flex flex-col items-center justify-center py-10 text-center"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex size-10 items-center justify-center rounded-full bg-muted/30 mb-3">
+            <History className="size-5 text-muted-foreground/50 animate-pulse" />
+          </div>
+          <p className="text-xs font-mono font-medium text-muted-foreground">
+            {tx("global.loading")}
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (analyses.length === 0) {
     return (
