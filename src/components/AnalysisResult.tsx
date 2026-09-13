@@ -225,7 +225,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <Card className="border-border/50">
             <CardContent className="px-4 py-3">
               <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                <span className="text-primary/60">$</span> data-quality
+                <span className="text-primary/60">$</span> {t.analysisResult.sections.dataQuality}
                 <span className="text-muted-foreground/50">{" · "}{tx("analysisResult.informationalNotDirectional")}</span>
               </p>
               <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -282,7 +282,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> indicators
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.indicators}
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {tech.rsi14 !== undefined && (
@@ -361,7 +361,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> market-context{" "}
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.marketContext}{" "}
               <span className="text-muted-foreground/50">· style: {result.tradingStyle}</span>
               {result.styleInfo?.fallbackApplied && (
                 <span className="text-amber-400/80"> · TF fallback: {result.styleInfo.requestedTimeframe}→{result.styleInfo.setupTimeframeUsed}</span>
@@ -461,7 +461,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> treasury-yields{" "}
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.treasuryYields}{" "}
               <span
                 className={cn(
                   "ml-1",
@@ -513,7 +513,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> cftc-futures-positioning{" "}
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.cftcFuturesPositioning}{" "}
               <span
                 className={cn(
                   "ml-1",
@@ -558,7 +558,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> eia-inventory{" "}
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.eiaInventory}{" "}
               <span
                 className={cn(
                   "ml-1",
@@ -617,7 +617,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> execution-quality{" "}
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.executionQuality}{" "}
               <span
                 className={cn(
                   "ml-1",
@@ -667,7 +667,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> multi-timeframe
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.multiTimeframe}
             </p>
             <div className="flex flex-wrap items-center gap-1.5 mb-2">
               <Badge
@@ -735,7 +735,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                <span className="text-primary/60">$</span> why-this-decision{" "}
+                <span className="text-primary/60">$</span> {t.analysisResult.sections.whyThisDecision}{" "}
               </h4>
               <Badge variant="outline" className="text-[10px] font-mono ml-auto border-border/50">
                 fp:{result.decisionFingerprint}
@@ -806,7 +806,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <Card className="border-border/50">
               <CardContent className="px-4 py-3">
                 <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                  <span className="text-primary/60">$</span> decision-snapshot
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.decisionSnapshot}
                 </p>
                 <p className="text-sm font-mono font-bold text-foreground leading-relaxed">
                   {thesis.decisionSnapshot}
@@ -823,7 +823,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <CardHeader className="pb-2">
                   <div className="flex items-center gap-2">
                     <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                      <span className="text-primary/60">$</span> evidence-context
+                      <span className="text-primary/60">$</span> {t.analysisResult.sections.evidenceContext}
                     </h4>
                   </div>
                 </CardHeader>
@@ -868,7 +868,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <Card className="border-border/50">
               <CardContent className="px-4 py-3 space-y-2">
                 <p className="text-[10px] font-mono font-semibold text-muted-foreground">
-                  <span className="text-primary/60">$</span> thesis-validity
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.thesisValidity}
                 </p>
                 <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2">
                   <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-0.5">confirmation</p>
@@ -904,7 +904,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <Card className="border-border/50">
                 <CardContent className="px-4 py-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
-                    <span className="text-primary/60">$</span> what-would-change
+                    <span className="text-primary/60">$</span> {t.analysisResult.sections.whatWouldChange}
                   </p>
                   <p className="text-[11px] font-mono text-muted-foreground/80 leading-relaxed">
                     {thesis.noTradePath}
@@ -938,7 +938,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                  <span className="text-primary/60">$</span> continuation-vs-reversal
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.continuationVsReversal}
                 </h4>
               </div>
             </CardHeader>
@@ -1103,7 +1103,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                  <span className="text-primary/60">$</span> professional-market-reading
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.professionalMarketReading}
                 </h4>
                 <Badge variant="outline" className={cn("text-[10px] font-mono", ACTION_COLORS[pt.actionability])}>
                   {pt.actionability}
@@ -1193,7 +1193,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                  <span className="text-primary/60">$</span> forward-market-path
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.forwardMarketPath}
                 </h4>
                 <Badge variant="outline" className={cn("text-[10px] font-mono", PATH_COLORS[fp.primaryPath])}>
                   {fp.primaryPath.replace(/_/g, " ")}
@@ -1310,7 +1310,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                  <span className="text-primary/60">$</span> long-horizon-thesis
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.longHorizonThesis}
                 </h4>
                 <Badge variant="outline" className={cn("text-[10px] font-mono", CYCLE_COLORS[lh.marketCycle] ?? "border-border/50")}>
                   {lh.marketCycle.replace(/_/g, " ")}
@@ -1430,7 +1430,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                  <span className="text-primary/60">$</span> evidence-challenge
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.evidenceChallenge}
                 </h4>
                 <Badge variant="outline" className={cn("text-[10px] font-mono", SUPPORT_COLORS[ec.thesisSupportStatus] ?? "border-border/50")}>
                   {ec.thesisSupportStatus.replace(/_/g, " ")}
@@ -1544,7 +1544,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> position-sizing{" "}
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.positionSizing}{" "}
               <span className="text-muted-foreground/50">{tx("analysisResult.fromYourInputs")}</span>
             </p>
             <div className="grid grid-cols-3 gap-3">
@@ -1618,7 +1618,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> technical
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.technical}
             </h4>
           </div>
         </CardHeader>
@@ -1632,7 +1632,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> fundamental
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.fundamental}
             </h4>
           </div>
         </CardHeader>
@@ -1647,7 +1647,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                <span className="text-primary/60">$</span> news-sentiment
+                <span className="text-primary/60">$</span> {t.analysisResult.sections.newsSentiment}
               </h4>
               <Badge
                 className={cn(
@@ -1715,7 +1715,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                <span className="text-primary/60">$</span> macro-context
+                <span className="text-primary/60">$</span> {t.analysisResult.sections.macroContext}
               </h4>
               <Badge variant="outline" className="text-[10px] font-mono border-border/50">
                 {mapConfidence(result.macroData.confidence, t)}
@@ -1749,7 +1749,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                <span className="text-primary/60">$</span> fundamentals
+                <span className="text-primary/60">$</span> {t.analysisResult.sections.fundamentals}
               </h4>
               <Badge variant="outline" className="text-[10px] font-mono border-border/50">
                 {result.fundamentalData.sector || result.fundamentalData.industry || "stock"}
@@ -1804,7 +1804,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> score-breakdown
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.scoreBreakdown}
             </h4>
             <Badge variant="outline" className="text-[10px] font-mono ml-auto border-border/50">
               {result.breakdown.trend > 0 ? "+" : ""}{result.breakdown.trend} |{" "}
@@ -1824,7 +1824,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> key-levels & sr-zones
+              <span className="text-primary/60">$</span> {t.analysisResult.sections.keyLevels}
             </h4>
           </div>
         </CardHeader>
@@ -1932,7 +1932,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                <span className="text-primary/60">$</span> derivatives-positioning
+                <span className="text-primary/60">$</span> {t.analysisResult.sections.derivativesPositioning}
               </h4>
               <Badge
                 className={cn(
@@ -2080,7 +2080,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                  <span className="text-primary/60">$</span> crypto-intelligence
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.derivativesIntelligence}
                 </h4>
                 <Badge variant="outline" className={cn("text-[10px] font-mono", AVAIL_COLORS[ci.overallAvailability] ?? "border-border/50")}>
                   {ci.overallAvailability.toLowerCase()}
@@ -2363,7 +2363,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                  <span className="text-primary/60">$</span> universal-intelligence
+                  <span className="text-primary/60">$</span> {t.analysisResult.sections.universalIntelligence}
                 </h4>
                 <Badge variant="outline" className={cn("text-[10px] font-mono", AVAIL_COLORS[ui.overallAvailability] ?? "border-border/50")}>
                   {ASSET_LABELS[ui.assetClass] ?? ui.assetClass} · {ui.overallAvailability.toLowerCase()}
@@ -2639,7 +2639,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                <span className="text-primary/60">$</span> economic-calendar
+                <span className="text-primary/60">$</span> {t.analysisResult.sections.economicCalendar}
               </h4>
               <Badge variant="outline" className={cn(
                 "text-[10px] font-mono",

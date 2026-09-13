@@ -798,6 +798,45 @@ export interface Translations {
     whatConfirms: string;
     /** What would INVALIDATE the thesis — never softened to "risk". */
     whatInvalidates: string;
+    /**
+     * Terminal-style section headings rendered after the `$` glyph. The glyph
+     * and the hyphenated styling are chrome; the WORDS are user-facing copy and
+     * must be translated. Acronyms that name a specific institution or report
+     * (CFTC, EIA, SR) are provider/domain notation and stay untranslated (§4).
+     */
+    sections: {
+      dataQuality: string;
+      indicators: string;
+      marketContext: string;
+      treasuryYields: string;
+      cftcFuturesPositioning: string;
+      eiaInventory: string;
+      executionQuality: string;
+      multiTimeframe: string;
+      whyThisDecision: string;
+      decisionSnapshot: string;
+      evidenceContext: string;
+      thesisValidity: string;
+      whatWouldChange: string;
+      continuationVsReversal: string;
+      professionalMarketReading: string;
+      forwardMarketPath: string;
+      longHorizonThesis: string;
+      evidenceChallenge: string;
+      positionSizing: string;
+      technical: string;
+      fundamental: string;
+      newsSentiment: string;
+      macroContext: string;
+      fundamentals: string;
+      scoreBreakdown: string;
+      keyLevels: string;
+      derivativesPositioning: string;
+      derivativesIntelligence: string;
+      universalIntelligence: string;
+      economicCalendar: string;
+    };
+
     dataFull: string;
     dataPartial: string;
     dataLimited: string;
