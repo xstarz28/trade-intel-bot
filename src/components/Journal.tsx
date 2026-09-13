@@ -31,6 +31,7 @@ import {
   classifyOutcome,
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
+import { useI18n } from "@/lib/i18n";
 
 // ── Status Colors ────────────────────────────────────────────────
 
@@ -66,6 +67,7 @@ interface JournalProps {
 // ── Main Component ───────────────────────────────────────────────
 
 export function Journal({ currentResult, onJournalCreated, onBack }: JournalProps) {
+  const { t } = useI18n();
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
@@ -147,7 +149,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
       <Card className="border border-border/50">
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-mono font-semibold">Create Journal Entry</h3>
+            <h3 className="text-sm font-mono font-semibold">{t.journal.createJournalEntry}</h3>
             <Button variant="ghost" size="sm" onClick={() => setView("list")} className="text-xs ml-auto">
               ← Back
             </Button>
@@ -155,7 +157,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-xs text-muted-foreground">
-            Snapshot the current analysis. This captures the engine output at this moment.
+            {t.journal.snapshotDescription}
           </p>
           <div className="text-xs font-mono space-y-1 p-3 rounded border border-border/30 bg-muted/30">
             <div><span className="text-muted-foreground">instrument:</span> {currentResult.instrument}</div>
@@ -169,7 +171,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
               className="text-xs"
               onClick={() => handleCreateFromAnalysis(currentResult)}
             >
-              Journal as Trade
+              {t.journal.journalAsTrade}
             </Button>
             {currentResult.recommendation === "NO_TRADE" && (
               <Button
@@ -178,7 +180,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                 className="text-xs"
                 onClick={() => handleCreateObservation(currentResult)}
               >
-                Journal as Observation
+                {t.journal.journalAsObservation}
               </Button>
             )}
           </div>
@@ -220,7 +222,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
 
           {/* ── ENGINE SNAPSHOT (read-only) ── */}
           <div>
-            <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ ENGINE ANALYSIS SNAPSHOT</h4>
+            <h4 className="text-[10px] font-semibold text-muted-foreground mb-2">$ {t.journal.engineAnalysisSnapshot}</h4>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 rounded border border-border/30 bg-muted/30">
               <div><span className="text-muted-foreground">instrument:</span> {snap.analysisId ? entry.instrument : "—"}</div>
               <div><span className="text-muted-foreground">decision:</span> {snap.decision}</div>
@@ -361,7 +363,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
     <Card className="border border-border/50">
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
-          <h3 className="text-sm font-mono font-semibold">Trade Journal</h3>
+          <h3 className="text-sm font-mono font-semibold">{t.journal.title}</h3>
           {onBack && (
             <Button variant="ghost" size="sm" onClick={onBack} className="text-xs ml-auto">
               ← Dashboard
@@ -381,7 +383,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         {/* Filters */}
         <div className="flex gap-2">
           <Input
-            placeholder="Filter instrument..."
+            placeholder={t.journal.filterInstrument}
             value={filterInstrument}
             onChange={(e) => setFilterInstrument(e.target.value)}
             className="h-7 text-[10px] font-mono w-32"
@@ -391,12 +393,12 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
             onChange={(e) => setFilterStatus(e.target.value)}
             className="h-7 text-[10px] font-mono rounded border border-border/50 bg-transparent px-2"
           >
-            <option value="">All status</option>
-            <option value="PLANNED">Planned</option>
-            <option value="OPEN">Open</option>
-            <option value="CLOSED">Closed</option>
-            <option value="CANCELLED">Cancelled</option>
-            <option value="NO_TRADE">No Trade</option>
+            <option value="">{t.journal.allStatus}</option>
+            <option value="PLANNED">{t.journal.statusPlanned}</option>
+            <option value="OPEN">{t.journal.statusOpen}</option>
+            <option value="CLOSED">{t.journal.statusClosed}</option>
+            <option value="CANCELLED">{t.journal.statusCancelled}</option>
+            <option value="NO_TRADE">{t.journal.statusNoTrade}</option>
           </select>
         </div>
 

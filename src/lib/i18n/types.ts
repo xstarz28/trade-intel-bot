@@ -953,6 +953,16 @@ export interface Translations {
     planned: string;
     filterInstrument: string;
     allStatus: string;
+    /**
+     * Journal entry lifecycle states. `statusNoTrade` is the journal's record
+     * that NO TRADE was taken — invariant 3 keeps that a first-class outcome,
+     * never a downgraded recommendation.
+     */
+    statusPlanned: string;
+    statusOpen: string;
+    statusClosed: string;
+    statusCancelled: string;
+    statusNoTrade: string;
     noJournalEntries: string;
     noEntriesMatchFilters: string;
   };

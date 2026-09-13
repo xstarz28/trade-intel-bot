@@ -60,7 +60,7 @@ const report = loadReport();
  * Raising it requires a deliberate edit and a reason, which is the point —
  * adding vocabulary nothing renders should be a conscious act.
  */
-const UNREFERENCED_BUDGET = 270;
+const UNREFERENCED_BUDGET = 261;
 
 /**
  * Keys deliberately retained despite having no statically visible consumer.

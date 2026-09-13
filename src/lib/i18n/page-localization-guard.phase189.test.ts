@@ -114,8 +114,6 @@ const COMPONENT_DEBT: Record<string, string> = {
     "12 hardcoded title attributes plus a panel heading",
   "src/components/PositionRegistrationPanel.tsx":
     "form labels and placeholders for position registration",
-  "src/components/Journal.tsx":
-    "journal entry form labels; journal.* keys exist but are unwired",
   "src/components/CustomAlertRulesPanel.tsx":
     "alert rule builder labels and placeholders",
   "src/components/ProtectionAlertCenter.tsx":
