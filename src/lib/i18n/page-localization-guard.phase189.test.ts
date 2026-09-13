@@ -38,23 +38,17 @@ const EXEMPT: Record<string, string> = {
 /**
  * KNOWN DEBT — a ratchet, not an exemption.
  *
- * Phase 189 discovered that `Landing.tsx` carries a large body of hardcoded
- * copy, much of it Indonesian prose rendered to all nine locales. That is a
- * genuine defect, but localizing an entire marketing page is a phase of its
- * own, so it is recorded here rather than quietly excluded.
+ * Phase 189 recorded `src/pages/Landing.tsx` here because it carried a large
+ * body of hardcoded copy, much of it Indonesian prose rendered to all nine
+ * locales. **Phase 190 localized that page and emptied this list.**
  *
- * The ratchet has two teeth:
- *   1. no file OUTSIDE this list may contain violations (no new debt), and
- *   2. every file INSIDE it must still HAVE violations — so once the page is
- *      localized the entry goes stale and the test fails until it is removed.
- *
- * A silent exemption can rot forever; this cannot.
+ * The ratchet stays in place (deliberately empty) because it is the mechanism
+ * that prevents a future page from quietly acquiring the same debt:
+ *   1. no file OUTSIDE this list may contain violations, and
+ *   2. every file INSIDE it must still HAVE violations — so an entry that has
+ *      been fixed fails the suite until it is removed.
  */
-const KNOWN_UNLOCALIZED: Record<string, string> = {
-  "src/pages/Landing.tsx":
-    "Phase 189 finding: marketing copy is hardcoded, partly Indonesian. Scheduled for the next phase.",
-};
-
+const KNOWN_UNLOCALIZED: Record<string, string> = {};
 /** Proper nouns that must NOT be translated, so they are not violations. */
 const BRAND_LITERALS = new Set(["Xstarz Analysis"]);
 
@@ -150,6 +144,34 @@ describe("189 — the localization guard is path-complete", () => {
     const audited = PAGES.filter((p) => !(p in EXEMPT) && !(p in KNOWN_UNLOCALIZED));
     expect(audited.length).toBeGreaterThan(1);
     expect(audited).toContain("src/pages/Auth.tsx");
+  });
+
+  it("190 — the known-debt list is empty; Landing was localized", () => {
+    // Phase 190 retired the only entry. A non-empty list here means new debt
+    // was accepted and must be justified in review.
+    expect(Object.keys(KNOWN_UNLOCALIZED)).toEqual([]);
+  });
+
+  it("190 — every public route page is audited, none silently skipped", () => {
+    // The public surface is what an unauthenticated visitor can reach:
+    // /, /auth, /download, /privacy, /terms and the catch-all.
+    const PUBLIC_PAGES = [
+      "src/pages/Landing.tsx",
+      "src/pages/Auth.tsx",
+      "src/pages/Download.tsx",
+      "src/pages/NotFound.tsx",
+      "src/pages/Privacy.tsx",
+      "src/pages/Terms.tsx",
+    ];
+    for (const page of PUBLIC_PAGES) {
+      expect(PAGES, `${page} is not being walked`).toContain(page);
+    }
+    // Only the two legal pages may be exempt, and for a stated reason.
+    const exemptPublic = PUBLIC_PAGES.filter((p) => p in EXEMPT);
+    expect(exemptPublic.sort()).toEqual([
+      "src/pages/Privacy.tsx",
+      "src/pages/Terms.tsx",
+    ]);
   });
 
   it("every exemption names a file that still exists", () => {

@@ -1042,6 +1042,77 @@ export interface Translations {
     dismiss: string;
   };
 
+  /**
+   * Phase 190 — public landing page.
+   *
+   * Every claim here was audited against implemented capability. Wording that
+   * would overstate the product (blanket "real-time", guaranteed accuracy,
+   * unconditional instrument coverage) is deliberately absent, and tests in
+   * `src/lib/i18n/public-copy-truthfulness.phase190.test.ts` enforce that.
+   *
+   * Technical terms kept untranslated by terminology policy: BOS, CHoCH, FVG,
+   * HTF, LTF, DXY, WTI, R:R, SL, TP, W1/D1/H4/H1/M15/M5, NO TRADE.
+   */
+  landing: {
+    signIn: string;
+    launch: string;
+    heroBadge: string;
+    heroRole: string;
+    heroBody: string;
+    openTerminal: string;
+    guestMode: string;
+    coverageLabel: string;
+    instrumentsLabel: string;
+    /** Honest scope note; must not promise unconditional symbol support. */
+    coverageNote: string;
+    assetForex: string;
+    assetCrypto: string;
+    assetStock: string;
+    assetCommodity: string;
+    frameworkTitle: string;
+    frameworkBody: string;
+    featureStructureTitle: string;
+    featureStructureBody: string;
+    featureSupplyTitle: string;
+    featureSupplyBody: string;
+    featureMtfTitle: string;
+    featureMtfBody: string;
+    featureFlowTitle: string;
+    featureFlowBody: string;
+    convictionBadge: string;
+    convictionTitle: string;
+    convictionTitleEmphasis: string;
+    convictionBody: string;
+    weightStructure: string;
+    weightLiquidity: string;
+    weightFundamental: string;
+    weightSentiment: string;
+    outputTechnicalLabel: string;
+    outputTechnicalDesc: string;
+    outputFundamentalLabel: string;
+    outputFundamentalDesc: string;
+    outputPlanLabel: string;
+    outputPlanDesc: string;
+    outputConvictionLabel: string;
+    outputConvictionDesc: string;
+    outputInvalidationLabel: string;
+    outputInvalidationDesc: string;
+    principleNoFabricationTitle: string;
+    principleNoFabricationBody: string;
+    principleCapitalTitle: string;
+    principleCapitalBody: string;
+    principleNoAutoTitle: string;
+    principleNoAutoBody: string;
+    disclaimerTitle: string;
+    disclaimerBody: string;
+    ctaTitle: string;
+    ctaBody: string;
+    ctaButton: string;
+    footerTagline: string;
+    /** Accessible names for icon-only / brand controls. */
+    homeAriaLabel: string;
+  };
+
   entitlement: {
     invalidInput: string;
     signInRequired: string;

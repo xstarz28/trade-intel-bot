@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScoreBreakdown } from "@/components/ScoreBreakdown";
-import type { AnalysisResult as AnalysisResultType } from "@/types/analysis";
+import type { AnalysisResult as AnalysisResultType, InstrumentType } from "@/types/analysis";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { mapTrendLabel, mapConfidence, mapFreshness } from "@/lib/i18n/enum-mapping";
@@ -61,12 +61,19 @@ function getConviction(confidence: number): { label: "High" | "Medium" | "Low"; 
   return { label: "Low", color: "bg-muted/40 text-muted-foreground border border-border/50" };
 }
 
-const ASSET_CLASS_LABEL: Record<string, string> = {
+/**
+ * Phase 190 — keyed by `InstrumentType`, not `string`.
+ *
+ * This map previously had an `index` key while the union member is `indices`,
+ * so the entry was unreachable and an indices analysis fell through to the
+ * raw union value. Typing the record makes the compiler reject that drift.
+ */
+const ASSET_CLASS_LABEL: Record<InstrumentType, string> = {
   forex: "Forex",
   crypto: "Crypto",
   stock: "Stock",
   commodity: "Commodity",
-  index: "Index Futures",
+  indices: "Indices",
 };
 
 interface AnalysisResultProps {
