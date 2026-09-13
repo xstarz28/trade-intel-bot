@@ -325,7 +325,7 @@ function PortfolioDrillDown({
     <div className="space-y-3">
       {/* Thesis distribution from summary */}
       <div className="space-y-1">
-        <span className="text-[8px] font-mono text-muted-foreground/50 uppercase">Thesis Distribution</span>
+        <span className="text-[8px] font-mono text-muted-foreground/50 uppercase">{t.trader.thesisDistribution}</span>
         <div className="flex flex-wrap gap-1.5">
           {portfolioIntel.summary.healthyPositions > 0 && (
             <div className="flex items-center gap-1"><ThesisBadge thesis="HEALTHY" /><span className="text-[8px] font-mono text-muted-foreground">×{portfolioIntel.summary.healthyPositions}</span></div>

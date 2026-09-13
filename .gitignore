@@ -48,3 +48,5 @@ src-tauri/gen/
 # only create churn.
 docs/i18n-key-usage.json
 docs/i18n-key-classification.json
+docs/component-debt.json
+docs/component-debt-table.md
