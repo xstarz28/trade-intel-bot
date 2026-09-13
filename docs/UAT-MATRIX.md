@@ -1528,7 +1528,43 @@ that wraps onto a continuation line.
 | D4 | No-auto-execution + confidence-not-probability guarantees translated but never rendered | Rendered in the position-monitoring header |
 | D5 | `RequireAuth` shipped hardcoded "restoring session..." | Localized as `auth.restoringSession` ×9 |
 
-## 30. Sign-off
+## 30. Phase 192 — Mutation-gap closure (chargeability & fan-out failure)
+
+Two mutations SURVIVED the full suite when the Phase 189 harness was re-run
+after the sandbox was re-provisioned. Both are now caught. The harness itself
+was previously `/tmp`-only and has been persisted to
+`scripts/mutation-suite-phase189.sh` so this evidence is reproducible.
+
+| # | Case | Method | Expected | Status |
+| --- | --- | --- | --- | --- |
+| 30.1 | `WAIT` consumes no entitlement | automated (25 tests) | never chargeable | PASS |
+| 30.2 | `NO_TRADE` / `NO TRADE` / `HOLD` / `AVOID` free | automated | never chargeable | PASS |
+| 30.3 | `INSUFFICIENT_DATA` / `UNAVAILABLE` free | automated | never chargeable | PASS |
+| 30.4 | Case/whitespace variants stay free | automated | normalised, free | PASS |
+| 30.5 | `BUY`/`SELL`/`LONG`/`SHORT` still chargeable | automated | inverse holds | PASS |
+| 30.6 | Unknown/empty values fail closed to free | automated | free | PASS |
+| 30.7 | PREMIUM plan never counted | automated | usage unchanged | PASS |
+| 30.8 | Deny-list present as explicit safety layer | structural | layer exists | PASS |
+| 30.9 | Rejected leg is `failed`, carries no data | automated | no payload | PASS |
+| 30.10 | Provider `success:false` envelope is a failure | automated | `failed` | PASS |
+| 30.11 | Unsettled leg at fan-out deadline is `failed` | automated | never `success` | PASS |
+| 30.12 | Finished legs keep real results in a cut-short wave | automated | preserved | PASS |
+| 30.13 | M2 invalid-input → DELIVERED | mutation | CAUGHT | PASS |
+| 30.14 | M3 deny-list deleted | mutation | CAUGHT | PASS |
+| 30.15 | M4 LOCKED → WAIT | mutation | CAUGHT | PASS |
+| 30.16 | M6 fan-out failure → success | mutation | CAUGHT | PASS |
+| 30.17 | Mutation restore is byte-exact (`cmp`) | harness | clean tree | PASS |
+| 30.18 | Vacuity: bundle gates assert with real `dist/` | 18→3 skips | gates active | PASS |
+| 30.19 | CI verified by job conclusion, not exit code | `gh api` | 4 success | PASS |
+| 30.20 | Reachable-history secret scan | CI | expected failure (Phase 184) | BLOCKED |
+
+**Known limitation, stated not hidden.** `ACTIONABLE` and `NON_ACTIONABLE` are
+disjoint, so removing the deny-list changes no outcome today and *no black-box
+test can witness it*. Case 30.8 therefore asserts the layer's presence
+structurally. It is retained because the moment an upstream value like
+`STRONG_BUY` appears, the deny-list is what keeps WAIT free.
+
+## 31. Sign-off
 
 | Field | Value |
 | --- | --- |
