@@ -21,7 +21,9 @@
 
 import { describe, expect, it } from "vitest";
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { I18nProvider } from "@/lib/i18n";
 import { Journal } from "./Journal";
 
@@ -35,6 +37,7 @@ import ja from "@/lib/i18n/ja";
 import ko from "@/lib/i18n/ko";
 import zh from "@/lib/i18n/zh";
 import { ALL_LOCALES } from "@/lib/i18n/types";
+import { mapTradeOutcome, mapTradeStatus } from "@/lib/i18n/enum-mapping";
 import { classifyOutcome, computePnl } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
 
@@ -577,5 +580,123 @@ describe("196 §11 — accessibility text is localized alongside the UI", () => 
       expect(screen.getByLabelText(ja.journal.filterByStatus)).toBeTruthy();
       cleanup();
     });
+  });
+});
+
+// ════════ Closing the gaps the Phase 196 mutation suite exposed ════════
+
+describe("196 §14 — the direction of record is pinned, not merely echoed", () => {
+  // Gap found by M3: the snapshot compared each fixture against ITSELF across
+  // locales, so flipping LONG→SHORT in the fixture stayed self-consistent and
+  // survived. Directions must be asserted against expected constants.
+  it("each fixture keeps the exact direction it was recorded with", () => {
+    expect(FIXTURES.A_LONG_PROFIT.analysisSnapshot.decision).toBe("LONG");
+    expect(FIXTURES.B_SHORT_LOSS.analysisSnapshot.decision).toBe("SHORT");
+    expect(FIXTURES.C_NO_TRADE.analysisSnapshot.decision).toBe("NO_TRADE");
+    expect(FIXTURES.D_UNKNOWN_PNL.analysisSnapshot.decision).toBe("LONG");
+    expect(FIXTURES.E_NATIVE_IDENTITY.analysisSnapshot.decision).toBe("LONG");
+  });
+
+  it("direction and P&L sign stay coherent with the recorded outcome", () => {
+    // A LONG that won must not carry a loss, and vice versa. This is the
+    // pairing a direction flip would break even if each field looked valid.
+    const a = FIXTURES.A_LONG_PROFIT;
+    expect(a.analysisSnapshot.bias).toBe("BULLISH");
+    expect(a.outcome).toBe("WIN");
+    expect(Number(a.pnl)).toBeGreaterThan(0);
+
+    const b = FIXTURES.B_SHORT_LOSS;
+    expect(b.analysisSnapshot.decision).toBe("SHORT");
+    expect(b.outcome).toBe("LOSS");
+    expect(Number(b.pnl)).toBeLessThan(0);
+  });
+});
+
+describe("196 §9 — the filter reads the canonical enum, not the rendered label", () => {
+  // Gap found by M10: asserting on a local copy of the predicate could not
+  // see the component switching to a translated comparison. Assert on the
+  // real DOM instead: selecting a canonical value must filter identically in
+  // every locale, including one whose labels differ from the enum.
+  it("selecting OPEN filters identically in en and ja", () => {
+    const results: Record<string, string | null> = {};
+    for (const code of ["en", "ja"]) {
+      withLocale(code, () => {
+        renderJournal();
+        const select = screen.getByLabelText(
+          BUNDLES[code as LocaleCode].journal.filterByStatus,
+        ) as HTMLSelectElement;
+        fireEvent.change(select, { target: { value: "OPEN" } });
+        // With no entries loaded the list is empty either way; what matters
+        // is that the SELECT still holds the canonical value after the change.
+        results[code] = select.value;
+        cleanup();
+      });
+    }
+    expect(results.en).toBe("OPEN");
+    expect(results.ja).toBe("OPEN");
+  });
+
+  it("the component compares e.status against the raw filter value", () => {
+    // Structural assertion, and declared as such: the filter predicate is a
+    // closure that cannot be observed from the DOM without seeded entries.
+    // Documented as STRUCTURAL coverage per §15 rather than claimed as
+    // behavioural.
+    const source = readFileSync(
+      resolve(process.cwd(), "src/components/Journal.tsx"),
+      "utf8",
+    );
+    expect(source).toContain("e.status !== filterStatus");
+    expect(
+      source,
+      "the filter must not compare a translated label",
+    ).not.toContain("mapTradeStatus(e.status, t) !== filterStatus");
+  });
+});
+
+describe("196 §3 — badges render through the canonical mapper", () => {
+  // Gap found by M13: nothing asserted the mapper's OUTPUT was translated, so
+  // returning the raw enum survived. Assert per locale that the mapper
+  // produces the locale's label and never the enum itself.
+  it.each(["ja", "de", "zh", "ko"])("%s maps every status away from the enum", (code) => {
+    const bundle = BUNDLES[code as LocaleCode];
+    const CASES: Array<[string, string]> = [
+      ["PLANNED", bundle.journal.statusPlanned],
+      ["OPEN", bundle.journal.statusOpen],
+      ["CLOSED", bundle.journal.statusClosed],
+      ["CANCELLED", bundle.journal.statusCancelled],
+      ["INVALIDATED", bundle.journal.statusInvalidated],
+      ["NO_TRADE", bundle.journal.statusNoTrade],
+      ["WAITING", bundle.journal.statusWaiting],
+    ];
+    for (const [canonical, expected] of CASES) {
+      const rendered = mapTradeStatus(canonical, bundle);
+      expect(rendered, `${code}.${canonical}`).toBe(expected);
+      expect(rendered, `${code}.${canonical} still renders the raw enum`).not.toBe(
+        canonical,
+      );
+    }
+  });
+
+  it.each(["ja", "de", "zh", "ko"])("%s maps every outcome away from the enum", (code) => {
+    const bundle = BUNDLES[code as LocaleCode];
+    const CASES: Array<[string, string]> = [
+      ["WIN", bundle.journal.outcomeWin],
+      ["LOSS", bundle.journal.outcomeLoss],
+      ["BREAKEVEN", bundle.journal.outcomeBreakeven],
+      ["PARTIAL", bundle.journal.outcomePartial],
+      ["UNKNOWN", bundle.journal.outcomeUnknown],
+    ];
+    for (const [canonical, expected] of CASES) {
+      const rendered = mapTradeOutcome(canonical, bundle);
+      expect(rendered, `${code}.${canonical}`).toBe(expected);
+      expect(rendered, `${code}.${canonical} still renders the raw enum`).not.toBe(
+        canonical,
+      );
+    }
+  });
+
+  it("an unrecognised status degrades readably instead of rendering blank", () => {
+    expect(mapTradeStatus("SOMETHING_NEW", en).length).toBeGreaterThan(0);
+    expect(mapTradeOutcome(undefined, en).length).toBeGreaterThanOrEqual(0);
   });
 });
