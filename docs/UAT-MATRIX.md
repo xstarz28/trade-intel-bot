@@ -1648,7 +1648,57 @@ changes.
 **32.23 is the honest remaining item.** `AnalysisResult.tsx` still holds 51
 detected strings and was not localized in this phase.
 
-## 33. Sign-off
+## 33. Phase 195 — AnalysisResult localization & decision-semantics protection
+
+`AnalysisResult.tsx` is the surface where the product states its actual
+recommendation. Phase 194 reported it as 51 remaining strings; re-measurement
+found **152** (the detector could not see single-word JSX prose, hiding 109
+labels including the entry / stop loss / take profit captions). Debt on this
+component is now **zero**.
+
+The risk this phase had to manage is not cosmetic: touching the file that
+renders a BUY/SELL/WAIT call can change what the engine appears to have
+decided, or what the user is billed for. The safety net was therefore written
+and proven BEFORE any copy was edited.
+
+| # | Scenario | Method | Result |
+|---|---|---|---|
+| 33.1 | AnalysisResult mounted-string debt reaches 0 | `component-debt-inventory.mjs` | PASS (152 → 0) |
+| 33.2 | Total mounted debt across all components | inventory | PASS (195 → 43) |
+| 33.3 | Decision state is byte-identical across all 9 locales | 5 fixtures × JSON snapshot | PASS |
+| 33.4 | `isProfitSignal` is locale-independent | semantics suite | PASS |
+| 33.5 | WAIT / NO_TRADE are never chargeable in any locale | semantics suite | PASS |
+| 33.6 | A translated label is rejected as an engine input | semantics suite | PASS |
+| 33.7 | LOCKED direction is never rewritten to WAIT | semantics suite | PASS |
+| 33.8 | No directional verb appears in WAIT copy (9 languages) | word list per locale | PASS |
+| 33.9 | Conviction labels carry no probability claim | semantics suite | PASS |
+| 33.10 | The 4 risk dimensions stay 4 distinct strings per locale | semantics suite | PASS |
+| 33.11 | `whatInvalidates` ≠ `whatConfirms` | semantics suite | PASS |
+| 33.12 | Thesis ≠ scenario; supporting ≠ conflicting | semantics suite | PASS |
+| 33.13 | Every section/field label non-empty in all 9 locales | semantics suite | PASS |
+| 33.14 | CFTC / EIA / MTF / SR notation survives translation | semantics suite | PASS |
+| 33.15 | TVL and unlocks disclaimers keep their negation per clause | clause-scoped, script-aware | PASS |
+| 33.16 | DXY notice still says unavailable, not fabricated | semantics suite | PASS |
+| 33.17 | Evidence hierarchy keeps all 8 ranks in order | arrow count = 7 | PASS |
+| 33.18 | ja/ko/zh contain no untranslated ASCII leftovers | script-awareness guard | PASS |
+| 33.19 | Entry/stop/target reuse the canonical `protection.*` terms | key-reuse assertion | PASS |
+| 33.20 | Phase 195 mutations (11 planted defects) | `mutation-suite-phase195.sh` | PASS (11/11) |
+| 33.21 | Prior mutation suites still catch their defects | p189 / p191 / p193 | PASS (4/4, 19/19, 9/9) |
+| 33.22 | Orphan-key budget tightened, not slackened | ratchet 261 → 259 | PASS |
+| 33.23 | Nine-locale key parity at the new leaf count | parity test | PASS (9 × 1137) |
+| 33.24 | Full suite / typecheck / production build / lint | CI-equivalent local run | PASS (9002 passed, 0 err, baseline 1517) |
+| 33.25 | Rendered layout in ja/ko/zh at mobile width | requires a browser | HUMAN |
+| 33.26 | Native-speaker review of 112 new finance strings | requires native speakers | HUMAN |
+| 33.27 | Screen-reader announcement of translated labels | requires assistive tech | NOT VERIFIED |
+
+**Known limitation (recorded, not hidden).** Automated checks prove the
+*semantics* of the translations (negation retained, concepts distinct,
+notation preserved, no locale-coupled decisions). They cannot prove
+*idiomatic quality*. Rows 33.25–33.27 stay HUMAN / NOT VERIFIED until a
+native speaker and a real browser are available; they must not be converted
+to PASS on the strength of the automated suite.
+
+## 34. Sign-off
 
 | Field | Value |
 | --- | --- |
