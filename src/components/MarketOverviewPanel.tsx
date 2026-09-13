@@ -45,6 +45,12 @@ function InstrumentRow({
   info: InstrumentInfo;
   liveState?: LiveInstrumentState;
 }) {
+  // Phase 193 — the LIVE/STALE badge is a DATA-PROVENANCE claim, not chrome.
+  // `market.live` / `market.stale` / `market.unavailable` exist in all nine
+  // locales; this row previously hardcoded the English words, so a non-English
+  // user saw an untranslated assertion about data currency. The keys were
+  // reported "unreferenced" precisely because this consumer was disconnected.
+  const { t } = useI18n();
   // A price is only usable if the provider actually reported a finite,
   // positive number. `?? 0` alone let NaN/Infinity through, which rendered as
   // the literal string "NaN" next to a provider name.
@@ -90,8 +96,11 @@ function InstrumentRow({
       </span>
 
       {/* Source mode badge */}
-      <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${sourceColor}`}>
-        {isLive ? "LIVE" : isStale ? "STALE" : "—"}
+      <span
+        className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${sourceColor}`}
+        aria-label={isLive ? t.market.live : isStale ? t.market.stale : t.market.unavailable}
+      >
+        {isLive ? t.market.live : isStale ? t.market.stale : "—"}
       </span>
 
       {/* Provider */}
@@ -180,7 +189,7 @@ export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
 
       {/* Footer */}
       <div className="text-[8px] font-mono text-muted-foreground/40 px-2 pt-1 border-t border-border/20">
-        Source transparency: LIVE = real provider data · STALE = data outside freshness · — = unavailable
+        {t.market.sourceTransparency}
       </div>
     </div>
   );

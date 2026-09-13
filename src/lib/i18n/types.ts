@@ -522,6 +522,12 @@ export interface Translations {
     live: string;
     stale: string;
     unavailable: string;
+    /**
+     * Legend explaining what the LIVE / STALE / — badges mean. This is a
+     * data-provenance statement, so it must be translated: an English-only
+     * legend leaves non-English users unable to judge data currency.
+     */
+    sourceTransparency: string;
     vix: string;
     dxy: string;
     us10y: string;
@@ -549,16 +555,11 @@ export interface Translations {
     noHealthData: string;
     healthMetricsHint: string;
     providers: string;
-    stale: string;
     staleLabel: string;
-    unavailable: string;
     unavailableLabel: string;
-    updated: string;
     updatedLabel: string;
     historyCount: string;
-    intelligence: string;
     intelligenceLabel: string;
-    alerts: string;
     alertsLabel: string;
     componentsMarketData: string;
     componentsOhlcv: string;
