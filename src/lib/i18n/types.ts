@@ -91,7 +91,6 @@ export interface Translations {
     generatingBias: string;
     dataFetchFailed: string;
     providerNotConfigured: string;
-    checkApiKey: string;
     notFound: string;
     pageNotFound: string;
   };
@@ -991,6 +990,58 @@ export interface Translations {
   };
 
   /** Phase 174 — entitlement surface. Server-authoritative values only. */
+  /**
+   * Phase 189 — first-run authentication surface.
+   *
+   * Every user-visible string on the sign-in journey lives here so no locale
+   * can silently fall back to English. Declaring these as REQUIRED members is
+   * deliberate: adding a key fails `tsc -b` for all nine locales until each
+   * one supplies a real translation.
+   */
+  auth: {
+    title: string;
+    subtitle: string;
+    emailLabel: string;
+    emailPlaceholder: string;
+    emailHelp: string;
+    continueWithEmail: string;
+    orDivider: string;
+    continueAsGuest: string;
+    guestHelp: string;
+    checkEmailTitle: string;
+    /** Interpolates {email}. */
+    checkEmailBody: string;
+    otpLabel: string;
+    /** Interpolates {minutes}; must match OTP_EXPIRY_MINUTES on the server. */
+    codeValidity: string;
+    verifyCode: string;
+    verifying: string;
+    noCodeQuestion: string;
+    resendHint: string;
+    tryAgain: string;
+    useDifferentEmail: string;
+    sendFailed: string;
+    codeIncorrect: string;
+    guestFailed: string;
+    disclaimer: string;
+    sessionNote: string;
+  };
+
+  /** Phase 189 — first-run guidance shown before any analysis exists. */
+  onboarding: {
+    welcomeTitle: string;
+    welcomeBody: string;
+    step1: string;
+    step2: string;
+    step3: string;
+    freeOutcomeNote: string;
+    chargeableNote: string;
+    lockedNote: string;
+    /** Shown when market data acquisition fails; never names a provider. */
+    dataUnavailableHint: string;
+    dismiss: string;
+  };
+
   entitlement: {
     invalidInput: string;
     signInRequired: string;

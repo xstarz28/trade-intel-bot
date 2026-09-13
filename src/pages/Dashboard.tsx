@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstrumentInput } from "@/components/InstrumentInput";
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
+import { FirstRunGuide } from "@/components/FirstRunGuide";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 // Phase 174 — runAnalysis is deliberately NOT imported here. The directional
@@ -761,6 +762,10 @@ export default function Dashboard() {
     ? dbHistory.map(fromDbRecord)
     : [];
 
+  // Phase 189 — Convex `useQuery` returns undefined until it resolves.
+  // Collapsing that to [] made a loading list look like an empty account.
+  const historyLoading = dbHistory === undefined;
+
   // Phase 153 — live candidate sources come ONLY from verified runtime
   // provider-backed snapshots. Persisted history is never treated as LIVE.
   const liveSources: LiveCandidateSource[] = useMemo(
@@ -1008,6 +1013,10 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left — Input + History */}
           <div className="lg:col-span-4 space-y-4">
+            {/* Phase 189 — shown only once history has RESOLVED as empty, so a
+                returning user never sees it flash during load. */}
+            <FirstRunGuide show={!historyLoading && history.length === 0 && !currentResult} />
+
             <InstrumentInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} />
 
             <div className="hidden lg:block">
@@ -1015,6 +1024,7 @@ export default function Dashboard() {
                 analyses={history}
                 onSelect={handleSelectHistory}
                 selectedId={currentResult?.id}
+                isLoading={historyLoading}
               />
             </div>
 
@@ -1092,8 +1102,10 @@ export default function Dashboard() {
                   {fetchError && (
                     <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
                       <p className="text-xs font-mono text-red-400">{fetchError}</p>
+                      {/* Phase 189 — never name an internal env var or
+                          provider in user-facing copy. */}
                       <p className="text-[10px] font-mono text-red-400/60 mt-1">
-                        Check that TWELVE_DATA_API_KEY is configured in the Keys tab.
+                        {t.onboarding.dataUnavailableHint}
                       </p>
                     </div>
                   )}
@@ -1159,6 +1171,7 @@ export default function Dashboard() {
                 analyses={history}
                 onSelect={handleSelectHistory}
                 selectedId={currentResult?.id}
+                isLoading={historyLoading}
               />
             </div>
           </div>

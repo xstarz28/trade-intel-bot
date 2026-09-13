@@ -152,8 +152,19 @@ describe("auth surface does not leak raw errors", () => {
 
 describe("product safety language", () => {
   it("states that the product does not execute trades", () => {
+    // Phase 189 moved this sentence into the i18n catalogue so all nine
+    // locales carry it. The guarantee is unchanged: the auth surface must
+    // still render it, and it must reach the user in every language.
     const auth = read("src/pages/Auth.tsx");
-    expect(auth.toLowerCase()).toContain("never places trades");
+    expect(auth).toContain("t.auth.disclaimer");
+    const en = read("src/lib/i18n/en.ts");
+    const authBlock = en.slice(en.indexOf("\n  auth: {"), en.indexOf("\n  },", en.indexOf("\n  auth: {")));
+    expect(authBlock.toLowerCase()).toContain("never places trades");
+    for (const locale of ["id", "es", "fr", "pt", "de", "ja", "ko", "zh"]) {
+      const src = read(`src/lib/i18n/${locale}.ts`);
+      const block = src.slice(src.indexOf("\n  auth: {"), src.indexOf("\n  },", src.indexOf("\n  auth: {")));
+      expect(block, `${locale} lost the no-execution disclaimer`).toContain("disclaimer:");
+    }
   });
 
   it("makes no profit guarantee anywhere on the auth surface", () => {
