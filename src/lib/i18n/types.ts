@@ -1179,8 +1179,58 @@ export interface Translations {
     statusClosed: string;
     statusCancelled: string;
     statusNoTrade: string;
+    /**
+     * Remaining lifecycle statuses and trade outcomes. Presentation only —
+     * the stored record keeps the canonical uppercase enum (§3).
+     */
+    statusInvalidated: string;
+    statusWaiting: string;
+    outcomeWin: string;
+    outcomeLoss: string;
+    outcomeBreakeven: string;
+    outcomePartial: string;
+    outcomeUnknown: string;
+    /** Accessible names (§11). Announced beside the translated badge text. */
+    statusLabel: string;
+    outcomeLabel: string;
+    transitionTo: string;
+    filterByStatus: string;
     noJournalEntries: string;
     noEntriesMatchFilters: string;
+    /**
+     * Phase 196 — journal record captions.
+     *
+     * These label an IMMUTABLE financial record. Translating a caption must
+     * never change the value beside it: statuses stay canonical uppercase
+     * enums, instrument symbols stay provider-native, and P&L keeps its sign.
+     *
+     * `riskReward` stays "R:R" in every locale — it is notation (§6), like
+     * the instrument symbols it sits next to.
+     */
+    snapshotInstrument: string;
+    snapshotDecision: string;
+    snapshotConviction: string;
+    snapshotScenario: string;
+    snapshotRegime: string;
+    snapshotPhase: string;
+    snapshotContinuation: string;
+    snapshotFundamental: string;
+    snapshotActionability: string;
+    snapshotForward: string;
+    snapshotData: string;
+    snapshotFingerprint: string;
+    tradeEntry: string;
+    tradeStop: string;
+    tradeTarget: string;
+    tradeSize: string;
+    riskReward: string;
+    /** Profit and loss. Abbreviated per locale; the NUMBER never changes. */
+    pnlLabel: string;
+    pnlPercentLabel: string;
+    /** Suffix after the instrument in the detail heading: "EUR/USD — Journal". */
+    journalSuffix: string;
+    /** Default note stored on an observation-only entry. */
+    observationNote: string;
   };
 
   // ─── Portfolio Intelligence ─────────────────────────────────
