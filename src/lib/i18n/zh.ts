@@ -936,6 +936,8 @@ const zh: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    currentVsPrevious: "当前 vs 上一次",
+    historySummary: "历史摘要",
     initialAnalysis: "初始分析",
     thesisChange: "观点变更",
     regimeChange: "体制变更",

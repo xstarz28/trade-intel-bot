@@ -933,6 +933,8 @@ const id: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    currentVsPrevious: "SAAT INI vs SEBELUMNYA",
+    historySummary: "RINGKASAN RIWAYAT",
     initialAnalysis: "Analisis Awal",
     thesisChange: "Perubahan Tesis",
     regimeChange: "Perubahan Regime",

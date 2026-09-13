@@ -939,6 +939,8 @@ const ja: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    currentVsPrevious: "現在 vs 前回",
+    historySummary: "履歴サマリー",
     initialAnalysis: "初期分析",
     thesisChange: "テーゼ変更",
     regimeChange: "レジーム変更",

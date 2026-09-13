@@ -100,6 +100,7 @@ function ComparisonView({
   previous: import("@/lib/position-protection/historical-intelligence").IntelligenceSnapshot;
   current: import("@/lib/position-protection/historical-intelligence").IntelligenceSnapshot;
 }) {
+  const { t } = useI18n();
   const fields: ComparisonField[] = [
     { label: "Thesis", previous: previous.thesisState, current: current.thesisState, changed: previous.thesisState !== current.thesisState },
     { label: "H1", previous: previous.h1Trend, current: current.h1Trend, changed: previous.h1Trend !== current.h1Trend },
@@ -118,7 +119,7 @@ function ComparisonView({
     <div className="border border-border/30 rounded-lg overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 bg-muted/20">
         <ArrowRight className="size-3 text-primary" />
-        <span className="text-[10px] font-mono font-semibold text-foreground">CURRENT vs PREVIOUS</span>
+        <span className="text-[10px] font-mono font-semibold text-foreground">{t.timeline.currentVsPrevious}</span>
       </div>
       <div className="px-3 py-2 space-y-1">
         {fields.map((field) => (
@@ -144,6 +145,7 @@ function ComparisonView({
 // ═══════════════════════════════════════════════════════════════
 
 function SummaryView({ summary }: { summary: HistoricalSummary }) {
+  const { t } = useI18n();
   const thesisColor =
     summary.currentThesis === "HEALTHY" || summary.currentThesis === "STABLE" ? "text-emerald-400" :
     summary.currentThesis === "CAUTION" || summary.currentThesis === "WATCH" ? "text-amber-400" :
@@ -155,7 +157,7 @@ function SummaryView({ summary }: { summary: HistoricalSummary }) {
     <div className="border border-border/30 rounded-lg overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 bg-muted/20">
         <BarChart3 className="size-3 text-primary" />
-        <span className="text-[10px] font-mono font-semibold text-foreground">HISTORY SUMMARY</span>
+        <span className="text-[10px] font-mono font-semibold text-foreground">{t.timeline.historySummary}</span>
       </div>
       <div className="px-3 py-2 space-y-1.5 text-[9px] font-mono">
         {/* Current thesis */}

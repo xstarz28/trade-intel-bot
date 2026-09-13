@@ -977,6 +977,10 @@ export interface Translations {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    /** Section heading above the current-vs-previous comparison. */
+    currentVsPrevious: string;
+    /** Section heading above the aggregated history summary. */
+    historySummary: string;
     initialAnalysis: string;
     thesisChange: string;
     regimeChange: string;
