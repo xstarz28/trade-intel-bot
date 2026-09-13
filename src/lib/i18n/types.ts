@@ -1025,6 +1025,8 @@ export interface Translations {
     guestFailed: string;
     disclaimer: string;
     sessionNote: string;
+    /** Phase 191 — shown by RequireAuth while the session is being restored. */
+    restoringSession: string;
   };
 
   /** Phase 189 — first-run guidance shown before any analysis exists. */
@@ -1111,6 +1113,48 @@ export interface Translations {
     footerTagline: string;
     /** Accessible names for icon-only / brand controls. */
     homeAriaLabel: string;
+  };
+
+  /**
+   * Phase 191 — user-facing provenance wording.
+   *
+   * `AcquisitionMode` (src/lib/data/acquisition-provenance.ts) already records
+   * HOW a value was obtained, but only as English diagnostic text. These keys
+   * are the human-readable, translated form shown to authenticated users.
+   *
+   * The distinctions are load-bearing, not stylistic: `cache-reused` must
+   * never read as a new observation, and `timed-out`/`rate-limited`/
+   * `unavailable` must never read as evidence. `describeAcquisitionForUser`
+   * is the only mapping permitted to produce these strings, and
+   * `authenticated-copy-truthfulness.phase191.test.ts` enforces the wording.
+   */
+  provenance: {
+    /** A real provider call completed during this analysis. */
+    observedNow: string;
+    /** A real call completed and was shared with concurrent callers. */
+    observedShared: string;
+    /** Served from cache — the provider was NOT contacted. */
+    cacheReused: string;
+    /** Never cached by design, so every use is a new observation. */
+    uncachedByDesign: string;
+    /** Provider returned no usable data. */
+    unavailable: string;
+    /** Provider exceeded its deadline. */
+    timedOut: string;
+    /** Provider reported a rate limit. */
+    rateLimited: string;
+    /** Not attempted for this instrument/style. */
+    skipped: string;
+    /** Stored result replayed from history; not current evidence. */
+    historical: string;
+    /** Evidence exists but is older than the freshness window. */
+    stale: string;
+    /** Some required legs are missing; the picture is incomplete. */
+    degraded: string;
+    /** Prefix for an evidence age, interpolates {age}. */
+    evidenceAge: string;
+    /** Shown when no provider was contacted at all. */
+    notContacted: string;
   };
 
   entitlement: {

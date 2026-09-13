@@ -163,8 +163,16 @@ export interface MarketSnapshot {
   mtfAlignment?: string;
   /** Provider that supplied this data. */
   provider: string;
-  /** Observation timestamp. */
-  observedAt: number;
+  /**
+   * When the PROVIDER observed this data.
+   *
+   * Phase 191 — optional on purpose. Some providers do not report an
+   * observation time, and the honest representation of that is absence.
+   * Substituting our own fetch time would let `assessFreshness` grade
+   * hours-old data as FRESH, which is how a cache launders stale evidence
+   * into a live claim. Absent observation time resolves to UNAVAILABLE.
+   */
+  observedAt?: number;
   /** Data freshness. */
   freshness: FreshnessLevel;
   /** Data quality. */

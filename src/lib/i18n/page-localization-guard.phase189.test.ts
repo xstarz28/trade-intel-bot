@@ -128,6 +128,59 @@ function hardcodedAttributes(source: string): string[] {
 
 const PAGES = walk("src/pages");
 
+/**
+ * Phase 191 — authenticated shared components.
+ *
+ * `src/pages` has been guarded since Phase 189, but most authenticated UI
+ * lives in `src/components`, which was never walked. Measuring it found 15 of
+ * 29 components still carrying hardcoded English.
+ *
+ * That is too large to localize safely inside a copy-truthfulness phase, and
+ * rushing it would mean machine-translating trading terminology under time
+ * pressure — the opposite of what Phase 190 established. So the debt is
+ * RECORDED as a ratchet rather than hidden behind an exemption:
+ *
+ *   - components NOT on this list must stay clean (regression protection),
+ *   - components ON this list must still have violations, so each one fails
+ *     the moment it is fixed and is removed from the list.
+ *
+ * The list may only shrink. Growing it requires a deliberate edit here.
+ */
+const COMPONENTS = walk("src/components");
+
+const COMPONENT_DEBT: Record<string, string> = {
+  "src/components/AnalysisResult.tsx":
+    "36 literal strings; the largest authenticated surface — needs a dedicated localization phase",
+  "src/components/analytical-context-panel.tsx":
+    "12 hardcoded title attributes plus a panel heading",
+  "src/components/PositionRegistrationPanel.tsx":
+    "form labels and placeholders for position registration",
+  "src/components/Journal.tsx":
+    "journal entry form labels; journal.* keys exist but are unwired",
+  "src/components/CustomAlertRulesPanel.tsx":
+    "alert rule builder labels and placeholders",
+  "src/components/NotificationCenter.tsx":
+    "notification filter labels",
+  "src/components/ProtectionAlertCenter.tsx":
+    "alert centre headings and severity filters",
+  "src/components/PositionProtectionControlCenter.tsx":
+    "control centre headings and status text",
+  "src/components/PositionProtectionDetail.tsx":
+    "protection reference headings",
+  "src/components/HistoricalTimeline.tsx":
+    "timeline section headings",
+  "src/components/LogoDropdown.tsx":
+    "navigation menu item labels",
+  "src/components/InstrumentInput.tsx":
+    "one placeholder attribute on the symbol field",
+  "src/components/MarketOverviewPanel.tsx":
+    "source-transparency legend describing LIVE/STALE semantics",
+  "src/components/PositionRegistrationForm.tsx":
+    "one placeholder attribute on the entry form",
+  "src/components/TraderWorkspace.tsx":
+    "one hardcoded section heading (Thesis Distribution)",
+};
+
 describe("189 — the localization guard is path-complete", () => {
   it("actually discovers page files (the guard is not vacuous)", () => {
     // If the walker silently returned nothing, every assertion below would
@@ -172,6 +225,47 @@ describe("189 — the localization guard is path-complete", () => {
       "src/pages/Privacy.tsx",
       "src/pages/Terms.tsx",
     ]);
+  });
+
+  it("191 — authenticated components are walked, not ignored", () => {
+    // Most authenticated UI lives in src/components. If the walker returns
+    // nothing the ratchet below is decoration.
+    expect(COMPONENTS.length).toBeGreaterThan(20);
+    expect(COMPONENTS).toContain("src/components/AnalysisResult.tsx");
+    expect(COMPONENTS).toContain("src/components/PositionProtectionDashboard.tsx");
+  });
+
+  it("191 — every recorded component debt is real and justified", () => {
+    for (const [path, reason] of Object.entries(COMPONENT_DEBT)) {
+      expect(COMPONENTS, `${path} is listed but not walked`).toContain(path);
+      expect(reason.length, `${path} needs a stated reason`).toBeGreaterThan(20);
+      const source = readFileSync(resolve(ROOT, path), "utf8");
+      const violations = [...jsxTextNodes(source), ...hardcodedAttributes(source)];
+      // A cleaned-up file must be removed from the list, not left behind.
+      expect(
+        violations.length,
+        `${path} is clean — remove it from COMPONENT_DEBT`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("191 — components outside the debt list stay clean", () => {
+    const clean = COMPONENTS.filter((c) => !(c in COMPONENT_DEBT));
+    // Regression protection: this set must never acquire new violations.
+    expect(clean.length).toBeGreaterThan(10);
+    for (const path of clean) {
+      const source = readFileSync(resolve(ROOT, path), "utf8");
+      const violations = [...jsxTextNodes(source), ...hardcodedAttributes(source)];
+      expect(violations, `new hardcoded copy in ${path}`).toEqual([]);
+    }
+  });
+
+  it("191 — the protection dashboard is localized and stays that way", () => {
+    // It renders the execution-boundary guarantee, so it must not regress.
+    const path = "src/components/PositionProtectionDashboard.tsx";
+    expect(path in COMPONENT_DEBT, "dashboard must remain clean").toBe(false);
+    const source = readFileSync(resolve(ROOT, path), "utf8");
+    expect(source).toContain("useI18n");
   });
 
   it("every exemption names a file that still exists", () => {

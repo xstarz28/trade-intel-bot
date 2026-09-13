@@ -1,4 +1,5 @@
 import { useAuth } from "@/hooks/use-auth";
+import { useI18n } from "@/lib/i18n";
 import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
@@ -13,6 +14,7 @@ import { Navigate, useLocation } from "react-router";
  */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { phase } = useAuth();
+  const { t } = useI18n();
   const location = useLocation();
 
   if (phase === "initializing") {
@@ -21,7 +23,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
           <p className="text-xs text-muted-foreground font-mono">
-            restoring session...
+            {t.auth.restoringSession}
           </p>
         </div>
       </main>

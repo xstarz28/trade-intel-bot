@@ -774,14 +774,23 @@ export function providerNativeAcquisitionToMarketData(
     return null;
   }
 
+  /*
+    Phase 191 — a snapshot with no provider observation time cannot be
+    presented as realtime/delayed/stale, because every one of those labels is
+    a claim about WHEN the data was observed. `observedAt` is optional (the
+    provider may not report it), so its absence degrades freshness to
+    "unavailable" rather than inheriting a confident label.
+  */
   const freshness =
-    result.snapshot.freshness === "FRESH"
-      ? "realtime"
-      : result.snapshot.freshness === "DELAYED"
-        ? "delayed"
-        : result.snapshot.freshness === "STALE"
-          ? "stale"
-          : "unavailable";
+    result.snapshot.observedAt === undefined
+      ? "unavailable"
+      : result.snapshot.freshness === "FRESH"
+        ? "realtime"
+        : result.snapshot.freshness === "DELAYED"
+          ? "delayed"
+          : result.snapshot.freshness === "STALE"
+            ? "stale"
+            : "unavailable";
 
   const instrumentType =
     result.assetClass === "crypto"
@@ -801,7 +810,13 @@ export function providerNativeAcquisitionToMarketData(
     fetchTimestamp: result.fetchedAt,
     price: {
       price: result.snapshot.price,
-      timestamp: result.snapshot.observedAt,
+      /*
+        `PriceSnapshot.timestamp` means "when the price was last updated".
+        When the provider gave no observation time we record 0 — a sentinel
+        that `assessFreshness` treats as UNAVAILABLE — instead of `Date.now()`,
+        which would assert an observation that never happened.
+      */
+      timestamp: result.snapshot.observedAt ?? 0,
       source: result.provider,
     },
     candles,
