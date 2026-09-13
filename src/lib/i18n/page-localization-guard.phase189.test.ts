@@ -18,6 +18,14 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
+// Phase 194 — the detector now lives in ONE place so the guard and the
+// debt-inventory script cannot drift apart. Logic moved verbatim.
+import {
+  BRAND_LITERALS,
+  hardcodedAttributes,
+  hardcodedStatusTokens,
+  jsxTextNodes,
+} from "@/lib/i18n/hardcoded-copy-detector";
 
 const ROOT = process.cwd();
 
@@ -49,8 +57,6 @@ const EXEMPT: Record<string, string> = {
  *      been fixed fails the suite until it is removed.
  */
 const KNOWN_UNLOCALIZED: Record<string, string> = {};
-/** Proper nouns that must NOT be translated, so they are not violations. */
-const BRAND_LITERALS = new Set(["Xstarz Analysis"]);
 
 /** Subtrees that are vendor, generated, or otherwise not our UI text. */
 const SKIP_DIR = new Set(["ui", "__generated__", "_generated", "node_modules"]);
@@ -75,128 +81,6 @@ function walk(dir: string): string[] {
     if (!entry.endsWith(".tsx")) continue;
     if (entry.includes(".test.")) continue;
     out.push(rel);
-  }
-  return out;
-}
-
-/**
- * Extract JSX text nodes: the literal prose a user actually reads.
- *
- * Deliberately narrow. It looks for `>Some words<` spanning a tag boundary
- * and ignores anything containing `{`, because that is an expression rather
- * than a literal. False negatives are acceptable here; false positives would
- * make the guard noisy and it would get disabled.
- */
-function jsxTextNodes(source: string): string[] {
-  const withoutComments = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
-
-  const found: string[] = [];
-  // Require a CLOSING tag after the text (`>text</`). Without this, TypeScript
-  // generics such as `useRef<Foo>(x); ... useRef<` produce `>...<` pairs that
-  // look like text nodes but are ordinary code.
-  const re = />([^<>{}]+)<\//g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(withoutComments)) !== null) {
-    const text = m[1].replace(/\s+/g, " ").trim();
-    if (!text) continue;
-    // Require two consecutive words: single tokens are usually punctuation,
-    // separators, units or symbols rather than translatable sentences.
-    if (!/[A-Za-z]{2,}\s+[A-Za-z]{2,}/.test(text)) continue;
-    // Ignore anything that is clearly not prose.
-    if (/^[\d\s.,:%/+-]+$/.test(text)) continue;
-    // The brand is a proper noun and must stay untranslated (invariant 10).
-    if (BRAND_LITERALS.has(text)) continue;
-    found.push(text);
-  }
-  return found;
-}
-
-/** Literal user-facing attribute values (placeholder / aria-label / title). */
-function hardcodedAttributes(source: string): string[] {
-  const out: string[] = [];
-  const re = /\b(placeholder|aria-label|title)\s*=\s*"([^"]{3,})"/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(source)) !== null) {
-    const value = m[2].trim();
-    if (!/[A-Za-z]{3,}/.test(value)) continue;
-    out.push(`${m[1]}="${value}"`);
-  }
-  return out;
-}
-
-/**
- * Phase 193 — hardcoded STATUS TOKENS inside JSX expressions.
- *
- * `jsxTextNodes` deliberately requires two consecutive words, because single
- * tokens are usually punctuation, units or symbols. That rule has a blind
- * spot: a one-word *claim* rendered from an expression, e.g.
- *
- *   {isLive ? "LIVE" : isStale ? "STALE" : "—"}
- *
- * MarketOverviewPanel shipped exactly that while `market.live` / `market.stale`
- * sat translated in all nine locales. The words are short, so the prose rule
- * skipped them — yet LIVE/STALE is a data-provenance claim, the single most
- * important thing a non-English user needs to read correctly.
- *
- * This detector is deliberately NARROW: only ALL-CAPS alphabetic tokens of
- * 3-12 characters appearing as string literals inside a JSX expression
- * container. It does not fire on imports, enum comparisons, object keys or
- * `case "LIVE":` — only on values being rendered.
- */
-const STATUS_TOKEN_ALLOWED = new Set([
-  // Untranslated-by-design vocabulary (see the i18n contract). These are
-  // instrument/timeframe/analysis notation, identical in every locale.
-  "BOS", "CHOCH", "FVG", "HTF", "LTF", "DXY", "WTI", "VIX", "SL", "TP", "RR",
-  "W1", "D1", "H4", "H1", "M15", "M5", "USD", "EUR", "JPY", "GBP", "OTP",
-  "API", "URL", "CSV", "JSON", "UTC", "ID",
-]);
-
-function hardcodedStatusTokens(source: string): string[] {
-  const withoutComments = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
-  const out: string[] = [];
-  // Scan only JSX expression containers: `{ ... }` that contain a quoted
-  // ALL-CAPS token and sit immediately after `>` or whitespace in markup.
-  // A type annotation like `plan: "GUEST" | "PREMIUM";` also lives inside
-  // braces (the props object), so require the brace content to look like a
-  // RENDER expression: it must contain a ternary/`&&` or be a bare literal
-  // immediately following markup, and must not contain a type separator.
-  const re = /\{([^{}]*?"[A-Z][A-Z_]{2,11}"[^{}]*?)\}/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(withoutComments)) !== null) {
-    const body = m[1];
-    const tokenMatch = /"([A-Z][A-Z_]{2,11})"/.exec(body);
-    if (!tokenMatch) continue;
-    const token = tokenMatch[1];
-    if (STATUS_TOKEN_ALLOWED.has(token)) continue;
-    // Type unions / declarations, not rendered values.
-    if (/^[\s\w]*:\s*"/.test(body) || body.includes("|")) continue;
-    // Only flag values produced by a render expression.
-    if (!/\?|&&/.test(body)) continue;
-    // A COMPARISON against the token selects behaviour (a CSS class, a
-    // colour); it does not render the word. `x === "SUPPORTING" ? cls : cls`
-    // is correct code. Only flag a token that appears as a RESULT — i.e. on
-    // the right-hand side of `?` or `:` without being compared first.
-    if (new RegExp(`[=!]==?\\s*"${token}"`).test(body)) continue;
-    // Class-name payloads are styling, not copy.
-    if (/\b(?:text|bg|border|fill|stroke)-/.test(body)) continue;
-    // The token is an ENUM ARGUMENT handed to a mapper that returns
-    // translated copy — `mapSeverity("CAUTION", t)`, possibly spread over
-    // several lines with a ternary inside. That is the CORRECT localization
-    // path, so flagging it would punish good code.
-    if (/\bmap[A-Za-z]*\s*\(/.test(body)) continue;
-    // `?? "NONE"` supplies a DATA default that is then mapped downstream.
-    if (new RegExp(`\\?\\?\\s*"${token}"`).test(body)) continue;
-    // Same for a constant lookup keyed by the token: `COLORS.CAUTION`.
-    if (new RegExp(`[A-Z_]+\\.${token}\\b`).test(body)) continue;
-    // Ignore non-render contexts that legitimately use caps string literals.
-    const context = withoutComments.slice(Math.max(0, m.index - 60), m.index);
-    if (/(case|===|!==|includes|Set\(|\bkey=|import|from|type |enum )\s*$/.test(context)) continue;
-    if (/[.:]\s*$/.test(context)) continue;
-    out.push(`{…"${token}"…}`);
   }
   return out;
 }
@@ -246,12 +130,6 @@ const COMPONENT_DEBT: Record<string, string> = {
     "timeline section headings",
   "src/components/LogoDropdown.tsx":
     "navigation menu item labels",
-  "src/components/InstrumentInput.tsx":
-    "one placeholder attribute on the symbol field",
-  "src/components/PositionRegistrationForm.tsx":
-    "one placeholder attribute on the entry form",
-  "src/components/TraderWorkspace.tsx":
-    "one hardcoded section heading (Thesis Distribution)",
 };
 
 describe("189 — the localization guard is path-complete", () => {
