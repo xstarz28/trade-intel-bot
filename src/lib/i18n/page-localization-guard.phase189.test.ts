@@ -24,6 +24,7 @@ import {
   hardcodedAttributes,
   hardcodedStatusTokens,
   jsxTextNodes,
+  singleWordJsxProse,
 } from "@/lib/i18n/hardcoded-copy-detector";
 
 const ROOT = process.cwd();
@@ -119,6 +120,25 @@ const COMPONENT_DEBT: Record<string, string> = {
     "protection reference headings",
   "src/components/LogoDropdown.tsx":
     "navigation menu item labels",
+
+  // ─── Surfaced by the Phase 195 detector extension, not by a regression ───
+  // These components were localized in Phase 194 against a detector that
+  // could not see single-word JSX prose. They are genuinely incomplete, so
+  // they are recorded here rather than quietly excluded: the guard keeps
+  // failing them until the copy is localized, and the entry must be deleted
+  // the moment it is. Burn-down is the next phase's work.
+  "src/components/Journal.tsx":
+    "26 single-word labels (Phase 195 detector extension)",
+  "src/components/HistoricalTimeline.tsx":
+    "6 single-word labels (Phase 195 detector extension)",
+  "src/components/InstrumentInput.tsx":
+    "6 single-word labels (Phase 195 detector extension)",
+  "src/components/CustomAlertRulesPanel.tsx":
+    "2 single-word labels (Phase 195 detector extension)",
+  "src/components/NotificationCenter.tsx":
+    "2 single-word labels (Phase 195 detector extension)",
+  "src/components/PositionProtectionPanel.tsx":
+    "1 single-word label (Phase 195 detector extension)",
 };
 
 describe("189 — the localization guard is path-complete", () => {
@@ -180,7 +200,11 @@ describe("189 — the localization guard is path-complete", () => {
       expect(COMPONENTS, `${path} is listed but not walked`).toContain(path);
       expect(reason.length, `${path} needs a stated reason`).toBeGreaterThan(20);
       const source = readFileSync(resolve(ROOT, path), "utf8");
-      const violations = [...jsxTextNodes(source), ...hardcodedAttributes(source)];
+      const violations = [
+        ...jsxTextNodes(source),
+        ...hardcodedAttributes(source),
+        ...singleWordJsxProse(source),
+      ];
       // A cleaned-up file must be removed from the list, not left behind.
       expect(
         violations.length,
@@ -199,6 +223,9 @@ describe("189 — the localization guard is path-complete", () => {
         ...jsxTextNodes(source),
         ...hardcodedAttributes(source),
         ...hardcodedStatusTokens(source),
+        // Phase 195: single-word JSX prose ("entry", "support", "invalidation").
+        // Omitting this rule hid 109 real labels in AnalysisResult alone.
+        ...singleWordJsxProse(source),
       ];
       expect(violations, `new hardcoded copy in ${path}`).toEqual([]);
     }
@@ -230,7 +257,11 @@ describe("189 — the known-debt ratchet cannot rot", () => {
     "%s still has violations — remove it from KNOWN_UNLOCALIZED once localized",
     (path) => {
       const source = readFileSync(resolve(ROOT, path), "utf8");
-      const violations = [...jsxTextNodes(source), ...hardcodedAttributes(source)];
+      const violations = [
+        ...jsxTextNodes(source),
+        ...hardcodedAttributes(source),
+        ...singleWordJsxProse(source),
+      ];
       expect(
         violations.length,
         `${path} appears localized now; delete its KNOWN_UNLOCALIZED entry so the guard enforces it`,
