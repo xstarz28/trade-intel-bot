@@ -484,6 +484,11 @@ const pt: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    minimumSeverity: "Severidade mínima",
+    showRead: "Mostrar lidas",
+    showDismissed: "Mostrar dispensadas",
+    resetToDefaults: "Restaurar padrões",
+    alertsWillAppearHere: "Os alertas de inteligência aparecerão aqui",
     title: "Notificações",
     markAllRead: "Marcar tudo como lido",
     dismiss: "Dispensar",

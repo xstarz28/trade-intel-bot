@@ -487,6 +487,11 @@ const ja: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    minimumSeverity: "最小重大度",
+    showRead: "既読を表示",
+    showDismissed: "破棄済みを表示",
+    resetToDefaults: "デフォルトに戻す",
+    alertsWillAppearHere: "インテリジェンスアラートがここに表示されます",
     title: "通知",
     markAllRead: "すべて既読にする",
     dismiss: "閉じる",

@@ -486,6 +486,11 @@ const ko: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    minimumSeverity: "최소 심각도",
+    showRead: "읽음 표시",
+    showDismissed: "해제됨 표시",
+    resetToDefaults: "기본값으로 재설정",
+    alertsWillAppearHere: "인텔리전스 알림이 여기에 표시됩니다",
     title: "공지",
     markAllRead: "모두 읽음으로 표시",
     dismiss: "닫기",
