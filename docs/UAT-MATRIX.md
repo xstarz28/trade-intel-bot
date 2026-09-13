@@ -1698,7 +1698,69 @@ notation preserved, no locale-coupled decisions). They cannot prove
 native speaker and a real browser are available; they must not be converted
 to PASS on the strength of the automated suite.
 
-## 34. Sign-off
+## 34. Phase 196 — Journal localization & record-integrity protection
+
+The journal is a financial record. Localization here can change what a record
+*means* — a flipped P&L sign, an unknown P&L shown as 0, a translated label
+written back as a stored status, or a filter that returns different rows per
+language. Every row below was therefore asserted against the RECORD and the
+CANONICAL values, never against rendered prose.
+
+Re-measurement (§1) found the detector's 26 findings were an undercount: a
+manual read located labels inside an array literal, a ternary and the
+terminal-style `$` headings that the detector structurally cannot see. Total
+localized: **43 user-facing strings**. Journal debt is now **zero**.
+
+| # | Scenario | Method | Class | Result |
+|---|---|---|---|---|
+| 34.1 | Journal mounted-string debt reaches 0 | shared detector inventory | AUTOMATED | PASS (26 → 0) |
+| 34.2 | Status labels render translated, never the raw enum | mapper output per locale | AUTOMATED | PASS |
+| 34.3 | Outcome labels (WIN/LOSS/BREAKEVEN/PARTIAL/UNKNOWN) translated | mapper output per locale | AUTOMATED | PASS |
+| 34.4 | Stored status stays canonical uppercase | record assertion | AUTOMATED | PASS |
+| 34.5 | A translated label never collides with a stored enum | 9-locale check | AUTOMATED | PASS |
+| 34.6 | Positive P&L never renders negative | fixture A, 9 locales | AUTOMATED | PASS |
+| 34.7 | Negative P&L never renders positive | fixture B, 9 locales | AUTOMATED | PASS |
+| 34.8 | Unknown P&L stays unknown, never 0 | fixture D, 9 locales | AUTOMATED | PASS |
+| 34.9 | `computePnl` keeps long/short direction semantics | unit assertion | AUTOMATED | PASS |
+| 34.10 | Direction of record pinned (LONG stays LONG) | explicit constants | AUTOMATED | PASS |
+| 34.11 | `createdAt`/`closedAt` keep their exact epoch | fixture A, 9 locales | AUTOMATED | PASS |
+| 34.12 | Date presentation follows the app locale, not the browser | component change + `<time dateTime>` | AUTOMATED | PASS |
+| 34.13 | No timezone conversion introduced | diff inspection | AUTOMATED | PASS |
+| 34.14 | Instrument identity survives verbatim (incl. `BTC-PERPETUAL`) | fixture E, 9 locales | AUTOMATED | PASS |
+| 34.15 | No locale bundle hardcodes an instrument symbol | 9-locale scan | AUTOMATED | PASS |
+| 34.16 | Every `<option value>` is canonical, labels translated | DOM assertion | AUTOMATED | PASS |
+| 34.17 | Filter compares `e.status`, not a rendered label | DOM + structural | AUTOMATED | PASS (structural noted) |
+| 34.18 | Locale change never alters filter results | canonical-value filtering | AUTOMATED | PASS |
+| 34.19 | "No entries" ≠ "no entries match filters" ≠ NO_TRADE | 9-locale distinctness | AUTOMATED | PASS |
+| 34.20 | Badges and both filters have localized accessible names | DOM `getByLabelText` | AUTOMATED | PASS |
+| 34.21 | No English-only aria-label beside translated UI | ja render | AUTOMATED | PASS |
+| 34.22 | Canonical value preserved in `data-status`/`data-outcome` | DOM attribute | AUTOMATED | PASS |
+| 34.23 | Nine-locale key + placeholder parity | parity suite | AUTOMATED | PASS (9 × 1169) |
+| 34.24 | Orphan-key budget tightened, not widened | ratchet 259 → 235 | AUTOMATED | PASS |
+| 34.25 | Phase 196 mutations (14 planted defects) | `mutation-suite-phase196.sh` | AUTOMATED | PASS (14/14) |
+| 34.26 | Prior mutation suites still catch their defects | p189/p191/p193/p195 | AUTOMATED | PASS (4/19/9/11) |
+| 34.27 | Journal exposes no tokens, keys, OTP or user ids | source scan | AUTOMATED | PASS |
+| 34.28 | No new telemetry; no record logged for debugging | source scan | AUTOMATED | PASS |
+| 34.29 | Full suite / typecheck / build / lint / secret scan / mobile | CI-equivalent local run | AUTOMATED | PASS (9045 passed, lint 1517 baseline) |
+| 34.30 | Mobile wrapping of long German status labels | requires a browser | HUMAN | NOT VERIFIED |
+| 34.31 | Desktop width with ja/ko badge text | requires a browser | HUMAN | NOT VERIFIED |
+| 34.32 | Screen-reader announcement of translated badges | requires assistive tech | HUMAN | NOT VERIFIED |
+| 34.33 | Live locale switching with entries on screen | requires a browser | HUMAN | NOT VERIFIED |
+| 34.34 | Native-speaker review of 32 new finance strings | requires native speakers | HUMAN | NOT VERIFIED |
+
+**Structural-vs-behavioural disclosure (§15).** Row 34.17 is partly
+structural: the filter predicate is a closure over component state and cannot
+be observed from the DOM without seeded entries, which this component does not
+accept as a prop (it holds entries in local state). The mutation M10 is caught
+by a source assertion, and this is recorded as STRUCTURAL coverage rather than
+claimed as behavioural.
+
+**Layout (§13).** No clipping could be observed without a browser. Rows
+34.30–34.33 stay NOT VERIFIED. Translations were NOT shortened to pre-empt
+layout problems — German `Handelbarkeit` and `Fingerabdruck` are kept at full
+length per the standing rule.
+
+## 35. Sign-off
 
 | Field | Value |
 | --- | --- |
