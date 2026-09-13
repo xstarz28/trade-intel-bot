@@ -121,7 +121,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 973 leaves", () => {
+  it("EN is the canonical structural reference with 975 leaves", () => {
     // 847 -> 875: Phase 182 added the `legal` section for the public website
     // pages (/download, /privacy, /terms). Every one of the nine locales was
     // updated in the same change, which the parity tests above enforce.
@@ -131,6 +131,8 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // which shipped an internal env var name to every client (+34 -1 = +33).
     // 908 -> 963: Phase 190 added `landing` (55). The public landing page had
     // been hardcoded — largely in Indonesian, served to all nine locales.
+    // 973 -> 975: Phase 194 added timeline.currentVsPrevious + timeline.historySummary
+    // so HistoricalTimeline stops rendering two English-only headings.
     // 977 -> 973: Phase 193 removed five superseded `system.*` uppercase variants
     // (stale/unavailable/updated/intelligence/alerts) whose `*Label` twins are what
     // RuntimeHealthDashboard actually renders, and added `market.sourceTransparency`
@@ -138,7 +140,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // 963 -> 977: Phase 191 added `provenance` (13) + `auth.restoringSession` so acquisition state
     // (observed / reused / unavailable / stale / historical / degraded) can be
     // shown to users in their own language instead of only in English logs.
-    expect(enCount).toBe(973);
+    expect(enCount).toBe(975);
   });
 
   for (const code of NINE) {
@@ -505,9 +507,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 973 canonical keys with non-empty values", () => {
+  it("zh has all 975 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(973);
+    expect(zhLeaves.length).toBe(975);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

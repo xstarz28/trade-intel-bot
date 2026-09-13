@@ -938,6 +938,8 @@ const ko: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    currentVsPrevious: "현재 vs 이전",
+    historySummary: "히스토리 요약",
     initialAnalysis: "초기 분석",
     thesisChange: "테제 변경",
     regimeChange: "레짐 변경",

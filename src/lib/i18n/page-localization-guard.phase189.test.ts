@@ -126,8 +126,6 @@ const COMPONENT_DEBT: Record<string, string> = {
     "control centre headings and status text",
   "src/components/PositionProtectionDetail.tsx":
     "protection reference headings",
-  "src/components/HistoricalTimeline.tsx":
-    "timeline section headings",
   "src/components/LogoDropdown.tsx":
     "navigation menu item labels",
 };

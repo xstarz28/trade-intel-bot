@@ -929,6 +929,8 @@ const en: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    currentVsPrevious: "CURRENT vs PREVIOUS",
+    historySummary: "HISTORY SUMMARY",
     initialAnalysis: "Initial Analysis",
     thesisChange: "Thesis Change",
     regimeChange: "Regime Change",
