@@ -452,6 +452,14 @@ const id: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    newAlertRule: "Aturan Peringatan Baru",
+    positionId: "ID Posisi",
+    alertRules: "Aturan Peringatan",
+    loadingRules: "Memuat aturan…",
+    recentAlerts: "Peringatan Terbaru",
+    noAlertsTriggered: "Belum ada peringatan terpicu.",
+    ruleNamePlaceholder: "mis. Peringatan Pelemahan Tesis BTC",
+    examplePrefix: "mis. {example}",
     title: "Aturan Peringatan Khusus",
     createRule: "Buat Aturan",
     editRule: "Edit Aturan",

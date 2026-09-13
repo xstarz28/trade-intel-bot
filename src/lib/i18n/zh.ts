@@ -455,6 +455,14 @@ const zh: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    newAlertRule: "新建提醒规则",
+    positionId: "仓位 ID",
+    alertRules: "提醒规则",
+    loadingRules: "正在加载规则…",
+    recentAlerts: "近期提醒",
+    noAlertsTriggered: "尚未触发任何提醒。",
+    ruleNamePlaceholder: "例如：BTC 论点恶化提醒",
+    examplePrefix: "例如：{example}",
     title: "自定义警报规则",
     createRule: "创建规则",
     editRule: "编辑规则",

@@ -498,6 +498,26 @@ export interface Translations {
     medium: string;
     high: string;
     critical: string;
+    /** Heading of the rule-creation form. */
+    newAlertRule: string;
+    /** Label for the position identifier field. */
+    positionId: string;
+    /** Heading of the configured-rules list. */
+    alertRules: string;
+    /** Shown while the rule list is still resolving. */
+    loadingRules: string;
+    /** Heading of the recently-triggered alerts list. */
+    recentAlerts: string;
+    /** Empty state for the triggered-alerts list. */
+    noAlertsTriggered: string;
+    /** Example rule name. Prose, so it is translated; the instrument stays. */
+    ruleNamePlaceholder: string;
+    /**
+     * "for example" prefix for a format hint, e.g. `{example}` -> "BTC/USDT".
+     * The ABBREVIATION is translated ("z. B.", "p. ex.", "例:"); the example
+     * value stays untranslated because it is provider-native notation.
+     */
+    examplePrefix: string;
   };
 
   // ─── Notifications ──────────────────────────────────────────

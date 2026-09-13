@@ -449,6 +449,14 @@ const en: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    newAlertRule: "New Alert Rule",
+    positionId: "Position ID",
+    alertRules: "Alert Rules",
+    loadingRules: "Loading rules…",
+    recentAlerts: "Recent Alerts",
+    noAlertsTriggered: "No alerts triggered yet.",
+    ruleNamePlaceholder: "e.g. BTC Thesis Deterioration Alert",
+    examplePrefix: "e.g. {example}",
     title: "Custom Alert Rules",
     createRule: "Create Rule",
     editRule: "Edit Rule",
