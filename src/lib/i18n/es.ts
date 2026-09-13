@@ -921,6 +921,8 @@ const es: Translations = {
       "El diferencial de tasas, el posicionamiento COT y el DXY son evidencia contextual, no señales direccionales automáticas.",
     saveJournalCta: "Guarda este análisis en tu diario de trading para revisarlo después.",
     convictionPrefix: "convicción:",
+    tradePlanHeading: "plan-de-operación",
+    marketPriceNote: "precio de mercado",
     dataFull: "datos completos",
     dataPartial: "datos parciales",
     dataLimited: "datos limitados",

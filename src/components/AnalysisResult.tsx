@@ -1502,7 +1502,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-                <span className="text-primary/60">$</span> trade-plan
+                <span className="text-primary/60">$</span> {t.analysisResult.tradePlanHeading}
               </h4>
               <Badge variant="outline" className="text-[10px] font-mono ml-auto border-border/50">
                 R:R {result.tradePlan.riskReward.toFixed(2)}
@@ -1513,21 +1513,21 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <div className="grid grid-cols-3 gap-3">
               <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2.5">
                 <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                  entry
+                  {t.protection.entryPriceLabel}
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.entry}</p>
-                <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5">market price</p>
+                <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5">{t.analysisResult.marketPriceNote}</p>
               </div>
               <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2.5">
                 <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-1">
-                  stop loss
+                  {t.protection.stopLossLabel}
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.stopLoss}</p>
                 <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">{result.tradePlan.slBasis}</p>
               </div>
               <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2.5">
                 <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-1">
-                  take profit
+                  {t.protection.takeProfitLabel}
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.takeProfit}</p>
                 <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">{result.tradePlan.tpBasis}</p>

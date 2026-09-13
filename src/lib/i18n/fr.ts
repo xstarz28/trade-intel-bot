@@ -921,6 +921,8 @@ const fr: Translations = {
       "L'écart de taux, le positionnement COT et le DXY sont des preuves contextuelles — pas des signaux directionnels automatiques.",
     saveJournalCta: "Enregistrez cette analyse dans votre journal de trading pour la revoir plus tard.",
     convictionPrefix: "conviction :",
+    tradePlanHeading: "plan-de-trade",
+    marketPriceNote: "prix du marché",
     dataFull: "données complètes",
     dataPartial: "données partielles",
     dataLimited: "données limitées",
