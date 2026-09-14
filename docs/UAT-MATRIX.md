@@ -2146,6 +2146,34 @@ unauthenticated caller with the guest shape (`GUEST`, `remaining: 2`,
 `positionProtection` and `historicalIntelligence`. Any signed-in user would
 have seen empty lists. This was never observable in the sandbox.
 
+## 35i. Phase 205 — entitlement state machine vs market conditions
+
+The real DEV run confirmed auth works (D4 `authenticated=true`), D6 `NO_TRADE`
+consumed 0, and D9 anti-spoofing passed. D7 could not complete because the
+engine returned `NO_TRADE` — no chargeable signal existed, so `LOCKED` was
+unreachable. That is a market-condition limitation, not a product defect.
+
+D7/D8 now report `NOT_VERIFIED — no real chargeable signal occurred`. The
+entitlement state machine is verified independently through
+`entitlements:consumeProfitSignal`, an already-deployed authenticated boundary
+that returns accounting only and can never grant allowance.
+
+| # | Step | Expected | Result |
+| --- | --- | --- | --- |
+| 35i.1 | `npm run evidence:d -- --auth anonymous --json` | `entitlementStateMachine.verdict = VERIFIED` | BLOCKED — operator machine |
+| 35i.2 | E1 fresh identity | `authenticated=true`, `remaining=2` | BLOCKED — operator machine |
+| 35i.3 | E2 `WAIT` | `charged=false`, counter unchanged | BLOCKED — operator machine |
+| 35i.4 | E3 first `BUY` | `remaining` 2 → 1, `used=1` | BLOCKED — operator machine |
+| 35i.5 | E4 second `SELL` | `remaining` 1 → 0, `used=2` | BLOCKED — operator machine |
+| 35i.6 | E5 third chargeable | refused, `upgradeRequired=true`, `used` stays 2 | BLOCKED — operator machine |
+| 35i.7 | E6 refusal payload | no directional field; `NO_TRADE` still free; plan stays GUEST | BLOCKED — operator machine |
+| 35i.8 | D7 on a quiet market | `NOT_VERIFIED`, never FAIL, never forced | BLOCKED — operator machine |
+| 35i.9 | D7 when a chargeable signal DOES occur but no lock follows | FAIL (must not be masked as NOT_VERIFIED) | BLOCKED — needs live directional signal |
+
+**Invalid-evidence rule:** a green D7 obtained by forcing BUY/SELL is not
+evidence. The harness has no code path that fabricates a recommendation, and
+this is test-enforced.
+
 ## 36. Sign-off
 
 | Field | Value |

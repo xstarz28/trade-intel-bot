@@ -146,6 +146,56 @@ A refusal marks all ten observations BLOCKED and none PASS.
 
 ---
 
+## The entitlement state machine (E1–E6) — Phase 205
+
+D5–D8 measure the **market-analysis guarantee**: that the *engine's own*
+output decides what is charged. They are market-dependent by nature. On a quiet
+market the engine returns `NO_TRADE`, nothing is chargeable, and `LOCKED` is
+unreachable — `gateDecision` delivers non-actionable results in full regardless
+of allowance.
+
+That is reported `NOT_VERIFIED — no real chargeable signal occurred`, never
+FAIL. **A green D7 produced by forcing BUY/SELL would be invalid evidence** and
+the harness has no code path that can do it.
+
+The **entitlement guarantee** is a separate claim — given a chargeable event,
+the counter goes 2 → 1 → 0 and then refuses — and it does not need a live BUY.
+E1–E6 verify it against the same real deployment:
+
+| # | Observation |
+| --- | --- |
+| E1 | A fresh authenticated GUEST starts with `remaining = 2` |
+| E2 | A non-chargeable event consumes nothing |
+| E3 | First chargeable consumption: remaining 2 → 1 |
+| E4 | Second chargeable consumption: remaining 1 → 0 |
+| E5 | Third chargeable attempt refused, nothing charged |
+| E6 | Refusal is redacted; non-chargeable stays free after exhaustion |
+
+### Why this is not a backdoor
+
+E1–E6 run through `entitlements:consumeProfitSignal`, a mutation that is
+already deployed and already client-callable. Nothing was added to production
+for testing. It is strictly **less** privileged than the analysis path:
+
+- it is authenticated and rejects anonymous callers;
+- it returns accounting only (`allowed`, `charged`, `plan`, `remaining`,
+  `reason`) and never a recommendation, entry, stop or target — so it cannot
+  be used to obtain a signal without paying;
+- it can only ever debit: `nextUsageCount` is `min(used + 1, LIMIT)`, with no
+  path that grants allowance or Premium;
+- it is deliberately not wired into any delivery path (Phase 174).
+
+**What it cannot prove:** that the engine's own output decides chargeability —
+it takes the recommendation as an argument. That is exactly why it does not
+replace D5–D8, and why the report keeps the two verdicts apart:
+`evidenceD` is computed only from D1–D10, and a verified state machine never
+turns an incomplete Evidence D into an achieved one.
+
+The E-track mints its own fresh identity, because the D-track has already spent
+allowance on its session.
+
+---
+
 ## Phase 203 — why the execution half was rewritten
 
 Phase 200 built the harness and proved its refusals. An audit in Phase 203

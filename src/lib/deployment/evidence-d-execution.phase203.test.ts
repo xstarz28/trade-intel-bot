@@ -498,3 +498,158 @@ describe("Phase 204 — D4-D7 run on one identity, and a rejected session cannot
     expect(harnessSource).not.toMatch(/if \(false\)/);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * 9. Phase 205 — entitlement state machine vs market conditions
+ * ------------------------------------------------------------------ */
+
+describe("Phase 205 — a quiet market is NOT_VERIFIED, never FAIL and never forced", () => {
+  it("never fabricates a directional recommendation", () => {
+    const code = harnessSource
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]*\/\/.*$/gm, "");
+    // The harness may NAME chargeable values (to classify what the engine
+    // returned) but must never send one into the analysis path as input.
+    expect(code).not.toMatch(/analysisInput\([^)]*recommendation/s);
+    expect(code).not.toMatch(/recommendation:\s*"(BUY|SELL|LONG|SHORT)"/);
+    // forced/fake/stub engine results have no place here.
+    expect(code).not.toMatch(/forceRecommendation|fakeSignal|stubEngine/i);
+  });
+
+  it("reports D7 NOT_VERIFIED when no chargeable signal occurred", () => {
+    const d7 = harnessSource.slice(
+      harnessSource.indexOf("D7 + D8: exhaustion"),
+      harnessSource.indexOf("Post-exhaustion safety"),
+    );
+    expect(d7).toMatch(/no real chargeable signal occurred/);
+    expect(d7).toMatch(/"D7",\s*\n?\s*"NOT_VERIFIED"/);
+    expect(d7).toMatch(/market-condition limitation, not a product defect/);
+  });
+
+  it("still FAILS D7 when a chargeable signal occurred but no lock followed", () => {
+    // The NOT_VERIFIED branch must be conditional on the absence of a
+    // chargeable result — otherwise a genuine entitlement defect would be
+    // silently downgraded to "market was quiet".
+    const d7 = harnessSource.slice(
+      harnessSource.indexOf("D7 + D8: exhaustion"),
+      harnessSource.indexOf("Post-exhaustion safety"),
+    );
+    expect(d7).toMatch(/} else if \(!sawChargeable\) \{/);
+    expect(d7).toMatch(/"D7",\s*\n?\s*"FAIL"/);
+    expect(d7).toMatch(/the engine produced a chargeable signal/);
+    expect(harnessSource).toMatch(/const sawChargeable = observedRecs\.some/);
+  });
+
+  it("defines the E-track separately from D1-D10", () => {
+    expect(harnessSource).toMatch(/const E_DEFINITIONS = \[/);
+    for (const id of ["E1", "E2", "E3", "E4", "E5", "E6"]) {
+      expect(harnessSource).toContain(`"${id}"`);
+    }
+    // D-track definitions must remain exactly ten.
+    const dIds = [...harnessSource.matchAll(/\{ id: "(D\d+)", title:/g)].map((m) => m[1]);
+    expect(dIds).toEqual(["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10"]);
+  });
+
+  it("never folds the E-track into the Evidence D verdict", () => {
+    // The D verdict must derive ONLY from `checks`. Assert on the exact
+    // expressions rather than a source slice: the E-track summary is computed
+    // nearby, so a wide slice would match its (legitimate) mentions.
+    const verdictLines = [
+      /const failed = checks\.filter\(/,
+      /const blocked = checks\.filter\(/,
+      /const notVerified = checks\.filter\(/,
+      /const complete =\s*failed\.length === 0 && blocked\.length === 0 && notVerified\.length === 0/,
+      /const evidenceD = failed\.length > 0 \? "FAILED" : complete \? "ACHIEVED" : "INCOMPLETE"/,
+    ];
+    for (const line of verdictLines) {
+      expect(harnessSource, `D verdict must be derived by ${line}`).toMatch(line);
+    }
+    // No E-track array may participate in the D verdict or the exit code.
+    expect(harnessSource).not.toMatch(/(?:failed|blocked|notVerified|complete)[^\n]*entitlementChecks/);
+    expect(harnessSource).not.toMatch(/evidenceD[^\n]*entitlementChecks/);
+    expect(harnessSource).not.toMatch(/process\.exit\([^)]*entitlement/);
+    // And it is still reported, separately.
+    expect(harnessSource).toMatch(/entitlementStateMachine/);
+    expect(harnessSource).toMatch(/never merged into them/);
+  });
+});
+
+describe("Phase 205 — the E-track uses a legitimate least-privileged boundary", () => {
+  it("calls the real deployed public mutation, not an internal function", () => {
+    expect(harnessSource).toContain("entitlements:consumeProfitSignal");
+    // Internal functions are unreachable from a client and must never be tried.
+    expect(harnessSource).not.toMatch(/protectedAnalysis:resolveAndConsume/);
+    expect(harnessSource).not.toMatch(/protectedAnalysis:resolveCallerId/);
+    expect(harnessSource).not.toMatch(/"internal[.:]/);
+  });
+
+  it("that boundary is genuinely public, authenticated and accounting-only", () => {
+    const server = readFileSync(ENTITLEMENTS, "utf8");
+    const body = server.slice(
+      server.indexOf("export const consumeProfitSignal"),
+      server.indexOf("export const grantPremium"),
+    );
+    // Public mutation (not internalMutation).
+    expect(body).toMatch(/export const consumeProfitSignal = mutation\(/);
+    // Authenticated.
+    expect(body).toMatch(/if \(!user\) throw new Error\("Unauthenticated/);
+    // Returns accounting only — no directional field.
+    for (const field of ["tradePlan", "entry", "stopLoss", "takeProfit", "keyLevels"]) {
+      expect(body, `consumeProfitSignal must not return ${field}`).not.toContain(`${field}:`);
+    }
+    // Cannot grant: no PREMIUM assignment anywhere in the handler.
+    expect(body).not.toMatch(/plan:\s*"PREMIUM"/);
+  });
+
+  it("never grants premium or mutates the database directly", () => {
+    const code = harnessSource
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]*\/\/.*$/gm, "");
+    // grantPremium appears ONCE, as the rejection probe, and must stay a probe.
+    const grants = [...code.matchAll(/entitlements:grantPremium/g)];
+    expect(grants).toHaveLength(1);
+    expect(code).toMatch(/premiumProbe/);
+    expect(code).not.toMatch(/db\.(insert|patch|replace|delete)/);
+  });
+
+  it("mints a fresh identity for the E-track instead of reusing a spent one", () => {
+    expect(harnessSource).toMatch(/const freshAnon = await action\("auth:signIn", \{ provider: "anonymous" \}\)/);
+    expect(harnessSource).toMatch(/needs a pristine identity/);
+    // Every E-track read/write must use eToken, not the D-track token.
+    const eBlock = harnessSource.slice(
+      harnessSource.indexOf("E-TRACK"),
+      harnessSource.indexOf("D10: observedAt"),
+    );
+    const eCalls = [...eBlock.matchAll(/(?:query|mutation)\([^)]*\)/gs)].map((m) => m[0]);
+    expect(eCalls.length).toBeGreaterThanOrEqual(2);
+    for (const c of eCalls) {
+      if (/getMyEntitlement|consumeProfitSignal/.test(c)) {
+        expect(c, `E-track call must use eToken: ${c}`).toMatch(/eToken/);
+      }
+    }
+  });
+
+  it("asserts exact deltas rather than 'it changed'", () => {
+    expect(harnessSource).toMatch(/s1\.remaining === 1 && usedOf\(s1\) === 1/);
+    expect(harnessSource).toMatch(/s2\.remaining === 0 && usedOf\(s2\) === 2/);
+    expect(harnessSource).toMatch(/usedOf\(afterFree\) === beforeFree/);
+  });
+
+  it("verifies the refusal is redacted against the server's protected list", () => {
+    const gate = readFileSync(GATE, "utf8");
+    const fields = gate
+      .slice(
+        gate.indexOf("PROTECTED_DECISION_FIELDS = ["),
+        gate.indexOf("] as const", gate.indexOf("PROTECTED_DECISION_FIELDS = [")),
+      )
+      .match(/"([a-zA-Z]+)"/g)!
+      .map((s) => s.replace(/"/g, ""));
+    const list = harnessSource.slice(
+      harnessSource.indexOf("const PROTECTED_FIELDS = ["),
+      harnessSource.indexOf("const entitlementChecks"),
+    );
+    for (const f of fields) {
+      expect(list, `E6 must check for leaked "${f}"`).toContain(`"${f}"`);
+    }
+  });
+});
