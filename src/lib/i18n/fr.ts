@@ -469,6 +469,11 @@ const fr: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    ruleCreated: "Règle “{name}” créée",
+    ruleCreateFailed: "Échec de la création de la règle",
+    ruleUpdateFailed: "Échec de la mise à jour de la règle",
+    ruleDeleted: "Règle supprimée",
+    ruleDeleteFailed: "Échec de la suppression de la règle",
     newAlertRule: "Nouvelle règle d'alerte",
     positionId: "ID de position",
     alertRules: "Règles d'alerte",
@@ -507,6 +512,11 @@ const fr: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    filterAll: "TOUT",
+    preferencesToggle: "Préférences",
+    preferencesHide: "Masquer",
+    categoriesHeading: "Catégories",
+    displayHeading: "Affichage",
     minimumSeverity: "Gravité minimale",
     showRead: "Afficher les lues",
     showDismissed: "Afficher les ignorées",

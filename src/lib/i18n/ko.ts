@@ -468,6 +468,11 @@ const ko: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    ruleCreated: "규칙 “{name}”이(가) 생성되었습니다",
+    ruleCreateFailed: "규칙을 생성하지 못했습니다",
+    ruleUpdateFailed: "규칙을 업데이트하지 못했습니다",
+    ruleDeleted: "규칙이 삭제되었습니다",
+    ruleDeleteFailed: "규칙을 삭제하지 못했습니다",
     newAlertRule: "새 알림 규칙",
     positionId: "포지션 ID",
     alertRules: "알림 규칙",
@@ -506,6 +511,11 @@ const ko: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    filterAll: "전체",
+    preferencesToggle: "환경설정",
+    preferencesHide: "숨기기",
+    categoriesHeading: "카테고리",
+    displayHeading: "표시",
     minimumSeverity: "최소 심각도",
     showRead: "읽음 표시",
     showDismissed: "해제됨 표시",

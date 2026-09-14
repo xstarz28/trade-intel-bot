@@ -112,7 +112,7 @@ function NewRuleForm({
             className="h-5 text-[9px] font-mono ml-auto"
             onClick={onClose}
           >
-            Cancel
+            {t.alerts.cancel}
           </Button>
         </div>
 
@@ -158,7 +158,7 @@ function NewRuleForm({
             {scope === "INSTRUMENT" && (
               <div>
                 <label className="text-[9px] font-mono text-muted-foreground block mb-1">
-                  Instrument
+                  {t.alerts.instrument}
                 </label>
                 <input
                   type="text"
@@ -303,7 +303,7 @@ function RuleRow({
         <button
           className="shrink-0"
           onClick={() => onToggle(rule.ruleId, !rule.enabled)}
-          title={rule.enabled ? "Disable rule" : "Enable rule"}
+          title={rule.enabled ? t.protection.disableRule : t.protection.enableRule}
         >
           {rule.enabled ? (
             <Bell className="size-3.5 text-primary" />
@@ -377,7 +377,7 @@ function RuleRow({
 // ═══════════════════════════════════════════════════════════════
 
 export function CustomAlertRulesPanel() {
-  const { t } = useI18n();
+  const { t, txi } = useI18n();
   const [showForm, setShowForm] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
 
@@ -419,12 +419,12 @@ export function CustomAlertRulesPanel() {
           severity: opts.severity,
           cooldownMs: opts.cooldownMs,
         });
-        toast.success(`Rule "${opts.name}" created`);
+        toast.success(txi("alerts.ruleCreated", { name: opts.name }));
       } catch (err: any) {
-        toast.error(err?.message ?? "Failed to create rule");
+        toast.error(err?.message ?? t.alerts.ruleCreateFailed);
       }
     },
-    [createRule],
+    [createRule, txi, t],
   );
 
   const handleToggle = useCallback(
@@ -432,22 +432,22 @@ export function CustomAlertRulesPanel() {
       try {
         await updateRule({ ruleId, enabled });
       } catch (err: any) {
-        toast.error(err?.message ?? "Failed to update rule");
+        toast.error(err?.message ?? t.alerts.ruleUpdateFailed);
       }
     },
-    [updateRule],
+    [updateRule, t],
   );
 
   const handleDelete = useCallback(
     async (ruleId: string) => {
       try {
         await deleteRule({ ruleId });
-        toast.success("Rule deleted");
+        toast.success(t.alerts.ruleDeleted);
       } catch (err: any) {
-        toast.error(err?.message ?? "Failed to delete rule");
+        toast.error(err?.message ?? t.alerts.ruleDeleteFailed);
       }
     },
-    [deleteRule],
+    [deleteRule, t],
   );
 
   return (
@@ -485,7 +485,7 @@ export function CustomAlertRulesPanel() {
             onClick={() => setShowForm(!showForm)}
           >
             <Plus className="size-3" />
-            {showForm ? "Cancel" : "New Rule"}
+            {showForm ? t.alerts.cancel : t.alerts.newAlertRule}
           </Button>
         </div>
       </div>

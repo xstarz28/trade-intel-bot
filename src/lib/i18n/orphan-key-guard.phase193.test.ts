@@ -60,13 +60,15 @@ const report = loadReport();
  * Raising it requires a deliberate edit and a reason, which is the point —
  * adding vocabulary nothing renders should be a conscious act.
  *
- * Phase 197: 235 -> 232. The timeline localization reused three previously
- * orphaned keys rather than minting new ones. The ratchet is tightened in the
- * same commit because leftover slack lets a genuinely unreferenced new key slip
- * in unnoticed — caught by mutation M3 of the Phase 193 suite, which survived
- * until this number was brought back down to the real count.
+ * Phase 197: 235 -> 228, in two steps as the phase progressed. Every component
+ * cleaned in this phase reused existing orphaned vocabulary rather than minting
+ * new keys, which drove the real count down each time. The ratchet is retightened
+ * to the true count on each step, because leftover slack lets a genuinely
+ * unreferenced new key slip in unnoticed — mutation M3 of the Phase 193 suite
+ * survives whenever this number sits above reality, and that is how both steps
+ * were detected.
  */
-const UNREFERENCED_BUDGET = 232;
+const UNREFERENCED_BUDGET = 228;
 
 /**
  * Keys deliberately retained despite having no statically visible consumer.

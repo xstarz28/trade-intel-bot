@@ -507,7 +507,7 @@ export function PositionProtectionPanel({
           </div>
           <div>
             <div className="text-[10px] font-mono text-muted-foreground">
-              Thesis
+              {t.trader.thesisLabel}
             </div>
             <div
               className={`text-xs font-mono font-semibold ${HEALTH_COLORS[alert.thesisHealth]}`}

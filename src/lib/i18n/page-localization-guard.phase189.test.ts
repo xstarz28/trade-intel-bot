@@ -15,8 +15,8 @@
  * skipping a file is a visible, reviewable act.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 // Phase 194 — the detector now lives in ONE place so the guard and the
 // debt-inventory script cannot drift apart. Logic moved verbatim.
@@ -121,18 +121,11 @@ const COMPONENT_DEBT: Record<string, string> = {
   "src/components/LogoDropdown.tsx":
     "navigation menu item labels",
 
-  // ─── Surfaced by the Phase 195 detector extension, not by a regression ───
-  // These components were localized in Phase 194 against a detector that
-  // could not see single-word JSX prose. They are genuinely incomplete, so
-  // they are recorded here rather than quietly excluded: the guard keeps
-  // failing them until the copy is localized, and the entry must be deleted
-  // the moment it is. Burn-down is the next phase's work.
-  "src/components/CustomAlertRulesPanel.tsx":
-    "2 single-word labels (Phase 195 detector extension)",
-  "src/components/NotificationCenter.tsx":
-    "2 single-word labels (Phase 195 detector extension)",
-  "src/components/PositionProtectionPanel.tsx":
-    "1 single-word label (Phase 195 detector extension)",
+  // ─── Phase 197: the Phase 195 detector-extension backlog is CLEARED ───
+  // Every MOUNTED component now has zero localization debt. The six entries
+  // above are unmounted components (no route or parent renders them); they are
+  // deliberately not localized and are tracked, not fixed. If any of them is
+  // ever mounted, it must be localized in the same change.
 };
 
 describe("189 — the localization guard is path-complete", () => {
@@ -205,6 +198,45 @@ describe("189 — the localization guard is path-complete", () => {
         `${path} is clean — remove it from COMPONENT_DEBT`,
       ).toBeGreaterThan(0);
     }
+  });
+
+  it("197 — no MOUNTED component carries localization debt", () => {
+    // THE PHASE 197 INVARIANT, stated executably.
+    //
+    // COMPONENT_DEBT may only ever contain UNMOUNTED components. A mounted
+    // component is one reachable by following imports from src/main.tsx — i.e.
+    // one a real user can actually see. The moment such a component acquires
+    // hardcoded copy, this fails; the moment one of the tracked unmounted
+    // components is wired up, this fails too, forcing it to be localized in
+    // the same change rather than shipping untranslated.
+    //
+    // Reachability is recomputed here rather than read from the inventory's
+    // JSON output: a guard that trusts a generated artifact can be satisfied
+    // by regenerating the artifact.
+    const reachable = reachableFromEntry(resolve(ROOT, "src/main.tsx"));
+    const mountedWithDebt = Object.keys(COMPONENT_DEBT).filter((path) =>
+      reachable.has(resolve(ROOT, path)),
+    );
+    expect(
+      mountedWithDebt,
+      "a user-visible component is carrying untranslated copy",
+    ).toEqual([]);
+  });
+
+  it("197 — the reachability walk is not vacuously empty", () => {
+    // Without this, a broken resolver would make the invariant above pass by
+    // finding nothing mounted at all.
+    const reachable = reachableFromEntry(resolve(ROOT, "src/main.tsx"));
+    expect(reachable.size).toBeGreaterThan(50);
+    // Known-mounted anchors: if these are missing the walk is wrong.
+    expect(reachable).toContain(resolve(ROOT, "src/components/Journal.tsx"));
+    expect(reachable).toContain(
+      resolve(ROOT, "src/components/HistoricalTimeline.tsx"),
+    );
+    // A known-unmounted component must NOT be reachable.
+    expect(reachable).not.toContain(
+      resolve(ROOT, "src/components/PositionProtectionDetail.tsx"),
+    );
   });
 
   it("191 — components outside the debt list stay clean", () => {
@@ -333,3 +365,50 @@ describe("189 — the guard detects a planted regression", () => {
     expect(hardcodedAttributes(source)).toEqual([]);
   });
 });
+
+
+/**
+ * Follow static and dynamic imports from an entry module.
+ *
+ * Deliberately duplicated from scripts/component-debt-inventory.mjs rather
+ * than imported: the guard must not depend on a script that is itself part of
+ * the thing being guarded, and a test that imports its subject's own helper
+ * can be satisfied by breaking that helper.
+ */
+function reachableFromEntry(entry: string): Set<string> {
+  const EXTENSIONS = [".tsx", ".ts", "/index.tsx", "/index.ts"];
+  const seen = new Set<string>();
+  const queue = [entry];
+
+  const resolveImport = (spec: string, from: string): string | null => {
+    let base: string;
+    if (spec.startsWith("@/")) base = resolve(ROOT, "src", spec.slice(2));
+    else if (spec.startsWith(".")) base = resolve(dirname(from), spec);
+    else return null;
+    for (const ext of ["", ...EXTENSIONS]) {
+      const candidate = base + ext;
+      if (existsSync(candidate) && statSync(candidate).isFile()) return candidate;
+    }
+    return null;
+  };
+
+  while (queue.length > 0) {
+    const file = queue.pop();
+    if (!file || seen.has(file)) continue;
+    seen.add(file);
+    let source: string;
+    try {
+      source = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const match of [
+      ...source.matchAll(/\bfrom\s*["']([^"']+)["']/g),
+      ...source.matchAll(/\bimport\s*\(\s*["']([^"']+)["']\s*\)/g),
+    ]) {
+      const target = resolveImport(match[1], file);
+      if (target && !seen.has(target)) queue.push(target);
+    }
+  }
+  return seen;
+}

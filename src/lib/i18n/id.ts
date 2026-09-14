@@ -464,6 +464,11 @@ const id: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    ruleCreated: "Aturan “{name}” dibuat",
+    ruleCreateFailed: "Gagal membuat aturan",
+    ruleUpdateFailed: "Gagal memperbarui aturan",
+    ruleDeleted: "Aturan dihapus",
+    ruleDeleteFailed: "Gagal menghapus aturan",
     newAlertRule: "Aturan Peringatan Baru",
     positionId: "ID Posisi",
     alertRules: "Aturan Peringatan",
@@ -502,6 +507,11 @@ const id: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    filterAll: "SEMUA",
+    preferencesToggle: "Preferensi",
+    preferencesHide: "Sembunyikan",
+    categoriesHeading: "Kategori",
+    displayHeading: "Tampilan",
     minimumSeverity: "Tingkat Keparahan Minimum",
     showRead: "Tampilkan yang dibaca",
     showDismissed: "Tampilkan yang ditutup",

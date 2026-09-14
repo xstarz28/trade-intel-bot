@@ -1831,6 +1831,66 @@ speaker is available in this environment; they must not be reported as working.
 
 ---
 
+## 35b. Phase 197 — Remaining components & the zero-debt invariant
+
+Four further components were cleaned after the timeline. The detector reported
+**11** strings across them; a full read found **23**. Every extra finding sat in
+a construct the detector cannot parse: array literals, `title` attributes,
+`toast` calls inside callbacks, and ternaries.
+
+**InstrumentInput** (6 reported → 8 real). The load-bearing risk here is that
+each `<SelectItem>` `value` is a canonical `InstrumentType` routed to provider
+adapters. Labels are translated; values are not.
+
+**CustomAlertRulesPanel** (2 reported → 8 real), **NotificationCenter**
+(2 → 5), **PositionProtectionPanel** (1 → 1).
+
+| # | Check | How | Who | Result |
+|---|---|---|---|---|
+| 35b.1 | SelectItem values remain canonical InstrumentType enums | phase197 input suite | AUTOMATED | PASS |
+| 35b.2 | No translation is ever interpolated into a `value` attribute | phase197 input suite | AUTOMATED | PASS |
+| 35b.3 | Four asset-type labels distinct + non-empty in 9 locales | phase197 input suite | AUTOMATED | PASS |
+| 35b.4 | Terminal headings localized, `$` prompt preserved | phase197 input suite | AUTOMATED | PASS |
+| 35b.5 | Trading-style buttons routed through `mapHorizon` | phase197 input suite | AUTOMATED | PASS |
+| 35b.6 | Style click handler still submits the canonical value | phase197 input suite | AUTOMATED | PASS |
+| 35b.7 | Provider-native symbols verbatim in 9 locales | phase197 input suite | AUTOMATED | PASS |
+| 35b.8 | No English literals remain in the three panels | phase197 alerts suite | AUTOMATED | PASS |
+| 35b.9 | Every copy-rendering `useCallback` depends on the translator | phase197 alerts suite | AUTOMATED | PASS |
+| 35b.10 | Notification filter tokens stay canonical | phase197 alerts suite | AUTOMATED | PASS |
+| 35b.11 | Filter compares the value, never the label | phase197 alerts suite | AUTOMATED | PASS |
+| 35b.12 | New keys complete + non-empty in 9 locales | phase197 alerts suite | AUTOMATED | PASS |
+| 35b.13 | `{name}` preserved in the rule-created toast, all locales | phase197 alerts suite | AUTOMATED | PASS |
+| 35b.14 | Show/hide and success/failure wording distinguishable | phase197 alerts suite | AUTOMATED | PASS |
+| 35b.15 | Backend error reasons still preferred over generic copy | phase197 alerts suite | AUTOMATED | PASS |
+| 35b.16 | **No MOUNTED component carries localization debt** | guard suite | AUTOMATED | PASS |
+| 35b.17 | Reachability walk proven non-vacuous (anchors asserted) | guard suite | AUTOMATED | PASS |
+| 35b.18 | Nine-locale key + placeholder parity | parity suite | AUTOMATED | PASS (9 × 1207) |
+| 35b.19 | Orphan ratchet retightened 235 → 228 | orphan guard | AUTOMATED | PASS |
+| 35b.20 | Mutation suite (23 mutations incl. 1 control) | phase197 script | AUTOMATED | PASS (23/23) |
+| 35b.21 | All six mutation suites green | 189/191/193/195/196/197 | AUTOMATED | PASS (80/80) |
+| 35b.22 | Native-speaker review of 40 new strings × 9 locales | read each locale | HUMAN | NOT VERIFIED |
+| 35b.23 | Toast/dropdown layout at narrow widths | resize to 320 px | HUMAN | NOT VERIFIED |
+
+**Two defects found that were not localization defects.** Localizing the alert
+toasts exposed `useCallback`s that would have captured the language at mount —
+switch locale, delete a rule, and the confirmation appears in the old language.
+Fixed by adding the translator to the dependency arrays and pinned by 35b.9.
+Separately, `HEALTH_CONFIG` in PositionProtectionPanel holds five English
+`label` fields that **nothing reads** — superseded by `mapThesisHealth`. Per the
+standing rule on unused code it was recorded, not deleted.
+
+**The zero-debt state is now enforced, not just achieved (35b.16).**
+`COMPONENT_DEBT` may only contain UNMOUNTED components; mountedness is
+recomputed by walking imports from `src/main.tsx` inside the guard rather than
+trusting a generated artifact. Mutation M23 proves it fails when a mounted
+component is re-added, and 35b.17 proves the walk is not vacuously empty. If
+one of the six tracked unmounted components is ever wired up, this guard fails
+until it is localized in the same change.
+
+**35b.22/35b.23 are NOT VERIFIED, not PASS.**
+
+---
+
 ## 36. Sign-off
 
 | Field | Value |

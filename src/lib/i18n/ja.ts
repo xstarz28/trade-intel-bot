@@ -469,6 +469,11 @@ const ja: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    ruleCreated: "ルール「{name}」を作成しました",
+    ruleCreateFailed: "ルールを作成できませんでした",
+    ruleUpdateFailed: "ルールを更新できませんでした",
+    ruleDeleted: "ルールを削除しました",
+    ruleDeleteFailed: "ルールを削除できませんでした",
     newAlertRule: "新しいアラートルール",
     positionId: "ポジションID",
     alertRules: "アラートルール",
@@ -507,6 +512,11 @@ const ja: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    filterAll: "すべて",
+    preferencesToggle: "設定",
+    preferencesHide: "閉じる",
+    categoriesHeading: "カテゴリ",
+    displayHeading: "表示",
     minimumSeverity: "最小重大度",
     showRead: "既読を表示",
     showDismissed: "破棄済みを表示",
