@@ -2057,6 +2057,33 @@ production auth, OTP delivery, entitlement enforcement or live providers.
 
 ---
 
+## 35f. Phase 202 — Post-codegen reference migration
+
+Codegen ran against dev deployment `tough-goose-455` on the operator's
+machine. The generated `internal.otpLimiter.consumeResendAllowance` reference
+is now used directly by `src/convex/auth/emailOtp.ts`, replacing the Phase 187
+`makeFunctionReference` string workaround.
+
+Rows below verify the migration did not change **runtime** behaviour. The
+compile-time proof is automated (see `codegen-authority.phase200.test.ts`);
+these rows exist because a reference swap can typecheck perfectly and still
+resolve to nothing at runtime if the deployed function set differs from the
+generated types.
+
+| # | Step | Expected | Result |
+| --- | --- | --- | --- |
+| 35f.1 | Deploy the branch to the dev deployment, request an OTP for a fresh address | Code is delivered; no `Could not find public function` / `function not found` error in the Convex logs | BLOCKED — needs deployment + mailbox |
+| 35f.2 | Request a second OTP for the same address within 60 s | Resend is refused by the **durable** limiter (not the in-memory one); Convex logs show `otpLimiter:consumeResendAllowance` executing | BLOCKED — needs deployment |
+| 35f.3 | Wait out the 60 s window, request again | Resend is allowed; a new code arrives | BLOCKED — needs deployment + mailbox |
+| 35f.4 | Exceed 5 resends in one hour | 6th resend refused with the hourly reason; refusal survives a server restart (durable, not in-memory) | BLOCKED — needs deployment |
+| 35f.5 | Inspect Convex logs for the OTP send path | No error category leakage beyond the documented collapsed categories; no raw code or recipient in logs | BLOCKED — needs deployment |
+
+**Why these are BLOCKED, not PASS:** the sandbox cannot reach
+`tough-goose-455.convex.cloud` (TLS egress block), and a passing typecheck is
+not evidence that the deployed backend exposes the function. These rows become
+executable by the operator on the machine where codegen succeeded. They are a
+subset of Evidence D and must not be reported as working until run.
+
 ## 36. Sign-off
 
 | Field | Value |
