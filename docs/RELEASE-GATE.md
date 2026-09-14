@@ -20,8 +20,8 @@ RC commit `dea46ef` on `arena/01a08e67-trade-intel-bot`. All timestamps UTC.
 | Gate | Status | Evidence | Environment | Timestamp |
 | --- | --- | --- | --- | --- |
 | Source/RC identity | **PASS** | `dea46ef`; build provenance embedded in the artifact matches `HEAD` | Local build | 2026-09-12T04:40Z |
-| Secret rotation | **BLOCKED** | Credential live in **270** commits (corrected in Phase 184) incl. `origin/main` tip; rotation needs `auth.freebuff.app` access | External vendor | 2026-09-12T05:10Z |
-| History remediation | **BLOCKED** | Gated behind rotation. Procedure **rehearsed and verified** on a disposable mirror: 0 credential blobs, 306/306 commits preserved, exactly 1 source blob changed | Sandbox rehearsal | 2026-09-12T05:20Z |
+| Secret rotation | **BLOCKED** | Re-verified Phase 198 on **full** history (339 commits, unshallowed): credential live in **270/339** commits, 1 blob, 1 path, `main` + `phase-157` **exposed at tip**. Issuer `auth.freebuff.app` HTTP **000** (DNS resolves; GitHub/npm 200 ⇒ egress block, not outage). No revocation evidence obtainable, no issuer credential in env ⇒ **rotation cannot be performed or verified here** | External vendor | 2026-09-14T00:00Z |
+| History remediation | **BLOCKED** | Gated behind rotation. Re-rehearsed Phase 198 on a fresh disposable mirror: **0** occurrences across all 4 refs (2 independent methods + positive control), **339/339** commits preserved, author/date/subject and parent topology byte-identical, working-branch tree **0 files changed**, exactly 1 line of `emailOtp.ts` redacted. Production and remote untouched; no force-push. Runbook: `docs/SECRET-REMEDIATION-RUNBOOK.md`; verifier: `scripts/secret-rehearsal-verify.mjs` | Sandbox rehearsal | 2026-09-14T00:00Z |
 | Convex codegen | **BLOCKED** | `npx convex codegen` → "No CONVEX_DEPLOYMENT set"; control plane HTTP 000 | Sandbox | 2026-09-12T04:22Z |
 | Convex deployment | **BLOCKED** | `provision/api/dashboard.convex.dev` all HTTP 000 (TLS allowlist) | Sandbox | 2026-09-12T04:15Z |
 | Evidence D | **BLOCKED** | Requires a deployed backend; mocks explicitly do not count | — | 2026-09-12T04:15Z |
@@ -99,8 +99,13 @@ security, backend and runtime gates may not be BLOCKED — three of them are.
 
 1. **OTP credential rotation** — the credential remains live and publicly
    reachable at `origin/main`'s tip. Everything else is secondary to this.
-2. **History remediation** — after rotation, for `main`, the working branch
-   **and** tag `rc-181`; all three reach an affected commit.
+2. **History remediation** — after rotation, for **all four** refs: `main`,
+   the working branch, `phase-157-live-discovery-lifecycle` **and** tag
+   `rc-181`. Each reaches an affected commit, so none may be skipped — one
+   surviving ref keeps the blob reachable. The rewrite is rehearsed and
+   ready (`docs/SECRET-REMEDIATION-RUNBOOK.md`); it stays unexecuted until
+   gate 1 is cleared, because rewriting first destroys the audit trail while
+   leaving a live credential in every existing clone.
 3. **Convex deployment + codegen** — nothing runs without it.
 4. **Evidence D** — follows from 3.
 5. **Live provider verification** — follows from 3.

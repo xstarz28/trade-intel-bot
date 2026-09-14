@@ -1891,6 +1891,59 @@ until it is localized in the same change.
 
 ---
 
+## 35c. Phase 198 — Credential exposure audit & remediation rehearsal
+
+Scope: re-measure the leaked OTP credential across **full** history, test the
+rotation gate, and rehearse the rewrite on a disposable mirror. The credential
+value is never printed; identity is by fingerprint
+`sha256(value+"\n")[0:16] = b1ce18a1e85ba121`, length 33.
+
+| # | Check | Method | Result |
+| --- | --- | --- | --- |
+| 35c.1 | History is complete, not shallow | `git fetch --unshallow`; `rev-parse --is-shallow-repository` | PASS — `false`, 53 → **339** commits |
+| 35c.2 | Scanning a shallow clone is refused | verifier against a `--depth=1` clone | PASS — refuses, exit 2 |
+| 35c.3 | Fingerprint matches the Phase 184 record | sha256 of the extracted literal | PASS — `b1ce18a1e85ba121`, len 33 |
+| 35c.4 | Distinct leaked blobs | blob walk over `rev-list --objects --all` | PASS — **1** (`e490ffda`) |
+| 35c.5 | Affected paths | same | PASS — **1** (`src/convex/auth/emailOtp.ts`) |
+| 35c.6 | Affected commits | per-commit `ls-tree` | PASS — **270 / 339** |
+| 35c.7 | Oldest / newest affected | `git log` | PASS — `a71ea7f` 2026-08-20 → `3a82789` 2026-09-11 |
+| 35c.8 | All refs enumerated (incl. unfetched remote branch) | `git ls-remote` vs local | PASS — 4 real refs; `phase-157` was missing locally and was fetched |
+| 35c.9 | `main` tip status | `ls-tree` at tip | **TIP-EXPOSED** — serves the credential today |
+| 35c.10 | `phase-157-live-discovery-lifecycle` tip status | same | **TIP-EXPOSED** |
+| 35c.11 | Working branch + `rc-181` tip status | same | tip-clean (history still affected: 269 each) |
+| 35c.12 | Credential kind classified | redacted blob read | PASS — hardcoded `x-api-key` for `auth.freebuff.app` |
+| 35c.13 | Current source reads the key from env, not source | `grep` HEAD | PASS — `process.env[key]` |
+| 35c.14 | Issuer reachable for rotation | `curl` | **BLOCKED** — HTTP 000 |
+| 35c.15 | Block is egress, not a dead host | DNS + control hosts | PASS — DNS resolves; GitHub/npm HTTP 200 |
+| 35c.16 | Issuer credential present for rotation | env inspection | **BLOCKED** — none set |
+| 35c.17 | Revocation evidence obtainable | all of the above | **BLOCKED** — none; no revocation claimed |
+| 35c.18 | Rewrite rehearsed on a disposable mirror only | fresh `--mirror` clone in `/tmp` | PASS |
+| 35c.19 | Zero occurrences after rewrite (blob walk) | fingerprint scan, all refs | PASS — **0** |
+| 35c.20 | Zero occurrences after rewrite (independent method) | `git grep -F`, all refs | PASS — **0** |
+| 35c.21 | Scan is not vacuous | same method on unmodified `main` | PASS — finds **1**, so "clean" is meaningful |
+| 35c.22 | Commit count preserved | `rev-list --count --all` | PASS — 339 → **339** |
+| 35c.23 | Per-ref commit counts preserved | `rev-list --count` | PASS — 338/261/262 unchanged |
+| 35c.24 | Author, email, timestamp, subject preserved | md5 of `%an\|%ae\|%at\|%s` | PASS — `b9b2dd5c…` identical |
+| 35c.25 | Parent topology preserved | md5 of parent counts | PASS — `5af69801…` identical |
+| 35c.26 | Working-branch tree byte-identical | tree diff old vs new tip | PASS — **0 files changed** |
+| 35c.27 | Only the secret file changed elsewhere | tree diff on the 2 contaminated refs | PASS — only `emailOtp.ts` |
+| 35c.28 | Change is exactly one line, no structural damage | line diff + `wc -l` | PASS — 1 line; 37 → 37 lines |
+| 35c.29 | Production repo untouched | `HEAD`, `main`, `status --porcelain` | PASS — `835a254`, `51c9dde`, 0 dirty |
+| 35c.30 | Remote untouched, no force-push | `git ls-remote` | PASS — all refs at original SHAs |
+| 35c.31 | Verifier exit codes correct | 3 invocations | PASS — 2 (shallow) / 1 (exposed) / 0 (clean) |
+| 35c.32 | Old credential proven revoked | — | **BLOCKED** — cannot be verified in this environment |
+| 35c.33 | History rewrite applied to the real repository | — | **NOT APPLICABLE** — forbidden until 35c.32 clears |
+
+**35c.32 is the phase verdict.** A successful rehearsal (35c.18–35c.31) does not
+close Phase 184. Removing the credential from Git history does not retract it:
+until it is dead at the issuer it remains valid in every existing clone, fork
+and cache. Rewriting first would destroy the audit trail while changing nothing
+about the actual exposure. **BLOCKED is therefore the correct and final state of
+this phase**, and must never be converted to PASS on the strength of the
+rehearsal alone.
+
+---
+
 ## 36. Sign-off
 
 | Field | Value |
