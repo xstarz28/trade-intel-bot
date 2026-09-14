@@ -738,3 +738,143 @@ describe("Phase 206 — E-track asserts the complete contract", () => {
     expect(harnessSource).toMatch(/for \(const \[id, title\] of E_DEFINITIONS\)/);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * 11. Phase 207 — live provenance and the natural chargeable sweep
+ * ------------------------------------------------------------------ */
+
+describe("Phase 207 — D10 prefers a provider that stamps its own observation", () => {
+  it("tries the credential-free OKX order book before the credentialed provider", () => {
+    const d10 = harnessSource.slice(
+      harnessSource.indexOf("D10: observedAt must come from"),
+      harnessSource.indexOf("return { premiumProbe"),
+    );
+    const okxAt = d10.indexOf("okx:fetchOkxOrderBook");
+    const tdAt = d10.indexOf("marketData:fetchMarketData");
+    expect(okxAt).toBeGreaterThan(0);
+    expect(tdAt).toBeGreaterThan(0);
+    expect(okxAt, "OKX must be attempted first").toBeLessThan(tdAt);
+
+    // Order alone is not enough: the OKX result must be the one that feeds the
+    // verdict. Renaming the binding (okx -> okxDISABLED) keeps the call in
+    // place while silently detaching it, so pin the data flow too.
+    expect(d10).toMatch(/const okx = await probe\(/);
+    expect(d10).toMatch(/let chosen = okx;/);
+    expect(d10).toMatch(/if \(okx\.out\.observedAt === null\) \{/);
+  });
+
+  it("only OKX can produce a D10 PASS; the acquisition-stamped provider cannot", () => {
+    const d10 = harnessSource.slice(
+      harnessSource.indexOf("D10: observedAt must come from"),
+      harnessSource.indexOf("return { premiumProbe"),
+    );
+    // The PASS branch is gated on the OKX path.
+    expect(d10).toMatch(/} else if \(chosenLabel === "okx"\) \{/);
+    // The fallback provider yields NOT_VERIFIED, never PASS.
+    expect(d10).toMatch(/"D10",\s*\n?\s*"NOT_VERIFIED"/);
+    expect(d10).toMatch(/stamped at acquisition time/);
+  });
+
+  it("the OKX timestamp really is the exchange's own field, not local time", () => {
+    // Pin the server-side contract: execution-quality rejects a snapshot whose
+    // exchange ts is missing, so observedAt can never silently become Date.now().
+    const eq = readFileSync(join(root, "src/lib/execution-quality.ts"), "utf8");
+    expect(eq).toMatch(/missing\/invalid exchange timestamp \(ts\)/);
+    expect(eq).toMatch(/snapshotTs: ts/);
+    const okx = readFileSync(join(root, "src/convex/okx.ts"), "utf8");
+    // observedAt is emitted only when the exchange supplied it.
+    expect(okx).toMatch(/snapshotTs !== undefined \? \{ observedAt: snapshotTs \} : \{\}/);
+  });
+
+  it("rejects a timestamp indistinguishable from the local clock", () => {
+    expect(harnessSource).toMatch(/looksLikeLocalClock/);
+    // The message spans a string concatenation, so match the two halves.
+    expect(harnessSource).toMatch(/indistinguishable from the local request clock/);
+    expect(harnessSource).toMatch(/evidence a provider observation/);
+    // And the check must actually gate the verdict.
+    expect(harnessSource).toMatch(/looksLikeLocalClock \? "FAIL" : "PASS"/);
+  });
+
+  it("records a per-provider inventory with failure reasons", () => {
+    for (const field of ["provider", "dataset", "instrument", "access", "basis", "acquired", "observedAt", "failure"]) {
+      expect(harnessSource, `provider inventory must record ${field}`).toMatch(
+        new RegExp(`${field}:`),
+      );
+    }
+    expect(harnessSource).toMatch(/providerAttempts/);
+  });
+});
+
+describe("Phase 207 — the chargeable sweep is discovery-driven and non-coercive", () => {
+  it("sources candidates from the deployment's discovery action, not a hardcoded list", () => {
+    expect(harnessSource).toContain("okx:discoverOkxInstruments");
+    const sweep = harnessSource.slice(
+      harnessSource.indexOf("Natural chargeable-signal search"),
+      harnessSource.indexOf("D5: a chargeable recommendation"),
+    );
+    // No literal instrument whitelist inside the sweep.
+    const literals = [...sweep.matchAll(/"[A-Z]{3,}-[A-Z]{3,}"/g)];
+    expect(literals, "sweep must not hardcode instrument ids").toHaveLength(0);
+    expect(sweep).toMatch(/cand\.instId/);
+  });
+
+  it("preserves provider-native identity for every candidate", () => {
+    const sweep = harnessSource.slice(
+      harnessSource.indexOf("Natural chargeable-signal search"),
+      harnessSource.indexOf("D5: a chargeable recommendation"),
+    );
+    expect(sweep).toMatch(/instrument: cand\.instId/);
+    expect(sweep).toMatch(/no symbol substitution/i);
+    // No rewriting/normalising of the provider id.
+    expect(sweep).not.toMatch(/instId\.(replace|split|toUpperCase|slice)/);
+  });
+
+  it("never alters engine inputs to coerce a signal", () => {
+    const sweep = harnessSource.slice(
+      harnessSource.indexOf("Natural chargeable-signal search"),
+      harnessSource.indexOf("D5: a chargeable recommendation"),
+    );
+    // Assert on CODE only: the header comment legitimately promises not to
+    // touch thresholds/bias/confidence, and matching prose would fail on the
+    // very sentence documenting the guarantee.
+    const sweepCode = sweep
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^[ \t]*\/\/.*$/gm, "")
+      .replace(/^\s*\*.*$/gm, "");
+    for (const forbidden of [/threshold/i, /confidence\s*:/, /bias\s*:/]) {
+      expect(sweepCode, `sweep must not set ${forbidden}`).not.toMatch(forbidden);
+    }
+    // `recommendation` appears only as a READ of the engine's response and in
+    // the sweep log — never as an input. Pin that distinction precisely: the
+    // analysisInput() call must carry no recommendation at all.
+    const inputCall = /analysisInput\(\{([\s\S]*?)\n\s{8}\}\)/.exec(sweepCode);
+    expect(inputCall, "sweep must build its input via analysisInput").not.toBeNull();
+    expect(inputCall![1]).not.toMatch(/recommendation/);
+    for (const read of [/const rec = r\.value\?\.result\?\.recommendation/]) {
+      expect(sweepCode, "the recommendation must be read from the response").toMatch(read);
+    }
+    // The only thing it varies is which discovered instrument is analysed.
+    expect(sweepCode).toMatch(/instrument: cand\.instId/);
+    expect(sweepCode).toMatch(/instrumentType: "crypto"/);
+  });
+
+  it("stops at the first natural chargeable result and reports none as NOT_VERIFIED", () => {
+    const sweep = harnessSource.slice(
+      harnessSource.indexOf("Natural chargeable-signal search"),
+      harnessSource.indexOf("D5: a chargeable recommendation"),
+    );
+    expect(sweep).toMatch(/CHARGEABLE_RECS\.includes\(String\(rec\)\)/);
+    expect(sweep).toMatch(/break;/);
+    expect(sweep).toMatch(/never FAIL/);
+  });
+
+  it("is opt-in, so the default run keeps its previous single-instrument behaviour", () => {
+    expect(harnessSource).toMatch(/const sweepLimit = Math\.max\(1, Number\.parseInt\(flag\("--sweep"\) \?\? "1", 10\) \|\| 1\)/);
+    expect(harnessSource).toMatch(/if \(sweepLimit > 1\) \{/);
+  });
+
+  it("measures the consumption delta for a swept chargeable result", () => {
+    expect(harnessSource).toMatch(/chargeableFind\.consumed === 1 \? "PASS" : "FAIL"/);
+    expect(harnessSource).toMatch(/consumed: after - before/);
+  });
+});
