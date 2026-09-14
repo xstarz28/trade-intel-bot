@@ -160,6 +160,58 @@ npm run evidence:d -- --sweep 25
 
 ---
 
+## The report surface (Phase 208)
+
+Both output modes render **one** object, built by
+`scripts/lib/evidence-report.mjs` (`buildReport`). `--json` serialises it;
+the terminal view is `renderHumanReport` over the same object. They cannot
+drift, because there is only one report.
+
+The operator should never have to read the harness source to understand a run,
+so the human view carries the same decision-critical facts as the JSON:
+deployment identity, every D1-D10 row with its reason, each provider attempt
+and how `observedAt` was derived, every sweep candidate and its outcome,
+whether a chargeable signal was found naturally, the E1-E7 verdict, and an
+explicit **REMAINING BLOCKERS** list.
+
+### Status vocabulary is fail-closed
+
+`canonicalStatus()` returns PASS for the exact token `PASS` and nothing else.
+Anything unrecognised becomes `UNKNOWN`, never PASS. This closed two real
+false-green holes found while auditing Phase 207:
+
+| hole | old behaviour | now |
+| --- | --- | --- |
+| unrecognised status (`SKIPPED`, `OK`, a typo) | matched none of the failed/blocked/not-verified filters, so `complete` was true and the run reported **ACHIEVED** with zero passes | counted as `UNKNOWN`; verdict INCOMPLETE and the row is listed |
+| zero recorded checks | same — nothing bad happened, so **ACHIEVED** | every declared observation missing is rendered BLOCKED |
+
+`ACHIEVED` now requires **positive evidence**: every declared observation
+present and every one of them an actual PASS. Absence of a result is not
+evidence.
+
+Related invariants, all enforced on the structured report rather than by string
+matching:
+
+- a check recorded twice keeps its **worst** status — a later PASS can never
+  overwrite an earlier FAIL;
+- `productionEvidence` is true only when the run is complete **and** the
+  environment is production **and** the class is `PRODUCTION_EVIDENCE` **and**
+  `--production-evidence` was passed **and** auth was not anonymous;
+- the E-track is summarised beside the D-track and contributes nothing to it,
+  in either direction;
+- no token, OTP or API key is ever placed in the report.
+
+### Schema
+
+`schemaVersion: "evidence-d/2"`. Top-level keys: `evidenceD`, `evidenceClass`,
+`notExecutedReason`, `environment`, `deployment{host,name,declared}`,
+`productionEvidence`, `configSource`, `authMechanism`, `capturedAt`,
+`durationMs`, `transportCalls`, `summary`, `integrity`, `checks[]`,
+`providerEvidence{attempts[],note}`,
+`sweep{limit,attempted,candidates[],chargeableFind,marketLimitation}`,
+`entitlementStateMachine{verdict,note,summary,checks[]}`, `safetyProbes`,
+`blockers[]`.
+
 ## Development verification is not production evidence
 
 A green run against a development deployment is labelled:

@@ -339,10 +339,13 @@ describe("Phase 203 — D1–D10 cannot be satisfied without a live deployment",
 
 describe("Phase 203 — partial evidence is never reported as complete", () => {
   it("exits non-zero and withholds ACHIEVED whenever anything is unresolved", () => {
-    expect(harnessSource).toMatch(
-      /const complete =\s*failed\.length === 0 && blocked\.length === 0 && notVerified\.length === 0/,
-    );
-    expect(harnessSource).toMatch(/process\.exit\(failed\.length > 0 \? 1 : complete \? 0 : 2\)/);
+    // Phase 208 moved this rule into scripts/lib/evidence-report.mjs, where it
+    // is asserted behaviourally (evidence-report-schema.phase208.test.ts).
+    // Here we pin only the harness-side contract: the exit code follows the
+    // canonical verdict, and ACHIEVED is the sole success condition.
+    expect(harnessSource).toMatch(/const complete = report\.evidenceD === "ACHIEVED";/);
+    expect(harnessSource).toMatch(/const failed = report\.summary\.failed;/);
+    expect(harnessSource).toMatch(/process\.exit\(failed > 0 \? 1 : complete \? 0 : 2\)/);
   });
 
   it("blocks D1 when the transport cannot deliver mail", () => {
@@ -573,11 +576,12 @@ describe("Phase 205 — a quiet market is NOT_VERIFIED, never FAIL and never for
     // expressions rather than a source slice: the E-track summary is computed
     // nearby, so a wide slice would match its (legitimate) mentions.
     const verdictLines = [
-      /const failed = checks\.filter\(/,
-      /const blocked = checks\.filter\(/,
-      /const notVerified = checks\.filter\(/,
-      /const complete =\s*failed\.length === 0 && blocked\.length === 0 && notVerified\.length === 0/,
-      /const evidenceD = failed\.length > 0 \? "FAILED" : complete \? "ACHIEVED" : "INCOMPLETE"/,
+      // Phase 208: the verdict is computed by buildReport() from the D-track
+      // definitions and `checks` only. The E-track is passed as a SEPARATE
+      // field and is proven non-contributing in the Phase 208 suite.
+      /definitions: D_DEFINITIONS,\n\s*checks,/,
+      /const failed = report\.summary\.failed;/,
+      /const complete = report\.evidenceD === "ACHIEVED";/,
     ];
     for (const line of verdictLines) {
       expect(harnessSource, `D verdict must be derived by ${line}`).toMatch(line);
@@ -585,10 +589,17 @@ describe("Phase 205 — a quiet market is NOT_VERIFIED, never FAIL and never for
     // No E-track array may participate in the D verdict or the exit code.
     expect(harnessSource).not.toMatch(/(?:failed|blocked|notVerified|complete)[^\n]*entitlementChecks/);
     expect(harnessSource).not.toMatch(/evidenceD[^\n]*entitlementChecks/);
+    // entitlementChecks reaches the report only through its own named field.
+    const entitlementUses = [...harnessSource.matchAll(/^\s*entitlementChecks,?$/gm)];
+    expect(entitlementUses.length).toBeGreaterThan(0);
     expect(harnessSource).not.toMatch(/process\.exit\([^)]*entitlement/);
     // And it is still reported, separately.
-    expect(harnessSource).toMatch(/entitlementStateMachine/);
-    expect(harnessSource).toMatch(/never merged into them/);
+    // The separate reporting now lives in the canonical schema module, which
+    // the harness delegates to. Assert it there rather than deleting the check.
+    const schemaSource = readFileSync(join(root, "scripts/lib/evidence-report.mjs"), "utf8");
+    expect(schemaSource).toMatch(/entitlementStateMachine/);
+    expect(schemaSource).toMatch(/never folded into it|never merged into them/);
+    expect(harnessSource).toMatch(/never folded in/);
   });
 });
 

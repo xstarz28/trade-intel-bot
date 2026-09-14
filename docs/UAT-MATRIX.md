@@ -2224,6 +2224,41 @@ pass in CI; that proves the *harness logic*, not the *evidence*.
 | 35k.11 | Default run (no `--sweep`) | Behaviour identical to Phase 206 | BLOCKED |
 | 35k.12 | `providerAttempts[]` present in output | Every attempt auditable after the fact | BLOCKED |
 
+## 35l. Phase 208 — report surface & auditability
+
+Unlike 35j/35k, these rows are verified by **structured assertions on the report
+builder**, not by a live run, so they are PASS rather than BLOCKED: the subject
+under test is the reporting logic itself.
+
+| # | Scenario | Expected | Status |
+| --- | --- | --- | --- |
+| 35l.1 | A BLOCKED row is rendered | Shows BLOCKED in JSON and terminal; never PASS | PASS |
+| 35l.2 | A NOT_VERIFIED row is rendered | Shows NOT_VERIFIED and keeps its reason | PASS |
+| 35l.3 | A FAIL/FAILED row is rendered | Shows FAIL; verdict FAILED; exit 1 | PASS |
+| 35l.4 | A check carries an unrecognised status | UNKNOWN, verdict INCOMPLETE (Phase 207 false-green) | PASS |
+| 35l.5 | No checks recorded at all | 10 BLOCKED rows, verdict INCOMPLETE (Phase 207 false-green) | PASS |
+| 35l.6 | One observation missing | Rendered BLOCKED, denominator stays 10 | PASS |
+| 35l.7 | Same observation recorded twice | Worst status wins; PASS cannot overwrite FAIL | PASS |
+| 35l.8 | All ten genuinely PASS | Verdict ACHIEVED | PASS |
+| 35l.9 | `productionEvidence` on a dev deployment | false | PASS |
+| 35l.10 | `productionEvidence` with anonymous auth | false | PASS |
+| 35l.11 | `productionEvidence` with one unresolved check | false | PASS |
+| 35l.12 | JSON exposes all 20 canonical top-level keys | Present | PASS |
+| 35l.13 | Human report surfaces the same decision-critical facts | Present | PASS |
+| 35l.14 | Provider attempts visible in terminal output | provider/dataset/instrument/access/basis/outcome | PASS |
+| 35l.15 | Unavailable provider rendered | "failed", observedAt=none, failure reason | PASS |
+| 35l.16 | Sweep candidates visible with provider-native ids | Present with status/recommendation/consumed | PASS |
+| 35l.17 | Skipped/failed sweep candidate | Reason surfaced, not hidden | PASS |
+| 35l.18 | Natural chargeable find | Exposed with instrument, recommendation, consumed | PASS |
+| 35l.19 | No chargeable signal | `chargeableFind: null` + explicit market-condition note | PASS |
+| 35l.20 | Quiet market | D5/D7/D8 NOT_VERIFIED, never FAIL | PASS |
+| 35l.21 | E-track failure | D verdict unaffected | PASS |
+| 35l.22 | D-track failure | E verdict unaffected | PASS |
+| 35l.23 | E-track passes with an unresolved D check | Cannot reach ACHIEVED | PASS |
+| 35l.24 | Report contents scanned for secrets | No token/OTP/API key | PASS |
+| 35l.25 | Remaining blockers listed with classification | Every unresolved check, no passing one | PASS |
+| 35l.26 | Refusal path (`--json` and human) | 0 PASS rows, 10 BLOCKED, exit 2 | PASS |
+
 ## 36. Sign-off
 
 | Field | Value |
