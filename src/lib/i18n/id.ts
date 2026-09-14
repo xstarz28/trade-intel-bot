@@ -249,6 +249,18 @@ const id: Translations = {
   },
 
   intelligence: {
+    momentumLabel: "Momentum",
+    momentumOverbought: "Jenuh Beli",
+    momentumOversold: "Jenuh Jual",
+    momentumPositive: "Positif",
+    momentumNegative: "Negatif",
+    volatilityExpanded: "Melebar",
+    volatilityCompressed: "Menyempit",
+    volatilityNormal: "Normal",
+    structureHhHl: "Puncak Naik / Lembah Naik",
+    structureLhLl: "Puncak Turun / Lembah Turun",
+    structureHhLl: "Puncak Naik / Lembah Turun",
+    structureLhHl: "Puncak Turun / Lembah Naik",
     technical: "Teknikal",
     fundamental: "Fundamental",
     macro: "Makro",
@@ -1135,6 +1147,16 @@ const id: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    previousLabel: "Sebelumnya",
+    interpTimeframeShift: "{timeframe} bergeser dari {from} ke {to}",
+    interpRegimeShift: "Rezim pasar berubah dari {from} ke {to}",
+    interpSupportingLeads: "Bukti pendukung masih melebihi bukti yang bertentangan.",
+    interpConflictingLeads: "Bukti yang bertentangan kini melebihi bukti pendukung.",
+    interpEvidenceBalanced: "Bukti seimbang.",
+    interpThesisStable: "Tesis tetap {thesis}. Tidak ada perubahan struktural signifikan.",
+    interpFirstAnalysis: "Analisis pertama untuk {instrument} {side}. Tesis: {thesis}.",
+    currentLabel: "Saat ini",
+    alsoLabel: "Juga",
     currentVsPrevious: "SAAT INI vs SEBELUMNYA",
     historySummary: "RINGKASAN RIWAYAT",
     initialAnalysis: "Analisis Awal",

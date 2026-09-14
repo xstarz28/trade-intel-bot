@@ -59,8 +59,14 @@ const report = loadReport();
  *
  * Raising it requires a deliberate edit and a reason, which is the point —
  * adding vocabulary nothing renders should be a conscious act.
+ *
+ * Phase 197: 235 -> 232. The timeline localization reused three previously
+ * orphaned keys rather than minting new ones. The ratchet is tightened in the
+ * same commit because leftover slack lets a genuinely unreferenced new key slip
+ * in unnoticed — caught by mutation M3 of the Phase 193 suite, which survived
+ * until this number was brought back down to the real count.
  */
-const UNREFERENCED_BUDGET = 235;
+const UNREFERENCED_BUDGET = 232;
 
 /**
  * Keys deliberately retained despite having no statically visible consumer.

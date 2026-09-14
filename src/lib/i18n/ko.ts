@@ -253,6 +253,18 @@ const ko: Translations = {
   },
 
   intelligence: {
+    momentumLabel: "모멘텀",
+    momentumOverbought: "과매수",
+    momentumOversold: "과매도",
+    momentumPositive: "긍정적",
+    momentumNegative: "부정적",
+    volatilityExpanded: "확대",
+    volatilityCompressed: "축소",
+    volatilityNormal: "정상",
+    structureHhHl: "고점 상승 / 저점 상승",
+    structureLhLl: "고점 하락 / 저점 하락",
+    structureHhLl: "고점 상승 / 저점 하락",
+    structureLhHl: "고점 하락 / 저점 상승",
     technical: "기술적",
     fundamental: "펀더멘털",
     macro: "매크로",
@@ -1140,6 +1152,16 @@ const ko: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    previousLabel: "이전",
+    interpTimeframeShift: "{timeframe}이(가) {from}에서 {to}(으)로 변경되었습니다",
+    interpRegimeShift: "시장 국면이 {from}에서 {to}(으)로 변경되었습니다",
+    interpSupportingLeads: "지지 근거가 여전히 상충 근거보다 우세합니다.",
+    interpConflictingLeads: "상충 근거가 이제 지지 근거보다 우세합니다.",
+    interpEvidenceBalanced: "근거가 균형을 이루고 있습니다.",
+    interpThesisStable: "테제는 {thesis} 상태입니다. 유의미한 구조 변화가 감지되지 않았습니다.",
+    interpFirstAnalysis: "{instrument} {side}에 대한 최초 분석. 테제: {thesis}.",
+    currentLabel: "현재",
+    alsoLabel: "또한",
     currentVsPrevious: "현재 vs 이전",
     historySummary: "히스토리 요약",
     initialAnalysis: "초기 분석",

@@ -253,6 +253,18 @@ const zh: Translations = {
   },
 
   intelligence: {
+    momentumLabel: "动量",
+    momentumOverbought: "超买",
+    momentumOversold: "超卖",
+    momentumPositive: "正向",
+    momentumNegative: "负向",
+    volatilityExpanded: "扩张",
+    volatilityCompressed: "压缩",
+    volatilityNormal: "正常",
+    structureHhHl: "高点抬高／低点抬高",
+    structureLhLl: "高点降低／低点降低",
+    structureHhLl: "高点抬高／低点降低",
+    structureLhHl: "高点降低／低点抬高",
     technical: "技术面",
     fundamental: "基本面",
     macro: "宏观",
@@ -1138,6 +1150,16 @@ const zh: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    previousLabel: "前值",
+    interpTimeframeShift: "{timeframe} 从 {from} 变为 {to}",
+    interpRegimeShift: "市场状态从 {from} 变为 {to}",
+    interpSupportingLeads: "支持性证据仍然多于冲突性证据。",
+    interpConflictingLeads: "冲突性证据现已多于支持性证据。",
+    interpEvidenceBalanced: "证据势均力敌。",
+    interpThesisStable: "论点仍为 {thesis}。未检测到重大结构变化。",
+    interpFirstAnalysis: "{instrument} {side} 的首次分析。论点：{thesis}。",
+    currentLabel: "当前",
+    alsoLabel: "另外",
     currentVsPrevious: "当前 vs 上一次",
     historySummary: "历史摘要",
     initialAnalysis: "初始分析",

@@ -1760,7 +1760,78 @@ claimed as behavioural.
 layout problems — German `Handelbarkeit` and `Fingerabdruck` are kept at full
 length per the standing rule.
 
-## 35. Sign-off
+## 35. Phase 197 — Historical timeline localization & evidence integrity
+
+The historical timeline is an **evidence** surface: it tells a trader what the
+engine believed before, what it believes now, and therefore whether a thesis is
+degrading. Localization here must change language only — never which fields are
+marked as changed, never the direction of a transition, never the instrument.
+
+Re-measurement (§1) reported **6** findings in this component. A full manual
+read found **three** defect classes, and only the first was detector-visible:
+
+1. six caption strings (`Current:`, `Previous:`, `Changed:`, `Also:`,
+   `Evidence:`, `changed`);
+2. **detector-blind** — the comparison table's labels lived in an array literal
+   and its values rendered **raw enums**, so a Japanese user read
+   `HIGHER_HIGHS_HIGHER_LOWS`;
+3. **detector-blind** — `event.description` and `summary.interpretation` are
+   English prose assembled with template literals in a lib file and rendered
+   verbatim in all nine locales.
+
+Defect 3 carried a hard constraint: `description` is **persisted**, so it is
+localized at *render* time from the event's structured fields and the stored
+English string is left byte-identical. The engine's emitted sentences were
+verified unchanged by checksum before and after.
+
+| # | Check | How | Who | Result |
+|---|---|---|---|---|
+| 35.1 | Six captions render from the dictionary in 9 locales | phase197 suite | AUTOMATED | PASS |
+| 35.2 | No raw enum spelling reaches a non-English screen | phase197 suite | AUTOMATED | PASS |
+| 35.3 | Structure/momentum/volatility values translated per locale | phase197 suite | AUTOMATED | PASS |
+| 35.4 | Mapper output ≠ canonical enum in every non-English locale | phase197 suite | AUTOMATED | PASS |
+| 35.5 | Instrument identity (`BTC/USDT`) never translated | phase197 suite | AUTOMATED | PASS |
+| 35.6 | `changed` computed from raw enums, not translations | phase197 suite | AUTOMATED | PASS (structural — see 35.16) |
+| 35.7 | Identical snapshots produce zero change markers in 9 locales | phase197 suite | AUTOMATED | PASS |
+| 35.8 | Lib comparison engine still operates on canonical enums | phase197 suite | AUTOMATED | PASS |
+| 35.9 | Stored English description not rendered in other locales | phase197 suite | AUTOMATED | PASS |
+| 35.10 | Transition renders translated endpoints, arrow preserved | phase197 suite | AUTOMATED | PASS |
+| 35.11 | INITIAL_ANALYSIS keeps instrument + side, translated thesis | phase197 suite | AUTOMATED | PASS |
+| 35.12 | Unreconstructable event falls back, never invents copy | phase197 suite | AUTOMATED | PASS |
+| 35.13 | Rendering never mutates the persisted `description` | phase197 suite | AUTOMATED | PASS |
+| 35.14 | Event clock bound to app locale, not host locale | phase197 suite | AUTOMATED | PASS |
+| 35.15 | Engine's persisted English sentences pinned exactly | phase197 suite | AUTOMATED | PASS |
+| 35.16 | No two states share a translation within a domain/locale | phase197 suite | AUTOMATED | PASS |
+| 35.17 | `interpretationParts` agree with the English `interpretation` | phase197 suite | AUTOMATED | PASS |
+| 35.18 | Nine-locale key + placeholder parity | parity suite | AUTOMATED | PASS (9 × 1191) |
+| 35.19 | HistoricalTimeline removed from `COMPONENT_DEBT` | guard suite | AUTOMATED | PASS |
+| 35.20 | Orphan ratchet tightened 235 → 232 | orphan guard | AUTOMATED | PASS |
+| 35.21 | Mutation suite (12 mutations incl. 1 control) | phase197 script | AUTOMATED | PASS (12/12) |
+| 35.22 | All prior mutation suites still green | 189/191/193/195/196 | AUTOMATED | PASS (57/57) |
+| 35.23 | Native-speaker review of 22 new strings × 9 locales | read each locale | HUMAN | NOT VERIFIED |
+| 35.24 | Long structure labels do not clip at narrow widths | resize to 320 px | HUMAN | NOT VERIFIED |
+
+**Disclosure — 35.6 is structural, not behavioural.** Mutation M4 rewrote the
+change predicate to compare *translated* strings and **survived**: no two enum
+values currently share a translation in any locale, so the rewritten predicate
+returns identical booleans. It is an *equivalent mutant* today but a latent
+defect tomorrow, so it is caught by asserting the source contains no mapper call
+inside a `changed:` expression, and the no-collision property that makes it
+equivalent is itself asserted (35.16). This is declared rather than counted as
+behavioural coverage.
+
+**Gap found by mutation and closed.** M9 rewrote the engine's persisted
+description template and initially **survived** — Phase 90/91 only use those
+strings as round-trip fixtures, so nothing pinned what the engine actually
+emits. The template could have been changed, invalidating every persisted row,
+with the suite green. Row 35.15 closes it.
+
+**35.23/35.24 are NOT VERIFIED, not PASS.** No headless browser or native
+speaker is available in this environment; they must not be reported as working.
+
+---
+
+## 36. Sign-off
 
 | Field | Value |
 | --- | --- |
