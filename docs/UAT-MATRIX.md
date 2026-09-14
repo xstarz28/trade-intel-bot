@@ -2084,6 +2084,38 @@ not evidence that the deployed backend exposes the function. These rows become
 executable by the operator on the machine where codegen succeeded. They are a
 subset of Evidence D and must not be reported as working until run.
 
+## 35g. Phase 203 — Evidence D execution against a real deployment
+
+`npm run evidence:d` now derives its target from the configured environment and
+executes D1–D10 over HTTP. The sandbox cannot reach any Convex deployment
+(HTTP 000), so the rows below are executed by the operator on the machine where
+the deployment is reachable.
+
+**A development run is not production evidence.** A fully green run against a
+`dev:` deployment is labelled `DEV_VERIFIED — NOT PRODUCTION EVIDENCE`, and
+`productionEvidence: true` is emitted only for a real `prod:` deployment.
+
+| # | Step | Expected | Result |
+| --- | --- | --- | --- |
+| 35g.1 | `npm run evidence:d` with the dev deployment configured | Runs; report header shows the dev deployment host and `[development]` | BLOCKED — operator machine |
+| 35g.2 | Inspect the report class | `DEV_VERIFIED — NOT PRODUCTION EVIDENCE`; `productionEvidence: false` | BLOCKED — operator machine |
+| 35g.3 | `npm run evidence:d -- --production-evidence` against the dev deployment | Refused, exit 2, `NOT EXECUTED` | BLOCKED — operator machine |
+| 35g.4 | D3 with no session | `UNAUTHENTICATED`, `result: null` | BLOCKED — operator machine |
+| 35g.5 | D1 with a real mailbox | Code arrives; operator supplies it (HUMAN-attested) | BLOCKED — needs email transport + mailbox |
+| 35g.6 | D1 with `XSTARZ_EMAIL_TRANSPORT=console` | D1 BLOCKED, run stops; a log-scraped code is never accepted as delivery | BLOCKED — operator machine |
+| 35g.7 | D4 on a fresh identity | `GUEST`, `remaining = 2` | BLOCKED — operator machine |
+| 35g.8 | D5 when the engine yields BUY/SELL | Exactly one signal consumed | BLOCKED — operator machine |
+| 35g.9 | D6 when the engine yields WAIT/NO_TRADE | Zero consumed | BLOCKED — operator machine |
+| 35g.10 | D7 past the allowance | `LOCKED` | BLOCKED — operator machine |
+| 35g.11 | D8 on the LOCKED payload | None of the 18 protected fields present; only `hadActionableSignal` | BLOCKED — operator machine |
+| 35g.12 | D9 forged provider evidence inside `input` | Forged price/source/spec absent from the result | BLOCKED — operator machine |
+| 35g.13 | Client self-grant probe (`grantPremium`) | Rejected; plan stays `GUEST` | BLOCKED — operator machine |
+| 35g.14 | D10 provenance | `observedAt` from the acquisition path, not request time | BLOCKED — needs a live provider credential |
+
+**Vocabulary note:** D5/D6 report `NOT_VERIFIED` when live conditions do not
+produce the required recommendation. That is not a failure and must never be
+converted to PASS — the engine is never forced to emit a signal.
+
 ## 36. Sign-off
 
 | Field | Value |

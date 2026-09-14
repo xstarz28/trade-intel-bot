@@ -1,21 +1,30 @@
 #!/usr/bin/env node
 /**
- * Phase 200 — Evidence D execution harness (D1–D10).
+ * Evidence D execution harness (D1–D10).
  *
- * Evidence D is "authenticated calls succeed against a REAL deployment". This
- * harness performs those calls and records what actually happened. It exists so
- * that whoever finally has a deployment does not have to reinvent the
- * verification, and so the result is a machine-readable artifact rather than
- * someone's recollection.
+ * Phase 200 created this. Phase 203 rewrote the execution half after an audit
+ * found it could not have produced correct results against a real deployment:
+ * it called `runProtectedAnalysis` with the wrong argument shape, and it sent
+ * D9's forged payload to a nesting level the server never reads — so D9, the
+ * single most security-critical observation, would have reported PASS without
+ * the server having stripped anything. See docs/EVIDENCE-D.md §"Phase 203".
+ *
+ * Evidence D is "authenticated calls behave correctly against a REAL
+ * deployment". This harness performs those calls and records what actually
+ * happened, as a machine-readable artifact rather than someone's recollection.
  *
  * ## What this harness refuses to do
  *
  * - It will NOT run against localhost, a mock, or a substitute backend. A
  *   passing run against a stub is worse than no run: it manufactures false
  *   confidence in the one gate that exists to prevent exactly that.
+ * - It has no fixture path, no mock mode, no result cache and no way to load a
+ *   previous report. Every status in its output comes from an HTTP response
+ *   received during this process's lifetime.
  * - It will NOT report PASS for a check it could not execute. Unexecuted checks
  *   are BLOCKED, and a run with any BLOCKED check is not Evidence D.
  * - It will NOT print an OTP, a session token, or any credential.
+ * - It will NOT label a development deployment as production evidence.
  *
  * ## D1 requires a human
  *
@@ -26,38 +35,152 @@
  * delivery.
  *
  * Usage:
- *   VITE_CONVEX_URL=https://<deployment>.convex.cloud \
- *   EVIDENCE_D_EMAIL=you@your-domain \
- *   node scripts/evidence-d-harness.mjs [--json] [--otp 123456]
+ *   npm run evidence:d                      # derives config from the environment
+ *   node scripts/evidence-d-harness.mjs --auto-env [--json]
+ *     [--auth otp|anonymous] [--otp 123456] [--env-file path]
+ *     [--production-evidence]
  *
  * Exit codes:
  *   0 = all ten observations captured and passing (Evidence D achieved)
  *   1 = at least one observation FAILED (a real defect)
- *   2 = could not execute (no deployment configured, or a substitute detected)
+ *   2 = could not execute, or the run was incomplete
  */
+
+import { readFileSync, existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
-const otpFromFlag = args[args.indexOf("--otp") + 1];
-const providedOtp = args.includes("--otp") ? otpFromFlag : null;
+const autoEnv = args.includes("--auto-env");
+const claimsProduction = args.includes("--production-evidence");
+const flag = (name) => {
+  const i = args.indexOf(name);
+  return i >= 0 ? args[i + 1] : null;
+};
+const providedOtp = args.includes("--otp") ? flag("--otp") : null;
+const authMode = (flag("--auth") ?? "otp").toLowerCase();
+const envFileFlag = flag("--env-file");
 
-const DEPLOYMENT_URL = (process.env.VITE_CONVEX_URL ?? process.env.CONVEX_URL ?? "").trim();
-const TEST_EMAIL = (process.env.EVIDENCE_D_EMAIL ?? "").trim();
-const TIMEOUT_MS = 30_000;
+const TIMEOUT_MS = 60_000;
+const STARTED_AT = Date.now();
+
+/** The ten observations, defined once so a refusal still reports all of them. */
+const D_DEFINITIONS = [
+  { id: "D1", title: "OTP email received at a real mailbox" },
+  { id: "D2", title: "Sign-in creates an authenticated session" },
+  { id: "D3", title: "Unauthenticated call to a protected route is rejected" },
+  { id: "D4", title: "getMyEntitlement returns GUEST with remaining = 2" },
+  { id: "D5", title: "A chargeable BUY/SELL consumes exactly one signal" },
+  { id: "D6", title: "A WAIT/NO_TRADE consumes zero signals" },
+  { id: "D7", title: "The third chargeable request returns LOCKED" },
+  { id: "D8", title: "The LOCKED payload carries no directional/actionable field" },
+  { id: "D9", title: "A forged provider payload is rejected server-side" },
+  { id: "D10", title: "Provenance observedAt is provider-derived, not local" },
+];
 
 const checks = [];
-const record = (id, title, status, detail, evidence = null) => {
-  checks.push({ id, title, status, detail, evidence });
+const record = (id, status, detail, evidence = null) => {
+  const def = D_DEFINITIONS.find((d) => d.id === id);
+  checks.push({ id, title: def?.title ?? id, status, detail, evidence });
 };
+const recorded = (id) => checks.some((c) => c.id === id);
 
 /* ------------------------------------------------------------------ *
- * Refuse to run against anything that is not a real deployment
+ * Configuration discovery (§2 — derived, never hardcoded)
  * ------------------------------------------------------------------ */
 
-function refuse(reason) {
+/** Parse a dotenv-style file into a plain object. Values are never logged. */
+function parseEnvFile(path) {
+  const out = {};
+  for (const rawLine of readFileSync(path, "utf8").split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq <= 0) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    // Strip a trailing `# comment` that Convex appends to CONVEX_DEPLOYMENT.
+    const hash = value.indexOf(" #");
+    if (hash > 0) value = value.slice(0, hash).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"') && value.length > 1) ||
+      (value.startsWith("'") && value.endsWith("'") && value.length > 1)
+    ) {
+      value = value.slice(1, -1);
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+/**
+ * Build the effective environment.
+ *
+ * The real process environment always wins; a file only supplies what is
+ * missing. File discovery is opt-in (`--auto-env` / `--env-file`) so that the
+ * harness behaves identically on a machine that happens to have a .env.local
+ * and one that does not — a test asserting a refusal must not start passing
+ * because the developer has a deployment configured locally.
+ */
+function buildEnv() {
+  const fromProcess = { ...process.env };
+  let source = "process environment";
+  let fileEnv = {};
+  if (envFileFlag) {
+    const p = resolve(process.cwd(), envFileFlag);
+    if (!existsSync(p)) refuse(`--env-file ${envFileFlag} does not exist.`);
+    fileEnv = parseEnvFile(p);
+    source = `process environment + ${envFileFlag}`;
+  } else if (autoEnv) {
+    for (const candidate of [".env.local", ".env"]) {
+      const p = resolve(process.cwd(), candidate);
+      if (existsSync(p)) {
+        fileEnv = parseEnvFile(p);
+        source = `process environment + ${candidate}`;
+        break;
+      }
+    }
+  }
+  const merged = { ...fileEnv };
+  for (const [k, v] of Object.entries(fromProcess)) {
+    if (v !== undefined && v !== "") merged[k] = v;
+  }
+  return { env: merged, source };
+}
+
+/**
+ * Derive the deployment identity.
+ *
+ * `CONVEX_DEPLOYMENT` is written by the Convex CLI as `<type>:<name>` — it is
+ * the authoritative statement of which deployment this working copy is wired
+ * to, and its prefix is what separates a development deployment from a
+ * production one. The URL alone cannot make that distinction: dev and prod
+ * deployments are both `https://<name>.convex.cloud`.
+ */
+function deriveDeployment(env) {
+  const raw = (env.CONVEX_DEPLOYMENT ?? "").trim();
+  let type = null;
+  let name = null;
+  if (raw) {
+    const m = /^(dev|prod|preview)\s*:\s*([A-Za-z0-9-]+)$/.exec(raw);
+    if (m) {
+      type = m[1];
+      name = m[2];
+    } else if (/^[A-Za-z0-9-]+$/.test(raw)) {
+      name = raw;
+    }
+  }
+  let url = (env.VITE_CONVEX_URL ?? env.CONVEX_URL ?? "").trim();
+  if (!url && name) url = `https://${name}.convex.cloud`;
+  return { raw, type, name, url };
+}
+
+function refuse(reason, extra = {}) {
   const payload = {
     evidenceD: "NOT EXECUTED",
     reason,
+    ...extra,
     checks: D_DEFINITIONS.map((d) => ({
       id: d.id,
       title: d.title,
@@ -73,67 +196,123 @@ function refuse(reason) {
   process.exit(2);
 }
 
-/** The ten observations, defined once so a refusal still reports all of them. */
-const D_DEFINITIONS = [
-  { id: "D1", title: "OTP email received at a real mailbox" },
-  { id: "D2", title: "Sign-in with that code creates a session" },
-  { id: "D3", title: "Unauthenticated call to a protected route is rejected" },
-  { id: "D4", title: "getMyEntitlement returns GUEST with remaining = 2" },
-  { id: "D5", title: "A chargeable BUY/SELL consumes exactly one signal" },
-  { id: "D6", title: "A WAIT/NO_TRADE consumes zero signals" },
-  { id: "D7", title: "The third chargeable request returns LOCKED" },
-  { id: "D8", title: "The LOCKED payload carries no directional/actionable field" },
-  { id: "D9", title: "A forged provider payload is rejected server-side" },
-  { id: "D10", title: "Provenance observedAt is provider-derived, not local" },
-];
+const { env, source: envSource } = buildEnv();
+const deployment = deriveDeployment(env);
+const TEST_EMAIL = (env.EVIDENCE_D_EMAIL ?? "").trim();
 
-if (!DEPLOYMENT_URL) {
-  refuse("VITE_CONVEX_URL is not set — there is no deployment to test against.");
+if (authMode !== "otp" && authMode !== "anonymous") {
+  refuse(`--auth must be "otp" or "anonymous" (got "${authMode}").`);
+}
+if (!deployment.url) {
+  refuse(
+    "No deployment is configured. Set VITE_CONVEX_URL (or CONVEX_DEPLOYMENT) — " +
+      "there is no deployment to test against.",
+  );
 }
 
 let parsed;
 try {
-  parsed = new URL(DEPLOYMENT_URL);
+  parsed = new URL(deployment.url);
 } catch {
-  refuse(`VITE_CONVEX_URL is not a valid URL.`);
+  refuse("The configured Convex URL is not a valid URL.");
 }
 
 // A substitute backend must never be able to produce Evidence D.
 const LOCAL_RE = /^(localhost|127\.|0\.0\.0\.0|\[::1\]|.*\.local)$/i;
 if (LOCAL_RE.test(parsed.hostname)) {
   refuse(
-    `VITE_CONVEX_URL points at a local host (${parsed.hostname}). ` +
+    `The configured Convex URL points at a local host (${parsed.hostname}). ` +
       "Evidence D requires a real deployment; a local substitute cannot produce it.",
   );
 }
 if (parsed.protocol !== "https:") {
-  refuse(`VITE_CONVEX_URL must be https (got ${parsed.protocol}).`);
+  refuse(`The configured Convex URL must be https (got ${parsed.protocol}).`);
 }
 if (!/\.convex\.(cloud|site)$/i.test(parsed.hostname)) {
   refuse(
-    `VITE_CONVEX_URL host (${parsed.hostname}) is not a Convex deployment domain. ` +
+    `The configured Convex URL host (${parsed.hostname}) is not a Convex deployment domain. ` +
       "Refusing to attribute Evidence D to an unknown backend.",
   );
 }
-if (!TEST_EMAIL) {
-  refuse("EVIDENCE_D_EMAIL is not set — D1 needs a real mailbox to deliver to.");
+
+// Wrong-deployment control: if the CLI recorded a deployment name, the URL has
+// to be that deployment. Otherwise a stale VITE_CONVEX_URL would silently
+// attribute this run to a different backend than the one just deployed.
+if (deployment.name) {
+  const hostName = parsed.hostname.split(".")[0];
+  if (hostName !== deployment.name) {
+    refuse(
+      `Deployment mismatch: CONVEX_DEPLOYMENT names "${deployment.name}" but the URL targets ` +
+        `"${hostName}". Refusing to attribute evidence to an ambiguous target.`,
+    );
+  }
 }
 
 /* ------------------------------------------------------------------ *
- * Convex HTTP client (functions endpoint)
+ * Environment labelling (§5)
  * ------------------------------------------------------------------ */
 
-async function callConvex(path, functionName, args_, token = null) {
+/**
+ * Which environment this evidence describes.
+ *
+ * Unknown is NOT treated as production: claiming production evidence from an
+ * unlabelled deployment is exactly the mislabelling this section exists to
+ * prevent. Unknown is reported as unknown, and cannot carry a production
+ * claim.
+ */
+const DEPLOYMENT_ENVIRONMENT =
+  deployment.type === "prod"
+    ? "production"
+    : deployment.type === "dev"
+      ? "development"
+      : deployment.type === "preview"
+        ? "preview"
+        : "unknown";
+
+if (claimsProduction && DEPLOYMENT_ENVIRONMENT !== "production") {
+  refuse(
+    `--production-evidence was requested, but the configured deployment is ` +
+      `"${DEPLOYMENT_ENVIRONMENT}". Production evidence requires an actual production ` +
+      "deployment identity (CONVEX_DEPLOYMENT=prod:<name>).",
+  );
+}
+if (DEPLOYMENT_ENVIRONMENT === "production" && authMode === "anonymous") {
+  refuse(
+    "Anonymous sign-in is a development convenience. Production Evidence D must exercise " +
+      "the real OTP flow (--auth otp).",
+  );
+}
+if (authMode === "otp" && !TEST_EMAIL) {
+  refuse("EVIDENCE_D_EMAIL is not set — D1 needs a real mailbox to deliver to.");
+}
+
+/**
+ * A development run can never be production evidence, however green it is.
+ */
+const EVIDENCE_CLASS =
+  DEPLOYMENT_ENVIRONMENT === "production" && claimsProduction
+    ? "PRODUCTION_EVIDENCE"
+    : DEPLOYMENT_ENVIRONMENT === "development"
+      ? "DEV_VERIFIED — NOT PRODUCTION EVIDENCE"
+      : `${DEPLOYMENT_ENVIRONMENT.toUpperCase()}_VERIFIED — NOT PRODUCTION EVIDENCE`;
+
+/* ------------------------------------------------------------------ *
+ * Convex HTTP client
+ * ------------------------------------------------------------------ */
+
+const transport = { calls: 0, lastError: null };
+
+async function callConvex(kind, functionName, functionArgs, token = null) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const response = await fetch(`${DEPLOYMENT_URL}/api/${path}`, {
+    const response = await fetch(`${parsed.origin}/api/${kind}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: JSON.stringify({ path: functionName, args: args_, format: "json" }),
+      body: JSON.stringify({ path: functionName, args: functionArgs ?? {}, format: "json" }),
       signal: controller.signal,
     });
     const text = await response.text();
@@ -143,274 +322,557 @@ async function callConvex(path, functionName, args_, token = null) {
     } catch {
       body = { raw: text.slice(0, 400) };
     }
-    return { ok: response.ok, status: response.status, body };
+    transport.calls += 1;
+    // Convex answers 200 with {status:"error"} for a thrown function error.
+    const appError = body?.status === "error" ? (body.errorMessage ?? "error") : null;
+    return {
+      ok: response.ok && !appError,
+      httpStatus: response.status,
+      appError,
+      value: body?.value,
+      body,
+    };
   } catch (error) {
-    return { ok: false, status: 0, body: null, error: error?.cause?.code ?? error?.name };
+    const code = error?.cause?.code ?? error?.name ?? "unknown";
+    transport.lastError = code;
+    return { ok: false, httpStatus: 0, transportError: code, value: undefined, body: null };
   } finally {
     clearTimeout(timer);
   }
 }
 
 const query = (fn, a, t) => callConvex("query", fn, a, t);
-const mutation = (fn, a, t) => callConvex("mutation", fn, a, t);
 const action = (fn, a, t) => callConvex("action", fn, a, t);
+const mutation = (fn, a, t) => callConvex("mutation", fn, a, t);
+
+const maskEmail = (email) => {
+  const [user, domain] = String(email).split("@");
+  if (!domain) return "***";
+  return `${user.slice(0, 2)}***@${domain}`;
+};
+
+/**
+ * The server takes ONE argument: `input`. Sending `{symbol, tradingStyle}` at
+ * the top level yields INVALID_INPUT, which would read as a product defect
+ * when it is really a harness defect. This shape is the contract.
+ */
+const analysisInput = (extra = {}) => ({
+  input: {
+    instrument: "EURUSD",
+    instrumentType: "forex",
+    timeframe: "1h",
+    tradingStyle: "intraday",
+    ...extra,
+  },
+});
+
+const usedOf = (entitlementValue) => Number(entitlementValue?.profitSignalsUsed ?? 0);
+
+async function readEntitlement(token) {
+  const r = await query("entitlements:getMyEntitlement", {}, token);
+  return r.value ?? {};
+}
 
 /* ------------------------------------------------------------------ *
  * Observations
  * ------------------------------------------------------------------ */
 
 async function run() {
-  // --- D3 first: it needs NO session, and proves the deployment answers. ---
-  const unauth = await action("protectedAnalysis:runProtectedAnalysis", {
-    symbol: "EURUSD",
-    instrumentType: "forex",
-    tradingStyle: "intraday",
-  });
-  if (unauth.status === 0) {
+  /* --- D3 first: needs no session, and proves the deployment answers. --- */
+  const unauth = await action("protectedAnalysis:runProtectedAnalysis", analysisInput());
+  if (unauth.httpStatus === 0) {
     refuse(
-      `the deployment did not answer (${unauth.error}). ` +
-        "Check connectivity before attributing anything to the application.",
+      `The deployment did not answer (${unauth.transportError}). This is a transport failure, ` +
+        "not an authentication or authorisation result. Check connectivity before " +
+        "attributing anything to the application.",
+      { deployment: parsed.hostname, environment: DEPLOYMENT_ENVIRONMENT },
     );
   }
-  const unauthStatus = unauth.body?.value?.status ?? unauth.body?.status;
+  const unauthStatus = unauth.value?.status;
   record(
     "D3",
-    D_DEFINITIONS[2].title,
-    unauthStatus === "UNAUTHENTICATED" || unauth.status === 401 ? "PASS" : "FAIL",
-    `deployment returned HTTP ${unauth.status}, status=${unauthStatus ?? "n/a"}`,
-    { httpStatus: unauth.status, appStatus: unauthStatus },
+    unauthStatus === "UNAUTHENTICATED" || unauth.httpStatus === 401 ? "PASS" : "FAIL",
+    `deployment answered HTTP ${unauth.httpStatus}; application status=${unauthStatus ?? "n/a"}` +
+      (unauthStatus === "UNAUTHENTICATED" ? " (no engine run, no payload)" : ""),
+    {
+      httpStatus: unauth.httpStatus,
+      appStatus: unauthStatus,
+      resultWithheld: unauth.value?.result === null,
+    },
   );
 
-  // --- D1: send the code, then a HUMAN confirms arrival. ---
-  const send = await action("auth:signIn", {
-    provider: "email-otp",
-    params: { email: TEST_EMAIL },
-  });
-  const sendAccepted = send.ok;
+  /* --- D1 + D2: establish a session. --- */
+  let token = null;
 
-  let otp = providedOtp;
-  if (!otp) {
+  if (authMode === "anonymous") {
     record(
       "D1",
-      D_DEFINITIONS[0].title,
-      "BLOCKED",
-      sendAccepted
-        ? "send request accepted, but arrival in a mailbox was NOT observed. " +
+      "NOT_VERIFIED",
+      "run used --auth anonymous: no OTP email was requested, so mailbox delivery was " +
+        "neither attempted nor observed. D1 requires --auth otp against a provisioned mailbox.",
+      { humanAttested: false, mechanism: "anonymous" },
+    );
+    const anon = await action("auth:signIn", { provider: "anonymous" });
+    token = anon.value?.tokens?.token ?? anon.value?.token ?? null;
+    record(
+      "D2",
+      token ? "PASS" : "FAIL",
+      token
+        ? "session established through the application's anonymous provider " +
+          "(a supported development mechanism, not the OTP flow; token withheld)"
+        : `no session (HTTP ${anon.httpStatus}${anon.appError ? `, ${anon.appError}` : ""})`,
+      { sessionEstablished: Boolean(token), mechanism: "anonymous" },
+    );
+  } else {
+    // Detect the non-delivering transport BEFORE attributing anything to D1.
+    // `console` reports delivered:true and sends nothing; a code read out of a
+    // server log is not evidence that mail reached a mailbox.
+    const declaredTransport = (env.XSTARZ_EMAIL_TRANSPORT ?? "").trim().toLowerCase();
+    if (declaredTransport === "console") {
+      record(
+        "D1",
+        "BLOCKED",
+        'XSTARZ_EMAIL_TRANSPORT is "console", which delivers nothing while reporting success. ' +
+          "A code taken from a server log is not mailbox delivery.",
+        { humanAttested: false, transport: "console" },
+      );
+      for (const d of D_DEFINITIONS) {
+        if (!recorded(d.id)) record(d.id, "BLOCKED", "no authenticated session (D1 not completed)");
+      }
+      return;
+    }
+
+    const send = await action("auth:signIn", {
+      provider: "email-otp",
+      params: { email: TEST_EMAIL },
+    });
+
+    let otp = providedOtp;
+    if (!otp && !asJson && process.stdin.isTTY) {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      const answer = await rl.question(
+        `\n  A code was requested for ${maskEmail(TEST_EMAIL)}.\n` +
+          "  Enter it ONLY if it arrived in the real mailbox (blank to leave D1 blocked): ",
+      );
+      rl.close();
+      otp = answer.trim() || null;
+    }
+
+    if (!otp) {
+      record(
+        "D1",
+        "BLOCKED",
+        send.ok
+          ? "send request accepted, but arrival in a mailbox was NOT observed. " +
             "Re-run with --otp <code> once the mail is in hand. " +
             "A 200 from the provider is not delivery."
-        : `send request failed (HTTP ${send.status})`,
-      { sendAccepted, humanAttested: false },
+          : `send request failed (HTTP ${send.httpStatus}${send.appError ? `, ${send.appError}` : ""})`,
+        { sendAccepted: send.ok, humanAttested: false },
+      );
+      for (const d of D_DEFINITIONS) {
+        if (!recorded(d.id)) record(d.id, "BLOCKED", "no authenticated session (D1 not completed)");
+      }
+      return;
+    }
+
+    record(
+      "D1",
+      send.ok ? "PASS" : "FAIL",
+      send.ok
+        ? `code delivered to ${maskEmail(TEST_EMAIL)} and supplied by a human operator ` +
+          "(HUMAN-attested: the operator asserts it arrived in a real mailbox)"
+        : `send request failed (HTTP ${send.httpStatus})`,
+      { sendAccepted: send.ok, humanAttested: true, recipient: maskEmail(TEST_EMAIL) },
     );
-    // Everything downstream needs a session.
-    for (const d of D_DEFINITIONS.slice(1)) {
-      if (d.id === "D3") continue;
-      record(d.id, d.title, "BLOCKED", "no authenticated session (D1 not completed)");
-    }
-    return;
+
+    const verify = await action("auth:signIn", {
+      provider: "email-otp",
+      params: { email: TEST_EMAIL, code: otp },
+    });
+    token = verify.value?.tokens?.token ?? verify.value?.token ?? null;
+    record(
+      "D2",
+      token ? "PASS" : "FAIL",
+      token
+        ? "session established from the OTP exchange (token withheld from this report)"
+        : `no session (HTTP ${verify.httpStatus}${verify.appError ? `, ${verify.appError}` : ""})`,
+      { sessionEstablished: Boolean(token), mechanism: "email-otp" },
+    );
   }
 
-  record(
-    "D1",
-    D_DEFINITIONS[0].title,
-    sendAccepted ? "PASS" : "FAIL",
-    sendAccepted
-      ? `code delivered to ${maskEmail(TEST_EMAIL)} and supplied by a human operator (HUMAN-attested)`
-      : `send request failed (HTTP ${send.status})`,
-    { sendAccepted, humanAttested: true, recipient: maskEmail(TEST_EMAIL) },
-  );
-
-  // --- D2: exchange the code for a session. ---
-  const verify = await action("auth:signIn", {
-    provider: "email-otp",
-    params: { email: TEST_EMAIL, code: otp },
-  });
-  const token = verify.body?.value?.tokens?.token ?? verify.body?.value?.token ?? null;
-  record(
-    "D2",
-    D_DEFINITIONS[1].title,
-    token ? "PASS" : "FAIL",
-    token ? "session established (token withheld from this report)" : `no session (HTTP ${verify.status})`,
-    { sessionEstablished: Boolean(token) },
-  );
   if (!token) {
-    for (const d of D_DEFINITIONS.slice(3)) {
-      record(d.id, d.title, "BLOCKED", "no authenticated session");
+    for (const d of D_DEFINITIONS) {
+      if (!recorded(d.id)) record(d.id, "BLOCKED", "no authenticated session");
     }
     return;
   }
 
-  // --- D4: a fresh guest starts with two free profit signals. ---
-  const ent = await query("entitlements:getMyEntitlement", {}, token);
-  const e0 = ent.body?.value ?? {};
-  record(
-    "D4",
-    D_DEFINITIONS[3].title,
-    e0.plan === "GUEST" && e0.remaining === 2 ? "PASS" : "FAIL",
-    `plan=${e0.plan} remaining=${e0.remaining} limit=${e0.limit}`,
-    e0,
-  );
+  /* --- D4: a fresh guest starts with two free profit signals. --- */
+  const e0 = await readEntitlement(token);
+  const startUsed = usedOf(e0);
+  if (e0.plan === "GUEST" && e0.remaining === 2 && startUsed === 0) {
+    record("D4", "PASS", `plan=${e0.plan} remaining=${e0.remaining} limit=${e0.limit}`, e0);
+  } else if (e0.plan === "GUEST" && startUsed > 0) {
+    // Re-running against an already-used identity is an operator condition,
+    // not a product defect. Reporting FAIL here would be a false alarm.
+    record(
+      "D4",
+      "NOT_VERIFIED",
+      `this identity has already consumed ${startUsed} signal(s), so the initial-state ` +
+        "assertion cannot be made. D4 needs a fresh account: use a new mailbox, or " +
+        "--auth anonymous, which mints a new identity per run.",
+      e0,
+    );
+  } else {
+    record("D4", "FAIL", `plan=${e0.plan} remaining=${e0.remaining} limit=${e0.limit}`, e0);
+  }
 
-  // --- D5: a chargeable recommendation consumes exactly one. ---
-  const before = e0.profitSignalsUsed ?? 0;
-  const buy = await action(
-    "protectedAnalysis:runProtectedAnalysis",
-    { symbol: "EURUSD", instrumentType: "forex", tradingStyle: "intraday" },
+  /* --- Client cannot self-grant Premium (§7). --- */
+  const forcePremium = await mutation(
+    "entitlements:grantPremium",
+    { premiumUntil: Date.now() + 86_400_000 },
     token,
   );
-  const afterBuy = (await query("entitlements:getMyEntitlement", {}, token)).body?.value ?? {};
-  const buyRec = buy.body?.value?.result?.recommendation ?? buy.body?.value?.status;
-  const consumed = (afterBuy.profitSignalsUsed ?? 0) - before;
-  const chargeable = ["BUY", "SELL", "LONG", "SHORT"].includes(String(buyRec));
-  record(
-    "D5",
-    D_DEFINITIONS[4].title,
-    chargeable ? (consumed === 1 ? "PASS" : "FAIL") : "NOT APPLICABLE",
-    chargeable
-      ? `recommendation=${buyRec}, consumed=${consumed} (expected exactly 1)`
-      : `the engine returned ${buyRec}, which is not chargeable — rerun when a directional signal occurs`,
-    { recommendation: buyRec, consumed },
-  );
+  const afterForce = await readEntitlement(token);
+  const premiumForced = afterForce.plan === "PREMIUM";
+  const premiumProbe = {
+    rejected: !forcePremium.ok && !premiumForced,
+    planAfter: afterForce.plan,
+    serverMessage: forcePremium.appError ? "rejected by server" : null,
+  };
 
-  // --- D6: a non-chargeable recommendation consumes nothing. ---
-  const beforeWait = afterBuy.profitSignalsUsed ?? 0;
+  /* --- D9 BEFORE exhaustion. --- */
+  //
+  // Ordering matters and is not cosmetic. Once the account is LOCKED the
+  // response is redacted to a minimal payload, so a forged value could not
+  // appear in it no matter what the server did with it — the check would pass
+  // vacuously. D9 is therefore run while results are still deliverable.
+  const FORGED_PRICE = 99999.99;
+  const FORGED_SOURCE = "forged-by-client-evidence-d";
+  const forgedBefore = usedOf(await readEntitlement(token));
+  const forged = await action(
+    "protectedAnalysis:runProtectedAnalysis",
+    analysisInput({
+      currentPrice: FORGED_PRICE,
+      marketData: {
+        price: { price: FORGED_PRICE, timestamp: 0, source: FORGED_SOURCE },
+        provider: FORGED_SOURCE,
+        fetchTimestamp: 0,
+      },
+      instrumentSpec: { contractSize: 100000, quantityStep: 1, source: FORGED_SOURCE },
+      newsContext: "Fed signals hawkish stance, rate hike",
+      economicEvents: "forged high-impact event",
+    }),
+    token,
+  );
+  const forgedSerialized = JSON.stringify(forged.body ?? {});
+  const echoes = [];
+  if (forgedSerialized.includes(FORGED_SOURCE)) echoes.push("source label");
+  if (forgedSerialized.includes(String(FORGED_PRICE))) echoes.push("forged price");
+  const forgedStatus = forged.value?.status;
+  const forgedRejectedAsInput = forgedStatus === "INVALID_INPUT";
+  const forgedRan = forgedStatus === "DELIVERED" || forgedStatus === "LOCKED";
+
+  if (!forgedRan && !forgedRejectedAsInput) {
+    record(
+      "D9",
+      "BLOCKED",
+      `the forged request did not produce an evaluable response (status=${forgedStatus ?? "n/a"}, ` +
+        `HTTP ${forged.httpStatus}).`,
+      { status: forgedStatus },
+    );
+  } else if (echoes.length > 0) {
+    record(
+      "D9",
+      "FAIL",
+      `the deployment echoed client-supplied provider evidence (${echoes.join(", ")}). ` +
+        "Provenance is compromised: a client can state market facts.",
+      { echoes, status: forgedStatus },
+    );
+  } else {
+    record(
+      "D9",
+      "PASS",
+      `client-supplied provider evidence (price, source label, instrument spec and ` +
+        `directional free text) did not reach the result; status=${forgedStatus}. ` +
+        "The server discarded it and acquired its own evidence.",
+      { echoes: [], status: forgedStatus, forgedFieldsSent: 5 },
+    );
+  }
+
+  /* --- D5: a chargeable recommendation consumes exactly one. --- */
+  const beforeBuy = usedOf(await readEntitlement(token));
+  const buy = await action("protectedAnalysis:runProtectedAnalysis", analysisInput(), token);
+  const afterBuy = await readEntitlement(token);
+  const buyRec = buy.value?.result?.recommendation;
+  const buyStatus = buy.value?.status;
+  const consumed = usedOf(afterBuy) - beforeBuy;
+  const CHARGEABLE = ["BUY", "SELL", "LONG", "SHORT"];
+  if (buyStatus === "LOCKED") {
+    record(
+      "D5",
+      "NOT_VERIFIED",
+      "the allowance was already exhausted before this observation, so a single " +
+        "consumption could not be measured. Re-run with a fresh identity.",
+      { status: buyStatus },
+    );
+  } else if (CHARGEABLE.includes(String(buyRec))) {
+    record(
+      "D5",
+      consumed === 1 ? "PASS" : "FAIL",
+      `recommendation=${buyRec}, consumed=${consumed} (expected exactly 1), charged=${
+        buy.value?.entitlement?.charged
+      }`,
+      { recommendation: buyRec, consumed },
+    );
+  } else {
+    record(
+      "D5",
+      "NOT_VERIFIED",
+      `the engine returned ${buyRec ?? buyStatus}, which is not a chargeable directional ` +
+        "signal. The engine is never forced to produce one; re-run when live conditions " +
+        "yield BUY/SELL.",
+      { recommendation: buyRec, consumed },
+    );
+  }
+
+  /* --- D6: a non-chargeable recommendation consumes nothing. --- */
+  const beforeWait = usedOf(await readEntitlement(token));
   const wait = await action(
     "protectedAnalysis:runProtectedAnalysis",
-    { symbol: "XAUUSD", instrumentType: "commodity", tradingStyle: "swing" },
+    analysisInput({ instrument: "XAUUSD", instrumentType: "commodity", timeframe: "1d" }),
     token,
   );
-  const afterWait = (await query("entitlements:getMyEntitlement", {}, token)).body?.value ?? {};
-  const waitRec = wait.body?.value?.result?.recommendation;
-  const waitConsumed = (afterWait.profitSignalsUsed ?? 0) - beforeWait;
-  const nonChargeable = ["WAIT", "NO_TRADE"].includes(String(waitRec));
-  record(
-    "D6",
-    D_DEFINITIONS[5].title,
-    nonChargeable ? (waitConsumed === 0 ? "PASS" : "FAIL") : "NOT APPLICABLE",
-    nonChargeable
-      ? `recommendation=${waitRec}, consumed=${waitConsumed} (expected 0)`
-      : `the engine returned ${waitRec}; rerun when a WAIT/NO_TRADE occurs`,
-    { recommendation: waitRec, consumed: waitConsumed },
-  );
+  const afterWait = await readEntitlement(token);
+  const waitRec = wait.value?.result?.recommendation;
+  const waitStatus = wait.value?.status;
+  const waitConsumed = usedOf(afterWait) - beforeWait;
+  if (["WAIT", "NO_TRADE"].includes(String(waitRec))) {
+    record(
+      "D6",
+      waitConsumed === 0 ? "PASS" : "FAIL",
+      `recommendation=${waitRec}, consumed=${waitConsumed} (expected 0), charged=${
+        wait.value?.entitlement?.charged
+      }`,
+      { recommendation: waitRec, consumed: waitConsumed },
+    );
+  } else {
+    record(
+      "D6",
+      "NOT_VERIFIED",
+      `the engine returned ${waitRec ?? waitStatus}; a WAIT/NO_TRADE did not occur in this run. ` +
+        "Re-run when live conditions yield one — the engine must never be forced.",
+      { recommendation: waitRec, consumed: waitConsumed },
+    );
+  }
 
-  // --- D7 + D8: exhaustion must LOCK, and reveal nothing. ---
+  /* --- D7 + D8: exhaustion must LOCK, and reveal nothing. --- */
   let locked = null;
-  for (let attempt = 0; attempt < 4 && !locked; attempt += 1) {
+  let attempts = 0;
+  for (; attempts < 4 && !locked; attempts += 1) {
     const r = await action(
       "protectedAnalysis:runProtectedAnalysis",
-      { symbol: "GBPUSD", instrumentType: "forex", tradingStyle: "scalping" },
+      analysisInput({ instrument: "GBPUSD", timeframe: "15min" }),
       token,
     );
-    if ((r.body?.value?.status ?? "") === "LOCKED") locked = r.body.value;
+    if (r.value?.status === "LOCKED") locked = r.value;
   }
+  const finalEnt = await readEntitlement(token);
   record(
     "D7",
-    D_DEFINITIONS[6].title,
     locked ? "PASS" : "FAIL",
-    locked ? "an exhausted account received LOCKED" : "no LOCKED response after exhausting the quota",
-    { locked: Boolean(locked) },
+    locked
+      ? `an exhausted account received LOCKED after ${attempts} request(s); ` +
+        `used=${usedOf(finalEnt)} limit=${finalEnt.limit} upgradeRequired=${finalEnt.upgradeRequired}`
+      : `no LOCKED response after ${attempts} requests beyond the free allowance ` +
+        `(used=${usedOf(finalEnt)} limit=${finalEnt.limit})`,
+    { locked: Boolean(locked), attempts, used: usedOf(finalEnt) },
   );
 
   if (locked) {
-    const DIRECTIONAL = ["recommendation", "direction", "entry", "stopLoss", "takeProfit", "side"];
+    // Allowlist-by-omission on the server means an unlisted field is withheld.
+    // Verify the negative directly against the protected field list.
+    const DIRECTIONAL = [
+      "recommendation",
+      "conviction",
+      "tradePlan",
+      "positionSizing",
+      "bias",
+      "confidence",
+      "analystThesis",
+      "professionalThesis",
+      "marketScenario",
+      "forwardMarketPath",
+      "longHorizonThesis",
+      "evidenceChallenge",
+      "decisionTrace",
+      "decisionFingerprint",
+      "keyLevels",
+      "technicalSummary",
+      "fundamentalSummary",
+      "riskNote",
+      "direction",
+      "entry",
+      "stopLoss",
+      "takeProfit",
+      "side",
+    ];
     const serialized = JSON.stringify(locked.result ?? {});
     const leaked = DIRECTIONAL.filter((f) => serialized.includes(`"${f}"`));
+    const tellsSignalExists = locked.result?.hadActionableSignal === true;
     record(
       "D8",
-      D_DEFINITIONS[7].title,
       leaked.length === 0 ? "PASS" : "FAIL",
       leaked.length === 0
-        ? "LOCKED payload contains no directional or actionable field"
+        ? `LOCKED payload contains none of the ${DIRECTIONAL.length} directional/actionable ` +
+          `fields; it discloses only that a signal existed (hadActionableSignal=${tellsSignalExists}), ` +
+          "never which way it points"
         : `LOCKED payload leaked: ${leaked.join(", ")}`,
-      { leakedFields: leaked },
+      { leakedFields: leaked, checkedFields: DIRECTIONAL.length },
     );
   } else {
-    record("D8", D_DEFINITIONS[7].title, "BLOCKED", "no LOCKED payload to inspect");
+    record("D8", "BLOCKED", "no LOCKED payload to inspect");
   }
 
-  // --- D9: client-supplied evidence must not override the server's. ---
-  const forged = await action(
+  /* --- Post-exhaustion safety: WAIT must stay free, nothing substituted. --- */
+  const postLockWait = await action(
     "protectedAnalysis:runProtectedAnalysis",
-    {
-      symbol: "EURUSD",
-      instrumentType: "forex",
-      tradingStyle: "intraday",
-      marketData: { price: 99999, observedAt: 0, source: "forged-by-client" },
-    },
+    analysisInput({ instrument: "XAUUSD", instrumentType: "commodity", timeframe: "1d" }),
     token,
   );
-  const forgedBody = JSON.stringify(forged.body ?? {});
-  const acceptedForgery = forgedBody.includes("forged-by-client") || forgedBody.includes("99999");
-  record(
-    "D9",
-    D_DEFINITIONS[8].title,
-    acceptedForgery ? "FAIL" : "PASS",
-    acceptedForgery
-      ? "the deployment echoed client-supplied market data — provenance is compromised"
-      : "client-supplied market data did not reach the result; evidence is server-acquired",
-    { acceptedForgery },
-  );
+  const postLockEnt = await readEntitlement(token);
+  const postLockSafety = {
+    statusAfterExhaustion: postLockWait.value?.status,
+    usedDidNotGrowBeyondLimit: usedOf(postLockEnt) >= usedOf(finalEnt),
+    planStillGuest: postLockEnt.plan === "GUEST",
+  };
 
-  // --- D10: observedAt must come from the provider, not the local clock. ---
-  const ev = forged.body?.value?.result?.evidence ?? buy.body?.value?.result?.evidence ?? null;
-  const observedAt = ev?.observedAt ?? ev?.[0]?.observedAt ?? null;
-  const skewMs = observedAt ? Math.abs(Date.now() - Number(observedAt)) : null;
-  record(
-    "D10",
-    D_DEFINITIONS[9].title,
-    observedAt ? "PASS" : "BLOCKED",
-    observedAt
-      ? `observedAt=${new Date(Number(observedAt)).toISOString()} (skew from local clock ${skewMs}ms; ` +
-        "a provider timestamp is expected to differ from 'now')"
-      : "no observedAt present in the response to evaluate",
-    { observedAt, skewMs },
+  /* --- D10: observedAt must come from the provider acquisition path. --- */
+  //
+  // `runProtectedAnalysis` does not return provenance to the client (it is
+  // logged server-side), so provenance is probed where it is actually exposed:
+  // the acquisition action itself, which reports `observedAt` and the
+  // acquisition mode it used.
+  const probeStart = Date.now();
+  const md = await action(
+    "marketData:fetchMarketData",
+    { instrument: "EURUSD", instrumentType: "forex", timeframe: "1h" },
+    token,
   );
+  const probeEnd = Date.now();
+  const mdValue = md.value ?? {};
+  const observedAt = typeof mdValue.observedAt === "number" ? mdValue.observedAt : null;
+  const acquisition = mdValue.acquisition ?? null;
+
+  if (mdValue.success === false || mdValue.errorCode) {
+    record(
+      "D10",
+      "BLOCKED",
+      `the provider acquisition path could not run (${mdValue.errorCode ?? "unavailable"}). ` +
+        "Provenance cannot be evidenced without a live provider credential — and a " +
+        "fabricated timestamp must never be accepted in its place.",
+      { errorCode: mdValue.errorCode ?? null, acquisition },
+    );
+  } else if (observedAt === null) {
+    record(
+      "D10",
+      "BLOCKED",
+      "the acquisition response carried no observedAt to evaluate.",
+      { acquisition },
+    );
+  } else if (observedAt > probeEnd + 5_000) {
+    record(
+      "D10",
+      "FAIL",
+      `observedAt (${new Date(observedAt).toISOString()}) is in the future relative to the ` +
+        "request. A provider observation cannot post-date the request that produced it.",
+      { observedAt, acquisition },
+    );
+  } else if (acquisition === "cache-reused" && observedAt >= probeStart) {
+    record(
+      "D10",
+      "FAIL",
+      "the leg reported cache-reused but stamped observedAt at request time — " +
+        "request time was substituted for observation time.",
+      { observedAt, acquisition, probeStart },
+    );
+  } else {
+    const ageMs = probeEnd - observedAt;
+    record(
+      "D10",
+      "PASS",
+      `observedAt=${new Date(observedAt).toISOString()} with acquisition=${acquisition ?? "n/a"}; ` +
+        `age at response ${ageMs}ms. The value comes from the provider acquisition path and ` +
+        "was not substituted with request time.",
+      { observedAt, acquisition, ageMs },
+    );
+  }
+
+  return { premiumProbe, postLockSafety };
 }
 
-function maskEmail(email) {
-  const [user, domain] = email.split("@");
-  if (!domain) return "***";
-  return `${user.slice(0, 2)}***@${domain}`;
-}
-
-await run();
+const safety = (await run()) ?? {};
 
 /* ------------------------------------------------------------------ *
  * Verdict
  * ------------------------------------------------------------------ */
 
+checks.sort(
+  (a, b) =>
+    D_DEFINITIONS.findIndex((d) => d.id === a.id) - D_DEFINITIONS.findIndex((d) => d.id === b.id),
+);
+
 const failed = checks.filter((c) => c.status === "FAIL");
 const blocked = checks.filter((c) => c.status === "BLOCKED");
+const notVerified = checks.filter((c) => c.status === "NOT_VERIFIED");
 const passed = checks.filter((c) => c.status === "PASS");
 
-const evidenceD = failed.length > 0 ? "FAILED" : blocked.length > 0 ? "INCOMPLETE" : "ACHIEVED";
+const complete = failed.length === 0 && blocked.length === 0 && notVerified.length === 0;
+const evidenceD = failed.length > 0 ? "FAILED" : complete ? "ACHIEVED" : "INCOMPLETE";
+
+const report = {
+  evidenceD,
+  evidenceClass: complete && failed.length === 0 ? EVIDENCE_CLASS : `${EVIDENCE_CLASS} (INCOMPLETE)`,
+  environment: DEPLOYMENT_ENVIRONMENT,
+  deployment: { host: parsed.hostname, name: deployment.name ?? null, declared: deployment.type },
+  productionEvidence: evidenceD === "ACHIEVED" && EVIDENCE_CLASS === "PRODUCTION_EVIDENCE",
+  configSource: envSource,
+  authMechanism: authMode === "anonymous" ? "anonymous (development)" : "email-otp",
+  capturedAt: new Date().toISOString(),
+  durationMs: Date.now() - STARTED_AT,
+  transportCalls: transport.calls,
+  summary: {
+    passed: passed.length,
+    failed: failed.length,
+    blocked: blocked.length,
+    notVerified: notVerified.length,
+  },
+  safetyProbes: safety,
+  checks,
+};
 
 if (asJson) {
-  console.log(
-    JSON.stringify(
-      {
-        evidenceD,
-        deployment: parsed.hostname,
-        capturedAt: new Date().toISOString(),
-        summary: { passed: passed.length, failed: failed.length, blocked: blocked.length },
-        checks,
-      },
-      null,
-      2,
-    ),
-  );
+  console.log(JSON.stringify(report, null, 2));
 } else {
-  console.log(`Evidence D harness — ${parsed.hostname}`);
-  console.log("─".repeat(72));
+  console.log(`Evidence D harness — ${parsed.hostname} [${DEPLOYMENT_ENVIRONMENT}]`);
+  console.log("─".repeat(78));
   for (const c of checks) {
-    console.log(`  ${c.status.padEnd(15)} ${c.id.padEnd(4)} ${c.title}`);
-    console.log(`  ${" ".repeat(20)} ${c.detail}`);
+    console.log(`  ${c.status.padEnd(13)} ${c.id.padEnd(4)} ${c.title}`);
+    console.log(`  ${" ".repeat(18)} ${c.detail}`);
   }
-  console.log("─".repeat(72));
+  console.log("─".repeat(78));
   console.log(`EVIDENCE D: ${evidenceD}`);
-  console.log(`  ${passed.length} passed, ${failed.length} failed, ${blocked.length} blocked`);
+  console.log(
+    `  ${passed.length} passed, ${failed.length} failed, ` +
+      `${blocked.length} blocked, ${notVerified.length} not verified`,
+  );
+  console.log(`  CLASS: ${report.evidenceClass}`);
+  if (!report.productionEvidence) {
+    console.log("  This run is NOT production release evidence.");
+  }
   if (evidenceD !== "ACHIEVED") {
     console.log("  Evidence D is NOT achieved. Do not report the backend as verified.");
   }
 }
 
-process.exit(failed.length > 0 ? 1 : blocked.length > 0 ? 2 : 0);
+process.exit(failed.length > 0 ? 1 : complete ? 0 : 2);

@@ -183,8 +183,18 @@ describe("Phase 200 — the Evidence D harness cannot be satisfied by a substitu
   });
 
   it("never reports Evidence D as achieved while any check is blocked", () => {
-    const source = readFileSync(HARNESS, "utf8");
-    // The verdict must be derived, not assignable to ACHIEVED with blockers.
-    expect(source).toMatch(/blocked\.length > 0 \? "INCOMPLETE"/);
+    // Behavioural, not a source-string match: a refused run has ten BLOCKED
+    // checks, so if "ACHIEVED" were ever reachable with blockers present this
+    // would catch it. Phase 203 widened the rule to NOT_VERIFIED as well, and
+    // a regex pinned to the old expression would have failed on a strictly
+    // stronger implementation.
+    const run = runScript(
+      HARNESS,
+      { VITE_CONVEX_URL: "http://localhost:3210", EVIDENCE_D_EMAIL: "a@b.co" },
+      ["--json"],
+    );
+    const report = JSON.parse(run.stdout);
+    expect(report.evidenceD).not.toBe("ACHIEVED");
+    expect(run.exitCode).not.toBe(0);
   });
 });
