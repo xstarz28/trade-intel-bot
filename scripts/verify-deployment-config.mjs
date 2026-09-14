@@ -451,6 +451,93 @@ record(
     : `client-visible secrets: ${leakedToClient.join(", ")}`,
 );
 
+// --- Production URLs must be real production URLs -------------------------
+// Phase 200. These only become checkable once an operator supplies values, so
+// they are silent (PASS with "nothing configured yet") until then. They exist
+// to catch the specific mistakes that happen when someone copies a preview or
+// example configuration into production.
+{
+  const URL_VARS = ["CONVEX_SITE_URL", "VITE_CONVEX_URL", "CONVEX_CLOUD_URL", "SITE_URL"];
+
+  const DEV_HOST_RE =
+    /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|host\.docker\.internal|.*\.local)$/i;
+  // RFC 2606 / RFC 6761 reserved names plus the usual copy-paste placeholders.
+  // These can never be a real production deployment.
+  const PLACEHOLDER_HOST_RE =
+    /(^|\.)(example|test|invalid|localhost)$|(^|\.)(example\.(com|net|org))$|your-|my-app|changeme|placeholder|todo|xxx/i;
+
+  const problems = [];
+  const checked = [];
+
+  for (const name of URL_VARS) {
+    if (!present(name)) continue;
+    const raw = env[name].trim();
+    checked.push(name);
+
+    let url;
+    try {
+      url = new URL(raw);
+    } catch {
+      problems.push(`${name} is not a valid absolute URL`);
+      continue;
+    }
+
+    if (isProduction && url.protocol !== "https:") {
+      problems.push(`${name} must use https in production (got ${url.protocol})`);
+    }
+    if (isProduction && DEV_HOST_RE.test(url.hostname)) {
+      problems.push(`${name} points at a development host (${url.hostname})`);
+    }
+    if (isProduction && PLACEHOLDER_HOST_RE.test(url.hostname)) {
+      problems.push(`${name} still holds a placeholder/example host (${url.hostname})`);
+    }
+  }
+
+  record(
+    "production-endpoints",
+    problems.length === 0 ? "PASS" : "FAIL",
+    problems.length === 0
+      ? checked.length === 0
+        ? "no endpoint configured yet — nothing to validate (values still missing)"
+        : `${checked.join(", ")} are https, non-local and non-placeholder`
+      : problems.join("; "),
+  );
+}
+
+// --- Credentials must not be obvious fakes --------------------------------
+// A placeholder key that reaches production fails at the worst possible time:
+// the first real user sign-in. Cheap to catch here.
+{
+  const CREDENTIAL_VARS = [];
+  for (const cls of CLASSES) {
+    for (const v of cls.vars) if (v.secret) CREDENTIAL_VARS.push(v.name);
+  }
+
+  const FAKE_RE = /(placeholder|example|changeme|your[_-]?key|dummy|sample|test[_-]?key|xxxx|todo|replace[_-]?me|not[_-]?a[_-]?key)/i;
+
+  const suspicious = [];
+  let configured = 0;
+  for (const name of CREDENTIAL_VARS) {
+    if (!present(name)) continue;
+    configured += 1;
+    const value = env[name].trim();
+    // Report the VARIABLE NAME and the reason only. Never the value.
+    if (FAKE_RE.test(value)) suspicious.push(`${name} looks like a placeholder`);
+    else if (value.length < 8) suspicious.push(`${name} is implausibly short`);
+  }
+
+  record(
+    "credential-plausibility",
+    !isProduction || suspicious.length === 0 ? "PASS" : "FAIL",
+    suspicious.length > 0 && isProduction
+      ? `${suspicious.join("; ")} (values never printed)`
+      : configured === 0
+        ? "no credential configured yet — nothing to validate (values still missing)"
+        : `${configured} configured credential(s) are not obvious placeholders ` +
+          "(plausibility only — validity NOT VERIFIED without network access)",
+  );
+}
+
 // --- Things this script cannot prove --------------------------------------
 const notVerified = [
   "provider account validity (no network egress from this environment)",

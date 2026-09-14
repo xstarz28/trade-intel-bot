@@ -1996,6 +1996,67 @@ environment.
 
 ---
 
+## 35e. Phase 200 — Convex unblock handoff & zero-friction readiness
+
+Scope: make the project executable the moment `*.convex.dev` access and
+deployment credentials exist. Baseline `5b3f0c4`. No history rewrite, no `main`
+change, no generated file hand-edited, no fake credential or domain created.
+
+| # | Check | Method | Result |
+| --- | --- | --- | --- |
+| 35e.1 | Baseline locked | `git rev-parse` | PASS — `5b3f0c4`, clean, `main` untouched |
+| 35e.2 | Preflight still fails closed with values missing | `convex:preflight` | PASS — exit 1, 3 FAILs |
+| 35e.3 | Diagnostic separates DNS failure | `verify-convex-access.mjs` | PASS — DNS layer reported independently |
+| 35e.4 | Diagnostic separates TCP failure | same | PASS — TCP :443 probed separately |
+| 35e.5 | Diagnostic separates TLS failure | same | PASS — **ECONNRESET, "severed mid-negotiation"** |
+| 35e.6 | Diagnostic separates HTTP reachability | same | PASS — distinct layer |
+| 35e.7 | Diagnostic separates reachable-but-unauthenticated | same | PASS — `UNAUTHENTICATED` state |
+| 35e.8 | Diagnostic separates authenticated access | same | PASS — `AUTHENTICATED` state, exit 0 |
+| 35e.9 | Transport failure never reported as auth failure | test + code | PASS — `isAuthEvidence: false` |
+| 35e.10 | Transport failure never reported as revocation evidence | test | PASS — `isRevocationEvidence: false` |
+| 35e.11 | Auth probe skipped when unreachable | code | PASS — "would be meaningless" |
+| 35e.12 | Credential value never printed | test w/ sentinel | PASS — fingerprint only (8 hex) |
+| 35e.13 | Machine-readable output | `--json` | PASS |
+| 35e.14 | Operator-readable output | default | PASS |
+| 35e.15 | Same-network controls reported | `--json` | PASS — ≥2 controls |
+| 35e.16 | TLS-interception CA not misread as an outage | control classification | PASS — E2B Proxy CA detected, path reported working |
+| 35e.17 | Handoff steps A–H dependency-safe and ordered | test | PASS — order asserted |
+| 35e.18 | Handoff records the baseline commit | test | PASS |
+| 35e.19 | No step requiring unavailable credentials was executed | review | PASS — none run |
+| 35e.20 | `otpLimiter` workaround recorded, not patched | `codegen-authority` suite | PASS — `_generated` untouched |
+| 35e.21 | Post-codegen assertion defined | same | PASS — flips on official `internal.*` in code |
+| 35e.22 | That assertion catches a half-migration | mutation M1 | PASS — caught after detector fix |
+| 35e.23 | Workaround/limiter export pinned together | mutation M2 | PASS — rename caught |
+| 35e.24 | `_generated` must contain no manual-workaround markers | test | PASS |
+| 35e.25 | Preflight: no localhost/dev endpoint in production | test | PASS — rejected |
+| 35e.26 | Preflight: no placeholder production domain | test | PASS — rejected |
+| 35e.27 | Preflight: no plain http in production | test | PASS — rejected |
+| 35e.28 | Preflight: no fake/example credential | test | PASS — rejected, value not echoed |
+| 35e.29 | Preflight: plausible ≠ valid | test | PASS — detail says NOT VERIFIED |
+| 35e.30 | Preflight: silent when nothing configured | test | PASS — no false alarm |
+| 35e.31 | No overlapping scanner created | review | PASS — extended the existing script |
+| 35e.32 | Evidence D harness defines exactly D1–D10 | test | PASS — in order |
+| 35e.33 | Harness refuses localhost / 127.0.0.1 | test | PASS — exit 2 |
+| 35e.34 | Harness refuses plain http | test | PASS — exit 2 |
+| 35e.35 | Harness refuses a non-Convex host | test | PASS — exit 2 |
+| 35e.36 | Harness refuses an unreachable deployment | manual run | PASS — refuses, invents nothing |
+| 35e.37 | A refusal marks all ten BLOCKED, zero PASS | test | PASS |
+| 35e.38 | D1 is HUMAN-attested, not inferred from HTTP 200 | code + test | PASS |
+| 35e.39 | Evidence D never ACHIEVED while any check is blocked | test | PASS |
+| 35e.40 | Evidence D actually captured | — | **BLOCKED** — no deployment exists |
+| 35e.41 | Live provider inventory recorded (names only) | handoff §2 | PASS — 7 entries, no values |
+| 35e.42 | Email inventory recorded (names only) | handoff §3 | PASS — no placeholder production values |
+| 35e.43 | Release gate categorizes external vs code-ready | `RELEASE-GATE.md` | PASS — 7 external, 8 code-ready |
+| 35e.44 | Full suite / tsc / build / lint / secret scan | §10 | PASS — **9131 passed / 3 skipped / 254 files**, tsc 0, build 0, lint 1517 = baseline |
+
+**35e.40 is the phase verdict.** Phase 200 is not a deployment. The diagnostic
+reports transport state, the preflight validates configuration, and the harness
+is ready to execute — but until D1–D10 are captured against a real Convex
+deployment, the backend is **NOT VERIFIED**, and no claim may be made about
+production auth, OTP delivery, entitlement enforcement or live providers.
+
+---
+
 ## 36. Sign-off
 
 | Field | Value |
