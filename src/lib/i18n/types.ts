@@ -280,6 +280,23 @@ export interface Translations {
 
   // ─── Intelligence ──────────────────────────────────────────
   intelligence: {
+    /**
+     * Phase 197 — momentum / volatility / structure state vocabulary.
+     * These enum values previously reached the UI raw (e.g.
+     * "HIGHER_HIGHS_HIGHER_LOWS") in all nine locales.
+     */
+    momentumLabel: string;
+    momentumOverbought: string;
+    momentumOversold: string;
+    momentumPositive: string;
+    momentumNegative: string;
+    volatilityExpanded: string;
+    volatilityCompressed: string;
+    volatilityNormal: string;
+    structureHhHl: string;
+    structureLhLl: string;
+    structureHhLl: string;
+    structureLhHl: string;
     technical: string;
     fundamental: string;
     macro: string;
@@ -1263,6 +1280,26 @@ export interface Translations {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    previousLabel: string;
+    /**
+     * Phase 197 — localizable interpretation sentences. The engine also emits
+     * an English `interpretation` string for logs and non-UI consumers; the UI
+     * renders these instead so the text follows the active locale.
+     */
+    interpTimeframeShift: string;
+    interpRegimeShift: string;
+    interpSupportingLeads: string;
+    interpConflictingLeads: string;
+    interpEvidenceBalanced: string;
+    interpThesisStable: string;
+    interpFirstAnalysis: string;
+    /**
+     * Phase 197 — timeline field-change captions. "Current"/"Previous" label
+     * the two sides of a recorded change, so they must stay distinguishable;
+     * `previous` and the change marker are reused from existing vocabulary.
+     */
+    currentLabel: string;
+    alsoLabel: string;
     /** Section heading above the current-vs-previous comparison. */
     currentVsPrevious: string;
     /** Section heading above the aggregated history summary. */

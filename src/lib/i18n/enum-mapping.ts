@@ -650,6 +650,63 @@ export function mapTimelineEventType(
   }
 }
 
+// ─── Momentum / Volatility / Structure Value Mapping (Phase 197) ───
+
+/**
+ * Map a momentum classification to a translated display value.
+ * Domain: MomentumClassification from multi-timeframe-engine.
+ */
+export function mapMomentumValue(
+  momentum: string | null | undefined,
+  t: Translations,
+): string {
+  switch ((momentum ?? "").toUpperCase()) {
+    case "OVERBOUGHT": return t.intelligence.momentumOverbought;
+    case "OVERSOLD": return t.intelligence.momentumOversold;
+    case "POSITIVE": return t.intelligence.momentumPositive;
+    case "NEGATIVE": return t.intelligence.momentumNegative;
+    case "NEUTRAL": return t.intelligence.neutral;
+    case "UNKNOWN": return t.status.unknown;
+    default: return humanize(momentum);
+  }
+}
+
+/**
+ * Map a volatility classification to a translated display value.
+ * Domain: VolatilityClassification from multi-timeframe-engine.
+ */
+export function mapVolatilityValue(
+  volatility: string | null | undefined,
+  t: Translations,
+): string {
+  switch ((volatility ?? "").toUpperCase()) {
+    case "EXPANDED": return t.intelligence.volatilityExpanded;
+    case "COMPRESSED": return t.intelligence.volatilityCompressed;
+    case "NORMAL": return t.intelligence.volatilityNormal;
+    case "UNKNOWN": return t.status.unknown;
+    default: return humanize(volatility);
+  }
+}
+
+/**
+ * Map a market-structure state to a translated display value.
+ * Domain: StructureState from multi-timeframe-engine.
+ */
+export function mapStructureValue(
+  structure: string | null | undefined,
+  t: Translations,
+): string {
+  switch ((structure ?? "").toUpperCase()) {
+    case "HIGHER_HIGHS_HIGHER_LOWS": return t.intelligence.structureHhHl;
+    case "LOWER_HIGHS_LOWER_LOWS": return t.intelligence.structureLhLl;
+    case "HIGHER_HIGH_LOWER_LOW": return t.intelligence.structureHhLl;
+    case "LOWER_HIGH_HIGHER_LOW": return t.intelligence.structureLhHl;
+    case "INSUFFICIENT_DATA": return t.intelligence.insufficientData;
+    case "UNKNOWN": return t.status.unknown;
+    default: return humanize(structure);
+  }
+}
+
 // ─── Portfolio Alignment Type Mapping (Phase 147) ──────────────
 
 /** Map portfolio alignment type to a translated display label. */

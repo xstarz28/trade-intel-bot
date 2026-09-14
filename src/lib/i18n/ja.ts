@@ -254,6 +254,18 @@ const ja: Translations = {
   },
 
   intelligence: {
+    momentumLabel: "モメンタム",
+    momentumOverbought: "買われすぎ",
+    momentumOversold: "売られすぎ",
+    momentumPositive: "プラス",
+    momentumNegative: "マイナス",
+    volatilityExpanded: "拡大",
+    volatilityCompressed: "縮小",
+    volatilityNormal: "通常",
+    structureHhHl: "高値切り上げ／安値切り上げ",
+    structureLhLl: "高値切り下げ／安値切り下げ",
+    structureHhLl: "高値切り上げ／安値切り下げ",
+    structureLhHl: "高値切り下げ／安値切り上げ",
     technical: "テクニカル",
     fundamental: "ファンダメンタル",
     macro: "マクロ",
@@ -1141,6 +1153,16 @@ const ja: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    previousLabel: "前回",
+    interpTimeframeShift: "{timeframe} が {from} から {to} へ変化しました",
+    interpRegimeShift: "市場レジームが {from} から {to} へ変化しました",
+    interpSupportingLeads: "支持する根拠が依然として矛盾する根拠を上回っています。",
+    interpConflictingLeads: "矛盾する根拠が支持する根拠を上回りました。",
+    interpEvidenceBalanced: "根拠は拮抗しています。",
+    interpThesisStable: "テーゼは {thesis} のままです。重要な構造変化は検出されていません。",
+    interpFirstAnalysis: "{instrument} {side} の初回分析。テーゼ: {thesis}。",
+    currentLabel: "現在",
+    alsoLabel: "さらに",
     currentVsPrevious: "現在 vs 前回",
     historySummary: "履歴サマリー",
     initialAnalysis: "初期分析",

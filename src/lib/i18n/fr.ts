@@ -254,6 +254,18 @@ const fr: Translations = {
   },
 
   intelligence: {
+    momentumLabel: "Momentum",
+    momentumOverbought: "Suracheté",
+    momentumOversold: "Survendu",
+    momentumPositive: "Positif",
+    momentumNegative: "Négatif",
+    volatilityExpanded: "Étendue",
+    volatilityCompressed: "Comprimée",
+    volatilityNormal: "Normale",
+    structureHhHl: "Sommets Haussiers / Creux Haussiers",
+    structureLhLl: "Sommets Baissiers / Creux Baissiers",
+    structureHhLl: "Sommet Haussier / Creux Baissier",
+    structureLhHl: "Sommet Baissier / Creux Haussier",
     technical: "Technique",
     fundamental: "Fondamental",
     macro: "Macro",
@@ -1141,6 +1153,16 @@ const fr: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    previousLabel: "Précédent",
+    interpTimeframeShift: "{timeframe} est passé de {from} à {to}",
+    interpRegimeShift: "Le régime de marché est passé de {from} à {to}",
+    interpSupportingLeads: "Les preuves favorables l'emportent encore sur les preuves contraires.",
+    interpConflictingLeads: "Les preuves contraires l'emportent désormais sur les preuves favorables.",
+    interpEvidenceBalanced: "Les preuves sont équilibrées.",
+    interpThesisStable: "La thèse reste {thesis}. Aucun changement structurel significatif détecté.",
+    interpFirstAnalysis: "Première analyse pour {instrument} {side}. Thèse : {thesis}.",
+    currentLabel: "Actuel",
+    alsoLabel: "Aussi",
     currentVsPrevious: "ACTUEL vs PRÉCÉDENT",
     historySummary: "RÉSUMÉ DE L'HISTORIQUE",
     initialAnalysis: "Analyse Initiale",

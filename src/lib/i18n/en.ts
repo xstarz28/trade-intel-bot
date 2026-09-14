@@ -246,6 +246,18 @@ const en: Translations = {
   },
 
   intelligence: {
+    momentumLabel: "Momentum",
+    momentumOverbought: "Overbought",
+    momentumOversold: "Oversold",
+    momentumPositive: "Positive",
+    momentumNegative: "Negative",
+    volatilityExpanded: "Expanded",
+    volatilityCompressed: "Compressed",
+    volatilityNormal: "Normal",
+    structureHhHl: "Higher Highs / Higher Lows",
+    structureLhLl: "Lower Highs / Lower Lows",
+    structureHhLl: "Higher High / Lower Low",
+    structureLhHl: "Lower High / Higher Low",
     technical: "Technical",
     fundamental: "Fundamental",
     macro: "Macro",
@@ -1131,6 +1143,16 @@ const en: Translations = {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    previousLabel: "Previous",
+    interpTimeframeShift: "{timeframe} shifted from {from} to {to}",
+    interpRegimeShift: "Market regime changed from {from} to {to}",
+    interpSupportingLeads: "Supporting evidence still outweighs conflicting.",
+    interpConflictingLeads: "Conflicting evidence now outweighs supporting.",
+    interpEvidenceBalanced: "Evidence is balanced.",
+    interpThesisStable: "Thesis remains {thesis}. No significant structural changes detected.",
+    interpFirstAnalysis: "First analysis for {instrument} {side}. Thesis: {thesis}.",
+    currentLabel: "Current",
+    alsoLabel: "Also",
     currentVsPrevious: "CURRENT vs PREVIOUS",
     historySummary: "HISTORY SUMMARY",
     initialAnalysis: "Initial Analysis",

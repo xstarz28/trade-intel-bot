@@ -121,7 +121,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 1169 leaves", () => {
+  it("EN is the canonical structural reference with 1191 leaves", () => {
     // 847 -> 875: Phase 182 added the `legal` section for the public website
     // pages (/download, /privacy, /terms). Every one of the nine locales was
     // updated in the same change, which the parity tests above enforce.
@@ -150,7 +150,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // 963 -> 977: Phase 191 added `provenance` (13) + `auth.restoringSession` so acquisition state
     // (observed / reused / unavailable / stale / historical / degraded) can be
     // shown to users in their own language instead of only in English logs.
-    expect(enCount).toBe(1169);
+    expect(enCount).toBe(1191);
   });
 
   for (const code of NINE) {
@@ -185,6 +185,15 @@ describe("placeholder parity across all 9 locales", () => {
   it("EN placeholders are a strict subset of the known vocabulary", () => {
     const known = [
       "{count}",
+      // Phase 197 — historical interpretation sentences. The timeframe is
+      // untranslated notation (H1/M15/M5); `from`/`to`/`thesis` are canonical
+      // enums routed through enum-mapping before interpolation.
+      "{timeframe}",
+      "{from}",
+      "{to}",
+      "{thesis}",
+      "{instrument}",
+      "{side}",
       // Phase 191 — evidence age in provenance copy.
       "{age}",
       // Phase 194 — format hint: "e.g. {example}". The abbreviation is
@@ -522,9 +531,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 1169 canonical keys with non-empty values", () => {
+  it("zh has all 1191 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(1169);
+    expect(zhLeaves.length).toBe(1191);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }
