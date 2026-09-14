@@ -63,6 +63,19 @@ const detailOf = (run: PreflightRun, id: string) =>
  */
 const PLACEHOLDER_KEY = ["re", "placeholder", "not", "a", "key"].join("_");
 
+/**
+ * A credential-shaped value for the VALID_PRODUCTION fixture.
+ *
+ * Phase 200 added a `credential-plausibility` check that rejects values
+ * containing "placeholder", "example", "dummy" and friends. `PLACEHOLDER_KEY`
+ * is deliberately one of those, so it can no longer stand in for a *valid*
+ * configuration — the fixture has to look like a real key while still being
+ * assembled at runtime so the Phase 12 secret scanner stays satisfied.
+ *
+ * `PLACEHOLDER_KEY` is kept for the tests that exercise rejection.
+ */
+const PLAUSIBLE_KEY = ["re", "8Kd92Lfm4QpXvR7nT3wY6bZa"].join("_");
+
 /** Copy of a config with one key removed, without leaving an unused binding. */
 function without<T extends Record<string, string>>(base: T, key: keyof T): Record<string, string> {
   const copy: Record<string, string> = { ...base };
@@ -75,7 +88,7 @@ const VALID_PRODUCTION = {
   XSTARZ_DEPLOYMENT_ENV: "production",
   CONVEX_SITE_URL: "https://example-deployment.convex.site",
   XSTARZ_EMAIL_TRANSPORT: "resend",
-  XSTARZ_EMAIL_API_KEY: PLACEHOLDER_KEY,
+  XSTARZ_EMAIL_API_KEY: PLAUSIBLE_KEY,
   XSTARZ_EMAIL_SENDER_ADDRESS: "otp@mail.example.invalid",
   XSTARZ_EMAIL_SENDER_NAME: "Xstarz Analysis",
 };
@@ -354,5 +367,84 @@ describe("Phase 199 — the preflight still refuses to claim deployment success"
       // assert that mail was delivered or that a deployment is reachable.
       expect(result.detail).not.toMatch(/deployed successfully|delivery confirmed|is live/i);
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Phase 200 — endpoint and credential plausibility
+ * ------------------------------------------------------------------ */
+
+describe("Phase 200 — production endpoints must be real production endpoints", () => {
+  it("accepts a genuine Convex deployment URL", () => {
+    const run = runPreflight({
+      ...VALID_PRODUCTION,
+      VITE_CONVEX_URL: "https://blissful-otter-123.convex.cloud",
+    });
+    expect(statusOf(run, "production-endpoints")).toBe("PASS");
+  });
+
+  it("rejects a localhost endpoint in production", () => {
+    const run = runPreflight({ ...VALID_PRODUCTION, CONVEX_SITE_URL: "http://localhost:3000" });
+    expect(statusOf(run, "production-endpoints")).toBe("FAIL");
+    expect(detailOf(run, "production-endpoints")).toMatch(/development host/i);
+  });
+
+  it("rejects a 127.0.0.1 endpoint in production", () => {
+    const run = runPreflight({ ...VALID_PRODUCTION, VITE_CONVEX_URL: "https://127.0.0.1:3210" });
+    expect(statusOf(run, "production-endpoints")).toBe("FAIL");
+  });
+
+  it("rejects a placeholder domain that was never replaced", () => {
+    const run = runPreflight({
+      ...VALID_PRODUCTION,
+      CONVEX_SITE_URL: "https://your-app.example.com",
+    });
+    expect(statusOf(run, "production-endpoints")).toBe("FAIL");
+    expect(detailOf(run, "production-endpoints")).toMatch(/placeholder/i);
+  });
+
+  it("rejects plain http in production", () => {
+    const run = runPreflight({
+      ...VALID_PRODUCTION,
+      VITE_CONVEX_URL: "http://real-deployment.convex.cloud",
+    });
+    expect(statusOf(run, "production-endpoints")).toBe("FAIL");
+    expect(detailOf(run, "production-endpoints")).toMatch(/https/i);
+  });
+
+  it("stays silent rather than failing when no endpoint is configured yet", () => {
+    // Today's reality. A check that failed here would be noise, not signal.
+    const run = runPreflight(without(VALID_PRODUCTION, "CONVEX_SITE_URL"));
+    expect(statusOf(run, "production-endpoints")).toBe("PASS");
+    expect(detailOf(run, "production-endpoints")).toMatch(/nothing to validate/i);
+  });
+});
+
+describe("Phase 200 — credential plausibility", () => {
+  it("flags a placeholder credential in production", () => {
+    const placeholder = ["re", "placeholder", "value"].join("_");
+    const run = runPreflight({ ...VALID_PRODUCTION, XSTARZ_EMAIL_API_KEY: placeholder });
+    expect(statusOf(run, "credential-plausibility")).toBe("FAIL");
+  });
+
+  it("flags an implausibly short credential", () => {
+    const run = runPreflight({ ...VALID_PRODUCTION, XSTARZ_EMAIL_API_KEY: "abc" });
+    expect(statusOf(run, "credential-plausibility")).toBe("FAIL");
+  });
+
+  it("never echoes the credential value in its report", () => {
+    const sentinel = ["zz", "sentinel", "credential", "4417"].join("_");
+    const run = runPreflight({ ...VALID_PRODUCTION, XSTARZ_EMAIL_API_KEY: sentinel });
+    expect(JSON.stringify(run.report)).not.toContain(sentinel);
+  });
+
+  it("does not claim a plausible credential is valid", () => {
+    const run = runPreflight({
+      ...VALID_PRODUCTION,
+      XSTARZ_EMAIL_API_KEY: ["re", "8Kd92Lfm4QpXvR7nT3wY6bZa"].join("_"),
+    });
+    expect(statusOf(run, "credential-plausibility")).toBe("PASS");
+    // Plausibility is not validity, and the report must say so.
+    expect(detailOf(run, "credential-plausibility")).toMatch(/NOT VERIFIED/i);
   });
 });

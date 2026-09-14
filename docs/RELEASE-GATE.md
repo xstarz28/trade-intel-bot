@@ -111,6 +111,43 @@ security, backend and runtime gates may not be BLOCKED — three of them are.
 5. **Live provider verification** — follows from 3.
 6. **Auth and deployed entitlement** — follows from 3.
 
+### Phase 200 — blocker categorization
+
+The single most common way this project gets misreported is by treating "the
+code is ready" as "the item is ready". They are separated here permanently.
+Nothing in the first table becomes READY because something in the second one is.
+
+#### BLOCKED BY USER / EXTERNAL ACCESS
+
+None of these can be performed, simulated or verified from the build
+environment. Each needs a human with an account, a domain, or network authority.
+
+| # | Item | Owner | Cleared by |
+| --- | --- | --- | --- |
+| 1 | OTP credential revocation | issuer account holder | old key presented and refused (401/403) |
+| 2 | Convex egress (`*.convex.dev`) | platform/network | `npm run convex:access` exits 0 |
+| 3 | Convex deployment credential | Convex account holder | `CONVEX_DEPLOY_KEY` accepted by the control plane |
+| 4 | Email account + registered domain | product owner | verified sender at the provider |
+| 5 | SPF / DKIM / DMARC | domain owner | DNS records published |
+| 6 | Live provider API keys | product owner | `scripts/verify-live.mjs` with real keys |
+| 7 | Android / iOS signing material | product owner | signed artifact produced |
+
+#### CODE-READY (not deployed, not verified)
+
+Implemented, tested and mutation-proven in this repository. **"Code-ready" is a
+statement about source, never about a running system.**
+
+| Item | Evidence | What it is NOT |
+| --- | --- | --- |
+| Auth architecture | self-only issuer policy, fails closed in production | not a working sign-in |
+| Entitlement enforcement | `FREE_PROFIT_SIGNAL_LIMIT=2`, OCC-safe consume path | not verified against a deployment |
+| Provenance controls | server-side reacquisition, 19-field allowlist | not verified with live providers |
+| Deployment preflight | 11 checks, fail-closed, mutation-tested | not a deployment |
+| Control-plane diagnostic | `scripts/verify-convex-access.mjs`, layer-accurate | not proof the network works |
+| Evidence D harness | `scripts/evidence-d-harness.mjs`, D1–D10, refuses substitutes | not Evidence D |
+| Codegen recovery contract | `codegen-authority.phase200.test.ts` | not official codegen |
+| History rewrite procedure | rehearsed byte-exact on a mirror | not a rotation, not a rewrite |
+
 ### Non-blocking, explicitly accepted
 
 - **F3 light mode** — post-RC product gap, per the existing documented
@@ -123,12 +160,15 @@ The deployment pipeline is prepared and validated. No deployment exists.
 
 | Item | Status |
 | --- | --- |
-| Convex control plane reachable from the build environment | NO (HTTP 000) |
+| Convex control plane reachable from the build environment | NO — DNS+TCP OK, **TLS severed (ECONNRESET)**; targeted egress block, not an outage |
 | `CONVEX_DEPLOYMENT` configured | NO |
 | `npx convex codegen` executed against a real deployment | BLOCKED |
 | Staging/preview deployment | BLOCKED |
 | Production deployment | BLOCKED — and gated on Phase 184 regardless |
-| Configuration preflight (`npm run convex:preflight`) | READY, mutation-tested |
+| Configuration preflight (`npm run convex:preflight`) | READY — 11 checks, mutation-tested |
+| Control-plane diagnostic (`npm run convex:access`) | READY — separates DNS/TCP/TLS/HTTP/auth |
+| Evidence D harness (`npm run evidence:d`) | READY — refuses localhost/http/non-Convex/unreachable |
+| Deployment handoff runbook | READY — `docs/DEPLOYMENT-HANDOFF.md`, steps A–H |
 | Evidence Level D | NOT ACHIEVED |
 
 Two independent reasons block a production deployment. Clearing one does not

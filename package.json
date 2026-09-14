@@ -17,7 +17,9 @@
     "mobile:verify": "node scripts/verify-mobile-artifacts.mjs",
     "desktop:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "desktop:build": "tauri build",
-    "convex:preflight": "node --experimental-strip-types --no-warnings scripts/verify-deployment-config.mjs"
+    "convex:preflight": "node --experimental-strip-types --no-warnings scripts/verify-deployment-config.mjs",
+    "convex:access": "node scripts/verify-convex-access.mjs",
+    "evidence:d": "node scripts/evidence-d-harness.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^7.1.2",
