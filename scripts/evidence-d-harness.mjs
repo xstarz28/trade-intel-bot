@@ -79,6 +79,46 @@ const D_DEFINITIONS = [
   { id: "D10", title: "Provenance observedAt is provider-derived, not local" },
 ];
 
+/**
+ * The entitlement STATE MACHINE track (Phase 205).
+ *
+ * Separate from D1-D10 on purpose. D5-D8 measure the market-analysis
+ * guarantee and are market-dependent; these measure the accounting guarantee
+ * and are not. A green E-track is never reported as a green D-track.
+ */
+const E_DEFINITIONS = [
+  ["E1", "A fresh authenticated GUEST starts with remaining = 2"],
+  ["E2", "A non-chargeable event consumes nothing"],
+  ["E3", "First chargeable consumption: remaining 2 -> 1"],
+  ["E4", "Second chargeable consumption: remaining 1 -> 0"],
+  ["E5", "Third chargeable attempt is refused, nothing charged"],
+  ["E6", "Refusal is redacted and non-chargeable stays free after exhaustion"],
+];
+const E_MAP = Object.fromEntries(E_DEFINITIONS);
+
+/** Directional fields the server must never expose. Mirrors PROTECTED_DECISION_FIELDS. */
+const PROTECTED_FIELDS = [
+  "recommendation",
+  "conviction",
+  "tradePlan",
+  "positionSizing",
+  "bias",
+  "confidence",
+  "analystThesis",
+  "professionalThesis",
+  "marketScenario",
+  "forwardMarketPath",
+  "longHorizonThesis",
+  "evidenceChallenge",
+  "decisionTrace",
+  "decisionFingerprint",
+  "keyLevels",
+  "technicalSummary",
+  "fundamentalSummary",
+  "riskNote",
+];
+
+const entitlementChecks = [];
 const checks = [];
 const record = (id, status, detail, evidence = null) => {
   const def = D_DEFINITIONS.find((d) => d.id === id);
@@ -366,6 +406,9 @@ const analysisInput = (extra = {}) => ({
   },
 });
 
+/** Recommendations the server treats as chargeable (src/lib/entitlement/entitlement.ts). */
+const CHARGEABLE_RECS = ["BUY", "SELL", "LONG", "SHORT"];
+
 const usedOf = (entitlementValue) => Number(entitlementValue?.profitSignalsUsed ?? 0);
 
 async function readEntitlement(token) {
@@ -640,7 +683,6 @@ async function run() {
   const buyRec = buy.value?.result?.recommendation;
   const buyStatus = buy.value?.status;
   const consumed = usedOf(afterBuy) - beforeBuy;
-  const CHARGEABLE = ["BUY", "SELL", "LONG", "SHORT"];
   if (buyStatus === "UNAUTHENTICATED") {
     record(
       "D5",
@@ -657,7 +699,7 @@ async function run() {
         "consumption could not be measured. Re-run with a fresh identity.",
       { status: buyStatus },
     );
-  } else if (CHARGEABLE.includes(String(buyRec))) {
+  } else if (CHARGEABLE_RECS.includes(String(buyRec))) {
     record(
       "D5",
       consumed === 1 ? "PASS" : "FAIL",
@@ -716,9 +758,20 @@ async function run() {
   }
 
   /* --- D7 + D8: exhaustion must LOCK, and reveal nothing. --- */
+  //
+  // LOCKED is only reachable when the ENGINE ITSELF produces a chargeable
+  // recommendation: `gateDecision` returns DELIVERED for WAIT/NO_TRADE
+  // regardless of allowance. So on a quiet market this observation cannot be
+  // made at all. That is a test-condition limitation, not a product defect,
+  // and it is reported NOT_VERIFIED — never FAIL, and never "fixed" by
+  // fabricating a BUY, which would prove nothing about the real engine.
+  //
+  // The entitlement STATE MACHINE is verified separately and unconditionally
+  // by the E-track below, through a real deployed authenticated boundary.
   let locked = null;
   let attempts = 0;
   let lastStatus = null;
+  const observedRecs = [];
   for (; attempts < 4 && !locked; attempts += 1) {
     const r = await action(
       "protectedAnalysis:runProtectedAnalysis",
@@ -726,6 +779,8 @@ async function run() {
       token,
     );
     lastStatus = r.value?.status ?? null;
+    const rec = r.value?.result?.recommendation;
+    if (rec !== undefined) observedRecs.push(String(rec));
     if (lastStatus === "LOCKED") locked = r.value;
     // An UNAUTHENTICATED reply means the session was not accepted. Retrying
     // cannot change that, and reporting "no LOCKED produced" would blame the
@@ -733,6 +788,7 @@ async function run() {
     if (lastStatus === "UNAUTHENTICATED") break;
   }
   const finalEnt = await readEntitlement(token);
+  const sawChargeable = observedRecs.some((r) => CHARGEABLE_RECS.includes(r));
   if (lastStatus === "UNAUTHENTICATED") {
     record(
       "D7",
@@ -743,16 +799,33 @@ async function run() {
         "NOT evidence about the entitlement rules.",
       { locked: false, attempts, lastStatus, used: usedOf(finalEnt) },
     );
+  } else if (locked) {
+    record(
+      "D7",
+      "PASS",
+      `an exhausted account received LOCKED after ${attempts} request(s); ` +
+        `used=${usedOf(finalEnt)} limit=${finalEnt.limit} upgradeRequired=${finalEnt.upgradeRequired}`,
+      { locked: true, attempts, lastStatus, used: usedOf(finalEnt), observedRecs },
+    );
+  } else if (!sawChargeable) {
+    record(
+      "D7",
+      "NOT_VERIFIED",
+      "no real chargeable signal occurred: the engine returned " +
+        `${observedRecs.join(", ") || "no recommendation"} over ${attempts} request(s), and a ` +
+        "non-actionable result is delivered free by design, so LOCKED is unreachable. " +
+        "This is a market-condition limitation, not a product defect. The entitlement " +
+        "state machine is verified independently by E1-E6.",
+      { locked: false, attempts, observedRecs, used: usedOf(finalEnt) },
+    );
   } else {
     record(
       "D7",
-      locked ? "PASS" : "FAIL",
-      locked
-        ? `an exhausted account received LOCKED after ${attempts} request(s); ` +
-          `used=${usedOf(finalEnt)} limit=${finalEnt.limit} upgradeRequired=${finalEnt.upgradeRequired}`
-        : `no LOCKED response after ${attempts} requests beyond the free allowance ` +
-          `(used=${usedOf(finalEnt)} limit=${finalEnt.limit}, lastStatus=${lastStatus})`,
-      { locked: Boolean(locked), attempts, lastStatus, used: usedOf(finalEnt) },
+      "FAIL",
+      `the engine produced a chargeable signal (${observedRecs.join(", ")}) but the ` +
+        `allowance never locked after ${attempts} requests ` +
+        `(used=${usedOf(finalEnt)} limit=${finalEnt.limit}, lastStatus=${lastStatus})`,
+      { locked: false, attempts, lastStatus, observedRecs, used: usedOf(finalEnt) },
     );
   }
 
@@ -797,8 +870,17 @@ async function run() {
         : `LOCKED payload leaked: ${leaked.join(", ")}`,
       { leakedFields: leaked, checkedFields: DIRECTIONAL.length },
     );
+  } else if (lastStatus === "UNAUTHENTICATED") {
+    record("D8", "BLOCKED", "no LOCKED payload to inspect (session not recognised)");
   } else {
-    record("D8", "BLOCKED", "no LOCKED payload to inspect");
+    record(
+      "D8",
+      "NOT_VERIFIED",
+      "no real chargeable signal occurred, so no LOCKED payload was produced to inspect. " +
+        "The redaction contract is exercised against the real payload only; E6 separately " +
+        "confirms the server refuses an exhausted chargeable request.",
+      { observedRecs },
+    );
   }
 
   /* --- Post-exhaustion safety: WAIT must stay free, nothing substituted. --- */
@@ -813,6 +895,159 @@ async function run() {
     usedDidNotGrowBeyondLimit: usedOf(postLockEnt) >= usedOf(finalEnt),
     planStillGuest: postLockEnt.plan === "GUEST",
   };
+
+  /* ================================================================ *
+   * E-TRACK — the entitlement STATE MACHINE, independent of the market
+   * ================================================================ *
+   *
+   * D5-D8 verify the MARKET ANALYSIS guarantee: that the real engine's own
+   * output drives charging. They are market-dependent by nature — on a quiet
+   * market no chargeable signal exists, and forcing one would invalidate the
+   * very thing they measure.
+   *
+   * The ENTITLEMENT guarantee is a separate claim: given a chargeable event,
+   * the counter moves 2 -> 1 -> 0 and then refuses. That does not need a live
+   * BUY, and it should not be hostage to one.
+   *
+   * This track exercises it through `entitlements:consumeProfitSignal`, which
+   * is a REAL deployed, authenticated, client-callable mutation — the same
+   * least-privileged boundary a client already has. It is emphatically NOT a
+   * test backdoor:
+   *
+   *   - it is authenticated and rejects anonymous callers;
+   *   - it returns ACCOUNTING ONLY (allowed/charged/plan/remaining/reason) and
+   *     never a recommendation, entry, stop or target, so it cannot be used to
+   *     obtain a signal without paying;
+   *   - it can only ever DEBIT (nextUsageCount is min(used+1, LIMIT)); there is
+   *     no path by which it grants allowance or Premium;
+   *   - it is deliberately NOT wired into any delivery path (Phase 174), so it
+   *     is not a bypass of `runProtectedAnalysis` — the directional payload is
+   *     unreachable through it.
+   *
+   * What it CANNOT prove is that the engine's own output decides chargeability
+   * — it takes the recommendation as an argument. That is precisely why this
+   * track does not replace D5-D8, and why a green E-track is never reported as
+   * a green D-track.
+   */
+  const eRecord = (id, title, status, detail, evidence = null) => {
+    entitlementChecks.push({ id, title, status, detail, evidence });
+  };
+
+  // The E-track needs a pristine identity. The D-track has already spent
+  // allowance on this one, so only run it when we can mint a fresh session
+  // the same legitimate way the application does.
+  let eToken = null;
+  if (authMode === "anonymous") {
+    const freshAnon = await action("auth:signIn", { provider: "anonymous" });
+    eToken = freshAnon.value?.tokens?.token ?? freshAnon.value?.token ?? null;
+  }
+
+  if (!eToken) {
+    for (const [id, title] of E_DEFINITIONS) {
+      eRecord(
+        id,
+        title,
+        "NOT_VERIFIED",
+        authMode === "anonymous"
+          ? "could not mint a fresh identity for the state-machine track."
+          : "the state-machine track needs a pristine identity; with --auth otp the D-track " +
+            "has already consumed allowance on this mailbox. Re-run with --auth anonymous " +
+            "against a development deployment.",
+      );
+    }
+  } else {
+    const eRead = async () => (await query("entitlements:getMyEntitlement", {}, eToken)).value ?? {};
+    const eConsume = (rec) =>
+      mutation("entitlements:consumeProfitSignal", { recommendation: rec }, eToken);
+
+    // E1 — a fresh authenticated GUEST starts at remaining = 2.
+    const s0 = await eRead();
+    eRecord(
+      "E1",
+      E_MAP.E1,
+      s0.authenticated === true && s0.plan === "GUEST" && s0.remaining === 2 ? "PASS" : "FAIL",
+      `authenticated=${s0.authenticated} plan=${s0.plan} remaining=${s0.remaining} ` +
+        `used=${usedOf(s0)}`,
+      s0,
+    );
+
+    // E2 — a non-chargeable event must not move the counter.
+    const beforeFree = usedOf(s0);
+    const freeCall = await eConsume("WAIT");
+    const afterFree = await eRead();
+    eRecord(
+      "E2",
+      E_MAP.E2,
+      freeCall.value?.charged === false && usedOf(afterFree) === beforeFree ? "PASS" : "FAIL",
+      `reason=${freeCall.value?.reason} charged=${freeCall.value?.charged}; ` +
+        `used ${beforeFree} -> ${usedOf(afterFree)} (expected unchanged)`,
+      { reason: freeCall.value?.reason, before: beforeFree, after: usedOf(afterFree) },
+    );
+
+    // E3 — first chargeable consumption: remaining 2 -> 1.
+    const c1 = await eConsume("BUY");
+    const s1 = await eRead();
+    eRecord(
+      "E3",
+      E_MAP.E3,
+      c1.value?.charged === true && s1.remaining === 1 && usedOf(s1) === 1 ? "PASS" : "FAIL",
+      `reason=${c1.value?.reason} charged=${c1.value?.charged}; remaining=${s1.remaining} ` +
+        `used=${usedOf(s1)} (expected remaining 1, used 1)`,
+      { reason: c1.value?.reason, remaining: s1.remaining, used: usedOf(s1) },
+    );
+
+    // E4 — second chargeable consumption: remaining 1 -> 0.
+    const c2 = await eConsume("SELL");
+    const s2 = await eRead();
+    eRecord(
+      "E4",
+      E_MAP.E4,
+      c2.value?.charged === true && s2.remaining === 0 && usedOf(s2) === 2 ? "PASS" : "FAIL",
+      `reason=${c2.value?.reason} charged=${c2.value?.charged}; remaining=${s2.remaining} ` +
+        `used=${usedOf(s2)} (expected remaining 0, used 2)`,
+      { reason: c2.value?.reason, remaining: s2.remaining, used: usedOf(s2) },
+    );
+
+    // E5 — the third chargeable attempt is refused, and nothing is charged.
+    const c3 = await eConsume("BUY");
+    const s3 = await eRead();
+    const refused =
+      c3.value?.allowed === false &&
+      c3.value?.upgradeRequired === true &&
+      c3.value?.charged === false;
+    eRecord(
+      "E5",
+      E_MAP.E5,
+      refused && usedOf(s3) === 2 ? "PASS" : "FAIL",
+      `allowed=${c3.value?.allowed} upgradeRequired=${c3.value?.upgradeRequired} ` +
+        `reason=${c3.value?.reason}; used stayed ${usedOf(s3)} (must not exceed the limit)`,
+      { allowed: c3.value?.allowed, reason: c3.value?.reason, used: usedOf(s3) },
+    );
+
+    // E6 — an exhausted account still gets no directional payload, and the
+    // refusal itself must not leak one.
+    const refusalBody = JSON.stringify(c3.value ?? {});
+    const leakedInRefusal = PROTECTED_FIELDS.filter((f) => refusalBody.includes(`"${f}"`));
+    // And a non-chargeable request must STILL be free after exhaustion.
+    const postExhaustFree = await eConsume("NO_TRADE");
+    const s4 = await eRead();
+    eRecord(
+      "E6",
+      E_MAP.E6,
+      leakedInRefusal.length === 0 &&
+        postExhaustFree.value?.charged === false &&
+        usedOf(s4) === 2 &&
+        s4.plan === "GUEST"
+        ? "PASS"
+        : "FAIL",
+      leakedInRefusal.length === 0
+        ? `the refusal carries no directional field; a NO_TRADE after exhaustion is still ` +
+          `free (charged=${postExhaustFree.value?.charged}), plan stayed ${s4.plan}, ` +
+          `used stayed ${usedOf(s4)}`
+        : `the refusal leaked: ${leakedInRefusal.join(", ")}`,
+      { leakedInRefusal, planAfter: s4.plan, usedAfter: usedOf(s4) },
+    );
+  }
 
   /* --- D10: observedAt must come from the provider acquisition path. --- */
   //
@@ -897,6 +1132,20 @@ const passed = checks.filter((c) => c.status === "PASS");
 const complete = failed.length === 0 && blocked.length === 0 && notVerified.length === 0;
 const evidenceD = failed.length > 0 ? "FAILED" : complete ? "ACHIEVED" : "INCOMPLETE";
 
+const ePassed = entitlementChecks.filter((c) => c.status === "PASS");
+const eFailed = entitlementChecks.filter((c) => c.status === "FAIL");
+const eUnresolved = entitlementChecks.filter(
+  (c) => c.status !== "PASS" && c.status !== "FAIL",
+);
+const entitlementStateMachine =
+  entitlementChecks.length === 0
+    ? "NOT EXECUTED"
+    : eFailed.length > 0
+      ? "FAILED"
+      : eUnresolved.length > 0
+        ? "INCOMPLETE"
+        : "VERIFIED";
+
 const report = {
   evidenceD,
   evidenceClass: complete && failed.length === 0 ? EVIDENCE_CLASS : `${EVIDENCE_CLASS} (INCOMPLETE)`,
@@ -916,6 +1165,21 @@ const report = {
   },
   safetyProbes: safety,
   checks,
+  // Reported alongside D1-D10, never merged into them: a verified state
+  // machine does not make the market-analysis guarantee verified.
+  entitlementStateMachine: {
+    verdict: entitlementStateMachine,
+    note:
+      "Exercised through entitlements:consumeProfitSignal, a real deployed " +
+      "authenticated boundary that returns accounting only and can never grant " +
+      "allowance. It does NOT prove the engine decides chargeability — that is D5-D8.",
+    summary: {
+      passed: ePassed.length,
+      failed: eFailed.length,
+      unresolved: eUnresolved.length,
+    },
+    checks: entitlementChecks,
+  },
 };
 
 if (asJson) {
@@ -927,8 +1191,19 @@ if (asJson) {
     console.log(`  ${c.status.padEnd(13)} ${c.id.padEnd(4)} ${c.title}`);
     console.log(`  ${" ".repeat(18)} ${c.detail}`);
   }
+  if (entitlementChecks.length > 0) {
+    console.log("─".repeat(78));
+    console.log("  ENTITLEMENT STATE MACHINE (independent of market conditions)");
+    for (const c of entitlementChecks) {
+      console.log(`  ${c.status.padEnd(13)} ${c.id.padEnd(4)} ${c.title}`);
+      console.log(`  ${" ".repeat(18)} ${c.detail}`);
+    }
+  }
   console.log("─".repeat(78));
   console.log(`EVIDENCE D: ${evidenceD}`);
+  if (entitlementChecks.length > 0) {
+    console.log(`ENTITLEMENT STATE MACHINE: ${entitlementStateMachine}`);
+  }
   console.log(
     `  ${passed.length} passed, ${failed.length} failed, ` +
       `${blocked.length} blocked, ${notVerified.length} not verified`,
