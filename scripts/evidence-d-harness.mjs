@@ -49,6 +49,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { buildReport, renderHumanReport } from "./lib/evidence-report.mjs";
 
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
@@ -1364,111 +1365,64 @@ async function run() {
     );
   }
 
-  return { premiumProbe, postLockSafety, providerAttempts, sweepLog, chargeableFind };
+  return {
+    premiumProbe,
+    postLockSafety,
+    providerAttempts,
+    sweepLog,
+    chargeableFind,
+    sweepLimit,
+    entitlementDefinitions: E_DEFINITIONS.map(([id, title]) => ({ id, title })),
+  };
 }
 
 const safety = (await run()) ?? {};
 
 /* ------------------------------------------------------------------ *
- * Verdict
- * ------------------------------------------------------------------ */
+ * Verdict — one canonical report, two renderings (Phase 208)
+ * ------------------------------------------------------------------ *
+ *
+ * The report object is built ONCE by scripts/lib/evidence-report.mjs and then
+ * either serialised (--json) or printed. The two modes therefore cannot drift:
+ * anything the JSON exposes, the terminal shows too.
+ *
+ * The D verdict is derived ONLY from `checks` (D1-D10). The E-track is carried
+ * beside it and never folded in.
+ */
 
 checks.sort(
   (a, b) =>
     D_DEFINITIONS.findIndex((d) => d.id === a.id) - D_DEFINITIONS.findIndex((d) => d.id === b.id),
 );
 
-const failed = checks.filter((c) => c.status === "FAIL");
-const blocked = checks.filter((c) => c.status === "BLOCKED");
-const notVerified = checks.filter((c) => c.status === "NOT_VERIFIED");
-const passed = checks.filter((c) => c.status === "PASS");
-
-const complete = failed.length === 0 && blocked.length === 0 && notVerified.length === 0;
-const evidenceD = failed.length > 0 ? "FAILED" : complete ? "ACHIEVED" : "INCOMPLETE";
-
-const ePassed = entitlementChecks.filter((c) => c.status === "PASS");
-const eFailed = entitlementChecks.filter((c) => c.status === "FAIL");
-const eUnresolved = entitlementChecks.filter(
-  (c) => c.status !== "PASS" && c.status !== "FAIL",
-);
-const entitlementStateMachine =
-  entitlementChecks.length === 0
-    ? "NOT EXECUTED"
-    : eFailed.length > 0
-      ? "FAILED"
-      : eUnresolved.length > 0
-        ? "INCOMPLETE"
-        : "VERIFIED";
-
-const report = {
-  evidenceD,
-  evidenceClass: complete && failed.length === 0 ? EVIDENCE_CLASS : `${EVIDENCE_CLASS} (INCOMPLETE)`,
+const report = buildReport({
+  definitions: D_DEFINITIONS,
+  checks,
+  entitlementDefinitions: safety.entitlementDefinitions ?? [],
+  entitlementChecks,
   environment: DEPLOYMENT_ENVIRONMENT,
   deployment: { host: parsed.hostname, name: deployment.name ?? null, declared: deployment.type },
-  productionEvidence: evidenceD === "ACHIEVED" && EVIDENCE_CLASS === "PRODUCTION_EVIDENCE",
-  configSource: envSource,
+  evidenceClass: EVIDENCE_CLASS,
+  claimsProduction,
   authMechanism: authMode === "anonymous" ? "anonymous (development)" : "email-otp",
+  configSource: envSource,
   capturedAt: new Date().toISOString(),
   durationMs: Date.now() - STARTED_AT,
   transportCalls: transport.calls,
-  summary: {
-    passed: passed.length,
-    failed: failed.length,
-    blocked: blocked.length,
-    notVerified: notVerified.length,
-  },
-  safetyProbes: safety,
-  checks,
-  // Reported alongside D1-D10, never merged into them: a verified state
-  // machine does not make the market-analysis guarantee verified.
-  entitlementStateMachine: {
-    verdict: entitlementStateMachine,
-    note:
-      "Exercised through entitlements:consumeProfitSignal, a real deployed " +
-      "authenticated boundary that returns accounting only and can never grant " +
-      "allowance. It does NOT prove the engine decides chargeability — that is D5-D8.",
-    summary: {
-      passed: ePassed.length,
-      failed: eFailed.length,
-      unresolved: eUnresolved.length,
-    },
-    checks: entitlementChecks,
-  },
-};
+  providerAttempts: safety.providerAttempts ?? [],
+  sweepLog: safety.sweepLog ?? [],
+  chargeableFind: safety.chargeableFind ?? null,
+  sweepLimit: safety.sweepLimit ?? 1,
+  safetyProbes: { premiumProbe: safety.premiumProbe ?? null, postLockSafety: safety.postLockSafety ?? null },
+});
+
+const failed = report.summary.failed;
+const complete = report.evidenceD === "ACHIEVED";
 
 if (asJson) {
   console.log(JSON.stringify(report, null, 2));
 } else {
-  console.log(`Evidence D harness — ${parsed.hostname} [${DEPLOYMENT_ENVIRONMENT}]`);
-  console.log("─".repeat(78));
-  for (const c of checks) {
-    console.log(`  ${c.status.padEnd(13)} ${c.id.padEnd(4)} ${c.title}`);
-    console.log(`  ${" ".repeat(18)} ${c.detail}`);
-  }
-  if (entitlementChecks.length > 0) {
-    console.log("─".repeat(78));
-    console.log("  ENTITLEMENT STATE MACHINE (independent of market conditions)");
-    for (const c of entitlementChecks) {
-      console.log(`  ${c.status.padEnd(13)} ${c.id.padEnd(4)} ${c.title}`);
-      console.log(`  ${" ".repeat(18)} ${c.detail}`);
-    }
-  }
-  console.log("─".repeat(78));
-  console.log(`EVIDENCE D: ${evidenceD}`);
-  if (entitlementChecks.length > 0) {
-    console.log(`ENTITLEMENT STATE MACHINE: ${entitlementStateMachine}`);
-  }
-  console.log(
-    `  ${passed.length} passed, ${failed.length} failed, ` +
-      `${blocked.length} blocked, ${notVerified.length} not verified`,
-  );
-  console.log(`  CLASS: ${report.evidenceClass}`);
-  if (!report.productionEvidence) {
-    console.log("  This run is NOT production release evidence.");
-  }
-  if (evidenceD !== "ACHIEVED") {
-    console.log("  Evidence D is NOT achieved. Do not report the backend as verified.");
-  }
+  for (const l of renderHumanReport(report)) console.log(l);
 }
 
-process.exit(failed.length > 0 ? 1 : complete ? 0 : 2);
+process.exit(failed > 0 ? 1 : complete ? 0 : 2);
