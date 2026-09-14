@@ -125,7 +125,7 @@ environment. Each needs a human with an account, a domain, or network authority.
 | # | Item | Owner | Cleared by |
 | --- | --- | --- | --- |
 | 1 | OTP credential revocation | issuer account holder | old key presented and refused (401/403) |
-| 2 | Convex egress (`*.convex.dev`) | platform/network | `npm run convex:access` exits 0 |
+| 2 | Convex egress — **`*.convex.dev` + `*.convex.cloud` + `*.convex.site`** (three separate allowlist entries; Phase 201 verified all three are blocked at TLS) | platform/network | `npm run convex:access` exits 0 |
 | 3 | Convex deployment credential | Convex account holder | `CONVEX_DEPLOY_KEY` accepted by the control plane |
 | 4 | Email account + registered domain | product owner | verified sender at the provider |
 | 5 | SPF / DKIM / DMARC | domain owner | DNS records published |
@@ -161,6 +161,8 @@ The deployment pipeline is prepared and validated. No deployment exists.
 | Item | Status |
 | --- | --- |
 | Convex control plane reachable from the build environment | NO — DNS+TCP OK, **TLS severed (ECONNRESET)**; targeted egress block, not an outage |
+| Convex deployment plane (`*.convex.cloud`, `*.convex.site`) reachable | NO — TLS severed; **separate allowlist entry**, verified Phase 201 |
+| Phase 201 real deployment attempt | **BLOCKED at the external gate** — see `docs/PHASE-201-DEPLOYMENT-ATTEMPT.md` |
 | `CONVEX_DEPLOYMENT` configured | NO |
 | `npx convex codegen` executed against a real deployment | BLOCKED |
 | Staging/preview deployment | BLOCKED |

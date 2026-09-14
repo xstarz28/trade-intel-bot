@@ -38,6 +38,18 @@ DNS resolves and TCP :443 is accepted; the TLS handshake is severed with
 `ECONNRESET` in ~5 ms. **That is a transport failure and nothing else.** It is
 not an authentication result and not revocation evidence for any credential.
 
+### Allowlist all THREE domain families, not just the control plane
+
+| Family | Used by | Currently |
+| --- | --- | --- |
+| `*.convex.dev` | `convex deploy`, `convex codegen`, dashboard | **blocked** |
+| `*.convex.cloud` | the deployment itself — **Evidence D talks to this** | **blocked** |
+| `*.convex.site` | HTTP actions and the **auth issuer identity** (`CONVEX_SITE_URL`) | **blocked** |
+
+Opening only `*.convex.dev` is the trap: steps A–G would succeed and step H
+would fail for reasons that look unrelated. The diagnostic now probes all three
+and reports `CONTROL_PLANE_ONLY` (exit 1) for exactly that half-open state.
+
 ---
 
 ## 1. Ordered procedure
