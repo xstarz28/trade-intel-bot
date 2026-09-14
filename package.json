@@ -19,7 +19,7 @@
     "desktop:build": "tauri build",
     "convex:preflight": "node --experimental-strip-types --no-warnings scripts/verify-deployment-config.mjs",
     "convex:access": "node scripts/verify-convex-access.mjs",
-    "evidence:d": "node scripts/evidence-d-harness.mjs"
+    "evidence:d": "node scripts/evidence-d-harness.mjs --auto-env"
   },
   "dependencies": {
     "@auth/core": "^0.37.4",
