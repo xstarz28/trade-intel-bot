@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { userIdFromSubject } from "./lib/identitySubject";
+import type { Id } from "./_generated/dataModel";
 
 /**
  * Resolve the current user from the auth identity.
@@ -26,10 +28,13 @@ async function resolveUser(ctx: {
     if (byEmail) return byEmail;
   }
 
-  // Fall back to subject lookup (anonymous / guest users)
-  // In Convex Auth, identity.subject is the user's _id
+  // Fall back to subject lookup (anonymous / guest users).
+  // Convex Auth mints `sub` as `userId|sessionId`, so the raw subject is NOT a
+  // document id — it must be split first. See src/convex/lib/identitySubject.ts.
+  const userId = userIdFromSubject(identity.subject);
+  if (!userId) return null;
   try {
-    const byId = await ctx.db.get(identity.subject);
+    const byId = await ctx.db.get(userId as Id<"users">);
     return byId;
   } catch {
     return null;

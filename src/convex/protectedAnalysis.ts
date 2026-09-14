@@ -70,6 +70,7 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { action, internalMutation } from "./_generated/server";
+import { userIdFromSubject } from "./lib/identitySubject";
 import { api, internal } from "./_generated/api";
 import { runAnalysis } from "@/lib/analysis-engine";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
@@ -230,8 +231,12 @@ export const resolveCallerId = internalMutation({
       if (byEmail) return byEmail._id;
     }
 
+    // Convex Auth mints `sub` as `userId|sessionId`; the raw subject is not a
+    // document id. See src/convex/lib/identitySubject.ts.
+    const subjectUserId = userIdFromSubject(identity.subject);
+    if (!subjectUserId) return null;
     try {
-      const byId = await ctx.db.get(identity.subject as Id<"users">);
+      const byId = await ctx.db.get(subjectUserId as Id<"users">);
       return byId?._id ?? null;
     } catch {
       return null;

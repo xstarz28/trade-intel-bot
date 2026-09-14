@@ -12,6 +12,8 @@
 
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { userIdFromSubject } from "./lib/identitySubject";
+import type { Id } from "./_generated/dataModel";
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -37,8 +39,12 @@ async function resolveUser(ctx: {
       .unique();
     if (byEmail) return byEmail;
   }
+  // Convex Auth mints `sub` as `userId|sessionId`, so the raw subject is not a
+  // document id. See src/convex/lib/identitySubject.ts.
+  const userId = userIdFromSubject(identity.subject);
+  if (!userId) return null;
   try {
-    return await ctx.db.get(identity.subject);
+    return await ctx.db.get(userId as Id<"users">);
   } catch {
     return null;
   }
