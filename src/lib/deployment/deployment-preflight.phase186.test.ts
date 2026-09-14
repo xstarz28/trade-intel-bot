@@ -279,3 +279,80 @@ describe("Phase 186 — §5 preview keeps the affordances production forbids", (
     }
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Phase 199 — deployment-blocker checks added to the preflight
+ * ------------------------------------------------------------------ */
+
+describe("Phase 199 — no Freebuff runtime OTP dependency", () => {
+  it("passes on the current tree, and says so without claiming deployment works", () => {
+    const run = runPreflight(VALID_PRODUCTION);
+    expect(statusOf(run, "no-freebuff-otp-dependency")).toBe("PASS");
+    expect(detailOf(run, "no-freebuff-otp-dependency")).toMatch(/no runtime Freebuff/i);
+  });
+
+  it("scans a non-trivial number of server modules (the check is not vacuous)", () => {
+    const run = runPreflight(VALID_PRODUCTION);
+    const detail = detailOf(run, "no-freebuff-otp-dependency");
+    const scanned = Number(/(\d+) server modules/.exec(detail)?.[1] ?? 0);
+    // A regex that matched nothing would also report "no dependency". Require
+    // evidence that real files were read.
+    expect(scanned).toBeGreaterThan(20);
+  });
+
+  it("treats denylist entries as protective, not as a dependency", () => {
+    // issuerPolicy.ts and emailDelivery.ts both name the retired hosts on
+    // purpose. If the check flagged those, removing the protection would be
+    // the only way to make it pass — exactly backwards.
+    const run = runPreflight(VALID_PRODUCTION);
+    expect(statusOf(run, "no-freebuff-otp-dependency")).toBe("PASS");
+  });
+});
+
+describe("Phase 199 — production runtime modules are wired", () => {
+  it("passes on the current tree", () => {
+    const run = runPreflight(VALID_PRODUCTION);
+    expect(statusOf(run, "runtime-modules-wired")).toBe("PASS");
+  });
+
+  it("recognises destructured Convex exports (export const { auth } = convexAuth(...))", () => {
+    // auth.ts exports `auth` by destructuring convexAuth()'s return value. A
+    // naive `export const auth` regex reports a false failure, which would
+    // train an operator to ignore the check.
+    const run = runPreflight(VALID_PRODUCTION);
+    expect(detailOf(run, "runtime-modules-wired")).not.toMatch(/does not export auth\b/);
+  });
+
+  it("states that it verifies wiring only, never deployed behaviour", () => {
+    const run = runPreflight(VALID_PRODUCTION);
+    expect(detailOf(run, "runtime-modules-wired")).toMatch(/NOT deployed behaviour/i);
+  });
+
+  it("checks every module the production runtime depends on", () => {
+    const run = runPreflight(VALID_PRODUCTION);
+    const detail = detailOf(run, "runtime-modules-wired");
+    const count = Number(/(\d+) modules checked/.exec(detail)?.[1] ?? 0);
+    expect(count).toBeGreaterThanOrEqual(7);
+  });
+});
+
+describe("Phase 199 — the preflight still refuses to claim deployment success", () => {
+  it("a fully valid configuration is still not evidence of a deployment", () => {
+    const run = runPreflight(VALID_PRODUCTION);
+    expect(run.exitCode).toBe(0);
+    // Everything that requires a live deployment must remain unproven.
+    const joined = run.report.notVerified.join(" ").toLowerCase();
+    expect(joined).toMatch(/deployed convex runtime|evidence level d/);
+    expect(joined).toMatch(/delivery/);
+  });
+
+  it("no check reports PASS for anything requiring network or a deployment", () => {
+    const run = runPreflight(VALID_PRODUCTION);
+    for (const result of run.report.results) {
+      if (result.status !== "PASS") continue;
+      // A PASS may describe configuration or source wiring. It must never
+      // assert that mail was delivered or that a deployment is reachable.
+      expect(result.detail).not.toMatch(/deployed successfully|delivery confirmed|is live/i);
+    }
+  });
+});

@@ -29,7 +29,7 @@
  *   node scripts/verify-deployment-config.mjs --json
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import module from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -309,6 +309,125 @@ record(
       ? "all production-required variables are present"
       : `missing on production: ${missingRequired.join(", ")}`,
 );
+
+// --- No Freebuff runtime OTP dependency -----------------------------------
+// Phase 184's credential leaked because auth called a third-party OTP endpoint
+// directly. Phase 185 removed it. This check proves the dependency has not come
+// back, and distinguishes a *denylist* mention (which is protective and must be
+// allowed) from a real call site (which is a regression).
+{
+  const RUNTIME_DIRS = ["src/convex"];
+  const offenders = [];
+  let scanned = 0;
+
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name === "_generated" || entry.name === "testing") continue;
+        walk(full);
+        continue;
+      }
+      if (!entry.name.endsWith(".ts")) continue;
+      if (entry.name.includes(".test.")) continue;
+      scanned += 1;
+      const source = readFileSync(full, "utf8");
+      const lines = source.split("\n");
+      lines.forEach((line, i) => {
+        if (!/freebuff/i.test(line)) return;
+        // A denylist entry or a historical comment is not a dependency. A fetch
+        // to the host, or an env var feeding one, is.
+        const isDenylist =
+          /FORBIDDEN_DELIVERY_HOSTS|RETIRED_ISSUER_HOSTS|RETIRED_/.test(line) ||
+          /^\s*\*/.test(line) ||
+          /^\s*\/\//.test(line);
+        if (isDenylist) return;
+        offenders.push(`${full}:${i + 1}`);
+      });
+    }
+  };
+  for (const dir of RUNTIME_DIRS) walk(dir);
+
+  record(
+    "no-freebuff-otp-dependency",
+    offenders.length === 0 ? "PASS" : "FAIL",
+    offenders.length === 0
+      ? `no runtime Freebuff OTP dependency in ${scanned} server modules ` +
+          "(denylist entries are expected and allowed)"
+      : `runtime Freebuff reference(s): ${offenders.join(", ")}`,
+  );
+}
+
+// --- Production runtime modules must be wired -----------------------------
+// A deployment that is missing one of these does not fail at deploy time; it
+// fails the first time a user signs in or requests an analysis. Checking for
+// presence and for the export the runtime actually calls turns that into a
+// pre-deploy error.
+{
+  const REQUIRED_MODULES = [
+    { path: "src/convex/auth.ts", exports: ["auth"], why: "sign-in" },
+    { path: "src/convex/auth/emailOtp.ts", exports: ["emailOtp"], why: "OTP delivery" },
+    {
+      path: "src/convex/entitlements.ts",
+      exports: ["getMyEntitlement", "consumeProfitSignal"],
+      why: "free-tier limit",
+    },
+    {
+      path: "src/convex/protectedAnalysis.ts",
+      exports: ["runProtectedAnalysis"],
+      why: "gated analysis + provenance",
+    },
+    {
+      path: "src/convex/otpLimiter.ts",
+      exports: ["consumeResendAllowance"],
+      why: "durable abuse limiting",
+    },
+    { path: "src/convex/http.ts", exports: [], why: "auth HTTP routes / OIDC discovery" },
+    { path: "src/convex/schema.ts", exports: [], why: "data model" },
+  ];
+
+  const problems = [];
+  for (const mod of REQUIRED_MODULES) {
+    let source;
+    try {
+      source = readFileSync(mod.path, "utf8");
+    } catch {
+      problems.push(`${mod.path} missing (${mod.why})`);
+      continue;
+    }
+    for (const name of mod.exports) {
+      // Convex modules export entry points in three shapes, all legitimate:
+      //   export const foo = query({...})
+      //   export function foo() {}
+      //   export const { auth, signIn } = convexAuth({...})   <- destructured
+      const direct = new RegExp(
+        `export\\s+(const|let|function|async function)\\s+${name}\\b`,
+      ).test(source);
+      const destructured = new RegExp(
+        `export\\s+const\\s*\\{[^}]*\\b${name}\\b[^}]*\\}\\s*=`,
+        "s",
+      ).test(source);
+      if (!direct && !destructured) {
+        problems.push(`${mod.path} does not export ${name} (${mod.why})`);
+      }
+    }
+  }
+
+  record(
+    "runtime-modules-wired",
+    problems.length === 0 ? "PASS" : "FAIL",
+    problems.length === 0
+      ? `auth, entitlement, provenance and limiter modules export their runtime entry points ` +
+          `(${REQUIRED_MODULES.length} modules checked; wiring only — NOT deployed behaviour)`
+      : problems.join("; "),
+  );
+}
 
 // --- Server-only secrets must not be client-visible -----------------------
 const leakedToClient = [];
