@@ -194,6 +194,35 @@ turns an incomplete Evidence D into an achieved one.
 The E-track mints its own fresh identity, because the D-track has already spent
 allowance on its session.
 
+### E7 — authorization probes (Phase 206)
+
+E7 asserts a set of **refusals** against the live deployment. Every probe must
+be rejected; none of them weakens the server, and none is relied upon to
+succeed:
+
+| Probe | Required outcome |
+| --- | --- |
+| A 4th chargeable attempt after exhaustion | `used` stays 2, never 3 |
+| `consumeProfitSignal` with no session | rejected |
+| Plan after all consumption | still `GUEST` |
+| `grantPremium` from a non-admin caller | refused, plan not `PREMIUM` |
+| `protectedAnalysis:resolveAndConsume` from a client | **not callable**, state unchanged |
+
+The internal-mutation probe is a negative control: the deployment must answer
+with an error. Its success is recorded as a FAIL and can never produce
+evidence — test-enforced.
+
+### Running the E-track
+
+The operator command is unchanged:
+
+```
+npm run evidence:d -- --auth anonymous --json
+```
+
+The E-track mints its own fresh identity per run, so `used` always starts at 0.
+No user id is ever hardcoded.
+
 ---
 
 ## Phase 203 — why the execution half was rewritten

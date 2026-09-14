@@ -511,7 +511,25 @@ describe("Phase 205 — a quiet market is NOT_VERIFIED, never FAIL and never for
     // The harness may NAME chargeable values (to classify what the engine
     // returned) but must never send one into the analysis path as input.
     expect(code).not.toMatch(/analysisInput\([^)]*recommendation/s);
-    expect(code).not.toMatch(/recommendation:\s*"(BUY|SELL|LONG|SHORT)"/);
+    // The E-track legitimately names BUY/SELL when calling the ACCOUNTING
+    // mutation — that argument is what the mutation charges against, and it
+    // returns no signal. What must never happen is a recommendation being fed
+    // into the ANALYSIS path, where it would fake an engine decision.
+    const analysisCalls = [
+      ...code.matchAll(/runProtectedAnalysis"[\s\S]{0,400}?\n\s{2,4}\);/g),
+    ].map((m) => m[0]);
+    for (const call of analysisCalls) {
+      expect(call, "analysis calls must not carry a recommendation").not.toMatch(
+        /recommendation/,
+      );
+    }
+    // Chargeable literals may only reach entitlements:consumeProfitSignal.
+    for (const m of code.matchAll(/recommendation:\s*"(BUY|SELL|LONG|SHORT)"/g)) {
+      const around = code.slice(Math.max(0, m.index! - 260), m.index! + 120);
+      expect(around, "a chargeable literal may only go to the accounting mutation").toMatch(
+        /consumeProfitSignal/,
+      );
+    }
     // forced/fake/stub engine results have no place here.
     expect(code).not.toMatch(/forceRecommendation|fakeSignal|stubEngine/i);
   });
@@ -577,10 +595,15 @@ describe("Phase 205 — a quiet market is NOT_VERIFIED, never FAIL and never for
 describe("Phase 205 — the E-track uses a legitimate least-privileged boundary", () => {
   it("calls the real deployed public mutation, not an internal function", () => {
     expect(harnessSource).toContain("entitlements:consumeProfitSignal");
-    // Internal functions are unreachable from a client and must never be tried.
-    expect(harnessSource).not.toMatch(/protectedAnalysis:resolveAndConsume/);
     expect(harnessSource).not.toMatch(/protectedAnalysis:resolveCallerId/);
     expect(harnessSource).not.toMatch(/"internal[.:]/);
+    // resolveAndConsume appears ONLY as E7's negative control: the deployment
+    // must refuse it. Its success is recorded as a FAIL, never relied upon.
+    const internalRefs = [...harnessSource.matchAll(/protectedAnalysis:resolveAndConsume/g)];
+    expect(internalRefs).toHaveLength(1);
+    expect(harnessSource).toMatch(/if \(internalProbe\.ok\) findings\.push\(/);
+    // No E-track observation may depend on that call succeeding.
+    expect(harnessSource).not.toMatch(/internalProbe\.ok\s*\?\s*"PASS"/);
   });
 
   it("that boundary is genuinely public, authenticated and accounting-only", () => {
@@ -606,9 +629,13 @@ describe("Phase 205 — the E-track uses a legitimate least-privileged boundary"
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^[ \t]*\/\/.*$/gm, "");
     // grantPremium appears ONCE, as the rejection probe, and must stay a probe.
+    // Two probes now: the D-track self-grant probe and E7's non-admin probe.
+    // Both assert REFUSAL; neither may be treated as a way to obtain Premium.
     const grants = [...code.matchAll(/entitlements:grantPremium/g)];
-    expect(grants).toHaveLength(1);
+    expect(grants).toHaveLength(2);
     expect(code).toMatch(/premiumProbe/);
+    expect(code).toMatch(/a non-admin caller was able to grant Premium/);
+    expect(code).not.toMatch(/selfGrant\.ok\s*\?\s*"PASS"/);
     expect(code).not.toMatch(/db\.(insert|patch|replace|delete)/);
   });
 
@@ -630,8 +657,8 @@ describe("Phase 205 — the E-track uses a legitimate least-privileged boundary"
   });
 
   it("asserts exact deltas rather than 'it changed'", () => {
-    expect(harnessSource).toMatch(/s1\.remaining === 1 && usedOf\(s1\) === 1/);
-    expect(harnessSource).toMatch(/s2\.remaining === 0 && usedOf\(s2\) === 2/);
+    expect(harnessSource).toMatch(/s1\.remaining === 1 &&\s*\n?\s*usedOf\(s1\) === 1/);
+    expect(harnessSource).toMatch(/s2\.remaining === 0 &&\s*\n?\s*usedOf\(s2\) === 2/);
     expect(harnessSource).toMatch(/usedOf\(afterFree\) === beforeFree/);
   });
 
@@ -651,5 +678,63 @@ describe("Phase 205 — the E-track uses a legitimate least-privileged boundary"
     for (const f of fields) {
       expect(list, `E6 must check for leaked "${f}"`).toContain(`"${f}"`);
     }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 10. Phase 206 — full state-machine assertions and live authorization
+ * ------------------------------------------------------------------ */
+
+describe("Phase 206 — E-track asserts the complete contract", () => {
+  it("E1 asserts plan, remaining AND used", () => {
+    expect(harnessSource).toMatch(/s0\.authenticated === true &&\s*\n?\s*s0\.plan === "GUEST" &&\s*\n?\s*s0\.remaining === 2 &&\s*\n?\s*usedOf\(s0\) === 0/);
+  });
+
+  it("E3 and E4 assert the plan never escalates during consumption", () => {
+    expect(harnessSource).toMatch(/s1\.remaining === 1 &&\s*\n?\s*usedOf\(s1\) === 1 &&\s*\n?\s*s1\.plan === "GUEST"/);
+    expect(harnessSource).toMatch(/s2\.remaining === 0 &&\s*\n?\s*usedOf\(s2\) === 2 &&\s*\n?\s*s2\.plan === "GUEST"/);
+  });
+
+  it("E7 probes a fourth attempt, unauthenticated access, Premium and the internal mutation", () => {
+    const e7 = harnessSource.slice(
+      harnessSource.indexOf("E7 — the boundary's authorization properties"),
+      harnessSource.indexOf("D10: observedAt"),
+    );
+    expect(e7).toMatch(/const fourth = await eConsume\("BUY"\)/);
+    expect(e7).toMatch(/usedOf\(sAfterFourth\) !== 2/);
+    expect(e7).toMatch(/consumeProfitSignal accepted an unauthenticated caller/);
+    expect(e7).toMatch(/a non-admin caller was able to grant Premium/);
+    expect(e7).toMatch(/internal resolveAndConsume was callable from a client/);
+  });
+
+  it("every E7 probe asserts a REFUSAL, never a success", () => {
+    const e7 = harnessSource.slice(
+      harnessSource.indexOf("E7 — the boundary's authorization properties"),
+      harnessSource.indexOf("D10: observedAt"),
+    );
+    // The verdict is PASS only when nothing was found.
+    expect(e7).toMatch(/findings\.length === 0 \? "PASS" : "FAIL"/);
+    // The internal probe must be checked for NOT being callable.
+    expect(e7).toMatch(/internalNotCallable: !internalProbe\.ok/);
+    expect(e7).toMatch(/unauthenticatedRejected: !noAuth\.ok/);
+  });
+
+  it("the internal-mutation probe exists only as a negative control", () => {
+    // It must appear exactly once, inside E7, and its success must be a FAIL.
+    // Appears as: the probe call, the finding message, and E7's comment.
+    const hits = [...harnessSource.matchAll(/resolveAndConsume/g)];
+    expect(hits.length).toBeGreaterThanOrEqual(2);
+    // But only ONE actual invocation.
+    const calls = [...harnessSource.matchAll(/"protectedAnalysis:resolveAndConsume"/g)];
+    expect(calls).toHaveLength(1);
+    // Whitespace-tolerant: the comment wraps across lines in the source.
+    expect(harnessSource).toMatch(/answer with an error,\s*(?:\/\/\s*)?never execute/);
+  });
+
+  it("E_DEFINITIONS covers E1-E7 and the unresolved path reports all of them", () => {
+    const ids = [...harnessSource.matchAll(/\["(E\d)", "/g)].map((m) => m[1]);
+    expect(ids).toEqual(["E1", "E2", "E3", "E4", "E5", "E6", "E7"]);
+    // A run that cannot mint an identity must still report every E check.
+    expect(harnessSource).toMatch(/for \(const \[id, title\] of E_DEFINITIONS\)/);
   });
 });
