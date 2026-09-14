@@ -127,8 +127,6 @@ const COMPONENT_DEBT: Record<string, string> = {
   // they are recorded here rather than quietly excluded: the guard keeps
   // failing them until the copy is localized, and the entry must be deleted
   // the moment it is. Burn-down is the next phase's work.
-  "src/components/InstrumentInput.tsx":
-    "6 single-word labels (Phase 195 detector extension)",
   "src/components/CustomAlertRulesPanel.tsx":
     "2 single-word labels (Phase 195 detector extension)",
   "src/components/NotificationCenter.tsx":

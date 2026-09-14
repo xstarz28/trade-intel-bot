@@ -639,6 +639,12 @@ const zh: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysisHeading: "新建分析",
+    instrumentsHeading: "品种",
+    typeForex: "外汇",
+    typeCrypto: "加密货币",
+    typeStock: "股票",
+    typeCommodity: "大宗商品",
     instrumentLabel: "标的",
     typeLabel: "类型",
     timeframeLabel: "周期",
