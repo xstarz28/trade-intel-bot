@@ -22,6 +22,7 @@
     "evidence:d": "node scripts/evidence-d-harness.mjs"
   },
   "dependencies": {
+    "@auth/core": "^0.37.4",
     "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.6.9",
     "@capacitor/keyboard": "^7.0.6",
@@ -87,7 +88,6 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@auth/core": "^0.37.4",
     "@capacitor/android": "^7.6.9",
     "@capacitor/cli": "^7.6.9",
     "@capacitor/ios": "^7.6.9",
