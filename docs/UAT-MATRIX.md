@@ -2203,6 +2203,27 @@ environment.**
 | 35j.7 | E6 refusal payload | no directional field; `NO_TRADE` still free | BLOCKED — sandbox egress |
 | 35j.8 | E7 authorization probes | all five refusals hold | BLOCKED — sandbox egress |
 
+## 35k. Phase 207 — provider-derived observation & natural chargeable sweep
+
+Sandbox egress is severed (HTTP 000 to every provider and to the deployment), so
+every row below is **BLOCKED** pending an operator run. The harness guard tests
+pass in CI; that proves the *harness logic*, not the *evidence*.
+
+| # | Scenario | Expected | Status |
+| --- | --- | --- | --- |
+| 35k.1 | `npm run evidence:d` — D10 provider order | OKX order book attempted before any credentialed provider | BLOCKED |
+| 35k.2 | D10 with OKX exchange `ts` present | PASS; `observedAt` is the exchange timestamp | BLOCKED |
+| 35k.3 | D10 when OKX omits `ts` | Snapshot rejected upstream; D10 never PASS | BLOCKED |
+| 35k.4 | D10 falls back to TwelveData | NOT_VERIFIED, acquisition-time basis recorded | BLOCKED |
+| 35k.5 | D10 receives a future-dated `observedAt` | FAIL | BLOCKED |
+| 35k.6 | D10 value within 2 ms of local clock | FAIL | BLOCKED |
+| 35k.7 | No provider returns any timestamp | BLOCKED (not FAIL, not PASS) | BLOCKED |
+| 35k.8 | `--sweep 25` candidate sourcing | From `discoverOkxInstruments`, `state === "live"` only, provider-native ids | BLOCKED |
+| 35k.9 | Sweep finds a chargeable signal | D5 consumption delta === 1 | BLOCKED |
+| 35k.10 | Sweep finds none (quiet market) | D5/D7/D8 NOT_VERIFIED, never FAIL | BLOCKED |
+| 35k.11 | Default run (no `--sweep`) | Behaviour identical to Phase 206 | BLOCKED |
+| 35k.12 | `providerAttempts[]` present in output | Every attempt auditable after the fact | BLOCKED |
+
 ## 36. Sign-off
 
 | Field | Value |

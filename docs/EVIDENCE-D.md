@@ -51,6 +51,7 @@ wins over the file.
 | `--otp <code>` | Supply the code non-interactively. Without it, an interactive run prompts. |
 | `--env-file <path>` | Read configuration from a specific file. |
 | `--production-evidence` | Assert that this run is production release evidence. Refused unless the deployment really is `prod:`. |
+| `--sweep <N>` | Analyse up to N discovered live instruments, stopping at the first chargeable signal, to give D5/D7/D8 a fair chance in a quiet market. Default 1. |
 
 ### Exit codes
 
@@ -96,13 +97,66 @@ conditions do not yield a directional signal, D5 is reported `NOT_VERIFIED`
 rather than FAIL, and the same applies to D6 when no WAIT/NO_TRADE occurs.
 Forcing either would invalidate the observation it claims to make.
 
-### D10 and provider credentials
+### D10 — provider-derived observation (rewritten in Phase 207)
 
-`runProtectedAnalysis` logs provenance server-side rather than returning it, so
-D10 is probed where provenance is actually exposed — the acquisition action,
-which reports `observedAt` and its acquisition mode. Without a live provider
-credential that path cannot run, and D10 is reported BLOCKED. A fabricated
-timestamp is never accepted in its place.
+D10 asks one question: **is `observedAt` the provider's own observation, or just
+the moment we made the request?** Before Phase 207 the probe could not answer it.
+
+| provider | module | credential | `observedAt` basis | can evidence D10? |
+| --- | --- | --- | --- | --- |
+| OKX order book | `src/convex/okx.ts` | **none** | exchange `ts` field | **yes** |
+| TwelveData | `src/convex/marketData.ts` | `TWELVE_DATA_API_KEY` | `Date.now()` at acquisition | **no** |
+
+The old probe used TwelveData only. That was unpassable in two independent ways:
+the operator has no key, and even with one the timestamp is stamped locally at
+acquisition (`src/convex/marketData.ts` ~L100, L512). A PASS from that path would
+have relabelled acquisition time as provider observation — invalid evidence.
+
+D10 now probes **OKX first**. `fetchOkxOrderBook` sets `observedAt` only when the
+exchange supplied `ts`, and `parseOkxOrderBook` (`src/lib/execution-quality.ts`
+L147-157) *rejects* a snapshot whose `ts` is missing or invalid. The timestamp is
+therefore provider-derived by construction, and OKX needs no credential — so the
+operator can run this today.
+
+Verdicts:
+
+- **PASS** — OKX returned an exchange timestamp that is not future-dated, not a
+  cache stamped at request time, and not within 2 ms of the local clock.
+- **FAIL** — any of those three violations.
+- **NOT_VERIFIED** — only the acquisition-stamped fallback answered. Its basis is
+  recorded so the limitation stays visible; it is never upgraded to PASS.
+- **BLOCKED** — no provider returned a timestamp at all.
+
+Every attempt is recorded in `providerAttempts[]` (provider, dataset, instrument,
+access, basis, acquired, observedAt, acquisition, failure, timings) so a run can
+be audited without being rerun.
+
+### The natural chargeable-signal sweep (`--sweep N`, Phase 207)
+
+D5/D7/D8 need a **chargeable** recommendation (BUY/SELL). A quiet market yields
+`WAIT`/`NO_TRADE`, which is correct engine behaviour — not a defect. Those checks
+have stayed NOT_VERIFIED because a single instrument was probed once.
+
+`--sweep N` widens the search **without touching the engine**:
+
+- candidates come from `okx:discoverOkxInstruments` on the live deployment,
+  filtered to `state === "live"` — there is no hardcoded instrument list;
+- each candidate is analysed under its **provider-native `instId`**, verbatim
+  (no symbol substitution);
+- nothing about thresholds, bias, confidence or engine input is altered — the
+  sweep changes only *which* instrument is asked;
+- it stops at the first chargeable result and hands it to D5;
+- finding none is **NOT_VERIFIED, never FAIL**.
+
+Default is `--sweep 1`, so `npm run evidence:d` behaves exactly as in Phase 206.
+
+**Sandbox status: BLOCKED.** `www.okx.com`, `home.treasury.gov`, `www.cftc.gov`
+and the deployment host all return HTTP 000 from the build environment, so D10
+and the sweep are operator-only:
+
+```
+npm run evidence:d -- --sweep 25
+```
 
 ---
 

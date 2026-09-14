@@ -38,7 +38,7 @@
  *   npm run evidence:d                      # derives config from the environment
  *   node scripts/evidence-d-harness.mjs --auto-env [--json]
  *     [--auth otp|anonymous] [--otp 123456] [--env-file path]
- *     [--production-evidence]
+ *     [--production-evidence] [--sweep N]
  *
  * Exit codes:
  *   0 = all ten observations captured and passing (Evidence D achieved)
@@ -677,6 +677,75 @@ async function run() {
     );
   }
 
+  /* ---------------------------------------------------------------- *
+   * Natural chargeable-signal search (Phase 207)
+   * ---------------------------------------------------------------- *
+   *
+   * D5/D7/D8 need the engine to produce BUY/SELL/LONG/SHORT *on its own*. One
+   * instrument on a quiet market will not, and manufacturing one would destroy
+   * the evidence. So the harness asks the real analysis path about several
+   * instruments and stops at the first naturally chargeable answer.
+   *
+   * Rules this sweep obeys:
+   *   - candidates come from the deployment's OWN discovery action
+   *     (okx:discoverOkxInstruments), not a hardcoded list;
+   *   - each candidate keeps its provider-native identity (instId verbatim) —
+   *     no symbol substitution, ever;
+   *   - nothing about thresholds, bias, confidence or engine input changes;
+   *   - the sweep stops at the first chargeable result, and a sweep that finds
+   *     none is reported NOT_VERIFIED, never FAIL.
+   *
+   * `--sweep N` bounds the number of candidates tried (default 1 = the classic
+   * single-instrument behaviour, so the default run is unchanged).
+   */
+  const sweepLimit = Math.max(1, Number.parseInt(flag("--sweep") ?? "1", 10) || 1);
+  const sweepLog = [];
+  let chargeableFind = null;
+
+  if (sweepLimit > 1) {
+    const disc = await action("okx:discoverOkxInstruments", {}, token);
+    const discovered = Array.isArray(disc.value?.instruments) ? disc.value.instruments : [];
+    // Provider-native ids, in the provider's own order. No curation.
+    const candidates = discovered
+      .filter((i) => i && typeof i.instId === "string" && (i.state ?? "live") === "live")
+      .slice(0, sweepLimit);
+
+    if (candidates.length === 0) {
+      sweepLog.push({
+        note: "discovery returned no live instruments",
+        error: disc.value?.error ?? null,
+      });
+    }
+
+    for (const cand of candidates) {
+      const before = usedOf(await readEntitlement(token));
+      const r = await action(
+        "protectedAnalysis:runProtectedAnalysis",
+        analysisInput({
+          instrument: cand.instId,
+          instrumentType: "crypto",
+          timeframe: "1h",
+        }),
+        token,
+      );
+      const after = usedOf(await readEntitlement(token));
+      const rec = r.value?.result?.recommendation ?? null;
+      const st = r.value?.status ?? null;
+      sweepLog.push({
+        instrument: cand.instId,
+        instType: cand.instType ?? null,
+        status: st,
+        recommendation: rec,
+        consumed: after - before,
+      });
+      if (st === "UNAUTHENTICATED") break;
+      if (rec !== null && CHARGEABLE_RECS.includes(String(rec))) {
+        chargeableFind = { instrument: cand.instId, recommendation: rec, consumed: after - before };
+        break;
+      }
+    }
+  }
+
   /* --- D5: a chargeable recommendation consumes exactly one. --- */
   const beforeBuy = usedOf(await readEntitlement(token));
   const buy = await action("protectedAnalysis:runProtectedAnalysis", analysisInput(), token);
@@ -699,6 +768,18 @@ async function run() {
       "the allowance was already exhausted before this observation, so a single " +
         "consumption could not be measured. Re-run with a fresh identity.",
       { status: buyStatus },
+    );
+  } else if (chargeableFind && !CHARGEABLE_RECS.includes(String(buyRec))) {
+    // The sweep already observed a natural chargeable result on the real
+    // analysis path. Use that measurement rather than discarding it because a
+    // later single-instrument call happened to be quiet.
+    record(
+      "D5",
+      chargeableFind.consumed === 1 ? "PASS" : "FAIL",
+      `the engine returned ${chargeableFind.recommendation} for ${chargeableFind.instrument} ` +
+        `(discovered from the provider registry, provider-native id preserved) and consumed ` +
+        `${chargeableFind.consumed} (expected exactly 1)`,
+      { ...chargeableFind, source: "sweep" },
     );
   } else if (CHARGEABLE_RECS.includes(String(buyRec))) {
     record(
@@ -813,7 +894,12 @@ async function run() {
       "D7",
       "NOT_VERIFIED",
       "no real chargeable signal occurred: the engine returned " +
-        `${observedRecs.join(", ") || "no recommendation"} over ${attempts} request(s), and a ` +
+        `${observedRecs.join(", ") || "no recommendation"} over ${attempts} request(s)` +
+        (sweepLog.length > 0
+          ? ` and ${sweepLog.length} swept instrument(s) (` +
+            `${sweepLog.map((x) => `${x.instrument}:${x.recommendation ?? x.status}`).join(", ")})`
+          : "") +
+        ", and a " +
         "non-actionable result is delivered free by design, so LOCKED is unreachable. " +
         "This is a market-condition limitation, not a product defect. The entitlement " +
         "state machine is verified independently by E1-E6.",
@@ -1141,64 +1227,144 @@ async function run() {
   //
   // `runProtectedAnalysis` does not return provenance to the client (it is
   // logged server-side), so provenance is probed where it is actually exposed:
-  // the acquisition action itself, which reports `observedAt` and the
-  // acquisition mode it used.
-  const probeStart = Date.now();
-  const md = await action(
-    "marketData:fetchMarketData",
-    { instrument: "EURUSD", instrumentType: "forex", timeframe: "1h" },
-    token,
-  );
-  const probeEnd = Date.now();
-  const mdValue = md.value ?? {};
-  const observedAt = typeof mdValue.observedAt === "number" ? mdValue.observedAt : null;
-  const acquisition = mdValue.acquisition ?? null;
+  // the acquisition actions themselves.
+  //
+  // Provider order matters. OKX is tried FIRST because it needs no credential
+  // and, decisively, it reports the EXCHANGE's own `ts` field as observedAt
+  // (execution-quality.ts rejects the snapshot outright when `ts` is missing
+  // or unparseable). That is a genuine provider observation.
+  //
+  // TwelveData is the fallback, but a PASS from it is not equivalent: its
+  // observedAt is stamped at acquisition time (`observedAt: Date.now()` around
+  // the candle read), so it evidences acquisition, not provider observation.
+  // The report says which basis was used rather than blurring the two.
+  const providerAttempts = [];
+  const probe = async (label, fn, args, extract) => {
+    const startedAt = Date.now();
+    const r = await action(fn, args, token);
+    const finishedAt = Date.now();
+    const v = r.value ?? {};
+    const out = extract(v);
+    providerAttempts.push({
+      provider: label.provider,
+      dataset: label.dataset,
+      instrument: args.instrument ?? null,
+      access: label.access,
+      basis: label.basis,
+      acquired: out.observedAt !== null && v.success !== false,
+      observedAt: out.observedAt,
+      acquisition: out.acquisition ?? null,
+      failure:
+        v.success === false || v.error || v.errorCode
+          ? String(v.errorCode ?? v.error ?? "unavailable").slice(0, 160)
+          : out.observedAt === null
+            ? "response carried no provider timestamp"
+            : null,
+      startedAt,
+      finishedAt,
+    });
+    return { v, out, startedAt, finishedAt };
+  };
 
-  if (mdValue.success === false || mdValue.errorCode) {
+  // 1) OKX order book — public, exchange-stamped.
+  const okx = await probe(
+    {
+      provider: "okx",
+      dataset: "order-book",
+      access: "public (no credential)",
+      basis: "exchange ts field",
+    },
+    "okx:fetchOkxOrderBook",
+    { instrument: "BTC-USDT" },
+    (v) => ({
+      observedAt: typeof v.observedAt === "number" ? v.observedAt : null,
+      acquisition: v.data?.freshness ?? null,
+    }),
+  );
+
+  // 2) TwelveData market data — credentialed, acquisition-stamped.
+  let chosen = okx;
+  let chosenLabel = "okx";
+  if (okx.out.observedAt === null) {
+    const td = await probe(
+      {
+        provider: "twelve-data",
+        dataset: "candles+quote",
+        access: "requires TWELVE_DATA_API_KEY",
+        basis: "acquisition time",
+      },
+      "marketData:fetchMarketData",
+      { instrument: "EURUSD", instrumentType: "forex", timeframe: "1h" },
+      (v) => ({
+        observedAt: typeof v.observedAt === "number" ? v.observedAt : null,
+        acquisition: v.acquisition ?? null,
+      }),
+    );
+    chosen = td;
+    chosenLabel = "twelve-data";
+  }
+
+  const observedAt = chosen.out.observedAt;
+  const acquisition = chosen.out.acquisition;
+  const attempted = providerAttempts.map((a) => `${a.provider}:${a.failure ?? "ok"}`).join("; ");
+
+  if (observedAt === null) {
     record(
       "D10",
       "BLOCKED",
-      `the provider acquisition path could not run (${mdValue.errorCode ?? "unavailable"}). ` +
-        "Provenance cannot be evidenced without a live provider credential — and a " +
-        "fabricated timestamp must never be accepted in its place.",
-      { errorCode: mdValue.errorCode ?? null, acquisition },
+      "no provider returned a usable observation timestamp. Tried " +
+        `${attempted}. A fabricated timestamp must never be accepted in its place, ` +
+        "and a cache read time must never be relabelled as an observation.",
+      { providerAttempts },
     );
-  } else if (observedAt === null) {
-    record(
-      "D10",
-      "BLOCKED",
-      "the acquisition response carried no observedAt to evaluate.",
-      { acquisition },
-    );
-  } else if (observedAt > probeEnd + 5_000) {
+  } else if (observedAt > chosen.finishedAt + 5_000) {
     record(
       "D10",
       "FAIL",
-      `observedAt (${new Date(observedAt).toISOString()}) is in the future relative to the ` +
-        "request. A provider observation cannot post-date the request that produced it.",
-      { observedAt, acquisition },
+      `observedAt (${new Date(observedAt).toISOString()}) post-dates the request that ` +
+        "produced it. A provider observation cannot come from the future.",
+      { observedAt, provider: chosenLabel, providerAttempts },
     );
-  } else if (acquisition === "cache-reused" && observedAt >= probeStart) {
+  } else if (acquisition === "cache-reused" && observedAt >= chosen.startedAt) {
     record(
       "D10",
       "FAIL",
       "the leg reported cache-reused but stamped observedAt at request time — " +
         "request time was substituted for observation time.",
-      { observedAt, acquisition, probeStart },
+      { observedAt, acquisition, provider: chosenLabel, providerAttempts },
     );
-  } else {
-    const ageMs = probeEnd - observedAt;
+  } else if (chosenLabel === "okx") {
+    // The decisive check: an exchange-stamped observation is strictly older
+    // than the response, and must not simply echo our own clock.
+    const ageMs = chosen.finishedAt - observedAt;
+    const looksLikeLocalClock = Math.abs(observedAt - chosen.startedAt) < 2;
     record(
       "D10",
-      "PASS",
-      `observedAt=${new Date(observedAt).toISOString()} with acquisition=${acquisition ?? "n/a"}; ` +
-        `age at response ${ageMs}ms. The value comes from the provider acquisition path and ` +
-        "was not substituted with request time.",
-      { observedAt, acquisition, ageMs },
+      looksLikeLocalClock ? "FAIL" : "PASS",
+      looksLikeLocalClock
+        ? "observedAt is indistinguishable from the local request clock; it does not " +
+          "evidence a provider observation."
+        : `observedAt=${new Date(observedAt).toISOString()} is the OKX exchange timestamp ` +
+          `(ts), ${ageMs}ms old at response, freshness=${acquisition ?? "n/a"}. The value is ` +
+          "provider-derived: execution-quality.ts rejects the snapshot when the exchange " +
+          "omits ts, so it can never fall back to local time.",
+      { observedAt, ageMs, provider: "okx", basis: "exchange ts", providerAttempts },
+    );
+  } else {
+    // TwelveData answered. It proves acquisition provenance, not provider
+    // observation, so it is reported NOT_VERIFIED rather than PASS.
+    record(
+      "D10",
+      "NOT_VERIFIED",
+      `only ${chosenLabel} answered, and its observedAt is stamped at acquisition time, ` +
+        "not reported by the provider. That evidences when we fetched, not when the " +
+        "market was observed. D10 needs a provider that stamps its own observation " +
+        "(OKX order book does; it was unreachable or unavailable this run).",
+      { observedAt, provider: chosenLabel, providerAttempts },
     );
   }
 
-  return { premiumProbe, postLockSafety };
+  return { premiumProbe, postLockSafety, providerAttempts, sweepLog, chargeableFind };
 }
 
 const safety = (await run()) ?? {};
