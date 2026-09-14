@@ -1,32 +1,29 @@
 import { Email } from "@convex-dev/auth/providers/Email";
 import { RandomReader, generateRandomString } from "@oslojs/crypto/random";
-import { makeFunctionReference } from "convex/server";
 import type { GenericActionCtx } from "convex/server";
+import { internal } from "../_generated/api";
 import type { DataModel } from "../_generated/dataModel";
 import {
   EmailDeliveryError,
   sendXstarzVerificationEmail,
 } from "../lib/emailDelivery";
-import { hashIdentifier, type ConsumeResult } from "../otpLimiter";
+import { hashIdentifier } from "../otpLimiter";
 
 /**
  * Reference to the durable limiter mutation.
  *
- * `internal.otpLimiter.*` would be the normal way to write this, but that
- * type comes from `_generated/api.d.ts`, which can only be refreshed by
- * `npx convex codegen` against a real deployment — unavailable here, and
- * hand-editing `_generated/*` is forbidden. `makeFunctionReference` is the
- * documented, officially supported way to name a function without the
- * generated types. At runtime `internal` is `anyApi`, a proxy that resolves
- * the identical string path, so this is the same reference by a different
- * route. Replace it with `internal.otpLimiter.consumeResendAllowance` once
- * codegen can run.
+ * Phase 187 could not use `internal.otpLimiter.*` because that type comes from
+ * `_generated/api.d.ts`, which only `npx convex codegen` may write, and no
+ * deployment existed to generate against. The interim workaround named the
+ * function by string via `makeFunctionReference`.
+ *
+ * Phase 201 ran official codegen against a real deployment, so the generated
+ * `internal` object now types this function properly — including its argument
+ * and return types, which the hand-written generic previously restated by hand.
+ * Using the generated reference means a rename of the module or the export is
+ * now a compile error rather than a runtime failure on the first OTP resend.
  */
-const consumeResendAllowanceRef = makeFunctionReference<
-  "mutation",
-  { identityHash: string; now?: number },
-  ConsumeResult
->("otpLimiter:consumeResendAllowance");
+const consumeResendAllowanceRef = internal.otpLimiter.consumeResendAllowance;
 
 /**
  * How long a verification code stays valid.
