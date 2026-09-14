@@ -32,6 +32,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 COMP="src/components/HistoricalTimeline.tsx"
+INPUT="src/components/InstrumentInput.tsx"
+INPUT_SEM="src/components/instrument-input-localization.phase197.test.tsx"
 SEM="src/components/historical-timeline-localization.phase197.test.tsx"
 MAP="src/lib/i18n/enum-mapping.ts"
 LIB="src/lib/position-protection/historical-intelligence.ts"
@@ -43,7 +45,7 @@ DE="src/lib/i18n/de.ts"
 # by them, so they are part of the verification set.
 PERSIST="src/lib/position-protection/phase90-persistent-history.test.ts"
 
-TARGETS=("$COMP" "$SEM" "$MAP" "$LIB" "$EN" "$JA" "$DE")
+TARGETS=("$COMP" "$SEM" "$MAP" "$LIB" "$EN" "$JA" "$DE" "$INPUT")
 for f in "${TARGETS[@]}"; do cp "$f" "$f.p197bak"; done
 
 restore() {
@@ -172,6 +174,35 @@ mutate "M11 side dropped from initial analysis" \
 mutate "M12 legitimate rewording (control)" \
   "perl -0pi -e 's|    momentumOverbought: \"Überkauft\",|    momentumOverbought: \"Überkauft-Zone\",|' '$DE'" \
   survive "$SEM"
+
+# ─── InstrumentInput ────────────────────────────────────────────────────────
+
+# M13 — translate the VALUE instead of the label. The backend would receive an
+#       asset class no provider adapter recognises.
+mutate "M13 SelectItem value translated" \
+  "perl -0pi -e 's|<SelectItem value=\"crypto\">|<SelectItem value={t.entryForm.typeCrypto}>|' '$INPUT'" \
+  catch "$INPUT_SEM"
+
+# M14 — revert a terminal heading to hardcoded English.
+mutate "M14 terminal heading hardcoded" \
+  "perl -0pi -e 's|\\\$ \{t\.entryForm\.newAnalysisHeading\}|\\\$ new-analysis|' '$INPUT'" \
+  catch "$INPUT_SEM"
+
+# M15 — render the raw lowercase enum on the trading-style buttons.
+mutate "M15 trading style renders raw enum" \
+  "perl -0pi -e 's|\{mapHorizon\(st\.toUpperCase\(\), t\)\}|{st}|' '$INPUT'" \
+  catch "$INPUT_SEM"
+
+# M16 — submit the TRANSLATION rather than the canonical style value.
+mutate "M16 handler submits translation" \
+  "perl -0pi -e 's|update\(\"tradingStyle\", st\)|update(\"tradingStyle\", mapHorizon(st.toUpperCase(), t) as TradingStyle)|' '$INPUT'" \
+  catch "$INPUT_SEM"
+
+# M17 — give two asset classes the same translation, making them
+#       indistinguishable in the dropdown.
+mutate "M17 duplicate asset-type labels" \
+  "perl -0pi -e 's|    typeStock: \"株式\",|    typeStock: \"商品\",|' '$JA'" \
+  catch "$INPUT_SEM"
 
 echo ""
 echo "=== Phase 197 mutation results: $PASSED passed / $((PASSED+FAILED)) total ==="

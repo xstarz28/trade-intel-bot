@@ -633,6 +633,12 @@ const en: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysisHeading: "new-analysis",
+    instrumentsHeading: "instruments",
+    typeForex: "forex",
+    typeCrypto: "crypto",
+    typeStock: "stock",
+    typeCommodity: "commodity",
     instrumentLabel: "instrument",
     typeLabel: "type",
     timeframeLabel: "timeframe",

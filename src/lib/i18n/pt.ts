@@ -638,6 +638,12 @@ const pt: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysisHeading: "nova-analise",
+    instrumentsHeading: "instrumentos",
+    typeForex: "forex",
+    typeCrypto: "cripto",
+    typeStock: "ação",
+    typeCommodity: "commodity",
     instrumentLabel: "instrumento",
     typeLabel: "tipo",
     timeframeLabel: "período",

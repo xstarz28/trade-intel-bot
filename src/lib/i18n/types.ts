@@ -685,6 +685,18 @@ export interface Translations {
 
   // ─── Instrument Entry Form (Phase 145) ──────────────────────
   entryForm: {
+    /**
+     * Phase 197 — analysis entry form. The two headings render in a terminal
+     * style ("$ new-analysis"); the "$" prompt is decoration and stays in the
+     * component. The four type labels are DISPLAY ONLY — the <SelectItem>
+     * `value` remains the canonical InstrumentType enum routed to providers.
+     */
+    newAnalysisHeading: string;
+    instrumentsHeading: string;
+    typeForex: string;
+    typeCrypto: string;
+    typeStock: string;
+    typeCommodity: string;
     instrumentLabel: string;
     typeLabel: string;
     timeframeLabel: string;

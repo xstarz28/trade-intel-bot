@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useI18n } from "@/lib/i18n";
+import { mapHorizon } from "@/lib/i18n/enum-mapping";
 import { TRADING_STYLES, type TradingStyle } from "@/lib/trading-style";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -103,7 +104,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
           </div>
           <div>
             <CardTitle className="text-sm font-semibold font-mono">
-              $ new-analysis
+              $ {t.entryForm.newAnalysisHeading}
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
               {t.dashboard.terminalDescription}
@@ -116,7 +117,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
           {/* Quick Picks */}
           <div>
             <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-2 block">
-              $ instruments
+              $ {t.entryForm.instrumentsHeading}
             </Label>
             <div className="flex flex-wrap gap-1.5">
               {POPULAR_INSTRUMENTS.map((item) => (
@@ -166,10 +167,10 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="forex">forex</SelectItem>
-                  <SelectItem value="crypto">crypto</SelectItem>
-                  <SelectItem value="stock">stock</SelectItem>
-                  <SelectItem value="commodity">commodity</SelectItem>
+                  <SelectItem value="forex">{t.entryForm.typeForex}</SelectItem>
+                  <SelectItem value="crypto">{t.entryForm.typeCrypto}</SelectItem>
+                  <SelectItem value="stock">{t.entryForm.typeStock}</SelectItem>
+                  <SelectItem value="commodity">{t.entryForm.typeCommodity}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -213,7 +214,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
                       : "border-border/60 bg-background/50 text-muted-foreground hover:bg-muted/40"
                   }`}
                 >
-                  {st}
+                  {mapHorizon(st.toUpperCase(), t)}
                 </button>
               ))}
             </div>

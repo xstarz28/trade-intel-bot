@@ -641,6 +641,12 @@ const ja: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysisHeading: "新規分析",
+    instrumentsHeading: "銘柄",
+    typeForex: "FX",
+    typeCrypto: "暗号資産",
+    typeStock: "株式",
+    typeCommodity: "商品",
     instrumentLabel: "銘柄",
     typeLabel: "種類",
     timeframeLabel: "時間足",

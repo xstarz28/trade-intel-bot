@@ -640,6 +640,12 @@ const ko: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysisHeading: "신규-분석",
+    instrumentsHeading: "종목",
+    typeForex: "FX",
+    typeCrypto: "암호화폐",
+    typeStock: "주식",
+    typeCommodity: "원자재",
     instrumentLabel: "종목",
     typeLabel: "유형",
     timeframeLabel: "타임프레임",

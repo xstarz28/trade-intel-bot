@@ -636,6 +636,12 @@ const id: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysisHeading: "analisis-baru",
+    instrumentsHeading: "instrumen",
+    typeForex: "forex",
+    typeCrypto: "kripto",
+    typeStock: "saham",
+    typeCommodity: "komoditas",
     instrumentLabel: "instrumen",
     typeLabel: "jenis",
     timeframeLabel: "timeframe",
