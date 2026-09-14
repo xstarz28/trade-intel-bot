@@ -2116,6 +2116,36 @@ the deployment is reachable.
 produce the required recommendation. That is not a failure and must never be
 converted to PASS — the engine is never forced to emit a signal.
 
+## 35h. Phase 204 — first real DEV Evidence D run: root cause
+
+The Phase 203 harness was run against the real dev deployment
+(`--auth anonymous`). D7 returned `UNAUTHENTICATED` with `used=0`, `limit=2`.
+
+**Root cause: a genuine backend defect.** Convex Auth mints its JWT subject as
+`userId|sessionId` and sets no email claim. Six modules resolved the caller
+with `ctx.db.get(identity.subject)`, a lookup for a document id containing a
+pipe, so every authenticated caller was treated as unauthenticated.
+`users.ts` was unaffected because it uses the library helper `getAuthUserId`.
+
+The test-suite could not have caught it: every test double mocked
+`{ subject: "user_A" }`, a shape the library never produces.
+
+D4's PASS in that run was **vacuous** — `getMyEntitlement` answers an
+unauthenticated caller with the guest shape (`GUEST`, `remaining: 2`,
+`used: 0`), so the assertion passed without a working session. D4 now requires
+`authenticated === true`.
+
+| # | Step | Expected | Result |
+| --- | --- | --- | --- |
+| 35h.1 | Re-run `npm run evidence:d -- --auth anonymous --json` after deploying the fix | D4 `authenticated=true`; D5-D7 exercise the allowance | BLOCKED — needs redeploy by operator |
+| 35h.2 | D7 after the fix | `LOCKED` once the allowance is exhausted | BLOCKED — needs redeploy |
+| 35h.3 | D4 against a deployment WITHOUT the fix | D4 FAIL (not PASS), D5-D10 BLOCKED | BLOCKED — needs deployment |
+| 35h.4 | Signed-in journal / analyses / position-protection reads | Return the user's own rows, not empty | BLOCKED — needs redeploy |
+
+**Scope note:** the same defect silently affected `analyses`, `journal`,
+`positionProtection` and `historicalIntelligence`. Any signed-in user would
+have seen empty lists. This was never observable in the sandbox.
+
 ## 36. Sign-off
 
 | Field | Value |

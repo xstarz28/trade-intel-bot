@@ -419,3 +419,82 @@ describe("Phase 203 — the harness never emits a secret", () => {
     expect(text).toMatch(/EVIDENCE_D_EMAIL/);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * 8. Phase 204 — session continuity and honest failure attribution
+ * ------------------------------------------------------------------ */
+
+describe("Phase 204 — D4-D7 run on one identity, and a rejected session cannot pass", () => {
+  it("acquires exactly one token and reuses it for every authenticated call", () => {
+    // One assignment of `token` per auth mechanism, then read-only afterwards.
+    const assignments = [...harnessSource.matchAll(/^\s*token = /gm)];
+    expect(assignments.length, "token must be assigned once per auth path").toBe(2);
+
+    // Every authenticated call passes that same `token` binding — there is no
+    // second client and no re-auth between D4 and D7.
+    for (const call of [
+      /readEntitlement\(token\)/,
+      /"protectedAnalysis:runProtectedAnalysis",\s*analysisInput\(\),\s*token,?\s*\)/,
+      /"entitlements:grantPremium",[\s\S]{0,120}token,/,
+    ]) {
+      expect(harnessSource).toMatch(call);
+    }
+
+    // Stronger than any single regex: every runProtectedAnalysis call after the
+    // unauthenticated D3 probe must pass the token. Count them directly.
+    const analysisCalls = [
+      ...harnessSource.matchAll(/action\(\s*"protectedAnalysis:runProtectedAnalysis",[\s\S]*?\n?\s*\);/g),
+    ].map((m) => m[0]);
+    expect(analysisCalls.length).toBeGreaterThanOrEqual(5);
+    const withoutToken = analysisCalls.filter((c) => !/\btoken\b/.test(c));
+    // Exactly one: the deliberate D3 unauthenticated probe.
+    expect(withoutToken).toHaveLength(1);
+    // The entitlement read helper takes the token explicitly, so D4 cannot
+    // silently read anonymously while D5-D7 use a session.
+    expect(harnessSource).toMatch(/async function readEntitlement\(token\)/);
+    expect(harnessSource).toMatch(/query\("entitlements:getMyEntitlement", \{\}, token\)/);
+  });
+
+  it("treats a guest-shaped UNAUTHENTICATED reply as D4 FAIL, not PASS", () => {
+    // getMyEntitlement answers unauthenticated callers with plan GUEST /
+    // remaining 2 / used 0. Asserting only those three fields passes with no
+    // session at all, which is how the first real run reported D4 PASS while
+    // the backend rejected every session.
+    expect(harnessSource).toMatch(/if \(e0\.authenticated !== true\)/);
+    const d4 = harnessSource.slice(
+      harnessSource.indexOf("D4: a fresh guest"),
+      harnessSource.indexOf("Client cannot self-grant Premium"),
+    );
+    expect(d4).toMatch(/"D4",\s*\n?\s*"FAIL"/);
+    expect(d4).toMatch(/authenticated=\$\{e0\.authenticated\}/);
+  });
+
+  it("blocks the remaining observations when the session is not recognised", () => {
+    expect(harnessSource).toMatch(/the session was not recognised by the deployment/);
+    expect(harnessSource).toMatch(/return \{ sessionRecognised: false \}/);
+  });
+
+  it("attributes UNAUTHENTICATED to the session, never to the entitlement rules", () => {
+    for (const id of ["D5", "D6", "D7"]) {
+      const idx = harnessSource.indexOf(`"${id}",\n      "BLOCKED"`);
+      expect(idx, `${id} must have an UNAUTHENTICATED-specific BLOCKED branch`).toBeGreaterThan(0);
+    }
+    expect(harnessSource).toMatch(/NOT evidence about the entitlement rules/);
+    // And it must stop retrying rather than burning attempts on a dead session.
+    expect(harnessSource).toMatch(/if \(lastStatus === "UNAUTHENTICATED"\) break;/);
+
+    // The branches must be guarded by a real status test. Asserting only that
+    // the BLOCKED text exists passes when the guard is stubbed to `if (false)`,
+    // leaving the branch unreachable and D7 free to blame entitlements again.
+    const guards = [
+      /if \(buyStatus === "UNAUTHENTICATED"\) \{/,
+      /if \(waitStatus === "UNAUTHENTICATED"\) \{/,
+      /if \(lastStatus === "UNAUTHENTICATED"\) \{/,
+    ];
+    for (const g of guards) {
+      expect(harnessSource, `branch must be guarded by ${g}`).toMatch(g);
+    }
+    // No unreachable literal guards anywhere in the harness.
+    expect(harnessSource).not.toMatch(/if \(false\)/);
+  });
+});

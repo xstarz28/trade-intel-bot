@@ -508,10 +508,43 @@ async function run() {
   }
 
   /* --- D4: a fresh guest starts with two free profit signals. --- */
+  //
+  // `getMyEntitlement` deliberately answers an UNAUTHENTICATED caller with the
+  // guest SHAPE: plan GUEST, remaining 2, used 0 — identical to a real fresh
+  // guest except for `authenticated: false`. Checking only plan/remaining
+  // therefore passes whether or not the session works, which is exactly how
+  // the Phase 204 run reported D4 PASS while the backend was rejecting every
+  // session. The `authenticated` flag is the load-bearing assertion.
   const e0 = await readEntitlement(token);
   const startUsed = usedOf(e0);
+  if (e0.authenticated !== true) {
+    record(
+      "D4",
+      "FAIL",
+      `the deployment did not recognise the session: authenticated=${e0.authenticated}, ` +
+        `reason=${e0.reason ?? "n/a"}. The guest-shaped response (plan=${e0.plan}, ` +
+        `remaining=${e0.remaining}) is the UNAUTHENTICATED fallback, not a real entitlement.`,
+      e0,
+    );
+    for (const d of D_DEFINITIONS) {
+      if (!recorded(d.id)) {
+        record(
+          d.id,
+          "BLOCKED",
+          "the session was not recognised by the deployment (see D4); no authenticated " +
+            "observation can be made.",
+        );
+      }
+    }
+    return { sessionRecognised: false };
+  }
   if (e0.plan === "GUEST" && e0.remaining === 2 && startUsed === 0) {
-    record("D4", "PASS", `plan=${e0.plan} remaining=${e0.remaining} limit=${e0.limit}`, e0);
+    record(
+      "D4",
+      "PASS",
+      `authenticated=true plan=${e0.plan} remaining=${e0.remaining} limit=${e0.limit}`,
+      e0,
+    );
   } else if (e0.plan === "GUEST" && startUsed > 0) {
     // Re-running against an already-used identity is an operator condition,
     // not a product defect. Reporting FAIL here would be a false alarm.
@@ -608,7 +641,15 @@ async function run() {
   const buyStatus = buy.value?.status;
   const consumed = usedOf(afterBuy) - beforeBuy;
   const CHARGEABLE = ["BUY", "SELL", "LONG", "SHORT"];
-  if (buyStatus === "LOCKED") {
+  if (buyStatus === "UNAUTHENTICATED") {
+    record(
+      "D5",
+      "BLOCKED",
+      "the deployment answered UNAUTHENTICATED, so consumption was never exercised. " +
+        "This is a session/identity failure, not a statement about chargeability.",
+      { status: buyStatus },
+    );
+  } else if (buyStatus === "LOCKED") {
     record(
       "D5",
       "NOT_VERIFIED",
@@ -647,7 +688,15 @@ async function run() {
   const waitRec = wait.value?.result?.recommendation;
   const waitStatus = wait.value?.status;
   const waitConsumed = usedOf(afterWait) - beforeWait;
-  if (["WAIT", "NO_TRADE"].includes(String(waitRec))) {
+  if (waitStatus === "UNAUTHENTICATED") {
+    record(
+      "D6",
+      "BLOCKED",
+      "the deployment answered UNAUTHENTICATED, so the non-chargeable path was never " +
+        "exercised. This is a session/identity failure.",
+      { status: waitStatus },
+    );
+  } else if (["WAIT", "NO_TRADE"].includes(String(waitRec))) {
     record(
       "D6",
       waitConsumed === 0 ? "PASS" : "FAIL",
@@ -669,25 +718,43 @@ async function run() {
   /* --- D7 + D8: exhaustion must LOCK, and reveal nothing. --- */
   let locked = null;
   let attempts = 0;
+  let lastStatus = null;
   for (; attempts < 4 && !locked; attempts += 1) {
     const r = await action(
       "protectedAnalysis:runProtectedAnalysis",
       analysisInput({ instrument: "GBPUSD", timeframe: "15min" }),
       token,
     );
-    if (r.value?.status === "LOCKED") locked = r.value;
+    lastStatus = r.value?.status ?? null;
+    if (lastStatus === "LOCKED") locked = r.value;
+    // An UNAUTHENTICATED reply means the session was not accepted. Retrying
+    // cannot change that, and reporting "no LOCKED produced" would blame the
+    // entitlement backend for an authentication failure.
+    if (lastStatus === "UNAUTHENTICATED") break;
   }
   const finalEnt = await readEntitlement(token);
-  record(
-    "D7",
-    locked ? "PASS" : "FAIL",
-    locked
-      ? `an exhausted account received LOCKED after ${attempts} request(s); ` +
-        `used=${usedOf(finalEnt)} limit=${finalEnt.limit} upgradeRequired=${finalEnt.upgradeRequired}`
-      : `no LOCKED response after ${attempts} requests beyond the free allowance ` +
-        `(used=${usedOf(finalEnt)} limit=${finalEnt.limit})`,
-    { locked: Boolean(locked), attempts, used: usedOf(finalEnt) },
-  );
+  if (lastStatus === "UNAUTHENTICATED") {
+    record(
+      "D7",
+      "BLOCKED",
+      "the deployment answered UNAUTHENTICATED to an authenticated request, so the " +
+        "allowance was never exercised (used=" +
+        `${usedOf(finalEnt)} limit=${finalEnt.limit}). This is a session/identity failure, ` +
+        "NOT evidence about the entitlement rules.",
+      { locked: false, attempts, lastStatus, used: usedOf(finalEnt) },
+    );
+  } else {
+    record(
+      "D7",
+      locked ? "PASS" : "FAIL",
+      locked
+        ? `an exhausted account received LOCKED after ${attempts} request(s); ` +
+          `used=${usedOf(finalEnt)} limit=${finalEnt.limit} upgradeRequired=${finalEnt.upgradeRequired}`
+        : `no LOCKED response after ${attempts} requests beyond the free allowance ` +
+          `(used=${usedOf(finalEnt)} limit=${finalEnt.limit}, lastStatus=${lastStatus})`,
+      { locked: Boolean(locked), attempts, lastStatus, used: usedOf(finalEnt) },
+    );
+  }
 
   if (locked) {
     // Allowlist-by-omission on the server means an unlisted field is withheld.

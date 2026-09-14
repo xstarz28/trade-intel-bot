@@ -15,6 +15,7 @@ import { v } from "convex/values";
 import type { GenericQueryCtx, GenericMutationCtx } from "convex/server";
 import type { DataModel, Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
+import { userIdFromSubject } from "./lib/identitySubject";
 
 type Ctx = GenericQueryCtx<DataModel> | GenericMutationCtx<DataModel>;
 import {
@@ -42,8 +43,12 @@ async function resolveUser(ctx: Ctx): Promise<Doc<"users"> | null> {
     if (byEmail) return byEmail;
   }
 
+  // Convex Auth mints `sub` as `userId|sessionId`; the raw subject is not a
+  // document id. See src/convex/lib/identitySubject.ts.
+  const userId = userIdFromSubject(identity.subject);
+  if (!userId) return null;
   try {
-    return await ctx.db.get(identity.subject as Id<"users">);
+    return await ctx.db.get(userId as Id<"users">);
   } catch {
     return null;
   }
