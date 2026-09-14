@@ -93,6 +93,7 @@ const E_DEFINITIONS = [
   ["E4", "Second chargeable consumption: remaining 1 -> 0"],
   ["E5", "Third chargeable attempt is refused, nothing charged"],
   ["E6", "Refusal is redacted and non-chargeable stays free after exhaustion"],
+  ["E7", "The boundary cannot be used to bypass auth or self-grant Premium"],
 ];
 const E_MAP = Object.fromEntries(E_DEFINITIONS);
 
@@ -965,7 +966,12 @@ async function run() {
     eRecord(
       "E1",
       E_MAP.E1,
-      s0.authenticated === true && s0.plan === "GUEST" && s0.remaining === 2 ? "PASS" : "FAIL",
+      s0.authenticated === true &&
+        s0.plan === "GUEST" &&
+        s0.remaining === 2 &&
+        usedOf(s0) === 0
+        ? "PASS"
+        : "FAIL",
       `authenticated=${s0.authenticated} plan=${s0.plan} remaining=${s0.remaining} ` +
         `used=${usedOf(s0)}`,
       s0,
@@ -990,9 +996,14 @@ async function run() {
     eRecord(
       "E3",
       E_MAP.E3,
-      c1.value?.charged === true && s1.remaining === 1 && usedOf(s1) === 1 ? "PASS" : "FAIL",
+      c1.value?.charged === true &&
+        s1.remaining === 1 &&
+        usedOf(s1) === 1 &&
+        s1.plan === "GUEST"
+        ? "PASS"
+        : "FAIL",
       `reason=${c1.value?.reason} charged=${c1.value?.charged}; remaining=${s1.remaining} ` +
-        `used=${usedOf(s1)} (expected remaining 1, used 1)`,
+        `used=${usedOf(s1)} plan=${s1.plan} (expected remaining 1, used 1, plan GUEST)`,
       { reason: c1.value?.reason, remaining: s1.remaining, used: usedOf(s1) },
     );
 
@@ -1002,9 +1013,14 @@ async function run() {
     eRecord(
       "E4",
       E_MAP.E4,
-      c2.value?.charged === true && s2.remaining === 0 && usedOf(s2) === 2 ? "PASS" : "FAIL",
+      c2.value?.charged === true &&
+        s2.remaining === 0 &&
+        usedOf(s2) === 2 &&
+        s2.plan === "GUEST"
+        ? "PASS"
+        : "FAIL",
       `reason=${c2.value?.reason} charged=${c2.value?.charged}; remaining=${s2.remaining} ` +
-        `used=${usedOf(s2)} (expected remaining 0, used 2)`,
+        `used=${usedOf(s2)} plan=${s2.plan} (expected remaining 0, used 2, plan GUEST)`,
       { reason: c2.value?.reason, remaining: s2.remaining, used: usedOf(s2) },
     );
 
@@ -1046,6 +1062,78 @@ async function run() {
           `used stayed ${usedOf(s4)}`
         : `the refusal leaked: ${leakedInRefusal.join(", ")}`,
       { leakedInRefusal, planAfter: s4.plan, usedAfter: usedOf(s4) },
+    );
+
+    // E7 — the boundary's authorization properties, probed live (spec section 4 and 8).
+    //
+    // Each probe asserts a REFUSAL. None of them may succeed, and none of them
+    // weakens the server: they call the same public boundary any client can
+    // call, and check that it says no.
+    const findings = [];
+
+    // (a) A fourth chargeable attempt must not increase usage past the limit.
+    const fourth = await eConsume("BUY");
+    const sAfterFourth = await eRead();
+    if (usedOf(sAfterFourth) !== 2) {
+      findings.push(`a 4th chargeable attempt moved used to ${usedOf(sAfterFourth)} (must stay 2)`);
+    }
+    if (fourth.value?.allowed !== false) {
+      findings.push("a 4th chargeable attempt was allowed");
+    }
+
+    // (b) The same mutation must reject an unauthenticated caller.
+    const noAuth = await callConvex("mutation", "entitlements:consumeProfitSignal", {
+      recommendation: "BUY",
+    });
+    if (noAuth.ok) findings.push("consumeProfitSignal accepted an unauthenticated caller");
+
+    // (c) It must be impossible to reach Premium through this boundary.
+    if (sAfterFourth.plan !== "GUEST") {
+      findings.push(`plan escalated to ${sAfterFourth.plan} through the consumption boundary`);
+    }
+
+    // (d) grantPremium must refuse a non-admin caller.
+    const selfGrant = await mutation(
+      "entitlements:grantPremium",
+      { premiumUntil: Date.now() + 86_400_000 },
+      eToken,
+    );
+    const afterGrant = await eRead();
+    if (selfGrant.ok || afterGrant.plan === "PREMIUM") {
+      findings.push("a non-admin caller was able to grant Premium");
+    }
+
+    // (e) The internal-only consumption mutation must NOT be callable.
+    //     Calling it here is a probe of the deployment's own boundary: it must
+    //     answer with an error, never execute.
+    const internalProbe = await callConvex(
+      "mutation",
+      "protectedAnalysis:resolveAndConsume",
+      { userId: "probe", chargeable: true },
+      eToken,
+    );
+    const sAfterInternal = await eRead();
+    if (internalProbe.ok) findings.push("internal resolveAndConsume was callable from a client");
+    if (usedOf(sAfterInternal) !== 2) {
+      findings.push("the internal probe altered entitlement state");
+    }
+
+    eRecord(
+      "E7",
+      E_MAP.E7,
+      findings.length === 0 ? "PASS" : "FAIL",
+      findings.length === 0
+        ? "a 4th chargeable attempt did not raise usage (stayed 2); the mutation rejected an " +
+          "unauthenticated caller; plan stayed GUEST; a non-admin grantPremium was refused; " +
+          "and internal resolveAndConsume was not callable from a client"
+        : findings.join("; "),
+      {
+        fourthAttemptUsed: usedOf(sAfterFourth),
+        unauthenticatedRejected: !noAuth.ok,
+        premiumRefused: !selfGrant.ok && afterGrant.plan !== "PREMIUM",
+        internalNotCallable: !internalProbe.ok,
+        planAfter: sAfterInternal.plan,
+      },
     );
   }
 

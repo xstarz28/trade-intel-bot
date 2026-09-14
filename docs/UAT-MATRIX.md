@@ -2174,6 +2174,35 @@ that returns accounting only and can never grant allowance.
 evidence. The harness has no code path that fabricates a recommendation, and
 this is test-enforced.
 
+## 35j. Phase 206 — E-track execution attempt against the DEV deployment
+
+**Execution was attempted from the agent sandbox and BLOCKED at the network
+layer.** This is recorded as an attempt, not a result.
+
+| Layer | Observation |
+| --- | --- |
+| DNS | `tough-goose-455.convex.cloud` resolves (2606:4700::6812:f83) |
+| TCP | port 443 accepts the connection |
+| TLS | handshake severed mid-negotiation (ECONNRESET) |
+| Controls | `registry.npmjs.org` HTTP 200, `api.github.com` reachable |
+| Verdict | targeted egress allowlist, not an outage |
+
+`CONVEX_DEPLOY_KEY` and `CONVEX_DEPLOYMENT` are unset in the sandbox and
+`npx convex dev --once` fails at the same TLS layer, so neither deployment nor
+execution is possible here. **No E-track row may be marked PASS from this
+environment.**
+
+| # | Step | Expected | Result |
+| --- | --- | --- | --- |
+| 35j.1 | Deploy Phase 205/206 code to the dev deployment | `Convex functions ready!` | BLOCKED — operator machine |
+| 35j.2 | E1 fresh identity | `authenticated=true`, `plan=GUEST`, `remaining=2`, `used=0` | BLOCKED — sandbox egress |
+| 35j.3 | E2 `WAIT` | `charged=false`, state unchanged | BLOCKED — sandbox egress |
+| 35j.4 | E3 first chargeable | `charged=true`, `used=1`, `remaining=1`, plan GUEST | BLOCKED — sandbox egress |
+| 35j.5 | E4 second chargeable | `charged=true`, `used=2`, `remaining=0`, plan GUEST | BLOCKED — sandbox egress |
+| 35j.6 | E5 third chargeable | refused, `used` stays 2, no Premium | BLOCKED — sandbox egress |
+| 35j.7 | E6 refusal payload | no directional field; `NO_TRADE` still free | BLOCKED — sandbox egress |
+| 35j.8 | E7 authorization probes | all five refusals hold | BLOCKED — sandbox egress |
+
 ## 36. Sign-off
 
 | Field | Value |
