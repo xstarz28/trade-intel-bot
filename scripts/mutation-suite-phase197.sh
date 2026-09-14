@@ -34,6 +34,10 @@ cd "$(dirname "$0")/.."
 COMP="src/components/HistoricalTimeline.tsx"
 INPUT="src/components/InstrumentInput.tsx"
 INPUT_SEM="src/components/instrument-input-localization.phase197.test.tsx"
+ALERTS="src/components/CustomAlertRulesPanel.tsx"
+NOTIFS="src/components/NotificationCenter.tsx"
+ALERTS_SEM="src/components/alerts-notifications-localization.phase197.test.tsx"
+GUARD="src/lib/i18n/page-localization-guard.phase189.test.ts"
 SEM="src/components/historical-timeline-localization.phase197.test.tsx"
 MAP="src/lib/i18n/enum-mapping.ts"
 LIB="src/lib/position-protection/historical-intelligence.ts"
@@ -45,7 +49,7 @@ DE="src/lib/i18n/de.ts"
 # by them, so they are part of the verification set.
 PERSIST="src/lib/position-protection/phase90-persistent-history.test.ts"
 
-TARGETS=("$COMP" "$SEM" "$MAP" "$LIB" "$EN" "$JA" "$DE" "$INPUT")
+TARGETS=("$COMP" "$SEM" "$MAP" "$LIB" "$EN" "$JA" "$DE" "$INPUT" "$ALERTS" "$NOTIFS" "$GUARD")
 for f in "${TARGETS[@]}"; do cp "$f" "$f.p197bak"; done
 
 restore() {
@@ -203,6 +207,42 @@ mutate "M16 handler submits translation" \
 mutate "M17 duplicate asset-type labels" \
   "perl -0pi -e 's|    typeStock: \"株式\",|    typeStock: \"商品\",|' '$JA'" \
   catch "$INPUT_SEM"
+
+# ─── Alerts / Notifications / Protection panel ──────────────────────────────
+
+# M18 — localize a toast but drop the translator from the dependency array.
+#       The callback keeps the language captured at mount: switch to Japanese,
+#       delete a rule, and the confirmation is still in English.
+mutate "M18 stale closure on locale switch" \
+  "perl -0pi -e 's|    \[deleteRule, t\],|    [deleteRule],|' '$ALERTS'" \
+  catch "$ALERTS_SEM"
+
+# M19 — translate the filter VALUE rather than its label.
+mutate "M19 filter value translated" \
+  "perl -0pi -e 's|\{ label: \"UNREAD\", value: \"UNREAD\" \}|{ label: \"UNREAD\", value: \"Ungelesen\" }|' '$NOTIFS'" \
+  catch "$ALERTS_SEM"
+
+# M20 — replace the provider's real failure reason with generic localized copy.
+#       The user would lose the actual reason the backend rejected the rule.
+mutate "M20 backend error reason discarded" \
+  "perl -0pi -e 's|toast\.error\(err\?\.message \?\? t\.alerts\.ruleDeleteFailed\);|toast.error(t.alerts.ruleDeleteFailed);|' '$ALERTS'" \
+  catch "$ALERTS_SEM"
+
+# M21 — drop the interpolation, making the confirmation ambiguous.
+mutate "M21 {name} dropped from toast" \
+  "perl -0pi -e 's|    ruleCreated: \"ルール「\{name\}」を作成しました\",|    ruleCreated: \"ルールを作成しました\",|' '$JA'" \
+  catch "$ALERTS_SEM"
+
+# M22 — give the two toggle states identical wording.
+mutate "M22 show/hide indistinguishable" \
+  "perl -0pi -e 's|    preferencesHide: \"Ausblenden\",|    preferencesHide: \"Einstellungen\",|' '$DE'" \
+  catch "$ALERTS_SEM"
+
+# M23 — the Phase 197 invariant itself: re-adding a MOUNTED component to the
+#       debt list must fail, so the zero-debt state cannot be quietly undone.
+mutate "M23 mounted component re-added to debt" \
+  "perl -0pi -e 's|const COMPONENT_DEBT: Record<string, string> = \{|const COMPONENT_DEBT: Record<string, string> = {\n  \"src/components/Journal.tsx\": \"planted mounted entry for mutation M23\",|' '$GUARD'" \
+  catch "$GUARD"
 
 echo ""
 echo "=== Phase 197 mutation results: $PASSED passed / $((PASSED+FAILED)) total ==="

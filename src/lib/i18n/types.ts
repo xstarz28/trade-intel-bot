@@ -489,6 +489,16 @@ export interface Translations {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    ruleCreated: string;
+    /**
+     * Phase 197 — alert-rule mutation feedback. These render as toasts; the
+     * provider's raw `err.message` is still preferred when present so a real
+     * backend reason is never replaced by generic copy.
+     */
+    ruleCreateFailed: string;
+    ruleUpdateFailed: string;
+    ruleDeleted: string;
+    ruleDeleteFailed: string;
     title: string;
     createRule: string;
     editRule: string;
@@ -539,6 +549,17 @@ export interface Translations {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    /**
+     * Phase 197 — notification filter + preferences toggle. The filter's
+     * `value` stays the canonical ALL/UNREAD/severity token; only the label
+     * is translated.
+     */
+    filterAll: string;
+    preferencesToggle: string;
+    preferencesHide: string;
+    /** Phase 197 — notification-preferences section headings. */
+    categoriesHeading: string;
+    displayHeading: string;
     title: string;
     /** Heading above the severity filter. */
     minimumSeverity: string;

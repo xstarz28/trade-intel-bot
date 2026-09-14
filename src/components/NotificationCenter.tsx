@@ -121,7 +121,7 @@ export function NotificationCenter() {
               showPrefs ? "bg-background text-foreground font-semibold border border-border/50" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {showPrefs ? "Hide Prefs" : "Preferences"}
+            {showPrefs ? t.notifications.preferencesHide : t.notifications.preferencesToggle}
           </button>
           {unreadCount !== undefined && unreadCount > 0 && (
             <button
@@ -146,9 +146,11 @@ export function NotificationCenter() {
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {opt.value === "ALL" || opt.value === "UNREAD"
-              ? opt.label
-              : mapPriority(opt.value, t)}
+            {opt.value === "ALL"
+              ? t.notifications.filterAll
+              : opt.value === "UNREAD"
+                ? t.trader.unread
+                : mapPriority(opt.value, t)}
             {opt.value === "UNREAD" &&
               unreadCount !== undefined &&
               unreadCount > 0 &&
@@ -197,7 +199,7 @@ export function NotificationCenter() {
           {/* Categories */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <div className="text-[9px] font-mono text-muted-foreground/70">Categories</div>
+              <div className="text-[9px] font-mono text-muted-foreground/70">{t.notifications.categoriesHeading}</div>
               <button
                 onClick={() => {
                   const updated = {
@@ -263,7 +265,7 @@ export function NotificationCenter() {
 
           {/* Display */}
           <div className="space-y-1">
-            <div className="text-[9px] font-mono text-muted-foreground/70">Display</div>
+            <div className="text-[9px] font-mono text-muted-foreground/70">{t.notifications.displayHeading}</div>
             <div className="flex gap-3">
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input

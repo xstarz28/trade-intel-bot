@@ -467,6 +467,11 @@ const zh: Translations = {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    ruleCreated: "已创建规则“{name}”",
+    ruleCreateFailed: "创建规则失败",
+    ruleUpdateFailed: "更新规则失败",
+    ruleDeleted: "规则已删除",
+    ruleDeleteFailed: "删除规则失败",
     newAlertRule: "新建提醒规则",
     positionId: "仓位 ID",
     alertRules: "提醒规则",
@@ -505,6 +510,11 @@ const zh: Translations = {
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    filterAll: "全部",
+    preferencesToggle: "偏好设置",
+    preferencesHide: "隐藏",
+    categoriesHeading: "类别",
+    displayHeading: "显示",
     minimumSeverity: "最低严重级别",
     showRead: "显示已读",
     showDismissed: "显示已忽略",
