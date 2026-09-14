@@ -57,6 +57,21 @@ const TIMEOUT_MS = Number.isFinite(timeoutSeconds) ? timeoutSeconds * 1000 : 15_
 const CONTROL_PLANE_HOSTS = ["api.convex.dev", "provision.convex.dev", "dashboard.convex.dev"];
 
 /**
+ * Deployment-plane hosts, probed separately because they are a DIFFERENT
+ * allowlist entry from the control plane.
+ *
+ * Phase 201 found the trap: `*.convex.dev` carries the control plane, but a
+ * deployment answers on `*.convex.cloud` and its auth issuer identity lives on
+ * `*.convex.site`. An operator who allowlists only `convex.dev` sees this gate
+ * pass, deploys successfully, and then fails at Evidence D with no idea why.
+ *
+ * The specific subdomain does not exist until a deployment is created, so these
+ * are probed for TLS reachability of the domain family only — a DNS/TLS answer
+ * from any name under it proves the allowlist covers it.
+ */
+const DEPLOYMENT_PLANE_HOSTS = ["probe.convex.cloud", "probe.convex.site"];
+
+/**
  * Controls on the same network. Without these, a failure is ambiguous: an
  * offline sandbox and a targeted allowlist look identical.
  *
@@ -282,6 +297,28 @@ for (const host of CONTROL_PLANE_HOSTS) {
   if (http.ok && host === primary) reachable = true;
 }
 
+// Deployment plane: a separate allowlist entry, and the one Evidence D needs.
+// A non-existent subdomain still proves reachability — a blocked family is
+// severed at TLS, whereas an allowed one answers (typically 404) or at least
+// completes the handshake.
+let deploymentPlaneReachable = true;
+for (const host of DEPLOYMENT_PLANE_HOSTS) {
+  const dns = await probeDns(host);
+  if (!dns.ok) {
+    // No DNS for a probe name is inconclusive, not a failure of the allowlist.
+    record("deployment-plane", host, "NOT VERIFIED", `${dns.detail} (probe name may not exist)`);
+    continue;
+  }
+  const tls = await probeTls(host);
+  if (!tls.ok) deploymentPlaneReachable = false;
+  record(
+    "deployment-plane",
+    host,
+    tls.ok ? "PASS" : "FAIL",
+    `${tls.detail} (${tls.ms}ms) — Evidence D and the auth issuer depend on this domain family`,
+  );
+}
+
 for (const host of CONTROL_HOSTS) {
   const http = await probeHttp(host);
   const { status, note } = classifyControl(http);
@@ -338,11 +375,28 @@ if (!reachable) {
     isRevocationEvidence: false,
   };
   exitCode = 2;
+} else if (auth.state === "authenticated" && !deploymentPlaneReachable) {
+  // The dangerous middle state: deploys would work, Evidence D would not.
+  // Reported as a distinct failure rather than success, because a green gate
+  // here sends the operator into step H to fail for an unrelated-looking
+  // reason.
+  verdict = {
+    state: "CONTROL_PLANE_ONLY",
+    blockedAt: "deployment-plane",
+    classification:
+      "control plane reachable and authenticated, but *.convex.cloud / *.convex.site are " +
+      "still blocked — deployment would succeed while Evidence D could never run. " +
+      "Allowlist the deployment domains too.",
+    isAuthEvidence: true,
+    isRevocationEvidence: false,
+  };
+  exitCode = 1;
 } else if (auth.state === "authenticated") {
   verdict = {
     state: "AUTHENTICATED",
     blockedAt: null,
-    classification: "control plane reachable and the deploy key was accepted",
+    classification:
+      "control plane reachable, deploy key accepted, and the deployment domain family is reachable",
     isAuthEvidence: true,
     isRevocationEvidence: false,
   };

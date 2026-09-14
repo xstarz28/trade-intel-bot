@@ -107,6 +107,25 @@ describe("Phase 200 — the control-plane diagnostic never infers authentication
     expect(report.credentials.deployKeyFingerprint).toMatch(/^[0-9a-f]{8}$/);
   });
 
+  it("probes the deployment domain family, not just the control plane", () => {
+    // Phase 201: *.convex.cloud (Evidence D) and *.convex.site (auth issuer)
+    // are a SEPARATE allowlist entry from *.convex.dev. Allowlisting only the
+    // control plane lets this gate pass while Evidence D remains impossible.
+    const run = runScript(ACCESS, {}, ["--json"]);
+    const report = JSON.parse(run.stdout);
+    const layers = report.layers as Array<{ layer: string; host: string }>;
+    const planeHosts = layers.filter((l) => l.layer === "deployment-plane").map((l) => l.host);
+    expect(planeHosts.some((h) => h.endsWith(".convex.cloud"))).toBe(true);
+    expect(planeHosts.some((h) => h.endsWith(".convex.site"))).toBe(true);
+  });
+
+  it("defines a distinct verdict for control-plane-only reachability", () => {
+    // The dangerous middle state must not be reported as success.
+    const source = readFileSync(ACCESS, "utf8");
+    expect(source).toContain("CONTROL_PLANE_ONLY");
+    expect(source).toMatch(/deployment would succeed while Evidence D could never run/i);
+  });
+
   it("reports same-network controls so a block can be distinguished from an outage", () => {
     const run = runScript(ACCESS, {}, ["--json"]);
     const report = JSON.parse(run.stdout);
