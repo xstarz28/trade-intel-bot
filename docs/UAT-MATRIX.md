@@ -1944,6 +1944,58 @@ rehearsal alone.
 
 ---
 
+## 35d. Phase 199 — Convex deployment & production backend readiness
+
+Scope: evidence-based audit of what is still required for a real Convex
+production deployment. No history rewrite, no `main` change, no secret printed,
+no generated file hand-edited.
+
+| # | Check | Method | Result |
+| --- | --- | --- | --- |
+| 35d.1 | Branch / commit / clean tree | `git status` | PASS — `7ae8eed`, 0 dirty |
+| 35d.2 | `CONVEX_DEPLOYMENT` present | env inspection | **BLOCKED** — unset |
+| 35d.3 | `CONVEX_DEPLOY_KEY` present | env inspection | **BLOCKED** — unset |
+| 35d.4 | `CONVEX_SITE_URL` present | preflight | **BLOCKED** — unset |
+| 35d.5 | `convex.json` valid | file read | PASS — `functions: "src/convex/"` |
+| 35d.6 | Auth issuer policy self-only in production | source + preflight | PASS — fails closed; retired hosts named |
+| 35d.7 | Official codegen runs | `npx convex codegen` | **BLOCKED** — "No CONVEX_DEPLOYMENT set" |
+| 35d.8 | No generated file hand-edited | `git status` on `_generated` | PASS — untouched |
+| 35d.9 | Generated drift (source ↔ `api.d.ts`) | comparison script | PASS — zero drift, 23 modules |
+| 35d.10 | Phase 187 `otpLimiter` entry status | grep + module read | PASS as consistent; **pending official regeneration** |
+| 35d.11 | `otpLimiter.ts` is a real module, not a stub | file + export read | PASS — exports `consumeResendAllowance` |
+| 35d.12 | Control-plane DNS | `getent hosts` | resolves (all 3 hosts) |
+| 35d.13 | Control-plane TCP :443 | `/dev/tcp` probe | **OPEN** |
+| 35d.14 | Control-plane TLS | `curl` | **FAILS** — `SSL_ERROR_SYSCALL` ~40ms |
+| 35d.15 | Same-network controls | `curl` GitHub/npm | PASS — HTTP 200 |
+| 35d.16 | Failure classified | 35d.12–15 combined | **unavailable egress**, NOT missing/invalid credentials |
+| 35d.17 | HTTP 000 not used as auth/revocation evidence | documented | PASS — explicitly excluded |
+| 35d.18 | Preflight fails closed with no config | `node scripts/verify-deployment-config.mjs` | PASS — exit 1, 3 FAILs |
+| 35d.19 | Preflight never claims deployment success | output + test | PASS — disclaims in output and in `notVerified` |
+| 35d.20 | New check: no Freebuff runtime OTP dependency | preflight | PASS — 32 modules scanned |
+| 35d.21 | That check detects a planted real call | mutation M1b | PASS — caught at `emailDelivery.ts:88` |
+| 35d.22 | That check does NOT flag denylist entries | mutation M3 (control) | PASS — survives, no false positive |
+| 35d.23 | New check: runtime modules wired | preflight | PASS — 7 modules |
+| 35d.24 | That check detects a removed export | mutation M2 | PASS — caught `consumeProfitSignal` |
+| 35d.25 | That check handles destructured exports | regression test | PASS — no false failure on `auth.ts` |
+| 35d.26 | Email code supports Resend and SMTP2GO | source read | PASS — both implemented |
+| 35d.27 | `console` transport forbidden in production | source + test | PASS — hard error |
+| 35d.28 | No Freebuff email fallback | source + preflight | PASS — throws before any network call |
+| 35d.29 | Email account / API key provisioned | — | **BLOCKED** — human + billing |
+| 35d.30 | Registered domain + verified sender | — | **BLOCKED** — no domain owned; none invented |
+| 35d.31 | SPF / DKIM / DMARC | — | **BLOCKED** — requires the real domain |
+| 35d.32 | Real OTP inbox delivery | — | **BLOCKED** — requires 35d.29–31 |
+| 35d.33 | Evidence D minimum checklist defined | `docs/CONVEX-DEPLOYMENT-READINESS.md` §6 | PASS — D1–D10 |
+| 35d.34 | Evidence D captured | — | **BLOCKED** — no deployment exists |
+| 35d.35 | Full suite / tsc / build / lint | see §7 of the phase report | PASS — 9095 tests, tsc 0, build 0, lint 1517 |
+
+**35d.34 is the phase verdict.** A passing preflight validates configuration and
+source wiring only. It is not a deployment, a successful build is not Evidence
+D, and none of auth, OTP delivery, entitlement enforcement or live providers may
+be described as operational until they are observed against a deployed Convex
+environment.
+
+---
+
 ## 36. Sign-off
 
 | Field | Value |
