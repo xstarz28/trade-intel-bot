@@ -2298,6 +2298,53 @@ providers or product. Live-deployment rows remain BLOCKED in 35j/35k.
 | 35m.29 | `--production-evidence` on dev | Still refused, exit 2 | PASS |
 | 35m.30 | No mock/replay escape hatch | Forbidden patterns absent; fixture evidence-incapable | PASS |
 
+## 35n. Phase 211 — real DEV run triage & D10 failure attribution
+
+The Phase 210 runbook was executed by the operator against the DEV deployment
+(`XSTARZ_DEPLOYMENT_ENV=development`). Exit 2, Evidence D INCOMPLETE. This
+section records what that run proved and what Phase 211 changed.
+
+### Real run outcome (unchanged by this phase)
+
+| check | status | note |
+| --- | --- | --- |
+| D1 | NOT VERIFIED | anonymous auth mode |
+| D2, D3, D4, D6, D9 | PASS | first real confirmation |
+| D5, D7, D8 | NOT VERIFIED | market returned NO_TRADE ×4 — no chargeable signal existed |
+| D10 | BLOCKED | reported only `API_UNAVAILABLE` |
+| E1–E7 | VERIFIED | first real E-track execution |
+
+D5/D7/D8 are **not** defects: a chargeable signal cannot be manufactured, and
+forcing one would violate the WAIT/NO_TRADE invariant.
+
+### Triage findings
+
+| # | finding | status |
+| --- | --- | --- |
+| 1 | `API_UNAVAILABLE` cannot originate from OKX — `okx.ts` emits no `errorCode` | PASS (proven by grep + execution) |
+| 2 | The code came from the TwelveData fallback, misattributed to OKX | PASS (fixed) |
+| 3 | OKX's real reason lives at `data.reason` and was being discarded | PASS (fixed) |
+| 4 | Probe asked `BTC-USDT`; backend normalises to `BTC-USDT-SWAP` | PASS (fixed) |
+| 5 | Missing key returns `AUTH_ERROR`, so the key was present | PASS (by elimination) |
+| 6 | DEV deployment is current — `git diff ad7e896..HEAD -- src/convex/` empty | PASS (no redeploy needed) |
+| 7 | Failure layer is diagnostic/harness only — no product code changed | PASS |
+| 8 | `mapInstrumentToOkx` SWAP normalisation left intact (Phase 39 pinned) | PASS (not a defect) |
+| 9 | Nine-class failure taxonomy with per-attempt `failureClass` | PASS (34 tests) |
+| 10 | BLOCKED detail renders `provider[CLASS]:reason` per provider | PASS |
+| 11 | `observedInstrument` recorded so substitution is visible | PASS |
+| 12 | `okx-down` fixture reproduces the DEV shape end-to-end | PASS |
+| 13 | D10 still BLOCKED, never upgraded to PASS by a better message | PASS |
+| 14 | D10 unrunnable in sandbox (OKX HTTP 000 on both ids) | BLOCKED (external egress) |
+
+### Verification
+
+- 34 targeted tests; the suite evaluates the **real** classifier extracted from
+  the harness source, not a local copy of it.
+- 9/9 mutations killed. M1 (stop reading `data.reason`) and M3 (conflate rate
+  limit with credential) **survived the first run** because the test mirrored
+  the classifier inline; the mirror was replaced and both now fail the suite.
+- Full suite 9376 passed / 3 skipped; tsc 0; build 0; lint 1517 (no regression).
+
 ## 36. Sign-off
 
 | Field | Value |

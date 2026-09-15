@@ -1286,6 +1286,37 @@ async function run() {
   // observedAt is stamped at acquisition time (`observedAt: Date.now()` around
   // the candle read), so it evidences acquisition, not provider observation.
   // The report says which basis was used rather than blurring the two.
+  /**
+   * The instrument D10 probes for provenance. It is a provider-native OKX
+   * contract id, passed through unchanged by mapInstrumentToOkx, so the
+   * request and the observation refer to the same instrument.
+   */
+  const OKX_PROVENANCE_INSTRUMENT = "BTC-USDT-SWAP";
+
+  /**
+   * Phase 211 — distinguish the failure LAYER. The taxonomy exists so that a
+   * transport outage, a provider-side error, a schema/parser rejection and a
+   * credential problem are never conflated in the evidence.
+   */
+  const classifyProviderFailure = (r, v) => {
+    if (r.transportError) return "TRANSPORT";
+    if (r.httpStatus === 0) return "TRANSPORT";
+    if (r.appError) return "DEPLOYMENT_FUNCTION_ERROR";
+    const code = String(v.errorCode ?? "");
+    if (code === "RATE_LIMIT") return "PROVIDER_RATE_LIMIT";
+    if (code === "AUTH_ERROR") return "PROVIDER_CREDENTIAL";
+    const text = String(v.error ?? v.data?.reason ?? "");
+    if (/^OKX order book returned HTTP /.test(text)) return "PROVIDER_HTTP";
+    if (/^network failure:/.test(text)) return "TRANSPORT";
+    if (/malformed JSON|not an object|unexpected schema|empty dataset|no valid price levels/i.test(text))
+      return "PROVIDER_SCHEMA";
+    if (/missing\/invalid exchange timestamp/i.test(text)) return "PROVIDER_NO_TIMESTAMP";
+    if (/is not shaped like an OKX contract id/.test(text)) return "INSTRUMENT_UNSUPPORTED";
+    if (code === "API_UNAVAILABLE") return "PROVIDER_UNAVAILABLE";
+    if (v.success === false || v.data?.available === false) return "PROVIDER_UNAVAILABLE";
+    return null;
+  };
+
   const providerAttempts = [];
   const probe = async (label, fn, args, extract) => {
     const startedAt = Date.now();
@@ -1297,17 +1328,32 @@ async function run() {
       provider: label.provider,
       dataset: label.dataset,
       instrument: args.instrument ?? null,
+      // Phase 211 — the instrument the PROVIDER says it answered with. If this
+      // ever differs from `instrument`, the request was silently remapped and
+      // the observation is about a different contract.
+      observedInstrument: v.data?.instrumentId ?? null,
       access: label.access,
       basis: label.basis,
       acquired: out.observedAt !== null && v.success !== false,
       observedAt: out.observedAt,
       acquisition: out.acquisition ?? null,
+      // Phase 211 — read the reason where each shape actually puts it.
+      // okx:fetchOkxOrderBook returns { success, data:{available, reason} } and
+      // NO errorCode; marketData:fetchMarketData returns { errorCode, error }.
+      // Reading only error/errorCode made an OKX parser rejection look like a
+      // silent "unavailable", and the real DEV run then reported TwelveData's
+      // API_UNAVAILABLE as though it were the OKX verdict.
       failure:
-        v.success === false || v.error || v.errorCode
-          ? String(v.errorCode ?? v.error ?? "unavailable").slice(0, 160)
+        v.success === false || v.error || v.errorCode || v.data?.available === false
+          ? String(
+              v.errorCode ?? v.error ?? v.data?.reason ?? "unavailable",
+            ).slice(0, 160)
           : out.observedAt === null
             ? "response carried no provider timestamp"
             : null,
+      // The layer the failure came from, so a network outage is never read as
+      // a schema problem and a rate limit is never read as a missing key.
+      failureClass: classifyProviderFailure(r, v),
       startedAt,
       finishedAt,
     });
@@ -1323,7 +1369,16 @@ async function run() {
       basis: "exchange ts field",
     },
     "okx:fetchOkxOrderBook",
-    { instrument: "BTC-USDT" },
+    // Phase 211 — pass a provider-native SWAP contract id verbatim.
+    //
+    // The DEV run asked for "BTC-USDT". mapInstrumentToOkx normalises a bare
+    // BASE-QUOTE pair to "<BASE>-<QUOTE>-SWAP" (pinned product behaviour since
+    // Phase 39), so the probe silently observed the PERPETUAL SWAP rather than
+    // the SPOT book it named. D10 only needs an exchange-stamped order book,
+    // and either contract provides one — but the evidence must say which
+    // instrument was actually observed. Naming the contract explicitly keeps
+    // the request and the observation the same instrument.
+    { instrument: OKX_PROVENANCE_INSTRUMENT },
     (v) => ({
       observedAt: typeof v.observedAt === "number" ? v.observedAt : null,
       acquisition: v.data?.freshness ?? null,
@@ -1354,7 +1409,9 @@ async function run() {
 
   const observedAt = chosen.out.observedAt;
   const acquisition = chosen.out.acquisition;
-  const attempted = providerAttempts.map((a) => `${a.provider}:${a.failure ?? "ok"}`).join("; ");
+  const attempted = providerAttempts
+    .map((a) => `${a.provider}[${a.failureClass ?? "OK"}]:${a.failure ?? "ok"}`)
+    .join("; ");
 
   if (observedAt === null) {
     record(
