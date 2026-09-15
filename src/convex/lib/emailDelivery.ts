@@ -26,6 +26,7 @@
  */
 
 import { DEPLOYMENT_ENV_VAR, isProductionDeployment } from "./deploymentEnvironment";
+import { RETIRED_ISSUER_HOSTS } from "./issuerPolicy";
 
 /** Transports supported today. Provider-neutral by construction. */
 export type EmailTransportId = "resend" | "smtp2go" | "console";
@@ -84,7 +85,20 @@ export const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
  * as a live dependency but as a guard — so that a regression reintroducing it
  * fails a test instead of quietly shipping.
  */
-export const FORBIDDEN_DELIVERY_HOSTS = ["auth.freebuff.app", "freebuff.com", "freebuff.app"];
+/**
+ * Sender domains production must never send OTP mail from.
+ *
+ * Phase 214 — this list previously covered only the Freebuff hosts, while
+ * `RETIRED_ISSUER_HOSTS` in issuerPolicy.ts also retires `vly.ai`. A production
+ * deployment therefore ACCEPTED `noreply@vly.ai` as an OTP sender: the auth
+ * issuer was retired but the sending identity was not. The two lists are now
+ * consistent by construction — `vly.ai` is imported from the issuer policy
+ * rather than copied, so retiring a host in one place retires it in both.
+ *
+ * `auth.freebuff.app` is retained explicitly: it is the leaked-credential
+ * issuer, and naming it produces a clearer error than the suffix rule alone.
+ */
+export const FORBIDDEN_DELIVERY_HOSTS = ["auth.freebuff.app", ...RETIRED_ISSUER_HOSTS];
 
 /** RFC-5322 is famously permissive; this is a deliberate pragmatic subset. */
 const EMAIL_PATTERN = /^[^\s@,;:<>()[\]\\]+@[^\s@.,;:<>()[\]\\]+(\.[^\s@.,;:<>()[\]\\]+)+$/;

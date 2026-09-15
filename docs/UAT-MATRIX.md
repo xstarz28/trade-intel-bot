@@ -2446,6 +2446,35 @@ recommendation to close these rows would violate invariant 3 (WAIT/NO_TRADE
 preserved) and invariant 9 (no guaranteed-profit behaviour), and would make the
 evidence false rather than complete.
 
+## 35q. Phase 214 — production email / OTP readiness
+
+| # | item | status |
+| --- | --- | --- |
+| 1 | Production config names documented (`docs/PRODUCTION-EMAIL-SETUP.md`) | PASS |
+| 2 | Resend and SMTP2GO both supported; no forced provider | PASS |
+| 3 | `vly.ai` accepted as an OTP sender in production | **FAIL → FIXED** (proven by executing the config reader) |
+| 4 | Forbidden sender list derived from `RETIRED_ISSUER_HOSTS` | PASS |
+| 5 | Subdomains of retired hosts refused | PASS |
+| 6 | `console` transport refused in production | PASS |
+| 7 | Unset `XSTARZ_DEPLOYMENT_ENV` resolves to production (fails closed) | PASS |
+| 8 | Missing key / missing sender / invalid sender refused | PASS |
+| 9 | OTP lifetime 10 min | PASS (unchanged) |
+| 10 | CSPRNG 6-digit, rejection-sampled | PASS (unchanged) |
+| 11 | Failed sign-ins 5/hour | PASS (unchanged) |
+| 12 | Resend cooldown 60 s, 5 per rolling hour | PASS (unchanged) |
+| 13 | Limiter stores SHA-256 hash, no raw address | PASS (unchanged) |
+| 14 | Rejected request does not extend cooldown | PASS (returns before any write) |
+| 15 | Failed send does not refund allowance | PASS (unchanged) |
+| 16 | Error surface is category-only | PASS (unchanged) |
+| 17 | D1 execution contract written | PASS |
+| 18 | D1 itself | **BLOCKED** — no provider account, no domain, no mailbox |
+| 19 | DEV OTP smoke test possible? | **NOT VERIFIED** — sandbox cannot read deployment env; operator check documented |
+| 20 | Email credential separated from leaked Freebuff key | PASS (documented in two places) |
+
+No entitlement or business logic was touched. No credential, domain or delivery
+evidence was invented. D1 remains BLOCKED and must not be recorded otherwise
+until a real mailbox receives a code.
+
 ## 36. Sign-off
 
 | Field | Value |
