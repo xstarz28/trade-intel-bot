@@ -1298,6 +1298,24 @@ async function run() {
    * transport outage, a provider-side error, a schema/parser rejection and a
    * credential problem are never conflated in the evidence.
    */
+  /**
+   * Phase 212 — which BOUNDARY the failure occurred on. failureClass says what
+   * went wrong; this says where. It matters because a transport failure between
+   * this harness and the deployment (operator network/config) and a transport
+   * failure between the deployment and the provider (Convex egress) are opposite
+   * diagnoses that would otherwise both read as TRANSPORT.
+   */
+  const classifyFailureBoundary = (r, v) => {
+    if (r.transportError || r.httpStatus === 0) return "harness->deployment";
+    if (r.appError) return "deployment-function";
+    // "network failure:" is emitted INSIDE okx.ts when its own fetch throws, so
+    // the deployment was reached and the provider was not.
+    if (/^network failure:/.test(String(v.error ?? ""))) return "deployment->provider";
+    if (v.success === false || v.error || v.errorCode || v.data?.available === false)
+      return "deployment->provider";
+    return null;
+  };
+
   const classifyProviderFailure = (r, v) => {
     if (r.transportError) return "TRANSPORT";
     if (r.httpStatus === 0) return "TRANSPORT";
@@ -1354,6 +1372,9 @@ async function run() {
       // The layer the failure came from, so a network outage is never read as
       // a schema problem and a rate limit is never read as a missing key.
       failureClass: classifyProviderFailure(r, v),
+      // Phase 212 — see classifyFailureBoundary. Without this, an egress block
+      // inside Convex is indistinguishable from the operator being offline.
+      failureBoundary: classifyFailureBoundary(r, v),
       startedAt,
       finishedAt,
     });
@@ -1410,7 +1431,10 @@ async function run() {
   const observedAt = chosen.out.observedAt;
   const acquisition = chosen.out.acquisition;
   const attempted = providerAttempts
-    .map((a) => `${a.provider}[${a.failureClass ?? "OK"}]:${a.failure ?? "ok"}`)
+    .map(
+      (a) =>
+        `${a.provider}[${a.failureClass ?? "OK"}${a.failureBoundary ? `@${a.failureBoundary}` : ""}]:${a.failure ?? "ok"}`,
+    )
     .join("; ");
 
   if (observedAt === null) {
