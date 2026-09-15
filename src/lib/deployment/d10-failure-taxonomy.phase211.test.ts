@@ -129,9 +129,10 @@ describe("Phase 211 — an OKX failure now reports its real reason", () => {
   });
 
   it("the BLOCKED detail attributes each failure to the provider it came from", () => {
-    expect(harness).toMatch(
-      /\$\{a\.provider\}\[\$\{a\.failureClass \?\? "OK"\}\]:\$\{a\.failure \?\? "ok"\}/,
-    );
+    // Phase 212 widened this to provider[CLASS@boundary]:reason. The invariant
+    // is unchanged: provider, class and real reason all appear in the detail.
+    expect(harness).toMatch(/\$\{a\.provider\}\[\$\{a\.failureClass \?\? "OK"\}/);
+    expect(harness).toMatch(/\}\]:\$\{a\.failure \?\? "ok"\}/);
   });
 });
 
@@ -299,5 +300,53 @@ describe("Phase 211 — the fix is diagnostic only", () => {
     for (const id of ['"D5"', '"D7"', '"D8"']) {
       expect(d10Block, `${id} must not be recorded from the D10 block`).not.toContain(id);
     }
+  });
+});
+
+describe("Phase 212 — failure boundary (where, not just what)", () => {
+  /** The REAL boundary classifier, extracted from harness source. */
+  const boundary = (() => {
+    const start = harness.indexOf("const classifyFailureBoundary = (r, v) => {");
+    expect(start, "classifyFailureBoundary must exist in the harness").toBeGreaterThan(0);
+    const term = "\n  };";
+    const end = harness.indexOf(term, start);
+    expect(end).toBeGreaterThan(start);
+    const body = harness.slice(start, end + term.length);
+    const factory = new Function(`"use strict"; ${body} return classifyFailureBoundary;`);
+    return factory() as (r: Record<string, unknown>, v: Record<string, unknown>) => string | null;
+  })();
+
+  it("separates the two failures that both classify as TRANSPORT", () => {
+    // This is the whole point: an unreachable deployment and a deployment that
+    // cannot reach the provider are opposite diagnoses.
+    const operatorOffline = boundary({ transportError: "ECONNREFUSED" }, {});
+    const egressBlocked = boundary({}, { success: false, error: "network failure: fetch failed" });
+    expect(operatorOffline).toBe("harness->deployment");
+    expect(egressBlocked).toBe("deployment->provider");
+    expect(operatorOffline).not.toBe(egressBlocked);
+  });
+
+  it("attributes a thrown Convex function to the deployment, not the provider", () => {
+    expect(boundary({ appError: "boom" }, {})).toBe("deployment-function");
+  });
+
+  it.each([
+    ["provider HTTP error", { success: false, error: "OKX order book returned HTTP 403." }],
+    [
+      "provider rejected timestamp",
+      { success: false, data: { available: false, reason: "missing/invalid exchange timestamp (ts)" } },
+    ],
+    ["provider credential", { success: false, errorCode: "AUTH_ERROR" }],
+  ])("attributes %s to the deployment->provider hop", (_label, v) => {
+    expect(boundary({}, v as Record<string, unknown>)).toBe("deployment->provider");
+  });
+
+  it("reports no boundary when the call succeeded", () => {
+    expect(boundary({}, { success: true })).toBeNull();
+  });
+
+  it("records failureBoundary on every attempt and renders it in the detail", () => {
+    expect(harness).toMatch(/failureBoundary: classifyFailureBoundary\(r, v\)/);
+    expect(harness).toMatch(/a\.failureBoundary \? `@\$\{a\.failureBoundary\}`/);
   });
 });
