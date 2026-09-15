@@ -24,7 +24,7 @@ RC commit `dea46ef` on `arena/01a08e67-trade-intel-bot`. All timestamps UTC.
 | History remediation | **BLOCKED** | Gated behind rotation. Re-rehearsed Phase 198 on a fresh disposable mirror: **0** occurrences across all 4 refs (2 independent methods + positive control), **339/339** commits preserved, author/date/subject and parent topology byte-identical, working-branch tree **0 files changed**, exactly 1 line of `emailOtp.ts` redacted. Production and remote untouched; no force-push. Runbook: `docs/SECRET-REMEDIATION-RUNBOOK.md`; verifier: `scripts/secret-rehearsal-verify.mjs` | Sandbox rehearsal | 2026-09-14T00:00Z |
 | Convex codegen | **BLOCKED** | Re-verified Phase 199: `npx convex codegen` → "No CONVEX_DEPLOYMENT set". **No generated file hand-edited.** Drift check: 23 source modules ↔ `api.d.ts`, **zero drift**; Phase 187 `otpLimiter` entry consistent but **pending official regeneration** | Sandbox | 2026-09-14T00:00Z |
 | Convex deployment | **BLOCKED** | Phase 199 classified the failure precisely: DNS resolves, **TCP :443 OPEN**, TLS severed (`SSL_ERROR_SYSCALL`) in ~40ms; GitHub/npm 200 on the same network ⇒ **unavailable egress, NOT a credential failure**. `CONVEX_DEPLOYMENT`/`CONVEX_DEPLOY_KEY` unset. See `docs/CONVEX-DEPLOYMENT-READINESS.md` | Sandbox | 2026-09-14T00:00Z |
-| Evidence D | **BLOCKED** | Requires a deployed backend; mocks explicitly do not count. Phase 199 defines the **minimum 10-observation checklist (D1–D10)** that closes it — `docs/CONVEX-DEPLOYMENT-READINESS.md` §6. Partial capture = NOT VERIFIED, never PASS | — | 2026-09-14T00:00Z |
+| Evidence D | **PARTIAL (DEV only)** | Phase 213: real run against `tough-goose-455` (development, `productionEvidence:false`, exit 2). **D2/D3/D4/D6/D9/D10 PASS in DEV**; D10 via live OKX order book (`BTC-USDT-SWAP`, exchange `ts`, FRESH). D1 NOT VERIFIED (anonymous); D5/D7/D8 `NOT_VERIFIED — MARKET_CONDITION` (25-candidate sweep, no natural chargeable signal). **DEV evidence is not production evidence** — see `docs/UAT-MATRIX.md` §35o | DEV deployment | 2026-09-15T00:00Z |
 | Live providers | **BLOCKED** | All 7 provider hosts HTTP 000; npm/GitHub 200 (proves allowlist, not outage) | Sandbox | 2026-09-12T04:15Z |
 | Web production deploy | **NOT VERIFIED** | Contract verified against the real build locally; never deployed to a public host | Local SPA host | 2026-09-12T04:33Z |
 | Android CI artifact | **PASS** | Debug APK 3,809,003 bytes; asset + secret scans passed | `ubuntu-latest` | 2026-09-12T04:43Z |
@@ -40,7 +40,7 @@ RC commit `dea46ef` on `arena/01a08e67-trade-intel-bot`. All timestamps UTC.
 | Web UAT | **PARTIAL** | 22 automated rows executed; deployment-dependent rows blocked | Local | 2026-09-12T04:33Z |
 | Android UAT | **BLOCKED** | No physical Android device available to this project | — | — |
 | iOS UAT | **BLOCKED** | **User has no iPhone.** Simulator compile is not device verification | — | — |
-| Windows UAT | **BLOCKED** | No physical Windows machine; CI packaging is not install verification | — | — |
+| Windows UAT | **BLOCKED** | CI packaging is not install verification. (An operator Windows machine now exists and ran the Evidence D harness in Phase 212/213, but no installer install/launch UAT has been performed) | — | — |
 | F3 (light mode) | **NOT APPLICABLE** | Classified post-RC product gap, not a release blocker. Unchanged | — | — |
 
 ---
@@ -52,7 +52,7 @@ RC commit `dea46ef` on `arena/01a08e67-trade-intel-bot`. All timestamps UTC.
 | A | Static analysis / source review | **PASS** |
 | B | Unit and integration tests | **PASS** — 234 files, 8,505 tests |
 | C | Handler-level tests against real handlers | **PASS** |
-| **D** | **Deployed-runtime verification** | **BLOCKED** |
+| **D** | **Deployed-runtime verification** | **PARTIAL — DEV only** (6/10 observed; production unverified) |
 
 Evidence D cannot be inferred from A–C. A green suite says the code does what
 it was told to do; it says nothing about a deployment that has never existed.
@@ -153,6 +153,70 @@ statement about source, never about a running system.**
 - **F3 light mode** — post-RC product gap, per the existing documented
   classification. Not changed in this phase.
 - **ARM64 Windows** — documented, not built, not claimed.
+
+## Phase 213 — DEV runtime evidence recorded (still NOT READY)
+
+### What is now verified, and where
+
+| axis | DEV | production |
+| --- | --- | --- |
+| D2/D3/D4/D6/D9 | **VERIFIED** | not verified |
+| D10 provider-derived observation | **VERIFIED** (live OKX public order book) | not verified |
+| E1–E7 entitlement state machine | **VERIFIED 7/7** | not verified |
+| D1 mailbox-delivered OTP session | not verified | not verified |
+| D5/D7/D8 chargeable decision | `NOT_VERIFIED — MARKET_CONDITION` | not verified |
+
+### Provider status — three separate things
+
+D10 being VERIFIED in DEV must not be read as provider readiness. These are
+distinct and only the first is closed:
+
+1. **OKX public market data reachable from the DEV deployment** — **VERIFIED**.
+   No credential is involved; OKX order book is a public endpoint. This proves
+   the deployment has working egress to OKX and that the parser preserves the
+   exchange timestamp.
+2. **Production live-provider credentials** — **BLOCKED**. Coinglass,
+   AlphaVantage, EIA, TickAtlas and TwelveData all require keys that do not
+   exist in any environment the project controls. The Phase 211 run showed the
+   TwelveData fallback answering `API_UNAVAILABLE`, which is a provider-side
+   failure, not a missing key (a missing key returns `AUTH_ERROR`).
+3. **Production Convex deployment** — **BLOCKED**. No production deployment
+   exists. Every observation above was taken against a development deployment
+   with `productionEvidence:false`.
+
+### What D1 still needs
+
+D1 is the only D-row that is neither market-limited nor environment-limited —
+it is credential-limited. Closing it requires **all four**, and no part may be
+simulated:
+
+1. **A real OTP transport.** `emailDelivery.ts` supports `resend`, `smtp2go` or
+   `console`. `console` is not evidence.
+2. **A verified sender domain** with SPF, DKIM and DMARC aligned. Without this
+   the message may send and still not arrive, and a send receipt is not proof
+   of delivery.
+3. **Actual mailbox delivery** — a human opening a real inbox and reading the
+   code. Provider dashboards showing "delivered" are corroborating, not
+   sufficient.
+4. **An authenticated OTP session** driven end-to-end through the harness with
+   `--auth otp`, so the session that performs D2–D10 is the one the OTP created.
+
+Until then D1 stays NOT VERIFIED. The Phase 213 run used `--auth anonymous`
+precisely so that no part of D1 could be implied by a run that never sent mail.
+
+### Remaining external blockers (unchanged by this phase)
+
+1. OTP credential rotation — still outstanding; `main` remains exposed at tip.
+2. Production Convex deployment — still outstanding.
+3. Deploy credential — absent.
+4. Email account + verified domain — absent.
+5. SPF/DKIM/DMARC alignment — unverified.
+6. Live provider keys (production) — absent.
+7. Mobile signing material — absent.
+8. D5/D7/D8 — `MARKET_CONDITION`, see the stopping rule in `docs/UAT-MATRIX.md` §35p.
+
+**Release decision: NOT READY.** DEV runtime evidence raises confidence in the
+code path; it does not close a single production gate.
 
 ## Phase 186 — deployment pipeline status
 

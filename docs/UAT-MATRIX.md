@@ -2345,6 +2345,107 @@ forcing one would violate the WAIT/NO_TRADE invariant.
   the classifier inline; the mirror was replaced and both now fail the suite.
 - Full suite 9376 passed / 3 skipped; tsc 0; build 0; lint 1517 (no regression).
 
+## 35o. Phase 213 — first valid real DEV Evidence D run (DEV_VERIFIED)
+
+**Classification: `DEV_VERIFIED — NOT PRODUCTION EVIDENCE`.**
+
+The Phase 212 run sheet was executed by the operator against the real DEV
+deployment. This is the first run in which D10 passed against a live provider.
+
+| field | value |
+| --- | --- |
+| deployment | `tough-goose-455.convex.cloud` |
+| environment | development (`XSTARZ_DEPLOYMENT_ENV=development`) |
+| `productionEvidence` | **false** |
+| exit code | 2 (incomplete — expected while D1/D5/D7/D8 are unevidenced) |
+| auth mode | `--auth anonymous` |
+| sweep | 25 candidates, discovery-derived, `instId` verbatim |
+| evidence class | DEV runtime observation |
+
+### Recorded DEV observations
+
+| check | DEV status | basis |
+| --- | --- | --- |
+| D2 | **PASS (DEV)** | real deployed-function response |
+| D3 | **PASS (DEV)** | real deployed-function response |
+| D4 | **PASS (DEV)** | real deployed-function response |
+| D6 | **PASS (DEV)** | real deployed-function response |
+| D9 | **PASS (DEV)** | client-forged evidence fields rejected by the server |
+| D10 | **PASS (DEV)** | OKX order book, `BTC-USDT-SWAP`, exchange `ts`, FRESH |
+| D1 | NOT VERIFIED | anonymous auth — no OTP mailbox delivery occurred |
+| D5 | **NOT_VERIFIED — MARKET_CONDITION** | no natural chargeable signal in 25 candidates |
+| D7 | **NOT_VERIFIED — MARKET_CONDITION** | same |
+| D8 | **NOT_VERIFIED — MARKET_CONDITION** | same |
+| E1–E7 | **VERIFIED (DEV) 7/7** | entitlement state machine, independent axis |
+
+D1/D5/D7/D8 are **not** recorded as PASS. E1–E7 are **not** a substitute for
+D5/D7/D8: the E-track takes `recommendation` as an argument, so it can never
+prove the engine decided chargeability on its own.
+
+### D10 contract audit (no provider code changed)
+
+| requirement | verdict | how it is enforced |
+| --- | --- | --- |
+| real OKX response | PASS | `okx:fetchOkxOrderBook` performs the live fetch; no fixture path exists in a non-`--fixture` run |
+| exchange-supplied `ts` | PASS | `execution-quality.ts` rejects the payload outright with `missing/invalid exchange timestamp (ts)` when `e.ts` is absent or non-finite |
+| `observedAt` preserved | PASS | `okx.ts` sets `observedAt: snapshotTs`, and `snapshotTs` **is** the parsed `e.ts` |
+| no local-clock substitution | PASS | the harness FAILs when `abs(observedAt - startedAt) < 2 ms`; the run passed, so the value is not our clock |
+| no future timestamp | PASS | harness FAILs when `observedAt > finishedAt + 5 s` |
+| no cache relabelling | PASS | harness FAILs when `acquisition === "cache-reused"` and `observedAt >= startedAt` |
+| instrument identity | PASS | requested and observed both `BTC-USDT-SWAP`; provider-native id passed verbatim |
+
+`Date.now()` appears in `okx.ts` only as the freshness reference passed to
+`buildExecutionData`; it never becomes `observedAt`. There is no code path by
+which a local timestamp can satisfy this gate.
+
+### Evidence provenance caveat
+
+The `phase212.json` artefact was **not** attached to the repository, so these
+rows are recorded from the operator's reported summary, not from a re-read of
+the machine-generated report. The distinction is preserved deliberately: this
+is an operator-attested DEV observation. Attaching `phase212.json` would
+upgrade it to a re-verifiable artefact; it would **not** upgrade it to
+production evidence.
+
+## 35p. Stopping rule — no repeat-sweep phases (binding, Phase 213)
+
+D10 is now VERIFIED in DEV. D5/D7/D8 are limited by **market condition**, not
+by code, configuration or effort. This rule exists to stop that fact from
+generating an endless series of "run the sweep again" phases.
+
+**The rule.** Once D10 is DEV-VERIFIED and no legitimate chargeable signal is
+naturally available, the project must **not** create further phases whose only
+content is re-running the sweep. D5/D7/D8 remain explicit
+`NOT_VERIFIED — MARKET_CONDITION` blockers until a chargeable event occurs
+through normal operation or scheduled UAT.
+
+**What a repeat sweep may not do.** The only legitimate way to widen the search
+already exists: `--sweep N` walks discovery-derived instruments whose
+`state === "live"`, keeping each `instId` verbatim. It does not and must not
+acquire a chargeable signal by:
+
+- a hardcoded instrument whitelist,
+- symbol substitution (asking for A and reporting B),
+- forcing or injecting a recommendation,
+- moving a threshold, bias or confidence value,
+- fabricating provider data or timestamps.
+
+Raising `--sweep` samples more of the *same* quiet market. It is not a fix, and
+a larger N is not evidence of greater effort.
+
+**Permitted triggers for a new D5/D7/D8 attempt** (any one):
+
+1. a code change lands that could plausibly alter chargeability, or
+2. the operator runs the harness as part of scheduled UAT during ordinary use,
+   and the engine independently produces BUY/SELL/LONG/SHORT, or
+3. market conditions are independently observed to have changed.
+
+Absent one of these, the correct action is to record
+`NOT_VERIFIED — MARKET_CONDITION` and move to unrelated work. Forcing a
+recommendation to close these rows would violate invariant 3 (WAIT/NO_TRADE
+preserved) and invariant 9 (no guaranteed-profit behaviour), and would make the
+evidence false rather than complete.
+
 ## 36. Sign-off
 
 | Field | Value |
