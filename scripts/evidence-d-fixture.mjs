@@ -42,6 +42,10 @@
  *   malformed   a function answers with a nonsense status, to prove the report
  *               renders UNKNOWN rather than PASS.
  *   silent      every call fails at transport, so zero observations succeed.
+ *   okx-down    reproduces the real Phase 210 DEV run: the OKX order book is
+ *               unavailable and the credentialed fallback answers with
+ *               API_UNAVAILABLE. Used to prove the evidence attributes each
+ *               failure to the provider it actually came from.
  *
  * Usage:
  *   node scripts/evidence-d-fixture.mjs --scenario complete [--port 0]
@@ -56,7 +60,7 @@ const flag = (n) => {
 };
 
 const SCENARIO = (flag("--scenario") ?? "incomplete").toLowerCase();
-const VALID = ["complete", "incomplete", "blocked", "malformed", "silent", "exhausted"];
+const VALID = ["complete", "incomplete", "blocked", "malformed", "silent", "exhausted", "okx-down"];
 if (!VALID.includes(SCENARIO)) {
   console.error(`FIXTURE: unknown scenario "${SCENARIO}". Expected one of ${VALID.join(", ")}.`);
   process.exit(2);
@@ -224,11 +228,25 @@ function handle(path, body, authorized) {
   /* ---- providers ---- */
   if (path === "okx:fetchOkxOrderBook") {
     if (SCENARIO === "blocked") return ok({ success: false, errorCode: "FIXTURE_UNAVAILABLE" });
+    if (SCENARIO === "okx-down") {
+      // Exactly the shape the real action returns on a parser rejection: no
+      // error, no errorCode, the reason buried at data.reason.
+      return ok({
+        success: false,
+        data: { available: false, reason: "missing/invalid exchange timestamp (ts)" },
+      });
+    }
     // An exchange-stamped observation, deliberately older than the response.
     return ok({
       success: true,
       observedAt: BASE_TS - 1_500,
-      data: { freshness: "fresh", instrument: a.instrument ?? null },
+      data: {
+        freshness: "fresh",
+        instrument: a.instrument ?? null,
+        // The real parser reports the exchange's own instId; mirror that so
+        // the harness can detect a silent remap.
+        instrumentId: a.instrument ?? null,
+      },
     });
   }
 
@@ -247,6 +265,9 @@ function handle(path, body, authorized) {
   }
 
   if (path === "marketData:fetchMarketData") {
+    if (SCENARIO === "okx-down") {
+      return ok({ success: false, error: "Market data fetch failed", errorCode: "API_UNAVAILABLE" });
+    }
     return ok({ success: false, errorCode: "FIXTURE_NO_CREDENTIAL" });
   }
 

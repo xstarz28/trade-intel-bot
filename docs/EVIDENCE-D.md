@@ -282,6 +282,66 @@ host outside `*.convex.cloud`/`*.convex.site`, a deployment-name mismatch, an
 unreachable deployment, `--production-evidence` against a non-production
 deployment, and anonymous auth for a production claim.
 
+## Why a BLOCKED D10 names its provider (Phase 211)
+
+The first real DEV run reported D10 as `BLOCKED: API_UNAVAILABLE` and nothing
+else. That single token was actively misleading, for three separate reasons.
+
+**1. The code did not come from OKX.** `src/convex/okx.ts` never emits an
+`errorCode` at all — it returns `{ success, error?, data { available, reason },
+observedAt? }`. `API_UNAVAILABLE` exists only in the TwelveData path
+(`src/convex/marketData.ts`). The harness probes OKX first and TwelveData
+second, so the surviving code belonged to the *fallback*, while the report
+presented it as OKX's verdict.
+
+**2. OKX's real reason was being thrown away.** The probe read `error` and
+`errorCode` only. The OKX parser puts its rejection at `data.reason`, so an
+OKX failure silently degraded to the string `unavailable`.
+
+**3. The probe named an instrument the backend never used.** It asked for
+`BTC-USDT`; `mapInstrumentToOkx` normalises that to `BTC-USDT-SWAP` (pinned
+behaviour since Phase 39). The request and the observation were different
+instruments. The probe now names the provider-native swap id directly and
+records `observedInstrument` alongside it, so substitution is visible rather
+than implicit.
+
+Note what this does **not** mean. A missing TwelveData key returns
+`AUTH_ERROR`, not `API_UNAVAILABLE` — so the key was present and the upstream
+call itself failed. This was a **diagnostic defect, not an outage**, and no
+product code was changed to fix it.
+
+### Failure taxonomy
+
+Each attempt now records a `failureClass`, and the BLOCKED detail is rendered
+as `provider[CLASS]:reason` for every provider tried:
+
+| class | meaning |
+| --- | --- |
+| `TRANSPORT` | no HTTP response reached us (egress, DNS, TLS) |
+| `DEPLOYMENT_FUNCTION_ERROR` | the Convex function itself threw |
+| `PROVIDER_HTTP` | the provider answered with a non-2xx status |
+| `PROVIDER_SCHEMA` | the payload did not match the provider contract |
+| `PROVIDER_NO_TIMESTAMP` | data returned, but no usable exchange timestamp |
+| `PROVIDER_RATE_LIMIT` | provider throttled the request |
+| `PROVIDER_CREDENTIAL` | credential missing, invalid or rejected |
+| `INSTRUMENT_UNSUPPORTED` | the id is not valid for that provider |
+| `PROVIDER_UNAVAILABLE` | provider reported unavailability with no finer reason |
+
+`PROVIDER_RATE_LIMIT` and `PROVIDER_CREDENTIAL` are deliberately distinct: one
+is transient and should be retried, the other needs an operator. Collapsing
+them would send the operator to the wrong place, so a mutation that conflates
+them is required to fail the suite.
+
+The `okx-down` fixture scenario reproduces the exact DEV response shape, so the
+improved message is verified end-to-end without an outage. The same run now
+reports:
+
+```
+okx[PROVIDER_NO_TIMESTAMP]:missing/invalid exchange timestamp (ts); twelve-data[PROVIDER_UNAVAILABLE]:API_UNAVAILABLE
+```
+
+D10 remains **BLOCKED**, not PASS. A better error message is not evidence.
+
 ## Development verification is not production evidence
 
 A green run against a development deployment is labelled:
