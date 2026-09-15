@@ -77,6 +77,68 @@ describe("Phase 215 — env inspection must never print values", () => {
   });
 });
 
+describe("Phase 216 — no document points `env get` at a secret", () => {
+  /**
+   * `npx convex env get NAME` prints the raw value with no masking
+   * (`logOutput(`${envVar.value}`)` in the CLI). It is therefore safe only for
+   * variables whose values may be disclosed. A document that shows it applied
+   * to a credential is an instruction to leak that credential.
+   */
+  const SECRET_NAMES = [
+    "XSTARZ_EMAIL_API_KEY",
+    "TWELVE_DATA_API_KEY",
+    "ALPHA_VANTAGE_API_KEY",
+    "COINGLASS_API_KEY",
+    "TICKATLAS_API_KEY",
+    "EIA_API_KEY",
+    "VLY_INTEGRATION_KEY",
+    "CONVEX_DEPLOY_KEY",
+  ];
+
+  it("never shows `env get` applied to a credential", () => {
+    const offenders: string[] = [];
+    for (const doc of docs) {
+      const lines = doc.text.split("\n");
+      lines.forEach((line, i) => {
+        if (!/convex env (default )?get/.test(line)) return;
+        const named = SECRET_NAMES.find((n) => line.includes(n));
+        if (!named) return;
+        // A prohibition ("Never run ...") is the opposite of an instruction.
+        const context = lines.slice(Math.max(0, i - 1), i + 2).join(" ");
+        if (/never|must not|do not|forbidden|NEVER/i.test(context)) return;
+        offenders.push(`${doc.path}: ${line.trim()}`);
+      });
+    }
+    expect(offenders, `documents point env get at a secret:\n${offenders.join("\n")}`).toEqual([]);
+  });
+
+  it("states that env get prints an unmasked value", () => {
+    const setup = docs.find((d) => d.path.endsWith("PRODUCTION-EMAIL-SETUP.md"));
+    expect(setup!.text).toMatch(/env get.{0,80}raw value with no masking/s);
+  });
+
+  it("classifies every email variable for disclosure safety", () => {
+    const deployment = docs.find((d) => d.path.endsWith("DEPLOYMENT.md"));
+    expect(deployment, "DEPLOYMENT.md must exist").toBeTruthy();
+    expect(deployment!.text).toContain("Disclosure safety");
+    // The key must be marked NEVER printable; the sender must be marked safe.
+    const table = deployment!.text.slice(deployment!.text.indexOf("Disclosure safety"));
+    const keyRow = table.split("\n").find((l) => l.includes("XSTARZ_EMAIL_API_KEY"));
+    expect(keyRow).toMatch(/NEVER/);
+    const senderRow = table
+      .split("\n")
+      .find((l) => l.includes("XSTARZ_EMAIL_SENDER_ADDRESS"));
+    expect(senderRow).toMatch(/\|\s*Yes\s*\|/);
+  });
+
+  it("tells the operator to rotate the Xstarz key if it was disclosed", () => {
+    const setup = docs.find((d) => d.path.endsWith("PRODUCTION-EMAIL-SETUP.md"));
+    expect(setup!.text).toMatch(/Rotate that key/i);
+    // ...and keeps it separate from the Phase 184 credential.
+    expect(setup!.text).toMatch(/unrelated to the Phase 184 Freebuff credential/i);
+  });
+});
+
 describe("Phase 215 — no document leaks a credential-shaped literal", () => {
   it("contains no value-shaped assignment for a secret-looking name", () => {
     const pattern =

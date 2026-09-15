@@ -152,6 +152,62 @@ transport, sender validation and the limiter end to end. But note what it does
 **not** do — it is still a development deployment, so it cannot produce
 production evidence, and `productionEvidence` will remain `false`.
 
+## 4c. Safe configuration-gate sequence (Phase 216)
+
+Run these in order against the DEV deployment. Every command below prints
+either names only, or a value that is safe to disclose. **None of them prints
+the API key.**
+
+```powershell
+# 1. Names only - never values.
+npx.cmd convex env list --names-only
+
+# 2. Transport value (non-secret: resend | smtp2go | console).
+npx.cmd convex env get XSTARZ_EMAIL_TRANSPORT
+
+# 3. Sender identity (non-secret: it appears in the headers of every message).
+npx.cmd convex env get XSTARZ_EMAIL_SENDER_ADDRESS
+
+# 4. Public origin.
+npx.cmd convex env get SITE_URL
+```
+
+**Never run `npx convex env get XSTARZ_EMAIL_API_KEY`.** `env get` prints the
+raw value with no masking. Step 1 already answers the only question that
+matters about the key — whether the name is present.
+
+Report back: the five names from step 1 (present/absent), plus the values from
+steps 2–4. Do not paste anything else.
+
+### Decision
+
+`DEV OTP SMOKE TEST POSSIBLE` requires **all** of:
+
+| condition | check |
+| --- | --- |
+| transport is `resend` or `smtp2go` | step 2 — `console` fails this gate |
+| `XSTARZ_EMAIL_API_KEY` present | step 1 — presence only |
+| sender present and on a permitted domain | step 3 — not a retired Freebuff/VLY host |
+| `XSTARZ_DEPLOYMENT_ENV` is `development` | step 1 + known DEV deployment |
+| `SITE_URL` present | step 4 |
+
+Any failure ⇒ `DEV OTP SMOKE TEST NOT POSSIBLE`, D1 stays **BLOCKED**, and the
+dependency is external provisioning — not further repository work.
+
+Passing this gate still does **not** make D1 PASS. It only means the smoke test
+can be attempted. D1 needs a real mailbox, a human attestation, and a session
+created through the application.
+
+### If the unsafe command was already run
+
+If `npx convex env list` (without `--names-only`) was executed at any point in
+the operator environment, the Xstarz email API key has been disclosed to the
+terminal and possibly to shell history and scrollback. **Rotate that key**:
+create a new one in the provider dashboard, `npx convex env set
+XSTARZ_EMAIL_API_KEY` with the new value, then revoke the old one in the
+dashboard. This is unrelated to the Phase 184 Freebuff credential and does not
+affect that blocker in either direction.
+
 ## 5. This is NOT the leaked-credential rotation
 
 These are two separate credentials and closing one does not close the other.
