@@ -40,6 +40,32 @@ Expect empty output. A dirty tree means the run is not reproducible.
 
 ---
 
+### 1b. If the checkout came from a ZIP (no `.git` directory)
+
+A directory named like `trade-intel-bot-arena-01a08e67-trade-intel-bot` is the
+shape GitHub's "Download ZIP" produces, and it contains **no `.git`**, so
+`git log` cannot confirm anything. Verify the content directly instead — this is
+equally conclusive:
+
+```powershell
+node -e "const fs=require('fs');const s=fs.readFileSync('scripts/evidence-d-harness.mjs','utf8');const n=t=>s.split(t).length-1;console.log('classifyFailureBoundary',n('classifyFailureBoundary'));console.log('failureBoundary-wired',n('failureBoundary: classifyFailureBoundary'));console.log('harness-to-deployment',n('harness->deployment'));console.log('deployment-to-provider',n('deployment->provider'));console.log('deployment-function',n('deployment-function'));console.log('runsheet',fs.existsSync('docs/PHASE-212-RUN-SHEET.md'))"
+```
+
+Expected exactly:
+
+```
+classifyFailureBoundary 3
+failureBoundary-wired 1
+harness-to-deployment 1
+deployment-to-provider 2
+deployment-function 1
+runsheet true
+```
+
+These counts are line-ending independent, so a CRLF checkout still matches. If
+any count is `0`, the tree predates Phase 212 — re-extract the branch at
+`bd75aa1` or later. No source edits are needed or permitted to make them match.
+
 ## 2. Confirm the deployment
 
 Use the **existing DEV deployment already provisioned for this project**. Do not
@@ -60,14 +86,26 @@ misleading PASS.
 ## 3. The run
 
 ```powershell
-npm.cmd run evidence:d -- --auth anonymous --sweep 25 --json > phase212.json
+npm.cmd run --silent evidence:d -- --auth anonymous --sweep 25 --json | Out-File -Encoding utf8 phase212.json
 echo "EXIT=$LASTEXITCODE"
 ```
+
+Two details in that line are load-bearing, both verified by execution:
+
+- **`--silent`** — without it `npm run` prints a three-line banner to *stdout*,
+  so the redirected file starts with `> vite-template@0.0.0 evidence:d` and does
+  not parse as JSON. This was a real defect in the first version of this sheet.
+- **`Out-File -Encoding utf8`** — Windows PowerShell 5.1's `>` operator writes
+  UTF-16LE, which also fails to parse. `Out-File -Encoding utf8` is explicit and
+  correct on both PowerShell 5.1 and 7.
+
+The exit code is preserved through the pipe in PowerShell (`$LASTEXITCODE`
+reflects the native command).
 
 Also capture the human-readable form — it renders the D10 detail line in full:
 
 ```powershell
-npm.cmd run evidence:d -- --auth anonymous --sweep 25 > phase212.txt
+npm.cmd run --silent evidence:d -- --auth anonymous --sweep 25 | Out-File -Encoding utf8 phase212.txt
 echo "EXIT=$LASTEXITCODE"
 ```
 
