@@ -269,7 +269,8 @@ evidence.
 
 Whether the DEV deployment already has a real transport is **unknown from the
 repository** — the sandbox cannot read deployment environment variables. The
-operator can check with `npx convex env list`, which shows names only.
+operator can check with `npx convex env list --names-only`. The flag is
+required: plain `env list` prints `NAME=VALUE` and would disclose the key.
 
 ### Credential separation (restated, binding)
 
@@ -278,6 +279,49 @@ Configuring production email does not revoke the leaked key, does not close
 Phase 184, and does not unblock the history rewrite. That remains gated on
 rotating the old credential and observing a **401/403** from an authenticated
 request using it. Deploy the hardened RC, never `main`.
+
+## Phase 215 — DEV email configuration gate (unresolved, one operator answer away)
+
+**D1: BLOCKED. No mailbox received an OTP. No OTP-authenticated session was
+created.** Nothing in this phase changes that, and no evidence was manufactured.
+
+### A defect in the inspection procedure, found before it was run
+
+Phase 214 told the operator to run `npx convex env list`, claiming it shows
+names only. The Convex CLI prints `NAME=VALUE` unless `--names-only` is passed.
+Following the documented step would have disclosed the live email API key in
+plain text. Corrected in all three documents that carried it, with a guard
+(`env-inspection-safety.phase215.test.ts`) that fails if the value-printing
+form is reintroduced. If the unsafe form was already run, the key must be
+treated as exposed and rotated.
+
+### Gate state
+
+| variable | presence |
+| --- | --- |
+| `XSTARZ_EMAIL_TRANSPORT` | **unknown** — not reported yet |
+| `XSTARZ_EMAIL_API_KEY` | **unknown** |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | **unknown** |
+| `XSTARZ_DEPLOYMENT_ENV` | known present in DEV (Evidence D ran against it) |
+| `SITE_URL` | **unknown** |
+
+The sandbox cannot read another deployment's environment, so this is not
+something the repository can settle. See `docs/UAT-MATRIX.md` §35r for the
+Case A / Case B decision tree and the exact command.
+
+### D1 remains gated on runtime facts, not configuration
+
+Even in Case A, configuration presence is not D1. D1 requires an email
+**actually received** in a real mailbox, a **human attestation** of that
+receipt, and an **authenticated session created through the application**.
+Provider HTTP 200, a dashboard "delivered" row, console transport output and
+server logs are explicitly not evidence.
+
+### Credential distinction (unchanged)
+
+A present `XSTARZ_EMAIL_API_KEY` is a new Xstarz credential, unrelated to the
+leaked Freebuff key. It does not revoke it, and the Phase 184 history-rewrite
+blocker stays open pending an observed 401/403 after rotation.
 
 ## Phase 186 — deployment pipeline status
 

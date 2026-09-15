@@ -2475,6 +2475,77 @@ No entitlement or business logic was touched. No credential, domain or delivery
 evidence was invented. D1 remains BLOCKED and must not be recorded otherwise
 until a real mailbox receives a code.
 
+## 35r. Phase 215 — DEV email configuration gate
+
+**Outcome: the gate could not be evaluated this phase, and a prerequisite
+defect was fixed before the operator ran anything.**
+
+### Blocking defect in the inspection command itself
+
+Phase 214 instructed the operator to run `npx convex env list` and asserted it
+"shows names only". That is false. The Convex CLI (1.42.1) prints
+`NAME=VALUE` for every variable unless `--names-only` is passed:
+
+```
+for (const { name, value } of envs) {
+  if (options?.namesOnly) { logOutput(name); continue; }
+  logOutput(`${name}=${formatted}`);
+}
+```
+
+Running the documented command would have printed the live
+`XSTARZ_EMAIL_API_KEY` to the terminal and into any captured transcript —
+directly violating the "names/presence only, never values" rule this phase is
+built on. Three documents carried the wrong instruction and all three are
+corrected to `--names-only`.
+
+| # | item | status |
+| --- | --- | --- |
+| 1 | `convex env list` prints values without `--names-only` | **FAIL → FIXED** (verified in CLI source) |
+| 2 | `docs/PRODUCTION-EMAIL-SETUP.md` corrected | PASS |
+| 3 | `docs/RELEASE-GATE.md` corrected | PASS |
+| 4 | `docs/OPERATOR-RUNBOOK.md` corrected (pre-existing, same defect) | PASS |
+| 5 | Guard prevents reintroducing the value-printing form | PASS (3/3 mutations killed) |
+| 6 | Recovery advice if the unsafe form was already run | PASS (rotate the key) |
+| 7 | DEV email configuration state | **NOT VERIFIED** — operator output not yet provided |
+| 8 | Case A / Case B decision | **PENDING** on item 7 |
+| 9 | D1 | **BLOCKED** — unchanged |
+
+### What is still needed to resolve the gate
+
+The operator runs, against the DEV deployment:
+
+```powershell
+npx.cmd convex env list --names-only
+```
+
+and reports which of these names appear — **names only, no values**:
+`XSTARZ_EMAIL_TRANSPORT`, `XSTARZ_EMAIL_API_KEY`,
+`XSTARZ_EMAIL_SENDER_ADDRESS`, `XSTARZ_DEPLOYMENT_ENV`, `SITE_URL`.
+
+Because `--names-only` prints no values, the transport's *value* (`resend` vs
+`smtp2go` vs `console`) is not disclosed by it. If the transport value is
+needed to decide Case A, the safe check is `npx convex env get
+XSTARZ_EMAIL_TRANSPORT` — that variable is **not** a secret, unlike the key.
+
+- **Case A** (all three present, transport non-console): DEV OTP smoke test is
+  possible. D1 stays NOT_VERIFIED until a real mailbox receives a code, a human
+  attests receipt, and a session is created through the application.
+- **Case B** (any absent): **DEV OTP SMOKE TEST NOT POSSIBLE**. D1 stays
+  BLOCKED pending external provider/domain provisioning, and Evidence-D
+  repository work stops there.
+
+This phase does not schedule a repeat of the command. One operator answer
+resolves it.
+
+### Credential distinction (unchanged)
+
+An `XSTARZ_EMAIL_API_KEY` in the DEV deployment, if present, is a **new Xstarz
+credential** and is unrelated to the leaked Freebuff credential. Configuring or
+smoke-testing it does not revoke the old key and does not resolve the Phase 184
+history-rewrite blocker, which still requires an observed 401/403 from the old
+credential after rotation.
+
 ## 36. Sign-off
 
 | Field | Value |
