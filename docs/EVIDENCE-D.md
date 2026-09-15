@@ -212,6 +212,76 @@ matching:
 `entitlementStateMachine{verdict,note,summary,checks[]}`, `safetyProbes`,
 `blockers[]`.
 
+## Operator workflow (Phase 209)
+
+Three invocations, in the order an operator should use them.
+
+### 1. Fixture dry-run — FIXTURE — NOT EVIDENCE
+
+Proves the tooling works before it touches a real deployment. Nothing it
+produces is evidence of anything.
+
+```
+# terminal 1 — start the local stub (loopback only)
+node scripts/evidence-d-fixture.mjs --scenario incomplete --port 7311
+
+# terminal 2 — run the real CLI against it
+npm run evidence:d -- --fixture http://127.0.0.1:7311 --auth anonymous --sweep 5
+```
+
+Scenarios: `complete`, `exhausted`, `incomplete`, `blocked`, `malformed`,
+`silent`. Use `complete` with `--auth otp --otp 123456` to see a full ten-check
+run; use `incomplete` for the realistic quiet-market shape.
+
+A fixture run is stamped at every layer — `fixture: true`,
+`fixtureNotice: "FIXTURE — NOT EVIDENCE"`, `environment: "fixture"`,
+`evidenceClass: "FIXTURE — NOT EVIDENCE"`, deployment name
+`FIXTURE-NOT-EVIDENCE` — and `productionEvidence` is hard-wired to `false` even
+when all ten observations pass. `--fixture` is refused for any non-loopback URL
+and cannot be combined with `--production-evidence`.
+
+**A fixture run must never be reported as Evidence D.** It proves the harness,
+the report schema and the exit codes. It proves nothing about the product.
+
+### 2. Real DEV run
+
+```
+npm run evidence:d -- --auth anonymous --json
+```
+
+Anonymous auth leaves D1 `NOT_VERIFIED` (no mailbox is exercised). Use
+`--auth otp` with `EVIDENCE_D_EMAIL` set to a real mailbox to resolve D1.
+
+### 3. Real sweep
+
+```
+npm run evidence:d -- --sweep 25
+```
+
+Widens the search for a natural chargeable signal so D5/D7/D8 have a fair
+chance. Candidates come from the deployment's own discovery action; nothing
+about the engine is altered.
+
+### Exit codes
+
+| code | meaning |
+| --- | --- |
+| 0 | every observation passed (`ACHIEVED`) |
+| 1 | at least one observation FAILED |
+| 2 | incomplete, refused, or not executed |
+
+Observed against the fixture: `complete` + OTP → 0 · `incomplete` → 2 ·
+`blocked` → 1 · `malformed` → 2 (UNKNOWN, never PASS) · `silent` → 2
+(`NOT EXECUTED`, ten BLOCKED rows).
+
+### Refusals that still apply
+
+Fixture mode is a separate branch and does not relax anything for a real run.
+The harness still refuses: a local host without `--fixture`, a non-https URL, a
+host outside `*.convex.cloud`/`*.convex.site`, a deployment-name mismatch, an
+unreachable deployment, `--production-evidence` against a non-production
+deployment, and anonymous auth for a production claim.
+
 ## Development verification is not production evidence
 
 A green run against a development deployment is labelled:

@@ -55,10 +55,27 @@ const args = process.argv.slice(2);
 const asJson = args.includes("--json");
 const autoEnv = args.includes("--auto-env");
 const claimsProduction = args.includes("--production-evidence");
-const flag = (name) => {
+const flagValue = (name) => {
   const i = args.indexOf(name);
   return i >= 0 ? args[i + 1] : null;
 };
+const flag = flagValue;
+
+/**
+ * FIXTURE MODE (Phase 209) — proves the tooling, never the product.
+ *
+ * `--fixture <http://127.0.0.1:PORT>` points the harness at a local stub that
+ * speaks the Convex /api/* contract. It exists so the full CLI path can be
+ * exercised end to end; the sandbox cannot reach any real deployment, so this
+ * is the only way to prove the report/exit-code mechanics actually run.
+ *
+ * It is deliberately a SEPARATE axis from deployment classification: a fixture
+ * run is neither dev nor prod nor preview. It short-circuits the https /
+ * *.convex.cloud / deployment-name checks for the fixture URL ONLY, and in
+ * exchange can never be labelled DEV_VERIFIED or PRODUCTION_EVIDENCE.
+ */
+const fixtureUrl = (args.includes("--fixture") ? flagValue("--fixture") : null)?.trim() || null;
+const isFixture = fixtureUrl !== null;
 const providedOtp = args.includes("--otp") ? flag("--otp") : null;
 const authMode = (flag("--auth") ?? "otp").toLowerCase();
 const envFileFlag = flag("--env-file");
@@ -239,7 +256,11 @@ function refuse(reason, extra = {}) {
 }
 
 const { env, source: envSource } = buildEnv();
-const deployment = deriveDeployment(env);
+// In fixture mode the deployment identity is synthetic and explicitly named so
+// it can never be mistaken for a real backend in any report or log line.
+const deployment = isFixture
+  ? { raw: "fixture", type: null, name: "FIXTURE-NOT-EVIDENCE", url: fixtureUrl }
+  : deriveDeployment(env);
 const TEST_EMAIL = (env.EVIDENCE_D_EMAIL ?? "").trim();
 
 if (authMode !== "otp" && authMode !== "anonymous") {
@@ -261,16 +282,40 @@ try {
 
 // A substitute backend must never be able to produce Evidence D.
 const LOCAL_RE = /^(localhost|127\.|0\.0\.0\.0|\[::1\]|.*\.local)$/i;
-if (LOCAL_RE.test(parsed.hostname)) {
+
+/**
+ * The host checks below are the production safety boundary and are NOT
+ * relaxed. Fixture mode does not weaken them: it takes an entirely separate
+ * branch, and everything it produces is stamped FIXTURE — NOT EVIDENCE.
+ *
+ * A local host is still refused for any NON-fixture run, which is exactly the
+ * `localhost without explicit fixture mode` control.
+ */
+if (isFixture) {
+  if (!/^http:\/\/(127\.0\.0\.1|\[::1\]):\d+\/?$/.test(fixtureUrl)) {
+    refuse(
+      `--fixture must be a loopback http URL (got "${fixtureUrl}"). The fixture is a local ` +
+        "stub; pointing it at a remote host would defeat its purpose.",
+    );
+  }
+  if (claimsProduction) {
+    refuse(
+      "--production-evidence cannot be combined with --fixture. A fixture run is not " +
+        "evidence of anything and must never be presented as a production result.",
+    );
+  }
+}
+
+if (!isFixture && LOCAL_RE.test(parsed.hostname)) {
   refuse(
     `The configured Convex URL points at a local host (${parsed.hostname}). ` +
       "Evidence D requires a real deployment; a local substitute cannot produce it.",
   );
 }
-if (parsed.protocol !== "https:") {
+if (!isFixture && parsed.protocol !== "https:") {
   refuse(`The configured Convex URL must be https (got ${parsed.protocol}).`);
 }
-if (!/\.convex\.(cloud|site)$/i.test(parsed.hostname)) {
+if (!isFixture && !/\.convex\.(cloud|site)$/i.test(parsed.hostname)) {
   refuse(
     `The configured Convex URL host (${parsed.hostname}) is not a Convex deployment domain. ` +
       "Refusing to attribute Evidence D to an unknown backend.",
@@ -280,7 +325,7 @@ if (!/\.convex\.(cloud|site)$/i.test(parsed.hostname)) {
 // Wrong-deployment control: if the CLI recorded a deployment name, the URL has
 // to be that deployment. Otherwise a stale VITE_CONVEX_URL would silently
 // attribute this run to a different backend than the one just deployed.
-if (deployment.name) {
+if (!isFixture && deployment.name) {
   const hostName = parsed.hostname.split(".")[0];
   if (hostName !== deployment.name) {
     refuse(
@@ -302,8 +347,9 @@ if (deployment.name) {
  * prevent. Unknown is reported as unknown, and cannot carry a production
  * claim.
  */
-const DEPLOYMENT_ENVIRONMENT =
-  deployment.type === "prod"
+const DEPLOYMENT_ENVIRONMENT = isFixture
+  ? "fixture"
+  : deployment.type === "prod"
     ? "production"
     : deployment.type === "dev"
       ? "development"
@@ -324,15 +370,16 @@ if (DEPLOYMENT_ENVIRONMENT === "production" && authMode === "anonymous") {
       "the real OTP flow (--auth otp).",
   );
 }
-if (authMode === "otp" && !TEST_EMAIL) {
+if (!isFixture && authMode === "otp" && !TEST_EMAIL) {
   refuse("EVIDENCE_D_EMAIL is not set — D1 needs a real mailbox to deliver to.");
 }
 
 /**
  * A development run can never be production evidence, however green it is.
  */
-const EVIDENCE_CLASS =
-  DEPLOYMENT_ENVIRONMENT === "production" && claimsProduction
+const EVIDENCE_CLASS = isFixture
+  ? "FIXTURE — NOT EVIDENCE"
+  : DEPLOYMENT_ENVIRONMENT === "production" && claimsProduction
     ? "PRODUCTION_EVIDENCE"
     : DEPLOYMENT_ENVIRONMENT === "development"
       ? "DEV_VERIFIED — NOT PRODUCTION EVIDENCE"
@@ -1414,6 +1461,7 @@ const report = buildReport({
   chargeableFind: safety.chargeableFind ?? null,
   sweepLimit: safety.sweepLimit ?? 1,
   safetyProbes: { premiumProbe: safety.premiumProbe ?? null, postLockSafety: safety.postLockSafety ?? null },
+  fixture: isFixture,
 });
 
 const failed = report.summary.failed;

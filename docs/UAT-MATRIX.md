@@ -2259,6 +2259,45 @@ under test is the reporting logic itself.
 | 35l.25 | Remaining blockers listed with classification | Every unresolved check, no passing one | PASS |
 | 35l.26 | Refusal path (`--json` and human) | 0 PASS rows, 10 BLOCKED, exit 2 | PASS |
 
+## 35m. Phase 209 — operator handoff dry-run (fixture)
+
+Verified by executing the **real CLI** against a loopback fixture. These rows
+prove the *tooling*; they are explicitly **not** evidence about the deployment,
+providers or product. Live-deployment rows remain BLOCKED in 35j/35k.
+
+| # | Scenario | Expected | Status |
+| --- | --- | --- | --- |
+| 35m.1 | Fixture binds loopback only | 127.0.0.1, never 0.0.0.0 | PASS |
+| 35m.2 | Fixture makes no outbound call | No fetch/provider/Convex reference in code | PASS |
+| 35m.3 | Fixture is deterministic | Fixed epoch, no randomness, no clock branching | PASS |
+| 35m.4 | Fixture run stamps `fixture: true` + notice | Present in JSON and terminal banner | PASS |
+| 35m.5 | Fixture environment/class | `fixture` / `FIXTURE — NOT EVIDENCE` | PASS |
+| 35m.6 | Fixture deployment identity | `FIXTURE-NOT-EVIDENCE`, host 127.0.0.1 | PASS |
+| 35m.7 | 10/10 ACHIEVED fixture run | `productionEvidence` still false | PASS |
+| 35m.8 | Hostile env claiming `dev:tough-goose-455` | Still classified fixture, never DEV_VERIFIED | PASS |
+| 35m.9 | `--fixture` + `--production-evidence` | Refused, exit 2 | PASS |
+| 35m.10 | `--fixture https://evil.example.com` | Refused, exit 2 | PASS |
+| 35m.11 | JSON exposes all 22 canonical keys | Present via real CLI | PASS |
+| 35m.12 | Transport calls actually made | > 5 HTTP calls recorded | PASS |
+| 35m.13 | providerAttempts from a real probe | okx/order-book, basis exchange ts | PASS |
+| 35m.14 | sweepLog uses discovery ids | BTC-USDT present, suspended SOL-USDT excluded | PASS |
+| 35m.15 | chargeableFind + E1–E7 + blockers exposed | Present in both modes | PASS |
+| 35m.16 | JSON/human parity via the CLI | Every row id and status in both | PASS |
+| 35m.17 | Exit 0 | `complete` + OTP, 10/10 | PASS |
+| 35m.18 | Exit 2 (incomplete) | `incomplete` scenario | PASS |
+| 35m.19 | Exit 1 (failure) | `blocked` scenario | PASS |
+| 35m.20 | Exit 2 (malformed status) | UNKNOWN, never PASS; no fake chargeable find | PASS |
+| 35m.21 | Exit 2 (silent deployment) | NOT EXECUTED, 10 BLOCKED, 0 PASS | PASS |
+| 35m.22 | BLOCKED rendered end-to-end | Never PASS in either mode | PASS |
+| 35m.23 | E VERIFIED + D INCOMPLETE | D stays INCOMPLETE, exit 2 | PASS |
+| 35m.24 | D summary counts only D1–D10 | total 10; E-track 7 separately | PASS |
+| 35m.25 | Quiet fixture market | D5/D7/D8 NOT_VERIFIED, 0 failed | PASS |
+| 35m.26 | Non-fixture localhost / 127.0.0.1 | Still refused, exit 2 | PASS |
+| 35m.27 | Arbitrary https / non-convex host | Still refused, exit 2 | PASS |
+| 35m.28 | Deployment-name mismatch | Still refused, exit 2 | PASS |
+| 35m.29 | `--production-evidence` on dev | Still refused, exit 2 | PASS |
+| 35m.30 | No mock/replay escape hatch | Forbidden patterns absent; fixture evidence-incapable | PASS |
+
 ## 36. Sign-off
 
 | Field | Value |

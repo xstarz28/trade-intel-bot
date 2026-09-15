@@ -197,6 +197,7 @@ export function buildReport(input) {
     safetyProbes = null,
     executed = true,
     notExecutedReason = null,
+    fixture = false,
   } = input ?? {};
 
   const d = canonicalRows(definitions, checks);
@@ -238,6 +239,7 @@ export function buildReport(input) {
 
   // A production claim needs every production condition to hold at once.
   const productionEvidence =
+    fixture !== true &&
     executed &&
     complete &&
     evidenceD === "ACHIEVED" &&
@@ -263,6 +265,10 @@ export function buildReport(input) {
 
   return {
     schemaVersion: "evidence-d/2",
+    // A fixture run is tooling validation, never evidence. The marker is a
+    // first-class field so no consumer has to infer it from the host string.
+    fixture: fixture === true,
+    fixtureNotice: fixture === true ? "FIXTURE — NOT EVIDENCE" : null,
     evidenceD,
     evidenceClass: complete ? evidenceClass : `${evidenceClass} (INCOMPLETE)`,
     notExecutedReason,
@@ -317,6 +323,13 @@ export function renderHumanReport(report) {
   const out = [];
   const r = report ?? {};
 
+  if (r.fixture === true) {
+    out.push("################################################################");
+    out.push("#  FIXTURE — NOT EVIDENCE                                      #");
+    out.push("#  Local stub run. Proves the tooling only. This output is NOT #");
+    out.push("#  evidence of any deployment, provider, or product behaviour. #");
+    out.push("################################################################");
+  }
   out.push(`Evidence D harness — ${r.deployment?.host ?? "unknown host"} [${r.environment}]`);
   out.push(
     `  deployment=${r.deployment?.name ?? "unnamed"} declared=${r.deployment?.declared ?? "unknown"} ` +
