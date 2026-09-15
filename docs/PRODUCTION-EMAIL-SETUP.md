@@ -125,12 +125,19 @@ Unknown from the repository, and deliberately not guessed. The agent sandbox
 has no access to the DEV deployment's environment, so it cannot tell whether a
 real transport is already configured there.
 
-The operator can settle it in one command, which prints **presence only** and
+The operator can settle it in one command, which prints **names only** and
 never a value:
 
 ```powershell
-npx.cmd convex env list
+npx.cmd convex env list --names-only
 ```
+
+**`--names-only` is mandatory here.** Plain `npx convex env list` prints
+`NAME=VALUE` for every variable — verified in the Convex CLI source
+(`envList` falls through to `logOutput(\`${name}=${formatted}\`)` unless
+`namesOnly` is set). Running it without the flag would print the live API key
+to the terminal and into any captured transcript. If you have already run it
+without the flag, treat the key as exposed and rotate it.
 
 Read the result as follows:
 

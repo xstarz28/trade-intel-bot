@@ -30,7 +30,7 @@ still works, and it destroys every commit SHA this audit refers to.
 | # | Action | Acceptance criterion |
 | --- | --- | --- |
 | 1.1 | Issue a replacement credential at `auth.freebuff.app` | New credential exists |
-| 1.2 | Set it as `OTP_EMAIL_API_KEY` in the Convex deployment | `npx convex env list` shows the name (never the value) |
+| 1.2 | Set it as `OTP_EMAIL_API_KEY` in the Convex deployment | `npx convex env list --names-only` shows the name (plain `env list` prints values) |
 | 1.3 | Revoke the old credential at the provider | Provider console shows it revoked |
 | 1.4 | **Verify the old credential is rejected** | A request carrying it returns **401 or 403** |
 | 1.5 | Verify OTP delivery with the replacement | A sign-in code actually arrives |
