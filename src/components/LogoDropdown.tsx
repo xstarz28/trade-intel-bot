@@ -12,6 +12,7 @@ import logo from "@/assets/logo.svg";
 import { useAuth } from "@/hooks/use-auth";
 import { Home, LogOut } from "lucide-react";
 import { useNavigate } from "react-router";
+import { reportAuthDiagnostic } from "@/lib/auth/safe-diagnostics";
 
 export function LogoDropdown() {
   const { isAuthenticated, signOut } = useAuth();
@@ -21,8 +22,15 @@ export function LogoDropdown() {
     try {
       await signOut();
       navigate("/");
-    } catch (error) {
-      console.error("Sign out error:", error);
+    } catch {
+      // Phase 218 — never pass the rejection to the console. A failed
+      // sign-out can echo session or token material, and the browser console
+      // is user-visible and captured by extensions. Category only.
+      reportAuthDiagnostic("sign-out-failed");
+      // Leave the authenticated area regardless. Staying put after a failed
+      // sign-out presents the user as still signed in on a session they asked
+      // to end, which is the more dangerous outcome than an extra redirect.
+      navigate("/");
     }
   };
 
