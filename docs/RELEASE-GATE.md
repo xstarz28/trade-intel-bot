@@ -218,6 +218,67 @@ precisely so that no part of D1 could be implied by a run that never sent mail.
 **Release decision: NOT READY.** DEV runtime evidence raises confidence in the
 code path; it does not close a single production gate.
 
+## Phase 214 — production email / OTP readiness
+
+**Verdict: prepared, not closed.** The code path is ready; the external account
+and domain are not, and nothing here invents them.
+
+### Defect found and fixed
+
+`FORBIDDEN_DELIVERY_HOSTS` was a hand-maintained copy that listed only the
+Freebuff hosts, while `RETIRED_ISSUER_HOSTS` also retires `vly.ai`. Production
+therefore **accepted `noreply@vly.ai` and `noreply@mail.vly.ai` as OTP
+senders** — the auth issuer was retired but the sending identity was not.
+Proven by executing the real config reader, not by inspection. The list now
+derives from `RETIRED_ISSUER_HOSTS`, so the two cannot drift apart again.
+
+### Required external prerequisites (none obtainable from this repository)
+
+1. A domain the project controls.
+2. A Resend or SMTP2GO account with that domain **verified**.
+3. SPF, DKIM and DMARC records published and confirmed by the provider.
+4. A real mailbox that a human can open.
+
+### Required configuration names
+
+`XSTARZ_EMAIL_TRANSPORT`, `XSTARZ_EMAIL_API_KEY`,
+`XSTARZ_EMAIL_SENDER_ADDRESS`, `XSTARZ_EMAIL_SENDER_NAME` (optional),
+`XSTARZ_EMAIL_TIMEOUT_MS` (optional), `XSTARZ_DEPLOYMENT_ENV`, `SITE_URL`,
+plus the standard Convex deployment identity. Values are never recorded here.
+Full runbook: `docs/PRODUCTION-EMAIL-SETUP.md`.
+
+### Provider preference
+
+None in code. Both transports are implemented and selected by environment
+variable; the choice follows whichever account the operator can obtain.
+
+### OTP security audit — all invariants hold, no policy changed
+
+10-minute lifetime · CSPRNG rejection-sampled 6-digit codes · 5 failed sign-ins
+per hour · 60 s resend cooldown · 5 resends per rolling hour · SHA-256 hashed
+identity with no raw address stored · a rejected request does not extend the
+cooldown (it returns before any write) · a failed send does not refund the
+allowance · errors surface a category only, never the provider payload.
+
+### D1 status
+
+**BLOCKED.** D1 requires an actually-received email, a human attestation of
+receipt, and an OTP session created through the application. Provider HTTP 200,
+a dashboard "delivered" row, and console transport output are explicitly not
+evidence.
+
+Whether the DEV deployment already has a real transport is **unknown from the
+repository** — the sandbox cannot read deployment environment variables. The
+operator can check with `npx convex env list`, which shows names only.
+
+### Credential separation (restated, binding)
+
+The new Xstarz email credential is **not** the leaked Freebuff OTP credential.
+Configuring production email does not revoke the leaked key, does not close
+Phase 184, and does not unblock the history rewrite. That remains gated on
+rotating the old credential and observing a **401/403** from an authenticated
+request using it. Deploy the hardened RC, never `main`.
+
 ## Phase 186 — deployment pipeline status
 
 The deployment pipeline is prepared and validated. No deployment exists.
