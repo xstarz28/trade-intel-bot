@@ -2595,6 +2595,98 @@ the transport is `console`, the answer is **DEV OTP SMOKE TEST NOT POSSIBLE**,
 D1 stays BLOCKED on external provisioning, and Evidence-D repository work stops
 there rather than repeating the check.
 
+## 35t. Phase 217 — Evidence-D closed at the external provisioning boundary
+
+**Operator-confirmed DEV configuration state** (`tough-goose-455`, inspected
+with the Phase 216 safe sequence; no value was printed):
+
+| variable | presence |
+| --- | --- |
+| `XSTARZ_EMAIL_TRANSPORT` | **absent** |
+| `XSTARZ_EMAIL_API_KEY` | **absent** |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | **absent** |
+| `XSTARZ_DEPLOYMENT_ENV` | present |
+| `SITE_URL` | present |
+
+**Verdict: DEV OTP SMOKE TEST NOT POSSIBLE. D1 = BLOCKED.** No OTP mailbox
+delivery occurred and no OTP-authenticated session was created.
+
+### The deployment fails closed in exactly this state — verified, not assumed
+
+Driving `readEmailDeliveryConfig` with the confirmed environment (deployment
+env and `SITE_URL` present, the three email variables absent) produces:
+
+```
+EmailDeliveryError: Xstarz email delivery is not configured:
+XSTARZ_EMAIL_API_KEY, XSTARZ_EMAIL_SENDER_ADDRESS missing.
+```
+
+Two details matter for the record:
+
+1. An absent `XSTARZ_EMAIL_TRANSPORT` defaults to **`resend`**, a real
+   transport — not to `console`. The refusal is therefore credential-driven,
+   and no code path silently "succeeds" by delivering nothing.
+2. The error names the two missing variables precisely, so the operator is told
+   what to provision rather than being handed a generic failure.
+
+`SITE_URL` and `XSTARZ_DEPLOYMENT_ENV` being present is **not sufficient** for
+OTP delivery. They identify the environment; they do not send mail.
+
+### This is an external provisioning blocker, not a code defect
+
+Nothing in the repository can lift it. The code path was audited in Phase 214
+(and one real sender-domain defect was fixed there); it is ready and correctly
+refuses to operate without a sending identity.
+
+D1 requires, in order, all four of the following — none obtainable from this
+repository:
+
+1. a domain controlled by Xstarz;
+2. a verified Resend **or** SMTP2GO sender/domain on that domain;
+3. SPF, DKIM and DMARC records as required by the selected provider;
+4. a real mailbox for the subsequent smoke test.
+
+### The exact next human action
+
+After provider and domain provisioning, set the three missing variables in the
+DEV deployment and perform the real OTP smoke test:
+
+```powershell
+npx.cmd convex env set XSTARZ_EMAIL_TRANSPORT resend
+npx.cmd convex env set XSTARZ_EMAIL_SENDER_ADDRESS <verified sender on the Xstarz domain>
+npx.cmd convex env set XSTARZ_EMAIL_API_KEY <paste from the provider dashboard>
+```
+
+The API key must never be placed in source control, documentation, evidence
+artefacts, screenshots, or terminal output that is captured or shared. Setting
+it is the only operation that should ever touch its value.
+
+Then, and only then: request a code through the application, confirm the email
+arrives in a real mailbox, record the human attestation, sign in with the code,
+and confirm an authenticated session exists. D1 becomes VERIFIED only when all
+of those runtime facts are observed together.
+
+### Evidence-D final state — INCOMPLETE
+
+| check | status |
+| --- | --- |
+| D2, D3, D4, D6, D9, D10 | **PASS (DEV)** — recorded §35o, not production evidence |
+| D1 | **BLOCKED** — external email provisioning |
+| D5, D7, D8 | **NOT_VERIFIED — MARKET_CONDITION** — stopping rule §35p |
+| E1–E7 | **VERIFIED (DEV) 7/7** — independent axis, not a substitute for D5/D7/D8 |
+
+**Evidence D remains explicitly INCOMPLETE.** 6 of 10 observed in DEV; none in
+production; `productionEvidence:false`.
+
+### Stopping point
+
+This is the end of repository-side Evidence-D work. No further phase may
+re-inspect the DEV environment, must not repeat the environment-listing command
+(and never its value-printing form, `convex env list` without `--names-only`),
+and must not re-run the market sweep in pursuit of D5/D7/D8. Work resumes only when the external email
+provider and domain are actually provisioned, or when one of the §35p triggers
+occurs naturally.
+
 ## 36. Sign-off
 
 | Field | Value |

@@ -35,7 +35,7 @@ RC commit `dea46ef` on `arena/01a08e67-trade-intel-bot`. All timestamps UTC.
 | Windows release signing | **BLOCKED** | No code-signing certificate chaining to a Microsoft-trusted root | — | 2026-09-12T04:45Z |
 | Android App Links | **BLOCKED** | `assetlinks.json` holds `REPLACE_WITH_RELEASE_CERT_SHA256`; needs the real keystore | — | 2026-09-12T04:29Z |
 | iOS Universal Links | **BLOCKED** | `apple-app-site-association` holds `REPLACE_WITH_APPLE_TEAM_ID` | — | 2026-09-12T04:29Z |
-| Auth | **BLOCKED** | Needs a deployed Convex backend and a working OTP credential | — | 2026-09-12T04:22Z |
+| Auth | **BLOCKED** | Phase 217: DEV deployment confirmed to have **no** email transport, API key or sender address. Delivery fails closed (`not_configured`), so OTP sign-in cannot send a code. Blocked on external domain + provider provisioning, not on code | DEV deployment | 2026-09-15T00:00Z |
 | Entitlement | **BLOCKED** (deployed) / PASS (unit) | Phase 174 suites green; no deployed run has occurred | Sandbox | 2026-09-12T04:35Z |
 | Web UAT | **PARTIAL** | 22 automated rows executed; deployment-dependent rows blocked | Local | 2026-09-12T04:33Z |
 | Android UAT | **BLOCKED** | No physical Android device available to this project | — | — |
@@ -322,6 +322,52 @@ server logs are explicitly not evidence.
 A present `XSTARZ_EMAIL_API_KEY` is a new Xstarz credential, unrelated to the
 leaked Freebuff key. It does not revoke it, and the Phase 184 history-rewrite
 blocker stays open pending an observed 401/403 after rotation.
+
+## Phase 217 — Evidence-D closed at the external provisioning boundary
+
+**Repository-side Evidence-D work stops here.** The remaining gap is not a code
+defect and cannot be closed from this repository.
+
+### Operator-confirmed DEV state
+
+`XSTARZ_EMAIL_TRANSPORT`, `XSTARZ_EMAIL_API_KEY` and
+`XSTARZ_EMAIL_SENDER_ADDRESS` are **absent** from the DEV deployment.
+`XSTARZ_DEPLOYMENT_ENV` and `SITE_URL` are present — which identifies the
+environment but does not send mail. Inspected with the Phase 216 safe
+sequence; no value was printed.
+
+**DEV OTP SMOKE TEST NOT POSSIBLE. D1 = BLOCKED.** No mailbox delivery, no
+OTP-authenticated session.
+
+### Verified behaviour in that exact state
+
+`readEmailDeliveryConfig` refuses with `not_configured`, naming
+`XSTARZ_EMAIL_API_KEY` and `XSTARZ_EMAIL_SENDER_ADDRESS`. An absent transport
+defaults to `resend` — a real transport, never `console` — so there is no path
+on which sign-in appears to work while delivering nothing.
+
+### External dependency blocking D1
+
+1. A domain controlled by Xstarz.
+2. A verified Resend or SMTP2GO sender/domain on it.
+3. SPF/DKIM/DMARC as required by the chosen provider.
+4. A real mailbox for the smoke test.
+
+Procedure once provisioned: `docs/PRODUCTION-EMAIL-SETUP.md` §3, §4b, §4c.
+
+### Evidence-D final state: INCOMPLETE
+
+D2/D3/D4/D6/D9/D10 **PASS in DEV** · D1 **BLOCKED** · D5/D7/D8
+**NOT_VERIFIED — MARKET_CONDITION** · E1–E7 **VERIFIED in DEV**.
+6/10 observed, DEV only, `productionEvidence:false`. No NOT_VERIFIED row may
+become PASS without its required runtime evidence.
+
+### Unchanged
+
+Phase 184 is **not** resolved. The leaked Freebuff credential remains live in
+history and exposed at the tip of `main`; the history rewrite stays blocked
+pending rotation and an observed 401/403. Provisioning Xstarz email has no
+bearing on it.
 
 ## Phase 186 — deployment pipeline status
 
