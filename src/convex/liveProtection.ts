@@ -349,10 +349,24 @@ async function fetchYahooFinanceQuote(
       };
     }
 
+    // Phase 219: regularMarketTime is provider-supplied UNIX seconds. The old
+    // `(meta.regularMarketTime ?? Date.now()) * 1000` multiplied the
+    // millisecond fallback by 1000 whenever the field was absent, producing a
+    // timestamp ~56,000 years in the future that then poisoned the
+    // out-of-order cursor in the stream orchestrator (every later genuine
+    // quote for the instrument was dropped as "older"). Only a finite,
+    // positive provider value is scaled; otherwise stamp receipt time in
+    // milliseconds, exactly as the CoinGecko and TwelveData paths already do.
+    const providerSeconds = meta.regularMarketTime;
+    const timestamp =
+      typeof providerSeconds === "number" && Number.isFinite(providerSeconds) && providerSeconds > 0
+        ? providerSeconds * 1000
+        : Date.now();
+
     return {
       instrument: symbol,
       price,
-      timestamp: (meta.regularMarketTime ?? Date.now()) * 1000,
+      timestamp,
       success: true,
     };
   } catch (err: any) {

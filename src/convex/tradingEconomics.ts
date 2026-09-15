@@ -92,13 +92,15 @@ function normalizeEvent(raw: any): EconomicEvent | null {
   const currency = raw.currency ?? raw.Currency ?? "";
   const country = CURRENCY_COUNTRY[currency] ?? "";
 
-  // Parse datetime
-  let datetime = Date.now();
+  // Parse datetime — the event's schedule time is provenance supplied by the
+  // provider. Phase 219: an event whose time is absent or unparseable is
+  // unusable (same rule as a Treasury entry without an observation date).
+  // Substituting the local clock manufactured a "scheduled right now"
+  // event that then drove status, macro-risk and the upcoming-events view.
   const dateStr = raw.datetime ?? raw.Date ?? raw.date;
-  if (dateStr) {
-    const parsed = new Date(dateStr).getTime();
-    if (!isNaN(parsed)) datetime = parsed;
-  }
+  if (dateStr === undefined || dateStr === null || dateStr === "") return null;
+  const datetime = new Date(dateStr).getTime();
+  if (!Number.isFinite(datetime)) return null;
 
   // Determine status from actual/forecast
   const actual = parseValue(raw.actual ?? raw.Actual);
