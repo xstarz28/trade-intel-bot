@@ -26,7 +26,8 @@
 export type AuthDiagnosticCategory =
   | "email-code-send-failed"
   | "otp-verification-failed"
-  | "guest-session-failed";
+  | "guest-session-failed"
+  | "sign-out-failed";
 
 /**
  * Report that an auth step failed, without revealing why.

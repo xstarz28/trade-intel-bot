@@ -419,9 +419,20 @@ export function PositionProtectionDashboard() {
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
-          const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
+          const newsItems: NewsItem[] = articles.map((art: any, i: number) => {
+            // Phase 218 — the provider's own publication time, or nothing.
+            // Substituting Date.now() for a missing publishedAt made an
+            // undated article indistinguishable from one published seconds
+            // ago: the age computed to 0ms, so classifyNewsFreshness always
+            // returned FRESH. Local receipt time is not a publication time.
+            const publishedAtMs = art.publishedAt
+              ? new Date(art.publishedAt).getTime()
+              : null;
+            const hasProviderTimestamp =
+              publishedAtMs !== null && Number.isFinite(publishedAtMs);
+            return {
             id: `av-${instrument}-${i}`,
-            timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
+            timestamp: hasProviderTimestamp ? publishedAtMs : 0,
             source: art.source || "AlphaVantage",
             headline: art.title || "",
             summary: art.summary || undefined,
@@ -432,12 +443,14 @@ export function PositionProtectionDashboard() {
             sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
                        art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
             impactStrength: "MODERATE" as const,
-            freshness: classifyNewsFreshness(
-              art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
-              Date.now(),
-            ),
+            // Without a provider timestamp the age is unknowable, so the
+            // honest label is UNAVAILABLE rather than the freshest class.
+            freshness: hasProviderTimestamp
+              ? classifyNewsFreshness(publishedAtMs, Date.now())
+              : ("UNAVAILABLE" as const),
             sourceMode: "LIVE" as const,
-          }));
+            };
+          });
 
           setFeedNews(prev => {
             const next = new Map(prev);
