@@ -92,6 +92,29 @@ fabricated, placeholder, or stale-presented-as-live market data.
 OKX, CoinGecko, DeFiLlama, Tokenomist, CFTC and US Treasury are public
 endpoints and need no credentials.
 
+### Disclosure safety — which values may ever be printed
+
+Class B/C describe *where a variable lives*. They do not answer the operational
+question an operator actually faces: **may I print this value into a terminal?**
+Two variables appear in both tables, which is precisely the ambiguity that
+leads to a credential being echoed. This table is the authoritative answer.
+
+| Variable | Safe to print? | Why |
+| --- | --- | --- |
+| `XSTARZ_EMAIL_API_KEY` | **NEVER** | Provider credential. Printing it discloses it, including into shell history and transcripts. Inspect **presence only**. |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | Yes | A sending identity is published in the headers of every message it sends. It is operationally sensitive, not secret. |
+| `XSTARZ_EMAIL_TRANSPORT` | Yes | One of `resend`, `smtp2go`, `console`. |
+| `XSTARZ_EMAIL_SENDER_NAME` | Yes | Display name. |
+| `XSTARZ_DEPLOYMENT_ENV` | Yes | Environment label. |
+| `SITE_URL` / `CONVEX_SITE_URL` | Yes | Public origin. |
+| `CONVEX_DEPLOYMENT` | Yes | Deployment identity, not a credential. |
+| every other `*_API_KEY`, `*_KEY`, deploy key | **NEVER** | Credentials. |
+
+**Commands.** `npx convex env list` prints `NAME=VALUE` for *every* variable —
+use `npx convex env list --names-only`. `npx convex env get NAME` prints the
+raw value with no masking, so it may only be pointed at a row marked "Yes"
+above. Never at `XSTARZ_EMAIL_API_KEY`.
+
 ### Class C — Server configuration, not secret
 
 | Variable | Purpose |

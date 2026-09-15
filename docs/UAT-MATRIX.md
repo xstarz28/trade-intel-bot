@@ -2546,6 +2546,55 @@ smoke-testing it does not revoke the old key and does not resolve the Phase 184
 history-rewrite blocker, which still requires an observed 401/403 from the old
 credential after rotation.
 
+## 35s. Phase 216 — safe DEV email configuration gate
+
+**Outcome: the gate still cannot be evaluated — no operator output was
+provided — but the procedure is now safe to execute and a second disclosure
+hazard was removed.**
+
+### Verification of the commands before recommending them
+
+| command | verified | finding |
+| --- | --- | --- |
+| `convex env list --names-only` | yes | `--names-only` is registered on **both** `envListCmd` and `envDefaultList` in convex 1.42.1, so the Phase 215 correction is valid |
+| `convex env get NAME` | yes | prints `logOutput(\`${envVar.value}\`)` — the **raw value, unmasked**. Safe only for non-secret names |
+
+### Defect found: contradictory secret classification
+
+`docs/DEPLOYMENT.md` listed `XSTARZ_EMAIL_API_KEY` and
+`XSTARZ_EMAIL_SENDER_ADDRESS` in **both** the Class B (server-only secrets)
+table and the Class C (server configuration, *not secret*) table. An operator
+following Class C would reasonably conclude the API key is printable — the
+exact mistake Phase 215 was created to prevent.
+
+Resolved by adding an explicit **disclosure-safety** table that answers the
+operational question the A–D classes do not: *may this value be printed?*
+`XSTARZ_EMAIL_API_KEY` is **NEVER**; the sender address, transport, deployment
+env and site URL are safe (a sending identity is published in the headers of
+every message it sends — operationally sensitive, not secret).
+
+| # | item | status |
+| --- | --- | --- |
+| 1 | `--names-only` exists on `env list` (not only `env default list`) | PASS (verified in CLI source) |
+| 2 | `env get` prints unmasked values | PASS (documented) |
+| 3 | `XSTARZ_EMAIL_API_KEY` classified in two contradictory ways | **FAIL → FIXED** |
+| 4 | Disclosure-safety table added | PASS |
+| 5 | Safe 4-command gate sequence documented (§4c) | PASS |
+| 6 | No document points `env get` at a credential | PASS (guard, mutation-killed) |
+| 7 | Rotation instruction if the unsafe command was run | PASS |
+| 8 | Phase 184 separation preserved | PASS |
+| 9 | DEV configuration presence | **NOT VERIFIED** — operator output not provided |
+| 10 | DEV OTP smoke test possible? | **UNRESOLVED** — depends on item 9 |
+| 11 | D1 | **BLOCKED** — no mailbox delivery, no OTP session |
+
+### Remaining condition
+
+One operator response resolves this. The sequence is in
+`docs/PRODUCTION-EMAIL-SETUP.md` §4c. If `XSTARZ_EMAIL_API_KEY` is absent, or
+the transport is `console`, the answer is **DEV OTP SMOKE TEST NOT POSSIBLE**,
+D1 stays BLOCKED on external provisioning, and Evidence-D repository work stops
+there rather than repeating the check.
+
 ## 36. Sign-off
 
 | Field | Value |
