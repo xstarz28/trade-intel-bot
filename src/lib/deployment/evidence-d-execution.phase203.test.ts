@@ -253,23 +253,39 @@ describe("Phase 203 — evidence is never attributed to an ambiguous target", ()
  * ------------------------------------------------------------------ */
 
 describe("Phase 203 — D1–D10 cannot be satisfied without a live deployment", () => {
-  it("has no fixture, mock or replay path", () => {
-    // Match against code only. The header prose says "no fixture path, no mock
-    // mode" — an assertion over the whole file would fail on the very sentence
-    // that documents the guarantee, which is a test defect, not a real one.
+  it("has no mock or replay path, and no fixture that can yield evidence", () => {
+    // Phase 209 added an explicit --fixture mode so the CLI itself could be
+    // exercised end to end (the sandbox reaches no real deployment). That does
+    // NOT weaken this guard: the invariant was never "the word fixture must
+    // not appear", it was "a substitute backend can never produce Evidence D".
+    // So every replay/mock escape hatch stays forbidden, and the fixture is
+    // pinned to be structurally evidence-incapable instead.
     const code = harnessSource
       .replace(/\/\*[\s\S]*?\*\//g, "")
       .replace(/^[ \t]*\/\/.*$/gm, "");
-    for (const forbidden of [
-      /fixture/i,
-      /--mock/,
-      /mockMode/,
-      /replay/i,
-      /loadReport/i,
-      /cachedResult/i,
-    ]) {
+    for (const forbidden of [/--mock/, /mockMode/, /replay/i, /loadReport/i, /cachedResult/i, /stubResponse/i]) {
       expect(code, `harness must not support ${forbidden}`).not.toMatch(forbidden);
     }
+    // The fixture is never classified as a real deployment...
+    expect(code).toMatch(/const DEPLOYMENT_ENVIRONMENT = isFixture/);
+    expect(code).toMatch(/const EVIDENCE_CLASS = isFixture/);
+    expect(code).toMatch(/"FIXTURE — NOT EVIDENCE"/);
+    // ...is opt-in and loopback-only...
+    expect(code).toMatch(/args\.includes\("--fixture"\)/);
+    expect(code).toMatch(/127\\.0\\.0\\.1/);
+    // ...and can never carry a production claim.
+    expect(code).toMatch(/--production-evidence cannot be combined with --fixture/);
+    // Every relaxed host check remains enforced for non-fixture runs.
+    for (const gated of [
+      /if \(!isFixture && LOCAL_RE\.test/,
+      /if \(!isFixture && parsed\.protocol !== "https:"\)/,
+      /if \(!isFixture && deployment\.name\)/,
+    ]) {
+      expect(code, `non-fixture runs must still enforce ${gated}`).toMatch(gated);
+    }
+    // And the report builder makes a fixture production claim impossible.
+    const schema = readFileSync(join(root, "scripts/lib/evidence-report.mjs"), "utf8");
+    expect(schema).toMatch(/fixture !== true &&/);
   });
 
   it("never reads a previous report back in", () => {
