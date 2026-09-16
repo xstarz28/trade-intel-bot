@@ -8,6 +8,15 @@
 import { action } from "./_generated/server";
 import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
+import {
+  asFiniteNumber,
+  asRecordArray,
+  asString,
+  errorMessage,
+  field,
+  isRecord,
+  type JsonRecord,
+} from "./lib/json";
 import type {
   CryptoDerivativesData,
   DerivativesResult,
@@ -27,7 +36,7 @@ import { getProviderCache } from "../lib/data/provider-cache-registry";
 
 const CG_BASE = "https://open-api-v3.coinglass.com/api";
 
-async function cgFetch(path: string, apiKey: string): Promise<any> {
+async function cgFetch(path: string, apiKey: string): Promise<unknown> {
   const res = await fetch(`${CG_BASE}${path}`, {
     // Phase 177 — HTTP deadline below the 8s coinglass leg budget.
     signal: AbortSignal.timeout(7_000),
@@ -39,19 +48,21 @@ async function cgFetch(path: string, apiKey: string): Promise<any> {
   if (!res.ok) {
     throw new Error(`CoinGlass HTTP ${res.status}: ${res.statusText}`);
   }
-  const json = await res.json();
+  const json: unknown = await res.json();
   // CoinGlass V3/V4 wraps in { code, msg, data }
-  if (json.code && json.code !== "0" && json.code !== 0) {
-    const msg = json.msg || "Unknown CoinGlass error";
-    if (String(json.code) === "429" || msg.toLowerCase().includes("rate")) {
+  const code = field(json, "code");
+  if (code !== undefined && code !== null && code !== "" && code !== "0" && code !== 0) {
+    const msg = asString(field(json, "msg")) || "Unknown CoinGlass error";
+    if (String(code) === "429" || msg.toLowerCase().includes("rate")) {
       throw new Error("RATE_LIMIT:" + msg);
     }
-    if (String(json.code) === "401" || String(json.code) === "403") {
+    if (String(code) === "401" || String(code) === "403") {
       throw new Error("AUTH_ERROR:" + msg);
     }
-    throw new Error(`CoinGlass error ${json.code}: ${msg}`);
+    throw new Error(`CoinGlass error ${String(code)}: ${msg}`);
   }
-  return json.data ?? json;
+  const data = field(json, "data");
+  return data ?? json;
 }
 
 // ── Symbol mapping ──────────────────────────────────────────────
@@ -172,11 +183,11 @@ export const fetchDerivatives = action({
         acquisition: evidence.acquisition,
         observedAt: evidence.observedAt,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Phase 178b — preserve the original classification that the fetcher
       // threw. Collapsing a 429 into API_UNAVAILABLE would lose the
       // rate-limit signal Phase 177 depends on.
-      const msg = String(err?.message ?? "unknown error");
+      const msg = errorMessage(err) || "unknown error";
       if (msg.startsWith("RATE_LIMIT")) {
         return {
           success: false,
@@ -201,27 +212,47 @@ export const fetchDerivatives = action({
 });
 
 // ── Individual Fetchers ─────────────────────────────────────────
+//
+// Phase 227 — every payload is `unknown`. `points()` coerces the two shapes
+// CoinGlass emits (array of points, or a single object) into records, and
+// `num()` reads a numeric field from the point itself or its nested `data`.
+// A field that is absent or non-numeric yields undefined, never 0: the old
+// `parseFloat(x || "0")` chain reported a *zero* funding rate / ratio as an
+// available reading when the provider had simply not sent one.
+
+function points(data: unknown): JsonRecord[] {
+  if (Array.isArray(data)) return asRecordArray(data);
+  return isRecord(data) ? [data] : [];
+}
+
+/** First finite number among `point[key]` and `point.data[key]`. */
+function num(point: JsonRecord, ...keys: string[]): number | undefined {
+  const nested = field(point, "data");
+  for (const key of keys) {
+    const direct = asFiniteNumber(point[key]);
+    if (direct !== undefined) return direct;
+    const inner = asFiniteNumber(field(nested, key));
+    if (inner !== undefined) return inner;
+  }
+  return undefined;
+}
 
 async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenInterestData | undefined> {
   try {
-    const data = await cgFetch(`/futures/openInterest/chart?symbol=${symbol}&interval=1h&limit=2`, apiKey);
-    if (!data) return undefined;
+    const pts = points(await cgFetch(`/futures/openInterest/chart?symbol=${symbol}&interval=1h&limit=2`, apiKey));
+    if (pts.length === 0) return undefined;
 
-    // CoinGlass returns an array of data points or a single object
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
+    const latest = pts[pts.length - 1];
+    const previous = pts.length > 1 ? pts[pts.length - 2] : null;
 
-    const latest = points[points.length - 1];
-    const previous = points.length > 1 ? points[points.length - 2] : null;
-
-    const current = parseFloat(latest.openInterest || latest.value || "0");
-    if (current === 0) return undefined;
+    const current = num(latest, "openInterest", "value");
+    if (current === undefined || current === 0) return undefined;
 
     const result: OpenInterestData = { current };
 
     if (previous) {
-      const prev = parseFloat(previous.openInterest || previous.value || "0");
-      if (prev > 0) {
+      const prev = num(previous, "openInterest", "value");
+      if (prev !== undefined && prev > 0) {
         result.change1h = Math.round(((current - prev) / prev) * 10000) / 100;
       }
     }
@@ -234,20 +265,19 @@ async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenIn
 
 async function fetchFundingRate(symbol: string, apiKey: string): Promise<FundingRateData | undefined> {
   try {
-    const data = await cgFetch(`/futures/fundingRate/current?symbol=${symbol}`, apiKey);
-    if (!data) return undefined;
-
-    // CoinGlass returns { data: [...] } or a single object
-    const items = Array.isArray(data) ? data : [data];
+    const items = points(await cgFetch(`/futures/fundingRate/current?symbol=${symbol}`, apiKey));
     if (items.length === 0) return undefined;
 
     // Find the entry for our symbol
-    const entry = items.find((item: any) =>
-      item.symbol === symbol || item.symbol?.includes(symbol),
-    ) || items[0];
+    const entry =
+      items.find((item) => {
+        const s = asString(item.symbol);
+        return s === symbol || (s !== undefined && s.includes(symbol));
+      }) ?? items[0];
 
-    const rate = parseFloat(entry.data?.currentRate || entry.currentRate || entry.data || "0");
-    if (isNaN(rate)) return undefined;
+    // `data` may itself be the bare rate on some endpoints.
+    const rate = num(entry, "currentRate") ?? asFiniteNumber(entry.data);
+    if (rate === undefined) return undefined;
 
     const result: FundingRateData = {
       currentRate: rate,
@@ -255,16 +285,22 @@ async function fetchFundingRate(symbol: string, apiKey: string): Promise<Funding
     };
 
     // OI-weighted rate if available
-    if (entry.data?.predictedRate) {
-      result.weightedRate = parseFloat(entry.data.predictedRate);
-    }
+    const predicted = asFiniteNumber(field(entry.data, "predictedRate"));
+    if (predicted !== undefined) result.weightedRate = predicted;
 
     // Exchange-level rates
-    if (entry.data?.exchangeList && Array.isArray(entry.data.exchangeList)) {
-      result.exchanges = entry.data.exchangeList.map((ex: any) => ({
-        name: ex.exchange || ex.name || "unknown",
-        rate: parseFloat(ex.data?.currentRate || ex.rate || "0"),
-      })).filter((ex: any) => !isNaN(ex.rate));
+    const exchangeList = field(entry.data, "exchangeList");
+    if (Array.isArray(exchangeList)) {
+      const exchanges: { name: string; rate: number }[] = [];
+      for (const ex of asRecordArray(exchangeList)) {
+        const exRate = num(ex, "currentRate", "rate");
+        if (exRate === undefined) continue;
+        exchanges.push({
+          name: asString(ex.exchange) || asString(ex.name) || "unknown",
+          rate: exRate,
+        });
+      }
+      result.exchanges = exchanges;
     }
 
     return result;
@@ -275,29 +311,20 @@ async function fetchFundingRate(symbol: string, apiKey: string): Promise<Funding
 
 async function fetchLongShort(symbol: string, apiKey: string): Promise<LongShortData | undefined> {
   try {
-    const data = await cgFetch(`/futures/longShort/chart?symbol=${symbol}&interval=1h&limit=1`, apiKey);
-    if (!data) return undefined;
+    const pts = points(await cgFetch(`/futures/longShort/chart?symbol=${symbol}&interval=1h&limit=1`, apiKey));
+    if (pts.length === 0) return undefined;
 
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
-
-    const latest = points[points.length - 1];
+    const latest = pts[pts.length - 1];
     const result: LongShortData = {};
 
-    // Account ratio
-    if (latest.longShortRatio !== undefined || latest.data?.longShortRatio !== undefined) {
-      result.accountRatio = parseFloat(latest.longShortRatio || latest.data?.longShortRatio || "0");
-    }
+    const account = num(latest, "longShortRatio");
+    if (account !== undefined) result.accountRatio = account;
 
-    // Top trader ratio
-    if (latest.topTraderLongShortRatio !== undefined || latest.data?.topTraderLongShortRatio !== undefined) {
-      result.topTraderRatio = parseFloat(latest.topTraderLongShortRatio || latest.data?.topTraderLongShortRatio || "0");
-    }
+    const top = num(latest, "topTraderLongShortRatio");
+    if (top !== undefined) result.topTraderRatio = top;
 
-    // Taker ratio
-    if (latest.takerBuySellRatio !== undefined || latest.data?.takerBuySellRatio !== undefined) {
-      result.takerRatio = parseFloat(latest.takerBuySellRatio || latest.data?.takerBuySellRatio || "0");
-    }
+    const taker = num(latest, "takerBuySellRatio");
+    if (taker !== undefined) result.takerRatio = taker;
 
     if (result.accountRatio === undefined && result.topTraderRatio === undefined && result.takerRatio === undefined) {
       return undefined;
@@ -311,17 +338,19 @@ async function fetchLongShort(symbol: string, apiKey: string): Promise<LongShort
 
 async function fetchLiquidations(symbol: string, apiKey: string): Promise<LiquidationData | undefined> {
   try {
-    const data = await cgFetch(`/futures/liquidation/v2/history?symbol=${symbol}&interval=1h&limit=1`, apiKey);
-    if (!data) return undefined;
+    const pts = points(await cgFetch(`/futures/liquidation/v2/history?symbol=${symbol}&interval=1h&limit=1`, apiKey));
+    if (pts.length === 0) return undefined;
 
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
-
-    const latest = points[points.length - 1];
+    const latest = pts[pts.length - 1];
     const result: LiquidationData = {};
 
-    const longVol = parseFloat(latest.longLiquidation || latest.data?.longLiquidation || "0");
-    const shortVol = parseFloat(latest.shortLiquidation || latest.data?.shortLiquidation || "0");
+    // One side genuinely reported as absent while the other is present is
+    // treated as 0 for the total (unchanged); both absent → unavailable.
+    const longRaw = num(latest, "longLiquidation");
+    const shortRaw = num(latest, "shortLiquidation");
+    if (longRaw === undefined && shortRaw === undefined) return undefined;
+    const longVol = longRaw ?? 0;
+    const shortVol = shortRaw ?? 0;
 
     if (longVol > 0 || shortVol > 0) {
       result.longVolume = longVol;

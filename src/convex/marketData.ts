@@ -29,6 +29,7 @@ import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../l
  * candidate resolves, probing is skipped for 24h instead of every analysis.
  */
 import { getProviderCache } from "../lib/data/provider-cache-registry";
+import { errorMessage } from "./lib/json";
 import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
 
 let dxyResolvedSymbol: string | null = null;
@@ -466,10 +467,10 @@ export const fetchMarketData = action({
         acquisition: envelopeAcquisition(candleAcquisitions),
         observedAt: oldestObservation(candleObservations),
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false as const,
-        error: `Market data fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Market data fetch failed: ${errorMessage(err) || "unknown error"}`,
         errorCode: "API_UNAVAILABLE" as const,
       };
     }
