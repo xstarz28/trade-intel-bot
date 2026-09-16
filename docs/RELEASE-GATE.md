@@ -613,3 +613,67 @@ would not touch the key's validity and are explicitly not substitutes.
 The one action that clears this is human: whoever holds the vly.ai / Freebuff
 project (the account that created this scaffold) revokes the key and records
 an authenticated `send_otp` attempt with the **old** key returning 401/403.
+
+## Phase 223 — Vendor-evidence audit: scope of the leaked Freebuff OTP credential
+
+**Read-only. No project deleted/disabled, no endpoint probed with the key, no
+credential printed, no rewrite, `main` untouched. A1 remains BLOCKED.**
+
+### Finding: the credential is a SHARED PLATFORM KEY, not a project-scoped key
+
+GitHub code search for `"auth.freebuff.app/send_otp"` (2026-09-16):
+
+| Measure | Value |
+| --- | --- |
+| Files matched / distinct public repos | 101 / 94 |
+| Files with a literal `x-api-key` | 83 |
+| …of which fingerprint `b1ce18a1e85ba121` (ours) | **83 (100 %)** |
+| …with a different literal key | **0** |
+| Distinct owners carrying our fingerprint | **73** unrelated GitHub accounts |
+| Files reading the key from env (`VLY_EMAIL_API_KEY`, `FB_EMAIL_API_KEY`, `FREEBUFF_EMAIL_API_KEY`, `RESEND_API_KEY`) | 12 — 2 of them still fall back to a literal with **the same fingerprint** |
+| Non-code hits (docs, `.env.example`, phone OTP) | 6 |
+| First / last commit dates carrying the key (83 sampled) | 2026-08-03 → **2026-09-15** (48 in Aug, 35 in Sep) |
+
+One key, 73 unrelated owners, zero variants, still being emitted by the
+scaffold in the last 24 h. **It is not ours to revoke.** Revoking it is a
+platform-wide event that would break OTP sign-in for every Freebuff Web
+project still on the scaffold default; only the issuer can do it, and only the
+issuer can decide to.
+
+### Evidence table
+
+| CLAIM | SOURCE | EXACT EVIDENCE | CONSEQUENCE FOR OLD KEY | Status |
+| --- | --- | --- | --- | --- |
+| Vly → Freebuff Web migration is automatic; projects, URLs, dashboards persist | `vly.ai` notice; `freebuff.com/blog/vly-becomes-freebuff-web` | "vly.ai has been acquired by Freebuff… transfer projects in Settings if your GitHub email is different"; "Existing projects migrate automatically… nothing breaks" | the Vly-era project still exists under a Freebuff Web account owned by whoever scaffolded it | VERIFIED |
+| Scaffold OTP host moved `auth.vly.ai`→`auth.freebuff.app`; same key retained | 83 public repos, all Aug–Sep 2026 | identical file, identical fingerprint across 73 owners | issuer change did **not** retire the key | VERIFIED |
+| Key is embedded by the generator, not issued per project | distribution above; scaffold `.env.example` placeholders differ per repo while the literal does not | 0 variants in 83 | project settings cannot carry a per-project revoke for it | VERIFIED (by distribution) — INFERRED as design |
+| Newer scaffold reads env var and a third-party repo says "old key… now revoked/rotated" | `Alot1z/packwise` `emailOtp.ts` comment, 2026-08-09 | comment text only | **not evidence** — a user comment; key still appears in scaffolds 5 weeks later | UNKNOWN / contradicted |
+| Direct revoke/rotate API or console for this key | freebuff.com docs (404), ToS, blog, `@vly-ai/integrations` README, code search (`openapi`/`api-keys`/`revoke` + host) | none published; README only says "get your deployment token from the dashboard" (that is `VLY_INTEGRATION_KEY`, a different credential) | no documented self-service path | VERIFIED absent |
+| Deleting/disabling a project invalidates the key | ToS "Delete project… do not by themselves delete data already collected"; no doc ties the OTP key to a project | key is shared across projects, so a per-project action cannot invalidate it | **NO** | VERIFIED NO (follows from shared scope) |
+| `auth.freebuff.app` has a public spec/repo/admin surface | code search: only CSP allow-lists and `auth.config.ts` issuer defaults reference it; `CodebuffAI/codebuff` 0 hits | server is closed-source; no OpenAPI, no error-semantics doc, no key-management endpoint | only the issuer backend can revoke | VERIFIED (absence) |
+| ToS forbids self-help against the service | ToS "Prohibited Uses" | "Access, extract, expose… access credentials"; "Gain unauthorized access to… connected systems" | no lawful non-support technical path | VERIFIED |
+
+### Consequences for this repository
+
+1. **Xstarz never depended on the key's validity** (Phase 185 removed the
+   Freebuff path; `no-freebuff-otp-dependency` preflight PASS). Our exposure
+   is contributory — one of ≥83 public copies — not unique.
+2. **A1 cannot be satisfied by the operator either.** The gate text "old key
+   presented and refused (401/403)" presumes a key the project owns. It does
+   not. The only actor who can produce that evidence is Freebuff, Inc.
+3. **Phase 184 rewrite remains gated**, but the gate condition is restated
+   truthfully: *issuer-confirmed revocation (401/403) **or** a documented
+   issuer decision that the scaffold key is public-by-design and not a
+   secret*. Either must come from the issuer; neither is available today.
+4. Non-destructive actions still open to the project without vendor support:
+   **none that change the key's validity.** Reporting the exposure to the
+   issuer (`support@codebuff.com`) is the sole lawful lever.
+
+| Item | Status |
+| --- | --- |
+| Agent/operator can revoke | **NO** (shared platform key) |
+| Old-credential 401/403 | **BLOCKED** — issuer-only |
+| Direct revoke API documented | **NO** |
+| Delete/disable project guarantees invalidation | **NO** |
+| Phase 184 rewrite | still gated; not executed |
+| Evidence D / `main` | unchanged |

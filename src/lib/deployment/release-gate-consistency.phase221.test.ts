@@ -72,8 +72,10 @@ describe("Phase 221 — the four evidence tiers stay separate", () => {
 });
 
 describe("Phase 221 — security chain is first and cannot be reordered", () => {
+  const orderStart = p221.indexOf("### Release order");
+  const orderEnd = p221.indexOf("\n### ", orderStart + 1);
   const steps = p221
-    .slice(p221.indexOf("### Release order"))
+    .slice(orderStart, orderEnd === -1 ? undefined : orderEnd)
     .split("\n")
     .filter((l) => /^\d+\. /.test(l))
     .map((l) => l.replace(/^\d+\. /, ""));
