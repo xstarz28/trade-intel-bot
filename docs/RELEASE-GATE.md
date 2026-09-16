@@ -907,3 +907,55 @@ absent (preflight 3 FAIL) · Evidence D INCOMPLETE.
 Phase 228: the 17 UI `any`s (Dashboard fetch pipeline typed from the Convex
 action return types; `Journal.tsx` review fields via `keyof`), then the
 CoinGlass leg-fetcher error swallowing noted above.
+
+## Phase 228 — UI `no-explicit-any` 17 → 0; CoinGlass leg-failure propagation
+
+Base `257ebb3`. Commits: `681f341` (Part A), `7218ddd` (Part B), plus this docs commit.
+
+### A. UI `no-explicit-any` — baseline → final (by file)
+| File | Baseline | Final |
+|---|---|---|
+| `src/pages/Dashboard.tsx` | 7 | 0 |
+| `src/components/PositionProtectionDashboard.tsx` | 4 | 0 |
+| `src/components/TraderWorkspace.tsx` | 4 | 0 |
+| `src/components/Journal.tsx` | 2 | 0 |
+| **Runtime total (src minus tests/scripts)** | **17** | **0** |
+
+Framework exceptions: none needed. Repo-wide `no-explicit-any` = 360, all in `*.test.*` / `scripts/` (out of scope by instruction). `no-unused-vars` = 0. Suppressions added (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`) = 0. `as any` added = 0.
+
+### D. Dashboard typing approach
+- `fromDbRecord` moved to `src/lib/analysis/from-db-record.ts`, parameter typed as `Doc<"analyses">`. The schema stores enum-like columns as strings; each is checked against the domain union. Drift maps to the **conservative** member: recommendation → `NO_TRADE`, bias → `Neutral`, conviction → dropped, `dataCompleteness` → `partial`, factor scores outside −2..2 → 0. Bias-derived recommendation for legacy rows without the column is preserved verbatim. `priceSnapshot` uses the row timestamp (no `Date.now`).
+- Fetch legs typed as `Awaited<ReturnType<typeof useAction(api.…)>>` — the Convex action return type is the canonical contract; no duplicate interfaces. `Promise.allSettled` now a typed tuple (derivatives leg is `Promise.resolve(null)` for non-crypto).
+- Verified defect exposed by typing: `fundamentals.revenueGrowth` was read on `FundamentalData`, which has no such field — always `undefined` at runtime. Read removed with a comment; equity context field stays optional/absent (no behavior change).
+- Regression suite `from-db-record.phase228.test.ts` (10 tests): well-formed row, legacy bias-derived recommendation, drifted recommendation/bias/conviction/style/completeness, factor clamp, price-only snapshot, summary-only intelligence blocks, missing sentiment score.
+
+### PositionProtectionDashboard / TraderWorkspace
+- `UserPosition.assetClass` is a free string → `toNewsAssetClass()` narrows to `NewsItem["assetClass"]`; unknown → `"other"` (never a guess). `instrumentType` literal now type-checks against the action arg union. Article mapping typed from the action return; Convex timeline map typed as `NonNullable<query return>`.
+- TraderWorkspace: `PortfolioConflict/Alignment/WatchItem` fields used directly (`description`, `reason`); previous `?? fallback` chains read fields (`positions`, `w.description`) that do not exist on those types. `techDir` typed `EvidenceDirection`. BUY/SELL/LONG/SHORT/WAIT/NO_TRADE typing, LOCKED redaction and mutation semantics untouched.
+
+### E. Journal `keyof` approach
+`JournalReviewField` / `JournalTradeField` unions in `src/lib/journal.ts` (used by `updateReview` / `updateTradeInfo` signatures); Journal handlers typed to them; review-field array uses `satisfies [JournalReviewField, string][]`; `entry[field]` accessed directly. Phase 226 close/PnL tests green.
+
+### F. CoinGlass leg taxonomy + propagation (Part B)
+Defect (from §227 follow-up): every leg fetcher ended in `catch { return undefined }`, so `cgFetch`'s RATE_LIMIT/AUTH_ERROR throw never reached the Phase 178b rejection check. Confirmed by the pre-fix Phase 227 test: a code-429 body on all legs returned `success: true, confidence: "unavailable"` **and was cached** — indistinguishable from "no derivatives market data". Additionally HTTP-level 429/401/403 were a generic error (only the JSON `code` path classified).
+
+Fix (`src/convex/coinglass.ts`):
+- Per-leg `LegOutcome<T>` = `ok | unavailable | malformed | timeout | network | provider_error`; fatal classes `RATE_LIMIT` / `AUTH_ERROR` are **rethrown** by `runLeg()` so the existing Phase 178b loop throws out of the cache fetcher (nothing cached) and the action returns the existing `RATE_LIMIT` / `AUTH_ERROR` envelope. HTTP 429 → RATE_LIMIT, HTTP 401/403 → AUTH_ERROR (same as JSON codes). Non-JSON body → `malformed`; `TimeoutError`/`AbortError` → `timeout`; undici `TypeError` → `network`; non-2xx / non-zero code → `provider_error`.
+- Partial acquisition: **option B**, using the existing contract only — surviving legs kept; failed legs stay `undefined` with `availability.x=false`; per-leg `class (reason)` string on the pre-existing `CryptoDerivativesData.error` field. A leg that answered with nothing usable stays `unavailable` and is *not* reported as an error (Phase 227 contract preserved).
+- If **every** leg failed for transport/provider reasons (nothing parsed), the fetcher throws → `API_UNAVAILABLE`, not cached. All-legs-answered-empty remains `success + confidence: unavailable` (§227).
+- Downstream: `coinglass-adapter.toErrorCode` passes RATE_LIMIT/AUTH_ERROR through unchanged; `derivatives-bridge` (Phase 226) forwards only surviving legs; a fatal envelope has no `data`, so the radar sees "no derivatives payload", never a market condition. No zero/`Date.now` fallbacks added; credential asserted absent from error envelopes.
+
+### G. Mutation tests (Part B) — 17/17 killed
+catch→undefined in `runLeg`; 178b check → `continue`; HTTP 429 → generic; HTTP 401/403 → generic; failed leg → `{}`; failed leg → zero rate; error metadata omitted; aggregate available despite total outage; timeout→unavailable; network unclassified; malformed→provider_error; `unavailable` counted as outage; action RATE_LIMIT→API_UNAVAILABLE; fabricated timestamp 0; summary includes unavailable legs; fatal check inspects first leg only; `rate` msg heuristic removed. No-op mutant survived (harness valid).
+
+### H. Regression tests
+`coinglass-legs.phase228.test.ts` — 33 tests: valid; RATE_LIMIT ×4 legs + HTTP + all-legs + heuristic + cache not poisoned; AUTH HTTP 401/403 + JSON + secret absent; timeout/network/malformed/500 partials; missing leg; mixed; mixed-with-fatal; no zeros; outage (all timeout / all 500); all-empty §227 contract; provenance (`observed-now`, finite timestamp, partial cached with metadata, single round of 4 calls); radar bridge on partial and fatal; classifier units. `from-db-record.phase228.test.ts` — 10 tests. `provider-json.phase227` code-429 test updated to the fixed behaviour.
+
+### I. Gates
+`tsc -b` 0 · vitest 279 files / 9788 pass / 12 skipped · `vite build` ok · eslint runtime `any` 0, unused 0 · mobile:verify PASS · `_generated` untouched · diff secret scan clean.
+
+### J. Provenance / security
+All Phase 178/178b/178d/178e/176/167/219/220/226 guard suites green; convex:preflight `no-freebuff-otp-dependency` PASS (3 FAIL on absent prod email vars — unchanged, see below).
+
+### L. Release blockers (unchanged)
+A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on A1; production email transport/sender/required vars absent; Evidence D INCOMPLETE (D1 BLOCKED, D5/D7/D8 NOT_VERIFIED).
