@@ -360,7 +360,7 @@ export function buildTimelineEntry(
   instrument: string,
   side: PositionSide,
   changes: ChangeDetection,
-  confluence: MTFConfluence,
+  _confluence: MTFConfluence,
 ): TimelineEntry | null {
   if (!changes.changed || changes.changes.length === 0) return null;
 

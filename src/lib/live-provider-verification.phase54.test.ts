@@ -355,7 +355,7 @@ describe("H — Credential-Aware Verification", () => {
     const spec = VERIFICATION_MATRIX.find(
       (s) => s.provider === "twelve-data" && s.instrument === "BTC/USD",
     )!;
-    const result = await verifyProvider(spec, (name) => undefined);
+    const result = await verifyProvider(spec, () => undefined);
     expect(result.status).toBe("CREDENTIAL_MISSING");
     expect(result.credentialStatus).toBe("MISSING");
     expect(result.errorMessage).toContain("TWELVE_DATA_API_KEY");
@@ -365,7 +365,7 @@ describe("H — Credential-Aware Verification", () => {
     const spec = VERIFICATION_MATRIX.find(
       (s) => s.provider === "coinglass" && s.instrument === "BTC/USD",
     )!;
-    const result = await verifyProvider(spec, (name) => undefined);
+    const result = await verifyProvider(spec, () => undefined);
     expect(result.status).toBe("CREDENTIAL_MISSING");
     expect(result.credentialStatus).toBe("MISSING");
   });
@@ -374,7 +374,7 @@ describe("H — Credential-Aware Verification", () => {
     const spec = VERIFICATION_MATRIX.find(
       (s) => s.provider === "alpha-vantage" && s.instrument === "AAPL",
     )!;
-    const result = await verifyProvider(spec, (name) => undefined);
+    const result = await verifyProvider(spec, () => undefined);
     expect(result.status).toBe("CREDENTIAL_MISSING");
     expect(result.credentialStatus).toBe("MISSING");
   });
@@ -581,7 +581,7 @@ describe("Q — Batch Verification Structure", () => {
   it("verifyAllProviders returns a report", async () => {
     // With a fake env reader, all credential-requiring providers should
     // return CREDENTIAL_MISSING without making network requests.
-    const report = await verifyAllProviders((name) => undefined, 10);
+    const report = await verifyAllProviders(() => undefined, 10);
     expect(report).toBeDefined();
     expect(report.summary.total).toBeGreaterThan(0);
     // All credential-required should be CREDENTIAL_MISSING

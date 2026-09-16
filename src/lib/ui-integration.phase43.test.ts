@@ -375,7 +375,7 @@ describe("Phase 43 — E. Instrument Isolation", () => {
     expect(ctx!.instrumentType).toBe("crypto");
   });
 
-  it.each(nonCryptoInstruments)("no crypto intelligence for %s (%s)", (inst, type) => {
+  it.each(nonCryptoInstruments)("no crypto intelligence for %s (%s)", (inst) => {
     const ctx = buildCryptoIntelligenceContext(inst);
     expect(ctx).toBeNull();
   });

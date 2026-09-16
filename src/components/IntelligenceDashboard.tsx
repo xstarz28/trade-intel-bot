@@ -702,8 +702,6 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
 export function IntelligenceDashboard({
   intelligence,
   multiDimensional,
-  marketContext,
-  analyticalSummary,
   whatChanged,
   positionSide,
   instrument,

@@ -39,7 +39,7 @@ import {
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
 
-function makeMacroContext(vixPrice: number | null, riskRegime: MacroContext["riskRegime"] = "UNKNOWN"): MacroContext {
+function makeMacroContext(vixPrice: number | null): MacroContext {
   return classifyMacroContext(vixPrice, "LONG", "crypto");
 }
 

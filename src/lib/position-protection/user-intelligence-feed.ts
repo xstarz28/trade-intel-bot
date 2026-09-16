@@ -104,7 +104,7 @@ export interface CrossPositionCatalyst {
 export function buildUserIntelligenceFeed(
   newsItems: NewsItem[],
   positions: UserPosition[],
-  now: number = Date.now(),
+  _now: number = Date.now(),
 ): UserIntelligenceFeed {
   if (positions.length === 0) {
     return {

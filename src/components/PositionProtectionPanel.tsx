@@ -443,7 +443,6 @@ export function PositionProtectionPanel({
   monitoringStatus = "LIVE",
   giveback,
   alertHistory = [],
-  protectionEvent,
   lastUpdateAt,
   streamHealth,
   monitoringGapMs,

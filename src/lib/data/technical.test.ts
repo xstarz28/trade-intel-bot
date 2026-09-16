@@ -62,7 +62,7 @@ describe("MACD", () => {
 describe("detectSwings", () => {
   it("finds swing highs and lows in ascending data", () => {
     const candles = ascendingCandles(20);
-    const { highs, lows } = detectSwings(candles, 3);
+    const { highs } = detectSwings(candles, 3);
     // Ascending data should produce very few or no swings
     // (all highs/lows keep increasing)
     expect(highs.length).toBeGreaterThanOrEqual(0);

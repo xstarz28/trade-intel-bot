@@ -162,7 +162,7 @@ function getHorizon(result: AnalysisResult): TimeHorizon {
   return "INTRADAY";
 }
 
-function isExtended(result: AnalysisResult, dir: "bullish" | "bearish"): RiskLevel {
+function isExtended(result: AnalysisResult): RiskLevel {
   if (result.marketRegimeContext?.marketPhase === "LATE_TREND") return "ELEVATED";
   if (result.marketRegimeContext?.marketPhase === "TREND_MATURE") return "MODERATE";
   if (result.marketRegimeContext?.continuationQuality === "EXHAUSTED") return "HIGH";
@@ -197,8 +197,6 @@ function classifyPrimaryPath(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
   regime?: MarketRegimeContext,
-  fundamental?: FundamentalThesis,
-  scenario?: MarketScenarioContext,
 ): PathStatus {
   if (dir === "neutral") {
     if (regime?.regime === "RANGE") return "RANGE_CONTINUATION";
@@ -238,7 +236,6 @@ function classifyPrimaryPath(
 function classifyAlternatePath(
   primary: PathStatus,
   dir: "bullish" | "bearish" | "neutral",
-  regime?: MarketRegimeContext,
 ): PathStatus {
   if (dir === "neutral") {
     return "UNCONFIRMED";
@@ -268,7 +265,6 @@ function classifyAlternatePath(
 function buildPathEvidence(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
-  primary: PathStatus,
 ): PathEvidence[] {
   const evidence: PathEvidence[] = [];
 
@@ -535,14 +531,14 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const currentState = `${dirLabel} HTF structure · ${phaseLabel} · ${regimeLabel} · continuation ${qualityLabel}`;
 
   // ── Path classification ──
-  const primaryPath = classifyPrimaryPath(result, dir, regime, fundamental, scenario);
-  const alternatePath = classifyAlternatePath(primaryPath, dir, regime);
+  const primaryPath = classifyPrimaryPath(result, dir, regime);
+  const alternatePath = classifyAlternatePath(primaryPath, dir);
 
   // ── Path status text ──
   const pathStatus = primaryPath.replace(/_/g, " ").toLowerCase();
 
   // ── Evidence ──
-  const pathEvidence = buildPathEvidence(result, dir, primaryPath);
+  const pathEvidence = buildPathEvidence(result, dir);
   const opposingEvidence = buildOpposingEvidence(result, dir as "bullish" | "bearish" | "neutral");
 
   // ── Trigger levels ──

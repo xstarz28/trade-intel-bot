@@ -254,7 +254,6 @@ function EvidenceTrace({ intel }: { intel: PositionIntelligence }) {
 // ═══════════════════════════════════════════════════════════════
 
 function PositionRow({
-  positionId,
   intel,
   onClick,
 }: {
@@ -300,7 +299,6 @@ function PositionRow({
 
 function PortfolioDrillDown({
   portfolioIntel,
-  intelligenceMap,
 }: {
   portfolioIntel: PortfolioIntelligence;
   intelligenceMap: Map<string, PositionIntelligence>;
@@ -434,7 +432,6 @@ export function TraderWorkspace({
   healthSnapshot,
   alertCount,
   unreadCount,
-  feedNews,
   onSelectPosition,
   onSelectPortfolio,
   onSelectAlerts,

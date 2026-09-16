@@ -179,7 +179,6 @@ function buildWhyTpNow(
   supportingEvidence: string[],
   conflictingEvidence: string[],
   missingData: string[],
-  givebackPct?: number,
 ): WhyTpNowExplanation {
   const rStr = profit.rMultiple !== undefined ? `${profit.rMultiple >= 0 ? "+" : ""}${profit.rMultiple.toFixed(2)}R` : `${profit.distanceFromEntryPct.toFixed(1)}%`;
   const profitStatus = `${rStr} unrealized ${profit.profitState.toLowerCase().replace("_", " ")}`;
@@ -254,8 +253,6 @@ function buildAlertMessage(
   severity: AlertSeverity,
   thesisHealth: { state: string; score: number; deteriorationCount: number },
   profit: ProfitMetrics,
-  shock: ShockAssessment,
-  supportingCount: number,
 ): string {
   switch (severity) {
     case "NONE":
@@ -381,7 +378,7 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
 
   // 12. Build "Why TP Now?" explanation
   const whyTpNow = buildWhyTpNow(
-    severity, profit, thesisHealth, shock, supportingEvidence, conflictingEvidence, missingData, profit.givebackPct,
+    severity, profit, thesisHealth, shock, supportingEvidence, conflictingEvidence, missingData,
   );
 
   // 13. Build the alert
@@ -399,7 +396,7 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
     supportingEvidence,
     conflictingEvidence,
     missingData,
-    alertMessage: buildAlertMessage(severity, thesisHealth, profit, shock, supportingEvidence.length),
+    alertMessage: buildAlertMessage(severity, thesisHealth, profit),
     actionRecommendation: determineAction(severity, profit),
     protectionReference: protectionRef.available ? protectionRef.level : undefined,
     deteriorationSignals: deduplicated,

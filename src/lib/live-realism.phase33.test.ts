@@ -112,7 +112,7 @@ function runFlat(symbol: string, type: AnalysisInput["instrumentType"], base: nu
   return runAnalysis(buildInput(symbol, type, flatCandles(base)));
 }
 
-function runMixed(symbol: string, type: AnalysisInput["instrumentType"], base: number): AnalysisResult {
+function runMixed(symbol: string, type: AnalysisInput["instrumentType"]): AnalysisResult {
   return runAnalysis(buildInput(symbol, type, mixedCandles()));
 }
 
@@ -182,7 +182,7 @@ describe("Phase 33 — BTC correction/continuation", () => {
   });
 
   it("B: Mixed/cyclical — does not force directional bias", () => {
-    const r = runMixed("BTC/USD", "crypto", 50000);
+    const r = runMixed("BTC/USD", "crypto");
     assertCoherent(r, "BTC mixed");
     // Mixed candles should produce results but not necessarily directional
     expect(["LONG", "SHORT", "NO_TRADE"]).toContain(r.recommendation);
@@ -210,7 +210,7 @@ describe("Phase 33 — No always-LONG/SHORT", () => {
     const bull = run("BTC/USD", "crypto", 50000);
     const bear = runBear("BTC/USD", "crypto", 50000);
     const flat = runFlat("BTC/USD", "crypto", 50000);
-    const mixed = runMixed("BTC/USD", "crypto", 50000);
+    const mixed = runMixed("BTC/USD", "crypto");
 
     // All are coherent
     [bull, bear, flat, mixed].forEach((r, i) => assertCoherent(r, `regime-${i}`));
@@ -448,7 +448,7 @@ describe("Phase 33 — Actionability audit", () => {
     const results = [
       run("BTC/USD", "crypto", 50000),
       runFlat("EUR/USD", "forex", 1.1),
-      runMixed("XAU/USD", "commodity", 2000),
+      runMixed("XAU/USD", "commodity"),
     ];
     for (const r of results) {
       if (r.professionalThesis!.actionability === "WAIT") {
@@ -608,7 +608,7 @@ describe("Phase 33 — Cross-layer contradiction audit", () => {
     const results = [
       run("BTC/USD", "crypto", 50000),
       runFlat("EUR/USD", "forex", 1.1),
-      runMixed("XAU/USD", "commodity", 2000),
+      runMixed("XAU/USD", "commodity"),
     ];
     for (const r of results) {
       if (r.professionalThesis!.actionability === "WAIT" || r.recommendation === "NO_TRADE") {

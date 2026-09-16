@@ -91,7 +91,7 @@ function makeCandle(
   };
 }
 
-function makeCandles(n: number, gapHours = 1): OhlcvRecord[] {
+function makeCandles(n: number): OhlcvRecord[] {
   // Oldest first (ascending timestamps)
   return Array.from({ length: n }, (_, i) => makeCandle({ hoursBefore: n - i }));
 }

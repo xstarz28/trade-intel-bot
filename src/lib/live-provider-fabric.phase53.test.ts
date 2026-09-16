@@ -590,7 +590,7 @@ describe("AC — Total Provider Failure", () => {
 
 describe("AD — Missing Credentials", () => {
   it("Twelve Data unavailable without API key", async () => {
-    const result = await acquireLiveData("EUR/USD", "forex", (name) => undefined);
+    const result = await acquireLiveData("EUR/USD", "forex", () => undefined);
     // Without API key, Twelve Data adapter is not available
     // CoinGecko doesn't support forex, so result should be null
     expect(result.success).toBe(false);

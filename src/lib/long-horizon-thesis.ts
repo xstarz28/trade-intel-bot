@@ -754,7 +754,6 @@ function buildScenarios(
   cycle: MarketCycle,
   regime?: MarketRegimeContext,
   fundamental?: FundamentalThesis,
-  result?: AnalysisResult,
 ): { primaryScenario: string; alternateScenario: string } {
   if (dir === "neutral") {
     return {
@@ -970,7 +969,7 @@ export function buildLongHorizonThesis(result: AnalysisResult): LongHorizonThesi
   );
 
   // Scenarios
-  const { primaryScenario, alternateScenario } = buildScenarios(dir, marketCycle, regime, fundamental, result);
+  const { primaryScenario, alternateScenario } = buildScenarios(dir, marketCycle, regime, fundamental);
 
   // Conditions
   const { confirmationConditions, invalidationConditions } = buildConditions(result, dir, marketCycle);

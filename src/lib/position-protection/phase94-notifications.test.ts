@@ -55,7 +55,7 @@ function makeAlert(overrides: Partial<RuleAlert> = {}): RuleAlert {
   };
 }
 
-function makeNotification(overrides: Partial<Notification> = {}): Notification {
+function makeNotification(): Notification {
   return buildNotification(makeAlert(), "LONG", 2000);
 }
 
