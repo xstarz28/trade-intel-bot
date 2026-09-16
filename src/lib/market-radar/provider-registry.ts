@@ -291,7 +291,6 @@ function buildCoinGlassAdapter(): ProviderAdapter {
       if (!symbol) return null;
       try {
         const baseUrl = "https://open-api-v3.coinglass.com/api";
-        const headers = { accept: "application/json", cg_api_key: apiKey };
         const [oiRes, fundingRes] = await Promise.allSettled([
           defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`),
           defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`),

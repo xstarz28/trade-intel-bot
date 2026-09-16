@@ -131,7 +131,6 @@ function determineUrgency(
   shock: ShockAssessment,
   givebackPct?: number,
 ): { urgency: ProfitProtectionUrgency; reason: string } {
-  const isProfitable = profit.profitState === "PROFITABLE" || profit.profitState === "STRONGLY_PROFITABLE";
 
   if (severity === "INVALIDATED") {
     return { urgency: "CRITICAL", reason: "Thesis invalidated — key conditions supporting the position are no longer present." };

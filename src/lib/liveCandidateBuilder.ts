@@ -164,7 +164,6 @@ function extractSpreadBps(source: LiveCandidateSource): number | undefined {
 
 function extractCryptoData(source: LiveCandidateSource): Partial<CandidateInput> {
   const d = source.derivativesData;
-  const ci = source.universalIntelligence?.equity ?? source.universalIntelligence;
   return {
     hasDerivatives: !!d,
     fundingRate: d?.fundingRate?.currentRate,
@@ -173,7 +172,6 @@ function extractCryptoData(source: LiveCandidateSource): Partial<CandidateInput>
 }
 
 function extractForexData(source: LiveCandidateSource): Partial<CandidateInput> {
-  const t = source.treasuryData;
   const cot = source.cotData;
   const cotAvailable = cot && cot.available ? cot : null;
   return {

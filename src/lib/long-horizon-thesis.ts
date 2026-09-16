@@ -945,7 +945,6 @@ export function buildLongHorizonThesis(result: AnalysisResult): LongHorizonThesi
   const regime = result.marketRegimeContext;
   const fundamental = result.fundamentalThesis;
   const forwardPath = result.forwardMarketPath;
-  const scenario = result.marketScenario;
 
   // Context
   const marketCycle = classifyMarketCycle(result, regime);

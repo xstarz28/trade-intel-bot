@@ -618,7 +618,6 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
   const { t } = useI18n();
   if (!intelligence) return null;
 
-  const isLong = intelligence.side === "LONG";
   return (
     <IntelSection title={t.intelligence.keyLevelsLabel} icon={<Shield className="size-3" />}>
       <div className="space-y-1 text-[8px] font-mono">

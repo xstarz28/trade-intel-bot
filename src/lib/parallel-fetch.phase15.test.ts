@@ -35,31 +35,6 @@ const BASE_FACTS = {
   hasCompleteSpec: false,
 };
 
-/** Sequential reference implementation (the OLD Dashboard behavior). */
-async function sequentialReference(facts: typeof BASE_FACTS, thunks: Record<string, (() => Promise<unknown>) | undefined>) {
-  const out: Record<string, unknown> = {};
-  const one = async (cond: boolean, t?: () => Promise<unknown>, pick?: (r: never) => unknown) => {
-    if (!cond || !t) return undefined;
-    try {
-      const r = await t() as { success?: boolean };
-      return r && r.success ? pick?.(r as never) ?? (r as { data?: unknown }).data : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-  const isFxLike = facts.instrumentType === "forex" || facts.instrumentType === "commodity";
-  const notScalp = facts.tradingStyle !== "scalping";
-  out.cotData = await one(isFxLike && notScalp, thunks.cot);
-  out.executionData = await one(facts.instrumentType === "crypto" && facts.tradingStyle !== "swing", thunks.execution);
-  out.eiaData = await one(
-    facts.instrumentType === "commodity" && /WTI|CRUDE|BRENT|OIL/i.test(facts.instrument) && notScalp,
-    thunks.eia,
-  );
-  out.treasuryData = await one(isFxLike && notScalp, thunks.treasury);
-  out.okxSpecData = await one(facts.instrumentType === "crypto" && !facts.hasCompleteSpec, thunks.okxSpec);
-  return out;
-}
-
 // ── Scheduling benchmark (deterministic simulated latency) ──────────
 
 describe("scheduling benchmark", () => {

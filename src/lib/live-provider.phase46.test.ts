@@ -72,7 +72,6 @@ import {
 
 const NOW = Date.now();
 const HOUR = 3_600_000;
-const MINUTE = 60_000;
 
 function makeCandle(
   overrides: Partial<OhlcvRecord> & { hoursBefore?: number } = {},
@@ -106,14 +105,6 @@ function mockTransport(body: unknown, status = 200): Transport {
 function mockNetworkError(message = "ECONNREFUSED"): Transport {
   return async () => {
     throw new Error(message);
-  };
-}
-
-/** Mock transport that simulates a timeout. */
-function mockTimeout(ms = 5000): Transport {
-  return async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-    return { ok: false, status: 0 };
   };
 }
 

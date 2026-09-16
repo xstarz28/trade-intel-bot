@@ -87,8 +87,6 @@ export interface TimeframeAnalysis {
   candleCount: number;
 }
 
-const SUFFICIENT_CANDLES = 30;
-
 export function analyzeTimeframe(data: TimeframeData): TimeframeAnalysis {
   const { candles, timeframe, dataQuality, candleCount } = data;
 

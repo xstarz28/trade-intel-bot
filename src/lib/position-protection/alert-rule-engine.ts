@@ -111,8 +111,6 @@ export interface RuleTriggerRecord {
 export const MAX_RULES_PER_USER = 50;
 export const MAX_ALERTS_PER_EVALUATION = 20;
 
-const SEVERITY_ORDER: RuleSeverity[] = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
-
 // ═══════════════════════════════════════════════════════════════
 // ALERT IDENTITY
 // ═══════════════════════════════════════════════════════════════
