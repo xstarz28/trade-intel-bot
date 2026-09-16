@@ -806,3 +806,104 @@ realism, provider resilience, provenance-fabrication 220, platform residue
 ### Next
 Phase 227: `no-explicit-any` (540) — start with `src/convex/*` handler
 signatures and provider JSON parsers, where `any` hides schema drift.
+
+## Phase 227 — `no-explicit-any` 540 → 376, typed provider boundaries
+
+**Nothing in this phase changes a blocker status.** A1/A2/A3 BLOCKED (issuer),
+B–E as in Phase 221, Evidence D INCOMPLETE, `main` untouched, no deployment,
+no history rewrite. Runtime `src/convex/` **was** changed (see defects below);
+it is not deployed by this phase.
+
+### Counts
+
+| Scope | Before | After |
+| --- | --- | --- |
+| Total `@typescript-eslint/no-explicit-any` | 540 | **376** |
+| `src/convex/**` | 100 | **0** |
+| `src/lib/**` (non-test) | 47 | **0** |
+| UI (`src/components`, `src/pages`) | 34 | **17** |
+| Tests / scripts | 359 | 359 (untouched by design) |
+| `no-unused-vars` | 0 | 0 |
+| Suppressions (`eslint-disable`, `@ts-ignore`, `@ts-expect-error`) added | — | **0** |
+| `unknown` + unchecked `as` casts introduced | — | **0** |
+
+By category (of the 164 removed): **D** framework ctx / index-callback types
+≈ 70 · **C** provider JSON → `unknown` + guards ≈ 55 · **B** `catch (err:
+any)` → `unknown` + `errorMessage()` 22 · **A** trusted internal types (Doc,
+DependencyGroup, CapabilityQuality, union validators) ≈ 15 · **E** dynamic
+payloads → `Record<string, unknown>` 2.
+
+### Verified defects surfaced by the casts (behavioural changes)
+
+| # | Where | Defect | Fix | Commit |
+| --- | --- | --- | --- | --- |
+| 1 | `alertRules`, `notifications`, `notificationPreferences`, `runtimeHealth` | `userId` column was `identity.subject` cast `as any`. Convex Auth mints subject `userId\|sessionId`, so these tables were keyed **per session** — every re-login orphaned the user's rules/notifications/preferences (schema validation off let it through). | `lib/authUser.authUserId()` = library `getAuthUserId` → `Id<"users">`. Existing rows written with the composite key are not migrated (they were never readable across sessions anyway); documented, no data deleted. | `d30ac8c` |
+| 2 | `journal.transition` / `updateFields` | `{"timestamps.updatedAt": now}` behind `Record<string, any>`; `db.patch` has no dotted-path semantics → wrote a literal top-level key, never updated `timestamps.updatedAt`. | Typed nested patch `timestamps: {...entry.timestamps, updatedAt}`. | `d30ac8c` |
+| 3 | `convex/coinglass` fetchers | `parseFloat(x \|\| "0")` turned an **absent** funding rate / OI / L-S ratio / liquidation into a **0 reading marked available**. | Absent/non-numeric → `undefined` → leg unavailable (feeds Phase 226 bridge correctly). | `6a61226` |
+| 4 | `convex/alphaVantage` | non-numeric sentiment/relevance → `NaN` in evidence. | `undefined`. | `6a61226` |
+| 5 | `convex/tradingEconomics` | object cells stringified to `"[object Object]"`; object datetime passed to `new Date`. | Dropped / `undefined`. | `6a61226` |
+| 6 | `lib/data/providers/twelve-data.fetchPrice` | quote stamped `timestamp: Date.now()` (Phase 220 E2 class). | Provider `timestamp` (s→ms, 1e9–1e11 window, same as `resolveProviderPriceTimestamp`); no provider time ⇒ throws (unavailable). NaN candles dropped. | `bbf3436` |
+| 7 | `lib/data/crypto/defillama-adapter` | latest TVL point without numeric `tvl` ⇒ `current: 0`. | Invalid points filtered; no TVL dataset. | `bbf3436` |
+| 8 | `lib/data/universal/engines` | provenance rows were `IntelligenceMeta` pushed `as any` → lacked `fetchedAt`/`instrument`/`instrumentVerified`. | `toProvenance()` projection (`fetchedAt` = ctx `assembledAt`, `instrumentVerified: false`). | `03d0643` |
+| 9 | `NotificationCenter` | eight per-field `as any` reads of stored prefs. | `validatePreferences()` guard; invalid record ⇒ defaults. | `6fefd54` |
+
+All other conversions are type-only (verified by the pre-existing suites:
+277 files / 9745 pass).
+
+### New helpers
+
+`src/convex/lib/json.ts` and its lib-side twin `src/lib/data/json/narrow.ts`
+(`isRecord`, `field`, `asString`, `asNonEmptyString`, `asFiniteNumber`,
+`asRecordArray`, `errorMessage`) — return `undefined` on shape mismatch,
+never `0`/`""`/`Date.now()`. `src/convex/lib/authUser.ts` (`authUserId`,
+shared typed `resolveUser`).
+
+### Mutation tests (all killed)
+
+| Batch | Mutants | Killed by |
+| --- | --- | --- |
+| 1a | authUserId returns raw subject; resolveUser looks up raw subject; module bypasses helper; journal dotted key restored (4) | `auth-user.phase227.test.ts` |
+| 1b | asFiniteNumber unchecked number / zero fallback; asRecordArray bypass; cg missing rate → 0; cg wrong symbol; cg unchecked cast; AV NaN score; AV title/url bypass; AV Symbol bypass; TE Date.now fallback; TE object cell; TE unchecked array; TD missing close accepted; TD Date.now; TD values unchecked (15) | `provider-json.phase227.test.ts` (3 survivors on first run → tests strengthened, re-run killed) |
+| 2 | narrow.ts ×3; DeFiLlama zero points / always-reliable / unchecked cast; Tokenomist coercible object date / NaN amount; CoinGlass errorCode cast / dominantSide cast / reliable bypass; twelve-data ts unchecked / Date.now / price unchecked / partial OHLC check / bad datetime (16) | `adapters.phase227.test.ts`, `twelve-data.phase227.test.ts` (3 survivors → strengthened, killed) |
+
+### Remaining `any` (376) and why
+
+* **359 in tests/scripts** — out of scope for this phase (test doubles,
+  i18n fixtures). Safe to address later; no runtime exposure.
+* **17 runtime, UI**: `Dashboard.tsx` ×7 (`fromDbRecord(record: any)`,
+  `intelligenceResult/derivativesResult/calendarResult: any`,
+  `Promise<any>[]`, two `(e: any)` on calendar events) — the page's fetch
+  orchestration types flow from four Convex action return types; retyping is
+  a page-pipeline refactor, not a boundary fix. `PositionProtectionDashboard`
+  ×4, `TraderWorkspace` ×4, `Journal.tsx` ×2 (`(entry as any)[field]` dynamic
+  review-field access) — each needs a small discriminated-union or keyof
+  refactor of component props; deferred as not clearly-safe in this phase.
+* Pre-existing, out of scope, noted: `convex/coinglass` leg fetchers swallow
+  every error (`catch { return undefined }`), so the RATE_LIMIT/AUTH_ERROR
+  classification in `cgFetch` never reaches the Phase 178b rejection check
+  (test documents this; not changed here).
+
+### Validation
+
+`tsc -b` ✓ · `vite build` ✓ · vitest **277 files / 9745 pass** (12 skipped) ·
+eslint errors 515 → 451 (`no-explicit-any` **376**, `no-unused-vars` **0**) ·
+`npm run mobile:verify` PASS · `no-freebuff-otp-dependency` PASS (preflight
+still REJECTED 3 FAIL on absent prod inputs, as before) · generated drift none
+(`src/convex/_generated` untouched) · diff secret scan: only `"k"`/`test-key`
+test stubs · provenance suites (market-radar, live realism, provider
+resilience, provenance-fabrication 219/220, platform residue 224) green ·
+Phase 204 identity test extended to accept the shared `lib/authUser` import ·
+Phase 197 structural regex updated to the typed `errorMessage(err) || t…`
+form (same intent: backend reason preferred) · Evidence-D / Phase 184 text
+untouched.
+
+### Release blockers (unchanged)
+
+A1 issuer credential not revocable by us (Phase 223) · Phase 184 history
+rewrite blocked on A1 · production email transport / sender / required vars
+absent (preflight 3 FAIL) · Evidence D INCOMPLETE.
+
+### Next
+Phase 228: the 17 UI `any`s (Dashboard fetch pipeline typed from the Convex
+action return types; `Journal.tsx` review fields via `keyof`), then the
+CoinGlass leg-fetcher error swallowing noted above.
