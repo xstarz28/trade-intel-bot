@@ -34,6 +34,15 @@ import {
 // the user-owned-data guard. Scope is per action instance — see the registry.
 import { getProviderCache } from "../lib/data/provider-cache-registry";
 import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
+import {
+  isLegFailure,
+  runLeg,
+  summarizeLegFailures,
+  ProviderHttpError,
+  ProviderMalformedError,
+  ProviderNativeError,
+  type LegOutcome,
+} from "./lib/legOutcome";
 
 // ── Alpha Vantage API ───────────────────────────────────────────
 
@@ -46,13 +55,31 @@ async function avFetch(params: Record<string, string>, apiKey: string): Promise<
     signal: AbortSignal.timeout(7_000),
   });
   if (!res.ok) {
-    throw new Error(`Alpha Vantage HTTP ${res.status}: ${res.statusText}`);
+    // Phase 229 — HTTP-level quota/credential rejections must classify the
+    // same as the JSON "Note" path; before this they were a generic error
+    // that the news leg then swallowed into a neutral "unavailable" block.
+    if (res.status === 429) throw new Error(`RATE_LIMIT: HTTP 429 ${res.statusText}`);
+    if (res.status === 401 || res.status === 403) throw new Error(`AUTH_ERROR: HTTP ${res.status} ${res.statusText}`);
+    throw new ProviderHttpError("Alpha Vantage", res.status, res.statusText);
   }
-  const json: unknown = await res.json();
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch (err: unknown) {
+    throw new ProviderMalformedError(`Alpha Vantage body is not JSON: ${errorMessage(err)}`);
+  }
   // AV returns "Note" or "Information" on rate limits
   const note = asNonEmptyString(field(json, "Note")) ?? asNonEmptyString(field(json, "Information"));
   if (note) {
     throw new Error("RATE_LIMIT:" + note);
+  }
+  // AV returns "Error Message" (HTTP 200) for an invalid function/symbol or
+  // an invalid key. An explicit key rejection is fatal; anything else is a
+  // provider error for this leg, never an empty-but-successful dataset.
+  const errMsg = asNonEmptyString(field(json, "Error Message"));
+  if (errMsg) {
+    if (/api\s*key/i.test(errMsg)) throw new Error("AUTH_ERROR:" + errMsg);
+    throw new ProviderNativeError("Alpha Vantage error: " + errMsg);
   }
   return json;
 }
@@ -128,9 +155,15 @@ export const fetchIntelligence = action({
       // report one honest mode instead of implying a fresh observation.
       const acquisitions: Array<"observed-now" | "observed-shared" | "cache-reused"> = [];
       const observations: number[] = [];
+      // Phase 229 — per-leg outcome. Fatal classes (RATE_LIMIT / AUTH_ERROR)
+      // reject out of runLeg and are handled by the outer catch; everything
+      // else is classified here and reported on the envelope's `error`.
+      const legs: { news: LegOutcome<NewsArticle[]>; fundamentals?: LegOutcome<FundamentalData> } = {
+        news: { status: "unavailable", reason: "not fetched" },
+      };
 
       {
-        try {
+        legs.news = await runLeg(async () => {
           const evidence = await getProviderCache().fetch<NewsArticle[]>(
             {
               provider: "alpha-vantage",
@@ -158,33 +191,19 @@ export const fetchIntelligence = action({
               };
             },
           );
-          articles = evidence?.data ?? [];
           if (evidence) {
             acquisitions.push(evidence.acquisition);
             observations.push(evidence.observedAt);
           }
+          return evidence?.data;
+        });
+        if (legs.news.status === "ok") {
+          articles = legs.news.value;
           sentiment = aggregateFromArticles(articles, "alpha-vantage");
-        } catch (err: unknown) {
-          if (errorMessage(err).startsWith("RATE_LIMIT")) {
-            return {
-              success: false,
-              dataAvailable: { news: false, fundamentals: false, macro: false },
-              error: "Alpha Vantage rate limit exceeded. Try again later.",
-              errorCode: "RATE_LIMIT",
-            };
-          }
-          // News is non-critical — continue without it
-          sentiment = {
-            provider: "alpha-vantage",
-            timestamp: Date.now(),
-            averageScore: 0,
-            articleCount: 0,
-            label: "neutral",
-            breakdown: { positive: 0, negative: 0, neutral: 0 },
-            confidence: "unavailable",
-            articles: [],
-          };
         }
+        // A failed or empty news leg leaves `sentiment` undefined: the
+        // envelope's `dataAvailable.news=false` plus `error` say why. No
+        // neutral zero-score block stamped with the local clock is produced.
       }
 
       // Fetch fundamentals (stocks only)
@@ -192,7 +211,7 @@ export const fetchIntelligence = action({
 
       if (args.instrumentType === "stock") {
         {
-          try {
+          legs.fundamentals = await runLeg(async () => {
             // Phase 178b — distinct dataset, therefore a distinct cache key:
             // news and fundamentals for the same ticker never share an entry.
             const evidence = await getProviderCache().fetch<FundamentalData>(
@@ -219,28 +238,17 @@ export const fetchIntelligence = action({
                 };
               },
             );
-            fundamentals = evidence?.data;
             if (evidence) {
               acquisitions.push(evidence.acquisition);
               observations.push(evidence.observedAt);
             }
-          } catch (err: unknown) {
-            if (errorMessage(err).startsWith("RATE_LIMIT")) {
-              return {
-                success: false,
-                dataAvailable: { news: !!articles.length, fundamentals: false, macro: false },
-                error: "Alpha Vantage rate limit exceeded during fundamental fetch.",
-                errorCode: "RATE_LIMIT",
-              };
-            }
-            fundamentals = {
-              provider: "alpha-vantage",
-              timestamp: Date.now(),
-              instrumentType: args.instrumentType,
-              available: false,
-              unavailableReason: "Failed to fetch fundamental data.",
-            };
+            return evidence?.data;
+          });
+          if (legs.fundamentals.status === "ok") {
+            fundamentals = legs.fundamentals.value;
           }
+          // A failed fundamentals leg leaves `fundamentals` undefined; the
+          // reason is on the envelope `error`, not a placeholder block.
         }
       } else {
         fundamentals = {
@@ -252,8 +260,26 @@ export const fetchIntelligence = action({
         };
       }
 
-      // Build macro context from news articles
-      const macro = buildMacroFromArticles(articles, args.instrumentType);
+      // Phase 229 — if EVERY fetched leg failed for a transport/provider
+      // reason, that is a provider outage: report it as API_UNAVAILABLE
+      // instead of a `success: true` envelope of empty blocks.
+      const fetched: LegOutcome<unknown>[] = [legs.news, ...(legs.fundamentals ? [legs.fundamentals] : [])];
+      const legFailures = summarizeLegFailures({
+        news: legs.news,
+        ...(legs.fundamentals ? { fundamentals: legs.fundamentals } : {}),
+      });
+      if (fetched.length > 0 && fetched.every(isLegFailure)) {
+        return {
+          success: false,
+          dataAvailable: { news: false, fundamentals: false, macro: false },
+          error: `Intelligence fetch failed: every leg failed (${legFailures})`,
+          errorCode: "API_UNAVAILABLE",
+        };
+      }
+
+      // Build macro context from news articles (only when the news leg
+      // actually answered; a failed leg must not yield a macro block).
+      const macro = legs.news.status === "ok" ? buildMacroFromArticles(articles, args.instrumentType) : undefined;
 
       return {
         success: true,
@@ -263,17 +289,36 @@ export const fetchIntelligence = action({
         dataAvailable: {
           news: articles.length > 0,
           fundamentals: fundamentals?.available ?? false,
-          macro: macro.confidence !== "unavailable",
+          macro: macro !== undefined && macro.confidence !== "unavailable",
         },
+        // Phase 229 — partial: per-leg failure class + reason.
+        ...(legFailures ? { error: legFailures } : {}),
         // `cache-reused` only when every read was reused.
         acquisition: envelopeAcquisition(acquisitions),
         observedAt: oldestObservation(observations),
       };
     } catch (err: unknown) {
+      const msg = errorMessage(err) || "unknown error";
+      if (msg.startsWith("RATE_LIMIT")) {
+        return {
+          success: false,
+          dataAvailable: { news: false, fundamentals: false, macro: false },
+          error: "Alpha Vantage rate limit exceeded. Try again later.",
+          errorCode: "RATE_LIMIT",
+        };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return {
+          success: false,
+          dataAvailable: { news: false, fundamentals: false, macro: false },
+          error: "Alpha Vantage authentication failed.",
+          errorCode: "AUTH_ERROR",
+        };
+      }
       return {
         success: false,
         dataAvailable: { news: false, fundamentals: false, macro: false },
-        error: `Intelligence fetch failed: ${errorMessage(err) || "unknown error"}`,
+        error: `Intelligence fetch failed: ${msg}`,
         errorCode: "API_UNAVAILABLE",
       };
     }
