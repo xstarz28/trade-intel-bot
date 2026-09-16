@@ -26,6 +26,8 @@ import {
   getValidTransitions,
   classifyOutcome,
   computePnl,
+  type JournalReviewField,
+  type JournalTradeField,
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
 import { useI18n } from "@/lib/i18n";
@@ -138,13 +140,13 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
     setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
   };
 
-  const handleUpdateReview = (entry: JournalEntry, field: string, value: string) => {
+  const handleUpdateReview = (entry: JournalEntry, field: JournalReviewField, value: string) => {
     const updated = updateReview(entry, { [field]: value });
     updateEntryInList(updated);
     setSelectedEntry(updated);
   };
 
-  const handleUpdateTrade = (entry: JournalEntry, field: string, value: number | undefined) => {
+  const handleUpdateTrade = (entry: JournalEntry, field: JournalTradeField, value: number | undefined) => {
     const updated = updateTradeInfo(entry, { [field]: value });
     updateEntryInList(updated);
     setSelectedEntry(updated);
@@ -403,17 +405,17 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
                 ["whatWentWrong", t.journal.whatWentWrong],
                 ["lessons", t.journal.lessons],
                 ["notes", t.journal.notes],
-              ] as [string, string][]).map(([field, label]) => (
+              ] satisfies [JournalReviewField, string][]).map(([field, label]) => (
                 <div key={field}>
                   <span className="text-muted-foreground">{label}:</span>
                   {editMode ? (
                     <Textarea
-                      defaultValue={(entry as any)[field] ?? ""}
+                      defaultValue={entry[field] ?? ""}
                       className="text-[10px] font-mono mt-1 min-h-[40px]"
                       onBlur={(e) => handleUpdateReview(entry, field, e.target.value)}
                     />
                   ) : (
-                    <span className="block text-muted-foreground/80 mt-1">{(entry as any)[field] ?? "—"}</span>
+                    <span className="block text-muted-foreground/80 mt-1">{entry[field] ?? "—"}</span>
                   )}
                 </div>
               ))}
