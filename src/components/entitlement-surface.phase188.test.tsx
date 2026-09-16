@@ -487,9 +487,9 @@ describe("188.9 — one authoritative protected analysis path", () => {
     expect(DASHBOARD_SRC).not.toContain("api.entitlements.consumeProfitSignal");
   });
 
-  it("the development toolbar is gated out of production", () => {
+  it("the development toolbar no longer exists (Phase 224)", () => {
     const main = read("src/main.tsx");
-    expect(main).toContain("import.meta.env.DEV && (");
+    expect(main).not.toContain("VlyToolbar");
   });
 });
 
