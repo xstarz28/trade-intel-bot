@@ -23,9 +23,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { PositionContext, AlertSeverity } from "../position-protection/types";
-import type { MarketEvidence } from "../position-protection/thesis-health";
-import type { MarketEvidence as ThesisMarketEvidence } from "../position-protection/thesis-health";
+import type { PositionContext } from "../position-protection/types";
 
 // Scenario engine
 import {
@@ -52,11 +50,10 @@ import {
 } from "../position-protection/alert-lifecycle";
 import { detectShock } from "../position-protection/shock-detector";
 import {
-  calculateGiveback,
   classifyGivebackSeverity,
 } from "../position-protection/giveback-monitor";
 import { classifyEarlyProtection } from "../position-protection/early-protection";
-import { alertSeverityRank, urgencyRank } from "../position-protection/types";
+import { alertSeverityRank } from "../position-protection/types";
 import {
   createAccelerationState,
   recordPriceObservation,
@@ -77,7 +74,6 @@ import {
   registerInstrumentForPolling,
   processPollSuccess,
   processPollFailure,
-  shouldPollInstrument,
   getPollingDashboard,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";

@@ -1,0 +1,30 @@
+[package]
+name = "xstarz-analysis"
+version = "0.1.0"
+description = "Xstarz Analysis — trading and investment decision-support intelligence"
+authors = ["Xstarz"]
+edition = "2021"
+rust-version = "1.77.2"
+
+# The desktop shell is a thin wrapper around the SAME production web build.
+# There is no desktop-specific UI and no desktop-specific analysis engine:
+# every decision still comes from the protected Convex pipeline.
+[lib]
+name = "xstarz_analysis_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+
+[profile.release]
+# Smaller, faster binary. `panic = "abort"` also prevents unwinding across the
+# FFI boundary, which is undefined behaviour.
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

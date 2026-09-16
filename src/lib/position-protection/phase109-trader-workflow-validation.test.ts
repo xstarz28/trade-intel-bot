@@ -13,7 +13,7 @@ import {
   type RuntimeHealthInput,
   type RuntimeHealthSnapshot,
 } from "./runtime-health";
-import type { RuleAlert, AlertRule } from "./alert-rule-engine";
+import type { RuleAlert } from "./alert-rule-engine";
 import type {
   PositionIntelligence,
   EvidenceItem,
@@ -23,8 +23,6 @@ import type {
   PortfolioIntelligence,
   PortfolioSummary,
   PortfolioConflict,
-  PortfolioAlignment,
-  PortfolioWatchItem,
 } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
@@ -538,7 +536,7 @@ describe("Phase 109: Alert → Context Navigation", () => {
 
   it("position notification has positionId for navigation", () => {
     const alert = makeAlert({ positionId: "pos-1", instrument: "BTC/USDT" });
-    const notif = buildNotification(alert, "LONG");
+    buildNotification(alert, "LONG");
 
     expect(alert.positionId).toBe("pos-1");
     expect(alert.instrument).toBe("BTC/USDT");

@@ -7,7 +7,7 @@
  * Future Convex integration should implement this interface.
  */
 
-import type { AlertSeverity, MonitoringState } from "./types";
+import type { AlertSeverity } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
 // POSITION STATE (persisted)

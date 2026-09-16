@@ -14,10 +14,8 @@
 
 import type {
   AssetClass,
-  CanonicalInstrument,
   CapabilityQuality,
   DataCapability,
-  ProviderCapability,
   ProviderProfile,
   ProviderRoute,
   RouteResult,

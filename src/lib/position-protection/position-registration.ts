@@ -58,6 +58,33 @@ const VALID_HORIZONS = new Set(["SCALPING", "INTRADAY", "SWING", "INVESTING"]);
  * Validate a position registration input.
  * Never fabricates data — only validates what is provided.
  */
+/**
+ * True only for a real, usable positive price.
+ *
+ * `NaN <= 0` and `Infinity <= 0` are both false, so the obvious
+ * `typeof x !== "number" || x <= 0` check silently ACCEPTS NaN and Infinity.
+ * Those values then flow into arithmetic and render as "NaN" in the UI, so
+ * finiteness must be asserted explicitly.
+ */
+/**
+ * Describe a rejected numeric field in words a user can act on.
+ *
+ * These strings reach the registration panel directly, so "got: NaN" is not
+ * acceptable: it exposes an internal representation and tells the user
+ * nothing about what to change.
+ */
+function describeBadNumber(value: unknown): string {
+  if (typeof value !== "number") return "no value was entered";
+  if (Number.isNaN(value)) return "that is not a valid number";
+  if (!Number.isFinite(value)) return "that number is too large";
+  if (value <= 0) return `must be greater than zero, got ${value}`;
+  return `got ${value}`;
+}
+
+function isUsablePositiveNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
 export function validateRegistration(
   input: PositionRegistrationInput,
 ): ValidationResult {
@@ -76,17 +103,17 @@ export function validateRegistration(
     errors.push(`side must be LONG or SHORT, got: ${input.side}`);
   }
 
-  if (typeof input.entryPrice !== "number" || input.entryPrice <= 0) {
-    errors.push(`entryPrice must be a positive number, got: ${input.entryPrice}`);
+  if (!isUsablePositiveNumber(input.entryPrice)) {
+    errors.push(`Entry price: ${describeBadNumber(input.entryPrice)}.`);
   }
 
-  if (input.currentPrice !== undefined && (typeof input.currentPrice !== "number" || input.currentPrice <= 0)) {
-    errors.push(`currentPrice must be a positive number if provided, got: ${input.currentPrice}`);
+  if (input.currentPrice !== undefined && !isUsablePositiveNumber(input.currentPrice)) {
+    errors.push(`Current price: ${describeBadNumber(input.currentPrice)}.`);
   }
 
   if (input.stopLoss !== undefined) {
-    if (typeof input.stopLoss !== "number" || input.stopLoss <= 0) {
-      errors.push(`stopLoss must be a positive number if provided, got: ${input.stopLoss}`);
+    if (!isUsablePositiveNumber(input.stopLoss)) {
+      errors.push(`Stop loss: ${describeBadNumber(input.stopLoss)}.`);
     } else if (input.side === "LONG" && input.stopLoss >= input.entryPrice) {
       warnings.push("LONG stopLoss is above entryPrice — unusual but accepted.");
     } else if (input.side === "SHORT" && input.stopLoss <= input.entryPrice) {
@@ -95,8 +122,8 @@ export function validateRegistration(
   }
 
   if (input.takeProfit !== undefined) {
-    if (typeof input.takeProfit !== "number" || input.takeProfit <= 0) {
-      errors.push(`takeProfit must be a positive number if provided, got: ${input.takeProfit}`);
+    if (!isUsablePositiveNumber(input.takeProfit)) {
+      errors.push(`Take profit: ${describeBadNumber(input.takeProfit)}.`);
     } else if (input.side === "LONG" && input.takeProfit <= input.entryPrice) {
       warnings.push("LONG takeProfit is below entryPrice — unusual but accepted.");
     } else if (input.side === "SHORT" && input.takeProfit >= input.entryPrice) {
@@ -104,8 +131,19 @@ export function validateRegistration(
     }
   }
 
-  if (input.leverage !== undefined && (typeof input.leverage !== "number" || input.leverage < 1)) {
-    errors.push(`leverage must be >= 1 if provided, got: ${input.leverage}`);
+  if (
+    input.leverage !== undefined &&
+    (typeof input.leverage !== "number" ||
+      !Number.isFinite(input.leverage) ||
+      input.leverage < 1)
+  ) {
+    errors.push(
+      `Leverage: ${
+        typeof input.leverage === "number" && Number.isFinite(input.leverage)
+          ? `must be at least 1, got ${input.leverage}`
+          : describeBadNumber(input.leverage)
+      }.`,
+    );
   }
 
   if (!VALID_HORIZONS.has(input.horizon)) {

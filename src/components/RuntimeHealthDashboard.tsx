@@ -11,7 +11,7 @@
 import React, { useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapIntelligenceStatus } from "@/lib/i18n/enum-mapping";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import {
   buildRuntimeHealthSnapshot,
@@ -75,7 +75,6 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
     api.runtimeHealth.getRuntimeHealthHistory,
     showHistory ? { limit: 10 } : "skip",
   );
-  const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
 
   // Build live snapshot from input signals
   const liveSnapshot: RuntimeHealthSnapshot | null = useMemo(() => {
@@ -91,7 +90,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
     return {
       timestamp: latestHealth.timestamp,
       overallStatus: latestHealth.overallStatus as RuntimeHealthStatus,
-      components: (latestHealth.components as any[]).map((c: any) => ({
+      components: latestHealth.components.map((c) => ({
         component: c.component as RuntimeComponent,
         status: c.status as RuntimeHealthStatus,
         lastSuccessAt: c.lastSuccessAt,

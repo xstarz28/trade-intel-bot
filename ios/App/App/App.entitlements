@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Phase 179 — iOS Universal Links.
+
+	  Mirrors the Android App Links configuration. Requires
+	  https://<host>/.well-known/apple-app-site-association to be published
+	  and served as application/json with NO redirect, containing the
+	  TEAMID.app.xstarz.analysis app identifier.
+
+	  The Apple Team ID is NOT known in this environment and no signing
+	  material is committed, so universal links are CONFIGURED but NOT
+	  VERIFIED. Replace the host below with the production domain.
+	-->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:xstarz.app</string>
+	</array>
+</dict>
+</plist>

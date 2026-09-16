@@ -27,14 +27,13 @@ import { describe, it, expect } from "vitest";
 import type {
   PositionContext,
   AlertSeverity,
-  MonitoringState,
   ProtectionAlert,
 } from "../position-protection/types";
-import { alertSeverityRank, urgencyRank } from "../position-protection/types";
+import { alertSeverityRank } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
 
 // Core engines
-import { evaluateProtection, type ProtectionEngineInput } from "../position-protection/protection-engine";
+import { evaluateProtection } from "../position-protection/protection-engine";
 import {
   createMonitoringState,
   shouldAlert,
@@ -62,7 +61,6 @@ import {
   detectOutOfOrderEvent,
   verifyMemoryBounds,
   runRuntimeValidation,
-  type GuardResult,
 } from "../position-protection/phase69-runtime-hardening";
 
 // Controller
@@ -77,7 +75,6 @@ import {
   pausePosition,
   resumePosition,
   processEventForController,
-  evaluatePosition,
   shouldEvaluatePosition,
   getDashboard,
 } from "../position-protection/continuous-protection-controller";
@@ -105,10 +102,6 @@ import {
   registerInstrumentForPolling,
   processPollSuccess,
   processPollFailure,
-  shouldPollInstrument,
-  stopPollingService,
-  pausePollingService,
-  resumePollingService,
   getPollingDashboard,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
@@ -124,14 +117,11 @@ import {
 } from "../position-protection/phase66-scenarios";
 
 // Position priority
-import { computePositionPriority, sortByPriority } from "../position-protection/position-priority";
 
 // Giveback
 import { calculateGiveback, classifyGivebackSeverity } from "../position-protection/giveback-monitor";
 
 // Early protection
-import { classifyEarlyProtection } from "../position-protection/early-protection";
-import { aggregateTimeframeEvidence } from "../position-protection/multi-timeframe-engine";
 
 // Acceleration
 import {
@@ -155,9 +145,7 @@ import {
 import {
   createMonitorState,
   processEvent,
-  processEvents,
   addPosition,
-  removePosition,
   cleanup,
 } from "../position-protection/realtime-monitor";
 
@@ -418,7 +406,7 @@ describe("B. Live Polling Runtime Validation", () => {
   it("Duplicate polling prevention: same instrument cannot be polled twice", () => {
     let state = createPollingServiceState();
     state = startPollingService(state, NOW);
-    state = registerInstrumentForPolling(state, "BTC/USDT", NOW);
+    registerInstrumentForPolling(state, "BTC/USDT", NOW);
 
     const guard = guardAgainstDuplicatePolling(
       new Map([["BTC/USDT", { startedAt: NOW, provider: "OKX" }]]),

@@ -8,7 +8,6 @@
  * Missing components remain missing — never fabricated.
  */
 
-import type { AssetClass } from "@/lib/data/universal/types";
 import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation-engine";
 import type { MarketSnapshot, FreshnessLevel } from "./types";
 import type { UniverseEntry } from "./types";

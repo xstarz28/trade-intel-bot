@@ -1,0 +1,19 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "REPLACE_WITH_APPLE_TEAM_ID.app.xstarz.analysis",
+        "paths": [
+          "/",
+          "/auth",
+          "/auth/*",
+          "/dashboard",
+          "/dashboard/*",
+          "/journal",
+          "/journal/*"
+        ]
+      }
+    ]
+  }
+}

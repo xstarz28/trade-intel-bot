@@ -116,6 +116,14 @@ export interface IntelligenceResult {
   };
   error?: string;
   errorCode?: "API_UNAVAILABLE" | "RATE_LIMIT" | "AUTH_ERROR" | "NO_DATA";
+  /**
+   * Phase 178d — how this result was obtained, reported by the provider
+   * cache rather than inferred from timing. Diagnostics only; never a
+   * substitute for the payload's own observation timestamps.
+   */
+  acquisition?: "observed-now" | "observed-shared" | "cache-reused";
+  /** Phase 178d — original provider observation, preserved across hits. */
+  observedAt?: number;
 }
 
 /** Error codes from Alpha Vantage. */

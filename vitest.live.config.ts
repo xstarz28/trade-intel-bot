@@ -16,6 +16,7 @@ export default defineConfig({
       "src/**/phase72-*.test.ts",
       "src/**/phase73-*.test.ts",
       "src/**/phase74-*.test.ts",
+      "src/**/phase75-*.test.ts",
     ],
     testTimeout: 30_000,
   },

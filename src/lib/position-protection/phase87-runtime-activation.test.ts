@@ -23,7 +23,6 @@ import {
   type NewsItem,
 } from "./news-intelligence";
 import {
-  synthesizeFundamentals,
   interpretFundamental,
   classifyCatalyst,
   classifyEventImportance,
@@ -208,7 +207,7 @@ describe("D. Multi-Dimensional Integration", () => {
       news,
     });
     const primaryEvidence = md.evidence.filter(e => e.tier === "PRIMARY");
-    const contextEvidence = md.evidence.filter(e => e.tier === "CONTEXT");
+    md.evidence.filter(e => e.tier === "CONTEXT");
     // PRIMARY should exist and be stronger
     expect(primaryEvidence.length).toBeGreaterThan(0);
     expect(primaryEvidence[0].strength).toBe("STRONG");

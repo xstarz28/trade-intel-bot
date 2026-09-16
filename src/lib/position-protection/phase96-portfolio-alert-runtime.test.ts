@@ -5,18 +5,15 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
+import type { AlertRule } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import {
   evaluateAlertRuntimeBridge,
   extractPortfolioSnapshot,
-  buildInitialStateStore,
   type PreviousStateStore,
-  type PortfolioSnapshot,
 } from "./alert-runtime-bridge";
 import {
   generatePortfolioIntelligence,
-  type PortfolioIntelligence,
 } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════

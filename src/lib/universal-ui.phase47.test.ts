@@ -33,8 +33,6 @@ import type {
   CommodityIntelligenceContext,
   CrossAssetIntelligenceContext,
   UniversalEvidenceItem,
-  EvidenceDirection,
-  EvidenceStrength,
 } from "./data/universal/types";
 
 import type { AnalysisResult } from "@/types/analysis";
