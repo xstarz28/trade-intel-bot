@@ -582,7 +582,7 @@ describe("C. Live Data → Complete Protection Pipeline", () => {
     expect(typeof alertDecision.shouldFire).toBe("boolean");
 
     // 5. Persistence
-    const bridge = new ConvexPersistenceBridge(null);
+    new ConvexPersistenceBridge(null);
     const serialized = JSON.stringify(result.alert);
     const parsed = JSON.parse(serialized);
     expect(parsed.instrument).toBe("BTC/USDT");
@@ -666,7 +666,7 @@ describe("D. Source Mode Integrity", () => {
   });
 
   it("Freshness transitions are time-based and deterministic", () => {
-    const label = createLiveLabel("CoinGecko", NOW);
+    createLiveLabel("CoinGecko", NOW);
     expect(calculateFreshness(NOW, NOW + 30_000)).toBe("FRESH");
     expect(calculateFreshness(NOW, NOW + 90_000)).toBe("DELAYED");
     expect(calculateFreshness(NOW, NOW + 600_000)).toBe("STALE");
@@ -1212,7 +1212,7 @@ describe("L. Acceptance Gates", () => {
   });
 
   it("GATE: No secrets in any client-visible data", () => {
-    const bridge = new ConvexPersistenceBridge(null);
+    new ConvexPersistenceBridge(null);
     const snap = snapshot(createDiagnosticsState());
     expect(JSON.stringify(snap)).not.toMatch(/AKIA|sk_live|sk_test|ghp_|Bearer|process\.env/);
   });

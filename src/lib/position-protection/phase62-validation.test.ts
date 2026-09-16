@@ -44,7 +44,7 @@ import {
   dispatch,
   severityToNotificationPriority,
 } from "../position-protection/alert-dispatcher";
-import type { RealTimeEvent, PositionSnapshot } from "../position-protection/realtime-types";
+import type { PositionSnapshot } from "../position-protection/realtime-types";
 
 // ═══════════════════════════════════════════════════════════════
 // IMPORTS — Phase 59
@@ -68,7 +68,6 @@ import {
   processStreamEvent,
   getMonitoringStatus,
 } from "../market-stream/stream-orchestrator";
-import type { StreamEvent } from "../market-stream/types";
 
 // ═══════════════════════════════════════════════════════════════
 // IMPORTS — Phase 60/61

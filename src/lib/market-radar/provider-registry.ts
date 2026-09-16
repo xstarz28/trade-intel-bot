@@ -198,9 +198,6 @@ function buildTwelveDataAdapter(): ProviderAdapter {
       const price = parseFloat(latest.close);
       if (!Number.isFinite(price) || price <= 0) return null;
 
-      const open = parseFloat(latest.open);
-      const high = parseFloat(latest.high);
-      const low = parseFloat(latest.low);
       const volume = latest.volume ? parseFloat(latest.volume) : undefined;
 
       return {

@@ -88,10 +88,9 @@ export class MarketDataAcquisitionService {
   async acquire(
     instrument: string,
     assetClass: AssetClass,
-    now?: number,
+    _now?: number,
   ): Promise<AcquisitionResult> {
     const startTime = Date.now();
-    const timestamp = now ?? Date.now();
 
     // Check cache first (stale-while-revalidate)
     const cached = this.cache.get<MarketSnapshot>(

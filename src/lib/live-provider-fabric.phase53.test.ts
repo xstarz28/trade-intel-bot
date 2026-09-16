@@ -1029,7 +1029,7 @@ describe("BB — Concurrent Scanning", () => {
 describe("BC — Sequential Scanning Isolation", () => {
   it("sequential scans don't leak state", () => {
     const config = { horizons: ["INTRADAY" as const], maxResults: 5 };
-    const r1 = scanRadar([makeSource("BTC/USD", "crypto")], config, undefined, NOW);
+    scanRadar([makeSource("BTC/USD", "crypto")], config, undefined, NOW);
     const r2 = scanRadar([makeSource("EUR/USD", "forex")], config, undefined, NOW);
     expect(r2.results.get("INTRADAY")!.some(o => o.instrument === "BTC/USD")).toBe(false);
   });

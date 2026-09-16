@@ -678,7 +678,7 @@ describe("Phase 106 — Health Persistence & Guard", () => {
 
 describe("Phase 106 — Lifecycle Cleanup", () => {
   it("rule deletion stops future evaluation", () => {
-    const rule = makeRule({ ruleId: "deleted-rule" });
+    makeRule({ ruleId: "deleted-rule" });
     const rules: AlertRule[] = [];
     const ctx = makeCtx();
     const records = new Map<string, RuleTriggerRecord>();

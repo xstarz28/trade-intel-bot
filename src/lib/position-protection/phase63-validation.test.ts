@@ -1546,8 +1546,8 @@ describe("EE. Market Radar Compatibility", () => {
 
 describe("FF. Horizon Sensitivity", () => {
   it("SCALPING has tighter thresholds than INVESTING", () => {
-    const scalp = longBtc({ horizon: "SCALPING" });
-    const invest = longBtc({ horizon: "INVESTING" });
+    longBtc({ horizon: "SCALPING" });
+    longBtc({ horizon: "INVESTING" });
 
     // For SCALPING, even small giveback should be detected
     const scalpGb = calculateGiveback(

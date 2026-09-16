@@ -573,7 +573,7 @@ describe("Phase 38 — Runtime & Data-Failure Resilience", () => {
       const snap1Fingerprint = entry1.analysisSnapshot.decisionFingerprint;
 
       // Run another analysis
-      const r2 = run(buildInput("BTC/USD", "crypto", bullCandles()));
+      run(buildInput("BTC/USD", "crypto", bullCandles()));
       // entry1 snapshot must remain unchanged
       expect(entry1.analysisSnapshot.decisionFingerprint).toBe(snap1Fingerprint);
     });

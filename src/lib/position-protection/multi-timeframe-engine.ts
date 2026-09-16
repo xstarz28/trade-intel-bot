@@ -393,26 +393,20 @@ export function aggregateTimeframeEvidence(
     };
   }
 
-  let htfCount = 0;
-  let ltfCount = 0;
   let htfAdverse = 0;
   let ltfAdverse = 0;
   let totalConf = 0;
   let hasHTFBroken = false;
-  let hasLTFBroken = false;
 
   for (const e of evidences) {
     const rank = tfRank(e.timeframe);
     totalConf += e.confirmationConfidence;
     if (rank >= 2) {
       // H1, H4, D1
-      htfCount++;
       if (e.adverseTrend || e.structureBroken) htfAdverse++;
       if (e.structureBroken) hasHTFBroken = true;
     } else {
-      ltfCount++;
       if (e.adverseTrend || e.structureBroken) ltfAdverse++;
-      if (e.structureBroken) hasLTFBroken = true;
     }
   }
 

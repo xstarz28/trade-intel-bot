@@ -406,7 +406,7 @@ describe("B. Live Polling Runtime Validation", () => {
   it("Duplicate polling prevention: same instrument cannot be polled twice", () => {
     let state = createPollingServiceState();
     state = startPollingService(state, NOW);
-    state = registerInstrumentForPolling(state, "BTC/USDT", NOW);
+    registerInstrumentForPolling(state, "BTC/USDT", NOW);
 
     const guard = guardAgainstDuplicatePolling(
       new Map([["BTC/USDT", { startedAt: NOW, provider: "OKX" }]]),

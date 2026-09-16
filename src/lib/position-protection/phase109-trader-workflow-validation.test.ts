@@ -536,7 +536,7 @@ describe("Phase 109: Alert → Context Navigation", () => {
 
   it("position notification has positionId for navigation", () => {
     const alert = makeAlert({ positionId: "pos-1", instrument: "BTC/USDT" });
-    const notif = buildNotification(alert, "LONG");
+    buildNotification(alert, "LONG");
 
     expect(alert.positionId).toBe("pos-1");
     expect(alert.instrument).toBe("BTC/USDT");

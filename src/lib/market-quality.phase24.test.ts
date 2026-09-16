@@ -204,8 +204,6 @@ describe("R:R boundary — MIN_RR = 1.5", () => {
     }
     // If RR < 1.5 is the reason, recommendation is NO_TRADE
     if (result.recommendation === "NO_TRADE") {
-      const reasons = result.noTradeReasons.join(" ").toLowerCase();
-      const hasRRGate = reasons.includes("rr") || reasons.includes("risk") || reasons.includes("reward");
       // No_TRADE can happen for many reasons; just verify no tradePlan exists
       expect(result.tradePlan).toBeUndefined();
     }

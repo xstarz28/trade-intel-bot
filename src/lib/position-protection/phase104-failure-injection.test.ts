@@ -522,7 +522,6 @@ describe("Phase 104 — Runtime Health Invariants", () => {
   });
 
   it("overall health classification deterministic", () => {
-    const now = Date.now();
     const components: RuntimeHealthComponent[] = [
       { component: "MARKET_DATA", status: "HEALTHY", consecutiveFailures: 0, message: "ok", freshness: "FRESH" },
       { component: "OHLCV", status: "HEALTHY", consecutiveFailures: 0, message: "ok", freshness: "FRESH" },
