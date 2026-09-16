@@ -33,6 +33,7 @@ import {
 } from "@/lib/discovery/runtime";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
+import { derivativesForRadar } from "@/lib/market-radar/derivatives-bridge";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -846,8 +847,15 @@ export default function Dashboard() {
   useMemo(() => {
     if (liveSources.length === 0) return;
     // Build radar candidate sources from analysis history
+    const radarNow = Date.now();
     const radarSources: RadarCandidateSource[] = liveSources.map(ls => {
       const ar = ls.analysisResult;
+      // Phase 226 — CoinGlass derivatives reach the radar only through the
+      // provenance-checked bridge (symbol identity, provider timestamp,
+      // per-dataset availability). Anything rejected stays undefined.
+      const derivatives = ls.assetClass === "crypto"
+        ? derivativesForRadar(ls.instrument, ls.derivativesData, radarNow).derivatives
+        : undefined;
       return {
         universe: {
           instrument: ls.instrument,
@@ -902,6 +910,7 @@ export default function Dashboard() {
             ? "UNAVAILABLE"
             : "VERIFIED",
         } : null,
+        ...(derivatives ? { derivatives } : {}),
         analysisResult: ar ? {
           confidence: ar.confidence,
           bias: ar.bias,

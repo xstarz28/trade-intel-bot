@@ -273,45 +273,27 @@ function buildCoinGeckoAdapter(): ProviderAdapter {
 // ═══════════════════════════════════════════════════════════════
 
 function buildCoinGlassAdapter(): ProviderAdapter {
-  const COINGLASS_SYMBOLS: Record<string, string> = {
-    "BTC/USD": "BTC", "ETH/USD": "ETH", "SOL/USD": "SOL",
-    "DOGE/USD": "DOGE", "XRP/USD": "XRP", "ADA/USD": "ADA",
-  };
   return buildAdapter(
     "coinglass", "CoinGlass", ["crypto"], ["derivatives"],
-    async (instrument, assetClass, readEnv) => {
-      const cred = checkCredentials("coinglass", readEnv);
-      if (cred && !cred.available) return null;
-      const apiKey = readEnv?.("COINGLASS_API_KEY") ?? "";
-      if (!apiKey) return null;
-      const symbol = COINGLASS_SYMBOLS[instrument]?.toUpperCase();
-      if (!symbol) return null;
-      try {
-        const baseUrl = "https://open-api-v3.coinglass.com/api";
-        const [oiRes, fundingRes] = await Promise.allSettled([
-          defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`),
-          defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`),
-        ]);
-        let price = 0;
-        let openInterest: number | undefined;
-        let fundingRate: number | undefined;
-        if (oiRes.status === "fulfilled" && oiRes.value.ok && oiRes.value.json) {
-          const d = oiRes.value.json as { data?: { openInterest?: string; lastPrice?: string } };
-          openInterest = d.data?.openInterest ? parseFloat(d.data.openInterest) : undefined;
-          price = d.data?.lastPrice ? parseFloat(d.data.lastPrice) : 0;
-        }
-        if (fundingRes.status === "fulfilled" && fundingRes.value.ok && fundingRes.value.json) {
-          const d = fundingRes.value.json as { data?: { data?: [{ value?: string }] } };
-          fundingRate = d.data?.data?.[0]?.value ? parseFloat(d.data.data[0].value) : undefined;
-        }
-        if (!Number.isFinite(price) || price <= 0) return null;
-        return {
-          instrument, assetClass, price, ohlcvAvailable: false,
-          availableTimeframes: [], provider: "coinglass",
-          observedAt: Date.now(), freshness: "FRESH", quality: "VERIFIED",
-        };
-      } catch { return null; }
-    },
+    /*
+      Phase 226 — this adapter exists so the registry, health summary and
+      universe `requiredCapabilities` know CoinGlass as the crypto
+      derivatives provider. It does NOT acquire data here:
+
+      - `MarketSnapshot` has no derivatives field, so the previous
+        implementation parsed openInterest/fundingRate and then threw them
+        away, returning only `lastPrice` stamped `observedAt: Date.now()`,
+        `freshness: "FRESH"` — a non-realtime provider labelled live.
+      - The generic transport carries no `cg_api_key` header, so the calls
+        could never authenticate.
+      - `acquireLiveData` only ever selects `quote`/`ohlcv` adapters.
+
+      Authenticated acquisition is `convex/coinglass.fetchDerivatives`
+      (server-side key, provider observation timestamp preserved); it reaches
+      the radar through `market-radar/derivatives-bridge.ts`. Returning null
+      keeps this provider honest: no price, no fabricated freshness.
+    */
+    async () => null,
   );
 }
 
