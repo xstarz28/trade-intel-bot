@@ -38,54 +38,27 @@ const CG_BASE = "https://open-api-v3.coinglass.com/api";
 
 // ── Phase 228 — per-leg outcome taxonomy ────────────────────────
 //
-// Every leg call ends in exactly one of these classes. The FATAL classes
+// Every leg call ends in exactly one class (see lib/legOutcome.ts, shared with
+// Alpha Vantage and TickAtlas since Phase 229). The FATAL classes
 // (rate_limit, auth) are thrown out of the leg so the Phase 178b check in the
-// cache fetcher can fail the whole acquisition uncached — before this phase
+// cache fetcher can fail the whole acquisition uncached — before Phase 228
 // each leg swallowed them (`catch { return undefined }`), so a 429 on all
 // four legs was stored and served as `success: true, confidence: unavailable`.
 // The remaining classes are NON-FATAL: the leg is reported as unavailable in
 // `availability`, and the class + reason is carried on the payload's
-// existing `error` field so nothing downstream can mistake a transport or
-// provider failure for "the market simply has no open interest".
-export type LegFailureKind =
-  | "unavailable" // provider answered, but sent no usable reading
-  | "malformed" // provider answered with a body we cannot parse
-  | "timeout" // Phase 177 HTTP deadline hit
-  | "network" // DNS / TLS / connection failure
-  | "provider_error"; // non-2xx HTTP or non-zero CoinGlass code (not 429/401/403)
-
-export type LegOutcome<T> =
-  | { status: "ok"; value: T }
-  | { status: LegFailureKind; reason: string };
-
-const FATAL_PREFIXES = ["RATE_LIMIT", "AUTH_ERROR"] as const;
-export function isFatalLegError(err: unknown): boolean {
-  const msg = errorMessage(err);
-  return FATAL_PREFIXES.some((p) => msg.startsWith(p));
-}
-
-class CgHttpError extends Error {
-  readonly status: number;
-  constructor(status: number, statusText: string) {
-    super(`CoinGlass HTTP ${status}: ${statusText}`);
-    this.status = status;
-  }
-}
-class CgProviderError extends Error {}
-class CgMalformedError extends Error {}
-
-/** Classify a NON-fatal leg error. Fatal ones must be rethrown before this. */
-export function classifyLegError(err: unknown): { status: LegFailureKind; reason: string } {
-  const reason = errorMessage(err) || "unknown error";
-  if (err instanceof CgHttpError || err instanceof CgProviderError) return { status: "provider_error", reason };
-  if (err instanceof CgMalformedError) return { status: "malformed", reason };
-  const name = isRecord(err) ? asString(err.name) : undefined;
-  if (name === "TimeoutError" || name === "AbortError") return { status: "timeout", reason };
-  if (err instanceof SyntaxError) return { status: "malformed", reason };
-  // undici surfaces connection failures as TypeError("fetch failed").
-  if (err instanceof TypeError) return { status: "network", reason };
-  return { status: "provider_error", reason };
-}
+// existing `error` field.
+import {
+  classifyLegError,
+  isFatalLegError,
+  runLeg,
+  summarizeLegFailures,
+  ProviderHttpError,
+  ProviderMalformedError,
+  ProviderNativeError,
+  type LegOutcome,
+} from "./lib/legOutcome";
+export { classifyLegError, isFatalLegError, summarizeLegFailures };
+export type { LegFailureKind, LegOutcome } from "./lib/legOutcome";
 
 async function cgFetch(path: string, apiKey: string): Promise<unknown> {
   const res = await fetch(`${CG_BASE}${path}`, {
@@ -102,13 +75,13 @@ async function cgFetch(path: string, apiKey: string): Promise<unknown> {
     // AUTH_ERROR. Both transports must classify identically.
     if (res.status === 429) throw new Error(`RATE_LIMIT: HTTP 429 ${res.statusText}`);
     if (res.status === 401 || res.status === 403) throw new Error(`AUTH_ERROR: HTTP ${res.status} ${res.statusText}`);
-    throw new CgHttpError(res.status, res.statusText);
+    throw new ProviderHttpError("CoinGlass", res.status, res.statusText);
   }
   let json: unknown;
   try {
     json = await res.json();
   } catch (err: unknown) {
-    throw new CgMalformedError(`CoinGlass body is not JSON: ${errorMessage(err)}`);
+    throw new ProviderMalformedError(`CoinGlass body is not JSON: ${errorMessage(err)}`);
   }
   // CoinGlass V3/V4 wraps in { code, msg, data }
   const code = field(json, "code");
@@ -120,28 +93,12 @@ async function cgFetch(path: string, apiKey: string): Promise<unknown> {
     if (String(code) === "401" || String(code) === "403") {
       throw new Error("AUTH_ERROR:" + msg);
     }
-    throw new CgProviderError(`CoinGlass error ${String(code)}: ${msg}`);
+    throw new ProviderNativeError(`CoinGlass error ${String(code)}: ${msg}`);
   }
   const data = field(json, "data");
   return data ?? json;
 }
 
-/**
- * Run one leg: fatal errors propagate (rejecting the leg promise), every other
- * failure becomes a classified outcome; a parser returning undefined is the
- * "provider answered, nothing usable" class.
- */
-async function runLeg<T>(parse: () => Promise<T | undefined>): Promise<LegOutcome<T>> {
-  try {
-    const value = await parse();
-    return value === undefined
-      ? { status: "unavailable", reason: "no usable reading in provider response" }
-      : { status: "ok", value };
-  } catch (err: unknown) {
-    if (isFatalLegError(err)) throw err;
-    return classifyLegError(err);
-  }
-}
 
 // ── Symbol mapping ──────────────────────────────────────────────
 
@@ -317,14 +274,6 @@ export const fetchDerivatives = action({
 // A field that is absent or non-numeric yields undefined, never 0: the old
 // `parseFloat(x || "0")` chain reported a *zero* funding rate / ratio as an
 // available reading when the provider had simply not sent one.
-
-/** "openInterest: timeout (…); fundingRate: provider_error (…)" — or "" when none. */
-export function summarizeLegFailures(legs: Record<string, LegOutcome<unknown>>): string {
-  return Object.entries(legs)
-    .filter(([, l]) => l.status !== "ok" && l.status !== "unavailable")
-    .map(([name, l]) => `${name}: ${l.status}${"reason" in l && l.reason ? ` (${l.reason})` : ""}`)
-    .join("; ");
-}
 
 function points(data: unknown): JsonRecord[] {
   if (Array.isArray(data)) return asRecordArray(data);

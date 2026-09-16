@@ -398,9 +398,13 @@ describe("an action with zero completed cache reads claims nothing", () => {
       instrumentType: "crypto",
     })) as { success: boolean; acquisition?: string; observedAt?: number };
 
-    // The action still succeeds (graceful degradation is correct)...
-    expect(result.success).toBe(true);
-    // ...but it must make NO acquisition claim.
+    // Phase 229: the only fetched leg died at the transport, so this is a
+    // provider outage and the envelope says so (API_UNAVAILABLE) instead of
+    // a success-looking empty payload. Callers degrade on `success: false`
+    // exactly as they did before.
+    expect(result.success).toBe(false);
+    expect((result as { errorCode?: string }).errorCode).toBe("API_UNAVAILABLE");
+    // And it still makes NO acquisition claim.
     expect(result.acquisition).toBeUndefined();
     expect(result.observedAt).toBeUndefined();
   });
