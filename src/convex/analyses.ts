@@ -1,45 +1,11 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { userIdFromSubject } from "./lib/identitySubject";
-import type { Id } from "./_generated/dataModel";
+import { resolveUser } from "./lib/authUser";
 
 /**
  * Resolve the current user from the auth identity.
  * Works for both email-based and anonymous/guest users.
  */
-async function resolveUser(ctx: {
-  auth: {
-    getUserIdentity: () => Promise<{
-      email?: string;
-      subject: string;
-    } | null>;
-  };
-  db: any;
-}) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) return null;
-
-  // Try email lookup first (registered users)
-  if (identity.email) {
-    const byEmail = await ctx.db
-      .query("users")
-      .withIndex("email", (q: any) => q.eq("email", identity.email))
-      .unique();
-    if (byEmail) return byEmail;
-  }
-
-  // Fall back to subject lookup (anonymous / guest users).
-  // Convex Auth mints `sub` as `userId|sessionId`, so the raw subject is NOT a
-  // document id — it must be split first. See src/convex/lib/identitySubject.ts.
-  const userId = userIdFromSubject(identity.subject);
-  if (!userId) return null;
-  try {
-    const byId = await ctx.db.get(userId as Id<"users">);
-    return byId;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Save an analysis to the user's history.
@@ -126,7 +92,7 @@ export const list = query({
 
     return await ctx.db
       .query("analyses")
-      .filter((q: any) => q.eq(q.field("userId"), user._id))
+      .filter((q) => q.eq(q.field("userId"), user._id))
       .order("desc")
       .take(20);
   },
