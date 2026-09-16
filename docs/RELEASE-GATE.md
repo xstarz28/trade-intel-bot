@@ -711,3 +711,61 @@ tsc ✓ · `vite build` ✓ · full suite ✓ · eslint **1510** (new baseline) 
 `npm run mobile:verify` PASS · `convex:preflight` `no-freebuff-otp-dependency`
 PASS · secret scan (diff) none · generated drift none.
 Guard: `src/lib/platform-residue.phase224.test.ts`.
+
+## Phase 225 — `no-unused-vars` backlog 867 → 5 (no behavior change)
+
+**Nothing in this phase changes a blocker status.** A1/A2/A3 BLOCKED (issuer),
+B–E as in Phase 221, Evidence D INCOMPLETE, `main` untouched, no deployment,
+no history rewrite. Pure lint-debt reduction, done in reviewed batches; no
+`eslint-disable`, no `@ts-ignore`, no dummy reads, rule stays `error`.
+
+### Batches
+
+| Batch | Category | Method | Count after |
+| --- | --- | --- | --- |
+| 1 | audit + AST classification (a–h) | typescript AST classifier over `eslint -f json` | 866 baseline (867 in Phase 224 minus one deleted file) |
+| 2 `c0cf191` | (a) unused import specifiers | specifier-level removal only; side-effect / whole-statement imports untouched; 166 files | 170 |
+| 3 `ce47f31` | (b/e) dead locals, module constants, one dead `interface` | statement removed only when initializer proven side-effect-free by AST (literal, identifier, member access, object/array literal, JSX, function expression) | 110 |
+| 4 `446196a` | (c/d) parameters + destructured bindings | 38 trailing non-contract params removed and 18 call sites narrowed (tsc-driven); 14 contract params (`_ctx` Convex handlers, callback / interface / positional API signatures) renamed with the existing `_` convention — arity unchanged; object destructures pruned, positional array destructures use `_` | 86 |
+| 5 `d4f3b0d` | manual residue review | each item read in context; test locals keep the invocation and drop only the binding; dead counters/flags removed; five never-called private helpers deleted (`evidence.ts` ×2, `forward-market-path.ts` ×2, `investor-portfolio-summary.ts`) | **5** |
+
+`eslint.config.js` now states the rule explicitly: `argsIgnorePattern: "^_"`
+(parameters only, the convention the repo already used 19 times),
+`varsIgnorePattern: "^(?!)"` (locals/imports/types can **never** opt out),
+`caughtErrors: "all"`, `ignoreRestSiblings: true`.
+
+### Intentionally left (5) — latent logic, not dead code
+
+| File | Symbol | Why not removed |
+| --- | --- | --- |
+| `src/components/Journal.tsx:103,115` | `handleClose`, `handleUpdateNotes` | Fully-formed close-trade / notes handlers that were never wired to the UI. Deleting them hides a missing feature; wiring them is a product change. |
+| `src/lib/market-radar/provider-registry.ts:300,305` | `openInterest`, `fundingRate` | Coinglass adapter parses both but the returned snapshot omits them, while `candidate-builder.ts` / `radar.ts` read `source.derivatives.*`. This is a probable data-flow bug, not dead code; fixing it changes radar output and needs its own phase + tests. |
+| `src/lib/position-protection/phase69-runtime-hardening.ts:540` | `hasSecret` | `NO_SECRETS_IN_ALERT` stage computes the check and then hard-codes `passed: true`. Removing the variable would cement the no-op; using it would change gate behavior. Needs a decision, recorded here. |
+
+### Reviewed and kept (not flagged after batch 4)
+
+Contract parameters renamed rather than removed: `src/convex/okx.ts` /
+`treasury.ts` `_ctx`; `decision-support.ts` `_side`;
+`alert-observability.ts`, `continuous-protection-controller.ts`,
+`live-polling-service.ts`, `reconnection-engine.ts`,
+`user-intelligence-feed.ts` `_now`; `provider-routing.ts` `_provider`;
+`journal.ts` `_result`; `trader-intelligence.ts` `_confluence`;
+`phase69-runtime-hardening.ts` `_instrument`; `market-radar/acquisition.ts`
+`_now` (public `acquire()` signature, forwarded by `acquireBatch`).
+
+### Validation
+
+`tsc -b` ✓ · `vite build` ✓ · vitest 269 files / 9532 pass (12 skipped, as
+before) after **every** batch · eslint total 1510 → **647**
+(`no-unused-vars` 867 → 5; every other rule count unchanged) ·
+`npm run mobile:verify` PASS · `verify-deployment-config`
+`no-freebuff-otp-dependency` PASS (still REJECTED 3 FAIL on absent prod
+inputs, as in Phase 224) · `docs/i18n-key-usage.json` regenerated, no diff ·
+diff secret scan none · `src/convex/` touched only by two import-specifier
+removals (`eia.ts`, `treasury.ts`), no handler/auth/schema change.
+
+### Next
+Phase 226: decide the three latent-logic items above (wire or delete
+`Journal` handlers; return `derivatives` from the Coinglass adapter; make
+`NO_SECRETS_IN_ALERT` real or drop the stage), each with tests. Lint
+backlog after that is `no-explicit-any` (540), `prefer-const` (28).
