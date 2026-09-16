@@ -19,12 +19,20 @@ import { getRelevantCurrencies, calculateMacroRisk } from "../lib/data/calendar-
 // Replaces this module's private Map cache so calendar evidence shares one
 // set of TTL / freshness / single-flight semantics with every other provider.
 import { getProviderCache } from "../lib/data/provider-cache-registry";
+import {
+  asRecordArray,
+  asString,
+  errorMessage,
+  field,
+  isRecord,
+  type JsonRecord,
+} from "./lib/json";
 
 // ── TickAtlas API ────────────────────────────────────────────────
 
 const TA_BASE = "https://tickatlas.com/v1";
 
-async function taFetch(path: string, apiKey: string): Promise<any> {
+async function taFetch(path: string, apiKey: string): Promise<unknown> {
   const url = `${TA_BASE}${path}`;
   const res = await fetch(url, {
     // Phase 177 — HTTP deadline below the 8s tickatlas leg budget.
@@ -44,7 +52,22 @@ async function taFetch(path: string, apiKey: string): Promise<any> {
     }
     throw new Error(`TickAtlas HTTP ${res.status}: ${text || res.statusText}`);
   }
-  return res.json();
+  const json: unknown = await res.json();
+  return json;
+}
+
+/**
+ * TickAtlas wraps the calendar as `{ success, data: { events: [...] } }` or,
+ * on older routes, `{ data: [...] }`. Anything else is "no events" — never a
+ * crash, never a synthesized event.
+ */
+function extractEvents(result: unknown): JsonRecord[] {
+  const data = field(result, "data");
+  if (field(result, "success") && Array.isArray(field(data, "events"))) {
+    return asRecordArray(field(data, "events"));
+  }
+  if (Array.isArray(data)) return asRecordArray(data);
+  return [];
 }
 
 // ── Currency → Country Mapping ───────────────────────────────────
@@ -65,31 +88,49 @@ const CURRENCY_COUNTRY: Record<string, string> = {
 
 // ── Response Normalization ───────────────────────────────────────
 
-function normalizeImportance(raw: string | undefined): EventImportance {
-  if (!raw) return 1;
+function normalizeImportance(raw: unknown): EventImportance {
+  if (typeof raw !== "string" || raw === "") return 1;
   const lower = raw.toLowerCase();
   if (lower === "high") return 3;
   if (lower === "medium") return 2;
   return 1;
 }
 
-function parseValue(raw: any): number | string | undefined {
-  if (raw === null || raw === undefined || raw === "" || raw === "‑" || raw === "—") {
-    return undefined;
-  }
+/**
+ * Actual/forecast/previous cells: numbers pass through when finite, numeric
+ * strings are parsed, other strings (e.g. "2.5%") are kept verbatim, and
+ * blanks/dashes/objects are undefined.
+ */
+function parseValue(raw: unknown): number | string | undefined {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : undefined;
+  if (typeof raw !== "string") return undefined;
+  if (raw === "" || raw === "‑" || raw === "—") return undefined;
   const num = Number(raw);
-  if (!isNaN(num) && raw !== "") return num;
-  return String(raw);
+  if (Number.isFinite(num)) return num;
+  return raw;
 }
 
-function normalizeEvent(raw: any): EconomicEvent | null {
-  if (!raw) return null;
+/** First string-valued field among `keys`, or undefined. */
+function str(raw: JsonRecord, ...keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = asString(raw[k]);
+    if (v !== undefined) return v;
+  }
+  return undefined;
+}
 
-  const id = raw.id ?? `ta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const eventName = raw.event ?? raw.Event ?? "";
+function normalizeEvent(raw: unknown): EconomicEvent | null {
+  if (!isRecord(raw)) return null;
+
+  const rawId = raw.id;
+  const id =
+    typeof rawId === "string" || typeof rawId === "number"
+      ? String(rawId)
+      : `ta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const eventName = str(raw, "event", "Event");
   if (!eventName) return null;
 
-  const currency = raw.currency ?? raw.Currency ?? "";
+  const currency = str(raw, "currency", "Currency") ?? "";
   const country = CURRENCY_COUNTRY[currency] ?? "";
 
   // Parse datetime — the event's schedule time is provenance supplied by the
@@ -97,9 +138,10 @@ function normalizeEvent(raw: any): EconomicEvent | null {
   // unusable (same rule as a Treasury entry without an observation date).
   // Substituting the local clock manufactured a "scheduled right now"
   // event that then drove status, macro-risk and the upcoming-events view.
-  const dateStr = raw.datetime ?? raw.Date ?? raw.date;
-  if (dateStr === undefined || dateStr === null || dateStr === "") return null;
-  const datetime = new Date(dateStr).getTime();
+  const dateRaw = raw.datetime ?? raw.Date ?? raw.date;
+  if (typeof dateRaw !== "string" && typeof dateRaw !== "number") return null;
+  if (dateRaw === "") return null;
+  const datetime = new Date(dateRaw).getTime();
   if (!Number.isFinite(datetime)) return null;
 
   // Determine status from actual/forecast
@@ -116,9 +158,9 @@ function normalizeEvent(raw: any): EconomicEvent | null {
   }
 
   return {
-    id: String(id),
+    id,
     event: eventName,
-    category: raw.category ?? raw.Category ?? "",
+    category: str(raw, "category", "Category") ?? "",
     country,
     currency,
     datetime,
@@ -128,8 +170,8 @@ function normalizeEvent(raw: any): EconomicEvent | null {
     revised,
     importance: normalizeImportance(raw.impact ?? raw.Importance),
     source: "tickatlas",
-    sourceUrl: raw.url ?? raw.Source_url,
-    referencePeriod: raw.period ?? raw.Period,
+    sourceUrl: str(raw, "url", "Source_url"),
+    referencePeriod: str(raw, "period", "Period"),
     status,
   };
 }
@@ -187,22 +229,18 @@ export const fetchCalendar = action({
       const dateFrom = now.toISOString().split("T")[0];
       const dateTo = in7Days.toISOString().split("T")[0];
 
-      let rawEvents: any[] = [];
+      let rawEvents: JsonRecord[] = [];
       try {
         const result = await taFetch(
           `/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`,
           apiKey,
         );
-        if (result?.success && Array.isArray(result?.data?.events)) {
-          rawEvents = result.data.events;
-        } else if (Array.isArray(result?.data)) {
-          rawEvents = result.data;
-        }
-      } catch (err: any) {
+        rawEvents = extractEvents(result);
+      } catch (err: unknown) {
         // Phase 178b — rethrow out of the cache fetcher so a 429 or auth
         // failure is never stored as evidence. Re-classified by the outer
         // catch into the action's error envelope.
-        const m = String(err?.message);
+        const m = errorMessage(err);
         if (m.startsWith("RATE_LIMIT") || m.startsWith("AUTH_ERROR")) throw err;
       }
 
@@ -215,11 +253,9 @@ export const fetchCalendar = action({
           `/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`,
           apiKey,
         );
-        const pastEvents = result?.success && Array.isArray(result?.data?.events)
-          ? result.data.events
-          : Array.isArray(result?.data) ? result.data : [];
-        if (Array.isArray(pastEvents)) {
-          const existingIds = new Set(rawEvents.map((e: any) => e.id));
+        const pastEvents = extractEvents(result);
+        {
+          const existingIds = new Set(rawEvents.map((e) => e.id));
           for (const evt of pastEvents) {
             if (evt.id && !existingIds.has(evt.id)) {
               const norm = normalizeEvent(evt);
@@ -301,8 +337,8 @@ export const fetchCalendar = action({
         acquisition: evidence.acquisition,
         observedAt: evidence.observedAt,
       };
-    } catch (err: any) {
-      const msg = String(err?.message ?? "unknown error");
+    } catch (err: unknown) {
+      const msg = errorMessage(err) || "unknown error";
       if (msg.startsWith("RATE_LIMIT")) {
         return { success: false, error: "TickAtlas rate limit exceeded.", errorCode: "RATE_LIMIT" };
       }

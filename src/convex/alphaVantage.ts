@@ -15,6 +15,15 @@ import type {
   MacroData,
   IntelligenceResult,
 } from "../lib/data/intelligence-types";
+import {
+  asFiniteNumber,
+  asNonEmptyString,
+  asRecordArray,
+  asString,
+  errorMessage,
+  field,
+  isRecord,
+} from "./lib/json";
 
 // ── Phase 178b — authoritative provider cache ───────────────────
 // This module previously kept its own `Map` cache. That created split cache
@@ -30,7 +39,7 @@ import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-d
 
 const AV_BASE = "https://www.alphavantage.co/query";
 
-async function avFetch(params: Record<string, string>, apiKey: string): Promise<any> {
+async function avFetch(params: Record<string, string>, apiKey: string): Promise<unknown> {
   const qs = new URLSearchParams({ ...params, apikey: apiKey }).toString();
   const res = await fetch(`${AV_BASE}?${qs}`, {
     // Phase 177 — HTTP deadline below the 8s alpha-vantage leg budget.
@@ -39,10 +48,11 @@ async function avFetch(params: Record<string, string>, apiKey: string): Promise<
   if (!res.ok) {
     throw new Error(`Alpha Vantage HTTP ${res.status}: ${res.statusText}`);
   }
-  const json = await res.json();
+  const json: unknown = await res.json();
   // AV returns "Note" or "Information" on rate limits
-  if (json.Note || json.Information) {
-    throw new Error("RATE_LIMIT:" + (json.Note || json.Information));
+  const note = asNonEmptyString(field(json, "Note")) ?? asNonEmptyString(field(json, "Information"));
+  if (note) {
+    throw new Error("RATE_LIMIT:" + note);
   }
   return json;
 }
@@ -154,8 +164,8 @@ export const fetchIntelligence = action({
             observations.push(evidence.observedAt);
           }
           sentiment = aggregateFromArticles(articles, "alpha-vantage");
-        } catch (err: any) {
-          if (String(err?.message).startsWith("RATE_LIMIT")) {
+        } catch (err: unknown) {
+          if (errorMessage(err).startsWith("RATE_LIMIT")) {
             return {
               success: false,
               dataAvailable: { news: false, fundamentals: false, macro: false },
@@ -214,8 +224,8 @@ export const fetchIntelligence = action({
               acquisitions.push(evidence.acquisition);
               observations.push(evidence.observedAt);
             }
-          } catch (err: any) {
-            if (String(err?.message).startsWith("RATE_LIMIT")) {
+          } catch (err: unknown) {
+            if (errorMessage(err).startsWith("RATE_LIMIT")) {
               return {
                 success: false,
                 dataAvailable: { news: !!articles.length, fundamentals: false, macro: false },
@@ -259,11 +269,11 @@ export const fetchIntelligence = action({
         acquisition: envelopeAcquisition(acquisitions),
         observedAt: oldestObservation(observations),
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
         dataAvailable: { news: false, fundamentals: false, macro: false },
-        error: `Intelligence fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Intelligence fetch failed: ${errorMessage(err) || "unknown error"}`,
         errorCode: "API_UNAVAILABLE",
       };
     }
@@ -272,54 +282,57 @@ export const fetchIntelligence = action({
 
 // ── Normalization (duplicated from client-side for Convex compat) ─
 
-function normalizeNewsFromAV(json: any, relatedTicker: string): NewsArticle[] {
-  const feed = json?.feed;
-  if (!feed || !Array.isArray(feed)) return [];
+function normalizeNewsFromAV(json: unknown, relatedTicker: string): NewsArticle[] {
+  const feed = field(json, "feed");
+  if (!Array.isArray(feed)) return [];
+  const wanted = relatedTicker.toUpperCase();
 
-  return feed
-    .filter((item: any) => item.title && item.url)
-    .map((item: any) => {
-      const tickerSentiment = item.ticker_sentiment?.find(
-        (ts: any) =>
-          ts.ticker?.toUpperCase() === relatedTicker.toUpperCase() ||
-          ts.ticker?.toUpperCase().startsWith(relatedTicker.toUpperCase()),
-      );
-      return {
-        title: item.title,
-        source: item.source || "Unknown",
-        url: item.url,
-        // Phase 220: publishedAt is provider provenance. A missing or
-        // unparseable time_published is recorded as 0 (the same "no
-        // provider timestamp" sentinel the news feed already treats as
-        // UNAVAILABLE), never as the local clock and never as NaN.
-        publishedAt: parseAVTime(item.time_published),
-        summary: item.summary,
-        sentimentScore: tickerSentiment?.ticker_sentiment_score
-          ? parseFloat(tickerSentiment.ticker_sentiment_score)
-          : item.overall_sentiment_score
-            ? parseFloat(item.overall_sentiment_score)
-            : undefined,
-        sentimentLabel: mapSentimentLabel(
-          tickerSentiment?.ticker_sentiment_label || item.overall_sentiment_label,
-        ),
-        relevanceScore: tickerSentiment?.relevance_score
-          ? parseFloat(tickerSentiment.relevance_score)
-          : undefined,
-        relatedTickers: item.ticker_sentiment?.map((ts: any) => ts.ticker || "").filter(Boolean),
-        category: item.category_within_source || item.topics?.[0]?.topic,
-      };
-    })
-    .sort((a: NewsArticle, b: NewsArticle) => {
-      const scoreA = (a.relevanceScore ?? 0.5);
-      const scoreB = (b.relevanceScore ?? 0.5);
-      return scoreB - scoreA;
-    })
+  const articles: NewsArticle[] = [];
+  for (const item of asRecordArray(feed)) {
+    const title = asNonEmptyString(item.title);
+    const url = asNonEmptyString(item.url);
+    if (!title || !url) continue;
+
+    const tickerSentiments = asRecordArray(item.ticker_sentiment);
+    const tickerSentiment = tickerSentiments.find((ts) => {
+      const t = asString(ts.ticker)?.toUpperCase();
+      return t !== undefined && (t === wanted || t.startsWith(wanted));
+    });
+    const topics = asRecordArray(item.topics);
+
+    articles.push({
+      title,
+      source: asNonEmptyString(item.source) ?? "Unknown",
+      url,
+      // Phase 220: publishedAt is provider provenance. A missing or
+      // unparseable time_published is recorded as 0 (the same "no
+      // provider timestamp" sentinel the news feed already treats as
+      // UNAVAILABLE), never as the local clock and never as NaN.
+      publishedAt: parseAVTime(item.time_published),
+      summary: asString(item.summary),
+      // Phase 227: a non-numeric score is now undefined instead of NaN.
+      sentimentScore:
+        asFiniteNumber(tickerSentiment?.ticker_sentiment_score) ??
+        asFiniteNumber(item.overall_sentiment_score),
+      sentimentLabel: mapSentimentLabel(
+        asString(tickerSentiment?.ticker_sentiment_label) ?? asString(item.overall_sentiment_label),
+      ),
+      relevanceScore: asFiniteNumber(tickerSentiment?.relevance_score),
+      relatedTickers: tickerSentiments
+        .map((ts) => asString(ts.ticker) ?? "")
+        .filter(Boolean),
+      category: asString(item.category_within_source) ?? asString(topics[0]?.topic),
+    });
+  }
+
+  return articles
+    .sort((a, b) => (b.relevanceScore ?? 0.5) - (a.relevanceScore ?? 0.5))
     .slice(0, 10);
 }
 
 function normalizeFundamentalsFromAV(
-  overview: any,
-  earnings: any,
+  overview: unknown,
+  earnings: unknown,
   instrumentType: string,
   symbol: string,
 ): FundamentalData {
@@ -336,15 +349,15 @@ function normalizeFundamentalsFromAV(
     return base;
   }
 
-  if (!overview || !overview.Symbol) {
+  if (!isRecord(overview) || !asNonEmptyString(overview.Symbol)) {
     base.unavailableReason = "No fundamental data available for this symbol.";
     return base;
   }
 
   base.available = true;
-  base.name = overview.Name;
-  base.sector = overview.Sector;
-  base.industry = overview.Industry;
+  base.name = asString(overview.Name);
+  base.sector = asString(overview.Sector);
+  base.industry = asString(overview.Industry);
   base.marketCap = safeNum(overview.MarketCapitalization);
   base.peRatio = safeNum(overview.PERatio);
   base.pegRatio = safeNum(overview.PEGRatio);
@@ -360,10 +373,10 @@ function normalizeFundamentalsFromAV(
   base.fiftyTwoWeekHigh = safeNum(overview.FiftyTwoWeekHigh);
   base.fiftyTwoWeekLow = safeNum(overview.FiftyTwoWeekLow);
 
-  if (earnings?.quarterlyEarnings?.length) {
-    const latest = earnings.quarterlyEarnings[0];
+  const latest = asRecordArray(field(earnings, "quarterlyEarnings"))[0];
+  if (latest) {
     base.latestEarnings = {
-      date: latest.fiscalDateEnding,
+      date: asString(latest.fiscalDateEnding),
       eps: safeNum(latest.reportedEPS),
       revenue: safeNum(latest.reportedRevenue),
     };
@@ -528,8 +541,7 @@ function parseAVTime(timeStr: unknown): number {
   return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
-function safeNum(val: string | undefined): number | undefined {
-  if (val === undefined || val === null || val === "" || val === "-") return undefined;
-  const n = parseFloat(val);
-  return isNaN(n) ? undefined : n;
+/** AV emits numbers as strings, with "-", "None" or "" for missing. */
+function safeNum(val: unknown): number | undefined {
+  return asFiniteNumber(val);
 }
