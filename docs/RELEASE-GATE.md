@@ -959,3 +959,69 @@ All Phase 178/178b/178d/178e/176/167/219/220/226 guard suites green; convex:pref
 
 ### L. Release blockers (unchanged)
 A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on A1; production email transport/sender/required vars absent; Evidence D INCOMPLETE (D1 BLOCKED, D5/D7/D8 NOT_VERIFIED).
+
+## Phase 229 — Multi-leg provider failure semantics: Alpha Vantage + TickAtlas
+
+Base `6afe7b8`. Commits: `6a66ad2` (Part A, Alpha Vantage + shared `lib/legOutcome.ts`), `46f9442` (Part B, TickAtlas), plus this docs commit. The Phase 228 CoinGlass taxonomy was extracted to `src/convex/lib/legOutcome.ts` and is now shared by all three multi-leg actions; each keeps its own envelope contract.
+
+### A. Alpha Vantage — before / after
+| Condition | Before | After |
+|---|---|---|
+| HTTP 429 | generic error → news leg swallowed → `success:true`, neutral zero-score sentiment stamped `Date.now()` | `RATE_LIMIT`, uncached |
+| HTTP 401/403 | same as above (`success:true`) | `AUTH_ERROR`, uncached |
+| `Note`/`Information` body | `RATE_LIMIT` (Phase 167/178b) | unchanged — verified intact |
+| `"Error Message"` body (HTTP 200) | treated as a valid empty payload → `success:true` | `provider_error` per leg; `AUTH_ERROR` when it names the api key |
+| timeout / network / 5xx on one leg | swallowed into neutral/placeholder block, `success:true`, no metadata | partial: leg `undefined`, `dataAvailable.x=false`, `error:"news: timeout (…)"` |
+| both legs failing (transport/provider) | `success:true` with empty blocks | `API_UNAVAILABLE`, no acquisition claim |
+| answered-but-empty (no feed / no Symbol) | `success:true`, confidence `unavailable` | unchanged (§227 contract) |
+| malformed non-JSON | swallowed | `malformed` class |
+| outer catch on `AUTH_ERROR` | `API_UNAVAILABLE` | `AUTH_ERROR` |
+
+### B. TickAtlas — before / after
+| Condition | Before | After |
+|---|---|---|
+| 429 / 401 / 403 on UPCOMING leg | `RATE_LIMIT`/`AUTH_ERROR` (178b) | unchanged |
+| 429 / 401 / 403 on PAST leg | **discarded by `catch {}`** → `success:true` | `RATE_LIMIT`/`AUTH_ERROR`, uncached |
+| timeout / network / 5xx / malformed on UPCOMING leg | swallowed → empty events → **cached `success:true`, macroRisk LOW, freshness `unavailable`** | `API_UNAVAILABLE` with leg class; nothing cached |
+| same on PAST leg | silently dropped | partial: upcoming kept, `recentReleased=false`, `error:"recentReleased: timeout (…)"` (survives cache hit) |
+| both legs answer zero events | `success:true`, confidence/freshness `unavailable`, LOW | unchanged (existing contract; a valid empty calendar is genuinely LOW event risk) |
+| undated / unparseable event | dropped (Phase 219) | unchanged; mutant re-introducing `Date.now()` killed |
+
+### C. Swallowed-error defects found (verified)
+1. AV `avFetch` classified only the JSON `Note` path; HTTP 429/401/403 were generic and swallowed by the news leg into a fabricated neutral `SentimentData` (`averageScore:0`, `timestamp: Date.now()`).
+2. AV fundamentals leg swallowed every non-`RATE_LIMIT` error into an `available:false` placeholder stamped `Date.now()` — indistinguishable from "no fundamentals for this symbol".
+3. AV `"Error Message"` bodies (invalid symbol / invalid key) passed through as valid empty payloads.
+4. AV outer catch mapped `AUTH_ERROR` to `API_UNAVAILABLE`.
+5. TA past-leg `catch {}` discarded `RATE_LIMIT`/`AUTH_ERROR`.
+6. TA upcoming-leg non-fatal failure produced an empty event list that was **cached** and served as a LOW-risk calendar.
+7. Phase 178d test "dead transport does not report observed-now" encoded defect (1): single-leg transport death was `success:true`. Updated to `API_UNAVAILABLE` + no acquisition claim.
+
+### D. Cache behaviour
+Fatal classes never cached (unchanged 178b). New: a leg that failed for transport/provider reasons is never stored — ProviderCache only stores what the fetcher returns, and the fetcher now throws/returns `undefined` for that leg. Partial payloads (one leg ok) ARE cached with their `error` metadata intact; the failed AV dataset key stays empty and is re-fetched on the next call (asserted: 2 news calls, 1 OVERVIEW call). A news leg that succeeded before a fundamentals 429 remains cached — distinct datasets, real evidence.
+
+### E. Partial-result semantics (option B, existing contracts only)
+AV: `sentiment`/`macro`/`fundamentals` absent for a failed leg; `dataAvailable` reflects only surviving legs; `IntelligenceResult.error` (pre-existing field) carries `leg: class (reason)`. TA: `EconomicCalendarData.error` (pre-existing field) carries the past-leg failure; `availability.recentReleased=false`. Neither emits zeros, `{}`, or placeholder blocks.
+
+### F. Timestamp / provenance
+No new `Date.now()` as provider observation. Removed two fabricated `Date.now()` stamps (AV failed-news/failed-fundamentals placeholders). `acquisition`/`observedAt` derive only from completed cache reads; outage envelopes carry neither. TA payload `timestamp` = cache-reported acquisition time, preserved verbatim across hits (asserted).
+
+### G. Mutation tests
+AV 17/17 killed (catch→undefined, 429→generic, 401/403→generic, fatal→continue, AUTH→API_UNAVAILABLE, neutral zero block + Date.now, `{}` placeholder, metadata omitted, success despite all failed, macro from failed leg, Error Message ignored, apikey→provider_error, timeout→unavailable, malformed→provider_error, Note removed, failure cached as `{feed:[]}`; the shared-module "unavailable treated as failure" mutant is killed by the Phase 228 CoinGlass suite). TA 13/15 killed; 2 equivalent mutants documented (M6 mutates dead code after the throw; M9 `unavailable` class is unreachable because `extractEvents` always returns an array). No-op harness check performed in Phase 228.
+
+### H. Regression tests
+`alphavantage-legs.phase229.test.ts` 35 tests (items 1–12 of the brief). `tickatlas-legs.phase229.test.ts` 20 tests (valid; 429 both legs; 401/403 both legs; timeout/network/5xx/malformed upcoming = outage; past-leg partial + cached metadata; empty-valid contract; Phase 219; timestamp survival; credential absent). Guard updates: `provenance-wiring.phase178d` (defect 7), `cache-keys.phase178` (pins `runLeg` wiring + `isFatalLegError` rethrow).
+
+### I. Gates
+`tsc -b` 0 · vitest 281 files / 9837 pass / 18 skipped (6 extra skips vs §228 are env-gated bundle/native-shell assertions that need `dist/`+`cap sync` outputs; workspace was re-materialised from remote this phase) · `vite build` ok · eslint runtime `any` 0, unused 0, suppressions 0, `as any` 0 · mobile:verify PASS · `_generated` untouched · diff secret scan clean.
+
+### J. Security / provenance
+178/178b/178d/178e/176/167/219/220/226/228 suites green; preflight `no-freebuff-otp-dependency` PASS (email/sender/prod-vars FAIL unchanged).
+
+### K. Remaining concrete defects (not deferred silently)
+1. Single-leg providers `treasury.ts`, `cot.ts`, `eia.ts`, `okx.ts` have no 429/401/403 classification at all (0 matches) and `treasury.ts:38`, `eia.ts:51` use bare `catch {}` — out of this phase's scope (brief: AV + TA only).
+2. `marketData.ts:439/513` bare `catch {}` — unaudited this phase.
+3. Pre-existing eslint errors in `src/convex/liveProtection.ts:388` (`no-useless-escape` ×2) exist on base `6afe7b8`; not touched.
+4. `protectedAnalysis.ts` intelligence leg passes `r.error` through `classifyFailure` text patterns; the new `leg: class (reason)` strings on a `success:true` partial are not consulted there (partial is still `success`, so behaviour is unchanged, but the fan-out cannot distinguish "partial" from "complete").
+
+### L. Release blockers (unchanged)
+A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on A1; production email transport/sender/required vars absent; Evidence D INCOMPLETE.
