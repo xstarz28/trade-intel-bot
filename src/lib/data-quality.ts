@@ -10,7 +10,7 @@
  */
 
 import type { AnalysisInput } from "@/types/analysis";
-import type { MarketData, TechnicalData, MtfContext } from "@/lib/data/market-types";
+import type { TechnicalData, MtfContext } from "@/lib/data/market-types";
 
 // ── Types ────────────────────────────────────────────────────────
 

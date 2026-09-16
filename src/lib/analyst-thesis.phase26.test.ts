@@ -10,7 +10,6 @@
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
-import { buildAnalystThesis } from "./analyst-thesis";
 import type { AnalysisInput } from "@/types/analysis";
 import type { MarketData, OhlcvCandle } from "@/lib/data/market-types";
 import { calculateTechnical } from "./data/technical";

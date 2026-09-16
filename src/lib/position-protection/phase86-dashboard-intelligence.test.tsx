@@ -17,7 +17,7 @@ import { synthesizeMultiDimensionalIntelligence } from "./multi-dimensional-inte
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import type { MTFConfluence } from "./multi-timeframe-engine";
 import type { NewsItem } from "./news-intelligence";
-import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
+import type { FundamentalDataPoint } from "./fundamental-intelligence";
 
 // IntelligenceDashboard consumes the i18n context, so every render must be
 // wrapped in the provider exactly as the application does.

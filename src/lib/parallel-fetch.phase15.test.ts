@@ -21,7 +21,6 @@ import {
   macro,
   treasury as treasuryFixture,
 } from "./benchmark-fixtures.phase9";
-import type { AnalysisInput } from "@/types/analysis";
 
 // Deterministic latency simulation (no real network, no jitter).
 const delay = (ms: number, value: unknown = undefined) =>

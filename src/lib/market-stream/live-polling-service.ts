@@ -25,15 +25,10 @@ import type { RealTimeEvent } from "../position-protection/realtime-types";
 import {
   createBridgeState,
   bridgeProviderData,
-  checkInstrumentFreshness,
   type LiveMarketBridgeState,
   type ProviderQuoteData,
 } from "./live-market-bridge";
 import { routeInstrument, detectAssetClass, getFallbackRoute, type RoutingResult } from "./provider-routing";
-import {
-  getProviderProfile,
-  getPollIntervalMs,
-} from "./provider-adapters";
 
 // ═══════════════════════════════════════════════════════════════
 // POLLING LIFECYCLE

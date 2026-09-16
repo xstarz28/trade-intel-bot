@@ -10,8 +10,8 @@
  * NO duplicate intelligence calculations.
  */
 
-import type { PositionIntelligence, EvidenceItem, InvalidationCondition } from "./market-intelligence-analyzer";
-import type { PortfolioIntelligence, ThesisState } from "./portfolio-intelligence";
+import type { PositionIntelligence, EvidenceItem } from "./market-intelligence-analyzer";
+import type { PortfolioIntelligence } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES

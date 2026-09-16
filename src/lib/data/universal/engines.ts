@@ -20,13 +20,11 @@
 
 import type {
   AssetClass,
-  DataCapability,
   EvidenceCategory,
   EvidenceDirection,
   EvidenceQuality,
   EvidenceStrength,
   FreshnessState,
-  UniversalEvidenceItem,
 } from "./types";
 
 import type {
@@ -44,7 +42,6 @@ import type {
   EquityIntelligenceContext,
   CommodityIntelligenceContext,
   CrossAssetIntelligenceContext,
-  IntelligenceMeta,
 } from "./types";
 
 import { detectDoubleCounting } from "./evidence";

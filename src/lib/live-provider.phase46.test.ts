@@ -23,7 +23,7 @@
  *   S. Edge cases & empty states
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   validateOhlcvSeries,
   validateQuote,
@@ -34,7 +34,6 @@ import {
   isLiveStatus,
   type OhlcvRecord,
   type LiveStatus,
-  type DataQualityState,
   type ConsistencyVerdict,
 } from "./data/universal/live/types";
 import {
@@ -46,7 +45,6 @@ import {
   readCachedOrUnavailable,
   resetLiveState,
   type Transport,
-  type TransportResponse,
 } from "./data/universal/live/client";
 import {
   resolveInstrument,

@@ -16,7 +16,6 @@ import {
   ChevronDown,
   ChevronRight,
   TrendingDown,
-  TrendingUp,
   Activity,
   XCircle,
   Clock,

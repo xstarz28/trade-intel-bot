@@ -19,7 +19,6 @@ import type {
   CreateJournalEntryInput,
   TradeStatus,
   TradeOutcome,
-  VALID_TRANSITIONS,
 } from "@/types/journal";
 import { VALID_TRANSITIONS as TRANSITIONS } from "@/types/journal";
 

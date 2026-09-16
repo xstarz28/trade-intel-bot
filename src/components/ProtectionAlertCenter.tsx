@@ -11,8 +11,6 @@ import {
   BellOff,
   AlertTriangle,
   CheckCircle2,
-  Filter,
-  X,
   Clock,
   Eye,
   EyeOff,

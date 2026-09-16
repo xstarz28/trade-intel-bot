@@ -18,7 +18,6 @@
 
 import type {
   AssetClass,
-  CanonicalInstrument,
   DependencyGroup,
   EvidenceCategory,
   EvidenceDirection,

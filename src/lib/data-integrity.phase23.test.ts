@@ -17,7 +17,7 @@ import { computeSmcContext } from "./data/smc";
 import { buildMtfContext } from "./data/mtf";
 import { buildChain } from "./data/mtf";
 import type { AnalysisInput } from "@/types/analysis";
-import type { MarketData, MtfContext, SmcContext, TechnicalData } from "@/lib/data/market-types";
+import type { MarketData } from "@/lib/data/market-types";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 
 // ── helpers ──────────────────────────────────────────────────────

@@ -23,7 +23,6 @@ import type { AnalysisResult } from "@/types/analysis";
 import type { MarketRegimeContext } from "@/lib/market-regime";
 import type { FundamentalThesis } from "@/lib/fundamental-thesis";
 import type { ForwardMarketPathContext } from "@/lib/forward-market-path";
-import type { MarketScenarioContext } from "@/lib/market-scenario";
 
 // ── Types ────────────────────────────────────────────────────────
 

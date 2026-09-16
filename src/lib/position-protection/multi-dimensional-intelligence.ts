@@ -13,9 +13,9 @@
  */
 
 import type { PositionSide } from "./types";
-import type { MTFConfluence, TimeframeAnalysis, MarketRegime } from "./multi-timeframe-engine";
+import type { MTFConfluence, MarketRegime } from "./multi-timeframe-engine";
 import type { NewsSynthesis } from "./news-intelligence";
-import type { FundamentalSynthesis, CatalystAnalysis, EconomicEvent } from "./fundamental-intelligence";
+import type { FundamentalSynthesis } from "./fundamental-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // DATA AVAILABILITY

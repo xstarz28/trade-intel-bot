@@ -15,7 +15,6 @@ import type {
   StreamHealthState,
   ReconciliationResult,
   RegisteredPosition,
-  PositionLifecycle,
   SymbolMapping,
   StreamConfig,
 } from "./types";
@@ -33,14 +32,13 @@ import {
   type ReconnectState,
 } from "./reconnection-engine";
 import { getProviderProfile, buildStreamConfig } from "./provider-adapters";
-import type { MonitorState, ProcessResult } from "../position-protection/realtime-monitor";
+import type { MonitorState } from "../position-protection/realtime-monitor";
 import type { PositionSnapshot } from "../position-protection/realtime-types";
 import { processEvent, addPosition, removePosition, cleanup as monitorCleanup } from "../position-protection/realtime-monitor";
-import type { RealTimeEvent, ProtectionEvent, MonitoringStatus } from "../position-protection/realtime-types";
+import type { RealTimeEvent, ProtectionEvent } from "../position-protection/realtime-types";
 import {
   createAccelerationState,
   recordPriceObservation,
-  recordGivebackObservation,
   detectPriceAcceleration,
   detectGivebackAcceleration,
   type AccelerationState,
@@ -48,7 +46,6 @@ import {
 } from "../position-protection/acceleration-monitor";
 import type {
   MonitoringStateRepository,
-  PersistedPositionState,
 } from "../position-protection/persistence";
 
 // ═══════════════════════════════════════════════════════════════

@@ -23,7 +23,6 @@ import {
   type NewsItem,
 } from "./news-intelligence";
 import {
-  synthesizeFundamentals,
   interpretFundamental,
   classifyCatalyst,
   classifyEventImportance,

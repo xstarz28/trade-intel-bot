@@ -18,7 +18,6 @@ import type {
   ProfitProtectionUrgency,
   WhyTpNowExplanation,
 } from "./types";
-import { alertSeverityRank } from "./types";
 import { calculateProfitMetrics } from "./profit-state";
 import {
   evaluateThesisHealth,

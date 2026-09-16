@@ -8,7 +8,6 @@ import {
   updateMonitoringState,
   deduplicateByDependencyGroup,
 } from "../alert-lifecycle";
-import type { MonitoringState, AlertSeverity } from "../types";
 
 describe("createMonitoringState", () => {
   it("creates initial state with NONE severity", () => {

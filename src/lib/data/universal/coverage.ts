@@ -16,8 +16,6 @@ import type {
   AssetClass,
   CanonicalInstrument,
   DataCapability,
-  Exchange,
-  Region,
 } from "./types";
 import {
   resolveInstrument,
@@ -25,7 +23,6 @@ import {
   getAllInstruments,
   getProviderSymbol,
   getAllInstrumentIds,
-  type ResolutionStatus,
 } from "./instruments";
 
 // ═══════════════════════════════════════════════════════════════

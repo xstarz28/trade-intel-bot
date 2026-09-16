@@ -30,7 +30,6 @@ import {
   Trash2,
   Bell,
   BellOff,
-  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PositionRegistrationForm } from "./PositionRegistrationForm";
@@ -43,7 +42,6 @@ import {
 import { evaluateProtection } from "@/lib/position-protection/protection-engine";
 import { type LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
 import type { AlertSeverity } from "@/lib/position-protection/types";
-import type { ProtectionEvent } from "@/lib/position-protection/realtime-types";
 import {
   type PositionIntelligence,
 } from "@/lib/position-protection/market-intelligence-analyzer";
@@ -62,7 +60,6 @@ import { CustomAlertRulesPanel } from "./CustomAlertRulesPanel";
 import { NotificationCenter } from "./NotificationCenter";
 import { RuntimeHealthDashboard } from "./RuntimeHealthDashboard";
 import { TraderWorkspace, PositionDetail } from "./TraderWorkspace";
-import { type RuntimeHealthInput, type RuntimeComponent } from "@/lib/position-protection/runtime-health";
 import {
   createHealthEventBuffer,
   recordProviderResult,
@@ -104,12 +101,9 @@ import {
   mergeSnapshots,
   snapshotIdentity,
   isSnapshotStale,
-  persistedToSnapshot,
-  persistedToEvent,
   type PersistedSnapshot,
   type PersistedEvent,
 } from "@/lib/position-protection/persistent-history-engine";
-import { detectChanges } from "@/lib/position-protection/historical-intelligence";
 import { type OHLCVHealthEvent } from "@/lib/position-protection/use-ohlcv-data";
 
 // ═══════════════════════════════════════════════════════════════

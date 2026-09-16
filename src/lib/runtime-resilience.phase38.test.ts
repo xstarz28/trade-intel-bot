@@ -26,7 +26,6 @@ import { buildEvidenceChallenge } from "./evidence-challenge";
 import { buildLongHorizonThesis } from "./long-horizon-thesis";
 import { auditDecisionIntegrity } from "./decision-integrity";
 import { createAnalysisSnapshot, journalFromAnalysis, transitionEntry } from "./journal";
-import type { JournalEntry } from "@/types/journal";
 
 // ══════════════════════════════════════════════════════════════════
 // FIXTURE BUILDERS

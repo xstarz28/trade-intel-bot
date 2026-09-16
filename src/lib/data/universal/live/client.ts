@@ -22,7 +22,6 @@ import {
   resetProviderHealth,
 } from "../routing-engine";
 import { cacheGet, cacheSet } from "../cache";
-import type { CacheKey } from "../engine-types";
 import type {
   LiveStatus,
   OhlcvRecord,

@@ -20,7 +20,7 @@ import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
-import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import {
   createPipelineState,
@@ -40,7 +40,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
 import { EntitlementBadge, LockedSignalNotice } from "@/components/EntitlementBadge";
-import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
+import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuTrigger,

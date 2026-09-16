@@ -21,7 +21,7 @@ import React, {
   useMemo,
 } from "react";
 import type { Locale, Translations } from "./types";
-import { DEFAULT_LOCALE, ALL_LOCALES } from "./types";
+import { DEFAULT_LOCALE } from "./types";
 import en from "./en";
 import id from "./id";
 import es from "./es";
@@ -33,8 +33,6 @@ import ko from "./ko";
 import zh from "./zh";
 import {
   SUPPORTED_LOCALES,
-  LOCALE_REGISTRY,
-  getLocaleMetadata,
   getEnabledLocales,
   normalizeBrowserLocale,
   getLocaleDisplayName,

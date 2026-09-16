@@ -33,7 +33,6 @@ import type {
   DerivativesIntelligence,
   DeFiIntelligence,
   TokenomicsIntelligence,
-  CryptoEvidenceItem,
 } from "@/lib/data/crypto/types";
 import type { AnalysisResult, InstrumentType } from "@/types/analysis";
 
