@@ -111,7 +111,8 @@ describe("Phase 204 — a composite subject is never used as a document id", () 
       const source = read(path);
       // Either the library helper or an explicit split is acceptable.
       const usesHelper = /getAuthUserId/.test(source);
-      const usesSplit = /subject\s*\.split\(|splitSubject|userIdFromSubject/.test(source);
+      // Phase 227: the four resolver copies were consolidated into lib/authUser.ts.
+      const usesSplit = /subject\s*\.split\(|splitSubject|userIdFromSubject|from "\.\/lib\/authUser"/.test(source);
       expect(
         usesHelper || usesSplit,
         `${path} must derive the user id via getAuthUserId or an explicit divider split`,
