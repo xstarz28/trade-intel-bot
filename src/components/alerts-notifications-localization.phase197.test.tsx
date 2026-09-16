@@ -170,10 +170,11 @@ describe("Phase 197 — new vocabulary is complete and distinct", () => {
 
 describe("Phase 197 — backend error messages are still preferred", () => {
   it("falls back to localized copy only when the provider gave no reason", () => {
-    // `err?.message ?? t...` — a real backend reason must never be replaced by
-    // generic localized copy, which would hide why an operation failed.
+    // `errorMessage(err) || t...` (Phase 227; was `err?.message ?? t...`) — a
+    // real backend reason must never be replaced by generic localized copy,
+    // which would hide why an operation failed.
     const source = read(ALERTS);
-    const fallbacks = source.match(/err\?\.message \?\? t\.alerts\.\w+/g) ?? [];
+    const fallbacks = source.match(/errorMessage\(err\) \|\| t\.alerts\.\w+/g) ?? [];
     expect(fallbacks.length).toBeGreaterThanOrEqual(3);
     expect(source).not.toMatch(/toast\.error\(t\.alerts\.rule\w*Failed\)/);
   });
