@@ -13,16 +13,6 @@ import type {
   EvidenceDirection,
   DimensionAvailability,
   AssetClass,
-  InflationRegime,
-  InflationDriver,
-  RateRegime,
-  RealYieldRegime,
-  CurrencyRegime,
-  LiquidityRegime,
-  GrowthRegime,
-  EnergyRegime,
-  GeopoliticalRegime,
-  OverallRegime,
 } from "./fundamental-regime";
 
 // ═══════════════════════════════════════════════════════════════

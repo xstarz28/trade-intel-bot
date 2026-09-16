@@ -31,21 +31,18 @@ import {
   onProviderConnected,
   onProviderDisconnected as streamOnProviderDisconnected,
   reconcileProvider,
-  cleanupOrchestrator,
 } from "../market-stream/stream-orchestrator";
-import type { MonitorState, ProcessResult } from "./realtime-monitor";
+import type { MonitorState } from "./realtime-monitor";
 import {
   createMonitorState,
-  addPosition,
   removePosition,
 } from "./realtime-monitor";
-import type { RealTimeEvent, PositionSnapshot, ProtectionEvent, AlertHistoryEntry, MonitoringStatus } from "./realtime-types";
-import type { ProtectionAlert, AlertSeverity } from "./types";
-import { evaluateProtection, type ProtectionEngineInput } from "./protection-engine";
-import { calculateGiveback, classifyGivebackSeverity, type GivebackState } from "./giveback-monitor";
+import type { RealTimeEvent, ProtectionEvent, AlertHistoryEntry, MonitoringStatus } from "./realtime-types";
+import type { ProtectionAlert } from "./types";
+import { evaluateProtection } from "./protection-engine";
+import { type GivebackState } from "./giveback-monitor";
 import {
   createAccelerationState,
-  recordPriceObservation,
   detectPriceAcceleration,
   detectGivebackAcceleration,
   type AccelerationResult,

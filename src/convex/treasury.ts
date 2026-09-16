@@ -16,7 +16,6 @@
 "use node";
 
 import { action } from "./_generated/server";
-import { v } from "convex/values";
 import { buildTreasuryContext } from "../lib/data/treasury";
 import { getProviderCache } from "../lib/data/provider-cache-registry";
 

@@ -25,7 +25,6 @@ import {
   buildReport,
   type VerificationSpec,
   type VerificationResult,
-  type VerificationReport,
 } from "./market-radar/verification";
 
 // ── Types ──

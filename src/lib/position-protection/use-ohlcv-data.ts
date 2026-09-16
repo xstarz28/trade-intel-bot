@@ -14,7 +14,6 @@ import { type Candle, normalizeCandles } from "./technical-indicators";
 import {
   type TimeframeKey,
   createTimeframeData,
-  type TimeframeData,
   analyzeMTFConfluence,
   type MTFConfluence,
 } from "./multi-timeframe-engine";

@@ -18,16 +18,12 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { AnalysisResult } from "@/types/analysis";
 import {
-  createAnalysisSnapshot,
   journalFromAnalysis,
   createObservationEntry,
   transitionEntry,
   updateReview,
   updateTradeInfo,
-  isValidTransition,
-  isTerminal,
   getValidTransitions,
-  computePnl,
   classifyOutcome,
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";

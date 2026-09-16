@@ -8,7 +8,6 @@
 
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import type { PortfolioIntelligence } from "./portfolio-intelligence";
-import type { HistoricalEvent } from "./historical-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES

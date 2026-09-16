@@ -23,7 +23,6 @@ import {
   assessTechnicalFundamentalAlignment,
   type FundamentalRegimeInput,
   type AssetClass,
-  type EvidenceDirection,
 } from "./fundamental-regime";
 import {
   classifyMacroContext,
@@ -32,12 +31,9 @@ import {
   type CrossAssetContext,
 } from "./multi-dimensional-intelligence";
 import {
-  buildAssetCausalContext,
   buildCausalTransmissions,
   buildFundamentalCausalResult,
-  classifyMacroRegime,
 } from "./fundamental-transmission";
-import type { NewsItem } from "./news-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS

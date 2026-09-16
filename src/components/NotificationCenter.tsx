@@ -25,7 +25,6 @@ import {
   DEFAULT_PREFERENCES,
   ALL_CATEGORIES,
   type NotificationPreferences,
-  type PreferenceScope,
 } from "../lib/position-protection/notification-preferences";
 
 const SEVERITY_ORDER: Record<string, number> = {

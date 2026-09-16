@@ -20,11 +20,9 @@
 import { describe, it, expect } from "vitest";
 import {
   buildFundamentalRegime,
-  buildFundamentalInputFromPositionIntel,
   buildAssetFundamentalContext,
   type FundamentalRegimeInput,
   type InflationObservation,
-  type PolicyRateRegime,
 } from "./fundamental-regime";
 import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
 import type { EconomicEvent as CalendarEvent } from "../../lib/data/calendar-types";

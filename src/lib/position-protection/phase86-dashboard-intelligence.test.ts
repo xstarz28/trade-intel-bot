@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { synthesizeNews, classifyNewsFreshness, type NewsItem } from "./news-intelligence";
 import { synthesizeFundamentals, type FundamentalDataPoint, type EconomicEvent } from "./fundamental-intelligence";
-import { synthesizeMultiDimensionalIntelligence, type MultiDimensionalSynthesis } from "./multi-dimensional-intelligence";
+import { synthesizeMultiDimensionalIntelligence } from "./multi-dimensional-intelligence";
 import type { MTFConfluence } from "./multi-timeframe-engine";
 
 const now = Date.now();

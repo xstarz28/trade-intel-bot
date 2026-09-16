@@ -29,7 +29,6 @@ import {
   SEVERITY_ORDER,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
-  type NotificationFilter,
   type NotificationCategory,
 } from "./notification-engine";
 

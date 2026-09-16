@@ -29,7 +29,6 @@ import {
   getEventsForComponent,
   getEventCount,
   buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 
 // ─── Helpers ────────────────────────────────────────────────

@@ -15,16 +15,10 @@
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
-import { buildForwardMarketPath } from "./forward-market-path";
-import { buildProfessionalThesis } from "./professional-thesis";
-import { buildMarketRegime } from "./market-regime";
-import { buildFundamentalThesis } from "./fundamental-thesis";
 import {
   createAnalysisSnapshot,
   journalFromAnalysis,
   createObservationEntry,
-  transitionEntry,
-  isValidTransition,
 } from "./journal";
 import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
 import type { MarketData, OhlcvCandle } from "@/lib/data/market-types";

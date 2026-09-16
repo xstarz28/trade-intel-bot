@@ -15,7 +15,7 @@
  */
 
 import type { AssetClass } from "./data/universal/types";
-import { getAllInstruments, getProviderSymbol, type ResolutionStatus } from "./data/universal/instruments";
+import { getAllInstruments } from "./data/universal/instruments";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES

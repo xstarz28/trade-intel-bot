@@ -3,12 +3,11 @@
  */
 import { describe, it, expect } from "vitest";
 import { fetchOptionalSlowData } from "./data/optional-providers";
-import type { ProviderThunk, SlowProviderFacts, SlowProviderThunks } from "./data/optional-providers";
 import { mapInstrumentToCot, buildCotContext, deriveCotEvidence, classifyCotFreshness } from "./data/cot";
 import { mapInstrumentToOkx, parseOkxResponse } from "./risk/okx-spec";
 import { buildTreasuryContext, deriveMacroYieldEvidence, classifyMacroFreshness } from "./data/treasury";
 import { buildEiaContext, parseEiaResponse, deriveEiaInventoryEvidence } from "./data/eia";
-import { detectAssetClass, normalizeInstrument, toCoinGeckoId, toProviderSymbol, getInstrumentLabel } from "./data/symbols";
+import { detectAssetClass, normalizeInstrument, toCoinGeckoId, getInstrumentLabel } from "./data/symbols";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 import { calculateTechnical } from "./data/technical";

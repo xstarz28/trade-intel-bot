@@ -19,12 +19,11 @@ import {
   acquireBatchLiveData,
   getProviderHealthSummary,
   resetAdapters,
-  type ProviderAdapter,
 } from "./market-radar/provider-registry";
 
 // ── Types ──
 import type { AssetClass } from "./data/universal/types";
-import type { MarketSnapshot, FreshnessLevel } from "./market-radar/types";
+import type { MarketSnapshot } from "./market-radar/types";
 import { assessFreshness } from "./market-radar/freshness";
 import { meetsFreshness } from "./market-radar/types";
 import { RadarCache, buildCacheKey } from "./market-radar/cache";
@@ -36,15 +35,13 @@ import {
   validateOhlcvSeries,
   validateQuote,
   compareCrossProviderPrices,
-  assessDataQuality,
-  type OhlcvRecord,
 } from "./data/universal/live/types";
 
 // ── Universe ──
-import { DEFAULT_UNIVERSE, CORRELATION_CLUSTERS, getClusterForInstrument } from "./market-radar/universe";
+import { DEFAULT_UNIVERSE, getClusterForInstrument } from "./market-radar/universe";
 
 // ── Radar ──
-import { scanRadar, buildRadarState } from "./market-radar/radar";
+import { scanRadar } from "./market-radar/radar";
 import { buildRadarCandidate, type RadarCandidateSource } from "./market-radar/candidate-builder";
 
 const NOW = Date.now();

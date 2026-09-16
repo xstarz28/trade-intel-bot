@@ -20,7 +20,6 @@ import {
   execution,
   macro,
 } from "./benchmark-fixtures.phase9";
-import type { AnalysisInput } from "@/types/analysis";
 
 type RunSpec = Parameters<typeof assemble>[0] & Record<string, unknown>;
 const run = (spec: RunSpec = {}) =>

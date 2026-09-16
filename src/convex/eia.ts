@@ -20,7 +20,6 @@
 
 import { action } from "./_generated/server";
 import { requireIdentity } from "./lib/requireIdentity";
-import { v } from "convex/values";
 import { buildEiaContext, parseEiaResponse } from "../lib/data/eia";
 import { getProviderCache } from "../lib/data/provider-cache-registry";
 

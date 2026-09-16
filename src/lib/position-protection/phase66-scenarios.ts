@@ -9,7 +9,6 @@
 
 import type { PositionContext, AlertSeverity } from "./types";
 import type { MarketEvidence } from "./thesis-health";
-import type { RealTimeEvent } from "./realtime-types";
 import { evaluateProtection } from "./protection-engine";
 import {
   createMonitoringState,
@@ -17,24 +16,6 @@ import {
   shouldAlert,
 } from "./alert-lifecycle";
 import type { MonitoringState } from "./types";
-import { detectShock } from "./shock-detector";
-import {
-  calculateGiveback,
-  classifyGivebackSeverity,
-  type GivebackState,
-} from "./giveback-monitor";
-import { classifyEarlyProtection } from "./early-protection";
-import {
-  createAccelerationState,
-  recordPriceObservation,
-  detectPriceAcceleration,
-  type AccelerationState,
-} from "./acceleration-monitor";
-import {
-  computeEventPriority,
-  type EventPriorityLevel,
-} from "./event-priority";
-import { createPriceEvent, createMacroChangeEvent, createProviderDegradedEvent } from "./market-event-bridge";
 
 // ═══════════════════════════════════════════════════════════════
 // SIMULATION TYPES

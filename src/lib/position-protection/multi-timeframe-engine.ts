@@ -8,17 +8,14 @@
  * Higher timeframe must not be overridden by a single lower-timeframe signal.
  */
 
-import type { PositionSide } from "./types";
 import {
   type Candle,
   normalizeCandles,
   sma,
-  ema,
   rsi,
   atr,
   detectSwings,
   analyzeStructure,
-  type SwingPoint,
   type StructureState,
 } from "./technical-indicators";
 

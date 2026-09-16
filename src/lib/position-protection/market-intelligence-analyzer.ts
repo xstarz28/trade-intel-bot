@@ -16,7 +16,6 @@
 import type { PositionSide, ThesisHealthState, AlertSeverity } from "./types";
 import {
   type PriceObservationState,
-  type MarketIntelligenceSummary,
   type TechnicalSignals,
   buildMarketIntelligence,
 } from "./price-observation-engine";

@@ -9,7 +9,7 @@
 import { describe, it, expect } from "vitest";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import type { PortfolioIntelligence, PortfolioSummary } from "./portfolio-intelligence";
-import type { RuntimeHealthSnapshot, RuntimeHealthComponent } from "./runtime-health";
+import type { RuntimeHealthSnapshot } from "./runtime-health";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS

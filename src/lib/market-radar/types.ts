@@ -6,7 +6,7 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { CandidateInput, TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
+import type { TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // OPPORTUNITY LIFECYCLE

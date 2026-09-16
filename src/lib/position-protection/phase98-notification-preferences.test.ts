@@ -17,11 +17,9 @@ import {
   ALL_CATEGORIES,
   ALL_SCOPES,
   MAX_MUTED_RULES,
-  MAX_MUTED_INSTRUMENTS,
-  MAX_ENABLED_INSTRUMENTS,
   type NotificationPreferences,
 } from "./notification-preferences";
-import type { Notification, NotificationCategory, NotificationSeverity } from "./notification-engine";
+import type { Notification } from "./notification-engine";
 
 // ─── Test Helpers ────────────────────────────────────────────
 

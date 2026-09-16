@@ -7,7 +7,6 @@ import { describe, it, expect } from "vitest";
 import {
   calibrateIntelligence,
   type CalibrationInput,
-  type CalibrationResult,
 } from "../position-protection/intelligence-calibration";
 import {
   classifyPullbackType,
@@ -29,7 +28,7 @@ import {
   evaluateProtection,
   type ProtectionEngineInput,
 } from "../position-protection/protection-engine";
-import type { PositionContext, AlertSeverity } from "../position-protection/types";
+import type { PositionContext } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
 
 // ═══════════════════════════════════════════════════════════════

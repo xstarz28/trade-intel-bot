@@ -14,7 +14,7 @@
 
 import type { AssetClass } from "./data/universal/types";
 import type { CandidateInput, TradingMode, InvestorHorizon, UniversalRecommendationResult } from "./recommendation-engine";
-import { generateRecommendation, discoverCandidates } from "./recommendation-engine";
+import { generateRecommendation } from "./recommendation-engine";
 import { buildCandidateFromSource, type LiveCandidateSource } from "./liveCandidateBuilder";
 import { limitByCorrelationGroup } from "./discovery/correlation";
 

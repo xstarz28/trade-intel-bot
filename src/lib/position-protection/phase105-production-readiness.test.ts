@@ -17,33 +17,24 @@ import { describe, it, expect } from "vitest";
 import {
   evaluateAlertRuntimeBridge,
   buildInitialStateStore,
-  removePositionFromState,
   removePositionTriggerRecords,
-  cleanStaleRuleTriggerRecords,
-  type PreviousStateStore,
 } from "./alert-runtime-bridge";
 import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
 import { alertIdentity } from "./alert-rule-engine";
 import {
   buildNotification,
   notificationIdentity,
-  filterNotifications,
   applyRetention,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
 } from "./notification-engine";
 import {
   filterNotificationsByPreferences,
-  isNotificationVisible,
   sanitizePreferences,
   DEFAULT_PREFERENCES,
-  ALL_CATEGORIES,
-  ALL_SCOPES,
-  type NotificationPreferences,
 } from "./notification-preferences";
 import {
   buildRuntimeHealthSnapshot,
-  calculateOverallHealth,
   classifyFreshness,
   normalizeRuntimeHealthEvent,
   aggregateRuntimeHealth,
@@ -51,11 +42,7 @@ import {
   detectHealthTransitions,
   FRESH_THRESHOLD_MS,
   AGING_THRESHOLD_MS,
-  UNAVAILABLE_FAILURE_THRESHOLD,
   MAX_RUNTIME_HEALTH_EVENTS,
-  type RuntimeHealthEvent,
-  type RuntimeHealthSnapshot,
-  type RuntimeHealthComponent,
   type RuntimeComponent,
 } from "./runtime-health";
 import {
@@ -64,10 +51,8 @@ import {
   recordProviderResult,
   shouldPersistFromBuffer,
   markPersisted,
-  getLatestEventForComponent,
   getEventCount,
   buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 

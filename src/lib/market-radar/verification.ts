@@ -17,13 +17,6 @@ import {
   checkCredentials,
   type EnvReader,
 } from "@/lib/data/universal/live/credentials";
-import {
-  validateOhlcvSeries,
-  validateQuote,
-  compareCrossProviderPrices,
-  type OhlcvRecord,
-  type ConsistencyVerdict,
-} from "@/lib/data/universal/live/types";
 import { assessFreshness } from "./freshness";
 import type { FreshnessLevel } from "./types";
 
