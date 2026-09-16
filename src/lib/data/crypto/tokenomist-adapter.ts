@@ -18,6 +18,13 @@ import type {
   TokenomicsIntelligence,
 } from "./types";
 import { toTokenomistSymbol } from "./symbols";
+import { asFiniteNumber, asRecordArray, field, isRecord } from "../json/narrow";
+
+/** Internal accumulator for the two Tokenomist datasets. */
+interface TokenomistRaw {
+  unlocks?: { upcomingCount30d: number; upcomingValue30d?: number; summary: string };
+  supply?: { circulatingSupply?: number; totalSupply?: number; circulatingPercent?: number };
+}
 
 /**
  * Tokenomist adapter — fetches tokenomics intelligence.
@@ -54,7 +61,7 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
       }
 
       // Fetch upcoming unlocks
-      const data: Record<string, any> = {};
+      const data: TokenomistRaw = {};
 
       try {
         const unlockRes = await fetchFn(
@@ -62,18 +69,19 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
           { headers },
         );
         if (unlockRes.ok) {
-          const unlockData = await unlockRes.json();
-          const events = Array.isArray(unlockData?.data) ? unlockData.data : [];
+          const events = asRecordArray(field(await unlockRes.json(), "data"));
           const now = Date.now();
           const thirtyDays = 30 * 24 * 3600 * 1000;
 
-          const upcoming = events.filter((e: any) => {
-            const unlockTime = new Date(e.unlock_date ?? e.date ?? 0).getTime();
+          const upcoming = events.filter((e) => {
+            const when = e.unlock_date ?? e.date;
+            if (typeof when !== "string" && typeof when !== "number") return false;
+            const unlockTime = new Date(when).getTime();
             return unlockTime > now && unlockTime < now + thirtyDays;
           });
 
           const totalUpcoming = upcoming.reduce(
-            (sum: number, e: any) => sum + (parseFloat(e.amount ?? "0") || 0),
+            (sum, e) => sum + (asFiniteNumber(e.amount) ?? 0),
             0,
           );
 
@@ -96,10 +104,10 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
           { headers },
         );
         if (supplyRes.ok) {
-          const supplyData = await supplyRes.json();
-          if (supplyData) {
-            const circulating = parseFloat(supplyData.circulating_supply ?? "0");
-            const total = parseFloat(supplyData.total_supply ?? "0");
+          const supplyData: unknown = await supplyRes.json();
+          if (isRecord(supplyData)) {
+            const circulating = asFiniteNumber(supplyData.circulating_supply) ?? 0;
+            const total = asFiniteNumber(supplyData.total_supply) ?? 0;
             data.supply = {
               circulatingSupply: circulating > 0 ? circulating : undefined,
               totalSupply: total > 0 ? total : undefined,
@@ -143,12 +151,17 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
  * Pure function — no side effects.
  */
 export function parseTokenomistResult(
-  data: Record<string, any>,
+  raw: unknown,
   instrument: string,
   observedAt: number,
 ): TokenomicsIntelligence {
-  const availableDatasets = data.availableDatasets ?? 0;
-  const totalDatasets = data.totalDatasets ?? 2;
+  const data = isRecord(raw) ? raw : {};
+  const availableDatasets = asFiniteNumber(data.availableDatasets) ?? 0;
+  const totalDatasets = asFiniteNumber(data.totalDatasets) ?? 2;
+  const supply = isRecord(data.supply) ? data.supply : undefined;
+  const unlocks = isRecord(data.unlocks) ? data.unlocks : undefined;
+  const circulatingSupply = asFiniteNumber(supply?.circulatingSupply);
+  const upcomingValue30d = asFiniteNumber(unlocks?.upcomingValue30d);
 
   return {
     provider: "Tokenomist",
@@ -158,21 +171,21 @@ export function parseTokenomistResult(
     available: availableDatasets > 0,
     failureReason: availableDatasets === 0 ? "No Tokenomist data available" : undefined,
 
-    supply: data.supply ? {
-      circulatingSupply: data.supply.circulatingSupply,
-      totalSupply: data.supply.totalSupply,
-      circulatingPercent: data.supply.circulatingPercent,
-      reliable: typeof data.supply.circulatingSupply === "number" && data.supply.circulatingSupply > 0,
+    supply: supply ? {
+      circulatingSupply,
+      totalSupply: asFiniteNumber(supply.totalSupply),
+      circulatingPercent: asFiniteNumber(supply.circulatingPercent),
+      reliable: circulatingSupply !== undefined && circulatingSupply > 0,
     } : undefined,
 
-    unlocks: data.unlocks ? {
-      upcomingCount30d: data.unlocks.upcomingCount30d ?? 0,
-      upcomingValue30d: data.unlocks.upcomingValue30d,
-      unlockPercentOfCirculating: data.supply?.circulatingSupply && data.unlocks.upcomingValue30d
-        ? (data.unlocks.upcomingValue30d / data.supply.circulatingSupply) * 100
+    unlocks: unlocks ? {
+      upcomingCount30d: asFiniteNumber(unlocks.upcomingCount30d) ?? 0,
+      upcomingValue30d,
+      unlockPercentOfCirculating: circulatingSupply && upcomingValue30d
+        ? (upcomingValue30d / circulatingSupply) * 100
         : undefined,
       reliable: true,
-      summary: data.unlocks.summary,
+      summary: typeof unlocks.summary === "string" ? unlocks.summary : undefined,
     } : undefined,
 
     availableDatasets,
