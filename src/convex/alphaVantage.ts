@@ -288,9 +288,11 @@ function normalizeNewsFromAV(json: any, relatedTicker: string): NewsArticle[] {
         title: item.title,
         source: item.source || "Unknown",
         url: item.url,
-        publishedAt: item.time_published
-          ? parseAVTime(item.time_published)
-          : Date.now(),
+        // Phase 220: publishedAt is provider provenance. A missing or
+        // unparseable time_published is recorded as 0 (the same "no
+        // provider timestamp" sentinel the news feed already treats as
+        // UNAVAILABLE), never as the local clock and never as NaN.
+        publishedAt: parseAVTime(item.time_published),
         summary: item.summary,
         sentimentScore: tickerSentiment?.ticker_sentiment_score
           ? parseFloat(tickerSentiment.ticker_sentiment_score)
@@ -506,20 +508,24 @@ function mapSentimentLabel(label: string | undefined): NewsArticle["sentimentLab
   return "neutral";
 }
 
-function parseAVTime(timeStr: string): number {
-  // AV format: "20240101T120000" or "20240101T120000.000"
-  try {
-    const cleaned = timeStr.replace(/\.\d+$/, "");
-    const y = parseInt(cleaned.slice(0, 4));
-    const m = parseInt(cleaned.slice(4, 6)) - 1;
-    const d = parseInt(cleaned.slice(6, 8));
-    const h = parseInt(cleaned.slice(9, 11));
-    const min = parseInt(cleaned.slice(11, 13));
-    const s = parseInt(cleaned.slice(13, 15)) || 0;
-    return new Date(y, m, d, h, min, s).getTime();
-  } catch {
-    return Date.now();
-  }
+/**
+ * Parse an Alpha Vantage time ("20240101T120000" or "20240101T120000.000").
+ * Returns 0 when the field is absent or does not parse to a finite, positive
+ * time — 0 means "provider gave no usable publication time" and is never
+ * confused with an observation. The local clock is never substituted.
+ */
+function parseAVTime(timeStr: unknown): number {
+  if (typeof timeStr !== "string" || timeStr.length < 13) return 0;
+  const cleaned = timeStr.replace(/\.\d+$/, "");
+  if (!/^\d{8}T\d{4,6}$/.test(cleaned)) return 0;
+  const y = parseInt(cleaned.slice(0, 4));
+  const m = parseInt(cleaned.slice(4, 6)) - 1;
+  const d = parseInt(cleaned.slice(6, 8));
+  const h = parseInt(cleaned.slice(9, 11));
+  const min = parseInt(cleaned.slice(11, 13));
+  const s = parseInt(cleaned.slice(13, 15)) || 0;
+  const ms = new Date(y, m, d, h, min, s).getTime();
+  return Number.isFinite(ms) && ms > 0 ? ms : 0;
 }
 
 function safeNum(val: string | undefined): number | undefined {

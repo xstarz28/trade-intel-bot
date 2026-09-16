@@ -165,6 +165,21 @@ async function fetchCandlesUncached(
   return usable;
 }
 
+/**
+ * Phase 220 — provider-observed price time.
+ * `quoteTs` is Twelve Data's `/quote` `timestamp` (UNIX seconds, may be a
+ * number or numeric string, may be absent). Only a finite, positive value
+ * within a plausible epoch range is accepted and scaled to ms; anything
+ * else falls back to the most recent candle's own datetime, which is also
+ * provider-observed. Never returns the request clock.
+ */
+export function resolveProviderPriceTimestamp(quoteTs: unknown, lastCandleMs: number): number {
+  const n = typeof quoteTs === "number" ? quoteTs : typeof quoteTs === "string" ? Number(quoteTs) : NaN;
+  // 1e9 s = 2001-09-09, 1e11 s = year 5138 — anything outside is not seconds.
+  if (Number.isFinite(n) && n >= 1e9 && n < 1e11) return n * 1000;
+  return Number.isFinite(lastCandleMs) && lastCandleMs > 0 ? lastCandleMs : 0;
+}
+
 export const fetchMarketData = action({
   args: {
     instrument: v.string(),
@@ -249,6 +264,19 @@ export const fetchMarketData = action({
         quoteRes.close !== undefined
           ? parseFloat(String(quoteRes.close))
           : candles[candles.length - 1].close;
+
+      // Phase 220 — `PriceSnapshot.timestamp` is documented as "when the
+      // price was last updated" by the PROVIDER. It was stamped with the
+      // request clock, so a quote the provider itself dated hours earlier
+      // graded FRESH in the radar and passed the engine's staleness gate.
+      // Use the provider's own time when it gave one (Twelve Data /quote
+      // `timestamp` is UNIX seconds); otherwise fall back to the last
+      // candle's own datetime. Both are provider-observed. The request
+      // clock is never used as an observation time.
+      const priceTimestamp = resolveProviderPriceTimestamp(
+        quoteRes.timestamp,
+        candles[candles.length - 1].timestamp,
+      );
 
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
@@ -425,7 +453,7 @@ export const fetchMarketData = action({
           instrumentType: args.instrumentType,
           provider: "twelve-data",
           fetchTimestamp: Date.now(),
-          price: { price, timestamp: Date.now(), source: "twelve-data" },
+          price: { price, timestamp: priceTimestamp, source: "twelve-data" },
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
