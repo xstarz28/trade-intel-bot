@@ -83,13 +83,10 @@ export function buildMarketScenario(result: AnalysisResult): MarketScenarioConte
   const trace = result.decisionTrace;
   const tech = result.technicalData;
   const mtf = result.mtfSummary;
-  const rec = result.recommendation;
-  const bias = result.bias;
   const dq = result.dataQualityContext;
 
   const structDir = trace?.structuralDirection ?? "none";
   const vetoApplied = trace?.biasCalculation?.vetoApplied ?? false;
-  const layers = trace?.convictionBreakdown?.layers ?? [];
   const contradictions = result.keyContradictions ?? [];
 
   // ── Current direction ──

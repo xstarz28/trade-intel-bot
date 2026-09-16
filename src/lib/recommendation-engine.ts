@@ -255,12 +255,6 @@ export interface UniversalRecommendationResult {
 // HORIZON PROFILES
 // ═══════════════════════════════════════════════════════════════
 
-const ZERO_WEIGHTS: HorizonWeights = {
-  htfStructure: 0, mtfAlignment: 0, marketRegime: 0, volatility: 0,
-  liquidity: 0, fundamentals: 0, macro: 0, derivatives: 0,
-  dataQuality: 0, riskReward: 0,
-};
-
 function normalizeWeights(w: HorizonWeights): HorizonWeights {
   const total = Object.values(w).reduce((s, v) => s + v, 0);
   if (total === 0) return w;

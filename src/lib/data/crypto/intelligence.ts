@@ -61,7 +61,6 @@ export function buildCryptoIntelligenceContext(
 
   // Compute overall availability
   const availableCount = [derivatives?.available, defi?.available, tokenomics?.available].filter(Boolean).length;
-  const totalCount = 3;
   const overallAvailability: CryptoIntelligenceContext["overallAvailability"] =
     availableCount === 3 ? "FULL" :
     availableCount >= 2 ? "PARTIAL" :

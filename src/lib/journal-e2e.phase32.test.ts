@@ -328,7 +328,6 @@ describe("Phase 32 — Adversarial: instrument identity", () => {
 describe("Phase 32 — Adversarial: snapshot mutation attempts", () => {
   it("all mutations create new objects — original entry unchanged", () => {
     const entry = journalFromAnalysis(getResult("BTC/USD", "crypto", 50000));
-    const orig = { ...entry };
 
     updateReview(entry, { notes: "changed" });
     updateTradeInfo(entry, { entry: 999 });

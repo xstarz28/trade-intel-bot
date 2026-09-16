@@ -22,24 +22,6 @@ import type { OhlcvCandle } from "@/lib/data/market-types";
 
 // ── helpers ──────────────────────────────────────────────────────
 
-function candle(
-  i: number,
-  base: number,
-  o = 0,
-  h = 10,
-  l = -10,
-): OhlcvCandle {
-  const ts = Date.parse("2026-08-01T00:00:00Z") + i * 86_400_000;
-  return {
-    timestamp: ts,
-    open: base + o,
-    high: base + h,
-    low: base + l,
-    close: base,
-    volume: 1_000_000,
-  };
-}
-
 function bullCandles(start: number, base: number, n = 80): OhlcvCandle[] {
   return Array.from({ length: n }, (_, i) => {
     const ts = Date.parse("2026-08-01T00:00:00Z") + (start + i) * 86_400_000;

@@ -211,50 +211,6 @@ async function ensureLiveData(): Promise<void> {
   liveDataFetched = true;
 }
 
-async function fetchCoinGecko(
-  coinId: string,
-  symbol: string,
-): Promise<LiveResult> {
-  const start = Date.now();
-  const routing = routeInstrument(symbol);
-  const routedProvider = routing.primary?.provider ?? "UNKNOWN";
-  try {
-    const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`,
-    );
-    const data = (await res.json()) as Record<string, { usd: number }>;
-    const price = data[coinId]?.usd;
-    if (!price || !Number.isFinite(price) || price <= 0) {
-      return {
-        provider: "CoinGecko", instrument: symbol,
-        assetClass: detectAssetClass(symbol), price: 0,
-        timestamp: Date.now(), success: false,
-        error: "Invalid price", latencyMs: Date.now() - start,
-        mode: "LIVE", routedProvider,
-        routingConsistent: routedProvider === "CoinGecko",
-      };
-    }
-    return {
-      provider: "CoinGecko", instrument: symbol,
-      assetClass: detectAssetClass(symbol), price,
-      timestamp: Date.now(), success: true,
-      latencyMs: Date.now() - start, mode: "LIVE",
-      routedProvider,
-      routingConsistent: routedProvider === "CoinGecko",
-    };
-  } catch (err) {
-    return {
-      provider: "CoinGecko", instrument: symbol,
-      assetClass: detectAssetClass(symbol), price: 0,
-      timestamp: Date.now(), success: false,
-      error: err instanceof Error ? err.message : "unknown",
-      latencyMs: Date.now() - start, mode: "LIVE",
-      routedProvider,
-      routingConsistent: routedProvider === "CoinGecko",
-    };
-  }
-}
-
 async function fetchTwelveData(symbol: string): Promise<LiveResult> {
   const start = Date.now();
   const routing = routeInstrument(symbol);

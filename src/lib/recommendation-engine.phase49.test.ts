@@ -154,20 +154,6 @@ function makeIndexCandidate(overrides?: Partial<CandidateInput>): CandidateInput
   });
 }
 
-function makeMacroCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
-  return makeCandidate({
-    instrument: "DXY",
-    assetClass: "macro",
-    currentPrice: 103.5,
-    dxyTrend: "falling",
-    riskRegime: "risk_on",
-    hasMacro: true,
-    hasDerivatives: false,
-    hasExecutionQuality: false,
-    ...overrides,
-  });
-}
-
 // ═══════════════════════════════════════════════════════════════
 // A. CANDIDATE DISCOVERY
 // ═══════════════════════════════════════════════════════════════

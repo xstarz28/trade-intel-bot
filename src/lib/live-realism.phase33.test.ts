@@ -622,7 +622,6 @@ describe("Phase 33 — Cross-layer contradiction audit", () => {
   it("forward path confirmation is consistent with regime phase", () => {
     const r = run("BTC/USD", "crypto", 50000);
     const fp = r.forwardMarketPath!;
-    const regime = r.marketRegimeContext!;
 
     // If keyLevels.invalidation exists, it should appear in invalidation conditions
     if (r.keyLevels?.invalidation && r.keyLevels.invalidation !== "N/A") {
