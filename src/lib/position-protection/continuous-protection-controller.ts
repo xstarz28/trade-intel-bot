@@ -79,6 +79,12 @@ export interface ContinuousControllerState {
   criticalEventsProcessed: number;
 }
 
+const RISK_REGIMES = ["risk_on", "risk_off", "transition", "unknown"] as const;
+type RiskRegimeValue = (typeof RISK_REGIMES)[number];
+function asRiskRegime(v: unknown): RiskRegimeValue | undefined {
+  return (RISK_REGIMES as readonly unknown[]).includes(v) ? (v as RiskRegimeValue) : undefined;
+}
+
 export function createControllerState(): ContinuousControllerState {
   return {
     positions: new Map(),
@@ -447,7 +453,11 @@ function buildEvidenceFromEvent(event: RealTimeEvent, pos: PositionControllerSta
       break;
     case "MACRO_CHANGE":
       ev.riskRegimeChanged = true;
-      if (typeof event.payload.regime === "string") ev.riskRegime = event.payload.regime as any;
+      {
+        // Phase 227 — an unrecognised regime string is dropped, not cast.
+        const regime = asRiskRegime(event.payload.regime);
+        if (regime) ev.riskRegime = regime;
+      }
       break;
     case "CROSS_ASSET_CHANGE":
       ev.correlatedDivergence = event.payload.divergence === true;

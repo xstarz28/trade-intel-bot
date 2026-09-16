@@ -389,7 +389,7 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
     urgency,
     urgencyReason,
     whyTpNow,
-    thesisHealth: thesisHealth.state as any,
+    thesisHealth: thesisHealth.state,
     thesisHealthScore: thesisHealth.score,
     profit,
     shock,
