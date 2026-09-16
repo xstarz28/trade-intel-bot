@@ -90,7 +90,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
     return {
       timestamp: latestHealth.timestamp,
       overallStatus: latestHealth.overallStatus as RuntimeHealthStatus,
-      components: (latestHealth.components as any[]).map((c: any) => ({
+      components: latestHealth.components.map((c) => ({
         component: c.component as RuntimeComponent,
         status: c.status as RuntimeHealthStatus,
         lastSuccessAt: c.lastSuccessAt,

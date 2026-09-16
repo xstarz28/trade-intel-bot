@@ -25,6 +25,7 @@ import {
   DEFAULT_PREFERENCES,
   ALL_CATEGORIES,
   type NotificationPreferences,
+  validatePreferences,
 } from "../lib/position-protection/notification-preferences";
 
 const FILTER_OPTIONS: { label: string; value: NotificationFilter }[] = [
@@ -61,16 +62,11 @@ export function NotificationCenter() {
 
   const prefs: NotificationPreferences = useMemo(() => {
     if (!rawPrefs) return DEFAULT_PREFERENCES;
-    return {
-      minimumSeverity: (rawPrefs as any).minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
-      enabledCategories: (rawPrefs as any).enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
-      enabledScopes: (rawPrefs as any).enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
-      mutedRuleIds: (rawPrefs as any).mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
-      enabledInstruments: (rawPrefs as any).enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
-      mutedInstruments: (rawPrefs as any).mutedInstruments ?? DEFAULT_PREFERENCES.mutedInstruments,
-      showReadNotifications: (rawPrefs as any).showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
-      showDismissedNotifications: (rawPrefs as any).showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
-    };
+    // Phase 227 — the stored record is validated with the module's own guard
+    // instead of being cast field-by-field. A record that fails validation
+    // (e.g. an unknown severity) falls back to defaults rather than leaking
+    // an out-of-union value into the filter.
+    return validatePreferences(rawPrefs) ? rawPrefs : DEFAULT_PREFERENCES;
   }, [rawPrefs]);
 
   const filtered = useMemo(() => {

@@ -30,6 +30,7 @@ import {
   type RuleCondition,
   type RuleSeverity,
 } from "@/lib/position-protection/alert-rule-engine";
+import { errorMessage } from "@/lib/data/json/narrow";
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -420,8 +421,8 @@ export function CustomAlertRulesPanel() {
           cooldownMs: opts.cooldownMs,
         });
         toast.success(txi("alerts.ruleCreated", { name: opts.name }));
-      } catch (err: any) {
-        toast.error(err?.message ?? t.alerts.ruleCreateFailed);
+      } catch (err: unknown) {
+        toast.error(errorMessage(err) || t.alerts.ruleCreateFailed);
       }
     },
     [createRule, txi, t],
@@ -431,8 +432,8 @@ export function CustomAlertRulesPanel() {
     async (ruleId: string, enabled: boolean) => {
       try {
         await updateRule({ ruleId, enabled });
-      } catch (err: any) {
-        toast.error(err?.message ?? t.alerts.ruleUpdateFailed);
+      } catch (err: unknown) {
+        toast.error(errorMessage(err) || t.alerts.ruleUpdateFailed);
       }
     },
     [updateRule, t],
@@ -443,8 +444,8 @@ export function CustomAlertRulesPanel() {
       try {
         await deleteRule({ ruleId });
         toast.success(t.alerts.ruleDeleted);
-      } catch (err: any) {
-        toast.error(err?.message ?? t.alerts.ruleDeleteFailed);
+      } catch (err: unknown) {
+        toast.error(errorMessage(err) || t.alerts.ruleDeleteFailed);
       }
     },
     [deleteRule, t],

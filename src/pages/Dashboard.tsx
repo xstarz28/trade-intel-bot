@@ -49,6 +49,7 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { BarChart3, Briefcase } from "lucide-react";
+import { errorMessage } from "@/lib/data/json/narrow";
 
 /** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
 function fromDbRecord(record: any): AnalysisResult {
@@ -343,9 +344,9 @@ export default function Dashboard() {
           if (derivResult && derivResult.status === "fulfilled") {
             derivativesResult = derivResult.value;
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           updateStep(1, "error");
-          setFetchError(`Data fetch failed: ${err?.message || "provider not configured"}`);
+          setFetchError(`Data fetch failed: ${errorMessage(err) || "provider not configured"}`);
           setIsAnalyzing(false);
           return;
         }
@@ -775,9 +776,9 @@ export default function Dashboard() {
         } catch {
           // Save failed (guest user) — analysis still shows in session
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!isStaleRun()) {
-          setFetchError(`Analysis failed: ${err?.message || "unknown error"}`);
+          setFetchError(`Analysis failed: ${errorMessage(err) || "unknown error"}`);
         }
       } finally {
         // Only the newest run owns the loading UI; stale runs exit silently.
