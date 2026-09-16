@@ -29,7 +29,8 @@ import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../l
  * candidate resolves, probing is skipped for 24h instead of every analysis.
  */
 import { getProviderCache } from "../lib/data/provider-cache-registry";
-import { errorMessage } from "./lib/json";
+import { errorMessage, isRecord } from "./lib/json";
+import { classifyLegError } from "./lib/legOutcome";
 import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
 
 let dxyResolvedSymbol: string | null = null;
@@ -179,6 +180,42 @@ export function resolveProviderPriceTimestamp(quoteTs: unknown, lastCandleMs: nu
   // 1e9 s = 2001-09-09, 1e11 s = year 5138 — anything outside is not seconds.
   if (Number.isFinite(n) && n >= 1e9 && n < 1e11) return n * 1000;
   return Number.isFinite(lastCandleMs) && lastCandleMs > 0 ? lastCandleMs : 0;
+}
+
+/**
+ * Phase 230 — classification for the SECONDARY fetch legs in this module
+ * (DXY candidate probes, the comparator series, the live quote, the MTF
+ * chain, the FX pair legs). The primary candle leg already carries the
+ * §217 classification; a secondary leg failure must never be laundered into
+ * "the provider has no such data", so its class travels in the reason text.
+ *
+ * `isDefinitiveProbeRejection` answers the ONLY question the DXY negative
+ * cache may ask: did the provider DEFINITIVELY reject this candidate symbol?
+ * That is true only for an answered 4xx symbol/plan rejection and for an
+ * answered-but-empty series. A quota/credential rejection (429/401/403) or
+ * any transport/5xx/malformed failure teaches nothing about the symbol
+ * itself, so it must never arm the 24h negative cache — before this phase a
+ * `.catch(() => null)` made a 429 look exactly like a verified-invalid
+ * symbol and could poison DXY discovery for 24h.
+ */
+export function isDefinitiveProbeRejection(err: unknown): boolean {
+  const msg = errorMessage(err) || "unknown error";
+  if (msg.startsWith("[429]") || msg.startsWith("[401]") || msg.startsWith("[403]")) return false;
+  if (/^\[4\d\d\]/.test(msg)) return true; // e.g. [404] — symbol unavailable on this plan
+  if (msg.startsWith("no candle data returned")) return true;
+  if (msg.startsWith("provider returned no numerically valid candles")) return true;
+  return false; // timeout / network / 5xx / malformed — nothing learned about the symbol
+}
+
+/** Class text for a failed secondary leg — "RATE_LIMIT ([429] …)", "timeout (…)", … */
+export function secondaryLegFailureText(err: unknown): string {
+  const msg = errorMessage(err) || "unknown error";
+  if (msg.startsWith("RATE_LIMIT") || msg.startsWith("[429]")) return `RATE_LIMIT (${msg})`;
+  if (msg.startsWith("AUTH_ERROR") || msg.startsWith("[401]") || msg.startsWith("[403]")) {
+    return `AUTH_ERROR (${msg})`;
+  }
+  const cls = classifyLegError(err);
+  return `${cls.status} (${cls.reason})`;
 }
 
 export const fetchMarketData = action({
@@ -355,6 +392,12 @@ export const fetchMarketData = action({
       const comparator = crossAssetComparator(args.instrumentType, symbol);
       let crossAsset: TechnicalData["crossAsset"] | undefined;
       if (comparator && comparator !== symbol.toUpperCase()) {
+        // Phase 230 — secondary-leg failure state. These legs share the
+        // primary Twelve Data quota; when one of them fails the failure
+        // CLASS stays attached instead of folding into the generic "no
+        // comparable series" wording.
+        let dxyProbeInconclusive: string | undefined;
+        let compFetchFailure: string | undefined;
         try {
           // Phase 7C — defensive actual-DXY discovery. The literal "DXY"
           // symbol is NOT valid on the current Twelve Data plan (verified:
@@ -373,17 +416,45 @@ export const fetchMarketData = action({
             } else {
               const probes: Record<string, boolean> = {};
               for (const cand of DXY_CANDIDATE_SYMBOLS) {
-                const test = await fetchCandles(cand, "D1", 5, apiKey).catch(() => null);
+                const test = await fetchCandles(cand, "D1", 5, apiKey).catch((err: unknown) => {
+                  // Phase 230 — only a DEFINITIVE provider answer may mark a
+                  // candidate invalid. A quota/credential rejection or any
+                  // transport/5xx/malformed failure is inconclusive: nothing
+                  // was learned about the symbol itself, so it must NOT arm
+                  // the 24h negative cache during a quota outage.
+                  if (!isDefinitiveProbeRejection(err)) {
+                    dxyProbeInconclusive ??= secondaryLegFailureText(err);
+                  }
+                  return null;
+                });
                 probes[cand] = !!test && test.length > 0;
                 if (probes[cand]) break; // stop at first success — minimal requests
               }
-              compSymbol = resolveWorkingSymbol(DXY_CANDIDATE_SYMBOLS, (c) => probes[c] ?? false);
-              if (compSymbol) dxyResolvedSymbol = compSymbol;
-              else dxyAllCandidatesFailedAt = Date.now();
+              // Phase 230 — an INCONCLUSIVE wave resolves nothing and arms
+              // nothing: the 24h negative cache is reserved for verified
+              // invalidity, never for "our quota died during probing".
+              if (dxyProbeInconclusive !== undefined) {
+                compSymbol = null;
+              } else {
+                compSymbol = resolveWorkingSymbol(DXY_CANDIDATE_SYMBOLS, (c) => probes[c] ?? false);
+                if (compSymbol) dxyResolvedSymbol = compSymbol;
+                else dxyAllCandidatesFailedAt = Date.now();
+              }
             }
           }
           const compCandles = compSymbol
-            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey).catch(() => null)
+            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey).catch((err: unknown) => {
+                // Phase 230 — was `.catch(() => null)`: keep the failure
+                // class so a comparator outage is not misreported as "the
+                // provider returned no series". A DEFINITIVE answer (4xx
+                // symbol/plan rejection, answered-but-empty series) is not a
+                // failure — it keeps the original "no comparable series"
+                // wording (§227: answered ≠ outage).
+                compFetchFailure = isDefinitiveProbeRejection(err)
+                  ? undefined
+                  : secondaryLegFailureText(err);
+                return null;
+              })
             : null;
           if (compCandles && compCandles.length >= 25) {
             const corr = pearsonCorrelation(
@@ -431,17 +502,24 @@ export const fetchMarketData = action({
               timeframe: args.timeframe,
               available: false,
               unavailableReason:
-                comparator.toUpperCase() === "DXY"
-                  ? "actual DXY price series is not available on the current Twelve Data plan (all documented index symbols verified invalid live) — NEWS-derived USD proxy remains labeled fallback"
-                  : `no comparable series returned by the provider for ${comparator}`,
+                compFetchFailure !== undefined
+                  ? `comparator series for ${comparator} could not be fetched: ${compFetchFailure} — primary data unaffected`
+                  : comparator.toUpperCase() === "DXY" && dxyProbeInconclusive !== undefined
+                    ? `actual DXY discovery is inconclusive: all documented index symbol probes failed for transport/quota reasons (${dxyProbeInconclusive}) without a verified-invalid answer — probing resumes on the next analysis; NEWS-derived USD proxy remains labeled fallback`
+                    : comparator.toUpperCase() === "DXY"
+                      ? "actual DXY price series is not available on the current Twelve Data plan (all documented index symbols verified invalid live) — NEWS-derived USD proxy remains labeled fallback"
+                      : `no comparable series returned by the provider for ${comparator}`,
             };
           }
-        } catch {
+        } catch (err: unknown) {
+          // Phase 230 — was `catch {}`: an unexpected secondary-leg error
+          // stays non-fatal, but its class remains visible in the reason
+          // instead of disappearing into an unattributed failure.
           crossAsset = {
             comparatorSymbol: comparator,
             timeframe: args.timeframe,
             available: false,
-            unavailableReason: "cross-asset fetch failed — primary data unaffected",
+            unavailableReason: `cross-asset fetch failed: ${secondaryLegFailureText(err)} — primary data unaffected`,
           };
         }
       }
@@ -468,9 +546,27 @@ export const fetchMarketData = action({
         observedAt: oldestObservation(candleObservations),
       };
     } catch (err: unknown) {
+      // Phase 230 — defensive pass-through of the fatal classes: every
+      // fetch path above already classifies, but an unanticipated fatal
+      // throw must never collapse into a generic outage (§229 AV fix).
+      const msg = errorMessage(err) || "unknown error";
+      if (msg.startsWith("RATE_LIMIT") || msg.startsWith("[429]")) {
+        return {
+          success: false as const,
+          error: `Rate limited: ${msg}`,
+          errorCode: "RATE_LIMIT" as const,
+        };
+      }
+      if (msg.startsWith("AUTH_ERROR") || msg.startsWith("[401]") || msg.startsWith("[403]")) {
+        return {
+          success: false as const,
+          error: `Auth error: ${msg}`,
+          errorCode: "AUTH_ERROR" as const,
+        };
+      }
       return {
         success: false as const,
-        error: `Market data fetch failed: ${errorMessage(err) || "unknown error"}`,
+        error: `Market data fetch failed: ${msg}`,
         errorCode: "API_UNAVAILABLE" as const,
       };
     }
@@ -497,65 +593,134 @@ export const fetchFxRate = action({
     const to = args.to.toUpperCase();
     if (from === to) return { success: false as const, error: "same currency — no conversion needed" };
 
+    type FxRate = { rate: number; timestamp: number; source: string; pair: string };
+    /**
+     * Phase 230 — one FX leg as an explicit tri-state (was `catch { return
+     * null }`, which made a 429 indistinguishable from "no such conversion").
+     *
+     *  - FATAL quota/credential answers THROW. Both legs share the same API
+     *    key, so a 429/401/403 on either leg is a fatal class for the whole
+     *    conversion: nothing is cached and the envelope names the class.
+     *  - `empty` is a legitimate "the provider answered, but has no usable
+     *    quote for this pair" — the existing no-quote contract, uncached.
+     *  - `failed` is a transport/provider fault with its class attached; it
+     *    is never laundered into "no quote".
+     */
     const fetchPair = async (
       pair: string,
-    ): Promise<{ rate: number; timestamp: number; source: string; pair: string } | null> => {
+    ): Promise<{ kind: "ok"; value: FxRate } | { kind: "empty" } | { kind: "failed"; failure: string }> => {
+      let res: Response;
       try {
-        const res = await fetch(
+        res = await fetch(
           `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(pair)}&apikey=${apiKey}`,
           // Phase 177 — HTTP deadline below the 6s fx-rate leg budget.
           { signal: AbortSignal.timeout(5_000) },
-        ).then((r) => r.json());
-        if (!res || res.code || res.close === undefined) return null;
-        const rate = parseFloat(res.close);
-        if (!Number.isFinite(rate) || rate <= 0) return null;
-        return { rate, timestamp: Date.now(), source: "twelve-data", pair };
-      } catch {
-        return null;
+        );
+      } catch (err: unknown) {
+        const cls = classifyLegError(err);
+        return { kind: "failed", failure: `${cls.status} (${cls.reason})` };
       }
+      if (res.status === 429) throw new Error(`RATE_LIMIT: HTTP 429 ${res.statusText}`);
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`AUTH_ERROR: HTTP ${res.status} ${res.statusText}`);
+      }
+      if (!res.ok) return { kind: "failed", failure: `provider_error (HTTP ${res.status})` };
+      const json: unknown = await res.json().catch(() => undefined);
+      if (!isRecord(json)) return { kind: "failed", failure: "malformed (non-JSON body)" };
+      // Twelve Data also answers quota/credential problems in the JSON body
+      // (HTTP 200 with a `code`); classify them identically to HTTP status.
+      const rawCode = json.code;
+      const codeNum =
+        typeof rawCode === "number" ? rawCode : typeof rawCode === "string" ? Number(rawCode) : NaN;
+      if (codeNum === 429) throw new Error(`RATE_LIMIT: ${String(json.message ?? "HTTP 429")}`);
+      if (codeNum === 401 || codeNum === 403) {
+        throw new Error(`AUTH_ERROR: ${String(json.message ?? `HTTP ${codeNum}`)}`);
+      }
+      if (rawCode) return { kind: "empty" };
+      if (json.close === undefined) return { kind: "empty" };
+      const rate = parseFloat(String(json.close));
+      if (!Number.isFinite(rate) || rate <= 0) return { kind: "empty" };
+      return { kind: "ok", value: { rate, timestamp: Date.now(), source: "twelve-data", pair } };
     };
 
     // Phase 178b — routed through the authoritative provider cache. The key
     // carries the conversion DIRECTION, so USD>EUR and EUR>USD are distinct
     // entries. A hit performs no HTTP call and consumes no Twelve Data quota;
     // concurrent identical conversions collapse to one acquisition.
-    type FxLeg = { rate: number; timestamp: number; source: string; pair: string } | null;
-    const evidence = await getProviderCache().fetch<{ direct: FxLeg; inverse: FxLeg }>(
-      {
-        provider: "twelve-data",
-        dataset: "fx-rate",
-        qualifier: `${from}>${to}`,
-      },
-      async () => {
-        // Parallel — a failing leg never blocks or corrupts the other.
-        const [direct, inverse] = await Promise.all([
-          fetchPair(`${from}/${to}`),
-          fetchPair(`${to}/${from}`),
-        ]);
-        // Nothing usable: return null so no entry is stored. An absent FX
-        // quote must never be cached as if it were a rate.
-        if (!direct && !inverse) return null;
-        return {
-          data: { direct, inverse },
-          // Observation time of the real quote, preserved across later hits.
-          observedAt: direct?.timestamp ?? inverse?.timestamp ?? Date.now(),
-        };
-      },
-    );
+    type FxLeg = FxRate | null;
+    try {
+      const evidence = await getProviderCache().fetch<{ direct: FxLeg; inverse: FxLeg }>(
+        {
+          provider: "twelve-data",
+          dataset: "fx-rate",
+          qualifier: `${from}>${to}`,
+        },
+        async () => {
+          // Parallel — a failing leg never blocks or corrupts the other.
+          const [direct, inverse] = await Promise.all([
+            fetchPair(`${from}/${to}`),
+            fetchPair(`${to}/${from}`),
+          ]);
+          const directLeg = direct.kind === "ok" ? direct.value : null;
+          const inverseLeg = inverse.kind === "ok" ? inverse.value : null;
+          // Nothing usable: return null so no entry is stored. An absent FX
+          // quote must never be cached as if it were a rate.
+          if (!directLeg && !inverseLeg) {
+            // Phase 230 — when BOTH legs failed for transport/provider
+            // reasons that is an outage, not "no quote exists": throw so the
+            // action reports API_UNAVAILABLE with the classes, uncached.
+            if (direct.kind === "failed" && inverse.kind === "failed") {
+              throw new Error(
+                `every leg failed (direct: ${direct.failure}; inverse: ${inverse.failure})`,
+              );
+            }
+            return null;
+          }
+          return {
+            data: { direct: directLeg, inverse: inverseLeg },
+            // Observation time of the real quote, preserved across later hits.
+            observedAt: directLeg?.timestamp ?? inverseLeg?.timestamp ?? Date.now(),
+          };
+        },
+      );
 
-    if (!evidence) {
+      if (!evidence) {
+        return {
+          success: false as const,
+          error: `no FX quote available for ${from}/${to} from the provider`,
+        };
+      }
+      return {
+        success: true as const,
+        direct: evidence.data.direct,
+        inverse: evidence.data.inverse,
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
+      };
+    } catch (err: unknown) {
+      // Phase 230 — Convex re-wraps thrown errors, so the classification can
+      // only survive to the caller as an explicitly returned envelope.
+      const msg = errorMessage(err) || "unknown error";
+      if (msg.startsWith("RATE_LIMIT")) {
+        return {
+          success: false as const,
+          error: "Twelve Data rate limit exceeded (FX quote leg).",
+          errorCode: "RATE_LIMIT" as const,
+        };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return {
+          success: false as const,
+          error: "Twelve Data access rejected (FX quote leg).",
+          errorCode: "AUTH_ERROR" as const,
+        };
+      }
       return {
         success: false as const,
-        error: `no FX quote available for ${from}/${to} from the provider`,
+        error: `FX request failed: ${msg}`,
+        errorCode: "API_UNAVAILABLE" as const,
       };
     }
-    return {
-      success: true as const,
-      direct: evidence.data.direct,
-      inverse: evidence.data.inverse,
-      acquisition: evidence.acquisition,
-      observedAt: evidence.observedAt,
-    };
   },
 });
 

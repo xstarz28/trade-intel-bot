@@ -6,6 +6,19 @@
  * The instId is derived ONLY from the literal requested symbol via the
  * shared pure mapping; existence/ambiguity is validated in the pure layer.
  * All failures surface explicitly — no fallback values, no assumptions.
+ *
+ * Phase 230 — single-leg failure semantics via the shared leg taxonomy
+ * (lib/legOutcome.ts). This module deliberately emits free-text `error`
+ * failure envelopes WITH the HTTP status in the text (the Phase 211 D10
+ * taxonomy pins that shape: the status is what the downstream classifiers
+ * match, so `…HTTP 429.` reads as a rate limit and `network failure: …`
+ * reads as a transport failure, with no separate classification field).
+ * What this phase changes is the CLASSIFICATION SOURCE: instead of ad-hoc
+ * generic Errors, the fetch legs now throw the shared classified errors —
+ * HTTP 429 -> RATE_LIMIT, 401/403 -> AUTH_ERROR, other non-2xx ->
+ * ProviderHttpError, non-JSON body -> ProviderMalformedError — so every
+ * class is named at the point of failure and every failure still throws
+ * out of the cache fetcher (Phase 178b: nothing cached).
  */
 "use node";
 
@@ -20,6 +33,7 @@ import {
   parseOkxOrderBook,
   type ExecutionData,
 } from "../lib/execution-quality";
+import { ProviderHttpError, ProviderMalformedError } from "./lib/legOutcome";
 
 const ENDPOINT = "https://www.okx.com/api/v5/public/instruments";
 
@@ -58,12 +72,17 @@ export const fetchOkxInstrumentSpec = action({
             // Phase 177 — HTTP deadline below the 6s okx-instrument-spec budget.
             signal: AbortSignal.timeout(5_000),
           });
-          if (!res.ok) {
-            throw new Error(`OKX endpoint returned HTTP ${res.status}.`);
+          // Phase 230 — named failure classes from the shared taxonomy. Every
+          // class throws, so no failure is ever cached; the status survives in
+          // the envelope text, which is what the downstream classifiers match.
+          if (res.status === 429) throw new Error(`RATE_LIMIT: HTTP 429 ${res.statusText}`);
+          if (res.status === 401 || res.status === 403) {
+            throw new Error(`AUTH_ERROR: HTTP ${res.status} ${res.statusText}`);
           }
+          if (!res.ok) throw new ProviderHttpError("OKX", res.status, res.statusText);
           const json: unknown = await res.json().catch(() => undefined);
           if (json === undefined) {
-            throw new Error("OKX returned malformed JSON.");
+            throw new ProviderMalformedError("OKX returned malformed JSON.");
           }
           const parsed = parseOkxResponse(json);
           const acquiredAt = Date.now();
@@ -98,7 +117,7 @@ export const fetchOkxInstrumentSpec = action({
     } catch (err) {
       return {
         success: false as const,
-        error: `OKX fetch failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        error: `OKX request failed: ${err instanceof Error ? err.message : "unknown error"}`,
       };
     }
   },

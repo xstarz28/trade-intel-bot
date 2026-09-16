@@ -1025,3 +1025,85 @@ AV 17/17 killed (catch→undefined, 429→generic, 401/403→generic, fatal→co
 
 ### L. Release blockers (unchanged)
 A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on A1; production email transport/sender/required vars absent; Evidence D INCOMPLETE.
+
+## Phase 230 — Single-leg provider failure semantics: Treasury + COT + EIA + OKX + marketData secondary paths
+
+Base `2a98578`. Commits: `d700761` (Part A, Treasury), `2405e11` (Part B, COT), `1b00419` (Part C, EIA), `e187cef` (Part D, OKX), `1526566` (Part E, marketData secondary legs), `b966b55` (Part F, mutation suite), plus this docs commit. Scope is exactly the §229-K remainder: the four single-leg-ish providers and the two identified `marketData.ts` bare `catch {}` paths. The shared taxonomy (`src/convex/lib/legOutcome.ts`, Phase 229) governs every leg below; each provider keeps its own envelope contract.
+
+### A. Treasury — before / after
+| Condition | Before | After |
+|---|---|---|
+| HTTP 429 on any of 4 XML legs | silent absent leg; all-429 wave read as "no yield curve" miss | `RATE_LIMIT`, uncached, provider recovers |
+| HTTP 401/403 | same as above | `AUTH_ERROR`, uncached |
+| timeout/network/5xx on SOME legs | silent absent leg, indistinguishable from "not published yet" | partial: surviving legs cached, `error:"nominalPrevious: provider_error (HTTP 500 …)"` on the payload, replayed verbatim on a hit |
+| ALL legs failing (transport/provider) | null fetch → ordinary NO_DATA-looking miss | `API_UNAVAILABLE` naming the classes, uncached |
+| all feeds answer 200 with no `<entry>` | NO_DATA miss, uncached | unchanged (legitimate empty month) |
+
+### B. COT — before / after
+| Condition | Before | After |
+|---|---|---|
+| HTTP 429 | generic `HTTP 429` text (cached-safe by throw, but no class) | `RATE_LIMIT` envelope, uncached |
+| HTTP 401/403 | generic text | `AUTH_ERROR` envelope, uncached |
+| 5xx | generic text, downstream read as `network` (the `/fetch failed/i` heuristic) | `API_UNAVAILABLE` with `provider_error` in text |
+| non-JSON / non-array body | generic error | `malformed` class |
+| timeout / connection failure | generic error | `timeout` / `network` class |
+| empty row set `[]` | `no usable reports` (§227 contract) | unchanged |
+
+### C. EIA — before / after
+| Condition | Before | After |
+|---|---|---|
+| 429 / 401 / 403 on ANY product leg | folded into a per-leg reason string; **the all-failed payload was CACHED for 6h** (an invalid key poisoned the dataset) | fatal from any leg → `RATE_LIMIT`/`AUTH_ERROR`, nothing cached; the api key never appears in any envelope |
+| ALL legs failing (timeout/network/5xx/malformed) | all-failed payload **cached 6h**, replayed as an acquisition record | `API_UNAVAILABLE` ("every leg failed (…)"), uncached — the 6h poison is closed |
+| SOME legs failing | per-leg reason string | `${class}: ${reason}` per failed leg on the cached payload; replays through `failedLegs` verbatim on a hit |
+| EIA error body / answered-empty | per-leg answered contract | unchanged (a real answer is not an outage) |
+
+### D. OKX — before / after (D10 contract preserved)
+| Condition | Before | After |
+|---|---|---|
+| spec fetch 429/401/403 | generic `OKX endpoint returned HTTP <s>` | named classes thrown (`RATE_LIMIT`/`AUTH_ERROR` in envelope text); still nothing cached |
+| spec 5xx / malformed / network | generic error | `ProviderHttpError` / `ProviderMalformedError` / transport class |
+| order book literals | `OKX order book returned HTTP <s>.`, `network failure: …` | **unchanged, byte-pinned by Phase 211 D10**; free-text envelopes, NO `errorCode` — asserted |
+| native error codes (`code != "0"`) | `parseWarnings` / `provider error code …` reason | unchanged (audited; no classification added where the wire contract doesn't expose one) |
+
+### E. marketData secondary paths — before / after
+| Condition | Before | After |
+|---|---|---|
+| 429/transport failure during DXY candidate probing | laundered into "all candidates verified invalid" → **24h negative-cache poison** (`dxyAllCandidatesFailedAt`) | INCONCLUSIVE: nothing armed, nothing resolved; probing resumes next analysis; reason names the class |
+| verified-invalid DXY wave (all 404/empty) | 24h negative cache | unchanged (Phase 7C contract; asserted no probes on the next analysis) |
+| comparator fetch failure (e.g. NDX 429/timeout) | `no comparable series returned by the provider` | `comparator series for X could not be fetched: RATE_LIMIT/timeout (…) — primary data unaffected`; a definitive series answer (4xx/empty) keeps the old wording |
+| outer cross-asset catch | bare `catch {}`, unattributed reason | classified reason in `unavailableReason` |
+| outer action catch | everything → `API_UNAVAILABLE` | defensive pass-through of `[429]`/`[401]`/`[403]` as `RATE_LIMIT`/`AUTH_ERROR` (§229 AV fix, generalised) |
+| FX leg 429/401/403 (HTTP **or** JSON `code`) | `catch { return null }` → "no FX quote available" | THROWN from the fetcher (one shared API key) → `RATE_LIMIT`/`AUTH_ERROR` envelope, uncached |
+| BOTH FX legs failing (transport/provider) | "no FX quote available" | `API_UNAVAILABLE` naming both leg classes, uncached |
+| FX partial (one leg ok), both-empty | cached partial / "no FX quote available" miss | unchanged contracts |
+| live-quote `.catch(() => null)` (line ~257) | silently falls back to last-candle close | **audited, unchanged**: the fallback price is provider-observed (candle `datetime` via Phase 220), nothing is cached for a failed quote fetch, and no claim is made — the catch cannot launder a failure into evidence |
+
+### F. Downstream classification repair (`"fetch failed"` heuristic)
+`classifyFailure` (Phase 177) matches `/fetch failed/i` as NETWORK, so every non-fatal envelope wrapped as `X fetch failed: <class>` was relabeled "network" regardless of the real class. The five non-fatal envelope prefixes introduced/kept by this phase use `X request failed:` (treasury, COT, EIA, FX, OKX-spec), so class text survives downstream: `RATE_LIMIT`/`429` → rate-limit (breaks the retry loop), `network (fetch failed)` → network, `malformed` → invalid-response, `provider_error`/timeout text → conservative `unavailable`. Known limitation (pre-existing, out of scope): envelope *text* "timeout" still classifies as `unavailable`, not `timeout`, because envelope-path classification only breaks retries on `rateLimited`; no behavioural change on the envelope path.
+
+### G. Cache behaviour
+Fatal classes never cached (178b, re-asserted per provider). EIA/Treasury outage waves are never stored (closed poisons). Partial waves ARE cached with failure metadata (per-leg `error` string / `failedLegs` `${class}: ${reason}`), replayed verbatim with original `observedAt` (asserted). Answered-but-empty keeps each provider's existing miss contract, uncached. The DXY negative cache is armed ONLY by verified-invalid waves (7C contract re-asserted both ways). OKX order book remains uncached by design.
+
+### H. Timestamp / provenance
+No new `Date.now()` as provider observation. FX success `observedAt` still derives from the real quote time (`direct?.timestamp ?? inverse?.timestamp`). Treasury/EIA/OKX-spec action-level `observedAt`/`acquisition` untouched. The marketData primary path (Phase 220 provider-observed price time) untouched.
+
+### I. Mutation tests (Part F) — 18/18 CAUGHT, 0 gaps
+treasury 429 unclassified; treasury outage-not-thrown; treasury metadata dropped; treasury outer RATE_LIMIT→generic; cot 429 unclassified; cot class hardcoded; EIA outage cached again; EIA 401/403 not AUTH; EIA failed-leg class stripped; okx spec 429 unclassified; okx book literal rewritten (D10 pin); DXY poison armed by transport; DXY inconclusive-guard removed; FX HTTP 429 unclassified; FX JSON `code:429` unclassified; FX outage reported as no-quote; outer defensive map removed; EIA outer AUTH_ERROR→generic. `scripts/mutation-suite-phase230.sh`, byte-exact restore via `cmp`.
+
+### J. Regression tests
+72 new tests across 6 suites: `treasury-legs.phase230.test.ts` (12), `cot-legs.phase230.test.ts` (10), `eia-legs.phase230.test.ts` (14, incl. api-key credential absence), `okx-legs.phase230.test.ts` (13, incl. downstream `classifyFailure` on envelopes + D10 pins), `fx-rate-legs.phase230.test.ts` (12), `marketdata-secondary-legs.phase230.test.ts` (11, incl. helper units and the defensive-map source pin). All §178/178b/178c/178d/176/177/167/219/220/226/227/228/229/211 (D10)/7C guard suites green — including the pins this phase consciously preserved (`okx.ts` free-text/no-`errorCode`, order-book literals, DXY memo wiring, cache raw-payload shapes).
+
+### K. Gates
+`tsc -b` 0 · vitest 287 files / **9915 pass** / 12 skipped (229 baseline: 281 files / 9837 pass / 18 skipped; the 6 env-gated bundle/native-shell assertions are active again because `dist/` now exists in this workspace — 9843 + 72 new = 9915) · `vite build` ok · eslint: changed files 0 errors, runtime `no-explicit-any` 0, unused 0 (tests/scripts `any` untouched and out of scope, per phase brief) · mutation suite 18/18 · mobile:verify PASS (placeholder deep-link values unchanged) · preflight `no-freebuff-otp-dependency` PASS; 3 FAIL on absent prod email vars — unchanged · `_generated` untouched · diff secret scan clean.
+
+### L. Security / provenance
+Credentials asserted absent from every new envelope (EIA `SECRET-VALUE-XYZ` 403 test; Twelve Data FX 401 test). EIA surfaces only the provider's own error text, never the `api_key` query value (error strings are built from `res.status`/`res.statusText`/provider `error` field, never the URL). OKX order-book native-code path audited and left unchanged.
+
+### M. Remaining concrete defects (not deferred silently)
+1. `classifyFailure` envelope-path has no timeout-text pattern (see §F); a global fix touches the Phase 177 shared module used by every provider and is out of this phase's scope.
+2. The live-quote leg `.catch(() => null)` cannot distinguish "no quote" from a quote-leg 429; the consequence is benign by construction (uncached, provider-observed fallback price, no claim) but a 429 there is invisible. OKX order book 401/403 likewise stay free-text `unavailable` downstream (no credential exists to classify).
+3. `protectedAnalysis.ts` slow-group wrapper (`budgeted`) maps a failed optional-slow leg to `{success:false}` and drops the error text before `fetchOptionalSlowData`; Phase 230 classes travel correctly through `runProviderLeg` for the named legs, but the group-level diagnostics still cannot see per-leg class text from failed optional legs.
+4. Pre-existing: `liveProtection.ts:388` eslint `no-useless-escape` ×2 (exists on base, untouched); tests/scripts `no-explicit-any` untouched per phase brief.
+
+### N. Release blockers (unchanged)
+A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on A1; production email transport/sender/required vars absent; Evidence D INCOMPLETE.

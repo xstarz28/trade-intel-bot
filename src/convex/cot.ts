@@ -8,6 +8,15 @@
  *
  * Failure of any kind surfaces as an explicit unavailable state; the primary
  * analysis is never blocked and no positioning data is ever fabricated.
+ *
+ * Phase 230 — single-leg failure semantics via the shared leg taxonomy
+ * (lib/legOutcome.ts): HTTP 429 -> RATE_LIMIT, 401/403 -> AUTH_ERROR,
+ * other non-2xx -> provider_error, non-JSON / non-array body -> malformed,
+ * timeout/server-unreachable -> timeout / network. Every failure class
+ * throws out of the cache fetcher (nothing cached, Phase 178b); the
+ * action-level catch returns an explicitly classified envelope. An
+ * answered-but-empty row set keeps the existing "no usable reports"
+ * contract (§227: a valid answer is not an outage).
  */
 "use node";
 
@@ -15,6 +24,8 @@ import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { buildCotContext, mapInstrumentToCot } from "../lib/data/cot";
 import { getProviderCache } from "../lib/data/provider-cache-registry";
+import { errorMessage } from "./lib/json";
+import { ProviderHttpError, ProviderMalformedError, classifyLegError } from "./lib/legOutcome";
 
 const DATASET = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
 
@@ -56,12 +67,23 @@ export const fetchCotPositioning = action({
             // Phase 177 — HTTP deadline below the 8s cftc leg budget.
             signal: AbortSignal.timeout(7_000),
           });
-          if (!res.ok) {
-            throw new Error(`CFTC endpoint returned HTTP ${res.status}.`);
+          // Phase 230 — shared leg taxonomy. 429/401/403 are FATAL classes:
+          // they must reach the action-level catch as an explicit envelope,
+          // not be flattened into a generic HTTP error. Every class here
+          // throws, so nothing is ever cached for a failed acquisition.
+          if (res.status === 429) throw new Error(`RATE_LIMIT: HTTP 429 ${res.statusText}`);
+          if (res.status === 401 || res.status === 403) {
+            throw new Error(`AUTH_ERROR: HTTP ${res.status} ${res.statusText}`);
           }
-          const rows: unknown = await res.json();
+          if (!res.ok) throw new ProviderHttpError("CFTC", res.status, res.statusText);
+          let rows: unknown;
+          try {
+            rows = await res.json();
+          } catch {
+            throw new ProviderMalformedError("CFTC endpoint returned a non-JSON body.");
+          }
           if (!Array.isArray(rows)) {
-            throw new Error("CFTC endpoint returned a non-array response.");
+            throw new ProviderMalformedError("CFTC endpoint returned a non-array response.");
           }
           return { data: rows as unknown[], observedAt: Date.now() };
         },
@@ -80,10 +102,30 @@ export const fetchCotPositioning = action({
         acquisition: evidence.acquisition,
         observedAt: evidence.observedAt,
       };
-    } catch (err) {
+    } catch (err: unknown) {
+      // Phase 230 — preserve the fetcher's classification: a 429 read as a
+      // generic outage would hide the rate-limit signal Phase 177's budget
+      // needs, and Convex only surfaces explicitly returned envelopes.
+      const msg = errorMessage(err) || "unknown error";
+      if (msg.startsWith("RATE_LIMIT")) {
+        return {
+          success: false as const,
+          error: "CFTC rate limit exceeded (HTTP 429).",
+          errorCode: "RATE_LIMIT" as const,
+        };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return {
+          success: false as const,
+          error: `CFTC access rejected (${msg}).`,
+          errorCode: "AUTH_ERROR" as const,
+        };
+      }
+      const cls = classifyLegError(err);
       return {
         success: false as const,
-        error: `CFTC fetch failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        error: `CFTC request failed: ${cls.status} (${msg})`,
+        errorCode: "API_UNAVAILABLE" as const,
       };
     }
   },
