@@ -145,13 +145,13 @@ function buildAdapter(
           health.status = health.consecutiveFailures >= 3 ? "DEGRADED" : "HEALTHY";
         }
         return result;
-      } catch (err: any) {
+      } catch (err: unknown) {
         const latency = Date.now() - t0;
         health.totalFailures++;
         health.lastFailureAt = Date.now();
         health.consecutiveFailures++;
         health.avgLatencyMs = (health.avgLatencyMs * (health.totalRequests - 1) + latency) / health.totalRequests;
-        const msg = err?.message ?? String(err);
+        const msg = errorMessage(err);
         if (msg.includes("429")) {
           health.status = "RATE_LIMITED";
           health.cooldownUntil = Date.now() + 60_000;
@@ -633,7 +633,7 @@ export async function acquireLiveData(
       error: "provider returned null",
       latencyMs: Date.now() - startTime,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument,
       assetClass,
@@ -641,7 +641,7 @@ export async function acquireLiveData(
       snapshot: null,
       provider: adapter.id,
       success: false,
-      error: err?.message ?? "provider error",
+      error: errorMessage(err) || "provider error",
       latencyMs: Date.now() - startTime,
     };
   }
@@ -882,6 +882,7 @@ export function getProviderHealthSummary(): {
 // ═══════════════════════════════════════════════════════════════
 
 import type { VerificationResult, VerificationStatus } from "./verification";
+import { errorMessage } from "../data/json/narrow";
 
 /**
  * Map a Phase 54 verification status to a provider health status.

@@ -18,6 +18,7 @@ import type { LiveQuoteResult } from "../../convex/liveProtection";
 import type { RealTimeEvent } from "./realtime-types";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 import { bridgeQuoteToEvents, type LiveMarketBridgeState, createBridgeState } from "../market-stream/live-market-bridge";
+import { errorMessage } from "../data/json/narrow";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -189,11 +190,11 @@ export function useLiveProtectionPolling(
       }
       setLastPollAt(now);
       setLastError(anySuccess ? null : "All providers returned errors");
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTotalPolls((p) => p + 1);
       setFailedPolls((p) => p + 1);
       setLastPollAt(Date.now());
-      setLastError(err?.message ?? "Unknown poll error");
+      setLastError(errorMessage(err) || "Unknown poll error");
     }
   }, [fetchLiveQuotes]);
 
