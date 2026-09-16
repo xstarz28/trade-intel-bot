@@ -129,15 +129,24 @@ git push --force --mirror https://github.com/xstarz28/trade-intel-bot.git
 
 ### Refs the force-push will rewrite
 
-All four. None may be skipped — a single surviving ref keeps the blob
-reachable and undoes the entire exercise.
+**All five** (Phase 221 correction — a fifth ref, the current working branch,
+was created after Phase 198 and inherits the blob). None may be skipped — a
+single surviving ref keeps the blob reachable and undoes the entire exercise.
+Re-run `git for-each-ref` on the mirror before executing; any ref added since
+this table must be included.
 
-| Ref | Before | After (rehearsal) |
+| Ref | Before (Phase 221) | After (Phase 221 rehearsal) |
 |---|---|---|
-| `heads/arena/01a08e67-trade-intel-bot` | `835a2540` | `046532ad` |
-| `heads/main` | `51c9ddeb` | `b1a9e915` |
-| `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f580` |
-| `tags/rc-181` | `66323a38` | `23d25ffa` |
+| `heads/arena/01a08e67-trade-intel-bot` | `f8939130` | `bd233a8` |
+| `heads/arena/01a0a5f5-trade-intel-bot` | `920486c5` | `a2243f0` |
+| `heads/main` | `51c9ddeb` | `b1a9e91` |
+| `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f58` |
+| `tags/rc-181` | `66323a38` | `23d25ff` |
+
+Phase 221 re-rehearsal on a fresh mirror: 365/365 commits preserved,
+author/date/subject and parent topology identical, working-branch tree
+byte-identical, verifier `--expect-clean` exit 0 with positive control.
+Real repository and remote untouched. Status remains **BLOCKED on §2**.
 
 ---
 

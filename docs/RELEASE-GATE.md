@@ -399,3 +399,162 @@ clear the other:
 
 A successful deployment would be evidence that the backend runs. It would not
 be permission to release.
+
+## Phase 221 — Canonical release blocker graph (authoritative from here)
+
+**Verdict: NOT READY. No production verification exists.** This section is the
+single canonical dependency graph for release blockers. Earlier sections stay
+as history; where they differ, this section governs. No other gate document
+may be created — `UAT-MATRIX.md`, `DEPLOYMENT-HANDOFF.md`, `EVIDENCE-D.md`,
+`SECRET-REMEDIATION-RUNBOOK.md` and `PRODUCTION-EMAIL-SETUP.md` are
+*procedures* that feed this graph; they do not hold a competing verdict.
+
+Baseline: RC commit `920486c` on `arena/01a0a5f5-trade-intel-bot`; `main`
+still at `51c9ddeb` (untouched, still exposed at tip).
+
+### Evidence tiers — the four columns that must never be merged
+
+| Tier | Meaning | Proven by |
+| --- | --- | --- |
+| **CODE-READY** | Source implements, tests and mutation-proofs the behaviour | tsc, build, suite, handler tests |
+| **DEV-VERIFIED** | Observed on the development deployment `tough-goose-455`, `productionEvidence:false` | Phase 213/216/217 harness runs |
+| **EXTERNAL PREREQ** | Requires an account, domain, credential, device or network authority no environment of this project holds | operator action |
+| **PRODUCTION-VERIFIED** | Observed on a production deployment with `--production-evidence` | **none exists** |
+
+### Blocker matrix
+
+| ID | Blocker | Group | CODE-READY | DEV-VERIFIED | PROD-VERIFIED | Cleared only by |
+| --- | --- | --- | --- | --- | --- | --- |
+| A1 | Leaked Freebuff OTP credential revoked at issuer | Security | n/a | n/a | — | authenticated request with the **old** key → explicit **401/403** (000/timeout/200-elsewhere is not evidence) |
+| A2 | History rewrite across **all five** refs | Security | rehearsed (Phase 221, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
+| A3 | Zero secret occurrences after rewrite | Security | verifier + positive control | n/a | — | A2 |
+| B1 | Production Convex project + `CONVEX_DEPLOYMENT` / `CONVEX_DEPLOY_KEY` | Convex | preflight + access diag ready | dev project exists | **absent** | Convex account holder provisions a **separate prod deployment** (dev is never promoted) |
+| B2 | `CONVEX_SITE_URL` / `VITE_CONVEX_URL` (prod values) | Convex | URL checks in preflight | dev values only | absent | B1 |
+| B3 | Official `npx convex codegen` against prod | Convex | drift check zero | run against dev | not run | B1 |
+| B4 | `XSTARZ_DEPLOYMENT_ENV=production` on prod | Convex | unset ⇒ production (fail-closed) | dev is `development` | not set | B1 |
+| B5 | Self-only issuer in production | Convex | `federated-issuer` PASS, auth-hardening suite | Phase 204 fix verified on dev | not verified | B6 + production sign-in |
+| B6 | Production deploy + `npm run convex:preflight` exit 0 | Convex | preflight 11 checks; today **REJECTED (3 FAIL)** with no inputs | n/a | not deployed | B1–B4, C1–C3 present |
+| C1 | Resend **or** SMTP2GO account | Email | both transports implemented | **absent on dev** (Phase 217) | absent | product owner |
+| C2 | Xstarz-owned domain, verified sender | Email | forbidden-host list derives from retired issuers | absent | absent | domain owner |
+| C3 | SPF / DKIM / DMARC published | Email | not checkable from code | absent | absent | domain owner |
+| C4 | Production OTP delivered to a real mailbox (**D1**) | Email | OTP invariants audited | **NOT VERIFIED** | not verified | C1–C3 + B6 + harness `--auth otp --production-evidence` + human attestation |
+| D1 | Twelve Data key | Providers | client + `AUTH_ERROR`/`API_UNAVAILABLE` taxonomy | free-tier fallback answered `API_UNAVAILABLE` | absent | product owner |
+| D2 | Alpha Vantage key | Providers | client ready | not verified | absent | product owner |
+| D3 | CoinGlass key | Providers | client ready | not verified | absent | product owner |
+| D4 | TickAtlas access | Providers | client ready | not verified | absent | product owner |
+| D5 | OKX public endpoints (no key) | Providers | provider-derived `observedAt` | **D10 PASS on dev** (live order book, exchange `ts`) | not verified | egress from prod deployment |
+| D6 | D10 on production | Providers | — | — | not verified | B6 + D5 on prod |
+| E1 | Android release keystore + `assetlinks.json` SHA-256 | Release | debug APK CI PASS | n/a | placeholder `REPLACE_WITH_RELEASE_CERT_SHA256` | product owner |
+| E2 | iOS cert/profile + AASA team id | Release | simulator build CI PASS | n/a | placeholder `REPLACE_WITH_APPLE_TEAM_ID` | Apple Developer account |
+| E3 | Windows code-signing cert / store packaging | Release | MSI+NSIS CI PASS, binary scan PASS | n/a | unsigned | product owner |
+| E4 | Real App-Links / Universal-Links domain | Release | well-known files in place | n/a | placeholder | C2 (same domain) + E1/E2 |
+| E5 | Installer / download URL | Release | artifacts built | n/a | none hosted | web host + E3 |
+
+### Dependency graph
+
+```
+A1 revoke ──► A2 rewrite (5 refs) ──► A3 zero occurrences ──┐
+                                                            ├──► release
+B1 prod Convex ─► B2 URLs ─► B3 codegen ─► B4 env ─► B6 deploy ─► B5 prod auth ─┤
+C1 account ─► C2 domain ─► C3 DNS ────────────────────────────► C4 D1 (prod) ──┤
+D1–D4 keys ─┐                                                                   │
+D5 OKX ─────┴─► D6 D10 (prod) ◄── B6 ──────────────────────────────────────────┤
+C2 domain ─► E4 links ◄─ E1 / E2 signing;  E3 Windows signing ─► E5 download ──┘
+```
+
+A-chain and B-chain are **independent**: a production deployment does not
+clear A, and A does not create a deployment. Neither may be inferred from the
+other. Nothing in D or E clears anything in A–C.
+
+### What can be verified from the operator's Windows machine now
+
+| Check | Verifiable now? | How (no values printed) | What it proves |
+| --- | --- | --- | --- |
+| Convex account access | yes | `npx convex dashboard` / `npx convex deployments` | account exists; **not** that a prod deployment exists |
+| Prod deployment credential presence | yes | `npx convex env list --names-only` on the **prod** deployment | name presence only; never value |
+| Provider access (keys) | only if the operator holds keys | `npm run convex:preflight` with keys in the shell env | plausibility; not provider validity |
+| OKX public D10 | yes, dev only | `npm run evidence:d` (already PASS on dev, Phase 213) | dev egress; not production |
+| Email provider account status | only if the operator has an account | provider dashboard | account; not delivery, not D1 |
+
+From the sandbox **none** of the above is verifiable: Convex control and
+deployment planes are TLS-severed, OKX and the issuer return HTTP 000, and all
+14 relevant variables are absent (checked by name only, Phase 221).
+
+### Production preflight — current result
+
+`npm run convex:preflight` with no production inputs: **REJECTED — 3 FAIL**
+(`email-delivery`, `sender-identity`, `required-production-vars`:
+`CONVEX_SITE_URL`, `XSTARZ_EMAIL_TRANSPORT`, `XSTARZ_EMAIL_API_KEY`,
+`XSTARZ_EMAIL_SENDER_ADDRESS`). `deployment-env` resolved to `production` by
+fail-closed default. **Production deploy is BLOCKED.** Dev values are not to
+be substituted; the dev deployment is not to be promoted.
+
+### DEV ⇏ PROD — what dev verification does not prove
+
+| DEV fact | Does NOT prove |
+| --- | --- |
+| Phase 204 auth identity fix verified on dev | production sign-in works — prod has a different issuer URL, `SITE_URL`, and no email transport yet |
+| E1–E7 entitlement machine 7/7 on dev | a production deployment enforces it — prod has never been deployed |
+| D2/D3/D4/D6/D9/D10 PASS on dev | production Evidence D — every row was recorded `productionEvidence:false` |
+| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 5 refs |
+| CI build/package PASS on 3 platforms | release signing — every artifact is unsigned |
+| preflight passing on dev | production configuration — prod inputs are absent today |
+
+### Evidence D — exact conditions to change a row (semantics unchanged)
+
+| Row | Today | Becomes PASS only when |
+| --- | --- | --- |
+| D1 | NOT VERIFIED / BLOCKED | C1–C3 provisioned on **prod**, harness `--auth otp --production-evidence`, a human reads the code from a real mailbox, and D2–D10 run in that OTP session |
+| D5 / D7 / D8 | NOT_VERIFIED — MARKET_CONDITION | a **naturally** chargeable recommendation occurs during a production run; the stopping rule (UAT §35p) forbids forcing one |
+| D10 | PASS (dev) / not verified (prod) | the production deployment returns an OKX exchange timestamp that is finite, not future, not local — same rule as dev, on prod |
+
+### Phase 184 readiness — re-rehearsed against current HEAD (Phase 221)
+
+Executed on a fresh disposable `--mirror` in `/tmp`; **real repository and
+remote untouched** (all six remote ref hashes re-read after the run and
+unchanged; no force-push).
+
+| Property | Phase 198 | Phase 221 |
+| --- | --- | --- |
+| Refs carrying the blob | 4 | **5** — `arena/01a0a5f5-trade-intel-bot` was created after Phase 198 and inherits it |
+| Commits (all refs) | 339 | 365 |
+| Leaked blobs / paths | 1 / 1 | 1 / 1 (`e490ffda…`, `src/convex/auth/emailOtp.ts`) |
+| Tips exposed | `main`, `phase-157` | `main`, `phase-157` (both working branches and `rc-181` tip-clean) |
+| Post-rewrite verifier | CLEAN, control PASS | **CLEAN, control PASS, exit 0** |
+| Commit count preserved | 339/339 | **365/365** |
+| Author/email/date/subject | identical | **identical** (md5 `e3a6833f`) |
+| Parent-count topology | identical | **identical** (`e6468c29`) |
+| Working-branch tree | 0 files changed | **byte-identical** (`499481eb`) |
+| `emailOtp.ts` delta | 1 line, 37→37 | 1 line, 37→37 |
+
+Rewritten tips in the rehearsal: `main → b1a9e91`, `phase-157 → 6bf6f58`,
+`rc-181 → 23d25ff`, `arena/01a08e67 → bd233a8`, `arena/01a0a5f5 → a2243f0`.
+The procedure remains applicable after Phases 204 and 220. **It remains
+unexecuted** and gated on A1. The runbook's ref table is updated to five refs.
+
+### Release order — deterministic, not reorderable
+
+1. Revoke the old Freebuff OTP key at the issuer (A1).
+2. Capture the 401/403 rejection with the old key; record date/operator (A1).
+3. Run the rehearsed rewrite across **all five** refs; force-push mirror (A2).
+4. `node scripts/secret-rehearsal-verify.mjs --expect-clean` → exit 0; re-tag RC (A3).
+5. Provision a production Convex deployment; set deploy key, URLs (B1, B2).
+6. `npx convex codegen` against production; commit only if drift (B3).
+7. `npm run convex:preflight` with production inputs → exit 0 (B4, B6-pre).
+8. `npx convex deploy` to production (B6).
+9. Production auth: self-only issuer, real sign-in (B5).
+10. Production email/OTP: C1–C3, then D1 mailbox receipt (C4).
+11. Live provider verification with production keys; D10 on prod (D1–D6).
+12. Production Evidence D run `--production-evidence`; D5/D7/D8 only if natural.
+13. Mobile/desktop signing, App/Universal Links with the real domain (E1–E5).
+14. Final UAT and sign-off.
+
+Steps 1–4 precede everything: a release built before step 2 ships while a
+live credential remains valid in every clone. Step 3 before step 2 destroys
+the audit trail without killing the key.
+
+### Phase 221 result
+
+No source code changed. Documentation and one consistency test only.
+Evidence D: **INCOMPLETE** (unchanged). Phase 184: **BLOCKED** (unchanged).
+`main`: untouched. **Release decision: NOT READY.**
