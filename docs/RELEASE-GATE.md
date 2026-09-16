@@ -769,3 +769,40 @@ Phase 226: decide the three latent-logic items above (wire or delete
 `Journal` handlers; return `derivatives` from the Coinglass adapter; make
 `NO_SECRETS_IN_ALERT` real or drop the stage), each with tests. Lint
 backlog after that is `no-explicit-any` (540), `prefer-const` (28).
+
+## Phase 226 — Three latent-logic findings from Phase 225 resolved
+
+**Nothing in this phase changes a blocker status.** A1/A2/A3 BLOCKED (issuer),
+B–E as in Phase 221, Evidence D INCOMPLETE, `main` untouched, no deployment,
+no history rewrite, `src/convex/` untouched.
+
+| # | Finding | Decision | Commit |
+| --- | --- | --- | --- |
+| 1 | `Journal.tsx` `handleClose` / `handleUpdateNotes` unwired | **Wired close-trade flow; removed notes duplicate.** "→ Closed" now opens an exit-price prompt (`t.global.exit` / `confirm` / `cancel`). Confirm derives `pnl`, `pnlPercent`, `outcome` through the existing `computePnl` + `classifyOutcome`, direction from the immutable analysis snapshot. Missing inputs ⇒ `pnl` undefined / outcome `UNKNOWN`, never 0 (§196 §4). Cancel is a no-op. Lifecycle buttons remain exactly `VALID_TRANSITIONS[status]` — the same table `convex/journal.transition` enforces server-side with ownership; the component still holds local state only and calls no mutation. `handleUpdateNotes` deleted: `handleUpdateReview` already covers `notes`. | `a894f55` |
+| 2 | CoinGlass OI / funding parsed but never delivered to the radar | **Real data-flow via a provenance bridge.** Audit: the only authenticated acquisition is `convex/coinglass.fetchDerivatives` (server key, provider `timestamp`, per-dataset `availability`); the Dashboard kept it on `LiveCandidateSource.derivativesData` but the radar mapping dropped it, so `RadarCandidateSource.derivatives` — read by `radar.ts` scoring and `candidate-builder.ts` — was always undefined. The registry adapter additionally could never authenticate (no `cg_api_key` header), was never selected by `acquireLiveData` (quote/ohlcv only), and stamped `lastPrice` `observedAt: Date.now()` / `FRESH` (non-realtime provider labelled live). New `market-radar/derivatives-bridge.ts` forwards only when provider = coinglass, payload `symbol` = instrument base asset, provider timestamp finite / not future / inside `assessFreshness` window, provider did not mark `unavailable`, and each dataset is flagged available with a finite value. Nothing defaults to 0; nothing surviving ⇒ `undefined` (MISSING). Registry adapter now returns `null` (still registered for capability/health). | `977ac6b` |
+| 3 | `NO_SECRETS_IN_ALERT` computed `hasSecret` then `passed: true` | **Real check.** New `position-protection/secret-detector.ts`: credential-*shaped* patterns (AWS/Stripe/GitHub/Slack/Google keys, JWT, Bearer, PEM block, `key=value` assignments, URL key params, `process.env.*`) instead of the bare words `token`/`secret` that appear in market prose. Result names the pattern class only, never the value. Uninspectable input (circular / BigInt / throwing `toJSON` / `undefined`) is a FAIL. Both the pipeline stage and `runSecurityAudit.NO_EMBEDDED_SECRETS` use it: `passed = inspectable && !found`. | `2b14ee1` |
+
+### Mutation tests (all killed)
+
+| Item | Mutants | Killed by |
+| --- | --- | --- |
+| 1 | CLOSED via plain transition (old wiring); `pnl ?? 0`; direction forced `long` | `journal-close.phase226.test.tsx` (7/10, 2/10, 2/10 fail) |
+| 2 | symbol check removed; OI defaulted to 0; timestamp back-filled with `now`; availability flags ignored; provider `unavailable` ignored; empty object instead of `undefined`; Dashboard bypasses bridge; registry adapter fabricates FRESH price again | `derivatives-bridge.phase226.test.ts` (1–3 fail each) |
+| 3 | stage hard-coded `true`; uninspectable ⇒ pass; audit ignores inspectability; reason echoes value; word-based regex restored; stage reason dumps alert JSON | `secret-detector.phase226.test.ts` (1–3 fail each) |
+
+### Validation
+
+`tsc -b` ✓ · `vite build` ✓ · vitest **272 files / 9587 pass** (12 skipped) ·
+eslint 647 → **643** (`no-unused-vars` **0**; no suppressions added) ·
+`npm run mobile:verify` PASS · `no-freebuff-otp-dependency` PASS (preflight
+still REJECTED 3 FAIL on absent prod inputs, as before) · i18n usage report
+regenerated (referenced 979 → 981: `global.cancel/confirm/exit` now consumed;
+`global.cancel` removed from the Phase 193 allowlist because the guard
+correctly flagged it) · diff secret scan: only the detector regex and a
+split-string PEM header in tests · provenance suites (market-radar, live
+realism, provider resilience, provenance-fabrication 220, platform residue
+224) all green · Evidence-D / Phase 184 text untouched.
+
+### Next
+Phase 227: `no-explicit-any` (540) — start with `src/convex/*` handler
+signatures and provider JSON parsers, where `any` hides schema drift.
