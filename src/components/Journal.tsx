@@ -25,6 +25,7 @@ import {
   updateTradeInfo,
   getValidTransitions,
   classifyOutcome,
+  computePnl,
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
 import { useI18n } from "@/lib/i18n";
@@ -59,18 +60,30 @@ interface JournalProps {
   onJournalCreated?: (entry: JournalEntry) => void;
   /** Navigate back to dashboard. */
   onBack?: () => void;
+  /** Entries to seed the local list with (e.g. loaded by the parent). */
+  initialEntries?: JournalEntry[];
+}
+
+/** Trade direction as recorded in the immutable analysis snapshot; undefined when it was not a directional call. */
+function directionOf(entry: JournalEntry): "long" | "short" | undefined {
+  if (entry.analysisSnapshot.decision === "LONG") return "long";
+  if (entry.analysisSnapshot.decision === "SHORT") return "short";
+  return undefined;
 }
 
 // ── Main Component ───────────────────────────────────────────────
 
-export function Journal({ currentResult, onJournalCreated, onBack }: JournalProps) {
+export function Journal({ currentResult, onJournalCreated, onBack, initialEntries }: JournalProps) {
   const { t, locale } = useI18n();
   const [view, setView] = useState<"list" | "detail" | "create">("list");
-  const [entries, setEntries] = useState<JournalEntry[]>([]);
+  const [entries, setEntries] = useState<JournalEntry[]>(() => initialEntries ?? []);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   const [filterInstrument, setFilterInstrument] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [editMode, setEditMode] = useState(false);
+  /** Exit-price prompt shown while the user is closing an OPEN entry. */
+  const [closing, setClosing] = useState(false);
+  const [exitInput, setExitInput] = useState("");
 
   // ── Create from analysis ──
   const handleCreateFromAnalysis = (result: AnalysisResult) => {
@@ -100,22 +113,29 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
     }
   };
 
-  const handleClose = (entry: JournalEntry, exitPrice?: number, pnl?: number) => {
+  /**
+   * Close an OPEN entry with an exit price. P/L is derived only when entry
+   * price, exit price and a LONG/SHORT direction are all known; otherwise
+   * pnl stays undefined and the outcome is UNKNOWN — never a fabricated 0.
+   */
+  const handleClose = (entry: JournalEntry, exitPrice: number | undefined) => {
+    const direction = directionOf(entry);
+    const { pnl, pnlPercent } = computePnl(entry.entry, exitPrice, direction, entry.positionSize);
     const outcome = classifyOutcome(pnl);
-    const updated = transitionEntry(entry, "CLOSED", { exitPrice, pnl, outcome });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
+    try {
+      const updated = transitionEntry(entry, "CLOSED", { exitPrice, pnl, pnlPercent, outcome });
+      updateEntryInList(updated);
+      setSelectedEntry(updated);
+    } catch (e) {
+      console.error("Invalid transition:", e);
+    }
+    setClosing(false);
+    setExitInput("");
   };
 
   // ── Updates ──
   const updateEntryInList = (updated: JournalEntry) => {
     setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-  };
-
-  const handleUpdateNotes = (entry: JournalEntry, notes: string) => {
-    const updated = updateReview(entry, { notes });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
   };
 
   const handleUpdateReview = (entry: JournalEntry, field: string, value: string) => {
@@ -309,7 +329,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                     size="sm"
                     variant={status === "OPEN" ? "default" : "outline"}
                     className="text-[10px] font-mono"
-                    onClick={() => handleTransition(entry, status)}
+                    onClick={() => (status === "CLOSED" ? setClosing(true) : handleTransition(entry, status))}
                     aria-label={`${t.journal.transitionTo}: ${mapTradeStatus(status, t)}`}
                     data-transition={status}
                   >
@@ -325,6 +345,41 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                   {editMode ? t.journal.done : t.journal.edit}
                 </Button>
               </div>
+              {closing && (
+                <form
+                  className="mt-2 flex flex-wrap items-center gap-2"
+                  data-close-form
+                  onSubmit={(ev) => {
+                    ev.preventDefault();
+                    const parsed = parseFloat(exitInput);
+                    handleClose(entry, Number.isFinite(parsed) ? parsed : undefined);
+                  }}
+                >
+                  <label className="text-[10px] text-muted-foreground" htmlFor="journal-exit-price">
+                    {t.global.exit}:
+                  </label>
+                  <Input
+                    id="journal-exit-price"
+                    type="number"
+                    step="any"
+                    value={exitInput}
+                    onChange={(ev) => setExitInput(ev.target.value)}
+                    className="h-6 text-[10px] font-mono w-28"
+                  />
+                  <Button type="submit" size="sm" className="text-[10px] font-mono" data-close-confirm>
+                    {t.global.confirm}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="text-[10px] font-mono"
+                    onClick={() => { setClosing(false); setExitInput(""); }}
+                  >
+                    {t.global.cancel}
+                  </Button>
+                </form>
+              )}
             </div>
           )}
 
@@ -430,6 +485,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                 key={entry.id}
                 className="flex items-center gap-2 p-2 rounded border border-border/30 hover:bg-muted/50 cursor-pointer text-[10px] font-mono"
                 onClick={() => { setSelectedEntry(entry); setView("detail"); }}
+                data-journal-entry={entry.id}
               >
                 {/*
                   §5: presentation follows the APP locale (previously it
