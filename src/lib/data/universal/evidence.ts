@@ -343,19 +343,6 @@ export function deriveCommodityEvidence(
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Compute overall availability from IntelligenceMeta sub-contexts.
- */
-function computeOverallAvailability(
-  contexts: (IntelligenceMeta | undefined)[],
-): "FULL" | "PARTIAL" | "MINIMAL" | "UNAVAILABLE" {
-  const available = contexts.filter((c) => c?.available).length;
-  if (available === contexts.length) return "FULL";
-  if (available >= contexts.length * 0.5) return "PARTIAL";
-  if (available >= 1) return "MINIMAL";
-  return "UNAVAILABLE";
-}
-
-/**
  * Compute overall quality from IntelligenceMeta sub-contexts.
  */
 function computeOverallQuality(
@@ -367,23 +354,6 @@ function computeOverallQuality(
   if (qualities.includes("STALE")) return "STALE";
   if (qualities.length > 0) return "INSUFFICIENT";
   return "UNAVAILABLE";
-}
-
-/**
- * Collect missing information from IntelligenceMeta sub-contexts.
- */
-function collectMissing(
-  contexts: Record<string, IntelligenceMeta | undefined>,
-  labels: Record<string, string>,
-): string[] {
-  const missing: string[] = [];
-  for (const [key, label] of Object.entries(labels)) {
-    const ctx = contexts[key];
-    if (!ctx?.available) {
-      missing.push(label);
-    }
-  }
-  return missing;
 }
 
 /**

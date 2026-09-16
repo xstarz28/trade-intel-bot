@@ -517,7 +517,7 @@ describe("C. Provider Failure / Failover", () => {
     state = registerInstrumentForPolling(state, "BTC/USDT", NOW);
 
     // Fail the provider
-    state = processPollFailure(state, "BTC/USDT", "timeout", NOW).state;
+    processPollFailure(state, "BTC/USDT", "timeout", NOW);
 
     // Evaluate a position — provider failure should not affect direction
     const alert = evaluate(btcLong(), healthyEvidence(110_000));
@@ -575,7 +575,7 @@ describe("C. Provider Failure / Failover", () => {
   it("Stale response treated as failure", () => {
     let state = createPollingServiceState();
     state = startPollingService(state, NOW);
-    state = registerInstrumentForPolling(state, "BTC/USDT", NOW);
+    registerInstrumentForPolling(state, "BTC/USDT", NOW);
 
     const staleQuote: ProviderQuoteData = {
       instrument: "BTC/USDT", provider: "OKX", price: 105_000, timestamp: NOW, freshness: "STALE",
@@ -1482,7 +1482,7 @@ describe("I. Security Audit", () => {
 
   it("No probability claims in evidence across all severities", () => {
     const alertSeverities: AlertSeverity[] = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"];
-    for (const sev of alertSeverities) {
+    alertSeverities.forEach(() => {
       const alert = evaluate(btcLong(), healthyEvidence(110_000));
       const allText = [
         ...alert.supportingEvidence,
@@ -1492,7 +1492,7 @@ describe("I. Security Audit", () => {
       ].join(" ");
       expect(allText).not.toMatch(/\d+%\\s*chance/i);
       expect(allText).not.toMatch(/probability\\s+of/i);
-    }
+    });
   });
 });
 
@@ -1677,8 +1677,8 @@ describe("K. LONG/SHORT Symmetry Under Pressure", () => {
   });
 
   it("BTC LONG ≠ BTC SHORT — different evaluation results", () => {
-    const longAlert = evaluate(btcLong(), healthyEvidence(110_000));
-    const shortAlert = evaluate(btcShort(), { ...healthyEvidence(90_000), shortTermTrend: "bearish" });
+    evaluate(btcLong(), healthyEvidence(110_000));
+    evaluate(btcShort(), { ...healthyEvidence(90_000), shortTermTrend: "bearish" });
   });
 
   it("BTC ≠ ETH — independent evaluations", () => {

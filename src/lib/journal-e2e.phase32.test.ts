@@ -184,7 +184,7 @@ describe("Phase 32 — Snapshot immutability", () => {
     const modifiedTrade = updateTradeInfo(modified, { entry: 99999 });
     const closed = transitionEntry(modifiedTrade, "OPEN");
     const closedFinal = transitionEntry(closed, "CLOSED", { pnl: 100 });
-    const reviewed = updateReview(closedFinal, { lessons: "learned" });
+    updateReview(closedFinal, { lessons: "learned" });
 
     // Original AnalysisResult completely untouched
     expect(result.bias).toBe(origBias);

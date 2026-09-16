@@ -538,9 +538,7 @@ export function evaluateThesisHealth(
   for (const sig of allSignals) {
     score -= sig.severity * 0.5; // each signal reduces health
   }
-  for (const _c of confirming) {
-    score += 5; // each confirming signal adds health
-  }
+  score += 5 * confirming.length; // each confirming signal adds health
   score = Math.max(0, Math.min(100, score));
 
   // Classify state

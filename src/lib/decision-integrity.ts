@@ -368,7 +368,6 @@ function auditTradePlanConsistency(
   if (!tp) return true;
 
   // I84 — Trade plan must be structurally consistent with direction
-  const dir = dirBias(result);
   const rec = result.recommendation;
 
   if (rec === "LONG" && tp.direction !== "long") {

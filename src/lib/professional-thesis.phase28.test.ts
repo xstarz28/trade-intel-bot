@@ -320,7 +320,7 @@ describe("Phase 28 — I56: Style changes context, not facts", () => {
     const swingInput = { ...baseInput, tradingStyle: "swing" as const };
 
     const rScalping = runAnalysis(scalpingInput);
-    const rIntraday = runAnalysis(intradayInput);
+    runAnalysis(intradayInput);
     const rSwing = runAnalysis(swingInput);
 
     // Market facts should be identical — only policy may differ

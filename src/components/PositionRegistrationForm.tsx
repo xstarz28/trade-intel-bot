@@ -20,8 +20,6 @@ interface PositionRegistrationFormProps {
   disabled?: boolean;
 }
 
-type AssetClass = "crypto" | "forex" | "equity" | "commodity" | "indices";
-
 const HORIZON_OPTIONS = [
   { value: "SCALPING", label: "Scalping" },
   { value: "INTRADAY", label: "Intraday" },

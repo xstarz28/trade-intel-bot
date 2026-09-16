@@ -355,19 +355,6 @@ describe("D. Provider Failure / Recovery", () => {
   it("provider failure does NOT become directional evidence", () => {
     const bridge = createBridgeState();
 
-    // Simulate provider degraded event
-    const degradedEvent: RealTimeEvent = {
-      eventId: "degraded-1",
-      eventType: "PROVIDER_DEGRADED",
-      instrument: "BTC/USDT",
-      source: "CoinGecko",
-      timestamp: Date.now(),
-      freshness: "STALE",
-      payload: { reason: "Connection timeout" },
-      priority: "HIGH",
-      dependencyGroup: "coingecko-btc",
-    };
-
     const result = bridgeQuoteToEvents(bridge, {
       instrument: "BTC/USDT",
       provider: "CoinGecko",
@@ -393,7 +380,7 @@ describe("D. Provider Failure / Recovery", () => {
       assetClass: "crypto",
       openedAt: Date.now(),
     }, Date.now());
-    controller = startController(controller);
+    startController(controller);
 
     // Send stale quote — should not update position
     const bridge = createBridgeState();

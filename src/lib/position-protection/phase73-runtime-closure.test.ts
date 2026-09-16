@@ -188,7 +188,7 @@ async function ensureLiveData(): Promise<void> {
       ["bitcoin", "BTC/USDT"], ["ethereum", "ETH/USDT"],
       ["solana", "SOL/USDT"], ["dogecoin", "DOGE/USDT"],
     ];
-    for (const [coinId, symbol] of coinMap) {
+    for (const [_coinId, symbol] of coinMap) {
       const routing = routeInstrument(symbol);
       liveResults.push({
         provider: "CoinGecko", instrument: symbol,
@@ -1251,7 +1251,7 @@ describe("M. Acceptance Gates", () => {
   });
 
   it("GATE: No secrets in any runtime data", () => {
-    const bridge = new ConvexPersistenceBridge(null);
+    new ConvexPersistenceBridge(null);
     const snap = snapshot(createDiagnosticsState());
     const diagJson = JSON.stringify(snap);
     expect(diagJson).not.toMatch(/AKIA/);

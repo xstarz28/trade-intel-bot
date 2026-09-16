@@ -470,7 +470,7 @@ describe("Phase 95 — Dedup", () => {
     );
 
     // With 0 cooldown, but same state — should still be deduped by trigger record
-    const r2 = evaluateAlertRuntimeBridge(
+    evaluateAlertRuntimeBridge(
       { rules, intelligenceMap: intelMap },
       { ...prevState, snapshots: r1.updatedPreviousSnapshots },
       r1.updatedTriggerRecords,

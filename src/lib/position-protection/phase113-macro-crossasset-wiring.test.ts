@@ -53,7 +53,6 @@ function makeCrossAssetContext(impact: CrossAssetContext["positionImpact"] = "NE
   };
 }
 
-const now = Date.now();
 
 // ═══════════════════════════════════════════════════════════════
 // A. MACRO WIRING
@@ -133,7 +132,7 @@ describe("A. MacroContext wiring into FundamentalRegimeInput", () => {
   });
 
   it("no duplicate macro request — pure function reuse", () => {
-    const macroCtx = makeMacroContext(22);
+    makeMacroContext(22);
     // classifyMacroContext is deterministic
     const r1 = classifyMacroContext(22, "LONG", "crypto");
     const r2 = classifyMacroContext(22, "LONG", "crypto");

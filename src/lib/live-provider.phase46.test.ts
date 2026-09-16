@@ -1231,7 +1231,6 @@ describe("Q — Concurrency", () => {
   });
 
   it("concurrent requests for different instruments maintain isolation", async () => {
-    const nowSec = Math.floor(NOW / 1000);
     const instruments = ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD"];
     const tdBase = { symbol: "X", values: [{ datetime: new Date(NOW - 3600000).toISOString().replace("T", " ").slice(0, 19), open: "100", high: "105", low: "95", close: "102", volume: "1000" }] };
 

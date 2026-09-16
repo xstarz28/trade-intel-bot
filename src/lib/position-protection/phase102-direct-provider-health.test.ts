@@ -451,7 +451,7 @@ describe("Phase 102 — Health Aggregation", () => {
       makeEvent({ component: "OHLCV", status: "HEALTHY", timestamp: now - 1000 }),
       makeEvent({ component: "INTELLIGENCE_ENGINE", status: "HEALTHY", timestamp: now - 1000 }),
     ];
-    const components = aggregateRuntimeHealth(events, now);
+    aggregateRuntimeHealth(events, now);
     const snap = buildSnapshotFromBuffer(
       { events, lastPersistedSnapshot: null },
       now,

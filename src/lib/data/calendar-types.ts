@@ -120,7 +120,6 @@ export function getRelevantCurrencies(
   instrument: string,
   instrumentType: string,
 ): { country: string; currency: string }[] {
-  const sym = instrument.toUpperCase().replace("/USD", "").replace("USD/", "").replace("/", "");
   const countries: { country: string; currency: string }[] = [];
 
   if (instrumentType === "forex") {

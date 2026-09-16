@@ -455,8 +455,8 @@ describe("I — Crypto Support", () => {
   it("BTC and ETH are isolated", () => {
     const btc = makeCandidate({ instrument: "BTC/USD" });
     const eth = makeCandidate({ instrument: "ETH/USD" });
-    const r1 = scoreCandidate(btc, "INTRADAY");
-    const r2 = scoreCandidate(eth, "INTRADAY");
+    scoreCandidate(btc, "INTRADAY");
+    scoreCandidate(eth, "INTRADAY");
     // Same structure but different instruments — scores may be same but instruments isolated
     expect(btc.instrument).not.toBe(eth.instrument);
   });

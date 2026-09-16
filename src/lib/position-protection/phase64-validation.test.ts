@@ -1153,11 +1153,9 @@ describe("AE. Event Processing End-to-End", () => {
       createMomentumChangeEvent("BTC/USDT", -15, "M5", "test"),
       createStructureChangeEvent("BTC/USDT", true, "M15", "test"),
     ];
-    let totalEvals = 0;
     for (const event of events) {
       const result = processEventForController(state, event, NOW);
       state = result.state;
-      totalEvals += result.alerts.length;
     }
     expect(state.evaluationsPerformed).toBeGreaterThanOrEqual(0);
   });

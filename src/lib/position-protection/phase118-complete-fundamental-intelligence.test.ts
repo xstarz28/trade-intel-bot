@@ -26,7 +26,6 @@ import {
 } from "./fundamental-regime";
 import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
 import type { EconomicEvent as CalendarEvent } from "../../lib/data/calendar-types";
-import type { EconomicCalendarData } from "../../lib/data/calendar-types";
 import type { TreasuryData, TreasuryContext } from "../../lib/data/treasury";
 
 // ═══════════════════════════════════════════════════════════════
