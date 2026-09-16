@@ -169,7 +169,14 @@ describe("provider failures never become cached evidence", () => {
   });
 
   it("tradingEconomics rethrows rate-limit/auth out of the fetcher", () => {
-    expect(TE).toMatch(/if \(m\.startsWith\("RATE_LIMIT"\) \|\| m\.startsWith\("AUTH_ERROR"\)\) throw err;/);
+    // Phase 229: both calendar legs run through the shared `runLeg`, whose
+    // contract is to rethrow the fatal classes (`isFatalLegError`) so they
+    // propagate out of the cache fetcher. Behaviour is asserted end-to-end in
+    // tickatlas-legs.phase229.test.ts; this guard pins the wiring.
+    expect(TE).toMatch(/runLeg\(async \(\) =>/);
+    expect(TE).not.toMatch(/catch \{\s*\/\/ Recent events fetch failed/);
+    const LEG = readFileSync("src/convex/lib/legOutcome.ts", "utf8");
+    expect(LEG).toMatch(/if \(isFatalLegError\(err\)\) throw err;/);
   });
 
   it("tradingEconomics still reports the correct error code", () => {
