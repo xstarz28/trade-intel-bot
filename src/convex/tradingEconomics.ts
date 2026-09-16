@@ -20,6 +20,13 @@ import { getRelevantCurrencies, calculateMacroRisk } from "../lib/data/calendar-
 // set of TTL / freshness / single-flight semantics with every other provider.
 import { getProviderCache } from "../lib/data/provider-cache-registry";
 import {
+  isLegFailure,
+  runLeg,
+  summarizeLegFailures,
+  ProviderHttpError,
+  ProviderMalformedError,
+} from "./lib/legOutcome";
+import {
   asRecordArray,
   asString,
   errorMessage,
@@ -50,10 +57,13 @@ async function taFetch(path: string, apiKey: string): Promise<unknown> {
     if (res.status === 429) {
       throw new Error("RATE_LIMIT:TickAtlas rate limit exceeded");
     }
-    throw new Error(`TickAtlas HTTP ${res.status}: ${text || res.statusText}`);
+    throw new ProviderHttpError("TickAtlas", res.status, text || res.statusText);
   }
-  const json: unknown = await res.json();
-  return json;
+  try {
+    return await res.json();
+  } catch (err: unknown) {
+    throw new ProviderMalformedError(`TickAtlas body is not JSON: ${errorMessage(err)}`);
+  }
 }
 
 /**
@@ -229,44 +239,48 @@ export const fetchCalendar = action({
       const dateFrom = now.toISOString().split("T")[0];
       const dateTo = in7Days.toISOString().split("T")[0];
 
-      let rawEvents: JsonRecord[] = [];
-      try {
-        const result = await taFetch(
-          `/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`,
-          apiKey,
-        );
-        rawEvents = extractEvents(result);
-      } catch (err: unknown) {
-        // Phase 178b — rethrow out of the cache fetcher so a 429 or auth
-        // failure is never stored as evidence. Re-classified by the outer
-        // catch into the action's error envelope.
-        const m = errorMessage(err);
-        if (m.startsWith("RATE_LIMIT") || m.startsWith("AUTH_ERROR")) throw err;
-      }
-
-      // Also fetch recently released high-impact events (last 7 days)
+      // Phase 229 — both legs run through the shared leg taxonomy. Fatal
+      // classes (RATE_LIMIT / AUTH_ERROR) reject out of runLeg — from EITHER
+      // leg — so the Phase 178b contract holds: nothing is cached and the
+      // outer catch emits the RATE_LIMIT / AUTH_ERROR envelope. Before this
+      // phase the past leg's `catch {}` discarded a 429 outright, and a
+      // timeout / 5xx on the UPCOMING leg was swallowed into an empty event
+      // list that was then cached as a success with macroRisk LOW.
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const datePast = sevenDaysAgo.toISOString().split("T")[0];
+      const [upcomingLeg, pastLeg] = await Promise.all([
+        runLeg(async () =>
+          extractEvents(await taFetch(`/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`, apiKey)),
+        ),
+        runLeg(async () =>
+          extractEvents(await taFetch(`/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`, apiKey)),
+        ),
+      ]);
+      const legs = { upcoming: upcomingLeg, recentReleased: pastLeg };
+      const legFailures = summarizeLegFailures(legs);
 
-      try {
-        const result = await taFetch(
-          `/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`,
-          apiKey,
-        );
-        const pastEvents = extractEvents(result);
-        {
-          const existingIds = new Set(rawEvents.map((e) => e.id));
-          for (const evt of pastEvents) {
-            if (evt.id && !existingIds.has(evt.id)) {
-              const norm = normalizeEvent(evt);
-              if (norm && norm.importance === 3 && norm.actual !== undefined) {
-                rawEvents.push(evt);
-              }
+      // The upcoming window is the one macro-risk is computed from. If that
+      // leg failed for a transport/provider reason there is no calendar to
+      // assess: throw so the action reports API_UNAVAILABLE and nothing is
+      // cached — an outage must never read as "no events → LOW risk".
+      if (isLegFailure(upcomingLeg)) {
+        throw new Error(`Calendar fetch failed: ${legFailures}`);
+      }
+
+      const rawEvents: JsonRecord[] = upcomingLeg.status === "ok" ? upcomingLeg.value : [];
+
+      // Recently released high-impact events (last 7 days) are additive; a
+      // failed past leg is reported on `error`, not silently dropped.
+      if (pastLeg.status === "ok") {
+        const existingIds = new Set(rawEvents.map((e) => e.id));
+        for (const evt of pastLeg.value) {
+          if (evt.id && !existingIds.has(evt.id)) {
+            const norm = normalizeEvent(evt);
+            if (norm && norm.importance === 3 && norm.actual !== undefined) {
+              rawEvents.push(evt);
             }
           }
         }
-      } catch {
-        // Recent events fetch failed — not critical
       }
 
       // Normalize and filter by relevant currencies
@@ -318,6 +332,8 @@ export const fetchCalendar = action({
         freshness: events.length > 0 ? "recent" : "unavailable",
         confidence,
         availability,
+        // Phase 229 — partial: the past-events leg failed (class + reason).
+        ...(legFailures ? { error: legFailures } : {}),
       };
 
           return { data, observedAt: data.timestamp };
