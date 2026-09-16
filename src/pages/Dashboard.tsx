@@ -50,36 +50,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BarChart3, Briefcase } from "lucide-react";
 import { errorMessage } from "@/lib/data/json/narrow";
-
-/** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
-function fromDbRecord(record: any): AnalysisResult {
-  return {
-    id: record._id,
-    instrument: record.instrument,
-    instrumentType: record.instrumentType,
-    timeframe: record.timeframe,
-    bias: record.bias,
-    confidence: record.confidence,
-    recommendation: record.recommendation ?? (record.bias === "Bullish" ? "LONG" : record.bias === "Bearish" ? "SHORT" : "NO_TRADE"),
-    tradingStyle: record.tradingStyle ?? "intraday",
-    conviction: record.conviction ?? undefined,
-    noTradeReasons: record.noTradeReasons ?? [],
-    technicalSummary: record.technicalSummary,
-    fundamentalSummary: record.fundamentalSummary,
-    breakdown: record.breakdown,
-    keyLevels: record.keyLevels,
-    riskNote: record.riskNote,
-    dataCompleteness: record.dataCompleteness,
-    dataFlags: record.dataFlags,
-    timestamp: record.timestamp,
-    ...(record.price != null ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } } : {}),
-    ...(record.dataSource ? { dataSource: record.dataSource } : {}),
-    ...(record.sentimentSummary ? { sentimentData: { provider: "alpha-vantage", timestamp: record.timestamp, averageScore: record.sentimentScore ?? 0, articleCount: 0, label: (record.sentimentScore ?? 0) > 0.15 ? "bullish" : (record.sentimentScore ?? 0) < -0.15 ? "bearish" : "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "medium" as const, articles: [] } } : {}),
-    ...(record.macroSummary ? { macroData: { provider: "alpha-vantage", timestamp: record.timestamp, indicators: [], summary: record.macroSummary, confidence: "medium" as const } } : {}),
-    ...(record.derivativesSummary ? { derivativesData: { provider: "coinglass", symbol: record.instrument, timestamp: record.timestamp, freshness: "delayed" as const, availability: { openInterest: true, fundingRate: true, longShort: true, liquidations: true }, confidence: "medium" as const, interpretation: record.derivativesSummary } } : {}),
-    ...(record.calendarSummary ? { calendarData: { provider: "tickatlas" as const, events: [], macroRisk: { level: "medium" as const, explanation: record.calendarSummary, highImpact24h: 0, highImpact72h: 0 }, timestamp: record.timestamp, freshness: "recent" as const, confidence: "medium" as const, availability: { upcoming24h: false, upcoming72h: false, recentReleased: false } } } : {}),
-  };
-}
+import { fromDbRecord } from "@/lib/analysis/from-db-record";
 
 /** Loading step for the multi-step sequence. */
 interface LoadingStep {
@@ -237,6 +208,9 @@ export default function Dashboard() {
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
+  type IntelligenceActionResult = Awaited<ReturnType<typeof fetchIntelligence>>;
+  type DerivativesActionResult = Awaited<ReturnType<typeof fetchDerivatives>>;
+  type CalendarActionResult = Awaited<ReturnType<typeof fetchCalendar>>;
   const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
   const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
   const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
@@ -288,12 +262,14 @@ export default function Dashboard() {
         // Step 2: Fetching market data + intelligence + derivatives in parallel
         updateStep(1, "active");
         let marketDataResult: MarketDataResult;
-        let intelligenceResult: any = null;
-        let derivativesResult: any = null;
-        let calendarResult: any = null;
+        // Phase 228 — each non-critical leg is typed by its own Convex action
+        // return type (the canonical contract); `null` means the leg was
+        // rejected or not requested, and every downstream read is `?.`.
+        let intelligenceResult: IntelligenceActionResult | null = null;
+        let derivativesResult: DerivativesActionResult | null = null;
+        let calendarResult: CalendarActionResult | null = null;
         try {
-          // Build fetch promises
-          const fetchPromises: Promise<any>[] = [
+          const [marketResult, intelResult, calResult, derivResult] = await Promise.allSettled([
             fetchMarketData({
               instrument: input.instrument,
               instrumentType: input.instrumentType,
@@ -307,24 +283,16 @@ export default function Dashboard() {
               instrument: input.instrument,
               instrumentType: input.instrumentType,
             }),
-          ];
-          if (input.instrumentType === "crypto") {
-            fetchPromises.push(
-              fetchDerivatives({ instrument: input.instrument }),
-            );
-          }
-
-          const results = await Promise.allSettled(fetchPromises);
-          const marketResult = results[0];
-          const intelResult = results[1];
-          calendarResult = results[2];
-          const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
+            input.instrumentType === "crypto"
+              ? fetchDerivatives({ instrument: input.instrument })
+              : Promise.resolve(null),
+          ]);
 
           // Market data is critical
           if (marketResult.status === "fulfilled") {
             marketDataResult = marketResult.value as MarketDataResult;
           } else {
-            throw new Error(marketResult.reason?.message || "Market data fetch failed");
+            throw new Error(errorMessage(marketResult.reason) || "Market data fetch failed");
           }
 
           if (!marketDataResult.success || !marketDataResult.data) {
@@ -337,11 +305,11 @@ export default function Dashboard() {
             intelligenceResult = intelResult.value;
           }
           // Calendar is non-critical
-          if (calendarResult && calendarResult.status === "fulfilled") {
-            calendarResult = calendarResult.value;
+          if (calResult.status === "fulfilled") {
+            calendarResult = calResult.value;
           }
           // Derivatives is non-critical
-          if (derivResult && derivResult.status === "fulfilled") {
+          if (derivResult.status === "fulfilled") {
             derivativesResult = derivResult.value;
           }
         } catch (err: unknown) {
@@ -516,7 +484,7 @@ export default function Dashboard() {
                   quality: "VERIFIED",
                   availableDatasets: 1,
                   totalDatasets: 1,
-                  upcomingEvents: calendarResult.data.events?.filter((e: any) => e.status === "upcoming").slice(0, 5).map((e: any) => ({
+                  upcomingEvents: calendarResult.data.events?.filter((e) => e.status === "upcoming").slice(0, 5).map((e) => ({
                     name: e.event,
                     date: new Date(e.datetime).toISOString().slice(0, 10),
                     impact: e.importance === 3 ? "high" : e.importance === 2 ? "medium" : "low",
@@ -555,7 +523,8 @@ export default function Dashboard() {
                   peRatio: fundamentals.peRatio,
                   marketCap: fundamentals.marketCap,
                   profitMargin: fundamentals.profitMargin,
-                  revenueGrowth: fundamentals.revenueGrowth,
+                  // `revenueGrowth` is not part of FundamentalData (Alpha Vantage
+                  // OVERVIEW is not normalised to it); it was always undefined.
                 } : undefined,
                 sector: fundamentals?.sector ? {
                   sector: fundamentals.sector,

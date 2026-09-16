@@ -297,6 +297,12 @@ function PositionCard({
 // MAIN DASHBOARD
 // ═══════════════════════════════════════════════════════════════
 
+const NEWS_ASSET_CLASSES = ["crypto", "forex", "commodity", "macro", "equity", "other"] as const;
+type NewsAssetClass = NewsItem["assetClass"];
+function toNewsAssetClass(v: string | undefined): NewsAssetClass {
+  return (NEWS_ASSET_CLASSES as readonly string[]).includes(v ?? "") ? (v as NewsAssetClass) : "other";
+}
+
 export function PositionProtectionDashboard() {
   const { t, tx, txi } = useI18n();
   const {
@@ -398,16 +404,18 @@ export function PositionProtectionDashboard() {
       for (const instrument of instruments) {
         if (cancelled) break;
         try {
-          const assetClass = userPositions.find(p => p.instrument === instrument)?.assetClass ?? "crypto";
+          // Phase 228 — `UserPosition.assetClass` is a free string; narrow it
+          // to the NewsItem union (unknown classes → "other", never a guess).
+          const assetClass = toNewsAssetClass(userPositions.find(p => p.instrument === instrument)?.assetClass);
           const instrumentType = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
           const result = await fetchIntelligence({
             instrument: instrument.split("/")[0],
-            instrumentType: instrumentType as any,
+            instrumentType,
           });
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
-          const newsItems: NewsItem[] = articles.map((art: any, i: number) => {
+          const newsItems: NewsItem[] = articles.map((art, i) => {
             // Phase 218 — the provider's own publication time, or nothing.
             // Substituting Date.now() for a missing publishedAt made an
             // undated article indistinguishable from one published seconds
@@ -426,7 +434,7 @@ export function PositionProtectionDashboard() {
             summary: art.summary || undefined,
             url: art.url || undefined,
             relatedInstruments: [instrument],
-            assetClass: assetClass as any,
+            assetClass,
             category: assetClass === "crypto" ? "CRYPTO_SPECIFIC" as const : "FOREX" as const,
             sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
                        art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
@@ -526,8 +534,8 @@ export function PositionProtectionDashboard() {
 
   // Map Convex reactive results by positionId
   const convTimelines = useMemo(() => {
-    const map = new Map<string, any>();
     const results = [convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4];
+    const map = new Map<string, NonNullable<(typeof results)[number]>>();
     for (let i = 0; i < positionIds.length && i < results.length; i++) {
       const result = results[i];
       if (result && result.latestSnapshot) {

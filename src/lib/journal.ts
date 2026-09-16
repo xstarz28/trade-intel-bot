@@ -165,9 +165,17 @@ export function transitionEntry(
  * Update professional review fields on a journal entry.
  * Returns a new entry (immutable update).
  */
+/** The free-text review columns a trader edits after the fact. */
+export type JournalReviewField =
+  | "entryReason" | "thesisAtEntry" | "confirmationObserved" | "invalidationObserved"
+  | "whatWentRight" | "whatWentWrong" | "lessons" | "notes";
+
+/** Trade-info columns editable inline (numeric). */
+export type JournalTradeField = "entry" | "stopLoss" | "takeProfit" | "riskReward" | "positionSize" | "notionalValue";
+
 export function updateReview(
   entry: JournalEntry,
-  review: Partial<Pick<JournalEntry, "entryReason" | "thesisAtEntry" | "confirmationObserved" | "invalidationObserved" | "whatWentRight" | "whatWentWrong" | "lessons" | "notes">>,
+  review: Partial<Pick<JournalEntry, JournalReviewField>>,
 ): JournalEntry {
   return {
     ...entry,
@@ -184,7 +192,7 @@ export function updateReview(
  */
 export function updateTradeInfo(
   entry: JournalEntry,
-  tradeInfo: Partial<Pick<JournalEntry, "entry" | "stopLoss" | "takeProfit" | "riskReward" | "positionSize" | "notionalValue">>,
+  tradeInfo: Partial<Pick<JournalEntry, JournalTradeField>>,
 ): JournalEntry {
   return {
     ...entry,
