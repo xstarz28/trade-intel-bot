@@ -35,7 +35,9 @@ export function validateCandle(raw: {
   if (raw.open <= 0 || raw.high <= 0 || raw.low <= 0 || raw.close <= 0) return null;
   if (raw.high < Math.max(raw.open, raw.close)) return null;
   if (raw.low > Math.min(raw.open, raw.close)) return null;
-  if (raw.timestamp <= 0) return null;
+  // Phase 220 — `<= 0` is false for NaN, so an unparseable provider time
+  // used to pass validation and then sit in the series with no order.
+  if (!Number.isFinite(raw.timestamp) || raw.timestamp <= 0) return null;
   return {
     timestamp: raw.timestamp,
     open: raw.open,

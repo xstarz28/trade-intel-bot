@@ -442,15 +442,44 @@ export default function Dashboard() {
         if (input.instrumentType !== "crypto") {
           try {
             const now = Date.now();
+            /*
+              Phase 220 — `observedAt` / `freshness` here are PROVENANCE
+              claims rendered verbatim in the Universal Intelligence panel.
+              They used to be stamped `now` / "FRESH" for every dataset, which
+              overwrote the freshness each provider module had already
+              derived from its own observation date (Treasury / CFTC / EIA
+              classify FRESH → DELAYED → STALE by days since the report). A
+              week-old COT report therefore rendered as FRESH. The assembly
+              clock is only used for the cross-asset placeholder, which has
+              no provider observation at all and is marked unavailable.
+            */
             const meta = (provider: string) => ({
               provider,
               observedAt: now,
-              freshness: "FRESH" as const,
+              freshness: "UNAVAILABLE" as const,
               quality: "DEGRADED" as const,
               available: false,
               availableDatasets: 0,
               totalDatasets: 0,
             });
+            // Carry the provider module's own classification through.
+            const providerFresh = (
+              f: "FRESH" | "DELAYED" | "STALE" | undefined,
+              observedAt: number | undefined,
+            ) => ({
+              freshness: f ?? ("UNAVAILABLE" as const),
+              observedAt: Number.isFinite(observedAt) && (observedAt as number) > 0 ? (observedAt as number) : 0,
+            });
+            const isoDayMs = (d: string | undefined) =>
+              d ? Date.parse(`${d}T00:00:00Z`) : undefined;
+            // The calendar module reports freshness on a different scale
+            // ("realtime" | "recent" | "stale" | "unavailable"); map it
+            // without inventing a level it did not assert.
+            const calendarFresh = (f: string | undefined) =>
+              f === "realtime" ? ("FRESH" as const)
+              : f === "recent" ? ("DELAYED" as const)
+              : f === "stale" ? ("STALE" as const)
+              : ("UNAVAILABLE" as const);
 
             // Build forex intelligence context
             let forexCtx: ForexIntelligenceContext | undefined;
@@ -461,6 +490,7 @@ export default function Dashboard() {
                 assembledAt: now,
                 rates: treasuryData?.available ? {
                   ...meta("treasury"),
+                  ...providerFresh(treasuryData.freshness, isoDayMs(treasuryData.latest?.nominal?.observationDate)),
                   available: true,
                   quality: "VERIFIED",
                   availableDatasets: 1,
@@ -469,6 +499,7 @@ export default function Dashboard() {
                 } : undefined,
                 positioning: cotData?.available ? {
                   ...meta("cftc"),
+                  ...providerFresh(cotData.freshness, isoDayMs(cotData.latest?.reportDate)),
                   available: true,
                   quality: "DEGRADED",
                   availableDatasets: 1,
@@ -478,6 +509,7 @@ export default function Dashboard() {
                 } : undefined,
                 macro: calendarResult?.data ? {
                   ...meta("trading-economics"),
+                  freshness: calendarFresh(calendarResult.data.freshness),
                   available: true,
                   quality: "VERIFIED",
                   availableDatasets: 1,
@@ -544,6 +576,7 @@ export default function Dashboard() {
                 assembledAt: now,
                 inventory: eiaData?.available ? {
                   ...meta("eia"),
+                  ...providerFresh(eiaData.freshness, isoDayMs(eiaData.series?.[0]?.observationDate)),
                   available: true,
                   quality: "DEGRADED",
                   availableDatasets: 1,
@@ -553,6 +586,7 @@ export default function Dashboard() {
                 } : undefined,
                 positioning: cotData?.available ? {
                   ...meta("cftc"),
+                  ...providerFresh(cotData.freshness, isoDayMs(cotData.latest?.reportDate)),
                   available: true,
                   quality: "DEGRADED",
                   availableDatasets: 1,

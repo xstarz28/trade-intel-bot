@@ -640,9 +640,14 @@ async function fetchTwelveDataOHLCV(
       // Validate candle
       if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) continue;
       if (open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
+      // Phase 220 — a candle whose provider datetime does not parse has no
+      // position in time. It is dropped like a candle with no price; it is
+      // never stamped with the request clock and never emitted as NaN.
+      const timestamp = new Date(v.datetime).getTime();
+      if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
 
       candles.push({
-        timestamp: new Date(v.datetime).getTime(),
+        timestamp,
         open,
         high,
         low,

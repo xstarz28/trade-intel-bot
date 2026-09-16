@@ -318,6 +318,17 @@ export function processStreamEvent(
     };
   }
 
+  // Phase 220 — a timestamp that is not a finite number must never reach
+  // the cursor: +Infinity would make every later genuine quote look
+  // out-of-order forever (the Phase 219 failure mode without the ×1000),
+  // and NaN would poison every comparison. Drop the event instead.
+  if (!Number.isFinite(normalized.timestamp)) {
+    return {
+      state: { ...state, totalEventsDropped: state.totalEventsDropped + 1 },
+      alerts: [],
+    };
+  }
+
   // Check for out-of-order via cursor
   const cursorKey = `${streamEvent.provider}:${normalized.instrument}`;
   const cursor = state.cursors.get(cursorKey);
