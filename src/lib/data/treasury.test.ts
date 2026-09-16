@@ -9,7 +9,6 @@ import {
   buildTreasuryContext,
   classifyMacroFreshness,
   deriveMacroYieldEvidence,
-  TREASURY_FRESH_DAYS,
   TREASURY_DELAYED_DAYS,
 } from "./treasury";
 

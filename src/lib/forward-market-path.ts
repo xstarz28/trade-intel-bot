@@ -20,8 +20,6 @@
 
 import type { AnalysisResult } from "@/types/analysis";
 import type { MarketRegimeContext } from "@/lib/market-regime";
-import type { FundamentalThesis } from "@/lib/fundamental-thesis";
-import type { MarketScenarioContext } from "@/lib/market-scenario";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -141,11 +139,6 @@ function hasMaterialContradictions(result: AnalysisResult): boolean {
   return (result.keyContradictions?.length ?? 0) > 0;
 }
 
-function dataQualityOk(result: AnalysisResult): boolean {
-  if (!result.dataQualityContext) return true;
-  return result.dataQualityContext.primaryData.status === "GOOD";
-}
-
 function getDataReliability(result: AnalysisResult): "good" | "degraded" | "insufficient" | "unavailable" {
   if (!result.dataQualityContext) return "good";
   const s = result.dataQualityContext.primaryData.status;
@@ -160,14 +153,6 @@ function getHorizon(result: AnalysisResult): TimeHorizon {
   if (result.tradingStyle === "scalping") return "SHORT_TERM";
   if (result.tradingStyle === "swing") return "SWING";
   return "INTRADAY";
-}
-
-function isExtended(result: AnalysisResult, dir: "bullish" | "bearish"): RiskLevel {
-  if (result.marketRegimeContext?.marketPhase === "LATE_TREND") return "ELEVATED";
-  if (result.marketRegimeContext?.marketPhase === "TREND_MATURE") return "MODERATE";
-  if (result.marketRegimeContext?.continuationQuality === "EXHAUSTED") return "HIGH";
-  if (result.marketRegimeContext?.continuationQuality === "WEAK") return "ELEVATED";
-  return "LOW";
 }
 
 function computeExtensionRisk(
@@ -197,8 +182,6 @@ function classifyPrimaryPath(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
   regime?: MarketRegimeContext,
-  fundamental?: FundamentalThesis,
-  scenario?: MarketScenarioContext,
 ): PathStatus {
   if (dir === "neutral") {
     if (regime?.regime === "RANGE") return "RANGE_CONTINUATION";
@@ -208,7 +191,6 @@ function classifyPrimaryPath(
   const htf = htfDir(result);
   const mtfA = mtfAligned(result, dir);
   const contraMtf = hasContraMtf(result, dir);
-  const extRisk = computeExtensionRisk(result, dir, regime);
 
   // Reversal favored — HTF broken + contra MTF + structural evidence
   if (regime?.trendTransition.transitionType === "REVERSAL_CONFIRMED") return "REVERSAL_FAVORED";
@@ -238,7 +220,6 @@ function classifyPrimaryPath(
 function classifyAlternatePath(
   primary: PathStatus,
   dir: "bullish" | "bearish" | "neutral",
-  regime?: MarketRegimeContext,
 ): PathStatus {
   if (dir === "neutral") {
     return "UNCONFIRMED";
@@ -268,7 +249,6 @@ function classifyAlternatePath(
 function buildPathEvidence(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
-  primary: PathStatus,
 ): PathEvidence[] {
   const evidence: PathEvidence[] = [];
 
@@ -522,7 +502,6 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const dir = dirBias(result);
   const regime = result.marketRegimeContext;
   const fundamental = result.fundamentalThesis;
-  const scenario = result.marketScenario;
   const horizon = getHorizon(result);
   const dataReliability = getDataReliability(result);
 
@@ -535,14 +514,14 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const currentState = `${dirLabel} HTF structure · ${phaseLabel} · ${regimeLabel} · continuation ${qualityLabel}`;
 
   // ── Path classification ──
-  const primaryPath = classifyPrimaryPath(result, dir, regime, fundamental, scenario);
-  const alternatePath = classifyAlternatePath(primaryPath, dir, regime);
+  const primaryPath = classifyPrimaryPath(result, dir, regime);
+  const alternatePath = classifyAlternatePath(primaryPath, dir);
 
   // ── Path status text ──
   const pathStatus = primaryPath.replace(/_/g, " ").toLowerCase();
 
   // ── Evidence ──
-  const pathEvidence = buildPathEvidence(result, dir, primaryPath);
+  const pathEvidence = buildPathEvidence(result, dir);
   const opposingEvidence = buildOpposingEvidence(result, dir as "bullish" | "bearish" | "neutral");
 
   // ── Trigger levels ──

@@ -91,7 +91,6 @@ export interface Translations {
     generatingBias: string;
     dataFetchFailed: string;
     providerNotConfigured: string;
-    checkApiKey: string;
     notFound: string;
     pageNotFound: string;
   };
@@ -281,6 +280,23 @@ export interface Translations {
 
   // ─── Intelligence ──────────────────────────────────────────
   intelligence: {
+    /**
+     * Phase 197 — momentum / volatility / structure state vocabulary.
+     * These enum values previously reached the UI raw (e.g.
+     * "HIGHER_HIGHS_HIGHER_LOWS") in all nine locales.
+     */
+    momentumLabel: string;
+    momentumOverbought: string;
+    momentumOversold: string;
+    momentumPositive: string;
+    momentumNegative: string;
+    volatilityExpanded: string;
+    volatilityCompressed: string;
+    volatilityNormal: string;
+    structureHhHl: string;
+    structureLhLl: string;
+    structureHhLl: string;
+    structureLhHl: string;
     technical: string;
     fundamental: string;
     macro: string;
@@ -473,6 +489,16 @@ export interface Translations {
 
   // ─── Alert Rules ────────────────────────────────────────────
   alerts: {
+    ruleCreated: string;
+    /**
+     * Phase 197 — alert-rule mutation feedback. These render as toasts; the
+     * provider's raw `err.message` is still preferred when present so a real
+     * backend reason is never replaced by generic copy.
+     */
+    ruleCreateFailed: string;
+    ruleUpdateFailed: string;
+    ruleDeleted: string;
+    ruleDeleteFailed: string;
     title: string;
     createRule: string;
     editRule: string;
@@ -499,11 +525,52 @@ export interface Translations {
     medium: string;
     high: string;
     critical: string;
+    /** Heading of the rule-creation form. */
+    newAlertRule: string;
+    /** Label for the position identifier field. */
+    positionId: string;
+    /** Heading of the configured-rules list. */
+    alertRules: string;
+    /** Shown while the rule list is still resolving. */
+    loadingRules: string;
+    /** Heading of the recently-triggered alerts list. */
+    recentAlerts: string;
+    /** Empty state for the triggered-alerts list. */
+    noAlertsTriggered: string;
+    /** Example rule name. Prose, so it is translated; the instrument stays. */
+    ruleNamePlaceholder: string;
+    /**
+     * "for example" prefix for a format hint, e.g. `{example}` -> "BTC/USDT".
+     * The ABBREVIATION is translated ("z. B.", "p. ex.", "例:"); the example
+     * value stays untranslated because it is provider-native notation.
+     */
+    examplePrefix: string;
   };
 
   // ─── Notifications ──────────────────────────────────────────
   notifications: {
+    /**
+     * Phase 197 — notification filter + preferences toggle. The filter's
+     * `value` stays the canonical ALL/UNREAD/severity token; only the label
+     * is translated.
+     */
+    filterAll: string;
+    preferencesToggle: string;
+    preferencesHide: string;
+    /** Phase 197 — notification-preferences section headings. */
+    categoriesHeading: string;
+    displayHeading: string;
     title: string;
+    /** Heading above the severity filter. */
+    minimumSeverity: string;
+    /** Toggle: include notifications already read. */
+    showRead: string;
+    /** Toggle: include notifications already dismissed. */
+    showDismissed: string;
+    /** Restores the default notification preferences. */
+    resetToDefaults: string;
+    /** Secondary line under the empty state, explaining what will appear. */
+    alertsWillAppearHere: string;
     markAllRead: string;
     dismiss: string;
     noNotifications: string;
@@ -523,6 +590,17 @@ export interface Translations {
     live: string;
     stale: string;
     unavailable: string;
+    /**
+     * Legend explaining what the LIVE / STALE / — badges mean. This is a
+     * data-provenance statement, so it must be translated: an English-only
+     * legend leaves non-English users unable to judge data currency.
+     */
+    sourceTransparency: string;
+    /**
+     * Live-feed counter, e.g. "3/11 live". Interpolated so word order can
+     * differ per locale — several languages place the count after the noun.
+     */
+    liveCount: string;
     vix: string;
     dxy: string;
     us10y: string;
@@ -550,16 +628,11 @@ export interface Translations {
     noHealthData: string;
     healthMetricsHint: string;
     providers: string;
-    stale: string;
     staleLabel: string;
-    unavailable: string;
     unavailableLabel: string;
-    updated: string;
     updatedLabel: string;
     historyCount: string;
-    intelligence: string;
     intelligenceLabel: string;
-    alerts: string;
     alertsLabel: string;
     componentsMarketData: string;
     componentsOhlcv: string;
@@ -633,6 +706,18 @@ export interface Translations {
 
   // ─── Instrument Entry Form (Phase 145) ──────────────────────
   entryForm: {
+    /**
+     * Phase 197 — analysis entry form. The two headings render in a terminal
+     * style ("$ new-analysis"); the "$" prompt is decoration and stays in the
+     * component. The four type labels are DISPLAY ONLY — the <SelectItem>
+     * `value` remains the canonical InstrumentType enum routed to providers.
+     */
+    newAnalysisHeading: string;
+    instrumentsHeading: string;
+    typeForex: string;
+    typeCrypto: string;
+    typeStock: string;
+    typeCommodity: string;
     instrumentLabel: string;
     typeLabel: string;
     timeframeLabel: string;
@@ -736,6 +821,197 @@ export interface Translations {
     forexContextNote: string;
     saveJournalCta: string;
     convictionPrefix: string;
+    /** Heading of the trade-plan card. */
+    tradePlanHeading: string;
+    /**
+     * Caption under the entry price clarifying it is the CURRENT MARKET PRICE,
+     * not a broker order. Invariant 9: nothing here is executed for the user.
+     */
+    marketPriceNote: string;
+    /**
+     * Risk-dimension labels. These are DISTINCT risk concepts and must not be
+     * collapsed into a generic "risk warning" (§8): structural = the setup's
+     * own integrity, extension = how far price has already travelled,
+     * liquidity = fill/slippage exposure, event = scheduled catalysts.
+     */
+    structuralRisk: string;
+    extensionRisk: string;
+    liquidityRisk: string;
+    eventRisk: string;
+    /** Heading explaining why the engine returned WAIT. Non-directional. */
+    whyWait: string;
+    /** Evidence that the current move continues. */
+    continuationEvidence: string;
+    /** Evidence that the current move reverses. */
+    reversalRisk: string;
+    /** What would CONFIRM the thesis. */
+    whatConfirms: string;
+    /** What would INVALIDATE the thesis — never softened to "risk". */
+    whatInvalidates: string;
+    /**
+     * Terminal-style section headings rendered after the `$` glyph. The glyph
+     * and the hyphenated styling are chrome; the WORDS are user-facing copy and
+     * must be translated. Acronyms that name a specific institution or report
+     * (CFTC, EIA, SR) are provider/domain notation and stay untranslated (§4).
+     */
+    /**
+     * Thesis / evidence field labels. Decision vocabulary: a thesis is a
+     * reasoned claim, a scenario is a path, an invalidation kills the claim.
+     * Translations must keep those three distinct (§8/§13).
+     */
+    /**
+     * Remaining AnalysisResult copy: evidence captions, intelligence panels and
+     * the three provenance disclaimers. The disclaimers are TRUTHFULNESS copy —
+     * they state what the engine does NOT claim, so a translation must not
+     * weaken or drop the negation (Phase 190 public-copy rule).
+     */
+    /**
+     * Inline regime / scenario / intelligence captions. Several repeat a word
+     * that already exists elsewhere in the bundle (rates, spread, risk) but in
+     * a DIFFERENT grammatical slot, so they are separate keys: collapsing them
+     * would force one translation to serve two sentence positions.
+     */
+    inline: {
+      priceLabel: string;
+      keyContradictions: string;
+      contracts: string;
+      directionLabel: string;
+      fundamentalLabel: string;
+      primaryLabel: string;
+      alternateLabel: string;
+      exhaustion: string;
+      confirmLabel: string;
+      supportingLabel: string;
+      conflictingLabel: string;
+      missingLabel: string;
+      macroLabel: string;
+      freshSuffix: string;
+      ratesLabel: string;
+      diff: string;
+      yieldsLabel: string;
+      spreadLabel2: string;
+      crossAssetLabel: string;
+      inventoryLabel: string;
+      structureLabel: string;
+      rollLabel: string;
+      riskLabel: string;
+    };
+    labels: {
+      sourceLabel: string;
+      realYieldUnavailable: string;
+      mapped: string;
+      spread: string;
+      depthLR: string;
+      imbalance: string;
+      setup: string;
+      trigger: string;
+      primary: string;
+      alternate: string;
+      continuation: string;
+      reversalLabel: string;
+      transition: string;
+      invalidateLabel: string;
+      risksLabel: string;
+      nextLabel: string;
+      traderLabel: string;
+      investorLabel: string;
+      valuation: string;
+      support: string;
+      resistance: string;
+      orderBlock: string;
+      fairValueGap: string;
+      avgScore: string;
+      positive: string;
+      negative: string;
+      neutral: string;
+      topHeadlines: string;
+      marginLabel: string;
+      mktCapShort: string;
+      divYield: string;
+      fundingRate: string;
+      openInterest: string;
+      liquidations: string;
+      interpretation: string;
+      extreme: string;
+      positioningLabel: string;
+      supplyLabel: string;
+      evidenceLabel: string;
+      missingIntelligence: string;
+      forexIntelligence: string;
+      equityIntelligence: string;
+      commodityIntelligence: string;
+      crossAssetMacro: string;
+      calendarLabel: string;
+      revGrowth: string;
+      marginShort: string;
+      mktCapLower: string;
+      doubleCounting: string;
+      upcomingHighImpact: string;
+      recentHighImpactReleases: string;
+      macdHist: string;
+      evidenceHierarchy: string;
+      scenarioDisclaimer: string;
+      dxyUnavailable: string;
+      tvlDisclaimer: string;
+      unlocksDisclaimer: string;
+    };
+    fields: {
+      primaryThesis: string;
+      counterThesis: string;
+      primaryScenario: string;
+      alternateScenario: string;
+      strongestSupport: string;
+      strongestConflict: string;
+      doubleCountingWarnings: string;
+      missingEvidence: string;
+      structuralConfidence: string;
+      dataReliability: string;
+      structuralAgreement: string;
+      supporting: string;
+      conflicting: string;
+      confirmation: string;
+      invalidationLabel: string;
+      missingContext: string;
+      counterThesisTag: string;
+      strengthens: string;
+      invalidatesTag: string;
+      riskNote: string;
+      warnings: string;
+      quantity: string;
+    };
+    sections: {
+      dataQuality: string;
+      indicators: string;
+      marketContext: string;
+      treasuryYields: string;
+      cftcFuturesPositioning: string;
+      eiaInventory: string;
+      executionQuality: string;
+      multiTimeframe: string;
+      whyThisDecision: string;
+      decisionSnapshot: string;
+      evidenceContext: string;
+      thesisValidity: string;
+      whatWouldChange: string;
+      continuationVsReversal: string;
+      professionalMarketReading: string;
+      forwardMarketPath: string;
+      longHorizonThesis: string;
+      evidenceChallenge: string;
+      positionSizing: string;
+      technical: string;
+      fundamental: string;
+      newsSentiment: string;
+      macroContext: string;
+      fundamentals: string;
+      scoreBreakdown: string;
+      keyLevels: string;
+      derivativesPositioning: string;
+      derivativesIntelligence: string;
+      universalIntelligence: string;
+      economicCalendar: string;
+    };
+
     dataFull: string;
     dataPartial: string;
     dataLimited: string;
@@ -886,6 +1162,7 @@ export interface Translations {
     entry: string;
     current: string;
     pnl: string;
+    rMultiple: string;
     sl: string;
     tp: string;
     shortTerm: string;
@@ -942,8 +1219,68 @@ export interface Translations {
     planned: string;
     filterInstrument: string;
     allStatus: string;
+    /**
+     * Journal entry lifecycle states. `statusNoTrade` is the journal's record
+     * that NO TRADE was taken — invariant 3 keeps that a first-class outcome,
+     * never a downgraded recommendation.
+     */
+    statusPlanned: string;
+    statusOpen: string;
+    statusClosed: string;
+    statusCancelled: string;
+    statusNoTrade: string;
+    /**
+     * Remaining lifecycle statuses and trade outcomes. Presentation only —
+     * the stored record keeps the canonical uppercase enum (§3).
+     */
+    statusInvalidated: string;
+    statusWaiting: string;
+    outcomeWin: string;
+    outcomeLoss: string;
+    outcomeBreakeven: string;
+    outcomePartial: string;
+    outcomeUnknown: string;
+    /** Accessible names (§11). Announced beside the translated badge text. */
+    statusLabel: string;
+    outcomeLabel: string;
+    transitionTo: string;
+    filterByStatus: string;
     noJournalEntries: string;
     noEntriesMatchFilters: string;
+    /**
+     * Phase 196 — journal record captions.
+     *
+     * These label an IMMUTABLE financial record. Translating a caption must
+     * never change the value beside it: statuses stay canonical uppercase
+     * enums, instrument symbols stay provider-native, and P&L keeps its sign.
+     *
+     * `riskReward` stays "R:R" in every locale — it is notation (§6), like
+     * the instrument symbols it sits next to.
+     */
+    snapshotInstrument: string;
+    snapshotDecision: string;
+    snapshotConviction: string;
+    snapshotScenario: string;
+    snapshotRegime: string;
+    snapshotPhase: string;
+    snapshotContinuation: string;
+    snapshotFundamental: string;
+    snapshotActionability: string;
+    snapshotForward: string;
+    snapshotData: string;
+    snapshotFingerprint: string;
+    tradeEntry: string;
+    tradeStop: string;
+    tradeTarget: string;
+    tradeSize: string;
+    riskReward: string;
+    /** Profit and loss. Abbreviated per locale; the NUMBER never changes. */
+    pnlLabel: string;
+    pnlPercentLabel: string;
+    /** Suffix after the instrument in the detail heading: "EUR/USD — Journal". */
+    journalSuffix: string;
+    /** Default note stored on an observation-only entry. */
+    observationNote: string;
   };
 
   // ─── Portfolio Intelligence ─────────────────────────────────
@@ -976,6 +1313,30 @@ export interface Translations {
 
   // ─── Historical Timeline ────────────────────────────────────
   timeline: {
+    previousLabel: string;
+    /**
+     * Phase 197 — localizable interpretation sentences. The engine also emits
+     * an English `interpretation` string for logs and non-UI consumers; the UI
+     * renders these instead so the text follows the active locale.
+     */
+    interpTimeframeShift: string;
+    interpRegimeShift: string;
+    interpSupportingLeads: string;
+    interpConflictingLeads: string;
+    interpEvidenceBalanced: string;
+    interpThesisStable: string;
+    interpFirstAnalysis: string;
+    /**
+     * Phase 197 — timeline field-change captions. "Current"/"Previous" label
+     * the two sides of a recorded change, so they must stay distinguishable;
+     * `previous` and the change marker are reused from existing vocabulary.
+     */
+    currentLabel: string;
+    alsoLabel: string;
+    /** Section heading above the current-vs-previous comparison. */
+    currentVsPrevious: string;
+    /** Section heading above the aggregated history summary. */
+    historySummary: string;
     initialAnalysis: string;
     thesisChange: string;
     regimeChange: string;
@@ -987,5 +1348,228 @@ export interface Translations {
     newsChange: string;
     macroChange: string;
     dataQualityChange: string;
+  };
+
+  /** Phase 174 — entitlement surface. Server-authoritative values only. */
+  /**
+   * Phase 189 — first-run authentication surface.
+   *
+   * Every user-visible string on the sign-in journey lives here so no locale
+   * can silently fall back to English. Declaring these as REQUIRED members is
+   * deliberate: adding a key fails `tsc -b` for all nine locales until each
+   * one supplies a real translation.
+   */
+  auth: {
+    title: string;
+    subtitle: string;
+    emailLabel: string;
+    emailPlaceholder: string;
+    emailHelp: string;
+    continueWithEmail: string;
+    orDivider: string;
+    continueAsGuest: string;
+    guestHelp: string;
+    checkEmailTitle: string;
+    /** Interpolates {email}. */
+    checkEmailBody: string;
+    otpLabel: string;
+    /** Interpolates {minutes}; must match OTP_EXPIRY_MINUTES on the server. */
+    codeValidity: string;
+    verifyCode: string;
+    verifying: string;
+    noCodeQuestion: string;
+    resendHint: string;
+    tryAgain: string;
+    useDifferentEmail: string;
+    sendFailed: string;
+    codeIncorrect: string;
+    guestFailed: string;
+    disclaimer: string;
+    sessionNote: string;
+    /** Phase 191 — shown by RequireAuth while the session is being restored. */
+    restoringSession: string;
+  };
+
+  /** Phase 189 — first-run guidance shown before any analysis exists. */
+  onboarding: {
+    welcomeTitle: string;
+    welcomeBody: string;
+    step1: string;
+    step2: string;
+    step3: string;
+    freeOutcomeNote: string;
+    chargeableNote: string;
+    lockedNote: string;
+    /** Shown when market data acquisition fails; never names a provider. */
+    dataUnavailableHint: string;
+    dismiss: string;
+  };
+
+  /**
+   * Phase 190 — public landing page.
+   *
+   * Every claim here was audited against implemented capability. Wording that
+   * would overstate the product (blanket "real-time", guaranteed accuracy,
+   * unconditional instrument coverage) is deliberately absent, and tests in
+   * `src/lib/i18n/public-copy-truthfulness.phase190.test.ts` enforce that.
+   *
+   * Technical terms kept untranslated by terminology policy: BOS, CHoCH, FVG,
+   * HTF, LTF, DXY, WTI, R:R, SL, TP, W1/D1/H4/H1/M15/M5, NO TRADE.
+   */
+  landing: {
+    signIn: string;
+    launch: string;
+    heroBadge: string;
+    heroRole: string;
+    heroBody: string;
+    openTerminal: string;
+    guestMode: string;
+    coverageLabel: string;
+    instrumentsLabel: string;
+    /** Honest scope note; must not promise unconditional symbol support. */
+    coverageNote: string;
+    assetForex: string;
+    assetCrypto: string;
+    assetStock: string;
+    assetCommodity: string;
+    frameworkTitle: string;
+    frameworkBody: string;
+    featureStructureTitle: string;
+    featureStructureBody: string;
+    featureSupplyTitle: string;
+    featureSupplyBody: string;
+    featureMtfTitle: string;
+    featureMtfBody: string;
+    featureFlowTitle: string;
+    featureFlowBody: string;
+    convictionBadge: string;
+    convictionTitle: string;
+    convictionTitleEmphasis: string;
+    convictionBody: string;
+    weightStructure: string;
+    weightLiquidity: string;
+    weightFundamental: string;
+    weightSentiment: string;
+    outputTechnicalLabel: string;
+    outputTechnicalDesc: string;
+    outputFundamentalLabel: string;
+    outputFundamentalDesc: string;
+    outputPlanLabel: string;
+    outputPlanDesc: string;
+    outputConvictionLabel: string;
+    outputConvictionDesc: string;
+    outputInvalidationLabel: string;
+    outputInvalidationDesc: string;
+    principleNoFabricationTitle: string;
+    principleNoFabricationBody: string;
+    principleCapitalTitle: string;
+    principleCapitalBody: string;
+    principleNoAutoTitle: string;
+    principleNoAutoBody: string;
+    disclaimerTitle: string;
+    disclaimerBody: string;
+    ctaTitle: string;
+    ctaBody: string;
+    ctaButton: string;
+    footerTagline: string;
+    /** Accessible names for icon-only / brand controls. */
+    homeAriaLabel: string;
+  };
+
+  /**
+   * Phase 191 — user-facing provenance wording.
+   *
+   * `AcquisitionMode` (src/lib/data/acquisition-provenance.ts) already records
+   * HOW a value was obtained, but only as English diagnostic text. These keys
+   * are the human-readable, translated form shown to authenticated users.
+   *
+   * The distinctions are load-bearing, not stylistic: `cache-reused` must
+   * never read as a new observation, and `timed-out`/`rate-limited`/
+   * `unavailable` must never read as evidence. `describeAcquisitionForUser`
+   * is the only mapping permitted to produce these strings, and
+   * `authenticated-copy-truthfulness.phase191.test.ts` enforces the wording.
+   */
+  provenance: {
+    /** A real provider call completed during this analysis. */
+    observedNow: string;
+    /** A real call completed and was shared with concurrent callers. */
+    observedShared: string;
+    /** Served from cache — the provider was NOT contacted. */
+    cacheReused: string;
+    /** Never cached by design, so every use is a new observation. */
+    uncachedByDesign: string;
+    /** Provider returned no usable data. */
+    unavailable: string;
+    /** Provider exceeded its deadline. */
+    timedOut: string;
+    /** Provider reported a rate limit. */
+    rateLimited: string;
+    /** Not attempted for this instrument/style. */
+    skipped: string;
+    /** Stored result replayed from history; not current evidence. */
+    historical: string;
+    /** Evidence exists but is older than the freshness window. */
+    stale: string;
+    /** Some required legs are missing; the picture is incomplete. */
+    degraded: string;
+    /** Prefix for an evidence age, interpolates {age}. */
+    evidenceAge: string;
+    /** Shown when no provider was contacted at all. */
+    notContacted: string;
+  };
+
+  entitlement: {
+    invalidInput: string;
+    signInRequired: string;
+    trialLabel: string;
+    premiumLabel: string;
+    signalsRemaining: string;
+    signalsRemainingOne: string;
+    signalsExhausted: string;
+    unlimited: string;
+    lockedTitle: string;
+    lockedBody: string;
+    lockedNotWait: string;
+    upgradeCta: string;
+    upgradeComingSoon: string;
+    freeAlways: string;
+  };
+
+  /**
+   * Phase 182 — public website pages (/download, /privacy, /terms).
+   *
+   * These are part of the official-website surface. They ship in the same
+   * bundle as the app, so they must be translated like everything else; no
+   * hardcoded UI strings are permitted.
+   */
+  legal: {
+    downloadTitle: string;
+    downloadIntro: string;
+    downloadWindows: string;
+    downloadWindowsDetail: string;
+    downloadStore: string;
+    downloadStoreDetail: string;
+    downloadUnavailable: string;
+    downloadOtherSurfaces: string;
+    downloadWeb: string;
+    downloadAndroid: string;
+    downloadIos: string;
+    privacyTitle: string;
+    privacyIntro: string;
+    privacyDataTitle: string;
+    privacyDataBody: string;
+    privacyProvidersTitle: string;
+    privacyProvidersBody: string;
+    privacyRetentionTitle: string;
+    privacyRetentionBody: string;
+    termsTitle: string;
+    termsIntro: string;
+    termsNotAdviceTitle: string;
+    termsNotAdviceBody: string;
+    termsNoExecutionTitle: string;
+    termsNoExecutionBody: string;
+    termsAccuracyTitle: string;
+    termsAccuracyBody: string;
+    backHome: string;
   };
 }

@@ -25,16 +25,8 @@ import {
   DEFAULT_PREFERENCES,
   ALL_CATEGORIES,
   type NotificationPreferences,
-  type PreferenceScope,
+  validatePreferences,
 } from "../lib/position-protection/notification-preferences";
-
-const SEVERITY_ORDER: Record<string, number> = {
-  INFO: 0,
-  LOW: 1,
-  MEDIUM: 2,
-  HIGH: 3,
-  CRITICAL: 4,
-};
 
 const FILTER_OPTIONS: { label: string; value: NotificationFilter }[] = [
   { label: "ALL", value: "ALL" },
@@ -70,16 +62,11 @@ export function NotificationCenter() {
 
   const prefs: NotificationPreferences = useMemo(() => {
     if (!rawPrefs) return DEFAULT_PREFERENCES;
-    return {
-      minimumSeverity: (rawPrefs as any).minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
-      enabledCategories: (rawPrefs as any).enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
-      enabledScopes: (rawPrefs as any).enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
-      mutedRuleIds: (rawPrefs as any).mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
-      enabledInstruments: (rawPrefs as any).enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
-      mutedInstruments: (rawPrefs as any).mutedInstruments ?? DEFAULT_PREFERENCES.mutedInstruments,
-      showReadNotifications: (rawPrefs as any).showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
-      showDismissedNotifications: (rawPrefs as any).showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
-    };
+    // Phase 227 — the stored record is validated with the module's own guard
+    // instead of being cast field-by-field. A record that fails validation
+    // (e.g. an unknown severity) falls back to defaults rather than leaking
+    // an out-of-union value into the filter.
+    return validatePreferences(rawPrefs) ? rawPrefs : DEFAULT_PREFERENCES;
   }, [rawPrefs]);
 
   const filtered = useMemo(() => {
@@ -121,7 +108,7 @@ export function NotificationCenter() {
               showPrefs ? "bg-background text-foreground font-semibold border border-border/50" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {showPrefs ? "Hide Prefs" : "Preferences"}
+            {showPrefs ? t.notifications.preferencesHide : t.notifications.preferencesToggle}
           </button>
           {unreadCount !== undefined && unreadCount > 0 && (
             <button
@@ -146,9 +133,11 @@ export function NotificationCenter() {
                 : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {opt.value === "ALL" || opt.value === "UNREAD"
-              ? opt.label
-              : mapPriority(opt.value, t)}
+            {opt.value === "ALL"
+              ? t.notifications.filterAll
+              : opt.value === "UNREAD"
+                ? t.trader.unread
+                : mapPriority(opt.value, t)}
             {opt.value === "UNREAD" &&
               unreadCount !== undefined &&
               unreadCount > 0 &&
@@ -164,7 +153,7 @@ export function NotificationCenter() {
 
           {/* Minimum Severity */}
           <div className="space-y-1">
-            <div className="text-[9px] font-mono text-muted-foreground/70">Minimum Severity</div>
+            <div className="text-[9px] font-mono text-muted-foreground/70">{t.notifications.minimumSeverity}</div>
             <div className="flex gap-1">
               {["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"].map((sev) => (
                 <button
@@ -197,7 +186,7 @@ export function NotificationCenter() {
           {/* Categories */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <div className="text-[9px] font-mono text-muted-foreground/70">Categories</div>
+              <div className="text-[9px] font-mono text-muted-foreground/70">{t.notifications.categoriesHeading}</div>
               <button
                 onClick={() => {
                   const updated = {
@@ -263,7 +252,7 @@ export function NotificationCenter() {
 
           {/* Display */}
           <div className="space-y-1">
-            <div className="text-[9px] font-mono text-muted-foreground/70">Display</div>
+            <div className="text-[9px] font-mono text-muted-foreground/70">{t.notifications.displayHeading}</div>
             <div className="flex gap-3">
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -284,7 +273,7 @@ export function NotificationCenter() {
                   }}
                   className="size-3 accent-primary"
                 />
-                <span className="text-[9px] font-mono text-muted-foreground">Show read</span>
+                <span className="text-[9px] font-mono text-muted-foreground">{t.notifications.showRead}</span>
               </label>
               <label className="flex items-center gap-1.5 cursor-pointer">
                 <input
@@ -305,7 +294,7 @@ export function NotificationCenter() {
                   }}
                   className="size-3 accent-primary"
                 />
-                <span className="text-[9px] font-mono text-muted-foreground">Show dismissed</span>
+                <span className="text-[9px] font-mono text-muted-foreground">{t.notifications.showDismissed}</span>
               </label>
             </div>
           </div>
@@ -315,7 +304,7 @@ export function NotificationCenter() {
             onClick={() => resetPrefsMut()}
             className="text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors"
           >
-            Reset to defaults
+            {t.notifications.resetToDefaults}
           </button>
         </div>
       )}
@@ -336,7 +325,7 @@ export function NotificationCenter() {
               : t.notifications.noNotifications}
           </p>
           <p className="text-[10px] font-mono text-muted-foreground/60 mt-1">
-            Intelligence alerts will appear here
+            {t.notifications.alertsWillAppearHere}
           </p>
         </div>
       )}

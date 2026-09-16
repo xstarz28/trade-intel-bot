@@ -195,7 +195,26 @@ export function getInstrumentsByClass(assetClass: AssetClass): string[] {
 }
 
 /** Format price for display based on instrument. */
-export function formatInstrumentPrice(symbol: string, price: number): string {
+/**
+ * Marker rendered when a price is not a usable number.
+ *
+ * Matches the convention already used across the decision surfaces: an
+ * explicit em dash means "no value", which is honest, rather than "NaN",
+ * "∞" or a fabricated 0.00 that reads like a real price.
+ */
+export const PRICE_UNAVAILABLE = "—";
+
+export function formatInstrumentPrice(
+  symbol: string,
+  price: number | null | undefined,
+): string {
+  // A non-finite or non-positive price is not evidence of a price. Rendering
+  // NaN/Infinity leaks an internal failure into the UI, and rendering 0.00000
+  // is worse: it looks like a real quote and can be read as a real level.
+  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
+    return PRICE_UNAVAILABLE;
+  }
+
   const info = INSTRUMENTS[symbol];
   if (info) {
     return price.toLocaleString(undefined, {

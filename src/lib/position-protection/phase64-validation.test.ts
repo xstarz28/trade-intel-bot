@@ -24,10 +24,9 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { PositionContext, ProtectionAlert, AlertSeverity } from "./types";
+import type { PositionContext } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type { ProfitProtectionUrgency } from "./types";
-import type { RealTimeEvent } from "./realtime-types";
 import {
   createControllerState,
   registerPosition,
@@ -49,7 +48,6 @@ import {
   computeEventPriority,
   comparePriority,
   isCriticalEvent,
-  type EventPriorityLevel,
 } from "./event-priority";
 import {
   fuseSignals,
@@ -64,19 +62,14 @@ import {
 } from "./monitoring-cadence";
 import {
   computePositionPriority,
-  comparePositionPriority,
   sortByPriority,
-  type PositionPriorityRank,
 } from "./position-priority";
 import {
   createPriceEvent,
   createStructureChangeEvent,
   createMomentumChangeEvent,
-  createVolatilityChangeEvent,
   createFundingChangeEvent,
-  createOIChangeEvent,
   createLiquidationChangeEvent,
-  createCrossAssetEvent,
   createMacroChangeEvent,
   createProviderDegradedEvent,
   createProviderRecoveredEvent,
@@ -87,13 +80,11 @@ import {
 } from "./protection-engine";
 import { detectShock } from "./shock-detector";
 import {
-  calculateGiveback,
   classifyGivebackSeverity,
 } from "./giveback-monitor";
 import {
   createAccelerationState,
   recordPriceObservation,
-  detectPriceAcceleration,
 } from "./acceleration-monitor";
 import {
   createMonitoringState,
@@ -105,7 +96,6 @@ import {
   type PersistedPositionState,
 } from "./persistence";
 import {
-  alertSeverityRank,
   urgencyRank,
   type AlertSeverity as AlertSeverityType,
 } from "./types";
@@ -1163,11 +1153,9 @@ describe("AE. Event Processing End-to-End", () => {
       createMomentumChangeEvent("BTC/USDT", -15, "M5", "test"),
       createStructureChangeEvent("BTC/USDT", true, "M15", "test"),
     ];
-    let totalEvals = 0;
     for (const event of events) {
       const result = processEventForController(state, event, NOW);
       state = result.state;
-      totalEvals += result.alerts.length;
     }
     expect(state.evaluationsPerformed).toBeGreaterThanOrEqual(0);
   });

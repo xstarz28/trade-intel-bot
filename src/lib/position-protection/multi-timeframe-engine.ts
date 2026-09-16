@@ -8,17 +8,14 @@
  * Higher timeframe must not be overridden by a single lower-timeframe signal.
  */
 
-import type { PositionSide } from "./types";
 import {
   type Candle,
   normalizeCandles,
   sma,
-  ema,
   rsi,
   atr,
   detectSwings,
   analyzeStructure,
-  type SwingPoint,
   type StructureState,
 } from "./technical-indicators";
 
@@ -89,8 +86,6 @@ export interface TimeframeAnalysis {
   /** Number of candles analyzed. */
   candleCount: number;
 }
-
-const SUFFICIENT_CANDLES = 30;
 
 export function analyzeTimeframe(data: TimeframeData): TimeframeAnalysis {
   const { candles, timeframe, dataQuality, candleCount } = data;
@@ -398,26 +393,20 @@ export function aggregateTimeframeEvidence(
     };
   }
 
-  let htfCount = 0;
-  let ltfCount = 0;
   let htfAdverse = 0;
   let ltfAdverse = 0;
   let totalConf = 0;
   let hasHTFBroken = false;
-  let hasLTFBroken = false;
 
   for (const e of evidences) {
     const rank = tfRank(e.timeframe);
     totalConf += e.confirmationConfidence;
     if (rank >= 2) {
       // H1, H4, D1
-      htfCount++;
       if (e.adverseTrend || e.structureBroken) htfAdverse++;
       if (e.structureBroken) hasHTFBroken = true;
     } else {
-      ltfCount++;
       if (e.adverseTrend || e.structureBroken) ltfAdverse++;
-      if (e.structureBroken) hasLTFBroken = true;
     }
   }
 
@@ -473,7 +462,7 @@ export function aggregateTimeframeEvidence(
 export function eventToTimeframeEvidence(
   eventType: string,
   timeframe: string | undefined,
-  payload: Record<string, any> | undefined,
+  payload: Record<string, unknown> | undefined,
   source: string,
   observedAt: number,
 ): TimeframeEvidence | null {
@@ -483,10 +472,13 @@ export function eventToTimeframeEvidence(
   if (eventType === "MARKET_STRUCTURE_CHANGE" && timeframe) {
     return {
       timeframe: tf,
-      adverseTrend: payload?.adverseTrend ?? false,
-      structureBroken: payload?.broken ?? false,
+      adverseTrend: payload?.adverseTrend === true,
+      structureBroken: payload?.broken === true,
       adverseMomentum: false,
-      confirmationConfidence: payload?.confirmationConfidence ?? 50,
+      confirmationConfidence:
+        typeof payload?.confirmationConfidence === "number" && Number.isFinite(payload.confirmationConfidence)
+          ? payload.confirmationConfidence
+          : 50,
       observedAt,
       source,
     };

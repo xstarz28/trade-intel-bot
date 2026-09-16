@@ -18,21 +18,15 @@ import type {
   PositionContext,
   AlertSeverity,
   ProtectionAlert,
-  MonitoringState,
 } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type {
   RealTimeEvent,
-  PositionSnapshot,
-  InstrumentState,
-  ProtectionEvent,
-  MonitoringStatus,
 } from "./realtime-types";
-import { evaluateProtection, type ProtectionEngineInput } from "./protection-engine";
+import { evaluateProtection } from "./protection-engine";
+import { scanForSecrets, describeSecretScan } from "./secret-detector";
 import {
-  createMonitoringState,
   shouldAlert,
-  updateMonitoringState,
 } from "./alert-lifecycle";
 import { alertSeverityRank } from "./types";
 
@@ -82,7 +76,7 @@ export interface SecurityCheck {
 export function guardAgainstDuplicateRegistration(
   existingPositions: Map<string, { instrument: string; side: string }>,
   newPositionId: string,
-  instrument: string,
+  _instrument: string,
 ): GuardResult {
   if (existingPositions.has(newPositionId)) {
     return {
@@ -339,7 +333,7 @@ export function guardCleanupOnRemoval(
 
   // Verify other positions are not affected
   const unaffected = Array.from(positionsBeforeRemoval.entries()).every(
-    ([id, val]) => {
+    ([id]) => {
       if (id === removedPositionId) return true;
       return positionsAfterRemoval.has(id);
     },
@@ -541,14 +535,16 @@ export function validateIntegrationPipeline(input: {
     });
   }
 
-  // Stage 10: No API keys/secrets in alert
-  const serialized = JSON.stringify(alert);
-  const secretPatterns = [/api[_-]?key/i, /secret/i, /token/i, /password/i, /credential/i];
-  const hasSecret = secretPatterns.some((p) => p.test(serialized) && !serialized.includes("missingData"));
+  // Stage 10: No API keys/secrets in alert.
+  // Phase 226 — a real check. PASS only when the serialised alert was
+  // inspected and no credential-shaped pattern matched; FAIL when one
+  // matched OR when the alert could not be serialised (uninspectable is
+  // not verified). The reason names the pattern class, never the value.
+  const secretScan = scanForSecrets(alert);
   stages.push({
     stage: "NO_SECRETS_IN_ALERT",
-    passed: true, // We check the pattern more carefully
-    reason: "Alert does not contain embedded secrets.",
+    passed: secretScan.inspectable && !secretScan.found,
+    reason: describeSecretScan(secretScan, "Alert"),
   });
 
   const allPassed = stages.every((s) => s.passed);
@@ -771,21 +767,13 @@ export function runSecurityAudit(alert: ProtectionAlert): SecurityAuditResult {
     description: "Alert is scoped to a specific instrument.",
   });
 
-  // Check 7: No embedded secrets
-  const serialized = JSON.stringify(alert);
-  const secretPatterns = [
-    /AKIA[A-Z0-9]{16}/, // AWS key
-    /sk_live_[a-zA-Z0-9]+/, // Stripe live
-    /sk_test_[a-zA-Z0-9]+/, // Stripe test
-    /ghp_[a-zA-Z0-9]+/, // GitHub personal access token
-  ];
-  const hasSecret = secretPatterns.some((p) => p.test(serialized));
+  // Check 7: No embedded secrets (Phase 226 — shared detector with the
+  // pipeline stage; uninspectable input fails).
+  const secretScan = scanForSecrets(alert);
   checks.push({
     name: "NO_EMBEDDED_SECRETS",
-    passed: !hasSecret,
-    description: hasSecret
-      ? "Alert contains embedded secret patterns."
-      : "No embedded secrets detected.",
+    passed: secretScan.inspectable && !secretScan.found,
+    description: describeSecretScan(secretScan, "Alert"),
   });
 
   // Check 8: Shock detection is neutral on provider failure

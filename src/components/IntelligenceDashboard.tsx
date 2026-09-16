@@ -14,24 +14,19 @@
  * All data must come from real intelligence pipeline — no fabricated content.
  */
 
-import React, { useMemo } from "react";
+import React from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension, mapSensitivity, mapMarketState, mapSeverity, mapPullbackClassification, mapSide } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   TrendingUp,
-  Calendar,
   Layers,
   GitBranch,
   RefreshCw,
-  AlertTriangle,
   CheckCircle,
-  XCircle,
-  Clock,
   Target,
   Shield,
   Zap,
-  Info,
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════
@@ -39,7 +34,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 
 import type { NewsSynthesis, NewsRelevance } from "@/lib/position-protection/news-intelligence";
-import type { FundamentalSynthesis, CatalystAnalysis, FundamentalInterpretation } from "@/lib/position-protection/fundamental-intelligence";
+import type { FundamentalSynthesis, FundamentalInterpretation } from "@/lib/position-protection/fundamental-intelligence";
 import type { HierarchicalEvidence, ScenarioSynthesis, DimensionStatus, MultiDimensionalSynthesis } from "@/lib/position-protection/multi-dimensional-intelligence";
 import type { PositionIntelligence } from "@/lib/position-protection/market-intelligence-analyzer";
 import { HistoricalTimelineView } from "./HistoricalTimeline";
@@ -401,8 +396,12 @@ function WhatChangedSection({ changes }: { changes: string[] | null | undefined 
   const { t } = useI18n();
   const hasChanges = changes != null && changes.length > 0;
 
+  // An empty array is a real, successful answer: the comparison ran and found
+  // no material change. Only `undefined` means nothing was supplied. Treating
+  // `[]` as unavailable told the user "provider not connected" when the
+  // provider had in fact reported.
   return (
-    <IntelSection title={t.intelligence.whatChanged} icon={<RefreshCw className="size-3" />} available={hasChanges || changes === null}>
+    <IntelSection title={t.intelligence.whatChanged} icon={<RefreshCw className="size-3" />} available={changes !== undefined}>
       {changes === null ? (
         <p className="text-[9px] font-mono text-muted-foreground/60">{t.intelligence.awaitingFirstAnalysis}</p>
       ) : !hasChanges ? (
@@ -474,9 +473,14 @@ function AnalyticalSummarySection({
     thesisLabel === "INVALIDATED" ? "text-red-400" :
     "text-muted-foreground";
 
+  // Degrade instead of crashing when the recommendation is absent. A missing
+  // recommendation is a data gap, not a signal, so it must not be coloured as
+  // an actionable state.
+  const actionRecommendation = intelligence.actionRecommendation ?? "";
   const actionColor =
-    intelligence.actionRecommendation.includes("NO_TRADE") || intelligence.actionRecommendation.includes("WAIT") ? "text-amber-400" :
-    intelligence.actionRecommendation.includes("WATCH") ? "text-blue-400" :
+    actionRecommendation.includes("NO_TRADE") || actionRecommendation.includes("WAIT") ? "text-amber-400" :
+    actionRecommendation.includes("WATCH") ? "text-blue-400" :
+    actionRecommendation.length === 0 ? "text-muted-foreground" :
     "text-emerald-400";
 
   const severityColor: Record<string, string> = {
@@ -508,7 +512,11 @@ function AnalyticalSummarySection({
         {/* Action Recommendation */}
         <div className="text-[9px] font-mono">
           <span className="text-muted-foreground/60">{t.intelligence.actionLabel}: </span>
-          <span className={`font-semibold ${actionColor}`}>{intelligence.actionRecommendation.replace(/_/g, " ")}</span>
+          <span className={`font-semibold ${actionColor}`}>
+            {actionRecommendation.length > 0
+              ? actionRecommendation.replace(/_/g, " ")
+              : t.status.unavailable}
+          </span>
         </div>
         {/* Risk / Protection */}
         <div className="text-[9px] font-mono">
@@ -610,7 +618,6 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
   const { t } = useI18n();
   if (!intelligence) return null;
 
-  const isLong = intelligence.side === "LONG";
   return (
     <IntelSection title={t.intelligence.keyLevelsLabel} icon={<Shield className="size-3" />}>
       <div className="space-y-1 text-[8px] font-mono">
@@ -627,7 +634,14 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
           <span className="text-muted-foreground/60">{t.trader.current}</span>
           <span className="text-foreground/70">{intelligence.currentPrice}</span>
         </div>
-        {intelligence.pnlPct !== 0 && (
+        {/*
+          `!== 0` alone also passes for undefined, which then crashed on
+          .toFixed(). PnL is only rendered when it is a real finite number —
+          an absent PnL is a data gap and must not be shown as a value.
+        */}
+        {typeof intelligence.pnlPct === "number" &&
+          Number.isFinite(intelligence.pnlPct) &&
+          intelligence.pnlPct !== 0 && (
           <div className="flex justify-between">
             <span className="text-muted-foreground/60">{t.trader.pnl}</span>
             <span className={intelligence.pnlPct > 0 ? "text-emerald-400" : "text-red-400"}>{intelligence.pnlPct > 0 ? "+" : ""}{intelligence.pnlPct.toFixed(2)}%</span>
@@ -645,9 +659,10 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
             <span className="text-emerald-400/80">{intelligence.takeProfit}</span>
           </div>
         )}
-        {intelligence.rMultiple !== undefined && (
+        {typeof intelligence.rMultiple === "number" &&
+          Number.isFinite(intelligence.rMultiple) && (
           <div className="flex justify-between">
-            <span className="text-muted-foreground/60">R-Multiple</span>
+            <span className="text-muted-foreground/60">{t.trader.rMultiple}</span>
             <span className="text-foreground/70">{intelligence.rMultiple.toFixed(2)}R</span>
           </div>
         )}
@@ -687,8 +702,6 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
 export function IntelligenceDashboard({
   intelligence,
   multiDimensional,
-  marketContext,
-  analyticalSummary,
   whatChanged,
   positionSide,
   instrument,

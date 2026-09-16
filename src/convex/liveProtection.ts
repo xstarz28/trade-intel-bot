@@ -13,6 +13,8 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
+import { asFiniteNumber, asRecordArray, asString, errorMessage, field } from "./lib/json";
 import { v } from "convex/values";
 
 // ═══════════════════════════════════════════════════════════════
@@ -146,7 +148,7 @@ async function fetchCoingeckoPrices(
         success: true,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return validCoins.map((c) => ({
       instrument: c.instrument,
       coinId: c.coinId!,
@@ -156,7 +158,7 @@ async function fetchCoingeckoPrices(
       marketCap: 0,
       timestamp: Date.now(),
       success: false,
-      error: `CoinGecko request failed: ${err?.message ?? "unknown"}`,
+      error: `CoinGecko request failed: ${errorMessage(err) || "unknown"}`,
     }));
   }
 }
@@ -228,7 +230,7 @@ async function fetchTwelveDataQuote(
         timestamp: Date.now(),
         success: true,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
         continue;
@@ -240,7 +242,7 @@ async function fetchTwelveDataQuote(
         ask: 0,
         timestamp: Date.now(),
         success: false,
-        error: `TwelveData request failed: ${err?.message ?? "unknown"}`,
+        error: `TwelveData request failed: ${errorMessage(err) || "unknown"}`,
       };
     }
   }
@@ -348,19 +350,33 @@ async function fetchYahooFinanceQuote(
       };
     }
 
+    // Phase 219: regularMarketTime is provider-supplied UNIX seconds. The old
+    // `(meta.regularMarketTime ?? Date.now()) * 1000` multiplied the
+    // millisecond fallback by 1000 whenever the field was absent, producing a
+    // timestamp ~56,000 years in the future that then poisoned the
+    // out-of-order cursor in the stream orchestrator (every later genuine
+    // quote for the instrument was dropped as "older"). Only a finite,
+    // positive provider value is scaled; otherwise stamp receipt time in
+    // milliseconds, exactly as the CoinGecko and TwelveData paths already do.
+    const providerSeconds = meta.regularMarketTime;
+    const timestamp =
+      typeof providerSeconds === "number" && Number.isFinite(providerSeconds) && providerSeconds > 0
+        ? providerSeconds * 1000
+        : Date.now();
+
     return {
       instrument: symbol,
       price,
-      timestamp: (meta.regularMarketTime ?? Date.now()) * 1000,
+      timestamp,
       success: true,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument: symbol,
       price: 0,
       timestamp: Date.now(),
       success: false,
-      error: `Yahoo Finance request failed: ${err?.message ?? "unknown"}`,
+      error: `Yahoo Finance request failed: ${errorMessage(err) || "unknown"}`,
     };
   }
 }
@@ -386,7 +402,10 @@ export const fetchLiveProtectionQuote = action({
   args: {
     instruments: v.array(v.string()),
   },
-  handler: async (_ctx, args): Promise<LiveQuoteResult[]> => {
+  handler: async (ctx, args): Promise<LiveQuoteResult[]> => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const results: LiveQuoteResult[] = [];
     const now = Date.now();
 
@@ -597,9 +616,10 @@ async function fetchTwelveDataOHLCV(
       };
     }
 
-    const data = await res.json() as any;
+    const data: unknown = await res.json();
+    const values = field(data, "values");
 
-    if (data.status === "error" || !data.values) {
+    if (field(data, "status") === "error" || !Array.isArray(values)) {
       return {
         instrument,
         timeframe,
@@ -607,29 +627,38 @@ async function fetchTwelveDataOHLCV(
         sourceMode: "UNAVAILABLE",
         provider: "TwelveData",
         success: false,
-        error: data.message ?? "No data",
+        error: asString(field(data, "message")) ?? "No data",
       };
     }
 
     const candles: OHLCVCandle[] = [];
-    for (const v of data.values) {
-      const open = parseFloat(v.open);
-      const high = parseFloat(v.high);
-      const low = parseFloat(v.low);
-      const close = parseFloat(v.close);
-      const volume = parseFloat(v.volume ?? "0");
+    for (const v of asRecordArray(values)) {
+      const open = asFiniteNumber(v.open);
+      const high = asFiniteNumber(v.high);
+      const low = asFiniteNumber(v.low);
+      const close = asFiniteNumber(v.close);
+      const volume = asFiniteNumber(v.volume);
 
       // Validate candle
-      if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) continue;
+      if (open === undefined || high === undefined || low === undefined || close === undefined) continue;
       if (open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
+      // Phase 220 — a candle whose provider datetime does not parse has no
+      // position in time. It is dropped like a candle with no price; it is
+      // never stamped with the request clock and never emitted as NaN.
+      const dt = v.datetime;
+      if (typeof dt !== "string" && typeof dt !== "number") continue;
+      const timestamp = new Date(dt).getTime();
+      if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
 
       candles.push({
-        timestamp: new Date(v.datetime).getTime(),
+        timestamp,
         open,
         high,
         low,
         close,
-        volume: Number.isFinite(volume) ? volume : 0,
+        // Volume is optional in the provider payload; a missing/invalid
+        // volume was already 0 (a candle without volume is still a candle).
+        volume: volume ?? 0,
       });
     }
 
@@ -644,7 +673,7 @@ async function fetchTwelveDataOHLCV(
       provider: "TwelveData",
       success: candles.length > 0,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument,
       timeframe,
@@ -652,7 +681,7 @@ async function fetchTwelveDataOHLCV(
       sourceMode: "UNAVAILABLE",
       provider: "TwelveData",
       success: false,
-      error: err?.message ?? "Fetch failed",
+      error: errorMessage(err) || "Fetch failed",
     };
   }
 }
@@ -668,6 +697,9 @@ export const fetchOHLCVCandles = action({
     outputsize: v.optional(v.number()),
   },
   handler: async (ctx, args): Promise<OHLCVResult[]> => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.TWELVE_DATA_API_KEY;
     if (!apiKey) {
       return args.instruments.map((inst) => ({

@@ -17,6 +17,7 @@ import type {
   DerivativesIntelligence,
 } from "./types";
 import { toCoinGlassSymbol } from "./symbols";
+import { asFiniteNumber, isRecord } from "../json/narrow";
 
 /**
  * CoinGlass adapter — fetches derivatives intelligence.
@@ -24,25 +25,25 @@ import { toCoinGlassSymbol } from "./symbols";
  * In production, this calls the Convex action `fetchDerivatives`.
  * In tests, the caller provides the thunk.
  */
+/**
+ * Envelope of the Convex `coinglass.fetchDerivatives` action as the adapter
+ * consumes it. `data` is deliberately `unknown`: the adapter forwards it and
+ * `parseCoinGlassResult` narrows it field by field.
+ */
+export interface CoinGlassThunkResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+  errorCode?: string;
+}
+export type CoinGlassFetchThunk = () => Promise<CoinGlassThunkResult | null>;
+
 export class CoinGlassAdapter implements CryptoIntelligenceProvider {
   readonly name = "CoinGlass";
 
-  private fetchThunk?: () => Promise<{
-    success: boolean;
-    data?: {
-      openInterest?: { current: number; change1h?: number; change24h?: number };
-      fundingRate?: { currentRate: number; annualizedRate?: number };
-      liquidations?: { totalVolume?: number; longVolume?: number; shortVolume?: number; dominantSide?: "longs" | "shorts" | "balanced" };
-      longShort?: { accountRatio?: number; topTraderRatio?: number; takerRatio?: number };
-      availability: { openInterest: boolean; fundingRate: boolean; longShort: boolean; liquidations: boolean };
-      confidence: string;
-      freshness: string;
-    };
-    error?: string;
-    errorCode?: string;
-  } | null>;
+  private fetchThunk?: CoinGlassFetchThunk;
 
-  constructor(fetchThunk?: () => Promise<any>) {
+  constructor(fetchThunk?: CoinGlassFetchThunk) {
     this.fetchThunk = fetchThunk;
   }
 
@@ -69,7 +70,7 @@ export class CoinGlassAdapter implements CryptoIntelligenceProvider {
           provider: this.name,
           observedAt: Date.now(),
           error: result?.error ?? "CoinGlass returned no data",
-          errorCode: (result?.errorCode as any) ?? "NO_DATA",
+          errorCode: toErrorCode(result?.errorCode),
         };
       }
       return {
@@ -94,21 +95,38 @@ export class CoinGlassAdapter implements CryptoIntelligenceProvider {
  * Parse CoinGlass provider result into DerivativesIntelligence.
  * Pure function — no side effects.
  */
+const ERROR_CODES = ["API_UNAVAILABLE", "RATE_LIMIT", "AUTH_ERROR", "UNSUPPORTED_ASSET", "NO_DATA", "NETWORK_ERROR"] as const;
+type ErrorCode = NonNullable<CryptoIntelligenceProviderResult["errorCode"]>;
+
+function toErrorCode(raw: unknown): ErrorCode {
+  return (ERROR_CODES as readonly string[]).includes(raw as string) ? (raw as ErrorCode) : "NO_DATA";
+}
+
 export function parseCoinGlassResult(
-  data: Record<string, any>,
+  raw: unknown,
   instrument: string,
   observedAt: number,
 ): DerivativesIntelligence {
-  const avail = data.availability ?? {};
+  const data = isRecord(raw) ? raw : {};
+  const avail = isRecord(data.availability) ? data.availability : {};
   const totalDatasets = 4;
   const availableDatasets = [
     avail.openInterest,
     avail.fundingRate,
     avail.longShort,
     avail.liquidations,
-  ].filter(Boolean).length;
+  ].filter((v) => v === true).length;
 
   const freshness = mapFreshness(data.freshness);
+  const oi = isRecord(data.openInterest) ? data.openInterest : undefined;
+  const fr = isRecord(data.fundingRate) ? data.fundingRate : undefined;
+  const liq = isRecord(data.liquidations) ? data.liquidations : undefined;
+  const ls = isRecord(data.longShort) ? data.longShort : undefined;
+  const oiCurrent = asFiniteNumber(oi?.current);
+  const frRate = asFiniteNumber(fr?.currentRate);
+  const liqTotal = asFiniteNumber(liq?.totalVolume);
+  const lsAccount = asFiniteNumber(ls?.accountRatio);
+  const side = liq?.dominantSide;
 
   return {
     provider: "CoinGlass",
@@ -118,33 +136,33 @@ export function parseCoinGlassResult(
     available: availableDatasets > 0,
     failureReason: availableDatasets === 0 ? "No CoinGlass datasets available" : undefined,
 
-    openInterest: data.openInterest ? {
-      current: data.openInterest.current ?? 0,
-      change1h: data.openInterest.change1h,
-      change24h: data.openInterest.change24h,
-      reliable: typeof data.openInterest.current === "number" && !Number.isNaN(data.openInterest.current) && data.openInterest.current > 0,
+    openInterest: oi ? {
+      current: oiCurrent ?? 0,
+      change1h: asFiniteNumber(oi.change1h),
+      change24h: asFiniteNumber(oi.change24h),
+      reliable: oiCurrent !== undefined && oiCurrent > 0,
     } : undefined,
 
-    fundingRate: data.fundingRate ? {
-      currentRate: data.fundingRate.currentRate ?? 0,
-      annualizedRate: data.fundingRate.annualizedRate,
-      isExtreme: Math.abs(data.fundingRate.currentRate ?? 0) > 0.001,
-      reliable: typeof data.fundingRate.currentRate === "number" && !Number.isNaN(data.fundingRate.currentRate),
+    fundingRate: fr ? {
+      currentRate: frRate ?? 0,
+      annualizedRate: asFiniteNumber(fr.annualizedRate),
+      isExtreme: Math.abs(frRate ?? 0) > 0.001,
+      reliable: frRate !== undefined,
     } : undefined,
 
-    liquidation: data.liquidations ? {
-      totalVolume: data.liquidations.totalVolume,
-      longVolume: data.liquidations.longVolume,
-      shortVolume: data.liquidations.shortVolume,
-      dominantSide: data.liquidations.dominantSide,
-      reliable: typeof data.liquidations.totalVolume === "number" && !Number.isNaN(data.liquidations.totalVolume) && data.liquidations.totalVolume > 0,
+    liquidation: liq ? {
+      totalVolume: liqTotal,
+      longVolume: asFiniteNumber(liq.longVolume),
+      shortVolume: asFiniteNumber(liq.shortVolume),
+      dominantSide: side === "longs" || side === "shorts" || side === "balanced" ? side : undefined,
+      reliable: liqTotal !== undefined && liqTotal > 0,
     } : undefined,
 
-    positioning: data.longShort ? {
-      accountRatio: data.longShort.accountRatio,
-      topTraderRatio: data.longShort.topTraderRatio,
-      takerRatio: data.longShort.takerRatio,
-      reliable: typeof data.longShort.accountRatio === "number" && !Number.isNaN(data.longShort.accountRatio),
+    positioning: ls ? {
+      accountRatio: lsAccount,
+      topTraderRatio: asFiniteNumber(ls.topTraderRatio),
+      takerRatio: asFiniteNumber(ls.takerRatio),
+      reliable: lsAccount !== undefined,
     } : undefined,
 
     availableDatasets,
@@ -152,8 +170,8 @@ export function parseCoinGlassResult(
   };
 }
 
-function mapFreshness(raw: string | undefined): "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" {
-  if (!raw) return "UNAVAILABLE";
+function mapFreshness(raw: unknown): "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" {
+  if (typeof raw !== "string" || raw === "") return "UNAVAILABLE";
   const lower = raw.toLowerCase();
   if (lower === "realtime" || lower === "fresh") return "FRESH";
   if (lower === "delayed") return "DELAYED";

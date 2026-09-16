@@ -10,8 +10,8 @@
  * NO duplicate intelligence calculations.
  */
 
-import type { PositionIntelligence, EvidenceItem, InvalidationCondition } from "./market-intelligence-analyzer";
-import type { PortfolioIntelligence, ThesisState } from "./portfolio-intelligence";
+import type { PositionIntelligence, EvidenceItem } from "./market-intelligence-analyzer";
+import type { PortfolioIntelligence } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -37,7 +37,8 @@ export interface InvalidationConditionDetailed {
   currentState: string;
   invalidatingState: string;
   status: InvalidationStatus;
-  distancePct: number;
+  /** Undefined when the distance could not be computed. */
+  distancePct?: number;
 }
 
 export interface WatchItem {
@@ -157,9 +158,8 @@ export function buildDecisionSupport(
  */
 export function classifyEvidence(
   evidence: EvidenceItem,
-  side: string,
+  _side: string,
 ): EvidenceClassified {
-  const isLong = side === "LONG";
 
   // Map raw direction to side-aware classification
   let classification: EvidenceClassification;
@@ -320,7 +320,10 @@ export function deriveInvalidationConditions(
     return {
       description: ic.description,
       sourceDimension: "PROTECTION",
-      currentState: `Distance: ${ic.distancePct.toFixed(2)}%`,
+      currentState:
+        ic.distancePct === undefined
+          ? "Distance: unavailable"
+          : `Distance: ${ic.distancePct.toFixed(2)}%`,
       invalidatingState: ic.description,
       status,
       distancePct: ic.distancePct,

@@ -29,7 +29,6 @@ import {
   getEventsForComponent,
   getEventCount,
   buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -343,7 +342,6 @@ describe("Phase 100 — Health Aggregation", () => {
 
 describe("Phase 100 — Health Transitions", () => {
   it("detects status change", () => {
-    const now = Date.now();
     const prev = makeSnapshot({
       components: [
         { component: "NEWS", status: "HEALTHY", consecutiveFailures: 0, message: "", freshness: "FRESH" },

@@ -15,7 +15,6 @@ import type {
   StreamHealthState,
   ReconciliationResult,
   RegisteredPosition,
-  PositionLifecycle,
   SymbolMapping,
   StreamConfig,
 } from "./types";
@@ -33,14 +32,13 @@ import {
   type ReconnectState,
 } from "./reconnection-engine";
 import { getProviderProfile, buildStreamConfig } from "./provider-adapters";
-import type { MonitorState, ProcessResult } from "../position-protection/realtime-monitor";
+import type { MonitorState } from "../position-protection/realtime-monitor";
 import type { PositionSnapshot } from "../position-protection/realtime-types";
 import { processEvent, addPosition, removePosition, cleanup as monitorCleanup } from "../position-protection/realtime-monitor";
-import type { RealTimeEvent, ProtectionEvent, MonitoringStatus } from "../position-protection/realtime-types";
+import type { RealTimeEvent, ProtectionEvent } from "../position-protection/realtime-types";
 import {
   createAccelerationState,
   recordPriceObservation,
-  recordGivebackObservation,
   detectPriceAcceleration,
   detectGivebackAcceleration,
   type AccelerationState,
@@ -48,7 +46,6 @@ import {
 } from "../position-protection/acceleration-monitor";
 import type {
   MonitoringStateRepository,
-  PersistedPositionState,
 } from "../position-protection/persistence";
 
 // ═══════════════════════════════════════════════════════════════
@@ -312,6 +309,17 @@ export function processStreamEvent(
   // Normalize
   const normalized = normalizeStreamEvent(streamEvent, state);
   if (!normalized) {
+    return {
+      state: { ...state, totalEventsDropped: state.totalEventsDropped + 1 },
+      alerts: [],
+    };
+  }
+
+  // Phase 220 — a timestamp that is not a finite number must never reach
+  // the cursor: +Infinity would make every later genuine quote look
+  // out-of-order forever (the Phase 219 failure mode without the ×1000),
+  // and NaN would poison every comparison. Drop the event instead.
+  if (!Number.isFinite(normalized.timestamp)) {
     return {
       state: { ...state, totalEventsDropped: state.totalEventsDropped + 1 },
       alerts: [],

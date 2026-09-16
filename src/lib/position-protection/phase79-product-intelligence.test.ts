@@ -19,7 +19,6 @@ import { describe, it, expect } from "vitest";
 import {
   getInstrumentInfo,
   detectAssetClass,
-  isSupportedInstrument,
   getAllInstruments,
   getInstrumentsByClass,
   formatInstrumentPrice,

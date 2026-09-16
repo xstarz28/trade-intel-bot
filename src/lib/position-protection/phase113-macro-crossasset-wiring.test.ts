@@ -23,7 +23,6 @@ import {
   assessTechnicalFundamentalAlignment,
   type FundamentalRegimeInput,
   type AssetClass,
-  type EvidenceDirection,
 } from "./fundamental-regime";
 import {
   classifyMacroContext,
@@ -32,18 +31,15 @@ import {
   type CrossAssetContext,
 } from "./multi-dimensional-intelligence";
 import {
-  buildAssetCausalContext,
   buildCausalTransmissions,
   buildFundamentalCausalResult,
-  classifyMacroRegime,
 } from "./fundamental-transmission";
-import type { NewsItem } from "./news-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
 
-function makeMacroContext(vixPrice: number | null, riskRegime: MacroContext["riskRegime"] = "UNKNOWN"): MacroContext {
+function makeMacroContext(vixPrice: number | null): MacroContext {
   return classifyMacroContext(vixPrice, "LONG", "crypto");
 }
 
@@ -57,7 +53,6 @@ function makeCrossAssetContext(impact: CrossAssetContext["positionImpact"] = "NE
   };
 }
 
-const now = Date.now();
 
 // ═══════════════════════════════════════════════════════════════
 // A. MACRO WIRING
@@ -137,7 +132,7 @@ describe("A. MacroContext wiring into FundamentalRegimeInput", () => {
   });
 
   it("no duplicate macro request — pure function reuse", () => {
-    const macroCtx = makeMacroContext(22);
+    makeMacroContext(22);
     // classifyMacroContext is deterministic
     const r1 = classifyMacroContext(22, "LONG", "crypto");
     const r2 = classifyMacroContext(22, "LONG", "crypto");

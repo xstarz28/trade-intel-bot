@@ -15,11 +15,11 @@ This project uses the following tech stack:
 
 All relevant files live in the 'src' directory.
 
-Use bun for the package manager.
+Use npm (`npm install --legacy-peer-deps`, `npm test`, `npm run build`) — the same commands CI runs. `package-lock.json` is the only lockfile.
 
 ## Setup
 
-This project is set up already and running on a cloud environment, as well as a convex development in the sandbox.
+Backend: Convex (`src/convex/`). A development deployment is used for Evidence D; no production deployment exists yet — see `docs/RELEASE-GATE.md`.
 
 ## Environment Variables
 
@@ -27,7 +27,7 @@ The project is set up with project specific CONVEX_DEPLOYMENT and VITE_CONVEX_UR
 
 The convex server has a separate set of environment variables that are accessible by the convex backend.
 
-Currently, these variables include auth-specific keys: JWKS, JWT_PRIVATE_KEY, and SITE_URL.
+Required names are listed in `.env.example` and validated by `npm run convex:preflight`. Values are never committed.
 
 
 # Using Authentication (Important!)
@@ -36,11 +36,7 @@ You must follow these conventions when using authentication.
 
 ## Auth is already set up.
 
-All convex authentication functions are already set up. The auth currently uses email OTP and anonymous users, but can support more.
-
-The email OTP configuration is defined in `src/convex/auth/emailOtp.ts`. DO NOT MODIFY THIS FILE.
-
-Also, DO NOT MODIFY THESE AUTH FILES: `src/convex/auth.config.ts` and `src/convex/auth.ts`.
+Sign-in is email OTP plus anonymous/guest. Codes are generated in `src/convex/auth/emailOtp.ts` and delivered through the Xstarz-owned transport in `src/convex/lib/emailDelivery.ts` (Resend or SMTP2GO, selected by `XSTARZ_EMAIL_TRANSPORT`). There is no third-party OTP issuer; production trusts only its own issuer (`src/convex/lib/issuerPolicy.ts`). Changes to these files must keep `docs/AUTHENTICATION.md` and the auth-hardening tests in step.
 
 ## Using Convex Auth on the backend
 

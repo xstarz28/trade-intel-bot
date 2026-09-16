@@ -15,7 +15,7 @@
  * For keyed providers (Twelve Data, Alpha Vantage, CoinGlass, EIA, TickAtlas),
  * we test graceful-failure behavior and pure normalization logic.
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ─── Pure modules (directly testable) ──────────────────────────────
 import {
@@ -23,13 +23,10 @@ import {
   buildCotContext,
   classifyCotFreshness,
   deriveCotEvidence,
-  COT_FRESH_DAYS,
-  COT_DELAYED_DAYS,
 } from "./data/cot";
 import {
   mapInstrumentToOkx,
   parseOkxResponse,
-  resolveWithOkx,
 } from "./risk/okx-spec";
 import {
   toCoinGeckoId,
@@ -41,13 +38,9 @@ import {
 import {
   parseTreasuryXml,
   buildTreasuryContext,
-  classifyMacroFreshness,
   deriveMacroYieldEvidence,
-  TREASURY_FRESH_DAYS,
-  TREASURY_DELAYED_DAYS,
 } from "./data/treasury";
-import type { InstrumentSpec } from "./risk";
-import { buildExecutionData, parseOkxOrderBook, type ExecutionData } from "./execution-quality";
+import { buildExecutionData, parseOkxOrderBook } from "./execution-quality";
 
 // ─── HTTP helpers for live public endpoints ─────────────────────────
 

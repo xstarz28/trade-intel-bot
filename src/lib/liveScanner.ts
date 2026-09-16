@@ -14,8 +14,9 @@
 
 import type { AssetClass } from "./data/universal/types";
 import type { CandidateInput, TradingMode, InvestorHorizon, UniversalRecommendationResult } from "./recommendation-engine";
-import { generateRecommendation, discoverCandidates } from "./recommendation-engine";
+import { generateRecommendation } from "./recommendation-engine";
 import { buildCandidateFromSource, type LiveCandidateSource } from "./liveCandidateBuilder";
+import { limitByCorrelationGroup } from "./discovery/correlation";
 
 // ═══════════════════════════════════════════════════════════════
 // SCANNER TYPES
@@ -32,6 +33,24 @@ export interface ScanConfig {
   maxResults?: number;
   /** Current timestamp override for determinism. */
   now?: number;
+  /**
+   * Phase 158 — max instruments per derived correlation group in the
+   * ranked output (e.g. BTC spot + BTC perp + BTC future are one group).
+   *
+   * Applies only to candidates carrying a `correlationKey`. Undefined or 0
+   * disables the cap, preserving pre-Phase-158 behaviour.
+   */
+  maxPerCorrelationGroup?: number;
+  /**
+   * Phase 161 — provider/acquisition failures observed while assembling
+   * `sources` for this scan.
+   *
+   * The scanner cannot see upstream failures on its own: a provider outage
+   * simply yields fewer sources, which is indistinguishable from a market
+   * with fewer opportunities. Passing them in keeps a degraded scan
+   * visibly degraded.
+   */
+  providerErrors?: string[];
 }
 
 export interface ScanResult {
@@ -49,6 +68,14 @@ export interface ScanResult {
   durationMs: number;
   /** Provider errors encountered. */
   providerErrors: string[];
+  /**
+   * Phase 161 — true when this scan ran with known provider failures.
+   *
+   * A degraded scan is still a real scan of real data; it simply covers
+   * less of the market than usual. Callers must be able to distinguish
+   * "few opportunities exist" from "we could not look properly".
+   */
+  degraded: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -158,7 +185,9 @@ export function scanInstruments(
 ): ScanResult {
   const startTime = Date.now();
   const now = config.now ?? Date.now();
-  const providerErrors: string[] = [];
+  // Upstream acquisition/discovery failures are carried through verbatim so
+  // the caller can see WHY a scan is thin.
+  const providerErrors: string[] = [...(config.providerErrors ?? [])];
 
   // Filter by asset class
   let filtered = sources;
@@ -167,7 +196,9 @@ export function scanInstruments(
   }
 
   // Build candidates from sources
-  const candidates = filtered.map(s => buildCandidateFromSource(s));
+  // Pass the scan timestamp so freshness gating is deterministic and
+  // consistent across every candidate in this scan.
+  const candidates = filtered.map(s => buildCandidateFromSource(s, now));
 
   // Scan each horizon
   const results = new Map<TradingMode | InvestorHorizon, UniversalRecommendationResult>();
@@ -180,6 +211,47 @@ export function scanInstruments(
     const result = generateRecommendation(eligible, horizon, {
       maxResults: config.maxResults ?? 10,
     });
+
+    // Phase 158 — cap correlated exposure in the ranked output.
+    // Ranking order is preserved; only surplus correlated entries are
+    // removed, and each removal is reported explicitly.
+    if (config.maxPerCorrelationGroup && config.maxPerCorrelationGroup > 0) {
+      const keyByInstrument = new Map(
+        eligible
+          .filter((c) => c.correlationKey)
+          .map((c) => [c.instrument, c.correlationKey!] as const),
+      );
+
+      const kept = limitByCorrelationGroup(
+        result.rankedInstruments,
+        (ranked) => keyByInstrument.get(ranked.instrument),
+        config.maxPerCorrelationGroup,
+      );
+
+      if (kept.length !== result.rankedInstruments.length) {
+        const keptSet = new Set(kept.map((r) => r.instrument));
+        for (const ranked of result.rankedInstruments) {
+          if (keptSet.has(ranked.instrument)) continue;
+          allExcluded.push({
+            instrument: ranked.instrument,
+            reason: `correlated exposure limit reached for group ${
+              keyByInstrument.get(ranked.instrument) ?? "unknown"
+            }`,
+          });
+          result.excludedInstruments.push({
+            instrument: ranked.instrument,
+            reason: `correlated exposure limit reached for group ${
+              keyByInstrument.get(ranked.instrument) ?? "unknown"
+            }`,
+          });
+        }
+        // Re-rank so positions stay contiguous (1..n).
+        result.rankedInstruments = kept.map((ranked, index) => ({
+          ...ranked,
+          rank: index + 1,
+        }));
+      }
+    }
 
     // Merge excluded instruments from freshness gates
     result.excludedInstruments = [
@@ -201,5 +273,6 @@ export function scanInstruments(
     timestamp: now,
     durationMs: Date.now() - startTime,
     providerErrors,
+    degraded: providerErrors.length > 0,
   };
 }

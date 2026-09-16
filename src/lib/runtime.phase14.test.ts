@@ -25,7 +25,6 @@ import {
   execution as executionFixture,
   executionUnavailable,
 } from "./benchmark-fixtures.phase9";
-import type { AnalysisInput } from "@/types/analysis";
 import {
   buildObservabilityEvent,
   observabilityAllowlist,

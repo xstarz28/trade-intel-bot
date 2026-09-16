@@ -34,7 +34,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 
 import {
   resolveInstrument,
-  getInstrumentsByAssetClass,
   getProviderSymbol,
   detectAssetClass,
   isCryptoInstrument,
@@ -53,17 +52,14 @@ import {
   cacheSet,
   cacheGet,
   cacheHas,
-  cacheDelete,
   cacheClearInstrument,
   cacheClearProvider,
-  cacheClear,
   cacheStats,
   resetCache,
 } from "@/lib/data/universal/cache";
 
 import {
   createEvidenceItem,
-  createUnavailableEvidence,
   detectDoubleCounting,
 } from "@/lib/data/universal/evidence";
 

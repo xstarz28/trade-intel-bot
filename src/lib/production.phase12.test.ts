@@ -90,12 +90,10 @@ describe("client-side secret hygiene (static source scan)", () => {
     for (const dir of ["src/components", "src/pages", "src/lib"]) {
       for (const f of collectFiles(dir)) {
         const src = readFileSync(f, "utf8");
-        // Exclusions: *.test.* (this suite's own patterns),
-      // vly-integrations.ts (READ-ONLY platform file, imported nowhere,
-      // never part of the trading pipeline), and
+        // Exclusions: *.test.* (this suite's own patterns) and
       // live/credentials.ts (server-side credential-check module that only
       // reads env-var NAMES, never values — injectable env reader).
-      if (/\.test\./.test(f) || f.includes("vly-integrations") || f.includes("live/credentials")) continue;
+      if (/\.test\./.test(f) || f.includes("live/credentials")) continue;
       if (/process\s*\.\s*env/.test(src)) offenders.push(f);
       }
     }

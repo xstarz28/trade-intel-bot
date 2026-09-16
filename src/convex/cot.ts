@@ -8,19 +8,30 @@
  *
  * Failure of any kind surfaces as an explicit unavailable state; the primary
  * analysis is never blocked and no positioning data is ever fabricated.
+ *
+ * Phase 230 — single-leg failure semantics via the shared leg taxonomy
+ * (lib/legOutcome.ts): HTTP 429 -> RATE_LIMIT, 401/403 -> AUTH_ERROR,
+ * other non-2xx -> provider_error, non-JSON / non-array body -> malformed,
+ * timeout/server-unreachable -> timeout / network. Every failure class
+ * throws out of the cache fetcher (nothing cached, Phase 178b); the
+ * action-level catch returns an explicitly classified envelope. An
+ * answered-but-empty row set keeps the existing "no usable reports"
+ * contract (§227: a valid answer is not an outage).
  */
 "use node";
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { buildCotContext, mapInstrumentToCot } from "../lib/data/cot";
+import { getProviderCache } from "../lib/data/provider-cache-registry";
+import { errorMessage } from "./lib/json";
+import { ProviderHttpError, ProviderMalformedError, classifyLegError } from "./lib/legOutcome";
 
 const DATASET = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
 
 export const fetchCotPositioning = action({
   args: { instrument: v.string() },
   handler: async (_ctx, args) => {
-    const now = Date.now();
     const mapping = mapInstrumentToCot(args.instrument);
     if (!mapping) {
       return {
@@ -29,26 +40,92 @@ export const fetchCotPositioning = action({
       };
     }
     try {
-      const url =
-        `${DATASET}?market_and_exchange_names=${encodeURIComponent(mapping.sourceInstrument)}` +
-        `&%24order=report_date_as_yyyy_mm_dd%20DESC&%24limit=2`;
-      const res = await fetch(url, { headers: { Accept: "application/json" } });
-      if (!res.ok) {
-        return { success: false as const, error: `CFTC endpoint returned HTTP ${res.status}.` };
+      // Phase 178c — CFTC publishes ONE report per week (Friday, covering the
+      // prior Tuesday). Re-fetching it per analysis cannot produce new
+      // information, so the raw rows are cached for 12h.
+      //
+      // The cache stores the RAW ROWS, not the built context: `buildCotContext`
+      // recomputes `freshness` from the report date against the CURRENT clock
+      // on every read. A cached report therefore ages honestly
+      // (FRESH -> DELAYED -> STALE) with no refetch, and a hit can never make
+      // an old report look newly published.
+      //
+      // Keyed on the CFTC contract, not the caller's symbol: several aliases
+      // map to one contract and must share a single entry.
+      const evidence = await getProviderCache().fetch<unknown[]>(
+        {
+          provider: "cftc",
+          dataset: "cot",
+          instrument: mapping.sourceInstrument,
+        },
+        async () => {
+          const url =
+            `${DATASET}?market_and_exchange_names=${encodeURIComponent(mapping.sourceInstrument)}` +
+            `&%24order=report_date_as_yyyy_mm_dd%20DESC&%24limit=2`;
+          const res = await fetch(url, {
+            headers: { Accept: "application/json" },
+            // Phase 177 — HTTP deadline below the 8s cftc leg budget.
+            signal: AbortSignal.timeout(7_000),
+          });
+          // Phase 230 — shared leg taxonomy. 429/401/403 are FATAL classes:
+          // they must reach the action-level catch as an explicit envelope,
+          // not be flattened into a generic HTTP error. Every class here
+          // throws, so nothing is ever cached for a failed acquisition.
+          if (res.status === 429) throw new Error(`RATE_LIMIT: HTTP 429 ${res.statusText}`);
+          if (res.status === 401 || res.status === 403) {
+            throw new Error(`AUTH_ERROR: HTTP ${res.status} ${res.statusText}`);
+          }
+          if (!res.ok) throw new ProviderHttpError("CFTC", res.status, res.statusText);
+          let rows: unknown;
+          try {
+            rows = await res.json();
+          } catch {
+            throw new ProviderMalformedError("CFTC endpoint returned a non-JSON body.");
+          }
+          if (!Array.isArray(rows)) {
+            throw new ProviderMalformedError("CFTC endpoint returned a non-array response.");
+          }
+          return { data: rows as unknown[], observedAt: Date.now() };
+        },
+      );
+      if (!evidence) {
+        return { success: false as const, error: "CFTC returned no rows." };
       }
-      const rows: unknown = await res.json();
-      if (!Array.isArray(rows)) {
-        return { success: false as const, error: "CFTC endpoint returned a non-array response." };
-      }
-      const ctx = buildCotContext(rows, args.instrument, now);
+      // Freshness is derived HERE, from the report date and the current time.
+      const ctx = buildCotContext(evidence.data, args.instrument, Date.now());
       if (!ctx.available) {
         return { success: false as const, error: ctx.reason };
       }
-      return { success: true as const, data: ctx };
-    } catch (err) {
+      return {
+        success: true as const,
+        data: ctx,
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
+      };
+    } catch (err: unknown) {
+      // Phase 230 — preserve the fetcher's classification: a 429 read as a
+      // generic outage would hide the rate-limit signal Phase 177's budget
+      // needs, and Convex only surfaces explicitly returned envelopes.
+      const msg = errorMessage(err) || "unknown error";
+      if (msg.startsWith("RATE_LIMIT")) {
+        return {
+          success: false as const,
+          error: "CFTC rate limit exceeded (HTTP 429).",
+          errorCode: "RATE_LIMIT" as const,
+        };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return {
+          success: false as const,
+          error: `CFTC access rejected (${msg}).`,
+          errorCode: "AUTH_ERROR" as const,
+        };
+      }
+      const cls = classifyLegError(err);
       return {
         success: false as const,
-        error: `CFTC fetch failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        error: `CFTC request failed: ${cls.status} (${msg})`,
+        errorCode: "API_UNAVAILABLE" as const,
       };
     }
   },

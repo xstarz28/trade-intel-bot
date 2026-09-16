@@ -8,6 +8,7 @@
 
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { authUserId } from "./lib/authUser";
 
 const MAX_NOTIFICATIONS = 200;
 
@@ -19,12 +20,12 @@ const MAX_NOTIFICATIONS = 200;
 export const getNotifications = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) return [];
     const limit = Math.min(args.limit ?? 100, 200);
     return await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(limit);
   },
@@ -34,12 +35,12 @@ export const getNotifications = query({
 export const getUnreadNotifications = query({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) return [];
     return await ctx.db
       .query("notifications")
       .withIndex("by_user_read", (q) =>
-        q.eq("userId", userId as any).eq("read", false),
+        q.eq("userId", userId).eq("read", false),
       )
       .order("desc")
       .take(100);
@@ -50,12 +51,12 @@ export const getUnreadNotifications = query({
 export const getUnreadCount = query({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) return 0;
     const unread = await ctx.db
       .query("notifications")
       .withIndex("by_user_read", (q) =>
-        q.eq("userId", userId as any).eq("read", false),
+        q.eq("userId", userId).eq("read", false),
       )
       .take(200);
     return unread.length;
@@ -86,14 +87,14 @@ export const createNotification = mutation({
     condition: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     // Server-side dedup: check if notification with same identity already exists
     const existing = await ctx.db
       .query("notifications")
       .withIndex("by_user_notif", (q) =>
-        q.eq("userId", userId as any).eq("notificationId", args.notificationId),
+        q.eq("userId", userId).eq("notificationId", args.notificationId),
       )
       .first();
 
@@ -105,12 +106,12 @@ export const createNotification = mutation({
     // Count existing for retention enforcement
     const allNotifs = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(MAX_NOTIFICATIONS + 1);
 
     const id = await ctx.db.insert("notifications", {
-      userId: userId as any,
+      userId: userId,
       notificationId: args.notificationId,
       alertIdentity: args.alertIdentity,
       ruleId: args.ruleId,
@@ -147,13 +148,13 @@ export const createNotification = mutation({
 export const markNotificationRead = mutation({
   args: { notificationId: v.string() },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const notif = await ctx.db
       .query("notifications")
       .withIndex("by_user_notif", (q) =>
-        q.eq("userId", userId as any).eq("notificationId", args.notificationId),
+        q.eq("userId", userId).eq("notificationId", args.notificationId),
       )
       .first();
 
@@ -166,13 +167,13 @@ export const markNotificationRead = mutation({
 export const markAllNotificationsRead = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const unread = await ctx.db
       .query("notifications")
       .withIndex("by_user_read", (q) =>
-        q.eq("userId", userId as any).eq("read", false),
+        q.eq("userId", userId).eq("read", false),
       )
       .take(200);
 
@@ -188,13 +189,13 @@ export const markAllNotificationsRead = mutation({
 export const dismissNotification = mutation({
   args: { notificationId: v.string() },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const notif = await ctx.db
       .query("notifications")
       .withIndex("by_user_notif", (q) =>
-        q.eq("userId", userId as any).eq("notificationId", args.notificationId),
+        q.eq("userId", userId).eq("notificationId", args.notificationId),
       )
       .first();
 
@@ -207,13 +208,13 @@ export const dismissNotification = mutation({
 export const deleteNotification = mutation({
   args: { notificationId: v.string() },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const notif = await ctx.db
       .query("notifications")
       .withIndex("by_user_notif", (q) =>
-        q.eq("userId", userId as any).eq("notificationId", args.notificationId),
+        q.eq("userId", userId).eq("notificationId", args.notificationId),
       )
       .first();
 

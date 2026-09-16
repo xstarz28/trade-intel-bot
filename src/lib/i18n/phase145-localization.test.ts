@@ -121,8 +121,36 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 832 leaves", () => {
-    expect(enCount).toBe(832);
+  it("EN is the canonical structural reference with 1207 leaves", () => {
+    // 847 -> 875: Phase 182 added the `legal` section for the public website
+    // pages (/download, /privacy, /terms). Every one of the nine locales was
+    // updated in the same change, which the parity tests above enforce.
+    // 875 -> 908: Phase 189 added `auth` (24) and `onboarding` (10) for the
+    // first-run journey. `src/pages/Auth.tsx` had been 100% hardcoded English
+    // until then. The same phase REMOVED the unused `errors.checkApiKey`,
+    // which shipped an internal env var name to every client (+34 -1 = +33).
+    // 908 -> 963: Phase 190 added `landing` (55). The public landing page had
+    // been hardcoded — largely in Indonesian, served to all nine locales.
+    // 1057 -> 1140: Phase 195 remaining AnalysisResult copy (57 labels + 23 inline).
+    // 1035 -> 1057: Phase 195 thesis/evidence field labels (22 keys).
+    // 1005 -> 1035: Phase 195 terminal-style section headings (30 keys).
+    // 996 -> 1005: Phase 195 risk/invalidation vocabulary (9 keys).
+    // 994 -> 996: Phase 195 trade-plan section (tradePlanHeading, marketPriceNote).
+    // 993 -> 994: Phase 194 reconciliation added market.liveCount after a
+    // locale-based test exposed a hardcoded English "live" counter.
+    // 985 -> 993: Phase 194 localized CustomAlertRulesPanel (7 keys + examplePrefix).
+    // 980 -> 985: Phase 194 localized the Journal status filter (5 keys).
+    // 975 -> 980: Phase 194 localized NotificationCenter (5 keys).
+    // 973 -> 975: Phase 194 added timeline.currentVsPrevious + timeline.historySummary
+    // so HistoricalTimeline stops rendering two English-only headings.
+    // 977 -> 973: Phase 193 removed five superseded `system.*` uppercase variants
+    // (stale/unavailable/updated/intelligence/alerts) whose `*Label` twins are what
+    // RuntimeHealthDashboard actually renders, and added `market.sourceTransparency`
+    // so the LIVE/STALE legend stops being hardcoded English. Net -4.
+    // 963 -> 977: Phase 191 added `provenance` (13) + `auth.restoringSession` so acquisition state
+    // (observed / reused / unavailable / stale / historical / degraded) can be
+    // shown to users in their own language instead of only in English logs.
+    expect(enCount).toBe(1207);
   });
 
   for (const code of NINE) {
@@ -157,6 +185,27 @@ describe("placeholder parity across all 9 locales", () => {
   it("EN placeholders are a strict subset of the known vocabulary", () => {
     const known = [
       "{count}",
+      // Phase 197 — alert-rule creation confirmation names the rule.
+      "{name}",
+      // Phase 197 — historical interpretation sentences. The timeframe is
+      // untranslated notation (H1/M15/M5); `from`/`to`/`thesis` are canonical
+      // enums routed through enum-mapping before interpolation.
+      "{timeframe}",
+      "{from}",
+      "{to}",
+      "{thesis}",
+      "{instrument}",
+      "{side}",
+      // Phase 191 — evidence age in provenance copy.
+      "{age}",
+      // Phase 194 — format hint: "e.g. {example}". The abbreviation is
+      // translated per locale; the example value is provider-native notation.
+      "{example}",
+      // Phase 194 — live-feed counter "{live}/{total} live".
+      "{total}",
+      // Phase 189 — first-run auth copy.
+      "{email}",
+      "{minutes}",
       "{time}",
       "{value}",
       "{scanned}",
@@ -484,9 +533,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 832 canonical keys with non-empty values", () => {
+  it("zh has all 1207 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(832);
+    expect(zhLeaves.length).toBe(1207);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

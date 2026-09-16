@@ -14,7 +14,7 @@
  *   - Every data point has explicit source attribution.
  */
 
-import type { AssetClass, EvidenceCategory, EvidenceDirection, EvidenceQuality, EvidenceStrength, FreshnessState, UniversalEvidenceItem } from "./types";
+import type { AssetClass, EvidenceCategory, EvidenceDirection, EvidenceQuality, FreshnessState, UniversalEvidenceItem } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
 // REGIME CLASSIFICATION

@@ -1,64 +1,26 @@
-// ─── Iframe error interception ─────────────────────────────────────────────
-// The @vly-ai/integrations Vite plugin injects window-level `error` and
-// `unhandledrejection` handlers (bubble phase) that post vly-vite-hmr-error
-// to the parent, which Freebuff interprets as a fatal crash and closes the
-// preview iframe.  Our capture-phase handlers run BEFORE the injected ones
-// and call stopImmediatePropagation() + preventDefault() to swallow the
-// event, preventing it from reaching the injected handlers.
-if (typeof window !== "undefined") {
-  window.addEventListener(
-    "error",
-    (e) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      // eslint-disable-next-line no-console
-      console.error("[iframe-guard] error:", e.message, e.filename, e.lineno);
-    },
-    true, // capture phase — fires before injected bubble-phase handlers
-  );
-  window.addEventListener(
-    "unhandledrejection",
-    (e) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      // eslint-disable-next-line no-console
-      console.error("[iframe-guard] unhandledrejection:", e.reason);
-    },
-    true,
-  );
-
-  // @convex-dev/auth does `window.location.href = url` when the backend
-  // returns a redirect. Inside the Freebuff preview iframe, any hard
-  // navigation escapes the iframe and dumps the user back in the editor.
-  // We intercept the Location.prototype.href setter so attempted navigations
-  // are silently swallowed — the React tree handles routing instead.
-  if (window.self !== window.top) {
-    const origHrefDesc = Object.getOwnPropertyDescriptor(
-      Location.prototype,
-      "href",
-    );
-    if (origHrefDesc?.set) {
-      Object.defineProperty(Location.prototype, "href", {
-        configurable: true,
-        enumerable: true,
-        get: origHrefDesc.get,
-        set(_value: string) {
-          // Silently swallow — do not navigate.
-        },
-      });
-    }
-  }
-}
-
-import "@vly-ai/integrations";
+// Phase 224 — the former "iframe error interception" block is gone.
+//
+// It existed only for the retired build-platform preview iframe: a
+// capture-phase `error`/`unhandledrejection` handler that swallowed EVERY
+// uncaught error in production (stopImmediatePropagation + preventDefault),
+// and — whenever the app was embedded in ANY iframe — a Location.prototype.href
+// setter override that silently discarded all hard navigations, including the
+// ones @convex-dev/auth performs on sign-in redirects. Neither behaviour is
+// acceptable in a shipped product; RootErrorBoundary is the error surface.
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
-import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
+import { describeBuild, isUnsafeDeploymentSource } from "@/lib/build-info";
+import { initDesktopShell } from "@/lib/desktop/desktop-shell";
+import {
+  initNativeShell,
+  isNativeShell,
+  nativePlatform,
+} from "@/lib/mobile/native-shell";
 import React, { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { BrowserRouter, Route, Routes } from "react-router";
 import { I18nProvider } from "@/lib/i18n";
 import "./index.css";
 
@@ -69,24 +31,12 @@ import AuthPage from "./pages/Auth.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import { Journal } from "@/components/Journal";
 import NotFound from "./pages/NotFound.tsx";
-
-/** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
- *  crashing the whole app (e.g. hook errors in WebContainer environment). */
-class ToolbarErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(err: Error) {
-    console.warn("[VlyToolbar] Caught error, toolbar disabled:", err.message);
-  }
-  render() {
-    return this.state.hasError ? null : this.props.children;
-  }
-}
+// Phase 182 — public website pages. Part of the official-website surface,
+// served by the same BrowserRouter and the same SPA rewrite as every other
+// route, so a real custom domain can later serve them with no routing change.
+import Download from "./pages/Download.tsx";
+import Privacy from "./pages/Privacy.tsx";
+import Terms from "./pages/Terms.tsx";
 
 /** Hard guard so runtime errors never leave the preview as a blank page. */
 class RootErrorBoundary extends React.Component<
@@ -126,17 +76,104 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+/*
+  Phase 180 — build provenance, emitted once at startup.
+
+  Production deploys from the hardened agent branch, NOT from `main` (whose
+  history still contains the leaked OTP credential). Logging the exact commit
+  makes "which revision is live?" answerable from a user's console alone.
+  Carries only commit/branch/timestamp — no author, remote, or env value.
+*/
+console.info(`[Xstarz Analysis] build ${describeBuild()}`);
+if (isUnsafeDeploymentSource()) {
+  console.warn(
+    "[Xstarz Analysis] This artifact was built from `main`, which is NOT a " +
+      "valid production source while the leaked credential remains in its history.",
+  );
+}
+
+/*
+  Phase 180 — fail loudly on a misconfigured deployment.
+
+  VITE_CONVEX_URL is inlined at BUILD time, so an artifact built without it is
+  permanently broken no matter how the server is configured afterwards. In
+  that state ConvexReactClient throws "No address provided" while this module
+  is still evaluating, which means React never mounts and the user sees a
+  blank page with the real cause buried in the console.
+
+  That is the same silent-blank-page failure mode as the asset-path defect
+  this phase fixed, so it gets the same treatment: render an explicit
+  operator-facing message instead of nothing at all. This is a deployment
+  misconfiguration, not a user-facing error, so it is intentionally in
+  English and not routed through i18n — the translation layer itself lives
+  inside the app that has failed to start.
+*/
+const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
+
+if (!convexUrl) {
+  const root = document.getElementById("root");
+  if (root) {
+    root.innerHTML = `
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,sans-serif;background:#0b0f19;color:#e5e7eb">
+        <div style="max-width:32rem">
+          <h1 style="font-size:1.125rem;font-weight:600;margin:0 0 8px">Xstarz Analysis is not configured</h1>
+          <p style="margin:0 0 8px;color:#9ca3af;line-height:1.5">
+            This build was produced without a backend URL, so it cannot reach the
+            analysis service. No market data can be shown.
+          </p>
+          <p style="margin:0;color:#9ca3af;line-height:1.5">
+            Set <code style="color:#93c5fd">VITE_CONVEX_URL</code> in the hosting
+            environment and rebuild. It is read at build time, not at run time.
+          </p>
+        </div>
+      </div>`;
+  }
+  throw new Error(
+    "VITE_CONVEX_URL is not set. It is inlined at build time, so this artifact must be rebuilt with the variable present.",
+  );
+}
+
+const convex = new ConvexReactClient(convexUrl);
+
+/*
+  Phase 179 — native shell bootstrap (Android + iOS).
+
+  Marks <html> so the safe-area CSS applies, then initialises status bar,
+  splash dismissal, the Android hardware back button and deep-link handling.
+  In a browser `initNativeShell()` returns immediately and adds no class, so
+  the web build is byte-for-byte unaffected in behaviour.
+
+  Intentionally fire-and-forget: native chrome must never delay first paint,
+  and a plugin failure must never prevent the app from starting.
+*/
+if (isNativeShell()) {
+  document.documentElement.classList.add("native-shell", `platform-${nativePlatform()}`);
+}
+void initNativeShell();
+
+/*
+  Phase 182 — desktop shell (Tauri, Windows first).
+
+  The fourth distribution surface. Like the mobile shells this only marks the
+  document for styling; it introduces no desktop-specific routing, no
+  desktop-specific analysis engine, and no client-side provider access. In a
+  browser this is a no-op.
+*/
+initDesktopShell();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
-      <ToolbarErrorBoundary>
-        <VlyToolbar />
-      </ToolbarErrorBoundary>
       <I18nProvider>
       <ConvexAuthProvider client={convex}>
-        <MemoryRouter initialEntries={["/"]}>
+        {/*
+          BrowserRouter, not MemoryRouter: MemoryRouter keeps routing state in
+          memory only, so the address bar never updates, deep links such as
+          /dashboard 404 on load, and reload plus browser back/forward all drop
+          the user back to the landing page. Real URLs are also required for
+          the post-auth ?returnTo flow to mean anything.
+        */}
+        <BrowserRouter>
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route
@@ -159,9 +196,17 @@ createRoot(document.getElementById("root")!).render(
                 </RequireAuth>
               }
             />
+            {/*
+              Public website routes (Phase 182). Deliberately unauthenticated:
+              a prospective user must be able to read the terms, the privacy
+              statement and the download options before creating an account.
+            */}
+            <Route path="/download" element={<Download />} />
+            <Route path="/privacy" element={<Privacy />} />
+            <Route path="/terms" element={<Terms />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </MemoryRouter>
+        </BrowserRouter>
         <Toaster />
       </ConvexAuthProvider>
       </I18nProvider>
