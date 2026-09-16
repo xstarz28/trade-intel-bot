@@ -1,4 +1,3 @@
-import { vlyPlugin } from "@vly-ai/integrations";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -86,7 +85,13 @@ export default defineConfig({
     __BUILD_BRANCH__: JSON.stringify(BUILD.branch),
     __BUILD_TIME__: JSON.stringify(BUILD.time),
   },
-  plugins: [vlyPlugin(), react(), tailwindcss()],
+  // Phase 224 — the build-platform plugin (`vlyPlugin` from
+  // @vly-ai/integrations) is intentionally absent. Its transformIndexHtml hook
+  // injected, into PRODUCTION index.html, window "error"/"unhandledrejection"
+  // listeners that postMessage every runtime error (message, stack, filename,
+  // line/col) to `window.parent` with target origin "*". That is a diagnostic
+  // leak to any embedding frame, and the platform editor it served is gone.
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

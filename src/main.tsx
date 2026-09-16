@@ -1,59 +1,14 @@
-// ─── Iframe error interception ─────────────────────────────────────────────
-// The @vly-ai/integrations Vite plugin injects window-level `error` and
-// `unhandledrejection` handlers (bubble phase) that post vly-vite-hmr-error
-// to the parent, which Freebuff interprets as a fatal crash and closes the
-// preview iframe.  Our capture-phase handlers run BEFORE the injected ones
-// and call stopImmediatePropagation() + preventDefault() to swallow the
-// event, preventing it from reaching the injected handlers.
-if (typeof window !== "undefined") {
-  window.addEventListener(
-    "error",
-    (e) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      // eslint-disable-next-line no-console
-      console.error("[iframe-guard] error:", e.message, e.filename, e.lineno);
-    },
-    true, // capture phase — fires before injected bubble-phase handlers
-  );
-  window.addEventListener(
-    "unhandledrejection",
-    (e) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      // eslint-disable-next-line no-console
-      console.error("[iframe-guard] unhandledrejection:", e.reason);
-    },
-    true,
-  );
-
-  // @convex-dev/auth does `window.location.href = url` when the backend
-  // returns a redirect. Inside the Freebuff preview iframe, any hard
-  // navigation escapes the iframe and dumps the user back in the editor.
-  // We intercept the Location.prototype.href setter so attempted navigations
-  // are silently swallowed — the React tree handles routing instead.
-  if (window.self !== window.top) {
-    const origHrefDesc = Object.getOwnPropertyDescriptor(
-      Location.prototype,
-      "href",
-    );
-    if (origHrefDesc?.set) {
-      Object.defineProperty(Location.prototype, "href", {
-        configurable: true,
-        enumerable: true,
-        get: origHrefDesc.get,
-        set(_value: string) {
-          // Silently swallow — do not navigate.
-        },
-      });
-    }
-  }
-}
-
-import "@vly-ai/integrations";
+// Phase 224 — the former "iframe error interception" block is gone.
+//
+// It existed only for the retired build-platform preview iframe: a
+// capture-phase `error`/`unhandledrejection` handler that swallowed EVERY
+// uncaught error in production (stopImmediatePropagation + preventDefault),
+// and — whenever the app was embedded in ANY iframe — a Location.prototype.href
+// setter override that silently discarded all hard navigations, including the
+// ones @convex-dev/auth performs on sign-in redirects. Neither behaviour is
+// acceptable in a shipped product; RootErrorBoundary is the error surface.
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
-import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import { describeBuild, isUnsafeDeploymentSource } from "@/lib/build-info";
@@ -82,24 +37,6 @@ import NotFound from "./pages/NotFound.tsx";
 import Download from "./pages/Download.tsx";
 import Privacy from "./pages/Privacy.tsx";
 import Terms from "./pages/Terms.tsx";
-
-/** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
- *  crashing the whole app (e.g. hook errors in WebContainer environment). */
-class ToolbarErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(err: Error) {
-    console.warn("[VlyToolbar] Caught error, toolbar disabled:", err.message);
-  }
-  render() {
-    return this.state.hasError ? null : this.props.children;
-  }
-}
 
 /** Hard guard so runtime errors never leave the preview as a blank page. */
 class RootErrorBoundary extends React.Component<
@@ -227,17 +164,6 @@ initDesktopShell();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
-      {/*
-        Development-only. The toolbar is an editor affordance: it injects a
-        floating overlay and links out to the build platform, neither of which
-        belongs in a shipped product. Gating on import.meta.env.DEV also lets
-        the bundler tree-shake it out of the production build.
-      */}
-      {import.meta.env.DEV && (
-        <ToolbarErrorBoundary>
-          <VlyToolbar />
-        </ToolbarErrorBoundary>
-      )}
       <I18nProvider>
       <ConvexAuthProvider client={convex}>
         {/*

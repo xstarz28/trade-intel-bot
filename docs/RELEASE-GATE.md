@@ -677,3 +677,37 @@ issuer can decide to.
 | Delete/disable project guarantees invalidation | **NO** |
 | Phase 184 rewrite | still gated; not executed |
 | Evidence D / `main` | unchanged |
+
+## Phase 224 — Work completed while Phase 184 stays gated
+
+**Nothing in this phase changes a blocker status.** A1/A2/A3 BLOCKED (issuer),
+B–E as in Phase 221, Evidence D INCOMPLETE, `main` untouched. This phase
+removed build-platform residue that was a real product defect, and refreshed
+docs to the current architecture.
+
+### Actionable-now audit
+
+| Candidate | Status | Outcome |
+| --- | --- | --- |
+| Production Convex config / codegen / required vars | BLOCKED_EXTERNAL | no prod deployment or deploy key exists; preflight ready (REJECTED 3 FAIL without inputs) |
+| Production email transport / DNS | BLOCKED_EXTERNAL | account + domain absent |
+| Provider keys / D10 prod | BLOCKED_EXTERNAL | keys absent; OKX dev PASS stands |
+| Evidence-D prod prerequisites | BLOCKED_EXTERNAL | all downstream of B6 |
+| Signing / Links / installer URL | BLOCKED_EXTERNAL | no signing material, no domain |
+| UAT on devices | BLOCKED_EXTERNAL | no device / installer verification possible here |
+| Legacy OTP runtime dependency | ALREADY_COMPLETE | `no-freebuff-otp-dependency` PASS (33 server modules); `emailOtp.ts` uses Xstarz transport only |
+| **Platform plugin leaking runtime errors from production** | **ACTIONABLE_NOW → DONE** | `vlyPlugin()` injected `error`/`unhandledrejection` listeners into production `index.html` that `postMessage`d message/stack/file/line to `window.parent` with origin `"*"`. Removed from `vite.config.ts`. Before: 1 injected handler set in the bundle; after: 0 `parent.postMessage` in `dist/`. |
+| **Global error swallowing + `Location.href` override in `main.tsx`** | **ACTIONABLE_NOW → DONE** | capture-phase handlers suppressed every uncaught error in production; an iframe-detect branch overrode `Location.prototype.href` so all hard navigations (incl. Convex Auth redirects) were discarded when embedded. Removed; `RootErrorBoundary` is the error surface. |
+| Dev-only editor toolbar, unused AI-gateway client, unused platform error reporter | ACTIONABLE_NOW → DONE | deleted `vly-toolbar-readonly.tsx`, `src/lib/vly-integrations.ts`, `src/instrumentation.tsx`, `integrations.md` |
+| Unused dependencies | ACTIONABLE_NOW → DONE | `@vly-ai/integrations`, `axios` removed (−41 packages); `bun.lock` deleted (CI and README use npm; `package-lock.json` is the lockfile) |
+| README described the scaffold, not the product | ACTIONABLE_NOW → DONE | rewritten setup/auth sections to current architecture |
+| `docs/AUTHENTICATION.md` env table pointed at deleted files | ACTIONABLE_NOW → DONE | updated |
+| Generated `docs/i18n-key-usage.json` | ACTIONABLE_NOW → DONE | regenerated; zero stale paths |
+| `VLY_CONVEX_AUTH_ISSUER` | ALREADY_COMPLETE (kept) | still the opt-in preview/dev federated issuer var; production refuses it (`issuerPolicy.ts`) |
+| Lint backlog (`no-unused-vars` 867, `no-explicit-any` 540) | deferred | large mechanical sweep; not release-gating; baseline now **1510** (was 1517; delta is the deleted files) |
+
+### Validation
+tsc ✓ · `vite build` ✓ · full suite ✓ · eslint **1510** (new baseline) ·
+`npm run mobile:verify` PASS · `convex:preflight` `no-freebuff-otp-dependency`
+PASS · secret scan (diff) none · generated drift none.
+Guard: `src/lib/platform-residue.phase224.test.ts`.

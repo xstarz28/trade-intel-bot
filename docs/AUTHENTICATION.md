@@ -87,8 +87,8 @@ Each was traced to a real consumer before being kept.
 | Variable | Used by | Runtime-required | Planned removal |
 | --- | --- | --- | --- |
 | `VLY_CONVEX_AUTH_ISSUER` | `auth.config.ts` | No — now opt-in | When the preview platform is no longer used |
-| `VLY_INTEGRATION_KEY` | `src/lib/vly-integrations.ts` (imported nowhere) | No | Dormant; out of scope |
-| `VITE_VLY_APP_ID` / `VITE_VLY_MONITORING_URL` | `src/instrumentation.tsx` | No — monitoring no-ops if unset | Platform monitoring, not auth |
+| `VLY_INTEGRATION_KEY` | — (removed Phase 224: `src/lib/vly-integrations.ts` and `@vly-ai/integrations` deleted) | No | Gone |
+| `VITE_VLY_APP_ID` / `VITE_VLY_MONITORING_URL` | — (removed Phase 224: `src/instrumentation.tsx` deleted) | No | Gone |
 
 ## Provider selection: Resend (default), SMTP2GO (alternate)
 

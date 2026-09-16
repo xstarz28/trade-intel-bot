@@ -70,7 +70,6 @@ describe("no development-platform branding on product surfaces", () => {
     "src/pages/Landing.tsx",
     "src/pages/Dashboard.tsx",
     "src/pages/NotFound.tsx",
-    "src/instrumentation.tsx",
     "index.html",
     "public/manifest.webmanifest",
   ];
@@ -105,13 +104,12 @@ describe("no development-platform branding on product surfaces", () => {
 describe("editor tooling never ships to users", () => {
   const main = read("src/main.tsx");
 
-  it("mounts the build-platform toolbar only in development", () => {
-    // The toolbar renders a floating overlay and links to the build platform.
-    // Static source checks missed this originally — it was only caught by
-    // grepping the produced bundle.
-    const idx = main.indexOf("<VlyToolbar");
-    expect(idx, "toolbar not found").toBeGreaterThan(-1);
-    expect(main.slice(0, idx)).toContain("import.meta.env.DEV");
+  it("does not mount the build-platform toolbar at all (Phase 224 removed it)", () => {
+    // Phase 169 gated the toolbar behind import.meta.env.DEV. Phase 224
+    // deleted it together with the platform plugin, so the stronger
+    // invariant is simply: no reference remains.
+    expect(main).not.toContain("VlyToolbar");
+    expect(main).not.toContain("vly-toolbar");
   });
 });
 
