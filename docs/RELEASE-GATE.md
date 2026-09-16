@@ -558,3 +558,58 @@ the audit trail without killing the key.
 No source code changed. Documentation and one consistency test only.
 Evidence D: **INCOMPLETE** (unchanged). Phase 184: **BLOCKED** (unchanged).
 `main`: untouched. **Release decision: NOT READY.**
+
+## Phase 222 — Agent-side revocation attempt of the leaked Freebuff OTP key
+
+**Result: agent could NOT revoke. A1 remains BLOCKED. Nothing was simulated.**
+Executed 2026-09-16 from the build sandbox with every tool and credential
+available to the agent. No source code changed; no Evidence-D row changed;
+no history rewrite executed; `main` untouched.
+
+### 1. Credential identified (value never printed)
+
+| Property | Value |
+| --- | --- |
+| Fingerprint | `sha256(value+"\n")[0:16] = b1ce18a1e85ba121`, length 33 |
+| Blob | `e490ffda66bb5d8fcd63df8d49f5f8822126cc7f` → `src/convex/auth/emailOtp.ts` |
+| Mechanism | hardcoded `x-api-key` header on `POST https://auth.freebuff.app/send_otp` (vly.ai-provisioned scaffold; `VLY_APP_NAME`) |
+| Storage | Git history only — not in any env var, `.env*`, GitHub secret, or Convex env reachable by the agent |
+| Still accessible to agent | yes, as a Git blob (that is the exposure); confirmed by fingerprint match on the local object |
+| Newest carrier commits | `2158077` (Phase 185, removed it from HEAD), `51c9dde` (`main` tip) |
+
+### 2. Legitimate revocation surfaces probed — all absent or unauthorised
+
+| Surface | Probe | Observed | Conclusion |
+| --- | --- | --- | --- |
+| Issuer credential / admin key in agent env | `env` names matching freebuff/vly/otp/convex/resend/smtp | none | no issuer identity to authenticate a revoke call |
+| Issuer control plane | `https://auth.freebuff.app/`, `/send_otp`, `freebuff.app`, `vly.ai`, `api.vly.ai` | all `SSL_ERROR_SYSCALL`, HTTP 000; DNS resolves (Railway/Vercel); `api.github.com` 200 same network | egress-blocked; **no request can reach the issuer, so neither revoke nor the 401/403 proof is obtainable here** |
+| Issuer public revoke/rotation API | vendor documentation search | none published; keys are project-scoped `sk_*` issued at project creation | no self-service API known |
+| GitHub repo secrets / Dependabot / environment secrets | `gh secret list` (3 forms) | HTTP 403 `Resource not accessible by integration` / 404 | token is `arena-ai-coding-agent[bot]`; repo permissions `admin:false maintain:false push:false` — cannot read, let alone delete |
+| GitHub deploy keys | `GET /repos/…/keys` | 403 | same |
+| GitHub secret-scanning partner revocation | `GET /repos/…/secret-scanning/alerts` | 403 | not accessible; and Freebuff is not a scanning partner |
+| Convex deployment env (where a *new* key would live) | `npx convex env list --names-only` | `No CONVEX_DEPLOYMENT set`; no `~/.convex` login | no Convex identity; also irrelevant to revoking the *old* key |
+| Convex control plane | `api.convex.dev` | TLS severed (Phase 199/221) | — |
+
+### 3. Capability boundary (why this is not a workaround problem)
+
+Revocation is an action **at the issuer**. It requires (a) network reach to the
+issuer and (b) an identity the issuer trusts to manage that project's keys.
+The agent has neither: (a) is severed at TLS for every issuer host, and (b)
+no vly/Freebuff account, token, or console exists in any environment the
+agent controls. GitHub access is a bot integration without repository
+administration. Deleting the file, rewriting history, or scanning source
+would not touch the key's validity and are explicitly not substitutes.
+
+### 4. Status after this phase
+
+| Item | Status |
+| --- | --- |
+| A. Agent revoked the credential | **NO** |
+| C. Old-credential 401/403 | **BLOCKED** — issuer unreachable; no request was made that could produce it |
+| Phase 184 rewrite (5 refs) | rehearsed (Phase 221), **not executed** — gated on C |
+| Evidence D | INCOMPLETE (unchanged) |
+| Release decision | **NOT READY** (unchanged) |
+
+The one action that clears this is human: whoever holds the vly.ai / Freebuff
+project (the account that created this scaffold) revokes the key and records
+an authenticated `send_otp` attempt with the **old** key returning 401/403.

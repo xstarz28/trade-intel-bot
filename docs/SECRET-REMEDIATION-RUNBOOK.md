@@ -78,6 +78,11 @@ Evidence gathered in this environment:
 means in this environment to revoke it or to verify its status.** The gate is
 therefore BLOCKED, and no revocation claim may be made.
 
+Re-attempted in Phase 222 with every agent capability (env, GitHub bot token,
+Convex CLI, issuer hosts, vendor docs): no issuer identity exists, all issuer
+hosts are TLS-severed, GitHub secrets/deploy-keys/secret-scanning return 403
+for the bot. See `docs/RELEASE-GATE.md` Phase 222. **Still BLOCKED.**
+
 ### What satisfies the gate
 
 A human with issuer access must, **in this order**:
