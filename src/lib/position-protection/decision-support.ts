@@ -158,7 +158,7 @@ export function buildDecisionSupport(
  */
 export function classifyEvidence(
   evidence: EvidenceItem,
-  side: string,
+  _side: string,
 ): EvidenceClassified {
 
   // Map raw direction to side-aware classification

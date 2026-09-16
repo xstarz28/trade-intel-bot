@@ -219,7 +219,7 @@ export function canCreateTrade(result: AnalysisResult): boolean {
 /**
  * Check if an analysis result is suitable for observation journaling.
  */
-export function canJournalAsObservation(result: AnalysisResult): boolean {
+export function canJournalAsObservation(_result: AnalysisResult): boolean {
   // Any result can be journaled as an observation
   return true;
 }

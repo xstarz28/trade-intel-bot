@@ -205,7 +205,7 @@ describe("associateInvestorIntelligence — thesis vs protection separation", ()
 
   it("preserves thesis defaults when no alert exists", () => {
     const pos = makePosition({ positionId: "pos-a" });
-    const { alert, ...rest } = pos;
+    const { alert: _omitted, ...rest } = pos;
     const rows = associateInvestorIntelligence(
       [{ ...rest, alert: null } as MonitoredPositionState],
       new Map(),

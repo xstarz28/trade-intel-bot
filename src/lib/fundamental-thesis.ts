@@ -71,7 +71,7 @@ function dirBias(result: AnalysisResult): "bullish" | "bearish" | "neutral" {
   return "neutral";
 }
 
-function evaluateFundamentals(result: AnalysisResult, techDir: "bullish" | "bearish" | "neutral"): FundamentalEvidence[] {
+function evaluateFundamentals(result: AnalysisResult): FundamentalEvidence[] {
   const evidence: FundamentalEvidence[] = [];
 
   // Treasury context
@@ -127,7 +127,7 @@ function evaluateFundamentals(result: AnalysisResult, techDir: "bullish" | "bear
   return evidence;
 }
 
-function evaluateMacro(result: AnalysisResult, _techDir: "bullish" | "bearish" | "neutral"): FundamentalEvidence[] {
+function evaluateMacro(result: AnalysisResult): FundamentalEvidence[] {
   const evidence: FundamentalEvidence[] = [];
 
   if (result.macroData) {
@@ -206,7 +206,7 @@ function detectCatalysts(result: AnalysisResult): CatalystInfo[] {
   return catalysts;
 }
 
-function assessEventRisk(catalysts: CatalystInfo[], result: AnalysisResult): EventRiskLevel {
+function assessEventRisk(catalysts: CatalystInfo[]): EventRiskLevel {
   if (catalysts.length === 0) return "UNKNOWN";
 
   const hasHighImpact = catalysts.some((c) => c.volatilityImpact === "high");
@@ -266,11 +266,11 @@ function computeAlignment(
 export function buildFundamentalThesis(result: AnalysisResult): FundamentalThesis {
   const techDir = dirBias(result);
 
-  const fundamentalEvidence = evaluateFundamentals(result, techDir);
-  const macroEvidence = evaluateMacro(result, techDir);
+  const fundamentalEvidence = evaluateFundamentals(result);
+  const macroEvidence = evaluateMacro(result);
   const positioningEvidence = evaluatePositioning(result);
   const catalysts = detectCatalysts(result);
-  const eventRisk = assessEventRisk(catalysts, result);
+  const eventRisk = assessEventRisk(catalysts);
 
   const { alignment, reason } = computeAlignment(fundamentalEvidence, macroEvidence, techDir);
 

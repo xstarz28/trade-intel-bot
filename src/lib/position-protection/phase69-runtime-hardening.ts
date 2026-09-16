@@ -75,7 +75,7 @@ export interface SecurityCheck {
 export function guardAgainstDuplicateRegistration(
   existingPositions: Map<string, { instrument: string; side: string }>,
   newPositionId: string,
-  instrument: string,
+  _instrument: string,
 ): GuardResult {
   if (existingPositions.has(newPositionId)) {
     return {
@@ -332,7 +332,7 @@ export function guardCleanupOnRemoval(
 
   // Verify other positions are not affected
   const unaffected = Array.from(positionsBeforeRemoval.entries()).every(
-    ([id, val]) => {
+    ([id]) => {
       if (id === removedPositionId) return true;
       return positionsAfterRemoval.has(id);
     },

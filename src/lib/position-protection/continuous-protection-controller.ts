@@ -108,7 +108,7 @@ export function registerPosition(
     assetClass: "crypto" | "forex" | "equity" | "commodity" | "indices" | "macro";
     openedAt: number;
   },
-  now: number,
+  _now: number,
 ): ContinuousControllerState {
   const updated = new Map(state.positions);
   updated.set(position.positionId, {

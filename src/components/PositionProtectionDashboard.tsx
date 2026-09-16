@@ -303,7 +303,6 @@ export function PositionProtectionDashboard() {
     positions,
     registerPosition: registerPos,
     removePosition: removePos,
-    acknowledgeAlert,
     ingestEvent,
     persistenceAvailable,
     persistenceDegraded,
