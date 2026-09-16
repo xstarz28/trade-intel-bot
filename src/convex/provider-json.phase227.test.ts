@@ -213,14 +213,13 @@ describe("227 coinglass — derivatives from unknown JSON", () => {
     expect(r.data!.fundingRate!.currentRate).toBe(0.1);
   });
   it("non-zero code with a non-string msg does not throw a TypeError at the boundary", async () => {
-    // NOTE (pre-existing, out of Phase 227 scope): each leg fetcher swallows
-    // every error (`catch { return undefined }`), so the RATE_LIMIT /
-    // AUTH_ERROR classification in cgFetch never reaches the Phase 178b
-    // rejection check. Recorded in RELEASE-GATE §Phase 227 as a follow-up.
+    // Phase 228 closed the §227 follow-up: the leg no longer swallows the
+    // classification, so a code-429 body is now a RATE_LIMIT envelope
+    // (asserted in depth in coinglass-legs.phase228.test.ts).
     responder = () => ({ code: 429, msg: { nested: true } });
     const r = await cg(ctx, { instrument: "BTC/USD" });
-    expect(r.success).toBe(true);
-    expect(r.data!.confidence).toBe("unavailable");
+    expect(r.success).toBe(false);
+    expect(r.errorCode).toBe("RATE_LIMIT");
   });
 });
 
