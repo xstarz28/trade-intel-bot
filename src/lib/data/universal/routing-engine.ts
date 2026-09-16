@@ -14,6 +14,7 @@
 import type {
   AssetClass,
   DataCapability,
+  CapabilityQuality,
 } from "./types";
 import type {
   ProviderHealthRecord,
@@ -116,7 +117,7 @@ interface ProviderSpec {
   rateLimitPerMinute?: number;
   timeoutMs: number;
   assetClasses: AssetClass[];
-  capabilities: { capability: DataCapability; quality: string; assetClasses: AssetClass[] }[];
+  capabilities: { capability: DataCapability; quality: CapabilityQuality; assetClasses: AssetClass[] }[];
   priority: number; // lower = higher priority for same capability
 }
 
@@ -306,7 +307,7 @@ export function routeProviderRequest(
       providerId: spec.id,
       providerName: spec.name,
       capability,
-      quality: quality as any,
+      quality,
       credentialsAvailable: spec.authRequired ? spec.credentialsAvailable : true,
       maxFreshnessMs: undefined,
       healthStatus: status,
@@ -382,7 +383,7 @@ export function routeProviderNativeRequest(
     providerId: spec.id,
     providerName: spec.name,
     capability,
-    quality: quality as any,
+    quality,
     credentialsAvailable: spec.authRequired
       ? spec.credentialsAvailable
       : true,

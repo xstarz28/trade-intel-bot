@@ -462,7 +462,7 @@ export function aggregateTimeframeEvidence(
 export function eventToTimeframeEvidence(
   eventType: string,
   timeframe: string | undefined,
-  payload: Record<string, any> | undefined,
+  payload: Record<string, unknown> | undefined,
   source: string,
   observedAt: number,
 ): TimeframeEvidence | null {
@@ -472,10 +472,13 @@ export function eventToTimeframeEvidence(
   if (eventType === "MARKET_STRUCTURE_CHANGE" && timeframe) {
     return {
       timeframe: tf,
-      adverseTrend: payload?.adverseTrend ?? false,
-      structureBroken: payload?.broken ?? false,
+      adverseTrend: payload?.adverseTrend === true,
+      structureBroken: payload?.broken === true,
       adverseMomentum: false,
-      confirmationConfidence: payload?.confirmationConfidence ?? 50,
+      confirmationConfidence:
+        typeof payload?.confirmationConfidence === "number" && Number.isFinite(payload.confirmationConfidence)
+          ? payload.confirmationConfidence
+          : 50,
       observedAt,
       source,
     };
