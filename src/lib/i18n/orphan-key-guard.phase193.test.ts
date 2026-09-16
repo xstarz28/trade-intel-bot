@@ -96,10 +96,6 @@ const INTENTIONAL_ALLOWLIST: Record<string, { reason: string; surface: string }>
     reason: "Shared primitive; removing it guarantees the next form hardcodes English.",
     surface: "shared",
   },
-  "global.cancel": {
-    reason: "Shared primitive, as above.",
-    surface: "shared",
-  },
 };
 
 describe("193 — the orphan-key guard is real, not vacuous", () => {
