@@ -127,34 +127,44 @@ function buildAdapter(
     },
     fetch: async (instrument: string, assetClass: AssetClass, readEnv?: EnvReader) => {
       health.totalRequests++;
-      health.lastRequestAt = Date.now();
-      const t0 = Date.now();
+      /*
+        Phase 238 — a request has exactly two instants: the read that opens it
+        and the read that closes it. `lastRequestAt`, `lastSuccessAt` /
+        `lastFailureAt`, `cooldownUntil` and `avgLatencyMs` are all derived from
+        those two — previously the start was read twice and the completion up
+        to three times, so a health record's average latency was measured
+        between instants the health record itself did not report.
+      */
+      const startedAt = Date.now();
+      health.lastRequestAt = startedAt;
       try {
         const result = await fetchFn(instrument, assetClass, readEnv);
-        const latency = Date.now() - t0;
+        const completedAt = Date.now();
+        const latency = completedAt - startedAt;
         health.avgLatencyMs = (health.avgLatencyMs * (health.totalRequests - 1) + latency) / health.totalRequests;
         if (result) {
           health.totalSuccesses++;
-          health.lastSuccessAt = Date.now();
+          health.lastSuccessAt = completedAt;
           health.consecutiveFailures = 0;
           health.status = "HEALTHY";
         } else {
           health.totalFailures++;
-          health.lastFailureAt = Date.now();
+          health.lastFailureAt = completedAt;
           health.consecutiveFailures++;
           health.status = health.consecutiveFailures >= 3 ? "DEGRADED" : "HEALTHY";
         }
         return result;
       } catch (err: unknown) {
-        const latency = Date.now() - t0;
+        const completedAt = Date.now();
+        const latency = completedAt - startedAt;
         health.totalFailures++;
-        health.lastFailureAt = Date.now();
+        health.lastFailureAt = completedAt;
         health.consecutiveFailures++;
         health.avgLatencyMs = (health.avgLatencyMs * (health.totalRequests - 1) + latency) / health.totalRequests;
         const msg = errorMessage(err);
         if (msg.includes("429")) {
           health.status = "RATE_LIMITED";
-          health.cooldownUntil = Date.now() + 60_000;
+          health.cooldownUntil = completedAt + 60_000;
         } else if (msg.includes("abort") || msg.includes("timeout")) {
           health.status = "TIMEOUT";
         } else if (msg.includes("401") || msg.includes("403")) {
@@ -200,6 +210,13 @@ function buildTwelveDataAdapter(): ProviderAdapter {
 
       const volume = latest.volume ? parseFloat(latest.volume) : undefined;
 
+      // Phase 238 — ONE clock read for this acquisition. `observedAt` keeps the
+      // provider's instant, and `freshness` is judged against this read; the
+      // previous form called `Date.now()` a second time inside
+      // `assessFreshness`, so the verdict described an instant the record
+      // never carried.
+      const acquiredAt = Date.now();
+
       return {
         instrument,
         assetClass,
@@ -212,8 +229,9 @@ function buildTwelveDataAdapter(): ProviderAdapter {
         availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
         provider: "twelve-data",
         observedAt: new Date(latest.datetime).getTime(),
-        freshness: assessFreshness(new Date(latest.datetime).getTime(), Date.now()),
+        freshness: assessFreshness(new Date(latest.datetime).getTime(), acquiredAt),
         quality: "VERIFIED",
+        acquiredAt,
       };
     },
   );
@@ -252,6 +270,11 @@ function buildCoinGeckoAdapter(): ProviderAdapter {
       const price = data[coinId]?.usd;
       if (price === undefined || !Number.isFinite(price) || price <= 0) return null;
 
+      // Phase 238 — the payload carries no observation time, so the record's
+      // `observedAt` IS the acquisition instant: it is read once here, and the
+      // same value is carried out to the acquisition result's `fetchedAt`.
+      const acquiredAt = Date.now();
+
       return {
         instrument,
         assetClass: "crypto",
@@ -260,9 +283,10 @@ function buildCoinGeckoAdapter(): ProviderAdapter {
         ohlcvAvailable: false,
         availableTimeframes: [],
         provider: "coingecko",
-        observedAt: Date.now(),
+        observedAt: acquiredAt,
         freshness: "FRESH",
         quality: "VERIFIED",
+        acquiredAt,
       };
     },
   );
@@ -315,11 +339,16 @@ function buildDefiLlamaAdapter(): ProviderAdapter {
         if (!Array.isArray(data) || data.length === 0) return null;
         const latest = data[data.length - 1];
         if (!latest || latest.tvl === undefined) return null;
+        // Phase 238 — this payload carries no observation time, so the
+        // acquisition instant IS the record's `observedAt`: one read, carried
+        // out on the record so the caller dates it identically.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "crypto", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "defillama", observedAt: Date.now(),
+          provider: "defillama", observedAt: acquiredAt,
           freshness: "FRESH", quality: "VERIFIED",
+          acquiredAt,
         };
       } catch { return null; }
     },
@@ -340,11 +369,16 @@ function buildTokenomistAdapter(): ProviderAdapter {
         const url = `https://api.tokenomist.xyz/v1/unlocks?symbol=${symbol}`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
+        // Phase 238 — this payload carries no observation time, so the
+        // acquisition instant IS the record's `observedAt`: one read, carried
+        // out on the record so the caller dates it identically.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "crypto", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "tokenomist", observedAt: Date.now(),
+          provider: "tokenomist", observedAt: acquiredAt,
           freshness: "FRESH", quality: "VERIFIED",
+          acquiredAt,
         };
       } catch { return null; }
     },
@@ -376,12 +410,20 @@ function buildOkxAdapter(): ProviderAdapter {
         const price = parseFloat(row[4]); // close
         if (!Number.isFinite(price) || price <= 0) return null;
         const ts = parseInt(row[0]);
+        // Phase 238 — one clock read for this record. The instant recorded as
+        // `observedAt` (when the provider gave no candle time) is the SAME
+        // instant its freshness is judged against; the previous form called
+        // Date.now() twice in two expressions, so the record could date itself
+        // at one instant and grade itself at another.
+        const acquiredAt = Date.now();
+        const observedAt = Number.isFinite(ts) ? ts : acquiredAt;
         return {
           instrument, assetClass: "crypto", price,
           ohlcvAvailable: true, availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
-          provider: "okx", observedAt: Number.isFinite(ts) ? ts : Date.now(),
-          freshness: assessFreshness(Number.isFinite(ts) ? ts : Date.now(), Date.now()),
+          provider: "okx", observedAt,
+          freshness: assessFreshness(observedAt, acquiredAt),
           quality: "VERIFIED",
+          acquiredAt,
         };
       } catch { return null; }
     },
@@ -408,11 +450,16 @@ function buildAlphaVantageAdapter(): ProviderAdapter {
         const d = res.json as Record<string, string>;
         const price = d["50DayMovingAverage"] ? parseFloat(d["50DayMovingAverage"]) : 0;
         if (!Number.isFinite(price) || price <= 0) return null;
+        // Phase 238 — this payload carries no observation time, so the
+        // acquisition instant IS the record's `observedAt`: one read, carried
+        // out on the record so the caller dates it identically.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass, price,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "alpha-vantage", observedAt: Date.now(),
+          provider: "alpha-vantage", observedAt: acquiredAt,
           freshness: "DELAYED", quality: "DEGRADED",
+          acquiredAt,
         };
       } catch { return null; }
     },
@@ -431,11 +478,16 @@ function buildCftcAdapter(): ProviderAdapter {
         const url = `https://www.cftc.gov/dea/futures/other_lf.htm`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
+        // Phase 238 — this payload carries no observation time, so the
+        // acquisition instant IS the record's `observedAt`: one read, carried
+        // out on the record so the caller dates it identically.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "forex", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "cftc", observedAt: Date.now(),
+          provider: "cftc", observedAt: acquiredAt,
           freshness: "STALE", quality: "DEGRADED",
+          acquiredAt,
         };
       } catch { return null; }
     },
@@ -459,11 +511,15 @@ function buildTreasuryAdapter(): ProviderAdapter {
         if (!entry?.avg_interest_rate_amt) return null;
         const yield_ = parseFloat(entry.avg_interest_rate_amt);
         if (!Number.isFinite(yield_)) return null;
+        // Phase 238 — one read, used both as the fallback observation time and
+        // as the instant this record was acquired.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "macro", price: yield_,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "treasury", observedAt: entry.record_date ? new Date(entry.record_date).getTime() : Date.now(),
+          provider: "treasury", observedAt: entry.record_date ? new Date(entry.record_date).getTime() : acquiredAt,
           freshness: "STALE", quality: "DEGRADED",
+          acquiredAt,
         };
       } catch { return null; }
     },
@@ -486,11 +542,16 @@ function buildEiaAdapter(): ProviderAdapter {
         const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPM0&facets[duession][]=NUS&sort[0][column]=period&sort[0][direction]=desc&length=1`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
+        // Phase 238 — this payload carries no observation time, so the
+        // acquisition instant IS the record's `observedAt`: one read, carried
+        // out on the record so the caller dates it identically.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "commodity", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "eia", observedAt: Date.now(),
+          provider: "eia", observedAt: acquiredAt,
           freshness: "STALE", quality: "DEGRADED",
+          acquiredAt,
         };
       } catch { return null; }
     },
@@ -598,51 +659,63 @@ export async function acquireLiveData(
     ?? selectBestAdapter(instrument, assetClass, "ohlcv", readEnv);
 
   if (!adapter) {
+    // Phase 238 — one completion read dates this result AND ends the latency
+    // measurement; the previous form read the clock once per field.
+    const completedAt = Date.now();
     return {
       instrument,
       assetClass,
-      fetchedAt: Date.now(),
+      fetchedAt: completedAt,
       snapshot: null,
       provider: "none",
       success: false,
       error: "no available provider for this instrument",
-      latencyMs: Date.now() - startTime,
+      latencyMs: completedAt - startTime,
     };
   }
 
   try {
     const snapshot = await adapter.fetch(instrument, assetClass, readEnv);
+    const completedAt = Date.now();
     if (snapshot) {
       return {
         instrument,
         assetClass,
         snapshot,
         provider: adapter.id,
-        fetchedAt: Date.now(),
+        /*
+          Phase 238 — the adapter already read the clock for this record, at
+          the instant its freshness was judged. Reusing that read is what stops
+          one acquisition carrying two dates: without it the snapshot could be
+          graded against one instant while the result claimed another, e.g. a
+          DELAYED record stamped with a `fetchedAt` that implies FRESH.
+        */
+        fetchedAt: snapshot.acquiredAt ?? completedAt,
         success: true,
-        latencyMs: Date.now() - startTime,
+        latencyMs: completedAt - startTime,
       };
     }
     return {
       instrument,
       assetClass,
-      fetchedAt: Date.now(),
+      fetchedAt: completedAt,
       snapshot: null,
       provider: adapter.id,
       success: false,
       error: "provider returned null",
-      latencyMs: Date.now() - startTime,
+      latencyMs: completedAt - startTime,
     };
   } catch (err: unknown) {
+    const completedAt = Date.now();
     return {
       instrument,
       assetClass,
-      fetchedAt: Date.now(),
+      fetchedAt: completedAt,
       snapshot: null,
       provider: adapter.id,
       success: false,
       error: errorMessage(err) || "provider error",
-      latencyMs: Date.now() - startTime,
+      latencyMs: completedAt - startTime,
     };
   }
 }
@@ -690,21 +763,32 @@ export async function acquireProviderNativeLiveData(
     !Number.isFinite(latest.close) ||
     latest.close <= 0
   ) {
+    // Phase 238 — ONE instant closes this acquisition. The transport's own
+    // report is that instant when it exists; otherwise a single read serves as
+    // both the record's `fetchedAt` and the end of its latency, so the record
+    // cannot state a request time and a duration that refer to two instants.
+    const completedAt = result.receivedAt ?? Date.now();
     return {
       instrument: input.instrument,
       assetClass: input.assetClass,
       providerInstrumentId: input.providerInstrumentId,
       snapshot: null,
       provider: result.provider ?? input.provider,
-      fetchedAt: result.receivedAt ?? Date.now(),
+      fetchedAt: completedAt,
       success: false,
       error: result.failureReason ?? `Live request status: ${result.status}`,
-      latencyMs: result.latencyMs ?? Date.now() - startTime,
+      latencyMs: result.latencyMs ?? completedAt - startTime,
     };
   }
 
   const observedAt = latest.timestamp;
-  const freshness = assessFreshness(observedAt, Date.now());
+  // Phase 238 — one clock read for this record's request-time instant. The
+  // snapshot's freshness and the record's `fetchedAt` describe the SAME event
+  // (the request that just completed), so they are the same value: judged at
+  // one read and recorded at another, a snapshot could be graded STALE while
+  // the record it belongs to claims a `fetchedAt` that implies FRESH.
+  const fetchedAt = result.receivedAt ?? Date.now();
+  const freshness = assessFreshness(observedAt, fetchedAt);
 
   return {
     instrument: input.instrument,
@@ -726,10 +810,13 @@ export async function acquireProviderNativeLiveData(
       volume: candle.volume ?? 0,
     })),
     provider: result.provider ?? input.provider,
-    fetchedAt: result.receivedAt ?? Date.now(),
+    fetchedAt,
     success: true,
     ...(result.failureReason ? { error: result.failureReason } : {}),
-    latencyMs: result.latencyMs ?? Date.now() - startTime,
+    // Phase 238 — the latency ends at the record's OWN instant when the
+    // transport reported none, so `fetchedAt` and `latencyMs` describe one
+    // measurement rather than two.
+    latencyMs: result.latencyMs ?? fetchedAt - startTime,
   };
 }
 

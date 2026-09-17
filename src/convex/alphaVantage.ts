@@ -111,6 +111,19 @@ function mapTickerForAV(instrument: string, instrumentType: string): string {
   return sym;
 }
 
+/**
+ * Phase 238 — a news acquisition is its data PLUS the instant the provider
+ * observed it. Keeping them in one value means every block derived from the
+ * articles is dated by that same read; a separate variable could drift, and
+ * two clock reads for one call can (and on CI did) land in different
+ * milliseconds.
+ */
+interface NewsAcquisition {
+  articles: NewsArticle[];
+  /** The cache's own record of when this data was observed. */
+  observedAt: number;
+}
+
 // ── Main Action ─────────────────────────────────────────────────
 
 export const fetchIntelligence = action({
@@ -158,12 +171,15 @@ export const fetchIntelligence = action({
       // Phase 229 — per-leg outcome. Fatal classes (RATE_LIMIT / AUTH_ERROR)
       // reject out of runLeg and are handled by the outer catch; everything
       // else is classified here and reported on the envelope's `error`.
-      const legs: { news: LegOutcome<NewsArticle[]>; fundamentals?: LegOutcome<FundamentalData> } = {
+      const legs: {
+        news: LegOutcome<NewsAcquisition>;
+        fundamentals?: LegOutcome<FundamentalData>;
+      } = {
         news: { status: "unavailable", reason: "not fetched" },
       };
 
       {
-        legs.news = await runLeg(async () => {
+        legs.news = await runLeg<NewsAcquisition>(async () => {
           const evidence = await getProviderCache().fetch<NewsArticle[]>(
             {
               provider: "alpha-vantage",
@@ -182,24 +198,38 @@ export const fetchIntelligence = action({
                 },
                 apiKey,
               );
+              // Phase 238 — ONE clock read for this acquisition. The value
+              // below is both the payload's observation time and the envelope
+              // evidence's `observedAt`; reading the clock twice would let the
+              // two disagree, which is how the Phase 229 provenance assertion
+              // (r.observedAt === r.fundamentals.timestamp) became a coin flip
+              // on a loaded CI runner while passing on this quiet sandbox.
+              const observedAt = Date.now();
               return {
                 data: normalizeNewsFromAV(newsJson, ticker),
                 // Acquisition time of the REAL provider call. A later cache
                 // hit reuses this value rather than resetting it to now, so
                 // evidence age keeps growing across hits.
-                observedAt: Date.now(),
+                observedAt,
               };
             },
           );
-          if (evidence) {
-            acquisitions.push(evidence.acquisition);
-            observations.push(evidence.observedAt);
-          }
-          return evidence?.data;
+          if (!evidence) return undefined;
+          acquisitions.push(evidence.acquisition);
+          observations.push(evidence.observedAt);
+          // Phase 238 — the instant travels WITH the articles it belongs to.
+          // Deriving the sentiment and macro blocks from `value.observedAt`
+          // makes "one observation, one instant" a property of the types
+          // rather than a convention two declarations have to keep in step.
+          return { articles: evidence.data, observedAt: evidence.observedAt };
         });
         if (legs.news.status === "ok") {
-          articles = legs.news.value;
-          sentiment = aggregateFromArticles(articles, "alpha-vantage");
+          articles = legs.news.value.articles;
+          sentiment = aggregateFromArticles(
+            articles,
+            "alpha-vantage",
+            legs.news.value.observedAt,
+          );
         }
         // A failed or empty news leg leaves `sentiment` undefined: the
         // envelope's `dataAvailable.news=false` plus `error` say why. No
@@ -227,14 +257,21 @@ export const fetchIntelligence = action({
                   avFetch({ function: "OVERVIEW", symbol: avSymbol }, apiKey),
                   avFetch({ function: "EARNINGS", symbol: avSymbol }, apiKey),
                 ]);
+                // Phase 238 — the acquisition instant is read ONCE and given
+                // to both the payload (`FundamentalData.timestamp`) and the
+                // cache evidence (`observedAt`). They describe the same
+                // provider call, so they must be the same value, not two
+                // reads that happen to land in the same millisecond.
+                const observedAt = Date.now();
                 return {
                   data: normalizeFundamentalsFromAV(
                     overviewJson,
                     earningsJson,
                     args.instrumentType,
                     ticker,
+                    observedAt,
                   ),
-                  observedAt: Date.now(),
+                  observedAt,
                 };
               },
             );
@@ -253,7 +290,12 @@ export const fetchIntelligence = action({
       } else {
         fundamentals = {
           provider: "alpha-vantage",
-          timestamp: Date.now(),
+          // Phase 238 — a block that was never acquired carries NO observation
+          // instant. 0 is the same "no provider timestamp" sentinel the news
+          // parser uses for a missing `time_published` (Phase 220): it reads
+          // as UNAVAILABLE everywhere, whereas the request clock asserted an
+          // observation that never happened.
+          timestamp: 0,
           instrumentType: args.instrumentType,
           available: false,
           unavailableReason: `Traditional company fundamentals not applicable for ${args.instrumentType} assets.`,
@@ -279,7 +321,14 @@ export const fetchIntelligence = action({
 
       // Build macro context from news articles (only when the news leg
       // actually answered; a failed leg must not yield a macro block).
-      const macro = legs.news.status === "ok" ? buildMacroFromArticles(articles, args.instrumentType) : undefined;
+      const macro =
+        legs.news.status === "ok"
+          ? buildMacroFromArticles(
+              articles,
+              args.instrumentType,
+              legs.news.value.observedAt,
+            )
+          : undefined;
 
       return {
         success: true,
@@ -375,15 +424,22 @@ function normalizeNewsFromAV(json: unknown, relatedTicker: string): NewsArticle[
     .slice(0, 10);
 }
 
+/**
+ * Phase 238 — `observedAt` is the acquisition instant, read once by the
+ * caller. This function is PURE with respect to the clock: it is one of the
+ * places that stamped a second, independent "now" onto an acquisition that
+ * already had one.
+ */
 function normalizeFundamentalsFromAV(
   overview: unknown,
   earnings: unknown,
   instrumentType: string,
   symbol: string,
+  observedAt: number,
 ): FundamentalData {
   const base: FundamentalData = {
     provider: "alpha-vantage",
-    timestamp: Date.now(),
+    timestamp: observedAt,
     instrumentType: instrumentType as FundamentalData["instrumentType"],
     symbol,
     available: false,
@@ -430,9 +486,15 @@ function normalizeFundamentalsFromAV(
   return base;
 }
 
+/**
+ * Phase 238 — derived from `articles`, so it is stamped with the instant the
+ * articles were OBSERVED (`observedAt`), passed in by the caller. The local
+ * clock would date the macro block later than the news it is derived from.
+ */
 function buildMacroFromArticles(
   articles: NewsArticle[],
   instrumentType: string,
+  observedAt: number,
 ): MacroData {
   const indicators: MacroData["indicators"] = [];
 
@@ -503,7 +565,7 @@ function buildMacroFromArticles(
 
   return {
     provider: "alpha-vantage",
-    timestamp: Date.now(),
+    timestamp: observedAt,
     dxyTrend,
     indicators: indicators.slice(0, 10),
     summary: parts.join(" "),
@@ -511,11 +573,20 @@ function buildMacroFromArticles(
   };
 }
 
-function aggregateFromArticles(articles: NewsArticle[], provider: string): SentimentData {
+/**
+ * Phase 238 — `observedAt` is the news acquisition instant (the cache's own
+ * record, preserved across hits). Same rule as `buildMacroFromArticles`: a
+ * block derived from an observation is dated by that observation.
+ */
+function aggregateFromArticles(
+  articles: NewsArticle[],
+  provider: string,
+  observedAt: number,
+): SentimentData {
   if (articles.length === 0) {
     return {
       provider,
-      timestamp: Date.now(),
+      timestamp: observedAt,
       averageScore: 0,
       articleCount: 0,
       label: "neutral",
@@ -546,7 +617,7 @@ function aggregateFromArticles(articles: NewsArticle[], provider: string): Senti
 
   return {
     provider,
-    timestamp: Date.now(),
+    timestamp: observedAt,
     averageScore: Math.round(avgScore * 1000) / 1000,
     articleCount: withScores.length,
     label,

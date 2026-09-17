@@ -1870,3 +1870,160 @@ does not unblock A2 (the history rewrite still waits on A1), does not add
 production email transport, and does not produce Evidence D — that needs a real
 deployment with real credentials, and a hermetic test suite is no substitute for
 it. Evidence D remains **INCOMPLETE**.
+
+## Phase 238 — one acquisition, one instant
+
+### A. The defect, measured rather than asserted
+
+`alphavantage-legs.phase229.test.ts` asserted `r.observedAt === r.fundamentals.timestamp`
+and passed for a whole phase on this sandbox, then failed on CI: the failure
+annotation on `alphavantage-legs.phase229.test.ts:321` reads
+**`expected 1789624822122 to be 1789624822121`**. That single millisecond
+is the whole defect: `normalizeFundamentalsFromAV` stamped the block with its own
+`Date.now()` and the cache fetcher stamped `observedAt: Date.now()` afterwards, so
+ONE acquisition carried TWO instants. It only ever disagreed when the machine was
+slow enough for the millisecond to tick between them — a race, which is why a
+local green said nothing.
+
+The same shape sat in every other provider, in two forms:
+
+* **Derived blocks dated at derivation time.** Alpha Vantage's sentiment and macro
+  blocks were stamped with a fresh read taken while *building* the envelope, so a
+  block derived from the news articles claimed to have been observed later than
+  the articles it was derived from.
+* **Read-time re-stamping.** `eia.ts`, `cot.ts`, `treasury.ts` rebuilt
+  `fetchedAt` from the clock at read time, so a cache hit reported a fetch that
+  never happened while the envelope itself said `acquisition: "cache-reused"`.
+  `okx.ts` passed `Date.now(), Date.now()` into `buildExecutionData` as two
+  separate provenance parameters.
+
+The market-radar registry had it per record. Measured with the counting clock
+(same probe, same workspace, baseline = the Phase 237 tip `7564f13`):
+
+| One acquisition | Reads before | Reads after |
+|---|---|---|
+| OKX candles adapter fetch | 5 | **3** |
+| DeFiLlama adapter fetch | 5 | **3** |
+| CoinGecko adapter fetch | 5 | **3** |
+| `acquireLiveData` (crypto, adapter selected) | 10 | **7** |
+| `acquireLiveData` (forex, no credentials → no provider) | 3 | **2** |
+| `acquireProviderNativeLiveData` | 8 | **7** |
+| Health record: average latency vs the instants it reports | avg `2` vs reported `4` — inconsistent | avg `2` vs reported `2` — **consistent** |
+
+`Date.now()` call sites in `provider-registry.ts` fell 36 → 24 (the remainder are
+per-path reads and comments); `alphaVantage.ts` fell 7 → 2, which are the two
+acquisition instants it legitimately owns (news, fundamentals).
+
+### B. What makes it deterministic instead of lucky
+
+`src/test-counting-clock.ts` installs a clock in which **read #n returns
+`base + n`**. Consequences the suite relies on:
+
+* two reads can never produce the same value, so "these two fields describe one
+  event" is falsifiable in both directions — it passes because the code reads
+  once, never because the millisecond happened not to tick;
+* every value the clock returned is in `clock.reads`, so membership proves a
+  recorded instant is a real read rather than a back-filled or plausible number;
+* the number of consultations is an exact small integer, which is what turns
+  "one read per record" from a code-reading claim into a measurement.
+
+The sharpest observable is a **boundary placed on an instant**: stamp a candle
+(or a provider payload) `299_999` ms before the read that carried the record.
+Judged *at that read* the age is 299 999 → `FRESH`; judged one read later it is
+exactly 300 000 → `DELAYED`. So the label alone reveals whether the verdict used
+the instant the record carries. Where a boundary cannot be constructed, the count
+is pinned **relatively** (two arms of the same adapter, or a cross-adapter
+control) so it stays meaningful when unrelated bookkeeping changes.
+
+The invariants the phase now enforces:
+
+1. one acquisition = one instant; a cache hit replays the *acquired* instant
+   verbatim (`provider-cache`), never a fresh one;
+2. derived blocks receive that instant as a parameter instead of reading a clock;
+3. builders take explicit `(…, fetchedAt, nowMs)` — no builder may invent either;
+4. an adapter's `observedAt` fallback and its freshness verdict are **the same
+   read**, and that read is carried out on the record as `acquiredAt`;
+5. `acquireLiveData`'s `fetchedAt` is the snapshot's own `acquiredAt`, so the
+   result cannot be dated at a different instant than the verdict it carries;
+6. a health record reads the clock twice per request (open, close) and every
+   field it publishes — `lastRequestAt`, `lastSuccessAt`/`lastFailureAt`,
+   `cooldownUntil`, `avgLatencyMs` — is derived from those two;
+7. a provider-native record's `fetchedAt` is the **last** read of its
+   acquisition: nothing consults the clock after the record is dated.
+
+### C. The sweep, file by file
+
+| File | Change |
+|---|---|
+| `src/convex/alphaVantage.ts` | news acquisition returns `{ articles, observedAt }` (`NewsAcquisition`); fundamentals producer receives `observedAt`; sentiment/macro/unavailable blocks take the acquisition instant; non-stock unavailable keeps `timestamp: 0` |
+| `src/convex/eia.ts`, `cot.ts`, `treasury.ts`, `okx.ts` | one read per action, passed into the builders; `okx` no longer passes two |
+| `src/lib/data/cot.ts`, `treasury.ts` | builders are `(…, fetchedAt, nowMs)` and stamp `fetchedAt` from the parameter |
+| `src/lib/market-radar/types.ts` | `MarketSnapshot.acquiredAt?` — when we acquired the record, i.e. the instant its freshness was judged at (distinct from the provider's `observedAt`) |
+| `src/lib/market-radar/provider-registry.ts` | nine adapters take one read and carry it; the health wrapper reads once to open and once to close a request; `acquireLiveData` dates its result from the snapshot and takes one completion read on every other path; the provider-native path's completion read is shared by `fetchedAt` and `latencyMs` (and only taken when the transport did not report one) |
+| test call sites | 45 three-argument call sites of the changed builders updated (`tsc -b` enumerated them); 8 `buildCotContext` + 10 `buildTreasuryContext` calls now pass `(rows, instrument, fetchedAt, nowMs)` |
+| `src/convex/remaining-providers.phase178c.test.ts` | two **source-text pins** replaced by runtime property tests: the pins asserted `buildEiaContext(evidence.data, Date.now(), Date.now())` — they *required* two clock reads for one acquisition, so they guarded the defect. The replacements assert that a cache hit keeps `fetchedAt` and reports `cache-reused`. The EIA section's stub rows were also missing the `product` facet, so `parseEiaResponse` rejected them and every assertion in that block ran against an outage envelope: fixed |
+
+### D. Coverage
+
+* `src/convex/one-instant.phase238.test.ts` — **17 tests**: clock self-tests;
+  Alpha Vantage partial/full/ordering; every recorded instant ∈ `clock.reads`;
+  cache-reuse stability; EIA/COT/Treasury `data.fetchedAt === observedAt` and
+  cache-hit stability; OKX book straddling the staleness boundary; structural
+  complements (no line reads the clock twice; no application module imports the
+  test clock).
+* `src/lib/market-radar/one-instant.phase238.test.ts` — **19 tests**: the six
+  original OKX/registry assertions plus the sweep — every adapter that receives
+  no observation time (`coingecko`, `defillama`, `tokenomist`, `alpha-vantage`,
+  `cftc`, `treasury`, `eia`), twelve-data's verdict placed on the FRESH/DELAYED
+  boundary, the result/snapshot coupling, the no-provider result, the health
+  record's two instants, the native record's last-read instant, and the
+  no-transport-report latency.
+
+### E. Mutation results
+
+`scripts/mutation-suite-phase238.sh`: **27 mutants, 27 as declared, 0 gaps,
+0 INVALID**, byte-exact restore, green-baseline gate. Classes: two reads where
+one is required (M1, M2, M8, M19, M22, M23, M24), a block dated at derivation
+time (M3–M6), `fetchedAt` rebuilt at read time (M7, M9, M10), a verdict judged at
+a second read (M11, M12, M12b, M20), a fallback that reads again (M13), the
+result dated by its own read rather than the snapshot's (M21), a read taken after
+the record was dated (M25), the clock's own teeth (M14), a single statement
+reading the clock twice (M17), the test clock leaking into the application (M18),
+and defence in depth (M15, M16 — each weakens a pre-existing guard *and*
+reintroduces the defect that guard covered, proving the new suite carries the
+property alone).
+
+**One declared limit.** `M24b` — the provider-native *success* path's latency
+fallback — is recorded as unobservable rather than kept silent: every `LIVE_*`
+record `executeLiveRequest` returns already carries a latency, so that branch
+cannot be reached from the public API. Its failure-path twin is `M24` and is
+caught.
+
+### F. Verification on this tree
+
+`tsc -b` 0 · `vitest run` **295 files / 10 082 passed / 18 skipped** (125 s, no
+`dist/` — the order CI uses, `npm test` before the build; the skips are the
+env-gated bundle/native-shell assertions) · with `dist/` present from
+`npm run build` the six env-gated ones become active and pass:
+**10 088 passed / 12 skipped** (133 s) · `npm run build` ok (`vite build`
+5.82 s) · eslint on every changed file **0 errors**.
+
+Pre-existing and **not touched** (verified against `HEAD`'s own copy of each
+file): `no-prototype-builtins` ×3 in `src/lib/data/crypto/symbols.ts:125-127` and
+`prefer-const` ×1 in `src/lib/market-radar/candidate-builder.ts:109`. The CI lint
+step is advisory (`continue-on-error: true`), so these do not fail a run.
+
+### G. What Phase 238 does not do
+
+* It does not sweep `src/lib/data/universal/live/client.ts`. That file records,
+  per response, a measurement pair: `latencyMs` (from `t0` to a read) and
+  `receivedAt: Date.now()` — a second read taken alongside the first. Measured
+  with the counting clock, one `executeLiveRequest` consumed six reads and
+  returned `receivedAt` = the 6th while `latencyMs = 1` measures to the 5th. It
+  is a measurement pair rather than a claim about *when the market data was
+  observed*, which is why it is out of this phase's statement — and it is 21
+  sites. Recorded here as an open item instead of being left silent.
+* It does not produce live-provider evidence: no deployment, no provider
+  credential, no A2 history rewrite. **Evidence D remains INCOMPLETE**, A1 (the
+  unrevoked credential) and A2 are unchanged, and the release verdict is
+  unchanged: **NOT READY**.

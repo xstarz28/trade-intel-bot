@@ -190,8 +190,14 @@ export const fetchEiaInventory = action({
       if (!evidence) {
         return { success: false as const, error: "EIA returned no data." };
       }
-      // Freshness derived at READ time from the observation date.
-      const ctx = buildEiaContext(evidence.data, Date.now(), Date.now());
+      // Phase 238 — one event, one instant. `fetchedAt` is the ACQUISITION
+      // instant the cache preserved (`evidence.observedAt`), not a second
+      // read of the request clock: on a cache hit the context must not claim
+      // it was fetched now while the envelope says `cache-reused`. `nowMs` is
+      // a genuinely different event — the freshness evaluation, derived at
+      // READ time — and is read exactly once, here.
+      const nowMs = Date.now();
+      const ctx = buildEiaContext(evidence.data, evidence.observedAt, nowMs);
       if (!ctx.available) {
         return { success: false as const, error: ctx.reason };
       }

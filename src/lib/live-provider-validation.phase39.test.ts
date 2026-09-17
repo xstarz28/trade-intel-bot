@@ -334,7 +334,7 @@ describe("Phase 39 — Treasury XML Parsing", () => {
     const now = Date.now();
     const xml1 = `<feed><entry><d:NEW_DATE>2025-08-18T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.80</d:BC_2YEAR><d:BC_10YEAR>4.20</d:BC_10YEAR></entry></feed>`;
     const xml2 = `<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR><d:BC_10YEAR>4.25</d:BC_10YEAR></entry></feed>`;
-    const ctx = buildTreasuryContext([xml1, xml2], [], now);
+    const ctx = buildTreasuryContext([xml1, xml2], [], now, now);
     expect(ctx.available).toBe(true);
     if (ctx.available) {
       expect(ctx.latest.nominal.observationDate).toBe("2025-08-20");
@@ -344,7 +344,7 @@ describe("Phase 39 — Treasury XML Parsing", () => {
   });
 
   it("returns unavailable for empty feeds", () => {
-    const ctx = buildTreasuryContext([], [], Date.now());
+    const ctx = buildTreasuryContext([], [], Date.now(), Date.now());
     expect(ctx.available).toBe(false);
   });
 
@@ -354,7 +354,7 @@ describe("Phase 39 — Treasury XML Parsing", () => {
     const xml2 = `<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR><d:BC_10YEAR>4.25</d:BC_10YEAR></entry></feed>`;
     const real1 = `<feed><entry><d:NEW_DATE>2025-08-18T00:00:00</d:NEW_DATE><d:TC_10YEAR>1.80</d:TC_10YEAR></entry></feed>`;
     const real2 = `<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:TC_10YEAR>1.75</d:TC_10YEAR></entry></feed>`;
-    const ctx = buildTreasuryContext([xml1, xml2], [real1, real2], now);
+    const ctx = buildTreasuryContext([xml1, xml2], [real1, real2], now, now);
     expect(ctx.available).toBe(true);
     if (ctx.available) {
       const evidence = deriveMacroYieldEvidence(ctx);
@@ -366,7 +366,7 @@ describe("Phase 39 — Treasury XML Parsing", () => {
 
   it("macro evidence requires two observations", () => {
     const xml1 = `<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.80</d:BC_2YEAR></entry></feed>`;
-    const ctx = buildTreasuryContext([xml1], [], Date.now());
+    const ctx = buildTreasuryContext([xml1], [], Date.now(), Date.now());
     expect(ctx.available).toBe(true);
     if (ctx.available) {
       const evidence = deriveMacroYieldEvidence(ctx);
@@ -515,8 +515,8 @@ describe("Phase 39 — Determinism from Captured Data", () => {
       },
     ];
     const now = Date.now();
-    const ctx1 = buildCotContext(rows, "EUR/USD", now);
-    const ctx2 = buildCotContext(rows, "EUR/USD", now);
+    const ctx1 = buildCotContext(rows, "EUR/USD", now, now);
+    const ctx2 = buildCotContext(rows, "EUR/USD", now, now);
     expect(ctx1.available).toBe(ctx2.available);
     if (ctx1.available && ctx2.available) {
       expect(ctx1.netNonCommercial).toBe(ctx2.netNonCommercial);
@@ -527,8 +527,8 @@ describe("Phase 39 — Determinism from Captured Data", () => {
   it("same Treasury XML produces same context", () => {
     const xml = `<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR><d:BC_10YEAR>4.25</d:BC_10YEAR></entry></feed>`;
     const now = Date.now();
-    const ctx1 = buildTreasuryContext([xml], [], now);
-    const ctx2 = buildTreasuryContext([xml], [], now);
+    const ctx1 = buildTreasuryContext([xml], [], now, now);
+    const ctx2 = buildTreasuryContext([xml], [], now, now);
     expect(ctx1.available).toBe(ctx2.available);
     if (ctx1.available && ctx2.available) {
       expect(ctx1.latest.nominal.observationDate).toBe(ctx2.latest.nominal.observationDate);
@@ -580,7 +580,7 @@ describe("Phase 39 — Provider Availability ≠ Directional Evidence", () => {
         open_interest_all: "300000",
       },
     ];
-    const ctx = buildCotContext(rows, "EUR/USD", Date.now());
+    const ctx = buildCotContext(rows, "EUR/USD", Date.now(), Date.now());
     expect(ctx.available).toBe(true);
     if (ctx.available) {
       const evidence = deriveCotEvidence(ctx);
@@ -591,7 +591,7 @@ describe("Phase 39 — Provider Availability ≠ Directional Evidence", () => {
 
   it("Treasury with one observation gives zero directional evidence", () => {
     const xml = `<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR><d:BC_10YEAR>4.25</d:BC_10YEAR></entry></feed>`;
-    const ctx = buildTreasuryContext([xml], [], Date.now());
+    const ctx = buildTreasuryContext([xml], [], Date.now(), Date.now());
     expect(ctx.available).toBe(true);
     if (ctx.available) {
       const evidence = deriveMacroYieldEvidence(ctx);
@@ -601,7 +601,7 @@ describe("Phase 39 — Provider Availability ≠ Directional Evidence", () => {
   });
 
   it("unavailable COT mapping gives explicit unavailable state", () => {
-    const ctx = buildCotContext([], "BTC/USD", Date.now());
+    const ctx = buildCotContext([], "BTC/USD", Date.now(), Date.now());
     expect(ctx.available).toBe(false);
     if (!ctx.available) {
       expect(ctx.reason).toContain("No verified");
@@ -609,7 +609,7 @@ describe("Phase 39 — Provider Availability ≠ Directional Evidence", () => {
   });
 
   it("unavailable Treasury gives explicit unavailable state", () => {
-    const ctx = buildTreasuryContext([], [], Date.now());
+    const ctx = buildTreasuryContext([], [], Date.now(), Date.now());
     expect(ctx.available).toBe(false);
     if (!ctx.available) {
       expect(ctx.reason).toContain("no usable");
@@ -635,7 +635,7 @@ describe("Phase 39 — Live Data Cannot Modify Decision Logic", () => {
         open_interest_all: "350000",
       },
     ];
-    const ctx = buildCotContext(rows, "EUR/USD", Date.now());
+    const ctx = buildCotContext(rows, "EUR/USD", Date.now(), Date.now());
     expect(ctx.available).toBe(true);
     if (ctx.available) {
       const evidence = deriveCotEvidence(ctx);
@@ -650,7 +650,7 @@ describe("Phase 39 — Live Data Cannot Modify Decision Logic", () => {
   it("Treasury evidence derivation is pure and non-authoritative", () => {
     const xml1 = `<feed><entry><d:NEW_DATE>2025-08-18T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.80</d:BC_2YEAR><d:BC_10YEAR>4.20</d:BC_10YEAR></entry></feed>`;
     const xml2 = `<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR><d:BC_10YEAR>4.25</d:BC_10YEAR></entry></feed>`;
-    const ctx = buildTreasuryContext([xml1, xml2], [], Date.now());
+    const ctx = buildTreasuryContext([xml1, xml2], [], Date.now(), Date.now());
     expect(ctx.available).toBe(true);
     if (ctx.available) {
       const evidence = deriveMacroYieldEvidence(ctx);
@@ -671,6 +671,7 @@ describe("Phase 39 — Security Audit", () => {
       [{ report_date_as_yyyy_mm_dd: "2025-08-19", noncomm_positions_long_all: "100", noncomm_positions_short_all: "50" }],
       "EUR/USD",
       Date.now(),
+      Date.now(),
     );
     const jsonStr = JSON.stringify(ctx);
     expect(jsonStr).not.toContain("api_key");
@@ -681,7 +682,7 @@ describe("Phase 39 — Security Audit", () => {
 
   it("Treasury output contains no credentials", () => {
     const xml = `<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR></entry></feed>`;
-    const ctx = buildTreasuryContext([xml], [], Date.now());
+    const ctx = buildTreasuryContext([xml], [], Date.now(), Date.now());
     const jsonStr = JSON.stringify(ctx);
     expect(jsonStr).not.toContain("api_key");
     expect(jsonStr).not.toContain("token");

@@ -173,6 +173,22 @@ export interface MarketSnapshot {
    * into a live claim. Absent observation time resolves to UNAVAILABLE.
    */
   observedAt?: number;
+  /**
+   * When WE acquired this record — one clock read, the instant its freshness
+   * was judged at.
+   *
+   * Phase 238. Distinct from `observedAt`, which is the provider's claim:
+   * a provider that reports no observation time leaves `observedAt` absent,
+   * while the record was still acquired at a definite instant. Carrying it on
+   * the snapshot lets the acquisition result (`fetchedAt`) reuse the very read
+   * the freshness verdict was computed from instead of taking a second one —
+   * two reads would be two dates for one event, and the pair could disagree
+   * (a record graded DELAYED while claiming a `fetchedAt` that implies FRESH).
+   *
+   * Optional: adapters that do not record it are dated by their caller's own
+   * single read.
+   */
+  acquiredAt?: number;
   /** Data freshness. */
   freshness: FreshnessLevel;
   /** Data quality. */

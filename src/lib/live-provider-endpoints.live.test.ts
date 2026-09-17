@@ -142,7 +142,7 @@ describe("Phase 39 — CFTC COT Public Endpoint (Live)", () => {
       expect(first.noncomm_positions_short_all).toBeDefined();
 
       // Verify pure parser works on live data
-      const ctx = buildCotContext(json, "EUR/USD", Date.now());
+      const ctx = buildCotContext(json, "EUR/USD", Date.now(), Date.now());
       expect(ctx.available).toBe(true);
       if (ctx.available) {
         expect(ctx.sourceInstrument).toContain("EURO FX");
@@ -162,7 +162,7 @@ describe("Phase 39 — CFTC COT Public Endpoint (Live)", () => {
     if (res && res.ok) {
       const json = await res.json();
       expect(json.length).toBeGreaterThanOrEqual(1);
-      const ctx = buildCotContext(json, "XAU/USD", Date.now());
+      const ctx = buildCotContext(json, "XAU/USD", Date.now(), Date.now());
       expect(ctx.available).toBe(true);
       if (ctx.available) {
         expect(ctx.mappedAsset).toContain("Gold");
@@ -279,7 +279,7 @@ describe("Phase 39 — US Treasury Public Endpoint (Live)", () => {
       fetchFeed("daily_treasury_yield_curve", prevMonth),
     ]);
 
-    const ctx = buildTreasuryContext([nomThis, nomPrev], [], Date.now());
+    const ctx = buildTreasuryContext([nomThis, nomPrev], [], Date.now(), Date.now());
     // At least one month should have data
     if (ctx.available) {
       expect(ctx.source).toContain("Treasury");

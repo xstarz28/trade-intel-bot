@@ -181,7 +181,14 @@ export const fetchTreasuryYields = action({
       }
       const [nomThis, nomPrev, realThis, realPrev] = evidence.data.legs;
 
-      const ctx = buildTreasuryContext([nomThis, nomPrev], [realThis, realPrev], Date.now());
+      // Phase 238 — the acquisition instant, not a fresh clock read: see the
+      // builder's contract. Freshness is still judged at read time (one read).
+      const ctx = buildTreasuryContext(
+        [nomThis, nomPrev],
+        [realThis, realPrev],
+        evidence.observedAt,
+        Date.now(),
+      );
       if (!ctx.available) {
         return { success: false as const, error: ctx.reason };
       }

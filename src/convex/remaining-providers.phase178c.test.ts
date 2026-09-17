@@ -33,17 +33,20 @@ function handlerOf<A, R>(action: unknown): (c: never, a: A) => Promise<R> {
 
 const callCot = handlerOf<{ instrument: string }, {
   success: boolean;
-  data?: { freshness: string; latest: { reportDate: string } };
+  data?: { freshness: string; latest: { reportDate: string }; fetchedAt: number };
+  acquisition?: string;
 }>(fetchCotPositioning);
 
 const callTreasury = handlerOf<Record<string, never>, {
   success: boolean;
   data?: { freshness: string; fetchedAt: number };
+  acquisition?: string;
 }>(fetchTreasuryYields);
 
 const callEia = handlerOf<Record<string, never>, {
   success: boolean;
   data?: { freshness: string; fetchedAt: number };
+  acquisition?: string;
 }>(fetchEiaInventory);
 
 const callSpec = handlerOf<{ instrument: string }, {
@@ -122,6 +125,12 @@ function responder(url: string): unknown {
   if (url.includes("publicreporting") || url.includes("cftc")) return COT_ROWS;
   if (url.includes("okx.com")) return OKX_SPEC;
   if (url.includes("eia.gov")) {
+    // Phase 238 — each row must carry the `product` facet it was queried by:
+    // the EIA parser rejects a response whose rows name no product
+    // ("missing product facet identifier in rows"), so before this the whole
+    // section exercised an OUTAGE envelope (success:false, no data) while its
+    // assertions about counts and freshness still passed.
+    const product = ["EPC0", "EPM0", "EPD0"].find((p) => url.includes(p)) ?? "EPC0";
     return {
       response: {
         data: [
@@ -129,6 +138,9 @@ function responder(url: string): unknown {
             period: new Date(Date.now() - 4 * 864e5).toISOString().slice(0, 10),
             value: "420000",
             series: "WCESTUS1",
+            product,
+            "product-name": product,
+            units: "MBB",
           },
         ],
       },
@@ -204,10 +216,20 @@ describe("COT is cached without changing evidence meaning", () => {
     expect(second.data?.latest.reportDate).toBe(first.data?.latest.reportDate);
   });
 
-  it("the raw rows are cached, so context is rebuilt per read", () => {
-    const src = readFileSync("src/convex/cot.ts", "utf8");
-    // `buildCotContext` must run OUTSIDE the fetcher against Date.now().
-    expect(src).toMatch(/buildCotContext\(evidence\.data, args\.instrument, Date\.now\(\)\)/);
+  it("a cache hit preserves the ORIGINAL acquisition time, while freshness is re-derived", async () => {
+    const first = await callCot(ctx, { instrument: "EUR/USD" });
+    await new Promise((r) => setTimeout(r, 25));
+    const second = await callCot(ctx, { instrument: "EUR/USD" });
+
+    // Phase 238 — `fetchedAt` is the ACQUISITION instant. It must not advance
+    // on a reuse, while `freshness` (derived at read time from the report
+    // date) legitimately keeps being recomputed. This replaces a Phase 178c
+    // assertion that pinned the source text
+    // `buildCotContext(evidence.data, args.instrument, Date.now())` — a guard
+    // that required a fresh clock read per read and therefore encoded the
+    // defect rather than the property.
+    expect(second.data?.fetchedAt).toBe(first.data?.fetchedAt);
+    expect(second.acquisition).toBe("cache-reused");
   });
 
   it("a failure is not cached and the provider recovers", async () => {
@@ -272,9 +294,15 @@ describe("Treasury is cached without changing evidence meaning", () => {
     expect(classifyMacroFreshness(obs, Date.now() + 60 * 864e5)).toBe("STALE");
   });
 
-  it("the raw feeds are cached, so context is rebuilt per read", () => {
-    const src = readFileSync("src/convex/treasury.ts", "utf8");
-    expect(src).toMatch(/buildTreasuryContext\(\[nomThis, nomPrev\], \[realThis, realPrev\], Date\.now\(\)\)/);
+  it("a cache hit preserves the ORIGINAL acquisition time, while freshness is re-derived", async () => {
+    const first = await callTreasury(ctx, {});
+    await new Promise((r) => setTimeout(r, 25));
+    const second = await callTreasury(ctx, {});
+
+    // Phase 238 — see the COT section: `fetchedAt` is the acquisition instant
+    // the cache preserved, so a reuse must not rebuild it from the read clock.
+    expect(second.data?.fetchedAt).toBe(first.data?.fetchedAt);
+    expect(second.acquisition).toBe("cache-reused");
   });
 
   it("a total feed failure caches nothing", async () => {
@@ -311,9 +339,19 @@ describe("EIA is cached without changing evidence meaning", () => {
     expect(countEia()).toBeLessThanOrEqual(6);
   });
 
-  it("the raw legs are cached, so context is rebuilt per read", () => {
-    const src = readFileSync("src/convex/eia.ts", "utf8");
-    expect(src).toMatch(/buildEiaContext\(evidence\.data, Date\.now\(\), Date\.now\(\)\)/);
+  it("a cache hit preserves the ORIGINAL acquisition time, while freshness is re-derived", async () => {
+    const first = await callEia(ctx, {});
+    await new Promise((r) => setTimeout(r, 25));
+    const second = await callEia(ctx, {});
+
+    // Phase 238 — `fetchedAt` is the ACQUISITION instant the cache preserved
+    // (`evidence.observedAt`), so a reuse must never advance it. This replaces
+    // a Phase 178c assertion that pinned the source text
+    // `buildEiaContext(evidence.data, Date.now(), Date.now())`: that guard
+    // REQUIRED two clock reads for one acquisition, so it protected the defect
+    // rather than the property, and it broke the moment the defect was fixed.
+    expect(second.data?.fetchedAt).toBe(first.data?.fetchedAt);
+    expect(second.acquisition).toBe("cache-reused");
   });
 
   it("a missing API key is never cached as evidence", async () => {

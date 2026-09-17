@@ -91,8 +91,9 @@ export const fetchCotPositioning = action({
       if (!evidence) {
         return { success: false as const, error: "CFTC returned no rows." };
       }
-      // Freshness is derived HERE, from the report date and the current time.
-      const ctx = buildCotContext(evidence.data, args.instrument, Date.now());
+      // Phase 238 — acquisition instant for `fetchedAt`, read-time instant for
+      // the freshness evaluation. Two events, one clock read each.
+      const ctx = buildCotContext(evidence.data, args.instrument, evidence.observedAt, Date.now());
       if (!ctx.available) {
         return { success: false as const, error: ctx.reason };
       }

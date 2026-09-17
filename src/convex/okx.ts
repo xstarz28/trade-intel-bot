@@ -194,7 +194,12 @@ export const fetchOkxOrderBook = action({
         return { success: false as const, error: "OKX returned malformed JSON." };
       }
       const parsed = parseOkxOrderBook(json);
-      const data = buildExecutionData(parsed, Date.now(), Date.now());
+      // Phase 238 — "fetched at" and "freshness judged at" are the same
+      // instant for this acquisition (the evaluation happens immediately after
+      // the fetch), so the clock is read ONCE. Two reads let the payload's
+      // `fetchedAt` disagree with the instant its own freshness came from.
+      const fetchedAt = Date.now();
+      const data = buildExecutionData(parsed, fetchedAt, fetchedAt);
       // Phase 178e — report the EXCHANGE timestamp as the observation time.
       // Diagnostics previously fell back to request-completion time, which
       // understates the true age of the book: a snapshot the exchange stamped

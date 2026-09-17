@@ -10,6 +10,7 @@
  * Drives the REAL action handler through a stubbed `fetch`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createCountingClock } from "../test-counting-clock";
 import { resetProviderCache, getProviderCache } from "../lib/data/provider-cache-registry";
 import { fetchIntelligence } from "./alphaVantage";
 import type { IntelligenceResult } from "../lib/data/intelligence-types";
@@ -59,7 +60,7 @@ beforeEach(() => {
     } as unknown as Response;
   }));
 });
-afterEach(() => { vi.unstubAllGlobals(); resetProviderCache(); });
+afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); resetProviderCache(); });
 
 describe("229 AV — 1. valid news + valid fundamentals", () => {
   it("success, both legs present, no error field, both cached", async () => {
@@ -315,10 +316,22 @@ describe("229 AV — 11. partial aggregate semantics", () => {
 describe("229 AV — 12. provenance", () => {
   it("partial: acquisition/observedAt come only from the surviving leg", async () => {
     routes.NEWS_SENTIMENT = { throws: timeoutError() };
+
+    // Phase 238 — this assertion used to be a RACE. With the real clock it
+    // passed whenever both of the acquisition's two reads landed in the same
+    // millisecond: always on this sandbox, not always on CI, where run
+    // 35187915524 failed it with `expected 1789624822122 to be 1789624822121`.
+    // A clock that advances one millisecond per READ makes the property
+    // structural: one acquisition, one instant — so a second read can never
+    // hide behind a fast machine again.
+    const clock = createCountingClock(1_700_000_000_000);
+    vi.spyOn(Date, "now").mockImplementation(clock.now);
+
     const r = await av(ctx, AAPL);
     expect(r.acquisition).toBe("observed-now");
     expect(Number.isFinite(r.observedAt)).toBe(true);
     expect(r.observedAt).toBe(r.fundamentals!.timestamp);
+    expect(clock.reads).toContain(r.observedAt);
   });
   it("cache hit after a partial reports cache-reused for the surviving leg only when nothing new was fetched", async () => {
     routes.NEWS_SENTIMENT = { throws: timeoutError() };
