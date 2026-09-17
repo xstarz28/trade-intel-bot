@@ -2999,3 +2999,282 @@ admitted?" is not a green development run. It is the boundary refusing, which wa
 measured locally with the exact commands CI runs (`release:gate-verify` exit 0,
 `release:report` exit 0, `release:admission` exit 1) and is what the `require`
 mode of the boundary spec asserts on every run of it.
+
+## Phase 243 — production configuration boundary and deployment handoff
+
+This phase prepares production configuration and the handoff to a future operator.
+It **deploys nothing, sends nothing, calls nothing, rotates nothing and adds no
+credential**. Everything below is a boundary and its proof; the release verdict is
+not touched by any of it.
+
+### A. Why this phase exists
+
+Phase 241 made the verdict fail closed and Phase 242 made admission canonical. Both
+answer "has production been verified?". Neither answered the question an operator
+asks first: **if I set the production variables today, would the configuration be
+accepted — and what would acceptance actually mean?** Seven failures follow from
+answering that badly, and each is a rule below:
+
+1. a development or preview value silently serving production;
+2. a test, mock or fixture credential satisfying a production requirement;
+3. a Freebuff/VLY issuer or sender value accepted as an Xstarz-owned identity;
+4. a credential committed to the repository by an operator following a runbook;
+5. a silent fallback to local, demo or console infrastructure (the console email
+   transport is the dangerous one: it reports success and delivers nothing);
+6. treating "the variables are set" as production verification;
+7. a change to this phase weakening the Phase 241 verdict or the Phase 242 admission.
+
+### B. The inventory (Phase A) — every variable, its consumer, its scope
+
+Nine configuration variables and five provider credentials, taken from the code
+that consumes them — no name is invented and no value is stored. The inventory is a
+code constant (`PRODUCTION_CONFIG_VARIABLES`) so a test can compare it against the
+registries rather than against prose.
+
+| Variable | Consumer | Scope | Required | Secret | Validation | If absent |
+|---|---|---|---|---|---|---|
+| `XSTARZ_DEPLOYMENT_ENV` | deployment environment policy (`deploymentEnvironment.ts`) | convex-production | no | no | must resolve to `production`/`preview`/`development` | resolves to **production** (fail-closed) |
+| `CONVEX_SITE_URL` | authentication callback / site origin | convex-production | **yes** | no | absolute `https` URL, no loopback host | `MISSING_REQUIRED_CONFIG` |
+| `VLY_CONVEX_AUTH_ISSUER` | legacy federated sign-in issuer (`issuerPolicy.ts`) | convex-production | no | no | must not name a retired issuer host | nothing (correct state) |
+| `XSTARZ_EMAIL_TRANSPORT` | email transport selection (`emailDelivery.ts`) | convex-production | **yes** | no | one of `resend`, `smtp2go`, `console` | `MISSING_REQUIRED_CONFIG` |
+| `XSTARZ_EMAIL_API_KEY` | transport credential | convex-production | **yes** | **yes** | not a placeholder/test-mode value | `MISSING_REQUIRED_CONFIG` |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | sender identity, must be Xstarz-owned | convex-production | **yes** | no | plausible address on a non-retired domain | `MISSING_REQUIRED_CONFIG` |
+| `XSTARZ_EMAIL_SENDER_NAME` | email display name | convex-production | no | no | — | product name |
+| `VITE_CONVEX_URL` | client Convex endpoint (build-time, public) | app-build | **yes** | no | absolute `https` URL, no loopback host | `MISSING_REQUIRED_CONFIG` |
+| `CONVEX_DEPLOYMENT` | Convex CLI deployment identity | convex-cli | **yes** | no | `prod:<team>:<project>`; a `dev:`/`preview:`/`anonymous:`/`local` identity is refused | `MISSING_REQUIRED_CONFIG` |
+
+Provider credentials, derived from `getAllCredentialSpecs()` — the same registry the
+data layer uses, so a new provider is covered by the checker the day it is added:
+
+| Provider | Credential | Required in production |
+|---|---|---|
+| `twelve-data` | `TWELVE_DATA_API_KEY` | yes |
+| `alpha-vantage` | `ALPHA_VANTAGE_API_KEY` | yes |
+| `coinglass` | `COINGLASS_API_KEY` | yes |
+| `tickatlas` | `TICKATLAS_API_KEY` | yes |
+| `eia` | `EIA_API_KEY` | yes |
+| `okx`, `coingecko`, `defillama`, `tokenomist`, `cftc`, `treasury` | none (public endpoints) | no — reported as keyless, not as misconfigured |
+
+Retired, and refused if they reappear: `OTP_EMAIL_API_KEY` (the credential A1 owns),
+`VLY_APP_NAME`. Convex deployment *credentials* (e.g. a deploy key) are deliberately
+outside this surface: the checker authenticates nothing and can therefore never be
+mistaken for a deployment step.
+
+### C. The environment separation contract (Phase B)
+
+| Environment | May configure production? | What the boundary does |
+|---|---|---|
+| `production` | yes | evaluates the rules below |
+| `preview` | no | `WRONG_ENVIRONMENT` (preview still needs legacy federation, so it is not production) |
+| `development` | no | `WRONG_ENVIRONMENT` |
+| test / CI | no | fixtures are rejected as values wherever they appear |
+| unrecognised (e.g. `prod`) | no | `WRONG_ENVIRONMENT`, never a silent downgrade |
+| absent | — | resolves to `production`, so a forgotten variable fails closed |
+
+The rules, each with the failure it prevents:
+
+1. **The environment policy is imported, not re-implemented.** `resolveFederatedIssuer`,
+   `readEmailDeliveryConfig` and `resolveDeploymentEnvironment` are the same modules the
+   Convex backend runs, so the checker and the backend cannot disagree.
+2. **A production deployment cannot consume preview or development values.** The
+   environment is resolved from an explicit object; a non-production resolution is a
+   refusal, and `production` is not assumed from the presence of other variables.
+3. **Test fixtures cannot satisfy a production requirement.** Placeholder, template,
+   test-mode and throwaway values are refused for secret variables and disable the
+   provider that owns them.
+4. **A mock or console transport cannot satisfy production email.** Both layers refuse
+   it (see D), and the transport list is the policy's, not the checker's.
+5. **A Freebuff/VLY issuer cannot satisfy production auth or email**, and a sender on a
+   retired domain is refused by the policy and again by the boundary.
+6. **A local Convex identity cannot satisfy production deployment**: `dev:`, `local`,
+   `anonymous:` and `preview:` prefixes are refused, and a production-shaped name is
+   still only a name.
+7. **Provider keys cannot cross-satisfy.** One value reused for two providers is
+   `INVALID_CONFIG` and is reported on every provider that uses it.
+8. **Missing or malformed configuration fails closed**: absent, empty and
+   whitespace-only values are missing; malformed values are refused with the reason;
+   unexpected production-shaped variables are reported and never silently accepted.
+
+Determinism and hermeticity: `evaluateProductionConfiguration` takes `{env, target?,
+requireVerified?}` and contains no clock, no ambient environment and no I/O, so the
+same input always produces the same report. Every test drives synthetic objects; none
+reads the machine's configuration.
+
+### D. Email, Convex and provider boundaries (Phases D, E, F)
+
+**Email.** Six distinct states, one decision each:
+
+| State | Evidence the operator sees | Outcome |
+|---|---|---|
+| configured, transport delivering, sender on an owned domain | `email.transport=resend`, `senderVerified: false` | `READY_FOR_CONFIGURATION` |
+| sender unverified | `senderVerified: false` always; no field claims a verified sender | accepted, never "verified" |
+| absent | `email.transport=null`, `XSTARZ_EMAIL_API_KEY` in `missing` | `MISSING_REQUIRED_CONFIG` |
+| `console` (local, delivers nothing) | `nonDelivering: true`, `productionTransportAccepted: false` | `FORBIDDEN_FALLBACK` |
+| `mock`/`test`/`noop` | malformed transport | `INVALID_CONFIG` |
+| retired issuer/sender (`auth.freebuff.app`, `freebuff.com`, `freebuff.app`, `vly.ai`) | the domain is named in `forbidden` | `FORBIDDEN_FALLBACK` |
+| malformed address or sender missing | the reason, without the value | `INVALID_CONFIG` / `MISSING_REQUIRED_CONFIG` |
+
+The delivery boundary is decided **twice and independently**: the email policy refuses
+the console transport on a production deployment, and the boundary rule refuses any
+non-delivering or locally-scoped transport regardless of which path produced it. That
+second layer is why M13 below is a documented equivalent rather than a hole — removing
+the policy check alone changes nothing observable, because the boundary still refuses.
+No email is sent, and no surface ever claims one was: there is no "sent" field, no
+delivery attempt and no provider call anywhere in this phase.
+
+**Convex.** `CONVEX_DEPLOYMENT` is validated as `prod:<team>:<project>`; `dev:`,
+`preview:`, `anonymous:` and `local` identities are refused as `WRONG_IDENTITY`
+(a malformed deployment identity alone is an identity problem, not a generic typo).
+A production-shaped identity sets `productionShaped: true` and leaves
+`deploymentVerified: false` — a name is not a deployment, and an authenticated CLI is
+not evidence about a deployment. No deployment is performed in this phase, no
+deployment tooling runs in any test, and the checker has no code path that can invoke
+one (M29 proves a runner is not even importable without a test failing).
+
+**Providers.** All eleven `getAllProviders()` providers are covered, keyless ones
+included, with per-provider credentials. A missing key reports that provider as
+not configured and adds its variable to `missing`; it fabricates nothing, and no
+field in the report asserts availability, liveness or freshness — a provider without
+configuration is inert, not degraded silently into fake data. Historical data is not
+relabelled as live by anything here, and no live call is made: the boundary never
+leaves the process.
+
+### E. Secret hygiene (Phase C)
+
+The repository's client-side scan covers `src/`. The surfaces that *teach* an operator
+how to configure production were not covered, so `production-config-hygiene.phase243.test.ts`
+covers them with two rules — the project's own credential-literal rule and an
+assignment rule (`<variable> = <value>` must be empty or an obvious placeholder).
+
+Measured on this tree: **0** credential literals, **0** bearer tokens, **0**
+non-placeholder assignments across `scripts/`, `docs/`, `.github/` and `.env.example`;
+the template keeps every credential empty (`XSTARZ_EMAIL_API_KEY=`,
+`TWELVE_DATA_API_KEY=`, …) and describes development, not production
+(`XSTARZ_EMAIL_TRANSPORT=console`, `XSTARZ_DEPLOYMENT_ENV=development`); no stray
+`.env` file exists. Nothing needed redacting, and the historical leaked credential was
+not touched, altered or removed — it remains A1/A2's subject, in history, exactly as it
+was.
+
+### F. The operator checker (Phase G)
+
+```
+npm run config:verify -- --config prod.env          # dotenv-style file
+npm run config:verify -- --config prod.json --json  # machine-readable
+npm run config:verify -- --require-verified         # always NOT_VERIFIED
+npm run config:verify                               # reads the ambient environment
+```
+
+Exit codes: `0` configuration accepted, `1` refused, `2` could not evaluate (unreadable
+file, or the policy modules failed to load). Outcomes: `READY_FOR_CONFIGURATION`,
+`MISSING_REQUIRED_CONFIG`, `INVALID_CONFIG`, `WRONG_ENVIRONMENT`, `WRONG_IDENTITY`,
+`FORBIDDEN_FALLBACK`, `NOT_VERIFIED`. Refusal order is fixed, so the sentence an
+operator reads is the actionable one: target/environment → forbidden fallback → issuer
+→ missing → malformed → (only then) `requireVerified` ⇒ `NOT_VERIFIED`.
+
+`READY_FOR_CONFIGURATION` means the configuration would be accepted. It is **not** a
+verification of anything: the report always carries `productionVerified: false`,
+`senderVerified: false` and `deploymentVerified: false`, the printed report states
+`productionVerified: no` and closes by naming the release gate as the source of the
+verdict. The checker loads the real policy modules (through a `.ts` resolver, so the
+modules stay unmodified for the Convex bundler), deploys nothing, contacts no service,
+carries no process runner and never prints a credential value.
+
+### G. Regression coverage — 55 tests (Phase H)
+
+`production-config.phase243.test.ts` (36) covers the boundary: complete configuration
+accepted; missing and malformed refused; environment and identity separation; fixtures
+and placeholders refused; the email states; per-provider keys with no cross-satisfaction;
+secrets absent from diagnostics, report and JSON; determinism; and — the case that keeps
+this phase honest — a record whose only evidence is *documentation* leaves the Phase 241
+verdict at NOT READY while the same records from a verifying source are accepted.
+`operator-checker.phase243.test.ts` (12) runs the real script as a child process with a
+stripped environment: exit codes, JSON, the malformed-file overlay, ambient-environment
+independence and the "cannot connect, cannot deploy" assertions.
+`production-config-hygiene.phase243.test.ts` (7) is the secret guard.
+Two Phase 241 suites gained the assertions that make this phase's claims testable: the
+reader must agree with the documented verdict (derived, not hardcoded) and a
+configuration record is not verification.
+
+### H. Mutation results (`scripts/mutation-suite-phase243.sh`) (Phase I)
+
+Baseline green (three suites plus a 13-fixture operator probe), then **31 mutants:
+28 CAUGHT, 3 documented equivalents, 0 gaps, 0 INVALID**, 8 files restored byte-exact.
+
+The probe is the observable a suite cannot fake: the real checker is run against a
+fixture it must refuse, so a mutant that accepts one is caught even if every assertion
+still passes. Every expected-catch mutant was caught by the suites, by the probe, or by
+both — M27 (`process.exit(0)` whatever it found) is the clearest end-to-end catch.
+
+Documented equivalents, stated rather than hidden:
+
+* **M13** — console accepted *by the email policy alone*. Inert by design: the boundary's
+  own delivery rule refuses it anyway. Two independent layers, one observable.
+* **E1** — a diagnostic sentence reworded. Prose, no decision.
+* **E2** — the "no transport declared" diagnostic loses its production guard. It adds a
+  sentence to a development report; no decision changes.
+
+Mutations that remove the guard in *both* layers (M14, M17) are caught, which is what
+makes the equivalents honest rather than an excuse.
+
+### I. Quality gates (Phase K)
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` | exit 0 |
+| `npx vitest run` | 310 files, 10 331 passed, 12 skipped, 0 failed |
+| `npm run build` | exit 0 |
+| `npx eslint` (changed source files) | exit 0 |
+| `bash scripts/mutation-suite-phase243.sh` | 28 caught / 3 documented equivalents / 0 gaps / 0 INVALID |
+| `npm run release:gate-verify` (Phase 242 admission boundary) | exit 0 |
+| `npm run release:admission` | exit 1 (correct: this release is not admitted) |
+| `npm run release:report` | exit 0 |
+| Phase 241 release-gate suites | green, verdict still NOT READY |
+| Phase 221 documentation guard | green (no forbidden phrasing; the marker is unchanged) |
+| Phase 238 one-instant / Phase 239 runtime / hermeticity | green |
+
+Hermeticity: the boundary module imports no I/O module at all, the checker imports only
+`node:fs`, `node:module`, `node:path` and `node:url`, and the checker suite runs the
+script with `PATH` and `HOME` only, so nothing here can read or reach the machine's real
+production configuration. No existing security or release assertion was weakened: the
+only test edits are added assertions.
+
+### J. Exact commands for a future operator (no deployment)
+
+```bash
+# 1. Evaluate a configuration without deploying anything.
+npm run config:verify -- --config prod.json --json
+
+# 2. Read the outcome. Accepted means the configuration would be accepted:
+#    READY_FOR_CONFIGURATION is not a verification of anything.
+
+# 3. Ask what the release gate currently knows (Phase 241 evidence):
+npm run release:report
+
+# 4. Ask whether THIS release is admitted (Phase 242): expect exit 1 until the
+#    five prerequisites carry production evidence.
+npm run release:admission
+
+# 5. Before deploying anything, re-run the gate and the admission:
+npm run release:gate-verify && npm run release:admission && npm run config:verify
+```
+
+Deployment itself is out of scope for this phase and remains out of scope until the
+Phase 241 prerequisites are verified with production evidence. Nothing in the sequence
+above deploys, sends or provisions anything.
+
+### K. What this phase does not do
+
+No credential was revoked and no Git history was rewritten (A1 and A2 remain open and
+untouched); no Convex deployment was created; no production email transport was
+provisioned and no email was sent; no real provider credential was added and no live
+provider call was made; no production tag was created; `main` was not modified. The
+change is configuration policy, its checker and its proof.
+
+### L. The current verdict
+
+Configuration readiness is not evidence, and this phase adds none. The Phase 241
+verdict is unchanged — **NOT READY**, with five prerequisites UNVERIFIED (A1 OTP issuer
+revocation, A2 history rewrite, Convex production deployment, Evidence D production
+provider verification, production email transport) — and the Phase 242 admission still
+refuses this release. A complete, accepted configuration would change neither, which is
+exactly what the boundary and its mutation suite are built to prove.
