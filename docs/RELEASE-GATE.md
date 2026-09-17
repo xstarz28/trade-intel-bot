@@ -2976,3 +2976,26 @@ mutation script and this document.
   make the release boundary advisory.
 * It does not police the wording of this document beyond the one pinned marker and
   the Phase 221 naming rule.
+
+### K. CI on `2801ee2` — measured, both check-runs
+
+| Check | PR merge ref | Branch push |
+|---|---|---|
+| `Test · typecheck · build · lint` | **success**, 2 m 17 s | **success**, 1 m 41 s |
+| `Windows desktop package (Tauri)` | **success**, 5 m 13 s | **success** |
+| `Android debug APK` | **success**, 2 m 00 s | success |
+| `iOS project build (compile only)` | **success**, 1 m 00 s | success |
+| `Reachable-history secret scan` | failure — **by design** (A1) | failure — unchanged |
+| `Release admission` | not run — tags and dispatch only, by design | not run |
+
+Both Test runs carry the same 21 annotations as the Phase 235/238/239/240/241
+records, **none of them in `src/lib/deployment`**, and no test failure: the tree
+that is green locally (307 files / 10 276 passed) is green on the runner.
+
+The release workflow is absent from this matrix on purpose. It triggers on a
+version tag or a manual dispatch, and the candidate identity it feeds the
+admission is the tagged commit — so the honest record of "is this release
+admitted?" is not a green development run. It is the boundary refusing, which was
+measured locally with the exact commands CI runs (`release:gate-verify` exit 0,
+`release:report` exit 0, `release:admission` exit 1) and is what the `require`
+mode of the boundary spec asserts on every run of it.
