@@ -426,7 +426,7 @@ still at `51c9ddeb` (untouched, still exposed at tip).
 | ID | Blocker | Group | CODE-READY | DEV-VERIFIED | PROD-VERIFIED | Cleared only by |
 | --- | --- | --- | --- | --- | --- | --- |
 | A1 | Leaked Freebuff OTP credential revoked at issuer | Security | n/a | n/a | — | authenticated request with the **old** key → explicit **401/403** (000/timeout/200-elsewhere is not evidence) |
-| A2 | History rewrite across **all seven** refs | Security | rehearsed (Phase 221, 5 of 7 refs, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
+| A2 | History rewrite across **all eight** refs | Security | rehearsed (Phase 221, 5 of 8 refs, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
 | A3 | Zero secret occurrences after rewrite | Security | verifier + positive control | n/a | — | A2 |
 | B1 | Production Convex project + `CONVEX_DEPLOYMENT` / `CONVEX_DEPLOY_KEY` | Convex | preflight + access diag ready | dev project exists | **absent** | Convex account holder provisions a **separate prod deployment** (dev is never promoted) |
 | B2 | `CONVEX_SITE_URL` / `VITE_CONVEX_URL` (prod values) | Convex | URL checks in preflight | dev values only | absent | B1 |
@@ -453,7 +453,7 @@ still at `51c9ddeb` (untouched, still exposed at tip).
 ### Dependency graph
 
 ```
-A1 revoke ──► A2 rewrite (7 refs) ──► A3 zero occurrences ──┐
+A1 revoke ──► A2 rewrite (8 refs) ──► A3 zero occurrences ──┐
                                                             ├──► release
 B1 prod Convex ─► B2 URLs ─► B3 codegen ─► B4 env ─► B6 deploy ─► B5 prod auth ─┤
 C1 account ─► C2 domain ─► C3 DNS ────────────────────────────► C4 D1 (prod) ──┤
@@ -496,7 +496,7 @@ be substituted; the dev deployment is not to be promoted.
 | Phase 204 auth identity fix verified on dev | production sign-in works — prod has a different issuer URL, `SITE_URL`, and no email transport yet |
 | E1–E7 entitlement machine 7/7 on dev | a production deployment enforces it — prod has never been deployed |
 | D2/D3/D4/D6/D9/D10 PASS on dev | production Evidence D — every row was recorded `productionEvidence:false` |
-| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 7 refs |
+| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 8 refs |
 | CI build/package PASS on 3 platforms | release signing — every artifact is unsigned |
 | preflight passing on dev | production configuration — prod inputs are absent today |
 
@@ -541,11 +541,23 @@ credential, defeating A3 entirely. The runbook's ref tables and this gate now
 read seven; a rehearsal covering all seven is still required before A2 runs.
 Per-ref evidence: `docs/secret-remediation-refs.json`.
 
+**Phase 238 addition.** The remote now advertises **eight**: Phase 238 pushed
+`arena/01a0adfb-trade-intel-bot` and added it to both runbook tables and to the
+inventory in the same phase — the CI test job failed on the first push of that
+branch precisely because the guard reads the live ref set from the remote and
+the tables did not yet name it. Its row is derived rather than re-measured
+end-to-end (the generator refuses to run in a shallow clone): `exposedAtTip:
+false` was measured against that tip's own copy of `src/convex/auth/emailOtp.ts`
+using the same fingerprint rule, and its 269 occurrences are the parent ref's
+measurement, whose history it shares and whose single extra commit does not
+touch that path. Re-run `node scripts/secret-ref-inventory.mjs` in a full clone
+before executing §3.
+
 ### Release order — deterministic, not reorderable
 
 1. Revoke the old Freebuff OTP key at the issuer (A1).
 2. Capture the 401/403 rejection with the old key; record date/operator (A1).
-3. Run the rehearsed rewrite across **all seven** refs; force-push mirror (A2).
+3. Run the rehearsed rewrite across **all eight** refs; force-push mirror (A2).
 4. `node scripts/secret-rehearsal-verify.mjs --expect-clean` → exit 0; re-tag RC (A3).
 5. Provision a production Convex deployment; set deploy key, URLs (B1, B2).
 6. `npx convex codegen` against production; commit only if drift (B3).

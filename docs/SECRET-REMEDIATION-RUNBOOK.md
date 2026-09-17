@@ -52,9 +52,19 @@ Two facts per ref, and they are **not** interchangeable:
 | `refs/heads/arena/01a0a5f5-trade-intel-bot` | **clean** | 269 |
 | `refs/heads/arena/01a0a92b-trade-intel-bot` | **clean** | 269 |
 | `refs/heads/arena/01a0ad26-trade-intel-bot` | **clean** | 269 |
+| `refs/heads/arena/01a0adfb-trade-intel-bot` | **clean** | 269 |
 | `refs/heads/main` | **EXPOSED AT TIP** | 261 |
 | `refs/heads/phase-157-live-discovery-lifecycle` | **EXPOSED AT TIP** | 262 |
 | `refs/tags/rc-181` | **clean** | 269 |
+
+Phase 238 note: the eighth ref (`01a0adfb`) was pushed during that phase and
+added to this table in the same phase. Its row is **derived, not re-measured
+end-to-end**: `scripts/secret-ref-inventory.mjs` refuses to run in a shallow
+clone, so `exposedAtTip: false` was measured directly against that tip's own
+copy of `src/convex/auth/emailOtp.ts` with the same fingerprint rule, and its
+269 occurrences are the parent ref's measurement — the phase's single commit
+does not touch that path. Re-run the generator in a full clone before executing
+§3, and treat its output as authoritative over any hand-edited row.
 
 Phase 233 correction: this table listed only four refs. The three branches
 created since Phase 198 (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were absent, as
@@ -72,7 +82,7 @@ Three consequences follow, and they matter more than the history question:
    blocker.
 2. The working branches are clean at HEAD — the credential was removed from
    current source in an earlier phase — but **removal from HEAD is not
-   remediation.** All seven refs still carry it in reachable history.
+   remediation.** All eight refs still carry it in reachable history.
 3. **Every ref is affected.** There is no unaffected ref to leave out of the
    rewrite, and no ref may be treated as safe because its tip is clean.
 
@@ -159,11 +169,12 @@ git push --force --mirror https://github.com/xstarz28/trade-intel-bot.git
 
 ### Refs the force-push will rewrite
 
-**All seven** — every ref the remote advertises, per
+**All eight** — every ref the remote advertises, per
 `docs/secret-remediation-refs.json`. Phase 233 corrected this table twice
 over: Phase 198 listed four refs, Phase 221 added a fifth, and three branches
 created since then (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were never added at
-all despite each carrying 269 carrier commits. None may be skipped — a single
+all despite each carrying 269 carrier commits. Phase 238 added the eighth
+(`01a0adfb`) in the phase that pushed it. None may be skipped — a single
 surviving ref keeps the blob reachable and undoes the entire exercise.
 
 Re-run `node scripts/secret-ref-inventory.mjs` before executing. That
@@ -177,6 +188,7 @@ any ref it reports that is absent from this table must be added first.
 | `heads/arena/01a0a5f5-trade-intel-bot` | `920486c5` | `a2243f0` |
 | `heads/arena/01a0a92b-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
 | `heads/arena/01a0ad26-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
+| `heads/arena/01a0adfb-trade-intel-bot` | *added Phase 238* | *not rehearsed* |
 | `heads/main` | `51c9ddeb` | `b1a9e91` |
 | `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f58` |
 | `tags/rc-181` | `66323a38` | `23d25ff` |
@@ -186,7 +198,7 @@ author/date/subject and parent topology identical, working-branch tree
 byte-identical, verifier `--expect-clean` exit 0 with positive control. That
 rehearsal covered only the five refs known at the time. The two branches added
 above were **not** part of it, so their post-rewrite SHAs are deliberately left
-blank rather than guessed — a re-rehearsal covering all seven is required
+blank rather than guessed — a re-rehearsal covering all eight is required
 before execution.
 
 Tips also move: `heads/arena/01a0a5f5-trade-intel-bot` has advanced from
@@ -200,12 +212,13 @@ Real repository and remote untouched. Status remains **BLOCKED on §2**.
 
 ## 4. Assertions
 
-**Scope caveat (Phase 233).** Every assertion below records the Phase 198 and
-Phase 221 rehearsals, which covered the four and five refs known at those
-times. They remain an accurate record of what was rehearsed, but they are
-**not** evidence about the two branches added in Phase 233
-(`01a0a92b`, `01a0ad26`), which have never been through a rehearsal. Re-run the
-procedure on a mirror against all seven refs before executing for real.
+**Scope caveat (Phase 233, extended Phase 238).** Every assertion below records
+the Phase 198 and Phase 221 rehearsals, which covered the four and five refs
+known at those times. They remain an accurate record of what was rehearsed, but
+they are **not** evidence about the three branches added since
+(`01a0a92b`, `01a0ad26`, `01a0adfb`), which have never been through a
+rehearsal. Re-run the procedure on a mirror against all eight refs before
+executing for real.
 
 ### Pre-rewrite
 
