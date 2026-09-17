@@ -2039,3 +2039,38 @@ step is advisory (`continue-on-error: true`), so these do not fail a run.
   credential, no A2 history rewrite. **Evidence D remains INCOMPLETE**, A1 (the
   unrevoked credential) and A2 are unchanged, and the release verdict is
   unchanged: **NOT READY**.
+
+### H. CI on `8b397fb` — measured, both check-runs
+
+| Job | Phase 237 tip `7564f13` | `bbf73ee` (first push) | `8b397fb` |
+|---|---|---|---|
+| `Test · typecheck · build · lint` | failure (phase229 `:321` race) | failure (ref inventory, see below) | **success**, 2 m 11 s |
+| `Windows desktop package (Tauri)` | failure | success | **success** |
+| `Android debug APK` | success | success | **success**, 1 m 44 s |
+| `iOS project build (compile only)` | success | success | **success**, 1 m 24 s |
+| `Reachable-history secret scan` | failure (by design, A1) | failure — unchanged | failure — unchanged |
+
+This is the run that counts. The defect is a race: a fast sandbox hides it and a
+loaded runner exposes it, so a local green is not evidence. The same suite that
+failed `alphavantage-legs.phase229.test.ts:321` on the Phase 237 tip now runs
+green there, and the job carries **no test failure** — its 21 annotations are
+the advisory eslint step's pre-existing findings (`Unexpected any` in
+`crypto-intelligence.phase41`, `analytical-context.phase55/56`, unnecessary
+escapes in `liveProtection.ts`, the conditional hook in
+`IntelligenceDashboard.tsx`), the same set the Phase 235 record lists, plus the
+Node 20 deprecation warning. Both check-runs — push and pull-request merge ref —
+concluded success.
+
+The first push, `bbf73ee`, was red — not on anything the phase changed but on
+the ref-inventory guard, which reads the live ref set from the remote: pushing
+`arena/01a0adfb-trade-intel-bot` made it an unaccounted-for ref
+(`exposure table is missing live ref …`, `the rewrite section says it covers 7
+ref(s) but the remote advertises 8`). That is the guard doing its job — a ref
+absent from the rewrite map survives the A2 rewrite — so the branch head was
+added to both runbook tables and to `docs/secret-remediation-refs.json`, with
+the derivation of its row stated in the docs rather than assumed.
+
+**Windows, recorded honestly.** That job failed on the Phase 237 tip and
+succeeded on both commits of this branch. This phase touches no packaging input,
+so the change is **not attributable to it**; it is either a flake or a runner
+cache state. It is written down as an observation, not as a fix.
