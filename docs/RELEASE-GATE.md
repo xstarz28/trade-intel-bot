@@ -2442,3 +2442,239 @@ payload timestamp was altered.
 Both Test runs carry the same 21 eslint-advisory annotations as the Phase
 235/238/239 records and **no test failure**: the suite that is green locally
 (302 files / 10 183 passed) is green on the runner too.
+
+## Phase 241 — release gate integrity: fail-closed readiness
+
+This phase does **not** make the release READY and does not attempt to. It makes
+the opposite mistake impossible: the software must not be able to declare READY
+while any mandatory prerequisite is still outstanding. The five blockers below
+were true before this phase and they are true after it — what changed is that a
+release verdict is now a *computed* value with an auditable reason trail, instead
+of a claim a human makes in prose.
+
+<!-- release-verdict: NOT READY -->
+<!-- The marker above is read by src/lib/deployment/release-current-state.phase241.test.ts.
+     It is compared against the verdict derived from this tree, so this document
+     cannot drift from the gate it describes. Flipping it to READY fails the suite. -->
+
+### A. What existed before (measured, not assumed)
+
+The audit that opened the phase looked for a runtime helper that decides whether
+the release may ship, and found none. What existed was:
+
+| Layer | Mechanism | Can it say READY wrongly? |
+|---|---|---|
+| `docs/RELEASE-GATE.md` | hand-written phase sections | yes — prose has no semantics |
+| `src/lib/deployment/*.phase*.test.ts` | one guard per phase, per concern | no, but nothing aggregates them |
+| CI | green workflow on the branch | yes — a green CI run says nothing about A1/A2 at all |
+| `docs/UAT-MATRIX.md` | `DEV_VERIFIED — NOT PRODUCTION EVIDENCE` labels | no, but only for the rows it lists |
+
+So every individual guard was honest and the *aggregate* was not: a reader could
+take "the suite is green, CI is green, the docs are complete" and conclude READY.
+This phase closes that reading. `evaluateRelease()` in
+`src/lib/deployment/release-gate.ts` is now the only thing that issues a verdict,
+and it can only issue one by finding explicit, admissible, bound evidence.
+
+### B. The invariant
+
+> **READY if and only if every mandatory prerequisite is explicitly `VERIFIED`.**
+
+Five states exist, and exactly one of them satisfies a mandatory prerequisite:
+
+| State | Meaning | Satisfies a mandatory prerequisite? |
+|---|---|---|
+| `VERIFIED` | explicit, admissible, fresh, correctly bound evidence | **yes, and this is the only one** |
+| `UNVERIFIED` | no usable evidence, or evidence that was refused | no |
+| `BLOCKED` | a refusal, a conflict, or an unrecognised claim | no |
+| `STALE` | evidence exists but is outside its freshness window | no |
+| `CONTRADICTORY` | valid evidence *and* a blocker for the same prerequisite | no |
+
+`BLOCKED` is not `SKIPPED`, not `UNKNOWN`, not `DOCUMENTED`, not `CI-GREEN`, not
+`LOCAL-SUCCESS`, and not `PASS`. There is no code path that maps any of those to
+`VERIFIED`; the mutation suite exists to prove that.
+
+### C. The decision graph
+
+Implemented order inside `evaluateRelease(input, { prerequisites, now })`. The
+order is part of the contract, because the *first* applicable rule decides what an
+operator is told to fix:
+
+1. **Manifest validity** — an empty or malformed manifest is refused outright
+   (`evaluationError`), never treated as "nothing to check".
+2. **Record admission**, per record, in this order:
+   malformed status or non-finite `observedAt` → future-dated `observedAt` →
+   outside `maxAgeMs` (stale) → non-verifying `source` (`fixture`,
+   `documentation`, `ci-run`, `local-run` wording is refused) → wrong
+   `environment` → subject binding (wrong commit/ref/deployment/provider set) →
+   the binding itself.
+3. **Unrecognised claims** — a `VERIFIED` record for a prerequisite that is not in
+   the manifest becomes a blocker; it is never silently dropped.
+4. **Exemptions** — an exemption for a mandatory prerequisite, for an unrecognised
+   id, or without a stated reason is refused, and the refusal itself blocks.
+5. **Contradiction** — a prerequisite with both usable evidence and a blocker is
+   `CONTRADICTORY`. This check runs *before* any preference is applied, so a pass
+   can never out-vote a conflict.
+6. **Aggregate** — READY iff all mandatory prerequisites are `VERIFIED`. Anything
+   else is NOT READY, with a per-prerequisite reason list.
+
+`evaluateRelease` never throws. An internal failure is caught and returned as
+`evaluationError` with verdict NOT READY — the failure mode is "cannot conclude",
+never "conclude fine".
+
+### D. The manifest — five mandatory prerequisites
+
+| Id | Freshness | Binding | Exemptible |
+|---|---|---|---|
+| `A1_OTP_ISSUER_REVOCATION` | none (attestation is permanent) | — | no |
+| `A2_HISTORY_REWRITE` | 30 days | affected-ref set | no |
+| `CONVEX_PRODUCTION_DEPLOYMENT` | 7 days | deployment id | no |
+| `PRODUCTION_EMAIL_TRANSPORT` | 7 days | — | no |
+| `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` | 7 days | provider set | no |
+
+Only `source: "external-verification"` with `environment: "production"` can
+verify. A local run, a fixture, a CI run, and a document each have their own
+admissible purpose, and that purpose is never "prove a production fact".
+
+### E. A1 and A2 specifically
+
+- A1 (OTP issuer revocation): a missing, stale, or self-contradictory revocation
+  attestation is NOT READY. The phase does not contact the issuer.
+- A2 (history rewrite): the check is bound to the **affected-ref set** read from
+  `docs/secret-remediation-refs.json`. If that inventory cannot be read, the set
+  is *unknown*, and "unknown" is refused — it is never treated as an empty set
+  that vacuously passes. A map that is present but not evidenced is not proof. A
+  rewrite that covered one ref when eight are affected is not proof. A partially
+  rewritten history is not proof.
+- Number of refs is read from the tree at evaluation time; it is not hardcoded.
+- No Git history was mutated, and no ref was rewritten, to produce any result in
+  this section.
+
+### F. Convex, email, and Evidence D
+
+- **Convex**: configuration present is not deployment. Deployment is bound to a
+  deployment id; "the config exists", "it built locally", and "it works in dev"
+  are each refused as substitutes.
+- **Email**: a configured sender is not a verified sender. The env being
+  documented is not the env being present at runtime; a console transport and a
+  non-production issuer are refused. `readEmailDeliveryConfig()` already forbids
+  the console transport in production; the gate refuses it as *evidence* as well.
+- **Evidence D**: the provider set is bound to the required set from
+  `getAllProviders()`. One provider's green run cannot stand for the required set,
+  and a timeout is not a pass. Fixture-vs-production and historical-vs-live are
+  both refusals, not judgement calls.
+
+### G. Contradiction, freshness, and determinism
+
+- Contradiction is checked before preference (step 5 above) and covered by test.
+- Freshness uses an injected `now`; every test supplies a synthetic instant
+  (`NOW = 1_800_000_000_000`). There is no wall-clock race anywhere in this
+  phase, and no test becomes flaky as the clock advances.
+- A future-dated `observedAt` is refused rather than trusted: clock skew on the
+  proving side must not extend a window.
+- Duplicate conflicting records for one prerequisite produce `CONTRADICTORY`, not
+  last-writer-wins.
+- Malformed JSON is reported at both layers: the reader says the file exists but
+  is not valid JSON, and the gate says the observation time is not usable. Both
+  are asserted, because "present" and "usable" are different facts.
+
+### H. Regression coverage — 45 tests
+
+| Suite | Tests | Covers |
+|---|---|---|
+| `release-gate-failclosed.phase241.test.ts` | 35 | Phase G points 1–19: every state, refusal, binding, exemption, contradiction, freshness, and exception path |
+| `release-current-state.phase241.test.ts` | 10 | the reader: real proof paths, refused promotions, and the derived current verdict |
+
+Two tests carry unusual weight:
+
+- **#20** derives the expected blocker list from the facts rather than hardcoding
+  it: it asserts that every mandatory prerequisite without a filed proof appears as
+  a blocker, so the assertion stays true when the tree changes in either
+  direction.
+- **#20b2** reads the `release-verdict` marker from this document and compares it
+  with the verdict computed from the tree. The documented verdict cannot drift
+  from the computed one — flipping the marker to READY was measured to fail the
+  suite.
+
+### I. Mutation results (`scripts/mutation-suite-phase241.sh`)
+
+29 mutants, each anchored to a unique code site with a byte-exact
+`.p241bak`/`cmp`/trap restore. Baseline must be green before any verdict counts.
+
+| Result | Count | Detail |
+|---|---|---|
+| CAUGHT | **29** | every mutant changed observable behaviour and the suites noticed |
+| gaps | 0 | — |
+| INVALID anchors | 0 (after repair) | M9/M10 anchors were stale on the first run and were repaired to unique single-line anchors; no test was changed to make them apply |
+| equivalent mutants | 0 | — |
+
+The first run found two real gaps, and both were closed by **adding tests**, never
+by softening a mutant:
+
+- **M21 — an unknown provider set treated as an empty set** survived, because every
+  existing test supplied a provider set. Closed by test 10a, which passes an empty
+  required set and asserts the gate refuses it with "required provider set is
+  unknown".
+- **M28 — the reader ignoring a proof file's own `verified` flag** survived,
+  because every other fixture declared `verified: true`. Closed by a reader test
+  using A1 (which carries no subject binding, so only the claim itself stands
+  between the file and a pass) with `verified: false`; the mutant was then
+  re-applied alone and measured to fail the suite.
+
+Mutants cover: deleting the A1/A2 blockers; ANY-pass aggregation; inverting the
+VERIFIED test; mandatory-flag flips; unbound deployment and provider set;
+BLOCKED/UNKNOWN/STALE/CONTRADICTORY mapped to VERIFIED; missing evidence defaulting
+to VERIFIED; fixture, documentation, and CI accepted as production proof;
+wrong-commit evidence accepted; freshness and future-dating disabled; unknown
+ref-set bypass; unrecognised VERIFIED accepted; exemption waiving a mandatory
+prerequisite; exception returning READY; empty manifest accepted; the reader
+accepting any source or environment or ignoring `verified`; and the current verdict
+bypassing the real evaluation.
+
+### J. Verification on this tree and the current verdict
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` | exit 0 |
+| `npx vitest run` (full) | **304 files / 10 228 passed / 12 skipped / 0 failed** |
+| `npm run build` | exit 0 |
+| `npx eslint` on the four changed files | clean |
+| `src/lib/deployment` | 16 files / **497 passed** |
+| Phase 238 one-instant (lib + convex) | 2 files / 37 passed |
+| Phase 238 mutation suite | 27 caught / 0 gaps |
+| Phase 239 runtime + error boundary | 4 files / 63 passed |
+| Hermeticity suites | 3 files / 34 passed |
+| Phase 241 mutation suite | 29 caught / 0 gaps |
+
+No existing security or release assertion was weakened to obtain any of these
+results.
+
+**Computed verdict, from the tree as it stands:**
+
+```
+VERDICT: NOT READY
+  A1_OTP_ISSUER_REVOCATION                     UNVERIFIED  mandatory  "no evidence was supplied"
+  A2_HISTORY_REWRITE                           UNVERIFIED  mandatory  "no evidence was supplied"
+  CONVEX_PRODUCTION_DEPLOYMENT                 UNVERIFIED  mandatory  "no evidence was supplied"
+  EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION  UNVERIFIED  mandatory  "no evidence was supplied"
+  PRODUCTION_EMAIL_TRANSPORT                   UNVERIFIED  mandatory  "no evidence was supplied"
+```
+
+The four listed blockers plus the ordering are produced by evaluating
+`docs/remediation/*.json` (none of which exist yet) plus the ref inventory. No
+blocker was hardcoded; the list is the *absence* of admissible evidence, and it
+will shorten by itself the moment real evidence is filed.
+
+**Confirmed: no A1/A2 remediation was executed.** The OTP issuer was not
+contacted, the eight affected Git refs were not rewritten, Convex was not
+deployed, no production email transport was provisioned, and no production
+provider credential was added or changed. Phase 241 changed code, tests, a
+mutation script, and this document — nothing external.
+
+### What Phase 241 does not do
+
+- It does not make the release READY, and it does not shorten the blocker list.
+- It does not remediate A1 or A2, and it does not make remediation easier to fake:
+  the proof file format is deliberately narrow.
+- It does not replace the per-phase guards; it aggregates them and refuses to
+  accept their greenness as a verdict.
+- It does not police the wording of this document beyond the verdict marker.
