@@ -18,6 +18,9 @@ const root = process.cwd();
 const runbook = readFileSync(join(root, "docs/DEV-EVIDENCE-OPERATOR-RUNBOOK.md"), "utf8");
 const harness = readFileSync(join(root, "scripts/evidence-d-harness.mjs"), "utf8");
 const schema = readFileSync(join(root, "scripts/lib/evidence-report.mjs"), "utf8");
+// Phase 235: the transport refusal message moved into the shared probe contract,
+// because the same wording has to be reachable from fixtures as from a live run.
+const probe = readFileSync(join(root, "scripts/lib/evidence-d-probe.mjs"), "utf8");
 const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
   scripts: Record<string, string>;
 };
@@ -252,7 +255,12 @@ describe("Phase 210 — troubleshooting covers the failures this setup can actua
     expect(runbook).toMatch(/No deployment is configured/);
     expect(harness).toMatch(/No deployment is configured/);
     expect(runbook).toMatch(/transport failure/);
-    expect(harness).toMatch(/This is a transport failure/);
+    // The wording is asserted where it is emitted, and the harness is asserted
+    // to route its transport refusal through that single source. Grepping the
+    // harness for a message it no longer owns would have passed while the
+    // refusal was silently bypassed — this cannot.
+    expect(probe).toMatch(/This is a transport failure/);
+    expect(harness).toMatch(/probeRefusalReason\(/);
     expect(runbook).toMatch(/Deployment mismatch/);
     expect(harness).toMatch(/Deployment mismatch/);
   });

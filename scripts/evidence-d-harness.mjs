@@ -51,6 +51,8 @@ import { resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { buildReport, renderHumanReport } from "./lib/evidence-report.mjs";
 
+import { classifyProbeResult, probeRefusalReason } from "./lib/evidence-d-probe.mjs";
+
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
 const autoEnv = args.includes("--auto-env");
@@ -80,7 +82,14 @@ const providedOtp = args.includes("--otp") ? flag("--otp") : null;
 const authMode = (flag("--auth") ?? "otp").toLowerCase();
 const envFileFlag = flag("--env-file");
 
-const TIMEOUT_MS = 60_000;
+/**
+ * Phase 235 — `--timeout <seconds>` bounds every probe, defaulting to the
+ * original 60s. Guard tests use it so a single unreachable host cannot consume
+ * a minute of test time; the default is unchanged for real runs.
+ */
+const timeoutSeconds = Number(flag("--timeout") ?? 60);
+const TIMEOUT_MS =
+  Number.isFinite(timeoutSeconds) && timeoutSeconds > 0 ? timeoutSeconds * 1000 : 60_000;
 const STARTED_AT = Date.now();
 
 /** The ten observations, defined once so a refusal still reports all of them. */
@@ -472,23 +481,35 @@ async function readEntitlement(token) {
 async function run() {
   /* --- D3 first: needs no session, and proves the deployment answers. --- */
   const unauth = await action("protectedAnalysis:runProtectedAnalysis", analysisInput());
-  if (unauth.httpStatus === 0) {
-    refuse(
-      `The deployment did not answer (${unauth.transportError}). This is a transport failure, ` +
-        "not an authentication or authorisation result. Check connectivity before " +
-        "attributing anything to the application.",
-      { deployment: parsed.hostname, environment: DEPLOYMENT_ENVIRONMENT },
-    );
+  /*
+   * Phase 235: the reachability/auth decision is a pure function of the probe
+   * result (scripts/lib/evidence-d-probe.mjs), so it is testable without a
+   * network. The flow is unchanged — a transport failure refuses, and D3 passes
+   * only on a genuine unauthenticated answer — but the rule now lives in one
+   * place with an explicit contract instead of inline in the run.
+   */
+  const unauthClass = classifyProbeResult({
+    httpStatus: unauth.httpStatus,
+    transportError: unauth.transportError,
+    appStatus: unauth.value?.status,
+  });
+  if (unauthClass.state === "TRANSPORT_BLOCKED") {
+    refuse(probeRefusalReason(unauthClass, parsed.hostname), {
+      deployment: parsed.hostname,
+      environment: DEPLOYMENT_ENVIRONMENT,
+    });
   }
   const unauthStatus = unauth.value?.status;
   record(
     "D3",
-    unauthStatus === "UNAUTHENTICATED" || unauth.httpStatus === 401 ? "PASS" : "FAIL",
+    unauthClass.state === "UNAUTHENTICATED" ? "PASS" : "FAIL",
     `deployment answered HTTP ${unauth.httpStatus}; application status=${unauthStatus ?? "n/a"}` +
-      (unauthStatus === "UNAUTHENTICATED" ? " (no engine run, no payload)" : ""),
+      (unauthStatus === "UNAUTHENTICATED" ? " (no engine run, no payload)" : "") +
+      (unauthClass.state === "SERVICE_UNAVAILABLE" ? ` [${unauthClass.detail}]` : ""),
     {
       httpStatus: unauth.httpStatus,
       appStatus: unauthStatus,
+      resultClass: unauthClass.state,
       resultWithheld: unauth.value?.result === null,
     },
   );
