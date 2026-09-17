@@ -2428,3 +2428,17 @@ executed (now covering 8 refs), Convex has never been deployed, and no productio
 provider verification has been performed — **NOT READY**. No provider credential
 was added, no live external call was introduced into a test, and no provider
 payload timestamp was altered.
+
+### I. CI on `3685982` — measured, both check-runs
+
+| Job | Push ref | Pull-request merge ref |
+|---|---|---|
+| `Test · typecheck · build · lint` | **success**, 2 m 07 s | **success**, 2 m 22 s |
+| `Windows desktop package (Tauri)` | **success** | success |
+| `Android debug APK` | **success** | success |
+| `iOS project build (compile only)` | **success** | success |
+| `Reachable-history secret scan` | failure — **by design** (A1) | failure — unchanged |
+
+Both Test runs carry the same 21 eslint-advisory annotations as the Phase
+235/238/239 records and **no test failure**: the suite that is green locally
+(302 files / 10 183 passed) is green on the runner too.
