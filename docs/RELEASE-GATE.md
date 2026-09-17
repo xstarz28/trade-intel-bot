@@ -3278,3 +3278,28 @@ revocation, A2 history rewrite, Convex production deployment, Evidence D product
 provider verification, production email transport) — and the Phase 242 admission still
 refuses this release. A complete, accepted configuration would change neither, which is
 exactly what the boundary and its mutation suite are built to prove.
+
+### M. CI on `17fa41f` — measured, both check-runs
+
+| Check | Push run | Pull-request merge ref |
+|---|---|---|
+| `Test · typecheck · build · lint` | **success**, 1 m 31 s | **success**, 2 m 23 s |
+| `Windows desktop package (Tauri)` | **success**, 4 m 31 s | **success**, 5 m 8 s |
+| `Android debug APK` | **success**, 2 m 10 s | **success**, 2 m 21 s |
+| `iOS project build (compile only)` | **success**, 1 m 6 s | **success**, 1 m 49 s |
+| `Reachable-history secret scan` | failure — by design (A1) | failure — by design (A1) |
+
+Both `Test` runs carry the same 21 annotations as the Phase 235/238/239/240/241/242
+records — the pre-existing advisory set (`any` in the analytical-context and
+crypto-intelligence suites, escapes in `src/convex/liveProtection.ts`, a conditional
+hook in `IntelligenceDashboard.tsx`) — and **none of them is in a file this phase
+touched**. The tree that is green locally (310 files / 10 331 passed) is green on the
+runner.
+
+One phase-241 regression was found here and is worth recording, because it is the
+same class of error this phase is about: the first version of the §Phase 241 prose used
+the construction the Phase 221 documentation guard forbids, and CI failed on
+`release-gate-consistency.phase221.test.ts`. The guard was right — it is not
+negotiable to weaken it — and the sentence was rewritten. The lesson is recorded
+because the guard's purpose is exactly to stop a release decision from being softened
+in prose, which is a failure mode a human reader cannot be trusted to catch.
