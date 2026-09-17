@@ -86,7 +86,28 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      # Phase 236 — do NOT let this action install its default package set.
+      #
+      # The action's default is `packages: 'tools platform-tools'`. On
+      # 2026-09-15 Google stopped serving the legacy `tools` package, so
+      # `sdkmanager tools` exits 1 and the action dies in ~9 seconds — before any
+      # build step runs. That is the entire Android failure: the
+      # `android-actions/setup-android@v3` step red, steps 6-10 skipped, first
+      # red job 2026-09-15T12:37Z after a green one at 2026-09-14T14:01Z, with no
+      # change to this file, to android/ or to package.json in between.
+      # Upstream: android-actions/setup-android#537, which reports
+      # `Failed to find package 'tools'` against this exact action commit
+      # (9fc6c4e, the tip of the `v3` tag) — and note that v4 has the same
+      # default, so upgrading would not fix it.
+      #
+      # platform-tools is the component this job actually needs: the
+      # ubuntu-latest image already ships platforms;android-35 and build-tools
+      # 35.x, which is what compileSdk 35 (android/variables.gradle) compiles
+      # against, and the default `accept-android-sdk-licenses` keeps Gradle able
+      # to fetch anything else it may need.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
