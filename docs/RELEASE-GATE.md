@@ -2445,7 +2445,7 @@ Both Test runs carry the same 21 eslint-advisory annotations as the Phase
 
 ## Phase 241 — release gate integrity: fail-closed readiness
 
-This phase does **not** make the release READY and does not attempt to. It makes
+This phase does **not** declare the release shippable and does not attempt to. It makes
 the opposite mistake impossible: the software must not be able to declare READY
 while any mandatory prerequisite is still outstanding. The five blockers below
 were true before this phase and they are true after it — what changed is that a
@@ -2672,7 +2672,7 @@ mutation script, and this document — nothing external.
 
 ### What Phase 241 does not do
 
-- It does not make the release READY, and it does not shorten the blocker list.
+- It does not declare the release shippable, and it does not shorten the blocker list.
 - It does not remediate A1 or A2, and it does not make remediation easier to fake:
   the proof file format is deliberately narrow.
 - It does not replace the per-phase guards; it aggregates them and refuses to
