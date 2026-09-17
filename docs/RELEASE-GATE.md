@@ -1391,3 +1391,94 @@ silently no-op them, and each is byte-verified as applied or reported INVALID.
 A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on
 A1 and now known to require **seven** refs and a fresh rehearsal; production
 email transport/sender/required vars absent; Evidence D INCOMPLETE.
+
+---
+
+## Phase 234 — the Convex access verdict contract
+
+### A. The defect
+`handoff-readiness.phase200.test.ts` ran the live `verify-convex-access.mjs`
+probe and asserted ONE machine's outcome: exit 2, `NOT_REACHABLE`, and a
+`blockedAt` in dns/tcp/tls/http. That is a statement about the runner, not the
+program. In the sandbox egress is blocked so it held; on a networked CI runner
+the same probe legitimately reaches `api.convex.dev` and reports
+`CREDENTIALS_REJECTED` / `blockedAt: auth` (or `UNAUTHENTICATED` when no key is
+set), and the test failed:
+
+| Line | CI failure |
+|---|---|
+| `handoff-readiness.phase200.test.ts:96` | `expected 'CREDENTIALS_REJECTED' to be 'NOT_REACHABLE'` |
+| `handoff-readiness.phase200.test.ts:84` | `expected ['dns','tcp','tls','http'] to include 'auth'` |
+
+Same shape as the phase75 failure: a green local suite proved nothing, because
+sandboxed egress was load-bearing.
+
+### B. The property, stated once
+> Network reachability must never be reported as authentication evidence, and no
+> authentication verdict may be emitted unless the control plane was actually
+> reached and answered.
+
+Both directions matter. A blocked network claimed as auth evidence makes a dead
+sandbox look like a rejected (or revoked) key. The reverse — a refused
+credential reported as merely unreachable — sends an operator hunting for an
+allowlist entry that was never the problem.
+
+### C. What changed
+The classification moved out of the probe into
+`scripts/lib/convex-access-verdict.mjs` (typed via `.d.mts`), leaving
+`verify-convex-access.mjs` to do the I/O and delegate. The probe's observable
+output is unchanged; its inline verdict chain is gone (37 insertions, 84
+deletions).
+
+`isAuthEvidence` is now DERIVED from the state, so it cannot be set by a
+branch. `validateVerdict()` checks every invariant, and `primaryHost` is
+exposed in the JSON so consumers can check per-layer invariants without
+hardcoding which host is probed first.
+
+**One state was added: `AUTH_INDETERMINATE`.** Previously a transport failure or
+a 5xx on the authenticated request fell into `UNAUTHENTICATED`, whose text reads
+"no usable credential was presented" — a claim about the credential that the
+observation did not support. `AUTH_INDETERMINATE` says the plane was reached
+but no verdict came back, and explicitly draws no conclusion. This is a
+fail-closed addition, not a weakening: exit 1, `isAuthEvidence: false`.
+
+### D. Verdict contract
+| State | Reached? | blockedAt | isAuthEvidence | Exit |
+|---|---|---|---|---|
+| `NOT_REACHABLE` | no | dns/tcp/tls/http/unknown | false | 2 |
+| `AUTH_INDETERMINATE` | yes | auth | false | 1 |
+| `UNAUTHENTICATED` | yes | auth | false | 1 |
+| `CREDENTIALS_REJECTED` | **yes** | auth | **true** | 1 |
+| `CONTROL_PLANE_ONLY` | yes | deployment-plane | true | 1 |
+| `AUTHENTICATED` | yes | null | true | 0 |
+
+`isRevocationEvidence` is always false — this probe cannot observe revocation.
+
+### E. Proof
+`convex-access-verdict.phase234.test.ts` drives all eight required outcomes
+from fixtures — DNS/TCP/TLS/HTTP blocked, reached+rejected, reached+auth
+failure, transport error, 5xx, and malformed input — because four of them
+cannot be produced on a given machine and which one appears is an accident of
+egress policy. It asserts the properties over the whole input space
+(`reachable` × every auth state × deployment-plane), not on samples.
+
+**Environment-independence was verified empirically, not assumed.** Two
+coherent simulations of a networked runner were applied to the probe and the
+phase200 suite run against each:
+
+| Simulated outcome | phase200 |
+|---|---|
+| reached, auth request dies in transport (`UNAUTHENTICATED` / `blockedAt: auth`) | **passes** |
+| reached, key refused (`CREDENTIALS_REJECTED` / `blockedAt: auth`) — the exact CI state | **passes** |
+| real sandbox (`NOT_REACHABLE` / `blockedAt: tls`) | **passes** |
+
+A first, incoherent simulation (forced `reachable` while TLS genuinely failed)
+was *rejected by the new assertions* — the suite detects a report that could
+not physically have happened.
+
+`scripts/mutation-suite-phase234.sh`: **15/15 CAUGHT, 0 gaps**, including both
+directions of the central mistake, omitted auth/network stages, a swallowed
+probe exception, hardcoded success and failure, an unknown result falling
+through to success, neutered validation, and the contract being forked back
+into the probe. An unapplied mutant now counts as a failure, so the suite
+cannot silently under-report.
