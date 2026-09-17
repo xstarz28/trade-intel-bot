@@ -426,7 +426,7 @@ still at `51c9ddeb` (untouched, still exposed at tip).
 | ID | Blocker | Group | CODE-READY | DEV-VERIFIED | PROD-VERIFIED | Cleared only by |
 | --- | --- | --- | --- | --- | --- | --- |
 | A1 | Leaked Freebuff OTP credential revoked at issuer | Security | n/a | n/a | — | authenticated request with the **old** key → explicit **401/403** (000/timeout/200-elsewhere is not evidence) |
-| A2 | History rewrite across **all five** refs | Security | rehearsed (Phase 221, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
+| A2 | History rewrite across **all seven** refs | Security | rehearsed (Phase 221, 5 of 7 refs, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
 | A3 | Zero secret occurrences after rewrite | Security | verifier + positive control | n/a | — | A2 |
 | B1 | Production Convex project + `CONVEX_DEPLOYMENT` / `CONVEX_DEPLOY_KEY` | Convex | preflight + access diag ready | dev project exists | **absent** | Convex account holder provisions a **separate prod deployment** (dev is never promoted) |
 | B2 | `CONVEX_SITE_URL` / `VITE_CONVEX_URL` (prod values) | Convex | URL checks in preflight | dev values only | absent | B1 |
@@ -453,7 +453,7 @@ still at `51c9ddeb` (untouched, still exposed at tip).
 ### Dependency graph
 
 ```
-A1 revoke ──► A2 rewrite (5 refs) ──► A3 zero occurrences ──┐
+A1 revoke ──► A2 rewrite (7 refs) ──► A3 zero occurrences ──┐
                                                             ├──► release
 B1 prod Convex ─► B2 URLs ─► B3 codegen ─► B4 env ─► B6 deploy ─► B5 prod auth ─┤
 C1 account ─► C2 domain ─► C3 DNS ────────────────────────────► C4 D1 (prod) ──┤
@@ -496,7 +496,7 @@ be substituted; the dev deployment is not to be promoted.
 | Phase 204 auth identity fix verified on dev | production sign-in works — prod has a different issuer URL, `SITE_URL`, and no email transport yet |
 | E1–E7 entitlement machine 7/7 on dev | a production deployment enforces it — prod has never been deployed |
 | D2/D3/D4/D6/D9/D10 PASS on dev | production Evidence D — every row was recorded `productionEvidence:false` |
-| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 5 refs |
+| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 7 refs |
 | CI build/package PASS on 3 platforms | release signing — every artifact is unsigned |
 | preflight passing on dev | production configuration — prod inputs are absent today |
 
@@ -530,13 +530,22 @@ unchanged; no force-push).
 Rewritten tips in the rehearsal: `main → b1a9e91`, `phase-157 → 6bf6f58`,
 `rc-181 → 23d25ff`, `arena/01a08e67 → bd233a8`, `arena/01a0a5f5 → a2243f0`.
 The procedure remains applicable after Phases 204 and 220. **It remains
-unexecuted** and gated on A1. The runbook's ref table is updated to five refs.
+unexecuted** and gated on A1.
+
+**Phase 233 correction.** The rehearsal above covered the five refs known at
+the time. The remote now advertises **seven**: `01a0a92b` and `01a0ad26` were
+created afterwards, are absent from the rehearsal, and — until Phase 233 —
+were absent from both of the runbook's ref tables. Both carry 269 carrier
+commits, so each would have survived a rewrite as a live path back to the
+credential, defeating A3 entirely. The runbook's ref tables and this gate now
+read seven; a rehearsal covering all seven is still required before A2 runs.
+Per-ref evidence: `docs/secret-remediation-refs.json`.
 
 ### Release order — deterministic, not reorderable
 
 1. Revoke the old Freebuff OTP key at the issuer (A1).
 2. Capture the 401/403 rejection with the old key; record date/operator (A1).
-3. Run the rehearsed rewrite across **all five** refs; force-push mirror (A2).
+3. Run the rehearsed rewrite across **all seven** refs; force-push mirror (A2).
 4. `node scripts/secret-rehearsal-verify.mjs --expect-clean` → exit 0; re-tag RC (A3).
 5. Provision a production Convex deployment; set deploy key, URLs (B1, B2).
 6. `npx convex codegen` against production; commit only if drift (B3).
@@ -1223,15 +1232,25 @@ is why the Phase 230 baseline did not. Deliberately NOT fixed here: the runbook
 is a security document whose per-ref rows state credential-exposure facts that
 must come from the history-fingerprint tooling, not from inference, and the
 phase brief forbids unrelated commits. Also noted while investigating: the
-runbook's per-ref status table lists `refs/heads/arena/01a08e67-trade-intel-bot`
-twice and omits `refs/heads/arena/01a0a5f5-trade-intel-bot` (its rewrite map at
-line 146 does list the latter).
+runbook's per-ref status table listed only four refs and omitted the three
+branches created since Phase 198 (`01a0a5f5`, `01a0a92b`, `01a0ad26`); the
+rewrite map listed five and omitted the last two.
+
+*Correction (Phase 233):* this paragraph also originally claimed
+`refs/heads/arena/01a08e67-trade-intel-bot` appeared **twice** in the per-ref
+table. Re-reading the file at HEAD shows four rows, each distinct, with no
+duplicate. That claim was wrong and is withdrawn. The duplicate-row detection
+added in Phase 233 is therefore a forward-looking guard against a hazard that
+has not yet occurred, not a fix for one that had.
 
 ### I. Remaining concrete defects (not deferred silently)
 1. The Phase 221 runbook-coverage test is sensitive to which branches the local
    clone has fetched, so it is green or red depending on the developer's fetch
    behaviour. Deriving the ref set from `git ls-remote` (or scoping it to refs
    the runbook claims to cover) would make it deterministic. Out of scope here.
+   **FIXED in Phase 233** — the ref set now comes from `git ls-remote`, an
+   unreachable remote fails closed rather than passing, and the check is split
+   into inventory / exposure / coverage. See the Phase 233 section below.
 2. `f1bfbb4` (Phase 231) remains unrecovered and unpushed. Its content is
    unknown to this repository; see the session-provenance note above.
 
@@ -1239,3 +1258,112 @@ line 146 does list the latter).
 A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on
 A1; production email transport/sender/required vars absent; Evidence D
 INCOMPLETE.
+
+---
+
+## Phase 233 — deterministic ref source, runbook reconciliation, CI root cause
+
+### A. Why the Phase 221 check was not trustworthy
+`release-gate-consistency.phase221.test.ts` derived its subject set from
+`git for-each-ref refs/remotes/origin refs/tags` — the LOCAL remote-tracking
+set — and wrapped the call in `catch { return; }`. Its verdict was therefore a
+function of the clone, not the repository:
+
+| Clone state | Local refs seen | Old verdict |
+|---|---|---|
+| Full clone | all | fails on any ref the runbook omits |
+| `fetch-depth: 1` (CI) | 1 | fails on that one ref (the CI failure at `:137`) |
+| No origin refs | 0 | **passes without checking anything** |
+
+The empty case is the serious one: a security check that goes green because it
+did not run is worse than no check, and the bare `catch` made that state
+indistinguishable from a genuine pass.
+
+### B. What replaced it
+Three concerns are now separate, because collapsing them is what made the old
+failure unreadable:
+
+1. **Inventory** — which refs exist. `git ls-remote origin`
+   (`src/lib/deployment/live-refs.ts`). Depth-independent, never hardcoded.
+2. **Exposure facts** — which refs reach the credential, and which serve it
+   from the tip. `scripts/secret-ref-inventory.mjs`, by SHA-256 fingerprint
+   reachability of the blob — blob identity, never lineage inference.
+3. **Rewrite coverage** — what the runbook claims it will rewrite
+   (`src/lib/deployment/runbook-ref-facts.ts`), checked against 1 and 2.
+
+`listLiveRefs()` **fails closed**: an unreachable remote, or an empty/usable-less
+reply, throws `LiveRefSourceUnavailableError` naming the failure as
+infrastructure and explicitly NOT a clean result. Peaked tag objects (`^{}`)
+are dropped so one tag cannot demand two rows.
+
+### C. Verified inventory — all seven refs are affected
+Re-measured at 397 commits (Phase 198 measured 339). Fingerprint, blob OID,
+blob count and path are byte-identical to the Phase 198 record; the affected
+commit count is **unchanged at 270** — the exposure neither grew nor was
+silently remediated. Machine-readable: `docs/secret-remediation-refs.json`.
+
+| Ref | Affected | Carriers | Exposed at tip |
+|---|---|---|---|
+| `heads/arena/01a08e67-trade-intel-bot` | yes | 269 | no |
+| `heads/arena/01a0a5f5-trade-intel-bot` | yes | 269 | no |
+| `heads/arena/01a0a92b-trade-intel-bot` | **yes** | 269 | no |
+| `heads/arena/01a0ad26-trade-intel-bot` | **yes** | 269 | no |
+| `heads/main` | yes | 261 | **YES** |
+| `heads/phase-157-live-discovery-lifecycle` | yes | 262 | **YES** |
+| `tags/rc-181` | yes | 269 | no |
+
+`01a0a92b` and `01a0ad26` are affected and were in **neither** of the runbook's
+tables. Both would have survived the rewrite as live paths back to the
+credential, defeating A3. "Clean at tip" is not remediation — the blob stays
+reachable in history — which is the distinction the old single-column table
+blurred.
+
+### D. Runbook reconciliation
+Both tables now list all seven refs; the summary reads "All seven"; §3 states
+that the Phase 221 rehearsal covered five of them and that `01a0a92b` /
+`01a0ad26` have never been rehearsed; §4 carries the same scope caveat. §1's
+heading records both measurements. Every value comes from the fingerprint scan.
+
+### E. CI `Test suite` root cause — proven, not inferred
+Actions log BLOBs are still unreachable from this sandbox
+(`results-receiver.actions.githubusercontent.com`, `productionresultssa16.blob.core.windows.net`
+→ HTTP 000). **Check-run annotations work** and supplied the failures:
+
+| Location | Assertion |
+|---|---|
+| `handoff-readiness.phase200.test.ts:96` | `expected 'CREDENTIALS_REJECTED' to be 'NOT_REACHABLE'` |
+| `handoff-readiness.phase200.test.ts:84` | `expected ['dns','tcp','tls','http'] to include 'auth'` |
+| `release-gate-consistency.phase221.test.ts:137` | `runbook missing ref heads/arena/01a0ad26-trade-intel-bot` |
+
+The two phase200 failures are **pre-existing and environment-dependent**: that
+test shells out to `scripts/verify-convex-access.mjs`, which probes
+`api.convex.dev`. Locally egress is blocked (`NOT_REACHABLE` / `blockedAt: tls`);
+on a networked runner the probe reaches the service and is rejected
+(`CREDENTIALS_REJECTED` / `blockedAt: auth`). The test asserts the first outcome,
+so a networked CI fails it — the same class as the phase75 failure, where a
+green local suite proved nothing because sandboxed egress was load-bearing. A
+plain `npm test` replay at `3f63690` passes 287/287 both with and without
+`CI=true`: the discriminator is network state, not clone depth or env.
+
+The phase221 failure is cured by this phase — verified in a real `--depth 1`
+clone of the GitHub remote, where the old oracle saw exactly one ref and the
+new one sees all seven. The `history-secret-scan` job fails **by design**
+(`continue-on-error: true`, exits 1 while the credential is reachable).
+
+*Not changed here:* the phase200 assertions are a pre-existing defect and were
+left untouched deliberately — re-calibrating a security probe's expectations is
+its own decision, not a side effect of this phase.
+
+### F. Mutation results
+`scripts/mutation-suite-phase233.sh` — **18/18 CAUGHT, 0 gaps**. Every mutant is
+a defect that has really occurred (the missing rewrite-map rows, the "All five"
+drift, the swallowed `catch`) or the exact regression the new rules prevent
+(hardcoded ref list, empty list accepted, peeled tags counted, each rule
+deleted, the section parser regressing to swallow a sibling section). Mutants
+are applied with perl programs in quoted heredocs, so no shell escaping can
+silently no-op them, and each is byte-verified as applied or reported INVALID.
+
+### G. Standing blockers (unchanged)
+A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on
+A1 and now known to require **seven** refs and a fresh rehearsal; production
+email transport/sender/required vars absent; Evidence D INCOMPLETE.
