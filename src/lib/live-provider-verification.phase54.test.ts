@@ -11,8 +11,14 @@
  * - Data integrity (no NaN, no fabricated values)
  * - Live smoke tests for public providers (CoinGecko, OKX, Treasury, CFTC, DeFiLlama)
  *
- * DETERMINISTIC tests always pass.
- * LIVE SMOKE tests only run when credentials/network available.
+ * DETERMINISTIC tests always pass — and Phase 237 made that literally true:
+ * the live smoke sections (I-M) moved to `live-provider-smoke.live.test.ts`,
+ * because `npm test` was making real requests to public providers through
+ * `verifyProvider()`. Everything left here holds with the network guard
+ * installed, so a failed fetch is a deterministic input rather than a
+ * dependency on a third party's uptime.
+ *
+ * The live smoke tests run only via: LIVE_PROVIDER_VERIFICATION=1 npm run test:live
  */
 
 import { describe, it, expect } from "vitest";
@@ -381,113 +387,6 @@ describe("H — Credential-Aware Verification", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// I. LIVE SMOKE: COINGECKO (PUBLIC)
-// ═══════════════════════════════════════════════════════════════
-
-describe("I — Live Smoke: CoinGecko (Public)", () => {
-  it("BTC/USD quote is live-verified or rate-limited", async () => {
-    const spec = VERIFICATION_MATRIX.find(
-      (s) => s.provider === "coingecko" && s.instrument === "BTC/USD",
-    )!;
-    const result = await verifyProvider(spec);
-    // Public endpoint — should succeed or be rate-limited
-    expect(["LIVE_VERIFIED", "RATE_LIMITED", "TIMEOUT", "ENDPOINT_FAILED"]).toContain(result.status);
-    if (result.status === "LIVE_VERIFIED") {
-      expect(result.schemaValid).toBe(true);
-      expect(result.numericValid).toBe(true);
-      expect(result.freshness).toBe("FRESH");
-    }
-  }, 15_000);
-
-  it("ETH/USD quote is live-verified or rate-limited", async () => {
-    const spec = VERIFICATION_MATRIX.find(
-      (s) => s.provider === "coingecko" && s.instrument === "ETH/USD",
-    )!;
-    const result = await verifyProvider(spec);
-    expect(["LIVE_VERIFIED", "RATE_LIMITED", "TIMEOUT", "ENDPOINT_FAILED"]).toContain(result.status);
-  }, 15_000);
-
-  it("SOL/USD quote is live-verified or rate-limited", async () => {
-    const spec = VERIFICATION_MATRIX.find(
-      (s) => s.provider === "coingecko" && s.instrument === "SOL/USD",
-    )!;
-    const result = await verifyProvider(spec);
-    expect(["LIVE_VERIFIED", "RATE_LIMITED", "TIMEOUT", "ENDPOINT_FAILED"]).toContain(result.status);
-  }, 15_000);
-});
-
-// ═══════════════════════════════════════════════════════════════
-// J. LIVE SMOKE: OKX (PUBLIC)
-// ═══════════════════════════════════════════════════════════════
-
-describe("J — Live Smoke: OKX (Public)", () => {
-  it("BTC-USDT OHLCV is live-verified or rate-limited", async () => {
-    const spec = VERIFICATION_MATRIX.find(
-      (s) => s.provider === "okx" && s.instrument === "BTC/USD",
-    )!;
-    const result = await verifyProvider(spec);
-    // OKX daily candles may be older than 5 min — DATA_STALE is acceptable
-    expect(["LIVE_VERIFIED", "RATE_LIMITED", "TIMEOUT", "ENDPOINT_FAILED", "DATA_STALE"]).toContain(result.status);
-    if (result.status === "LIVE_VERIFIED") {
-      expect(result.schemaValid).toBe(true);
-      expect(result.numericValid).toBe(true);
-    }
-  }, 15_000);
-
-  it("ETH-USDT OHLCV is live-verified or rate-limited", async () => {
-    const spec = VERIFICATION_MATRIX.find(
-      (s) => s.provider === "okx" && s.instrument === "ETH/USD",
-    )!;
-    const result = await verifyProvider(spec);
-    expect(["LIVE_VERIFIED", "RATE_LIMITED", "TIMEOUT", "ENDPOINT_FAILED", "DATA_STALE"]).toContain(result.status);
-  }, 15_000);
-});
-
-// ═══════════════════════════════════════════════════════════════
-// K. LIVE SMOKE: TREASURY (PUBLIC)
-// ═══════════════════════════════════════════════════════════════
-
-describe("K — Live Smoke: Treasury (Public)", () => {
-  it("US10Y yield is live-verified or endpoint-fails gracefully", async () => {
-    const spec = VERIFICATION_MATRIX.find(
-      (s) => s.provider === "treasury" && s.instrument === "US10Y",
-    )!;
-    const result = await verifyProvider(spec);
-    // Treasury reports may be older than 5 min → DATA_STALE is expected
-    expect(["LIVE_VERIFIED", "TIMEOUT", "ENDPOINT_FAILED", "MALFORMED_RESPONSE", "DATA_STALE"]).toContain(result.status);
-  }, 20_000);
-});
-
-// ═══════════════════════════════════════════════════════════════
-// L. LIVE SMOKE: CFTC (PUBLIC)
-// ═══════════════════════════════════════════════════════════════
-
-describe("L — Live Smoke: CFTC (Public)", () => {
-  it("EUR COT data is live-verified or fails gracefully", async () => {
-    const spec = VERIFICATION_MATRIX.find(
-      (s) => s.provider === "cftc" && s.instrument === "EUR/USD",
-    )!;
-    const result = await verifyProvider(spec);
-    // CFTC data is weekly → DATA_STALE is expected; may also fail with HTTP errors
-    expect(["LIVE_VERIFIED", "TIMEOUT", "ENDPOINT_FAILED", "MALFORMED_RESPONSE", "DATA_STALE"]).toContain(result.status);
-  }, 20_000);
-});
-
-// ═══════════════════════════════════════════════════════════════
-// M. LIVE SMOKE: DEFILLAMA (PUBLIC)
-// ═══════════════════════════════════════════════════════════════
-
-describe("M — Live Smoke: DeFiLlama (Public)", () => {
-  it("BTC chain TVL is live-verified or fails gracefully", async () => {
-    const spec = VERIFICATION_MATRIX.find(
-      (s) => s.provider === "defillama" && s.instrument === "BTC/USD",
-    )!;
-    const result = await verifyProvider(spec);
-    expect(["LIVE_VERIFIED", "TIMEOUT", "ENDPOINT_FAILED", "MALFORMED_RESPONSE"]).toContain(result.status);
-  }, 15_000);
-});
-
-// ═══════════════════════════════════════════════════════════════
 // N. NO FABRICATED DATA IN VERIFICATION
 // ═══════════════════════════════════════════════════════════════
 
@@ -579,14 +478,22 @@ describe("P — Provenance Tracking", () => {
 
 describe("Q — Batch Verification Structure", () => {
   it("verifyAllProviders returns a report", async () => {
-    // With a fake env reader, all credential-requiring providers should
-    // return CREDENTIAL_MISSING without making network requests.
+    // With a fake env reader, credential-requiring providers return
+    // CREDENTIAL_MISSING.
+    //
+    // Phase 237: the public providers in the matrix do still attempt a fetch.
+    // The network guard refuses each one before any I/O, so this call is
+    // deterministic — before the guard it made 20 real requests and its result
+    // depended on five third parties. The assertion below is the proof that the
+    // guard holds *through* production code, not just for a bare fetch().
     const report = await verifyAllProviders(() => undefined, 10);
     expect(report).toBeDefined();
     expect(report.summary.total).toBeGreaterThan(0);
     // All credential-required should be CREDENTIAL_MISSING
     const credMissing = report.results.filter((r) => r.status === "CREDENTIAL_MISSING");
     expect(credMissing.length).toBeGreaterThan(0);
+    // No provider can have reached the network: nothing may be live-verified.
+    expect(report.results.filter((r) => r.status === "LIVE_VERIFIED")).toEqual([]);
   }, 30_000);
 });
 
@@ -595,15 +502,22 @@ describe("Q — Batch Verification Structure", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("R — Response Validation", () => {
-  it("verifier handles network timeout gracefully", async () => {
+  it("verifier handles a refused network gracefully", async () => {
     const spec: VerificationSpec = {
       provider: "coingecko", instrument: "BTC/USD", providerSymbol: "bitcoin",
       capability: "quote", assetClass: "crypto", requiresCredential: false,
     };
-    // Should not throw even with timeout
+    // Phase 237: the request is refused by the network guard, so this is the
+    // failure path made deterministic rather than a coin flip on CoinGecko's
+    // uptime. A refused fetch must degrade — never throw, never fabricate.
     const result = await verifyProvider(spec);
-    expect(result.status).toBeDefined();
-    expect(typeof result.status).toBe("string");
+    expect(result.status).toBe("TIMEOUT");
+    expect(result.errorCategory).toBe("TIMEOUT");
+    expect(result.schemaValid).toBe(false);
+    expect(result.numericValid).toBe(false);
+    expect(result.freshness).toBe("UNAVAILABLE");
+    expect(result.responseTimestamp).toBeNull();
+    expect(result.provenance).toBe("network");
   }, 15_000);
 
   it("unknown provider returns ARCHITECTURALLY_IMPLEMENTED", async () => {

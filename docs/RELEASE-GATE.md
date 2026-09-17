@@ -1764,3 +1764,109 @@ plus the Windows package job which was still building when this was recorded and
 has passed on every recent run of this branch. Nothing here moves the security
 position: A1 still blocks, the Phase 184 rewrite remains gated on it, and
 Evidence D stays **INCOMPLETE** until real deployment evidence exists.
+
+## Phase 237 — the default suite is fail-closed against the external network
+
+### A. The defect, measured rather than asserted
+
+Phase 181 claimed the default suite was hermetic. It was not. Instrumenting a
+real `npm test` run — wrapping `fetch`, `net.connect` and the socket APIs and
+logging every attempt with its call site — recorded **45 outbound requests to
+third-party providers per run**, from three files:
+
+| File | Attempts | Why Phase 181 missed it |
+|---|---|---|
+| `live-provider-verification.phase54.test.ts` | 29 | calls `verifyProvider()`; the `fetch()` lives in `market-radar/verification.ts`, so no hostname literal ever appears in the test |
+| `live-provider-validation.phase39.test.ts` | 13 | allowlisted on the grounds that its assertions sit inside `if (res && res.ok)` — true of the assertions, irrelevant to the I/O |
+| `market-radar/derivatives-bridge.phase226.test.ts` | 1 | host not in the hardcoded `LIVE_HOSTS` list |
+| (attributed to production frames) | 2 | phase52/53's `acquireBatchLiveData()` reaches providers through a helper |
+
+The detector's three structural blind spots: it could only recognise hostnames
+somebody had already listed; it required the call and the URL literal to sit
+next to each other in the test file; and `vi.mock(` anywhere in a file excused
+every call in that file. `live-provider-fabric.phase52/53` were leaking too and
+nothing reported them.
+
+Two further findings came out of the runtime audit rather than the reading:
+`npm test` never failed for any of this locally, because this sandbox has no
+provider access — the same illusion that produced the original Phase 181 CI
+failure. And phase226 plus phase52/53 are *legitimate* default-suite tests: their
+subject is behaviour under provider failure, which they only ever got by
+accident.
+
+### B. What enforces the boundary now
+
+**Runtime, authoritative.** `src/test-network-guard.ts` replaces every outbound
+entry point — `fetch`, `http`/`https` `request`/`get`, `net.connect`,
+`net.createConnection`, `tls.connect`, `dns.lookup`, `dns.promises.lookup`,
+`WebSocket` — with one that refuses anything that is not loopback, before any
+I/O happens. The refusal is a named `ExternalNetworkBlockedError`, not a bare
+failure, because "it failed" is worthless as evidence: an unguarded call in an
+offline environment also fails, which is exactly how the previous blind spot
+survived. It is wired into both vitest projects by
+`src/test-setup-network-guard.ts`.
+
+**Structural.** `suite-hermeticity.phase181.test.ts` was rewritten. It no longer
+scans for provider hostnames: it derives the boundary from the loopback rule,
+reads the exclude expressions the config actually computes (they are
+`LIVE_ONLY.map(...)`, not literal arrays — a version that only understood
+literal arrays would have concluded "nothing is excluded" and passed), and
+proves the scanner itself has teeth by requiring it to still flag the known
+offender while ignoring a host named only in a constant.
+
+**File-level.** Live tests moved to `*.live.test.ts` files that the default
+config does not collect: sections I–M of phase54 and the five endpoint suites of
+phase39, assertions unchanged.
+
+### C. The live boundary
+
+```bash
+LIVE_PROVIDER_VERIFICATION=1 npm run test:live
+```
+
+Three independent layers keep live verification out of the default path: the
+default config does not collect the files; `vitest.live.config.ts` refuses to
+start without the opt-in; and the runtime guard stays installed everywhere else,
+so a live test that was somehow collected would fail loudly instead of quietly
+making requests. The opt-in is matched exactly (`=== "1"`), so
+`=true`, `=1 ` and `=0` all leave the boundary closed. No CI workflow contains
+the variable at all.
+
+### D. Result, after
+
+Re-running the same instrumentation on the fixed tree: **0 external requests
+reached the network stack** (the only I/O was three loopback probes from the new
+tests themselves), while **32 attempts were refused** — 20 from phase54's batch
+verification, one each from phase226, phase52, phase53 and phase54's validation
+block, plus the guard's own deliberate probes. The leak is closed at the socket,
+not at the filenames.
+
+The two suites are provably disjoint: the live config collects exactly 6 files,
+the default config 293, intersection empty — so nothing is both run twice and
+lost.
+
+### E. Coverage
+
+New: `hermetic-network-guard.phase237.test.ts` (23 tests — the guard is
+installed, every network API is refused with the named error, the refusal
+reaches through `verifyProvider()`, loopback still works against a real local
+server, lookalike hostnames are refused, the live path refuses without opt-in,
+`package.json` and the workflows keep the contract, no application code imports
+the guard) and `hermetic-guard-jsdom.phase237.test.tsx` (3 tests — the same
+demands inside the jsdom project, since a fix applied to one project only would
+leave `npm test` non-hermetic).
+
+`scripts/mutation-suite-phase237.sh`: **22 mutants, 22 caught, 0 gaps, 0
+INVALID, 0 SKIP**, byte-exact restore. It gates itself on a green baseline first
+— during development the guard's own test was failing while mutant verdicts
+still read "caught", which is precisely the false confidence this phase exists
+to remove, so the suite now refuses to run mutants unless the boundary's tests
+pass.
+
+### F. What Phase 237 does not do
+
+It does not close A1 (the leaked credential is still unrevoked at the issuer),
+does not unblock A2 (the history rewrite still waits on A1), does not add
+production email transport, and does not produce Evidence D — that needs a real
+deployment with real credentials, and a hermetic test suite is no substitute for
+it. Evidence D remains **INCOMPLETE**.

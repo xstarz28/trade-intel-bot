@@ -10,6 +10,7 @@
     "format": "prettier --write .",
     "preview": "vite preview",
     "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
     "mobile:build": "MOBILE_BUILD=1 vite build",
     "mobile:sync": "npm run mobile:build && cap sync",
     "mobile:sync:android": "npm run mobile:build && cap sync android",
