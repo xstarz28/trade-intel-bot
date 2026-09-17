@@ -2260,3 +2260,20 @@ New files: `src/lib/runtime/diagnostics.ts`,
 - Release blockers are unchanged: **A1** (OTP secret unrevoked), **A2** (history
   rewrite unexecuted, now covering 8 refs), Convex never deployed, no production
   provider verification — **NOT READY**.
+
+### K. CI on `519dc8a` — measured, both check-runs
+
+| Job | Push ref | Pull-request merge ref |
+|---|---|---|
+| `Test · typecheck · build · lint` | **success**, 2 m 15 s | **success**, 2 m 12 s |
+| `Windows desktop package (Tauri)` | **success**, 5 m 12 s | **success**, 6 m 9 s |
+| `Android debug APK` | **success**, 2 m 3 s | success |
+| `iOS project build (compile only)` | **success**, 59 s | success |
+| `Reachable-history secret scan` | failure — **by design** (A1) | failure — unchanged |
+
+The Test job carries the same 21 eslint-advisory annotations as the Phase 235/238
+records and **no test failure**. The Windows job — the one observed failing on
+the Phase 237 tip and recorded there as an unattributed observation — is green on
+both refs of this commit, so that observation stays an observation: this phase
+changes no packaging input, and one green run does not promote a flake into a
+diagnosis.
