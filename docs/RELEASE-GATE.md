@@ -2716,3 +2716,263 @@ The secret scan still fails on the reachable history, which is A1 — unrevoked 
 deliberately not remediated here. A green pipeline was never going to make a
 blocked release shippable, and that is precisely the confusion this phase exists
 to remove.
+
+## Phase 242 — canonical release-gate enforcement
+
+Phase 241 built a verdict. This phase is about who is allowed to *use* it: before
+it, the canonical evaluator existed and nothing in the repository called it, so a
+release decision was still a sentence a human wrote. Every release-shaped path was
+audited, the one enforcement point was built, and the paths that could disagree
+with the verdict are now either driven by it or pinned as provably unrelated.
+
+The verdict itself is unchanged, and so is the answer: **NOT READY**, for the same
+five externally-blocked reasons. Nothing in this phase attempts to clear them.
+
+### A. The entry-point map (Phase A)
+
+Every path that could admit, package, publish, promote, display or gate a release:
+
+| Entry point | What it does today | Canonical gate used? | Bypass possible? |
+|---|---|---|---|
+| `.github/workflows/ci.yml` — `Test` job | tests, typecheck, build, advisory lint, artifact secret scan | no, and deliberately not — it is a quality gate | n/a: it never decides a release, and the file says so |
+| `.github/workflows/mobile.yml` — Android / iOS / Windows jobs | builds unsigned debug/installer artifacts; uploads them | no | no release path exists here; the iOS job prints that its output "does NOT constitute release or store readiness" |
+| `.github/workflows/release-admission.yml` | **the release boundary** (this phase) | **yes** — `npm run release:admission` | no: the job fails closed and is not advisory |
+| `scripts/verify-deployment-config.mjs` (`npm run convex:preflight`) | operator-facing configuration gate before a manual `npx convex deploy` | no — configuration shape, not release state | it cannot admit a release: it decides `configuration ACCEPTED/REJECTED` |
+| `scripts/verify-history-clean.mjs` | proves the reachable history carries no secret (A3) | no | produces A2/A3 evidence, not a verdict |
+| `scripts/verify-mobile-artifacts.mjs` | packaged-artifact secret scan | no | refuses an artifact, never admits a release |
+| `package.json` scripts | build, mobile sync, desktop build, preflight, evidence harness | `release:gate-verify`, `release:admission`, `release:report` | no deployment/publish command exists to attach to |
+| `docs/RELEASE-GATE.md` and the other gate documents | the record and the procedures | **the verdict marker is compared against the computed verdict** (Phase 241 test #20b2) | a document cannot change the computed verdict, only disagree with it — and disagreeing fails the suite |
+| `src/lib/deployment/release-gate.ts` | the evaluator | it **is** the gate | not a bypass: hand-written records must still pass source, environment, freshness and binding rules (proven in the Phase 242 suite) |
+| `src/lib/deployment/release-current-state.ts` | reads what this checkout can prove | it **is** the evidence reader | no path promotes a document to evidence |
+| `src/lib/deployment/release-admission.ts` | **the one admission operation** (this phase) | it **is** the admission | its export surface is enumerated and asserted |
+| UI | **none exists** | n/a | nothing to bypass; a future surface must call the admission module, and `src/lib` contains no second admission producer (asserted) |
+
+**There is still no production deployment entry point.** Phase 186/234 stopped at
+"configuration present, deployment not performed": the repository has no deploy
+command, no publish step and no promotion job. That fact is now recorded in the
+code (the task asked for it to be documented rather than papered over with an
+invented deploy step), and the boundary is enforced at the nearest layer that
+exists — the release workflow, on a tag or a manual dispatch.
+
+### B. Shadow gates (Phase B)
+
+The scan for readiness vocabulary classified every hit. Nothing was renamed:
+unrelated domain statuses are named as such, and the classification is now a test,
+so a new readiness-shaped surface fails the suite until somebody classifies it.
+
+| Finding | Classification | Disposition |
+|---|---|---|
+| `release-gate.ts`, `release-current-state.ts`, `release-admission.ts` | canonical | the only files allowed to assign a verdict; asserted |
+| `coverage.ts` (`ready: boolean` per instrument dataset) | unrelated domain status | left verbatim, listed as classified |
+| `runtime/diagnostics.ts` (`state.ready` = boot phase) | unrelated domain status | left verbatim, listed |
+| `discovery/pipeline.ts` ("scanner-ready live sources") | comment | listed |
+| `i18n/*` (`terminalReady` copy, locale completeness comment) | UI copy | listed |
+| `docs/RELEASE-CANDIDATE.md`, `docs/CONVEX-DEPLOYMENT-READINESS.md`, `docs/DESKTOP-DISTRIBUTION.md`, `docs/UAT-MATRIX.md`, `docs/SECURITY-REMEDIATION.md`, `docs/DEPLOYMENT*.md`, `docs/PRODUCTION-VERIFICATION.md` | historical documentation / procedures | no script and no workflow reads them for a verdict (asserted); their recorded verdicts agree with the computed one |
+| `scripts/verify-convex-access.mjs` (`READY` in a probe state name) | unrelated domain status | left verbatim |
+| `.github/workflows/*` | no readiness literal at all | asserted |
+| **`src/lib/deployment/handoff-readiness.phase200.test.ts`** | ordinary test assertion | it checks that the handoff document keeps its steps in order; it cannot admit anything |
+
+No shadow gate was found that could disagree with the canonical verdict; the one
+aggregation that exists is the canonical one.
+
+### C. One admission operation (Phase C)
+
+`src/lib/deployment/release-admission.ts` — `evaluateReleaseAdmission(request)`:
+
+* returns the Phase 241 verdict plus the canonical per-prerequisite outcomes;
+* projects the blockers (`mandatory && state !== "VERIFIED"`) instead of
+  aggregating anything itself — a second aggregation is how two release checks
+  start disagreeing, and a mutant that reintroduces one is caught;
+* identifies the candidate: commit, ref, environment, and the declared production
+  deployment (or `null`);
+* is a conjunction that fails closed — canonical `READY`, no evaluation error, at
+  least one mandatory prerequisite, every mandatory prerequisite `VERIFIED`, empty
+  blocker projection. An internal failure returns a refusal carrying
+  `evaluationError` and exit code 2;
+* reads **no environment** — it is handed its candidate. The client-hygiene guard
+  in `production.phase12.test.ts` is the reason: the module sits in `src/lib`, and
+  a release decision that silently changes with the machine it runs on is not a
+  decision. The entry point resolves the identity and passes it in. That guard
+  failed this phase's first draft, and the draft was changed rather than the
+  guard;
+* deploys nothing. `releaseAdmissionExitCode` is 0 admitted, 1 refused, 2 the
+  evaluation itself failed — and the report says, in its own words, that this
+  decision admits or refuses a release and deploys nothing.
+
+### D. CI integration (Phase D)
+
+`.github/workflows/release-admission.yml`, triggered by a version tag (`v*`,
+`rc-*`) or a manual dispatch — never by a branch push or a pull request:
+
+| Job | Command | Meaning | Today |
+|---|---|---|---|
+| `gate-logic` | `npm run release:gate-verify` | "the gate refuses what it must and admits what it may" — fixtures, determinism, fail-closed paths | **green** |
+| | `npm run release:report` | the current verdict, for a human | green, display only |
+| `release-admission` | `npm run release:admission` | "the gate admits THIS release" — `RELEASE_ADMISSION=require`, the tagged commit as the candidate | **red, by design** |
+
+Three properties are asserted rather than hoped for: the admission job is not
+`continue-on-error` (an advisory gate is a report, which is the defect this phase
+removes); the boundary job runs the admission command and not the logic check; and
+the trigger block contains no `branches:` — a red job meaning "the product is not
+shippable yet" must not sit on every ordinary commit, or red stops meaning
+anything. `ci.yml` runs neither command, so ordinary development CI is unaffected.
+
+Exercised locally, with the exact commands CI runs:
+
+| Command | Exit | Output |
+|---|---|---|
+| `npm run release:gate-verify` | **0** | 4 tests: the machinery refuses this release and derives the refusal |
+| `npm run release:report` | **0** | the full report, ending in `NOT ADMITTED: 5 mandatory prerequisite(s) are not VERIFIED` |
+| `npm run release:admission` | **1** | the same report inside the failure message: the release is refused |
+
+The two distinctions the workflow exists to keep separate are therefore
+observable: *the gate works* (green) is not *this release is admitted* (refused).
+The workflow also needs no secret, no provider call and no deployment — it is
+hermetic, and every admission test runs under the repository's network guard,
+which fails any non-loopback connection.
+
+One honest limitation: a `workflow_dispatch` trigger becomes dispatchable only
+once the file is on the default branch, so until this reaches `main` the manual
+path is inert. The **tag** path is not — a tag push runs the workflow file at the
+tagged commit — and the same three commands are runnable locally, which is how
+they were measured above. Nothing was pushed to `main`, and no tag was created to
+force a run: both are release acts this phase does not perform.
+
+### E. Display and documentation (Phase E)
+
+* No UI surface displays release status, so none could disagree. The report is the
+  display surface, and it is generated from the admission object: the report and
+  the JSON are asserted line-exactly against the verdict the gate computed, so a
+  hardcoded label cannot survive.
+* The document marker stays single and pinned: `docs/RELEASE-GATE.md` carries
+  exactly one `release-verdict` marker (Phase 241 test #20b2 compares it with the
+  computed verdict). Phase 242 deliberately adds no second marker — a second
+  marker would be a second place to drift.
+* The Phase 221 guard, which scans this document from `## Phase 221` to the end,
+  caught the first draft of this section for containing the forbidden naming pair
+  inside a quotation of the sentence it was discussing. The wording was changed;
+  the guard was not.
+
+### F. Bypass resistance (Phase F)
+
+Each attempt is a test, and each is refused:
+
+| Attempt | Result |
+|---|---|
+| an empty evidence object | refused; all five mandatory prerequisites are blockers |
+| omitting a mandatory prerequisite | refused; that prerequisite is the only blocker |
+| documentation-only proof | refused ("documentation is not verification") |
+| a truthy non-boolean `verified` flag (`"VERIFIED"`) | refused — the reader compares `=== true` |
+| CI-green as the deciding fact | refused when a proof declares a CI source, **and** the decision cannot be based on CI status (mutant caught) |
+| local run as the deciding fact | refused when a proof declares a local source; a local-success decision is a caught mutant |
+| only a deployment/email/provider subset | refused — the unverified prerequisite stays a blocker |
+| a different candidate commit | refused ("wrong commit"), including when the request asks about another candidate |
+| stale evidence | refused (`STALE`), and refreshing it into freshness is a caught mutant |
+| catching an evaluation error and continuing | impossible: the error is a refusal with its own exit code, and swallowing it into an admission is a caught mutant |
+| importing the lower-level evaluator and passing hand-written VERIFIED records | still refused: source, environment, freshness and binding rules apply, and the candidate declares no production deployment |
+| exporting a bypass helper from the admission module | the module's export surface is enumerated in a test; adding anything fails it (caught mutant) |
+| swapping the display for a hardcoded verdict | line-exact report assertions (caught mutant) |
+
+### G. Regression coverage — 50 tests
+
+| Suite | Tests | Covers |
+|---|---|---|
+| `release-admission.phase242.test.ts` | 28 | admission semantics, the one admissible shape, evidence that cannot admit, bypass resistance, module surface |
+| `release-entrypoints.phase242.test.ts` | 16 | the entry-point map, shadow-gate classification, workflow wiring and triggers, package scripts, docs-as-proof |
+| `release-admission.boundary.phase242.test.ts` | 6 (4 run in the default suite; 2 are mode-specific) | the release boundary in `verify`, `require` and `report` modes, plus the unknown-mode failure |
+
+48 of them run in `npm test`; the suite total moved from 10 228 to 10 276 passed
+with no failures, and the boundary spec is green there *while refusing the
+release* — which is the whole distinction this phase enforces.
+
+### H. Mutation results (`scripts/mutation-suite-phase242.sh`)
+
+28 mutants over the evaluator, the reader, the admission module, the boundary
+spec, the release workflow, `ci.yml` and `package.json`. Byte-exact restore via
+`.p242bak`/`cmp` under `trap`, and the baseline gate now runs *before* the backups
+are armed — the first version left scratch copies of source files on disk while
+the suites ran, and the classification guard flagged them as unclassified
+readiness surfaces. That was a real defect in the harness, found by the harness.
+
+| Result | Count |
+|---|---|
+| CAUGHT | **26** |
+| equivalent (documented) | 2 |
+| gaps | 0 |
+| INVALID anchors | 0 |
+
+Two observables decide a verdict: the focused suites, and a **boundary probe** —
+`RELEASE_ADMISSION=require` must keep refusing while the release is blocked. The
+probe caught M27, where the `require` assertion is weakened so every suite stays
+green while the release boundary exits 0: that is "the gate made advisory" in its
+purest form, and no assertion inside the suites can see it.
+
+Documented equivalents, both refused before and after:
+
+* **M16** — the reader accepting `documentation` as a verifying flag is inert
+  because the evaluator refuses non-external sources on its own; the end-to-end
+  version of that defect (**M16b**, removing the evaluator's source rule) is
+  caught, which is what makes M16's inertness a defence in depth rather than a gap.
+* **M22** — reporting an unreadable inventory as present-with-no-affected-refs is
+  inert because the gate refuses an empty affected-ref set independently.
+
+Three gaps surfaced on the first runs and were closed **by strengthening tests**,
+never by softening a mutant: M6's mutation only neutralised one conjunct of a
+conjunction whose first term already implied it (rewritten to replace the whole
+decision), and the display-verdict mutants survived a substring assertion that the
+report's own diagnostic line satisfied (assertions made line-exact).
+
+### I. Quality gates
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` | exit 0 |
+| `npx vitest run` (full) | **307 files / 10 276 passed / 12 skipped / 0 failed** |
+| `npm run build` | exit 0 |
+| `npx eslint` on the five changed files | clean |
+| Phase 242 mutation suite | 26 caught / 2 documented equivalent / 0 gaps |
+| Phase 241 release-gate suites | 60 passed (fail-closed, current-state, consistency) |
+| Phase 241 mutation suite | 29 caught / 0 gaps — after its M29 anchor was updated to the reader's new signature, which this phase changed |
+| Phase 238 one-instant (lib + convex) | 37 passed |
+| Phase 238 mutation suite | 27 caught / 0 gaps |
+| Phase 239 runtime + error boundary | 63 passed |
+| Hermeticity suites | 34 passed |
+| Release path itself | `release:gate-verify` 0, `release:report` 0, `release:admission` 1 (refused) |
+
+No existing security or release assertion was weakened. Two were *hit* by this
+phase's first drafts and both were honoured: the client-hygiene scan (the
+admission module was made environment-free instead of adding it to the scan's
+exclusions) and the Phase 221 naming guard (the prose was changed, not the rule).
+
+### J. The current verdict, and what was not done
+
+```
+admitted: no
+verdict: NOT READY
+candidate: WORKTREE @ heads/arena/01a0adfb-trade-intel-bot (production, deployment none declared)
+A1_OTP_ISSUER_REVOCATION: UNVERIFIED — no evidence was supplied
+A2_HISTORY_REWRITE: UNVERIFIED — no evidence was supplied
+CONVEX_PRODUCTION_DEPLOYMENT: UNVERIFIED — no evidence was supplied
+EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION: UNVERIFIED — no evidence was supplied
+PRODUCTION_EMAIL_TRANSPORT: UNVERIFIED — no evidence was supplied
+NOT ADMITTED: 5 mandatory prerequisite(s) are not VERIFIED
+```
+
+The same five blockers as Phase 241, now enforced at the boundary instead of
+merely computed. **Confirmed: no external remediation was executed** — the OTP
+issuer was not contacted, the eight affected refs were not rewritten, Convex was
+not deployed, no production email transport was provisioned, no production
+provider credential was added or changed, nothing was pushed to `main`, and no tag
+was created. This phase changed code, tests, one workflow, `package.json`, a
+mutation script and this document.
+
+### What Phase 242 does not do
+
+* It does not clear a blocker, and it does not shorten the blocker list.
+* It does not add a deployment step, a publish step or a promotion job — there is
+  no production deployment to attach one to, and inventing one would be the
+  behaviour this phase exists to prevent.
+* It does not make the ordinary pipeline red for an external blocker, and does not
+  make the release boundary advisory.
+* It does not police the wording of this document beyond the one pinned marker and
+  the Phase 221 naming rule.

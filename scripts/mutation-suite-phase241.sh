@@ -398,7 +398,7 @@ mutate "M29 the current verdict bypasses the real evaluation" catch <<'PY'
 import sys
 P = "src/lib/deployment/release-current-state.ts"
 s = open(P).read()
-old = "  return deriveCurrentReleaseState(source).verdict;"
+old = "  return deriveCurrentReleaseState(source, options).verdict;"
 if s.count(old) != 1:
     sys.exit("anchor not found exactly once")
 open(P, "w").write(s.replace(old, '  return { ready: false, verdict: "NOT READY", blockers: [], prerequisites: [], unrecognised: [] };'))

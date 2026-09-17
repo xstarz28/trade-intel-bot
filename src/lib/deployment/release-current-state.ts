@@ -77,11 +77,42 @@ const defaultSource: FactSource = {
   read: (path) => readFileSync(resolve(process.cwd(), path), "utf8"),
 };
 
-/** The candidate this checkout would release, if it were released. */
-const CANDIDATE = {
+/**
+ * The candidate this checkout would release, if it were released.
+ *
+ * Exported because the Phase 242 admission layer must bind to the same identity
+ * this reader binds proofs to. Two copies of these strings would be two release
+ * identities, and evidence filed against one of them would silently not count
+ * for the other.
+ */
+export const DEFAULT_CANDIDATE = {
   commit: "WORKTREE",
   ref: "heads/arena/01a0adfb-trade-intel-bot",
 } as const;
+
+const CANDIDATE = DEFAULT_CANDIDATE;
+
+/**
+ * Deterministic inputs a caller may pin. Phase 242 uses them to evaluate the
+ * candidate that is actually being admitted (a CI commit rather than the
+ * worktree) at a declared instant rather than at whatever the clock says.
+ */
+export interface DerivationOptions {
+  /** Evaluation instant for the freshness rules. */
+  now?: number;
+  /** The commit under consideration. Defaults to the worktree sentinel. */
+  commit?: string;
+  /** The ref under consideration. Defaults to the tracked branch. */
+  ref?: string;
+  /**
+   * The production deployment this candidate would be released to, when the
+   * release caller declares one. Omitted — the default, and the state of this
+   * repository — means no deployment is declared, and the gate then refuses
+   * every deployment proof rather than accepting an unnamed one. Declaring a
+   * deployment proves nothing by itself: evidence must still bind to it.
+   */
+  productionDeployment?: string;
+}
 
 interface InventoryShape {
   refs?: { ref?: unknown; affected?: unknown; exposedAtTip?: unknown }[];
@@ -151,7 +182,10 @@ function proofRecord(
 }
 
 /** Derive the evidence set from the tree as it is. */
-export function deriveCurrentReleaseState(source: FactSource = defaultSource): CurrentReleaseState {
+export function deriveCurrentReleaseState(
+  source: FactSource = defaultSource,
+  options: DerivationOptions = {},
+): CurrentReleaseState {
   const inventory = readInventory(source);
 
   const records: EvidenceRecord[] = [];
@@ -186,13 +220,14 @@ export function deriveCurrentReleaseState(source: FactSource = defaultSource): C
 
   const input: ReleaseInput = {
     candidate: {
-      commit: CANDIDATE.commit,
-      ref: CANDIDATE.ref,
+      commit: options.commit ?? CANDIDATE.commit,
+      ref: options.ref ?? CANDIDATE.ref,
       // No production deployment is declared anywhere in this repository — the
       // Phase 186/234 work stopped at "configuration present, deployment not
-      // performed". Leaving it undefined is what makes the deployment
-      // prerequisite refuse evidence that names some other deployment.
-      productionDeployment: undefined,
+      // performed". A release caller may declare one explicitly; when it is
+      // omitted the gate refuses deployment evidence entirely rather than
+      // accepting an unnamed proof.
+      productionDeployment: options.productionDeployment,
     },
     affectedRefs: facts.affectedRefs,
     // Read from the live provider registry rather than listed here: a provider
@@ -202,10 +237,17 @@ export function deriveCurrentReleaseState(source: FactSource = defaultSource): C
     records,
   };
 
-  return { facts, input, verdict: evaluateRelease(input, { prerequisites: RELEASE_PREREQUISITES }) };
+  return {
+    facts,
+    input,
+    verdict: evaluateRelease(input, { prerequisites: RELEASE_PREREQUISITES, now: options.now }),
+  };
 }
 
 /** The verdict this checkout earns, computed from what it can actually prove. */
-export function currentReleaseVerdict(source: FactSource = defaultSource): ReleaseVerdict {
-  return deriveCurrentReleaseState(source).verdict;
+export function currentReleaseVerdict(
+  source: FactSource = defaultSource,
+  options: DerivationOptions = {},
+): ReleaseVerdict {
+  return deriveCurrentReleaseState(source, options).verdict;
 }
