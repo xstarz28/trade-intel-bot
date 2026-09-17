@@ -537,6 +537,41 @@ export const AFFECTED_REF_NAMES: readonly string[] = AFFECTED_REF_EXPECTATIONS.m
   (entry) => entry.ref,
 );
 
+/* ── repository identity ─────────────────────────────────────────────────── */
+
+/**
+ * Repository identity is **host + owner/repo**, not a string. `git remote add
+ * origin` records whatever URL it was handed: GitHub serves the same repository
+ * with and without a `.git` suffix and over SSH as well as HTTPS, and a CI runner
+ * writes its own credentialed URL. All of those are the same repository; another
+ * host, owner or path is a different one, and anything unparsable is not an
+ * identity at all — which is why the comparison fails closed.
+ */
+export function repositoryIdentity(remoteUrl: string): string | null {
+  const trimmed = remoteUrl.trim();
+  // `.match`, not `.exec`: the safety suite refuses a call-shaped `exec(` in these
+  // modules outright, and a regex that merely looks like a spawner is not worth an
+  // exemption from that guard.
+  const withScheme = trimmed.match(/^(?:https?|ssh|git):\/\/(?:[^@/]+@)?([^/:]+)(?::\d+)?\/(.+)$/);
+  const scpLike = trimmed.match(/^[^@/:]+@([^/:]+):([^:]+)$/);
+  const match = withScheme ?? scpLike;
+  if (!match) return null;
+  const host = match[1].toLowerCase();
+  const path = match[2]
+    .replace(/\.git$/, "")
+    .replace(/^\/+|\/+$/g, "")
+    .toLowerCase();
+  if (!host || !path) return null;
+  return `${host}/${path}`;
+}
+
+/** True only when both values name the same host and the same owner/repo. */
+export function sameRepository(left: string, right: string): boolean {
+  const one = repositoryIdentity(left);
+  const other = repositoryIdentity(right);
+  return one !== null && other !== null && one === other;
+}
+
 /**
  * Structural validation. A manifest that is missing a fingerprint, an issuer, a
  * repository identity or any ref is not a partial manifest — it is one that

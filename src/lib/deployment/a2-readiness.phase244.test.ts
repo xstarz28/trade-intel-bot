@@ -356,23 +356,27 @@ describe("244 — the real tree is not ready, and stays that way", () => {
     expect(report.evidence.unsatisfied).toContain("a2-pre-backup");
     expect(report.evidence.satisfied).toBe(0);
 
-    if (repository.shallow) {
-      // The workspace this phase was developed in is a shallow clone, and that is
-      // exactly the condition Phase 184 documented: a rewrite scoped from here
-      // would under-report the affected history.
+    // Which clone this is decides the *exact* refusal, and each shape is asserted
+    // rather than tolerated. A detached HEAD (a CI pull-request checkout) is refused
+    // before the scope can even be discussed; a shallow clone (a CI push checkout,
+    // and this workspace) is the Phase 184 condition, where a rewrite scoped from
+    // here would under-report the affected history; a full clone falls through to
+    // the evidence refusal asserted unconditionally above.
+    if (repository.branch === "") {
+      expect(report.outcome).toBe("WRONG_BRANCH");
+    } else if (repository.shallow) {
       expect(report.outcome).toBe("INCOMPLETE_REF_INVENTORY");
       expect(report.problems.join(" ")).toContain("shallow");
     } else {
-      // A full clone is not shallow, so the refusal is the evidence one — and it
-      // is asserted unconditionally above, in every clone.
+      expect(report.outcome).toBe("MISSING_BACKUP_EVIDENCE");
       expect(report.problems.join(" ")).not.toContain("shallow");
     }
   });
 
   it("23b. which clone this ran in is recorded, not assumed", () => {
-    // If the clone stops being shallow, test 23 takes its other branch — and this
-    // assertion is what tells a reader which of the two branches that was. The
-    // invariants in 23 hold in both, which is the point of stating them there.
+    // The clone's shape is what decides which branch of test 23 ran: detached,
+    // shallow or full. This assertion records the two facts it depends on, and the
+    // invariants in 23 hold in all three, which is why they are stated there.
     expect(observeRealRepository().shallow).toBe(existsSync(resolve(root, ".git/shallow")));
     expect(observeRealRepository().head).toMatch(/^[0-9a-f]{40}$/);
   });

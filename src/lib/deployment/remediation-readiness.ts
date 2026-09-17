@@ -25,6 +25,7 @@
  */
 import {
   manifestProblems,
+  sameRepository,
   type InventoryArtifactLike,
   type RemediationEvidenceRecord,
   type RemediationManifest,
@@ -185,7 +186,7 @@ export function evaluateA1Readiness(request: A1ReadinessRequest): A1ReadinessRep
   problems.push(...structureProblems);
 
   const { repository, declared } = request;
-  if (repository.remoteUrl !== manifest.repository.remoteUrl) {
+  if (!sameRepository(repository.remoteUrl, manifest.repository.remoteUrl)) {
     problems.push(
       `repository mismatch: the clone's ${repository.remoteName} remote is not the manifest's canonical repository`,
     );
@@ -243,7 +244,7 @@ export function evaluateA1Readiness(request: A1ReadinessRequest): A1ReadinessRep
     return report("NOT_READY");
   }
   if (
-    repository.remoteUrl !== manifest.repository.remoteUrl ||
+    !sameRepository(repository.remoteUrl, manifest.repository.remoteUrl) ||
     (manifest.repository.forbiddenBranches as readonly string[]).includes(repository.branch)
   ) {
     return report("WRONG_REPOSITORY");
@@ -384,7 +385,7 @@ export function evaluateA2Readiness(request: A2ReadinessRequest): A2ReadinessRep
   const { repository, inventory } = request;
   const expectedRefs = manifest.affectedRefs.map((entry) => entry.ref);
 
-  if (repository.remoteUrl !== manifest.repository.remoteUrl) {
+  if (!sameRepository(repository.remoteUrl, manifest.repository.remoteUrl)) {
     problems.push("repository mismatch: the clone's remote is not the manifest's repository");
   }
   const onForbiddenBranch = manifest.repository.forbiddenBranches.includes(repository.branch);
@@ -489,7 +490,7 @@ export function evaluateA2Readiness(request: A2ReadinessRequest): A2ReadinessRep
   const evidence = evaluateEvidence(manifest.a2Requirements, request.evidence, "pre");
 
   if (structureProblems.length > 0) return report("NOT_READY");
-  if (repository.remoteUrl !== manifest.repository.remoteUrl) return report("WRONG_REPOSITORY");
+  if (!sameRepository(repository.remoteUrl, manifest.repository.remoteUrl)) return report("WRONG_REPOSITORY");
   if (branchProblem) return report("WRONG_BRANCH");
   if (request.expectedCandidate === null) return report("NOT_READY");
   if (!candidateMatches) return report("WRONG_CANDIDATE");

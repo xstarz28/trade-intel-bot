@@ -22,6 +22,8 @@ import {
   REFS_EXPOSED_AT_TIP,
   VERIFICATION_TOOLING,
   manifestProblems,
+  repositoryIdentity,
+  sameRepository,
   type RemediationManifest,
 } from "./remediation-manifest";
 
@@ -272,5 +274,37 @@ describe("244 — the manifest fails closed when it is damaged", () => {
       "POSTCHECK",
       "RELEASE_GATE_REEVALUATION",
     ]);
+  });
+});
+
+describe("244 — repository identity is host and owner/repo, not a string", () => {
+  const canonical = REMEDIATION_MANIFEST.repository.remoteUrl;
+
+  it("accepts every form of the same repository a clone or a runner may record", () => {
+    for (const same of [
+      "https://github.com/xstarz28/trade-intel-bot.git",
+      "https://github.com/xstarz28/trade-intel-bot", // what `actions/checkout` writes
+      "https://x-access-token@github.com/xstarz28/trade-intel-bot", // a credentialed runner URL
+      "git@github.com:xstarz28/trade-intel-bot.git", // an operator cloning over SSH
+      "ssh://git@github.com/xstarz28/trade-intel-bot.git",
+      "https://GitHub.com/xstarz28/Trade-Intel-Bot.git",
+    ]) {
+      expect(sameRepository(canonical, same)).toBe(true);
+    }
+  });
+
+  it("refuses another host, another owner, another path, and anything unparsable", () => {
+    for (const other of [
+      "https://github.com/someone-else/trade-intel-bot.git",
+      "https://github.com/xstarz28/trade-intel-bot-fork.git",
+      "https://gitlab.com/xstarz28/trade-intel-bot.git",
+      "https://github.com/xstarz28/trade-intel",
+      "/tmp/clone",
+      "not a url",
+      "",
+    ]) {
+      expect(sameRepository(canonical, other)).toBe(false);
+      expect(repositoryIdentity(other)).not.toBe(repositoryIdentity(canonical));
+    }
   });
 });

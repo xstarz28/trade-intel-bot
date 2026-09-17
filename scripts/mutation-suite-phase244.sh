@@ -392,10 +392,17 @@ mutate "M14 the wrong repository is accepted" catch <<'PY'
 import sys
 P = "src/lib/deployment/remediation-readiness.ts"
 s = open(P).read()
-old = '  if (repository.remoteUrl !== manifest.repository.remoteUrl) return report("WRONG_REPOSITORY");'
+P = "src/lib/deployment/remediation-manifest.ts"
+s = open(P).read()
+old = """  const one = repositoryIdentity(left);
+  const other = repositoryIdentity(right);
+  return one !== null && other !== null && one === other;"""
 if s.count(old) != 1:
     sys.exit("anchor not found exactly once")
-open(P, "w").write(s.replace(old, '  if (false) return report("WRONG_REPOSITORY");'))
+new = """  const one = repositoryIdentity(left);
+  const other = repositoryIdentity(right);
+  return one !== null && other !== null;"""
+open(P, "w").write(s.replace(old, new))
 PY
 
 mutate "M15 a moved or unpinned candidate is accepted" catch <<'PY'

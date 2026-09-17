@@ -3346,6 +3346,7 @@ makes it testable against the artifacts it describes (`docs/secret-remediation-r
 | Field | Value |
 |---|---|
 | repository (canonical) | `xstarz28/trade-intel-bot` |
+| repository identity rule | **host + owner/repo**, normalized: the `.git` suffix, the SSH form, a runner's credentialed URL and letter case are the same repository; another host, owner or path is not, and an unparsable value is not an identity |
 | remote | `origin` → `https://github.com/xstarz28/trade-intel-bot.git` |
 | expected branch | `arena/01a0adfb-trade-intel-bot` |
 | forbidden branch | `main` |
@@ -3541,11 +3542,11 @@ no email, no provider request, and no issuer URL in executable position. The mut
 suite proves those scans are load-bearing: adding a network call (M7), a ref-mutating
 git call (M8) and widening the allowlist (M9) are each caught.
 
-### G. Regression coverage (Phase G) — 83 cases in four suites
+### G. Regression coverage (Phase G) — 81 cases in four suites
 
 | Suite | Cases | Covers |
 |---|---|---|
-| `remediation-manifest.phase244.test.ts` | 19 | the manifest's coupling to `docs/secret-remediation-refs.json`, the eight refs and the two exposed tips, the reconciliation rulings, fail-closed structural validation, the five-stage machine, and the "no credential value anywhere" scan |
+| `remediation-manifest.phase244.test.ts` | 21 | the manifest's coupling to `docs/secret-remediation-refs.json`, the eight refs and the two exposed tips, the reconciliation rulings, repository identity (which URL forms are the same repository and which are not), fail-closed structural validation, the five-stage machine, and the "no credential value anywhere" scan |
 | `a1-readiness.phase244.test.ts` | 17 | A1 1–10 and 5b/8b/15b: identity, fingerprint, repository, pre-evidence, external access, the never-evidence rule, refusal to infer revocation from local tests or documents, and the real-tree `NOT_READY` |
 | `a2-readiness.phase244.test.ts` | 19 | A2 11–22 plus 23/23b/30: ref scope, empty and partial inventories, unexpected refs, candidate pinning, branch identity, dirty worktree, backup evidence, scope authority, and release admission staying `NOT READY` |
 | `remediation-safety.phase244.test.ts` | 24 | Phases D/E/F and the cross-cutting cases: current real state ⇒ not ready, readiness ≠ completion, precheck cannot produce a `VERIFIED` record, identical input ⇒ identical result, malformed and contradictory manifests fail closed, post-check cannot be satisfied by pre-check evidence, and the source-scan guards |
@@ -3587,24 +3588,38 @@ anchor as `INVALID`, so a stale mutation can never be counted as caught.
 | Gate | Result |
 |---|---|
 | `npx tsc -b` | 0 errors |
-| `npx vitest run` (whole repository) | 314 files, 10 410 passed, 12 skipped, 0 failed |
+| `npx vitest run` (whole repository) | 314 files, 10 412 passed, 12 skipped, 0 failed |
 | `npm run build` | 0 |
 | `npx eslint` on every changed file | 0 |
-| targeted subset (Phases 238, 239, 241, 242, 243, 244 + hermeticity) | 15 files, 268 passed |
+| targeted subset (Phases 238, 239, 241, 242, 243, 244 + hermeticity) | 15 files, 270 passed |
 | `scripts/mutation-suite-phase244.sh` | 42 mutants ⇒ 38 caught / 4 equivalent / 0 gaps / 0 invalid, byte-exact |
 | `npm run config:verify` (Phase 243 regression) | unchanged: refusals intact, `productionVerified` always `false` |
 | `npm run remediation:readiness` on the real tree | A1 `WRONG_ISSUER`/`MISSING_EXTERNAL_ACCESS`, A2 `INCOMPLETE_REF_INVENTORY`, exit 1 |
 | zero network / zero ref write / zero issuer mutation / zero deploy / zero email / zero provider call | proven by the instrumented run in F and the source scans in G |
 
-CI on the first push of this phase caught a real regression in the A2 real-tree case:
-the suite read `.git/packed-refs` as its fallback, and a runner that packs no refs has
-no such file, so the observation threw instead of observing. The fixture now treats
-every Git read as optional — an unreadable fact stays empty and fails closed — and the
-case asserts clone-independent invariants (never ready, the pre-rewrite backup
-requirement unsatisfied, nothing satisfied), with the clone-specific outcome kept
-inside a `shallow` branch. The invariants were verified against four simulated CI
-shapes (branch and detached HEAD × fresh and stale inventory) before the fix was
-pushed; no assertion was weakened to make the runner pass.
+CI on the first two pushes of this phase caught two real regressions in the A2
+real-tree case, and neither was repaired by relaxing an assertion.
+
+1. The case read `.git/packed-refs` as its fallback, and a runner that packs no refs
+   has no such file, so the observation threw instead of observing. Every Git read is
+   now optional: an unreadable fact stays empty, and an empty fact fails closed.
+2. The case compared the clone's remote **string** with the manifest's, but
+   `actions/checkout` writes `https://github.com/xstarz28/trade-intel-bot` — no `.git`
+   suffix — so a correct checkout was refused as `WRONG_REPOSITORY`. Repository
+   identity is now host + owner/repo, normalized over the `.git` suffix, the SSH form,
+   URL credentials and case, so every form of the same repository is recognized while
+   another host, owner or path is still refused (M14 mutates that rule back to "same
+   host is enough" and is caught).
+
+The case now asserts clone-independent invariants — never ready, the pre-rewrite
+backup requirement unsatisfied, nothing satisfied — plus the *exact* refusal for each
+of the three clone shapes: detached HEAD `WRONG_BRANCH`, shallow
+`INCOMPLETE_REF_INVENTORY`, full clone `MISSING_BACKUP_EVIDENCE`. All five simulated
+CI shapes (branch and detached HEAD × shallow, full-fresh and full-stale inventory)
+were verified before the fix was pushed. One unrelated pre-existing timing test
+(`provider-integration.phase178b.test.ts`, a `Date.now()` sleep assertion) failed once
+on a loaded runner and passed both locally and on the next run; it is recorded here
+rather than silently retried.
 
 One pre-existing Phase 242 guard required a deliberate classification: its
 "every other 'ready' is an unrelated domain status" allowlist now lists
