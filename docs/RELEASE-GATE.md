@@ -1354,7 +1354,21 @@ new one sees all seven. The `history-secret-scan` job fails **by design**
 left untouched deliberately — re-calibrating a security probe's expectations is
 its own decision, not a side effect of this phase.
 
-### F. Mutation results
+### F. CI behaviour of the new checks (measured, not assumed)
+Verified in both environments:
+
+| Environment | phase221 `:137` | phase233 |
+|---|---|---|
+| Full clone (local) | passes | passes — all 7 tips re-verified |
+| `--depth 1` branch clone | passes | passes — 1 tip re-verified |
+| `--depth 1` `refs/pull/2/merge` (what CI checks out) | passes | passes — tip re-verification **explicitly reported as skipped**, nothing silently green |
+
+The merge-ref checkout holds no advertised branch tip at all, so tip-exposure
+re-verification has nothing to compare against there. It reports that fact
+rather than accepting it quietly, and in a full clone it asserts that every tip
+is verified. The `:137` ref-drift failure is cured in all three.
+
+### G. Mutation results
 `scripts/mutation-suite-phase233.sh` — **18/18 CAUGHT, 0 gaps**. Every mutant is
 a defect that has really occurred (the missing rewrite-map rows, the "All five"
 drift, the swallowed `catch`) or the exact regression the new rules prevent
@@ -1363,7 +1377,7 @@ deleted, the section parser regressing to swallow a sibling section). Mutants
 are applied with perl programs in quoted heredocs, so no shell escaping can
 silently no-op them, and each is byte-verified as applied or reported INVALID.
 
-### G. Standing blockers (unchanged)
+### H. Standing blockers (unchanged)
 A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on
 A1 and now known to require **seven** refs and a fresh rehearsal; production
 email transport/sender/required vars absent; Evidence D INCOMPLETE.
