@@ -3664,3 +3664,241 @@ contacted, no history was rewritten, no ref was written, nothing was force-pushe
 nothing was deployed, no production email was sent, no provider credential was
 provisioned and no tag was created. The release verdict therefore stays **NOT READY**,
 unchanged by this phase, with A1 and A2 still its blockers.
+
+## Phase 245 — A2 full-clone rehearsal and history-rewrite proof
+
+Phase 244 established *readiness*; this phase establishes that the A2 procedure
+itself works, end to end, on a **disposable full clone of the real repository** —
+and that running it proves the procedure, never the remediation. Nothing in this
+phase touched the real remote except to read it.
+
+Two new surfaces:
+
+| Surface | Role |
+|---|---|
+| `src/lib/deployment/a2-rehearsal.ts` | the pure decisions: clone, identity, inventory, evidence, backup, rewrite, boundary, integrity, restore, verdict |
+| `scripts/a2-rehearsal.mjs` | the driver: full clone, measurement, backup, rewrite, post-rewrite proof, integrity, restore — all inside one disposable work dir |
+| `scripts/a2-rehearsal-fixture.mjs` | disposable fixtures (`full`, `shallow`, `grafted`, `missing-ref`, `extra-ref`) so the refusals are measurable |
+| `scripts/mutation-suite-phase245.sh` | 43 mutants over the decisions and the guard, run against the real driver |
+
+The scope is never restated in code: the eight refs come from the canonical
+Phase 244 manifest, and the manifest records Git's *short* names
+(`heads/main`) while a repository reports full names (`refs/heads/main`). A single
+explicit join (`canonicalRefName()`, prefix-only) sits between them, because
+comparing the two forms as raw strings would either miss every ref or invite a
+second, drifting list.
+
+### A. Why a shallow or incomplete clone cannot answer any of this
+
+* A shallow clone truncates history, so a carrier scan over it under-reports: the
+  `verify-history-clean` scanner refuses shallow and grafted repositories outright
+  (exit 2), and this phase's checker refuses them by name (`SHALLOW_CLONE`,
+  `GRAFTED_CLONE`) instead of scoping a rewrite from a truncated view.
+* The object database must traverse end to end — `fsck --full` plus a
+  reachable-commit floor — and each ref tip must resolve, so an empty or partial
+  object store is `INCOMPLETE_OBJECT_DATABASE` rather than "no exposure found".
+* The measurements that matter here are 427 reachable commits and 270 carrier
+  commits; measured on the shallow checkout in CI they are 13 and 0.
+
+### B. The eight-ref scope, joined rather than duplicated
+
+Measured against a fresh `git clone --mirror` of the real repository (14 MB, 427
+commits, 13 refs):
+
+| Ref | Carriers | Exposed blob at tip |
+|---|---|---|
+| `refs/heads/arena/01a08e67-trade-intel-bot` | 269 | no |
+| `refs/heads/arena/01a0a5f5-trade-intel-bot` | 269 | no |
+| `refs/heads/arena/01a0a92b-trade-intel-bot` | 269 | no |
+| `refs/heads/arena/01a0ad26-trade-intel-bot` | 269 | no |
+| `refs/heads/arena/01a0adfb-trade-intel-bot` | 269 | no |
+| `refs/heads/main` | 261 | **yes** |
+| `refs/heads/phase-157-live-discovery-lifecycle` | 262 | **yes** |
+| `refs/tags/rc-181` | 269 | no |
+
+The measurement equals the manifest per ref (`INVENTORY_EXACT`, 8/8). A missing
+ref, an unexpected ref, an empty measurement, a ref that cannot be measured, or a
+scoped ref whose carrier count contradicts the reachable-object measurement
+(`UNKNOWN_INVENTORY`) are all refusals — an empty set is never "nothing to
+rewrite".
+
+### C. Identity: host plus owner plus repository path, never the directory
+
+The rehearsal identifies the repository from the `origin` the clone actually came
+from, through `repositoryIdentity()`: lowercased host and `owner/repo`, with
+`.git`, credentials, ports and the `git@host:owner/repo` shorthand normalised.
+Another host, owner or path is `WRONG_REPOSITORY`; a local fixture is identified
+by the source the manifest declares, and a local path with no declared source is
+`AMBIGUOUS_REMOTE`. The directory name is never evidence — case 4 asserts exactly
+that, by running a fixture in a directory named after a different repository.
+
+### D. Pre-rewrite evidence package
+
+Captured before anything is rewritten: normalised identity, remote, branch,
+candidate, all eight tips, the fingerprint, the carrier count, the exposed blob
+path, the clone state, the work-tree cleanliness and a deterministic content
+digest. The secret value is never in the package — only its fingerprint.
+
+Measured digests for a fixed synthetic instant: **pre `495e3bf7` / post
+`63f13835`** (identical across repeated runs, so the evidence is comparable
+before/after rather than anecdotal).
+
+### E. Backup and restore: all eight refs, actually restored
+
+* All eight refs are captured as `refs/p245-backup/<full ref name>` inside the
+  disposable clone, each pointing at the original tip; each backup is verified
+  against the tip it must hold, and a backup namespace is never pushed anywhere.
+* The restore is executed, not simulated: the eight refs are moved back to the
+  original tips, the backup namespace is deleted, and the result is compared with
+  the pre-rewrite measurement — same ref set, same tips, same reachable-commit
+  count. Measured: `RESTORE_EXACT`.
+* The checkout used for the integrity proof is removed before the restore: a
+  detached HEAD would otherwise keep the rewritten lineage alive and make the
+  restore look incomplete.
+
+### F. The mechanism, and why it is not a wipe
+
+`git filter-repo` is not installed here, so the mechanism is a deterministic index
+rewrite: one `filter-branch --force --index-filter … --tag-name-filter cat --`
+invocation listing **only the eight canonical refs**, whose filter swaps just the
+fingerprinted blobs at their recorded paths for the synthetic marker
+`REDACTED-BY-A2-REHEARSAL`. Untouched trees are re-emitted byte-identically.
+
+Measured on the real history: `src/convex/auth/emailOtp.ts` blob `e490ffda` →
+`f05a221a`, 762 untouched paths preserved, 764 files materialised on checkout, and
+the marker present in the rewritten history. The mechanism's own leftovers
+(`refs/original/*`) are deleted and the reflog expired, so the pre-rewrite lineage
+is not reachable from the rewritten refs.
+
+### G. Post-rewrite verification, per ref, over reachable history
+
+For each of the eight refs the tool checks that the ref still exists, that its tip
+is traversable, that **no carrier commit remains** and that the fingerprinted
+object is unreachable. A clean tip is explicitly not the proof: a ref whose tip
+is clean while its history still reaches the exposure fails (`TIP_ONLY_CLEAN`),
+and that requirement is asserted in both directions.
+
+The boundary check proves that exactly the eight approved refs changed and nothing
+else: the five `refs/pull/*` refs and every unapproved ref must keep their tips, a
+disappeared ref (`REF_DISAPPEARED`), a new ref (`UNEXPECTED_NEW_REF`) or an
+unapproved move (`UNAPPROVED_REF_CHANGED`) are failures, and a rewrite that
+changed nothing cannot claim success. Measured: `REWRITE_VERIFIED`,
+`BOUNDARY_OK (8 refs changed)`, all eight refs verified.
+
+### H. Integrity and checkoutability
+
+`git fsck --full`, a work tree materialised from a rewritten tip (764 files), the
+target path present with the replacement in it, every untouched path compared
+file by file, and every required ref present. "Git accepts the refs" is not
+application integrity: the objects must traverse and the project must still be
+checkable out.
+
+### I. Operator contract, and the two ten-step sequences
+
+The report's first line states the mode (`REHEARSAL`), and every report carries
+`remediationPerformed: no`, `realRemoteTouched: no` and `a2Verified: no`. Exit
+codes: 0 verified rehearsal, 1 refused or failed, 2 the tool itself could not run.
+
+The rehearsal completes ten steps: `FULL_CLONE_ACQUISITION`, `REPOSITORY_IDENTITY`,
+`REF_INVENTORY`, `PRE_REWRITE_EVIDENCE`, `BACKUP`, `REWRITE`, `POST_REWRITE_SCAN`,
+`PER_REF_VERIFICATION`, `INTEGRITY_CHECK`, `RESTORE_PROOF`. The real remediation
+keeps its own ten-step sequence (`REHEARSAL_STAGES`, case 27), which replaces the
+last two with `EXPLICIT_OPERATOR_APPROVAL` — the one step no tool may perform —
+and `RELEASE_GATE_REEVALUATION`. The difference is deliberate: a rehearsal cannot
+rehearse the operator's approval, and cannot re-evaluate a gate the real
+remediation has not yet earned.
+
+No command in this repository force-pushes the real remote. One invocation guard
+(`evaluateInvocation()`) refuses `push`, `fetch`, `pull`, `send-pack`, `submodule`,
+`gc`, `prune` and `repack` by name, fences ref writes to the disposable
+directories, refuses to reconfigure the remote and allows `--force` for exactly one
+verb: the local rewrite. The guard is a pure decision, so it is tested directly
+(case 24) rather than through the driver.
+
+### J. Measured proof that the real remote was not written to
+
+A full rehearsal was run against the real repository with a recording `git` shim
+first on `PATH`:
+
+| Invocation | Count |
+|---|---|
+| `rev-parse` / `cat-file` / `rev-list` | 8 965 / 2 696 / 48 |
+| `update-ref` / `for-each-ref` / `fsck` | 32 / 6 / 2 |
+| `clone` / `worktree` / `ls-tree` / `symbolic-ref` / `remote` / `reflog` / `hash-object` / `filter-branch` | 1 each |
+| `push` / `send-pack` / `fetch` / `pull` / `submodule` / `gc` / `prune` / `repack` | **0** |
+| `--force` | 1 (the local `filter-branch`) |
+
+`git ls-remote` before and after the run returned the same 15 refs, byte for byte:
+the eight scoped refs, the five `refs/pull/*` refs and `HEAD`. The only network
+operation is the full clone the operator explicitly asks for, which is a read.
+
+Measured result of that run: `FULL_CLONE_OK`, `IDENTITY_OK`,
+`INVENTORY_EXACT (8 refs)`, `BACKUP_COMPLETE`, `REWRITE_VERIFIED`,
+`BOUNDARY_OK (8 changed)`, `INTEGRITY_OK`, `RESTORE_EXACT`, all ten stages,
+`REHEARSAL_VERIFIED`, exit 0, `realRemoteTouched: no`, `a2Verified: no`.
+
+### K. Regression coverage — 28 cases
+
+| Cases | Covers |
+|---|---|
+| 1–3 | a shallow clone, a grafted clone, an incomplete object database and an unmeasurable clone are all refused; a full clone is accepted |
+| 4–6 | identity in every transport form, the declared source for a local fixture, `AMBIGUOUS_REMOTE`, wrong host/owner/path |
+| 7–14 | the exact eight-ref inventory: missing, unexpected, empty, unmeasurable, contradictory, dropped-from-expectation, and the short-name join; evidence package and digest; backup completeness and per-ref tips; the unapproved-rewrite refusal |
+| 15–20 | post-rewrite proof over reachable history: tip-only clean, disappeared ref, non-traversable history, unrelated refs, no-op rewrite, stale or pre-rewrite evidence, digest tampering |
+| 21–23 | determinism (identical input, identical report regardless of order), traversability, and a materialisable checkout |
+| 24–25 | the invocation guard, the project-checkout refusals and the single `--force` occurrence |
+| 26–28 | the real tree is still `NOT READY`, a verified rehearsal never marks A2 verified, and release admission stays refused without real evidence |
+
+The driver itself is exercised against disposable fixtures: `full` → exit 0,
+`shallow` → `SHALLOW_CLONE`, `grafted` → `GRAFTED_CLONE`, `missing-ref` →
+`MISSING_REF`, `extra-ref` → `UNEXPECTED_REF`. Two full runs with the same
+synthetic instant produced identical rewritten tips, so the mechanism is
+deterministic.
+
+### L. Mutation results — 43 mutants
+
+`scripts/mutation-suite-phase245.sh` applies each mutant to one target, re-runs the
+focused suite, and then — only if the suite still passes — runs the real driver
+against the three disposable fixtures and compares exit codes (`0|1|1`).
+
+* **42 caught, 1 documented equivalent, 0 gaps, 0 invalid, byte-exact restore.**
+* The equivalent is *the driver ignoring the rewrite mechanism's exit status*: a
+  failed rewrite is still caught by the post-rewrite scan and the boundary check —
+  demonstrated by the `no-op rewrite` mutant, which the driver refuses on its own.
+  The throw is a fast fail, not the only guard.
+* The mutants cover every listed class: allow shallow, skip completeness, weaken
+  identity, accept a wrong repository, accept an incomplete or empty ref set,
+  ignore one of eight, allow an unexpected ref, omit a backup, skip restore
+  verification, accept a tip-only scan, ignore historical objects, accept a
+  disappeared ref, permit an unrelated ref change, reuse pre/post evidence, skip
+  integrity, rewrite an unapproved ref, claim success for a no-op, mark A2 verified,
+  expose a force-push path, and make the eight-ref result order-dependent.
+
+### M. Quality gates
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` | 0 errors |
+| `npx vitest run` | 315 files, 10 440 passed, 12 skipped |
+| `npm run build` | success |
+| eslint on the changed files | 0 findings |
+| Phase 238–244 + hermeticity + Phase 245 suites | 22 files, 391 tests, all green |
+| `scripts/mutation-suite-phase245.sh` | exit 0 (42/1/0/0) |
+
+### N. What this phase does not do
+
+**The real repository and its history were not rewritten.** `refs/heads/main`
+(`51c9ddeb`), the four other Arena branches, `refs/heads/phase-157-…`
+(`244e9cc7`), `refs/tags/rc-181` (`66323a38`) and the five `refs/pull/*` refs keep
+exactly the tips they had before this phase; nothing was force-pushed, no ref was
+written outside the disposable clones, and the temporary clones were deleted.
+
+**A2 remains UNVERIFIED.** A rehearsal proves the procedure, not the remediation:
+the credential is still live at the issuer, and the real history still carries the
+exposure. Nothing in this phase revokes, rotates, issues, deploys, provisions or
+tags anything, and no operator approval was simulated as if it were real.
+
+The release verdict therefore stays **NOT READY**, with `A1_OTP_ISSUER_REVOCATION`
+(the issuer access and the self-service surface are still missing) and
+`A2_HISTORY_REWRITE` (the rewrite has not been performed, and its evidence does not
+exist yet) unchanged by this phase.
