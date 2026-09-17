@@ -1482,3 +1482,43 @@ probe exception, hardcoded success and failure, an unknown result falling
 through to success, neutered validation, and the contract being forked back
 into the probe. An unapplied mutant now counts as a failure, so the suite
 cannot silently under-report.
+
+### F. CI behaviour — measured
+The first Phase 234 commit (`f435b36`) cleared the two assertion failures and
+exposed a second, subtler form of the same defect: the suite spawned the probe
+once per assertion (~10 runs). In the sandbox every layer fails in
+milliseconds; on a networked runner the probes actually complete, and a hanging
+host costs its full timeout, so per-assertion spawns blew vitest's 10s default:
+
+| Run | phase200 failures |
+|---|---|
+| before Phase 234 (`f5880f0`) | `:74`, `:84`, `:96` — wrong assertions |
+| after (`f435b36`) | `:118`/`:246` and `:126`/`:136`/`:180` — **timeouts**, at different lines each run |
+
+Fixed by spawning the probe **twice for the whole file** (anonymous and keyed,
+the keyed run using the sentinel so the credential-redaction check shares it)
+with `--timeout 5` bounding each internal probe, and an explicit `beforeAll`
+timeout. Cost is now paid once and no longer scales with the network.
+
+### G. Remaining CI failures, classified
+*Correction to the Phase 233 section above:* it said the only remaining test
+failures were the two phase200 assertions. That list was truncated — GitHub
+returns annotations in batches and the earlier read stopped early. The full set,
+identical before and after Phase 234, is:
+
+| Location | Failure | Classification |
+|---|---|---|
+| `evidence-d-execution.phase203.test.ts:334` | `expected 1 to be 2` (harness exit code) | **pre-existing**, unrelated to Phase 233/234 |
+| `evidence-d-execution.phase203.test.ts:347` | `report.reason` is `undefined` | **pre-existing**, same class as phase200 |
+| `handoff-readiness.phase200.test.ts:*` | environment-pinned assertions | **FIXED here** |
+| `Reachable-history secret scan` job | exit 1 | by design (A1 blocker) |
+| `Android debug APK` job | failure | pre-existing, present at `3f63690` |
+
+The phase203 pair is the SAME defect class as the phase200 one: those tests run
+`evidence-d-harness.mjs` against `https://unreachable-example.convex.cloud`,
+which **resolves** (Cloudflare, `104.18.14.131`) — so on a networked runner the
+handshake completes and the host answers, the harness takes a different exit
+path (1, no `reason`), and the tests that assert a *transport refusal*
+(exit 2, `reason: "The deployment did not answer (ECONNRESET)…"`) fail. Locally
+egress is severed at TLS, so they pass. Deliberately NOT fixed here — it is a
+separate test file and the phase brief scopes the change to phase200.

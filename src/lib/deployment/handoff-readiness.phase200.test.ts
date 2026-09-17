@@ -13,7 +13,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 // Typed via scripts/lib/convex-access-verdict.d.mts — no `any` cast.
 import {
   EXIT_CODES,
@@ -103,12 +103,39 @@ describe("Phase 200 — the control-plane diagnostic never infers authentication
       isRevocationEvidence: boolean;
     };
     layers: Array<{ layer: string; host: string; status: string; detail: string }>;
+    credentials?: { deployKeyPresent: boolean; deployKeyFingerprint: string | null };
   }
 
-  const runReport = (env: Record<string, string>): { run: Run; report: Report } => {
-    const run = runScript(ACCESS, env, ["--json"]);
+  /**
+   * Phase 234 — the probe is spawned TWICE for the whole file, not once per
+   * assertion.
+   *
+   * It performs real DNS/TCP/TLS/HTTP I/O. In the sandbox every layer fails in
+   * milliseconds, so spawning it repeatedly was cheap; on a networked runner
+   * the probes actually complete (and a hanging host costs the full timeout),
+   * which made per-assertion spawns slow enough to blow vitest's 10s default.
+   * That was a second, subtler form of the same defect this phase fixes: the
+   * suite's cost depended on the runner's network.
+   *
+   * Two scenarios cover every assertion below — anonymous, and keyed. The
+   * keyed run uses the sentinel value so the "never prints a credential" check
+   * shares it. `--timeout 5` bounds each internal probe.
+   */
+  const SENTINEL = ["convex", "deploy", "key", "sentinel", "9137"].join("-");
+  const PROBE_TIMEOUT = 180_000;
+
+  let anonymous: { run: Run; report: Report };
+  let keyed: { run: Run; report: Report };
+
+  const runProbe = (env: Record<string, string>): { run: Run; report: Report } => {
+    const run = runScript(ACCESS, env, ["--json", "--timeout", "5"]);
     return { run, report: JSON.parse(run.stdout) as Report };
   };
+
+  beforeAll(() => {
+    anonymous = runProbe({});
+    keyed = runProbe({ CONVEX_DEPLOY_KEY: SENTINEL });
+  }, PROBE_TIMEOUT);
 
   const passed = (report: Report, layer: string) =>
     report.layers.some(
@@ -116,7 +143,7 @@ describe("Phase 200 — the control-plane diagnostic never infers authentication
     );
 
   it("emits a verdict that conforms to the contract, in whatever network this is", () => {
-    const { run, report } = runReport({});
+    const { run, report } = anonymous;
     // Runs in every environment, so it cannot be satisfied by pinning one.
     expect(validateVerdict(report.verdict, { reachable: report.reachable })).toEqual([]);
     expect(report.verdict.isRevocationEvidence).toBe(false);
@@ -124,8 +151,8 @@ describe("Phase 200 — the control-plane diagnostic never infers authentication
   });
 
   it("reports an unreachable control plane as transport, never as auth", () => {
-    const { run, report } = runReport({});
-    if (report.reachable) return; // the other branch below covers this environment
+    const { run, report } = anonymous;
+    if (report.reachable) return; // the keyed test below covers the other environment
     expect(report.verdict.state).toBe("NOT_REACHABLE");
     expect(report.verdict.isAuthEvidence).toBe(false);
     expect(report.verdict.isRevocationEvidence).toBe(false);
@@ -134,7 +161,7 @@ describe("Phase 200 — the control-plane diagnostic never infers authentication
   });
 
   it("names the exact layer where transport stopped, and only the first", () => {
-    const { report } = runReport({});
+    const { report } = anonymous;
     if (report.reachable) return;
     const index = TRANSPORT_LAYERS.indexOf(report.verdict.blockedAt as never);
     expect(index, "blockedAt must be a real transport layer").toBeGreaterThanOrEqual(0);
@@ -149,36 +176,8 @@ describe("Phase 200 — the control-plane diagnostic never infers authentication
     ).toBe(true);
   });
 
-  it("claims auth evidence only when the control plane actually answered", () => {
-    const { report } = runReport({ CONVEX_DEPLOY_KEY: "unused-because-unreachable" });
-    // The load-bearing direction: a blocked egress must never look like a bad key.
-    if (!report.verdict.isAuthEvidence) {
-      expect(report.verdict.state).not.toBe("CREDENTIALS_REJECTED");
-      return;
-    }
-    expect(report.reachable).toBe(true);
-    for (const layer of TRANSPORT_LAYERS) {
-      expect(passed(report, layer), `${layer} must pass before any auth verdict`).toBe(true);
-    }
-  });
-
-  it("refuses to treat a transport failure as a rejected credential", () => {
-    const { report } = runReport({ CONVEX_DEPLOY_KEY: "unused-because-unreachable" });
-    if (report.reachable) {
-      // Reached: a rejection is now legitimate — but only because the service
-      // answered, which is what makes this an auth verdict at all.
-      expect(report.verdict.blockedAt === "auth" || report.verdict.blockedAt === null).toBe(true);
-      expect(["CREDENTIALS_REJECTED", "AUTH_INDETERMINATE", "AUTHENTICATED", "CONTROL_PLANE_ONLY", "UNAUTHENTICATED"]).toContain(
-        report.verdict.state,
-      );
-      return;
-    }
-    expect(report.verdict.state).toBe("NOT_REACHABLE");
-    expect(report.verdict.isAuthEvidence).toBe(false);
-  });
-
   it("records both the network stage and the auth stage, whatever the network did", () => {
-    const { report } = runReport({});
+    const { report } = anonymous;
     // The network stage is always probed, starting at DNS for the primary host.
     expect(
       report.layers.some((l) => l.layer === "dns" && l.host === report.primaryHost),
@@ -197,24 +196,48 @@ describe("Phase 200 — the control-plane diagnostic never infers authentication
     expect(auth[0].host).toBe(report.primaryHost);
   });
 
+  it("claims auth evidence only when the control plane actually answered", () => {
+    const { report } = keyed;
+    // The load-bearing direction: a blocked egress must never look like a bad key.
+    if (!report.verdict.isAuthEvidence) {
+      expect(report.verdict.state).not.toBe("CREDENTIALS_REJECTED");
+      return;
+    }
+    expect(report.reachable).toBe(true);
+    for (const layer of TRANSPORT_LAYERS) {
+      expect(passed(report, layer), `${layer} must pass before any auth verdict`).toBe(true);
+    }
+  });
+
+  it("refuses to treat a transport failure as a rejected credential", () => {
+    const { report } = keyed;
+    if (report.reachable) {
+      // Reached: a rejection is now legitimate — but only because the service
+      // answered, which is what makes this an auth verdict at all.
+      expect(report.verdict.blockedAt === "auth" || report.verdict.blockedAt === null).toBe(true);
+      expect(
+        ["CREDENTIALS_REJECTED", "AUTH_INDETERMINATE", "AUTHENTICATED", "CONTROL_PLANE_ONLY", "UNAUTHENTICATED"],
+      ).toContain(report.verdict.state);
+      return;
+    }
+    expect(report.verdict.state).toBe("NOT_REACHABLE");
+    expect(report.verdict.isAuthEvidence).toBe(false);
+  });
+
   it("never prints a credential value, only presence and a fingerprint", () => {
-    const secret = ["convex", "deploy", "key", "sentinel", "9137"].join("-");
-    const run = runScript(ACCESS, { CONVEX_DEPLOY_KEY: secret }, ["--json"]);
-    expect(run.stdout).not.toContain(secret);
-    expect(run.stderr).not.toContain(secret);
-    const report = JSON.parse(run.stdout);
-    expect(report.credentials.deployKeyPresent).toBe(true);
-    expect(report.credentials.deployKeyFingerprint).toMatch(/^[0-9a-f]{8}$/);
+    expect(keyed.run.stdout).not.toContain(SENTINEL);
+    expect(keyed.run.stderr).not.toContain(SENTINEL);
+    expect(keyed.report.credentials?.deployKeyPresent).toBe(true);
+    expect(keyed.report.credentials?.deployKeyFingerprint).toMatch(/^[0-9a-f]{8}$/);
   });
 
   it("probes the deployment domain family, not just the control plane", () => {
     // Phase 201: *.convex.cloud (Evidence D) and *.convex.site (auth issuer)
     // are a SEPARATE allowlist entry from *.convex.dev. Allowlisting only the
     // control plane lets this gate pass while Evidence D remains impossible.
-    const run = runScript(ACCESS, {}, ["--json"]);
-    const report = JSON.parse(run.stdout);
-    const layers = report.layers as Array<{ layer: string; host: string }>;
-    const planeHosts = layers.filter((l) => l.layer === "deployment-plane").map((l) => l.host);
+    const planeHosts = anonymous.report.layers
+      .filter((l) => l.layer === "deployment-plane")
+      .map((l) => l.host);
     expect(planeHosts.some((h) => h.endsWith(".convex.cloud"))).toBe(true);
     expect(planeHosts.some((h) => h.endsWith(".convex.site"))).toBe(true);
   });
@@ -244,9 +267,7 @@ describe("Phase 200 — the control-plane diagnostic never infers authentication
   });
 
   it("reports same-network controls so a block can be distinguished from an outage", () => {
-    const run = runScript(ACCESS, {}, ["--json"]);
-    const report = JSON.parse(run.stdout);
-    const controls = (report.layers as Array<{ layer: string }>).filter((l) => l.layer === "control");
+    const controls = anonymous.report.layers.filter((l) => l.layer === "control");
     expect(controls.length).toBeGreaterThanOrEqual(2);
   });
 });
