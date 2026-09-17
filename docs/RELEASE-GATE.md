@@ -1664,3 +1664,103 @@ the pre-existing Android failure (present at `3f63690`) and the deliberate A1
 history-scan red. Nothing here changes the security position: A1 still blocks,
 the Phase 184 rewrite stays gated on it, Evidence D stays **INCOMPLETE** until
 real deployment evidence exists, and no dev value is promoted.
+
+## Phase 236 — the Android packaging job's root cause: a package Google retired
+
+### A. The exact failure
+The `Android debug APK` job never reached Gradle. On the canonical base
+`3f63690` (run `35113072471`, job `104851475031`) the step map is:
+
+| Step | Result |
+|---|---|
+| 5. `Run android-actions/setup-android@v3` | **failure, after 9 seconds** |
+| 6. Install dependencies | skipped |
+| 7. Build web assets and sync into the native project | skipped |
+| 8. Assemble debug APK | skipped |
+| 9. Verify packaged artifacts contain no secrets | skipped |
+| 10. Upload APK | skipped |
+
+That profile is identical for all 38 consecutive Android failures. The job dies
+in the Android SDK setup, before anything built by this repository runs.
+
+### B. Root cause, and how it was established
+The action's own default input is `packages: 'tools platform-tools'`. Google
+stopped serving the legacy `tools` package on 2026-09-15, so `sdkmanager tools`
+exits 1 and the action throws. Four independent pieces of evidence converge:
+
+* **A green-to-red boundary with no code change between.** The Android job was
+  last green at `06d8bce` (2026-09-14T14:01Z: setup-android succeeded in 26s and
+  the APK built in 89s) and first red at `e3ea951` (2026-09-15T12:37Z). The only
+  commit between them touches neither this workflow, nor `android/`, nor
+  `package.json`.
+* **The timing matches the upstream report.** `android-actions/setup-android`
+  issue #537 was opened 2026-09-15T01:26Z — the same morning — reporting
+  `Failed to find package 'tools'` and `sdkmanager` exit code 1 against
+  `9fc6c4e`, which is exactly the commit the `v3` tag resolves to. `v4` carries
+  the same default, so a major-version bump would not have helped.
+* **Local reproduction with the action's real code.** Its bundled
+  `dist/index.js` at that commit, run against a stub `sdkmanager` mirroring
+  today's repository, exits 1 with the issue's trace verbatim
+  (`Warning: Failed to find package 'tools'` → `The process … sdkmanager failed
+  with exit code 1`), while the same run with `packages: platform-tools` exits 0.
+* **The runner image already has what the job needs.** `ubuntu-latest` ships
+  `platform-tools`, `build-tools 35.0.0/35.0.1` and `platforms;android-35`,
+  which is what this project's `compileSdk 35` compiles against.
+
+Full job logs are not retrievable from the development sandbox: GitHub serves
+them from blob storage that is unreachable here (HTTP 000) while `api.github.com`
+answers normally. Everything above is therefore built from step-level
+conclusions, check-run metadata, workflow-run history and the action's own
+source at the pinned commit — not from log text.
+
+### C. The fix
+The Android job now passes `packages: "platform-tools"` explicitly instead of
+inheriting a default that names a package the SDK no longer serves. Nothing about
+failure handling was relaxed: `set -euo pipefail`, the fatal Gradle invocation,
+the "an APK was produced", "the web assets are inside it" and "the asset base is
+absolute" assertions, the packaged-artifact secret scan and the artifact upload
+all remain, and the action still accepts SDK licences so Gradle can fetch
+anything else it needs.
+
+Security posture is unchanged and re-verified: no credential is injected into the
+job (`${{ secrets.* }}` appears nowhere in the workflow), the debug variant uses
+the standard debug keystore because `keystore.properties` is absent, no
+live-provider I/O is involved in the APK path, no web assets are committed into
+the native project, and the job re-syncs them from the build before assembling.
+
+### D. Regression coverage
+`src/lib/hosting/mobile-android-ci.phase236.test.ts` reads the workflow as text
+(no YAML dependency, following Phase 181) and fails if the job stops being fatal,
+stops proving it produced a real APK, drops the sync or artifact-scan steps, or
+returns to the action's default package set. Its package check compares tokens,
+not substrings — `platform-tools` contains "tools".
+
+`scripts/mutation-suite-phase236.sh`: **21 mutants, 21 caught, 0 gaps**, with
+byte-exact restore and INVALID/SKIP counted as failures. The suite earned its
+keep during development by catching two real defects in the work itself: a
+quote-stripping bug in the guard's tokeniser that would have hidden the very
+regression it exists to catch, and an assertion that matched a path which also
+appears in a second command, letting a weakened check pass.
+
+### E. CI result on `4819124` (measured)
+| Job | `3f63690` (base) | `4819124` |
+|---|---|---|
+| `Android debug APK` | failure — setup step red, steps 6-10 skipped | **success**, all 13 steps green |
+| — step 5 `android-actions/setup-android@v3` | failure (9s) | success (7s) |
+| — step 8 `Assemble debug APK` | skipped | success (99s) |
+| — step 10 `Upload APK` | skipped | success |
+| `Test · typecheck · build · lint` | failure | success |
+| `iOS project build (compile only)` | success | success |
+| `Reachable-history secret scan` | failure (by design, A1) | failure (unchanged) |
+
+The uploaded artifact is real, not merely a green step:
+`android-debug-apk-48191244de9636e59fc97fefbf888937b0684b1e`, **3,807,050 bytes**.
+Android is green on both the push run and the pull-request run.
+
+### F. Effect on the release gate
+The Android packaging job is no longer a red CI item; it was the last
+unidentified failure. The remaining red is the deliberate A1 history-scan signal,
+plus the Windows package job which was still building when this was recorded and
+has passed on every recent run of this branch. Nothing here moves the security
+position: A1 still blocks, the Phase 184 rewrite remains gated on it, and
+Evidence D stays **INCOMPLETE** until real deployment evidence exists.
