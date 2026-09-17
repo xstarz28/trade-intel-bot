@@ -177,6 +177,10 @@ describe("242 — nothing outside the canonical layer can issue a release verdic
       "src/lib/i18n/fr.ts",
       "src/lib/i18n/locales.ts",
       ...VERDICT_PRODUCERS,
+      // Phase 244: READY_TO_REVOKE / READY_TO_REWRITE are operator preconditions
+      // for the A1/A2 remediation, and every report hardcodes `verified: false`,
+      // so this layer never issues a release verdict.
+      "src/lib/deployment/remediation-readiness.ts",
     ];
 
     const unclassified: string[] = [];
