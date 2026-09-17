@@ -1107,3 +1107,135 @@ Credentials asserted absent from every new envelope (EIA `SECRET-VALUE-XYZ` 403 
 
 ### N. Release blockers (unchanged)
 A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on A1; production email transport/sender/required vars absent; Evidence D INCOMPLETE.
+
+## Phase 232 — market-data envelope `acquisition` / `observedAt` passthrough
+
+Base `3f63690` (the Phase 230 merge tree). Scope is one defect on the protected
+fan-out: the market-data leg was the only leg that did not forward the
+acquisition metadata its own action already produces.
+
+**Session provenance (material to this record).** Phase 231 was authored in a
+different session's sandbox as commit `f1bfbb4` and was **never pushed**. That
+commit is absent from this repository's history and from every remote ref
+(verified: `git cat-file`, `rev-list --all --objects`, `git log --all
+--grep=f1bfbb4`, `git ls-remote`). It could not be fetched, bundled, or
+reconstructed here. Phase 232 was therefore implemented **directly on the Phase
+230 base**, not on top of Phase 231. The brief's "Phase 231 complete/partial/
+fatal semantics must remain unchanged" is satisfied vacuously: no such taxonomy
+exists in this tree (no `complete`/`partial`/`fatal` leg state anywhere in
+`src/`, and `marketData.ts` imports only `classifyLegError` from
+`lib/legOutcome`). **If `f1bfbb4` is later recovered it will conflict with this
+phase and must be reconciled deliberately.**
+
+### A. The defect — before / after
+| Condition | Before | After |
+|---|---|---|
+| cold acquisition, all sub-legs healthy | `market-data/ohlcv = unavailable` (acquisition had completed; the fan-out summary on the same run said `market-data=success`) | `market-data/ohlcv = observed-now(age Nms, used)` |
+| warm acquisition (candle cache hit, 60s TTL) | `unavailable` — the reuse was invisible | `market-data/ohlcv = cache-reused(age Nms, used)`, age carrying the ORIGINAL observation |
+| `unavailableCount` in the totals line | `1 unavailable` on a fully healthy run | `0 unavailable` |
+| `used` marker on the engine's most important leg | suppressed (`legFromFailure` reports `acquired:false`) | present |
+
+Root cause, exactly one omission. `fetchMarketData` has always emitted
+`acquisition: envelopeAcquisition(candleAcquisitions)` and
+`observedAt: oldestObservation(candleObservations)`; `runProviderLeg` has always
+forwarded both verbatim and never invents one; the provenance builder has always
+honoured them. Only the `acquiredLeg` call site in `protectedAnalysis.ts`
+dropped them — every other leg (alpha-vantage, tickatlas, coinglass, okx,
+treasury, eia) forwarded both. Because `ohlcv` is a cached dataset, the builder
+received a successful leg with neither a mode nor an observation time, which is
+indistinguishable from "the action degraded internally but still reported
+success", and took its no-completed-cache-read branch.
+
+Fix is 19 added lines, **purely additive** (0 deletions): forward both fields
+verbatim, with no fallback of any kind.
+
+### B. Envelope contract
+Unchanged. `fetchMarketData` still returns `{success, data, technical, …}` plus
+the two provenance fields; the passthrough is the only edit. Asserted against
+the real handler.
+
+### C. Cache behaviour
+`ohlcv` (60s) and `quote` (20s) behave exactly as before. A cache hit still
+returns the entry's ORIGINAL `observedAt` (`provider-cache.ts` never rewrites
+it); the leg now surfaces that value instead of discarding it, so age grows
+across reuse rather than resetting. Nothing was added to or removed from any
+cache path.
+
+### D. Timestamp / provenance
+No new `Date.now()`. `observedAt` is forwarded verbatim; a `?? Date.now()`
+fallback and a `mode ?? "observed-now"` default are both explicitly forbidden by
+pinned assertions and by four of the seven mutants. The degraded case is
+preserved: an envelope carrying NEITHER field still reports `unavailable` with
+no age, no `used` marker and an incremented `unavailableCount` — the Phase 178d
+integrity property, re-asserted for market-data. No historical-as-live, no zero
+fallback, no symbol substitution (the leg identity stays `market-data`/`ohlcv`
+and never collapses to the underlying vendor, and the requested instrument
+reaches the action unchanged).
+
+### E. Mutation tests (7/7 CAUGHT, 0 gaps)
+`scripts/mutation-suite-phase232.sh`, byte-exact restore via `cmp`, INVALID on a
+no-op. Both failure directions are covered, because they are opposites:
+dropping the acquisition mode (M1), dropping the observedAt (M2), dropping both
+— the exact pre-phase defect (M3); and fabricating — `observedAt ?? Date.now()`
+(M4), acquisition defaulted to `observed-now` (M5), observedAt re-stamped with
+the request clock (M6), acquisition hardcoded to `observed-now` (M7). Each
+mutation targets the FIRST occurrence of its pattern, which is the market-data
+leg; later occurrences belong to other legs and are left untouched.
+
+### F. Regression tests
+`src/convex/marketdata-envelope.phase232.test.ts` — **22 tests**, all green, run
+against the real `runProtectedAnalysis` wired to the real provider handlers.
+Covers a source-level wire pin that every `runProviderLeg` forwarding a provider
+envelope carries both fields (so a future leg cannot reintroduce the omission),
+the defect regression, the pre-fix signature asserted absent verbatim, the
+`used` marker, the totals count, fan-out/provenance agreement, cache-hit
+behaviour, growing age across reuse, verbatim passthrough against a pinned old
+observation, age tracking the envelope rather than the clock, the degraded-envelope
+guard in both its leg-state and count forms, identity, and a hard-failure leg.
+
+**Non-vacuity is measured, not asserted:** with the 19-line fix reverted the
+suite fails **14 of 22**. The 8 that still pass are exactly the negative guards
+(no-fabrication, identity, degraded-envelope, hard failure) plus the
+block-located precondition — i.e. the ones that must hold with or without the
+fix.
+
+### G. Gates
+`tsc -b` 0 · vitest **288 files / 9930 pass / 1 fail / 18 skipped** (Phase 230
+baseline 287 files / 9915 pass / 12 skipped; the 18-vs-12 skip delta is the
+env-gated `dist/` assertions, absent in this workspace) · eslint on changed
+files 0 · mutation suite 7/7 · `_generated` untouched · diff secret scan clean.
+The single failure is **pre-existing and unrelated** — see §H.
+
+### H. The one failing test (pre-existing, not introduced by this phase)
+`src/lib/deployment/release-gate-consistency.phase221.test.ts` › "every
+branch/tag known to the local remote-tracking set appears in the runbook" fails
+in this workspace with `runbook missing ref heads/arena/01a0a92b-trade-intel-bot`.
+The test enumerates `refs/remotes/origin` + `refs/tags` and demands each name
+appear in `docs/SECRET-REMEDIATION-RUNBOOK.md`. It reads no source file this
+phase touches.
+
+Isolated by experiment, with the Phase 232 fix left in place throughout:
+removing that tracking ref → 15/15 pass; restoring it → fails on that ref and no
+other. The cause is a real remote branch (`arena/01a0a92b-trade-intel-bot`, the
+PR #1 source) that the runbook does not enumerate; the runbook drifted when that
+branch was pushed. Any workspace that fetches all remote branches sees it, which
+is why the Phase 230 baseline did not. Deliberately NOT fixed here: the runbook
+is a security document whose per-ref rows state credential-exposure facts that
+must come from the history-fingerprint tooling, not from inference, and the
+phase brief forbids unrelated commits. Also noted while investigating: the
+runbook's per-ref status table lists `refs/heads/arena/01a08e67-trade-intel-bot`
+twice and omits `refs/heads/arena/01a0a5f5-trade-intel-bot` (its rewrite map at
+line 146 does list the latter).
+
+### I. Remaining concrete defects (not deferred silently)
+1. The Phase 221 runbook-coverage test is sensitive to which branches the local
+   clone has fetched, so it is green or red depending on the developer's fetch
+   behaviour. Deriving the ref set from `git ls-remote` (or scoping it to refs
+   the runbook claims to cover) would make it deterministic. Out of scope here.
+2. `f1bfbb4` (Phase 231) remains unrecovered and unpushed. Its content is
+   unknown to this repository; see the session-provenance note above.
+
+### J. Release blockers (unchanged)
+A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on
+A1; production email transport/sender/required vars absent; Evidence D
+INCOMPLETE.
