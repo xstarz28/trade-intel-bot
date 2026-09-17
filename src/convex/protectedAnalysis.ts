@@ -511,6 +511,25 @@ export const runProtectedAnalysis = action({
           success: r.success,
           data: { data: r.data, technical: r.technical },
           error: r.error,
+          // Phase 232 — the market-data envelope's acquisition metadata was
+          // dropped HERE, at the only leg that did not forward it. Every other
+          // leg passes both fields through, so `runProviderLeg` (which never
+          // invents a mode) recorded the outcome with neither a mode nor an
+          // observation time. The provenance builder then took the
+          // "no completed cache read" branch and reported a fully-acquired
+          // `ohlcv` leg as `unavailable`, inflating `unavailableCount` and
+          // suppressing its `used` marker.
+          //
+          // Forwarded VERBATIM and unconditionally: `fetchMarketData` already
+          // derives both from its own cache reads, so a cold call reports
+          // `observed-now`, a cache hit reports `cache-reused` with the
+          // ORIGINAL observation time (provider-cache never rewrites
+          // `observedAt`), and an envelope that legitimately carries neither
+          // still reports `unavailable`. Nothing is synthesized here — a
+          // `Date.now()` fallback would fabricate an observation and quietly
+          // launder the degraded case back into a claimed fresh read.
+          acquisition: (r as { acquisition?: "observed-now" | "observed-shared" | "cache-reused" }).acquisition,
+          observedAt: (r as { observedAt?: number }).observedAt,
         };
       },
     });
