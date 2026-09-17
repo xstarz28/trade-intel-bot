@@ -2277,3 +2277,154 @@ the Phase 237 tip and recorded there as an unattributed observation — is green
 both refs of this commit, so that observation stays an observation: this phase
 changes no packaging input, and one green run does not promote a flake into a
 diagnosis.
+
+## Phase 240 — one completion instant per live acquisition
+
+The residual Phase 238-G recorded, closed. `src/lib/data/universal/live/client.ts`
+emitted a `latencyMs` measured from one clock reading and a `receivedAt` taken
+from another; the semantic meanings (`receivedAt` = client receipt, `latencyMs` =
+client duration, provider observation times = provider-owned) are unchanged.
+
+### A. The two-read pattern, measured before the change
+
+| | |
+|---|---|
+| **Explicit `receivedAt: Date.now()` sites** | **21** — 10 provider-native, 11 canonical |
+| **Envelope-builder fallback** | 1 (`receivedAt: extra.receivedAt ?? Date.now()`) |
+| **Duration measurements** | 2 inline (`latencyMs: Date.now() - t0`) + 2 locals (`const latencyMs = Date.now() - t0`) |
+| **Clock consultations for ONE completion** | 25 |
+| **`Date.now()` in the file, before → after** | 29 → **5** |
+| **Branches supplying `latencyMs` but NOT `receivedAt`** | 6 (LIVE_VERIFIED ×4, LIVE_PARTIAL ×2) — the strongest form of the defect: the duration came from an early read, the receipt from a later one, and the two could disagree by however long the parse took |
+
+### B. The invariant, now enforced structurally
+
+For one completed live acquisition: **one** completion clock reading is taken;
+that reading *is* `receivedAt`; `latencyMs` is derived from it
+(`receivedAt - requestStart`); no second read is consulted to populate either
+field.
+
+```ts
+interface LiveCompletion { readonly receivedAt: number; readonly latencyMs: number | null }
+function completionAt(startedAt: number) { const receivedAt = Date.now();
+  return { receivedAt, latencyMs: receivedAt - startedAt }; }
+function completionWithoutRequest() { return { receivedAt: Date.now(), latencyMs: null }; }
+const finish = (status, completion: LiveCompletion, extra) => { const { receivedAt, latencyMs } = completion; … }
+```
+
+`completion` is a **required argument** of the envelope builder, so a branch
+cannot emit one field without the other and cannot take a reading of its own —
+`tsc` refuses it. The `?? Date.now()` fallback is gone. Branches that execute no
+HTTP exchange (pre-flight refusals, credential/route/unsupported outcomes) pass
+`completionWithoutRequest()`: one reading, `latencyMs: null` — no fabricated
+zero, and the receipt is a real clock value rather than the caller's `now`.
+Provider health now reports `completion.latencyMs`, so the third copy of the same
+measurement cannot drift either.
+
+### C. The 21-site sweep (Phase D)
+
+- All 21 explicit sites are gone; the sweep guard asserts the exact remaining set
+  of clock reads (**5**: the caller instant, two request starts, two receipt
+  helpers) and rejects any new one.
+- All **39** envelope branches pass a completion — counted by argument, not by
+  matching status literals, because one branch passes an expression
+  (`credMissing ? "CREDENTIAL_MISSING" : "UNAVAILABLE"`); a literal-based guard
+  would have missed exactly the enumeration gap that let the defect survive.
+- Measured statuses (`LIVE_VERIFIED`, `LIVE_PARTIAL`, `PROVIDER_ERROR`,
+  `NETWORK_UNAVAILABLE`, `MALFORMED_RESPONSE`) never pass the null completion.
+  `RATE_LIMITED` appears on **both** sets and that is correct: a routing refusal
+  ("all candidates rate-limited") opened no socket, while a provider's HTTP 429
+  did and must report a measured duration.
+- **No sibling pattern remains elsewhere.** The only other file carrying both
+  concepts is `src/lib/market-radar/provider-registry.ts`, which takes one
+  completion read per outcome (Phase 238) and *consumes* the client's reading.
+  `src/lib/market-radar/acquisition.ts` has five `latencyMs: Date.now() - startTime`
+  sites and **no paired completion instant** in its result shape — a single
+  duration with nothing to disagree with, so it was deliberately left alone
+  rather than mechanically rewritten.
+
+### D. Counting-clock evidence (Phase E)
+
+`createCountingClock` (Phase 238) advances 1 ms per **read**, so a hidden second
+reading is a visibly different instant instead of a coincidence of speed. The
+start reading is identified without guessing: `t0` is the last read before the
+transport is invoked, so the transport captures it on entry. For every branch:
+
+`clock.reads` contains `receivedAt` · `receivedAt > start` ·
+`latencyMs === receivedAt - start` · `diagnostic.latencyMs === latencyMs` ·
+`getProviderHealth(provider)?.avgResponseTimeMs === latencyMs`.
+
+Exact consultation counts are pinned where the path is short and fully
+attributed (3–5 reads with the breakdown in the comment), so a read that changes
+no value still fails — the Phase 238 lesson applied to this pair.
+
+Covered: 2xx success (candles **and** the quote branch that used to omit the
+receipt), HTTP 429, HTTP 503, transport rejection, **timeout/abort** (this helper
+has no timer, no `AbortController` and no retry — an abort surfaces as a
+transport rejection and lands on the network envelope, pair intact, reason
+preserved), empty body, extractor throw, all-records-rejected, identity
+mismatch, the provider-native path (success **and its two failure branches**),
+and the two pre-flight outcomes.
+
+**A hole the mutation pass found and closed:** the provider-native
+network-failure branch could pass the *null* completion (fresh receipt read, no
+duration) with every test still green — only the canonical branch was covered.
+Measured coverage first, exactly like the Phase 239 boundary gap.
+
+### E. Semantics regression (Phase F)
+
+`receivedAt` is still client receipt/completion time (a real clock reading,
+strictly after the request start, not the provider's instant). Provider
+observation timestamps are untouched: OKX candle times are carried through
+byte-exact, and the market-radar acquisition keeps `snapshot.observedAt` as the
+**provider's** time while `fetchedAt` is the **client's** completion reading —
+verified as the read immediately after the request start, i.e. the single
+completion read travelled through unchanged. A stale observation is still graded
+not-`FRESH` when re-dated would have looked fresh. `latencyMs` is a duration
+(`> 0`, `< 1000`, `!== receivedAt`, `!== requestedAt`).
+
+### F. Mutation results (`scripts/mutation-suite-phase240.sh`)
+
+Self-gated (no mutant runs unless the three focused suites are green first), byte-exact
+restore via `cmp` under `trap`. **15 CAUGHT / 0 gaps / 0 INVALID / 0 equivalents.**
+Mutants: a second read for `receivedAt` · duration from a later read · receipt
+from an earlier read · a success branch dropping the completion (native candles
+**and** quote) · an error branch dropping it · a different clock source
+(`Number(new Date())`) · inverted arithmetic · off-by-one · an extra
+consultation that changes no value · a diagnostic reporting a different duration
+· provider health re-measuring · a pre-flight branch borrowing the caller's
+`now` · and two defence-in-depth pairs that neuter the pair (resp. sweep)
+assertions *and* reintroduce the defect — the surviving suites still catch it.
+
+### G. Verification on this tree
+
+`tsc -b` 0 · `vitest run` **302 files / 10 183 passed / 12 skipped / 0 failed** ·
+`npm run build` 0 · `eslint` clean on every changed file (including the
+pre-existing suite that was re-anchored, whose baseline is clean too) ·
+Phase 240 mutation 15/15 · **Phase 238 one-instant suites 36/36** and its
+mutation suite re-run: **27 caught / 0 gaps** (M24b still the documented
+equivalent) · Phase 239 runtime + hermeticity suites 162/162 · existing live
+suites (`live-provider.phase46`, `provider-native-live`) 173/173. Sandbox: the
+dev server serves the new module (`completionAt`/`completionWithoutRequest`
+present, exactly one sanctioned `receivedAt: Date.now()`), `/` and `/src/main.tsx`
+HTTP 200.
+
+**One Phase 238 assertion was re-anchored, not weakened.** It pinned the record's
+instant to the acquisition's *last* clock read — true while the receipt was read
+at the very end of the request, which is precisely what made the pair disagree.
+Phase 240 captures the receipt at transport completion, so provider-health and
+cache bookkeeping legitimately read the clock afterwards. The replacement keeps
+the property Phase 238 cared about and states it directly: `fetchedAt` must be the
+reading immediately after the client's request start, `latencyMs` must span
+exactly those two instants, and — measured relatively, so it survives unrelated
+bookkeeping changes — the acquisition must add **exactly one** read of its own
+(the start). Mutation M25 ("the native path reads the clock after the transport
+returned") is caught again, and the suite reports 27/27.
+
+### H. Effect on the release gate
+
+Nothing here changes the gate's semantics. Release blockers are **unchanged**:
+**A1** the exposed OTP secret is not revoked, **A2** the history rewrite is not
+executed (now covering 8 refs), Convex has never been deployed, and no production
+provider verification has been performed — **NOT READY**. No provider credential
+was added, no live external call was introduced into a test, and no provider
+payload timestamp was altered.

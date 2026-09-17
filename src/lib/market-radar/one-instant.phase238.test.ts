@@ -28,6 +28,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCountingClock } from "../../test-counting-clock";
 import { acquireLiveData, acquireProviderNativeLiveData, getAdapters } from "./provider-registry";
+import { executeLiveRequest } from "../data/universal/live/client";
 import { assessFreshness } from "./freshness";
 
 import type { Transport } from "../data/universal/live/client";
@@ -69,9 +70,14 @@ afterEach(() => {
 
 function installClock(base = BASE) {
   const clock = createCountingClock(base);
+  clockReads = clock.reads;
   vi.spyOn(Date, "now").mockImplementation(clock.now);
   return clock;
 }
+
+/** The most recent reading of the installed counting clock. */
+let clockReads: number[] = [];
+const startReadOfLastRead = () => clockReads[clockReads.length - 1];
 
 const adapterOf = (id: string) => {
   const adapter = getAdapters().find((a) => a.id === id);
@@ -80,14 +86,23 @@ const adapterOf = (id: string) => {
 };
 const okxAdapter = () => adapterOf("okx");
 
-/** Drive the provider-native acquisition with a candle stamped at `ts`. */
-async function acquireNative(ts: number) {
-  const transport: Transport = async () =>
-    ({
+/**
+ * Drive the provider-native acquisition with a candle stamped at `ts`.
+ *
+ * `onTransport` receives the live client's request-start reading: `t0` is taken
+ * immediately before the transport is invoked, so the last reading at entry is
+ * the start instant. Phase 240 uses it to locate the completion reading without
+ * assuming which read it is.
+ */
+async function acquireNative(ts: number, onTransport?: (startRead: number) => void) {
+  const transport: Transport = async () => {
+    onTransport?.(startReadOfLastRead());
+    return {
       ok: true,
       status: 200,
       json: { data: [[String(ts), "60000", "61000", "59000", "60500", "123"]] },
-    }) as never;
+    } as never;
+  };
   return acquireProviderNativeLiveData(
     {
       instrument: "BTC-USDT-SWAP",
@@ -358,18 +373,76 @@ describe("238 — the sweep: adapters date one record with one read", () => {
     );
   });
 
-  it("the provider-native record's instant is its acquisition's last clock read", async () => {
+  it("the provider-native record's instant IS the live client's completion reading", async () => {
     const clock = installClock();
+    let clientStart = -1;
 
-    const result = await acquireNative(BASE - 60_000);
+    const result = await acquireNative(BASE - 60_000, (startRead) => (clientStart = startRead));
 
     expect(result.success).toBe(true);
-    // Before Phase 238 the completion read was taken unconditionally — one
-    // read past the transport's `receivedAt`, which is the value the record
-    // actually carried. The record's instant must be the point at which the
-    // acquisition stopped consulting the clock.
     expect(clock.reads).toContain(result.fetchedAt);
-    expect(result.fetchedAt).toBe(clock.reads[clock.reads.length - 1]);
+
+    /*
+      Phase 240 re-anchored this assertion; it was NOT relaxed.
+
+      Phase 238 pinned the record's instant to the acquisition's LAST clock read,
+      which held while the live client read its receipt at the very end of the
+      request. Phase 240 moved that reading to the moment the transport settled —
+      the honest meaning of "receipt", and the reason the pair no longer
+      disagrees — so provider-health and cache bookkeeping legitimately read the
+      clock AFTER it. "Last read" would now be satisfied only by an accident of
+      ordering.
+
+      The invariant Phase 238 cared about is that the record is not dated by a
+      read of its own. It is enforced more directly here: `fetchedAt` must be the
+      reading immediately after the client's request start — the completion — and
+      the latency must be measured between exactly those two instants. A second
+      read taken to date the record would be a later value and fails both lines.
+    */
+    const completionIndex = clock.reads.indexOf(clientStart) + 1;
+    expect(clientStart).toBeGreaterThan(0);
+    expect(result.fetchedAt).toBe(clock.reads[completionIndex]);
+    expect(result.latencyMs).toBe(result.fetchedAt - clientStart);
+  });
+
+  it("the native path adds exactly ONE read of its own: the acquisition start", async () => {
+    /*
+      Phase 240 replacement for a "the record's instant is the LAST clock read"
+      anchor, which the phase legitimately invalidated by capturing the receipt
+      where it means something — at transport completion, not at the end of
+      parsing — so that the receipt and the duration cannot disagree.
+
+      The property that anchor existed to protect is narrower and survives: the
+      registry must not consult the clock after the live client has returned.
+      Measured RELATIVELY, so it stays meaningful if the client's own bookkeeping
+      changes: run the identical exchange straight through the live client to
+      establish its cost, then run it through the acquisition, and the difference
+      must be exactly the one start read the acquisition takes before delegating.
+      A stray read in the registry — the shape of mutation M25 — makes it two.
+    */
+    const clock = installClock();
+
+    const direct = await executeLiveRequest({
+      instrument: "BTC-USDT-SWAP",
+      capability: "ohlcv",
+      providerNative: { provider: "okx", providerInstrumentId: "BTC-USDT-SWAP", assetClass: "crypto" },
+      transport: async () =>
+        ({
+          ok: true,
+          status: 200,
+          json: { data: [[String(BASE - 60_000), "60000", "61000", "59000", "60500", "123"]] },
+        }) as never,
+      readEnv: () => "",
+    });
+    const clientCost = clock.reads.length;
+
+    const before = clock.reads.length;
+    const result = await acquireNative(BASE - 60_000);
+    const acquisitionCost = clock.reads.length - before;
+
+    expect(direct.status).toBe("LIVE_VERIFIED");
+    expect(result.success).toBe(true);
+    expect(acquisitionCost - clientCost).toBe(1);
   });
 
   it("with no transport report, the latency ends at the record's own instant", async () => {
