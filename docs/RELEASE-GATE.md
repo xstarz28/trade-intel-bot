@@ -1364,9 +1364,19 @@ Verified in both environments:
 | `--depth 1` `refs/pull/2/merge` (what CI checks out) | passes | passes — tip re-verification **explicitly reported as skipped**, nothing silently green |
 
 The merge-ref checkout holds no advertised branch tip at all, so tip-exposure
-re-verification has nothing to compare against there. It reports that fact
-rather than accepting it quietly, and in a full clone it asserts that every tip
-is verified. The `:137` ref-drift failure is cured in all three.
+re-verification has nothing to compare against there (measured: 0 of 7 tips
+present). It reports that fact rather than accepting it quietly, and in a full
+clone it asserts that every tip is verified. The `:137` ref-drift failure is
+cured in all three.
+
+Confirmed against real CI on `f5880f0` — the `Test · typecheck · build · lint`
+job's only remaining test failures are the two pre-existing
+`handoff-readiness.phase200` assertions; the `release-gate-consistency.phase221`
+`:137` failure is gone. Job profile is **identical to the `3f63690` baseline**:
+`Android debug APK` fails (pre-existing), `Reachable-history secret scan` fails
+by design, `Test · typecheck · build · lint` fails on the phase200 defect alone,
+and `Windows desktop package` + `iOS project build` pass. Phase 233 introduced
+no new CI failure and removed one.
 
 ### G. Mutation results
 `scripts/mutation-suite-phase233.sh` — **18/18 CAUGHT, 0 gaps**. Every mutant is
