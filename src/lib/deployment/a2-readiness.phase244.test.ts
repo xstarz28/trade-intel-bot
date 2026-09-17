@@ -12,7 +12,7 @@
  * leaves the blob reachable and undoes the whole exercise, so an empty,
  * partial, stale or unmeasurable inventory is never "ready".
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -278,17 +278,29 @@ describe("244 — A2 readiness", () => {
 describe("244 — the real tree is not ready, and stays that way", () => {
   /** Observations read from Git's own files: no process, no network, no writes. */
   function observeRealRepository(): RepositoryObservation {
-    const gitDir = resolve(root, ".git");
-    const headFile = readFileSync(resolve(gitDir, "HEAD"), "utf8").trim();
+    // Every read is optional: a CI runner may pack its refs, keep the git
+    // directory elsewhere (a worktree) or check out a detached HEAD, and none of
+    // that may turn an observation into a crash. An unreadable fact stays empty,
+    // and an empty fact fails closed in the checks below.
+    const dotGit = resolve(root, ".git");
+    const gitDir =
+      existsSync(dotGit) && statSync(dotGit).isFile()
+        ? resolve(root, /gitdir:\s*(\S+)/.exec(readFileSync(dotGit, "utf8"))?.[1] ?? ".git")
+        : dotGit;
+    const readIfPresent = (relative: string): string =>
+      existsSync(resolve(gitDir, relative))
+        ? readFileSync(resolve(gitDir, relative), "utf8").trim()
+        : "";
+    const headFile = readIfPresent("HEAD");
     const branch = headFile.startsWith("ref: refs/heads/") ? headFile.slice("ref: refs/heads/".length) : "";
-    const config = readFileSync(resolve(gitDir, "config"), "utf8");
+    const config = readIfPresent("config");
     const remoteUrl = /\[remote "origin"\][\s\S]*?url = (\S+)/.exec(config)?.[1] ?? "";
-    let head = "";
-    try {
-      head = readFileSync(resolve(gitDir, `refs/heads/${branch}`), "utf8").trim();
-    } catch {
-      head = /^([0-9a-f]{40})/m.exec(readFileSync(resolve(gitDir, "packed-refs"), "utf8"))?.[1] ?? "";
-    }
+    const packed = readIfPresent("packed-refs");
+    const head = branch
+      ? readIfPresent(`refs/heads/${branch}`) ||
+        new RegExp(`^([0-9a-f]{40}) refs/heads/${branch}$`, "m").exec(packed)?.[1] ||
+        ""
+      : headFile; // a detached HEAD holds the commit itself
     return {
       workdir: root,
       branch,
@@ -333,9 +345,16 @@ describe("244 — the real tree is not ready, and stays that way", () => {
       now: Date.now(),
     });
 
+    // Environment-independent invariants. Whatever clone this runs in, the tree is
+    // never ready to rewrite, and the reason always includes the pre-rewrite
+    // evidence that does not exist: an empty evidence list cannot satisfy it, so
+    // READY_TO_REWRITE is unreachable here by construction rather than by luck.
     expect(report.ready).toBe(false);
+    expect(report.outcome).not.toBe("READY_TO_REWRITE");
     expect(report.remediationPerformed).toBe(false);
-    expect(report.evidence.unsatisfied.length).toBeGreaterThan(0);
+    expect(report.verified).toBe(false);
+    expect(report.evidence.unsatisfied).toContain("a2-pre-backup");
+    expect(report.evidence.satisfied).toBe(0);
 
     if (repository.shallow) {
       // The workspace this phase was developed in is a shallow clone, and that is
@@ -344,16 +363,18 @@ describe("244 — the real tree is not ready, and stays that way", () => {
       expect(report.outcome).toBe("INCOMPLETE_REF_INVENTORY");
       expect(report.problems.join(" ")).toContain("shallow");
     } else {
-      expect(["READY_TO_REWRITE", "MISSING_BACKUP_EVIDENCE"]).toContain(report.outcome);
+      // A full clone is not shallow, so the refusal is the evidence one — and it
+      // is asserted unconditionally above, in every clone.
+      expect(report.problems.join(" ")).not.toContain("shallow");
     }
   });
 
-  it("23b. the workspace clone really is shallow, so the finding above is the measured one", () => {
-    // If this ever stops being true, the test above changes shape — and this
-    // assertion is what tells a reader which of the two branches was taken.
-    const shallow = existsSync(resolve(root, ".git/shallow"));
-    expect(typeof shallow).toBe("boolean");
-    expect(observeRealRepository().shallow).toBe(shallow);
+  it("23b. which clone this ran in is recorded, not assumed", () => {
+    // If the clone stops being shallow, test 23 takes its other branch — and this
+    // assertion is what tells a reader which of the two branches that was. The
+    // invariants in 23 hold in both, which is the point of stating them there.
+    expect(observeRealRepository().shallow).toBe(existsSync(resolve(root, ".git/shallow")));
+    expect(observeRealRepository().head).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it("30. the release admission still refuses, with or without a rewritten inventory", () => {

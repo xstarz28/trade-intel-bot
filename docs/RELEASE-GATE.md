@@ -3596,6 +3596,16 @@ anchor as `INVALID`, so a stale mutation can never be counted as caught.
 | `npm run remediation:readiness` on the real tree | A1 `WRONG_ISSUER`/`MISSING_EXTERNAL_ACCESS`, A2 `INCOMPLETE_REF_INVENTORY`, exit 1 |
 | zero network / zero ref write / zero issuer mutation / zero deploy / zero email / zero provider call | proven by the instrumented run in F and the source scans in G |
 
+CI on the first push of this phase caught a real regression in the A2 real-tree case:
+the suite read `.git/packed-refs` as its fallback, and a runner that packs no refs has
+no such file, so the observation threw instead of observing. The fixture now treats
+every Git read as optional — an unreadable fact stays empty and fails closed — and the
+case asserts clone-independent invariants (never ready, the pre-rewrite backup
+requirement unsatisfied, nothing satisfied), with the clone-specific outcome kept
+inside a `shallow` branch. The invariants were verified against four simulated CI
+shapes (branch and detached HEAD × fresh and stale inventory) before the fix was
+pushed; no assertion was weakened to make the runner pass.
+
 One pre-existing Phase 242 guard required a deliberate classification: its
 "every other 'ready' is an unrelated domain status" allowlist now lists
 `remediation-readiness.ts`, with the reason in the code — `READY_TO_REVOKE` /
