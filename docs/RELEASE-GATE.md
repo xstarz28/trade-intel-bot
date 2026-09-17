@@ -1522,3 +1522,138 @@ path (1, no `reason`), and the tests that assert a *transport refusal*
 (exit 2, `reason: "The deployment did not answer (ECONNRESET)…"`) fail. Locally
 egress is severed at TLS, so they pass. Deliberately NOT fixed here — it is a
 separate test file and the phase brief scopes the change to phase200.
+
+## Phase 235 — the Evidence D probe outcome is classified, not assumed
+
+### A. The defect, measured
+Phases 200, 203 and 234 all found the same class of defect in the same place: a
+guard that asserted what the **machine's** network did with
+`https://unreachable-example.convex.cloud`, and read that as a property of the
+harness. The host sits behind a wildcard DNS record, so the same code produces
+two different observations:
+
+| Environment | What the probe actually does | What the guard asserted |
+|---|---|---|
+| sandbox (egress severed) | throws at the TLS layer (`ECONNRESET`) | exit 2, plus a transport `reason` |
+| CI runner (networked) | DNS resolves, TLS completes, the host answers | the same two things — and failed |
+
+Measured on `b49b1b6` (both test-job check-runs, `105067472902` and
+`105067466167`): `evidence-d-execution.phase203.test.ts:334`
+`AssertionError: expected 1 to be 2`, and `:347` `TypeError: .toMatch() expects
+to receive a string, but got undefined`. Neither was a harness fault: exit 1 is
+the harness working as designed (the checks ran and failed), and a top-level
+`reason` exists only on a refusal — `refuse()` is its only writer, and the run
+never refused because the host answered.
+
+### B. What a probe can and cannot prove
+`fetch` collapses DNS, TCP and TLS failures into one thrown error, so the layer
+is inferred from the error code and is a reporting aid only. The separation
+that matters is between an infrastructure condition and a statement about
+credentials:
+
+| Observation | Meaning | May it support an auth conclusion? |
+|---|---|---|
+| thrown `ENOTFOUND` / `EAI_AGAIN` | DNS did not resolve | no |
+| thrown `ECONNREFUSED` / `EHOSTUNREACH` / `ENETUNREACH` | TCP did not connect | no |
+| thrown `ECONNRESET` / `EPIPE` / TLS or certificate error | the connection was severed | no |
+| thrown `ETIMEDOUT` / `AbortError` | no answer within the bound | no |
+| any other thrown code | unattributable — reported as `unknown`, never guessed | no |
+| HTTP 5xx, or a 4xx that is not a refusal | the service answered but is not serving this request | no |
+| HTTP 2xx with no interpretable application status | not readable — fails closed | no |
+| HTTP 401, or an application status of `UNAUTHENTICATED` | the service refused the caller | **yes** |
+| HTTP 2xx with a real application status | the service processed the request | **yes** |
+
+### C. The contract
+`scripts/lib/evidence-d-probe.mjs` (typed by `evidence-d-probe.d.mts`) is a pure,
+total function of a probe result. It produces exactly one of five states —
+`TRANSPORT_BLOCKED`, `SERVICE_UNAVAILABLE`, `MALFORMED`, `UNAUTHENTICATED`,
+`AUTHENTICATED` — for every input, with these invariants, all enforced by
+`validateProbeClassification`:
+
+* a recorded transport error is decided **first and unconditionally**, so no
+  status or payload can pull a verdict out of a request that never arrived;
+* `isAuthEvidence` is derived from the state, never set by hand, and always
+  implies the service was reached;
+* `isRevocationEvidence` is always false — this probe cannot observe revocation,
+  and a network failure is emphatically not evidence of it;
+* a refusal is the only outcome for a transport failure, and its wording states
+  that the result is a transport fact rather than an authentication one;
+* an unrecognised error code becomes `unknown` rather than a more precise-looking
+  layer, and a missing refusal reason is never treated as safe;
+* the classifier does not read the environment, so no machine's configuration or
+  network state can change the meaning of a given probe result.
+
+`evidence-d-harness.mjs` now routes its D3 reachability refusal through that
+contract (`classifyProbeResult` + `probeRefusalReason`); the flow, the exit codes
+and the emitted message are unchanged. It also accepts `--timeout <seconds>`
+(default 60, unchanged) so a probe can be bounded.
+
+### D. How the guard proves it now
+`evidence-d-execution.phase203.test.ts` keeps exactly **one** real-socket probe
+per file, memoised and bounded, asserting only what holds in every environment
+(never `ACHIEVED`; a refusal is coherent and phrased as transport; a top-level
+`reason` exists only on a refusal; no check claims evidence it did not observe).
+Everything else is fixture-driven:
+
+* `scripts/lib/fixtures/evidence-d-fetch-stub.mjs` is loaded into the guard's
+  child process only (`NODE_OPTIONS=--import …`), so the harness is unmodified
+  and unaware, and `EVIDENCE_D_STUB_MODE` selects the answer: DNS blocked, TCP
+  blocked, TLS severed, certificate failure, timeout, unattributable error,
+  hanging (never answers), 503, 404, 401, an application-level
+  `UNAUTHENTICATED`, a malformed 2xx and non-JSON;
+* the stub is faithful where it matters: errnos live on `error.cause.code`, and
+  the hanging mode observes the abort signal and rejects with an `AbortError`,
+  which is how a timed-out fetch really surfaces;
+* every layer and every answered shape is therefore exercised on any machine, in
+  milliseconds, and the suite was verified to pass in all eight network shapes
+  (TLS-broken and DNS-broken, unavailable, refusing, malformed) rather than only
+  in the one this sandbox can produce.
+
+### E. Mutation results
+`scripts/mutation-suite-phase235.sh` — 21 mutants, **20 killed, 1 documented
+equivalent, 0 gaps, 0 SKIP/INVALID**, byte-exact restore under a `trap`:
+
+| Mutant class | Result |
+|---|---|
+| blocked transport reported as authenticated / unauthenticated | killed (M1, M2) |
+| refusal blames a rejected credential | killed (M3) |
+| transport failure carries `isAuthEvidence` | killed (M4) |
+| network-only result reported as revocation evidence | killed (M5) |
+| malformed or unavailable answer read as success | killed (M6, M7) |
+| validator neutered / missing reason treated as safe | killed (M8, M12) |
+| blocked transport no longer classified as blocked (ordering lost) | killed (M9) |
+| classifier consults the environment / guesses a layer | killed (M10, M11) |
+| exit state hardcoded; hardcoded PASS in D3 or on refusal | killed (M13, M15, M16, M17) |
+| swallowed transport exception reshaped into an HTTP 401 | killed (M14b) |
+| `--timeout` ignored (a hanging probe stalls for the default) | killed (M18) |
+| the contract forked back into the harness | killed (M19, M20) |
+| transport error kept alongside a forged 401 | **equivalent** — correctly not flagged (M14) |
+
+M14 is documented rather than counted as a gap: keeping `transportError` while
+forging a 401 cannot change any outcome, because the classifier decides the
+transport fact first. That inertness is itself asserted — a fixture test proves
+a recorded transport error outranks any status, application status or payload —
+and M14 confirms it end to end.
+
+### F. CI on `e981f3c` (measured, both check-runs)
+| Job | `b49b1b6` | `e981f3c` |
+|---|---|---|
+| `Test · typecheck · build · lint` | failure (phase203 `:334`, `:347`) | **success**, 126s / 125s, zero failure annotations |
+| `Windows desktop package (Tauri)` | success | success |
+| `iOS project build (compile only)` | success | success |
+| `Android debug APK` | failure | failure — unchanged, pre-existing |
+| `Reachable-history secret scan` | failure (by design, A1) | failure — unchanged, exit 1 |
+
+Both test-job check-runs for the push and for the pull-request merge ref passed;
+the annotations endpoint returns an empty set for both, and the only annotations
+anywhere in the run are the Android job's action-deprecation warnings.
+`npm test` is the CI test command, so a green job means all 290 files — including
+the phase203 suite that used to fail — ran to completion on a networked runner.
+
+### G. Effect on the release gate
+The environment-dependent probe pair is closed: phase200 in Phase 234, phase203
+here. The remaining red jobs are exactly the two that were already classified —
+the pre-existing Android failure (present at `3f63690`) and the deliberate A1
+history-scan red. Nothing here changes the security position: A1 still blocks,
+the Phase 184 rewrite stays gated on it, Evidence D stays **INCOMPLETE** until
+real deployment evidence exists, and no dev value is promoted.
