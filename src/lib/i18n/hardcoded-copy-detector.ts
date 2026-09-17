@@ -52,7 +52,11 @@ export const TECHNICAL_TOKENS = new Set([
 ]);
 
 /** Strip comments so commented-out copy is never reported as shipped. */
-function stripComments(source: string): string {
+/**
+ * Remove comments so a rule never fires on prose. Exported (Phase 239) so the
+ * guards can assert on what the CODE does, not on what a comment says about it.
+ */
+export function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 }
 

@@ -2074,3 +2074,189 @@ the derivation of its row stated in the docs rather than assumed.
 succeeded on both commits of this branch. This phase touches no packaging input,
 so the change is **not attributable to it**; it is either a flake or a runner
 cache state. It is written down as an observation, not as a fix.
+
+## Phase 239 — the blank screen: reproduced, root-caused, made impossible
+
+The user's report was "the web app often crashes". This phase does not treat
+that as a flake to be retried; it reproduces it, names the first failing layer,
+fixes the class, and proves the fix with tests and mutants. **Nothing about the
+fail-closed behaviour of the release gate changes**: A1, A2 and Evidence-D are
+untouched, and no unavailable provider value is turned into a market claim.
+
+### A. The failure map
+
+| | |
+|---|---|
+| **Trigger** | One persisted `analyses` row that the UI projection cannot interpret — measured with `breakdown` absent (a row written before the field existed). The same class with `keyLevels` absent is worse: the row projected into an `AnalysisResult` whose type *promised* `keyLevels`, so the crash happened later, away from the cause. |
+| **First failing layer** | Render. `Dashboard` → `dbHistory.map(fromDbRecord)` → `fromDbRecord` read `record.breakdown.trend` unguarded (and consumers read `result.keyLevels.support`), throwing `TypeError: Cannot read properties of undefined (reading 'trend')` **inside the render pass**. |
+| **Why such a row exists at all** | Convex validates a document when it is **written**, not when it is read. `analyses.list` returns raw documents (`ctx.db.query("analyses")`), so a legacy row is served happily. |
+| **Symptom** | Not a partial failure — the **whole application**. The only boundary sat *above* `BrowserRouter` (inside the old `main.tsx`), so the fallback replaced the router, the providers and every route. Probe on the real tree: `crashPanel=true appShell=false interactiveNodes=0`. |
+| **Recovery** | None in-app. A route change did nothing (`afterRouteChange="Preview runtime error…"`, the same panel), and a reload re-crashed on the same persisted row. Only a data change or a cleared history would have brought it back. |
+
+The amplifier is the part that made it feel like "often": a single row, on one
+route, took down `interactiveNodes=0` of the application and left no way out but
+the browser's reload button.
+
+### B. What was ruled out, by measurement
+
+Recorded so nobody re-chases them: provider-unavailable flows (**all** legs
+null, `success:false`, `data:undefined`, empty candles) boot clean; all eight
+routes boot clean with an empty history; the conditional hook at
+`IntelligenceDashboard.tsx:465` is **not** the crash (React 19 renders a 0→1
+hook increase; only the classic state-flip throws); the protection-tab sweep was
+abandoned on cost (>130 s), not on a failure.
+
+### C. The fix
+
+| File | Change |
+|---|---|
+| `src/lib/analysis/from-db-record.ts` | Returns `AnalysisResult \| null`. `uninterpretableRowReason(row)` names the refusal: `"row is not an object"`, `"row has no usable breakdown"`, `"row has no usable key levels"`. **No zero-substitution**: a fabricated `support: "0"` would be a market claim, which is the same rule the rest of the code follows for unavailable data. |
+| `src/pages/Dashboard.tsx` | The history projection drops uninterpretable rows and records each drop as a `data-integrity` diagnostic naming the row id and the reason — so a shorter history is *explainable*, not silent. |
+| `src/components/AnalysisResult.tsx` | `result.keyLevels?.…` — a partial result can no longer take out a consumer. |
+| `src/main.tsx` | The boundary moved to where the failure happens (see D). |
+
+### D. Boundary placement: one screen cannot blank the application
+
+Two boundaries, two scopes, both extracted out of `main.tsx`:
+
+- **`RouteErrorBoundaryScope`** (new, `src/components/route-error-boundary.tsx`) —
+  rendered **inside** `BrowserRouter`, around the route table. A failing screen
+  shows a fallback *in place*, the shell and navigation stay interactive, and
+  navigating to another route **recovers without a reload** (the keyed reset
+  fires on `pathname` change; retry remounts the failed subtree).
+- **`RootErrorBoundary`** (extracted, `src/components/root-error-boundary.tsx`) —
+  the terminal boundary above the router and above `I18nProvider` /
+  `ConvexAuthProvider`, for failures that genuinely leave no app to continue
+  with. It offers a reload and nothing that could re-enter the failed tree.
+
+Neither fallback takes i18n or router context — `useI18n()` throws without
+`I18nProvider`, and a fallback that depends on the layer that just failed is a
+fallback that can fail itself (the exact blank screen this phase removes). That
+is a deliberate, reviewable exemption in the localization guard, recorded below.
+
+### E. Instrumentation (`src/lib/runtime/diagnostics.ts`)
+
+Observe-only, test-first, and off in production unless asked for.
+Every record carries **`kind` / `route` / `message` / `name` / `stack` /
+`timestamp` / `phase`**, with `kind ∈ runtime-error | unhandled-rejection |
+render-error | data-integrity` and `phase ∈ boot | running`:
+
+- installed by the real entry point **before** mount (`installRuntimeDiagnostics()`
+  at the top of `main.tsx`), then `markRuntimeBootComplete()` — so a failure
+  during boot is attributable to `boot` and every later one to `running`;
+- **never swallows**: no `preventDefault()`, no `stopPropagation()`, asserted by
+  test with a second listener that must still be reached;
+- **redacted**: credential-shaped text (auth headers, `api_key=`, JWTs, provider
+  key prefixes, query-string values, long blob runs) is masked before it reaches
+  a record; `route` is a pathname only, never query or hash;
+- **bounded and ordered**: max 20 records, the *first* failure is retained and
+  eviction drops the second-oldest; immediate duplicates collapse (React 19
+  StrictMode double-invokes render, and a doubled record is a false signal);
+- **disableable**: `VITE_RUNTIME_DIAGNOSTICS=0` forces it off, `=1` opts in, and
+  an unset flag means development/test only — a production bundle records
+  nothing by default.
+
+The fallbacks keep the same rule the previous crash panel broke: production
+shows the message and the disclosure, **never a stack, a build path or a module
+name**; development shows the stack inside a collapsed `<details>`.
+
+### F. Provider-unavailable and partial states — measured, unchanged
+
+Every arm of the provider matrix already behaved correctly and was left alone
+(no fabricated data, no `LIVE` label on a persisted row, UNAVAILABLE and
+NO_TRADE semantics intact): all legs null, `success:false`, `data:undefined`,
+empty candles, no credentials, no backend reachable. The phase's contract is
+that weakness here would have been *fixed*, not papered over — it was not needed.
+
+### G. Regression coverage: the 14-point list
+
+Each point is a deterministic synthetic failure, never a timing bet.
+
+| # | Property | Owner |
+|---|---|---|
+| 1 | A row without `breakdown` is dropped and recorded; the app stays interactive | `app-runtime.phase239` |
+| 2 | A row without `keyLevels` is refused at the projection, not later at a consumer | `app-runtime.phase239`, `from-db-record.phase239` |
+| 3 | A `null`/non-object history entry is survivable | `app-runtime.phase239` |
+| 4 | A hard refresh is deterministic: both boots behave identically | `app-runtime.phase239` |
+| 5 | A good record still reaches the UI (the fix drops nothing it should keep) | `app-runtime.phase239`, `from-db-record.phase228` |
+| 6 | A failing route keeps the shell and navigation alive | `error-boundary.phase239` |
+| 7 | Navigating away from a failed route recovers with no reload | `error-boundary.phase239`, `app-runtime.phase239` |
+| 8 | A second failing route is isolated from the first route's recovery | `error-boundary.phase239` |
+| 9 | Retry remounts the subtree and succeeds once the failure stops | `error-boundary.phase239` |
+| 10 | A reset key (pathname) change clears the latched failure | `error-boundary.phase239` |
+| 11 | The root boundary still renders an operable fallback above the router | `error-boundary.phase239` |
+| 12 | Production hides stacks/frames in **both** fallbacks; development shows them collapsed | `error-boundary.phase239` |
+| 13 | The real entry point installs the observers before mount and reports `kind`/`route`/`phase` | `app-runtime.phase239`, `diagnostics.phase239` |
+| 14 | Unavailable/partial provider data keeps UNAVAILABLE / NO_TRADE and invents nothing | `app-runtime.phase239`, `from-db-record.phase239` |
+
+Plus the instrumentation contract itself (redaction, ordering, the retained
+first failure, duplicate collapse, prod-off, uninstall idempotence, no
+`preventDefault`) in `diagnostics.phase239`.
+
+**A gap this phase found and closed while measuring:** the route fallback's
+production behaviour had no test — the mutation pass removed its
+`diagnosticsEnabled` guard and every test stayed green. Two route-scope tests
+(production hides the stack, development shows it collapsed) now cover it, and
+the observer test was added because nothing verified that the *real* entry point
+turns the instrumentation on.
+
+### H. Mutation results (`scripts/mutation-suite-phase239.sh`)
+
+Self-gated: it refuses to run any mutant unless the 5 focused suites are green
+first, so a "CAUGHT" can never be a false positive, and it restores byte-exactly
+(`.p239bak`, verified with `cmp`, under `trap`).
+
+**21 CAUGHT / 1 documented equivalent / 0 gaps / 0 INVALID.** The equivalent
+(`M19`, the null filter alone) is inert *by construction* — the other half of the
+drop makes it unreachable — and is labelled as such rather than counted as a
+guard. Mutants include the pre-239 wiring (no route boundary), a boundary that
+renders nothing (the blank screen), a caught-but-unrecorded render error, the
+removed global observers, eviction of the first failure, a lost route, disabled
+redaction, a fabrication of missing key levels, a silent row drop, a production
+route fallback printing the stack, and an entry point that never installs the
+inspectors.
+
+Two repairs to older suites, reported rather than hidden: `M20` in
+`mutation-suite-phase197.sh` had been a **dead mutant since Phase 227** (its
+anchor still matched `err?.message ?? …`, renamed to `errorMessage(err) || …`) —
+it now runs again and the suite reports **23/23**. The localization guard grew a
+narrow policy exemption: `src/components/error-fallbacks.tsx` is *mounted* and
+carries English, which the Phase 191 ratchet forbids; it is exempt because a
+fallback **must not** depend on i18n, and the exemption is enforced executably
+(the file may not reference `useI18n`/`useNavigate`/`useLocation`/`useTranslation`,
+it must be reachable from the entry point, and the list may not grow). Suites
+190 (10/10), 191 (19/19) and 195 (11/11) were re-run after that edit: no anchor
+rotted.
+
+### I. Verification on this tree
+
+`tsc -b` 0 · `vitest run` **299 files / 10 147 passed / 18 skipped** (0 failed) ·
+`npm run build` 0 · hermeticity trio 34/34 · mutation suites: 239 → 21 caught /
+1 equivalent / 0 gaps, 197 → 23/23, 190/191/195 → 40/40 · `eslint` on every
+changed file: **the same 13 problems that exist on `1e67f25`, byte-for-byte**
+(rule + offending line compared programmatically: 13 before, 13 after, none new,
+none resolved) and **zero** in the new files.
+
+Sandbox boot: `vite` bound to `0.0.0.0:5173`, HTTP 200 on `/`, on the
+transformed `/src/main.tsx` (carrying the Phase 239 wiring) and on both new
+modules, with no host/origin rejection. The real-entry-point render proof is the
+`app-runtime` suite, which boots `main.tsx` itself against a stubbed Convex
+boundary.
+
+New files: `src/lib/runtime/diagnostics.ts`,
+`src/components/{root-error-boundary,route-error-boundary,error-fallbacks}.tsx`,
+`scripts/mutation-suite-phase239.sh`, and three test files (21 + 14 + 15 cases);
+`src/lib/analysis/from-db-record.phase239.test.ts` adds 13.
+
+### J. What Phase 239 does not do
+
+- It does **not** claim the reported crash was the only crash. It reproduced
+  *a* fatal, deterministic, user-visible path and removed the class: an
+  unreadable persisted row can no longer blank the app, and a render error can
+  no longer take the router with it. If a different failure appears, the
+  instrumentation now captures the first one with its route, kind and phase
+  instead of leaving a blank screen and a guess.
+- It does **not** re-verify anything older: no earlier section is rewritten.
+- Release blockers are unchanged: **A1** (OTP secret unrevoked), **A2** (history
+  rewrite unexecuted, now covering 8 refs), Convex never deployed, no production
+  provider verification — **NOT READY**.

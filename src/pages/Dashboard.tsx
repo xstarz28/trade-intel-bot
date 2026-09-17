@@ -50,7 +50,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BarChart3, Briefcase } from "lucide-react";
 import { errorMessage } from "@/lib/data/json/narrow";
-import { fromDbRecord } from "@/lib/analysis/from-db-record";
+import { fromDbRecord, uninterpretableRowReason } from "@/lib/analysis/from-db-record";
+import { recordDataIntegrityIssue } from "@/lib/runtime/diagnostics";
 
 /** Loading step for the multi-step sequence. */
 interface LoadingStep {
@@ -763,9 +764,27 @@ export default function Dashboard() {
     setCurrentResult(analysis);
   }, []);
 
-  const history: AnalysisResult[] = dbHistory
-    ? dbHistory.map(fromDbRecord)
-    : [];
+  /*
+    Phase 239 — a row the projection cannot interpret yields `null` and is
+    dropped instead of being rendered as a typed lie. The drop is recorded
+    (data-integrity diagnostic) so a shorter history is explainable rather than
+    silent, and it can never crash the render: before this, ONE malformed row
+    took the whole application down because the throw happened here, in render.
+  */
+  const history: AnalysisResult[] = useMemo(() => {
+    if (!dbHistory) return [];
+    const projected: AnalysisResult[] = [];
+    for (const row of dbHistory) {
+      const reason = uninterpretableRowReason(row);
+      if (reason !== null) {
+        recordDataIntegrityIssue(`analysis history row ${String((row as { _id?: unknown })?._id ?? "?")} dropped: ${reason}`);
+        continue;
+      }
+      const result = fromDbRecord(row);
+      if (result) projected.push(result);
+    }
+    return projected;
+  }, [dbHistory]);
 
   // Phase 189 — Convex `useQuery` returns undefined until it resolves.
   // Collapsing that to [] made a loading list look like an empty account.

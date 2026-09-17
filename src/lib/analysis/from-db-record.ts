@@ -2,6 +2,26 @@
  * Phase 228 — typed projection of a persisted `analyses` row onto the UI's
  * `AnalysisResult`.
  *
+ * Phase 239 — an UNREADABLE row now returns `null` instead of a lie.
+ *
+ * `analyses.list` returns raw documents (`ctx.db.query("analyses")`), and
+ * Convex validates a document when it is WRITTEN, not when it is read: a row
+ * stored before a field existed is still returned. This projection read
+ * `record.breakdown.trend` unguarded, so one such row threw a `TypeError`
+ * during the Dashboard's render — measured (Phase 239), the whole application
+ * was replaced by the crash panel and could not be navigated out of. The
+ * missing-`keyLevels` case was worse than a missing `breakdown`: the row was
+ * projected into an `AnalysisResult` whose type PROMISED `keyLevels`, and the
+ * consumer crashed later, further from the cause.
+ *
+ * The rule for an uninterpretable row is the same rule the rest of the code
+ * follows for unavailable data: do not render it and do not invent a value for
+ * it. `null` means exactly that, the caller drops it, and the drop is recorded
+ * as a data-integrity diagnostic rather than disappearing silently.
+ *
+ * Note what is NOT done here: no neutral/zero substitution for a missing
+ * `support`/`resistance`/`invalidation`. A fabricated "0" is a market claim.
+ *
  * The Convex schema stores the enum-like columns as plain strings
  * (`bias`, `recommendation`, `instrumentType`, …). Previously the page read
  * the row as `any`, so a drifted value (e.g. a legacy "Long") flowed straight
@@ -40,7 +60,43 @@ function factor(v: number): FactorScore {
 /** The persisted row shape, as generated from the schema. */
 export type AnalysisRow = Doc<"analyses">;
 
-export function fromDbRecord(record: AnalysisRow): AnalysisResult {
+/** Required nested objects a row must carry to be interpretable at all. */
+function hasBreakdown(value: unknown): value is { trend: number; indicator: number; fundamental: number; sentiment: number } {
+  if (typeof value !== "object" || value === null) return false;
+  const b = value as Record<string, unknown>;
+  return [b.trend, b.indicator, b.fundamental, b.sentiment].every(
+    (n) => typeof n === "number" && Number.isFinite(n),
+  );
+}
+
+function hasKeyLevels(value: unknown): value is { support: string; resistance: string; invalidation: string } {
+  if (typeof value !== "object" || value === null) return false;
+  const k = value as Record<string, unknown>;
+  return [k.support, k.resistance, k.invalidation].every((v) => typeof v === "string");
+}
+
+/**
+ * Whether a persisted row can be projected at all.
+ *
+ * Exported so the reason a row was dropped can be named in a diagnostic
+ * without duplicating the rules.
+ */
+export function uninterpretableRowReason(record: unknown): string | null {
+  if (typeof record !== "object" || record === null) return "row is not an object";
+  const r = record as Record<string, unknown>;
+  if (!hasBreakdown(r.breakdown)) return "row has no usable breakdown";
+  if (!hasKeyLevels(r.keyLevels)) return "row has no usable key levels";
+  return null;
+}
+
+export function fromDbRecord(record: AnalysisRow): AnalysisResult | null {
+  /*
+    Phase 239 — refuse an unreadable row. Returning a value here is what put a
+    `TypeError` inside the Dashboard's render, one malformed row away from a
+    blank application.
+  */
+  if (uninterpretableRowReason(record) !== null) return null;
+
   const bias = oneOf(BIASES, record.bias) ?? "Neutral";
   // A stored recommendation wins; otherwise derive from bias exactly as the
   // pre-typed code did. An unrecognised stored value is NO_TRADE, not a trade.

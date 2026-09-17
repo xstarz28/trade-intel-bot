@@ -225,7 +225,7 @@ mutate "M19 filter value translated" \
 # M20 — replace the provider's real failure reason with generic localized copy.
 #       The user would lose the actual reason the backend rejected the rule.
 mutate "M20 backend error reason discarded" \
-  "perl -0pi -e 's|toast\.error\(err\?\.message \?\? t\.alerts\.ruleDeleteFailed\);|toast.error(t.alerts.ruleDeleteFailed);|' '$ALERTS'" \
+  "perl -0pi -e 's|toast\\.error\\(errorMessage\\(err\\) \\|\\| t\\.alerts\\.ruleDeleteFailed\\);|toast.error(t.alerts.ruleDeleteFailed);|' '$ALERTS'" \
   catch "$ALERTS_SEM"
 
 # M21 — drop the interpolation, making the confirmation ambiguous.

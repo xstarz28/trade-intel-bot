@@ -14,6 +14,12 @@ import { ConvexReactClient } from "convex/react";
 import { describeBuild, isUnsafeDeploymentSource } from "@/lib/build-info";
 import { initDesktopShell } from "@/lib/desktop/desktop-shell";
 import {
+  installRuntimeDiagnostics,
+  markRuntimeBootComplete,
+} from "@/lib/runtime/diagnostics";
+import { RootErrorBoundary } from "@/components/root-error-boundary";
+import { RouteErrorBoundaryScope } from "@/components/route-error-boundary";
+import {
   initNativeShell,
   isNativeShell,
   nativePlatform,
@@ -37,44 +43,6 @@ import NotFound from "./pages/NotFound.tsx";
 import Download from "./pages/Download.tsx";
 import Privacy from "./pages/Privacy.tsx";
 import Terms from "./pages/Terms.tsx";
-
-/** Hard guard so runtime errors never leave the preview as a blank page. */
-class RootErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; message: string; stack: string }
-> {
-  state = { hasError: false, message: "", stack: "" };
-  static getDerivedStateFromError(error: Error) {
-    return {
-      hasError: true,
-      message: error.message || "Unknown runtime error",
-      stack: error.stack || "",
-    };
-  }
-  componentDidCatch(err: Error) {
-    console.error("[WebContainer preview] Root crash:", err);
-  }
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
-          <div className="max-w-lg text-center">
-            <p className="text-sm font-semibold">Preview runtime error</p>
-            <p className="mt-2 text-xs text-muted-foreground break-words">
-              {this.state.message}
-            </p>
-            {this.state.stack && (
-              <pre className="mt-3 text-left text-[10px] leading-4 text-muted-foreground/80 max-h-40 overflow-auto rounded border border-border/60 p-2">
-                {this.state.stack}
-              </pre>
-            )}
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 /*
   Phase 180 — build provenance, emitted once at startup.
@@ -108,6 +76,21 @@ if (isUnsafeDeploymentSource()) {
   English and not routed through i18n — the translation layer itself lives
   inside the app that has failed to start.
 */
+/*
+  Phase 239 — runtime failure diagnostics.
+
+  Installed BEFORE React mounts so a failure during boot is recorded too: with
+  a boundary that only exists after mount, the blank page this phase is about
+  had nothing to report it. The observers never call preventDefault, so the
+  browser's own error reporting is unchanged; the buffer is local, redacted and
+  bounded (see lib/runtime/diagnostics).
+
+  Enabled in development/test by default and only on request in production
+  (`VITE_RUNTIME_DIAGNOSTICS=1`), so a production build records nothing unless
+  an operator asks for it.
+*/
+const uninstallDiagnostics = installRuntimeDiagnostics();
+
 const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
 
 if (!convexUrl) {
@@ -174,38 +157,50 @@ createRoot(document.getElementById("root")!).render(
           the post-auth ?returnTo flow to mean anything.
         */}
         <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route
-              path="/auth"
-              element={<AuthPage redirectAfterAuth="/dashboard" />}
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <RequireAuth>
-                  <Dashboard />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/journal"
-              element={
-                <RequireAuth>
-                  <Journal />
-                </RequireAuth>
-              }
-            />
-            {/*
-              Public website routes (Phase 182). Deliberately unauthenticated:
-              a prospective user must be able to read the terms, the privacy
-              statement and the download options before creating an account.
-            */}
-            <Route path="/download" element={<Download />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          {/*
+            Phase 239 — route-scoped boundary INSIDE the router.
+
+            Measured before this: a render error in one route replaced the
+            entire tree, leaving zero interactive elements and no way back
+            except a browser reload; changing the route did nothing because
+            the router itself had been unmounted. The shell that must survive
+            is the router, so the boundary that keeps a failure local lives
+            inside it, and it resets when the pathname changes.
+          */}
+          <RouteErrorBoundaryScope>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route
+                path="/auth"
+                element={<AuthPage redirectAfterAuth="/dashboard" />}
+              />
+              <Route
+                path="/dashboard"
+                element={
+                  <RequireAuth>
+                    <Dashboard />
+                  </RequireAuth>
+                }
+              />
+              <Route
+                path="/journal"
+                element={
+                  <RequireAuth>
+                    <Journal />
+                  </RequireAuth>
+                }
+              />
+              {/*
+                Public website routes (Phase 182). Deliberately unauthenticated:
+                a prospective user must be able to read the terms, the privacy
+                statement and the download options before creating an account.
+              */}
+              <Route path="/download" element={<Download />} />
+              <Route path="/privacy" element={<Privacy />} />
+              <Route path="/terms" element={<Terms />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </RouteErrorBoundaryScope>
         </BrowserRouter>
         <Toaster />
       </ConvexAuthProvider>
@@ -213,3 +208,18 @@ createRoot(document.getElementById("root")!).render(
     </RootErrorBoundary>
   </StrictMode>,
 );
+
+/*
+  The application has painted: a failure from here on is a running failure, not
+  a boot failure. This is what separates "the app is blank on load" from "the
+  app broke while I was using it" in the recorded diagnostics — the two need
+  different investigations and the report could not tell them apart.
+*/
+markRuntimeBootComplete();
+
+/*
+  The observers are deliberately NOT uninstalled: they live for the document.
+  The returned function exists for tests and for a host that embeds this app,
+  and is referenced here so the intent is explicit rather than implied.
+*/
+void uninstallDiagnostics;

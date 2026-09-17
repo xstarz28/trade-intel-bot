@@ -1834,19 +1834,24 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-1">
                 {t.analysisResult.labels.support}
               </p>
-              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.support || "—"}</p>
+              {/* Phase 239 — a producer may hand over a result without key
+                  levels (an unreadable legacy row is dropped upstream, but a
+                  partial live result must not crash the panel either). The
+                  absent value renders as the existing "—" placeholder; no
+                  level is ever invented. */}
+              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels?.support || "—"}</p>
             </div>
             <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2.5">
               <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-1">
                 {t.analysisResult.labels.resistance}
               </p>
-              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.resistance || "—"}</p>
+              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels?.resistance || "—"}</p>
             </div>
             <div className="rounded-lg bg-amber-500/5 border border-amber-500/15 px-3 py-2.5">
               <p className="text-[10px] font-mono font-medium text-amber-400 uppercase tracking-wider mb-1">
                 {t.analysisResult.fields.invalidationLabel}
               </p>
-              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels.invalidation || "—"}</p>
+              <p className="text-sm font-bold font-mono tabular-nums">{result.keyLevels?.invalidation || "—"}</p>
             </div>
           </div>
           {/* Phase 19 — S/R Zones: liquidity pools, OBs, FVGs already present in typed data.

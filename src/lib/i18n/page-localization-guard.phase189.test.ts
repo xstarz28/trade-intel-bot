@@ -25,6 +25,7 @@ import {
   hardcodedStatusTokens,
   jsxTextNodes,
   singleWordJsxProse,
+  stripComments,
 } from "@/lib/i18n/hardcoded-copy-detector";
 
 const ROOT = process.cwd();
@@ -106,6 +107,30 @@ const PAGES = walk("src/pages");
  * The list may only shrink. Growing it requires a deliberate edit here.
  */
 const COMPONENTS = walk("src/components");
+
+/**
+ * CONTEXT-FREE EXEMPTION — components that must NOT use i18n, by policy.
+ *
+ * Phase 239 extracted the crash fallbacks out of `main.tsx` (which this guard
+ * does not walk) into `src/components/error-fallbacks.tsx` (which it does), so
+ * the guard saw their operator-facing English for the first time. The English is
+ * deliberate, for the reason the file states in its own header: `useI18n()`
+ * THROWS without `I18nProvider`, and `RootErrorBoundary` sits ABOVE
+ * `I18nProvider` — a localized fallback is a fallback that can fail itself,
+ * which is the blank screen Phase 239 exists to remove. It matches the existing
+ * `VITE_CONVEX_URL` misconfiguration screen in `main.tsx`.
+ *
+ * This is a POLICY exemption, not a debt ratchet, and it is deliberately narrow:
+ *   - a file may only be listed here if it is genuinely context-free, and the
+ *     test below enforces that executably (no `useI18n`, no router hooks), so
+ *     the entry cannot be reused to smuggle ordinary UI past the guard;
+ *   - the list may not grow beyond the crash-surface fallback; and
+ *   - everything else in `src/components` stays exactly as enforced today.
+ */
+const CONTEXT_FREE_COMPONENTS: Record<string, string> = {
+  "src/components/error-fallbacks.tsx":
+    "crash fallback: must render without i18n or router context, English by policy",
+};
 
 const COMPONENT_DEBT: Record<string, string> = {
   "src/components/analytical-context-panel.tsx":
@@ -239,8 +264,45 @@ describe("189 — the localization guard is path-complete", () => {
     );
   });
 
+  it("239 — a context-free fallback is exempt by policy, and stays context-free", () => {
+    /*
+      The exemption is only legitimate while the file really has no context
+      dependency. This is what makes it a policy exception instead of a hole: if
+      someone later localizes it with `useI18n`, or starts routing it through
+      the router, the exemption fails here and must be reconsidered.
+    */
+    const reachable = reachableFromEntry(resolve(ROOT, "src/main.tsx"));
+    for (const [path, reason] of Object.entries(CONTEXT_FREE_COMPONENTS)) {
+      expect(COMPONENTS, `${path} is listed but not walked`).toContain(path);
+      expect(reason.length, `${path} needs a stated reason`).toBeGreaterThan(20);
+      // It is exempt BECAUSE it is user-visible: nothing else may hide here.
+      expect(
+        reachable.has(resolve(ROOT, path)),
+        `${path} is not reachable from the entry point — an unreachable file belongs in COMPONENT_DEBT, not here`,
+      ).toBe(true);
+
+      // Comments are stripped: this file's own header EXPLAINS why it must not
+      // call `useI18n`, and that explanation must not trip the check.
+      const source = stripComments(readFileSync(resolve(ROOT, path), "utf8"));
+      for (const dependency of ["useI18n", "useNavigate", "useLocation", "useTranslation"]) {
+        expect(
+          source.includes(dependency),
+          `${path} now depends on ${dependency} — remove the exemption and localize it`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("239 — the policy exemption cannot swallow ordinary UI", () => {
+    expect(Object.keys(CONTEXT_FREE_COMPONENTS)).toEqual([
+      "src/components/error-fallbacks.tsx",
+    ]);
+  });
+
   it("191 — components outside the debt list stay clean", () => {
-    const clean = COMPONENTS.filter((c) => !(c in COMPONENT_DEBT));
+    const clean = COMPONENTS.filter(
+      (c) => !(c in COMPONENT_DEBT) && !(c in CONTEXT_FREE_COMPONENTS),
+    );
     // Regression protection: this set must never acquire new violations.
     expect(clean.length).toBeGreaterThan(10);
     for (const path of clean) {
