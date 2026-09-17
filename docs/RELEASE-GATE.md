@@ -1644,11 +1644,18 @@ and M14 confirms it end to end.
 | `Android debug APK` | failure | failure — unchanged, pre-existing |
 | `Reachable-history secret scan` | failure (by design, A1) | failure — unchanged, exit 1 |
 
-Both test-job check-runs for the push and for the pull-request merge ref passed;
-the annotations endpoint returns an empty set for both, and the only annotations
-anywhere in the run are the Android job's action-deprecation warnings.
-`npm test` is the CI test command, so a green job means all 290 files — including
-the phase203 suite that used to fail — ran to completion on a networked runner.
+Both test-job check-runs — push and pull-request merge ref, `105075214022` and
+`105075204186` — concluded success. Their annotation sets contain **no test
+failure**: the ten failure-level entries each run carries are the advisory eslint
+step's pre-existing findings (`Unexpected any` in `crypto-intelligence.phase41`
+and `analytical-context.phase55/56`, unnecessary escapes in
+`liveProtection.ts:388`, and a conditional-hook rule in
+`IntelligenceDashboard.tsx:467`), which `continue-on-error` has always tolerated
+and which this phase did not touch. `npm test` is the CI test command, so a green
+job means all 290 files — including the phase203 suite that used to fail — ran to
+completion on a networked runner. (A first read of the `e981f3c` annotations
+returned an empty body because the API had not yet propagated them; the numbers
+quoted here are from the branch tip, `07f29da`.)
 
 ### G. Effect on the release gate
 The environment-dependent probe pair is closed: phase200 in Phase 234, phase203
