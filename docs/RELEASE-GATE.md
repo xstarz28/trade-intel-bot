@@ -2678,3 +2678,41 @@ mutation script, and this document — nothing external.
 - It does not replace the per-phase guards; it aggregates them and refuses to
   accept their greenness as a verdict.
 - It does not police the wording of this document beyond the verdict marker.
+
+### K. CI — measured, both check-runs
+
+The first CI run on this phase (`a1b4b5e`) failed, and the reason is worth
+recording because it is the phase's own thesis in action. The Phase 221 guard
+scans this document from `## Phase 221` to the end of the file and refuses the one
+construction that pairs the word "release" with the word for being fit to ship.
+The new section had opened by *denying* that claim — in that very construction.
+The ban cannot tell a denial from an assertion, and it should not have to: it is a
+grep, and the sentence that argues "not shippable" still reads as the forbidden
+pair. The local suite was green only because the full-document run happened
+before the section existed; the runner, which lints and tests the pushed tree,
+caught it.
+
+The fix was to reword the two sentences (`975daf2`); **the guard was not
+touched.** A guard that cannot tell an assertion from its denial in prose is still
+a better guard than no guard, and a phase arguing that the release must not ship
+has no business writing the forbidden construction even in the negative.
+
+| Check | PR merge ref | Branch push |
+|---|---|---|
+| `Test · typecheck · build · lint` | **success**, 2 m 14 s | **success**, 2 m 20 s |
+| `Windows desktop package (Tauri)` | **success** | success |
+| `Android debug APK` | **success** | success |
+| `iOS project build (compile only)` | **success** | success |
+| `Reachable-history secret scan` | failure — **by design** (A1) | failure — unchanged |
+
+Both Test runs carry 21 annotations, the same advisory set as the Phase
+235/238/239/240 records (`Unexpected any` in three pre-existing suites, escape
+characters in `src/convex/liveProtection.ts`, fast-refresh and hook-dependency
+warnings, one conditional-hook finding in `IntelligenceDashboard.tsx`) and **none
+of them is in a file this phase touched**. There is no test failure: the tree that
+is green locally (304 files / 10 228 passed) is green on the runner too.
+
+The secret scan still fails on the reachable history, which is A1 — unrevoked and
+deliberately not remediated here. A green pipeline was never going to make a
+blocked release shippable, and that is precisely the confusion this phase exists
+to remove.
