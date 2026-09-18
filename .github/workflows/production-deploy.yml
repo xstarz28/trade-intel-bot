@@ -1,0 +1,110 @@
+# Phase 255 — fail-closed Convex production deploy.
+#
+# Manual only. This workflow does not run on push, pull_request, or tags.
+# It does not admit a release. It does not run Evidence D. It does not
+# configure email. It does not invent a Convex project.
+#
+# Required GitHub Environment: production
+# Required secret (environment or repository): CONVEX_DEPLOY_KEY
+# Required variable: CONVEX_DEPLOYMENT must be prod:<team>:<project>
+#
+# Optional variables, checked only when set:
+#   VITE_CONVEX_URL   https on *.convex.cloud
+#   CONVEX_SITE_URL   https on *.convex.site
+#   XSTARZ_DEPLOYMENT_ENV  must be production if set (absent means production)
+#
+# The frontend build URL is injected by `npx convex deploy --cmd`, not
+# hardcoded. Email (resend / smtp2go) stays in Convex production env:
+#   XSTARZ_EMAIL_TRANSPORT, XSTARZ_EMAIL_API_KEY,
+#   XSTARZ_EMAIL_SENDER_ADDRESS, XSTARZ_EMAIL_SENDER_NAME
+#
+# A missing secret fails the guard. An empty dispatch is not a production
+# deployment. This workflow does not write release-gate evidence.
+
+name: Production deploy
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Refuse unless production identity and deploy key exist
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+      XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Fail closed when production deploy inputs are absent or non-prod
+        run: npm run production:deploy:guard -- --json
+
+  deploy:
+    name: Convex production deploy
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+      XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Re-check production identity before invoking Convex
+        run: npm run production:deploy:guard -- --json
+
+      - name: Deploy the Convex backend and build the frontend with the URL Convex injects
+        run: npx convex deploy --yes --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
+
+      - name: Scan the built artifact for embedded credentials
+        run: npm run mobile:verify
+
+      - name: Keep the frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-frontend
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: This job does not admit a release
+        run: |
+          echo "Convex deploy and frontend build ran."
+          echo "This is not release admission, Evidence D, email verification, or A1/A2."
+          echo "A green deploy job is not a READY_TO_SHIP verdict."

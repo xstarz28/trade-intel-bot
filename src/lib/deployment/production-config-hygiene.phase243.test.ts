@@ -34,6 +34,8 @@ const CONFIG_SURFACES = [
   ".github/workflows/ci.yml",
   ".github/workflows/mobile.yml",
   ".github/workflows/release-admission.yml",
+  ".github/workflows/production-deploy.yml",
+  "scripts/production-deploy-guard.mjs",
   "docs/DEPLOYMENT.md",
   "docs/DEPLOYMENT-HANDOFF.md",
   "docs/SECURITY-REMEDIATION.md",

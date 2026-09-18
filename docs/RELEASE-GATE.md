@@ -5816,3 +5816,117 @@ unchanged.
 
 **PRODUCTION_EMAIL_TRANSPORT status: BLOCKED / UNVERIFIED.**
 No real delivery evidence. Release decision: NOT READY.
+
+## Phase 255 — production infrastructure bootstrap (repository/CI only)
+
+The email-transport re-measurement immediately above left
+`PRODUCTION_EMAIL_TRANSPORT` UNVERIFIED. This phase asked only whether the
+repository can be prepared for a real self-owned Convex production deploy
+**without fabricating infrastructure or credentials**. A1 was not cleared.
+A2 was not started. Evidence D was not run. `npx convex deploy` was not
+run from this environment.
+
+### A. What was missing
+
+`.github/workflows/` contained `ci.yml`, `mobile.yml` and
+`release-admission.yml` only. Ordinary CI still does not deploy. There was
+no production-deploy workflow, so an operator who obtained a real
+`CONVEX_DEPLOY_KEY` still had no fail-closed CI path that refused
+anonymous/dev/preview/local identities before invoking Convex.
+
+That is now prepared. It is **not** a production deployment.
+
+### B. What was added (repository/CI only)
+
+| Surface | Role |
+| --- | --- |
+| `src/lib/deployment/production-deploy-guard.ts` | Pure decision: may CI invoke `npx convex deploy`? Never deploys. |
+| `scripts/production-deploy-guard.mjs` | Operator/CI runner. Exit 0 = `READY_TO_INVOKE_DEPLOY` (permission to attempt). |
+| `npm run production:deploy:guard` | Wired command. `package.json` still has no `convex deploy` script. |
+| `.github/workflows/production-deploy.yml` | Manual (`workflow_dispatch` only). GitHub Environment `production`. |
+
+The workflow:
+
+1. Runs the guard against `secrets.CONVEX_DEPLOY_KEY` and
+   `vars.CONVEX_DEPLOYMENT`.
+2. Refuses when the key is absent/placeholder, when the identity is missing,
+   or when the identity is `anonymous` / `dev:` / `preview:` / `local`.
+3. Only then runs `npx convex deploy --yes --cmd "npm run build"
+   --cmd-url-env-var-name VITE_CONVEX_URL` so the frontend URL comes from
+   Convex, not a hardcoded value.
+4. Scans `dist/` (`npm run mobile:verify`) and uploads it as an artifact.
+5. States that the job does not admit a release.
+
+`continue-on-error` is not used. Secrets are not echoed. The workflow does
+not read this document. It does not run Evidence D or release admission.
+
+`READY_TO_INVOKE_DEPLOY` is **not** `READY_FOR_CONFIGURATION` of the full
+production inventory (email still lives on Convex), **not** a Convex
+production deployment, **not** Evidence D, and **not** a release verdict.
+`deploymentPerformed`, `productionVerified` and `releaseAdmitted` are
+hardcoded `false` in the guard.
+
+### C. Secret names and non-secret prerequisites (no values)
+
+**GitHub Environment `production`**
+
+| Kind | Name | Notes |
+| --- | --- | --- |
+| secret | `CONVEX_DEPLOY_KEY` | Production deploy key only. Never committed. Never logged. |
+| variable | `CONVEX_DEPLOYMENT` | Must be `prod:<team>:<project>`. |
+| variable | `XSTARZ_DEPLOYMENT_ENV` | Optional; absent means production. `development`/`preview` refused. |
+| variable | `VITE_CONVEX_URL` | Optional override; if set, must be https `*.convex.cloud`. |
+| variable | `CONVEX_SITE_URL` | Optional override; if set, must be https `*.convex.site`. |
+
+**Convex production environment (not GitHub)**
+
+Already supported in code: `resend` and `smtp2go` via
+`XSTARZ_EMAIL_TRANSPORT`. `console` is refused in production. Names only:
+
+- `XSTARZ_EMAIL_TRANSPORT`
+- `XSTARZ_EMAIL_API_KEY`
+- `XSTARZ_EMAIL_SENDER_ADDRESS`
+- `XSTARZ_EMAIL_SENDER_NAME`
+- `CONVEX_SITE_URL`
+- `XSTARZ_DEPLOYMENT_ENV`
+
+No provider account, sender, DNS record or mailbox was created here.
+
+### D. This environment (not a production deploy)
+
+The guard was not given a real deploy key. No Convex `prod:` project is
+selected here. TLS to the Convex control plane remains blocked in this
+sandbox. **`npx convex deploy` was not run.** No production URL, deployment
+ID, or hosting account is claimed.
+
+### E. External items still required before a real deploy can succeed
+
+1. A self-owned Convex project whose identity is `prod:<team>:<project>`.
+2. A production `CONVEX_DEPLOY_KEY` stored only as the GitHub secret above.
+3. Convex production env vars (site URL, deployment env, email transport).
+4. A self-owned email domain.
+5. A Resend or SMTP2GO account.
+6. A verified sender and DNS (SPF/DKIM/DMARC as the provider requires).
+7. A production mailbox that can receive a real message.
+8. CI/network TLS egress to Convex and the email provider.
+
+None of these exist in this environment. Preparing the workflow does not
+create them.
+
+### F. Independent blockers (unchanged)
+
+| Prerequisite | Status |
+| --- | --- |
+| `A1_OTP_ISSUER_REVOCATION` | BLOCKED / UNVERIFIED |
+| `A2_HISTORY_REWRITE` | LOCKED / UNVERIFIED |
+| `CONVEX_PRODUCTION_DEPLOYMENT` | BLOCKED / UNVERIFIED |
+| `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` | BLOCKED / UNVERIFIED |
+| `PRODUCTION_EMAIL_TRANSPORT` | BLOCKED / UNVERIFIED |
+
+A1 remaining BLOCKED does not authorise A2. A2 was not started. No history
+rewrite, force-push, `main` mutation, `refs/pull/*` change, new branch, tag
+or PR. The production-deploy workflow has not been dispatched.
+
+**Bootstrap status: READY-FOR-CREDENTIALS.**
+**Production deployment: still BLOCKED / UNVERIFIED.**
+No production deployment is claimed. Release decision: NOT READY.

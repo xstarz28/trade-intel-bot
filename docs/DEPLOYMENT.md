@@ -233,6 +233,7 @@ UAT matrix to be updated in the same change.
 | `.github/workflows/ci.yml` | `ubuntu-latest` | Tests, typecheck, build, secret scan, `dist/` artifact |
 | `.github/workflows/mobile.yml` → `android` | `ubuntu-latest` | Debug APK |
 | `.github/workflows/mobile.yml` → `ios` | `macos-14` | Unsigned simulator compile |
+| `.github/workflows/production-deploy.yml` | `ubuntu-latest` | Manual Convex production deploy (fail-closed) |
 
 CI exists specifically to remove sandbox limitations: the sandbox has no JDK
 (so the APK could not be compiled) and no macOS (so the iOS project could not
@@ -242,7 +243,20 @@ be opened). A GitHub macOS runner can compile the iOS project.
 compile. It does not verify behaviour on a physical device, and no CI runner
 can — nobody on this project has an iPhone.
 
-Neither workflow deploys anything, and no workflow takes a provider secret.
+`ci.yml` and `mobile.yml` do not deploy and take no provider secret.
+`release-admission.yml` is hermetic and takes no secret.
+
+`production-deploy.yml` is **manual only** (`workflow_dispatch`). It runs in
+the GitHub Environment `production`, requires the secret `CONVEX_DEPLOY_KEY`
+and the variable `CONVEX_DEPLOYMENT` (`prod:<team>:<project>`), refuses
+anonymous/dev/preview/local identities, then runs `npx convex deploy --yes
+--cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL`. A missing
+secret fails the guard. A green dispatch is not a release, not Evidence D,
+and not proof that production exists — the workflow has not been run from
+this environment, and no production deployment is claimed here.
+
+Email stays in Convex production env (never GitHub): `XSTARZ_EMAIL_TRANSPORT`
+(`resend` or `smtp2go`), `XSTARZ_EMAIL_API_KEY`, `XSTARZ_EMAIL_SENDER_ADDRESS`.
 
 ---
 

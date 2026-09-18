@@ -45,11 +45,10 @@ describe("242 — the entry-point map covers every path that could admit a relea
     for (const path of mapped) expect(existsSync(resolve(root, path)), path).toBe(true);
   });
 
-  it("the repository has NO production deployment entry point, and says so", () => {
-    // Phase 186/234 stopped at "configuration present, deployment not performed".
-    // There is no deploy command to attach an admission check to, so the boundary
-    // is enforced at the nearest layer that exists (the release workflow and the
-    // operator preflight) rather than by inventing a deployment step.
+  it("ordinary CI, packaging and admission do not deploy, and package.json has no deploy command", () => {
+    // The production-deploy workflow is a separate, fail-closed, manual job
+    // (Phase 255). These three surfaces must still never deploy or publish:
+    // a green test run is not a production deployment.
     const scripts = readJson("package.json").scripts as Record<string, string>;
     const commands = Object.values(scripts).join("\n");
 

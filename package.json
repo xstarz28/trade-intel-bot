@@ -28,7 +28,8 @@
     "remediation:readiness": "node --experimental-strip-types --no-warnings scripts/verify-remediation-readiness.mjs",
     "remediation:a1:report": "node --experimental-strip-types --no-warnings scripts/a1-issuer-report.mjs",
     "evidence:d:verify": "node --experimental-strip-types --no-warnings scripts/evidence-d-verify.mjs",
-    "deployment:verify": "node --experimental-strip-types --no-warnings scripts/convex-deployment-verify.mjs"
+    "deployment:verify": "node --experimental-strip-types --no-warnings scripts/convex-deployment-verify.mjs",
+    "production:deploy:guard": "node --experimental-strip-types --no-warnings scripts/production-deploy-guard.mjs"
   },
   "dependencies": {
     "@auth/core": "^0.37.4",
