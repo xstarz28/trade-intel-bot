@@ -5089,7 +5089,9 @@ What this phase did **not** do, and what still blocks release:
 The rehearsal coverage did not improve — it got worse, correctly. The Phase 221
 rehearsal covered five refs; four of the nine (`01a0a92b`, `01a0ad26`, `01a0adfb`,
 `01a0b293`) have never been through one, and §4 of the runbook now says so. A
-re-rehearsal on a mirror covering all nine is required before §3 may run.
+re-rehearsal on a mirror covering all nine is required before §3 may run. It has
+since been run — §K below records it, and the gap it found makes the remaining A2
+work larger rather than smaller.
 
 **Issue #5** records this rollover: the measurement, the answer (affected), the
 final count (nine), the artefacts updated, and the CI result. It stays **open** —
@@ -5100,3 +5102,97 @@ The release verdict is unchanged by this phase: **NOT READY**, with
 `PRODUCTION_EMAIL_TRANSPORT` and `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` as
 its blockers. A correctly counted nine-ref scope is not a smaller risk than a
 mis-counted eight-ref one; it is the same risk, finally written down accurately.
+
+### K. The nine-ref re-rehearsal, and the gap it found
+
+§J ended on an open requirement: a re-rehearsal covering all nine refs, on a
+mirror, before §3 of the runbook may run. It has been run. All nine were rehearsed.
+Nothing outside a disposable mirror was modified — no push, no force-push, no
+remote ref written, `main` untouched at `51c9ddeb`, the project checkout untouched,
+no credential value printed, A2 still UNVERIFIED.
+
+Two surfaces already in the tree did the work; this phase added no code:
+
+| Surface | Role here |
+|---|---|
+| `scripts/a2-rehearsal.mjs` | the Phase 245 driver, run twice with a pinned `--now` against a `--mirror` clone of the real remote |
+| `scripts/secret-rehearsal-verify.mjs` | the Phase 198 scanner, run as an **independent** confirmation and as the positive control |
+
+The driver's rewrite step was also replicated on a second mirror, so the post-rewrite
+claim rests on a second scanner rather than on the driver grading its own work. Both
+driver runs returned `REHEARSAL_VERIFIED`; all ten `REHEARSAL_EXECUTION_STAGES`
+completed. `EXPLICIT_OPERATOR_APPROVAL` and `RELEASE_GATE_REEVALUATION` were not
+performed and could not be: the module excludes them from the rehearsal stage list
+because they belong to the real remediation, and no tool may grant operator approval.
+
+**Per-ref result — every one of the nine, before and after the simulated rewrite:**
+
+| Ref | Before (remote tip) | After (simulated) | Commits | Parent topology | Author/date/subject | Tip tree |
+|---|---|---|---|---|---|---|
+| `heads/arena/01a08e67-trade-intel-bot` | `f8939130` | `821a68ee` | 362 = 362 | isomorphic | preserved | byte-identical |
+| `heads/arena/01a0a5f5-trade-intel-bot` | `3f636903` | `e053da3f` | 393 = 393 | isomorphic | preserved | byte-identical |
+| `heads/arena/01a0a92b-trade-intel-bot` | `b321e507` | `e94d14fc` | 392 = 392 | isomorphic | preserved | byte-identical |
+| `heads/arena/01a0ad26-trade-intel-bot` | `7564f138` | `cac0b043` | 407 = 407 | isomorphic | preserved | byte-identical |
+| `heads/arena/01a0adfb-trade-intel-bot` | `27edd4a2` | `0579c8a2` | 427 = 427 | isomorphic | preserved | byte-identical |
+| `heads/arena/01a0b293-trade-intel-bot` | `6bb75868` | `81370d3b` | 430 = 430 | isomorphic | preserved | byte-identical |
+| `heads/main` | `51c9ddeb` | `d2d4770b` | 261 = 261 | isomorphic | preserved | 1 path rewritten |
+| `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `9381bfeb` | 262 = 262 | isomorphic | preserved | 1 path rewritten |
+| `tags/rc-181` | `66323a38` | `7cb31eaa` | 299 = 299 | isomorphic | preserved | byte-identical |
+
+| Requirement | Result |
+|---|---|
+| fingerprint hit across the nine | **0 of 9** — independently re-measured; carriers 0 for every ref |
+| positive control on an *unmodified* mirror | **EXPOSED — 1 blob**, `e490ffda…` at `src/convex/auth/emailOtp.ts`, `TIP-EXPOSED` on `main` and `phase-157` only — so the clean result is a measured clean, not a deaf scanner |
+| commit-count topology | identical per ref; parent map isomorphic under the old→new mapping; merge and root counts equal |
+| author / email / date / subject | digests identical before and after, per ref |
+| working-tree byte identity | candidate `heads/arena/01a0adfb-trade-intel-bot`: **870 of 870 paths byte-identical**. The seven refs already clean at their tip changed in **zero** paths; the two tip-exposed refs changed in exactly one — the credential path |
+| post-rewrite result for each of the nine | present for all nine; none missing |
+| refs lost / added | 0 / 0 — the mirror's ref set is identical (16 = 16); no `refs/original/*` left behind |
+| credential value in any log or artefact | none — 20 evidence files scanned, 537 candidate tokens tested against the fingerprint, **0 matches** |
+| determinism | two independent driver runs produced **byte-identical JSON** (same sha256); pre-digest `d013598f`, post-digest `8969eed2` in both |
+| rollback evidence | 9 backup refs under `refs/p245-backup`, then restored: all nine tips returned byte-exactly to the remote's real tips, 0 backup refs and 0 `refs/original/*` remaining |
+
+Raw evidence is not committed — no guard reads it, and Phase 245's precedent is
+narrative in this document. It is reproducible from the two scripts above; the
+digests recorded here are what make a reproduction comparable.
+
+**The gap, which is a new §3 precondition and the reason this is not progress.**
+
+The mirror advertises **16** refs, not 9. Alongside the nine scoped refs GitHub
+serves seven `refs/pull/*` refs — `pull/1/head`, `pull/2/head`, `pull/2/merge`,
+`pull/3/head`, `pull/3/merge`, `pull/4/head`, `pull/4/merge` — pointing at the
+*pre-rewrite* commits. The procedure rewrites only `refs/heads/*` and
+`refs/tags/*`, and it must: those pull refs are GitHub's, and a user can neither
+delete nor force-push them.
+
+Measured on the mirror, after a rewrite that had already succeeded for all nine:
+
+* the independent scanner still reported **EXPOSED — 1 blob** — the old history was
+  still reachable;
+* `git rev-list --count --all` went 434 → **864**: the old commits were not
+  replaced, they were joined by the rewritten ones;
+* **433** credential-carrying commits remained reachable through `refs/pull/*` alone.
+
+Clearing those seven refs in the disposable mirror and re-scanning gave **CLEAN —
+zero occurrences across all refs**, `--expect-clean` exit 0, the leaked blob object
+gone from the database, 864 → 431 commits, 16 → 9 refs. The procedure is therefore
+correct and complete *for the refs it is permitted to touch*, and incomplete for the
+repository as GitHub serves it. A force-push of the nine refs, on its own, would
+have left the exposure in place while every guard in this repository went green.
+
+**A second discrepancy, recorded rather than smoothed over.** Runbook §3 step 3
+documents `git filter-repo --replace-text`. `git-filter-repo` is not installed here,
+and it is not what the rehearsed driver uses: the Phase 245 driver and this
+replication both rewrite with `git filter-branch --index-filter`, swapping only the
+fingerprinted blob at its recorded path. What has been rehearsed is the
+`filter-branch` mechanism. Either step 3 is corrected to it, or `filter-repo` is
+installed and the procedure re-rehearsed against it, before §3 runs on the strength
+of this evidence.
+
+**Unchanged, deliberately.** `A2_HISTORY_REWRITE` remains **UNVERIFIED** and
+unexecuted, and its remaining work is now *larger*: nine refs plus a GitHub Support
+action to clear `refs/pull/*`, plus a post-rewrite scan against the remote rather
+than a mirror. §2 still blocks §3 — A1 is unrevoked at the issuer, and nothing here
+touches that. A rehearsal proves a procedure; it does not remediate an exposure, and
+this one is measured, not inferred. Release decision: NOT READY, with the same five
+blockers as §J.
