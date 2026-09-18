@@ -5398,3 +5398,141 @@ Freebuff contact, no Convex deploy, no production email, no credential rotation.
 The Phase 250 runbook subsection and gate section are unchanged.
 
 **A1 status: BLOCKED / UNVERIFIED.** Release decision: NOT READY.
+
+## Phase 252 — Evidence D production verification, re-measured, still UNVERIFIED
+
+The A1 re-measurement immediately above left issuer revocation BLOCKED and A2
+locked. This phase asked a different question, and only that question: can this
+environment obtain **production** Evidence D? **No.** Nothing was filed, no
+provider credential was invented, no development run was relabelled production,
+and A2 was not started.
+
+### A. Exact definition (two layers, neither optional)
+
+The release prerequisite `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` is
+mandatory, production-only, 7-day freshness, bound to the provider set, not
+exemptible. Its requirement:
+
+> Every required provider answered in production, observed live — not from a
+> fixture, a cache or a development run.
+
+The eleven canonical providers (from `getAllProviders()`, no second list):
+`alpha-vantage`, `cftc`, `coingecko`, `coinglass`, `defillama`, `eia`, `okx`,
+`tickatlas`, `tokenomist`, `treasury`, `twelve-data`.
+
+**Gate PASS** requires a package at `docs/remediation/evidence-d-production.json`
+that the Phase 247 validator admits (`schema: phase247.evidence-d/v1`,
+`source: external-verification`, `environment: production`, `verified: true`,
+digest matching content, no credential-shaped fields). Every required provider
+must have exactly one independent live record (`observed-now` /
+`observed-shared` / `uncached-by-design`), with provider-owned `observedAt`
+inside the window, client-owned `receivedAt`, and provenance of an external
+**https** call to a production host returning **2xx**. One missing, stale,
+fixture, historical, cached, local, loopback, mock, or substituted record
+makes the whole package incomplete.
+
+The harness (`npm run evidence:d`) is a different observation set: D1–D10
+against a real Convex deployment. `productionEvidence: true` only when the
+deployment identity is genuinely `prod:`, `--production-evidence` was passed,
+auth was not anonymous, and every declared observation is an actual PASS.
+DEV runs are labelled `DEV_VERIFIED — NOT PRODUCTION EVIDENCE` and cannot
+satisfy the gate.
+
+**BLOCKED / UNVERIFIED** when: the package is absent; the package is refused;
+no `prod:` deployment exists; D1–D10 are not all PASS on production; a local,
+CI, fixture, or DEV result is offered instead; HTTP 000 / timeout / DNS
+failure / TLS EOF is treated as an observation (it is not).
+
+Commands that produce the evidence, when the operator actually has it:
+
+```
+npm run evidence:d -- --auth otp --production-evidence
+npm run evidence:d:verify -- --package docs/remediation/evidence-d-production.json
+```
+
+`npm run evidence:d:verify -- --status` reports the filed package (or its
+absence). It contacts no provider and issues no release verdict.
+
+### B. Checks executed 2026-09-18T13:54:15Z at HEAD `fa4d19a`
+
+Repository-side / environment checks only. No credential value was printed.
+No provider request carried an API key. No package was written.
+
+| Check | Result |
+|---|---|
+| `docs/remediation/` | **absent** — no `evidence-d-production.json` |
+| `CONVEX_DEPLOYMENT` / `VITE_CONVEX_URL` / `EVIDENCE_D_EMAIL` | **unset** |
+| Provider-shaped env names (`TWELVE_DATA_API_KEY`, `ALPHA_VANTAGE_API_KEY`, `TICKATLAS_API_KEY`, `EIA_API_KEY`, `COINGLASS_API_KEY`) | **unset** |
+| `npm run evidence:d:verify -- --status --json` | exit **1**, `packageFiled: false`, `evidenceDState: UNVERIFIED`, reason `no evidence was supplied`, `verdictIssuedHere: false`, `providerContacted: false` |
+| `npm run evidence:d -- --json` | exit **2**, `evidenceD: NOT EXECUTED`, reason no deployment configured; D1–D10 all **BLOCKED**; 0 PASS |
+| `npm run evidence:d -- --production-evidence --json` | exit **2**, same refusal — the production-evidence flag cannot create a deployment |
+| `npm run convex:access -- --json` | exit **2**, `NOT_REACHABLE`, `blockedAt: tls`, `isAuthEvidence: false` |
+| `npm run convex:preflight` | exit **1**, **REJECTED — 3 FAIL** (`email-delivery`, `sender-identity`, `required-production-vars`) |
+| `npm run deployment:verify -- --status --json` | `packageFiled: false`, Convex deployment **UNVERIFIED** |
+
+Network layers (DNS / TCP :443 / TLS / HTTP), no credentials presented:
+
+| Host | DNS | TCP :443 | TLS | HTTP |
+|---|---|---|---|---|
+| `api.convex.dev`, `probe.convex.cloud`, `probe.convex.site` | PASS | OPEN | **EOF** | **000** |
+| `www.okx.com`, `api.twelvedata.com`, `www.alphavantage.co`, `api.coingecko.com` | PASS | OPEN | **EOF** | **000** |
+| `open-api.coinglass.com`, `api.eia.gov`, `www.eia.gov`, `home.treasury.gov`, `www.cftc.gov` | PASS | OPEN | **EOF** | **000** |
+| `api.github.com` / `registry.npmjs.org` (controls) | PASS | OPEN | PASS | **200** |
+
+Classification: **targeted TLS egress allowlist**, not an outage and not a
+provider-auth result. TCP-open plus HTTP 000 is not a live observation.
+GitHub/npm 200 on the same network proves the allowlist, not that OKX or
+Twelve Data answered.
+
+Canonical verdict echo (not issued here): **NOT READY**. Blockers:
+`A1_OTP_ISSUER_REVOCATION`, `A2_HISTORY_REWRITE`,
+`CONVEX_PRODUCTION_DEPLOYMENT`, `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION`,
+`PRODUCTION_EMAIL_TRANSPORT`.
+
+### C. Why none of this is PASS
+
+- Absence of a package is `UNVERIFIED` (`no evidence was supplied`). The
+  reader does not invent a record from a green suite, a clean tree, or this
+  paragraph.
+- DEV Evidence D from Phase 213 (`tough-goose-455`,
+  `productionEvidence: false`, D2/D3/D4/D6/D9/D10 PASS in DEV) is still not
+  production evidence. Relabelling it would be a gate defect.
+- HTTP 000 / TLS EOF cannot be filed as provenance status 2xx. The validator
+  refuses non-2xx and mock/loopback hosts by name.
+- Configuration presence is not Evidence D. Preflight FAIL on missing
+  production vars is a configuration fact, not a provider observation.
+- The verifier and the harness are read-only against this tree: they did not
+  persist a package (`packagePersisted: false`).
+
+### D. External artifacts still missing
+
+1. A **separate** production Convex deployment (`prod:<team>:<project>`),
+   deploy key, `CONVEX_SITE_URL` / `VITE_CONVEX_URL`,
+   `XSTARZ_DEPLOYMENT_ENV=production`. The development deployment is never
+   promoted.
+2. Egress from the operator environment (and from that production
+   deployment) to `*.convex.cloud` / `*.convex.site` **and** to the provider
+   hosts. This sandbox severs TLS to all of them.
+3. Production provider credentials for the keyed providers (Twelve Data,
+   Alpha Vantage, CoinGlass, TickAtlas, EIA). OKX public order book needs no
+   key but still needs production egress.
+4. Production email transport + verified sender + a real mailbox, so D1 can
+   be human-attested on production (`--auth otp`). Anonymous auth cannot
+   carry a production claim.
+5. A live production run of the harness, then one Phase 247 record per
+   required provider, filed at the proof path, digest recomputed, admitted
+   by `npm run evidence:d:verify`.
+
+Until those exist, Evidence D stays **UNVERIFIED**. Partial capture is
+NOT VERIFIED, never PASS.
+
+### E. What this phase did not do
+
+No A2 rewrite. No `git filter-repo` against real history. No force-push,
+amend, rebase, reset, `main` mutation, `refs/pull/*` change, new branch, tag
+or PR. No fabricated production package, no invented 2xx, no secret printed,
+no issuer probe beyond what is already documented. A1 remains BLOCKED /
+UNVERIFIED. A2 remains LOCKED / UNVERIFIED. The A1 re-measurement section
+and the exact-tool A2 rehearsal section are unchanged.
+
+**Evidence D status: BLOCKED / UNVERIFIED.** Release decision: NOT READY.
