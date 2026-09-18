@@ -3902,3 +3902,250 @@ The release verdict therefore stays **NOT READY**, with `A1_OTP_ISSUER_REVOCATIO
 (the issuer access and the self-service surface are still missing) and
 `A2_HISTORY_REWRITE` (the rewrite has not been performed, and its evidence does not
 exist yet) unchanged by this phase.
+
+## Phase 246 — A1 issuer evidence and operator handoff
+
+Phase 244 established that A1 is blocked by a missing external path; Phase 245
+proved the A2 procedure in a disposable clone. This phase closes the part of A1
+the repository can legitimately close: **a deterministic statement of what would
+count as proof, who has to produce it, and what is still missing** — with no
+issuer contacted, no credential touched and no endpoint invented.
+
+| Surface | Role |
+|---|---|
+| `src/lib/deployment/a1-issuer-evidence.ts` | the pure decisions: discovery, the evidence contract, attestation validation, two-layer admission, the gate projection, the handoff |
+| `scripts/a1-issuer-report.mjs` | the read-only command behind `npm run remediation:a1:report` |
+| `src/lib/deployment/a1-issuer-evidence.phase246.test.ts` | 45 cases: the discovery and contract guards, the 18 required fixtures, the command's source and behaviour guards, the gate integration |
+| `scripts/mutation-suite-phase246.sh` | 28 mutants over the decisions, the command and the canonical layers it builds on |
+
+### A. Issuer discovery, without assumptions
+
+The discovery is *derived* from the sources this repository already has, and each
+row is quoted rather than re-inferred:
+
+| Source | Question | Observed |
+|---|---|---|
+| `remediation-manifest.ts` (Phase 244) | which issuer holds the credential? | `auth.freebuff.app`, operated by Freebuff Web (formerly Vly) |
+| `remediation-manifest.ts` (Phase 244) | is a self-service revocation surface available? | absent — "no published API or console" |
+| `§Phase 222` | can this environment reach the issuer? | no: every issuer host returned HTTP 000 while `api.github.com` and `registry.npmjs.org` returned 200 on the same network |
+| `§Phase 222` | is a public revoke/rotate API documented? | none published |
+| `§Phase 223` | does the vendor documentation or a repository search name an endpoint? | no: docs, ToS, blog and the integration README document no key-management endpoint |
+| `SECRET-REMEDIATION-RUNBOOK.md §2` | what does the existing runbook ask a human to do? | provision a replacement, configure it outside source control, revoke, then observe an explicit auth failure |
+
+Classification: `REVOCATION_ENDPOINT_NOT_DOCUMENTED` + `EXTERNAL_ACCESS_REQUIRED` +
+`NO_VERIFIABLE_SELF_SERVICE_PATH`. `documentedRevocationEndpoint` is `null`,
+`endpointsContacted` is empty, and the classification function flips to
+`REVOCATION_ENDPOINT_DOCUMENTED` if a source is ever added that documents one — so
+the answer is data, not a hardcoded opinion. The whole discovery payload contains
+no URL, which the suite asserts.
+
+### B. The canonical evidence contract
+
+| Field | Value | Where it comes from |
+|---|---|---|
+| issuer | `auth.freebuff.app` | `remediation-manifest.ts`; compared by host, case-insensitively, with scheme, port and path removed |
+| credential | fingerprint `b1ce18a1e85ba121`, rule `sha256(value + "\n")[0:16]`, length 33 | the manifest; the **value is never stored, printed or requested** |
+| freshness | 30 days | `release-gate.ts` `maxAgeMs` for `A1_OTP_ISSUER_REVOCATION`, read rather than restated |
+| environment | `production` | the prerequisite's `requiredEnvironment` |
+| binding | `none` | A1 is not a property of this repository; a record that declares `subject.commit` is still compared with the candidate |
+| admissible classes | issuer confirmation; credential rejection | the manifest's post requirements |
+| complete set | both halves | one alone is refused, and the suite asserts both directions |
+| accepted statuses | `401`, `403` only | preserved exactly as the existing contract has them; nothing was added |
+| attestation path | `docs/remediation/a1-revocation-attestation.json` | `release-current-state.ts` `PROOF_PATHS.a1Revocation` |
+
+Pre-revocation evidence is a different set of requirements and can never satisfy
+the post-revocation ones: the post-check requires `observedAt > remediationAt`, and
+the pre/post distinction is asserted in both the Phase 244 suite and here.
+
+### C. What is proof, and what only looks like it
+
+Admissible: an issuer-side confirmation of the revocation that names this
+credential, and an observed rejection of that credential (`401`/`403`) at the
+issuer. Everything below is refused **by name**, with the reason:
+
+| Not evidence | Why |
+|---|---|
+| a timeout | no answer is not an answer |
+| a DNS failure | resolution is about the network, not the credential |
+| a connection refusal | the request never reached the issuer |
+| HTTP 000 / no response | the recorded status is the absence of a response |
+| local code or tests passing | this repository cannot observe the issuer's key store |
+| a document saying the key was revoked | prose is a claim; the gate reads machine-readable records |
+| a synthetic fixture | a fixture exercises a checker and can never satisfy it |
+| an inability to authenticate | not being able to sign in is not the credential being refused |
+| a different credential failing | the evidence must name this credential's fingerprint |
+| an unrelated endpoint returning an error | another endpoint's error says nothing about this credential |
+
+### D. Two layers, and the three refusals the canonical layer cannot make
+
+Admission runs the canonical Phase 244 post-check first and reports its verdict
+verbatim, then applies this phase's layers on top: the issuing source, the
+authoritative-source binding, the observation ordering, the rejection status, no
+fixture anywhere in the set, no contradiction, the revocation's own age, the
+candidate binding, and the well-formedness of every record. Both layers must pass,
+so Phase 246 can only be stricter than Phase 244.
+
+Three of those refusals are genuinely outside the canonical layer, and the
+asymmetry is asserted rather than assumed:
+
+| Refusal | Why the canonical post-check cannot make it |
+|---|---|
+| a post-revocation record with no issuer-side source recorded | the post-check reads the source, not a free-form provenance field |
+| a revocation instant older than the window | the post-check checks the evidence's age, not the recorded operation's |
+| a record that names another candidate | A1 carries `binding: "none"`, so no subject is compared for it |
+
+The same asymmetry applies to the gate itself: because A1's binding is `none`, a
+record naming another issuer would be read as satisfying the prerequisite. This
+phase refuses it before filing (`WRONG_ISSUER`), and that is documented here
+rather than hidden — the repository does not silently rewrite Phase 241's
+semantics in a later phase.
+
+### E. The attestation an operator files
+
+A single JSON object at the proof path, and nothing else in this repository
+counts. Required: `schema` (`phase246.a1-evidence/v1`), `verified: true`,
+`source: "external-verification"`, `environment: "production"`, a finite
+`observedAt`, an `authoritativeSource` naming who at the issuer produced it,
+`subject.issuer`, `subject.fingerprint`, and — when a rejection is claimed — the
+`remediationAt` it follows. Forbidden: `value`, `secret`, `token`, `password`,
+`apiKey`, `api_key`, `x-api-key` at the top level or inside `credential` — a
+credential value may never be stored, so an attestation carrying one is refused
+outright.
+
+Every deviation has its own refusal state: `NOT_AN_OBJECT`, `MALFORMED`,
+`NOT_VERIFIED`, `WRONG_SOURCE`, `DOCUMENTATION_ONLY`, `FIXTURE_ONLY`,
+`WRONG_ENVIRONMENT`, `WRONG_ISSUER`, `MISSING_ISSUER_BINDING`, `WRONG_FINGERPRINT`,
+`MISSING_FINGERPRINT_BINDING`, `MISSING_AUTHORITATIVE_SOURCE`, `WRONG_CANDIDATE`,
+`FUTURE_DATED`, `STALE`, `PRE_REMEDIATION`, `STALE_REMEDIATION`, `NO_RESPONSE`,
+`NOT_A_REJECTION`, `CARRIES_CREDENTIAL_VALUE`.
+
+### F. The operator report command
+
+```
+npm run remediation:a1:report                        # the handoff, human-readable
+npm run remediation:a1:report -- --json             # the same, for a machine
+npm run remediation:a1:report -- --attestation docs/remediation/a1-revocation-attestation.json
+```
+
+It prints the issuer and its self-service status, the discovery classification, the
+fingerprint (never the value), the current A1 outcome, the unsatisfied
+requirements, the exact unavailable external prerequisite, the contract, the
+rejected observation classes, the attestation path and schema, the five-step
+operator sequence and its own guarantees. Exit codes: **0** only when the sole
+remaining step is the external one, **1** when a blocker remains, **2** when the
+report could not be produced. Exit 1 is stated in the output to be a blocker and
+not a favourable finding about the credential.
+
+The command's guarantees are structural, not promises: one process spawn (the
+guarded git helper), a seven-verb read-only git allowlist, `node:fs` only for
+reading, no `process.env` anywhere, and no network module in its import graph.
+`guarantees` in the report itself records `issuerContacted: false`,
+`networkOpened: false`, `credentialValuePrinted: false`, `credentialMutated:
+false`, `gitMutated: false`, `deploymentPerformed: false`, `emailSent: false` and
+`providerCredentialChanged: false` — and the module that builds the report is
+pure, so it cannot flip any of them.
+
+### G. Synthetic evidence: what it can and cannot do
+
+A synthetic record can verify A1 **inside a fixture evaluation** — that is how the
+gate integration is exercised — and it can never do anything else:
+
+* `toGateEvidenceRecord` returns `null` for a fixture-scoped admission, with the
+  refusal "a synthetic record may never be filed as production evidence";
+* the gate itself refuses `source: "fixture"` (`VERIFYING_SOURCES`), which is
+  asserted directly;
+* the reporting command has no writer at all, so it cannot persist an attestation;
+* the attestation validator refuses anything declaring `fixture: true` or
+  `synthetic: true`;
+* and the real tree's verdict is compared before and after a fixture evaluation,
+  byte for byte, in the suite.
+
+### H. Regression coverage — 45 cases
+
+| Cases | Covers |
+|---|---|
+| discovery | the canonical issuer identity, the derived classification, the absence of any invented endpoint, the fingerprint-only credential identity |
+| contract | freshness/source/environment/binding derived from the canonical layers; the accepted statuses still exactly `401`/`403`; the complete set; the rejected-observation classes; the attestation schema |
+| the 18 fixtures | valid confirmation, valid rejection, wrong issuer, wrong fingerprint, stale, future-dated, pre-remediation, timeout, HTTP 000, fixture-only, documentation-only, different credential, environment mismatch, malformed, contradictory, missing authoritative source, stale remediation instant, wrong candidate — each asserting the aggregate refusal, the layer that refused, **and** the canonical layer's own answer |
+| attestation | 21 shapes, each with its own refusal state, including both ways of carrying the credential value |
+| gate integration | A1 unverified without external evidence; verified inside a fixture; the real verdict identical before and after; a fixture-source record refused; the issuer asymmetry asserted |
+| the command | the zero-effect guarantees, the required output sentences, the operator sequence, the single spawn, the allowlist, the absence of writers, sockets and `process.env`, and no verdict literal in the decision module |
+| real state | A1 still missing its external evidence, release admission still refused, A2 independent, and the handoff deterministic for a fixed instant |
+
+### I. Mutation results — 28 mutants
+
+`scripts/mutation-suite-phase246.sh` applies each mutant to one of four targets
+(the Phase 246 module, the reporting command, the canonical post-check and the
+canonical gate), re-runs the two focused suites, and then runs the real reporting
+command and compares exit code, blocker, guarantees, filed-attestation state and
+the tree fingerprint with the baseline.
+
+* **27 caught, 1 documented equivalent, 0 gaps, 0 INVALID, byte-exact restore** of
+  all four targets.
+* The equivalent is *reordering the human-readable sections of the report*: the
+  text still contains every line, no decision changes, and the probe — which reads
+  the JSON — is unmoved.
+* All twenty listed classes are covered: wrong issuer, wrong fingerprint, no
+  freshness, pre-remediation evidence, timeout, no-response, documentation as
+  proof, fixture as production proof, a different credential's rejection, no
+  environment binding, no issuer binding, no ordering, swallowed parsing errors,
+  a flipped current state, a networked command, a secret-printing command, a
+  credential-mutating command, a git-mutating command, a persisted synthetic
+  record, and a bypassed canonical gate — plus the discovery inventing an
+  endpoint, a dropped external prerequisite, an attestation carrying the value,
+  silenced "not evidence" prose, an exit code that reads as success, a shrunk
+  complete set, and widened accepted statuses.
+
+### J. Quality gates
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` | 0 errors |
+| `npx vitest run` | 316 files, 10 479 passed, 18 skipped |
+| `npm run build` | success |
+| eslint on the changed files | 0 findings |
+| Phase 238–246 + hermeticity + Phase 221 consistency suites | 24 files, 451 tests, all green (`a1-issuer-evidence.phase246.test.ts` is 45 of them) |
+| `scripts/mutation-suite-phase246.sh` | exit 0 (27/1/0/0) |
+| `scripts/mutation-suite-phase245.sh` | exit 0 (42/1/0/0), re-run after this phase |
+
+### K. Instrumented proof of zero external action
+
+The reporting path was run with the network sinks of `node:net`, `node:dns`,
+`node:http`, `node:https` and `globalThis.fetch` patched to record and refuse, and
+with a recording `git` shim first on `PATH`:
+
+| Observation | Result |
+|---|---|
+| outbound network attempts during the run | **0** (positive control: the same guard fired on `fetch` and on `https.get`) |
+| git verbs invoked | `rev-parse` ×2, `symbolic-ref`, `status`, `rev-list`, `remote get-url` — all read-only |
+| git write verbs (`push`, `update-ref`, `reset`, `checkout`, `reflog`, `gc`, …) | **0** |
+| worktree fingerprint before/after | identical |
+| `docs/remediation/` files before/after | 0 → 0 (nothing was filed) |
+| command stderr | empty |
+| exit code | 1, with the blocker named |
+
+No issuer was contacted, no credential was read, printed or mutated, no
+deployment was performed, no email was sent and no provider credential was
+changed. The A2 surfaces from Phase 245 were not touched by this phase.
+
+### L. Who can clear this, and what is still missing
+
+The remaining dependency is exactly one, and it is not in this repository:
+
+* **a party with issuer-side access** must provision a replacement credential,
+  configure it outside source control, revoke the exposed credential, obtain the
+  issuer's own confirmation, and observe the old credential being refused with
+  `401`/`403`;
+* until that happens, A1 stays **not verified**, and no repository action changes
+  it — which is why the handoff refuses to report the missing access as a result
+  about the credential.
+
+**A1 was NOT revoked in this phase.** No issuer was contacted, no credential was
+revoked, rotated or provisioned, nothing was deployed, no email was sent, no
+provider credential was added, no history was rewritten, no ref was written, no
+force-push was performed and no tag was created. **A2 remains UNVERIFIED** as
+Phase 245 left it: the procedure is rehearsed, and the real history still carries
+the exposure.
+
+The release verdict therefore stays **NOT READY**, unchanged by this phase, with
+`A1_OTP_ISSUER_REVOCATION` and `A2_HISTORY_REWRITE` as its blockers.
