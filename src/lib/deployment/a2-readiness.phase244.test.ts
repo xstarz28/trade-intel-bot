@@ -94,8 +94,8 @@ describe("244 — A2 readiness", () => {
 
     expect(report.outcome).toBe("READY_TO_REWRITE");
     expect(report.ready).toBe(true);
-    expect(report.scope.expectedRefs.length).toBe(8);
-    expect(report.scope.measuredRefs.length).toBe(8);
+    expect(report.scope.expectedRefs.length).toBe(9);
+    expect(report.scope.measuredRefs.length).toBe(9);
     expect(report.scope.missingRefs).toEqual([]);
     expect(report.scope.unexpectedRefs).toEqual([]);
     expect(report.scope.authoritativeScope).toBe(true);

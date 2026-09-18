@@ -136,6 +136,7 @@ export const AFFECTED_REF_EXPECTATIONS: readonly RefExpectation[] = [
   { ref: "heads/arena/01a0a92b-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
   { ref: "heads/arena/01a0ad26-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
   { ref: "heads/arena/01a0adfb-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
+  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
   { ref: "heads/main", carrierCommits: 261, exposedAtTip: true },
   { ref: "heads/phase-157-live-discovery-lifecycle", carrierCommits: 262, exposedAtTip: true },
   { ref: "tags/rc-181", carrierCommits: 269, exposedAtTip: false },
@@ -430,8 +431,9 @@ export const MEASUREMENT_RECONCILIATION: readonly ReconciledMeasurement[] = [
   },
   {
     fact: "reachable commits",
-    superseded: "306 (Phase 184) / 339 (Phase 198) / 365 (Phase 221 rehearsal) / 397 (Phase 233)",
-    authoritative: "398 (docs/secret-remediation-refs.json, generator-produced)",
+    superseded:
+      "306 (Phase 184) / 339 (Phase 198) / 365 (Phase 221 rehearsal) / 397 (Phase 233) / 398 (Phase 238)",
+    authoritative: "429 (docs/secret-remediation-refs.json, generator-produced)",
     measuredBy: "scripts/secret-ref-inventory.mjs",
     reason:
       "the repository grows, so this figure is a timestamp, not a contradiction; the current artifact is the newest measurement and the carrier count has been 270 in every one of them, which is the evidence that the exposure itself has not changed",
@@ -439,11 +441,11 @@ export const MEASUREMENT_RECONCILIATION: readonly ReconciledMeasurement[] = [
   {
     fact: "affected refs",
     superseded:
-      "4 (Phase 198) -> 5 (Phase 221) -> 7 (Phase 233, which added 01a0a92b and 01a0ad26 after they had appeared in neither table)",
-    authoritative: "8 (docs/secret-remediation-refs.json)",
+      "4 (Phase 198) -> 5 (Phase 221) -> 7 (Phase 233, which added 01a0a92b and 01a0ad26 after they had appeared in neither table) -> 8 (Phase 238, which added 01a0adfb)",
+    authoritative: "9 (docs/secret-remediation-refs.json)",
     measuredBy: "scripts/secret-ref-inventory.mjs",
     reason:
-      "the generator reads the live refs from the remote instead of a hand-maintained list, so its output supersedes every table; the eighth row (01a0adfb) was added in Phase 238 and is the one row recorded as derived rather than re-measured end-to-end",
+      "the generator reads the live refs from the remote instead of a hand-maintained list, so its output supersedes every table; the ninth row (01a0b293) was added in Phase 249 because pushing PR #4 made that branch a live ref, and it is measured, not inferred: affected=true with 269 carrier commits and a clean tip, the same figures the other session branches carry. That run also re-measured all nine end-to-end in a full (unshallowed) clone, which supersedes the eighth row's Phase 238 status as derived rather than re-measured. Nine affected refs is a larger remediation scope, not progress: the carrier count is still 270 and no ref has been rewritten",
   },
   {
     fact: "exposed-ref tips",

@@ -216,10 +216,10 @@ describe("245 — affected-ref inventory (cases 7-11)", () => {
     expect(evaluateRehearsalRefInventory(unreadable, MANIFEST, opts).state).toBe("UNKNOWN_INVENTORY");
   });
 
-  it("10. the exact eight-ref inventory is accepted, in any order", () => {
+  it("10. the exact nine-ref inventory is accepted, in any order", () => {
     const measured = scopedBefore();
     expect(measured.map((entry) => entry.ref)).toEqual(SCOPED_REFS);
-    expect(SCOPED_REFS).toHaveLength(8);
+    expect(SCOPED_REFS).toHaveLength(9);
     const verdict = evaluateRehearsalRefInventory(measured, MANIFEST, opts);
     expect(verdict.state).toBe("INVENTORY_EXACT");
     expect(verdict.ok).toBe(true);
@@ -245,7 +245,7 @@ describe("245 — affected-ref inventory (cases 7-11)", () => {
       cloneState: "FULL_CLONE_OK",
       worktreeClean: true,
     });
-    expect(package_.refs).toHaveLength(8);
+    expect(package_.refs).toHaveLength(9);
     for (const entry of package_.refs) expect(entry.tip).toMatch(/^[0-9a-f]{40}$/);
     expect(package_.digest).toMatch(/^[0-9a-f]{8}$/);
     const moved = captureRehearsalEvidence({
@@ -293,7 +293,7 @@ describe("245 — affected-ref inventory (cases 7-11)", () => {
 describe("245 — backup and restore (cases 12-13)", () => {
   it("12. a backup that misses one ref, or points somewhere else, is rejected", () => {
     const plan = planBackup(scopedBefore(), "refs/p245-backup");
-    expect(plan.entries).toHaveLength(8);
+    expect(plan.entries).toHaveLength(9);
     expect(plan.immutable).toBe(true);
     const complete = plan.entries.map((entry) => ({ backupRef: entry.backupRef, sha: entry.sha }));
     expect(verifyBackup(plan, { present: complete }).state).toBe("BACKUP_COMPLETE");
@@ -333,7 +333,7 @@ describe("245 — post-rewrite verification (cases 14-20)", () => {
     });
     expect(verdict.state).toBe("REWRITE_VERIFIED");
     expect(verdict.ok).toBe(true);
-    expect(verdict.verifiedRefs).toHaveLength(8);
+    expect(verdict.verifiedRefs).toHaveLength(9);
 
     // the mechanism is held to the approved scope: a ref nobody approved is a failure
     for (const unapproved of ["refs/pull/1/head", "refs/heads/main"]) {
@@ -386,7 +386,7 @@ describe("245 — post-rewrite verification (cases 14-20)", () => {
 
     const okBoundary = verifyRefBoundary({ before, after: rewritten, approvedRefs: SCOPED_REFS });
     expect(okBoundary.state).toBe("BOUNDARY_OK");
-    expect(okBoundary.changed).toHaveLength(8);
+    expect(okBoundary.changed).toHaveLength(9);
 
     const unapproved = verifyRefBoundary({
       before,

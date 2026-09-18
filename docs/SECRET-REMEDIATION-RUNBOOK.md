@@ -53,6 +53,7 @@ Two facts per ref, and they are **not** interchangeable:
 | `refs/heads/arena/01a0a92b-trade-intel-bot` | **clean** | 269 |
 | `refs/heads/arena/01a0ad26-trade-intel-bot` | **clean** | 269 |
 | `refs/heads/arena/01a0adfb-trade-intel-bot` | **clean** | 269 |
+| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 269 |
 | `refs/heads/main` | **EXPOSED AT TIP** | 261 |
 | `refs/heads/phase-157-live-discovery-lifecycle` | **EXPOSED AT TIP** | 262 |
 | `refs/tags/rc-181` | **clean** | 269 |
@@ -65,6 +66,22 @@ copy of `src/convex/auth/emailOtp.ts` with the same fingerprint rule, and its
 269 occurrences are the parent ref's measurement — the phase's single commit
 does not touch that path. Re-run the generator in a full clone before executing
 §3, and treat its output as authoritative over any hand-edited row.
+
+Phase 249 note: the ninth ref (`01a0b293`) became live when PR #4 pushed that
+session branch, and it is added here on a **full end-to-end measurement**, not a
+derived one. The working clone was unshallowed (`git fetch --unshallow`, a
+read-only fetch that writes no remote ref), all nine remote tips were confirmed
+present locally, and `scripts/secret-ref-inventory.mjs` was run twice with
+byte-identical output: `01a0b293` is `affected: true` with **269 carrier
+commits** and **`exposedAtTip: false`** — the same figures the other session
+branches carry, because the branch descends from the same exposed history and
+its own commits do not touch `src/convex/auth/emailOtp.ts`. That run also
+re-measured the other eight refs, so the Phase 238 row above is no longer the
+one derived row: every row in this table now rests on the same measurement.
+Total carrier commits remain **270** and reachable commits rose 398 → **429**
+(the repository grows; the exposure does not). **A nine-ref inventory is a
+larger remediation scope, not progress** — nothing has been rewritten, and §2
+still blocks §3.
 
 Phase 233 correction: this table listed only four refs. The three branches
 created since Phase 198 (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were absent, as
@@ -82,7 +99,7 @@ Three consequences follow, and they matter more than the history question:
    blocker.
 2. The working branches are clean at HEAD — the credential was removed from
    current source in an earlier phase — but **removal from HEAD is not
-   remediation.** All eight refs still carry it in reachable history.
+   remediation.** All nine refs still carry it in reachable history.
 3. **Every ref is affected.** There is no unaffected ref to leave out of the
    rewrite, and no ref may be treated as safe because its tip is clean.
 
@@ -169,13 +186,15 @@ git push --force --mirror https://github.com/xstarz28/trade-intel-bot.git
 
 ### Refs the force-push will rewrite
 
-**All eight** — every ref the remote advertises, per
+**All nine** — every ref the remote advertises, per
 `docs/secret-remediation-refs.json`. Phase 233 corrected this table twice
 over: Phase 198 listed four refs, Phase 221 added a fifth, and three branches
 created since then (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were never added at
 all despite each carrying 269 carrier commits. Phase 238 added the eighth
-(`01a0adfb`) in the phase that pushed it. None may be skipped — a single
-surviving ref keeps the blob reachable and undoes the entire exercise.
+(`01a0adfb`) in the phase that pushed it, and Phase 249 added the ninth
+(`01a0b293`) in the phase that pushed it — each measured, not assumed. None may
+be skipped — a single surviving ref keeps the blob reachable and undoes the
+entire exercise.
 
 Re-run `node scripts/secret-ref-inventory.mjs` before executing. That
 inventory is derived from `git ls-remote`, so unlike the previous
@@ -189,6 +208,7 @@ any ref it reports that is absent from this table must be added first.
 | `heads/arena/01a0a92b-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
 | `heads/arena/01a0ad26-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
 | `heads/arena/01a0adfb-trade-intel-bot` | *added Phase 238* | *not rehearsed* |
+| `heads/arena/01a0b293-trade-intel-bot` | *added Phase 249* | *not rehearsed* |
 | `heads/main` | `51c9ddeb` | `b1a9e91` |
 | `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f58` |
 | `tags/rc-181` | `66323a38` | `23d25ff` |
@@ -196,9 +216,10 @@ any ref it reports that is absent from this table must be added first.
 Phase 221 re-rehearsal on a fresh mirror: 365/365 commits preserved,
 author/date/subject and parent topology identical, working-branch tree
 byte-identical, verifier `--expect-clean` exit 0 with positive control. That
-rehearsal covered only the five refs known at the time. The two branches added
-above were **not** part of it, so their post-rewrite SHAs are deliberately left
-blank rather than guessed — a re-rehearsal covering all eight is required
+rehearsal covered only the five refs known at the time. The four refs added
+above since (`01a0a92b`, `01a0ad26`, `01a0adfb`, `01a0b293`) were **not** part
+of it, so their post-rewrite SHAs are deliberately left
+blank rather than guessed — a re-rehearsal covering all nine is required
 before execution.
 
 Tips also move: `heads/arena/01a0a5f5-trade-intel-bot` has advanced from
@@ -212,12 +233,12 @@ Real repository and remote untouched. Status remains **BLOCKED on §2**.
 
 ## 4. Assertions
 
-**Scope caveat (Phase 233, extended Phase 238).** Every assertion below records
-the Phase 198 and Phase 221 rehearsals, which covered the four and five refs
-known at those times. They remain an accurate record of what was rehearsed, but
-they are **not** evidence about the three branches added since
-(`01a0a92b`, `01a0ad26`, `01a0adfb`), which have never been through a
-rehearsal. Re-run the procedure on a mirror against all eight refs before
+**Scope caveat (Phase 233, extended Phase 238 and Phase 249).** Every assertion
+below records the Phase 198 and Phase 221 rehearsals, which covered the four and
+five refs known at those times. They remain an accurate record of what was
+rehearsed, but they are **not** evidence about the four branches added since
+(`01a0a92b`, `01a0ad26`, `01a0adfb`, `01a0b293`), which have never been through
+a rehearsal. Re-run the procedure on a mirror against all nine refs before
 executing for real.
 
 ### Pre-rewrite

@@ -182,6 +182,8 @@ const inventoryOf = (
   fingerprint: "b1ce18a1e85ba121",
   blobPaths: ["src/convex/auth/emailOtp.ts"],
   historyCommits: 397,
+  carrierCommits: 270,
+  verifiedAt: "2026-01-01T00:00:00.000Z",
   generatedBy: "test",
   refs,
 });

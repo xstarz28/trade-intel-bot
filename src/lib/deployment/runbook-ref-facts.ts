@@ -127,6 +127,18 @@ export interface VerifiedInventory {
   blobPaths: string[];
   /** Commits reachable across all refs when the scan ran. */
   historyCommits: number;
+  /**
+   * Commits whose tree holds the leaked blob, counted once across all refs.
+   *
+   * This is the figure that shows whether the *exposure* moved, as distinct from
+   * whether the repository grew: `historyCommits` rises with every commit, while
+   * this stays at 270 across every measurement taken so far. A ref being added to
+   * or removed from the inventory changes neither, which is why the two counts are
+   * recorded separately rather than collapsed into one number.
+   */
+  carrierCommits: number;
+  /** ISO timestamp of the measurement, so its age can be checked. */
+  verifiedAt: string;
   generatedBy: string;
   refs: VerifiedRef[];
 }

@@ -426,7 +426,7 @@ still at `51c9ddeb` (untouched, still exposed at tip).
 | ID | Blocker | Group | CODE-READY | DEV-VERIFIED | PROD-VERIFIED | Cleared only by |
 | --- | --- | --- | --- | --- | --- | --- |
 | A1 | Leaked Freebuff OTP credential revoked at issuer | Security | n/a | n/a | — | authenticated request with the **old** key → explicit **401/403** (000/timeout/200-elsewhere is not evidence) |
-| A2 | History rewrite across **all eight** refs | Security | rehearsed (Phase 221, 5 of 8 refs, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
+| A2 | History rewrite across **all nine** refs | Security | rehearsed (Phase 221, 5 of 9 refs, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
 | A3 | Zero secret occurrences after rewrite | Security | verifier + positive control | n/a | — | A2 |
 | B1 | Production Convex project + `CONVEX_DEPLOYMENT` / `CONVEX_DEPLOY_KEY` | Convex | preflight + access diag ready | dev project exists | **absent** | Convex account holder provisions a **separate prod deployment** (dev is never promoted) |
 | B2 | `CONVEX_SITE_URL` / `VITE_CONVEX_URL` (prod values) | Convex | URL checks in preflight | dev values only | absent | B1 |
@@ -453,7 +453,7 @@ still at `51c9ddeb` (untouched, still exposed at tip).
 ### Dependency graph
 
 ```
-A1 revoke ──► A2 rewrite (8 refs) ──► A3 zero occurrences ──┐
+A1 revoke ──► A2 rewrite (9 refs) ──► A3 zero occurrences ──┐
                                                             ├──► release
 B1 prod Convex ─► B2 URLs ─► B3 codegen ─► B4 env ─► B6 deploy ─► B5 prod auth ─┤
 C1 account ─► C2 domain ─► C3 DNS ────────────────────────────► C4 D1 (prod) ──┤
@@ -496,7 +496,7 @@ be substituted; the dev deployment is not to be promoted.
 | Phase 204 auth identity fix verified on dev | production sign-in works — prod has a different issuer URL, `SITE_URL`, and no email transport yet |
 | E1–E7 entitlement machine 7/7 on dev | a production deployment enforces it — prod has never been deployed |
 | D2/D3/D4/D6/D9/D10 PASS on dev | production Evidence D — every row was recorded `productionEvidence:false` |
-| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 8 refs |
+| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 9 refs |
 | CI build/package PASS on 3 platforms | release signing — every artifact is unsigned |
 | preflight passing on dev | production configuration — prod inputs are absent today |
 
@@ -553,11 +553,29 @@ measurement, whose history it shares and whose single extra commit does not
 touch that path. Re-run `node scripts/secret-ref-inventory.mjs` in a full clone
 before executing §3.
 
+**Phase 249 addition.** The remote now advertises **nine**: Phase 248's push of
+`arena/01a0b293-trade-intel-bot` (PR #4) made that branch a live ref, and Phase
+249 added it to both runbook tables and to the inventory in the same phase. The
+CI test job failed on that push for the same reason it failed in Phase 238 — the
+guard reads the live ref set from the remote, and the tables did not yet name it.
+Unlike the eighth row, the ninth is **measured end-to-end rather than derived**:
+the workspace clone was unshallowed with `git fetch --unshallow origin` (a
+read-only fetch that writes no remote ref), an independent full clone at
+`/tmp/p249-full` cross-checked the result, and `scripts/secret-ref-inventory.mjs`
+ran twice with byte-identical output — `affected: true`, **269 carrier commits**,
+`exposedAtTip: false`. That run re-measured all nine refs, so no row in the
+inventory rests on a derived figure any more. Reachable commits rose
+398 → **429**; carrier commits are **still 270**, which is the evidence that the
+exposure did not move while the repository grew. Nine affected refs is a larger
+rewrite scope, not progress: A2 remains unexecuted and gated on A1, and a
+rehearsal covering all nine is still required before §3 runs. Per-ref evidence:
+`docs/secret-remediation-refs.json`.
+
 ### Release order — deterministic, not reorderable
 
 1. Revoke the old Freebuff OTP key at the issuer (A1).
 2. Capture the 401/403 rejection with the old key; record date/operator (A1).
-3. Run the rehearsed rewrite across **all eight** refs; force-push mirror (A2).
+3. Run the rehearsed rewrite across **all nine** refs; force-push mirror (A2).
 4. `node scripts/secret-rehearsal-verify.mjs --expect-clean` → exit 0; re-tag RC (A3).
 5. Provision a production Convex deployment; set deploy key, URLs (B1, B2).
 6. `npx convex codegen` against production; commit only if drift (B3).
@@ -4741,3 +4759,344 @@ The release verdict is unchanged by this phase: **NOT READY**, with
 `A1_OTP_ISSUER_REVOCATION`, `A2_HISTORY_REWRITE`, `CONVEX_PRODUCTION_DEPLOYMENT`,
 `PRODUCTION_EMAIL_TRANSPORT` and `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` as
 its blockers.
+
+## Phase 249 — A2 live-ref rollover and inventory reconciliation
+
+Phase 248 pushed this session branch to open PR #4. That push did something no
+earlier phase had to deal with: it made `heads/arena/01a0b293-trade-intel-bot` a
+**live ref on the remote**, so the inventory the A2 rewrite is scoped from grew
+from eight refs to nine. The two guards that compare the remote's advertised refs
+against the canonical inventory went red, and they were right to.
+
+This phase is **inventory reconciliation only**. It answers one question with
+evidence — is the new ref affected by the known exposed credential? — and then
+makes the canonical scope say nine everywhere it previously said eight, in every
+artefact and every guard, without weakening any of them.
+
+It is emphatically **not** remediation. The credential is still in the history,
+still reachable from nine refs instead of eight, still served from two tips, and
+still unrevoked at the issuer. A larger scope is a larger job.
+
+| Surface | Role |
+|---|---|
+| `src/lib/deployment/ref-rollover-reconciliation.ts` | the decision: do the live refs, the measurement, the canonical manifest and the runbook's claims all describe the same affected set, with the same facts? |
+| `src/lib/deployment/ref-rollover.phase249.test.ts` | 43 cases across 23 categories, on the real artefacts plus synthetic refusals |
+| `docs/secret-remediation-refs.json` | regenerated, not hand-edited: nine refs, `historyCommits` 429 |
+| `src/lib/deployment/remediation-manifest.ts` | the ninth canonical row, and both reconciliation entries updated |
+| `docs/SECRET-REMEDIATION-RUNBOOK.md` | the ninth row in **both** tables, the declared count, and a Phase 249 note |
+| `src/lib/deployment/runbook-ref-facts.ts` | `VerifiedInventory` now declares `carrierCommits` and `verifiedAt`, which the artefact has always carried |
+| `scripts/mutation-suite-phase249.sh` | 72 mutants over the decision, the manifest, both runbook tables, the artefact, the live-ref source and the generator |
+
+### A. The question, and the two wrong ways to answer it
+
+Is `heads/arena/01a0b293-trade-intel-bot` affected by the exposure recorded in
+Phase 184 (fingerprint `b1ce18a1e85ba121`, blob `src/convex/auth/emailOtp.ts`)?
+
+Two shortcuts were available and both were refused:
+
+| Shortcut | Why it is wrong |
+|---|---|
+| **ancestry** — the branch descends from an affected branch, so it is affected | It would condemn a ref that had already been rewritten, and it says nothing about *this* blob. Lineage is not reachability. |
+| **tip-cleanliness** — the branch's working tree has no credential, so it is fine | It would acquit every working branch while `heads/main` still serves the blob from its tip. This is the exact confusion §1 of the runbook exists to prevent. |
+
+The only admissible answer is the one the fingerprint tooling gives: **is the
+leaked blob reachable from this ref's tip, over full history?**
+
+### B. The measurement, from full history
+
+`scripts/secret-ref-inventory.mjs` refuses to run in a shallow or grafted clone
+(exit 2), because reachability computed against a truncated history is a guess
+dressed as a measurement. The workspace clone had been re-created shallow, so it
+was unshallowed first with `git fetch --unshallow origin` — a **read-only** fetch
+that writes no remote ref — and an independent full clone was made at
+`/tmp/p249-full` to cross-check.
+
+| Property | Observed |
+|---|---|
+| shallow / grafted | `false` / no grafts file, in both clones |
+| commits reachable from HEAD | 428 |
+| commits reachable across **all** refs | **429** (the figure the generator records) |
+| objects | 5,956 in pack, 16.26 MiB |
+| branch / HEAD | `arena/01a0b293-trade-intel-bot` @ `8c16cbe` |
+| `origin/main` | `51c9ddeb` — untouched |
+| leaked blob paths | `src/convex/auth/emailOtp.ts` |
+| fingerprint | `b1ce18a1e85ba121` (len 33) |
+| **carrier commits** | **270 — unchanged** |
+
+The carrier total is the number that matters most here. The repository grew by 31
+commits and gained a ref, and the exposure did not move: 270 commits still hold
+the blob in their trees. That is the evidence that this phase reconciled an
+inventory rather than changing the world.
+
+**The answer for the new ref: affected.**
+
+| Ref | Carriers | Exposed at tip |
+|---|---|---|
+| `heads/arena/01a08e67-trade-intel-bot` | 269 | no |
+| `heads/arena/01a0a5f5-trade-intel-bot` | 269 | no |
+| `heads/arena/01a0a92b-trade-intel-bot` | 269 | no |
+| `heads/arena/01a0ad26-trade-intel-bot` | 269 | no |
+| `heads/arena/01a0adfb-trade-intel-bot` | 269 | no |
+| **`heads/arena/01a0b293-trade-intel-bot`** | **269** | **no** |
+| `heads/main` | 261 | **YES** |
+| `heads/phase-157-live-discovery-lifecycle` | 262 | **YES** |
+| `tags/rc-181` | 269 | no |
+
+Nine affected refs, two of them exposed at the tip — the same two as before. The
+new ref carries 269 carrier commits, exactly like the other session branches, and
+is clean at its tip while still being affected: both facts at once, which is the
+whole point of §1.
+
+Determinism was checked rather than assumed: the generator ran twice in the
+workspace with byte-identical output, and a third time in the independent
+`/tmp/p249-full` clone with the same result.
+
+| Digest | Value |
+|---|---|
+| FNV-1a of the measured payload | `20a1fa3d` |
+| SHA-256 of the measured payload | `055324f409e0268e55250fef7cefe7635d23c23d867716cf45ca6048be37dd61` |
+| SHA-256 of the nine sorted ref names | `306f0185a23ec94f42e98bb8a326487b66f990a8b3176bd559d441cfba074937` |
+| scope digest (`rolloverDigest`, nine refs + 270) | `199777a8` |
+
+### C. Reconciliation, exactly
+
+The ref set was compared before and after, and the only differences are the ones
+this phase intended:
+
+| Check | Result |
+|---|---|
+| the eight prior refs still present | **yes**, all eight, unchanged |
+| their historical claims altered | **no** — `heads/main` still 261/tip-exposed, `phase-157` still 262/tip-exposed |
+| the new ref added | **yes**, as the ninth |
+| any affected ref removed | **no** |
+| any unrelated ref added | **no** |
+| declared count == actual live refs | **9 == 9** |
+| carrier total moved | **no** — 270 |
+| measured, not hardcoded | **yes** — the artefact is generator output (`generatedBy` unchanged) |
+
+`git diff docs/secret-remediation-refs.json` shows exactly three things: the new
+ref's block, `historyCommits` 398 → 429, and `verifiedAt`. Nothing else moved.
+
+### D. The decision, not the edit
+
+Until now the scope lived in three artefacts that had to be edited by hand in the
+same commit, and a forgotten edit surfaced only as an unexplained red test.
+`evaluateRefRollover()` compares the three layers and **names** the disagreement,
+so "the rollover landed consistently" is a result that can be evaluated, mutated
+and refused.
+
+The three concerns stay separate, because they answer different questions and are
+not interchangeable:
+
+| Concern | Question | Who answers |
+|---|---|---|
+| 1. inventory | which refs exist | the remote, via `git ls-remote` |
+| 2. exposure | which carry the blob | fingerprint tooling over full history |
+| 3. coverage | which get rewritten | the runbook's claim, checked against 1 and 2 |
+
+States, worst first:
+
+| State | Meaning |
+|---|---|
+| `MEASUREMENT_UNUSABLE` | shallow, absent or empty measurement, or a different fingerprint/blob path — nothing downstream can be trusted |
+| `INVENTORY_INCOMPLETE` | the remote advertises a ref nobody measured; it may be affected and would survive the rewrite |
+| `INVENTORY_STALE` | the measurement carries a ref the remote no longer has; the inventory was not re-run |
+| `MANIFEST_SCOPE_MISMATCH` | the canonical scope is missing an affected ref, or carries an unrelated or unaffected one |
+| `MANIFEST_FACT_MISMATCH` | a per-ref carrier count, a tip flag, or the carrier **total** disagrees with the measurement |
+| `RUNBOOK_CLAIM_MISMATCH` | a table row, a declared count, a tip status or an occurrence count disagrees, or a row is duplicated |
+| `ROLLOVER_RECONCILED` | all three layers describe the same nine refs with the same facts |
+
+An unmeasured live ref outranks a stale one, deliberately: a ref nobody looked at
+may be affected and would survive the rewrite, while a ref that no longer exists
+cannot. The refusal-code map is closed, and an unmapped code resolves to
+`MEASUREMENT_UNUSABLE` — never to reconciled — so a new check cannot fail silently.
+
+On this tree the assessment is `ROLLOVER_RECONCILED` with **zero** problems, nine
+live refs, nine affected refs, two exposed at tip, zero unaccounted refs, and the
+added set exactly `heads/arena/01a0b293-trade-intel-bot`.
+
+### E. Reconciliation is not remediation
+
+Three fields are constant `false` in the return type and are **not derivable**
+from a successful reconciliation:
+
+| Field | Value | Why it cannot move |
+|---|---|---|
+| `remediationPerformed` | `false` | nothing was rewritten |
+| `rewriteExecuted` | `false` | §3 has not run, and §2 blocks it |
+| `a2Verified` | `false` | verification is a post-rewrite measurement against a clean tree |
+
+The operator report says so in prose as well as in fields: *"A reconciled
+inventory is a correctly scoped job, not a finished one."* Mutants M56–M59 flip
+each of these and every one is caught.
+
+`evaluateA2Readiness()` was re-run against the real nine-ref inventory: the scope
+is now complete (`expectedRefs` 9, `measuredRefs` 9, `missingRefs` empty,
+`authoritativeScope` true) and readiness **still refuses**, with `ready: false`,
+`verified: false` and `remediationPerformed: false`. A complete inventory is a
+precondition for the rewrite, not a result of it.
+
+### F. The artefacts, updated consistently
+
+| Artefact | Change |
+|---|---|
+| `docs/secret-remediation-refs.json` | regenerated with `--write`: nine refs, `historyCommits` 429, `carrierCommits` 270 |
+| `AFFECTED_REF_EXPECTATIONS` | ninth row `{ ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 269, exposedAtTip: false }`, between `01a0adfb` and `heads/main` |
+| reconciliation, *affected refs* | authoritative **9**; Phase 238's 8 moved to `superseded`; the reason names `01a0b293`, states it was measured not inferred, and states that nine is not progress |
+| reconciliation, *reachable commits* | authoritative **429**; 398 moved to `superseded` |
+| runbook §1 per-ref status | ninth row `refs/heads/arena/01a0b293-trade-intel-bot` \| **clean** \| 269 |
+| runbook §3 rewrite coverage | ninth row `heads/arena/01a0b293-trade-intel-bot` \| *added Phase 249* \| *not rehearsed* |
+| runbook declared count | `**All eight**` → `**All nine**`, and "all eight refs" → "all nine refs" |
+| runbook Phase 249 note | records the unshallowing, the two identical runs, and that all nine rows now rest on one measurement |
+| `REMEDIATION_REPOSITORY.expectedBranch` | **unchanged** — `arena/01a0adfb-trade-intel-bot` |
+| `DEFAULT_CANDIDATE.ref` | **unchanged** |
+| `EXPOSED_CREDENTIAL.carrierCommits` | **unchanged** — 270 |
+
+Two things were deliberately **not** done. The Phase 238 note describing the
+eighth row as *derived, not re-measured* was left standing as an accurate record
+of that phase, with the Phase 249 note recording that the re-measurement has now
+superseded it. And no second ref list was created anywhere: every count in this
+phase is either measured or derived from the manifest.
+
+The stale "two branches added above" in §3 was corrected to four
+(`01a0a92b`, `01a0ad26`, `01a0adfb`, `01a0b293`), because the table itself shows
+four rows that were never rehearsed.
+
+### G. The guards that went red, and now pass
+
+Pushing the ninth ref turned two guards red — that was the trigger for this phase,
+and neither was weakened to make them green:
+
+| Guard | Before | After |
+|---|---|---|
+| `ref-inventory.phase233.test.ts` | red: the remote advertised a ref absent from the runbook tables | **green** |
+| `release-gate-consistency.phase221.test.ts` | red: the declared count no longer matched the live ref count | **green** |
+
+The count pins in `a2-readiness.phase244.test.ts`, `a2-rehearsal.phase245.test.ts`,
+`remediation-manifest.phase244.test.ts` and `remediation-safety.phase244.test.ts`
+were moved 8 → 9 **as literals**. Deriving them from the manifest would have made
+those assertions tautological and removed their teeth; a literal pin is what fails
+when someone edits one layer and forgets another. `SCOPED_REFS` in the rehearsal
+machinery derives from the manifest and grew to nine on its own — the rehearsal
+procedure itself is unchanged.
+
+### H. Read-only discipline, measured not asserted
+
+The measurement path was probed in dry-run behind a recording `git` shim and a
+network guard that records and refuses every Node-level socket, DNS, HTTP and
+`fetch` attempt:
+
+| Property | Observed |
+|---|---|
+| generator exit code | 0 |
+| worktree before/after | **identical** (nothing written) |
+| Node-level network attempts | **0** (positive control: the same guard fired on a deliberate `fetch`) |
+| forbidden git subcommands invoked | **0** |
+| git subcommands invoked | `cat-file`, `ls-remote`, `rev-list`, `rev-parse` — all read-only |
+| carrier commits re-measured | 270, matching the artefact |
+
+No history was rewritten, nothing was force-pushed, no remote ref was created,
+updated or deleted, no branch or tag was made, no credential was revoked, no
+issuer was contacted, no Convex deployment was performed, and no email was sent.
+`origin/main` is still `51c9ddeb`. The only remote interaction in the entire phase
+was `git ls-remote` and one read-only `fetch --unshallow`.
+
+The decision module is pure: no `node:fs`, no `node:child_process`, no clock, no
+`process.env`, no `fetch`. Mutants M71 and M72 introduce a spawn and a clock read
+and both are caught by the suite reading the module's own source.
+
+### I. Mutation results — what is established, and what is not
+
+`scripts/mutation-suite-phase249.sh` carries **73 mutants** across the decision
+module, the canonical manifest, both runbook tables, the measured artefact, the
+live-ref source, the parsers and the generator. Restore is byte-exact (`cmp` on
+all seven targets) and is re-verified after the run.
+
+| Group | Mutants | What each group attacks |
+|---|---|---|
+| A — the measurement must be trusted first | M01–M07 | a shallow, absent or empty measurement accepted; a different fingerprint or a missing blob path; trustworthiness asserted rather than earned; the generator measuring in a shallow clone |
+| B — ignoring the new ref | M08–M13, M73 | an unmeasured live ref, a stale measured ref, hidden unaccounted refs, a fail-open live-ref source, a peeled tag counted as a ref, weakened branch normalization, a dead ref named in either table |
+| C — the canonical manifest | M14–M30 | hardcoding the old eight, dropping a prior affected ref, adding an unrelated ref, per-ref carrier or tip drift, a moved carrier **total**, reverting either reconciliation count, repointing the rewrite branch at `main`, un-forbidding `main` |
+| D — the runbook's claims | M31–M49 | a row missing from either table, the declared count reverted to eight or removed, the ninth ref recorded unaffected, `main` relabelled clean, a duplicated row, weakened count/tip/duplicate parsers, bypassing the Phase 221/233 guard outright, dead refs, tip and occurrence contradictions |
+| E — the measured artefact | M50–M55 | the ninth ref deleted, recorded unaffected, all refs emptied, the carrier total moved, the generator attribution changed, the fingerprint changed |
+| F — reconciliation is not remediation | M56–M60 | marking A2 verified, reporting remediation performed, reporting the rewrite executed, calling any result reconciled, dropping the "not a finished one" wording |
+| G — ordering, closure, determinism | M61–M66 | reporting the best state instead of the worst, ranking a stale ref above an unmeasured one, an unmapped code summarising as reconciled, hiding the growth, a digest insensitive to its scope, substituting the manifest's list for the measurement |
+| H — read-only discipline | M67–M72 | permitting a git write, a force-push or a history rewrite in the tooling, writing a second file, giving the decision module a process spawn or a clock read |
+
+**Run 1 — the run whose evidence is sound.** It completed with the remote
+readable from start to finish, which is provable from the run itself: four mutants
+*survived*, and a mutant only survives when all five focused suites pass — which
+three of them cannot do without `git ls-remote`. The post-restore probe also
+re-measured `live=9`. Result: **63 caught, 4 survived, 5 invalid**, restore
+byte-exact for all seven targets.
+
+Every one of those nine was a defect in the *tests or anchors*, not in the product:
+
+| Finding | Cause | Closure |
+|---|---|---|
+| M12 survived | the mutation's regex matched a *comment* mentioning `^{}`, so it changed no behaviour | anchored to the filter's code line |
+| M42 survived | the dead-ref check runs in two loops (exposure, coverage); the test removed the ref from *both*, so either loop caught it and neither was covered alone | one test per table, plus M73 for the coverage loop |
+| M46 survived | the affected-vs-claimed comparison never fired alone — the carrier-count comparison caught the same fixture | a fixture where the runbook claims occurrences for a ref measured **unaffected**, which only that comparison can see |
+| M63 survived | the unmapped-code fallback is unreachable through the typed public API, so it could be inverted unobserved | exported `rolloverStateForCode()` as a testable seam; asserted an undeclared code resolves to `MEASUREMENT_UNUSABLE` |
+| M14–M18 invalid | anchors assumed a multi-line object literal where the manifest uses single-line rows | re-anchored; an INVALID mutant is reported as a failure, never as a pass, because a mutation that did not apply proves nothing |
+
+The closure is verified: the Phase 249 suite grew from 43 to **45 cases** and all
+45 pass, and each of the four surviving mutants now fails a suite on its own
+merits instead of being masked by a sibling check.
+
+**Runs 2 and 3 — reported 72 and 73 caught with 0 gaps, and that claim is
+withdrawn.** The GitHub token expired part-way through those runs. Once
+`git ls-remote` fails, three of the five focused suites fail on infrastructure
+alone, so *every* subsequent mutant is reported as "caught (a focused suite
+failed)" whether or not the mutation was observable. A catch credited to a dead
+token is not a catch, and the harness at that time did not classify the cause.
+Those two runs therefore do **not** establish 100% observability for the mutants
+that ran after the failure.
+
+**The harness was hardened so this cannot recur, and the hardening is verified:**
+
+| Change | Effect |
+|---|---|
+| baseline pre-flight classifies an unreadable remote | the suite **refuses to start** (exit 2) rather than producing a meaningless run — confirmed by running it against the dead token |
+| a suite failure is classified before it is credited | a failure containing `LiveRefSourceUnavailableError`, `could not read refs from remote` or `could not read Username for` is reported **BLOCKED — UNVERIFIED**, never CAUGHT |
+| the probe retries, then reports its failure identity | `LIVE_REF_SOURCE_UNAVAILABLE` is surfaced as itself, never substituted for an empty ref set |
+| the final tally separates three outcomes | `CAUGHT`, `gaps`, `unverified (infrastructure)`; an incomplete run exits 4 and names every unverified mutant |
+
+**Outstanding:** one full 73-mutant run under a readable remote, to establish 100%
+observability with 0 gaps, 0 INVALID and 0 unverified. It is blocked on GitHub
+access, and it is the first thing to re-run once that is restored. The mutation
+*suite* is complete and its gaps are closed; the mutation *result* is not yet
+complete, and this section says so instead of recording a number the evidence
+does not support.
+
+### J. The scope today, and what is still missing
+
+**The A2 rewrite scope is nine refs.** Every one of them carries the exposure in
+reachable history; two of them — `heads/main` and
+`heads/phase-157-live-discovery-lifecycle` — serve it from their tips right now,
+which is why `main` must never be deployed.
+
+What this phase did **not** do, and what still blocks release:
+
+| Item | Status |
+|---|---|
+| A1 — OTP issuer revocation | **unremediated** (Phase 246): requires the issuer |
+| A2 — history rewrite | **UNVERIFIED, unexecuted** (Phase 245): blocked by §2 until A1 lands |
+| Evidence D — production provider verification | **UNVERIFIED** (Phase 247) |
+| Convex production deployment | **UNVERIFIED** (Phase 248): no control plane was contacted |
+| Production email transport | **UNVERIFIED** |
+
+The rehearsal coverage did not improve — it got worse, correctly. The Phase 221
+rehearsal covered five refs; four of the nine (`01a0a92b`, `01a0ad26`, `01a0adfb`,
+`01a0b293`) have never been through one, and §4 of the runbook now says so. A
+re-rehearsal on a mirror covering all nine is required before §3 may run.
+
+**Issue #5** records this rollover: the measurement, the answer (affected), the
+final count (nine), the artefacts updated, and the CI result. It stays **open** —
+the rollover and its guards are complete, but the remediation it scopes is not.
+
+The release verdict is unchanged by this phase: **NOT READY**, with
+`A1_OTP_ISSUER_REVOCATION`, `A2_HISTORY_REWRITE`, `CONVEX_PRODUCTION_DEPLOYMENT`,
+`PRODUCTION_EMAIL_TRANSPORT` and `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` as
+its blockers. A correctly counted nine-ref scope is not a smaller risk than a
+mis-counted eight-ref one; it is the same risk, finally written down accurately.

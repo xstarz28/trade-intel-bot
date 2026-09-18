@@ -97,7 +97,10 @@ describe("244 — the manifest is a measurement, not a memory", () => {
 
     const manifestRefs = AFFECTED_REF_EXPECTATIONS.map((entry) => entry.ref).sort();
     expect(artifact.refs.map((entry) => entry.ref).sort()).toEqual(manifestRefs);
-    expect(artifact.refs.length).toBe(8);
+    // A deliberate literal pin, not a derivation: the count may only move when a
+    // measurement moves it. Phase 249 measured the ninth live ref (01a0b293).
+    expect(artifact.refs.length).toBe(9);
+    expect(AFFECTED_REF_EXPECTATIONS.length).toBe(9);
 
     for (const expectation of AFFECTED_REF_EXPECTATIONS) {
       const measured = artifact.refs.find((entry) => entry.ref === expectation.ref);
@@ -158,7 +161,9 @@ describe("244 — superseded measurements stay visible, with their ruling", () =
     );
     expect(reachable?.superseded).toContain("306");
     expect(reachable?.superseded).toContain("397");
-    expect(reachable?.authoritative).toContain("398");
+    // Each superseded figure stays visible: the audit trail is the point.
+    expect(reachable?.superseded).toContain("398");
+    expect(reachable?.authoritative).toContain("429");
     expect(reachable?.reason).toMatch(/grows|newest/);
     // The carrier count is what proves the exposure did not change.
     expect(reachable?.reason).toContain("270");
@@ -168,8 +173,15 @@ describe("244 — superseded measurements stay visible, with their ruling", () =
     const refs = MEASUREMENT_RECONCILIATION.find((entry) => entry.fact === "affected refs");
     expect(refs?.superseded).toContain("01a0a92b");
     expect(refs?.superseded).toContain("01a0ad26");
-    expect(refs?.authoritative).toContain("8");
+    // Phase 238's count is now itself superseded, and stays visible as such.
+    expect(refs?.superseded).toContain("01a0adfb");
+    expect(refs?.superseded).toContain("8");
+    expect(refs?.authoritative).toContain("9");
     expect(refs?.measuredBy).toBe(VERIFICATION_TOOLING.perRefInventory);
+    // The ninth ref is named as measured, and growth is explicitly not progress.
+    expect(refs?.reason).toContain("01a0b293");
+    expect(refs?.reason).toMatch(/measured, not inferred|not progress/);
+    expect(refs?.reason).toContain("270");
   });
 
   it("reconciles the 'clean tip means remediated' confusion explicitly", () => {
