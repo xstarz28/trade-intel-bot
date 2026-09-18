@@ -4427,3 +4427,317 @@ carries the exposure). The release verdict is unchanged by this phase: **NOT
 READY**, with `A1_OTP_ISSUER_REVOCATION`, `A2_HISTORY_REWRITE`,
 `CONVEX_PRODUCTION_DEPLOYMENT`, `PRODUCTION_EMAIL_TRANSPORT` and
 `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` as its blockers.
+
+## Phase 248 — Convex production deployment verification harness
+
+Phase 246 closed the part of A1 a repository can close without the issuer, and
+Phase 247 did the same for Evidence D. This phase does it for the last
+prerequisite whose whole content is an external fact — `CONVEX_PRODUCTION_DEPLOYMENT`:
+"a production Convex deployment of *this* candidate exists, publishes *this*
+backend's whole function surface, and was observed live behind an authenticated
+control plane".
+
+Until now the gate read `docs/remediation/convex-production-deployment.json` and
+accepted it on a handful of declared fields. That is enough to refuse a claim
+written in prose and **not** enough to tell a real production deployment from a
+well-shaped fixture — which is the only distinction the prerequisite is about.
+This phase is that distinction, as a decision, and the gate now reads the Convex
+deployment through it.
+
+| Surface | Role |
+|---|---|
+| `src/lib/deployment/convex-deployment-verification.ts` | the decisions: the package contract, the deployment identity, the recorded access verdict, the URLs, the observed environment, function coverage, freshness, the state summary, the gate projection and the operator handoff |
+| `src/lib/deployment/convex-function-surface.ts` | the only part that touches the filesystem: a read-only scan of `src/convex` for the functions this candidate defines |
+| `scripts/convex-deployment-verify.mjs` | the read-only command behind `npm run deployment:verify` |
+| `src/lib/deployment/convex-deployment-verification.phase248.test.ts` | 77 cases: the surface scan, the contract, the refused categories, identity, access, URLs, environment, coverage, timestamps, the state summary, the gate, the reader and the command |
+| `src/lib/deployment/release-current-state.ts` | one changed path: the Convex deployment is now validated rather than quoted |
+| `scripts/mutation-suite-phase248.sh` | 43 mutants over this phase's decisions, the scanner, the command, the reader and the canonical gate |
+
+### A. The required function surface, scanned not listed
+
+A production deployment must publish every function the candidate's backend
+defines, so the required set is *scanned*, never written down. `scanConvexFunctionSurface()`
+walks `src/convex` (`CONVEX_ROOT`, named once) and returns every
+`export const NAME = query|mutation|action|internalQuery|internalMutation|internalAction`,
+normalised to `<module>.<function>`, sorted and unique. On this tree that is
+**73 references across 24 backend files**.
+
+| Rule | Behaviour |
+|---|---|
+| declarations, not modules | `schema.ts` and `auth.config.ts` contribute nothing |
+| generated and helper code | `_generated/` and `lib/` are skipped; neither publishes a Convex function |
+| tests | no `*.test.ts` contributes — and the suite proves this with an *injected* tree whose test file does define a function, so the exclusion is a rule, not an accident of this checkout |
+| type declarations | `*.d.ts` is skipped |
+| internal functions | `internal*` forms are server-only but still published and still required — the DEPLOYMENT-HANDOFF gate greps for `consumeResendAllowance`, an internal mutation, precisely because a deployment that omitted it would 404 at runtime |
+| an unreadable tree | yields an **empty** surface, never a fabricated one; the validator then refuses `REQUIRED_FUNCTIONS_UNKNOWN` rather than passing coverage vacuously |
+| determinism | the same tree scans identically twice; the scan performs no network, no process and no write |
+
+The validator itself imports no `node:fs`: it takes `requiredFunctions` as a
+required input, so the decision is pure and the scan is the single place that
+reads. The suite asserts this by reading both modules' own source.
+
+### B. The package contract
+
+A package is one JSON object filed at `docs/remediation/convex-production-deployment.json`,
+schema `phase248.convex-deployment/v1`. `buildConvexDeploymentPackage()` assembles
+and digests one for tests and for the operator's own tooling; it is a formatter,
+not a source of truth.
+
+| Field | Rule |
+|---|---|
+| `schema` | must be `phase248.convex-deployment/v1` |
+| `verified` | must be the literal `true` |
+| `source` | must be `external-verification` — a claim written in this repository is not external |
+| `environment` | must be `production` |
+| `observedAt` | a finite instant; non-finite is refused, never coerced |
+| `candidate.commit` | must equal the candidate being admitted |
+| `deployment` | a `prod:<team>:<project>` identity (see C) |
+| `deploymentUrl` / `siteUrl` | external https Convex endpoints (see E) |
+| `deploymentEnv` | the *observed* `XSTARZ_DEPLOYMENT_ENV`, or `null` (see F) |
+| `publishedFunctions` | a string array of `<module>.<function>` (see G) |
+| `digest` | `evidenceDigest` over the package minus the digest field |
+
+The digest is the same one A2 rehearsals use, and the credential scan is the same
+one Evidence D uses (`credentialBearingKeys`): a package carrying any field whose
+name could hold a secret (`*apikey`, `*token`, `*secret`, `authorization`,
+`password`, `*credential`, `*value`) is refused whole, before any of its claims
+are read. Nothing here restates those rules; they are imported.
+
+### C. The deployment identity, by the real rule
+
+`deploymentIdentityProblem()` and its patterns are imported from
+`production-config.ts` — the same rule the deployment environment is resolved
+under, so the identity and the observed environment can never disagree.
+
+| Identity | Outcome |
+|---|---|
+| `prod:<team>:<project>` matching the candidate's declared deployment | accepted |
+| `dev:`, `preview:`, `local:`, anonymous, or a dev deployment promoted to prod | refused `NON_PRODUCTION_DEPLOYMENT` |
+| malformed or missing | refused, never an unnamed pass |
+| a well-formed identity that is *not* the candidate's declared deployment | refused `WRONG_DEPLOYMENT`, and named |
+| no declared deployment for the candidate | refused — a valid package with nothing to bind to is still a blocker |
+
+### D. The recorded access verdict, derived from Phase 234
+
+The package records the control-plane access verdict the operator observed. The
+accepted set is **derived**, not listed: `AUTHENTICATED_ACCESS_STATES` is exactly
+the states whose Phase 234 exit code (`EXIT_CODES` from
+`scripts/lib/convex-access-verdict.mjs`) is `0`. A verdict that is merely
+*reachable* — `CONTROL_PLANE_ONLY`, unreachable, or unauthenticated — is refused
+`WRONG_ACCESS`. If the accepted set ever reads empty, the validator fails closed
+and refuses every verdict rather than accepting none of them.
+
+### E. The endpoints
+
+| Rule | Behaviour |
+|---|---|
+| scheme | `deploymentUrl` and `siteUrl` must be `https` |
+| loopback | `localhost`, `*.local`, `127.0.0.1`, `[::1]` are refused — a loopback host cannot be a production deployment |
+| retired/forbidden hosts | the identity hosts this repository documents as retired are refused |
+| cloud host | must be a `*.convex.cloud` endpoint |
+| site host | must be a `*.convex.site` endpoint |
+
+### F. The observed environment, fail-closed
+
+`deploymentEnv` is the value the operator actually observed for
+`XSTARZ_DEPLOYMENT_ENV`. It is resolved through `resolveDeploymentEnvironment()`
+— the real fail-closed policy — so a deployment whose observed environment
+resolves to development or preview is refused, and an absent value resolves to
+production only because the real policy says so, not because this phase assumes
+it. A `DeploymentPolicyError` is a refusal, not a downgrade.
+
+### G. Function coverage, strict
+
+Every required reference must appear in `publishedFunctions`. A `module:function`
+form (as `convex function-spec` may report) is normalised to `module.function`
+before comparison. Extra published functions are allowed; a single missing one is
+refused **by name**, and each required function dropped in turn is caught by the
+suite. A `publishedFunctions` that is not an array is refused, and an unknown
+required surface (empty) is refused rather than treated as vacuously covered.
+
+### H. Timestamps and freshness
+
+The freshness window is the gate's own for this prerequisite — **seven days**
+(`CONVEX_DEPLOYMENT_MAX_AGE_MS`, read from the deployment-bound entry of
+`RELEASE_PREREQUISITES`, not restated). A future-dated observation is refused
+`FUTURE_OBSERVATION`; an observation older than the window is refused
+`STALE_OBSERVATION`; the boundary is exact on both sides. A missing evaluation
+instant is refused `NO_EVALUATION_INSTANT` instead of defaulting to a clock, and
+time passing only ever makes a package staler, never fresher.
+
+### I. The state summary, worst wins
+
+The assessment reports one state, chosen by a published precedence — not by field
+order, and not by whichever refusal happened to be emitted first:
+
+```
+INVALID_EVIDENCE > FIXTURE_NOT_LIVE > WRONG_CANDIDATE > NON_PRODUCTION_DEPLOYMENT
+  > WRONG_ACCESS > WRONG_DEPLOYMENT > MISSING_FUNCTION > FUTURE_OBSERVATION
+  > STALE_OBSERVATION > CONVEX_DEPLOYMENT_VERIFIED
+```
+
+Every refusal code maps to a state through a closed, exported table
+(`CONVEX_DEPLOYMENT_CODE_STATES`); `finish()` refuses `UNMAPPED_REFUSAL_CODE` if
+a code ever appears with no declared state, so a new refusal cannot silently
+report as verified. The suite proves the summary is the worst state by
+constructing a package whose *first* emitted refusal (a fixture marker) is
+outranked by a later one (a credential-shaped field → `INVALID_EVIDENCE`).
+
+A package that declares itself a `fixture`, `synthetic`, `configurationOnly`,
+`buildOnly` or `codegenOnly` is refused `FIXTURE_NOT_LIVE` and can never project
+a gate record, even if every other field is conformant.
+
+### J. The gate projection and the reader
+
+`toGateConvexRecord()` turns a complete assessment into the `EvidenceRecord` the
+gate already reads (`prerequisite: CONVEX_PRODUCTION_DEPLOYMENT`,
+`status: VERIFIED`, `source: external-verification`, `environment: production`,
+the observed instant, and a subject carrying the commit and the deployment); an
+incomplete one produces **no record** and a named refusal list. The reader in
+`release-current-state.ts` wraps a refusal as a `BLOCKED` record whose detail
+names the state and the first problems, clamped to the evaluation instant so the
+gate's own freshness rule still applies. The gate's `deployment` binding is
+unchanged and still requires the candidate's declared `productionDeployment` to
+match the record's subject — a wrong subject is refused at the gate even if the
+validator accepted the package.
+
+This is the cross-phase pattern: when a phase tightens a prerequisite's
+validation, the synthetic "fully accepted" fixtures in the other suites move to
+the new contract. Phase 247 moved Phase 242's Evidence D fixture; Phase 248 moves
+Phase 242's and Phase 247's Convex fixtures to a real `buildConvexDeploymentPackage`
+with a valid identity.
+
+### K. The operator command
+
+`npm run deployment:verify` (`scripts/convex-deployment-verify.mjs`) is read-only.
+It reads **one** package, simulates the canonical admission in memory with that
+package overlaid on the real tree, and reports what the gate would read. It never
+contacts a control plane, never reads a credential, never spawns a process and
+never writes.
+
+| Mode | Exit |
+|---|---|
+| `--status` | `0` if the Convex deployment verifies, else `1` |
+| `--package <path> [--deployment prod:<team>:<project>]` | `0` if the package is admissible, else `1` |
+| `--template` | `0` — prints a skeleton that is refused as it stands |
+| a report that cannot be produced (no/invalid package, bad `--now`) | `2` |
+
+The handoff it renders states its own limits and carries ten guarantees —
+`controlPlaneContacted`, `networkOpened`, `credentialRead`, `credentialPrinted`,
+`credentialMutated`, `deploymentPerformed`, `emailSent`, `gitMutated`,
+`productionStateMutated`, `packagePersisted` — **every one false**, plus
+`verdictIssuedHere: false`. It calls `evaluateReleaseAdmission` rather than
+re-implementing a verdict, and uses the scanned surface rather than a second
+list. The suite asserts all of this by reading the command's own source.
+
+### L. Regression coverage — 77 cases
+
+| Group | Covers |
+|---|---|
+| the surface scan | the functions the backend defines (including internal forms), the exclusions proven on an injected tree, well-formedness, determinism, an injected source, an unreadable tree, and the root named once |
+| the package contract | a conformant package, every field refused by code, a non-object, digest tampering, credential-shaped fields (six shapes), the required fields one by one |
+| identity and binding | a matching `prod:` identity, dev/preview/local/anonymous refused, malformed and missing refused, no declared deployment, a foreign well-formed deployment named |
+| access | `AUTHENTICATED` accepted, every non-authenticated verdict refused, a missing/unknown verdict refused, and the accepted set derived from the Phase 234 exit-0 state |
+| URLs and environment | non-https, loopback, non-`*.convex.cloud`, non-`*.convex.site`, a development/preview environment, an unrecognised environment as a hard refusal |
+| coverage | full coverage accepted, one missing function named, each required function dropped in turn, an unknown surface refused, a non-array refused, `module:function` normalised, extra functions allowed |
+| timestamps | a matching commit, another commit refused, the exact boundary both sides, a future observation, a non-finite observation, a missing evaluation instant, and that time only makes a package staler |
+| the state summary | the worst state wins regardless of emission order (fixture-then-credential), determinism, the fixture/synthetic/*-only markers, and the closed code→state map with its unmapped-code guard |
+| the gate and reader | a complete package projecting a VERIFIED record the evaluator accepts, an inadmissible one projecting nothing, a fixture-scoped package, the gate's own deployment binding, a filed package judged by the validator, a bare pre-248 claim refused, stale/partial/foreign filings as blockers, unparseable JSON as UNVERIFIED, no declared deployment, a pinned surface honoured, the admission refusing this tree with CONVEX among the blockers, and the real tree unchanged |
+| the command and purity | its node imports, the absence of network/spawn/writers/`process.env`, that it calls the canonical admission, its wiring and scanned surface, the decision module's purity, the scanner as the only filesystem touch, the guarantees, the rendered handoff and the exit codes |
+
+### M. Mutation results — 43 mutants
+
+`scripts/mutation-suite-phase248.sh` applies each mutant to one of five targets
+(the decision module, the surface scanner, the command, the reader, the canonical
+gate), re-runs the two focused suites (this phase's and the Phase 242 admission
+suite), and then runs the real command twice — once for the current state and
+once against a fixed package — under a network guard that records and refuses,
+with a recording `git` shim first on `PATH`.
+
+* **42 caught, 1 documented equivalent, 0 gaps, 0 INVALID, byte-exact restore** of
+  all five targets.
+* The equivalent **relabels a line of the human-readable handoff**: no decision
+  changes, it appears in no JSON the probe reads, and the probe is unmoved.
+* The caught classes include: accepting any schema/`verified`/source/environment,
+  ignoring a credential-shaped field, an unchecked digest, the fixture/synthetic
+  markers, an unbound candidate, a non-production or missing identity, any
+  observed environment, an undeclared or foreign deployment, an unauthenticated
+  or missing access verdict, treating every access state as authenticated, a
+  non-https/loopback/non-Convex URL, an unknown required surface, no coverage
+  check, a non-array published set, dropping `module:function` normalisation, a
+  future/stale/non-finite observation, a defaulted evaluation instant, a
+  first-refusal-instead-of-worst summary, a gate record projected for an
+  incomplete or refused package, dropping the internal forms, letting test files
+  contribute, a command that exits 0 on a blocker / writes / reads the
+  environment / imports a network module, a reader that accepts a refused package
+  / quotes a bare claim / evaluates against an empty surface, and the gate's
+  deployment binding.
+* The harness proves its own instrument first: before measuring anything it
+  requires the network guard to observe a deliberate `fetch`, so silence cannot be
+  mistaken for evidence, and it requires the baseline probe to be exactly the
+  expected one.
+
+### N. Quality gates
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` | 0 errors |
+| `npx vitest run` | 318 files, 10 648 passed, 12 skipped |
+| `npm run build` | success |
+| eslint on the changed and touched files | 0 findings |
+| `src/lib/deployment` | 30 files, 917 tests, all green |
+| `scripts/mutation-suite-phase248.sh` | exit 0 (42 caught / 1 equivalent / 0 gaps / 0 INVALID) |
+
+### O. Instrumented proof of zero external action
+
+The command was run with the network sinks of `node:net`, `node:dns`,
+`node:http`, `node:https` and `globalThis.fetch` patched to record and refuse,
+with a recording `git` shim first on `PATH`:
+
+| Observation | Result |
+|---|---|
+| outbound network attempts | **0** (positive control: the same guard fired on a deliberate `fetch`) |
+| processes spawned by the command | **0** — there is no `node:child_process` import at all, so git is not reachable |
+| git invocations recorded | **0** |
+| worktree fingerprint before/after | identical |
+| `docs/remediation/` files before/after | unchanged (nothing was filed) |
+| exit codes | `--status` 1 (blocker), a complete package 0, `--template` 0 |
+
+No Convex control plane was contacted, no credential was read, printed or
+changed, no deployment was performed, no email was sent, no git command ran, and
+no release state was altered — by the harness or by the command. The Convex
+control plane (`*.convex.dev` / `*.convex.cloud`) is unreachable from this
+environment, which is exactly why the validator is pure and the command is
+read-only: nothing here can produce a real deployment observation, and nothing
+can fake one either.
+
+### P. The Convex deployment today, and what is still missing
+
+**No control plane was contacted in this phase, and no Convex deployment package
+exists.** The command reports it directly:
+
+```
+package filed at docs/remediation/convex-production-deployment.json: no
+declared deployment: <none>
+required functions (scanned from src/convex): 73
+Convex deployment: UNVERIFIED
+  reason: no evidence was supplied
+canonical verdict (echoed, not issued here): NOT READY
+blockers: A1_OTP_ISSUER_REVOCATION, A2_HISTORY_REWRITE, CONVEX_PRODUCTION_DEPLOYMENT,
+          EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION, PRODUCTION_EMAIL_TRANSPORT
+```
+
+The remaining dependency is the same shape as A1's and Evidence D's: **a party
+with real Convex access** — an authenticated control plane for the production
+team, and an environment that can reach it — must deploy this candidate, observe
+the deployment's URLs, environment and published function surface, record the
+access verdict, assemble the package, recompute its digest and file it. Nothing
+in this repository can produce that observation, and the harness is built so that
+nothing can fake it either. Convex access is a blocker with a name, not a
+negative finding about any deployment.
+
+**A1 remains unremediated** (Phase 246) and **A2 remains unexecuted** (Phase 245).
+The release verdict is unchanged by this phase: **NOT READY**, with
+`A1_OTP_ISSUER_REVOCATION`, `A2_HISTORY_REWRITE`, `CONVEX_PRODUCTION_DEPLOYMENT`,
+`PRODUCTION_EMAIL_TRANSPORT` and `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` as
+its blockers.

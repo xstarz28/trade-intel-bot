@@ -27,6 +27,12 @@ import {
   toGateEvidenceRecord,
 } from "./evidence-d-verification";
 import {
+  CONVEX_DEPLOYMENT_PREREQUISITE,
+  evaluateConvexDeploymentPackage,
+  toGateConvexRecord,
+} from "./convex-deployment-verification";
+import { requiredConvexFunctionReferences } from "./convex-function-surface";
+import {
   evaluateRelease,
   RELEASE_PREREQUISITES,
   type EvidenceRecord,
@@ -117,6 +123,13 @@ export interface DerivationOptions {
    * deployment proves nothing by itself: evidence must still bind to it.
    */
   productionDeployment?: string;
+  /**
+   * The Convex function surface a production deployment must publish. Defaults to
+   * a scan of this candidate's `src/convex`; a caller may pin it to evaluate a
+   * specific artifact deterministically. An empty set is never treated as
+   * "covered" — the validator refuses it as an unknown surface.
+   */
+  requiredConvexFunctions?: readonly string[];
 }
 
 interface InventoryShape {
@@ -248,6 +261,92 @@ function evidenceDProofRecord(
   return projection.record ?? blocked(assessment);
 }
 
+/**
+ * The Convex deployment proof, read through the Phase 248 validator.
+ *
+ * Like Evidence D, this prerequisite's whole content is a production fact — "the
+ * deployment exists and publishes this candidate" — that a claim, a green build or
+ * a reachable control plane can all be made to look like. So the path is validated
+ * rather than quoted: the identity must be a production one, the URLs must be
+ * external Convex hosts, the observed environment must resolve to production under
+ * the real policy, the control-plane verdict must be the authenticated one, every
+ * function this candidate defines must be published, and the package must bind to
+ * the candidate and its declared deployment. An inadmissible package becomes a
+ * BLOCKED record whose detail names the state and the reasons — a refusal the
+ * operator can act on, which no edit of the file can turn into a pass.
+ */
+function convexDeploymentProofRecord(
+  path: string,
+  source: FactSource,
+  now: number,
+  candidate: { commit: string; ref: string },
+  productionDeployment: string | undefined,
+  requiredFunctions: readonly string[],
+): EvidenceRecord | null {
+  if (!source.exists(path)) return null;
+
+  const blocked = (
+    assessment: ReturnType<typeof evaluateConvexDeploymentPackage>,
+  ): EvidenceRecord => ({
+    prerequisite: CONVEX_DEPLOYMENT_PREREQUISITE,
+    status: "BLOCKED",
+    source: "external-verification",
+    environment: "production",
+    // The instant the package DECLARES, clamped to the evaluation instant, so the
+    // gate's own freshness rule applies: a stale verification reports STALE, and a
+    // fabricated future stamp cannot become the reason an operator reads.
+    observedAt: Math.min(assessment.observedAt ?? now, now),
+    subject: {
+      commit: candidate.commit,
+      ...(assessment.deployment ? { deployment: assessment.deployment } : {}),
+    },
+    detail: `${path}: refused by the Convex deployment validator (${assessment.state}): ${
+      assessment.problems.slice(0, 3).join("; ") || assessment.state
+    }`,
+  });
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source.read(path));
+  } catch {
+    return {
+      prerequisite: CONVEX_DEPLOYMENT_PREREQUISITE,
+      status: "UNVERIFIED",
+      source: "documentation",
+      environment: "local",
+      observedAt: Number.NaN,
+      detail: `${path} exists but is not valid JSON`,
+    };
+  }
+
+  const assessment = evaluateConvexDeploymentPackage(parsed, {
+    now,
+    candidate,
+    productionDeployment,
+    requiredFunctions,
+  });
+  const projection = toGateConvexRecord(assessment, {
+    candidateCommit: candidate.commit,
+    deployment: productionDeployment ?? assessment.deployment ?? undefined,
+  });
+  return projection.record ?? blocked(assessment);
+}
+
+/**
+ * The functions a production deployment of this candidate must publish, scanned
+ * from the backend. Memoised: the tree does not change during one evaluation, and
+ * the scan walks `src/convex`, so doing it once per process is enough. A caller
+ * may pin the set explicitly (tests, or an admission evaluating a specific
+ * artifact) via `DerivationOptions.requiredConvexFunctions`.
+ */
+let cachedRequiredFunctions: readonly string[] | null = null;
+function resolveRequiredFunctions(override?: readonly string[]): readonly string[] {
+  if (override) return [...override];
+  if (cachedRequiredFunctions) return cachedRequiredFunctions;
+  cachedRequiredFunctions = requiredConvexFunctionReferences();
+  return cachedRequiredFunctions;
+}
+
 /** Derive the evidence set from the tree as it is. */
 export function deriveCurrentReleaseState(
   source: FactSource = defaultSource,
@@ -272,11 +371,21 @@ export function deriveCurrentReleaseState(
   /* The instant the reader judges freshness at, defaulted exactly the way the
      gate defaults it, so the two layers never disagree about "now". */
   const now = options.now ?? Date.now();
+  const requiredFunctions = resolveRequiredFunctions(options.requiredConvexFunctions);
   for (const [prerequisite, path] of proofByPath) {
     const record =
       prerequisite === EVIDENCE_D_PREREQUISITE
         ? evidenceDProofRecord(path, source, now, candidate)
-        : proofRecord(prerequisite, path, source);
+        : prerequisite === CONVEX_DEPLOYMENT_PREREQUISITE
+          ? convexDeploymentProofRecord(
+              path,
+              source,
+              now,
+              candidate,
+              options.productionDeployment,
+              requiredFunctions,
+            )
+          : proofRecord(prerequisite, path, source);
     if (record) {
       present.push(path);
       records.push(record);

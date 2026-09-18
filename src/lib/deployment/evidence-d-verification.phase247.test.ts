@@ -54,6 +54,8 @@ import {
   type EvidenceDAssessment,
   type EvidenceDRecord,
 } from "./evidence-d-verification";
+import { buildConvexDeploymentPackage } from "./convex-deployment-verification";
+import { requiredConvexFunctionReferences } from "./convex-function-surface";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
@@ -66,6 +68,14 @@ const DAY = 24 * HOUR;
 const CANDIDATE_COMMIT = "b64ddc3";
 const CANDIDATE_REF = "heads/arena/01a0adfb-trade-intel-bot";
 const CANDIDATE = { commit: CANDIDATE_COMMIT, ref: CANDIDATE_REF };
+/* Phase 248 validates the CONVEX proof rather than quoting it, so the one place
+   this suite files a CONVEX package (test 51, the "every prerequisite present"
+   admission) must file a real package bound to a valid production identity — not
+   the bare claim, and not the free-form "prod-1" the gate alone used to compare.
+   The direct-gate tests below still use "prod-1": they build EvidenceRecords by
+   hand and never pass through the reader, so the identity format is not checked
+   there and changing them would only obscure what they test. */
+const CONVEX_DEPLOYMENT = "prod:xstarz:evidence-d-test";
 
 /** The projection options, named once so no call site can pass the wrong shape. */
 const GATE_OPTIONS = { candidateCommit: CANDIDATE_COMMIT, candidateRef: CANDIDATE_REF };
@@ -223,6 +233,26 @@ function otherProofFile(id: string): string {
     observedAt: NOW - 60_000,
     subject: subjectFor(id),
   });
+}
+
+/**
+ * A Phase 248-conformant CONVEX deployment package, bound to this suite's
+ * candidate and publishing the real function surface. Used only where the reader
+ * (not a hand-built gate record) evaluates the CONVEX prerequisite.
+ */
+function convexProofFile(): string {
+  return JSON.stringify(
+    buildConvexDeploymentPackage({
+      candidate: { commit: CANDIDATE_COMMIT, ref: CANDIDATE_REF },
+      deployment: CONVEX_DEPLOYMENT,
+      deploymentUrl: "https://evidence-d-test.convex.cloud",
+      siteUrl: "https://evidence-d-test.convex.site",
+      observedAt: NOW - 60_000,
+      deploymentEnv: null,
+      accessVerdict: "AUTHENTICATED",
+      publishedFunctions: requiredConvexFunctionReferences(),
+    }),
+  );
 }
 
 /* ── A. the canonical provider set ──────────────────────────────────────── */
@@ -1023,20 +1053,22 @@ describe("247 — the gate reads what the validator verified, and nothing else",
     ).toContain("no evidence was supplied");
 
     // With every other proof filed and the evidence conformant, the same
-    // admission path accepts only inside this synthetic tree.
+    // admission path accepts only inside this synthetic tree. The CONVEX proof is
+    // a real Phase 248 package (the reader validates it now), bound to the same
+    // production deployment this admission declares.
     const accepted = evaluateReleaseAdmission({
       source: memorySource({
         [PROOF_PATHS.refInventory]: REF_INVENTORY,
         [PROOF_PATHS.a1Revocation]: otherProofFile("A1_OTP_ISSUER_REVOCATION"),
         [PROOF_PATHS.rewriteVerification]: otherProofFile("A2_HISTORY_REWRITE"),
-        [PROOF_PATHS.convexDeployment]: otherProofFile("CONVEX_PRODUCTION_DEPLOYMENT"),
+        [PROOF_PATHS.convexDeployment]: convexProofFile(),
         [PROOF_PATHS.emailDelivery]: otherProofFile("PRODUCTION_EMAIL_TRANSPORT"),
         [PROOF_PATHS.evidenceD]: JSON.stringify(pkg()),
       }),
       now: NOW,
       commit: CANDIDATE_COMMIT,
       ref: CANDIDATE_REF,
-      productionDeployment: "prod-1",
+      productionDeployment: CONVEX_DEPLOYMENT,
     });
     expect(accepted.admitted).toBe(true);
     // And it is the canonical layers that produced that, not this phase.

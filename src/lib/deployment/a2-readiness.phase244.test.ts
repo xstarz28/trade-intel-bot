@@ -357,12 +357,19 @@ describe("244 — the real tree is not ready, and stays that way", () => {
     expect(report.evidence.satisfied).toBe(0);
 
     // Which clone this is decides the *exact* refusal, and each shape is asserted
-    // rather than tolerated. A detached HEAD (a CI pull-request checkout) is refused
-    // before the scope can even be discussed; a shallow clone (a CI push checkout,
-    // and this workspace) is the Phase 184 condition, where a rewrite scoped from
-    // here would under-report the affected history; a full clone falls through to
-    // the evidence refusal asserted unconditionally above.
-    if (repository.branch === "") {
+    // rather than tolerated. The working branch is classified FIRST, mirroring the
+    // evaluator's own order (a branch problem is returned before scope is ever
+    // discussed): a detached HEAD (a CI pull-request checkout) OR any named branch
+    // that is not the canonical remediation branch — e.g. a fresh session branch —
+    // is refused as WRONG_BRANCH. Only ON the canonical branch does clone depth
+    // decide the refusal: a shallow clone (a CI push checkout) is the Phase 184
+    // condition, where a rewrite scoped from here would under-report the affected
+    // history; a full clone falls through to the evidence refusal asserted
+    // unconditionally above. Enumerating the named-non-canonical shape is what
+    // makes this test environment-independent, as its contract promises: the
+    // unconditional invariants (never ready, never verified, nothing performed)
+    // hold in every shape, and WRONG_BRANCH is itself a refusal, not a pass.
+    if (repository.branch !== BRANCH) {
       expect(report.outcome).toBe("WRONG_BRANCH");
     } else if (repository.shallow) {
       expect(report.outcome).toBe("INCOMPLETE_REF_INVENTORY");

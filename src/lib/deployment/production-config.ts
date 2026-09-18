@@ -325,10 +325,17 @@ function issuerProblem(value: string): string | null {
   return retired ? `uses a retired issuer host (${RETIRED_ISSUER_HOSTS.join(", ")})` : null;
 }
 
-const DEPLOYMENT_IDENTITY_PATTERN = /^prod:[a-z0-9-]+:[a-z0-9-]+$/i;
-const NON_PRODUCTION_DEPLOYMENT_PREFIX = /^(dev|local|anonymous|preview)[:-]/i;
+export const DEPLOYMENT_IDENTITY_PATTERN = /^prod:[a-z0-9-]+:[a-z0-9-]+$/i;
+export const NON_PRODUCTION_DEPLOYMENT_PREFIX = /^(dev|local|anonymous|preview)[:-]/i;
 
-function deploymentIdentityProblem(value: string): string | null {
+/**
+ * Exported (Phase 248) so the deployment-verification contract validates a
+ * production identity with THIS rule rather than a second copy of it. A
+ * `prod:<team>:<project>` identity is accepted; a `dev:`/`preview:`/`local`/
+ * `anonymous:` identity, or anything else, is refused with the same sentence the
+ * configuration checker uses.
+ */
+export function deploymentIdentityProblem(value: string): string | null {
   const trimmed = value.trim();
   if (NON_PRODUCTION_DEPLOYMENT_PREFIX.test(trimmed)) {
     return "names a development, preview or local deployment, not a production one";

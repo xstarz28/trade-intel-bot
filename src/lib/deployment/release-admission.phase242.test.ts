@@ -27,6 +27,8 @@ import {
   REQUIRED_PROVIDER_IDS,
   type EvidenceDRecord,
 } from "./evidence-d-verification";
+import { buildConvexDeploymentPackage } from "./convex-deployment-verification";
+import { requiredConvexFunctionReferences } from "./convex-function-surface";
 import {
   evaluateReleaseAdmission,
   formatReleaseAdmissionReport,
@@ -39,8 +41,16 @@ import {
 const NOW = 1_800_000_000_000;
 const COMMIT = "c0ffee242";
 const REF = "refs/tags/rc-242";
-const DEPLOYMENT = "prod-deployment-242";
+/* A valid production identity (`prod:<team>:<project>`). Phase 248 validates the
+   deployment identity with the configuration checker's own rule, so the fixture
+   must be a real production shape, not the free-form string the gate alone used to
+   compare. The gate's binding is still equality with the declared deployment. */
+const DEPLOYMENT = "prod:xstarz:trade-intel-bot";
+const CONVEX_CLOUD_URL = "https://trade-intel-bot.convex.cloud";
+const CONVEX_SITE_URL = "https://trade-intel-bot.convex.site";
 const HOUR = 60 * 60 * 1000;
+/** The real function surface this candidate defines, scanned from src/convex. */
+const CONVEX_FUNCTIONS = requiredConvexFunctionReferences();
 
 const root = process.cwd();
 const realSource: FactSource = {
@@ -171,6 +181,35 @@ function proof(
   });
 }
 
+/**
+ * A Phase 248-conformant Convex deployment package, as an operator would file it.
+ *
+ * Until Phase 248 this file's CONVEX fixture was a bare claim (`verified`,
+ * `source`, `environment`, plus a `subject.deployment` string), and the gate read
+ * it as such. That shape is now refused by the canonical reader on purpose: it is
+ * exactly what a green build, a reachable control plane or a promoted dev
+ * deployment can also produce. The fixture below is the contract the reader
+ * actually accepts, so the assertions keep testing the admission path rather than
+ * the fixture's shape.
+ */
+function convexDeploymentPackage(
+  overrides: Partial<Parameters<typeof buildConvexDeploymentPackage>[0]> = {},
+): string {
+  return JSON.stringify(
+    buildConvexDeploymentPackage({
+      candidate: { commit: COMMIT, ref: REF },
+      deployment: DEPLOYMENT,
+      deploymentUrl: CONVEX_CLOUD_URL,
+      siteUrl: CONVEX_SITE_URL,
+      observedAt: NOW - HOUR,
+      deploymentEnv: null,
+      accessVerdict: "AUTHENTICATED",
+      publishedFunctions: CONVEX_FUNCTIONS,
+      ...overrides,
+    }),
+  );
+}
+
 /** Every prerequisite evidenced and bound: the only shape that may be admitted. */
 function fullyVerified(overrides: Record<string, string> = {}) {
   const files: Record<string, string> = {
@@ -179,9 +218,7 @@ function fullyVerified(overrides: Record<string, string> = {}) {
     [PROOF_PATHS.rewriteVerification]: proof({
       subject: { commit: COMMIT, refs: AFFECTED_REFS },
     }),
-    [PROOF_PATHS.convexDeployment]: proof({
-      subject: { commit: COMMIT, deployment: DEPLOYMENT },
-    }),
+    [PROOF_PATHS.convexDeployment]: convexDeploymentPackage(),
     [PROOF_PATHS.emailDelivery]: proof({ detail: "delivered to a real mailbox" }),
     [PROOF_PATHS.evidenceD]: evidenceDPackage(),
     ...overrides,
@@ -486,17 +523,22 @@ describe("242 — evidence that cannot admit anything", () => {
     expect(partialProviders.admitted).toBe(false);
     expect(reasonsOf(partialProviders)).toContain("incomplete provider set");
 
+    // A foreign (but well-formed) production identity: the Phase 248 validator
+    // names the mismatch, and the admission reports that the candidate deploys
+    // elsewhere rather than a generic refusal.
     const foreignDeployment = evaluateReleaseAdmission(
       requestWithDeployment(
         fullyVerified({
-          [PROOF_PATHS.convexDeployment]: proof({
-            subject: { commit: COMMIT, deployment: "prod-deployment-elsewhere" },
+          [PROOF_PATHS.convexDeployment]: convexDeploymentPackage({
+            deployment: "prod:xstarz:somewhere-else",
           }),
         }),
       ),
     );
     expect(foreignDeployment.admitted).toBe(false);
-    expect(reasonsOf(foreignDeployment)).toContain("wrong deployment");
+    expect(blockerIds(foreignDeployment)).toContain("CONVEX_PRODUCTION_DEPLOYMENT");
+    expect(reasonsOf(foreignDeployment)).toContain("WRONG_DEPLOYMENT");
+    expect(reasonsOf(foreignDeployment)).toContain("the candidate deploys to");
 
     const stale = evaluateReleaseAdmission(
       requestWithDeployment(

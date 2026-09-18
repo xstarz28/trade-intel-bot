@@ -181,6 +181,12 @@ describe("242 — nothing outside the canonical layer can issue a release verdic
       // for the A1/A2 remediation, and every report hardcodes `verified: false`,
       // so this layer never issues a release verdict.
       "src/lib/deployment/remediation-readiness.ts",
+      // Phase 248: the only "ready" here is prose quoting the Phase 234 access
+      // contract (the exit-0 verdict means the control plane was reached and
+      // authenticated, i.e. "ready to deploy"). This module validates a filed
+      // deployment package and hardcodes `verdictIssuedHere: false`; it produces no
+      // release verdict and no readiness flag of its own.
+      "src/lib/deployment/convex-deployment-verification.ts",
     ];
 
     const unclassified: string[] = [];
