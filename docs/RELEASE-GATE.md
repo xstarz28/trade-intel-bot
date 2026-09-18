@@ -5674,3 +5674,145 @@ BLOCKED / UNVERIFIED. The Evidence D re-measurement section is unchanged.
 
 **Convex production deployment status: BLOCKED / UNVERIFIED.**
 No `prod:` identifier. No production URL. Release decision: NOT READY.
+
+## Phase 254 — production email transport, re-measured, still UNVERIFIED
+
+The Convex production re-measurement immediately above left
+`CONVEX_PRODUCTION_DEPLOYMENT` UNVERIFIED. This phase asked only whether a
+real production email transport — the prerequisite
+`PRODUCTION_EMAIL_TRANSPORT` — can be verified from this environment. **No.**
+No provider account was created, no mail was sent, no sender or DNS record
+was invented, and A2 was not started.
+
+### A. Exact requirement (unchanged)
+
+The release prerequisite is mandatory, production-only, 7-day freshness,
+binding `none`, not exemptible:
+
+> A real production email transport delivered to a real mailbox from the
+> production sender and issuer.
+
+The repository already supports two delivering transports **without code
+changes**: `resend` (`https://api.resend.com/emails`) and `smtp2go`
+(`https://api.smtp2go.com/v3/email/send`). Selection is
+`XSTARZ_EMAIL_TRANSPORT` only. `console` reports `delivered: true` and sends
+nothing; `readEmailDeliveryConfig` **refuses it in production** (unset
+`XSTARZ_DEPLOYMENT_ENV` resolves to production). There is no vendor
+preference in code.
+
+Configuration names, set in the Convex deployment environment, never
+committed:
+
+| Name | Required | Role |
+|---|---|---|
+| `XSTARZ_EMAIL_TRANSPORT` | yes | `resend` or `smtp2go` (`console` forbidden in production) |
+| `XSTARZ_EMAIL_API_KEY` | yes | provider credential |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | yes | verified address on an Xstarz-owned domain, not a retired host |
+| `XSTARZ_EMAIL_SENDER_NAME` | no | display name |
+| `XSTARZ_EMAIL_TIMEOUT_MS` | no | send timeout, cap 30 s |
+| `XSTARZ_DEPLOYMENT_ENV` | yes in practice | unset → production (fail-closed) |
+| `SITE_URL` | yes for auth | public origin; no invented domain |
+
+DNS (SPF, DKIM, DMARC) lives at the registrar, not as application variables.
+Proof path: `docs/remediation/production-email-verification.json`. A document,
+a fixture, a local run, a provider HTTP 200, a dashboard "delivered" row, and
+console output are **not** this prerequisite.
+
+D1 (mailbox OTP) is a stricter observation on top of this: actual receipt +
+human attestation + an application session created with that code. This phase
+does not run D1.
+
+### B. Checks executed 2026-09-18T14:12:25Z at HEAD `317aabf`
+
+Presence only. No secret value printed. No `npx convex env get` of the API
+key. No outbound send.
+
+| Name | State |
+|---|---|
+| `XSTARZ_EMAIL_TRANSPORT` | **ABSENT** |
+| `XSTARZ_EMAIL_API_KEY` | **ABSENT** |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | **ABSENT** |
+| `XSTARZ_EMAIL_SENDER_NAME` | **ABSENT** |
+| `XSTARZ_EMAIL_TIMEOUT_MS` | **ABSENT** |
+| `EVIDENCE_D_EMAIL` / mailbox | **ABSENT** |
+| `SITE_URL` | **ABSENT** |
+| `RESEND_API_KEY` / `SMTP2GO_API_KEY` | **ABSENT** |
+| `.env*` / `~/.convex` | **ABSENT** |
+| Proof file | **ABSENT** (`docs/remediation/` missing) |
+
+`npm run convex:preflight` — exit 1, configuration **REJECTED (3 FAIL)**:
+`email-delivery` (key and sender missing), `sender-identity` (no sender),
+`required-production-vars` (includes the three email names plus
+`CONVEX_SITE_URL`). Footer: this is not delivery evidence and does not
+clear Phase 184.
+
+`npm run config:verify -- --json` — exit 1, `MISSING_REQUIRED_CONFIG`,
+`configurationAccepted: false`, `productionVerified: false`. Email block:
+`transport: null`, `productionTransportAccepted: false`, `senderHost: null`,
+`senderVerified: false`. Missing includes `XSTARZ_EMAIL_TRANSPORT`,
+`XSTARZ_EMAIL_API_KEY`, `XSTARZ_EMAIL_SENDER_ADDRESS`.
+
+Provider hosts (GET only, no API key):
+
+| Host | DNS | TCP :443 | TLS | HTTP |
+|---|---|---|---|---|
+| `api.resend.com` / `resend.com` | PASS | OPEN | **EOF** | **000** |
+| `api.smtp2go.com` / `www.smtp2go.com` | PASS | OPEN | **EOF** | **000** |
+| `api.github.com` / `registry.npmjs.org` | PASS | OPEN | PASS | **200** |
+
+Classification: **TLS egress allowlist**, not an account or DNS result. A
+key that existed here could not be used to send or to observe delivery.
+
+Canonical verdict echo: **NOT READY**. `PRODUCTION_EMAIL_TRANSPORT` remains
+among the five blockers. `productionVerified: false` is asserted by the
+checker, not inferred from missing names.
+
+### C. Distinctions that must not collapse
+
+| Observation | Is production email? |
+|---|---|
+| Code implements `resend` and `smtp2go` | no — CODE-READY |
+| Variable *names* documented | no — inventory |
+| `console` transport | no — non-delivering; refused in production |
+| Unset env resolving to production | no — fail-closed policy, not a sender |
+| DEV OTP smoke (if it ever existed) | no — development, `productionEvidence: false` |
+| Provider HTTP 200 / dashboard "delivered" | no — not mailbox receipt |
+| This paragraph | no — documentation is not verification |
+
+Local/preview/dev configuration: **none present**. Production configuration:
+**none present**. There is therefore nothing to mis-promote.
+
+### D. Exact operator action to unblock
+
+External, in order (`docs/PRODUCTION-EMAIL-SETUP.md` §3). None of these can
+be performed from this repository.
+
+1. **Domain** the project controls (not a retired Freebuff/VLY host).
+2. **Resend or SMTP2GO account**; add that domain.
+3. **DNS** — SPF, DKIM, DMARC as the provider specifies; wait until the
+   dashboard shows the domain **verified**.
+4. **Network** — TLS to `api.resend.com` or `api.smtp2go.com` from the
+   production Convex deployment (this sandbox severs both).
+5. Set the Convex env vars with `npx convex env set` (inspect with
+   `--names-only`; never `env get XSTARZ_EMAIL_API_KEY`).
+6. Deploy the hardened RC, never `main`.
+7. Send OTP to a **real mailbox**, human-attest receipt, sign in with the
+   code; file `docs/remediation/production-email-verification.json` as
+   `external-verification` / `production`.
+
+Configuring Xstarz email does **not** revoke the leaked Freebuff OTP key and
+does not unlock A2.
+
+### E. What this phase did not do
+
+No email sent. No provider account created. No DNS published. No secret
+printed or committed. No `console` transport used as production. No Evidence D
+harness. No A2 rewrite, no `git filter-repo`, no force-push, amend, rebase,
+reset, `main` mutation, `refs/pull/*` change, new branch, tag or PR. A1
+remains BLOCKED / UNVERIFIED. A2 remains LOCKED / UNVERIFIED. Convex
+production deployment remains BLOCKED / UNVERIFIED. Evidence D remains
+BLOCKED / UNVERIFIED. The Convex production re-measurement section is
+unchanged.
+
+**PRODUCTION_EMAIL_TRANSPORT status: BLOCKED / UNVERIFIED.**
+No real delivery evidence. Release decision: NOT READY.
