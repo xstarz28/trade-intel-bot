@@ -5536,3 +5536,141 @@ UNVERIFIED. A2 remains LOCKED / UNVERIFIED. The A1 re-measurement section
 and the exact-tool A2 rehearsal section are unchanged.
 
 **Evidence D status: BLOCKED / UNVERIFIED.** Release decision: NOT READY.
+
+## Phase 253 — Convex production deployment, re-measured, still UNVERIFIED
+
+The Evidence D re-measurement immediately above left production provider
+verification UNVERIFIED because no `prod:` deployment exists to observe.
+This phase asked only whether this environment can create or verify that
+deployment. **No.** Nothing was deployed, no `prod:` identity was invented,
+no development project was relabelled production, and Evidence D was not
+re-run.
+
+### A. Exact requirement (unchanged)
+
+The release prerequisite `CONVEX_PRODUCTION_DEPLOYMENT` is mandatory,
+production-only, 7-day freshness, bound to a declared deployment, not
+exemptible. Its requirement:
+
+> The production Convex deployment exists and was verified against the
+> candidate commit.
+
+A legitimate production deployment, as the handoff and Phase 248 validator
+define it:
+
+| Item | Required shape |
+|---|---|
+| Identity | `prod:<team>:<project>` — `dev:`, `preview:`, `anonymous:`, `local` refused |
+| Control plane | `verify-convex-access.mjs` exit 0, verdict `AUTHENTICATED` (`isAuthEvidence: true`) |
+| URLs | `VITE_CONVEX_URL` = `https://<name>.convex.cloud`; `CONVEX_SITE_URL` = `https://<name>.convex.site` — https, not loopback |
+| Environment | observed `XSTARZ_DEPLOYMENT_ENV` resolves to production under the fail-closed policy; a `dev:` project is never promoted by renaming |
+| Function surface | all 73 scanned backend functions published |
+| Package | `docs/remediation/convex-production-deployment.json`, schema `phase248.convex-deployment/v1`, `source: external-verification` |
+
+Production configuration that belongs **outside source control** (names only):
+`CONVEX_DEPLOY_KEY`, `CONVEX_DEPLOYMENT`, `CONVEX_SITE_URL`, `VITE_CONVEX_URL`,
+`XSTARZ_DEPLOYMENT_ENV`, `XSTARZ_EMAIL_TRANSPORT`, `XSTARZ_EMAIL_API_KEY`,
+`XSTARZ_EMAIL_SENDER_ADDRESS`, plus provider keys. Email and provider
+credentials are prerequisites of a *working* production backend; they do not
+by themselves create a `prod:` identity.
+
+**READY** only when a real `prod:` deployment of this candidate is observed
+behind an authenticated control plane and the Phase 248 package is admitted.
+**BLOCKED / UNVERIFIED** when the control plane is unreachable, no deploy key
+exists, no `prod:` identity exists, or the package is absent. A TLS failure
+is not an authentication result.
+
+Ordered procedure: `docs/DEPLOYMENT-HANDOFF.md` steps A–G. Step H (Evidence D)
+is **not** this phase.
+
+### B. Checks executed 2026-09-18T14:04:07Z at HEAD `2a10e7f`
+
+Repository-side / environment checks only. No secret value printed. No
+`npx convex deploy` and no `npx convex dev --once` — both would require
+access this environment does not have.
+
+| Check | Result |
+|---|---|
+| `CONVEX_DEPLOYMENT` | **UNSET** |
+| `CONVEX_DEPLOY_KEY` | **UNSET** (`deployKeyPresent: false`, fingerprint null) |
+| `CONVEX_SITE_URL` / `VITE_CONVEX_URL` / `XSTARZ_DEPLOYMENT_ENV` | **UNSET** |
+| `~/.convex` login / config | **absent** |
+| `.env` / `.env.local` / `.env.production` | **absent** |
+| GitHub Actions secrets / environment secrets | HTTP **403** — bot cannot read names or values |
+| `npx convex deployments` | `Anonymous development (no deployment selected)` — not a `prod:` identity |
+| `npx convex codegen` | `No CONVEX_DEPLOYMENT set` — no generated file written |
+| Proof package | **absent** (`docs/remediation/` missing) |
+| `npm run deployment:verify -- --status --json` | exit **1**, `packageFiled: false`, `declaredDeployment: null`, `deploymentState: UNVERIFIED`, reason `no evidence was supplied`, `requiredFunctions: 73`, `controlPlaneContacted: false`, `deploymentPerformed: false` |
+| `npm run convex:preflight` | exit **1**, configuration **REJECTED (3 FAIL)**: `email-delivery`, `sender-identity`, `required-production-vars` (`CONVEX_SITE_URL`, `XSTARZ_EMAIL_TRANSPORT`, `XSTARZ_EMAIL_API_KEY`, `XSTARZ_EMAIL_SENDER_ADDRESS`) |
+| `npm run convex:access -- --json` | exit **2**, `reachable: false`, `NOT_REACHABLE`, `blockedAt: tls`, `isAuthEvidence: false`, `isRevocationEvidence: false` |
+
+Network layers (no credential presented):
+
+| Host | DNS | TCP :443 | TLS | Classification |
+|---|---|---|---|---|
+| `api.convex.dev` | PASS (`104.18.30.21`) | OPEN | **ECONNRESET** ~17 ms | transport, not auth |
+| `provision.convex.dev` | PASS | OPEN | **ECONNRESET** | same |
+| `dashboard.convex.dev` | PASS | OPEN | **ECONNRESET** | same |
+| `probe.convex.cloud` | — | — | **ECONNRESET** | deployment plane blocked |
+| `probe.convex.site` | — | — | **ECONNRESET** | deployment plane blocked |
+| `registry.npmjs.org` (control) | PASS | OPEN | PASS | HTTP **200** |
+| `api.github.com` (control) | PASS | OPEN | reached | same-network control |
+
+Auth probe was **not run**: the diagnostic itself says an authenticated
+probe would be meaningless while the plane is unreachable. Absent
+`CONVEX_DEPLOY_KEY` would have produced `UNAUTHENTICATED` only *after*
+TLS succeeded. Today the failure is **TLS egress allowlist**, not a
+rejected key.
+
+Canonical verdict echo (not issued here): **NOT READY**. Blockers unchanged:
+`A1_OTP_ISSUER_REVOCATION`, `A2_HISTORY_REWRITE`,
+`CONVEX_PRODUCTION_DEPLOYMENT`, `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION`,
+`PRODUCTION_EMAIL_TRANSPORT`.
+
+### C. Why this is not a production deployment
+
+- `Anonymous development (no deployment selected)` is not `prod:<team>:<project>`.
+  Relabelling it, or setting `XSTARZ_DEPLOYMENT_ENV=production` on a missing
+  identity, is refused by the Phase 243 identity rule.
+- HTTP 000 / TLS EOF cannot be filed as `AUTHENTICATED`. Phase 234:
+  `isAuthEvidence` is false for `NOT_REACHABLE`.
+- Configuration REJECTED is a missing-values fact, not a running backend.
+  Preflight says so in its own footer.
+- Absence of the Phase 248 package is `UNVERIFIED` (`no evidence was supplied`).
+  This paragraph is not that package.
+- DEV deployment `tough-goose-455` (Phase 213) is still development. It was
+  not contacted and is not promoted.
+
+### D. Exact operator action to unblock
+
+Two independent gaps, both required; clearing one does not clear the other.
+
+1. **Platform / network.** Allowlist TLS egress to **all three** families:
+   `*.convex.dev` (control plane, deploy, codegen), `*.convex.cloud`
+   (deployment), `*.convex.site` (HTTP actions and auth issuer). Until
+   `npm run convex:access` exits 0 with `AUTHENTICATED`, no deploy key can
+   be tested and no project can be created from this environment.
+2. **Convex account holder.** In a network that can reach the control plane:
+   create a **separate** production project (do not promote DEV); set
+   `CONVEX_DEPLOY_KEY` and `CONVEX_DEPLOYMENT=prod:<team>:<project>` outside
+   source control; set `CONVEX_SITE_URL` / `VITE_CONVEX_URL` to that
+   project's https URLs; set production email variables in the Convex env
+   (`npx convex env set`, `--names-only` to inspect); `npx convex deploy`;
+   confirm `npx convex function-spec` lists the 73 functions; file the
+   Phase 248 package; re-run `npm run deployment:verify`.
+
+Until both exist, `CONVEX_PRODUCTION_DEPLOYMENT` stays **UNVERIFIED**.
+Evidence D and production OTP must not be attempted against a missing
+deployment.
+
+### E. What this phase did not do
+
+No `npx convex deploy`, no `npx convex dev --once`, no invented `prod:`
+id or URL, no DEV promotion, no Evidence D harness, no A2 rewrite, no
+`git filter-repo`, no force-push, amend, rebase, reset, `main` mutation,
+`refs/pull/*` change, new branch, tag or PR. No secret printed. A1 remains
+BLOCKED / UNVERIFIED. A2 remains LOCKED / UNVERIFIED. Evidence D remains
+BLOCKED / UNVERIFIED. The Evidence D re-measurement section is unchanged.
+
+**Convex production deployment status: BLOCKED / UNVERIFIED.**
+No `prod:` identifier. No production URL. Release decision: NOT READY.
