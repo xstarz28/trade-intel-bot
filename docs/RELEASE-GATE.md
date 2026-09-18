@@ -5324,3 +5324,77 @@ rehearsal record). `origin/main` is `51c9ddeb`.
 issuer, then the `filter-repo` rewrite of the nine repository refs, then GitHub
 Support clearing `refs/pull/*`, then a remote scan that includes those PR refs.
 Release decision: NOT READY.
+
+## Phase 251 — A1 issuer revocation gate, re-measured, still BLOCKED
+
+Phase 250 left A2 rehearsed and unexecuted, gated on A1. This phase asked one
+question: does this environment now have a legitimate, authorised path to revoke
+the leaked OTP credential at `auth.freebuff.app`? **No.** The mutation portion
+of A1 therefore did not run. Nothing was revoked, no credential value was
+printed or presented to the issuer, no 401/403 was fabricated, and A2 was not
+started.
+
+### A. What A1 still requires (runbook §2, unchanged)
+
+1. A replacement credential provisioned at the issuer.
+2. Production configuration using that replacement **outside source control**.
+3. The leaked credential revoked at the issuer.
+4. An authenticated call presenting the **old** credential returning an explicit
+   **401 or 403** (a timeout, a 000, or a 200 from another host is not proof).
+5. Date, operator and the observed issuer response filed as release evidence
+   (`docs/remediation/a1-revocation-attestation.json`, schema
+   `phase246.a1-evidence/v1`, no credential value).
+
+None of the five exists on this tree.
+
+### B. Access, measured 2026-09-18T13:25:56Z at HEAD `113cd44`
+
+| Probe | Result |
+|---|---|
+| DNS `auth.freebuff.app` | `69.46.46.68` |
+| TCP `:443` to issuer hosts | **open** |
+| TLS to `auth.freebuff.app`, `freebuff.app`, `freebuff.com`, `vly.ai`, `api.vly.ai` | **EOF**, HTTP **000** |
+| `api.github.com` / `registry.npmjs.org` | HTTP **200** — egress works; issuer TLS is blocked |
+| Issuer-shaped environment names | **none set** |
+| Attestation file | **absent** |
+| `npm run remediation:a1:report -- --json` | exit 1, `MISSING_EXTERNAL_ACCESS`, `attestation: null`, `remediationPerformed: false` |
+| GitHub secrets / deploy keys / secret-scanning | **403** |
+| Convex identity | unset; no `~/.convex` |
+
+`current.unsatisfied`: `a1-pre-credential-identity`, `a1-pre-live-status`,
+`a1-pre-replacement-provisioned`. The four post-revocation requirements were not
+even reachable. Command guarantees: `issuerContacted: false`,
+`credentialValuePrinted: false`, `credentialMutated: false`.
+
+### C. Why authorised access is absent, not merely inconvenient
+
+- No issuer account, admin key, or console in this environment.
+- No documented self-service revocation API (Phase 222/246).
+- TLS to every issuer host is severed, so even a key that existed here could not
+  be used to observe a 401/403.
+- Phase 223: the fingerprint is a **shared platform key** across ≥83 public
+  scaffold copies. A project login cannot revoke it. Only the issuer backend can.
+
+The legitimate path is therefore issuer-side, not repository-side: Freebuff, Inc.
+(or whoever operates `auth.freebuff.app`) revokes the scaffold key, or documents
+that it is public-by-design. A human operator then files the Phase 246
+attestation. Reporting the exposure to the issuer is the lawful lever; probing
+undocumented admin surfaces, presenting the leaked value, or inventing a 401 is
+not.
+
+### D. Why A2 stays blocked
+
+A history rewrite does not retract a live credential. Running §3 before A1 would
+destroy the audit trail and turn every guard in this repository green while the
+key remained valid in every clone, fork, CI cache and GitHub `refs/pull/*`.
+Phase 250 already showed that even a successful nine-ref rewrite leaves the
+credential reachable through GitHub-managed pull refs. None of that is A1.
+
+### E. What this phase did not do
+
+No A2 rewrite. No filter-repo against real history. No force-push, amend,
+rebase, reset, `main` mutation, `refs/pull/*` change, new branch, tag or PR. No
+Freebuff contact, no Convex deploy, no production email, no credential rotation.
+The Phase 250 runbook subsection and gate section are unchanged.
+
+**A1 status: BLOCKED / UNVERIFIED.** Release decision: NOT READY.

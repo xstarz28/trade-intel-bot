@@ -149,6 +149,69 @@ A human with issuer access must, **in this order**:
 
 Only then may §3 run against the real repository.
 
+### 2.1 Phase 251 — A1 issuer access re-measured, still BLOCKED
+
+Phase 251 re-measured whether this environment has a legitimate, authorised path
+to revoke the leaked credential at `auth.freebuff.app`. It does not. No
+revocation was attempted, no credential value was printed or presented, no
+issuer host was probed with the leaked key, and no 401/403 was fabricated. A2
+stays gated on §2.
+
+Measured 2026-09-18T13:25:56Z from this sandbox, HEAD `113cd44`, without sending
+a credential:
+
+| Probe | Result |
+|---|---|
+| DNS `auth.freebuff.app` | resolves `69.46.46.68` |
+| TCP `:443` `auth.freebuff.app` / `freebuff.app` / `freebuff.com` / `vly.ai` | **open** (1–20 ms) |
+| TLS `https://auth.freebuff.app/` and `/send_otp` | **EOF** in 21–101 ms — HTTP **000**, no response |
+| TLS `https://freebuff.app/`, `https://freebuff.com/`, `https://vly.ai/`, `https://api.vly.ai/` | **EOF**, HTTP **000** |
+| Control `https://api.github.com/` | HTTP **200** (252 ms) |
+| Control `https://registry.npmjs.org/` | HTTP **200** (81 ms) |
+| Issuer-shaped names in the process environment | **none** (`FREEBUFF_*`, `VLY_*`, `OTP_*`, `AUTH_FREEBUFF_*`, `*_EMAIL_API*`, `RESEND_*`, `SMTP*` all unset) |
+| `.env` / `.env.local` / `.env.production` | **absent** |
+| `docs/remediation/a1-revocation-attestation.json` | **absent** (the directory does not exist) |
+| `npm run remediation:a1:report -- --json` | exit **1**, `outcome: MISSING_EXTERNAL_ACCESS`, `attestation: null`, `remediationPerformed: false`, `releaseVerdict: NOT READY` (echoed, not issued here) |
+| GitHub Actions secrets / deploy keys / secret-scanning | HTTP **403** `Resource not accessible by integration` |
+| Convex | `CONVEX_DEPLOYMENT` unset, `CONVEX_DEPLOY_KEY` unset, no `~/.convex` |
+| GitHub App permissions on this repo (API) | `admin/maintain/push/pull: false` |
+
+DNS + open TCP + TLS EOF, while GitHub and npm answer 200 on the same network,
+is **egress blocking**, not a dead issuer. A timeout, a 000, or a 200 from an
+unrelated endpoint is still not revocation evidence.
+
+`A1_REQUIREMENTS` still unsatisfied, every one:
+
+| id | phase | Why it is missing |
+|---|---|---|
+| `a1-pre-credential-identity` | pre | identity is known by fingerprint in the manifest; no *record* has been filed because the issuer has not been observed |
+| `a1-pre-live-status` | pre | requires `external-issuer`; this environment cannot complete a TLS handshake to the issuer |
+| `a1-pre-replacement-provisioned` | pre | no replacement credential exists here, and none may be invented |
+| `a1-post-issuer-confirmation` | post | no issuer confirmation exists |
+| `a1-post-credential-rejected` | post | no 401/403 was observed; none was simulated |
+| `a1-post-correct-credential` | post | there is no rejection to bind to the fingerprint |
+| `a1-post-bound-and-fresh` | post | there is no production evidence to bind |
+
+**Authorised access: no.** There is no issuer account, no admin key, no documented
+self-service revocation API (Phase 222/246: `selfServiceRevocation` is absent),
+and the TLS path to every issuer host is severed. The leaked key is also a
+**shared platform key** (Phase 223: the same fingerprint in ≥83 public scaffold
+copies across 73 owners) — this project cannot lawfully revoke it even with a
+Freebuff *project* login. Only the issuer backend can.
+
+**Safe legitimate path** (runbook §2 order, unchanged): a party with issuer-side
+authority (Freebuff, Inc. / the scaffold issuer, not this repository) provisions
+a replacement, the operator configures it outside source control, the issuer
+revokes the leaked key, an authenticated call presenting the **old** key returns
+an explicit **401 or 403**, and that observation is filed at
+`docs/remediation/a1-revocation-attestation.json` under schema
+`phase246.a1-evidence/v1` (no credential value in the file). Until that file
+exists and the gate accepts it as `external-verification` in `production`, A1 is
+**BLOCKED / UNVERIFIED**.
+
+Repository cleanup, a history rewrite, a green scanner on a mirror, and the
+absence of the key from `HEAD` are **not** A1. A2 must not run.
+
 ---
 
 ## 3. Rewrite procedure — rehearsed, not executed
