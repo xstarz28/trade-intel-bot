@@ -5196,3 +5196,131 @@ than a mirror. §2 still blocks §3 — A1 is unrevoked at the issuer, and nothi
 touches that. A rehearsal proves a procedure; it does not remediate an exposure, and
 this one is measured, not inferred. Release decision: NOT READY, with the same five
 blockers as §J.
+
+The second discrepancy is now closed as a measurement, not as a remediation.
+Phase 250 installed `git-filter-repo` and re-ran the documented command; the new
+section below records it. A2 is still UNVERIFIED.
+
+## Phase 250 — exact-tool A2 rehearsal (`git filter-repo`)
+
+Phase 249 §K recorded that runbook §3 documents `git filter-repo --replace-text`
+while the Phase 245 driver rewrites with `git filter-branch --index-filter`.
+GitHub's own sensitive-data guidance names `git-filter-repo`. This phase
+validates the tool that the real rewrite is supposed to use, on a disposable
+full mirror, and measures the complete GitHub ref surface including
+`refs/pull/*`.
+
+It is a rehearsal. It is not a production rewrite. A1 is still unrevoked at the
+issuer, so §2 still blocks §3. No history was rewritten on the real remote, no
+head or tag was force-pushed, `main` is still `51c9ddeb`, no credential was
+rotated, no issuer was contacted, no Convex deployment was performed, and no
+production email was sent.
+
+### A. Tool availability
+
+| Property | Value |
+|---|---|
+| PyPI package | `git-filter-repo` **2.47.0** |
+| `git filter-repo --version` | `a40bce548d2c` |
+| install | disposable venv at `/tmp/gfr-venv` — not a repository dependency |
+| command rehearsed | `git filter-repo --replace-text replacements.txt --force` |
+| replacement | `<secret>==>***REMOVED-ROTATED-CREDENTIAL***` (file mode 0600, shredded after; value never printed) |
+
+### B. Pre-rewrite inventory (fresh `--mirror` of the real remote)
+
+Not shallow. 435 reachable commits. 16 local refs, 18 `ls-remote` lines (HEAD +
+peeled `rc-181^{}`). One leaked blob: `e490ffda…` at `src/convex/auth/emailOtp.ts`.
+Fingerprint `b1ce18a1e85ba121`.
+
+The nine repository refs and the seven GitHub pull refs all reach the blob (269
+carriers each, except `main` 261 and `phase-157` 262). Only `main` and
+`phase-157` serve it at the tip.
+
+### C. Nine repository refs — `filter-repo` simulation
+
+| Ref | Before | After | Commits | Tip tree |
+|---|---|---|---|---|
+| `heads/arena/01a08e67-trade-intel-bot` | `f8939130` | `bd233a87` | 362 = 362 | 763 / 763 identical |
+| `heads/arena/01a0a5f5-trade-intel-bot` | `3f636903` | `0fbab31a` | 393 = 393 | 788 / 788 identical |
+| `heads/arena/01a0a92b-trade-intel-bot` | `b321e507` | `50dcdfa5` | 392 = 392 | 788 / 788 identical |
+| `heads/arena/01a0ad26-trade-intel-bot` | `7564f138` | `dc2dc113` | 407 = 407 | 814 / 814 identical |
+| `heads/arena/01a0adfb-trade-intel-bot` | `27edd4a2` | `bcc3f34d` | 427 = 427 | 870 / 870 identical |
+| `heads/arena/01a0b293-trade-intel-bot` | `71dd13f5` | `897c7215` | 431 = 431 | **878 / 878 identical** |
+| `heads/main` | `51c9ddeb` | `b1a9e915` | 261 = 261 | 1 path rewritten |
+| `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f580` | 262 = 262 | 1 path rewritten |
+| `tags/rc-181` | `66323a38` | `23d25ffa` | 299 = 299 | 681 / 681 identical |
+
+After-tips `bd233a8` / `b1a9e91` / `6bf6f58` / `23d25ff` are byte-identical to
+the Phase 221 rehearsal record. That rehearsal was this tool. The Phase 245
+driver's `filter-branch` after-tips (`821a68ee`, `d2d4770b`, …) are a different
+mechanism and a different replacement blob (`f05a221a` vs `f5d58896` here).
+
+Independent scanner on the rewritten mirror: **CLEAN**, `--expect-clean` exit 0,
+leaked blob **ABSENT**. Positive control on the unmodified mirror: **EXPOSED —
+1 blob**, `--expect-clean` exit 1. Parent arity, commit counts, merge counts and
+root counts identical per ref. Author/email/date/subject identical on heads,
+tags and `pull/*/head`. Two runs, identical 16 tips. Documented command (no
+in-repo backups): 16 refs in, 16 refs out.
+
+Rollback: `filter-repo` rewrites *every* ref it sees, including in-repo backup
+refs, then gc-prunes original objects. Restore is an external pre-image of the
+mirror, and that restore is byte-exact against the control.
+
+### D. GitHub PR refs — read-only, and they keep the credential reachable
+
+| Ref | PR | Remote tip | Still reaches the credential on github.com |
+|---|---|---|---|
+| `refs/pull/1/head` | 1 | `b321e507` | yes, 269 carriers |
+| `refs/pull/2/head` | 2 | `7564f138` | yes, 269 carriers |
+| `refs/pull/2/merge` | 2 | `f5d3cacc` | yes, 269 carriers |
+| `refs/pull/3/head` | 3 | `27edd4a2` | yes, 269 carriers |
+| `refs/pull/3/merge` | 3 | `74196da6` | yes, 269 carriers |
+| `refs/pull/4/head` | 4 | `71dd13f5` | yes, 269 carriers |
+| `refs/pull/4/merge` | 4 | `e0d9ef40` | yes, 269 carriers |
+
+**7 of 7** still reach the credential on the real remote. Locally, `filter-repo`
+rewrites them too, so a full-mirror scan is CLEAN — that CLEAN is about the
+mirror, not about github.com.
+
+Proof they are not writable through a normal git push (no `--force`, real
+push, rejected, remote unchanged afterwards):
+
+```
+! [remote rejected] refs/pull/4/head  (deny updating a hidden ref)
+! [remote rejected] refs/pull/4/merge (deny updating a hidden ref)
+! [remote rejected] refs/pull/1/head  (deny updating a hidden ref)
+```
+
+That is a platform boundary, not a permission to bypass.
+
+**Heads/tags-only rewrite, PR refs left in place** (the state github.com would
+serve after a collaborator force-pushes the nine repository refs): scanner
+**EXPOSED**, 866 reachable commits, 0 carriers on every repository ref, **269
+carriers on every PR ref**, every *tip* looking clean. The gate must not treat
+that as A3.
+
+### E. Canonical distinctions (binding)
+
+1. `refs/heads/*` / `refs/tags/*` — rewriteable via the controlled rewrite
+   procedure.
+2. `refs/pull/*` — GitHub-managed, read-only PR references.
+3. GitHub Support cleanup is required for the affected PR references after the
+   repository refs are rewritten.
+4. The post-rewrite remote scan must include both the normal refs and the PR
+   references.
+5. A2 cannot be considered verified while any affected PR ref remains reachable.
+
+The gate is not weakened to ignore PR refs.
+
+### F. What this phase does not do
+
+No real history rewrite. No force-push of any head or tag. No new branch, PR or
+tag. No credential revocation. No Freebuff contact. No Convex deploy. No
+production email. The only remote mutation in this session is the fast-forward
+of `arena/01a0b293-trade-intel-bot` from `6bb7586` to `71dd13f` (the Phase 249
+rehearsal record). `origin/main` is `51c9ddeb`.
+
+**A2 remains UNVERIFIED / NOT READY.** Remaining A2 work: A1 recorded at the
+issuer, then the `filter-repo` rewrite of the nine repository refs, then GitHub
+Support clearing `refs/pull/*`, then a remote scan that includes those PR refs.
+Release decision: NOT READY.

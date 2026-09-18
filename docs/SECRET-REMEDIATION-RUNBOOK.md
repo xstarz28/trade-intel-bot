@@ -235,6 +235,12 @@ from the inventory immediately before executing.
 
 Real repository and remote untouched. Status remains **BLOCKED on §2**.
 
+Phase 250 re-ran step 3 with the documented tool (`git filter-repo --replace-text`)
+on a disposable full mirror. §3.2 records that rehearsal and states the GitHub
+ref surface the force-push cannot clear: `refs/pull/*` are read-only, require a
+GitHub Support cleanup after the repository refs are rewritten, and keep A2
+UNVERIFIED for as long as they still reach the credential.
+
 ### 3.1 The nine-ref re-rehearsal — run on a disposable mirror, and the gap it found
 
 §3 required a re-rehearsal covering every affected ref before it may run. It has
@@ -322,6 +328,119 @@ blocks §3: A1 is unrevoked at the issuer. The rehearsal is evidence about a
 procedure, not a remediation, and a nine-ref rehearsal does not shrink the nine-ref
 exposure. The release verdict is unchanged: **NOT READY**.
 
+### 3.2 Exact-tool rehearsal — `git filter-repo --replace-text` (Phase 250)
+
+§3.1 recorded that the documented tool and the rehearsed driver were not the same
+tool. Phase 250 installed `git-filter-repo` in a disposable venv (not as a
+repository dependency) and re-ran the rewrite with the command §3 actually writes,
+on a fresh full mirror of the real remote. Rehearsal only: no real rewrite, no
+force-push of heads or tags, `main` untouched at `51c9ddeb`.
+
+**Tool.** `git-filter-repo` 2.47.0 (PyPI); `git filter-repo --version` prints
+`a40bce548d2c`. Command, as documented:
+
+```
+git filter-repo --replace-text replacements.txt --force
+```
+
+Replacement file format (value never printed, file mode 0600, shredded after):
+`<secret>==>***REMOVED-ROTATED-CREDENTIAL***`. Two independent runs on two fresh
+mirrors produced identical tips for every original ref.
+
+**The GitHub ref surface, stated as procedure rather than as a finding.**
+
+1. `refs/heads/*` and `refs/tags/*` are rewriteable through the controlled rewrite
+   procedure and are the only refs a collaborator can force-push.
+2. `refs/pull/*` are GitHub-managed, read-only pull-request references. GitHub
+   rejects a normal (non-force) push to them with `deny updating a hidden ref`.
+   They are not an operator permission problem and must not be bypassed.
+3. After the repository refs are rewritten, GitHub Support must clear the
+   affected pull-request references. No git command available to this project
+   does that.
+4. The post-rewrite remote scan (§4) must cover both the rewritten heads/tags
+   *and* every `refs/pull/*` GitHub still advertises. A clean scan of heads only
+   is the tip-only-clean failure mode.
+5. A2 cannot be considered verified while any affected PR ref still reaches the
+   credential.
+
+`--force --mirror` as written in step 5 will attempt to update hidden refs and
+GitHub will refuse those updates. Push only `refs/heads/*` and `refs/tags/*`,
+then open the Support request, then scan the *remote*.
+
+**Nine repository refs — before / after the `filter-repo` simulation** (remote
+tips as of `71dd13f`; after-tips identical on both runs):
+
+| Ref | Before | After | Commits | Topology | Author/date/subject | Tip tree |
+|---|---|---|---|---|---|---|
+| `heads/arena/01a08e67-trade-intel-bot` | `f8939130` | `bd233a87` | 362 = 362 | isomorphic | preserved | byte-identical (763 paths) |
+| `heads/arena/01a0a5f5-trade-intel-bot` | `3f636903` | `0fbab31a` | 393 = 393 | isomorphic | preserved | byte-identical (788 paths) |
+| `heads/arena/01a0a92b-trade-intel-bot` | `b321e507` | `50dcdfa5` | 392 = 392 | isomorphic | preserved | byte-identical (788 paths) |
+| `heads/arena/01a0ad26-trade-intel-bot` | `7564f138` | `dc2dc113` | 407 = 407 | isomorphic | preserved | byte-identical (814 paths) |
+| `heads/arena/01a0adfb-trade-intel-bot` | `27edd4a2` | `bcc3f34d` | 427 = 427 | isomorphic | preserved | byte-identical (870 paths) |
+| `heads/arena/01a0b293-trade-intel-bot` | `71dd13f5` | `897c7215` | 431 = 431 | isomorphic | preserved | byte-identical (878 paths) |
+| `heads/main` | `51c9ddeb` | `b1a9e915` | 261 = 261 | isomorphic | preserved | 1 path rewritten |
+| `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f580` | 262 = 262 | isomorphic | preserved | 1 path rewritten |
+| `tags/rc-181` | `66323a38` | `23d25ffa` | 299 = 299 | isomorphic | preserved | byte-identical (681 paths) |
+
+The four after-tips that Phase 221 already recorded (`bd233a8`, `b1a9e91`,
+`6bf6f58`, `23d25ff`) match this run exactly. Phase 221 was this tool; the
+Phase 245 driver later diverged to `filter-branch --index-filter` and produced
+different SHAs. The replacement blob is `f5d58896` (marker
+`***REMOVED-ROTATED-CREDENTIAL***`), not the driver's `f05a221a`.
+
+| Check | Result |
+|---|---|
+| fingerprint on the nine repository refs | **0 of 9** |
+| independent scanner on the rewritten mirror (all 16 original refs) | **CLEAN**, `--expect-clean` exit 0, leaked blob `e490ffda` **ABSENT** |
+| positive control on an unmodified mirror | **EXPOSED — 1 blob** `e490ffda…` at `src/convex/auth/emailOtp.ts`; `--expect-clean` exit 1 |
+| parent-arity / commit-count / merge / root | identical per ref |
+| author / email / date / subject | identical on every head, tag, and `pull/*/head`; `pull/*/merge` subjects remap the embedded SHAs (GitHub synthetic merge commits), dates/authors unchanged |
+| candidate tree | `heads/arena/01a0b293-trade-intel-bot`: **878 / 878 byte-identical**. Every tip-clean ref: 0 paths changed. `main` and `phase-157`: exactly the credential path |
+| determinism | two fresh mirrors, identical 16 tips |
+| rollback | in-repo backup refs are **rewritten** by `filter-repo` (they are not a restore). An external pre-image of the mirror restores every tip byte-exactly. `filter-repo` also strips `origin` and gc-prunes original objects |
+| extra / lost refs (documented command, no extra backups) | 0 / 0 — 16 = 16 |
+| credential value printed | none |
+
+**`refs/pull/*` — seven refs, four pull requests, all still reach the credential
+on the real remote.**
+
+| Ref | PR | Remote tip (unchanged) | Carriers on the real remote |
+|---|---|---|---|
+| `refs/pull/1/head` | 1 | `b321e507` | 269 |
+| `refs/pull/2/head` | 2 | `7564f138` | 269 |
+| `refs/pull/2/merge` | 2 | `f5d3cacc` | 269 |
+| `refs/pull/3/head` | 3 | `27edd4a2` | 269 |
+| `refs/pull/3/merge` | 3 | `74196da6` | 269 |
+| `refs/pull/4/head` | 4 | `71dd13f5` | 269 |
+| `refs/pull/4/merge` | 4 | `e0d9ef40` | 269 |
+
+`git-filter-repo` rewrites these refs **locally** (the full-mirror scan is CLEAN
+because of that). They cannot be pushed. Measured, without `--force`, against the
+real remote:
+
+```
+! [remote rejected] refs/pull/4/head -> refs/pull/4/head (deny updating a hidden ref)
+! [remote rejected] refs/pull/4/merge -> refs/pull/4/merge (deny updating a hidden ref)
+! [remote rejected] refs/pull/1/head -> refs/pull/1/head (deny updating a hidden ref)
+```
+
+`ls-remote` after those rejected pushes: every pull ref, `arena/01a0b293` and
+`main` unchanged. Dry-run is not proof — it reported `[new reference]` for refs
+GitHub then refused.
+
+**What GitHub would serve after a heads/tags-only force-push** (local simulation:
+update only `refs/heads/*` and `refs/tags/*` on a copy of the control mirror,
+leave `refs/pull/*` at the pre-rewrite tips):
+
+* independent scanner **EXPOSED — 1 blob**;
+* `rev-list --count --all` **435 → 866**;
+* every one of the nine repository refs: 0 carriers;
+* every one of the seven PR refs: **269 carriers**;
+* every *tip* looks clean, including the PR refs — which is why the tip is not
+  the proof.
+
+A2 remains **UNVERIFIED** / **NOT READY**. §2 still blocks §3.
+
 ---
 
 ## 4. Assertions
@@ -378,6 +497,7 @@ successful rewrite:
 
 - every existing clone and fork;
 - GitHub's dangling-object and API caches, until GC;
+- GitHub's `refs/pull/*` (PR head and merge refs) until GitHub Support clears them — a collaborator cannot;
 - CI caches and build artifacts;
 - any third-party mirror or code-scanning index.
 
