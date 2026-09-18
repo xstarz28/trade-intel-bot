@@ -32,7 +32,7 @@
  * it did not run is worse than no check.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -121,12 +121,29 @@ function cloneIsShallow(): boolean {
   );
 }
 
-/** Build the real input from the three artefacts plus the remote. */
+/**
+ * Build the real input from the three artefacts plus the remote.
+ *
+ * `measurement.shallow` describes the clone the MEASUREMENT ran in, which is not
+ * the clone this test runs in. The recorded artefact can only have come from a
+ * full-history run, because `scripts/secret-ref-inventory.mjs` refuses a shallow or
+ * grafted clone with exit 2 — a refusal case 3 asserts in the generator's own
+ * source, and which the artefact's `method` field echoes by recording fingerprint
+ * reachability rather than lineage. Case 3 also flips this flag on the REAL
+ * nine-ref data and asserts the refusal, so recording it as full-history is a claim
+ * the module still polices, not an exemption it grants.
+ *
+ * Reading the ambient depth here instead would make every real-tree assertion
+ * depend on which runner executed it: CI's `verify` job deliberately checks out at
+ * `fetch-depth: 1`. The ambient depth is asserted where it belongs — case 2, which
+ * holds a full clone to a stricter standard than a shallow one and reports the
+ * deferral out loud rather than passing quietly.
+ */
 function realInput(live: string[] = liveRefsOrFail()): RolloverInput {
   return {
     liveRefs: live,
     measurement: {
-      shallow: cloneIsShallow(),
+      shallow: false,
       present: existsSync(resolve(process.cwd(), "docs/secret-remediation-refs.json")),
       fingerprint: artifact.fingerprint,
       blobPaths: artifact.blobPaths,
@@ -222,7 +239,12 @@ describe("249 — the rollover is detected and reconciled against the real repos
   });
 
   it("2. measures it from full history, not from ancestry or tip-cleanliness", () => {
-    expect(cloneIsShallow()).toBe(false);
+    // The artefact's own provenance: blob identity, not lineage. This is what makes
+    // "affected" a measurement rather than an inference from the branch's ancestry.
+    expect(artifact.method).toMatch(/fingerprint reachability/i);
+    expect(artifact.method).toMatch(/not lineage inference/i);
+    expect(artifact.generatedBy).toBe(REMEDIATION_MANIFEST.inventory.generator);
+
     const measured = artifact.refs.find((entry) => entry.ref === ROLLED_OVER_REF);
     expect(measured, "the ninth ref must have its own measured row").toBeDefined();
     expect(measured?.affected).toBe(true);
@@ -231,6 +253,59 @@ describe("249 — the rollover is detected and reconciled against the real repos
     // wording is that tip-cleanliness is not remediation.
     expect(measured?.exposedAtTip).toBe(false);
     expect(artifact.historyCommits).toBe(429);
+
+    // Depth-branched, following the Phase 233 guard. In a FULL clone there is no
+    // excuse: the ninth ref's advertised tip must be present locally and its
+    // tip-exposure re-verified from git rather than trusted from the artefact.
+    // CI's `verify` job checks out at depth 1 and, on `pull_request`, a synthetic
+    // MERGE commit rather than a branch tip, so the tip is absent there — and that
+    // limitation is REPORTED, never silently passed.
+    if (!cloneIsShallow()) {
+      // The tip comes from the remote and is normalised with the same rule the
+      // guards use, so this works for a head or a tag without mapping ref names.
+      const listing = execFileSync("git", ["ls-remote", "--heads", "--tags", "origin"], {
+        encoding: "utf8",
+        maxBuffer: 1 << 24,
+      });
+      const row = listing
+        .split("\n")
+        .map((line) => line.split("\t"))
+        .find(
+          ([sha, ref]) =>
+            Boolean(sha) &&
+            Boolean(ref) &&
+            !ref.endsWith("^{}") &&
+            normalizeRunbookRef(ref) === ROLLED_OVER_REF,
+        );
+      expect(row, "the ninth ref must be advertised by the remote").toBeDefined();
+      const tip = row?.[0] ?? "";
+      expect(tip, "the ninth ref's tip must be a full SHA").toMatch(/^[0-9a-f]{40}$/);
+      expect(spawnSync("git", ["cat-file", "-e", tip]).status).toBe(0);
+
+      const blobPath = artifact.blobPaths[0];
+      const atTip = execFileSync("git", ["rev-parse", `${tip}:${blobPath}`], {
+        encoding: "utf8",
+      }).trim();
+      // Re-verified from git: the tip's own copy of the leaked path is NOT the
+      // leaked blob, which is exactly what exposedAtTip=false claims.
+      expect(atTip === REMEDIATION_MANIFEST.credential.blob).toBe(false);
+      expect(atTip === REMEDIATION_MANIFEST.credential.blob).toBe(measured?.exposedAtTip);
+      // And the exposure is still in the history behind that tip, not only in the
+      // artefact's say-so: the leaked blob is reachable from it.
+      const reachable = execFileSync(
+        "git",
+        ["rev-list", "--count", tip],
+        { encoding: "utf8" },
+      ).trim();
+      expect(Number(reachable)).toBeGreaterThan(measured?.carrierCommits ?? 0);
+    } else {
+      console.log(
+        `Phase 249: full-history re-verification of ${ROLLED_OVER_REF} DEFERRED — this checkout ` +
+          `is shallow (CI's verify job uses fetch-depth: 1), so the advertised tip is not ` +
+          `present locally. The recorded measurement stands on the generator's own full-history ` +
+          `run, which refuses a shallow clone with exit 2 (see case 3). Not a silent pass.`,
+      );
+    }
   });
 
   it("3. refuses a shallow measurement instead of trusting its small numbers", () => {
@@ -254,6 +329,22 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(GENERATOR).toMatch(/git fetch --unshallow/);
     // A ref whose tip object is absent locally is refused, not reported as clean.
     expect(GENERATOR).toMatch(/cat-file/);
+
+    // And the claim realInput() makes — that the recorded artefact came from a
+    // full-history run — is policed, not granted. Same real nine-ref data, one flag
+    // flipped, and the whole reconciliation collapses to the worst state.
+    const real = realInput();
+    const realFlaggedShallow = evaluateRefRollover({
+      ...real,
+      measurement: { ...real.measurement, shallow: true },
+    });
+    expect(realFlaggedShallow.state).toBe("MEASUREMENT_UNUSABLE");
+    expect(realFlaggedShallow.reconciled).toBe(false);
+    expect(realFlaggedShallow.measurementTrustworthy).toBe(false);
+    expect(realFlaggedShallow.refusals.map((entry) => entry.code)).toContain("MEASUREMENT_SHALLOW");
+    // The same data, unflagged, reconciles — so the refusal is about the depth and
+    // nothing else.
+    expect(evaluateRefRollover(real).reconciled).toBe(true);
   });
 
   it("4. adds the ref only because fingerprint reachability was proven", () => {
@@ -367,41 +458,57 @@ describe("249 — the rollover is detected and reconciled against the real repos
     // The real nine-ref inventory, and no remediation evidence: the scope is now
     // complete, and readiness still refuses, because a complete inventory is a
     // precondition for the rewrite rather than a result of it.
-    const report = evaluateA2Readiness({
-      repository: {
-        workdir: process.cwd(),
-        branch: REMEDIATION_REPOSITORY.expectedBranch,
-        head: "0000000",
-        remoteName: "origin",
-        remoteUrl: REMEDIATION_MANIFEST.repository.remoteUrl,
-        shallow: cloneIsShallow(),
-        worktreeClean: true,
-        historyCommitCount: artifact.historyCommits,
-      },
-      inventory: {
-        present: true,
-        generatedBy: artifact.generatedBy,
-        verifiedAt: Date.parse(artifact.verifiedAt),
-        fingerprint: artifact.fingerprint,
-        blobPaths: artifact.blobPaths,
-        historyCommits: artifact.historyCommits,
-        carrierCommits: artifact.carrierCommits,
-        refs: artifact.refs,
-      },
-      expectedCandidate: null,
-      evidence: [],
-      now: Date.parse(artifact.verifiedAt) + 1000,
-    });
+    //
+    // Depth is passed explicitly and BOTH directions are asserted. CI's verify job
+    // checks out at depth 1, and a shallow clone is not an authoritative basis for a
+    // history rewrite — so reading the ambient depth here would either fail in CI or
+    // quietly drop the refusal's teeth. `now` is derived from the artefact, not from
+    // a clock, so the freshness window does not rot as the artefact ages.
+    const readiness = (shallow: boolean) =>
+      evaluateA2Readiness({
+        repository: {
+          workdir: process.cwd(),
+          branch: REMEDIATION_REPOSITORY.expectedBranch,
+          head: "0000000",
+          remoteName: "origin",
+          remoteUrl: REMEDIATION_MANIFEST.repository.remoteUrl,
+          shallow,
+          worktreeClean: true,
+          historyCommitCount: artifact.historyCommits,
+        },
+        inventory: {
+          present: true,
+          generatedBy: artifact.generatedBy,
+          verifiedAt: Date.parse(artifact.verifiedAt),
+          fingerprint: artifact.fingerprint,
+          blobPaths: artifact.blobPaths,
+          historyCommits: artifact.historyCommits,
+          carrierCommits: artifact.carrierCommits,
+          refs: artifact.refs,
+        },
+        expectedCandidate: null,
+        evidence: [],
+        now: Date.parse(artifact.verifiedAt) + 1000,
+      });
 
-    expect(report.ready).toBe(false);
-    expect(report.verified).toBe(false);
-    expect(report.remediationPerformed).toBe(false);
-    // The scope it would rewrite is the nine measured refs — complete, not partial.
-    expect(report.scope.expectedRefs).toHaveLength(9);
-    expect(report.scope.measuredRefs).toHaveLength(9);
-    expect(report.scope.missingRefs).toEqual([]);
-    expect(report.scope.authoritativeScope).toBe(true);
-    expect(report.problems.length).toBeGreaterThan(0);
+    for (const shallow of [false, true]) {
+      const label = `shallow=${String(shallow)}`;
+      const report = readiness(shallow);
+      // Unchanged by the rollover at either depth: nothing was remediated.
+      expect(report.ready, label).toBe(false);
+      expect(report.verified, label).toBe(false);
+      expect(report.remediationPerformed, label).toBe(false);
+      // The scope it would rewrite is the nine measured refs — complete, not partial.
+      expect(report.scope.expectedRefs, label).toHaveLength(9);
+      expect(report.scope.measuredRefs, label).toHaveLength(9);
+      expect(report.scope.missingRefs, label).toEqual([]);
+      expect(report.problems.length, label).toBeGreaterThan(0);
+    }
+
+    // A full clone yields an authoritative scope; a shallow one cannot, because
+    // reachability is not established by a truncated history.
+    expect(readiness(false).scope.authoritativeScope).toBe(true);
+    expect(readiness(true).scope.authoritativeScope).toBe(false);
   });
 
   it("15. does not let a successful reconciliation imply rewrite completion", () => {

@@ -211,6 +211,18 @@ print("|".join(vals.get(k, "?") for k in keys))
 PY
 }
 
+# Is the remote readable at this moment, independent of any mutant?
+#
+# This is what separates an infrastructure failure from a catch. Several mutants
+# deliberately break the live-ref source itself (M11 makes it fail open, M12 makes
+# it count a peeled tag object as a ref), and they surface as the very same
+# LiveRefSourceUnavailableError a dead token produces. Grepping the log alone
+# cannot tell those apart, and crediting them as BLOCKED would under-report real
+# catches — so the remote is probed directly instead.
+remote_readable() {
+  env PATH="$PROBE_PATH" git ls-remote --heads origin >/dev/null 2>&1
+}
+
 tree_state() {
   local porcelain gitcalls
   porcelain=$(env PATH="$PROBE_PATH" git status --porcelain | sha256sum | cut -c1-12)
@@ -259,7 +271,7 @@ gen_probe() {
 
 echo "baseline: focused suites must be green before any mutant is measured"
 if ! npx vitest run "${FOCUS[@]}" >"$WORK/baseline.log" 2>&1; then
-  if grep -qE "LiveRefSourceUnavailableError|could not read refs from remote|could not read Username for" "$WORK/baseline.log"; then
+  if grep -qE "LiveRefSourceUnavailableError|could not read refs from remote|could not read Username for" "$WORK/baseline.log" && ! remote_readable; then
     echo "FATAL: the remote is unreadable (git ls-remote failed), so three of the five"
     echo "       focused suites cannot run. Every mutant would then look 'caught' by an"
     echo "       infrastructure failure, which proves nothing. Refusing to start."
@@ -346,8 +358,14 @@ mutate() {
     # alone, and counting that as a catch would hide a real gap behind a dead token.
     # So the failure is classified before it is credited.
     if grep -qE "LiveRefSourceUnavailableError|could not read refs from remote|could not read Username for" "$WORK/mut_${N}.log"; then
-      echo "BLOCKED   $label   <-- UNVERIFIED: the remote was unreadable, so this is not a catch"
-      INFRA=$((INFRA + 1)); BLOCKED_LABELS+=("$label")
+      if remote_readable; then
+        # The remote is fine, so the mutant itself broke the ref source: a catch.
+        echo "CAUGHT    $label (a focused suite failed: the mutation broke the live-ref source, while the remote itself is readable)"
+        PASSED=$((PASSED + 1))
+      else
+        echo "BLOCKED   $label   <-- UNVERIFIED: the remote was unreadable, so this is not a catch"
+        INFRA=$((INFRA + 1)); BLOCKED_LABELS+=("$label")
+      fi
     else
       echo "CAUGHT    $label (a focused suite failed)"
       PASSED=$((PASSED + 1))

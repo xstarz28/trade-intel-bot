@@ -139,6 +139,13 @@ export interface VerifiedInventory {
   carrierCommits: number;
   /** ISO timestamp of the measurement, so its age can be checked. */
   verifiedAt: string;
+  /**
+   * How the measurement was taken, in the generator's own words. Worth carrying
+   * because it records the difference between blob-identity reachability and
+   * lineage inference — the two are not interchangeable, and only the first is
+   * evidence that a ref is affected.
+   */
+  method: string;
   generatedBy: string;
   refs: VerifiedRef[];
 }

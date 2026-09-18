@@ -184,6 +184,7 @@ const inventoryOf = (
   historyCommits: 397,
   carrierCommits: 270,
   verifiedAt: "2026-01-01T00:00:00.000Z",
+  method: "test fixture",
   generatedBy: "test",
   refs,
 });
