@@ -26,7 +26,8 @@
     "release:report": "RELEASE_ADMISSION=report vitest run src/lib/deployment/release-admission.boundary.phase242.test.ts",
     "config:verify": "node --experimental-strip-types --no-warnings scripts/verify-production-config.mjs",
     "remediation:readiness": "node --experimental-strip-types --no-warnings scripts/verify-remediation-readiness.mjs",
-    "remediation:a1:report": "node --experimental-strip-types --no-warnings scripts/a1-issuer-report.mjs"
+    "remediation:a1:report": "node --experimental-strip-types --no-warnings scripts/a1-issuer-report.mjs",
+    "evidence:d:verify": "node --experimental-strip-types --no-warnings scripts/evidence-d-verify.mjs"
   },
   "dependencies": {
     "@auth/core": "^0.37.4",

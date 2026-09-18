@@ -22,6 +22,12 @@ import {
 } from "./release-current-state";
 import { RELEASE_PREREQUISITES, evaluateRelease } from "./release-gate";
 import {
+  buildEvidenceDPackage,
+  evidenceDRecord,
+  REQUIRED_PROVIDER_IDS,
+  type EvidenceDRecord,
+} from "./evidence-d-verification";
+import {
   evaluateReleaseAdmission,
   formatReleaseAdmissionReport,
   releaseAdmissionExitCode,
@@ -75,6 +81,82 @@ const REQUIRED_PROVIDERS = getAllProviders()
   .map((provider) => provider.id)
   .sort();
 
+/*
+  Evidence D — the Phase 247 contract, in this suite's terms.
+
+  Until Phase 247 this file's Evidence D fixture was a bare claim (`verified`,
+  `source`, `environment`, plus a provider list), and the gate read it as such.
+  That shape is now refused by the canonical reader on purpose: it is exactly what
+  a fixture, a cache or a local run can also produce. The fixture below is the
+  contract the reader actually accepts — one live record per required provider —
+  so the assertions in this suite keep testing the admission path rather than the
+  fixture's shape.
+*/
+const EVIDENCE_D_DATASET: Record<string, string> = {
+  "twelve-data": "ohlcv",
+  "alpha-vantage": "ohlcv",
+  coingecko: "quote",
+  coinglass: "derivatives",
+  defillama: "ohlcv",
+  tokenomist: "fundamentals",
+  tickatlas: "calendar",
+  treasury: "treasury",
+  cftc: "cot",
+  eia: "eia",
+  okx: "ohlcv",
+};
+const EVIDENCE_D_INSTRUMENT: Record<string, string | null> = {
+  "twelve-data": "BTC/USD",
+  "alpha-vantage": "EUR/USD",
+  coingecko: "BTC/USD",
+  coinglass: "BTC/USD",
+  defillama: "BTC/USD",
+  tokenomist: "BTC/USD",
+  eia: "WTI",
+  tickatlas: null,
+  treasury: null,
+  cftc: null,
+  okx: null,
+};
+/** Where a provider whose host this repository does not document answered. */
+const EVIDENCE_D_HOST: Record<string, string> = {
+  coinglass: "live.coinglass.observed",
+  defillama: "live.defillama.observed",
+  tokenomist: "live.tokenomist.observed",
+  tickatlas: "live.tickatlas.observed",
+  treasury: "live.treasury.observed",
+  cftc: "live.cftc.observed",
+  eia: "live.eia.observed",
+};
+
+function evidenceDRecords(
+  providers: readonly string[] = REQUIRED_PROVIDER_IDS,
+  ageMs = HOUR,
+): EvidenceDRecord[] {
+  return providers.map((provider) => {
+    const record = evidenceDRecord({
+      provider,
+      dataset: EVIDENCE_D_DATASET[provider] ?? "ohlcv",
+      instrument: EVIDENCE_D_INSTRUMENT[provider] ?? null,
+      observedAt: NOW - ageMs,
+      receivedAt: NOW - ageMs + 1_000,
+    });
+    const host = (record.provenance as { host: string }).host || EVIDENCE_D_HOST[provider];
+    return { ...record, provenance: { transport: "https", host, status: 200 } };
+  });
+}
+
+/** A Phase 247-conformant Evidence D package, as an operator would file it. */
+function evidenceDPackage(providers: readonly string[] = REQUIRED_PROVIDER_IDS, ageMs = HOUR): string {
+  return JSON.stringify(
+    buildEvidenceDPackage({
+      candidate: { commit: COMMIT, ref: REF },
+      verifiedAt: NOW - ageMs + 2_000,
+      records: evidenceDRecords(providers, ageMs),
+    }),
+  );
+}
+
 /** A well-formed external production proof, aged `ageMs`, bound as instructed. */
 function proof(
   overrides: Record<string, unknown> = {},
@@ -101,10 +183,7 @@ function fullyVerified(overrides: Record<string, string> = {}) {
       subject: { commit: COMMIT, deployment: DEPLOYMENT },
     }),
     [PROOF_PATHS.emailDelivery]: proof({ detail: "delivered to a real mailbox" }),
-    [PROOF_PATHS.evidenceD]: proof({
-      subject: { commit: COMMIT, providers: REQUIRED_PROVIDERS },
-      detail: "every provider answered live",
-    }),
+    [PROOF_PATHS.evidenceD]: evidenceDPackage(),
     ...overrides,
   };
   return files;
@@ -398,9 +477,9 @@ describe("242 — evidence that cannot admit anything", () => {
     const partialProviders = evaluateReleaseAdmission(
       requestWithDeployment(
         fullyVerified({
-          [PROOF_PATHS.evidenceD]: proof({
-            subject: { commit: COMMIT, providers: REQUIRED_PROVIDERS.slice(0, -1) },
-          }),
+          // One provider short: the validator names it, and the admission reports
+          // that name rather than a generic refusal.
+          [PROOF_PATHS.evidenceD]: evidenceDPackage(REQUIRED_PROVIDERS.slice(0, -1)),
         }),
       ),
     );

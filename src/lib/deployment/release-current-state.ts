@@ -22,6 +22,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { getAllProviders } from "@/lib/data/universal/providers";
 import {
+  EVIDENCE_D_PREREQUISITE,
+  evaluateEvidenceDPackage,
+  toGateEvidenceRecord,
+} from "./evidence-d-verification";
+import {
   evaluateRelease,
   RELEASE_PREREQUISITES,
   type EvidenceRecord,
@@ -181,6 +186,68 @@ function proofRecord(
   };
 }
 
+/**
+ * The Evidence D proof, read through the Phase 247 validator.
+ *
+ * The four other proofs are claims written by a human and read as claims: the
+ * gate refuses them unless they declare an external production source. Evidence D
+ * is the one prerequisite whose whole content is "every provider answered in
+ * production, observed live", and a claim to that effect is exactly what a
+ * fixture, a cache and a local run can also produce. So this path is validated
+ * rather than quoted: an inadmissible package becomes a BLOCKED record whose
+ * detail names the state and the reasons, which is a refusal the operator can act
+ * on and which no amount of editing the file can turn into a pass.
+ *
+ * The record's freshness input is the package's OLDEST accepted observation, and
+ * its provider coverage is the coverage the validator actually verified — not a
+ * list the file declares about itself.
+ */
+function evidenceDProofRecord(
+  path: string,
+  source: FactSource,
+  now: number,
+  candidate: { commit: string; ref: string },
+): EvidenceRecord | null {
+  if (!source.exists(path)) return null;
+
+  const blocked = (assessment: ReturnType<typeof evaluateEvidenceDPackage>): EvidenceRecord => ({
+    prerequisite: EVIDENCE_D_PREREQUISITE,
+    status: "BLOCKED",
+    source: "external-verification",
+    environment: "production",
+    // The oldest observation the package DECLARES, so the gate's own freshness
+    // rule applies to it: a package whose oldest observation is stale reports
+    // STALE rather than merely refused. Clamped to the evaluation instant so a
+    // fabricated future stamp cannot become the reason an operator reads.
+    observedAt: Math.min(assessment.oldestDeclaredObservation ?? now, now),
+    subject: { providers: [...assessment.verifiedProviders], commit: candidate.commit },
+    detail: `${path}: refused by the Evidence D validator (${assessment.state}): ${
+      assessment.problems.slice(0, 3).join("; ") || assessment.state
+    }`,
+  });
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source.read(path));
+  } catch {
+    return {
+      prerequisite: EVIDENCE_D_PREREQUISITE,
+      status: "UNVERIFIED",
+      source: "documentation",
+      environment: "local",
+      observedAt: Number.NaN,
+      detail: `${path} exists but is not valid JSON`,
+    };
+  }
+
+  const assessment = evaluateEvidenceDPackage(parsed, { now, candidate });
+  const projection = toGateEvidenceRecord(assessment, {
+    candidateCommit: candidate.commit,
+    candidateRef: candidate.ref,
+  });
+  return projection.record ?? blocked(assessment);
+}
+
 /** Derive the evidence set from the tree as it is. */
 export function deriveCurrentReleaseState(
   source: FactSource = defaultSource,
@@ -198,8 +265,18 @@ export function deriveCurrentReleaseState(
     ["EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION", PROOF_PATHS.evidenceD],
   ];
   const present: string[] = [];
+  const candidate = {
+    commit: options.commit ?? CANDIDATE.commit,
+    ref: options.ref ?? CANDIDATE.ref,
+  };
+  /* The instant the reader judges freshness at, defaulted exactly the way the
+     gate defaults it, so the two layers never disagree about "now". */
+  const now = options.now ?? Date.now();
   for (const [prerequisite, path] of proofByPath) {
-    const record = proofRecord(prerequisite, path, source);
+    const record =
+      prerequisite === EVIDENCE_D_PREREQUISITE
+        ? evidenceDProofRecord(path, source, now, candidate)
+        : proofRecord(prerequisite, path, source);
     if (record) {
       present.push(path);
       records.push(record);
@@ -220,8 +297,8 @@ export function deriveCurrentReleaseState(
 
   const input: ReleaseInput = {
     candidate: {
-      commit: options.commit ?? CANDIDATE.commit,
-      ref: options.ref ?? CANDIDATE.ref,
+      commit: candidate.commit,
+      ref: candidate.ref,
       // No production deployment is declared anywhere in this repository — the
       // Phase 186/234 work stopped at "configuration present, deployment not
       // performed". A release caller may declare one explicitly; when it is

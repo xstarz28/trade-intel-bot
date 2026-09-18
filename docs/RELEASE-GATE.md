@@ -4149,3 +4149,281 @@ the exposure.
 
 The release verdict therefore stays **NOT READY**, unchanged by this phase, with
 `A1_OTP_ISSUER_REVOCATION` and `A2_HISTORY_REWRITE` as its blockers.
+
+## Phase 247 — Evidence D production verification harness
+
+Phase 246 closed the part of A1 that a repository can close without the issuer.
+This phase does the same for Evidence D — the one prerequisite whose entire
+content is "every required provider answered in production, observed live".
+
+Until now the gate read the Evidence D proof file and accepted it on four
+declared fields (`verified`, `source`, `environment`, `observedAt`) plus a
+provider list. That is enough to refuse a claim written in prose and **not**
+enough to tell a real production observation from a well-shaped fixture, which is
+the only distinction the prerequisite is about. This phase is that distinction,
+as a decision, and the gate now reads Evidence D through it.
+
+| Surface | Role |
+|---|---|
+| `src/lib/deployment/evidence-d-verification.ts` | the decisions: provider set, record contract, per-record rules, completeness, the gate projection, the operator handoff |
+| `scripts/evidence-d-verify.mjs` | the read-only command behind `npm run evidence:d:verify` |
+| `src/lib/deployment/evidence-d-verification.phase247.test.ts` | 86 cases: the provider set, the contract, the 12 refused categories, identity, timestamps, completeness, the gate and the command |
+| `src/lib/deployment/release-current-state.ts` | one changed path: Evidence D is now validated rather than quoted |
+| `scripts/mutation-suite-phase247.sh` | 43 mutants over this phase's decisions, the command, the reader and the canonical gate |
+
+### A. The canonical provider set
+
+`getAllProviders()` from `src/lib/data/universal/providers.ts` is the only
+source, and it is the same registry `release-current-state.ts` already binds
+`requiredProviders` to. Nothing here restates it: `canonicalProviderSet()` maps
+and sorts the registry, and the suite proves that no provider id appears
+literally in the verification logic except the four whose hosts this repository
+documents.
+
+| Rule | Behaviour |
+|---|---|
+| every required provider appears exactly once | the registry list is de-duplicated for the required set, and the suite asserts the registry carries no duplicates |
+| duplicate provider identifier | refused: a second record for one provider is not merged with the first, because that is how a healthy record hides a broken one |
+| unknown provider identifier | refused: the id must match canonically (`OKX` is not `okx`) |
+| missing provider | refused by name: `incomplete provider set: <id> has no verified production observation` |
+| empty provider set | never coverage — not when the submission is empty, and not when nothing is required |
+| provider ordering | cannot change the state or the reason list: the state is chosen by a published precedence, and the refusals are sorted |
+
+The repository also exposes a second `getAllProviders()` in the streaming
+adapter registry, whose ids are display-case (`OKX`) and whose profiles describe
+websockets. It is deliberately **not** consulted: Evidence D is bound to the
+universal provider registry, and the case difference is exactly the kind of
+near-match the identity rule refuses.
+
+### B. The Evidence D record contract
+
+A package is one JSON object filed at `docs/remediation/evidence-d-production.json`,
+carrying `schema: phase247.evidence-d/v1`, `environment: production`,
+`source: external-verification`, `verified: true`, a `verifiedAt`, an optional
+candidate binding, the records, and a deterministic `digest` over its own content
+minus the digest field.
+
+Each record carries exactly what is needed to verify the claim — and nothing that
+could hold a secret:
+
+| Field | Meaning | Owner |
+|---|---|---|
+| `provider` | canonical provider id | the registry |
+| `dataset` | one of this repository's datasets, taken from the cache that owns their cadences | the repository |
+| `instrument` | the canonical instrument, or `null` for a global series | the registry |
+| `providerInstrumentId` | the provider-native id the request used | the operator |
+| `returnedSymbol` | the symbol the provider itself returned | the provider |
+| `mode` | how the value came to exist (`observed-now`, `cache-reused`, …) | the acquisition layer |
+| `environment`, `source` | production, external verification | the record |
+| `observedAt` | when the **provider** observed the value | the provider |
+| `receivedAt` | when this side received the answer | the client |
+| `provenance` | `transport`, `host`, `status` — an external https call with a 2xx answer | the operator |
+| `candidate` | the commit and ref the observation is about | the operator |
+
+Not stored, and refused if present anywhere in the package: API keys, bearer
+tokens, authorization headers and anything else whose field name could hold a
+credential value (`apiKey`, `token`, `secret`, `password`, `authorization`,
+`value`, …). A package that carries one is refused whole, before it is read
+further, and the operator report never echoes the value it refused.
+
+### C. Live versus historical versus fixture
+
+| Accepted | Rejected, by name |
+|---|---|
+| an explicit production live acquisition (`observed-now`, `observed-shared`, `uncached-by-design`) | a historical fixture, a synthetic fixture, backtest or back-filled data |
+| a provider-native identity that matches this repository's registry | provider A's evidence presented as provider B's |
+| an observation inside the freshness window | cached data outside the window |
+| provenance recording the external https call, its host and a 2xx status | a mock, stub, fake or in-process transport; loopback and private addresses; reserved test and example domains |
+| a production binding on the record and the package | a manually pasted price, a local run, a green CI run, a document |
+| one verified record per required provider | data with a missing or future observation time |
+
+`mode` is not re-implemented here: the record's mode is handed to the Phase 178c
+predicate `isNewObservation`, so "what counts as a genuine new observation" has
+one definition in the repository.
+
+### D. Provider identity
+
+| Rule | Why |
+|---|---|
+| the provider id must be canonical | `OKX` is a different registry's spelling; mapping it silently would be an undocumented substitution |
+| the host must not belong to another provider this repository documents | that is provider substitution with a status code attached |
+| when the repository documents a host for the provider, that host must be the one that answered | four providers are documented (`api.twelvedata.com`, `www.alphavantage.co`, `api.coingecko.com`, `www.okx.com`) and the suite extracts them from the URL builders, so a drifted constant fails a test |
+| the provider-native instrument id must be the one the registry documents for the pair | for the seven providers the registry maps; the other four are reported as not cross-checkable rather than invented |
+| the symbol the provider returned must be the one requested | symbol substitution |
+| an instrument-scoped provider's record must name an instrument | a price for nothing is not evidence |
+
+The repository declares **no** provider→dataset map. The harness checks the
+dataset vocabulary, refuses contradictions, and says so in the operator report
+rather than inventing the mapping.
+
+### E. Timestamps and freshness
+
+`observedAt` is provider-owned and `receivedAt` is client-owned, and the two are
+never interchangeable:
+
+* freshness is computed from `observedAt` only — a fresh local receipt cannot
+  make an old observation current, and the suite pins exactly that pair;
+* a missing observation is refused, never back-filled from the receipt;
+* a receipt earlier than the observation is refused as contradictory;
+* a future observation, receipt or `verifiedAt` is refused;
+* the window is the prerequisite's own `maxAgeMs` (7 days), read from the release
+  manifest rather than restated, and the boundary is asserted on both sides at an
+  injected instant — at the window the package is admissible, one millisecond
+  beyond it is stale;
+* the gate's freshness input is the **oldest** accepted observation, so a package
+  is only as current as its weakest provider and a freshly written attestation
+  cannot refresh an old one.
+
+The evaluation instant is a required parameter: the decision module reads no
+clock, no environment and no file, and a missing instant is refused rather than
+defaulted.
+
+### F. Multi-provider completeness
+
+Evidence D is complete only when **every** required provider is independently
+verified. One missing provider, one stale provider, one fixture provider, one
+historical provider, one malformed record or one contradiction makes the whole
+package incomplete, and the remaining providers stay verified in the report — a
+healthy provider never stands in for another. The proposal is at provider
+granularity, and a package cannot claim coverage it did not observe.
+
+### G. The operator command
+
+```
+npm run evidence:d:verify -- --package docs/remediation/evidence-d-production.json
+npm run evidence:d:verify -- --package <path> --json
+npm run evidence:d:verify -- --status
+npm run evidence:d:verify -- --template
+```
+
+It reads one package, hands it to the canonical validator, prints the state, the
+per-provider verification, the refusals, the record contract and the operator
+sequence — and then simulates the canonical admission **once, in memory**, with
+the package overlaid on the real tree, so the operator sees the blockers that
+would remain. Nothing is written, and the tool states in its own output that it
+issues no verdict and contacted no provider.
+
+| Exit | Meaning |
+|---|---|
+| 0 | the package is admissible for evaluation (`EVIDENCE_D_COMPLETE`) — not a release decision |
+| 1 | a blocker remains; the state and every refusal are printed |
+| 2 | the command could not produce a report (usage, missing file, invalid JSON) |
+
+The states it can report: `EVIDENCE_D_COMPLETE`, `MISSING_PROVIDER`,
+`STALE_PROVIDER_EVIDENCE`, `INVALID_PROVIDER_IDENTITY`, `HISTORICAL_NOT_LIVE`,
+`FIXTURE_NOT_LIVE`, `WRONG_ENVIRONMENT`, `MISSING_PROVENANCE`,
+`FUTURE_OBSERVATION`, `CONTRADICTORY_EVIDENCE`, `INVALID_EVIDENCE`. The state is
+chosen by a published precedence so that reordering records cannot change it, and
+every refusal code maps to a declared state — an unmapped code refuses the
+package and says so instead of degrading to a vague one.
+
+`--template` prints a skeleton (one empty record per required provider) that is
+refused as it stands: a template is a form to fill in, never evidence to file.
+
+### H. Regression coverage — 86 cases
+
+| Group | Covers |
+|---|---|
+| provider set | the registry as the only source, the four documented host literals and nothing else, duplicates, unknown ids, missing ids, the empty submission, ordering independence including a package refused for four different reasons |
+| record contract | the complete conformant package, the projection's oldest-observation rule, digest tampering, missing digest, credential-shaped fields (four shapes), the package fields one by one by refusal code, a missing receipt, records that are not objects |
+| live / historical / fixture | seventeen refused shapes as a table, plus fixture-claims-live, the fixture-scoped projection, and the accepted/rejected category lists |
+| identity | provider substitution by host, a documented provider answering elsewhere, symbol substitution, a non-registry native id, unknown and missing instruments, an unknown dataset, contradictory datasets, the host parity guard, and the native ids taken from the registry |
+| timestamps | stale-with-fresh-receipt, the exact boundary on both sides, future observation and receipt (asserted by code, not only by state), a missing observation, a receipt before the observation, non-finite instants, a missing evaluation instant, and that time passing only makes a package staler |
+| completeness | one missing provider, one stale/fixture/historical/malformed record, every provider in turn missing, and a package bound to another candidate |
+| the gate | an admissible package producing a VERIFIED gate record the evaluator accepts, an inadmissible one producing nothing, the gate's own provider-coverage rule, a filed package judged by the validator, the pre-Phase-247 claim shape refused, stale and partial filings, a fixture filing, unparseable JSON, the admission path with and without a package, and the real tree unchanged by all of it |
+| the command | its node imports, its absence of network, spawn, writers and `process.env`, that it calls the canonical admission rather than re-implementing it, its guarantees, its exit codes, its wiring, and the decision module's purity |
+
+### I. Mutation results — 43 mutants
+
+`scripts/mutation-suite-phase247.sh` applies each mutant to one of four targets
+(the decision module, the command, the evidence reader, the canonical gate),
+re-runs the two focused suites, and then runs the real command twice — once for
+the current state and once against a fixed package — under a network guard that
+records and refuses, with a recording `git` shim first on `PATH`.
+
+* **42 caught, 1 documented equivalent, 0 gaps, 0 INVALID, byte-exact restore** of
+  all four targets.
+* The equivalent is a **layout note in the human-readable report**: no decision
+  changes and the probe (which reads JSON) is unmoved.
+* All the listed classes are covered: dropping a provider, accepting an unknown,
+  duplicate or empty provider set, ignoring provider identity, the documented
+  host, symbol substitution, another provider's host, another provider's native
+  id, a wrong dataset, a missing instrument, a fixture, a synthetic, a historical
+  record, cache reuse, a mock host, a test transport, missing provenance, no
+  freshness, a future stamp, a manufactured observation instant, freshness judged
+  by the receipt, a receipt before the observation, a wrong environment, an
+  ignored contradiction, incomplete-set acceptance, an unchecked digest, a
+  credential-carrying package, an unbound candidate, a gate record filed for a
+  refused package, a fixture-scoped filing, order-dependent state, silenced
+  category lists, a missing schema line, a networked command, a secret-reading
+  command, a deploying command, a writing command, a command that issues its own
+  verdict, a reader that files an inadmissible package, a reader that swallows a
+  parse failure, a reader that drops the declared observation, a reader that
+  overrides the validator, and the gate's provider-set binding.
+* The harness also proves its own instrument: before measuring anything it
+  requires the network guard to observe a deliberate `fetch`, so silence cannot
+  be mistaken for evidence.
+
+### J. Quality gates
+
+| Gate | Result |
+|---|---|
+| `npx tsc -b` | 0 errors |
+| `npx vitest run` | 317 files, 10 565 passed, 18 skipped |
+| `npm run build` | success |
+| eslint on the changed and touched files | 0 findings |
+| Phase 238–247 + hermeticity + Phase 221 consistency + the admission boundary | 25 files, 537 tests, all green |
+| `scripts/mutation-suite-phase247.sh` | exit 0 (42 caught / 1 equivalent / 0 gaps / 0 INVALID) |
+| `scripts/mutation-suite-phase246.sh` | re-run after this phase: exit 0 (27 / 1 / 0 / 0) |
+| `scripts/mutation-suite-phase245.sh` | re-run after this phase: exit 0 (42 / 1 / 0 / 0) |
+
+### K. Instrumented proof of zero external action
+
+The commands were run with the network sinks of `node:net`, `node:dns`,
+`node:http`, `node:https` and `globalThis.fetch` patched to record and refuse,
+with a recording `git` shim first on `PATH`, and with three provider credential
+variables set in the environment to a sentinel value:
+
+| Observation | Result |
+|---|---|
+| outbound network attempts | **0** (positive control: the same guard fired on a deliberate `fetch`) |
+| processes spawned by the command | **0** — there is no `node:child_process` import at all, so git is not reachable |
+| git invocations recorded | **0** |
+| credential sentinel occurrences in stdout and stderr | **0** |
+| worktree fingerprint before/after | identical |
+| `docs/remediation/` files before/after | 0 → 0 (nothing was filed) |
+| exit codes | `--status` 1 (blocker), a complete package 0, `--template` 0 |
+
+No provider was contacted, no credential was read, printed or changed, no
+deployment was performed, no email was sent, no git command ran and no release
+state was altered — by the harness or by the command.
+
+### L. Evidence D today, and what is still missing
+
+**No provider was contacted in this phase, and no Evidence D package exists.**
+The command reports it directly:
+
+```
+package filed at docs/remediation/evidence-d-production.json: no
+Evidence D: UNVERIFIED
+  reason: no evidence was supplied
+canonical verdict (echoed, not issued here): NOT READY
+blockers: A1_OTP_ISSUER_REVOCATION, A2_HISTORY_REWRITE, CONVEX_PRODUCTION_DEPLOYMENT,
+          EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION, PRODUCTION_EMAIL_TRANSPORT
+```
+
+The remaining dependency is the same shape as A1's: **a party with real provider
+access** — production credentials for the eleven registered providers, and an
+environment that can reach them — must observe each provider live in production,
+assemble one record per provider and file the package. Nothing in this repository
+can produce that observation, and the harness is built so that nothing can fake
+it either. Provider access is a blocker with a name, not a negative finding about
+any provider.
+
+**A1 remains unremediated** (Phase 246: the issuer exposes no self-service path
+and the environment cannot reach it) and **A2 remains unexecuted** (Phase 245:
+the procedure is rehearsed on a disposable clone, and the real history still
+carries the exposure). The release verdict is unchanged by this phase: **NOT
+READY**, with `A1_OTP_ISSUER_REVOCATION`, `A2_HISTORY_REWRITE`,
+`CONVEX_PRODUCTION_DEPLOYMENT`, `PRODUCTION_EMAIL_TRANSPORT` and
+`EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` as its blockers.
