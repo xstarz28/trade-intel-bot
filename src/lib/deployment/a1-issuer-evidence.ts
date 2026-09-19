@@ -46,7 +46,12 @@ import {
   type PostCheckResult,
 } from "./remediation-postcheck";
 import { evaluateA1Readiness, type A1ReadinessOutcome } from "./remediation-readiness";
-import type { EvidenceRecord, EvidenceSource } from "./release-gate";
+import {
+  RELEASE_PREREQUISITES,
+  verifyingSourcesFor,
+  type EvidenceRecord,
+  type EvidenceSource,
+} from "./release-gate";
 
 /** The schema tag every artifact this phase describes carries. */
 export const A1_EVIDENCE_SCHEMA = "phase246.a1-evidence/v1";
@@ -349,11 +354,15 @@ export function a1EvidenceContract(manifest: RemediationManifest = REMEDIATION_M
     },
     gate: {
       prerequisite: "A1_OTP_ISSUER_REVOCATION",
-      acceptedSources: ["external-verification"],
+      acceptedSources: [
+        ...verifyingSourcesFor(
+          RELEASE_PREREQUISITES.find((entry) => entry.id === "A1_OTP_ISSUER_REVOCATION")!,
+        ),
+      ],
       acceptedEnvironments: ["production"],
       requiredFields: ["prerequisite", "status", "source", "environment", "observedAt"],
       note:
-        "release-current-state.ts reads the attestation at the path above and only a record whose source is external-verification and whose environment is production can satisfy the prerequisite; a fixture or a document is reported as a claim and cannot satisfy anything",
+        "release-current-state.ts reads the issuer attestation at the path above (external-verification only) and, separately, an owner-filed compensating-controls file (owner-risk-acceptance) after independently observed runtime controls; neither path claims the other, a fixture or a document cannot satisfy, and an exemption cannot waive A1",
     },
   };
 }
@@ -892,6 +901,7 @@ const HANDOFF_STATEMENT: readonly string[] = [
   "A1 was NOT revoked by this tooling, and nothing here claims it was.",
   "MISSING_EXTERNAL_ACCESS is a blocker, not a negative result: the absence of a reachable issuer is not evidence that the credential is safe.",
   "No repository action completes A1; only a party with issuer-side access can revoke the credential, and only their evidence can prove it.",
+  "A compensating-controls owner risk-acceptance (schema a1.compensating-controls/v1) is a separate path that does not claim revocation; it is unfiled until the owner writes it.",
 ];
 
 export function buildA1OperatorHandoff(request: A1HandoffRequest): A1HandoffReport {

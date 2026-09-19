@@ -212,6 +212,30 @@ exists and the gate accepts it as `external-verification` in `production`, A1 is
 Repository cleanup, a history rewrite, a green scanner on a mirror, and the
 absence of the key from `HEAD` are **not** A1. A2 must not run.
 
+### 2.2 Compensating-controls path — does **not** claim revocation
+
+A1 has a second, owner-filed path when the issuer is unavailable. It is **not**
+revocation evidence, **not** an exemption, and **not** filed on this tree.
+
+| Item | Value |
+|---|---|
+| Schema | `a1.compensating-controls/v1` |
+| Path | `docs/remediation/a1-compensating-controls.json` |
+| Source the gate will accept | `owner-risk-acceptance` (A1 only) |
+| `revocationClaimed` | **must be `false`** |
+| Who may file | an authorized project owner, explicitly |
+| Who may not file | this tooling, a fixture, a document, a CI run |
+
+Required contents (no credential value): `accepted: true`, `acceptedBy`,
+`acceptedAt`, a rationale of at least 40 characters, and `residualRisk` naming
+that the leaked key is **not** revoked at the issuer. The reader observes
+`emailOtp.ts`, `emailDelivery.ts` and `issuerPolicy.ts` independently; if any
+required control is missing, the file cannot satisfy A1.
+
+This path does **not** change §3. A2 remains unexecuted. Filing the file, if
+the owner later chooses to, would be a statement about A1 residual risk, not
+permission for this tooling to rewrite history or to touch `main`.
+
 ---
 
 ## 3. Rewrite procedure — rehearsed, not executed

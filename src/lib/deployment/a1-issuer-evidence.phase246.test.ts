@@ -193,7 +193,7 @@ describe("246 — the canonical evidence contract", () => {
     expect(prerequisite?.exemptible).toBe(false);
     expect(prerequisite?.binding).toBe("none");
     expect(contract.environment.required).toBe(prerequisite?.requiredEnvironment);
-    expect(contract.gate.acceptedSources).toEqual(["external-verification"]);
+    expect(contract.gate.acceptedSources).toEqual(["external-verification", "owner-risk-acceptance"]);
     expect(contract.gate.acceptedEnvironments).toEqual(["production"]);
     expect(contract.pre.map((entry) => entry.id)).toEqual([
       "a1-pre-credential-identity",

@@ -45,13 +45,21 @@ export type PrerequisiteState =
   | "STALE"
   | "CONTRADICTORY";
 
-/** Where a piece of evidence came from. Only external verification can satisfy. */
+/**
+ * Where a piece of evidence came from.
+ *
+ * `external-verification` is the default (and only) source that can satisfy a
+ * production prerequisite. `owner-risk-acceptance` is accepted **only** where a
+ * prerequisite lists it in `acceptedSources` — today that is A1's compensating-
+ * controls path, which never claims the issuer revoked the credential.
+ */
 export type EvidenceSource =
   | "external-verification"
   | "documentation"
   | "ci-run"
   | "fixture"
-  | "local-run";
+  | "local-run"
+  | "owner-risk-acceptance";
 
 /** The environment the evidence describes. Production prerequisites need production. */
 export type EvidenceEnvironment = "production" | "preview" | "development" | "local" | "ci";
@@ -113,6 +121,13 @@ export interface Prerequisite {
    * declared by writing a sentence.
    */
   exemptible: boolean;
+  /**
+   * Sources that may satisfy this prerequisite when the record is otherwise
+   * well-formed. Defaults to `external-verification` only. A source that is
+   * not listed here cannot satisfy, even if it is listed on another
+   * prerequisite.
+   */
+  acceptedSources?: readonly EvidenceSource[];
 }
 
 export interface ReleaseCandidate {
@@ -166,6 +181,11 @@ export interface ReleaseVerdict {
 class EvaluationError extends Error {}
 
 const VERIFYING_SOURCES: readonly EvidenceSource[] = ["external-verification"];
+
+/** Sources that may satisfy a prerequisite. Unlisted sources cannot. */
+export function verifyingSourcesFor(prerequisite: Prerequisite): readonly EvidenceSource[] {
+  return prerequisite.acceptedSources ?? VERIFYING_SOURCES;
+}
 
 /** Clock injection keeps freshness rules deterministic in tests. */
 export type Clock = () => number;
@@ -433,11 +453,13 @@ function rejectReason(
 
   if (status !== "VERIFIED") return null; // kept for BLOCKED/UNVERIFIED reporting
 
-  if (!VERIFYING_SOURCES.includes(source)) {
+  if (!verifyingSourcesFor(prerequisite).includes(source)) {
     const word =
       source === "documentation" ? "documentation is not verification"
       : source === "fixture" ? "fixture data is not production evidence"
       : source === "ci-run" ? "a green CI run is not production verification"
+      : source === "owner-risk-acceptance"
+        ? "owner risk-acceptance is not an accepted source for this prerequisite"
       : "a local run is not production verification";
     return `${word} (source: ${String(source)})`;
   }
@@ -524,12 +546,13 @@ export const RELEASE_PREREQUISITES: readonly Prerequisite[] = [
   {
     id: "A1_OTP_ISSUER_REVOCATION",
     requirement:
-      "The exposed OTP credential is revoked at the issuer, evidenced by the issuer — not by a note in this repository.",
+      "The exposed OTP credential is revoked at the issuer (401/403), or an authorized project owner has filed a compensating-controls risk-acceptance that does not claim revocation, after Xstarz runtime controls are independently observed.",
     mandatory: true,
     requiredEnvironment: "production",
     maxAgeMs: 30 * 24 * 60 * 60 * 1000,
     binding: "none",
     exemptible: false,
+    acceptedSources: ["external-verification", "owner-risk-acceptance"],
   },
   {
     id: "A2_HISTORY_REWRITE",

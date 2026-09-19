@@ -7,12 +7,10 @@
  * is reported as absence, never as a pass.
  *
  * There is deliberately no code path here that produces a VERIFIED record from
- * a document. A file in this repository is, at best, a CLAIM; the gate only
- * accepts `external-verification` records bound to the candidate, so a claim
- * written here can never satisfy a prerequisite — it can only be reported, with
- * the reason it did not count. That is the property the current-state test
- * exercises: flipping a derived record's status to VERIFIED still yields NOT
- * READY, because the record's source and environment are what the gate reads.
+ * a document. A file in this repository is, at best, a CLAIM. The gate accepts
+ * `external-verification` for every prerequisite, and — for A1 only —
+ * `owner-risk-acceptance` after independently observed compensating controls.
+ * A claim that does not survive that reader cannot satisfy a prerequisite.
  *
  * Evidence is looked for at explicit, named paths. If an operator later produces
  * real production proof, they file it at that path and this reader validates it;
@@ -33,6 +31,13 @@ import {
 } from "./convex-deployment-verification";
 import { requiredConvexFunctionReferences } from "./convex-function-surface";
 import {
+  A1_COMPENSATING_PROOF_PATH,
+  A1_RUNTIME_CONTROL_PATHS,
+  a1CompensatingControlsToEvidence,
+  evaluateA1CompensatingControls,
+  observeA1RuntimeControls,
+} from "./a1-compensating-controls";
+import {
   evaluateRelease,
   RELEASE_PREREQUISITES,
   type EvidenceRecord,
@@ -44,6 +49,11 @@ import {
 export const PROOF_PATHS = {
   /** Issuer-side revocation confirmation for the exposed OTP credential (A1). */
   a1Revocation: "docs/remediation/a1-revocation-attestation.json",
+  /**
+   * Owner-filed compensating-controls risk-acceptance for A1. Does not claim
+   * revocation. Unfiled until the owner writes it.
+   */
+  a1CompensatingControls: A1_COMPENSATING_PROOF_PATH,
   /** Post-rewrite verification, per affected ref (A2). */
   rewriteVerification: "docs/remediation/rewrite-verification.json",
   /** Production Convex deployment verification. */
@@ -161,6 +171,51 @@ function readInventory(source: FactSource): {
     // guards exist to prevent, one layer up.
     return { present: false, affectedRefs: [], stillServing: [] };
   }
+}
+
+/**
+ * A proof file is only worth what it declares. Anything that does not declare
+ * itself as externally-produced production verification is reported as a claim,
+ * and a claim cannot satisfy a prerequisite.
+ */
+/**
+ * A1 compensating-controls file, validated rather than quoted. Controls are
+ * observed from the runtime sources, never taken from the file. Absence of the
+ * file is silence, not a BLOCKED record — A1 then stays on the revocation path.
+ */
+function a1CompensatingProofRecord(
+  source: FactSource,
+  now: number,
+  candidateCommit: string,
+): EvidenceRecord | null {
+  const path = PROOF_PATHS.a1CompensatingControls;
+  if (!source.exists(path)) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source.read(path));
+  } catch {
+    return {
+      prerequisite: "A1_OTP_ISSUER_REVOCATION",
+      status: "UNVERIFIED",
+      source: "documentation",
+      environment: "local",
+      observedAt: Number.NaN,
+      detail: `${path} exists but is not valid JSON`,
+    };
+  }
+
+  const files: Record<string, string> = {};
+  for (const controlPath of A1_RUNTIME_CONTROL_PATHS) {
+    files[controlPath] = source.exists(controlPath) ? source.read(controlPath) : "";
+  }
+  const assessment = evaluateA1CompensatingControls(parsed, {
+    now,
+    controls: observeA1RuntimeControls(files),
+    candidateCommit,
+  });
+  const record = a1CompensatingControlsToEvidence(assessment);
+  return { ...record, detail: `${path}: ${record.detail}` };
 }
 
 /**
@@ -373,6 +428,19 @@ export function deriveCurrentReleaseState(
   const now = options.now ?? Date.now();
   const requiredFunctions = resolveRequiredFunctions(options.requiredConvexFunctions);
   for (const [prerequisite, path] of proofByPath) {
+    if (prerequisite === "A1_OTP_ISSUER_REVOCATION") {
+      const compensating = a1CompensatingProofRecord(source, now, candidate.commit);
+      if (compensating) {
+        present.push(PROOF_PATHS.a1CompensatingControls);
+        records.push(compensating);
+      }
+      const quoted = proofRecord(prerequisite, path, source);
+      if (quoted) {
+        present.push(path);
+        records.push(quoted);
+      }
+      continue;
+    }
     const record =
       prerequisite === EVIDENCE_D_PREREQUISITE
         ? evidenceDProofRecord(path, source, now, candidate)

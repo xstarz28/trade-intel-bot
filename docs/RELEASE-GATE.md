@@ -5973,3 +5973,70 @@ provider was registered. `resend.dev` must not be filed as an Xstarz production
 sender.
 
 **Release decision: NOT READY.**
+
+---
+
+## A1 compensating-controls path (issuer unavailable)
+
+This is not a new phase heading. It records an auditable A1 path that does
+**not** claim issuer revocation and does **not** satisfy the release gate on
+this checkout.
+
+### What already existed
+
+There was **no** issuer-unavailable exception, quarantine flag, or owner
+risk-acceptance path. A1 is mandatory, production-only, `exemptible: false`,
+binding `none`, 30-day window. An exemption naming A1 is refused. The only
+admissible *revocation* evidence remains issuer confirmation plus an
+authenticated **401/403** (`a1-issuer-evidence.ts`). Documentation, timeout,
+HTTP 000, local tests, and fixtures are still refused as revocation proof.
+
+### What Xstarz can produce without Freebuff
+
+Runtime compensating controls, observed from source (not from a filed boolean):
+
+- `emailOtp.ts` calls `sendXstarzVerificationEmail` and does not name
+  `auth.freebuff.app` or `send_otp`
+- `issuerPolicy.ts` lists `freebuff.app` among `RETIRED_ISSUER_HOSTS` and
+  refuses federated issuers in production
+- `emailDelivery.ts` denylists `auth.freebuff.app`, refuses shared-test sender
+  hosts, and refuses the `console` transport in production
+
+The leaked credential is therefore unused by current Xstarz OTP send. That is
+**not** issuer revocation. The shared platform key remains valid everywhere it
+was copied.
+
+### What Xstarz cannot produce without the issuer
+
+- an authenticated 401/403 presenting the leaked key
+- issuer confirmation that this fingerprint was revoked
+- invalidation of the shared scaffold key across other projects
+
+### The owner-filed path (unfiled)
+
+Schema `a1.compensating-controls/v1` at
+`docs/remediation/a1-compensating-controls.json`. Required fields: `schema`,
+`prerequisite` (`A1_OTP_ISSUER_REVOCATION`), `kind` (`compensating-controls`),
+`source` (`owner-risk-acceptance`), `environment` (`production`), `issuer`,
+`fingerprint`, `accepted: true`, `acceptedBy`, `acceptedAt`, `rationale`
+(≥40 characters), `residualRisk`, `revocationClaimed: false`,
+`issuerContacted: false`. Forbidden: credential-shaped fields (`apiKey`,
+`secret`, `token`, `value`, `x-api-key`, `password`). A file that claims
+revocation, 401/403, or issuer contact is refused here — that claim belongs on
+the issuer-evidence path.
+
+The gate accepts `owner-risk-acceptance` **only** for A1, via
+`acceptedSources`. EMAIL, Convex, Evidence D, and A2 still require
+`external-verification`. A1 stays `exemptible: false`. The reader observes the
+runtime sources independently; a filed `controlsProven: true` cannot substitute
+for them. This checkout does **not** contain the file. Nothing here self-certifies
+A1.
+
+### A2
+
+Unchanged and unexecuted. Owner acceptance of A1 compensating-controls would
+not rewrite history, would not clear `refs/pull/*`, and would not mark
+`A2_HISTORY_REWRITE` verified. Runbook §3 is not amended by this path.
+
+**A1 status on this tree: UNVERIFIED** (no issuer attestation, no owner file).
+**Release decision: NOT READY.**

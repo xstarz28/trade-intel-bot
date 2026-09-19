@@ -445,6 +445,34 @@ describe("241 — malformed, unknown and failing input", () => {
     expect(verdict.blockers.join(" ")).toContain("exemption refused");
   });
 
+  it("17g. owner-risk-acceptance cannot satisfy a prerequisite that does not list it", () => {
+    const records = allVerified().map((r) =>
+      r.prerequisite === EMAIL
+        ? proof(EMAIL, { source: "owner-risk-acceptance", detail: "we accept the email risk" })
+        : r,
+    );
+    const verdict = evaluate(records);
+    expect(verdict.verdict).toBe("NOT READY");
+    expect(stateOf(records, EMAIL)).not.toBe("VERIFIED");
+    const reasons = verdict.prerequisites.find((p) => p.id === EMAIL)?.reasons ?? [];
+    expect(reasons.join(" ")).toContain("owner risk-acceptance is not an accepted source");
+  });
+
+  it("17h. owner-risk-acceptance can satisfy A1 when the rest of the set is verified", () => {
+    const records = allVerified().map((r) =>
+      r.prerequisite === A1
+        ? proof(A1, {
+            source: "owner-risk-acceptance",
+            detail: "issuer unavailable; owner accepted residual risk; revocation is not claimed",
+          })
+        : r,
+    );
+    const verdict = evaluate(records);
+    expect(stateOf(records, A1)).toBe("VERIFIED");
+    expect(verdict.verdict).toBe("READY");
+    expect(verdict.blockers).toEqual([]);
+  });
+
   it("17f. an exemption without a stated reason is refused", () => {
     const verdict = evaluateRelease(
       input(allVerified(), { exemptions: { [A1]: { reason: "   " } } }),
