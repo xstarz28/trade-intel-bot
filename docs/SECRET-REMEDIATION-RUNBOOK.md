@@ -107,12 +107,18 @@ Three consequences follow, and they matter more than the history question:
 
 ## 2. Rotation gate — **BLOCKED**
 
-**The rewrite must not run before the credential is revoked at the issuer.**
+**The rewrite must not run before §2 is satisfied.**
 
-Rewriting first would be actively harmful: it destroys the audit trail and
-signals "resolved" while a live credential remains valid in every clone, fork,
-CI cache and GitHub API view that already has it. A Git rewrite cannot
-un-leak a secret; only the issuer can.
+§2 is satisfied by exactly one recorded path. Path R claims issuer revocation.
+Path C does not. Treating Path C as a 401/403, or treating an unfiled file as
+either path, is refused.
+
+Rewriting with **neither** path recorded would be actively harmful: it destroys
+the audit trail and can be misread as "resolved" while a live credential remains
+valid in every clone, fork, CI cache and GitHub API view that already has it. A
+Git rewrite cannot un-leak a secret; only the issuer can. Path C does not change
+that fact — it records that the owner accepted residual risk without claiming
+the issuer revoked the key.
 
 Evidence gathered in this environment:
 
@@ -137,7 +143,8 @@ for the bot. See `docs/RELEASE-GATE.md` Phase 222. **Still BLOCKED.**
 
 ### What satisfies the gate
 
-A human with issuer access must, **in this order**:
+**Path R — issuer revocation** (use this when a party with issuer-side access
+exists). A human with that access must, **in this order**:
 
 1. Provision a **new** credential at the OTP provider.
 2. Configure it as a Convex environment variable (never in source).
@@ -145,9 +152,23 @@ A human with issuer access must, **in this order**:
 4. Prove revocation: an authenticated call presenting the old credential
    returns an explicit auth failure (401/403). A timeout, a 000, or a 200 from
    an unrelated endpoint is **not** proof.
-5. Record the date, the operator, and the observed rejection response.
+5. Record the date, the operator, and the observed rejection response at
+   `docs/remediation/a1-revocation-attestation.json`.
 
-Only then may §3 run against the real repository.
+**Path C — owner compensating-controls** (does **not** claim revocation). The
+release gate reads a valid owner-filed
+`docs/remediation/a1-compensating-controls.json` (`schema:
+a1.compensating-controls/v1`, `source: owner-risk-acceptance`,
+`revocationClaimed: false`) as VERIFIED for A1 after independently observed
+runtime controls. That file is **unfiled** on this tree. Path C is not a
+401/403, not an exemption, and not self-certification by this tooling.
+
+Today **neither path is recorded**. Status remains **BLOCKED on §2**.
+
+Only when Path R or Path C is recorded may an authorized human operator start
+§3. This tooling does not start §3, does not force-push, and does not touch
+`main`. Path C does not mark `A2_HISTORY_REWRITE` verified and does not clear
+`refs/pull/*`.
 
 ### 2.1 Phase 251 — A1 issuer access re-measured, still BLOCKED
 
@@ -232,9 +253,13 @@ that the leaked key is **not** revoked at the issuer. The reader observes
 `emailOtp.ts`, `emailDelivery.ts` and `issuerPolicy.ts` independently; if any
 required control is missing, the file cannot satisfy A1.
 
-This path does **not** change §3. A2 remains unexecuted. Filing the file, if
-the owner later chooses to, would be a statement about A1 residual risk, not
-permission for this tooling to rewrite history or to touch `main`.
+If the owner later files Path C and the A1 gate reads it as VERIFIED, §2 is
+satisfied **without claiming revocation**. An authorized human may then start
+§3. This tooling still does not start §3. A2 remains unexecuted on this tree.
+`refs/pull/*` still require GitHub Support after any heads/tags rewrite. Residual
+risk in §5 still applies: the shared key is not dead at the issuer.
+
+Filing is not done here. The file is unfiled. Status remains **BLOCKED on §2**.
 
 ---
 
@@ -244,7 +269,8 @@ Verified in Phase 198 against a fresh `--mirror` clone in `/tmp`. The
 production repository and `main` were never touched.
 
 ```bash
-# 0. Preconditions: §2 satisfied and recorded. Never run otherwise.
+# 0. Preconditions: §2 satisfied and recorded (Path R or Path C). Never run otherwise.
+#    Path C is not issuer revocation. Residual risk in §5 still applies.
 
 # 1. Disposable full mirror — never rewrite a working clone.
 git clone --mirror https://github.com/xstarz28/trade-intel-bot.git rehearsal.git
@@ -411,9 +437,10 @@ is installed and the procedure re-rehearsed against it, before §3 runs on the
 strength of this evidence.
 
 **What this does not change.** A2 remains **UNVERIFIED** and unexecuted. §2 still
-blocks §3: A1 is unrevoked at the issuer. The rehearsal is evidence about a
-procedure, not a remediation, and a nine-ref rehearsal does not shrink the nine-ref
-exposure. The release verdict is unchanged: **NOT READY**.
+blocks §3 on this tree: Path R is unrecorded (A1 unrevoked at the issuer) and
+Path C is unfiled. The rehearsal is evidence about a procedure, not a
+remediation, and a nine-ref rehearsal does not shrink the nine-ref exposure.
+The release verdict is unchanged: **NOT READY**.
 
 ### 3.2 Exact-tool rehearsal — `git filter-repo --replace-text` (Phase 250)
 
@@ -589,4 +616,6 @@ successful rewrite:
 - any third-party mirror or code-scanning index.
 
 The old credential must be **dead at the issuer** for any of this to be
-resolved.
+resolved. Path C does not make it dead. A rewrite under Path C removes the blob
+from rewriteable refs; it does not retract the key from clones, forks, CI
+caches, GitHub `refs/pull/*`, or the issuer.

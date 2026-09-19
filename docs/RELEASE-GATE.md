@@ -6034,9 +6034,58 @@ A1.
 
 ### A2
 
-Unchanged and unexecuted. Owner acceptance of A1 compensating-controls would
-not rewrite history, would not clear `refs/pull/*`, and would not mark
-`A2_HISTORY_REWRITE` verified. Runbook §3 is not amended by this path.
+Unchanged and unexecuted on this tree. Owner acceptance of A1
+compensating-controls would not rewrite history, would not clear `refs/pull/*`,
+and would not mark `A2_HISTORY_REWRITE` verified. See the A2 authorization
+section below for how Path C relates to runbook §2.
 
 **A1 status on this tree: UNVERIFIED** (no issuer attestation, no owner file).
+**Release decision: NOT READY.**
+
+---
+
+## A2 authorization after A1 compensating-controls
+
+This is not a new phase heading. It restates when an operator may *start* the
+rehearsed rewrite, without starting it.
+
+The release gate already evaluates A1 and A2 independently: both are mandatory,
+`exemptible: false`, production-only. A2 binds to the affected-ref set and
+accepts only `external-verification`. Nothing here weakens that. A2 evidence is
+still a post-rewrite scan of **every** reachable ref, including GitHub-managed
+`refs/pull/*`.
+
+The **runbook** was the conflict. §2 previously required literal issuer
+revocation before §3, while §2.2 said Path C does not change §3. That would have
+left A2 forbidden even after a valid owner A1 compensating-controls filing that
+the gate itself can read as VERIFIED without claiming revocation.
+
+§2 now has two recorded satisfaction paths:
+
+| Path | What it is | What it is not |
+| --- | --- | --- |
+| R | issuer confirmation + authenticated 401/403 | a timeout, HTTP 000, or a document |
+| C | owner-filed `a1.compensating-controls/v1` with `revocationClaimed: false`, A1 VERIFIED at the gate | issuer revocation, an exemption, this tooling filing the file |
+
+Today neither path is recorded. Status remains **BLOCKED on §2**. This checkout
+does not contain `docs/remediation/a1-compensating-controls.json`. A2 stays
+UNVERIFIED.
+
+If Path C is later recorded, an authorized human may start §3. Remaining work
+that this repository cannot finish:
+
+- explicit operator approval (no tool may grant it)
+- `git filter-repo --replace-text` of the nine rewriteable refs, never from
+  `main` as the working context
+- GitHub Support clearing `refs/pull/1/head`, `refs/pull/2/head`,
+  `refs/pull/2/merge`, `refs/pull/3/head`, `refs/pull/3/merge`,
+  `refs/pull/4/head`, `refs/pull/4/merge` — GitHub rejects ordinary pushes with
+  `deny updating a hidden ref`
+- a post-rewrite **remote** scan covering heads, tags, **and** every remaining
+  pull ref, with the scanner's positive control
+- residual risk: the shared key is still live at the issuer under Path C
+
+This tooling does not start §3, does not force-push, and does not touch `main`.
+
+**A2 status on this tree: UNVERIFIED / unexecuted.**
 **Release decision: NOT READY.**
