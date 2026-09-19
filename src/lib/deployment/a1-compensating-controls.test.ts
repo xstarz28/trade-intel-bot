@@ -157,10 +157,49 @@ describe("A1 compensating-controls — evaluator", () => {
     expect(assess(payload({ issuerContacted: true })).outcome).toBe("CLAIMS_REVOCATION");
   });
 
-  it("a credential-shaped field is forbidden content", () => {
-    const report = assess(payload({ apiKey: "x".repeat(33) }));
-    expect(report.outcome).toBe("FORBIDDEN_CONTENT");
-    expect(report.admissible).toBe(false);
+  it("every credential-shaped field name is forbidden content", () => {
+    const keys = [
+      "credential",
+      "secret",
+      "apiKey",
+      "api_key",
+      "x-api-key",
+      "token",
+      "password",
+      "value",
+    ] as const;
+    for (const key of keys) {
+      const report = assess(payload({ [key]: "x".repeat(33) }));
+      expect(report.outcome, key).toBe("FORBIDDEN_CONTENT");
+      expect(report.admissible, key).toBe(false);
+    }
+  });
+
+  it("a nested credential-shaped field is forbidden, not extra metadata", () => {
+    expect(assess(payload({ extra: { value: "x".repeat(33) } })).outcome).toBe("FORBIDDEN_CONTENT");
+    expect(assess(payload({ extra: { apiKey: "x".repeat(33) } })).outcome).toBe("FORBIDDEN_CONTENT");
+    expect(assess(payload({ nested: [{ token: "x".repeat(33) }] })).outcome).toBe("FORBIDDEN_CONTENT");
+    expect(assess(payload({ extra: { value: "x".repeat(33) } })).admissible).toBe(false);
+  });
+
+  it("harmless extra metadata cannot change Path C gate semantics", () => {
+    const report = assess(payload({ ticket: "owner-note-1", controlsProven: true }));
+    expect(report.outcome).toBe("ADMISSIBLE");
+    expect(report.revocationClaimed).toBe(false);
+    const record = a1CompensatingControlsToEvidence(report);
+    expect(record.prerequisite).toBe(A1_COMPENSATING_PREREQUISITE);
+    expect(record.source).toBe("owner-risk-acceptance");
+    expect(record.detail).not.toMatch(/revoked|401|403/);
+    expect(record.detail).toMatch(/revocation is not claimed/);
+  });
+
+  it("incorrect schema identity fields are refused", () => {
+    expect(assess(payload({ schema: "phase246.a1-evidence/v1" })).outcome).toBe("MALFORMED");
+    expect(assess(payload({ prerequisite: "A2_HISTORY_REWRITE" })).outcome).toBe("MALFORMED");
+    expect(assess(payload({ kind: "issuer-revocation" })).outcome).toBe("MALFORMED");
+    expect(assess(payload({ source: "external-verification" })).outcome).toBe("MALFORMED");
+    expect(assess(payload({ environment: "development" })).outcome).toBe("MALFORMED");
+    expect(assess(payload({ issuer: "auth.example.app" })).outcome).toBe("MALFORMED");
   });
 
   it("owner acceptance without the owner, the rationale, residual risk, or acceptedAt is incomplete", () => {

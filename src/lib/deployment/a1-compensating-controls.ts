@@ -98,6 +98,29 @@ const CREDENTIAL_KEYS = [
 const MIN_RATIONALE = 40;
 const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * Walk the payload for credential-shaped field names. A nested `value` is the
+ * same defect as a top-level one: the filed JSON must never carry the secret.
+ * Harmless extra metadata is not refused here; only these keys are.
+ */
+function credentialShapedFields(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(credentialShapedFields);
+  }
+  if (!value || typeof value !== "object") return [];
+  const body = value as Record<string, unknown>;
+  const found: string[] = [];
+  for (const key of Object.keys(body)) {
+    const entry = body[key];
+    if ((CREDENTIAL_KEYS as readonly string[]).includes(key) && entry != null && entry !== "") {
+      found.push(key);
+    } else {
+      found.push(...credentialShapedFields(entry));
+    }
+  }
+  return found;
+}
+
 export function compensatingControlsProven(obs: A1RuntimeControlObservation): boolean {
   return (
     obs.neverCallsFreebuffHost &&
@@ -238,13 +261,15 @@ export function evaluateA1CompensatingControls(
   const body = payload as Record<string, unknown>;
   const problems: string[] = [];
 
-  for (const key of CREDENTIAL_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(body, key) && body[key] != null && body[key] !== "") {
-      problems.push(`forbidden field "${key}" — a credential value must never be filed`);
-    }
-  }
-  if (problems.length > 0) {
-    return { ...base, outcome: "FORBIDDEN_CONTENT", problems };
+  const forbidden = credentialShapedFields(body);
+  if (forbidden.length > 0) {
+    return {
+      ...base,
+      outcome: "FORBIDDEN_CONTENT",
+      problems: forbidden.map(
+        (key) => `forbidden field "${key}" — a credential value must never be filed`,
+      ),
+    };
   }
 
   if (body.schema !== A1_COMPENSATING_SCHEMA) {
