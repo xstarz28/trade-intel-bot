@@ -11,7 +11,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { execFileSync } from "node:child_process";
+import { listLiveRefs } from "./live-refs";
+import {
+  duplicateRefs,
+  parseExposureFacts,
+  parseRewriteCoverage,
+} from "./runbook-ref-facts";
 
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), "utf8");
 const gate = read("docs/RELEASE-GATE.md");
@@ -112,29 +117,31 @@ describe("Phase 221 — security chain is first and cannot be reordered", () => 
 });
 
 describe("Phase 221 — runbook refs match the refs that actually exist", () => {
-  it("lists all five refs including the current working branch", () => {
-    const table = runbook.slice(runbook.indexOf("### Refs the force-push will rewrite"), runbook.indexOf("## 4. Assertions"));
-    for (const ref of [
-      "heads/arena/01a08e67-trade-intel-bot",
-      "heads/arena/01a0a5f5-trade-intel-bot",
-      "heads/main",
-      "heads/phase-157-live-discovery-lifecycle",
-      "tags/rc-181",
-    ]) {
-      expect(table).toContain(`\`${ref}\``);
+  /**
+   * Phase 233 replaced the original oracle here. It read
+   * `git for-each-ref refs/remotes/origin refs/tags` and swallowed git errors
+   * with a bare `catch { return; }`, so its verdict was a function of clone
+   * depth: a depth-1 checkout saw one ref, a checkout with no origin refs saw
+   * none and passed without checking anything, and a full clone saw them all
+   * and failed. Same commit, three different results.
+   *
+   * The subject set is now read from the REMOTE (`git ls-remote`), and an
+   * unreachable remote fails closed with an explicit infrastructure error
+   * rather than passing vacuously. See src/lib/deployment/live-refs.ts.
+   */
+  it("rewrite coverage includes every ref the remote advertises", () => {
+    const covered = new Set(parseRewriteCoverage(runbook).map((r) => r.ref));
+    for (const ref of listLiveRefs()) {
+      expect(covered, `rewrite coverage is missing live ref ${ref}`).toContain(ref);
     }
-    expect(table).toMatch(/\*\*All five\*\*/);
   });
 
-  it("every branch/tag known to the local remote-tracking set appears in the runbook", () => {
-    let refs: string[] = [];
-    try {
-      refs = execFileSync("git", ["for-each-ref", "--format=%(refname)", "refs/remotes/origin", "refs/tags"], { encoding: "utf8" })
-        .split("\n").filter(Boolean)
-        .map((r) => r.replace("refs/remotes/origin/", "heads/").replace("refs/tags/", "tags/"))
-        .filter((r) => r !== "heads/HEAD");
-    } catch { return; }
-    for (const r of refs) expect(runbook, `runbook missing ref ${r}`).toContain(`\`${r}\``);
+  it("the per-ref exposure table lists every live ref exactly once", () => {
+    const rows = parseExposureFacts(runbook).map((r) => r.ref);
+    expect(duplicateRefs(rows)).toEqual([]);
+    for (const ref of listLiveRefs()) {
+      expect(rows, `exposure table is missing live ref ${ref}`).toContain(ref);
+    }
   });
 });
 

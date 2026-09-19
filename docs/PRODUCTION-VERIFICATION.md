@@ -70,6 +70,25 @@ TWELVE_DATA_API_KEY=xxx VITE_CONVEX_URL=https://xxx.convex.cloud \
 Exit code `0` means every **required** check passed; `1` means at least one
 required check failed, so it is safe to use as a deploy gate.
 
+### The live vitest suite (Phase 237)
+
+Separately from the harness, some tests are themselves live — they assert on
+responses from real providers (CoinGecko, OKX, Treasury, CFTC, DeFiLlama).
+Those are marked by filename (`*.live.test.ts`) and are **not collected** by
+`npm test`. Running them requires an explicit opt-in:
+
+```bash
+LIVE_PROVIDER_VERIFICATION=1 npm run test:live
+```
+
+Without the flag, `npm run test:live` refuses to start rather than quietly
+skipping — and `npm test` is guarded the other way around: a test-only network
+guard (`src/test-network-guard.ts`) refuses any non-loopback connection, so a
+test that depends on a provider fails the same way on every machine instead of
+passing locally and failing on CI. A live run's result is evidence about the
+provider's availability; it is never evidence about this repository's
+correctness, and it is reported as such.
+
 ### What it actually proves
 
 The harness is written to avoid the classic false positive of "endpoint

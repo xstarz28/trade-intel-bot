@@ -426,7 +426,7 @@ still at `51c9ddeb` (untouched, still exposed at tip).
 | ID | Blocker | Group | CODE-READY | DEV-VERIFIED | PROD-VERIFIED | Cleared only by |
 | --- | --- | --- | --- | --- | --- | --- |
 | A1 | Leaked Freebuff OTP credential revoked at issuer | Security | n/a | n/a | — | authenticated request with the **old** key → explicit **401/403** (000/timeout/200-elsewhere is not evidence) |
-| A2 | History rewrite across **all five** refs | Security | rehearsed (Phase 221, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
+| A2 | History rewrite across **all seven** refs | Security | rehearsed (Phase 221, 5 of 7 refs, see below) | n/a | — | A1 recorded, then §3 of the runbook, then verifier `--expect-clean` exit 0 |
 | A3 | Zero secret occurrences after rewrite | Security | verifier + positive control | n/a | — | A2 |
 | B1 | Production Convex project + `CONVEX_DEPLOYMENT` / `CONVEX_DEPLOY_KEY` | Convex | preflight + access diag ready | dev project exists | **absent** | Convex account holder provisions a **separate prod deployment** (dev is never promoted) |
 | B2 | `CONVEX_SITE_URL` / `VITE_CONVEX_URL` (prod values) | Convex | URL checks in preflight | dev values only | absent | B1 |
@@ -453,7 +453,7 @@ still at `51c9ddeb` (untouched, still exposed at tip).
 ### Dependency graph
 
 ```
-A1 revoke ──► A2 rewrite (5 refs) ──► A3 zero occurrences ──┐
+A1 revoke ──► A2 rewrite (7 refs) ──► A3 zero occurrences ──┐
                                                             ├──► release
 B1 prod Convex ─► B2 URLs ─► B3 codegen ─► B4 env ─► B6 deploy ─► B5 prod auth ─┤
 C1 account ─► C2 domain ─► C3 DNS ────────────────────────────► C4 D1 (prod) ──┤
@@ -496,7 +496,7 @@ be substituted; the dev deployment is not to be promoted.
 | Phase 204 auth identity fix verified on dev | production sign-in works — prod has a different issuer URL, `SITE_URL`, and no email transport yet |
 | E1–E7 entitlement machine 7/7 on dev | a production deployment enforces it — prod has never been deployed |
 | D2/D3/D4/D6/D9/D10 PASS on dev | production Evidence D — every row was recorded `productionEvidence:false` |
-| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 5 refs |
+| Source secret scan clean at HEAD | the leaked credential is dead — only the issuer's 401/403 proves that; history still carries it in 7 refs |
 | CI build/package PASS on 3 platforms | release signing — every artifact is unsigned |
 | preflight passing on dev | production configuration — prod inputs are absent today |
 
@@ -530,13 +530,22 @@ unchanged; no force-push).
 Rewritten tips in the rehearsal: `main → b1a9e91`, `phase-157 → 6bf6f58`,
 `rc-181 → 23d25ff`, `arena/01a08e67 → bd233a8`, `arena/01a0a5f5 → a2243f0`.
 The procedure remains applicable after Phases 204 and 220. **It remains
-unexecuted** and gated on A1. The runbook's ref table is updated to five refs.
+unexecuted** and gated on A1.
+
+**Phase 233 correction.** The rehearsal above covered the five refs known at
+the time. The remote now advertises **seven**: `01a0a92b` and `01a0ad26` were
+created afterwards, are absent from the rehearsal, and — until Phase 233 —
+were absent from both of the runbook's ref tables. Both carry 269 carrier
+commits, so each would have survived a rewrite as a live path back to the
+credential, defeating A3 entirely. The runbook's ref tables and this gate now
+read seven; a rehearsal covering all seven is still required before A2 runs.
+Per-ref evidence: `docs/secret-remediation-refs.json`.
 
 ### Release order — deterministic, not reorderable
 
 1. Revoke the old Freebuff OTP key at the issuer (A1).
 2. Capture the 401/403 rejection with the old key; record date/operator (A1).
-3. Run the rehearsed rewrite across **all five** refs; force-push mirror (A2).
+3. Run the rehearsed rewrite across **all seven** refs; force-push mirror (A2).
 4. `node scripts/secret-rehearsal-verify.mjs --expect-clean` → exit 0; re-tag RC (A3).
 5. Provision a production Convex deployment; set deploy key, URLs (B1, B2).
 6. `npx convex codegen` against production; commit only if drift (B3).
@@ -1107,3 +1116,757 @@ Credentials asserted absent from every new envelope (EIA `SECRET-VALUE-XYZ` 403 
 
 ### N. Release blockers (unchanged)
 A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on A1; production email transport/sender/required vars absent; Evidence D INCOMPLETE.
+
+## Phase 232 — market-data envelope `acquisition` / `observedAt` passthrough
+
+Base `3f63690` (the Phase 230 merge tree). Scope is one defect on the protected
+fan-out: the market-data leg was the only leg that did not forward the
+acquisition metadata its own action already produces.
+
+**Session provenance (material to this record).** Phase 231 was authored in a
+different session's sandbox as commit `f1bfbb4` and was **never pushed**. That
+commit is absent from this repository's history and from every remote ref
+(verified: `git cat-file`, `rev-list --all --objects`, `git log --all
+--grep=f1bfbb4`, `git ls-remote`). It could not be fetched, bundled, or
+reconstructed here. Phase 232 was therefore implemented **directly on the Phase
+230 base**, not on top of Phase 231. The brief's "Phase 231 complete/partial/
+fatal semantics must remain unchanged" is satisfied vacuously: no such taxonomy
+exists in this tree (no `complete`/`partial`/`fatal` leg state anywhere in
+`src/`, and `marketData.ts` imports only `classifyLegError` from
+`lib/legOutcome`). **If `f1bfbb4` is later recovered it will conflict with this
+phase and must be reconciled deliberately.**
+
+### A. The defect — before / after
+| Condition | Before | After |
+|---|---|---|
+| cold acquisition, all sub-legs healthy | `market-data/ohlcv = unavailable` (acquisition had completed; the fan-out summary on the same run said `market-data=success`) | `market-data/ohlcv = observed-now(age Nms, used)` |
+| warm acquisition (candle cache hit, 60s TTL) | `unavailable` — the reuse was invisible | `market-data/ohlcv = cache-reused(age Nms, used)`, age carrying the ORIGINAL observation |
+| `unavailableCount` in the totals line | `1 unavailable` on a fully healthy run | `0 unavailable` |
+| `used` marker on the engine's most important leg | suppressed (`legFromFailure` reports `acquired:false`) | present |
+
+Root cause, exactly one omission. `fetchMarketData` has always emitted
+`acquisition: envelopeAcquisition(candleAcquisitions)` and
+`observedAt: oldestObservation(candleObservations)`; `runProviderLeg` has always
+forwarded both verbatim and never invents one; the provenance builder has always
+honoured them. Only the `acquiredLeg` call site in `protectedAnalysis.ts`
+dropped them — every other leg (alpha-vantage, tickatlas, coinglass, okx,
+treasury, eia) forwarded both. Because `ohlcv` is a cached dataset, the builder
+received a successful leg with neither a mode nor an observation time, which is
+indistinguishable from "the action degraded internally but still reported
+success", and took its no-completed-cache-read branch.
+
+Fix is 19 added lines, **purely additive** (0 deletions): forward both fields
+verbatim, with no fallback of any kind.
+
+### B. Envelope contract
+Unchanged. `fetchMarketData` still returns `{success, data, technical, …}` plus
+the two provenance fields; the passthrough is the only edit. Asserted against
+the real handler.
+
+### C. Cache behaviour
+`ohlcv` (60s) and `quote` (20s) behave exactly as before. A cache hit still
+returns the entry's ORIGINAL `observedAt` (`provider-cache.ts` never rewrites
+it); the leg now surfaces that value instead of discarding it, so age grows
+across reuse rather than resetting. Nothing was added to or removed from any
+cache path.
+
+### D. Timestamp / provenance
+No new `Date.now()`. `observedAt` is forwarded verbatim; a `?? Date.now()`
+fallback and a `mode ?? "observed-now"` default are both explicitly forbidden by
+pinned assertions and by four of the seven mutants. The degraded case is
+preserved: an envelope carrying NEITHER field still reports `unavailable` with
+no age, no `used` marker and an incremented `unavailableCount` — the Phase 178d
+integrity property, re-asserted for market-data. No historical-as-live, no zero
+fallback, no symbol substitution (the leg identity stays `market-data`/`ohlcv`
+and never collapses to the underlying vendor, and the requested instrument
+reaches the action unchanged).
+
+### E. Mutation tests (7/7 CAUGHT, 0 gaps)
+`scripts/mutation-suite-phase232.sh`, byte-exact restore via `cmp`, INVALID on a
+no-op. Both failure directions are covered, because they are opposites:
+dropping the acquisition mode (M1), dropping the observedAt (M2), dropping both
+— the exact pre-phase defect (M3); and fabricating — `observedAt ?? Date.now()`
+(M4), acquisition defaulted to `observed-now` (M5), observedAt re-stamped with
+the request clock (M6), acquisition hardcoded to `observed-now` (M7). Each
+mutation targets the FIRST occurrence of its pattern, which is the market-data
+leg; later occurrences belong to other legs and are left untouched.
+
+### F. Regression tests
+`src/convex/marketdata-envelope.phase232.test.ts` — **22 tests**, all green, run
+against the real `runProtectedAnalysis` wired to the real provider handlers.
+Covers a source-level wire pin that every `runProviderLeg` forwarding a provider
+envelope carries both fields (so a future leg cannot reintroduce the omission),
+the defect regression, the pre-fix signature asserted absent verbatim, the
+`used` marker, the totals count, fan-out/provenance agreement, cache-hit
+behaviour, growing age across reuse, verbatim passthrough against a pinned old
+observation, age tracking the envelope rather than the clock, the degraded-envelope
+guard in both its leg-state and count forms, identity, and a hard-failure leg.
+
+**Non-vacuity is measured, not asserted:** with the 19-line fix reverted the
+suite fails **14 of 22**. The 8 that still pass are exactly the negative guards
+(no-fabrication, identity, degraded-envelope, hard failure) plus the
+block-located precondition — i.e. the ones that must hold with or without the
+fix.
+
+### G. Gates
+`tsc -b` 0 · vitest **288 files / 9930 pass / 1 fail / 18 skipped** (Phase 230
+baseline 287 files / 9915 pass / 12 skipped; the 18-vs-12 skip delta is the
+env-gated `dist/` assertions, absent in this workspace) · eslint on changed
+files 0 · mutation suite 7/7 · `_generated` untouched · diff secret scan clean.
+The single failure is **pre-existing and unrelated** — see §H.
+
+### H. The one failing test (pre-existing, not introduced by this phase)
+`src/lib/deployment/release-gate-consistency.phase221.test.ts` › "every
+branch/tag known to the local remote-tracking set appears in the runbook" fails
+in this workspace with `runbook missing ref heads/arena/01a0a92b-trade-intel-bot`.
+The test enumerates `refs/remotes/origin` + `refs/tags` and demands each name
+appear in `docs/SECRET-REMEDIATION-RUNBOOK.md`. It reads no source file this
+phase touches.
+
+Isolated by experiment, with the Phase 232 fix left in place throughout:
+removing that tracking ref → 15/15 pass; restoring it → fails on that ref and no
+other. The cause is a real remote branch (`arena/01a0a92b-trade-intel-bot`, the
+PR #1 source) that the runbook does not enumerate; the runbook drifted when that
+branch was pushed. Any workspace that fetches all remote branches sees it, which
+is why the Phase 230 baseline did not. Deliberately NOT fixed here: the runbook
+is a security document whose per-ref rows state credential-exposure facts that
+must come from the history-fingerprint tooling, not from inference, and the
+phase brief forbids unrelated commits. Also noted while investigating: the
+runbook's per-ref status table listed only four refs and omitted the three
+branches created since Phase 198 (`01a0a5f5`, `01a0a92b`, `01a0ad26`); the
+rewrite map listed five and omitted the last two.
+
+*Correction (Phase 233):* this paragraph also originally claimed
+`refs/heads/arena/01a08e67-trade-intel-bot` appeared **twice** in the per-ref
+table. Re-reading the file at HEAD shows four rows, each distinct, with no
+duplicate. That claim was wrong and is withdrawn. The duplicate-row detection
+added in Phase 233 is therefore a forward-looking guard against a hazard that
+has not yet occurred, not a fix for one that had.
+
+### I. Remaining concrete defects (not deferred silently)
+1. The Phase 221 runbook-coverage test is sensitive to which branches the local
+   clone has fetched, so it is green or red depending on the developer's fetch
+   behaviour. Deriving the ref set from `git ls-remote` (or scoping it to refs
+   the runbook claims to cover) would make it deterministic. Out of scope here.
+   **FIXED in Phase 233** — the ref set now comes from `git ls-remote`, an
+   unreachable remote fails closed rather than passing, and the check is split
+   into inventory / exposure / coverage. See the Phase 233 section below.
+2. `f1bfbb4` (Phase 231) remains unrecovered and unpushed. Its content is
+   unknown to this repository; see the session-provenance note above.
+
+### J. Release blockers (unchanged)
+A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on
+A1; production email transport/sender/required vars absent; Evidence D
+INCOMPLETE.
+
+---
+
+## Phase 233 — deterministic ref source, runbook reconciliation, CI root cause
+
+### A. Why the Phase 221 check was not trustworthy
+`release-gate-consistency.phase221.test.ts` derived its subject set from
+`git for-each-ref refs/remotes/origin refs/tags` — the LOCAL remote-tracking
+set — and wrapped the call in `catch { return; }`. Its verdict was therefore a
+function of the clone, not the repository:
+
+| Clone state | Local refs seen | Old verdict |
+|---|---|---|
+| Full clone | all | fails on any ref the runbook omits |
+| `fetch-depth: 1` (CI) | 1 | fails on that one ref (the CI failure at `:137`) |
+| No origin refs | 0 | **passes without checking anything** |
+
+The empty case is the serious one: a security check that goes green because it
+did not run is worse than no check, and the bare `catch` made that state
+indistinguishable from a genuine pass.
+
+### B. What replaced it
+Three concerns are now separate, because collapsing them is what made the old
+failure unreadable:
+
+1. **Inventory** — which refs exist. `git ls-remote origin`
+   (`src/lib/deployment/live-refs.ts`). Depth-independent, never hardcoded.
+2. **Exposure facts** — which refs reach the credential, and which serve it
+   from the tip. `scripts/secret-ref-inventory.mjs`, by SHA-256 fingerprint
+   reachability of the blob — blob identity, never lineage inference.
+3. **Rewrite coverage** — what the runbook claims it will rewrite
+   (`src/lib/deployment/runbook-ref-facts.ts`), checked against 1 and 2.
+
+`listLiveRefs()` **fails closed**: an unreachable remote, or an empty/usable-less
+reply, throws `LiveRefSourceUnavailableError` naming the failure as
+infrastructure and explicitly NOT a clean result. Peaked tag objects (`^{}`)
+are dropped so one tag cannot demand two rows.
+
+### C. Verified inventory — all seven refs are affected
+Re-measured at 397 commits (Phase 198 measured 339). Fingerprint, blob OID,
+blob count and path are byte-identical to the Phase 198 record; the affected
+commit count is **unchanged at 270** — the exposure neither grew nor was
+silently remediated. Machine-readable: `docs/secret-remediation-refs.json`.
+
+| Ref | Affected | Carriers | Exposed at tip |
+|---|---|---|---|
+| `heads/arena/01a08e67-trade-intel-bot` | yes | 269 | no |
+| `heads/arena/01a0a5f5-trade-intel-bot` | yes | 269 | no |
+| `heads/arena/01a0a92b-trade-intel-bot` | **yes** | 269 | no |
+| `heads/arena/01a0ad26-trade-intel-bot` | **yes** | 269 | no |
+| `heads/main` | yes | 261 | **YES** |
+| `heads/phase-157-live-discovery-lifecycle` | yes | 262 | **YES** |
+| `tags/rc-181` | yes | 269 | no |
+
+`01a0a92b` and `01a0ad26` are affected and were in **neither** of the runbook's
+tables. Both would have survived the rewrite as live paths back to the
+credential, defeating A3. "Clean at tip" is not remediation — the blob stays
+reachable in history — which is the distinction the old single-column table
+blurred.
+
+### D. Runbook reconciliation
+Both tables now list all seven refs; the summary reads "All seven"; §3 states
+that the Phase 221 rehearsal covered five of them and that `01a0a92b` /
+`01a0ad26` have never been rehearsed; §4 carries the same scope caveat. §1's
+heading records both measurements. Every value comes from the fingerprint scan.
+
+### E. CI `Test suite` root cause — proven, not inferred
+Actions log BLOBs are still unreachable from this sandbox
+(`results-receiver.actions.githubusercontent.com`, `productionresultssa16.blob.core.windows.net`
+→ HTTP 000). **Check-run annotations work** and supplied the failures:
+
+| Location | Assertion |
+|---|---|
+| `handoff-readiness.phase200.test.ts:96` | `expected 'CREDENTIALS_REJECTED' to be 'NOT_REACHABLE'` |
+| `handoff-readiness.phase200.test.ts:84` | `expected ['dns','tcp','tls','http'] to include 'auth'` |
+| `release-gate-consistency.phase221.test.ts:137` | `runbook missing ref heads/arena/01a0ad26-trade-intel-bot` |
+
+The two phase200 failures are **pre-existing and environment-dependent**: that
+test shells out to `scripts/verify-convex-access.mjs`, which probes
+`api.convex.dev`. Locally egress is blocked (`NOT_REACHABLE` / `blockedAt: tls`);
+on a networked runner the probe reaches the service and is rejected
+(`CREDENTIALS_REJECTED` / `blockedAt: auth`). The test asserts the first outcome,
+so a networked CI fails it — the same class as the phase75 failure, where a
+green local suite proved nothing because sandboxed egress was load-bearing. A
+plain `npm test` replay at `3f63690` passes 287/287 both with and without
+`CI=true`: the discriminator is network state, not clone depth or env.
+
+The phase221 failure is cured by this phase — verified in a real `--depth 1`
+clone of the GitHub remote, where the old oracle saw exactly one ref and the
+new one sees all seven. The `history-secret-scan` job fails **by design**
+(`continue-on-error: true`, exits 1 while the credential is reachable).
+
+*Not changed here:* the phase200 assertions are a pre-existing defect and were
+left untouched deliberately — re-calibrating a security probe's expectations is
+its own decision, not a side effect of this phase.
+
+### F. CI behaviour of the new checks (measured, not assumed)
+Verified in both environments:
+
+| Environment | phase221 `:137` | phase233 |
+|---|---|---|
+| Full clone (local) | passes | passes — all 7 tips re-verified |
+| `--depth 1` branch clone | passes | passes — 1 tip re-verified |
+| `--depth 1` `refs/pull/2/merge` (what CI checks out) | passes | passes — tip re-verification **explicitly reported as skipped**, nothing silently green |
+
+The merge-ref checkout holds no advertised branch tip at all, so tip-exposure
+re-verification has nothing to compare against there (measured: 0 of 7 tips
+present). It reports that fact rather than accepting it quietly, and in a full
+clone it asserts that every tip is verified. The `:137` ref-drift failure is
+cured in all three.
+
+Confirmed against real CI on `f5880f0` — the `Test · typecheck · build · lint`
+job's only remaining test failures are the two pre-existing
+`handoff-readiness.phase200` assertions; the `release-gate-consistency.phase221`
+`:137` failure is gone. Job profile is **identical to the `3f63690` baseline**:
+`Android debug APK` fails (pre-existing), `Reachable-history secret scan` fails
+by design, `Test · typecheck · build · lint` fails on the phase200 defect alone,
+and `Windows desktop package` + `iOS project build` pass. Phase 233 introduced
+no new CI failure and removed one.
+
+### G. Mutation results
+`scripts/mutation-suite-phase233.sh` — **18/18 CAUGHT, 0 gaps**. Every mutant is
+a defect that has really occurred (the missing rewrite-map rows, the "All five"
+drift, the swallowed `catch`) or the exact regression the new rules prevent
+(hardcoded ref list, empty list accepted, peeled tags counted, each rule
+deleted, the section parser regressing to swallow a sibling section). Mutants
+are applied with perl programs in quoted heredocs, so no shell escaping can
+silently no-op them, and each is byte-verified as applied or reported INVALID.
+
+### H. Standing blockers (unchanged)
+A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on
+A1 and now known to require **seven** refs and a fresh rehearsal; production
+email transport/sender/required vars absent; Evidence D INCOMPLETE.
+
+---
+
+## Phase 234 — the Convex access verdict contract
+
+### A. The defect
+`handoff-readiness.phase200.test.ts` ran the live `verify-convex-access.mjs`
+probe and asserted ONE machine's outcome: exit 2, `NOT_REACHABLE`, and a
+`blockedAt` in dns/tcp/tls/http. That is a statement about the runner, not the
+program. In the sandbox egress is blocked so it held; on a networked CI runner
+the same probe legitimately reaches `api.convex.dev` and reports
+`CREDENTIALS_REJECTED` / `blockedAt: auth` (or `UNAUTHENTICATED` when no key is
+set), and the test failed:
+
+| Line | CI failure |
+|---|---|
+| `handoff-readiness.phase200.test.ts:96` | `expected 'CREDENTIALS_REJECTED' to be 'NOT_REACHABLE'` |
+| `handoff-readiness.phase200.test.ts:84` | `expected ['dns','tcp','tls','http'] to include 'auth'` |
+
+Same shape as the phase75 failure: a green local suite proved nothing, because
+sandboxed egress was load-bearing.
+
+### B. The property, stated once
+> Network reachability must never be reported as authentication evidence, and no
+> authentication verdict may be emitted unless the control plane was actually
+> reached and answered.
+
+Both directions matter. A blocked network claimed as auth evidence makes a dead
+sandbox look like a rejected (or revoked) key. The reverse — a refused
+credential reported as merely unreachable — sends an operator hunting for an
+allowlist entry that was never the problem.
+
+### C. What changed
+The classification moved out of the probe into
+`scripts/lib/convex-access-verdict.mjs` (typed via `.d.mts`), leaving
+`verify-convex-access.mjs` to do the I/O and delegate. The probe's observable
+output is unchanged; its inline verdict chain is gone (37 insertions, 84
+deletions).
+
+`isAuthEvidence` is now DERIVED from the state, so it cannot be set by a
+branch. `validateVerdict()` checks every invariant, and `primaryHost` is
+exposed in the JSON so consumers can check per-layer invariants without
+hardcoding which host is probed first.
+
+**One state was added: `AUTH_INDETERMINATE`.** Previously a transport failure or
+a 5xx on the authenticated request fell into `UNAUTHENTICATED`, whose text reads
+"no usable credential was presented" — a claim about the credential that the
+observation did not support. `AUTH_INDETERMINATE` says the plane was reached
+but no verdict came back, and explicitly draws no conclusion. This is a
+fail-closed addition, not a weakening: exit 1, `isAuthEvidence: false`.
+
+### D. Verdict contract
+| State | Reached? | blockedAt | isAuthEvidence | Exit |
+|---|---|---|---|---|
+| `NOT_REACHABLE` | no | dns/tcp/tls/http/unknown | false | 2 |
+| `AUTH_INDETERMINATE` | yes | auth | false | 1 |
+| `UNAUTHENTICATED` | yes | auth | false | 1 |
+| `CREDENTIALS_REJECTED` | **yes** | auth | **true** | 1 |
+| `CONTROL_PLANE_ONLY` | yes | deployment-plane | true | 1 |
+| `AUTHENTICATED` | yes | null | true | 0 |
+
+`isRevocationEvidence` is always false — this probe cannot observe revocation.
+
+### E. Proof
+`convex-access-verdict.phase234.test.ts` drives all eight required outcomes
+from fixtures — DNS/TCP/TLS/HTTP blocked, reached+rejected, reached+auth
+failure, transport error, 5xx, and malformed input — because four of them
+cannot be produced on a given machine and which one appears is an accident of
+egress policy. It asserts the properties over the whole input space
+(`reachable` × every auth state × deployment-plane), not on samples.
+
+**Environment-independence was verified empirically, not assumed.** Two
+coherent simulations of a networked runner were applied to the probe and the
+phase200 suite run against each:
+
+| Simulated outcome | phase200 |
+|---|---|
+| reached, auth request dies in transport (`UNAUTHENTICATED` / `blockedAt: auth`) | **passes** |
+| reached, key refused (`CREDENTIALS_REJECTED` / `blockedAt: auth`) — the exact CI state | **passes** |
+| real sandbox (`NOT_REACHABLE` / `blockedAt: tls`) | **passes** |
+
+A first, incoherent simulation (forced `reachable` while TLS genuinely failed)
+was *rejected by the new assertions* — the suite detects a report that could
+not physically have happened.
+
+`scripts/mutation-suite-phase234.sh`: **15/15 CAUGHT, 0 gaps**, including both
+directions of the central mistake, omitted auth/network stages, a swallowed
+probe exception, hardcoded success and failure, an unknown result falling
+through to success, neutered validation, and the contract being forked back
+into the probe. An unapplied mutant now counts as a failure, so the suite
+cannot silently under-report.
+
+### F. CI behaviour — measured
+The first Phase 234 commit (`f435b36`) cleared the two assertion failures and
+exposed a second, subtler form of the same defect: the suite spawned the probe
+once per assertion (~10 runs). In the sandbox every layer fails in
+milliseconds; on a networked runner the probes actually complete, and a hanging
+host costs its full timeout, so per-assertion spawns blew vitest's 10s default:
+
+| Run | phase200 failures |
+|---|---|
+| before Phase 234 (`f5880f0`) | `:74`, `:84`, `:96` — wrong assertions |
+| after (`f435b36`) | `:118`/`:246` and `:126`/`:136`/`:180` — **timeouts**, at different lines each run |
+
+Fixed by spawning the probe **twice for the whole file** (anonymous and keyed,
+the keyed run using the sentinel so the credential-redaction check shares it)
+with `--timeout 5` bounding each internal probe, and an explicit `beforeAll`
+timeout. Cost is now paid once and no longer scales with the network.
+
+### G. Remaining CI failures, classified
+*Correction to the Phase 233 section above:* it said the only remaining test
+failures were the two phase200 assertions. That list was truncated — GitHub
+returns annotations in batches and the earlier read stopped early. The full set,
+identical before and after Phase 234, is:
+
+| Location | Failure | Classification |
+|---|---|---|
+| `evidence-d-execution.phase203.test.ts:334` | `expected 1 to be 2` (harness exit code) | **pre-existing**, unrelated to Phase 233/234 |
+| `evidence-d-execution.phase203.test.ts:347` | `report.reason` is `undefined` | **pre-existing**, same class as phase200 |
+| `handoff-readiness.phase200.test.ts:*` | environment-pinned assertions | **FIXED here** |
+| `Reachable-history secret scan` job | exit 1 | by design (A1 blocker) |
+| `Android debug APK` job | failure | pre-existing, present at `3f63690` |
+
+The phase203 pair is the SAME defect class as the phase200 one: those tests run
+`evidence-d-harness.mjs` against `https://unreachable-example.convex.cloud`,
+which **resolves** (Cloudflare, `104.18.14.131`) — so on a networked runner the
+handshake completes and the host answers, the harness takes a different exit
+path (1, no `reason`), and the tests that assert a *transport refusal*
+(exit 2, `reason: "The deployment did not answer (ECONNRESET)…"`) fail. Locally
+egress is severed at TLS, so they pass. Deliberately NOT fixed here — it is a
+separate test file and the phase brief scopes the change to phase200.
+
+## Phase 235 — the Evidence D probe outcome is classified, not assumed
+
+### A. The defect, measured
+Phases 200, 203 and 234 all found the same class of defect in the same place: a
+guard that asserted what the **machine's** network did with
+`https://unreachable-example.convex.cloud`, and read that as a property of the
+harness. The host sits behind a wildcard DNS record, so the same code produces
+two different observations:
+
+| Environment | What the probe actually does | What the guard asserted |
+|---|---|---|
+| sandbox (egress severed) | throws at the TLS layer (`ECONNRESET`) | exit 2, plus a transport `reason` |
+| CI runner (networked) | DNS resolves, TLS completes, the host answers | the same two things — and failed |
+
+Measured on `b49b1b6` (both test-job check-runs, `105067472902` and
+`105067466167`): `evidence-d-execution.phase203.test.ts:334`
+`AssertionError: expected 1 to be 2`, and `:347` `TypeError: .toMatch() expects
+to receive a string, but got undefined`. Neither was a harness fault: exit 1 is
+the harness working as designed (the checks ran and failed), and a top-level
+`reason` exists only on a refusal — `refuse()` is its only writer, and the run
+never refused because the host answered.
+
+### B. What a probe can and cannot prove
+`fetch` collapses DNS, TCP and TLS failures into one thrown error, so the layer
+is inferred from the error code and is a reporting aid only. The separation
+that matters is between an infrastructure condition and a statement about
+credentials:
+
+| Observation | Meaning | May it support an auth conclusion? |
+|---|---|---|
+| thrown `ENOTFOUND` / `EAI_AGAIN` | DNS did not resolve | no |
+| thrown `ECONNREFUSED` / `EHOSTUNREACH` / `ENETUNREACH` | TCP did not connect | no |
+| thrown `ECONNRESET` / `EPIPE` / TLS or certificate error | the connection was severed | no |
+| thrown `ETIMEDOUT` / `AbortError` | no answer within the bound | no |
+| any other thrown code | unattributable — reported as `unknown`, never guessed | no |
+| HTTP 5xx, or a 4xx that is not a refusal | the service answered but is not serving this request | no |
+| HTTP 2xx with no interpretable application status | not readable — fails closed | no |
+| HTTP 401, or an application status of `UNAUTHENTICATED` | the service refused the caller | **yes** |
+| HTTP 2xx with a real application status | the service processed the request | **yes** |
+
+### C. The contract
+`scripts/lib/evidence-d-probe.mjs` (typed by `evidence-d-probe.d.mts`) is a pure,
+total function of a probe result. It produces exactly one of five states —
+`TRANSPORT_BLOCKED`, `SERVICE_UNAVAILABLE`, `MALFORMED`, `UNAUTHENTICATED`,
+`AUTHENTICATED` — for every input, with these invariants, all enforced by
+`validateProbeClassification`:
+
+* a recorded transport error is decided **first and unconditionally**, so no
+  status or payload can pull a verdict out of a request that never arrived;
+* `isAuthEvidence` is derived from the state, never set by hand, and always
+  implies the service was reached;
+* `isRevocationEvidence` is always false — this probe cannot observe revocation,
+  and a network failure is emphatically not evidence of it;
+* a refusal is the only outcome for a transport failure, and its wording states
+  that the result is a transport fact rather than an authentication one;
+* an unrecognised error code becomes `unknown` rather than a more precise-looking
+  layer, and a missing refusal reason is never treated as safe;
+* the classifier does not read the environment, so no machine's configuration or
+  network state can change the meaning of a given probe result.
+
+`evidence-d-harness.mjs` now routes its D3 reachability refusal through that
+contract (`classifyProbeResult` + `probeRefusalReason`); the flow, the exit codes
+and the emitted message are unchanged. It also accepts `--timeout <seconds>`
+(default 60, unchanged) so a probe can be bounded.
+
+### D. How the guard proves it now
+`evidence-d-execution.phase203.test.ts` keeps exactly **one** real-socket probe
+per file, memoised and bounded, asserting only what holds in every environment
+(never `ACHIEVED`; a refusal is coherent and phrased as transport; a top-level
+`reason` exists only on a refusal; no check claims evidence it did not observe).
+Everything else is fixture-driven:
+
+* `scripts/lib/fixtures/evidence-d-fetch-stub.mjs` is loaded into the guard's
+  child process only (`NODE_OPTIONS=--import …`), so the harness is unmodified
+  and unaware, and `EVIDENCE_D_STUB_MODE` selects the answer: DNS blocked, TCP
+  blocked, TLS severed, certificate failure, timeout, unattributable error,
+  hanging (never answers), 503, 404, 401, an application-level
+  `UNAUTHENTICATED`, a malformed 2xx and non-JSON;
+* the stub is faithful where it matters: errnos live on `error.cause.code`, and
+  the hanging mode observes the abort signal and rejects with an `AbortError`,
+  which is how a timed-out fetch really surfaces;
+* every layer and every answered shape is therefore exercised on any machine, in
+  milliseconds, and the suite was verified to pass in all eight network shapes
+  (TLS-broken and DNS-broken, unavailable, refusing, malformed) rather than only
+  in the one this sandbox can produce.
+
+### E. Mutation results
+`scripts/mutation-suite-phase235.sh` — 21 mutants, **20 killed, 1 documented
+equivalent, 0 gaps, 0 SKIP/INVALID**, byte-exact restore under a `trap`:
+
+| Mutant class | Result |
+|---|---|
+| blocked transport reported as authenticated / unauthenticated | killed (M1, M2) |
+| refusal blames a rejected credential | killed (M3) |
+| transport failure carries `isAuthEvidence` | killed (M4) |
+| network-only result reported as revocation evidence | killed (M5) |
+| malformed or unavailable answer read as success | killed (M6, M7) |
+| validator neutered / missing reason treated as safe | killed (M8, M12) |
+| blocked transport no longer classified as blocked (ordering lost) | killed (M9) |
+| classifier consults the environment / guesses a layer | killed (M10, M11) |
+| exit state hardcoded; hardcoded PASS in D3 or on refusal | killed (M13, M15, M16, M17) |
+| swallowed transport exception reshaped into an HTTP 401 | killed (M14b) |
+| `--timeout` ignored (a hanging probe stalls for the default) | killed (M18) |
+| the contract forked back into the harness | killed (M19, M20) |
+| transport error kept alongside a forged 401 | **equivalent** — correctly not flagged (M14) |
+
+M14 is documented rather than counted as a gap: keeping `transportError` while
+forging a 401 cannot change any outcome, because the classifier decides the
+transport fact first. That inertness is itself asserted — a fixture test proves
+a recorded transport error outranks any status, application status or payload —
+and M14 confirms it end to end.
+
+### F. CI on `e981f3c` (measured, both check-runs)
+| Job | `b49b1b6` | `e981f3c` |
+|---|---|---|
+| `Test · typecheck · build · lint` | failure (phase203 `:334`, `:347`) | **success**, 126s / 125s, zero failure annotations |
+| `Windows desktop package (Tauri)` | success | success |
+| `iOS project build (compile only)` | success | success |
+| `Android debug APK` | failure | failure — unchanged, pre-existing |
+| `Reachable-history secret scan` | failure (by design, A1) | failure — unchanged, exit 1 |
+
+Both test-job check-runs — push and pull-request merge ref, `105075214022` and
+`105075204186` — concluded success. Their annotation sets contain **no test
+failure**: the ten failure-level entries each run carries are the advisory eslint
+step's pre-existing findings (`Unexpected any` in `crypto-intelligence.phase41`
+and `analytical-context.phase55/56`, unnecessary escapes in
+`liveProtection.ts:388`, and a conditional-hook rule in
+`IntelligenceDashboard.tsx:467`), which `continue-on-error` has always tolerated
+and which this phase did not touch. `npm test` is the CI test command, so a green
+job means all 290 files — including the phase203 suite that used to fail — ran to
+completion on a networked runner. (A first read of the `e981f3c` annotations
+returned an empty body because the API had not yet propagated them; the numbers
+quoted here are from the branch tip, `07f29da`.)
+
+### G. Effect on the release gate
+The environment-dependent probe pair is closed: phase200 in Phase 234, phase203
+here. The remaining red jobs are exactly the two that were already classified —
+the pre-existing Android failure (present at `3f63690`) and the deliberate A1
+history-scan red. Nothing here changes the security position: A1 still blocks,
+the Phase 184 rewrite stays gated on it, Evidence D stays **INCOMPLETE** until
+real deployment evidence exists, and no dev value is promoted.
+
+## Phase 236 — the Android packaging job's root cause: a package Google retired
+
+### A. The exact failure
+The `Android debug APK` job never reached Gradle. On the canonical base
+`3f63690` (run `35113072471`, job `104851475031`) the step map is:
+
+| Step | Result |
+|---|---|
+| 5. `Run android-actions/setup-android@v3` | **failure, after 9 seconds** |
+| 6. Install dependencies | skipped |
+| 7. Build web assets and sync into the native project | skipped |
+| 8. Assemble debug APK | skipped |
+| 9. Verify packaged artifacts contain no secrets | skipped |
+| 10. Upload APK | skipped |
+
+That profile is identical for all 38 consecutive Android failures. The job dies
+in the Android SDK setup, before anything built by this repository runs.
+
+### B. Root cause, and how it was established
+The action's own default input is `packages: 'tools platform-tools'`. Google
+stopped serving the legacy `tools` package on 2026-09-15, so `sdkmanager tools`
+exits 1 and the action throws. Four independent pieces of evidence converge:
+
+* **A green-to-red boundary with no code change between.** The Android job was
+  last green at `06d8bce` (2026-09-14T14:01Z: setup-android succeeded in 26s and
+  the APK built in 89s) and first red at `e3ea951` (2026-09-15T12:37Z). The only
+  commit between them touches neither this workflow, nor `android/`, nor
+  `package.json`.
+* **The timing matches the upstream report.** `android-actions/setup-android`
+  issue #537 was opened 2026-09-15T01:26Z — the same morning — reporting
+  `Failed to find package 'tools'` and `sdkmanager` exit code 1 against
+  `9fc6c4e`, which is exactly the commit the `v3` tag resolves to. `v4` carries
+  the same default, so a major-version bump would not have helped.
+* **Local reproduction with the action's real code.** Its bundled
+  `dist/index.js` at that commit, run against a stub `sdkmanager` mirroring
+  today's repository, exits 1 with the issue's trace verbatim
+  (`Warning: Failed to find package 'tools'` → `The process … sdkmanager failed
+  with exit code 1`), while the same run with `packages: platform-tools` exits 0.
+* **The runner image already has what the job needs.** `ubuntu-latest` ships
+  `platform-tools`, `build-tools 35.0.0/35.0.1` and `platforms;android-35`,
+  which is what this project's `compileSdk 35` compiles against.
+
+Full job logs are not retrievable from the development sandbox: GitHub serves
+them from blob storage that is unreachable here (HTTP 000) while `api.github.com`
+answers normally. Everything above is therefore built from step-level
+conclusions, check-run metadata, workflow-run history and the action's own
+source at the pinned commit — not from log text.
+
+### C. The fix
+The Android job now passes `packages: "platform-tools"` explicitly instead of
+inheriting a default that names a package the SDK no longer serves. Nothing about
+failure handling was relaxed: `set -euo pipefail`, the fatal Gradle invocation,
+the "an APK was produced", "the web assets are inside it" and "the asset base is
+absolute" assertions, the packaged-artifact secret scan and the artifact upload
+all remain, and the action still accepts SDK licences so Gradle can fetch
+anything else it needs.
+
+Security posture is unchanged and re-verified: no credential is injected into the
+job (`${{ secrets.* }}` appears nowhere in the workflow), the debug variant uses
+the standard debug keystore because `keystore.properties` is absent, no
+live-provider I/O is involved in the APK path, no web assets are committed into
+the native project, and the job re-syncs them from the build before assembling.
+
+### D. Regression coverage
+`src/lib/hosting/mobile-android-ci.phase236.test.ts` reads the workflow as text
+(no YAML dependency, following Phase 181) and fails if the job stops being fatal,
+stops proving it produced a real APK, drops the sync or artifact-scan steps, or
+returns to the action's default package set. Its package check compares tokens,
+not substrings — `platform-tools` contains "tools".
+
+`scripts/mutation-suite-phase236.sh`: **21 mutants, 21 caught, 0 gaps**, with
+byte-exact restore and INVALID/SKIP counted as failures. The suite earned its
+keep during development by catching two real defects in the work itself: a
+quote-stripping bug in the guard's tokeniser that would have hidden the very
+regression it exists to catch, and an assertion that matched a path which also
+appears in a second command, letting a weakened check pass.
+
+### E. CI result on `4819124` (measured)
+| Job | `3f63690` (base) | `4819124` |
+|---|---|---|
+| `Android debug APK` | failure — setup step red, steps 6-10 skipped | **success**, all 13 steps green |
+| — step 5 `android-actions/setup-android@v3` | failure (9s) | success (7s) |
+| — step 8 `Assemble debug APK` | skipped | success (99s) |
+| — step 10 `Upload APK` | skipped | success |
+| `Test · typecheck · build · lint` | failure | success |
+| `iOS project build (compile only)` | success | success |
+| `Reachable-history secret scan` | failure (by design, A1) | failure (unchanged) |
+
+The uploaded artifact is real, not merely a green step:
+`android-debug-apk-48191244de9636e59fc97fefbf888937b0684b1e`, **3,807,050 bytes**.
+Android is green on both the push run and the pull-request run.
+
+### F. Effect on the release gate
+The Android packaging job is no longer a red CI item; it was the last
+unidentified failure. The remaining red is the deliberate A1 history-scan signal,
+plus the Windows package job which was still building when this was recorded and
+has passed on every recent run of this branch. Nothing here moves the security
+position: A1 still blocks, the Phase 184 rewrite remains gated on it, and
+Evidence D stays **INCOMPLETE** until real deployment evidence exists.
+
+## Phase 237 — the default suite is fail-closed against the external network
+
+### A. The defect, measured rather than asserted
+
+Phase 181 claimed the default suite was hermetic. It was not. Instrumenting a
+real `npm test` run — wrapping `fetch`, `net.connect` and the socket APIs and
+logging every attempt with its call site — recorded **45 outbound requests to
+third-party providers per run**, from three files:
+
+| File | Attempts | Why Phase 181 missed it |
+|---|---|---|
+| `live-provider-verification.phase54.test.ts` | 29 | calls `verifyProvider()`; the `fetch()` lives in `market-radar/verification.ts`, so no hostname literal ever appears in the test |
+| `live-provider-validation.phase39.test.ts` | 13 | allowlisted on the grounds that its assertions sit inside `if (res && res.ok)` — true of the assertions, irrelevant to the I/O |
+| `market-radar/derivatives-bridge.phase226.test.ts` | 1 | host not in the hardcoded `LIVE_HOSTS` list |
+| (attributed to production frames) | 2 | phase52/53's `acquireBatchLiveData()` reaches providers through a helper |
+
+The detector's three structural blind spots: it could only recognise hostnames
+somebody had already listed; it required the call and the URL literal to sit
+next to each other in the test file; and `vi.mock(` anywhere in a file excused
+every call in that file. `live-provider-fabric.phase52/53` were leaking too and
+nothing reported them.
+
+Two further findings came out of the runtime audit rather than the reading:
+`npm test` never failed for any of this locally, because this sandbox has no
+provider access — the same illusion that produced the original Phase 181 CI
+failure. And phase226 plus phase52/53 are *legitimate* default-suite tests: their
+subject is behaviour under provider failure, which they only ever got by
+accident.
+
+### B. What enforces the boundary now
+
+**Runtime, authoritative.** `src/test-network-guard.ts` replaces every outbound
+entry point — `fetch`, `http`/`https` `request`/`get`, `net.connect`,
+`net.createConnection`, `tls.connect`, `dns.lookup`, `dns.promises.lookup`,
+`WebSocket` — with one that refuses anything that is not loopback, before any
+I/O happens. The refusal is a named `ExternalNetworkBlockedError`, not a bare
+failure, because "it failed" is worthless as evidence: an unguarded call in an
+offline environment also fails, which is exactly how the previous blind spot
+survived. It is wired into both vitest projects by
+`src/test-setup-network-guard.ts`.
+
+**Structural.** `suite-hermeticity.phase181.test.ts` was rewritten. It no longer
+scans for provider hostnames: it derives the boundary from the loopback rule,
+reads the exclude expressions the config actually computes (they are
+`LIVE_ONLY.map(...)`, not literal arrays — a version that only understood
+literal arrays would have concluded "nothing is excluded" and passed), and
+proves the scanner itself has teeth by requiring it to still flag the known
+offender while ignoring a host named only in a constant.
+
+**File-level.** Live tests moved to `*.live.test.ts` files that the default
+config does not collect: sections I–M of phase54 and the five endpoint suites of
+phase39, assertions unchanged.
+
+### C. The live boundary
+
+```bash
+LIVE_PROVIDER_VERIFICATION=1 npm run test:live
+```
+
+Three independent layers keep live verification out of the default path: the
+default config does not collect the files; `vitest.live.config.ts` refuses to
+start without the opt-in; and the runtime guard stays installed everywhere else,
+so a live test that was somehow collected would fail loudly instead of quietly
+making requests. The opt-in is matched exactly (`=== "1"`), so
+`=true`, `=1 ` and `=0` all leave the boundary closed. No CI workflow contains
+the variable at all.
+
+### D. Result, after
+
+Re-running the same instrumentation on the fixed tree: **0 external requests
+reached the network stack** (the only I/O was three loopback probes from the new
+tests themselves), while **32 attempts were refused** — 20 from phase54's batch
+verification, one each from phase226, phase52, phase53 and phase54's validation
+block, plus the guard's own deliberate probes. The leak is closed at the socket,
+not at the filenames.
+
+The two suites are provably disjoint: the live config collects exactly 6 files,
+the default config 293, intersection empty — so nothing is both run twice and
+lost.
+
+### E. Coverage
+
+New: `hermetic-network-guard.phase237.test.ts` (23 tests — the guard is
+installed, every network API is refused with the named error, the refusal
+reaches through `verifyProvider()`, loopback still works against a real local
+server, lookalike hostnames are refused, the live path refuses without opt-in,
+`package.json` and the workflows keep the contract, no application code imports
+the guard) and `hermetic-guard-jsdom.phase237.test.tsx` (3 tests — the same
+demands inside the jsdom project, since a fix applied to one project only would
+leave `npm test` non-hermetic).
+
+`scripts/mutation-suite-phase237.sh`: **22 mutants, 22 caught, 0 gaps, 0
+INVALID, 0 SKIP**, byte-exact restore. It gates itself on a green baseline first
+— during development the guard's own test was failing while mutant verdicts
+still read "caught", which is precisely the false confidence this phase exists
+to remove, so the suite now refuses to run mutants unless the boundary's tests
+pass.
+
+### F. What Phase 237 does not do
+
+It does not close A1 (the leaked credential is still unrevoked at the issuer),
+does not unblock A2 (the history rewrite still waits on A1), does not add
+production email transport, and does not produce Evidence D — that needs a real
+deployment with real credentials, and a hermetic test suite is no substitute for
+it. Evidence D remains **INCOMPLETE**.

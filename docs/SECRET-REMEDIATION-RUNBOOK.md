@@ -13,10 +13,13 @@ command here, and never committed. It is identified only by fingerprint.
 
 ---
 
-## 1. Exposure — measured, Phase 198
+## 1. Exposure — measured Phase 198, re-measured Phase 233
 
-Measured against the **full** history (339 commits, unshallowed), not a
-shallow clone.
+Measured against the **full** history, not a shallow clone. Phase 198 measured
+339 commits; Phase 233 re-measured 397 (the repository has grown). The affected
+commit count is **unchanged at 270**, and the fingerprint, blob identity, blob
+count and path are byte-identical to the Phase 198 record — direct evidence
+that the exposure has neither grown nor been silently remediated since.
 
 | Property | Value |
 |---|---|
@@ -24,32 +27,54 @@ shallow clone.
 | Kind | Hardcoded `x-api-key` header for the third-party OTP service `auth.freebuff.app` |
 | Path | `src/convex/auth/emailOtp.ts` |
 | Distinct leaked blobs | **1** (`e490ffda66bb5d8fcd63df8d49f5f8822126cc7f`) |
-| Affected commits | **270 of 339** |
+| Affected commits | **270 of 397** (Phase 198: 270 of 339 — unchanged) |
 | Oldest affected | `a71ea7f` (2026-08-20, initial import) |
 | Newest affected | `3a82789` (2026-09-11) |
 
-These figures reproduce the Phase 184 measurement exactly (fingerprint, length,
-270 commits, 1 blob, 1 path), which is itself evidence that the exposure has
-neither grown nor been silently remediated since.
-
 ### Per-ref status
+
+Measured per ref by Phase 233 (`scripts/secret-ref-inventory.mjs`) using
+SHA-256 fingerprint reachability of the leaked blob from each ref's tip — blob
+identity, not lineage inference. Machine-readable form:
+`docs/secret-remediation-refs.json`.
+
+Two facts per ref, and they are **not** interchangeable:
+
+- **Occurrences** — commits in that ref's history whose tree holds the leaked
+  blob. Any value above zero means the ref is **affected** and must be
+  rewritten, because a surviving ref keeps the blob reachable.
+- **Tip today** — whether the ref's *tip* serves the blob in its working tree.
+  `clean` at the tip does **not** mean remediated.
 
 | Ref | Tip today | Occurrences in that ref's history |
 |---|---|---|
 | `refs/heads/arena/01a08e67-trade-intel-bot` | **clean** | 269 |
+| `refs/heads/arena/01a0a5f5-trade-intel-bot` | **clean** | 269 |
+| `refs/heads/arena/01a0a92b-trade-intel-bot` | **clean** | 269 |
+| `refs/heads/arena/01a0ad26-trade-intel-bot` | **clean** | 269 |
 | `refs/heads/main` | **EXPOSED AT TIP** | 261 |
 | `refs/heads/phase-157-live-discovery-lifecycle` | **EXPOSED AT TIP** | 262 |
 | `refs/tags/rc-181` | **clean** | 269 |
 
-Two consequences follow, and they matter more than the history question:
+Phase 233 correction: this table listed only four refs. The three branches
+created since Phase 198 (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were absent, as
+was the Phase 221 rewrite-map row for `01a0a5f5` from this table. Each of the
+three carries 269 carrier commits, so all three were affected while going
+unlisted — the omission was security-relevant, not cosmetic. The rewrite map in
+§3 named five refs and was missing `01a0a92b` and `01a0ad26`, so those two
+branches appeared in **neither** table and would have survived the rewrite.
+
+Three consequences follow, and they matter more than the history question:
 
 1. **`main` still serves the credential from its tip.** Anyone cloning the
    default branch right now receives it in working-tree source. This is why
    `main` must never be deployed and why the release gate lists this as a hard
    blocker.
-2. The working branch is clean at HEAD — the credential was removed from
+2. The working branches are clean at HEAD — the credential was removed from
    current source in an earlier phase — but **removal from HEAD is not
-   remediation.** All four refs still carry it in reachable history.
+   remediation.** All seven refs still carry it in reachable history.
+3. **Every ref is affected.** There is no unaffected ref to leave out of the
+   rewrite, and no ref may be treated as safe because its tip is clean.
 
 ---
 
@@ -134,28 +159,53 @@ git push --force --mirror https://github.com/xstarz28/trade-intel-bot.git
 
 ### Refs the force-push will rewrite
 
-**All five** (Phase 221 correction — a fifth ref, the current working branch,
-was created after Phase 198 and inherits the blob). None may be skipped — a
-single surviving ref keeps the blob reachable and undoes the entire exercise.
-Re-run `git for-each-ref` on the mirror before executing; any ref added since
-this table must be included.
+**All seven** — every ref the remote advertises, per
+`docs/secret-remediation-refs.json`. Phase 233 corrected this table twice
+over: Phase 198 listed four refs, Phase 221 added a fifth, and three branches
+created since then (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were never added at
+all despite each carrying 269 carrier commits. None may be skipped — a single
+surviving ref keeps the blob reachable and undoes the entire exercise.
 
-| Ref | Before (Phase 221) | After (Phase 221 rehearsal) |
+Re-run `node scripts/secret-ref-inventory.mjs` before executing. That
+inventory is derived from `git ls-remote`, so unlike the previous
+`git for-each-ref` advice it cannot drift with clone depth or fetch state, and
+any ref it reports that is absent from this table must be added first.
+
+| Ref | Before (Phase 221 rehearsal) | After (Phase 221 rehearsal) |
 |---|---|---|
 | `heads/arena/01a08e67-trade-intel-bot` | `f8939130` | `bd233a8` |
 | `heads/arena/01a0a5f5-trade-intel-bot` | `920486c5` | `a2243f0` |
+| `heads/arena/01a0a92b-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
+| `heads/arena/01a0ad26-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
 | `heads/main` | `51c9ddeb` | `b1a9e91` |
 | `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f58` |
 | `tags/rc-181` | `66323a38` | `23d25ff` |
 
 Phase 221 re-rehearsal on a fresh mirror: 365/365 commits preserved,
 author/date/subject and parent topology identical, working-branch tree
-byte-identical, verifier `--expect-clean` exit 0 with positive control.
+byte-identical, verifier `--expect-clean` exit 0 with positive control. That
+rehearsal covered only the five refs known at the time. The two branches added
+above were **not** part of it, so their post-rewrite SHAs are deliberately left
+blank rather than guessed — a re-rehearsal covering all seven is required
+before execution.
+
+Tips also move: `heads/arena/01a0a5f5-trade-intel-bot` has advanced from
+`920486c5` to `3f63690` since the rehearsal (PR #1 merged into it), so the
+"Before" column is a rehearsal record, not an execution input. Re-read tips
+from the inventory immediately before executing.
+
 Real repository and remote untouched. Status remains **BLOCKED on §2**.
 
 ---
 
 ## 4. Assertions
+
+**Scope caveat (Phase 233).** Every assertion below records the Phase 198 and
+Phase 221 rehearsals, which covered the four and five refs known at those
+times. They remain an accurate record of what was rehearsed, but they are
+**not** evidence about the two branches added in Phase 233
+(`01a0a92b`, `01a0ad26`), which have never been through a rehearsal. Re-run the
+procedure on a mirror against all seven refs before executing for real.
 
 ### Pre-rewrite
 

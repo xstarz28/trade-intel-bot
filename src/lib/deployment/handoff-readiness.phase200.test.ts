@@ -13,7 +13,14 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+// Typed via scripts/lib/convex-access-verdict.d.mts — no `any` cast.
+import {
+  EXIT_CODES,
+  TRANSPORT_LAYERS,
+  computeVerdict,
+  validateVerdict,
+} from "../../../scripts/lib/convex-access-verdict.mjs";
 
 const root = process.cwd();
 const ACCESS = join(root, "scripts/verify-convex-access.mjs");
@@ -66,70 +73,201 @@ describe("Phase 200 — handoff artifacts exist and are wired", () => {
   });
 });
 
+/**
+ * Phase 234 — these assertions no longer pin the runner's network state.
+ *
+ * They previously required `NOT_REACHABLE` / a transport `blockedAt`, which is
+ * a statement about the MACHINE, not the program: it held in the sandbox
+ * (egress blocked at TLS) and failed on any networked CI runner, where the
+ * same probe legitimately reaches the control plane and reports
+ * `CREDENTIALS_REJECTED`. A green local run therefore proved nothing about the
+ * property under test — the same failure shape as the phase75 suite.
+ *
+ * The property is now asserted directly, and it holds in BOTH environments:
+ * reachability may never be reported as authentication evidence, and no
+ * credential verdict may be emitted unless the service was actually reached
+ * and answered. The deterministic proof of that rule lives in
+ * `convex-access-verdict.phase234.test.ts`, which drives every network outcome
+ * from fixtures — including ones this machine cannot produce. These tests
+ * cross-check the REAL probe against the same contract.
+ */
 describe("Phase 200 — the control-plane diagnostic never infers authentication", () => {
-  it("classifies an unreachable control plane as transport, not auth", () => {
-    const run = runScript(ACCESS, {}, ["--json"]);
-    // Exit 2 = not reachable. Exit 0/1 would mean the network opened up, in
-    // which case this assertion should be revisited deliberately.
-    expect(run.exitCode).toBe(2);
-    const report = JSON.parse(run.stdout);
+  interface Report {
+    primaryHost: string;
+    reachable: boolean;
+    verdict: {
+      state: string;
+      blockedAt: string | null;
+      classification: string;
+      isAuthEvidence: boolean;
+      isRevocationEvidence: boolean;
+    };
+    layers: Array<{ layer: string; host: string; status: string; detail: string }>;
+    credentials?: { deployKeyPresent: boolean; deployKeyFingerprint: string | null };
+  }
+
+  /**
+   * Phase 234 — the probe is spawned TWICE for the whole file, not once per
+   * assertion.
+   *
+   * It performs real DNS/TCP/TLS/HTTP I/O. In the sandbox every layer fails in
+   * milliseconds, so spawning it repeatedly was cheap; on a networked runner
+   * the probes actually complete (and a hanging host costs the full timeout),
+   * which made per-assertion spawns slow enough to blow vitest's 10s default.
+   * That was a second, subtler form of the same defect this phase fixes: the
+   * suite's cost depended on the runner's network.
+   *
+   * Two scenarios cover every assertion below — anonymous, and keyed. The
+   * keyed run uses the sentinel value so the "never prints a credential" check
+   * shares it. `--timeout 5` bounds each internal probe.
+   */
+  const SENTINEL = ["convex", "deploy", "key", "sentinel", "9137"].join("-");
+  const PROBE_TIMEOUT = 180_000;
+
+  let anonymous: { run: Run; report: Report };
+  let keyed: { run: Run; report: Report };
+
+  const runProbe = (env: Record<string, string>): { run: Run; report: Report } => {
+    const run = runScript(ACCESS, env, ["--json", "--timeout", "5"]);
+    return { run, report: JSON.parse(run.stdout) as Report };
+  };
+
+  beforeAll(() => {
+    anonymous = runProbe({});
+    keyed = runProbe({ CONVEX_DEPLOY_KEY: SENTINEL });
+  }, PROBE_TIMEOUT);
+
+  const passed = (report: Report, layer: string) =>
+    report.layers.some(
+      (l) => l.layer === layer && l.host === report.primaryHost && l.status === "PASS",
+    );
+
+  it("emits a verdict that conforms to the contract, in whatever network this is", () => {
+    const { run, report } = anonymous;
+    // Runs in every environment, so it cannot be satisfied by pinning one.
+    expect(validateVerdict(report.verdict, { reachable: report.reachable })).toEqual([]);
+    expect(report.verdict.isRevocationEvidence).toBe(false);
+    expect(run.exitCode).toBe(EXIT_CODES[report.verdict.state as keyof typeof EXIT_CODES]);
+  });
+
+  it("reports an unreachable control plane as transport, never as auth", () => {
+    const { run, report } = anonymous;
+    if (report.reachable) return; // the keyed test below covers the other environment
     expect(report.verdict.state).toBe("NOT_REACHABLE");
     expect(report.verdict.isAuthEvidence).toBe(false);
     expect(report.verdict.isRevocationEvidence).toBe(false);
+    expect(run.exitCode).toBe(2);
+    expect(TRANSPORT_LAYERS).toContain(report.verdict.blockedAt);
   });
 
-  it("identifies the exact layer that fails, not just 'it failed'", () => {
-    const run = runScript(ACCESS, {}, ["--json"]);
-    const report = JSON.parse(run.stdout);
-    expect(["dns", "tcp", "tls", "http"]).toContain(report.verdict.blockedAt);
-    // DNS and TCP currently succeed; the block is at TLS. If that changes the
-    // diagnostic should say so rather than silently reporting the same verdict.
-    const layers = report.layers as Array<{ layer: string; status: string }>;
-    expect(layers.some((l) => l.layer === "dns" && l.status === "PASS")).toBe(true);
+  it("names the exact layer where transport stopped, and only the first", () => {
+    const { report } = anonymous;
+    if (report.reachable) return;
+    const index = TRANSPORT_LAYERS.indexOf(report.verdict.blockedAt as never);
+    expect(index, "blockedAt must be a real transport layer").toBeGreaterThanOrEqual(0);
+    // Every layer before the failing one must have genuinely passed — a
+    // "blocked at tls" claim with DNS failing above it would be a lie.
+    for (const layer of TRANSPORT_LAYERS.slice(0, index)) {
+      expect(passed(report, layer), `${layer} should have passed before ${report.verdict.blockedAt}`).toBe(true);
+    }
+    expect(
+      report.layers.some((l) => l.layer === report.verdict.blockedAt && l.status === "FAIL"),
+      "the named layer must actually have failed",
+    ).toBe(true);
+  });
+
+  it("records both the network stage and the auth stage, whatever the network did", () => {
+    const { report } = anonymous;
+    // The network stage is always probed, starting at DNS for the primary host.
+    expect(
+      report.layers.some((l) => l.layer === "dns" && l.host === report.primaryHost),
+      "the DNS layer must always be recorded",
+    ).toBe(true);
+    if (report.reachable) {
+      for (const layer of TRANSPORT_LAYERS) {
+        expect(passed(report, layer), `${layer} must be recorded once the plane is reached`).toBe(true);
+      }
+    }
+    // The auth stage is recorded even when it was not attempted. Omitting it
+    // would make a skipped credential check invisible in the report — and
+    // "not attempted" is exactly the case a reader must be able to see.
+    const auth = report.layers.filter((l) => l.layer === "auth");
+    expect(auth, "the auth stage must be recorded exactly once").toHaveLength(1);
+    expect(auth[0].host).toBe(report.primaryHost);
+  });
+
+  it("claims auth evidence only when the control plane actually answered", () => {
+    const { report } = keyed;
+    // The load-bearing direction: a blocked egress must never look like a bad key.
+    if (!report.verdict.isAuthEvidence) {
+      expect(report.verdict.state).not.toBe("CREDENTIALS_REJECTED");
+      return;
+    }
+    expect(report.reachable).toBe(true);
+    for (const layer of TRANSPORT_LAYERS) {
+      expect(passed(report, layer), `${layer} must pass before any auth verdict`).toBe(true);
+    }
   });
 
   it("refuses to treat a transport failure as a rejected credential", () => {
-    const run = runScript(ACCESS, { CONVEX_DEPLOY_KEY: "unused-because-unreachable" }, ["--json"]);
-    const report = JSON.parse(run.stdout);
-    // A key is present, the network is not. The verdict must still be about
-    // the network — otherwise a blocked egress would look like a bad key.
+    const { report } = keyed;
+    if (report.reachable) {
+      // Reached: a rejection is now legitimate — but only because the service
+      // answered, which is what makes this an auth verdict at all.
+      expect(report.verdict.blockedAt === "auth" || report.verdict.blockedAt === null).toBe(true);
+      expect(
+        ["CREDENTIALS_REJECTED", "AUTH_INDETERMINATE", "AUTHENTICATED", "CONTROL_PLANE_ONLY", "UNAUTHENTICATED"],
+      ).toContain(report.verdict.state);
+      return;
+    }
     expect(report.verdict.state).toBe("NOT_REACHABLE");
     expect(report.verdict.isAuthEvidence).toBe(false);
   });
 
   it("never prints a credential value, only presence and a fingerprint", () => {
-    const secret = ["convex", "deploy", "key", "sentinel", "9137"].join("-");
-    const run = runScript(ACCESS, { CONVEX_DEPLOY_KEY: secret }, ["--json"]);
-    expect(run.stdout).not.toContain(secret);
-    expect(run.stderr).not.toContain(secret);
-    const report = JSON.parse(run.stdout);
-    expect(report.credentials.deployKeyPresent).toBe(true);
-    expect(report.credentials.deployKeyFingerprint).toMatch(/^[0-9a-f]{8}$/);
+    expect(keyed.run.stdout).not.toContain(SENTINEL);
+    expect(keyed.run.stderr).not.toContain(SENTINEL);
+    expect(keyed.report.credentials?.deployKeyPresent).toBe(true);
+    expect(keyed.report.credentials?.deployKeyFingerprint).toMatch(/^[0-9a-f]{8}$/);
   });
 
   it("probes the deployment domain family, not just the control plane", () => {
     // Phase 201: *.convex.cloud (Evidence D) and *.convex.site (auth issuer)
     // are a SEPARATE allowlist entry from *.convex.dev. Allowlisting only the
     // control plane lets this gate pass while Evidence D remains impossible.
-    const run = runScript(ACCESS, {}, ["--json"]);
-    const report = JSON.parse(run.stdout);
-    const layers = report.layers as Array<{ layer: string; host: string }>;
-    const planeHosts = layers.filter((l) => l.layer === "deployment-plane").map((l) => l.host);
+    const planeHosts = anonymous.report.layers
+      .filter((l) => l.layer === "deployment-plane")
+      .map((l) => l.host);
     expect(planeHosts.some((h) => h.endsWith(".convex.cloud"))).toBe(true);
     expect(planeHosts.some((h) => h.endsWith(".convex.site"))).toBe(true);
   });
 
   it("defines a distinct verdict for control-plane-only reachability", () => {
-    // The dangerous middle state must not be reported as success.
-    const source = readFileSync(ACCESS, "utf8");
-    expect(source).toContain("CONTROL_PLANE_ONLY");
-    expect(source).toMatch(/deployment would succeed while Evidence D could never run/i);
+    // The dangerous middle state must not be reported as success. Phase 234
+    // moved the classification out of the script into a pure function, so this
+    // asserts the RULE rather than grepping for its wording in a file it no
+    // longer lives in. The exhaustive outcome matrix is in
+    // convex-access-verdict.phase234.test.ts.
+    const host = "api.convex.dev";
+    const { verdict, exitCode } = computeVerdict({
+      layers: TRANSPORT_LAYERS.map((layer) => ({
+        layer,
+        host,
+        status: "PASS",
+        detail: "fixture",
+      })),
+      primaryHost: host,
+      reachable: true,
+      authState: "authenticated",
+      deploymentPlaneReachable: false,
+    });
+    expect(verdict.state).toBe("CONTROL_PLANE_ONLY");
+    expect(verdict.blockedAt).toBe("deployment-plane");
+    expect(exitCode).not.toBe(0);
   });
 
   it("reports same-network controls so a block can be distinguished from an outage", () => {
-    const run = runScript(ACCESS, {}, ["--json"]);
-    const report = JSON.parse(run.stdout);
-    const controls = (report.layers as Array<{ layer: string }>).filter((l) => l.layer === "control");
+    const controls = anonymous.report.layers.filter((l) => l.layer === "control");
     expect(controls.length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -66,9 +66,22 @@ npx convex dev --once        # creates the project, writes CONVEX_DEPLOYMENT
 node scripts/verify-convex-access.mjs     # expect VERDICT: AUTHENTICATED
 ```
 
-**Gate:** `verify-convex-access.mjs` must exit 0. If it exits 2 the network is
-still blocked; if it exits 1 the key is missing or was refused — the script
-distinguishes those, so do not guess.
+**Gate:** `verify-convex-access.mjs` must exit 0. The verdict names which of the
+failure modes you are in — do not guess:
+
+| Verdict | Means | Action |
+| --- | --- | --- |
+| `NOT_REACHABLE` (exit 2) | transport stopped before an HTTP answer; the `blockedAt` layer says where (dns/tcp/tls/http) | fix egress; **no conclusion about the key is possible** |
+| `AUTH_INDETERMINATE` (exit 1) | the plane was reached, but the authenticated request got no verdict — transport failure or 5xx | re-run; **this says nothing about whether the key is valid** |
+| `UNAUTHENTICATED` (exit 1) | reached, and no credential was presented | set `CONVEX_DEPLOY_KEY` |
+| `CREDENTIALS_REJECTED` (exit 1) | reached; the key was delivered and refused | the key is wrong or revoked |
+| `CONTROL_PLANE_ONLY` (exit 1) | authenticated, but `*.convex.cloud` / `*.convex.site` are still blocked | allowlist the deployment families (step H will fail otherwise) |
+| `AUTHENTICATED` (exit 0) | reached, key accepted, deployment family reachable | proceed |
+
+`isAuthEvidence` is true only for the three states that required a real answer
+from the service. Only `CREDENTIALS_REJECTED` is evidence that a key was
+refused — and a transport failure is never evidence about a credential in
+either direction.
 
 ### B. Set the production Convex URL and site URL
 

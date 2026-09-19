@@ -30,6 +30,23 @@
  *   nothing about the far end.
  * - Reports only what it observed. It cannot mark a deployment usable.
  *
+ * VERDICT STATES (Phase 234 — classification extracted to
+ * `scripts/lib/convex-access-verdict.mjs`, where the rules are enforced and
+ * tested with fixtures rather than against whatever network the machine has):
+ *
+ *   NOT_REACHABLE        transport stopped short of a usable HTTP answer (exit 2)
+ *   AUTH_INDETERMINATE   control plane reached, but the authenticated request
+ *                        produced no verdict — transport failure or 5xx (exit 1)
+ *   UNAUTHENTICATED      reached; no credential was presented (exit 1)
+ *   CREDENTIALS_REJECTED reached; the key was delivered and refused (exit 1)
+ *   AUTHENTICATED        reached, key accepted, deployment family reachable (exit 0)
+ *   CONTROL_PLANE_ONLY   authenticated, but *.convex.cloud/.site still blocked (exit 1)
+ *
+ * AUTH_INDETERMINATE exists because a transport failure during the authenticated
+ * request used to be reported as UNAUTHENTICATED, whose wording ("no usable
+ * credential was presented") is a claim about the credential that the
+ * observation did not support.
+ *
  * Usage:
  *   node scripts/verify-convex-access.mjs
  *   node scripts/verify-convex-access.mjs --json
@@ -45,6 +62,11 @@ import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { connect as netConnect } from "node:net";
 import { connect as tlsConnect } from "node:tls";
+import {
+  classifyAuthResponse,
+  classifyAuthTransportFailure,
+  computeVerdict,
+} from "./lib/convex-access-verdict.mjs";
 
 const args = process.argv.slice(2);
 const asJson = args.includes("--json");
@@ -240,33 +262,12 @@ async function probeAuthenticated(creds) {
       body: JSON.stringify({}),
       signal: controller.signal,
     });
-    if (response.status === 401 || response.status === 403) {
-      return {
-        state: "credentials_rejected",
-        detail: `control plane answered HTTP ${response.status} — the key was presented and refused`,
-      };
-    }
-    if (response.status >= 200 && response.status < 500) {
-      return {
-        state: "authenticated",
-        detail: `control plane answered HTTP ${response.status} to an authenticated request`,
-      };
-    }
-    return {
-      state: "server_error",
-      detail: `control plane answered HTTP ${response.status} — not an auth verdict`,
-    };
+    return classifyAuthResponse(response.status);
   } catch (error) {
-    // CRITICAL: a transport failure here is NOT an auth failure. Saying
-    // otherwise would let a blocked network masquerade as a bad key — and, in
-    // the other direction, let someone claim a key was "rejected" (or revoked)
-    // when it was never actually delivered to the far end.
-    return {
-      state: "unreachable",
-      detail:
-        `no answer to the authenticated request (${error?.cause?.code ?? error?.name}). ` +
-        "This is a TRANSPORT failure and says nothing about the credential.",
-    };
+    // A transport failure here is NOT an auth failure — see
+    // classifyAuthTransportFailure() in the contract module for why both
+    // directions of that mistake are dangerous.
+    return classifyAuthTransportFailure(error);
   } finally {
     clearTimeout(timer);
   }
@@ -356,70 +357,22 @@ record("auth", primary, auth.state === "authenticated" ? "PASS" : "BLOCKED", aut
  * Verdict
  * ------------------------------------------------------------------ */
 
-const controlsUp = layers.some((l) => l.layer === "control" && l.status === "PASS");
-const failedLayer = ["dns", "tcp", "tls", "http"].find((layer) =>
-  layers.some((l) => l.layer === layer && l.host === primary && l.status === "FAIL"),
-);
-
-let verdict;
-let exitCode;
-if (!reachable) {
-  verdict = {
-    state: "NOT_REACHABLE",
-    blockedAt: failedLayer ?? "unknown",
-    classification: controlsUp
-      ? `egress to ${primary} is blocked at the ${failedLayer ?? "unknown"} layer, ` +
-        "while same-network controls succeed — a targeted allowlist, not an outage"
-      : "the whole network appears unavailable — controls failed too",
-    isAuthEvidence: false,
-    isRevocationEvidence: false,
-  };
-  exitCode = 2;
-} else if (auth.state === "authenticated" && !deploymentPlaneReachable) {
-  // The dangerous middle state: deploys would work, Evidence D would not.
-  // Reported as a distinct failure rather than success, because a green gate
-  // here sends the operator into step H to fail for an unrelated-looking
-  // reason.
-  verdict = {
-    state: "CONTROL_PLANE_ONLY",
-    blockedAt: "deployment-plane",
-    classification:
-      "control plane reachable and authenticated, but *.convex.cloud / *.convex.site are " +
-      "still blocked — deployment would succeed while Evidence D could never run. " +
-      "Allowlist the deployment domains too.",
-    isAuthEvidence: true,
-    isRevocationEvidence: false,
-  };
-  exitCode = 1;
-} else if (auth.state === "authenticated") {
-  verdict = {
-    state: "AUTHENTICATED",
-    blockedAt: null,
-    classification:
-      "control plane reachable, deploy key accepted, and the deployment domain family is reachable",
-    isAuthEvidence: true,
-    isRevocationEvidence: false,
-  };
-  exitCode = 0;
-} else {
-  verdict = {
-    state: auth.state === "credentials_rejected" ? "CREDENTIALS_REJECTED" : "UNAUTHENTICATED",
-    blockedAt: "auth",
-    classification:
-      auth.state === "credentials_rejected"
-        ? "control plane reachable; the key was delivered and refused"
-        : "control plane reachable; no usable credential was presented",
-    isAuthEvidence: auth.state === "credentials_rejected",
-    isRevocationEvidence: false,
-  };
-  exitCode = 1;
-}
+const { verdict, exitCode } = computeVerdict({
+  layers,
+  primaryHost: primary,
+  reachable,
+  authState: auth.state,
+  deploymentPlaneReachable,
+});
 
 if (asJson) {
   console.log(
     JSON.stringify(
       {
         baselineCommit: process.env.GITHUB_SHA ?? null,
+        // Phase 234: exposed so a consumer can check per-layer invariants
+        // without hardcoding which control-plane host is probed first.
+        primaryHost: primary,
         reachable,
         verdict,
         layers,

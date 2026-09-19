@@ -10,11 +10,18 @@
  * A security check that passes when the defence is absent is worse than no
  * check.
  *
- * These tests pin three things:
+ * These tests pin four things:
  *   1. the call shapes match the deployed function contracts (checked against
  *      the server source, so a server-side rename breaks the harness loudly);
  *   2. the refusals — including the new dev/prod mislabelling refusals;
- *   3. the impossibility of satisfying D1–D10 from fixtures or a cache.
+ *   3. the impossibility of satisfying D1–D10 from fixtures or a cache;
+ *   4. Phase 235 — that the deployment's transport outcome is CLASSIFIED rather
+ *      than assumed. What the harness observes depends on the network the
+ *      machine happens to have (a wildcard host resolves on a networked runner
+ *      and dies at the TLS layer behind an egress block); what it may CONCLUDE
+ *      does not. Sections 5b–5d fixture every layer of transport failure and
+ *      every answered shape through `scripts/lib/evidence-d-probe.mjs`, so the
+ *      same conclusions are asserted on both kinds of machine.
  */
 
 import { execFileSync } from "node:child_process";
@@ -22,9 +29,20 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+// Typed via scripts/lib/evidence-d-probe.d.mts — no `any` cast.
+import {
+  AUTH_EVIDENCE_STATES,
+  INFRASTRUCTURE_STATES,
+  PROBE_STATES,
+  classifyProbeResult,
+  probeRefusalReason,
+  transportLayerOf,
+  validateProbeClassification,
+} from "../../../scripts/lib/evidence-d-probe.mjs";
 
 const root = process.cwd();
 const HARNESS = join(root, "scripts/evidence-d-harness.mjs");
+const FETCH_STUB = join(root, "scripts/lib/fixtures/evidence-d-fetch-stub.mjs");
 const PROTECTED = join(root, "src/convex/protectedAnalysis.ts");
 const ENTITLEMENTS = join(root, "src/convex/entitlements.ts");
 const GATE = join(root, "src/lib/entitlement/decision-gate.ts");
@@ -51,6 +69,54 @@ function runHarness(env: Record<string, string>, argv: string[] = ["--json"]): R
     return { exitCode: err.status ?? 1, stdout: err.stdout ?? "", stderr: err.stderr ?? "" };
   }
 }
+
+/*
+ * Phase 235 — a deterministic deployment.
+ *
+ * `reachable-example.convex.cloud` cannot be relied on to be unreachable: the
+ * host sits behind a wildcard DNS record, so on a networked runner it resolves,
+ * TLS completes and the harness receives an HTTP answer, while in an
+ * egress-blocked sandbox the same probe dies at the TLS layer. Asserting the
+ * outcome was therefore asserting the *machine*, not the harness.
+ *
+ * `--import <stub>` lets the guard hand the harness a fake transport, so each
+ * branch of the classification can be produced on demand, on any machine, in
+ * milliseconds. The harness is unaware: the stub replaces `globalThis.fetch` in
+ * the child process only, and no production code was given a test hook.
+ */
+const UNREACHABLE_ENV: Record<string, string> = {
+  CONVEX_DEPLOYMENT: "dev:unreachable-example",
+  VITE_CONVEX_URL: "https://unreachable-example.convex.cloud",
+  EVIDENCE_D_EMAIL: "a@b.co",
+};
+
+function runStubbedHarness(mode: string, timeoutSeconds = 5): Run {
+  return runHarness(
+    { ...UNREACHABLE_ENV, NODE_OPTIONS: `--import ${FETCH_STUB}`, EVIDENCE_D_STUB_MODE: mode },
+    ["--json", "--timeout", String(timeoutSeconds)],
+  );
+}
+
+interface ReportCheck {
+  id: string;
+  status: string;
+  detail?: string;
+  evidence?: Record<string, unknown> | null;
+}
+
+interface HarnessReport {
+  evidenceD: string;
+  reason?: string;
+  checks: ReportCheck[];
+  summary?: { failed?: number; blocked?: number; passed?: number };
+}
+
+function parseReport(run: Run): HarnessReport {
+  // A stub failure must be loud, not parsed into an undefined-shaped report.
+  expect(run.stdout.trim(), `harness produced no JSON (exit ${run.exitCode}): ${run.stderr.slice(0, 400)}`).not.toBe("");
+  return JSON.parse(run.stdout) as HarnessReport;
+}
+
 
 /* ------------------------------------------------------------------ *
  * 1. Call shapes must match the deployed contracts
@@ -319,7 +385,7 @@ describe("Phase 203 — D1–D10 cannot be satisfied without a live deployment",
     expect(pushes[0]).toBeLessThan(runStart);
   });
 
-  it("refuses a file-configured deployment that is not reachable, rather than reporting PASS", () => {
+  it("refuses a file-configured deployment whose transport is blocked, rather than reporting PASS", () => {
     const dir = mkdtempSync(join(tmpdir(), "evd-"));
     const envFile = join(dir, ".env.test");
     writeFileSync(
@@ -330,22 +396,426 @@ describe("Phase 203 — D1–D10 cannot be satisfied without a live deployment",
         "EVIDENCE_D_EMAIL=a@b.co",
       ].join("\n"),
     );
-    const run = runHarness({}, ["--json", "--env-file", envFile]);
+    // Phase 235: the transport is stubbed, so this asserts a conclusion the
+    // harness must reach on every machine rather than restating the runner's
+    // egress policy.
+    const run = runHarness(
+      { NODE_OPTIONS: `--import ${FETCH_STUB}`, EVIDENCE_D_STUB_MODE: "dns" },
+      ["--json", "--env-file", envFile, "--timeout", "5"],
+    );
     expect(run.exitCode).toBe(2);
-    const report = JSON.parse(run.stdout);
+    const report = parseReport(run);
     expect(report.evidenceD).toBe("NOT EXECUTED");
-    expect(report.checks.filter((c: { status: string }) => c.status === "PASS")).toHaveLength(0);
+    expect(report.checks.filter((c) => c.status === "PASS")).toHaveLength(0);
+    expect(report.checks.every((c) => c.status === "BLOCKED")).toBe(true);
   });
 
   it("reports a transport failure as transport, never as an auth result", () => {
-    const run = runHarness({
-      CONVEX_DEPLOYMENT: "dev:unreachable-example",
-      VITE_CONVEX_URL: "https://unreachable-example.convex.cloud",
-      EVIDENCE_D_EMAIL: "a@b.co",
-    });
-    const report = JSON.parse(run.stdout);
+    const run = runStubbedHarness("dns");
+    const report = parseReport(run);
     expect(report.reason).toMatch(/transport failure/i);
     expect(report.reason).not.toMatch(/unauthenticated|rejected credential/i);
+    expect(report.reason).toMatch(/not an authentication or authorisation result/i);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 5b. Phase 235 — the deployment's answer decides the verdict
+ * ------------------------------------------------------------------ */
+
+/**
+ * The guard used to prove "unreachable is not an auth failure" by pointing the
+ * harness at a real host and asserting what the machine's network did. These
+ * fixtures instead hand the harness a simulated transport, so each outcome can
+ * be produced on demand and the assertions describe the harness rather than the
+ * runner.
+ *
+ * The property under test is the one that must hold everywhere: an
+ * authentication verdict requires an actual answer from the service, and a
+ * result that only proves the transport failed stays an infrastructure
+ * condition.
+ */
+describe("Phase 235 — a blocked transport refuses as infrastructure, never as authentication", () => {
+  const blockedModes: Array<[string, string]> = [
+    ["dns", "ENOTFOUND"],
+    ["tcp", "ECONNREFUSED"],
+    ["tls", "ECONNRESET"],
+    ["cert", "ERR_TLS_CERT_ALTNAME_INVALID"],
+    ["timeout", "ETIMEDOUT"],
+    ["opaque", "Error"],
+  ];
+
+  it("refuses every blocked transport with the same shape and names the layer", () => {
+    for (const [mode, code] of blockedModes) {
+      const run = runStubbedHarness(mode);
+      const report = parseReport(run);
+
+      // Refusal, not a verdict: nothing was executed, so nothing is claimed.
+      expect(run.exitCode, mode).toBe(2);
+      expect(report.evidenceD, mode).toBe("NOT EXECUTED");
+      expect(
+        report.checks.every((c) => c.status === "BLOCKED"),
+        mode,
+      ).toBe(true);
+      expect(report.checks, mode).toHaveLength(10);
+
+      // The reason states the transport fact, names the hop, and explicitly
+      // disclaims an authentication conclusion.
+      expect(report.reason, mode).toMatch(/transport failure/i);
+      expect(report.reason, mode).toMatch(/not an authentication or authorisation result/i);
+      expect(report.reason, mode).toContain(code);
+      expect(report.reason, mode).not.toMatch(/unauthenticated|rejected credential/i);
+
+      // And the classification the harness used is the same one the exported
+      // contract produces for that probe result.
+      const classified = classifyProbeResult({ httpStatus: 0, transportError: code });
+      expect(classified.state, mode).toBe("TRANSPORT_BLOCKED");
+      expect(classified.isAuthEvidence, mode).toBe(false);
+      expect(classified.isRevocationEvidence, mode).toBe(false);
+      expect(report.reason, mode).toBe(probeRefusalReason(classified, "unreachable-example.convex.cloud"));
+    }
+  });
+
+  it("bounds a hanging probe by --timeout, so a guard cannot stall for a minute", () => {
+    // A stub that never answers: the refusal must arrive on the configured
+    // budget, not the 60s default. This is what makes a live probe cheap enough
+    // to keep in a suite — and it pins that the flag is honoured at all.
+    const started = Date.now();
+    const run = runStubbedHarness("hang", 1);
+    const elapsed = Date.now() - started;
+    const report = parseReport(run);
+
+    expect(report.evidenceD).toBe("NOT EXECUTED");
+    expect(report.reason).toMatch(/timeout layer/i);
+    expect(elapsed).toBeLessThan(15_000);
+  });
+
+  it("never records a check verdict for a run that refused", () => {
+    const report = parseReport(runStubbedHarness("tls"));
+    const d3 = report.checks.find((c) => c.id === "D3");
+    expect(d3?.status).toBe("BLOCKED");
+    expect(d3?.evidence ?? null).toBeNull();
+    expect(report.summary?.passed ?? 0).toBe(0);
+  });
+});
+
+describe("Phase 235 — an answer that is not a working deployment is not authentication evidence", () => {
+  const notServingModes = ["http-503", "http-404", "malformed-200", "non-json"];
+
+  it("fails closed on an unavailable or uninterpretable answer", () => {
+    for (const mode of notServingModes) {
+      const run = runStubbedHarness(mode);
+      const report = parseReport(run);
+
+      // The checks ran — so this is a result, not a refusal — and none passed.
+      expect(run.exitCode, mode).toBe(1);
+      expect(report.evidenceD, mode).toBe("FAILED");
+      expect(report.reason, mode).toBeUndefined();
+      expect(
+        report.checks.filter((c) => c.status === "PASS"),
+        mode,
+      ).toHaveLength(0);
+
+      const d3 = report.checks.find((c) => c.id === "D3");
+      expect(d3?.status, mode).toBe("FAIL");
+      const resultClass = String(d3?.evidence?.resultClass);
+      expect(INFRASTRUCTURE_STATES, mode).toContain(resultClass);
+      expect(resultClass, mode).not.toBe("TRANSPORT_BLOCKED");
+      expect(AUTH_EVIDENCE_STATES, mode).not.toContain(resultClass);
+    }
+  });
+
+  it("keeps a 5xx/404 an infrastructure condition, distinct from a transport failure", () => {
+    for (const [mode, status] of [
+      ["http-503", 503],
+      ["http-404", 404],
+    ] as Array<[string, number]>) {
+      const report = parseReport(runStubbedHarness(mode));
+      const d3 = report.checks.find((c) => c.id === "D3");
+      expect(d3?.evidence?.httpStatus, mode).toBe(status);
+      expect(d3?.evidence?.resultClass, mode).toBe("SERVICE_UNAVAILABLE");
+    }
+    for (const mode of ["malformed-200", "non-json"]) {
+      const report = parseReport(runStubbedHarness(mode));
+      const d3 = report.checks.find((c) => c.id === "D3");
+      expect(d3?.evidence?.httpStatus, mode).toBe(200);
+      expect(d3?.evidence?.resultClass, mode).toBe("MALFORMED");
+    }
+  });
+
+  it("only passes D3 when the service actually answered with a refusal", () => {
+    // A reached deployment that refuses the caller IS the evidence D3 exists to
+    // collect — that is the difference between this and a transport failure.
+    for (const [mode, withheld] of [
+      ["unauth-401", false],
+      ["unauth-app", true],
+    ] as Array<[string, boolean]>) {
+      const run = runStubbedHarness(mode);
+      const report = parseReport(run);
+      const d3 = report.checks.find((c) => c.id === "D3");
+      expect(d3?.status, mode).toBe("PASS");
+      expect(d3?.evidence?.resultClass, mode).toBe("UNAUTHENTICATED");
+      expect(d3?.evidence?.resultWithheld, mode).toBe(withheld);
+
+      // One passing check is still not a passed gate.
+      expect(run.exitCode, mode).toBe(2);
+      expect(report.evidenceD, mode).toBe("INCOMPLETE");
+      const passes = report.checks.filter((c) => c.status === "PASS");
+      expect(passes, mode).toHaveLength(1);
+      expect(passes[0].id, mode).toBe("D3");
+    }
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 5c. Phase 235 — the classification contract (fixtures only)
+ * ------------------------------------------------------------------ */
+
+describe("Phase 235 — probe classification is pure, total and fails closed", () => {
+  const layerCases: Array<[string, string]> = [
+    ["ENOTFOUND", "dns"],
+    ["EAI_AGAIN", "dns"],
+    ["ECONNREFUSED", "tcp"],
+    ["EHOSTUNREACH", "tcp"],
+    ["ENETUNREACH", "tcp"],
+    ["ECONNRESET", "tls"],
+    ["EPIPE", "tls"],
+    ["ERR_TLS_CERT_ALTNAME_INVALID", "tls"],
+    ["SELF_SIGNED_CERT_IN_CHAIN", "tls"],
+    ["ETIMEDOUT", "timeout"],
+    ["UND_ERR_CONNECT_TIMEOUT", "timeout"],
+    ["AbortError", "timeout"],
+    // Unrecognised codes stay unknown rather than being guessed into a layer
+    // that would look more precise than the evidence supports.
+    ["WEIRD_FAILURE", "unknown"],
+    ["", "unknown"],
+  ];
+
+  it("maps transport error codes onto layers, defaulting to unknown", () => {
+    for (const [code, layer] of layerCases) {
+      expect(transportLayerOf(code), code).toBe(layer);
+    }
+    expect(transportLayerOf(undefined)).toBe("unknown");
+  });
+
+  it("classifies every layer of transport failure as infrastructure, never auth", () => {
+    for (const [code, layer] of layerCases) {
+      const classified = classifyProbeResult({ httpStatus: 0, transportError: code });
+      expect(classified.state, code).toBe("TRANSPORT_BLOCKED");
+      expect(classified.layer, code).toBe(layer);
+      expect(classified.reached, code).toBe(false);
+      expect(classified.isAuthEvidence, code).toBe(false);
+      expect(classified.isRevocationEvidence, code).toBe(false);
+      expect(AUTH_EVIDENCE_STATES, code).not.toContain(classified.state);
+      expect(validateProbeClassification(classified), code).toEqual([]);
+    }
+  });
+
+  it("treats a missing or contradictory answer as unreached, not as success", () => {
+    // No answer at all: nothing reached, so nothing may be concluded.
+    for (const probe of [{}, { httpStatus: 0 }, { transportError: "ECONNRESET" }]) {
+      const classified = classifyProbeResult(probe);
+      expect(classified.state, JSON.stringify(probe)).toBe("TRANSPORT_BLOCKED");
+      expect(classified.isAuthEvidence, JSON.stringify(probe)).toBe(false);
+      expect(validateProbeClassification(classified), JSON.stringify(probe)).toEqual([]);
+    }
+  });
+
+  it("lets a recorded transport error outrank any status, however it is shaped", () => {
+    // A caller that reshapes a thrown fetch into an auth-looking answer cannot
+    // win: the transport fact is decided first and unconditionally, so no HTTP
+    // status, application status or `value` payload can pull a verdict out of a
+    // request that never reached the service.
+    const forged = [
+      { httpStatus: 401, transportError: "ECONNREFUSED" },
+      { httpStatus: 401, transportError: "ECONNREFUSED", appStatus: "UNAUTHENTICATED" },
+      { httpStatus: 200, transportError: "ECONNRESET", appStatus: "DELIVERED" },
+      { httpStatus: 500, transportError: "ETIMEDOUT" },
+    ];
+    for (const probe of forged) {
+      const classified = classifyProbeResult(probe);
+      expect(classified.state, JSON.stringify(probe)).toBe("TRANSPORT_BLOCKED");
+      expect(classified.isAuthEvidence, JSON.stringify(probe)).toBe(false);
+      expect(classified.reached, JSON.stringify(probe)).toBe(false);
+      expect(classified.httpStatus, JSON.stringify(probe)).toBe(0);
+      expect(validateProbeClassification(classified), JSON.stringify(probe)).toEqual([]);
+    }
+  });
+
+  it("separates an answered-but-unavailable service from an auth verdict", () => {
+    for (const status of [400, 403, 404, 429, 500, 502, 503]) {
+      const classified = classifyProbeResult({ httpStatus: status });
+      expect(classified.state, String(status)).toBe("SERVICE_UNAVAILABLE");
+      expect(classified.reached, String(status)).toBe(true);
+      expect(classified.layer, String(status)).toBeNull();
+      expect(classified.isAuthEvidence, String(status)).toBe(false);
+      expect(validateProbeClassification(classified), String(status)).toEqual([]);
+    }
+  });
+
+  it("only calls a response authentication evidence when the service said something", () => {
+    const refusal = classifyProbeResult({ httpStatus: 401 });
+    expect(refusal.state).toBe("UNAUTHENTICATED");
+    expect(refusal.reached).toBe(true);
+    expect(refusal.isAuthEvidence).toBe(true);
+    expect(validateProbeClassification(refusal)).toEqual([]);
+
+    const appRefusal = classifyProbeResult({ httpStatus: 200, appStatus: "UNAUTHENTICATED" });
+    expect(appRefusal.state).toBe("UNAUTHENTICATED");
+    expect(appRefusal.isAuthEvidence).toBe(true);
+    expect(validateProbeClassification(appRefusal)).toEqual([]);
+
+    const ok = classifyProbeResult({ httpStatus: 200, appStatus: "DELIVERED" });
+    expect(ok.state).toBe("AUTHENTICATED");
+    expect(ok.reached).toBe(true);
+    expect(ok.isAuthEvidence).toBe(true);
+    expect(validateProbeClassification(ok)).toEqual([]);
+  });
+
+  it("fails closed on a 2xx that states no application status", () => {
+    for (const appStatus of [undefined, null, "", "   ", 42, {}]) {
+      const classified = classifyProbeResult({ httpStatus: 200, appStatus });
+      expect(classified.state, JSON.stringify(appStatus)).toBe("MALFORMED");
+      expect(classified.isAuthEvidence, JSON.stringify(appStatus)).toBe(false);
+      expect(classified.detail, JSON.stringify(appStatus)).toMatch(/fails closed/i);
+      expect(validateProbeClassification(classified), JSON.stringify(appStatus)).toEqual([]);
+    }
+  });
+
+  it("is deterministic and independent of the environment it runs in", () => {
+    const probes = [
+      { httpStatus: 0, transportError: "ENOTFOUND" },
+      { httpStatus: 401 },
+      { httpStatus: 200, appStatus: "DELIVERED" },
+      { httpStatus: 200 },
+      { httpStatus: 503 },
+    ];
+    for (const probe of probes) {
+      expect(classifyProbeResult({ ...probe })).toEqual(classifyProbeResult({ ...probe }));
+    }
+
+    // The classifier must not consult process.env: a machine's network state or
+    // configuration may not change the semantics of a given probe result.
+    const source = readFileSync(join(root, "scripts/lib/evidence-d-probe.mjs"), "utf8");
+    expect(source).not.toMatch(/process\.env/);
+
+    // The state set is closed, duplicate-free, and exactly partitioned into
+    // "justifies an auth conclusion" and "is infrastructure".
+    expect(new Set(PROBE_STATES).size).toBe(PROBE_STATES.length);
+    expect(PROBE_STATES).toContain("TRANSPORT_BLOCKED");
+    const expectedStates = [...AUTH_EVIDENCE_STATES, ...INFRASTRUCTURE_STATES].sort();
+    expect([...PROBE_STATES].sort()).toEqual(expectedStates);
+    expect(AUTH_EVIDENCE_STATES.filter((s) => INFRASTRUCTURE_STATES.includes(s))).toHaveLength(0);
+  });
+
+  it("rejects a classification that claims authentication it cannot have observed", () => {
+    const blocked = classifyProbeResult({ httpStatus: 0, transportError: "ECONNRESET" });
+    const unauth = classifyProbeResult({ httpStatus: 401 });
+
+    // The Phase 235 defect stated as a fixture: a transport failure laundered
+    // into an auth verdict must not validate.
+    expect(validateProbeClassification({ ...blocked, state: "UNAUTHENTICATED", isAuthEvidence: true })).not.toEqual([]);
+    expect(validateProbeClassification({ ...blocked, state: "AUTHENTICATED", isAuthEvidence: true })).not.toEqual([]);
+    expect(validateProbeClassification({ ...blocked, isAuthEvidence: true })).not.toEqual([]);
+
+    // Auth evidence without a reached service is the same violation stated the
+    // other way; revocation is never claimable by this probe.
+    expect(validateProbeClassification({ ...unauth, reached: false })).not.toEqual([]);
+    expect(validateProbeClassification({ ...unauth, isRevocationEvidence: true })).not.toEqual([]);
+    expect(validateProbeClassification({ ...unauth, state: "REVOKED" })).not.toEqual([]);
+    expect(validateProbeClassification({ ...unauth, httpStatus: 0 })).not.toEqual([]);
+    expect(validateProbeClassification({ ...unauth, detail: "" })).not.toEqual([]);
+    expect(validateProbeClassification({ ...blocked, layer: null })).not.toEqual([]);
+    expect(validateProbeClassification(null)).not.toEqual([]);
+    expect(validateProbeClassification("UNAUTHENTICATED")).not.toEqual([]);
+  });
+
+  it("keeps the harness dispatching through the shared contract, not inline rules", () => {
+    // The harness must not re-derive reachability itself: one classification
+    // function, so the fixture matrix above describes what the harness does.
+    expect(harnessSource).toMatch(/classifyProbeResult/);
+    expect(harnessSource).toMatch(/probeRefusalReason/);
+    // No inline reachability rule and no inline refusal wording: if the harness
+    // still decided (or phrased) this itself, the fixture matrix above would
+    // stop describing what actually runs.
+    expect(harnessSource).not.toMatch(/unauth\.httpStatus === 0/);
+    expect(harnessSource).not.toMatch(/not an authentication or authorisation result/);
+    expect(harnessSource).not.toMatch(/The deployment did not answer/);
+    // ...and the refusal wording, asserted behaviourally rather than by grepping
+    // the module's source text, does carry that disclaimer.
+    const refusal = probeRefusalReason(classifyProbeResult({ httpStatus: 0, transportError: "ENOTFOUND" }), "h");
+    expect(refusal).toMatch(/transport failure/i);
+    expect(refusal).toMatch(/not an authentication or authorisation result/i);
+    // Bounded probing must be reachable, or a guard cannot use it.
+    expect(harnessSource).toMatch(/--timeout/);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * 5d. Phase 235 — one bounded live probe (smoke, environment-agnostic)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Exactly one real-socket probe per file, memoised, bounded by `--timeout`.
+ *
+ * It exists to prove the harness still runs end to end against a real
+ * transport — the fixtures above replace `fetch`, so they cannot. It asserts
+ * only what holds in EVERY environment: a fake deployment can never be reported
+ * ACHIEVED, the refusal shape is coherent, and a transport failure is never
+ * described as an authentication result — whichever way this machine's network
+ * happens to behave.
+ */
+let liveProbe: { run: Run; report: HarnessReport } | null = null;
+
+function liveProbeOnce(): { run: Run; report: HarnessReport } {
+  if (!liveProbe) {
+    const run = runHarness({ ...UNREACHABLE_ENV }, ["--json", "--timeout", "5"]);
+    liveProbe = { run, report: parseReport(run) };
+  }
+  return liveProbe;
+}
+
+describe("Phase 235 — the live probe is classified, not assumed", () => {
+  it("never reaches ACHIEVED against a deployment that is not a real one", () => {
+    const { run, report } = liveProbeOnce();
+    // ACHIEVED requires positive evidence from every check, which a wildcard
+    // host cannot supply in any environment.
+    expect(report.evidenceD).not.toBe("ACHIEVED");
+    expect(run.exitCode).not.toBe(0);
+  });
+
+  it("keeps its refusal shape coherent, whichever way this machine's network behaves", () => {
+    const { run, report } = liveProbeOnce();
+    // `refuse()` is the only writer of a top-level reason, and the only path
+    // that reports NOT EXECUTED. Tying them together means a transport failure
+    // can never arrive as a check verdict, and an executed run can never borrow
+    // transport wording — on any machine.
+    const refused = report.evidenceD === "NOT EXECUTED";
+    expect(report.reason !== undefined).toBe(refused);
+
+    if (refused) {
+      expect(run.exitCode).toBe(2);
+      expect(report.checks.every((c) => c.status === "BLOCKED")).toBe(true);
+      expect(report.reason).toMatch(/transport failure/i);
+      expect(report.reason).not.toMatch(/unauthenticated|rejected credential/i);
+    } else {
+      // Checks ran: the deployment's answer decided at least one status. Other
+      // checks may legitimately be BLOCKED — refusing to guess is correct.
+      expect(report.checks.some((c) => c.status !== "BLOCKED")).toBe(true);
+    }
+
+    // Whether or not the host answered, no check may claim authentication
+    // evidence it did not observe: D3 passes only on a reached refusal.
+    const d3 = report.checks.find((c) => c.id === "D3");
+    if (d3?.status === "PASS") {
+      expect(d3.evidence?.resultClass).toBe("UNAUTHENTICATED");
+      const withheld = d3.evidence?.resultWithheld;
+      const answered401 = d3.evidence?.httpStatus === 401;
+      expect(withheld === true || answered401).toBe(true);
+    }
+    if (d3?.evidence) {
+      expect(d3.evidence.resultClass).not.toBe("TRANSPORT_BLOCKED");
+    }
   });
 });
 
