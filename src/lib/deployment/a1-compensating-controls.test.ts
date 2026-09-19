@@ -163,11 +163,15 @@ describe("A1 compensating-controls — evaluator", () => {
     expect(report.admissible).toBe(false);
   });
 
-  it("owner acceptance without the owner, the rationale, or residual risk is incomplete", () => {
+  it("owner acceptance without the owner, the rationale, residual risk, or acceptedAt is incomplete", () => {
     expect(assess(payload({ accepted: false })).outcome).toBe("OWNER_ACCEPTANCE_INCOMPLETE");
     expect(assess(payload({ acceptedBy: "  " })).outcome).toBe("OWNER_ACCEPTANCE_INCOMPLETE");
     expect(assess(payload({ rationale: "too short" })).outcome).toBe("OWNER_ACCEPTANCE_INCOMPLETE");
     expect(assess(payload({ residualRisk: "" })).outcome).toBe("OWNER_ACCEPTANCE_INCOMPLETE");
+    const withoutAcceptedAt = payload();
+    delete withoutAcceptedAt.acceptedAt;
+    expect(assess(withoutAcceptedAt).outcome).toBe("MALFORMED");
+    expect(assess(withoutAcceptedAt).admissible).toBe(false);
   });
 
   it("a filing that asserts controlsProven true is still refused when observation fails", () => {

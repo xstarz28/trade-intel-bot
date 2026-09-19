@@ -92,6 +92,7 @@ const CREDENTIAL_KEYS = [
   "x-api-key",
   "token",
   "password",
+  "value",
 ] as const;
 
 const MIN_RATIONALE = 40;
