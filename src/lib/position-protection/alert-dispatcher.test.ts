@@ -37,6 +37,17 @@ describe("computeEventFingerprint", () => {
   });
 });
 
+/**
+ * Fixed clock aligned to a 30s dedup-bucket boundary.
+ *
+ * These tests previously used the wall clock. The dispatcher buckets
+ * fingerprints as Math.floor(timestamp / 30_000), so whenever the wall
+ * clock happened to land in the final second of a bucket, `now` and
+ * `now + 1000` fell into DIFFERENT buckets and the dedup assertions
+ * failed — a real ~3.3% flake unrelated to any code change.
+ */
+const FIXED_NOW = 1_800_000_000_000; // exactly divisible by 30_000
+
 function makeEvent(overrides: Partial<ProtectionEvent> = {}): ProtectionEvent {
   return {
     eventId: "evt-1",
@@ -46,7 +57,7 @@ function makeEvent(overrides: Partial<ProtectionEvent> = {}): ProtectionEvent {
     severity: "CAUTION",
     action: "Consider protecting profit.",
     reason: "Thesis deteriorating.",
-    timestamp: Date.now(),
+    timestamp: FIXED_NOW,
     stateTransition: true,
     acknowledged: false,
     ...overrides,
@@ -56,20 +67,20 @@ function makeEvent(overrides: Partial<ProtectionEvent> = {}): ProtectionEvent {
 describe("shouldDispatch", () => {
   it("always dispatches INVALIDATED", () => {
     const state = createDispatcherState();
-    const result = shouldDispatch(state, "pos-1", "INVALIDATED", Date.now());
+    const result = shouldDispatch(state, "pos-1", "INVALIDATED", FIXED_NOW);
     expect(result.shouldDispatch).toBe(true);
   });
 
   it("dispatches first alert for position", () => {
     const state = createDispatcherState();
-    const result = shouldDispatch(state, "pos-1", "CAUTION", Date.now());
+    const result = shouldDispatch(state, "pos-1", "CAUTION", FIXED_NOW);
     expect(result.shouldDispatch).toBe(true);
     expect(result.reason).toContain("First alert");
   });
 
   it("dispatches on escalation", () => {
     let state = createDispatcherState();
-    const now = Date.now();
+    const now = FIXED_NOW;
     state = shouldDispatch(state, "pos-1", "WATCH", now).shouldDispatch
       ? dispatch(state, makeEvent({ severity: "WATCH", timestamp: now }))
       : state;
@@ -80,7 +91,7 @@ describe("shouldDispatch", () => {
 
   it("dispatches on recovery", () => {
     let state = createDispatcherState();
-    const now = Date.now();
+    const now = FIXED_NOW;
     state = dispatch(state, makeEvent({ severity: "CAUTION", timestamp: now }));
     const result = shouldDispatch(state, "pos-1", "WATCH", now + 1000);
     expect(result.shouldDispatch).toBe(true);
@@ -89,7 +100,7 @@ describe("shouldDispatch", () => {
 
   it("blocks duplicate within same fingerprint bucket", () => {
     let state = createDispatcherState();
-    const now = Date.now();
+    const now = FIXED_NOW;
     state = dispatch(state, makeEvent({ severity: "WATCH", timestamp: now }));
     const result = shouldDispatch(state, "pos-1", "WATCH", now + 1000);
     expect(result.shouldDispatch).toBe(false);
@@ -98,7 +109,7 @@ describe("shouldDispatch", () => {
 
   it("allows re-alert after cooldown", () => {
     let state = createDispatcherState();
-    const now = Date.now();
+    const now = FIXED_NOW;
     state = dispatch(state, makeEvent({ severity: "WATCH", timestamp: now }));
     const result = shouldDispatch(state, "pos-1", "WATCH", now + 31_000);
     expect(result.shouldDispatch).toBe(true);
@@ -125,7 +136,7 @@ describe("dispatch", () => {
 
   it("records fingerprint for dedup", () => {
     const state = createDispatcherState();
-    const now = Date.now();
+    const now = FIXED_NOW;
     const updated = dispatch(state, makeEvent({ severity: "WATCH", timestamp: now }));
     const fp = computeEventFingerprint("pos-1", "WATCH", now);
     expect(updated.seenFingerprints.has(fp)).toBe(true);

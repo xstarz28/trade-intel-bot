@@ -8,23 +8,13 @@
  * Provider availability NEVER becomes directional evidence.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ── Types ──
 import {
   type FreshnessLevel,
-  type OpportunityLifecycle,
-  type QualityTier,
   type RadarScanConfig,
-  type RadarScanResult,
-  type RadarOpportunity,
-  type OpportunityDiff,
-  type UniverseEntry,
-  FRESHNESS_ORDER,
-  freshnessRank,
-  meetsFreshness,
   HORIZON_FRESHNESS_GATES,
-  HORIZON_REFRESH_PRIORITY,
 } from "./market-radar/types";
 
 // ── Cache ──
@@ -35,7 +25,6 @@ import { RateLimitController } from "./market-radar/rate-limit";
 
 // ── Freshness ──
 import {
-  assessFreshness,
   checkFreshnessEligibility,
   shouldTransitionLifecycle,
   summarizeFreshness,
@@ -44,7 +33,6 @@ import {
 // ── Universe ──
 import {
   DEFAULT_UNIVERSE,
-  CORRELATION_CLUSTERS,
   getUniverse,
   getInstrumentEntry,
   getClusterForInstrument,
@@ -732,7 +720,7 @@ describe("Q — Opportunity Lifecycle", () => {
     const source = makeSource({ snapshot: makeSnapshot({ observedAt: NOW }) });
     const config: RadarScanConfig = { horizons: ["INTRADAY"], maxResults: 5 };
     const r1 = scanRadar([source], config, undefined, NOW);
-    const state1 = buildRadarState(r1);
+    buildRadarState(r1);
     expect(r1.results.get("INTRADAY")![0].lifecycle).toBe("ACTIVE");
 
     // Stale source → transition

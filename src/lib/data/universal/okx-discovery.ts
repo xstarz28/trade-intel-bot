@@ -55,20 +55,56 @@ function mapSubtype(instType: string): InstrumentSubType | undefined {
   }
 }
 
+/**
+ * Resolve base/quote for an OKX row.
+ *
+ * OKX only populates `baseCcy`/`quoteCcy` for SPOT. For SWAP and FUTURES those
+ * fields are empty and the pair is expressed by `uly` (the underlying index,
+ * e.g. "BTC-USDT" for "BTC-USDT-SWAP"). Requiring baseCcy/quoteCcy therefore
+ * silently discarded every derivative OKX returned.
+ *
+ * Everything here comes from fields OKX itself reported — the underlying index
+ * or the native instId — so the instrument's identity is never invented. If no
+ * provider field yields a pair, the row is rejected rather than guessed.
+ */
+function resolvePair(
+  row: OkxInstrumentMetadata,
+): { baseAsset: string; quoteAsset: string } | undefined {
+  // 1. Spot: the provider states the pair outright.
+  if (row.baseCcy && row.quoteCcy) {
+    return { baseAsset: row.baseCcy, quoteAsset: row.quoteCcy };
+  }
+
+  // 2. Derivatives: the underlying index carries the pair.
+  if (row.uly) {
+    const [base, quote] = row.uly.split("-");
+    if (base && quote) return { baseAsset: base, quoteAsset: quote };
+  }
+
+  // 3. Fall back to the native instId, which OKX composes as
+  //    BASE-QUOTE-SWAP or BASE-QUOTE-<expiry> for derivatives.
+  const parts = row.instId.split("-");
+  if (parts.length >= 3 && parts[0] && parts[1]) {
+    return { baseAsset: parts[0], quoteAsset: parts[1] };
+  }
+
+  return undefined;
+}
+
 function toDiscoveredInstrument(
   row: OkxInstrumentMetadata,
 ): OkxDiscoveredInstrument | undefined {
   const subType = mapSubtype(row.instType);
+  if (!subType) return undefined;
 
-  if (!subType || !row.baseCcy || !row.quoteCcy) {
-    return undefined;
-  }
+  const pair = resolvePair(row);
+  if (!pair) return undefined;
 
   return {
     instId: row.instId,
     instType: row.instType,
-    baseAsset: row.baseCcy,
-    quoteAsset: row.quoteCcy,
+    baseAsset: pair.baseAsset,
+    quoteAsset: pair.quoteAsset,
     ...(row.settleCcy ? { settleAsset: row.settleCcy } : {}),
     subType,
     ...(row.state ? { state: row.state } : {}),

@@ -42,7 +42,6 @@ import {
   synthesizeMultiDimensionalIntelligence,
 } from "./multi-dimensional-intelligence";
 import type { MTFConfluence } from "./multi-timeframe-engine";
-import type { PositionSide } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS

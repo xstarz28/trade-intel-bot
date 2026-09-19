@@ -8,12 +8,10 @@
  * Provider availability NEVER becomes directional evidence.
  */
 
-import type { AssetClass } from "@/lib/data/universal/types";
 import type {
   TradingMode,
   InvestorHorizon,
 } from "@/lib/recommendation-engine";
-import { generateRecommendation } from "@/lib/recommendation-engine";
 import type {
   RadarOpportunity,
   RadarScanConfig,
@@ -22,22 +20,17 @@ import type {
   OpportunityLifecycle,
   QualityTier,
   FreshnessLevel,
-  CorrelationCluster,
-  UniverseEntry,
 } from "./types";
 
 // Re-export types for consumers
 export type { RadarScanResult, RadarScanConfig, RadarOpportunity } from "./types";
-import {
-  HORIZON_FRESHNESS_GATES,
-  meetsFreshness,
-  HORIZON_REFRESH_PRIORITY,
-} from "./types";
-import { DEFAULT_UNIVERSE, CORRELATION_CLUSTERS } from "./universe";
+// Phase 158: DEFAULT_UNIVERSE is deliberately NOT imported here.
+// The radar scans the sources it is given; it never enumerates a static
+// instrument list. Only correlation metadata is consumed from this module.
+import { CORRELATION_CLUSTERS } from "./universe";
 import { buildRadarCandidate, type RadarCandidateSource } from "./candidate-builder";
 import {
   checkFreshnessEligibility,
-  shouldTransitionLifecycle,
   assessFreshness,
   summarizeFreshness,
 } from "./freshness";
@@ -83,7 +76,6 @@ function scoreOpportunity(
   const supporting: string[] = [];
   const conflicting: string[] = [];
   const missing: string[] = [];
-  const reasons: string[] = [];
   let score = 50; // baseline
   let confidence = 50;
 
@@ -342,6 +334,10 @@ export function scanRadar(
           instrument: source.universe.instrument,
           assetClass: source.universe.assetClass,
           region: source.universe.region,
+          // Provider-native identity travels with the opportunity, unchanged.
+          ...(source.universe.providerNative
+            ? { providerNative: source.universe.providerNative }
+            : {}),
           lifecycle: "EXPIRED",
           qualityTier: "X",
           score: 0,
@@ -394,6 +390,10 @@ export function scanRadar(
         instrument: source.universe.instrument,
         assetClass: source.universe.assetClass,
         region: source.universe.region,
+        // Provider-native identity travels with the opportunity, unchanged.
+        ...(source.universe.providerNative
+          ? { providerNative: source.universe.providerNative }
+          : {}),
         lifecycle,
         qualityTier,
         score: scored.score,

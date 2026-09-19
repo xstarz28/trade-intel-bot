@@ -14,8 +14,6 @@ import {
   ShieldCheck,
   AlertTriangle,
   CheckCircle2,
-  TrendingUp,
-  TrendingDown,
   Clock,
   Wifi,
   WifiOff,

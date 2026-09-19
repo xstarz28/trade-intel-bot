@@ -17,15 +17,9 @@ import {
   checkCredentials,
   type EnvReader,
 } from "@/lib/data/universal/live/credentials";
-import {
-  validateOhlcvSeries,
-  validateQuote,
-  compareCrossProviderPrices,
-  type OhlcvRecord,
-  type ConsistencyVerdict,
-} from "@/lib/data/universal/live/types";
 import { assessFreshness } from "./freshness";
 import type { FreshnessLevel } from "./types";
+import { errorMessage } from "../data/json/narrow";
 
 // ═══════════════════════════════════════════════════════════════
 // VERIFICATION STATUS
@@ -254,10 +248,10 @@ async function verifiedFetch(url: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promi
     } catch {
       return { ok: false, status: res.status, latencyMs };
     }
-  } catch (err: any) {
+  } catch (err: unknown) {
     clearTimeout(timeout);
     const latencyMs = Date.now() - t0;
-    const msg = err?.message ?? String(err);
+    const msg = errorMessage(err);
     if (msg.includes("abort") || msg.includes("timeout")) {
       return { ok: false, status: 0, latencyMs };
     }
@@ -529,8 +523,8 @@ function validateProviderResponse(
       default:
         return { ...base, errorMessage: "No validation defined for provider" };
     }
-  } catch (err: any) {
-    return { ...base, errorMessage: err?.message ?? "Validation error" };
+  } catch (err: unknown) {
+    return { ...base, errorMessage: errorMessage(err) || "Validation error" };
   }
 }
 

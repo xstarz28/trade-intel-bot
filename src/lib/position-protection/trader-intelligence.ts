@@ -360,7 +360,7 @@ export function buildTimelineEntry(
   instrument: string,
   side: PositionSide,
   changes: ChangeDetection,
-  confluence: MTFConfluence,
+  _confluence: MTFConfluence,
 ): TimelineEntry | null {
   if (!changes.changed || changes.changes.length === 0) return null;
 
@@ -561,7 +561,6 @@ function buildRegimeNarrative(
 ): string {
   const h1Trend = h1?.trend ?? "UNKNOWN";
   const m15Trend = m15?.trend ?? "UNKNOWN";
-  const m5Trend = m5?.trend ?? "UNKNOWN";
 
   switch (regime) {
     case "TRENDING_UP":

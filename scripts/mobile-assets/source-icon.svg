@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f1d3d"/>
+      <stop offset="100%" stop-color="#0b1220"/>
+    </linearGradient>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- Ascending analysis line: decision-support, not execution. -->
+  <polyline points="232,700 396,536 520,624 792,332"
+            fill="none" stroke="url(#mark)" stroke-width="58"
+            stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="792" cy="332" r="46" fill="#60a5fa"/>
+  <rect x="232" y="742" width="560" height="26" rx="13" fill="#1e3a8a"/>
+</svg>

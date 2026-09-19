@@ -25,7 +25,6 @@ import {
   execution as executionFixture,
   executionUnavailable,
 } from "./benchmark-fixtures.phase9";
-import type { AnalysisInput } from "@/types/analysis";
 import {
   buildObservabilityEvent,
   observabilityAllowlist,
@@ -62,7 +61,7 @@ describe("fault injection: real failure payloads into provider parsers", () => {
     for (const [name, body] of failureBodies) {
       const pts = parseTreasuryXml(body, "nominal");
       expect(pts).toEqual([]);
-      const ctx = buildTreasuryContext([body, ""], [], NOW);
+      const ctx = buildTreasuryContext([body, ""], [], NOW, NOW);
       expect(ctx.available).toBe(false);
       if (!ctx.available) expect(ctx.reason.length).toBeGreaterThan(0);
       void name;
@@ -88,12 +87,12 @@ describe("fault injection: real failure payloads into provider parsers", () => {
 
   it("COT: empty/garbage rows → honest unavailable context", () => {
     for (const rows of [[], [null], ["garbage"], [{}, undefined]]) {
-      const ctx = buildCotContext(rows as never, "EUR/USD", NOW);
+      const ctx = buildCotContext(rows as never, "EUR/USD", NOW, NOW);
       expect(ctx.available).toBe(false); // no usable rows → no positioning data
       if (!ctx.available) expect(ctx.reason).toBeTruthy();
     }
     // Unsupported asset never fabricates a mapping either.
-    const unmapped = buildCotContext([], "BTC/USDT", NOW);
+    const unmapped = buildCotContext([], "BTC/USDT", NOW, NOW);
     expect(unmapped.available).toBe(false);
   });
 

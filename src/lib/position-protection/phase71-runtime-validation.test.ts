@@ -25,10 +25,8 @@ import { describe, it, expect } from "vitest";
 import type {
   PositionContext,
   AlertSeverity,
-  MonitoringState,
   ProtectionAlert,
 } from "../position-protection/types";
-import { alertSeverityRank, urgencyRank } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
 
 // Source labeling
@@ -45,17 +43,10 @@ import {
   isRealData,
   isUsableData,
   type DataSourceMode,
-  type DataSourceLabel,
 } from "../position-protection/data-source-mode";
 
 // Core engines
 import { evaluateProtection } from "../position-protection/protection-engine";
-import {
-  createMonitoringState,
-  shouldAlert,
-  updateMonitoringState,
-  deduplicateByDependencyGroup,
-} from "../position-protection/alert-lifecycle";
 
 // Runtime hardening
 import {
@@ -77,14 +68,9 @@ import {
   registerPosition as ctrlRegister,
   removePosition as ctrlRemove,
   startController,
-  stopController,
-  pauseController,
-  resumeController,
   pausePosition,
   resumePosition,
   processEventForController,
-  evaluatePosition,
-  shouldEvaluatePosition,
   getDashboard,
 } from "../position-protection/continuous-protection-controller";
 
@@ -129,7 +115,7 @@ import {
   checkInstrumentFreshness,
 } from "../market-stream/live-market-bridge";
 import { routeInstrument, detectAssetClass, getFallbackRoute } from "../market-stream/provider-routing";
-import { getProviderProfile, getPollIntervalMs, getAllProviders } from "../market-stream/provider-adapters";
+import { getPollIntervalMs, getAllProviders } from "../market-stream/provider-adapters";
 
 // Persistence
 import { InMemoryRepository } from "../position-protection/persistence";
@@ -148,14 +134,10 @@ import {
 import {
   createMonitorState,
   processEvent,
-  processEvents,
   addPosition,
-  removePosition,
-  cleanup,
 } from "../position-protection/realtime-monitor";
 
 // Alert quality
-import { evaluateAlertQuality } from "../position-protection/alert-quality";
 import { guardAgainstFalsePositive } from "../position-protection/false-positive-guard";
 
 // Diagnostics
@@ -169,7 +151,6 @@ import {
   recordAlertSuppressedByCooldown,
   recordProviderFailure,
   recordProviderRecovery,
-  recordProviderSuccess,
   updatePositionCounts,
   snapshot,
 } from "../position-protection/diagnostics";
@@ -178,19 +159,15 @@ import {
 import { getCadenceForHorizon, shouldEvaluateNow, getAllCadenceProfiles } from "../position-protection/monitoring-cadence";
 
 // Scenarios
-import { runScenario, healthyProfitableLong, healthyProfitableShort, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
+import { runScenario, healthyProfitableLong, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
 
 // Position priority
-import { computePositionPriority, sortByPriority } from "../position-protection/position-priority";
 
 // Giveback
-import { calculateGiveback, classifyGivebackSeverity } from "../position-protection/giveback-monitor";
 
 // Acceleration
-import { createAccelerationState, recordPriceObservation, detectPriceAcceleration } from "../position-protection/acceleration-monitor";
 
 // Shock
-import { detectShock } from "../position-protection/shock-detector";
 
 const NOW = 1700000000000;
 

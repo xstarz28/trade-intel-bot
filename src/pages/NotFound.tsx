@@ -17,8 +17,13 @@ export default function NotFound() {
         <div className="max-w-5xl mx-auto relative px-4">
           <div className="flex items-center justify-center min-h-[200px]">
             <div className="text-center">
-              <h1 className="text-4xl font-bold text-gray-900 mb-4">{t.dashboard.notFound}</h1>
-              <p className="text-lg text-gray-600">{t.dashboard.pageNotFound}</p>
+              {/*
+                Theme tokens, not fixed grays. The palette is dark
+                (--background is oklch(0.1)), so text-gray-900 rendered
+                near-black on near-black and the 404 was unreadable.
+              */}
+              <h1 className="text-4xl font-bold text-foreground mb-4">{t.dashboard.notFound}</h1>
+              <p className="text-lg text-muted-foreground">{t.dashboard.pageNotFound}</p>
             </div>
           </div>
         </div>

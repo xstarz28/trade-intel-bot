@@ -7,12 +7,8 @@ import {
   buildDecisionChanges,
   deriveInvalidationConditions,
   deriveWatchItems,
-  deriveDimensionAvailability,
   getDecisionSupportSummary,
   buildPortfolioDecisionContext,
-  type PositionDecisionSupport,
-  type ThesisChange,
-  type WatchItem,
 } from "./decision-support";
 import type { PositionIntelligence, EvidenceItem, InvalidationCondition } from "./market-intelligence-analyzer";
 import type { PortfolioIntelligence } from "./portfolio-intelligence";

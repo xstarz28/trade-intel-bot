@@ -13,7 +13,7 @@ import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 import type { MarketData, TechnicalData } from "@/lib/data/market-types";
-import type { CotContext, CotData } from "@/lib/data/cot";
+import type { CotData } from "@/lib/data/cot";
 
 // ── Fixtures ───────────────────────────────────────────────────────
 

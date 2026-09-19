@@ -3,12 +3,11 @@
  */
 import { describe, it, expect } from "vitest";
 import { fetchOptionalSlowData } from "./data/optional-providers";
-import type { ProviderThunk, SlowProviderFacts, SlowProviderThunks } from "./data/optional-providers";
 import { mapInstrumentToCot, buildCotContext, deriveCotEvidence, classifyCotFreshness } from "./data/cot";
 import { mapInstrumentToOkx, parseOkxResponse } from "./risk/okx-spec";
 import { buildTreasuryContext, deriveMacroYieldEvidence, classifyMacroFreshness } from "./data/treasury";
 import { buildEiaContext, parseEiaResponse, deriveEiaInventoryEvidence } from "./data/eia";
-import { detectAssetClass, normalizeInstrument, toCoinGeckoId, toProviderSymbol, getInstrumentLabel } from "./data/symbols";
+import { detectAssetClass, normalizeInstrument, toCoinGeckoId, getInstrumentLabel } from "./data/symbols";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 import { calculateTechnical } from "./data/technical";
@@ -48,7 +47,7 @@ describe("Phase 40 — Provider Inventory", () => {
   it("CFTC COT", () => { const m = mapInstrumentToCot("EUR/USD"); expect(m).toBeDefined(); expect(m!.sourceInstrument).toContain("EURO FX"); });
   it("Treasury", () => {
     const xml = "<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR><d:BC_10YEAR>4.25</d:BC_10YEAR></entry></feed>";
-    expect(buildTreasuryContext([xml], [], Date.now()).available).toBe(true);
+    expect(buildTreasuryContext([xml], [], Date.now(), Date.now()).available).toBe(true);
   });
 });
 
@@ -149,12 +148,12 @@ describe("Phase 40 — Provider Failure ≠ Direction", () => {
     delete (d as any).derivativesData; delete (d as any).sentimentData; delete (d as any).fundamentalData;
     expect(runAnalysis(d).recommendation).toBe(base.recommendation);
   });
-  it("unavailable COT", () => { expect(buildCotContext([], "BTC/USD", Date.now()).available).toBe(false); });
-  it("unavailable Treasury", () => { expect(buildTreasuryContext([], [], Date.now()).available).toBe(false); });
-  it("single COT → zero", () => { const c = buildCotContext([{ report_date_as_yyyy_mm_dd: "2025-08-19", noncomm_positions_long_all: "150000", noncomm_positions_short_all: "80000" }], "EUR/USD", Date.now()); if (c.available) expect(deriveCotEvidence(c).effectOnContractCurrency).toBe(0); });
+  it("unavailable COT", () => { expect(buildCotContext([], "BTC/USD", Date.now(), Date.now()).available).toBe(false); });
+  it("unavailable Treasury", () => { expect(buildTreasuryContext([], [], Date.now(), Date.now()).available).toBe(false); });
+  it("single COT → zero", () => { const c = buildCotContext([{ report_date_as_yyyy_mm_dd: "2025-08-19", noncomm_positions_long_all: "150000", noncomm_positions_short_all: "80000" }], "EUR/USD", Date.now(), Date.now()); if (c.available) expect(deriveCotEvidence(c).effectOnContractCurrency).toBe(0); });
   it("single Treasury → zero", () => {
     const xml = "<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR><d:BC_10YEAR>4.25</d:BC_10YEAR></entry></feed>";
-    const c = buildTreasuryContext([xml], [], Date.now());
+    const c = buildTreasuryContext([xml], [], Date.now(), Date.now());
     if (c.available) { const e = deriveMacroYieldEvidence(c); expect(e.goldLongEffect).toBe(0); }
   });
 });
@@ -164,7 +163,7 @@ describe("Phase 40 — Provider Failure ≠ Direction", () => {
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — Stale Data", () => {
   it("COT stale", () => { const n = Date.now(); expect(classifyCotFreshness(new Date(n - 30 * 86400e3).toISOString().split("T")[0], n)).toBe("STALE"); });
-  it("stale still available", () => { const n = Date.now(); const c = buildCotContext([{ report_date_as_yyyy_mm_dd: new Date(n - 30 * 86400e3).toISOString().split("T")[0], noncomm_positions_long_all: "150000", noncomm_positions_short_all: "80000", open_interest_all: "300000" }], "EUR/USD", n); expect(c.available).toBe(true); if (c.available) expect(c.freshness).toBe("STALE"); });
+  it("stale still available", () => { const n = Date.now(); const c = buildCotContext([{ report_date_as_yyyy_mm_dd: new Date(n - 30 * 86400e3).toISOString().split("T")[0], noncomm_positions_long_all: "150000", noncomm_positions_short_all: "80000", open_interest_all: "300000" }], "EUR/USD", n, n); expect(c.available).toBe(true); if (c.available) expect(c.freshness).toBe("STALE"); });
   it("delayed", () => { expect("delayed").toBe("delayed"); });
 });
 
@@ -198,8 +197,8 @@ describe("Phase 40 — Symbol Mapping", () => {
 // 12. No Secrets
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — No Secrets", () => {
-  it("COT", () => { const j = JSON.stringify(buildCotContext([{ report_date_as_yyyy_mm_dd: "2025-08-19", noncomm_positions_long_all: "100", noncomm_positions_short_all: "50" }], "EUR/USD", Date.now())); expect(j).not.toContain("api_key"); });
-  it("Treasury", () => { const j = JSON.stringify(buildTreasuryContext(["<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR></entry></feed>"], [], Date.now())); expect(j).not.toContain("api_key"); });
+  it("COT", () => { const j = JSON.stringify(buildCotContext([{ report_date_as_yyyy_mm_dd: "2025-08-19", noncomm_positions_long_all: "100", noncomm_positions_short_all: "50" }], "EUR/USD", Date.now(), Date.now())); expect(j).not.toContain("api_key"); });
+  it("Treasury", () => { const j = JSON.stringify(buildTreasuryContext(["<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>3.85</d:BC_2YEAR></entry></feed>"], [], Date.now(), Date.now())); expect(j).not.toContain("api_key"); });
   it("OKX", () => { const j = JSON.stringify(parseOkxResponse({ code: "0", data: [{ instId: "BTC-USDT-SWAP", instType: "SWAP", ctVal: "0.01" }] })); expect(j).not.toContain("api_key"); });
   it("result", () => { const j = JSON.stringify(runAnalysis(buildInput("BTC/USD", "crypto"))); expect(j).not.toContain("TWELVE_DATA_API_KEY"); expect(j).not.toContain("ALPHA_VANTAGE_API_KEY"); expect(j).not.toContain("COINGLASS_API_KEY"); });
 });
@@ -280,12 +279,12 @@ describe("Phase 40 — Build Sanity", () => {
 // 21. COT Fault Injection
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — COT Fault Injection", () => {
-  it("empty rows", () => { expect(buildCotContext([], "EUR/USD", Date.now()).available).toBe(false); });
-  it("malformed", () => { expect(buildCotContext([null, 42, {}], "EUR/USD", Date.now()).available).toBe(false); });
-  it("missing fields", () => { expect(buildCotContext([{ report_date_as_yyyy_mm_dd: "2025-08-19" }], "EUR/USD", Date.now()).available).toBe(false); });
+  it("empty rows", () => { expect(buildCotContext([], "EUR/USD", Date.now(), Date.now()).available).toBe(false); });
+  it("malformed", () => { expect(buildCotContext([null, 42, {}], "EUR/USD", Date.now(), Date.now()).available).toBe(false); });
+  it("missing fields", () => { expect(buildCotContext([{ report_date_as_yyyy_mm_dd: "2025-08-19" }], "EUR/USD", Date.now(), Date.now()).available).toBe(false); });
   it("unmappable", () => { expect(mapInstrumentToCot("BTC/USD")).toBeUndefined(); expect(mapInstrumentToCot("AAPL")).toBeUndefined(); });
-  it("stale available", () => { const n = Date.now(); const c = buildCotContext([{ report_date_as_yyyy_mm_dd: new Date(n - 60 * 86400e3).toISOString().split("T")[0], noncomm_positions_long_all: "100000", noncomm_positions_short_all: "50000", open_interest_all: "300000" }], "EUR/USD", n); expect(c.available).toBe(true); if (c.available) expect(c.freshness).toBe("STALE"); });
-  it("single report zero", () => { const c = buildCotContext([{ report_date_as_yyyy_mm_dd: "2025-08-19", noncomm_positions_long_all: "200000", noncomm_positions_short_all: "80000", open_interest_all: "400000" }], "EUR/USD", Date.now()); if (c.available) expect(deriveCotEvidence(c).effectOnContractCurrency).toBe(0); });
+  it("stale available", () => { const n = Date.now(); const c = buildCotContext([{ report_date_as_yyyy_mm_dd: new Date(n - 60 * 86400e3).toISOString().split("T")[0], noncomm_positions_long_all: "100000", noncomm_positions_short_all: "50000", open_interest_all: "300000" }], "EUR/USD", n, n); expect(c.available).toBe(true); if (c.available) expect(c.freshness).toBe("STALE"); });
+  it("single report zero", () => { const c = buildCotContext([{ report_date_as_yyyy_mm_dd: "2025-08-19", noncomm_positions_long_all: "200000", noncomm_positions_short_all: "80000", open_interest_all: "400000" }], "EUR/USD", Date.now(), Date.now()); if (c.available) expect(deriveCotEvidence(c).effectOnContractCurrency).toBe(0); });
 });
 
 // ═══════════════════════════════════════════════════════════════════
@@ -319,11 +318,11 @@ describe("Phase 40 — OKX Fault Injection", () => {
 // 24. Treasury Fault Injection
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — Treasury Fault Injection", () => {
-  it("empty", () => { expect(buildTreasuryContext([], [], Date.now()).available).toBe(false); });
-  it("bad XML", () => { expect(buildTreasuryContext(["<bad>"], [], Date.now()).available).toBe(false); });
-  it("no entries", () => { expect(buildTreasuryContext(["<feed></feed>"], [], Date.now()).available).toBe(false); });
-  it("NaN yields", () => { expect(buildTreasuryContext(["<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>NaN</d:BC_2YEAR></entry></feed>"], [], Date.now()).available).toBe(false); });
-  it("all fail", () => { expect(buildTreasuryContext([undefined], [undefined], Date.now()).available).toBe(false); });
+  it("empty", () => { expect(buildTreasuryContext([], [], Date.now(), Date.now()).available).toBe(false); });
+  it("bad XML", () => { expect(buildTreasuryContext(["<bad>"], [], Date.now(), Date.now()).available).toBe(false); });
+  it("no entries", () => { expect(buildTreasuryContext(["<feed></feed>"], [], Date.now(), Date.now()).available).toBe(false); });
+  it("NaN yields", () => { expect(buildTreasuryContext(["<feed><entry><d:NEW_DATE>2025-08-20T00:00:00</d:NEW_DATE><d:BC_2YEAR>NaN</d:BC_2YEAR></entry></feed>"], [], Date.now(), Date.now()).available).toBe(false); });
+  it("all fail", () => { expect(buildTreasuryContext([undefined], [undefined], Date.now(), Date.now()).available).toBe(false); });
 });
 
 // ═══════════════════════════════════════════════════════════════════

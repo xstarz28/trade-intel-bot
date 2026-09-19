@@ -12,27 +12,14 @@
 import type { MarketData, OhlcvCandle, PriceSnapshot } from "../market-types";
 import type { MarketDataProvider, ProviderCapabilities, ProviderConfig } from "./types";
 import { TIMEFRAME_MAP } from "./types";
+import { asFiniteNumber, asRecordArray, asString, field } from "../json/narrow";
 
-interface TwelveDataCandle {
-  datetime: string;
-  open: string;
-  high: string;
-  low: string;
-  close: string;
-  volume: string;
-}
-
-interface TwelveDataQuote {
-  symbol: string;
-  name: string;
-  exchange: string;
-  close: string;
-  previous_close: string;
-  change: string;
-  percent_change: string;
-  volume: string;
-  bid: string;
-  ask: string;
+/** Twelve Data error envelope: `{ code, message, status: "error" }`. */
+function throwIfError(json: unknown): void {
+  const code = field(json, "code");
+  if (code !== undefined && code !== null && code !== 0 && code !== "") {
+    throw new Error(`Twelve Data error ${String(code)}: ${asString(field(json, "message")) ?? "unknown"}`);
+  }
 }
 
 export class TwelveDataProvider implements MarketDataProvider {
@@ -71,24 +58,30 @@ export class TwelveDataProvider implements MarketDataProvider {
       throw new Error(`Twelve Data API error ${res.status}: ${body}`);
     }
 
-    const json = await res.json();
-    if (json.code) {
-      throw new Error(`Twelve Data error ${json.code}: ${json.message}`);
-    }
+    const json: unknown = await res.json();
+    throwIfError(json);
 
-    const values: TwelveDataCandle[] = json.values ?? [];
-    if (values.length === 0) {
+    // Phase 227 — rows enter as unknown. A row with a missing/non-finite
+    // price or an unparseable datetime is dropped rather than emitted as a
+    // NaN candle; if nothing survives the fetch fails like an empty payload.
+    const candles: OhlcvCandle[] = [];
+    for (const c of asRecordArray(field(json, "values"))) {
+      const open = asFiniteNumber(c.open);
+      const high = asFiniteNumber(c.high);
+      const low = asFiniteNumber(c.low);
+      const close = asFiniteNumber(c.close);
+      const dt = c.datetime;
+      if (open === undefined || high === undefined || low === undefined || close === undefined) continue;
+      if (typeof dt !== "string" && typeof dt !== "number") continue;
+      const timestamp = new Date(dt).getTime();
+      if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
+      candles.push({ timestamp, open, high, low, close, volume: asFiniteNumber(c.volume) ?? 0 });
+    }
+    if (candles.length === 0) {
       throw new Error(`No candle data returned for ${symbol}`);
     }
 
-    return values.reverse().map((c) => ({
-      timestamp: new Date(c.datetime).getTime(),
-      open: parseFloat(c.open),
-      high: parseFloat(c.high),
-      low: parseFloat(c.low),
-      close: parseFloat(c.close),
-      volume: parseFloat(c.volume) || 0,
-    }));
+    return candles.reverse();
   }
 
   async fetchPrice(symbol: string): Promise<PriceSnapshot> {
@@ -100,17 +93,29 @@ export class TwelveDataProvider implements MarketDataProvider {
       throw new Error(`Twelve Data API error ${res.status}: ${body}`);
     }
 
-    const json: any = await res.json();
-    if (json.code) {
-      throw new Error(`Twelve Data error ${json.code}: ${json.message}`);
+    const json: unknown = await res.json();
+    throwIfError(json);
+
+    const price = asFiniteNumber(field(json, "close"));
+    if (price === undefined) {
+      throw new Error(`Twelve Data quote for ${symbol} has no numeric close`);
+    }
+    // Phase 227 — the quote's own `timestamp` (unix seconds) is the
+    // observation time. The previous `Date.now()` stamped a delayed quote as
+    // current (the Phase 220 E2 defect class); a quote without a provider
+    // time is rejected rather than re-dated.
+    const providerTs = asFiniteNumber(field(json, "timestamp"));
+    // Same plausibility window as convex/marketData.resolveProviderPriceTimestamp.
+    if (providerTs === undefined || providerTs < 1e9 || providerTs >= 1e11) {
+      throw new Error(`Twelve Data quote for ${symbol} has no provider timestamp`);
     }
 
     return {
-      price: parseFloat(json.close),
-      timestamp: Date.now(),
+      price,
+      timestamp: providerTs * 1000,
       source: this.name,
-      bid: json.bid ? parseFloat(json.bid) : undefined,
-      ask: json.ask ? parseFloat(json.ask) : undefined,
+      bid: asFiniteNumber(field(json, "bid")),
+      ask: asFiniteNumber(field(json, "ask")),
     };
   }
 

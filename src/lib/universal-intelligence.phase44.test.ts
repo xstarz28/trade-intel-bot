@@ -30,7 +30,6 @@ import {
   getInstrumentExchanges,
   detectAssetClass,
   isCryptoInstrument,
-  getAllInstrumentIds,
 } from "@/lib/data/universal/instruments";
 
 import {
@@ -52,13 +51,10 @@ import {
 } from "@/lib/data/universal/evidence";
 
 import type {
-  CanonicalInstrument,
   AssetClass,
   ForexIntelligenceContext,
   EquityIntelligenceContext,
   CommodityIntelligenceContext,
-  CrossAssetIntelligenceContext,
-  UniversalIntelligenceContext,
 } from "@/lib/data/universal/types";
 
 // ═══════════════════════════════════════════════════════════════

@@ -9,10 +9,10 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { MarketSnapshot, FreshnessLevel } from "./types";
+import type { MarketSnapshot } from "./types";
 import { RadarCache } from "./cache";
 import { RateLimitController } from "./rate-limit";
-import { assessFreshness } from "./freshness";
+import { errorMessage, field } from "../data/json/narrow";
 
 // ═══════════════════════════════════════════════════════════════
 // ACQUISITION RESULT
@@ -89,10 +89,9 @@ export class MarketDataAcquisitionService {
   async acquire(
     instrument: string,
     assetClass: AssetClass,
-    now?: number,
+    _now?: number,
   ): Promise<AcquisitionResult> {
     const startTime = Date.now();
-    const timestamp = now ?? Date.now();
 
     // Check cache first (stale-while-revalidate)
     const cached = this.cache.get<MarketSnapshot>(
@@ -165,8 +164,8 @@ export class MarketDataAcquisitionService {
         latencyMs: Date.now() - startTime,
         fromCache: false,
       };
-    } catch (err: any) {
-      const is429 = err?.status === 429 || err?.statusCode === 429;
+    } catch (err: unknown) {
+      const is429 = field(err, "status") === 429 || field(err, "statusCode") === 429;
       this.rateLimit.recordFailure(provider.name, is429);
       return {
         instrument,
@@ -174,7 +173,7 @@ export class MarketDataAcquisitionService {
         snapshot: null,
         provider: provider.name,
         success: false,
-        error: err?.message || "provider error",
+        error: errorMessage(err) || "provider error",
         latencyMs: Date.now() - startTime,
         fromCache: false,
       };

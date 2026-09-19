@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Xstarz Analysis</string>
+    <string name="title_activity_main">Xstarz Analysis</string>
+    <string name="package_name">app.xstarz.analysis</string>
+    <string name="custom_url_scheme">app.xstarz.analysis</string>
+    <!--
+      Phase 179 — deep-link host. Replace with the production domain before
+      a store build; App Links additionally require
+      https://<host>/.well-known/assetlinks.json signed with the RELEASE cert.
+    -->
+    <string name="deep_link_host">xstarz.app</string>
+</resources>

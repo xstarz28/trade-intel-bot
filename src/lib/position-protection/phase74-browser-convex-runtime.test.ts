@@ -33,7 +33,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import React from "react";
-import { render, act, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 
 import type { PositionContext, ProtectionAlert } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
@@ -50,7 +50,6 @@ import {
   guardProviderFailureNeutrality,
   guardNoFabrication,
   validateIntegrationPipeline,
-  validateEvent,
   verifyMemoryBounds,
   runSecurityAudit,
 } from "../position-protection/phase69-runtime-hardening";
@@ -61,7 +60,6 @@ import {
   registerPosition as ctrlRegister,
   removePosition as ctrlRemove,
   startController,
-  stopController,
   processEventForController,
   getDashboard,
 } from "../position-protection/continuous-protection-controller";
@@ -69,10 +67,7 @@ import {
 // Event bridge
 import {
   createPriceEvent,
-  createProviderDegradedEvent,
-  createProviderRecoveredEvent,
 } from "../position-protection/market-event-bridge";
-import { computeEventPriority } from "../position-protection/event-priority";
 
 // Source labeling
 import {
@@ -101,9 +96,7 @@ import {
   stopPollingService,
   pausePollingService,
   resumePollingService,
-  unregisterInstrumentForPolling,
   getPollingDashboard,
-  getInstrumentsNeedingPoll,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 
@@ -111,13 +104,7 @@ import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 import {
   routeInstrument,
   detectAssetClass,
-  getFallbackRoute,
-  getActiveInstruments,
 } from "../market-stream/provider-routing";
-import {
-  getProviderProfile,
-  getAllProviders,
-} from "../market-stream/provider-adapters";
 
 // Persistence
 import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
@@ -125,18 +112,10 @@ import { InMemoryRepository } from "../position-protection/persistence";
 import type { PersistedAlert } from "../position-protection/persistence";
 
 // Dispatch
-import {
-  createDispatcherState,
-  dispatch,
-  acknowledgeAlert,
-} from "../position-protection/alert-dispatcher";
 
 // Diagnostics
 import {
   createDiagnosticsState,
-  recordEventReceived,
-  recordProviderFailure,
-  recordProviderRecovery,
   recordAlertEmitted,
   snapshot,
 } from "../position-protection/diagnostics";
@@ -145,7 +124,7 @@ import {
 import { guardAgainstFalsePositive } from "../position-protection/false-positive-guard";
 
 // Scenarios
-import { runScenario, healthyProfitableLong, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
+import { runScenario, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
 
 // ═══════════════════════════════════════════════════════════════
 // CONVEX HTTP CLIENT — REAL RUNTIME
@@ -603,7 +582,7 @@ describe("C. Live Data → Complete Protection Pipeline", () => {
     expect(typeof alertDecision.shouldFire).toBe("boolean");
 
     // 5. Persistence
-    const bridge = new ConvexPersistenceBridge(null);
+    new ConvexPersistenceBridge(null);
     const serialized = JSON.stringify(result.alert);
     const parsed = JSON.parse(serialized);
     expect(parsed.instrument).toBe("BTC/USDT");
@@ -687,7 +666,7 @@ describe("D. Source Mode Integrity", () => {
   });
 
   it("Freshness transitions are time-based and deterministic", () => {
-    const label = createLiveLabel("CoinGecko", NOW);
+    createLiveLabel("CoinGecko", NOW);
     expect(calculateFreshness(NOW, NOW + 30_000)).toBe("FRESH");
     expect(calculateFreshness(NOW, NOW + 90_000)).toBe("DELAYED");
     expect(calculateFreshness(NOW, NOW + 600_000)).toBe("STALE");
@@ -1233,7 +1212,7 @@ describe("L. Acceptance Gates", () => {
   });
 
   it("GATE: No secrets in any client-visible data", () => {
-    const bridge = new ConvexPersistenceBridge(null);
+    new ConvexPersistenceBridge(null);
     const snap = snapshot(createDiagnosticsState());
     expect(JSON.stringify(snap)).not.toMatch(/AKIA|sk_live|sk_test|ghp_|Bearer|process\.env/);
   });

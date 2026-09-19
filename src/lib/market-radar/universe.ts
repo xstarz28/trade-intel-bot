@@ -1,15 +1,39 @@
 /**
  * Phase 51 — Multi-Asset Instrument Universe
  *
- * Defines the complete instrument universe across all asset classes.
- * Extensible without modifying the radar engine.
+ * ⚠️ PHASE 158 STATUS — NOT A DISCOVERY SOURCE
+ *
+ * `DEFAULT_UNIVERSE` is a STATIC METADATA FIXTURE. As of Phase 158 it is no
+ * longer any part of how the product finds opportunities to scan.
+ *
+ * Live scanning opportunity flow is:
+ *   provider discovery → exact provider-native instrument → live acquisition
+ *   → verified snapshot → scanner → recommendation
+ *
+ * See `src/lib/discovery/` for that pipeline.
+ *
+ * What this file is still legitimately used for:
+ *   - `CORRELATION_CLUSTERS`, for canonical instruments analysed by name
+ *     through the manual analysis path.
+ *   - Metadata compatibility for Phase 51/53 fixtures.
+ *
+ * What it must NEVER be used for:
+ *   - Enumerating instruments to scan (that is a hardcoded whitelist and a
+ *     permanent ceiling on coverage).
+ *   - Implying a provider can serve an instrument. Presence here proves
+ *     nothing about live availability.
+ *
+ * Correlation control for DISCOVERED instruments is derived from
+ * provider-native metadata in `src/lib/discovery/correlation.ts`, because
+ * these canonical names ("BTC/USD") never match provider-native ids
+ * ("BTC-USDT-SWAP").
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
 import type { UniverseEntry } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
-// DEFAULT UNIVERSE
+// DEFAULT UNIVERSE — STATIC METADATA FIXTURE ONLY
 // ═══════════════════════════════════════════════════════════════
 
 const REFRESH = {

@@ -3,9 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstrumentInput } from "@/components/InstrumentInput";
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
+import { FirstRunGuide } from "@/components/FirstRunGuide";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
-import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
+// Phase 174 — runAnalysis is deliberately NOT imported here. The directional
+// decision is produced server-side behind the entitlement boundary
+// (api.protectedAnalysis.runProtectedAnalysis), so an unentitled client never
+// receives the payload in the first place.
+import type { AnalysisInput } from "@/lib/analysis-engine";
 import type { AnalysisResult } from "@/types/analysis";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
@@ -15,17 +20,28 @@ import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
-import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import {
+  createPipelineState,
+  runDiscoveryPipelineStep,
+  type DiscoveryPipelineState,
+} from "@/lib/discovery/pipeline";
+import {
+  normalizeOkxDiscoveryAction,
+  toAcquisitionResults,
+} from "@/lib/discovery/runtime";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
+import { derivativesForRadar } from "@/lib/market-radar/derivatives-bridge";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
-import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
+import { EntitlementBadge, LockedSignalNotice } from "@/components/EntitlementBadge";
+import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -33,36 +49,9 @@ import {
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
 import { BarChart3, Briefcase } from "lucide-react";
-
-/** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
-function fromDbRecord(record: any): AnalysisResult {
-  return {
-    id: record._id,
-    instrument: record.instrument,
-    instrumentType: record.instrumentType,
-    timeframe: record.timeframe,
-    bias: record.bias,
-    confidence: record.confidence,
-    recommendation: record.recommendation ?? (record.bias === "Bullish" ? "LONG" : record.bias === "Bearish" ? "SHORT" : "NO_TRADE"),
-    tradingStyle: record.tradingStyle ?? "intraday",
-    conviction: record.conviction ?? undefined,
-    noTradeReasons: record.noTradeReasons ?? [],
-    technicalSummary: record.technicalSummary,
-    fundamentalSummary: record.fundamentalSummary,
-    breakdown: record.breakdown,
-    keyLevels: record.keyLevels,
-    riskNote: record.riskNote,
-    dataCompleteness: record.dataCompleteness,
-    dataFlags: record.dataFlags,
-    timestamp: record.timestamp,
-    ...(record.price != null ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } } : {}),
-    ...(record.dataSource ? { dataSource: record.dataSource } : {}),
-    ...(record.sentimentSummary ? { sentimentData: { provider: "alpha-vantage", timestamp: record.timestamp, averageScore: record.sentimentScore ?? 0, articleCount: 0, label: (record.sentimentScore ?? 0) > 0.15 ? "bullish" : (record.sentimentScore ?? 0) < -0.15 ? "bearish" : "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "medium" as const, articles: [] } } : {}),
-    ...(record.macroSummary ? { macroData: { provider: "alpha-vantage", timestamp: record.timestamp, indicators: [], summary: record.macroSummary, confidence: "medium" as const } } : {}),
-    ...(record.derivativesSummary ? { derivativesData: { provider: "coinglass", symbol: record.instrument, timestamp: record.timestamp, freshness: "delayed" as const, availability: { openInterest: true, fundingRate: true, longShort: true, liquidations: true }, confidence: "medium" as const, interpretation: record.derivativesSummary } } : {}),
-    ...(record.calendarSummary ? { calendarData: { provider: "tickatlas" as const, events: [], macroRisk: { level: "medium" as const, explanation: record.calendarSummary, highImpact24h: 0, highImpact72h: 0 }, timestamp: record.timestamp, freshness: "recent" as const, confidence: "medium" as const, availability: { upcoming24h: false, upcoming72h: false, recentReleased: false } } } : {}),
-  };
-}
+import { errorMessage } from "@/lib/data/json/narrow";
+import { fromDbRecord, uninterpretableRowReason } from "@/lib/analysis/from-db-record";
+import { recordDataIntegrityIssue } from "@/lib/runtime/diagnostics";
 
 /** Loading step for the multi-step sequence. */
 interface LoadingStep {
@@ -106,93 +95,112 @@ export default function Dashboard() {
   }, []);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
+  // Phase 174 — set when the server withheld an actionable signal.
+  const [entitlementNotice, setEntitlementNotice] = useState<{
+    locked: true;
+    instrument: string;
+  } | null>(null);
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(getInitialSteps(t));
   const [fetchError, setFetchError] = useState<string | null>(null);
   // Phase 14 P3 — run identity: a slow/abandoned analysis run must NEVER
   // overwrite the result of a newer run (stale-result mixing guard).
   const runTokenRef = useRef(0);
 
-  // Phase 153 — retain the latest verified live market snapshot per instrument.
-  // This is runtime-only state and is intentionally NOT reconstructed from history.
+  // Phase 153/158 — verified live snapshots live inside the discovery
+  // pipeline state. Runtime-only; never reconstructed from persisted history.
+  const pipelineStateRef = useRef<DiscoveryPipelineState>(createPipelineState());
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  const discoveryCursorRef = useRef(0);
   const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
+
+  // Provider/acquisition failures from the most recent discovery cycle.
+  //
+  // These must survive into every subsequent scan of the same sources. A
+  // re-scan that omits them reports degraded === false, which renders an
+  // outage as a healthy, quiet market — exactly the "provider availability
+  // becomes evidence" failure the integrity rules forbid.
+  const cycleProviderErrorsRef = useRef<string[]>([]);
 
   // Phase 156 — provider-native universal discovery.
   // Discovery metadata alone is NEVER considered live evidence.
   const discoverOkxInstruments = useAction(api.okx.discoverOkxInstruments);
   const acquireOkxNativeLiveDataBatch = useAction(api.okx.acquireOkxNativeLiveDataBatch);
 
+  /**
+   * Phase 158 — one universal discovery→acquisition cycle.
+   *
+   * Discovery metadata is never live evidence; only verified acquisitions
+   * become live sources. A failed cycle never destroys retained data.
+   */
+  const runDiscoveryCycle = useCallback(async () => {
+    const providerResults = [
+      normalizeOkxDiscoveryAction(await discoverOkxInstruments()),
+    ];
+
+    const succeededProviders = providerResults
+      .filter((r) => r.success)
+      .map((r) => r.provider);
+    const discovered = providerResults
+      .filter((r) => r.success)
+      .flatMap((r) => r.instruments);
+    // A provider that failed discovery outright is reported explicitly; its
+    // previously acquired instruments are retained by the pipeline.
+    const discoveryErrors = providerResults
+      .filter((r) => !r.success)
+      .map((r) => `${r.provider}: ${r.error ?? "discovery failed"}`);
+
+    const step = await runDiscoveryPipelineStep({
+      state: pipelineStateRef.current,
+      discovered,
+      succeededProviders,
+      batchSize: 20,
+      now: Date.now(),
+      acquire: async (batch) => {
+        const raw = await acquireOkxNativeLiveDataBatch({
+          instruments: batch.map((item) => ({
+            // Exact provider-native instId — never canonicalized.
+            instrument: item.providerInstrumentId,
+            providerInstrumentId: item.providerInstrumentId,
+            assetClass: "crypto" as const,
+          })),
+          concurrency: 5,
+        });
+        return toAcquisitionResults(batch, raw as never);
+      },
+    });
+
+    pipelineStateRef.current = step.state;
+    liveSourceRef.current = step.state.liveSources;
+    cycleProviderErrorsRef.current = [...discoveryErrors, ...step.providerErrors];
+    // Bumping the version re-runs the scan effect below, which is the single
+    // place that builds a ScanResult. Scanning here as well would produce two
+    // results for one cycle, and the later one would win.
+    setLiveSourcesVersion((version) => version + 1);
+  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
+
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        const discovery = await discoverOkxInstruments();
-        if (cancelled || !discovery.success || discovery.instruments.length === 0) return;
-
-        const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-          discovery.instruments,
-          discoveryCursorRef.current,
-          20,
-        );
-        discoveryCursorRef.current = nextCursor;
-
-        const nativeInputs = batch.map((item) => ({
-          // Keep the exact OKX instId. Never canonicalize/substitute it.
-          instrument: item.instId,
-          providerInstrumentId: item.instId,
-          assetClass: "crypto" as const,
-        }));
-
-        const acquired = await acquireOkxNativeLiveDataBatch({
-          instruments: nativeInputs,
-          concurrency: 5,
-        });
-
-        if (cancelled) return;
-
-        const { providerNativeAcquisitionToMarketData } =
-          await import("@/lib/market-radar/provider-registry");
-
-        for (const result of acquired) {
-          if (!result.success) continue;
-
-          const marketData = providerNativeAcquisitionToMarketData(result);
-          if (!marketData) continue;
-
-          liveSourceRef.current.set(result.instrument, {
-            instrument: result.instrument,
-            assetClass: result.assetClass,
-            providerNative: {
-              provider: result.provider,
-              providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-            },
-            marketData,
-          });
-        }
-
-        setLiveSourcesVersion((version) => version + 1);
-
-        setScanResult(
-          scanInstruments(
-            Array.from(liveSourceRef.current.values()),
-            { horizons: ["INTRADAY", "SWING"], maxResults: 10 },
-          ),
-        );
+        await runDiscoveryCycle();
       } catch {
         // Discovery/acquisition failure is non-fatal. Manual analysis remains available.
       }
+      if (cancelled) return;
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
+  }, [runDiscoveryCycle]);
 
 
   // Convex persistence
   const saveAnalysis = useMutation(api.analyses.save);
+  // Phase 174 — server-authoritative entitlement. The UI renders whatever the
+  // server reports; it never computes plan or remaining allowance itself.
+  const runProtectedAnalysis = useAction(api.protectedAnalysis.runProtectedAnalysis);
+  const serverEntitlement = useQuery(api.entitlements.getMyEntitlement);
   const dbHistory = useQuery(api.analyses.list);
 
   // Convex actions for server-side data fetching
@@ -201,6 +209,9 @@ export default function Dashboard() {
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
+  type IntelligenceActionResult = Awaited<ReturnType<typeof fetchIntelligence>>;
+  type DerivativesActionResult = Awaited<ReturnType<typeof fetchDerivatives>>;
+  type CalendarActionResult = Awaited<ReturnType<typeof fetchCalendar>>;
   const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
   const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
   const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
@@ -252,12 +263,14 @@ export default function Dashboard() {
         // Step 2: Fetching market data + intelligence + derivatives in parallel
         updateStep(1, "active");
         let marketDataResult: MarketDataResult;
-        let intelligenceResult: any = null;
-        let derivativesResult: any = null;
-        let calendarResult: any = null;
+        // Phase 228 — each non-critical leg is typed by its own Convex action
+        // return type (the canonical contract); `null` means the leg was
+        // rejected or not requested, and every downstream read is `?.`.
+        let intelligenceResult: IntelligenceActionResult | null = null;
+        let derivativesResult: DerivativesActionResult | null = null;
+        let calendarResult: CalendarActionResult | null = null;
         try {
-          // Build fetch promises
-          const fetchPromises: Promise<any>[] = [
+          const [marketResult, intelResult, calResult, derivResult] = await Promise.allSettled([
             fetchMarketData({
               instrument: input.instrument,
               instrumentType: input.instrumentType,
@@ -271,24 +284,16 @@ export default function Dashboard() {
               instrument: input.instrument,
               instrumentType: input.instrumentType,
             }),
-          ];
-          if (input.instrumentType === "crypto") {
-            fetchPromises.push(
-              fetchDerivatives({ instrument: input.instrument }),
-            );
-          }
-
-          const results = await Promise.allSettled(fetchPromises);
-          const marketResult = results[0];
-          const intelResult = results[1];
-          calendarResult = results[2];
-          const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
+            input.instrumentType === "crypto"
+              ? fetchDerivatives({ instrument: input.instrument })
+              : Promise.resolve(null),
+          ]);
 
           // Market data is critical
           if (marketResult.status === "fulfilled") {
             marketDataResult = marketResult.value as MarketDataResult;
           } else {
-            throw new Error(marketResult.reason?.message || "Market data fetch failed");
+            throw new Error(errorMessage(marketResult.reason) || "Market data fetch failed");
           }
 
           if (!marketDataResult.success || !marketDataResult.data) {
@@ -301,16 +306,16 @@ export default function Dashboard() {
             intelligenceResult = intelResult.value;
           }
           // Calendar is non-critical
-          if (calendarResult && calendarResult.status === "fulfilled") {
-            calendarResult = calendarResult.value;
+          if (calResult.status === "fulfilled") {
+            calendarResult = calResult.value;
           }
           // Derivatives is non-critical
-          if (derivResult && derivResult.status === "fulfilled") {
+          if (derivResult.status === "fulfilled") {
             derivativesResult = derivResult.value;
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           updateStep(1, "error");
-          setFetchError(`Data fetch failed: ${err?.message || "provider not configured"}`);
+          setFetchError(`Data fetch failed: ${errorMessage(err) || "provider not configured"}`);
           setIsAnalyzing(false);
           return;
         }
@@ -408,15 +413,44 @@ export default function Dashboard() {
         if (input.instrumentType !== "crypto") {
           try {
             const now = Date.now();
+            /*
+              Phase 220 — `observedAt` / `freshness` here are PROVENANCE
+              claims rendered verbatim in the Universal Intelligence panel.
+              They used to be stamped `now` / "FRESH" for every dataset, which
+              overwrote the freshness each provider module had already
+              derived from its own observation date (Treasury / CFTC / EIA
+              classify FRESH → DELAYED → STALE by days since the report). A
+              week-old COT report therefore rendered as FRESH. The assembly
+              clock is only used for the cross-asset placeholder, which has
+              no provider observation at all and is marked unavailable.
+            */
             const meta = (provider: string) => ({
               provider,
               observedAt: now,
-              freshness: "FRESH" as const,
+              freshness: "UNAVAILABLE" as const,
               quality: "DEGRADED" as const,
               available: false,
               availableDatasets: 0,
               totalDatasets: 0,
             });
+            // Carry the provider module's own classification through.
+            const providerFresh = (
+              f: "FRESH" | "DELAYED" | "STALE" | undefined,
+              observedAt: number | undefined,
+            ) => ({
+              freshness: f ?? ("UNAVAILABLE" as const),
+              observedAt: Number.isFinite(observedAt) && (observedAt as number) > 0 ? (observedAt as number) : 0,
+            });
+            const isoDayMs = (d: string | undefined) =>
+              d ? Date.parse(`${d}T00:00:00Z`) : undefined;
+            // The calendar module reports freshness on a different scale
+            // ("realtime" | "recent" | "stale" | "unavailable"); map it
+            // without inventing a level it did not assert.
+            const calendarFresh = (f: string | undefined) =>
+              f === "realtime" ? ("FRESH" as const)
+              : f === "recent" ? ("DELAYED" as const)
+              : f === "stale" ? ("STALE" as const)
+              : ("UNAVAILABLE" as const);
 
             // Build forex intelligence context
             let forexCtx: ForexIntelligenceContext | undefined;
@@ -427,6 +461,7 @@ export default function Dashboard() {
                 assembledAt: now,
                 rates: treasuryData?.available ? {
                   ...meta("treasury"),
+                  ...providerFresh(treasuryData.freshness, isoDayMs(treasuryData.latest?.nominal?.observationDate)),
                   available: true,
                   quality: "VERIFIED",
                   availableDatasets: 1,
@@ -435,6 +470,7 @@ export default function Dashboard() {
                 } : undefined,
                 positioning: cotData?.available ? {
                   ...meta("cftc"),
+                  ...providerFresh(cotData.freshness, isoDayMs(cotData.latest?.reportDate)),
                   available: true,
                   quality: "DEGRADED",
                   availableDatasets: 1,
@@ -444,11 +480,12 @@ export default function Dashboard() {
                 } : undefined,
                 macro: calendarResult?.data ? {
                   ...meta("trading-economics"),
+                  freshness: calendarFresh(calendarResult.data.freshness),
                   available: true,
                   quality: "VERIFIED",
                   availableDatasets: 1,
                   totalDatasets: 1,
-                  upcomingEvents: calendarResult.data.events?.filter((e: any) => e.status === "upcoming").slice(0, 5).map((e: any) => ({
+                  upcomingEvents: calendarResult.data.events?.filter((e) => e.status === "upcoming").slice(0, 5).map((e) => ({
                     name: e.event,
                     date: new Date(e.datetime).toISOString().slice(0, 10),
                     impact: e.importance === 3 ? "high" : e.importance === 2 ? "medium" : "low",
@@ -487,7 +524,8 @@ export default function Dashboard() {
                   peRatio: fundamentals.peRatio,
                   marketCap: fundamentals.marketCap,
                   profitMargin: fundamentals.profitMargin,
-                  revenueGrowth: fundamentals.revenueGrowth,
+                  // `revenueGrowth` is not part of FundamentalData (Alpha Vantage
+                  // OVERVIEW is not normalised to it); it was always undefined.
                 } : undefined,
                 sector: fundamentals?.sector ? {
                   sector: fundamentals.sector,
@@ -510,6 +548,7 @@ export default function Dashboard() {
                 assembledAt: now,
                 inventory: eiaData?.available ? {
                   ...meta("eia"),
+                  ...providerFresh(eiaData.freshness, isoDayMs(eiaData.series?.[0]?.observationDate)),
                   available: true,
                   quality: "DEGRADED",
                   availableDatasets: 1,
@@ -519,6 +558,7 @@ export default function Dashboard() {
                 } : undefined,
                 positioning: cotData?.available ? {
                   ...meta("cftc"),
+                  ...providerFresh(cotData.freshness, isoDayMs(cotData.latest?.reportDate)),
                   available: true,
                   quality: "DEGRADED",
                   availableDatasets: 1,
@@ -586,7 +626,58 @@ export default function Dashboard() {
           }
         }
 
-        const result = runAnalysis(enrichedInput);
+        // Phase 174 — the engine runs on the SERVER, behind the entitlement
+        // boundary. For an exhausted guest the directional fields are never
+        // serialized to this client at all.
+        //
+        // Phase 175/176 — the server RE-ACQUIRES all provider evidence itself
+        // and discards whatever this client sends for marketData /
+        // technicalData / intelligence / derivatives / calendar / treasury /
+        // COT / EIA / execution / OKX spec / FX, plus the free-text
+        // newsContext and economicEvents fields and any client-supplied
+        // instrumentSpec. Those are transmitted only so the local preview
+        // panels keep working; they are inert on the trusted decision path.
+        //
+        // Only intent reaches the engine: instrument, instrumentType,
+        // timeframe, tradingStyle, requestedTimeframe, styleNotes, and the
+        // user's own risk parameters (accountEquity, riskPercent,
+        // accountCurrency).
+        const protectedResponse = await runProtectedAnalysis({
+          input: enrichedInput as unknown,
+        });
+
+        if (protectedResponse.status === "UNAUTHENTICATED") {
+          if (!isStaleRun()) {
+            setFetchError(t.entitlement.signInRequired);
+          }
+          return;
+        }
+
+        if (protectedResponse.status === "INVALID_INPUT") {
+          if (!isStaleRun()) {
+            setFetchError(t.entitlement.invalidInput);
+          }
+          return;
+        }
+
+        setEntitlementNotice(
+          protectedResponse.status === "LOCKED"
+            ? {
+                locked: true,
+                instrument:
+                  (protectedResponse.result as { instrument?: string } | null)
+                    ?.instrument ?? enrichedInput.instrument,
+              }
+            : null,
+        );
+
+        if (protectedResponse.status === "LOCKED") {
+          // A locked signal is NOT a WAIT and must never be rendered as one.
+          if (!isStaleRun()) setCurrentResult(null);
+          return;
+        }
+
+        const result = protectedResponse.result as unknown as AnalysisResult;
 
         // Phase 153 — retain the actual provider-backed market snapshot used
         // by this successful analysis. History remains persistence only and
@@ -655,9 +746,9 @@ export default function Dashboard() {
         } catch {
           // Save failed (guest user) — analysis still shows in session
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!isStaleRun()) {
-          setFetchError(`Analysis failed: ${err?.message || "unknown error"}`);
+          setFetchError(`Analysis failed: ${errorMessage(err) || "unknown error"}`);
         }
       } finally {
         // Only the newest run owns the loading UI; stale runs exit silently.
@@ -666,16 +757,38 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep, runProtectedAnalysis, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
     setCurrentResult(analysis);
   }, []);
 
-  const history: AnalysisResult[] = dbHistory
-    ? dbHistory.map(fromDbRecord)
-    : [];
+  /*
+    Phase 239 — a row the projection cannot interpret yields `null` and is
+    dropped instead of being rendered as a typed lie. The drop is recorded
+    (data-integrity diagnostic) so a shorter history is explainable rather than
+    silent, and it can never crash the render: before this, ONE malformed row
+    took the whole application down because the throw happened here, in render.
+  */
+  const history: AnalysisResult[] = useMemo(() => {
+    if (!dbHistory) return [];
+    const projected: AnalysisResult[] = [];
+    for (const row of dbHistory) {
+      const reason = uninterpretableRowReason(row);
+      if (reason !== null) {
+        recordDataIntegrityIssue(`analysis history row ${String((row as { _id?: unknown })?._id ?? "?")} dropped: ${reason}`);
+        continue;
+      }
+      const result = fromDbRecord(row);
+      if (result) projected.push(result);
+    }
+    return projected;
+  }, [dbHistory]);
+
+  // Phase 189 — Convex `useQuery` returns undefined until it resolves.
+  // Collapsing that to [] made a loading list look like an empty account.
+  const historyLoading = dbHistory === undefined;
 
   // Phase 153 — live candidate sources come ONLY from verified runtime
   // provider-backed snapshots. Persisted history is never treated as LIVE.
@@ -692,89 +805,57 @@ export default function Dashboard() {
     setIsScanning(true);
 
     try {
-      const discovery = await discoverOkxInstruments();
-      if (!discovery.success || discovery.instruments.length === 0) return;
-
-      const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-        discovery.instruments,
-        discoveryCursorRef.current,
-        20,
-      );
-      discoveryCursorRef.current = nextCursor;
-
-      const nativeInputs = batch.map((item) => ({
-        // Keep the exact OKX instId. Never canonicalize/substitute.
-        instrument: item.instId,
-        providerInstrumentId: item.instId,
-        assetClass: "crypto" as const,
-      }));
-
-      const acquired = await acquireOkxNativeLiveDataBatch({
-        instruments: nativeInputs,
-        concurrency: 5,
-      });
-
-      const { providerNativeAcquisitionToMarketData } =
-        await import("@/lib/market-radar/provider-registry");
-
-      for (const result of acquired) {
-        if (!result.success) continue;
-
-        const marketData = providerNativeAcquisitionToMarketData(result);
-        if (!marketData) continue;
-
-        liveSourceRef.current.set(result.instrument, {
-          instrument: result.instrument,
-          assetClass: result.assetClass,
-          providerNative: {
-            provider: result.provider,
-            providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-          },
-          marketData,
-        });
-      }
-
-      setLiveSourcesVersion((version) => version + 1);
-
-      const config = {
-        horizons: ["INTRADAY" as const, "SWING" as const],
-        maxResults: 10,
-      };
-      setScanResult(
-        scanInstruments(
-          Array.from(liveSourceRef.current.values()),
-          config,
-        ),
-      );
+      await runDiscoveryCycle();
+    } catch {
+      // A failed refresh keeps the previously retained live sources intact.
     } finally {
       setIsScanning(false);
     }
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
+  }, [runDiscoveryCycle]);
 
   // Phase 51 — Radar state for autonomous scanning
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
   const radarStateRef = useRef<RadarState | null>(null);
 
-  // Auto-scan when live sources change
-  useMemo(() => {
-    if (liveSources.length > 0) {
-      const config = { horizons: ["INTRADAY" as const, "SWING" as const], maxResults: 10 };
-      const result = scanInstruments(liveSources, config);
-      setScanResult(result);
-    }
+  // Sole scan site: re-runs whenever the retained live sources change.
+  //
+  // It always carries the current cycle's provider errors, so a degraded scan
+  // stays visibly degraded no matter how many times the sources are re-scanned.
+  useEffect(() => {
+    setScanResult(
+      scanInstruments(liveSources, {
+        horizons: ["INTRADAY", "SWING"],
+        maxResults: 10,
+        maxPerCorrelationGroup: 2,
+        providerErrors: cycleProviderErrorsRef.current,
+      }),
+    );
   }, [liveSources]);
 
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
   useMemo(() => {
     if (liveSources.length === 0) return;
     // Build radar candidate sources from analysis history
+    const radarNow = Date.now();
     const radarSources: RadarCandidateSource[] = liveSources.map(ls => {
       const ar = ls.analysisResult;
+      // Phase 226 — CoinGlass derivatives reach the radar only through the
+      // provenance-checked bridge (symbol identity, provider timestamp,
+      // per-dataset availability). Anything rejected stays undefined.
+      const derivatives = ls.assetClass === "crypto"
+        ? derivativesForRadar(ls.instrument, ls.derivativesData, radarNow).derivatives
+        : undefined;
       return {
         universe: {
           instrument: ls.instrument,
           assetClass: ls.assetClass,
-          region: ls.assetClass === "equity" ? (ls.instrument.includes("BBCA") || ls.instrument.includes("BBRI") || ls.instrument.includes("TLKM") || ls.instrument.includes("BMRI") || ls.instrument.includes("BBNI") || ls.instrument.includes("GOTO") ? "idx" : "us") : "global",
+          // Region comes from provider discovery metadata. It is deliberately
+          // NOT inferred by pattern-matching symbol names: that is a hidden
+          // whitelist which mislabels every instrument outside the list and
+          // silently gets new listings wrong. Undefined = provider did not say.
+          ...(ls.region ? { region: ls.region } : {}),
+          // Preserve exact provider-native identity into the radar.
+          ...(ls.providerNative ? { providerNative: ls.providerNative } : {}),
           requiredCapabilities: ["ohlcv", "quote"],
           priority: 1,
           refreshIntervalMs: 300_000,
@@ -794,7 +875,19 @@ export default function Dashboard() {
               : "neutral",
           marketRegime: "UNKNOWN",
           provider: ls.marketData.provider,
-          observedAt: ls.marketData.price.timestamp || ls.marketData.fetchTimestamp,
+          /*
+            Phase 191 — `observedAt` is the PROVIDER's observation time and is
+            never back-filled with our fetch time.
+
+            This previously read `price.timestamp || fetchTimestamp`. Those are
+            different facts: `timestamp` is when the price was last updated by
+            the provider, `fetchTimestamp` is when we asked. Coalescing them
+            means a provider that omits its timestamp gets an observation time
+            of "now", and `assessFreshness` then grades hours-old data FRESH.
+            Leaving it undefined makes freshness resolve to UNAVAILABLE, which
+            is the honest answer when the provider did not say when it looked.
+          */
+          observedAt: ls.marketData.price.timestamp || undefined,
           freshness: ls.marketData.dataFreshness === "realtime"
             ? "FRESH"
             : ls.marketData.dataFreshness === "delayed"
@@ -806,6 +899,7 @@ export default function Dashboard() {
             ? "UNAVAILABLE"
             : "VERIFIED",
         } : null,
+        ...(derivatives ? { derivatives } : {}),
         analysisResult: ar ? {
           confidence: ar.confidence,
           bias: ar.bias,
@@ -913,6 +1007,9 @@ export default function Dashboard() {
             )}
           </div>
           <div className="flex items-center gap-3">
+            {/* Phase 174 — server-authoritative entitlement state. */}
+            <EntitlementBadge entitlement={serverEntitlement ?? undefined} />
+
             {/* Language selector */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -960,6 +1057,10 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left — Input + History */}
           <div className="lg:col-span-4 space-y-4">
+            {/* Phase 189 — shown only once history has RESOLVED as empty, so a
+                returning user never sees it flash during load. */}
+            <FirstRunGuide show={!historyLoading && history.length === 0 && !currentResult} />
+
             <InstrumentInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} />
 
             <div className="hidden lg:block">
@@ -967,6 +1068,7 @@ export default function Dashboard() {
                 analyses={history}
                 onSelect={handleSelectHistory}
                 selectedId={currentResult?.id}
+                isLoading={historyLoading}
               />
             </div>
 
@@ -984,10 +1086,11 @@ export default function Dashboard() {
                   providerCoverage: "PARTIAL",
                 } as CandidateInput))}
                 liveSources={liveSources}
+                providerErrors={cycleProviderErrorsRef.current}
                 isScanning={isScanning}
                 scanResult={scanResult ?? undefined}
                 radarResult={radarResult ?? undefined}
-                onRefresh={liveSources.length > 0 ? handleScanRefresh : undefined}
+                onRefresh={handleScanRefresh}
               />
             </div>
           </div>
@@ -1043,11 +1146,24 @@ export default function Dashboard() {
                   {fetchError && (
                     <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
                       <p className="text-xs font-mono text-red-400">{fetchError}</p>
+                      {/* Phase 189 — never name an internal env var or
+                          provider in user-facing copy. */}
                       <p className="text-[10px] font-mono text-red-400/60 mt-1">
-                        Check that TWELVE_DATA_API_KEY is configured in the Keys tab.
+                        {t.onboarding.dataUnavailableHint}
                       </p>
                     </div>
                   )}
+                </motion.div>
+              ) : entitlementNotice ? (
+                <motion.div
+                  key="entitlement-locked"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* Server withheld an actionable signal. Never rendered as WAIT. */}
+                  <LockedSignalNotice instrument={entitlementNotice.instrument} />
                 </motion.div>
               ) : currentResult ? (
                 <motion.div
@@ -1099,6 +1215,7 @@ export default function Dashboard() {
                 analyses={history}
                 onSelect={handleSelectHistory}
                 selectedId={currentResult?.id}
+                isLoading={historyLoading}
               />
             </div>
           </div>
