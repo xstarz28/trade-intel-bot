@@ -272,6 +272,7 @@ describe("9-10. the retired third-party dependency cannot return", () => {
   const sources = [
     "auth/emailOtp.ts",
     "lib/emailDelivery.ts",
+    "lib/emailTemplates.ts",
     "lib/otpResendThrottle.ts",
   ].map((f) => ({
     file: f,

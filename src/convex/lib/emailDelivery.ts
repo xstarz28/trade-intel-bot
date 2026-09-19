@@ -27,6 +27,23 @@
 
 import { DEPLOYMENT_ENV_VAR, isProductionDeployment } from "./deploymentEnvironment";
 import { RETIRED_ISSUER_HOSTS } from "./issuerPolicy";
+import {
+  XSTARZ_PRODUCT_NAME,
+  formatSenderHeader,
+  renderSecurityAlertMessage,
+  renderVerificationMessage,
+  type SecurityAlertEmailContent,
+} from "./emailTemplates";
+
+export { XSTARZ_PRODUCT_NAME } from "./emailTemplates";
+export {
+  buildVerificationSubject as buildSubject,
+  formatSenderHeader,
+  renderSecurityAlertHtml,
+  renderSecurityAlertText,
+  renderVerificationHtml,
+  renderVerificationText,
+} from "./emailTemplates";
 
 /** Transports supported today. Provider-neutral by construction. */
 export type EmailTransportId = "resend" | "smtp2go" | "console";
@@ -73,18 +90,10 @@ export type VerificationEmail = {
 
 export type EnvSource = (key: string) => string | undefined;
 
-/** Product name in the email. Never a vendor name. */
-export const XSTARZ_PRODUCT_NAME = "Xstarz Analysis";
+export type SecurityAlertEmail = SecurityAlertEmailContent;
 
 export const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
 
-/**
- * Endpoints that must never be used for Xstarz OTP delivery.
- *
- * The first entry is the retired third-party service. It is listed here — not
- * as a live dependency but as a guard — so that a regression reintroducing it
- * fails a test instead of quietly shipping.
- */
 /**
  * Sender domains production must never send OTP mail from.
  *
@@ -99,6 +108,24 @@ export const DEFAULT_DELIVERY_TIMEOUT_MS = 10_000;
  * issuer, and naming it produces a clearer error than the suffix rule alone.
  */
 export const FORBIDDEN_DELIVERY_HOSTS = ["auth.freebuff.app", ...RETIRED_ISSUER_HOSTS];
+
+/**
+ * Provider-shared test sending identities (not Xstarz-owned, not production
+ * verified). Resend's `resend.dev` mailbox can only deliver to the Resend
+ * account owner and cannot serve production OTP to arbitrary users.
+ *
+ * These are NOT retired Freebuff/VLY hosts. They are refused in production
+ * only, so a development/preview smoke test can still use a temporary Resend
+ * test sender without pretending it is an Xstarz domain.
+ */
+export const PROVIDER_SHARED_TEST_SENDER_HOSTS: readonly string[] = ["resend.dev"];
+
+export function isSharedTestSenderHost(host: string): boolean {
+  const normalised = host.trim().toLowerCase();
+  return PROVIDER_SHARED_TEST_SENDER_HOSTS.some(
+    (entry) => normalised === entry || normalised.endsWith(`.${entry}`),
+  );
+}
 
 /** RFC-5322 is famously permissive; this is a deliberate pragmatic subset. */
 const EMAIL_PATTERN = /^[^\s@,;:<>()[\]\\]+@[^\s@.,;:<>()[\]\\]+(\.[^\s@.,;:<>()[\]\\]+)+$/;
@@ -186,6 +213,18 @@ export function readEmailDeliveryConfig(env: EnvSource): EmailDeliveryConfig {
     );
   }
 
+  // Provider test mailboxes (e.g. onboarding@resend.dev) are not Xstarz-owned
+  // and cannot deliver production OTP to arbitrary recipients. Fail closed in
+  // production; development/preview may use them as a temporary sender.
+  if (isProductionDeployment(env) && isSharedTestSenderHost(senderHost)) {
+    throw new EmailDeliveryError(
+      "not_configured",
+      "XSTARZ_EMAIL_SENDER_ADDRESS is a provider shared test identity, not an Xstarz-owned domain. " +
+        "Production OTP cannot use it. Set a verified sender on a domain Xstarz controls, " +
+        `or set ${DEPLOYMENT_ENV_VAR} to "development" or "preview" for a temporary test sender.`,
+    );
+  }
+
   return { transport, apiKey, senderAddress, senderName, timeoutMs: readTimeout(env) };
 }
 
@@ -208,14 +247,25 @@ export type ProviderRequest = {
   body: unknown;
 };
 
+export type OutboundEmail = {
+  recipient: string;
+  subject: string;
+  text: string;
+  html: string;
+};
+
 export function buildProviderRequest(
   config: EmailDeliveryConfig,
   email: VerificationEmail,
 ): ProviderRequest {
-  const subject = buildSubject();
-  const text = renderVerificationText(email);
-  const html = renderVerificationHtml(email);
-  const from = `${config.senderName} <${config.senderAddress}>`;
+  return buildOutboundRequest(config, renderVerificationMessage(email));
+}
+
+export function buildOutboundRequest(
+  config: EmailDeliveryConfig,
+  email: OutboundEmail,
+): ProviderRequest {
+  const from = formatSenderHeader(config.senderName, config.senderAddress);
 
   switch (config.transport) {
     case "resend":
@@ -225,7 +275,13 @@ export function buildProviderRequest(
           authorization: `Bearer ${config.apiKey}`,
           "content-type": "application/json",
         },
-        body: { from, to: [email.recipient], subject, text, html },
+        body: {
+          from,
+          to: [email.recipient],
+          subject: email.subject,
+          text: email.text,
+          html: email.html,
+        },
       };
 
     case "smtp2go":
@@ -238,89 +294,27 @@ export function buildProviderRequest(
         body: {
           sender: from,
           to: [email.recipient],
-          subject,
-          text_body: text,
-          html_body: html,
+          subject: email.subject,
+          text_body: email.text,
+          html_body: email.html,
         },
       };
 
     case "console":
-      return { url: "", headers: {}, body: { from, to: email.recipient, subject } };
+      return { url: "", headers: {}, body: { from, to: email.recipient, subject: email.subject } };
   }
-}
-
-/**
- * Subject line.
- *
- * Takes no OTP parameter by design: a subject is rendered in lock-screen and
- * notification previews, so putting the code there would expose it to anyone
- * glancing at the device. Making it impossible to pass is stronger than
- * remembering not to use it.
- */
-export function buildSubject(): string {
-  return `Your ${XSTARZ_PRODUCT_NAME} verification code`;
-}
-
-export function renderVerificationText(email: VerificationEmail): string {
-  return [
-    `${XSTARZ_PRODUCT_NAME} verification code`,
-    "",
-    `Your verification code is: ${email.otp}`,
-    "",
-    `This code expires in ${email.expiryMinutes} minutes and can only be used once.`,
-    "",
-    "If you did not request this code, you can safely ignore this email.",
-    `Nobody from ${XSTARZ_PRODUCT_NAME} will ever ask you for this code.`,
-    "",
-    `${XSTARZ_PRODUCT_NAME} — decision-support trading intelligence.`,
-  ].join("\n");
-}
-
-export function renderVerificationHtml(email: VerificationEmail): string {
-  const otp = escapeHtml(email.otp);
-  const minutes = String(email.expiryMinutes);
-
-  // Inline styles only: transactional mail clients strip <style> blocks.
-  // No tracking pixel, no remote images, no marketing content.
-  return [
-    '<!doctype html><html><body style="margin:0;padding:24px;background:#f5f7fa;',
-    'font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif;">',
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" ',
-    'style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:12px;',
-    'border:1px solid #e3e8ef;">',
-    '<tr><td style="padding:28px 28px 8px 28px;">',
-    `<div style="font-size:18px;font-weight:600;color:#0b1f3a;">${XSTARZ_PRODUCT_NAME}</div>`,
-    '<div style="font-size:14px;color:#5b6b82;margin-top:4px;">Verification code</div>',
-    "</td></tr>",
-    '<tr><td style="padding:8px 28px 0 28px;">',
-    '<div style="font-size:32px;font-weight:700;letter-spacing:6px;color:#1550c5;',
-    'background:#eef3ff;border-radius:8px;padding:16px;text-align:center;">',
-    otp,
-    "</div></td></tr>",
-    '<tr><td style="padding:16px 28px 0 28px;font-size:14px;color:#33445c;line-height:1.5;">',
-    `This code expires in <strong>${minutes} minutes</strong> and can only be used once.`,
-    "</td></tr>",
-    '<tr><td style="padding:12px 28px 28px 28px;font-size:13px;color:#6b7a90;line-height:1.5;">',
-    "If you did not request this code you can safely ignore this email. ",
-    `Nobody from ${XSTARZ_PRODUCT_NAME} will ever ask you for it.`,
-    "</td></tr>",
-    "</table></body></html>",
-  ].join("");
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 export type FetchLike = (
   url: string,
   init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
 ) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
+
+export type SendEmailOptions = {
+  env: EnvSource;
+  fetchImpl?: FetchLike;
+  logger?: (message: string) => void;
+};
 
 /**
  * Deliver a verification email through the configured Xstarz transport.
@@ -330,9 +324,31 @@ export type FetchLike = (
  */
 export async function sendXstarzVerificationEmail(
   email: VerificationEmail,
-  options: { env: EnvSource; fetchImpl?: FetchLike; logger?: (message: string) => void } = {
+  options: SendEmailOptions = {
     env: (key) => process.env[key],
   },
+): Promise<{ transport: EmailTransportId; delivered: boolean }> {
+  return sendRenderedEmail(renderVerificationMessage(email), "verification", options);
+}
+
+/**
+ * Deliver a security/account notice through the same transport and sender
+ * policy as OTP mail. Future notifications reuse this path; they do not
+ * introduce a second provider or a Freebuff fallback.
+ */
+export async function sendXstarzSecurityAlertEmail(
+  email: SecurityAlertEmail,
+  options: SendEmailOptions = {
+    env: (key) => process.env[key],
+  },
+): Promise<{ transport: EmailTransportId; delivered: boolean }> {
+  return sendRenderedEmail(renderSecurityAlertMessage(email), "security notice", options);
+}
+
+async function sendRenderedEmail(
+  email: OutboundEmail,
+  kind: string,
+  options: SendEmailOptions,
 ): Promise<{ transport: EmailTransportId; delivered: boolean }> {
   const { env, fetchImpl, logger } = options;
 
@@ -342,12 +358,13 @@ export async function sendXstarzVerificationEmail(
   }
 
   const config = readEmailDeliveryConfig(env);
-  const request = buildProviderRequest(config, email);
+  const request = buildOutboundRequest(config, email);
 
   if (config.transport === "console") {
-    // Development only. Never prints the OTP: a code in a log is a code in a
-    // log aggregator, and this module's whole purpose is to not leak one.
-    logger?.(`[email:console] verification code queued for ${maskRecipient(email.recipient)}`);
+    // Development only. Never prints the OTP or event payload: a code in a
+    // log is a code in a log aggregator, and this module's whole purpose is
+    // to not leak one.
+    logger?.(`[email:console] ${kind} queued for ${maskRecipient(email.recipient)}`);
     return { transport: "console", delivered: true };
   }
 
@@ -376,8 +393,8 @@ export async function sendXstarzVerificationEmail(
     throw new EmailDeliveryError(
       aborted ? "timeout" : "network_error",
       aborted
-        ? `Verification email timed out after ${config.timeoutMs}ms.`
-        : "Verification email could not be sent: network error.",
+        ? `${kind} email timed out after ${config.timeoutMs}ms.`
+        : `${kind} email could not be sent: network error.`,
     );
   } finally {
     if (timer !== undefined) clearTimeout(timer);
@@ -387,11 +404,11 @@ export async function sendXstarzVerificationEmail(
 
   // Status only. The provider body can echo the request, including the OTP.
   if (response.status === 429) {
-    throw new EmailDeliveryError("rate_limited", "Verification email was rate limited by the provider.", 429);
+    throw new EmailDeliveryError("rate_limited", `${kind} email was rate limited by the provider.`, 429);
   }
   throw new EmailDeliveryError(
     "provider_error",
-    `Verification email failed (HTTP ${response.status}).`,
+    `${kind} email failed (HTTP ${response.status}).`,
     response.status,
   );
 }

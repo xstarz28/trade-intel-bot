@@ -134,6 +134,25 @@ describe("Phase 214 — production fails closed", () => {
     );
     expect(config.transport).toBe("console");
   });
+
+  it("refuses a provider shared test sender in production", () => {
+    expectRefused({
+      ...PROD_BASE,
+      XSTARZ_EMAIL_SENDER_ADDRESS: "onboarding@resend.dev",
+    });
+  });
+
+  it("refuses a shared test sender when the deployment env is unset", () => {
+    expectRefused({
+      XSTARZ_EMAIL_TRANSPORT: "resend",
+      XSTARZ_EMAIL_API_KEY: PLACEHOLDER_KEY,
+      XSTARZ_EMAIL_SENDER_ADDRESS: "onboarding@resend.dev",
+    });
+  });
+
+  it("does not treat resend.dev as a retired Freebuff/VLY host", () => {
+    expect(FORBIDDEN_DELIVERY_HOSTS).not.toContain("resend.dev");
+  });
 });
 
 describe("Phase 214 — OTP security policy is unchanged", () => {

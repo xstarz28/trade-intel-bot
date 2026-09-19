@@ -60,10 +60,15 @@ when any of the following is true:
 | `XSTARZ_EMAIL_SENDER_ADDRESS` missing | refused |
 | sender is not a plausible email address | refused |
 | sender domain is a retired host (`auth.freebuff.app`, `freebuff.com`, `freebuff.app`, `vly.ai`, or any subdomain) | refused |
+| sender domain is a provider shared test host (`resend.dev` or a subdomain) **and** the deployment is production (or `XSTARZ_DEPLOYMENT_ENV` is unset) | refused |
 
 The retired-host list is derived from `RETIRED_ISSUER_HOSTS`, so a host retired
 for auth is automatically retired for sending. Phase 214 fixed a real gap here:
 `vly.ai` was blocked as an auth issuer but **accepted as an OTP sender**.
+
+A provider shared test mailbox is a **separate** case from retired Freebuff/VLY
+hosts. It is not Xstarz-owned and cannot deliver production OTP to arbitrary
+recipients; see §7.
 
 An unset `XSTARZ_DEPLOYMENT_ENV` resolves to *production*, so a
 misconfigured deployment fails closed rather than silently using a transport
@@ -245,3 +250,48 @@ credential at its tip.
 | error surface | category only, never the payload | the raw error can embed the OTP and the API key |
 
 Do not change any of these to make setup easier.
+
+---
+
+## 7. Temporary provider test sender (not production)
+
+Some providers ship a shared test sending identity (Resend documents
+`resend.dev`) so an account can send a few messages before a domain is
+verified. That identity is **not** an Xstarz-owned domain and is **not**
+production-verified. Resend's test mailbox typically delivers only to the
+Resend account owner, not to arbitrary production users.
+
+| deployment | shared test sender (`resend.dev`) |
+| --- | --- |
+| production, or `XSTARZ_DEPLOYMENT_ENV` unset | refused (`not_configured`) before any network call |
+| `development` or `preview` | permitted as a **temporary** test sender only |
+
+Do **not**:
+
+- treat a provider test mailbox as an Xstarz sending identity
+- mark production email transport verified while the sender is a shared test identity
+- bypass the production refuse by switching transport to `console`
+- fall back to a retired Freebuff/VLY sender
+
+When a privately owned Xstarz domain is verified at the provider, change
+`XSTARZ_EMAIL_SENDER_ADDRESS` (and optionally `XSTARZ_EMAIL_SENDER_NAME`) in
+the Convex deployment environment. The delivery module, OTP path
+(`sendXstarzVerificationEmail`) and templates do not need an architecture
+change.
+
+The visible From header is always `XSTARZ_EMAIL_SENDER_NAME` (default
+`Xstarz Analysis`) plus the configured mailbox, so users see Xstarz branding
+even while the mailbox is still a temporary provider address in non-production.
+
+### Templates
+
+OTP mail and future security/account notices share the same delivery path:
+
+- **Verification / login OTP** — product name, code, expiry, do-not-share,
+  “if you did not request this”. The code is never in the subject line.
+- **Security notice** — product name, a short non-secret event label, and
+  “if this was not you”. No OTP, no tracking pixel, no market content.
+
+Both are rendered by `src/convex/lib/emailTemplates.ts` and sent by
+`src/convex/lib/emailDelivery.ts`. Auth continues to call
+`sendXstarzVerificationEmail()` only.
