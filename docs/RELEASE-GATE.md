@@ -5930,3 +5930,46 @@ or PR. The production-deploy workflow has not been dispatched.
 **Bootstrap status: READY-FOR-CREDENTIALS.**
 **Production deployment: still BLOCKED / UNVERIFIED.**
 No production deployment is claimed. Release decision: NOT READY.
+
+## Phase 256 — post-email implementation release-gate reconciliation
+
+Checkpoint `c6d042e` added branded OTP and security-notice templates and
+refused provider shared test senders (`resend.dev`) in production. This
+section records what that commit did **not** change. It is documentation
+reconciliation, not production verification.
+
+### What `c6d042e` is
+
+| Claim | Fact |
+| --- | --- |
+| Auth-facing send | still `sendXstarzVerificationEmail()` |
+| Templates | OTP (brand, code, expiry, do-not-share) and a security notice, same delivery path |
+| Display name | `XSTARZ_EMAIL_SENDER_NAME` (default `Xstarz Analysis`) plus the configured mailbox |
+| `resend.dev` | provider shared test identity — **not** Xstarz-owned, **not** production-verified; refused when the deployment is production or `XSTARZ_DEPLOYMENT_ENV` is unset |
+| Freebuff / VLY | retired-host denylist unchanged; no OTP fallback |
+| A1 / A2 | unchanged — not revoked, not rewritten |
+| `main` | untouched |
+
+A future privately owned Xstarz domain is an environment change
+(`XSTARZ_EMAIL_SENDER_ADDRESS`), not an architecture change.
+
+### What `c6d042e` is not
+
+Templates, a From display name, and a fail-closed refuse of a provider test
+mailbox are **not** mailbox delivery. They do not create a domain, a provider
+account, DNS records, or a production Convex deployment. They do not satisfy
+the release prerequisite `PRODUCTION_EMAIL_TRANSPORT`.
+
+| Prerequisite | Status after `c6d042e` |
+| --- | --- |
+| `A1_OTP_ISSUER_REVOCATION` | BLOCKED / UNVERIFIED |
+| `A2_HISTORY_REWRITE` | LOCKED / UNVERIFIED |
+| `CONVEX_PRODUCTION_DEPLOYMENT` | BLOCKED / UNVERIFIED |
+| `EVIDENCE_D_PRODUCTION_PROVIDER_VERIFICATION` | BLOCKED / UNVERIFIED |
+| `PRODUCTION_EMAIL_TRANSPORT` | BLOCKED / UNVERIFIED |
+
+No proof file was added under `docs/remediation/`. No mail was sent. No
+provider was registered. `resend.dev` must not be filed as an Xstarz production
+sender.
+
+**Release decision: NOT READY.**

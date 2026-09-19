@@ -14,7 +14,7 @@ the development sandbox.
 
 | Item | Value |
 | --- | --- |
-| Deployable branch | `arena/01a08e67-trade-intel-bot` |
+| Deployable branch | `arena/01a0b293-trade-intel-bot` |
 | **Not deployable** | `main` |
 
 `main` is more than 25 commits behind and, more importantly, its git history
@@ -23,10 +23,11 @@ to it, until that credential has been rotated.** The running application logs
 its own commit and branch at startup and prints a warning if it was ever built
 from `main`.
 
-Confirm what is actually live by opening the browser console:
+Confirm what is actually live by opening the browser console. The line is a
+format example — it is not a claim that this SHA is in production:
 
 ```
-[Xstarz Analysis] build eb3a60e (arena/01a08e67-trade-intel-bot) built 2026-09-12T…
+[Xstarz Analysis] build <commit> (arena/01a0b293-trade-intel-bot) built <timestamp>
 ```
 
 ---
@@ -126,7 +127,7 @@ above. Never at `XSTARZ_EMAIL_API_KEY`.
 | `VLY_CONVEX_AUTH_ISSUER` | Optional federated issuer, honoured only in preview/development. **A production deployment rejects any value** and trusts only its own issuer |
 | `XSTARZ_EMAIL_TRANSPORT` | `resend` \| `smtp2go` \| `console`. **`console` is rejected in production** — it logs instead of delivering |
 | `XSTARZ_EMAIL_API_KEY` | Provider credential. Server-only, never committed |
-| `XSTARZ_EMAIL_SENDER_ADDRESS` | Xstarz-owned verified sender. No default; send fails without it |
+| `XSTARZ_EMAIL_SENDER_ADDRESS` | Verified sender on a domain Xstarz controls. No default; send fails without it. A provider shared test identity (`resend.dev`) is **not** Xstarz-owned and is refused in production |
 | `XSTARZ_EMAIL_SENDER_NAME` | Defaults to `Xstarz Analysis` |
 
 ### Class D — Build-time only, never shipped
@@ -266,12 +267,13 @@ Email stays in Convex production env (never GitHub): `XSTARZ_EMAIL_TRANSPORT`
 | --- | --- | --- | --- |
 | 1 | Leaked OTP key live in `main`'s history (9 commits) | Valid credential is publicly reachable | Rotate at `auth.freebuff.app`, **then** rewrite history |
 | 2 | Convex never deployed | Control plane TLS-blocked here | Operator on an unrestricted network |
-| 3 | No live provider verification | All provider hosts blocked here | Operator on an unrestricted network |
-| 4 | Deep links unverified | Placeholder fingerprint and Team ID | Release keystore + Apple Developer account |
-| 5 | No physical-device testing | No Android device, no iPhone | Human tester |
-| 6 | Theme defect F3 | `<html class="dark">` hardcoded; `.dark {}` empty; `--primary` is teal, not the specified blue | Scheduled work, not opportunistic |
+| 3 | `PRODUCTION_EMAIL_TRANSPORT` | Branded OTP/security templates exist; no Xstarz-owned verified sender/domain; `resend.dev` is a provider test identity, **not** production-verified, and is refused in production; no mailbox delivery. Status: **BLOCKED / UNVERIFIED** | Product owner: owned domain + verified sender + DNS + attested mailbox receipt |
+| 4 | No live provider verification | All provider hosts blocked here | Operator on an unrestricted network |
+| 5 | Deep links unverified | Placeholder fingerprint and Team ID | Release keystore + Apple Developer account |
+| 6 | No physical-device testing | No Android device, no iPhone | Human tester |
+| 7 | Theme defect F3 | `<html class="dark">` hardcoded; `.dark {}` empty; `--primary` is teal, not the specified blue | Scheduled work, not opportunistic |
 
-Until items 1–3 are cleared, this product is **NOT READY** for public release.
+Until items 1–4 are cleared, this product is **NOT READY** for public release.
 
 ---
 
@@ -306,6 +308,7 @@ What each guard does when it is wrong:
 | `XSTARZ_DEPLOYMENT_ENV=prod` (typo) | `DeploymentPolicyError` — refuses to guess |
 | `XSTARZ_EMAIL_TRANSPORT=console` on production | `EmailDeliveryError(not_configured)` — no delivery result, no sign-in |
 | `XSTARZ_EMAIL_TRANSPORT=resend` with no key | Explicit failure, no silent fallback sender |
+| sender on `resend.dev` (or a subdomain) on production | `EmailDeliveryError(not_configured)` — provider shared test identity, not an Xstarz-owned domain; cannot deliver production OTP to arbitrary recipients |
 | `VLY_CONVEX_AUTH_ISSUER` set on production | `IssuerPolicyError` — retired hosts named, others refused generically |
 
 Preview and development deployments set `XSTARZ_DEPLOYMENT_ENV` to `preview` or
