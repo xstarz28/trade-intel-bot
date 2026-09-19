@@ -40,11 +40,13 @@ export type ProductionDeployGuardState =
   | "WRONG_IDENTITY"
   | "WRONG_CONVEX_URL"
   | "WRONG_SITE_URL"
-  | "WRONG_ENVIRONMENT";
+  | "WRONG_ENVIRONMENT"
+  | "FORBIDDEN_SOURCE_REF";
 
 export const PRODUCTION_DEPLOY_GUARD_PRECEDENCE: readonly ProductionDeployGuardState[] = [
   "PLACEHOLDER_DEPLOY_KEY",
   "MISSING_DEPLOY_KEY",
+  "FORBIDDEN_SOURCE_REF",
   "NON_PRODUCTION_IDENTITY",
   "WRONG_IDENTITY",
   "MISSING_DEPLOYMENT_IDENTITY",
@@ -67,6 +69,12 @@ export interface ProductionDeployGuardInput {
   viteConvexUrl?: string;
   convexSiteUrl?: string;
   xstarzDeploymentEnv?: string;
+  /**
+   * Git ref CI is checking out (`GITHUB_REF` / `SOURCE_REF`). Absent is
+   * allowed for a local configuration check. `main` is never a deployable
+   * source: its tip still serves the leaked OTP credential.
+   */
+  sourceRef?: string;
 }
 
 export interface ProductionDeployGuardReport {
@@ -108,6 +116,23 @@ function worst(states: readonly ProductionDeployGuardState[]): ProductionDeployG
   return "MISSING_DEPLOY_KEY";
 }
 
+/**
+ * True when `ref` names `main` under any of the usual git/GitHub spellings.
+ * Other branch names, including ones that merely contain the letters "main",
+ * are not this check.
+ */
+export function isForbiddenDeploySourceRef(ref: string): boolean {
+  const trimmed = ref.trim();
+  if (!trimmed) return false;
+  const normalised = trimmed
+    .replace(/^refs\/remotes\/origin\//i, "")
+    .replace(/^refs\/heads\//i, "")
+    .replace(/^origin\//i, "")
+    .replace(/^heads\//i, "")
+    .toLowerCase();
+  return normalised === "main";
+}
+
 function httpsHost(value: string): { host: string } | { problem: string } {
   let url: URL;
   try {
@@ -147,6 +172,14 @@ export function evaluateProductionDeployGuard(
   } else if (key.length < 16 || PLACEHOLDER_KEY.test(key)) {
     states.push("PLACEHOLDER_DEPLOY_KEY");
     problems.push("CONVEX_DEPLOY_KEY is a placeholder or too short to be a real deploy key");
+  }
+
+  const sourceRef = trim(input.sourceRef);
+  if (sourceRef && isForbiddenDeploySourceRef(sourceRef)) {
+    states.push("FORBIDDEN_SOURCE_REF");
+    problems.push(
+      "source ref is main; main still serves the leaked OTP credential at its tip and must not be deployed",
+    );
   }
 
   const deployment = trim(input.convexDeployment) || null;

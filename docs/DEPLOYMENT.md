@@ -250,11 +250,13 @@ can — nobody on this project has an iPhone.
 `production-deploy.yml` is **manual only** (`workflow_dispatch`). It runs in
 the GitHub Environment `production`, requires the secret `CONVEX_DEPLOY_KEY`
 and the variable `CONVEX_DEPLOYMENT` (`prod:<team>:<project>`), refuses
-anonymous/dev/preview/local identities, then runs `npx convex deploy --yes
---cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL`. A missing
-secret fails the guard. A green dispatch is not a release, not Evidence D,
-and not proof that production exists — the workflow has not been run from
-this environment, and no production deployment is claimed here.
+anonymous/dev/preview/local identities, and refuses a checkout of `main`
+(`SOURCE_REF` / `github.ref`) because that tip still serves the leaked OTP
+credential. Then it runs `npx convex deploy --yes --cmd "npm run build"
+--cmd-url-env-var-name VITE_CONVEX_URL`. A missing secret fails the guard. A
+green dispatch is not a release, not Evidence D, and not proof that
+production exists — the workflow has not been run from this environment, and
+no production deployment is claimed here.
 
 Email stays in Convex production env (never GitHub): `XSTARZ_EMAIL_TRANSPORT`
 (`resend` or `smtp2go`), `XSTARZ_EMAIL_API_KEY`, `XSTARZ_EMAIL_SENDER_ADDRESS`.

@@ -3,10 +3,11 @@
  * Phase 255 — operator/CI gate in front of a Convex production deploy.
  *
  * Reads CONVEX_DEPLOY_KEY / CONVEX_DEPLOYMENT / VITE_CONVEX_URL /
- * CONVEX_SITE_URL / XSTARZ_DEPLOYMENT_ENV from the process environment (or
- * --config) and asks `src/lib/deployment/production-deploy-guard.ts` whether
- * the Convex production deploy command may be invoked. It never deploys, never
- * contacts Convex, never prints a credential, and never admits a release.
+ * CONVEX_SITE_URL / XSTARZ_DEPLOYMENT_ENV / SOURCE_REF (or GITHUB_REF) from
+ * the process environment (or --config) and asks
+ * `src/lib/deployment/production-deploy-guard.ts` whether the Convex
+ * production deploy command may be invoked. It never deploys, never contacts
+ * Convex, never prints a credential, and never admits a release.
  *
  * Exit codes:
  *   0 = READY_TO_INVOKE_DEPLOY (permission to attempt; NOT a deployment)
@@ -135,6 +136,7 @@ const evaluated = evaluateProductionDeployGuard({
   viteConvexUrl: env.VITE_CONVEX_URL,
   convexSiteUrl: env.CONVEX_SITE_URL,
   xstarzDeploymentEnv: env.XSTARZ_DEPLOYMENT_ENV,
+  sourceRef: env.SOURCE_REF || env.GITHUB_REF || env.GIT_REF,
 });
 
 const report = parseFailure

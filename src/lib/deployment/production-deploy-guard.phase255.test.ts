@@ -14,6 +14,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   evaluateProductionDeployGuard,
   formatProductionDeployGuard,
+  isForbiddenDeploySourceRef,
   productionDeployGuardExitCode,
   productionDeployGuardJson,
   PRODUCTION_DEPLOY_GUARD_SCHEMA,
@@ -165,6 +166,33 @@ describe("255 — the decision module refuses non-production and missing inputs"
     expect(printed).toMatch(/productionVerified: no|\"productionVerified\": false/);
   });
 
+  it("refuses main as a source ref even when the identity and key are production-shaped", () => {
+    for (const sourceRef of ["refs/heads/main", "main", "refs/remotes/origin/main", "heads/main"]) {
+      const report = evaluateProductionDeployGuard({ ...readyInput(), sourceRef });
+      expect(report.state, sourceRef).toBe("FORBIDDEN_SOURCE_REF");
+      expect(report.mayInvokeDeploy, sourceRef).toBe(false);
+      expect(report.deploymentPerformed).toBe(false);
+      expect(report.problems.join(" ")).toMatch(/main/i);
+    }
+  });
+
+  it("does not treat an arena working branch, or a name that merely contains main, as forbidden", () => {
+    expect(isForbiddenDeploySourceRef("refs/heads/arena/01a0b293-trade-intel-bot")).toBe(false);
+    expect(isForbiddenDeploySourceRef("refs/heads/maintenance")).toBe(false);
+    const report = evaluateProductionDeployGuard({
+      ...readyInput(),
+      sourceRef: "refs/heads/arena/01a0b293-trade-intel-bot",
+    });
+    expect(report.state).toBe("READY_TO_INVOKE_DEPLOY");
+    expect(report.mayInvokeDeploy).toBe(true);
+    expect(report.deploymentPerformed).toBe(false);
+  });
+
+  it("a missing source ref does not by itself refuse a local configuration check", () => {
+    const report = evaluateProductionDeployGuard(readyInput());
+    expect(report.state).toBe("READY_TO_INVOKE_DEPLOY");
+  });
+
   it("never copies the deploy key into the report", () => {
     const report = evaluateProductionDeployGuard(readyInput());
     expect(JSON.stringify(report)).not.toContain(DEPLOY_KEY);
@@ -238,6 +266,20 @@ describe("255 — the operator/CI script matches the decision module", () => {
     expect(text).toMatch(/production-deploy-guard\.ts/);
     expect(text).toMatch(/never prints a credential/);
   });
+
+  it("refuses GITHUB_REF=refs/heads/main through the operator script", () => {
+    const path = writeConfig("main-ref.json", {
+      CONVEX_DEPLOY_KEY: DEPLOY_KEY,
+      CONVEX_DEPLOYMENT: FIXTURE_IDENTITY,
+      XSTARZ_DEPLOYMENT_ENV: "production",
+      GITHUB_REF: "refs/heads/main",
+    });
+    const result = run(["--config", path, "--json"]);
+    expect(result.status).toBe(1);
+    const parsed = JSON.parse(result.stdout) as { state: string; mayInvokeDeploy: boolean };
+    expect(parsed.state).toBe("FORBIDDEN_SOURCE_REF");
+    expect(parsed.mayInvokeDeploy).toBe(false);
+  });
 });
 
 describe("255 — the production-deploy workflow is fail-closed and manual", () => {
@@ -268,6 +310,12 @@ describe("255 — the production-deploy workflow is fail-closed and manual", () 
     expect(workflow).not.toMatch(/echo.*CONVEX_DEPLOY_KEY|printenv CONVEX_DEPLOY_KEY/);
     expect(workflow).not.toMatch(/release:admission|RELEASE_ADMISSION|evidence:d|LIVE_OPT_IN/);
     expect(workflow).toMatch(/does not admit a release/);
+  });
+
+  it("passes github.ref into the guard so a main checkout cannot deploy", () => {
+    const workflow = read(WORKFLOW);
+    expect(workflow).toMatch(/SOURCE_REF:\s*\$\{\{\s*github\.ref\s*\}\}/);
+    expect(read(SCRIPT)).toMatch(/SOURCE_REF \|\| env\.GITHUB_REF/);
   });
 
   it("ordinary CI, packaging and admission still do not deploy", () => {

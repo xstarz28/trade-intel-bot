@@ -18,8 +18,9 @@
 #   XSTARZ_EMAIL_TRANSPORT, XSTARZ_EMAIL_API_KEY,
 #   XSTARZ_EMAIL_SENDER_ADDRESS, XSTARZ_EMAIL_SENDER_NAME
 #
-# A missing secret fails the guard. An empty dispatch is not a production
-# deployment. This workflow does not write release-gate evidence.
+# A missing secret fails the guard. A checkout of main is refused (the tip
+# still serves the leaked OTP credential). An empty dispatch is not a
+# production deployment. This workflow does not write release-gate evidence.
 
 name: Production deploy
 
@@ -45,6 +46,7 @@ jobs:
       VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
       CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
       XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+      SOURCE_REF: ${{ github.ref }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -73,6 +75,7 @@ jobs:
       VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
       CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
       XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+      SOURCE_REF: ${{ github.ref }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
