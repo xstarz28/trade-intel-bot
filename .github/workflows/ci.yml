@@ -1,0 +1,116 @@
+# Phase 180 — continuous integration for the web artifact.
+#
+# Every gate here runs today in the development sandbox. Nothing in this file
+# depends on a deployment, a Convex control-plane connection, or a provider
+# API key, so it cannot produce a green check that overstates readiness.
+#
+# Deliberately NOT included:
+#   - deploying anywhere (deployment requires the credential rotation that is
+#     still outstanding; see docs/DEPLOYMENT.md)
+#   - any job needing a provider secret (no live provider call belongs in CI)
+name: CI
+
+on:
+  push:
+    branches: ["arena/**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Test · typecheck · build · lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The build embeds the commit id for provenance; a shallow clone of
+          # depth 1 still resolves HEAD, which is all `git rev-parse` needs.
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # This project's peer graph cannot be resolved by npm's default
+      # strategy; without the legacy resolver install aborts outright.
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Test suite
+        run: npm test
+
+      - name: Typecheck and production build
+        run: npm run build
+
+      # Lint is advisory: the repository carries a known warning backlog, so a
+      # hard failure here would block every change. The count is surfaced for
+      # review instead of silently discarded.
+      - name: Lint (advisory)
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Verify built artifact contains no secrets
+        run: npm run mobile:verify
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist-${{ github.sha }}
+          path: dist/
+          retention-days: 7
+
+  # Reachable-history credential scan.
+  #
+  # Separate from `verify` because it needs the FULL history, while `verify`
+  # deliberately uses a depth-1 checkout. Detection is by fingerprint, so no
+  # credential value is stored in the repository or printed in the logs.
+  #
+  # This job is expected to FAIL until the documented rotation and history
+  # remediation are complete. That is the intended signal, not a broken build:
+  # a compromised credential is reachable in this repository's history right
+  # now, and the pipeline should say so out loud.
+  history-secret-scan:
+    name: Reachable-history secret scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 0 = full history. The scanner refuses to run on a shallow clone,
+          # because a shallow scan once reported "9 affected commits" when the
+          # real number was 270.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Exit 2 (refused to scan) must never be mistaken for exit 1 (secret
+      # found). A scan that could not run is not evidence of anything, so it
+      # is escalated to a hard failure even though a real finding is tolerated
+      # while the documented blocker is open.
+      - name: Scan every reachable blob, commit message and tag object
+        run: |
+          set +e
+          node scripts/verify-history-clean.mjs
+          code=$?
+          set -e
+          case "$code" in
+            0) echo "Reachable history is clean." ;;
+            1)
+              echo "::error::Compromised credential still reachable in history. Expected until rotation and remediation complete — see docs/SECURITY-REMEDIATION.md."
+              # Must FAIL. `continue-on-error` keeps the pipeline moving, but
+              # this job has to read as red: a green tick next to a reachable
+              # compromised credential is a false green, and false greens are
+              # exactly what this repository's CI rules exist to prevent.
+              exit 1
+              ;;
+            2) echo "::error::History scan could not run (shallow or grafted clone). This is a CI configuration fault, not a clean result."; exit 1 ;;
+            *) echo "::error::Unexpected scanner exit code $code"; exit 1 ;;
+          esac

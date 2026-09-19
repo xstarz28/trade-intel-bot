@@ -16,17 +16,14 @@
 
 import type {
   AlertRule,
-  RuleAlert,
   RuleEvaluationContext,
   RuleSnapshot,
   RuleTriggerRecord,
 } from "./alert-rule-engine";
 import {
-  evaluateRules,
   evaluateRule,
   shouldTriggerAlert,
   alertIdentity,
-  type RuleCondition,
 } from "./alert-rule-engine";
 import { buildNotification, type Notification } from "./notification-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
@@ -38,9 +35,6 @@ import {
   buildTriggerDiagnostic,
   buildNotificationDiagnostic,
   buildPipelineCycleDiagnostic,
-  buildPipelineErrorDiagnostic,
-  buildCleanupDiagnostic,
-  type SkipReason,
 } from "./alert-observability";
 
 // ═══════════════════════════════════════════════════════════════
@@ -202,8 +196,6 @@ export function evaluateAlertRuntimeBridge(
   let updatedRecords = new Map(triggerRecords);
   const triggeredAlerts: Array<{ rule: typeof activeRules[0]; alertId: string; positionId?: string; instrument?: string }> = [];
   let evaluatedCount = 0;
-  let cooldownBlockedCount = 0;
-  let dedupCount = 0;
   let triggeredCount = 0;
 
   for (const rule of activeRules) {
@@ -213,7 +205,6 @@ export function evaluateAlertRuntimeBridge(
     const cooldownOk = shouldTriggerAlert(rule, updatedRecords, now);
     if (!cooldownOk) {
       diagnostics.push(buildCooldownDiagnostic(rule));
-      cooldownBlockedCount++;
       continue;
     }
 
@@ -226,7 +217,7 @@ export function evaluateAlertRuntimeBridge(
     }
 
     // Rule triggered — determine position context
-    for (const er of evalResults) {
+    evalResults.forEach(() => {
       let posId: string | undefined;
       let inst: string | undefined;
       let side: "LONG" | "SHORT" | "NONE" = "NONE";
@@ -261,7 +252,7 @@ export function evaluateAlertRuntimeBridge(
         lastTriggeredAt: now,
         lastConditionTrue: true,
       });
-    }
+    });
   }
 
   // Convert triggered alerts → notifications

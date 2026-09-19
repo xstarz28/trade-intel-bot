@@ -23,15 +23,12 @@ import type {
   AlertSeverity,
   ProtectionAlert,
 } from "../position-protection/types";
-import { alertSeverityRank, urgencyRank } from "../position-protection/types";
+import { alertSeverityRank } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
 
 // Core engines
 import { evaluateProtection } from "../position-protection/protection-engine";
 import {
-  createMonitoringState,
-  shouldAlert,
-  updateMonitoringState,
   deduplicateByDependencyGroup,
 } from "../position-protection/alert-lifecycle";
 
@@ -40,16 +37,10 @@ import {
   guardAgainstStaleDataAlert,
   guardProviderFailureNeutrality,
   guardNoFabrication,
-  guardBoundedHistory,
-  validateIntegrationPipeline,
   runSecurityAudit,
-  validateEvent,
-  detectOutOfOrderEvent,
-  verifyMemoryBounds,
   runRuntimeValidation,
   guardAgainstDuplicateRegistration,
   guardAgainstRapidRegistration,
-  guardAgainstDuplicatePolling,
 } from "../position-protection/phase69-runtime-hardening";
 
 // Controller
@@ -58,9 +49,6 @@ import {
   registerPosition as ctrlRegister,
   removePosition as ctrlRemove,
   startController,
-  stopController,
-  pauseController,
-  resumeController,
   pausePosition,
   resumePosition,
   processEventForController,
@@ -70,18 +58,11 @@ import {
 // Event bridge
 import {
   createPriceEvent,
-  createMacroChangeEvent,
-  createProviderDegradedEvent,
-  createProviderRecoveredEvent,
-  createDataStaleEvent,
 } from "../position-protection/market-event-bridge";
-import { computeEventPriority } from "../position-protection/event-priority";
 
 // Signal fusion
-import { fuseSignals } from "../position-protection/signal-fusion";
 
 // Intelligence calibration
-import { calibrateIntelligence, type CalibrationInput } from "../position-protection/intelligence-calibration";
 import { classifyPullbackType } from "../position-protection/pullback-classifier";
 
 // Polling
@@ -103,11 +84,10 @@ import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 import {
   createBridgeState,
   bridgeProviderData,
-  bridgeProviderStatusChange,
   validateInstrumentIdentity,
   checkInstrumentFreshness,
 } from "../market-stream/live-market-bridge";
-import { routeInstrument, detectAssetClass, getFallbackRoute } from "../market-stream/provider-routing";
+import { routeInstrument, detectAssetClass } from "../market-stream/provider-routing";
 
 // Persistence
 import { InMemoryRepository } from "../position-protection/persistence";
@@ -130,10 +110,7 @@ import {
 import {
   createMonitorState,
   processEvent,
-  processEvents,
   addPosition,
-  removePosition,
-  cleanup,
 } from "../position-protection/realtime-monitor";
 
 // Alert quality
@@ -151,7 +128,6 @@ import {
   recordAlertSuppressedByCooldown,
   recordProviderFailure,
   recordProviderRecovery,
-  recordProviderSuccess,
   updatePositionCounts,
   snapshot,
 } from "../position-protection/diagnostics";
@@ -159,25 +135,15 @@ import {
 // Scenarios
 import {
   runScenario,
-  healthyProfitableLong,
-  healthyProfitableShort,
-  suddenStructureBreak,
   normalPullbackNoPrematureTP,
   fastReversalShouldTriggerEarlyProtection,
 } from "../position-protection/phase66-scenarios";
 
 // Giveback
-import { calculateGiveback, classifyGivebackSeverity } from "../position-protection/giveback-monitor";
 
 // Acceleration
-import {
-  createAccelerationState,
-  recordPriceObservation,
-  detectPriceAcceleration,
-} from "../position-protection/acceleration-monitor";
 
 // Shock
-import { detectShock } from "../position-protection/shock-detector";
 
 const NOW = 1700000000000;
 
@@ -551,7 +517,7 @@ describe("C. Provider Failure / Failover", () => {
     state = registerInstrumentForPolling(state, "BTC/USDT", NOW);
 
     // Fail the provider
-    state = processPollFailure(state, "BTC/USDT", "timeout", NOW).state;
+    processPollFailure(state, "BTC/USDT", "timeout", NOW);
 
     // Evaluate a position — provider failure should not affect direction
     const alert = evaluate(btcLong(), healthyEvidence(110_000));
@@ -609,7 +575,7 @@ describe("C. Provider Failure / Failover", () => {
   it("Stale response treated as failure", () => {
     let state = createPollingServiceState();
     state = startPollingService(state, NOW);
-    state = registerInstrumentForPolling(state, "BTC/USDT", NOW);
+    registerInstrumentForPolling(state, "BTC/USDT", NOW);
 
     const staleQuote: ProviderQuoteData = {
       instrument: "BTC/USDT", provider: "OKX", price: 105_000, timestamp: NOW, freshness: "STALE",
@@ -1516,7 +1482,7 @@ describe("I. Security Audit", () => {
 
   it("No probability claims in evidence across all severities", () => {
     const alertSeverities: AlertSeverity[] = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"];
-    for (const sev of alertSeverities) {
+    alertSeverities.forEach(() => {
       const alert = evaluate(btcLong(), healthyEvidence(110_000));
       const allText = [
         ...alert.supportingEvidence,
@@ -1526,7 +1492,7 @@ describe("I. Security Audit", () => {
       ].join(" ");
       expect(allText).not.toMatch(/\d+%\\s*chance/i);
       expect(allText).not.toMatch(/probability\\s+of/i);
-    }
+    });
   });
 });
 
@@ -1711,8 +1677,8 @@ describe("K. LONG/SHORT Symmetry Under Pressure", () => {
   });
 
   it("BTC LONG ≠ BTC SHORT — different evaluation results", () => {
-    const longAlert = evaluate(btcLong(), healthyEvidence(110_000));
-    const shortAlert = evaluate(btcShort(), { ...healthyEvidence(90_000), shortTermTrend: "bearish" });
+    evaluate(btcLong(), healthyEvidence(110_000));
+    evaluate(btcShort(), { ...healthyEvidence(90_000), shortTermTrend: "bearish" });
   });
 
   it("BTC ≠ ETH — independent evaluations", () => {

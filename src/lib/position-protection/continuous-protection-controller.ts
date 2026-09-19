@@ -12,32 +12,21 @@ import type {
   PositionContext,
   ProtectionAlert,
   AlertSeverity,
-  ProfitMetrics,
-  ShockAssessment,
   MonitoringState,
   ProfitProtectionUrgency,
-  WhyTpNowExplanation,
 } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type {
   RealTimeEvent,
-  ProtectionEvent,
-  MonitoringStatus,
 } from "./realtime-types";
-import type { GivebackState } from "./giveback-monitor";
-import type { AccelerationResult } from "./acceleration-monitor";
-import { evaluateProtection, type ProtectionEngineInput } from "./protection-engine";
+import { evaluateProtection } from "./protection-engine";
 import { createMonitoringState } from "./alert-lifecycle";
 import { classifyEarlyProtection, type EarlyProtectionInput } from "./early-protection";
-import { aggregateTimeframeEvidence, type TimeframeEvidence } from "./multi-timeframe-engine";
+import { aggregateTimeframeEvidence } from "./multi-timeframe-engine";
 import { detectShock } from "./shock-detector";
-import { calculateGiveback, classifyGivebackSeverity } from "./giveback-monitor";
+import { calculateGiveback } from "./giveback-monitor";
 import {
   createAccelerationState,
-  recordPriceObservation,
-  recordGivebackObservation,
-  detectPriceAcceleration,
-  detectGivebackAcceleration,
   type AccelerationState,
 } from "./acceleration-monitor";
 import { computeEventPriority, type EventPriorityLevel } from "./event-priority";
@@ -46,7 +35,6 @@ import { computePositionPriority, type PositionPriorityRank } from "./position-p
 import {
   getCadenceForHorizon,
   shouldEvaluateNow,
-  type MonitoringCadenceProfile,
 } from "./monitoring-cadence";
 
 // ═══════════════════════════════════════════════════════════════
@@ -91,6 +79,12 @@ export interface ContinuousControllerState {
   criticalEventsProcessed: number;
 }
 
+const RISK_REGIMES = ["risk_on", "risk_off", "transition", "unknown"] as const;
+type RiskRegimeValue = (typeof RISK_REGIMES)[number];
+function asRiskRegime(v: unknown): RiskRegimeValue | undefined {
+  return (RISK_REGIMES as readonly unknown[]).includes(v) ? (v as RiskRegimeValue) : undefined;
+}
+
 export function createControllerState(): ContinuousControllerState {
   return {
     positions: new Map(),
@@ -120,7 +114,7 @@ export function registerPosition(
     assetClass: "crypto" | "forex" | "equity" | "commodity" | "indices" | "macro";
     openedAt: number;
   },
-  now: number,
+  _now: number,
 ): ContinuousControllerState {
   const updated = new Map(state.positions);
   updated.set(position.positionId, {
@@ -459,7 +453,11 @@ function buildEvidenceFromEvent(event: RealTimeEvent, pos: PositionControllerSta
       break;
     case "MACRO_CHANGE":
       ev.riskRegimeChanged = true;
-      if (typeof event.payload.regime === "string") ev.riskRegime = event.payload.regime as any;
+      {
+        // Phase 227 — an unrecognised regime string is dropped, not cast.
+        const regime = asRiskRegime(event.payload.regime);
+        if (regime) ev.riskRegime = regime;
+      }
       break;
     case "CROSS_ASSET_CHANGE":
       ev.correlatedDivergence = event.payload.divergence === true;

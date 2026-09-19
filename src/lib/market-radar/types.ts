@@ -6,7 +6,7 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { CandidateInput, TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
+import type { TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // OPPORTUNITY LIFECYCLE
@@ -163,8 +163,32 @@ export interface MarketSnapshot {
   mtfAlignment?: string;
   /** Provider that supplied this data. */
   provider: string;
-  /** Observation timestamp. */
-  observedAt: number;
+  /**
+   * When the PROVIDER observed this data.
+   *
+   * Phase 191 — optional on purpose. Some providers do not report an
+   * observation time, and the honest representation of that is absence.
+   * Substituting our own fetch time would let `assessFreshness` grade
+   * hours-old data as FRESH, which is how a cache launders stale evidence
+   * into a live claim. Absent observation time resolves to UNAVAILABLE.
+   */
+  observedAt?: number;
+  /**
+   * When WE acquired this record — one clock read, the instant its freshness
+   * was judged at.
+   *
+   * Phase 238. Distinct from `observedAt`, which is the provider's claim:
+   * a provider that reports no observation time leaves `observedAt` absent,
+   * while the record was still acquired at a definite instant. Carrying it on
+   * the snapshot lets the acquisition result (`fetchedAt`) reuse the very read
+   * the freshness verdict was computed from instead of taking a second one —
+   * two reads would be two dates for one event, and the pair could disagree
+   * (a record graded DELAYED while claiming a `fetchedAt` that implies FRESH).
+   *
+   * Optional: adapters that do not record it are dated by their caller's own
+   * single read.
+   */
+  acquiredAt?: number;
   /** Data freshness. */
   freshness: FreshnessLevel;
   /** Data quality. */
@@ -206,6 +230,16 @@ export interface RadarOpportunity {
   primaryReasons: string[];
   /** Provider coverage. */
   providerCoverage: string;
+  /**
+   * Phase 165 — provider and exact native instrument this opportunity
+   * describes, when it originated from provider discovery.
+   *
+   * Identity only: never evidence, never scored, never a directional input.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
   /** Last update timestamp. */
   lastUpdated: number;
   /** Source candidate for building this opportunity. */
@@ -320,6 +354,18 @@ export interface UniverseEntry {
   instrument: string;
   assetClass: AssetClass;
   region?: string;
+  /**
+   * Phase 165 — exact provider-native identity when this entry came from
+   * provider discovery rather than the static metadata fixture.
+   *
+   * Radar opportunities must be able to state WHICH venue's instrument they
+   * describe. Without this the radar silently collapses two venues'
+   * instruments that happen to share a display name.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
   /** Required capabilities for full evaluation. */
   requiredCapabilities: string[];
   /** Priority (lower = higher priority). */

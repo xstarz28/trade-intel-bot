@@ -24,7 +24,7 @@ function createMockClient(overrides?: {
       if (overrides?.mutationThrows) throw new Error("mutation failed");
       return { fn, args };
     },
-    query: async (fn: string, args?: Record<string, unknown>) => {
+    query: async (_fn: string, _args?: Record<string, unknown>) => {
       if (overrides?.queryThrows) throw new Error("query failed");
       if (overrides?.queryResult !== undefined) return overrides.queryResult;
       return null;

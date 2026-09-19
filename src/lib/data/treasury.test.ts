@@ -9,7 +9,6 @@ import {
   buildTreasuryContext,
   classifyMacroFreshness,
   deriveMacroYieldEvidence,
-  TREASURY_FRESH_DAYS,
   TREASURY_DELAYED_DAYS,
 } from "./treasury";
 
@@ -105,7 +104,7 @@ describe("parseTreasuryXml — nominal", () => {
 
 describe("buildTreasuryContext", () => {
   it("builds available context with latest + previous and real curve attached", () => {
-    const ctx = buildTreasuryContext([VALID_NOMINAL], [VALID_REAL], NOW);
+    const ctx = buildTreasuryContext([VALID_NOMINAL], [VALID_REAL], NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     expect(ctx.latest.nominal.observationDate).toBe("2026-08-04");
     expect(ctx.previous?.nominal.observationDate).toBe("2026-08-03");
@@ -114,13 +113,13 @@ describe("buildTreasuryContext", () => {
   });
 
   it("is unavailable with explicit reason when all feeds fail", () => {
-    const r = buildTreasuryContext([undefined, undefined], [undefined], NOW);
+    const r = buildTreasuryContext([undefined, undefined], [undefined], NOW, NOW);
     expect(r.available).toBe(false);
     if (!r.available) expect(r.reason).toMatch(/no usable nominal yield/i);
   });
 
   it("degrades gracefully: real-feed failure leaves real curve absent, never substituted", () => {
-    const ctx = buildTreasuryContext([VALID_NOMINAL], [undefined], NOW);
+    const ctx = buildTreasuryContext([VALID_NOMINAL], [undefined], NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     expect(ctx.latest.real).toBeUndefined();
     expect(ctx.latest.nominal["10Y" as keyof typeof ctx.latest.nominal]).toBeUndefined();
@@ -130,7 +129,7 @@ describe("buildTreasuryContext", () => {
 
   it("picks the newest observation across multiple month feeds", () => {
     const july = feed(nominalEntry("2026-07-28", { BC_2YEAR: "4.10", BC_10YEAR: "4.55" }));
-    const ctx = buildTreasuryContext([july, VALID_NOMINAL], [], NOW);
+    const ctx = buildTreasuryContext([july, VALID_NOMINAL], [], NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     expect(ctx.latest.nominal.observationDate).toBe("2026-08-04");
   });
@@ -164,7 +163,7 @@ describe("classifyMacroFreshness (slow macro policy)", () => {
 
 describe("deriveMacroYieldEvidence", () => {
   it("falling ACTUAL real yields → supportive of gold longs; rising nominal → USD-positive", () => {
-    const ctx = buildTreasuryContext([VALID_NOMINAL], [VALID_REAL], NOW);
+    const ctx = buildTreasuryContext([VALID_NOMINAL], [VALID_REAL], NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     const ev = deriveMacroYieldEvidence(ctx);
     expect(ev.goldLongEffect).toBeGreaterThan(0); // real fell 2.43 → 2.35
@@ -174,7 +173,7 @@ describe("deriveMacroYieldEvidence", () => {
 
   it("single observation → zero directional evidence, disclosed note", () => {
     const one = feed(nominalEntry("2026-08-04", { BC_2YEAR: "4.20", BC_10YEAR: "4.63" }));
-    const ctx = buildTreasuryContext([one], [], NOW);
+    const ctx = buildTreasuryContext([one], [], NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     const ev = deriveMacroYieldEvidence(ctx);
     expect(ev.goldLongEffect).toBe(0);
@@ -187,7 +186,7 @@ describe("deriveMacroYieldEvidence", () => {
       nominalEntry("2026-08-03", { BC_2YEAR: "4.200", BC_10YEAR: "4.630" }),
       nominalEntry("2026-08-04", { BC_2YEAR: "4.205", BC_10YEAR: "4.632" }), // ~0.002pp
     );
-    const ctx = buildTreasuryContext([tiny], [], NOW);
+    const ctx = buildTreasuryContext([tiny], [], NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     const ev = deriveMacroYieldEvidence(ctx);
     expect(ev.usdStrengthEffect).toBe(0);
@@ -195,7 +194,7 @@ describe("deriveMacroYieldEvidence", () => {
   });
 
   it("missing real curve → gold effect stays 0 and is explicitly disclosed (no nominal substitution)", () => {
-    const ctx = buildTreasuryContext([VALID_NOMINAL], [undefined], NOW);
+    const ctx = buildTreasuryContext([VALID_NOMINAL], [undefined], NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     const ev = deriveMacroYieldEvidence(ctx);
     expect(ev.goldLongEffect).toBe(0);
@@ -212,8 +211,8 @@ describe("deriveMacroYieldEvidence", () => {
       nominalEntry("2026-08-03", { BC_2YEAR: "4.00", BC_10YEAR: "4.50" }),
       nominalEntry("2026-08-04", { BC_2YEAR: "4.02", BC_10YEAR: "4.52" }), // +0.02pp → below threshold
     );
-    const bigEv = deriveMacroYieldEvidence(buildTreasuryContext([big], [], NOW) as never & { available: true });
-    const smallCtx = buildTreasuryContext([small], [], NOW);
+    const bigEv = deriveMacroYieldEvidence(buildTreasuryContext([big], [], NOW, NOW) as never & { available: true });
+    const smallCtx = buildTreasuryContext([small], [], NOW, NOW);
     if (!smallCtx.available) throw new Error("expected available");
     const smallEv = deriveMacroYieldEvidence(smallCtx);
     expect(bigEv.usdStrengthEffect).toBe(1); // saturated

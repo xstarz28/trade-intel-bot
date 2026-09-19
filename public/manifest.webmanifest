@@ -1,17 +1,17 @@
 {
   "name": "Xstarz Analysis",
   "short_name": "Xstarz Analysis",
-  "description": "Xstarz Analysis",
+  "description": "Decision-support trading and investment intelligence. Analysis only \u2014 never automated trade execution.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "theme_color": "#2563eb",
   "icons": [
     {
-      "src": "/logo.png",
+      "src": "/logo.svg",
       "sizes": "any",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

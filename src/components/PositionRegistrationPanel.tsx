@@ -12,7 +12,6 @@ import {
   Plus,
   Shield,
   AlertTriangle,
-  CheckCircle,
   Info,
   ChevronDown,
   ChevronRight,
@@ -27,6 +26,25 @@ import {
 interface PositionRegistrationPanelProps {
   onRegister: (input: PositionRegistrationInput) => void;
   registeredCount?: number;
+}
+
+/**
+ * Parse a numeric form field.
+ *
+ * Returns undefined for an empty field (the user omitted an optional value)
+ * and NaN for text that is not a number (the user typed something invalid).
+ * Those two cases are different and must not collapse into the same value:
+ * `parseFloat("abc") || 0` reports a price of 0 that nobody entered.
+ *
+ * Rejects partial parses too — parseFloat("12abc") is 12, which would silently
+ * accept a typo as a real price.
+ */
+function parseNumericField(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return undefined;
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(trimmed)) return Number.NaN;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
 export function PositionRegistrationPanel({
@@ -50,11 +68,15 @@ export function PositionRegistrationPanel({
       positionId: `pos-${instrument.replace(/[^a-zA-Z0-9]/g, "").toUpperCase()}-${side}-${Date.now()}`,
       instrument: instrument.trim(),
       side,
-      entryPrice: parseFloat(entryPrice) || 0,
-      currentPrice: currentPrice ? parseFloat(currentPrice) : undefined,
-      stopLoss: stopLoss ? parseFloat(stopLoss) : undefined,
-      takeProfit: takeProfit ? parseFloat(takeProfit) : undefined,
-      leverage: leverage ? parseFloat(leverage) : undefined,
+      // `parseFloat(x) || 0` turned unparseable input into a real-looking 0,
+      // which then reached validation as "got: 0" — a value the user never
+      // typed. Pass NaN through instead so the validator reports the field as
+      // invalid rather than inventing a price.
+      entryPrice: parseNumericField(entryPrice) ?? Number.NaN,
+      currentPrice: parseNumericField(currentPrice),
+      stopLoss: parseNumericField(stopLoss),
+      takeProfit: parseNumericField(takeProfit),
+      leverage: parseNumericField(leverage),
       horizon,
       openedAt: Date.now(),
       assetClass: inferAssetClass(instrument),

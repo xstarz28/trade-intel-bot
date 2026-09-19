@@ -19,17 +19,13 @@ import {
   buildInitialStateStore,
   removePositionFromState,
   removePositionTriggerRecords,
-  cleanStaleInstrumentState,
   cleanStaleRuleTriggerRecords,
   type PreviousStateStore,
-  type RuntimeBridgeInput,
 } from "./alert-runtime-bridge";
 import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
-import { alertIdentity } from "./alert-rule-engine";
 import {
   buildNotification,
   notificationIdentity,
-  filterNotifications,
   applyRetention,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
@@ -37,24 +33,20 @@ import {
 import {
   filterNotificationsByPreferences,
   DEFAULT_PREFERENCES,
-  type NotificationPreferences,
 } from "./notification-preferences";
 import {
   buildRuntimeHealthSnapshot,
   calculateOverallHealth,
   classifyFreshness,
   normalizeRuntimeHealthEvent,
-  classifyError,
   errorCategoryToStatus,
   aggregateRuntimeHealth,
   shouldPersistRuntimeHealth,
   detectHealthTransitions,
   FRESH_THRESHOLD_MS,
   AGING_THRESHOLD_MS,
-  UNAVAILABLE_FAILURE_THRESHOLD,
   MAX_RUNTIME_HEALTH_EVENTS,
   type RuntimeHealthEvent,
-  type RuntimeHealthSnapshot,
   type RuntimeHealthComponent,
   type RuntimeComponent,
 } from "./runtime-health";
@@ -67,7 +59,6 @@ import {
   getLatestEventForComponent,
   getEventCount,
   buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 
@@ -531,7 +522,6 @@ describe("Phase 104 — Runtime Health Invariants", () => {
   });
 
   it("overall health classification deterministic", () => {
-    const now = Date.now();
     const components: RuntimeHealthComponent[] = [
       { component: "MARKET_DATA", status: "HEALTHY", consecutiveFailures: 0, message: "ok", freshness: "FRESH" },
       { component: "OHLCV", status: "HEALTHY", consecutiveFailures: 0, message: "ok", freshness: "FRESH" },

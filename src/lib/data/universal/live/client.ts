@@ -22,7 +22,6 @@ import {
   resetProviderHealth,
 } from "../routing-engine";
 import { cacheGet, cacheSet } from "../cache";
-import type { CacheKey } from "../engine-types";
 import type {
   LiveStatus,
   OhlcvRecord,
@@ -170,6 +169,48 @@ export interface LiveRequestParams {
   };
 }
 
+/**
+ * Phase 240 -- the completion instant of ONE live HTTP acquisition.
+ *
+ * Why this type exists, rather than two numbers travelling separately: a
+ * `receivedAt` and a `latencyMs` that describe the SAME completion event must
+ * come from the SAME clock reading. While they were two independent arguments,
+ * nothing stopped a branch from measuring the duration from an early reading and
+ * stamping the receipt from a later one -- the Phase 238-G residual, where the
+ * pair could disagree by however long the parse took. Here the receipt instant
+ * is captured once and the duration is DERIVED from it, so a branch cannot
+ * produce one field without the other, and cannot produce them from two reads.
+ */
+interface LiveCompletion {
+  /** The single clock reading taken when this acquisition completed. */
+  readonly receivedAt: number;
+  /** `receivedAt - startedAt`. A duration, never a wall-clock instant. */
+  readonly latencyMs: number | null;
+}
+
+/**
+ * One clock reading closes a completed HTTP exchange.
+ *
+ * The reading is the receipt instant, and the duration is computed from it --
+ * never from a second reading. `startedAt` is the request-start reading taken
+ * immediately before the transport was invoked.
+ */
+function completionAt(startedAt: number): { receivedAt: number; latencyMs: number } {
+  const receivedAt = Date.now();
+  return { receivedAt, latencyMs: receivedAt - startedAt };
+}
+
+/**
+ * One clock reading for an outcome where no HTTP request was executed.
+ *
+ * There is no exchange to measure, so the duration stays `null` rather than
+ * becoming a fabricated zero -- but the receipt instant is still a real clock
+ * reading, not a value borrowed from the caller's `now`.
+ */
+function completionWithoutRequest(): { receivedAt: number; latencyMs: null } {
+  return { receivedAt: Date.now(), latencyMs: null };
+}
+
 export interface LiveRequestResult {
   status: LiveStatus;
   instrument: string;
@@ -195,15 +236,25 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
 
   const finish = (
     status: LiveStatus,
+    completion: LiveCompletion,
     extra: Partial<LiveRequestResult> & { failureReason?: string },
   ): LiveRequestResult => {
+    /*
+      Phase 240 -- the envelope takes BOTH paired fields from the one captured
+      completion. There is deliberately no `?? Date.now()` here: a fallback read
+      in this position is what let a branch supply `latencyMs` while `receivedAt`
+      was measured later, i.e. two instants for one event. `completion` is a
+      required argument, so every branch -- existing and future -- must hand one
+      in, and `tsc` refuses the ones that do not.
+    */
+    const { receivedAt, latencyMs } = completion;
     const result: LiveRequestResult = {
       status,
       instrument: params.instrument,
       capability: params.capability,
       requestedAt,
-      receivedAt: extra.receivedAt ?? Date.now(),
-      latencyMs: extra.latencyMs ?? null,
+      receivedAt,
+      latencyMs,
       provider: extra.provider,
       symbolUsed: extra.symbolUsed,
       candles: extra.candles,
@@ -214,7 +265,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
         instrument: params.instrument,
         capability: params.capability,
         status,
-        latencyMs: extra.latencyMs ?? null,
+        latencyMs,
         cacheHit: false,
         fallbackUsed: false,
         providerSymbol: extra.symbolUsed,
@@ -233,7 +284,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
   const canonical = resolveInstrument(params.instrument);
 
   if (!canonical && !params.providerNative) {
-    return finish("UNAVAILABLE", {
+    return finish("UNAVAILABLE", completionWithoutRequest(), {
       failureReason: `Instrument "${params.instrument}" is not registered in the universal registry.`,
     });
   }
@@ -246,7 +297,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
 
     const cred = checkCredentials(providerId, params.readEnv);
     if (cred && !cred.available && cred.authRequired) {
-      return finish("CREDENTIAL_MISSING", {
+      return finish("CREDENTIAL_MISSING", completionWithoutRequest(), {
         provider: providerId,
         symbolUsed: providerSymbol,
         failureReason: `Required credentials not configured: ${cred.missingEnvVarNames.join(", ")}.`,
@@ -262,7 +313,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     );
 
     if (!nativeRoute) {
-      return finish("UNSUPPORTED", {
+      return finish("UNSUPPORTED", completionWithoutRequest(), {
         provider: providerId,
         symbolUsed: providerSymbol,
         failureReason:
@@ -275,7 +326,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
       nativeRoute.healthStatus === "UNAVAILABLE" ||
       nativeRoute.healthStatus === "UNSUPPORTED"
     ) {
-      return finish("UNAVAILABLE", {
+      return finish("UNAVAILABLE", completionWithoutRequest(), {
         provider: providerId,
         symbolUsed: providerSymbol,
         failureReason:
@@ -286,7 +337,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
 
     const endpoint = getEndpoint(providerId);
     if (!endpoint.buildUrl(providerSymbol, params)) {
-      return finish("UNSUPPORTED", {
+      return finish("UNSUPPORTED", completionWithoutRequest(), {
         provider: providerId,
         symbolUsed: providerSymbol,
         failureReason: `Provider "${providerId}" has no live endpoint for "${params.capability}" in this phase.`,
@@ -301,33 +352,28 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
       response = await params.transport(url);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      return finish("NETWORK_UNAVAILABLE", {
+      const completion = completionAt(t0);
+      return finish("NETWORK_UNAVAILABLE", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs: Date.now() - t0,
-        receivedAt: Date.now(),
         failureReason: `Network failure: ${msg}`,
       });
     }
 
-    const latencyMs = Date.now() - t0;
+    const completion = completionAt(t0);
 
     if (response.status === 429) {
-      return finish("RATE_LIMITED", {
+      return finish("RATE_LIMITED", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason: "Provider responded HTTP 429 (rate limit).",
       });
     }
 
     if (!response.ok) {
-      return finish("PROVIDER_ERROR", {
+      return finish("PROVIDER_ERROR", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason: `Provider responded HTTP ${response.status}.`,
       });
     }
@@ -340,11 +386,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     // contract, without resolving/substituting the instrument through the
     // universal registry.
     if (response.json === undefined || response.json === null) {
-      return finish("PROVIDER_ERROR", {
+      return finish("PROVIDER_ERROR", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason: "Provider returned an empty response body.",
       });
     }
@@ -356,11 +400,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     });
 
     if (!parsed.symbol && !parsed.candles?.length && !parsed.quote) {
-      return finish("MALFORMED_RESPONSE", {
+      return finish("MALFORMED_RESPONSE", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason: "Provider response contained no recognizable market data.",
       });
     }
@@ -372,11 +414,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
         [providerSymbol],
       );
       if (!identityCheck.passed) {
-        return finish("MALFORMED_RESPONSE", {
+        return finish("MALFORMED_RESPONSE", completion, {
           provider: providerId,
           symbolUsed: providerSymbol,
-          latencyMs,
-          receivedAt: Date.now(),
           failureReason: `Identity mismatch: ${identityCheck.reason}. No substitution was performed.`,
         });
       }
@@ -385,11 +425,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     if (parsed.quote) {
       const qv = validateQuote(parsed.quote, { now });
       if (!qv.valid) {
-        return finish("MALFORMED_RESPONSE", {
+        return finish("MALFORMED_RESPONSE", completion, {
           provider: providerId,
           symbolUsed: providerSymbol,
-          latencyMs,
-          receivedAt: Date.now(),
           failureReason: `Quote failed validation: ${qv.issues.join("; ")}`,
         });
       }
@@ -397,7 +435,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
       recordProviderHealth({
         providerId,
         status: "AVAILABLE",
-        responseTimeMs: latencyMs,
+        responseTimeMs: completion.latencyMs,
       });
 
       cacheSet(
@@ -410,21 +448,18 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
         "FRESH",
       );
 
-      return finish("LIVE_VERIFIED", {
+      return finish("LIVE_VERIFIED", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
         quote: parsed.quote,
       });
     }
 
     if (parsed.candles) {
       if (parsed.candles.length === 0) {
-        return finish("MALFORMED_RESPONSE", {
+        return finish("MALFORMED_RESPONSE", completion, {
           provider: providerId,
           symbolUsed: providerSymbol,
-          latencyMs,
-          receivedAt: Date.now(),
           failureReason: "Provider returned zero usable records.",
         });
       }
@@ -438,7 +473,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
         recordProviderHealth({
           providerId,
           status: "AVAILABLE",
-          responseTimeMs: latencyMs,
+          responseTimeMs: completion.latencyMs,
         });
 
         cacheSet(
@@ -451,10 +486,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
           "FRESH",
         );
 
-        return finish("LIVE_VERIFIED", {
+        return finish("LIVE_VERIFIED", completion, {
           provider: providerId,
           symbolUsed: providerSymbol,
-          latencyMs,
           candles: accepted,
         });
       }
@@ -466,10 +500,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
           error: "partial invalid records",
         });
 
-        return finish("LIVE_PARTIAL", {
+        return finish("LIVE_PARTIAL", completion, {
           provider: providerId,
           symbolUsed: providerSymbol,
-          latencyMs,
           candles: accepted,
           failureReason:
             `${validation.rejectedCount} of ${validation.totalRecords} records rejected: ` +
@@ -477,21 +510,17 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
         });
       }
 
-      return finish("MALFORMED_RESPONSE", {
+      return finish("MALFORMED_RESPONSE", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason:
           `All ${validation.totalRecords} records failed validation.`,
       });
     }
 
-    return finish("MALFORMED_RESPONSE", {
+    return finish("MALFORMED_RESPONSE", completion, {
       provider: providerId,
       symbolUsed: providerSymbol,
-      latencyMs,
-      receivedAt: Date.now(),
       failureReason: "No recognizable market data payload in response.",
     });
   }
@@ -511,7 +540,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     const anyUnsupported =
       route.routes.length > 0 && route.routes.every((r) => r.healthStatus === "UNSUPPORTED");
     if (anyUnsupported || route.routes.length === 0) {
-      return finish("UNSUPPORTED", {
+      return finish("UNSUPPORTED", completionWithoutRequest(), {
         failureReason:
           route.unavailableReason ??
           `No provider supports "${params.capability}" for "${params.instrument}".`,
@@ -519,18 +548,18 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     }
     const rateLimited = route.routes.some((r) => r.healthStatus === "RATE_LIMITED");
     if (rateLimited) {
-      return finish("RATE_LIMITED", { failureReason: "All candidate providers are rate-limited." });
+      return finish("RATE_LIMITED", completionWithoutRequest(), { failureReason: "All candidate providers are rate-limited." });
     }
     const credMissing = route.routes.some(
       (r) => r.healthStatus === "UNAVAILABLE" && !r.credentialsAvailable,
     );
-    return finish(credMissing ? "CREDENTIAL_MISSING" : "UNAVAILABLE", {
+    return finish(credMissing ? "CREDENTIAL_MISSING" : "UNAVAILABLE", completionWithoutRequest(), {
       failureReason: route.unavailableReason ?? "No available route.",
     });
   }
 
   if (!best) {
-    return finish("UNAVAILABLE", {
+    return finish("UNAVAILABLE", completionWithoutRequest(), {
       failureReason: "No available provider route.",
     });
   }
@@ -541,7 +570,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
   const cred = checkCredentials(providerId, params.readEnv);
   if (cred && !cred.available && cred.authRequired) {
     recordProviderHealth({ providerId, status: "UNAVAILABLE", error: "credentials missing" });
-    return finish("CREDENTIAL_MISSING", {
+    return finish("CREDENTIAL_MISSING", completionWithoutRequest(), {
       provider: providerId,
       failureReason: `Required credentials not configured: ${cred.missingEnvVarNames.join(", ")}.`,
     });
@@ -550,7 +579,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
   // 4. Resolve provider symbol — never substitute instruments
   const providerSymbol = getProviderSymbol(params.instrument, providerId);
   if (!providerSymbol) {
-    return finish("UNSUPPORTED", {
+    return finish("UNSUPPORTED", completionWithoutRequest(), {
       provider: providerId,
       failureReason: `No provider symbol mapping for "${params.instrument}" on "${providerId}".`,
     });
@@ -559,7 +588,7 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
   // 5. Build endpoint
   const endpoint = getEndpoint(providerId);
   if (!endpoint.buildUrl(providerSymbol, params)) {
-    return finish("UNSUPPORTED", {
+    return finish("UNSUPPORTED", completionWithoutRequest(), {
       provider: providerId,
       symbolUsed: providerSymbol,
       failureReason: `Provider "${providerId}" has no live endpoint for "${params.capability}" in this phase.`,
@@ -575,24 +604,21 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     recordProviderHealth({ providerId, status: "DEGRADED", error: msg });
-    return finish("NETWORK_UNAVAILABLE", {
+    const completion = completionAt(t0);
+    return finish("NETWORK_UNAVAILABLE", completion, {
       provider: providerId,
       symbolUsed: providerSymbol,
-      latencyMs: Date.now() - t0,
-      receivedAt: Date.now(),
       failureReason: `Network failure: ${msg}`,
     });
   }
-  const latencyMs = Date.now() - t0;
+  const completion = completionAt(t0);
 
   // 7. Classify HTTP outcome
   if (response.status === 429) {
     recordProviderHealth({ providerId, status: "RATE_LIMITED", error: "HTTP 429" });
-    return finish("RATE_LIMITED", {
+    return finish("RATE_LIMITED", completion, {
       provider: providerId,
       symbolUsed: providerSymbol,
-      latencyMs,
-      receivedAt: Date.now(),
       failureReason: "Provider responded HTTP 429 (rate limit).",
     });
   }
@@ -601,24 +627,20 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
       providerId,
       status: "DEGRADED",
       error: `HTTP ${response.status}`,
-      responseTimeMs: latencyMs,
+      responseTimeMs: completion.latencyMs,
     });
-    return finish("PROVIDER_ERROR", {
+    return finish("PROVIDER_ERROR", completion, {
       provider: providerId,
       symbolUsed: providerSymbol,
-      latencyMs,
-      receivedAt: Date.now(),
       failureReason: `Provider responded HTTP ${response.status}.`,
     });
   }
 
   // 8. Parse body
   if (response.json === undefined || response.json === null) {
-    return finish("MALFORMED_RESPONSE", {
+    return finish("MALFORMED_RESPONSE", completion, {
       provider: providerId,
       symbolUsed: providerSymbol,
-      latencyMs,
-      receivedAt: Date.now(),
       failureReason: "Response body missing or unparsable.",
     });
   }
@@ -628,11 +650,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
   try {
     extracted = endpoint.extract(response.json, { ...params, providerSymbol });
   } catch {
-    return finish("MALFORMED_RESPONSE", {
+    return finish("MALFORMED_RESPONSE", completion, {
       provider: providerId,
       symbolUsed: providerSymbol,
-      latencyMs,
-      receivedAt: Date.now(),
       failureReason: "Failed to extract data from provider response structure.",
     });
   }
@@ -640,11 +660,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
   // 10. Verify symbol identity when the provider echoes one
   if (extracted.symbol !== undefined && extracted.symbol !== null) {
     if (!canonical) {
-      return finish("UNAVAILABLE", {
+      return finish("UNAVAILABLE", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason:
           "Canonical instrument identity is required for the generic provider route.",
       });
@@ -655,11 +673,9 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
       [providerSymbol, canonical.displaySymbol],
     );
     if (!identityCheck.passed) {
-      return finish("MALFORMED_RESPONSE", {
+      return finish("MALFORMED_RESPONSE", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason: `Identity mismatch: ${identityCheck.reason}`,
       });
     }
@@ -669,35 +685,30 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
   if (extracted.quote) {
     const qv = validateQuote(extracted.quote, { now });
     if (!qv.valid) {
-      return finish("MALFORMED_RESPONSE", {
+      return finish("MALFORMED_RESPONSE", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason: `Quote failed validation: ${qv.issues.join("; ")}`,
       });
     }
-    recordProviderHealth({ providerId, status: "AVAILABLE", responseTimeMs: latencyMs });
+    recordProviderHealth({ providerId, status: "AVAILABLE", responseTimeMs: completion.latencyMs });
     cacheSet(
       { instrument: params.instrument, capability: params.capability, providerId },
       extracted.quote,
       "FRESH",
     );
-    return finish("LIVE_VERIFIED", {
+    return finish("LIVE_VERIFIED", completion, {
       provider: providerId,
       symbolUsed: providerSymbol,
-      latencyMs,
       quote: extracted.quote,
     });
   }
 
   if (extracted.candles) {
     if (extracted.candles.length === 0) {
-      return finish("MALFORMED_RESPONSE", {
+      return finish("MALFORMED_RESPONSE", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
-        receivedAt: Date.now(),
         failureReason: "Provider returned zero usable records.",
       });
     }
@@ -707,43 +718,37 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
     );
 
     if (validation.valid) {
-      recordProviderHealth({ providerId, status: "AVAILABLE", responseTimeMs: latencyMs });
+      recordProviderHealth({ providerId, status: "AVAILABLE", responseTimeMs: completion.latencyMs });
       cacheSet(
         { instrument: params.instrument, capability: params.capability, providerId },
         accepted,
         "FRESH",
       );
-      return finish("LIVE_VERIFIED", {
+      return finish("LIVE_VERIFIED", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
         candles: accepted,
       });
     }
     if (accepted.length > 0) {
       recordProviderHealth({ providerId, status: "DEGRADED", error: "partial invalid records" });
-      return finish("LIVE_PARTIAL", {
+      return finish("LIVE_PARTIAL", completion, {
         provider: providerId,
         symbolUsed: providerSymbol,
-        latencyMs,
         candles: accepted,
         failureReason: `${validation.rejectedCount} of ${validation.totalRecords} records rejected: ${validation.issues.map((i) => i.reason).join(", ")}.`,
       });
     }
-    return finish("MALFORMED_RESPONSE", {
+    return finish("MALFORMED_RESPONSE", completion, {
       provider: providerId,
       symbolUsed: providerSymbol,
-      latencyMs,
-      receivedAt: Date.now(),
       failureReason: `All ${validation.totalRecords} records failed validation.`,
     });
   }
 
-  return finish("MALFORMED_RESPONSE", {
+  return finish("MALFORMED_RESPONSE", completion, {
     provider: providerId,
     symbolUsed: providerSymbol,
-    latencyMs,
-    receivedAt: Date.now(),
     failureReason: "No recognizable market data payload in response.",
   });
 }

@@ -21,8 +21,6 @@ import {
   removePositionTriggerRecords,
   cleanStaleInstrumentState,
   cleanStaleRuleTriggerRecords,
-  extractSnapshot,
-  extractPortfolioSnapshot,
   type PreviousStateStore,
 } from "./alert-runtime-bridge";
 import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
@@ -30,7 +28,6 @@ import { alertIdentity } from "./alert-rule-engine";
 import {
   buildNotification,
   notificationIdentity,
-  filterNotifications,
   applyRetention,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
@@ -38,22 +35,17 @@ import {
 import {
   filterNotificationsByPreferences,
   DEFAULT_PREFERENCES,
-  validatePreferences,
   sanitizePreferences,
   type NotificationPreferences,
 } from "./notification-preferences";
 import {
   buildRuntimeHealthSnapshot,
-  calculateOverallHealth,
   classifyFreshness,
   normalizeRuntimeHealthEvent,
   aggregateRuntimeHealth,
-  shouldPersistRuntimeHealth,
-  detectHealthTransitions,
   FRESH_THRESHOLD_MS,
   AGING_THRESHOLD_MS,
   type RuntimeHealthEvent,
-  type RuntimeHealthSnapshot,
 } from "./runtime-health";
 import {
   createHealthEventBuffer,
@@ -63,11 +55,8 @@ import {
   markPersisted,
   getLatestEventForComponent,
   getEventCount,
-  buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
-import type { PortfolioIntelligence } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS

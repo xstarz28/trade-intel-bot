@@ -13,7 +13,6 @@ import type {
   ThesisHealthScore,
   ThesisHealthState,
   DeteriorationSignal,
-  DeteriorationCategory,
 } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
@@ -23,6 +22,16 @@ import type {
 export interface MarketEvidence {
   /** Current price. */
   price: number;
+  /**
+   * Phase 163 — when this evidence was actually observed (unix ms).
+   *
+   * Without it, every derived signal was stamped with Date.now() and
+   * labelled FRESH, so hours-old evidence produced signals that claimed to
+   * be live. Supply it whenever the observation time is known; when it is
+   * omitted the signal freshness is reported as UNKNOWN rather than
+   * asserted to be FRESH.
+   */
+  observedAt?: number;
   /** 24h price change %. */
   change24h?: number;
   /** Volatility (ATR or similar). */
@@ -98,12 +107,64 @@ export interface MarketEvidence {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// EVIDENCE FRESHNESS (Phase 163)
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Observation time of the evidence a signal was derived from.
+ *
+ * Falls back to "now" only when the caller supplied no observation time —
+ * in that case `evidenceFreshness` reports UNKNOWN so the uncertainty is
+ * visible rather than hidden behind a FRESH label.
+ */
+function evidenceObservedAt(evidence: MarketEvidence, now: number): number {
+  return evidence.observedAt ?? now;
+}
+
+/**
+ * Derive a signal's freshness from when its evidence was actually observed.
+ *
+ * A monitoring alert must never claim to be based on live data when the
+ * underlying observation is hours old.
+ */
+function evidenceFreshness(
+  evidence: MarketEvidence,
+  now: number,
+): DeteriorationSignal["freshness"] {
+  if (evidence.observedAt === undefined) return "UNAVAILABLE";
+
+  const ageMs = now - evidence.observedAt;
+  // Future-dated evidence cannot be verified as live.
+  if (ageMs < -60_000) return "UNAVAILABLE";
+  if (ageMs < 5 * 60_000) return "FRESH";
+  if (ageMs < 60 * 60_000) return "DELAYED";
+  if (ageMs < 24 * 60 * 60_000) return "STALE";
+  return "UNAVAILABLE";
+}
+
+/**
+ * Freshness for inherently periodic evidence (earnings, inventories, COT).
+ *
+ * This data is published on a schedule and is never "live" in the tick
+ * sense, so it is capped at STALE — but it still degrades to UNAVAILABLE
+ * once genuinely too old to rely on.
+ */
+function periodicEvidenceFreshness(
+  evidence: MarketEvidence,
+  now: number,
+): DeteriorationSignal["freshness"] {
+  const derived = evidenceFreshness(evidence, now);
+  return derived === "UNAVAILABLE" ? "UNAVAILABLE" : "STALE";
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SIGNAL GENERATORS
 // ═══════════════════════════════════════════════════════════════
 
 function assessTechnicalDeterioration(
   position: PositionContext,
   evidence: MarketEvidence,
+  now: number,
 ): DeteriorationSignal[] {
   const signals: DeteriorationSignal[] = [];
   const isLong = position.side === "LONG";
@@ -116,8 +177,8 @@ function assessTechnicalDeterioration(
       description: "Market structure has broken against position direction.",
       severity: 80,
       source: "price_action",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "TECHNICAL_STRUCTURE",
     });
   }
@@ -132,8 +193,8 @@ function assessTechnicalDeterioration(
       description: `Short-term trend is ${shortTrend}, opposing ${position.side} position.`,
       severity: 50,
       source: "price_action",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "TECHNICAL_TREND",
     });
   }
@@ -147,8 +208,8 @@ function assessTechnicalDeterioration(
       description: `Medium-term trend is ${medTrend}, opposing ${position.side} position.`,
       severity: 70,
       source: "price_action",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "TECHNICAL_TREND",
     });
   }
@@ -161,8 +222,8 @@ function assessTechnicalDeterioration(
       description: "Short-term opposing medium-term — likely correction, not reversal.",
       severity: 25,
       source: "price_action",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "TECHNICAL_STRUCTURE",
     });
   }
@@ -173,6 +234,7 @@ function assessTechnicalDeterioration(
 function assessMomentumDeterioration(
   position: PositionContext,
   evidence: MarketEvidence,
+  now: number,
 ): DeteriorationSignal[] {
   const signals: DeteriorationSignal[] = [];
   const isLong = position.side === "LONG";
@@ -187,8 +249,8 @@ function assessMomentumDeterioration(
         description: `Momentum changed ${evidence.momentumChange > 0 ? "+" : ""}${evidence.momentumChange.toFixed(1)} — against position direction.`,
         severity: 60,
         source: "momentum",
-        observedAt: Date.now(),
-        freshness: "FRESH",
+        observedAt: evidenceObservedAt(evidence, now),
+        freshness: evidenceFreshness(evidence, now),
         dependencyGroup: "MOMENTUM",
       });
     }
@@ -200,6 +262,7 @@ function assessMomentumDeterioration(
 function assessVolatilityShock(
   _position: PositionContext,
   evidence: MarketEvidence,
+  now: number,
 ): DeteriorationSignal[] {
   const signals: DeteriorationSignal[] = [];
 
@@ -212,8 +275,8 @@ function assessVolatilityShock(
         description: `Volatility ${ratio.toFixed(1)}x above average — elevated risk.`,
         severity: 55,
         source: "volatility",
-        observedAt: Date.now(),
-        freshness: "FRESH",
+        observedAt: evidenceObservedAt(evidence, now),
+        freshness: evidenceFreshness(evidence, now),
         dependencyGroup: "VOLATILITY",
       });
     }
@@ -225,6 +288,7 @@ function assessVolatilityShock(
 function assessDerivativesDeterioration(
   position: PositionContext,
   evidence: MarketEvidence,
+  now: number,
 ): DeteriorationSignal[] {
   const signals: DeteriorationSignal[] = [];
   if (position.assetClass !== "crypto") return signals;
@@ -243,8 +307,8 @@ function assessDerivativesDeterioration(
         description: `Funding rate at ${(evidence.fundingRate * 100).toFixed(3)}% — unusual.`,
         severity: 55,
         source: "CoinGlass",
-        observedAt: Date.now(),
-        freshness: "FRESH",
+        observedAt: evidenceObservedAt(evidence, now),
+        freshness: evidenceFreshness(evidence, now),
         dependencyGroup: "DERIVATIVES_FUNDING",
       });
     }
@@ -258,8 +322,8 @@ function assessDerivativesDeterioration(
       description: `Open interest changed ${evidence.oiChange > 0 ? "+" : ""}${evidence.oiChange.toFixed(1)}%.`,
       severity: 50,
       source: "CoinGlass",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "DERIVATIVES_OI",
     });
   }
@@ -272,8 +336,8 @@ function assessDerivativesDeterioration(
       description: "Abnormal liquidation volume detected.",
       severity: 65,
       source: "CoinGlass",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "DERIVATIVES_LIQUIDATION",
     });
   }
@@ -284,6 +348,7 @@ function assessDerivativesDeterioration(
 function assessFundamentalDeterioration(
   _position: PositionContext,
   evidence: MarketEvidence,
+  now: number,
 ): DeteriorationSignal[] {
   const signals: DeteriorationSignal[] = [];
 
@@ -294,8 +359,8 @@ function assessFundamentalDeterioration(
       description: `Earnings surprise deteriorated by ${evidence.earningsSurpriseChange.toFixed(1)}%.`,
       severity: 70,
       source: "fundamentals",
-      observedAt: Date.now(),
-      freshness: "STALE",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: periodicEvidenceFreshness(evidence, now),
       dependencyGroup: "EQUITY_EARNINGS",
     });
   }
@@ -307,8 +372,8 @@ function assessFundamentalDeterioration(
       description: "Company issued negative guidance update.",
       severity: 75,
       source: "fundamentals",
-      observedAt: Date.now(),
-      freshness: "STALE",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: periodicEvidenceFreshness(evidence, now),
       dependencyGroup: "EQUITY_EARNINGS",
     });
   }
@@ -319,6 +384,7 @@ function assessFundamentalDeterioration(
 function assessMacroDeterioration(
   position: PositionContext,
   evidence: MarketEvidence,
+  now: number,
 ): DeteriorationSignal[] {
   const signals: DeteriorationSignal[] = [];
   const isLong = position.side === "LONG";
@@ -331,8 +397,8 @@ function assessMacroDeterioration(
       description: "Risk regime shifted to RISK_OFF — opposing long positions.",
       severity: 65,
       source: "macro",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "MACRO_RISK_REGIME",
     });
   }
@@ -345,8 +411,8 @@ function assessMacroDeterioration(
       description: `VIX at ${evidence.vix.toFixed(1)} — elevated fear.`,
       severity: 50,
       source: "VIX",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "MACRO_VOLATILITY",
     });
   }
@@ -357,6 +423,7 @@ function assessMacroDeterioration(
 function assessCrossAssetDeterioration(
   _position: PositionContext,
   evidence: MarketEvidence,
+  now: number,
 ): DeteriorationSignal[] {
   const signals: DeteriorationSignal[] = [];
 
@@ -367,8 +434,8 @@ function assessCrossAssetDeterioration(
       description: `Correlated asset ${evidence.correlatedAsset ?? "unknown"} diverging.`,
       severity: 45,
       source: "cross_asset",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "CROSS_ASSET_CORRELATION",
     });
   }
@@ -379,6 +446,7 @@ function assessCrossAssetDeterioration(
 function assessEventRisk(
   _position: PositionContext,
   evidence: MarketEvidence,
+  now: number,
 ): DeteriorationSignal[] {
   const signals: DeteriorationSignal[] = [];
 
@@ -389,8 +457,8 @@ function assessEventRisk(
       description: `High-impact event approaching: ${evidence.eventName ?? "unknown"}.`,
       severity: 35,
       source: "calendar",
-      observedAt: Date.now(),
-      freshness: "FRESH",
+      observedAt: evidenceObservedAt(evidence, now),
+      freshness: evidenceFreshness(evidence, now),
       dependencyGroup: "MACRO_EVENT",
     });
   }
@@ -439,17 +507,19 @@ function assessConfirmingSignals(
 export function evaluateThesisHealth(
   position: PositionContext,
   evidence: MarketEvidence,
+  now: number = Date.now(),
 ): ThesisHealthScore {
-  // Gather all deterioration signals
+  // Gather all deterioration signals. Each signal's freshness is derived
+  // from when its evidence was actually observed, never assumed live.
   const allSignals: DeteriorationSignal[] = [
-    ...assessTechnicalDeterioration(position, evidence),
-    ...assessMomentumDeterioration(position, evidence),
-    ...assessVolatilityShock(position, evidence),
-    ...assessDerivativesDeterioration(position, evidence),
-    ...assessFundamentalDeterioration(position, evidence),
-    ...assessMacroDeterioration(position, evidence),
-    ...assessCrossAssetDeterioration(position, evidence),
-    ...assessEventRisk(position, evidence),
+    ...assessTechnicalDeterioration(position, evidence, now),
+    ...assessMomentumDeterioration(position, evidence, now),
+    ...assessVolatilityShock(position, evidence, now),
+    ...assessDerivativesDeterioration(position, evidence, now),
+    ...assessFundamentalDeterioration(position, evidence, now),
+    ...assessMacroDeterioration(position, evidence, now),
+    ...assessCrossAssetDeterioration(position, evidence, now),
+    ...assessEventRisk(position, evidence, now),
   ];
 
   // Gather confirming signals
@@ -468,9 +538,7 @@ export function evaluateThesisHealth(
   for (const sig of allSignals) {
     score -= sig.severity * 0.5; // each signal reduces health
   }
-  for (const _c of confirming) {
-    score += 5; // each confirming signal adds health
-  }
+  score += 5 * confirming.length; // each confirming signal adds health
   score = Math.max(0, Math.min(100, score));
 
   // Classify state
@@ -508,17 +576,18 @@ export function evaluateThesisHealth(
 export function extractAllSignals(
   position: PositionContext,
   evidence: MarketEvidence,
+  now: number = Date.now(),
 ): { deterioration: DeteriorationSignal[]; confirming: string[] } {
   return {
     deterioration: [
-      ...assessTechnicalDeterioration(position, evidence),
-      ...assessMomentumDeterioration(position, evidence),
-      ...assessVolatilityShock(position, evidence),
-      ...assessDerivativesDeterioration(position, evidence),
-      ...assessFundamentalDeterioration(position, evidence),
-      ...assessMacroDeterioration(position, evidence),
-      ...assessCrossAssetDeterioration(position, evidence),
-      ...assessEventRisk(position, evidence),
+      ...assessTechnicalDeterioration(position, evidence, now),
+      ...assessMomentumDeterioration(position, evidence, now),
+      ...assessVolatilityShock(position, evidence, now),
+      ...assessDerivativesDeterioration(position, evidence, now),
+      ...assessFundamentalDeterioration(position, evidence, now),
+      ...assessMacroDeterioration(position, evidence, now),
+      ...assessCrossAssetDeterioration(position, evidence, now),
+      ...assessEventRisk(position, evidence, now),
     ],
     confirming: assessConfirmingSignals(position, evidence),
   };

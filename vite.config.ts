@@ -1,15 +1,97 @@
-import { vlyPlugin } from "@vly-ai/integrations";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { execSync } from "node:child_process";
 import { defineConfig } from "vite";
+
+/**
+ * Phase 180 — build provenance.
+ *
+ * Production must be traceable to an exact commit, so a deployed bug can be
+ * matched to source without guessing which revision shipped. Only the short
+ * SHA, branch and commit timestamp are exposed: no author, no message, no
+ * remote URL, nothing that could carry a credential.
+ *
+ * Falls back to "unknown" outside a git checkout (e.g. a CI tarball build)
+ * rather than failing the build.
+ *
+ * REPRODUCIBILITY (Phase 181).
+ * The build time is the COMMIT timestamp, never `new Date()`. Wall-clock time
+ * would make every build of the same source produce a different artifact,
+ * which destroys the one property that makes provenance worth having: the
+ * ability to rebuild a commit and confirm byte-for-byte that a deployed
+ * artifact really came from it. An RC you cannot re-derive is an RC you are
+ * trusting on faith.
+ *
+ * CI override: SOURCE_DATE_EPOCH (the reproducible-builds standard) is
+ * honoured when set, so a tarball build with no git metadata is still
+ * deterministic.
+ */
+function gitInfo(): { commit: string; branch: string; time: string } {
+  const read = (cmd: string): string => {
+    try {
+      return execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+    } catch {
+      return "unknown";
+    }
+  };
+
+  const epoch = process.env.SOURCE_DATE_EPOCH;
+  const commitEpoch = epoch ?? read("git log -1 --format=%ct");
+  const time = /^\d+$/.test(commitEpoch)
+    ? new Date(Number(commitEpoch) * 1000).toISOString()
+    : "unknown";
+
+  return {
+    commit: read("git rev-parse --short HEAD"),
+    // In CI the checkout is often detached, where `--abbrev-ref HEAD` yields
+    // "HEAD". GITHUB_REF_NAME carries the real branch in that case.
+    branch: process.env.GITHUB_REF_NAME ?? read("git rev-parse --abbrev-ref HEAD"),
+    time,
+  };
+}
+
+const BUILD = gitInfo();
 
 // https://vite.dev/config/
 export default defineConfig({
-  // Relative base so all asset URLs resolve inside the preview iframe
-  // instead of leaking to the parent domain.
-  base: './',
-  plugins: [vlyPlugin(), react(), tailwindcss()],
+  // Asset base.
+  //
+  // Relative ('./') is required by the EDITOR PREVIEW iframe so asset URLs
+  // resolve inside the frame instead of leaking to the parent domain. That is
+  // a dev-time concern only.
+  //
+  // Absolute ('/') is required by every real deployment target, because the
+  // app uses BrowserRouter:
+  //
+  //   Phase 179 (mobile) — Capacitor serves over a real origin, so a deep
+  //   link to /dashboard resolves './assets/x.js' against '/dashboard/'.
+  //
+  //   Phase 180 (web hosting) — the SAME bug exists on production hosting and
+  //   is worse there, because the SPA rewrite ('/*' -> index.html) makes
+  //   /dashboard/assets/x.js return 200 with HTML instead of 404. The browser
+  //   then refuses the module ("Failed to load module script") and renders a
+  //   BLANK PAGE on every deep link and refresh. Measured against the real
+  //   production build served under the production rewrite contract.
+  //
+  // So: relative only for the dev preview, absolute for anything shipped.
+  base:
+    process.env.MOBILE_BUILD === '1' || process.env.NODE_ENV === 'production'
+      ? '/'
+      : './',
+  define: {
+    // Injected at build time; safe to expose (commit id, branch, timestamp).
+    __BUILD_COMMIT__: JSON.stringify(BUILD.commit),
+    __BUILD_BRANCH__: JSON.stringify(BUILD.branch),
+    __BUILD_TIME__: JSON.stringify(BUILD.time),
+  },
+  // Phase 224 — the build-platform plugin (`vlyPlugin` from
+  // @vly-ai/integrations) is intentionally absent. Its transformIndexHtml hook
+  // injected, into PRODUCTION index.html, window "error"/"unhandledrejection"
+  // listeners that postMessage every runtime error (message, stack, filename,
+  // line/col) to `window.parent` with target origin "*". That is a diagnostic
+  // leak to any embedding frame, and the platform editor it served is gone.
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -94,6 +176,9 @@ export default defineConfig({
     // Bind to all interfaces so WebContainer's server-ready event fires.
     host: true,
     port: 5173,
+    // Allow sandboxed/proxied preview hosts (e.g. *.e2b.app) to load the
+    // dev server. Vite blocks unknown Hosts by default.
+    allowedHosts: true,
     // Freebuff requires HMR to remain disabled in the preview iframe.
     hmr: false,
   },

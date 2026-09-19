@@ -13,12 +13,11 @@
  * Pure functions — no side effects in event creation.
  */
 
-import type { RealTimeEvent, EventType, EventPriority, Timeframe } from "../position-protection/realtime-types";
+import type { RealTimeEvent, Timeframe } from "../position-protection/realtime-types";
 import {
   createPriceEvent,
   createQuoteEvent,
   createCandleEvent,
-  createVolatilityChangeEvent,
   createFundingChangeEvent,
   createOIChangeEvent,
   createLiquidationChangeEvent,

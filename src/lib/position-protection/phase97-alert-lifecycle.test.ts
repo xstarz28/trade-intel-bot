@@ -11,7 +11,6 @@ import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import {
   evaluateAlertRuntimeBridge,
-  extractSnapshot,
   extractPortfolioSnapshot,
   buildInitialStateStore,
   removePositionFromState,
@@ -22,7 +21,6 @@ import {
 } from "./alert-runtime-bridge";
 import {
   generatePortfolioIntelligence,
-  type PortfolioIntelligence,
 } from "./portfolio-intelligence";
 import {
   buildNotification,
@@ -318,7 +316,7 @@ describe("Phase 97 — LONG → SHORT Lifecycle", () => {
     const prevState = makeEmptyState();
     prevState.snapshots.set("pos-1", makeHealthySnapshot());
 
-    const r1 = evaluateAlertRuntimeBridge(
+    evaluateAlertRuntimeBridge(
       { rules, intelligenceMap: new Map([["pos-1", longIntel]]) },
       prevState,
       new Map(),

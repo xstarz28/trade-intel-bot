@@ -8,7 +8,6 @@
 
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import type { PortfolioIntelligence } from "./portfolio-intelligence";
-import type { HistoricalEvent } from "./historical-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -111,8 +110,6 @@ export interface RuleTriggerRecord {
 
 export const MAX_RULES_PER_USER = 50;
 export const MAX_ALERTS_PER_EVALUATION = 20;
-
-const SEVERITY_ORDER: RuleSeverity[] = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"];
 
 // ═══════════════════════════════════════════════════════════════
 // ALERT IDENTITY
@@ -251,7 +248,6 @@ function evalTrendChanged(
   intel: PositionIntelligence,
   prev: RuleSnapshot | undefined,
   tf: "h1" | "m15" | "m5",
-  condition: RuleCondition,
 ): EvalResult {
   const tfKey = `${tf}Analysis` as keyof PositionIntelligence;
   const analysis = intel[tfKey] as { trend?: string } | undefined;
@@ -569,11 +565,11 @@ function evaluatePositionCondition(
     case "REGIME_CHANGED":
       return evalRegimeChanged(intel, prev);
     case "H1_TREND_CHANGED":
-      return evalTrendChanged(intel, prev, "h1", condition);
+      return evalTrendChanged(intel, prev, "h1");
     case "M15_TREND_CHANGED":
-      return evalTrendChanged(intel, prev, "m15", condition);
+      return evalTrendChanged(intel, prev, "m15");
     case "M5_TREND_CHANGED":
-      return evalTrendChanged(intel, prev, "m5", condition);
+      return evalTrendChanged(intel, prev, "m5");
     case "STRUCTURE_CHANGED":
       return evalStructureChanged(intel, prev);
     case "MOMENTUM_CHANGED":

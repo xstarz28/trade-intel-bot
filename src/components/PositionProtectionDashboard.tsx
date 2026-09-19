@@ -30,7 +30,6 @@ import {
   Trash2,
   Bell,
   BellOff,
-  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PositionRegistrationForm } from "./PositionRegistrationForm";
@@ -43,7 +42,6 @@ import {
 import { evaluateProtection } from "@/lib/position-protection/protection-engine";
 import { type LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
 import type { AlertSeverity } from "@/lib/position-protection/types";
-import type { ProtectionEvent } from "@/lib/position-protection/realtime-types";
 import {
   type PositionIntelligence,
 } from "@/lib/position-protection/market-intelligence-analyzer";
@@ -62,7 +60,6 @@ import { CustomAlertRulesPanel } from "./CustomAlertRulesPanel";
 import { NotificationCenter } from "./NotificationCenter";
 import { RuntimeHealthDashboard } from "./RuntimeHealthDashboard";
 import { TraderWorkspace, PositionDetail } from "./TraderWorkspace";
-import { type RuntimeHealthInput, type RuntimeComponent } from "@/lib/position-protection/runtime-health";
 import {
   createHealthEventBuffer,
   recordProviderResult,
@@ -104,12 +101,9 @@ import {
   mergeSnapshots,
   snapshotIdentity,
   isSnapshotStale,
-  persistedToSnapshot,
-  persistedToEvent,
   type PersistedSnapshot,
   type PersistedEvent,
 } from "@/lib/position-protection/persistent-history-engine";
-import { detectChanges } from "@/lib/position-protection/historical-intelligence";
 import { type OHLCVHealthEvent } from "@/lib/position-protection/use-ohlcv-data";
 
 // ═══════════════════════════════════════════════════════════════
@@ -303,13 +297,18 @@ function PositionCard({
 // MAIN DASHBOARD
 // ═══════════════════════════════════════════════════════════════
 
+const NEWS_ASSET_CLASSES = ["crypto", "forex", "commodity", "macro", "equity", "other"] as const;
+type NewsAssetClass = NewsItem["assetClass"];
+function toNewsAssetClass(v: string | undefined): NewsAssetClass {
+  return (NEWS_ASSET_CLASSES as readonly string[]).includes(v ?? "") ? (v as NewsAssetClass) : "other";
+}
+
 export function PositionProtectionDashboard() {
   const { t, tx, txi } = useI18n();
   const {
     positions,
     registerPosition: registerPos,
     removePosition: removePos,
-    acknowledgeAlert,
     ingestEvent,
     persistenceAvailable,
     persistenceDegraded,
@@ -358,11 +357,8 @@ export function PositionProtectionDashboard() {
     if (livePrices.size === 0) return;
 
     const buf = healthBufferRef.current;
-    let anySuccess = false;
-    let anyFailure = false;
     for (const [, state] of livePrices) {
       if (state.success && state.price > 0) {
-        anySuccess = true;
         healthBufferRef.current = recordProviderResult(buf, {
           component: "MARKET_DATA",
           source: state.provider,
@@ -370,7 +366,6 @@ export function PositionProtectionDashboard() {
           success: true,
         });
       } else if (!state.success) {
-        anyFailure = true;
         healthBufferRef.current = recordProviderResult(buf, {
           component: "MARKET_DATA",
           source: state.provider,
@@ -387,7 +382,6 @@ export function PositionProtectionDashboard() {
   const saveSnapshotMut = useMutation(api.historicalIntelligence.saveSnapshot);
   const saveEventsMut = useMutation(api.historicalIntelligence.saveEvents);
   const deleteHistoryMut = useMutation(api.historicalIntelligence.deleteHistoryForPosition);
-  const pruneHistoryMut = useMutation(api.historicalIntelligence.pruneHistory);
 
   // ─── Shared Macro Context Data ───────────────────────────
   // Treasury yields + economic calendar are fetched once per mounted
@@ -410,34 +404,49 @@ export function PositionProtectionDashboard() {
       for (const instrument of instruments) {
         if (cancelled) break;
         try {
-          const assetClass = userPositions.find(p => p.instrument === instrument)?.assetClass ?? "crypto";
+          // Phase 228 — `UserPosition.assetClass` is a free string; narrow it
+          // to the NewsItem union (unknown classes → "other", never a guess).
+          const assetClass = toNewsAssetClass(userPositions.find(p => p.instrument === instrument)?.assetClass);
           const instrumentType = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
           const result = await fetchIntelligence({
             instrument: instrument.split("/")[0],
-            instrumentType: instrumentType as any,
+            instrumentType,
           });
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
-          const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
+          const newsItems: NewsItem[] = articles.map((art, i) => {
+            // Phase 218 — the provider's own publication time, or nothing.
+            // Substituting Date.now() for a missing publishedAt made an
+            // undated article indistinguishable from one published seconds
+            // ago: the age computed to 0ms, so classifyNewsFreshness always
+            // returned FRESH. Local receipt time is not a publication time.
+            const publishedAtMs = art.publishedAt
+              ? new Date(art.publishedAt).getTime()
+              : null;
+            const hasProviderTimestamp =
+              publishedAtMs !== null && Number.isFinite(publishedAtMs);
+            return {
             id: `av-${instrument}-${i}`,
-            timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
+            timestamp: hasProviderTimestamp ? publishedAtMs : 0,
             source: art.source || "AlphaVantage",
             headline: art.title || "",
             summary: art.summary || undefined,
             url: art.url || undefined,
             relatedInstruments: [instrument],
-            assetClass: assetClass as any,
+            assetClass,
             category: assetClass === "crypto" ? "CRYPTO_SPECIFIC" as const : "FOREX" as const,
             sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
                        art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
             impactStrength: "MODERATE" as const,
-            freshness: classifyNewsFreshness(
-              art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
-              Date.now(),
-            ),
+            // Without a provider timestamp the age is unknowable, so the
+            // honest label is UNAVAILABLE rather than the freshest class.
+            freshness: hasProviderTimestamp
+              ? classifyNewsFreshness(publishedAtMs, Date.now())
+              : ("UNAVAILABLE" as const),
             sourceMode: "LIVE" as const,
-          }));
+            };
+          });
 
           setFeedNews(prev => {
             const next = new Map(prev);
@@ -477,7 +486,6 @@ export function PositionProtectionDashboard() {
   // Phase 100: Record intelligence engine health events
   useEffect(() => {
     if (intelligenceMap.size === 0 && positions.length === 0) return;
-    const now = Date.now();
     const analyzed = intelligenceMap.size;
     const total = positions.length;
     const success = analyzed > 0 && analyzed >= total;
@@ -526,8 +534,8 @@ export function PositionProtectionDashboard() {
 
   // Map Convex reactive results by positionId
   const convTimelines = useMemo(() => {
-    const map = new Map<string, any>();
     const results = [convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4];
+    const map = new Map<string, NonNullable<(typeof results)[number]>>();
     for (let i = 0; i < positionIds.length && i < results.length; i++) {
       const result = results[i];
       if (result && result.latestSnapshot) {
@@ -934,6 +942,22 @@ export function PositionProtectionDashboard() {
                 </span>
               )}
             </p>
+            {/*
+              Phase 191 — the execution boundary, stated where monitoring is
+              claimed.
+
+              `protection.noAutoExecute` and `protection.confidenceNotProbability`
+              were translated into all nine locales but rendered nowhere, so a
+              user watching live position alerts was never told that the system
+              only observes: it never closes a position, and no broker or
+              exchange is contacted. A monitoring surface that stays silent on
+              that point is exactly where an alert gets mistaken for a fill.
+            */}
+            <p className="text-[10px] font-mono text-muted-foreground/70 leading-relaxed">
+              {tx("protection.noAutoExecute")}
+              {" "}
+              {tx("protection.confidenceNotProbability")}
+            </p>
           </div>
         </div>
 
@@ -1221,7 +1245,7 @@ export function PositionProtectionDashboard() {
             historicalEventsPersisted: true,
             lastIntelligenceCycleAt: Date.now(),
             dataQuality: Object.fromEntries(
-              Array.from(intelligenceMap.entries()).map(([pid, intel]) => [
+              Array.from(intelligenceMap.entries()).map(([, intel]) => [
                 intel.instrument,
                 intel.dataQuality,
               ]),

@@ -36,13 +36,23 @@ export function calculateProfitMetrics(position: PositionContext): ProfitMetrics
 
   // Raw P/L direction
   const isLong = side === "LONG";
-  const priceChange = isLong
-    ? currentPrice - entryPrice
-    : entryPrice - currentPrice;
+
+  const usableEntry = Number.isFinite(entryPrice) && entryPrice > 0;
+  const usableCurrent = Number.isFinite(currentPrice) && currentPrice > 0;
+
+  // P/L needs BOTH prices. Without them the result is NaN, which compares
+  // false against everything and silently disables the giveback logic
+  // downstream instead of reporting that the value is unknown.
+  const priceChange =
+    usableEntry && usableCurrent
+      ? isLong
+        ? currentPrice - entryPrice
+        : entryPrice - currentPrice
+      : undefined;
   const unrealizedPnL = priceChange;
 
   // Distance from entry as percentage
-  const distanceFromEntryPct = entryPrice > 0
+  const distanceFromEntryPct = usableEntry
     ? ((currentPrice - entryPrice) / entryPrice) * 100 * (isLong ? 1 : -1)
     : 0;
 
@@ -52,24 +62,38 @@ export function calculateProfitMetrics(position: PositionContext): ProfitMetrics
   if (stopLoss !== undefined && stopLoss !== entryPrice) {
     const riskPerUnit = Math.abs(entryPrice - stopLoss);
     if (riskPerUnit > 0) {
-      rMultiple = priceChange / (isLong ? -riskPerUnit : riskPerUnit);
-      // R uses the sign: positive R = profit, negative R = loss
-      rMultiple = Math.abs(currentPrice - entryPrice) / riskPerUnit *
-        (isLong ? (currentPrice > entryPrice ? 1 : -1) : (currentPrice < entryPrice ? 1 : -1));
+      // R uses the sign: positive R = profit, negative R = loss.
+      // (A first assignment from priceChange used to sit here and was
+      // immediately overwritten by this one — dead code, now removed.)
+      if (usableEntry && usableCurrent) {
+        rMultiple =
+          (Math.abs(currentPrice - entryPrice) / riskPerUnit) *
+          (isLong
+            ? currentPrice > entryPrice
+              ? 1
+              : -1
+            : currentPrice < entryPrice
+              ? 1
+              : -1);
+      }
 
-      distanceToSLPct = Math.abs(currentPrice - stopLoss) / entryPrice * 100;
+      // Percentages are expressed against entryPrice, so a zero or
+      // non-finite entry makes them Infinity/NaN rather than a distance.
+      if (usableEntry) {
+        distanceToSLPct = Math.abs(currentPrice - stopLoss) / entryPrice * 100;
+      }
     }
   }
 
   // Distance to TP
   let distanceToTPPct: number | undefined;
-  if (takeProfit !== undefined) {
+  if (takeProfit !== undefined && usableEntry) {
     distanceToTPPct = Math.abs(takeProfit - currentPrice) / entryPrice * 100;
   }
 
   // Leverage-adjusted P/L
   let leveragedPnL: number | undefined;
-  if (leverage !== undefined && leverage > 0) {
+  if (leverage !== undefined && leverage > 0 && unrealizedPnL !== undefined) {
     leveragedPnL = unrealizedPnL * leverage;
   }
 
@@ -77,9 +101,12 @@ export function calculateProfitMetrics(position: PositionContext): ProfitMetrics
   let peakProfit: number | undefined;
   let givebackPct: number | undefined;
 
-  if (peakPrice !== undefined) {
+  if (peakPrice !== undefined && usableEntry && Number.isFinite(peakPrice)) {
     peakProfit = isLong ? peakPrice - entryPrice : entryPrice - peakPrice;
-    if (peakProfit > 0 && unrealizedPnL < peakProfit) {
+    if (unrealizedPnL === undefined) {
+      // Peak is known but the live P/L is not, so giveback is unknown too.
+      givebackPct = undefined;
+    } else if (peakProfit > 0 && unrealizedPnL < peakProfit) {
       givebackPct = ((peakProfit - unrealizedPnL) / peakProfit) * 100;
     } else {
       givebackPct = 0;

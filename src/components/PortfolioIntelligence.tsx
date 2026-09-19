@@ -8,15 +8,9 @@
 import React, { useMemo } from "react";
 import {
   Shield,
-  AlertTriangle,
-  CheckCircle,
-  XCircle,
   Eye,
   Link,
   Unlink,
-  TrendingUp,
-  TrendingDown,
-  Minus,
 } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import {

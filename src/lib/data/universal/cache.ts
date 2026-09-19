@@ -11,7 +11,7 @@
  *   - Cache is informational — does not create directional evidence.
  */
 
-import type { DataCapability, FreshnessState } from "./types";
+import type { FreshnessState } from "./types";
 import type { CacheKey, CacheEntry, CacheConfig } from "./engine-types";
 
 // ═══════════════════════════════════════════════════════════════

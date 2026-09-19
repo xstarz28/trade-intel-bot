@@ -12,9 +12,16 @@ import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
 import { classifySetup } from "./market-context";
 import {
-  assemble, capture, buildMtf, buildSmc,
-  BULL_LEVELS, BEAR_LEVELS,
-  macro, sentiment, treasury, cot, execution,
+  assemble,
+  capture,
+  buildMtf,
+  BULL_LEVELS,
+  BEAR_LEVELS,
+  macro,
+  sentiment,
+  treasury,
+  cot,
+  execution,
 } from "./benchmark-fixtures.phase9";
 import type { Snapshot } from "./benchmark-fixtures.phase9";
 

@@ -31,18 +31,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import type {
   PositionContext,
-  AlertSeverity,
   ProtectionAlert,
 } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
 
 // Core engines
 import { evaluateProtection } from "../position-protection/protection-engine";
-import {
-  shouldAlert,
-  updateMonitoringState,
-  createMonitoringState,
-} from "../position-protection/alert-lifecycle";
 
 // Runtime hardening
 import {
@@ -59,7 +53,6 @@ import {
 import {
   createControllerState,
   registerPosition as ctrlRegister,
-  removePosition as ctrlRemove,
   startController,
   processEventForController,
   getDashboard,
@@ -68,10 +61,7 @@ import {
 // Event bridge
 import {
   createPriceEvent,
-  createProviderDegradedEvent,
-  createProviderRecoveredEvent,
 } from "../position-protection/market-event-bridge";
-import { computeEventPriority } from "../position-protection/event-priority";
 
 // Source labeling
 import {
@@ -85,7 +75,6 @@ import {
   isRealData,
   isUsableData,
 } from "../position-protection/data-source-mode";
-import type { DataSourceMode } from "../position-protection/data-source-mode";
 
 // Polling
 import {
@@ -100,27 +89,20 @@ import {
   resumePollingService,
   unregisterInstrumentForPolling,
   getPollingDashboard,
-  getInstrumentsNeedingPoll,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
-import {
-  createBridgeState,
-  bridgeProviderData,
-} from "../market-stream/live-market-bridge";
 
 // Provider routing
 import {
   routeInstrument,
   detectAssetClass,
   getFallbackRoute,
-  getActiveInstruments,
 } from "../market-stream/provider-routing";
 
 // Provider adapters
 import {
   getProviderProfile,
   getProvidersForAssetClass,
-  getAllProviders,
 } from "../market-stream/provider-adapters";
 
 // Persistence
@@ -128,11 +110,6 @@ import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
 import type { PersistedAlert } from "../position-protection/persistence";
 
 // Dispatch
-import {
-  createDispatcherState,
-  dispatch,
-  acknowledgeAlert,
-} from "../position-protection/alert-dispatcher";
 
 // Diagnostics
 import {
@@ -150,7 +127,7 @@ import {
 import { guardAgainstFalsePositive } from "../position-protection/false-positive-guard";
 
 // Scenarios
-import { runScenario, healthyProfitableLong, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
+import { runScenario, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
 
 const NOW = Date.now();
 
@@ -211,7 +188,7 @@ async function ensureLiveData(): Promise<void> {
       ["bitcoin", "BTC/USDT"], ["ethereum", "ETH/USDT"],
       ["solana", "SOL/USDT"], ["dogecoin", "DOGE/USDT"],
     ];
-    for (const [coinId, symbol] of coinMap) {
+    for (const [_coinId, symbol] of coinMap) {
       const routing = routeInstrument(symbol);
       liveResults.push({
         provider: "CoinGecko", instrument: symbol,
@@ -232,50 +209,6 @@ async function ensureLiveData(): Promise<void> {
   liveResults.push(await fetchTwelveData("XAU/USD"));
 
   liveDataFetched = true;
-}
-
-async function fetchCoinGecko(
-  coinId: string,
-  symbol: string,
-): Promise<LiveResult> {
-  const start = Date.now();
-  const routing = routeInstrument(symbol);
-  const routedProvider = routing.primary?.provider ?? "UNKNOWN";
-  try {
-    const res = await fetch(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd`,
-    );
-    const data = (await res.json()) as Record<string, { usd: number }>;
-    const price = data[coinId]?.usd;
-    if (!price || !Number.isFinite(price) || price <= 0) {
-      return {
-        provider: "CoinGecko", instrument: symbol,
-        assetClass: detectAssetClass(symbol), price: 0,
-        timestamp: Date.now(), success: false,
-        error: "Invalid price", latencyMs: Date.now() - start,
-        mode: "LIVE", routedProvider,
-        routingConsistent: routedProvider === "CoinGecko",
-      };
-    }
-    return {
-      provider: "CoinGecko", instrument: symbol,
-      assetClass: detectAssetClass(symbol), price,
-      timestamp: Date.now(), success: true,
-      latencyMs: Date.now() - start, mode: "LIVE",
-      routedProvider,
-      routingConsistent: routedProvider === "CoinGecko",
-    };
-  } catch (err) {
-    return {
-      provider: "CoinGecko", instrument: symbol,
-      assetClass: detectAssetClass(symbol), price: 0,
-      timestamp: Date.now(), success: false,
-      error: err instanceof Error ? err.message : "unknown",
-      latencyMs: Date.now() - start, mode: "LIVE",
-      routedProvider,
-      routingConsistent: routedProvider === "CoinGecko",
-    };
-  }
 }
 
 async function fetchTwelveData(symbol: string): Promise<LiveResult> {
@@ -1318,7 +1251,7 @@ describe("M. Acceptance Gates", () => {
   });
 
   it("GATE: No secrets in any runtime data", () => {
-    const bridge = new ConvexPersistenceBridge(null);
+    new ConvexPersistenceBridge(null);
     const snap = snapshot(createDiagnosticsState());
     const diagJson = JSON.stringify(snap);
     expect(diagJson).not.toMatch(/AKIA/);

@@ -15,12 +15,13 @@
 import React, {
   createContext,
   useContext,
+  useEffect,
   useState,
   useCallback,
   useMemo,
 } from "react";
 import type { Locale, Translations } from "./types";
-import { DEFAULT_LOCALE, ALL_LOCALES } from "./types";
+import { DEFAULT_LOCALE } from "./types";
 import en from "./en";
 import id from "./id";
 import es from "./es";
@@ -32,8 +33,6 @@ import ko from "./ko";
 import zh from "./zh";
 import {
   SUPPORTED_LOCALES,
-  LOCALE_REGISTRY,
-  getLocaleMetadata,
   getEnabledLocales,
   normalizeBrowserLocale,
   getLocaleDisplayName,
@@ -65,12 +64,31 @@ function getResource(locale: Locale): Translations {
 
 // ─── localStorage helpers ──────────────────────────────────────
 
-const STORAGE_KEY = "freebuff:locale";
+const STORAGE_KEY = "xstarz:locale";
+
+/**
+ * Key used before the product was renamed. Still read once so that an
+ * existing user's saved language survives the rename instead of silently
+ * reverting to the browser default.
+ */
+const LEGACY_STORAGE_KEY = "freebuff:locale";
 
 function readPersistedLocale(): Locale | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw && isSupportedLocale(raw)) return raw;
+
+    // One-time migration off the legacy key.
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy && isSupportedLocale(legacy)) {
+      persistLocale(legacy);
+      try {
+        localStorage.removeItem(LEGACY_STORAGE_KEY);
+      } catch {
+        // Non-fatal: the value has already been copied across.
+      }
+      return legacy;
+    }
   } catch {
     // localStorage unavailable (SSR, private mode, etc.)
   }
@@ -152,6 +170,18 @@ const I18nContext = createContext<I18nContextValue | null>(null);
 
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(resolveInitialLocale);
+
+  // Keep <html lang> in sync with the active locale.
+  //
+  // index.html hardcodes lang="en", so without this every one of the 9 locales
+  // was announced to screen readers as English and indexed as English. Screen
+  // readers pick pronunciation rules from this attribute, so a Japanese or
+  // Korean UI was being read with English phonetics.
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.lang = locale;
+    }
+  }, [locale]);
 
   const setLocale = useCallback((next: Locale) => {
     // Only allow setting enabled locales

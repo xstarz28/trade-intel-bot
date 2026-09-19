@@ -29,16 +29,10 @@ import type {
   AlertSeverity,
   ProtectionAlert,
 } from "../position-protection/types";
-import { alertSeverityRank } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
 
 // Core engines
 import { evaluateProtection } from "../position-protection/protection-engine";
-import {
-  createMonitoringState,
-  shouldAlert,
-  updateMonitoringState,
-} from "../position-protection/alert-lifecycle";
 
 // Runtime hardening
 import {
@@ -49,18 +43,13 @@ import {
   runSecurityAudit,
   validateEvent,
   verifyMemoryBounds,
-  runRuntimeValidation,
 } from "../position-protection/phase69-runtime-hardening";
 
 // Controller
 import {
   createControllerState,
   registerPosition as ctrlRegister,
-  removePosition as ctrlRemove,
   startController,
-  stopController,
-  pauseController,
-  resumeController,
   processEventForController,
   getDashboard,
 } from "../position-protection/continuous-protection-controller";
@@ -76,11 +65,9 @@ import { computeEventPriority } from "../position-protection/event-priority";
 // Source labeling
 import {
   createLiveLabel,
-  createPollingLabel,
   createSimulatedLabel,
   calculateFreshness,
   isRealData,
-  isUsableData,
 } from "../position-protection/data-source-mode";
 
 // Polling
@@ -95,26 +82,14 @@ import {
   pausePollingService,
   resumePollingService,
   getPollingDashboard,
-  getInstrumentsNeedingPoll,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
-import {
-  createBridgeState,
-  bridgeProviderData,
-} from "../market-stream/live-market-bridge";
 
 // Persistence
-import { InMemoryRepository } from "../position-protection/persistence";
 import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
-import type { PersistedPositionState, PersistedAlert } from "../position-protection/persistence";
+import type { PersistedAlert } from "../position-protection/persistence";
 
 // Dispatch
-import {
-  createDispatcherState,
-  shouldDispatch,
-  dispatch,
-  acknowledgeAlert,
-} from "../position-protection/alert-dispatcher";
 
 // Diagnostics
 import {
@@ -130,7 +105,7 @@ import {
 import { guardAgainstFalsePositive } from "../position-protection/false-positive-guard";
 
 // Scenarios
-import { runScenario, healthyProfitableLong, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
+import { runScenario, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
 
 const NOW = Date.now();
 

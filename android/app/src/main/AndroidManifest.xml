@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              Phase 179 — Android App Links for /, /auth, /dashboard, /journal.
+
+              `autoVerify` asks Android to verify ownership of the host via
+              /.well-known/assetlinks.json. That file must be published on the
+              production domain with the RELEASE signing certificate SHA-256,
+              which cannot be generated here (no release keystore is created
+              or committed in this phase). Until it is published and verified,
+              these links open through the disambiguation dialog rather than
+              directly — the configuration is correct but NOT yet verified.
+
+              Route protection is unchanged: a deep link into /dashboard or
+              /journal is handled by the SAME RequireAuth guard the web app
+              uses, so an unauthenticated deep link redirects to /auth.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="@string/deep_link_host" />
+            </intent-filter>
+
+        </activity>
+
+        <!--
+          Phase 179 — the default Capacitor FileProvider was REMOVED. No
+          product feature reads or shares device files, so the component is
+          unnecessary attack surface. Re-add it only alongside a feature that
+          genuinely needs file sharing.
+        -->
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

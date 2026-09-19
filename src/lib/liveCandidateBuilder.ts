@@ -13,7 +13,7 @@
 
 import type { CandidateInput, DataCompletenessLevel } from "./recommendation-engine";
 import type { AssetClass } from "./data/universal/types";
-import type { MarketData, TechnicalData, OhlcvCandle } from "./data/market-types";
+import type { MarketData, TechnicalData } from "./data/market-types";
 import type { AnalysisResult } from "@/types/analysis";
 import type { UniversalIntelligenceContext } from "./data/universal/types";
 import type { CryptoDerivativesData } from "./data/derivatives-types";
@@ -36,6 +36,23 @@ export interface LiveCandidateSource {
     provider: string;
     providerInstrumentId: string;
   };
+  /**
+   * Phase 158 — correlation grouping key derived from provider-native
+   * metadata (asset class + base asset).
+   *
+   * Used ONLY to cap how many correlated instruments surface together.
+   * It is never directional evidence and never merges two identities.
+   */
+  correlationKey?: string;
+  /**
+   * Phase 165 — venue/region as reported by the PROVIDER during discovery.
+   *
+   * Exists so the UI never has to infer region by pattern-matching symbol
+   * names (which is a hidden whitelist: any instrument not in the pattern
+   * list gets mislabelled, and new listings are silently wrong).
+   * Undefined means "the provider did not tell us", not "global".
+   */
+  region?: string;
   /** Market data from provider (if available). */
   marketData?: MarketData;
   /** Technical data computed from candles (if available). */
@@ -60,12 +77,26 @@ export interface LiveCandidateSource {
 // FRESHNESS ASSESSMENT
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Tolerance for benign clock skew between our clock and a provider's.
+ * A few seconds of drift is normal; more than this is not trustworthy.
+ */
+const FUTURE_TIMESTAMP_TOLERANCE_MS = 60_000;
+
 function assessFreshness(
   timestamp: number | undefined,
   now: number,
 ): "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" {
   if (!timestamp) return "UNAVAILABLE";
   const ageMs = now - timestamp;
+
+  // A timestamp meaningfully in the future cannot be verified as live data.
+  // Treating it as FRESH would let clock skew or a malformed provider
+  // payload promote unverifiable data into the scanner. Refuse it instead.
+  if (ageMs < -FUTURE_TIMESTAMP_TOLERANCE_MS) return "UNAVAILABLE";
+
+  // Within tolerance, treat mild skew as "just now" rather than negative age.
+  if (ageMs < 0) return "FRESH";
   if (ageMs < 5 * 60_000) return "FRESH";         // < 5 min
   if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
   if (ageMs < 24 * 60 * 60_000) return "STALE";   // < 24 hours
@@ -133,7 +164,6 @@ function extractSpreadBps(source: LiveCandidateSource): number | undefined {
 
 function extractCryptoData(source: LiveCandidateSource): Partial<CandidateInput> {
   const d = source.derivativesData;
-  const ci = source.universalIntelligence?.equity ?? source.universalIntelligence;
   return {
     hasDerivatives: !!d,
     fundingRate: d?.fundingRate?.currentRate,
@@ -142,7 +172,6 @@ function extractCryptoData(source: LiveCandidateSource): Partial<CandidateInput>
 }
 
 function extractForexData(source: LiveCandidateSource): Partial<CandidateInput> {
-  const t = source.treasuryData;
   const cot = source.cotData;
   const cotAvailable = cot && cot.available ? cot : null;
   return {
@@ -181,8 +210,15 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
 // MAIN BUILDER
 // ═══════════════════════════════════════════════════════════════
 
-export function buildCandidateFromSource(source: LiveCandidateSource): CandidateInput {
-  const now = Date.now();
+/**
+ * @param now Evaluation timestamp. Callers that need deterministic results
+ *   (the scanner, tests, replay) MUST pass this; otherwise freshness is
+ *   assessed against the wall clock and results are not reproducible.
+ */
+export function buildCandidateFromSource(
+  source: LiveCandidateSource,
+  now: number = Date.now(),
+): CandidateInput {
   const tech = source.technicalData;
   const ar = source.analysisResult;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
@@ -220,6 +256,10 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     hasLiveData,
     freshness,
     providerCoverage,
+    ...(source.correlationKey ? { correlationKey: source.correlationKey } : {}),
+    // Preserve the exact provider-native identity end to end.
+    ...(source.providerNative ? { providerNative: source.providerNative } : {}),
+    ...(source.region ? { region: source.region } : {}),
 
     // Structure
     htfBias: extractHtfBias(tech),
