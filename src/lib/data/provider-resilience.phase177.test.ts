@@ -23,6 +23,8 @@ import {
   skippedLeg,
   successfulData,
   summarize,
+  type LegOptions,
+  type ProviderOutcome,
 } from "./provider-resilience";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -671,6 +673,81 @@ describe("optional-slow envelope (Phase 230 §M-3)", () => {
     if (envelope.success) throw new Error("unreachable");
     expect(envelope.error).not.toContain("SUPERSECRETVALUE1234567890ABCD");
     expect(envelope.error).toContain("[REDACTED]");
+  });
+
+  it("the mapped outcome still names the provider so group diagnostics can identify the leg", async () => {
+    const outcome = await runProviderLeg({
+      provider: "cftc",
+      run: () =>
+        Promise.resolve({
+          success: false,
+          error: "timeout (The operation timed out)",
+        }),
+      budgetMs: 200,
+    });
+    expect(outcome.provider).toBe("cftc");
+    expect(outcome.category).toBe("timeout");
+    const envelope = optionalSlowEnvelope(outcome);
+    expect(envelope.success).toBe(false);
+    if (envelope.success) throw new Error("unreachable");
+    expect(classifyFailure(envelope.error).category).toBe("timeout");
+  });
+
+  it("two concurrent optional-slow legs keep distinct provider and class, and callers still see undefined", async () => {
+    const slowOutcomes: ProviderOutcome[] = [];
+    const budgeted = (provider: string, call: LegOptions<unknown>["run"]) => async () => {
+      const outcome = await runProviderLeg({ provider, run: call, budgetMs: 200 });
+      slowOutcomes.push(outcome);
+      return optionalSlowEnvelope(outcome);
+    };
+
+    const { fetchOptionalSlowData } = await import("./optional-providers");
+    const slow = await fetchOptionalSlowData(
+      {
+        instrumentType: "commodity",
+        instrument: "WTI",
+        tradingStyle: "swing",
+        hasCompleteSpec: false,
+      },
+      {
+        cot: budgeted("cftc", async () => ({
+          success: false,
+          error: "timeout (The operation timed out)",
+        })),
+        eia: budgeted("eia", async () => ({
+          success: false,
+          error: "RATE_LIMIT: 429 too many requests",
+        })),
+        treasury: budgeted("treasury", async () => ({
+          success: true,
+          data: { curve: "kept" },
+        })),
+      } as import("./optional-providers").SlowProviderThunks,
+    );
+
+    // Public contract unchanged: failed legs stay undefined; the success is kept.
+    expect(slow.cotData).toBeUndefined();
+    expect(slow.eiaData).toBeUndefined();
+    expect(slow.treasuryData).toEqual({ curve: "kept" });
+
+    expect(slowOutcomes).toHaveLength(3);
+    const byProvider = Object.fromEntries(slowOutcomes.map((o) => [o.provider, o]));
+    expect(byProvider.cftc?.category).toBe("timeout");
+    expect(byProvider.eia?.category).toBe("rate-limit");
+    expect(byProvider.treasury?.status).toBe("success");
+    expect(byProvider.treasury?.data).toEqual({ curve: "kept" });
+    expect(byProvider.cftc?.category).not.toBe(byProvider.eia?.category);
+
+    const summary = summarize({
+      startedAt: 0,
+      durationMs: 0,
+      budgetMs: 200,
+      deadlineExceeded: false,
+      outcomes: slowOutcomes,
+    });
+    expect(summary).toContain("cftc=failed(timeout");
+    expect(summary).toContain("eia=failed(rate-limit");
+    expect(summary).toContain("treasury=success");
   });
 });
 

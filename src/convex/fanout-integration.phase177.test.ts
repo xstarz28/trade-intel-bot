@@ -399,4 +399,9 @@ describe("conditional policy is not weakened by budgets", () => {
     // The pre-fix mapping dropped the class: `{ success: false }` with no error.
     expect(SERVER).not.toMatch(/: \{ success: false \};/);
   });
+
+  it("records each optional-slow outcome so group diagnostics can name the leg", () => {
+    expect(SERVER).toContain("slowOutcomes.push(outcome)");
+    expect(SERVER).toContain("...slowOutcomes");
+  });
 });
