@@ -10,10 +10,12 @@
  * Drives the REAL action handler through a stubbed `fetch`.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { resetProviderCache, getProviderCache } from "../lib/data/provider-cache-registry";
 import { fetchDerivatives, classifyLegError, isFatalLegError, summarizeLegFailures } from "./coinglass";
 import type { DerivativesResult } from "../lib/data/derivatives-types";
 import { derivativesForRadar } from "../lib/market-radar/derivatives-bridge";
+import { assessFreshness } from "../lib/market-radar/freshness";
 
 type Handler = (ctx: unknown, args: { instrument: string }) => Promise<DerivativesResult>;
 const cg = (fetchDerivatives as unknown as { _handler: Handler })._handler;
@@ -22,10 +24,12 @@ const ctx = { auth: { getUserIdentity: async () => ({ subject: "user_A|sess", is
 type Route = { status?: number; body?: unknown; throws?: unknown; badJson?: boolean };
 let routes: Record<string, Route> = {};
 const calls: string[] = [];
-const OK_OI = { code: "0", data: [{ openInterest: 900 }, { openInterest: 1000 }] };
-const OK_FR = { code: "0", data: [{ symbol: "BTC", data: { currentRate: 0.0001 } }] };
-const OK_LS = { code: "0", data: [{ longShortRatio: 1.2 }] };
-const OK_LIQ = { code: "0", data: [{ longLiquidation: 10, shortLiquidation: 40 }] };
+/** Provider-owned ms — deliberately not "now", so a clock stamp is visible. */
+const PROVIDER_TS_MS = 1_700_000_000_000;
+const OK_OI = { code: "0", data: [{ openInterest: 900, time: PROVIDER_TS_MS - 3_600_000 }, { openInterest: 1000, time: PROVIDER_TS_MS }] };
+const OK_FR = { code: "0", data: [{ symbol: "BTC", data: { currentRate: 0.0001, time: PROVIDER_TS_MS } }] };
+const OK_LS = { code: "0", data: [{ longShortRatio: 1.2, time: PROVIDER_TS_MS }] };
+const OK_LIQ = { code: "0", data: [{ longLiquidation: 10, shortLiquidation: 40, time: PROVIDER_TS_MS }] };
 const ALL_OK = { openInterest: { body: OK_OI }, fundingRate: { body: OK_FR }, longShort: { body: OK_LS }, liquidation: { body: OK_LIQ } };
 
 function routeFor(url: string): Route {
@@ -226,8 +230,8 @@ describe("228 — quota / provenance", () => {
     routes.openInterest = { throws: timeoutError() };
     const r = await cg(ctx, { instrument: "BTC/USD" });
     expect(r.acquisition).toBe("observed-now");
-    expect(Number.isFinite(r.observedAt)).toBe(true);
-    expect(r.data!.timestamp).toBe(r.observedAt);
+    expect(r.data!.timestamp).toBe(PROVIDER_TS_MS);
+    expect(r.observedAt).toBe(PROVIDER_TS_MS);
   });
   it("a partial payload is cached (it IS evidence) and its error metadata survives the hit", async () => {
     routes.openInterest = { throws: timeoutError() };
@@ -282,5 +286,59 @@ describe("228 — classifier units", () => {
       c: { status: "timeout", reason: "t" },
       d: { status: "network", reason: "" },
     })).toBe("c: timeout (t); d: network");
+  });
+});
+
+describe("226/228 — provider timestamp (not the request clock)", () => {
+  it("a CoinGlass time hours ago does not grade FRESH at the radar", async () => {
+    const r = await cg(ctx, { instrument: "BTC/USD" });
+    expect(r.success).toBe(true);
+    expect(r.data!.timestamp).toBe(PROVIDER_TS_MS);
+    expect(r.data!.timestamp).toBeLessThan(Date.now() - 30 * 864e5);
+    // A request-clock stamp would grade FRESH here. A 2023 provider time is
+    // outside the 24h window, so the radar refuses it instead of labelling
+    // delayed CoinGlass live.
+    expect(assessFreshness(r.data!.timestamp, Date.now())).toBe("UNAVAILABLE");
+    expect(derivativesForRadar("BTC/USD", r.data, Date.now()).derivatives).toBeUndefined();
+    const radarNow = PROVIDER_TS_MS + 3 * 3600_000;
+    expect(assessFreshness(r.data!.timestamp, radarNow)).toBe("STALE");
+  });
+
+  it("a cache hit replays the original provider time, not the read clock", async () => {
+    const first = await cg(ctx, { instrument: "BTC/USD" });
+    const second = await cg(ctx, { instrument: "BTC/USD" });
+    expect(second.acquisition).toBe("cache-reused");
+    expect(second.data!.timestamp).toBe(PROVIDER_TS_MS);
+    expect(second.observedAt).toBe(first.observedAt);
+  });
+
+  it("UNIX-seconds time is scaled the same way as Twelve Data quotes", async () => {
+    const sec = 1_700_000_000;
+    routes.openInterest = { body: { code: "0", data: [{ openInterest: 1000, time: sec }] } };
+    routes.fundingRate = { body: { code: "0", data: [] } };
+    routes.longShort = { body: { code: "0", data: [] } };
+    routes.liquidation = { body: { code: "0", data: [] } };
+    const r = await cg(ctx, { instrument: "BTC/USD" });
+    expect(r.data!.timestamp).toBe(sec * 1000);
+  });
+
+  it("legs without a provider time do not stamp Date.now() — radar sees UNAVAILABLE", async () => {
+    routes.openInterest = { body: { code: "0", data: [{ openInterest: 1000 }] } };
+    routes.fundingRate = { body: { code: "0", data: [{ symbol: "BTC", data: { currentRate: 0.0001 } }] } };
+    routes.longShort = { body: { code: "0", data: [{ longShortRatio: 1.2 }] } };
+    routes.liquidation = { body: { code: "0", data: [{ longLiquidation: 10, shortLiquidation: 40 }] } };
+    const before = Date.now();
+    const r = await cg(ctx, { instrument: "BTC/USD" });
+    expect(r.success).toBe(true);
+    expect(r.data!.timestamp).toBe(0);
+    expect(r.observedAt).toBe(0);
+    expect(r.data!.timestamp).toBeLessThan(before);
+    expect(assessFreshness(r.data!.timestamp, Date.now())).toBe("UNAVAILABLE");
+    expect(derivativesForRadar("BTC/USD", r.data, Date.now()).derivatives).toBeUndefined();
+  });
+
+  it("fetchDerivatives no longer writes timestamp: Date.now()", () => {
+    const src = readFileSync(new URL("./coinglass.ts", import.meta.url), "utf8");
+    expect(src).not.toMatch(/timestamp:\s*Date\.now\(\)/);
   });
 });

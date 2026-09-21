@@ -166,15 +166,15 @@ export const fetchDerivatives = action({
         throw new Error(`Derivatives fetch failed: ${msg || "unknown error"}`);
       }
       const legs = {
-        openInterest: (oiResult as PromiseFulfilledResult<LegOutcome<OpenInterestData>>).value,
-        fundingRate: (fundingResult as PromiseFulfilledResult<LegOutcome<FundingRateData>>).value,
-        longShort: (lsResult as PromiseFulfilledResult<LegOutcome<LongShortData>>).value,
-        liquidations: (liqResult as PromiseFulfilledResult<LegOutcome<LiquidationData>>).value,
+        openInterest: (oiResult as PromiseFulfilledResult<LegOutcome<ObservedLeg<OpenInterestData>>>).value,
+        fundingRate: (fundingResult as PromiseFulfilledResult<LegOutcome<ObservedLeg<FundingRateData>>>).value,
+        longShort: (lsResult as PromiseFulfilledResult<LegOutcome<ObservedLeg<LongShortData>>>).value,
+        liquidations: (liqResult as PromiseFulfilledResult<LegOutcome<ObservedLeg<LiquidationData>>>).value,
       };
-      const openInterest = legs.openInterest.status === "ok" ? legs.openInterest.value : undefined;
-      const fundingRate = legs.fundingRate.status === "ok" ? legs.fundingRate.value : undefined;
-      const longShort = legs.longShort.status === "ok" ? legs.longShort.value : undefined;
-      const liquidations = legs.liquidations.status === "ok" ? legs.liquidations.value : undefined;
+      const openInterest = legs.openInterest.status === "ok" ? legs.openInterest.value.data : undefined;
+      const fundingRate = legs.fundingRate.status === "ok" ? legs.fundingRate.value.data : undefined;
+      const longShort = legs.longShort.status === "ok" ? legs.longShort.value.data : undefined;
+      const liquidations = legs.liquidations.status === "ok" ? legs.liquidations.value.data : undefined;
 
       // Phase 228 — non-fatal leg failures are carried, per leg, on the
       // payload's existing `error` field. If EVERY leg failed for a transport
@@ -204,10 +204,23 @@ export const fetchDerivatives = action({
       // Generate interpretation
       const interpretation = generateInterpretation(openInterest, fundingRate, longShort, liquidations);
 
+      // Phase 226 — `timestamp` is the provider observation, not the request
+      // clock. A Date.now() stamp made delayed CoinGlass data grade FRESH in
+      // the radar (assessFreshness of "now"). Oldest surviving-leg time wins;
+      // a missing/implausible provider time is 0 (UNAVAILABLE to the radar),
+      // never re-dated.
+      const times = [
+        observationOf(legs.openInterest),
+        observationOf(legs.fundingRate),
+        observationOf(legs.longShort),
+        observationOf(legs.liquidations),
+      ].filter((n): n is number => n !== undefined);
+      const timestamp = times.length > 0 ? Math.min(...times) : 0;
+
       const data: CryptoDerivativesData = {
         provider: "coinglass",
         symbol,
-        timestamp: Date.now(),
+        timestamp,
         freshness: "delayed", // CoinGlass free tier is not realtime
         openInterest,
         fundingRate,
@@ -280,6 +293,32 @@ function points(data: unknown): JsonRecord[] {
   return isRecord(data) ? [data] : [];
 }
 
+/**
+ * CoinGlass point time (`time` / `t` / `timestamp` / `createTime`) → ms.
+ * Accepts UNIX seconds (same window as Twelve Data) or milliseconds.
+ * Never the request clock. Undefined if the point has no plausible time.
+ */
+function coinglassPointObservationMs(point: JsonRecord | undefined): number | undefined {
+  if (!point) return undefined;
+  const nested = isRecord(field(point, "data")) ? (field(point, "data") as JsonRecord) : undefined;
+  for (const src of [point, nested]) {
+    if (!src) continue;
+    for (const key of ["time", "t", "timestamp", "createTime"] as const) {
+      const n = asFiniteNumber(src[key]);
+      if (n === undefined) continue;
+      if (n >= 1e12 && n < 1e14) return n; // already ms
+      if (n >= 1e9 && n < 1e11) return n * 1000; // seconds
+    }
+  }
+  return undefined;
+}
+
+type ObservedLeg<T> = { data: T; observedAt?: number };
+
+function observationOf<T>(leg: LegOutcome<ObservedLeg<T>>): number | undefined {
+  return leg.status === "ok" ? leg.value.observedAt : undefined;
+}
+
 /** First finite number among `point[key]` and `point.data[key]`. */
 function num(point: JsonRecord, ...keys: string[]): number | undefined {
   const nested = field(point, "data");
@@ -292,7 +331,7 @@ function num(point: JsonRecord, ...keys: string[]): number | undefined {
   return undefined;
 }
 
-async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenInterestData | undefined> {
+async function fetchOpenInterest(symbol: string, apiKey: string): Promise<ObservedLeg<OpenInterestData> | undefined> {
   const pts = points(await cgFetch(`/futures/openInterest/chart?symbol=${symbol}&interval=1h&limit=2`, apiKey));
   if (pts.length === 0) return undefined;
 
@@ -311,10 +350,10 @@ async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenIn
     }
   }
 
-  return result;
+  return { data: result, observedAt: coinglassPointObservationMs(latest) };
 }
 
-async function fetchFundingRate(symbol: string, apiKey: string): Promise<FundingRateData | undefined> {
+async function fetchFundingRate(symbol: string, apiKey: string): Promise<ObservedLeg<FundingRateData> | undefined> {
   const items = points(await cgFetch(`/futures/fundingRate/current?symbol=${symbol}`, apiKey));
   if (items.length === 0) return undefined;
 
@@ -353,10 +392,10 @@ async function fetchFundingRate(symbol: string, apiKey: string): Promise<Funding
     result.exchanges = exchanges;
   }
 
-  return result;
+  return { data: result, observedAt: coinglassPointObservationMs(entry) };
 }
 
-async function fetchLongShort(symbol: string, apiKey: string): Promise<LongShortData | undefined> {
+async function fetchLongShort(symbol: string, apiKey: string): Promise<ObservedLeg<LongShortData> | undefined> {
   const pts = points(await cgFetch(`/futures/longShort/chart?symbol=${symbol}&interval=1h&limit=1`, apiKey));
   if (pts.length === 0) return undefined;
 
@@ -376,10 +415,10 @@ async function fetchLongShort(symbol: string, apiKey: string): Promise<LongShort
     return undefined;
   }
 
-  return result;
+  return { data: result, observedAt: coinglassPointObservationMs(latest) };
 }
 
-async function fetchLiquidations(symbol: string, apiKey: string): Promise<LiquidationData | undefined> {
+async function fetchLiquidations(symbol: string, apiKey: string): Promise<ObservedLeg<LiquidationData> | undefined> {
   const pts = points(await cgFetch(`/futures/liquidation/v2/history?symbol=${symbol}&interval=1h&limit=1`, apiKey));
   if (pts.length === 0) return undefined;
 
@@ -407,7 +446,7 @@ async function fetchLiquidations(symbol: string, apiKey: string): Promise<Liquid
     return undefined;
   }
 
-  return result;
+  return { data: result, observedAt: coinglassPointObservationMs(latest) };
 }
 
 // ── Interpretation Generator ────────────────────────────────────
