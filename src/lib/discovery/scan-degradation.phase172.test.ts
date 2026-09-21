@@ -149,6 +149,19 @@ describe("Dashboard wiring", () => {
   it("passes the errors down to the opportunities component", () => {
     expect(SRC).toMatch(/providerErrors=\{cycleProviderErrorsRef\.current\}/);
   });
+
+  it("does not import or call discoverCandidates", () => {
+    expect(SRC).not.toContain("discoverCandidates");
+  });
+
+  it("does not pass a static candidates feed into MarketOpportunities", () => {
+    expect(SRC).not.toMatch(/candidates\s*=/);
+  });
+
+  it("always wires the live scanner result as the opportunities source", () => {
+    expect(SRC).toMatch(/liveSources=\{liveSources\}/);
+    expect(SRC).toMatch(/scanResult=\{scanResult/);
+  });
 });
 
 describe("MarketOpportunities wiring", () => {
@@ -164,13 +177,17 @@ describe("MarketOpportunities wiring", () => {
     expect(SRC.slice(idx, idx + 400)).toContain("providerErrors");
   });
 
-  it("never ranks a static catalog when a live scan or liveSources is present", () => {
-    const idx = SRC.indexOf("const result: UniversalRecommendationResult");
-    expect(idx).toBeGreaterThan(-1);
-    const block = SRC.slice(idx, idx + 1200);
-    // Missing horizon / empty live path → empty ranking, not `candidates`.
-    expect(block).toContain("generateRecommendation([], currentHorizon");
-    expect(block).toContain("liveSources !== undefined");
+  it("never ranks a static catalog — generateRecommendation is only called empty", () => {
+    const calls = SRC.match(/generateRecommendation\([^)]*\)/g) ?? [];
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call).toMatch(/generateRecommendation\(\[\]/);
+    }
+  });
+
+  it("does not accept a candidates prop that could override the live scan", () => {
+    expect(SRC).not.toMatch(/candidates\?:/);
+    expect(SRC).not.toContain("EMPTY_CANDIDATES");
   });
 });
 
