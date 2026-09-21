@@ -393,4 +393,10 @@ describe("conditional policy is not weakened by budgets", () => {
 
     expect(treasury).toHaveBeenCalledTimes(1);
   });
+
+  it("the budgeted wrapper forwards classified failure text (Phase 230 §M-3)", () => {
+    expect(SERVER).toContain("optionalSlowEnvelope(");
+    // The pre-fix mapping dropped the class: `{ success: false }` with no error.
+    expect(SERVER).not.toMatch(/: \{ success: false \};/);
+  });
 });

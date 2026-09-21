@@ -16,6 +16,7 @@ import {
   PROVIDER_BUDGET_MS,
   budgetFor,
   classifyFailure,
+  optionalSlowEnvelope,
   redactDiagnostic,
   runFanOut,
   runProviderLeg,
@@ -576,6 +577,100 @@ describe("envelope-path timeout (Phase 230 §M-1)", () => {
     expect(run).toHaveBeenCalledTimes(3);
     expect(outcome.category).toBe("unavailable");
     expect(outcome.timedOut).toBe(false);
+  });
+});
+
+describe("optional-slow envelope (Phase 230 §M-3)", () => {
+  it("forwards the provider payload on success and does not invent an error", async () => {
+    const outcome = await runProviderLeg({
+      provider: "cftc",
+      run: async () => ({ success: true, data: { positioning: 1 } }),
+      budgetMs: 200,
+    });
+    const envelope = optionalSlowEnvelope(outcome);
+    expect(envelope).toEqual({ success: true, data: { positioning: 1 } });
+    expect("error" in envelope).toBe(false);
+  });
+
+  it("a timeout envelope keeps class text, carries no data, and reclassifies as timeout", async () => {
+    const outcome = await runProviderLeg({
+      provider: "cftc",
+      run: () =>
+        Promise.resolve({
+          success: false,
+          error: "timeout (The operation timed out)",
+        }),
+      budgetMs: 200,
+    });
+    const envelope = optionalSlowEnvelope(outcome);
+    expect(envelope.success).toBe(false);
+    if (envelope.success) throw new Error("unreachable");
+    expect(envelope.error).toMatch(/^timeout:/);
+    expect(envelope.error).toMatch(/timed out/i);
+    expect("data" in envelope).toBe(false);
+    expect(classifyFailure(envelope.error).category).toBe("timeout");
+  });
+
+  it("a thrown TimeoutError still surfaces as timeout text after the budgeted mapping", async () => {
+    const outcome = await runProviderLeg({
+      provider: "cftc",
+      run: slowProvider(5_000),
+      budgetMs: 30,
+    });
+    const envelope = optionalSlowEnvelope(outcome);
+    expect(envelope.success).toBe(false);
+    if (envelope.success) throw new Error("unreachable");
+    // The raw reason is `provider "cftc" exceeded 30ms` — no "timeout" word.
+    // The category prefix is what lets group-level diagnostics recover the class.
+    expect(envelope.error).toMatch(/^timeout:/);
+    expect(classifyFailure(envelope.error).category).toBe("timeout");
+    expect("data" in envelope).toBe(false);
+  });
+
+  it("a rate-limit envelope keeps class text and is never a payload", async () => {
+    const outcome = await runProviderLeg({
+      provider: "eia",
+      run: () =>
+        Promise.resolve({ success: false, error: "RATE_LIMIT: 429 too many requests" }),
+      budgetMs: 200,
+    });
+    const envelope = optionalSlowEnvelope(outcome);
+    expect(envelope.success).toBe(false);
+    if (envelope.success) throw new Error("unreachable");
+    expect(envelope.error).toMatch(/^rate-limit:/);
+    expect(classifyFailure(envelope.error).category).toBe("rate-limit");
+    expect(classifyFailure(envelope.error).rateLimited).toBe(true);
+    expect("data" in envelope).toBe(false);
+  });
+
+  it("a network failure keeps the network class", async () => {
+    const outcome = await runProviderLeg({
+      provider: "treasury",
+      run: () => Promise.reject(new Error("ECONNREFUSED")),
+      budgetMs: 100,
+    });
+    const envelope = optionalSlowEnvelope(outcome);
+    expect(envelope.success).toBe(false);
+    if (envelope.success) throw new Error("unreachable");
+    expect(envelope.error).toMatch(/^network:/);
+    expect(classifyFailure(envelope.error).category).toBe("network");
+  });
+
+  it("does not leak a credential-shaped token through the forwarded error", async () => {
+    const outcome = await runProviderLeg({
+      provider: "eia",
+      run: () =>
+        Promise.resolve({
+          success: false,
+          error: "https://api.eia.gov/v2?api_key=SUPERSECRETVALUE1234567890ABCD timeout",
+        }),
+      budgetMs: 200,
+    });
+    const envelope = optionalSlowEnvelope(outcome);
+    expect(envelope.success).toBe(false);
+    if (envelope.success) throw new Error("unreachable");
+    expect(envelope.error).not.toContain("SUPERSECRETVALUE1234567890ABCD");
+    expect(envelope.error).toContain("[REDACTED]");
   });
 });
 

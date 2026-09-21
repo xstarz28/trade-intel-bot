@@ -510,6 +510,49 @@ export function successfulData<T>(outcome: ProviderOutcome<T> | undefined): T | 
   return outcome.data;
 }
 
+/**
+ * Envelope consumed by `fetchOptionalSlowData` (Phase 15).
+ *
+ * Success carries the provider's own payload. Failure never carries `data`
+ * — absence is the honest signal — and always carries classified `error`
+ * text so group-level diagnostics can still see why the optional leg
+ * produced nothing.
+ */
+export type OptionalSlowEnvelope<T> =
+  | { success: true; data?: T }
+  | { success: false; error: string };
+
+/**
+ * Phase 230 §M-3 — map a `ProviderOutcome` back to the optional-slow
+ * envelope WITHOUT dropping classified failure text.
+ *
+ * The protected-analysis `budgeted` wrapper used to return `{success:false}`
+ * with no `error`, so `fetchOptionalSlowData` and anything reading the
+ * group envelope could not tell a timeout from a rate-limit from a
+ * generic miss. Classes already travel through `runProviderLeg`; this
+ * function is the only path that must not throw them away.
+ *
+ * The error string is prefixed with the Phase 177 category so a later
+ * `classifyFailure` call recovers timeout / rate-limit / network even
+ * when the raw reason (e.g. `provider "cftc" exceeded 8000ms`) would
+ * not match those text patterns on its own. The reason is already
+ * credential-redacted by `runProviderLeg`.
+ */
+export function optionalSlowEnvelope<T>(
+  outcome: ProviderOutcome<T>,
+): OptionalSlowEnvelope<T> {
+  if (outcome.status === "success") {
+    return { success: true, data: outcome.data };
+  }
+  const reason =
+    typeof outcome.reason === "string" && outcome.reason.length > 0
+      ? outcome.reason
+      : "provider reported failure";
+  const error =
+    outcome.category !== undefined ? `${outcome.category}: ${reason}` : reason;
+  return { success: false, error };
+}
+
 /** Compact, credential-free summary suitable for structured logging. */
 export function summarize(diag: FanOutDiagnostics): string {
   const parts = diag.outcomes.map((o) => {

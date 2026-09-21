@@ -77,6 +77,7 @@ import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import {
   type ProviderOutcome,
+  optionalSlowEnvelope,
   runFanOut,
   runProviderLeg,
   skippedLeg,
@@ -631,12 +632,14 @@ export const runProtectedAnalysis = action({
     // decides WHETHER a leg runs; the budget decides how long we wait for it.
     const budgeted =
       <T>(provider: string, call: () => Promise<{ success: boolean; data?: T; error?: string }>) =>
-      async (): Promise<{ success: boolean; data?: T }> => {
+      async (): Promise<{ success: boolean; data?: T; error?: string }> => {
         const outcome = await runProviderLeg<T>({ provider, run: call });
         slowOutcomes.push(outcome);
-        return outcome.status === "success"
-          ? { success: true, data: outcome.data }
-          : { success: false };
+        // Phase 230 §M-3 — forward classified failure text. A bare
+        // `{success:false}` made a timeout indistinguishable from "no data"
+        // at the optional-slow group. `fetchOptionalSlowData` still treats
+        // any non-success as undefined (never a fallback).
+        return optionalSlowEnvelope(outcome);
       };
     const slowOutcomes: ProviderOutcome[] = [];
 
