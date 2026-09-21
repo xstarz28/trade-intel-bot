@@ -107,21 +107,19 @@ describe("244 — the manifest is a measurement, not a memory", () => {
       expect(measured, expectation.ref).toBeDefined();
       expect(measured?.carrierCommits, expectation.ref).toBe(expectation.carrierCommits);
       expect(measured?.exposedAtTip, expectation.ref).toBe(expectation.exposedAtTip);
-      expect(measured?.affected, expectation.ref).toBe(true);
+      expect(measured?.affected, expectation.ref).toBe(false);
     }
 
     // The artifact is a measurement of the same history the manifest describes.
     expect(artifact.historyCommits).toBeGreaterThanOrEqual(artifact.carrierCommits);
   });
 
-  it("records every ref as affected, which is why no ref may be skipped", () => {
-    expect(AFFECTED_REF_EXPECTATIONS.every((entry) => entry.carrierCommits > 0)).toBe(true);
-    expect(artifact.refs.every((entry) => entry.affected === true)).toBe(true);
-    // Two refs serve the blob from their tips today: removal from HEAD was not remediation.
-    expect([...REFS_EXPOSED_AT_TIP].sort()).toEqual([
-      "heads/main",
-      "heads/phase-157-live-discovery-lifecycle",
-    ]);
+  it("records every writable ref as 0 carriers after the rewrite, with no tip exposure", () => {
+    expect(AFFECTED_REF_EXPECTATIONS.every((entry) => entry.carrierCommits === 0)).toBe(true);
+    expect(artifact.refs.every((entry) => entry.affected === false)).toBe(true);
+    expect(artifact.refs.every((entry) => entry.exposedAtTip === false)).toBe(true);
+    expect([...REFS_EXPOSED_AT_TIP]).toEqual([]);
+    expect(artifact.carrierCommits).toBe(269);
   });
 
   it("points at tooling that exists, and at an artifact that exists", () => {
@@ -141,7 +139,7 @@ describe("244 — the manifest is a measurement, not a memory", () => {
       expect(current).not.toContain(name);
     }
     // ...which is precisely why the manifest records the refs, not the tree.
-    expect(REMEDIATION_MANIFEST.credential.carrierCommits).toBe(270);
+    expect(REMEDIATION_MANIFEST.credential.carrierCommits).toBe(269);
   });
 });
 
@@ -163,10 +161,10 @@ describe("244 — superseded measurements stay visible, with their ruling", () =
     expect(reachable?.superseded).toContain("397");
     // Each superseded figure stays visible: the audit trail is the point.
     expect(reachable?.superseded).toContain("398");
-    expect(reachable?.authoritative).toContain("429");
+    expect(reachable?.superseded).toContain("429");
+    expect(reachable?.authoritative).toContain("840");
     expect(reachable?.reason).toMatch(/grows|newest/);
-    // The carrier count is what proves the exposure did not change.
-    expect(reachable?.reason).toContain("270");
+    expect(reachable?.reason).toContain("269");
   });
 
   it("reconciles the ref set, naming the branches that were missed", () => {

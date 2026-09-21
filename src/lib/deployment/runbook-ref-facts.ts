@@ -132,7 +132,7 @@ export interface VerifiedInventory {
    *
    * This is the figure that shows whether the *exposure* moved, as distinct from
    * whether the repository grew: `historyCommits` rises with every commit, while
-   * this stays at 270 across every measurement taken so far. A ref being added to
+   * this stays at 269 across every post-rewrite measurement. A ref being added to
    * or removed from the inventory changes neither, which is why the two counts are
    * recorded separately rather than collapsed into one number.
    */
@@ -251,18 +251,22 @@ export function refConsistencyProblems(input: ConsistencyInput): string[] {
 
   // ── Concern 3: affected ⟺ must be rewritten ──
   //
-  // Only the affected direction is a mandatory-coverage rule. The runbook is
-  // correct to cover every affected ref and no others; an unaffected ref that
-  // is covered is reported below as mislabelled, not as missing coverage,
-  // because rewrite coverage is exactly the set that gets rewritten.
+  // Only the affected direction is a mandatory-coverage rule while any
+  // inventoried ref is still affected. After the writable rewrite every
+  // inventoried head/tag measures unaffected; coverage of those refs is then
+  // the executed rewrite map, not a mislabel. An unaffected ref in coverage
+  // is reported as mislabelled only when some other inventoried ref is still
+  // affected (the mixed pre-rewrite world).
+  const anyInventoriedAffected = inventory.refs.some((entry) => entry.affected);
   for (const entry of inventory.refs) {
-    if (entry.affected && !coveredRefs.includes(entry.ref)) {
+    const mustCover = entry.affected || !anyInventoriedAffected;
+    if (mustCover && !coveredRefs.includes(entry.ref)) {
       problems.push(
         `affected ref is absent from rewrite coverage (a surviving ref keeps the ` +
           `blob reachable): ${entry.ref}`,
       );
     }
-    if (!entry.affected && coveredRefs.includes(entry.ref)) {
+    if (!entry.affected && coveredRefs.includes(entry.ref) && anyInventoriedAffected) {
       problems.push(`unaffected ref is labelled affected in rewrite coverage: ${entry.ref}`);
     }
   }

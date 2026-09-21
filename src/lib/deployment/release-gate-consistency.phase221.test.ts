@@ -112,7 +112,7 @@ describe("Phase 221 — security chain is first and cannot be reordered", () => 
   it("does not claim the rewrite was executed", () => {
     expect(flat(p221)).toMatch(/It remains unexecuted/);
     expect(flat(p221)).toMatch(/real repository and remote untouched/i);
-    expect(runbook).toMatch(/Status remains \*\*BLOCKED on §2\*\*/);
+    expect(runbook).toMatch(/A2 remains \*\*UNVERIFIED\*\*/);
   });
 });
 

@@ -79,8 +79,12 @@ export const EXPOSED_CREDENTIAL: CredentialIdentity = {
   secretLength: 33,
   path: "src/convex/auth/emailOtp.ts",
   blob: "e490ffda66bb5d8fcd63df8d49f5f8822126cc7f",
-  /** Unchanged across every measurement since Phase 198. */
-  carrierCommits: 270,
+  /**
+   * `--all` reachability in the current inventory artifact, including
+   * GitHub-managed pull refs the generator does not list. Writable heads/tags
+   * now measure 0; 269 remains via `refs/pull/1/head`.
+   */
+  carrierCommits: 269,
   retiredEnvNames: ["OTP_EMAIL_API_KEY", "VLY_APP_NAME"],
   thirdPartyEnvNames: [
     "VLY_EMAIL_API_KEY",
@@ -131,18 +135,18 @@ export interface RefExpectation {
  * subset is not an option: one surviving ref keeps the blob reachable.
  */
 export const AFFECTED_REF_EXPECTATIONS: readonly RefExpectation[] = [
-  { ref: "heads/arena/01a08e67-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
-  { ref: "heads/arena/01a0a5f5-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
-  { ref: "heads/arena/01a0a92b-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
-  { ref: "heads/arena/01a0ad26-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
-  { ref: "heads/arena/01a0adfb-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
-  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },
-  { ref: "heads/main", carrierCommits: 261, exposedAtTip: true },
-  { ref: "heads/phase-157-live-discovery-lifecycle", carrierCommits: 262, exposedAtTip: true },
-  { ref: "tags/rc-181", carrierCommits: 269, exposedAtTip: false },
+  { ref: "heads/arena/01a08e67-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
+  { ref: "heads/arena/01a0a5f5-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
+  { ref: "heads/arena/01a0a92b-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
+  { ref: "heads/arena/01a0ad26-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
+  { ref: "heads/arena/01a0adfb-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
+  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
+  { ref: "heads/main", carrierCommits: 0, exposedAtTip: false },
+  { ref: "heads/phase-157-live-discovery-lifecycle", carrierCommits: 0, exposedAtTip: false },
+  { ref: "tags/rc-181", carrierCommits: 0, exposedAtTip: false },
 ];
 
-/** Refs whose tip serves the blob today — the two that must never be deployed. */
+/** Writable refs whose tip still serves the blob. Empty after the heads/tags rewrite. */
 export const REFS_EXPOSED_AT_TIP: readonly string[] = AFFECTED_REF_EXPECTATIONS.filter(
   (entry) => entry.exposedAtTip,
 ).map((entry) => entry.ref);
@@ -291,7 +295,7 @@ export const A2_REQUIREMENTS: readonly RemediationEvidenceRequirement[] = [
     phase: "pre",
     operation: "A2",
     description:
-      "A rehearsal covering EVERY affected ref has been performed. The Phase 221 rehearsal covered five refs; three have never been rehearsed.",
+      "A rehearsal covering EVERY rewrite-scope ref has been performed. The nine-ref filter-repo rehearsal ran; the writable rewrite then landed on github.com. That does not verify A2 while GitHub-managed pull refs still reach the credential.",
     acceptableSources: ["local-tooling", "external-verification"],
   },
   {
@@ -432,11 +436,12 @@ export const MEASUREMENT_RECONCILIATION: readonly ReconciledMeasurement[] = [
   {
     fact: "reachable commits",
     superseded:
-      "306 (Phase 184) / 339 (Phase 198) / 365 (Phase 221 rehearsal) / 397 (Phase 233) / 398 (Phase 238)",
-    authoritative: "429 (docs/secret-remediation-refs.json, generator-produced)",
+      "306 (Phase 184) / 339 (Phase 198) / 365 (Phase 221 rehearsal) / 397 (Phase 233) / 398 (Phase 238) / 429 (Phase 249 pre-rewrite inventory)",
+    authoritative:
+      "840 (docs/secret-remediation-refs.json, generator-produced on a full github.com mirror after the writable rewrite)",
     measuredBy: "scripts/secret-ref-inventory.mjs",
     reason:
-      "the repository grows, so this figure is a timestamp, not a contradiction; the current artifact is the newest measurement and the carrier count has been 270 in every one of them, which is the evidence that the exposure itself has not changed",
+      "the repository grows, so this figure is a timestamp, not a contradiction; the current artifact is the newest measurement. Writable heads/tags measure 0 carriers; --all still records 269 via refs/pull/1/head",
   },
   {
     fact: "affected refs",
@@ -454,6 +459,16 @@ export const MEASUREMENT_RECONCILIATION: readonly ReconciledMeasurement[] = [
     measuredBy: "scripts/secret-ref-inventory.mjs",
     reason:
       "removal from HEAD is not remediation: `affected` and `exposedAtTip` are two different facts, and conflating them is the mistake the per-ref inventory was written to end",
+  },
+  {
+    fact: "writable-ref carriers after rewrite",
+    superseded:
+      "9 heads/tags affected, 270 carriers via --all, main and phase-157 EXPOSED AT TIP (through the Phase 249 inventory)",
+    authoritative:
+      "9 writable refs 0 carriers and all tips clean; --all still 269 via refs/pull/1/head; A2 UNVERIFIED; rewrite-verification.json absent",
+    measuredBy: "scripts/secret-ref-inventory.mjs",
+    reason:
+      "the nine writable refs were rewritten and force-pushed on github.com. That is not A2 verification: GitHub-managed refs/pull/1/head still reaches the leaked blob, the blob remains in the object database, and Support ticket #4773405 is the pending GitHub-side cleanup. Do not treat a heads/tags-only scan as A2 VERIFIED",
   },
 ];
 
@@ -594,7 +609,9 @@ export function manifestProblems(manifest: RemediationManifest): string[] {
   if (!manifest.issuer.identity.includes(".")) problems.push("issuer identity missing");
   if (manifest.affectedRefs.length === 0)
     problems.push("affected ref set is empty: an empty set is not 'nothing to rewrite'");
-  if (manifest.affectedRefs.some((entry) => entry.carrierCommits <= 0))
+  if (manifest.affectedRefs.some((entry) => entry.carrierCommits < 0))
+    problems.push("an affected ref declares a negative carrier count");
+  if (manifest.affectedRefs.some((entry) => entry.exposedAtTip && entry.carrierCommits <= 0))
     problems.push("an affected ref declares no carrier commits");
   if (manifest.affectedRefs.some((entry) => !entry.ref.includes("/")))
     problems.push("an affected ref is not a qualified ref name");

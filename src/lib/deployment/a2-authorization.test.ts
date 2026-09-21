@@ -3,9 +3,8 @@
  *
  * Pins the runbook restatement: §2 may be satisfied by issuer 401/403 (Path R)
  * or by a valid owner A1 compensating-controls filing that does not claim
- * revocation (Path C). Neither path is recorded on this tree. This suite does
- * not execute the rewrite, does not file the owner JSON, and does not mark A2
- * verified.
+ * revocation (Path C). Path C is recorded on this tree; Path R is not. This
+ * suite does not execute the rewrite and does not mark A2 verified.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -58,16 +57,18 @@ describe("A2 authorization — §2 paths", () => {
     expect(gate).toMatch(/issuer revocation, an exemption, this tooling filing the file/);
   });
 
-  it("stays BLOCKED on §2 because neither path is recorded on this tree", () => {
-    expect(runbook).toMatch(/Today \*\*neither path is recorded\*\*\. Status remains \*\*BLOCKED on §2\*\*/);
-    expect(runbook).toMatch(/Status remains \*\*BLOCKED on §2\*\*/);
-    expect(existsSync(resolve(root, A1_COMPENSATING_PROOF_PATH))).toBe(false);
+  it("records Path C without recording Path R, verifying A2, or starting §3", () => {
+    expect(runbook).toMatch(/Path C is \*\*recorded\*\*/);
+    expect(runbook).toMatch(/Path R is \*\*unrecorded\*\*/);
+    expect(runbook).toMatch(/A2 remains \*\*UNVERIFIED\*\*/);
+    expect(runbook).toMatch(/writable nine-ref rewrite \*\*has been executed\*\*/);
+    expect(existsSync(resolve(root, A1_COMPENSATING_PROOF_PATH))).toBe(true);
     expect(existsSync(resolve(root, PROOF_PATHS.a1Revocation))).toBe(false);
-    expect(existsSync(resolve(root, "docs/remediation"))).toBe(false);
+    expect(existsSync(resolve(root, "docs/remediation"))).toBe(true);
   });
 
   it("does not start §3, force-push, or touch main from this tooling", () => {
-    expect(runbook).toMatch(/This tooling does not start §3, does not force-push, and does not touch\n`main`/);
+    expect(runbook).toMatch(/This tooling does not start another §3, does not force-push/);
     expect(gate).toMatch(/This tooling does not start §3, does not force-push, and does not touch `main`/);
     expect(parseRewriteCoverage(runbook).find((row) => row.ref === "heads/main")?.before).toMatch(
       /51c9ddeb/,
@@ -76,12 +77,14 @@ describe("A2 authorization — §2 paths", () => {
 });
 
 describe("A2 authorization — rewriteable vs GitHub-managed refs", () => {
-  it("keeps the nine rewriteable refs and 270 carriers", () => {
+  it("keeps the nine rewriteable refs; writable carriers are 0; --all still 269", () => {
     expect(REWRITEABLE_REFS).toHaveLength(9);
     expect(inventory.refs.map((entry) => entry.ref)).toEqual(REWRITEABLE_REFS);
-    expect(inventory.refs.every((entry) => entry.affected)).toBe(true);
-    expect(inventory.carrierCommits).toBe(270);
-    expect(EXPOSED_CREDENTIAL.carrierCommits).toBe(270);
+    expect(inventory.refs.every((entry) => entry.affected)).toBe(false);
+    expect(inventory.refs.every((entry) => entry.carrierCommits === 0)).toBe(true);
+    expect(inventory.refs.every((entry) => entry.exposedAtTip === false)).toBe(true);
+    expect(inventory.carrierCommits).toBe(269);
+    expect(EXPOSED_CREDENTIAL.carrierCommits).toBe(269);
     expect(parseRewriteCoverage(runbook).map((row) => row.ref)).toEqual(REWRITEABLE_REFS);
   });
 
@@ -92,7 +95,7 @@ describe("A2 authorization — rewriteable vs GitHub-managed refs", () => {
     }
     expect(runbook).toMatch(/deny updating a hidden ref/);
     expect(runbook).toMatch(/GitHub Support must clear/);
-    expect(gate).toMatch(/GitHub Support clearing/);
+    expect(gate).toMatch(/GitHub Support ticket \*\*#4773405\*\*/);
     expect(runbook).toMatch(
       /A2 cannot be considered verified while any affected PR ref still reaches the\n {3}credential/,
     );
@@ -121,18 +124,17 @@ describe("A2 authorization — gate not weakened", () => {
     expect(verifyingSourcesFor(a2!)).toEqual(["external-verification"]);
   });
 
-  it("A1 stays UNVERIFIED and A2 stays UNVERIFIED on this tree", () => {
+  it("A1 is VERIFIED via Path C and A2 stays UNVERIFIED on this tree", () => {
     const { verdict } = deriveCurrentReleaseState();
     expect(verdict.prerequisites.find((entry) => entry.id === "A1_OTP_ISSUER_REVOCATION")?.state).toBe(
-      "UNVERIFIED",
+      "VERIFIED",
     );
     expect(verdict.prerequisites.find((entry) => entry.id === "A2_HISTORY_REWRITE")?.state).toBe(
       "UNVERIFIED",
     );
     expect(verdict.verdict).toBe("NOT READY");
-    expect(verdict.blockers).toEqual(
-      expect.arrayContaining(["A1_OTP_ISSUER_REVOCATION", "A2_HISTORY_REWRITE"]),
-    );
+    expect(verdict.blockers).not.toContain("A1_OTP_ISSUER_REVOCATION");
+    expect(verdict.blockers).toContain("A2_HISTORY_REWRITE");
   });
 
   it("Phase 221's 14-step order is still revoke → 401/403 → rewrite", () => {

@@ -5979,8 +5979,9 @@ sender.
 ## A1 compensating-controls path (issuer unavailable)
 
 This is not a new phase heading. It records an auditable A1 path that does
-**not** claim issuer revocation and does **not** satisfy the release gate on
-this checkout.
+**not** claim issuer revocation. Path C is recorded on this checkout; A1 is
+VERIFIED via `owner-risk-acceptance`. That does **not** verify A2 or the
+release.
 
 ### What already existed
 
@@ -6012,7 +6013,7 @@ was copied.
 - issuer confirmation that this fingerprint was revoked
 - invalidation of the shared scaffold key across other projects
 
-### The owner-filed path (unfiled)
+### The owner-filed path (filed)
 
 Schema `a1.compensating-controls/v1` at
 `docs/remediation/a1-compensating-controls.json`. Required fields: `schema`,
@@ -6029,17 +6030,23 @@ The gate accepts `owner-risk-acceptance` **only** for A1, via
 `acceptedSources`. EMAIL, Convex, Evidence D, and A2 still require
 `external-verification`. A1 stays `exemptible: false`. The reader observes the
 runtime sources independently; a filed `controlsProven: true` cannot substitute
-for them. This checkout does **not** contain the file. Nothing here self-certifies
-A1.
+for them. This checkout **does** contain
+`docs/remediation/a1-compensating-controls.json` (`revocationClaimed: false`).
+Nothing here self-certifies A2.
 
 ### A2
 
-Unchanged and unexecuted on this tree. Owner acceptance of A1
-compensating-controls would not rewrite history, would not clear `refs/pull/*`,
-and would not mark `A2_HISTORY_REWRITE` verified. See the A2 authorization
-section below for how Path C relates to runbook §2.
+Path C did not rewrite history, did not clear `refs/pull/*`, and did not mark
+`A2_HISTORY_REWRITE` verified. The writable nine-ref rewrite later landed on
+github.com independently of Path C. A2 stays UNVERIFIED while
+`refs/pull/1/head` still reaches the credential. See the A2 authorization
+section below.
 
-**A1 status on this tree: UNVERIFIED** (no issuer attestation, no owner file).
+**A1 status on this tree: VERIFIED** via `owner-risk-acceptance` (Path C recorded;
+Path R unrecorded; no issuer 401/403).
+**A2 status on this tree: UNVERIFIED** (writable nine-ref rewrite executed;
+`refs/pull/1/head` still reaches the credential; Support **#4773405** pending;
+`rewrite-verification.json` absent).
 **Release decision: NOT READY.**
 
 ---
@@ -6067,25 +6074,30 @@ the gate itself can read as VERIFIED without claiming revocation.
 | R | issuer confirmation + authenticated 401/403 | a timeout, HTTP 000, or a document |
 | C | owner-filed `a1.compensating-controls/v1` with `revocationClaimed: false`, A1 VERIFIED at the gate | issuer revocation, an exemption, this tooling filing the file |
 
-Today neither path is recorded. Status remains **BLOCKED on §2**. This checkout
-does not contain `docs/remediation/a1-compensating-controls.json`. A2 stays
-UNVERIFIED.
+Path C is **recorded**. Path R is **unrecorded**. A1 is **VERIFIED** via
+`owner-risk-acceptance`. The writable nine-ref rewrite **has been executed**
+on github.com. A2 remains **UNVERIFIED**. This checkout contains
+`docs/remediation/a1-compensating-controls.json` (`revocationClaimed: false`).
+`docs/rewrite-verification.json` is **absent**.
 
-If Path C is later recorded, an authorized human may start §3. Remaining work
-that this repository cannot finish:
+This tooling does not start another §3. Remaining work that this repository
+cannot finish:
 
-- explicit operator approval (no tool may grant it)
-- `git filter-repo --replace-text` of the nine rewriteable refs, never from
-  `main` as the working context
-- GitHub Support clearing `refs/pull/1/head`, `refs/pull/2/head`,
-  `refs/pull/2/merge`, `refs/pull/3/head`, `refs/pull/3/merge`,
-  `refs/pull/4/head`, `refs/pull/4/merge` — GitHub rejects ordinary pushes with
-  `deny updating a hidden ref`
-- a post-rewrite **remote** scan covering heads, tags, **and** every remaining
-  pull ref, with the scanner's positive control
+- GitHub Support ticket **#4773405** (already submitted — do not duplicate)
+  clearing remaining GitHub-managed refs, especially `refs/pull/1/head`
+  which still reaches **269** carrier commits. GitHub rejects ordinary pushes
+  with `deny updating a hidden ref`. The other advertised pull refs
+  (`refs/pull/2/head`, `refs/pull/2/merge`, `refs/pull/3/head`,
+  `refs/pull/3/merge`, `refs/pull/4/head`, `refs/pull/4/merge`) currently
+  measure 0 carriers but still exist
+- a post-cleanup **remote** scan covering heads, tags, **and** every remaining
+  pull ref, with the scanner's positive control — A2 cannot be considered
+  verified while any affected PR ref still reaches the credential
 - residual risk: the shared key is still live at the issuer under Path C
+- Issue **#5** stays OPEN
 
 This tooling does not start §3, does not force-push, and does not touch `main`.
 
-**A2 status on this tree: UNVERIFIED / unexecuted.**
+**A2 status on this tree: UNVERIFIED** (writable rewrite executed; hidden
+`refs/pull/1/head` still reaches the credential).
 **Release decision: NOT READY.**

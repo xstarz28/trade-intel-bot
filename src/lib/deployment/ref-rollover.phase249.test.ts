@@ -247,12 +247,12 @@ describe("249 — the rollover is detected and reconciled against the real repos
 
     const measured = artifact.refs.find((entry) => entry.ref === ROLLED_OVER_REF);
     expect(measured, "the ninth ref must have its own measured row").toBeDefined();
-    expect(measured?.affected).toBe(true);
-    expect(measured?.carrierCommits).toBe(269);
-    // Clean at the tip AND affected: the two facts coexist, and the runbook's own
-    // wording is that tip-cleanliness is not remediation.
+    expect(measured?.affected).toBe(false);
+    expect(measured?.carrierCommits).toBe(0);
+    // Clean at the tip AND no longer a writable carrier: the rewrite landed.
+    // That is not A2 verification — pull/1 still reaches the blob.
     expect(measured?.exposedAtTip).toBe(false);
-    expect(artifact.historyCommits).toBe(429);
+    expect(artifact.historyCommits).toBe(840);
 
     // Depth-branched, following the Phase 233 guard. In a FULL clone there is no
     // excuse: the ninth ref's advertised tip must be present locally and its
@@ -297,7 +297,7 @@ describe("249 — the rollover is detected and reconciled against the real repos
         ["rev-list", "--count", tip],
         { encoding: "utf8" },
       ).trim();
-      expect(Number(reachable)).toBeGreaterThan(measured?.carrierCommits ?? 0);
+      expect(Number(reachable)).toBeGreaterThan(0);
     } else {
       console.log(
         `Phase 249: full-history re-verification of ${ROLLED_OVER_REF} DEFERRED — this checkout ` +
@@ -354,7 +354,8 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(artifact.fingerprint).toBe(REMEDIATION_MANIFEST.credential.fingerprint);
     expect(artifact.refs.every((entry) => !entry.affected || entry.carrierCommits > 0)).toBe(true);
     const ninth = artifact.refs.find((entry) => entry.ref === ROLLED_OVER_REF);
-    expect(ninth?.carrierCommits).toBeGreaterThan(0);
+    expect(ninth?.affected).toBe(false);
+    expect(ninth?.carrierCommits).toBe(0);
   });
 
   it("5. never classifies an unaffected ref as affected", () => {
@@ -377,9 +378,9 @@ describe("249 — the rollover is detected and reconciled against the real repos
     // Their facts are what they always were: the rollover added a row, it did not
     // re-adjudicate the eight.
     const main = artifact.refs.find((e) => e.ref === "heads/main");
-    expect(main?.carrierCommits).toBe(261);
-    expect(main?.exposedAtTip).toBe(true);
-    expect(artifact.carrierCommits).toBe(270);
+    expect(main?.carrierCommits).toBe(0);
+    expect(main?.exposedAtTip).toBe(false);
+    expect(artifact.carrierCommits).toBe(269);
   });
 
   it("7. refuses to let an affected ref disappear from the canonical scope", () => {
@@ -407,8 +408,8 @@ describe("249 — the rollover is detected and reconciled against the real repos
   it("9. makes the affected-ref count equal the canonical inventory", () => {
     const assessment = evaluateRefRollover(realInput());
     expect(assessment.reconciled, assessment.problems.join("\n")).toBe(true);
-    expect(assessment.affectedRefCount).toBe(9);
-    expect(assessment.affectedRefs).toEqual([...artifact.refs.filter((r) => r.affected).map((r) => r.ref)].sort());
+    expect(assessment.affectedRefCount).toBe(0);
+    expect(assessment.affectedRefs).toEqual([]);
     expect(AFFECTED_REF_EXPECTATIONS).toHaveLength(9);
   });
 
@@ -416,7 +417,8 @@ describe("249 — the rollover is detected and reconciled against the real repos
     const live = liveRefsOrFail();
     const assessment = evaluateRefRollover(realInput(live));
     expect(live).toHaveLength(artifact.refs.length);
-    expect(assessment.liveRefCount).toBe(assessment.affectedRefCount);
+    expect(assessment.liveRefCount).toBe(9);
+    expect(assessment.affectedRefCount).toBe(0);
     expect(parseDeclaredRefCount(RUNBOOK)).toBe(live.length);
     // Every live ref is accounted for by all three layers.
     expect(assessment.unaccountedRefs).toEqual([]);
@@ -436,13 +438,11 @@ describe("249 — the rollover is detected and reconciled against the real repos
     ]);
   });
 
-  it("12. still represents main as the existing affected ref exposed at its tip", () => {
+  it("12. represents main as rewrite-scope, clean at tip, with 0 writable carriers", () => {
     const assessment = evaluateRefRollover(realInput());
-    expect(assessment.affectedRefs).toContain("heads/main");
-    expect(assessment.exposedAtTipRefs).toEqual([
-      "heads/main",
-      "heads/phase-157-live-discovery-lifecycle",
-    ]);
+    expect(artifact.refs.find((e) => e.ref === "heads/main")?.affected).toBe(false);
+    expect(assessment.affectedRefs).not.toContain("heads/main");
+    expect(assessment.exposedAtTipRefs).toEqual([]);
     expect(tipStatusSaysExposed("**EXPOSED AT TIP**")).toBe(true);
     expect(tipStatusSaysExposed("**clean**")).toBe(false);
   });
@@ -622,9 +622,9 @@ describe("249 — the rollover is detected and reconciled against the real repos
   it("23. represents the Issue #5 scope without changing remediation semantics", () => {
     // The runbook still blocks the rewrite on rotation, and still says a clean tip
     // is not remediation — the rollover added a row, not a verdict.
-    expect(RUNBOOK).toMatch(/Rotation gate — \*\*BLOCKED\*\*/);
-    expect(RUNBOOK).toMatch(/removal from HEAD is not\s+remediation/i);
-    expect(RUNBOOK).toMatch(/All nine refs still carry it in\s+reachable history/);
+    expect(RUNBOOK).toMatch(/Rotation gate — Path C recorded; Path R \*\*BLOCKED\*\*/);
+    expect(RUNBOOK).toMatch(/Removal from HEAD was never remediation/i);
+    expect(RUNBOOK).toMatch(/A2 stays UNVERIFIED/);
     expect(RUNBOOK).toMatch(/\*\*All nine\*\*/);
     expect(RUNBOOK).toMatch(/Phase 249 note/);
     // Growth is recorded as growth, with the carrier count unchanged as the proof
@@ -903,16 +903,16 @@ describe("249 — every layer that can drift is refused by name", () => {
 describe("249 — the three artefacts agree, and only the ninth row was added", () => {
   it("the inventory artifact is the measured nine-ref set", () => {
     expect(artifact.refs).toHaveLength(9);
-    expect(artifact.refs.every((entry) => entry.affected)).toBe(true);
-    expect(artifact.historyCommits).toBe(429);
-    expect(artifact.carrierCommits).toBe(270);
+    expect(artifact.refs.every((entry) => entry.affected === false)).toBe(true);
+    expect(artifact.historyCommits).toBe(840);
+    expect(artifact.carrierCommits).toBe(269);
     expect(artifact.generatedBy).toBe(REMEDIATION_MANIFEST.inventory.generator);
   });
 
   it("the canonical manifest carries the ninth row with the measured facts", () => {
     const ninth = AFFECTED_REF_EXPECTATIONS.find((entry) => entry.ref === ROLLED_OVER_REF);
     expect(ninth).toBeDefined();
-    expect(ninth?.carrierCommits).toBe(269);
+    expect(ninth?.carrierCommits).toBe(0);
     expect(ninth?.exposedAtTip).toBe(false);
     // The manifest is still a copy of the measurement, ref by ref.
     for (const expectation of AFFECTED_REF_EXPECTATIONS) {
@@ -925,7 +925,7 @@ describe("249 — the three artefacts agree, and only the ninth row was added", 
   it("the runbook records the ninth ref in both of its tables", () => {
     const exposure = parseExposureFacts(RUNBOOK).find((row) => row.ref === ROLLED_OVER_REF);
     expect(exposure?.tipStatus).toMatch(/clean/);
-    expect(exposure?.occurrences).toBe(269);
+    expect(exposure?.occurrences).toBe(0);
     expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).toContain(ROLLED_OVER_REF);
     // The rewrite section still says what it covers, and the number is nine.
     expect(parseDeclaredRefCount(RUNBOOK)).toBe(9);
@@ -942,7 +942,7 @@ describe("249 — the three artefacts agree, and only the ninth row was added", 
     expect(entry?.superseded).toContain("01a0adfb");
     expect(entry?.reason).toContain("01a0b293");
     const reachable = MEASUREMENT_RECONCILIATION.find((row) => row.fact === "reachable commits");
-    expect(reachable?.authoritative).toContain("429");
-    expect(reachable?.superseded).toContain("398");
+    expect(reachable?.authoritative).toContain("840");
+    expect(reachable?.superseded).toContain("429");
   });
 });

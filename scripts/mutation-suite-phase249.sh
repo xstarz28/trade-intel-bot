@@ -297,7 +297,7 @@ echo "baseline probe: $BASELINE_PROBE"
 # Values only, in summarise_probe's key order:
 #   state reconciled live affected exposedAtTip unaccounted carrier history digest
 #   remediated rewritten a2Verified trustworthy problems firstProblem added
-EXPECTED_PROBE="ROLLOVER_RECONCILED|yes|9|9|2|0|270|429|199777a8|no|no|no|yes|0|none|heads/arena/01a0b293-trade-intel-bot"
+EXPECTED_PROBE="ROLLOVER_RECONCILED|yes|9|0|0|0|269|840|463f2d78|no|no|no|yes|0|none|heads/arena/01a0b293-trade-intel-bot"
 if [ "$BASELINE_PROBE" != "$EXPECTED_PROBE" ]; then
   echo "FATAL: the baseline probe is not the expected reconciled nine-ref scope"
   echo "       expected: $EXPECTED_PROBE"
@@ -307,7 +307,7 @@ fi
 echo "baseline generator probe: dry-run behind the recording shim (this reads the remote)"
 BASELINE_GEN=$(gen_probe)
 echo "  $BASELINE_GEN"
-EXPECTED_GEN="rc=0|writes=same|net=0|forbiddenGit=0|subcommands=cat-file,ls-remote,rev-list,rev-parse,|carrier=270"
+EXPECTED_GEN="rc=0|writes=same|net=0|forbiddenGit=0|subcommands=cat-file,ls-remote,rev-list,rev-parse,|carrier=269"
 if [ "$BASELINE_GEN" != "$EXPECTED_GEN" ]; then
   echo "FATAL: the generator probe is not the expected read-only one"
   echo "       expected: $EXPECTED_GEN"
@@ -517,7 +517,7 @@ mutate "M14 hardcode the old eight-ref scope by dropping the ninth row" catch <<
 import sys
 p = "src/lib/deployment/remediation-manifest.ts"
 s = open(p).read()
-old = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },\n'
+old = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },\n'
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
 open(p, "w").write(s.replace(old, ""))
 PY
@@ -526,7 +526,7 @@ mutate "M15 remove an existing affected ref from the canonical scope" catch <<'P
 import sys
 p = "src/lib/deployment/remediation-manifest.ts"
 s = open(p).read()
-old = '  { ref: "heads/arena/01a0a92b-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },\n'
+old = '  { ref: "heads/arena/01a0a92b-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },\n'
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
 open(p, "w").write(s.replace(old, ""))
 PY
@@ -535,7 +535,7 @@ mutate "M16 add an unrelated ref to the canonical scope" catch <<'PY'
 import sys
 p = "src/lib/deployment/remediation-manifest.ts"
 s = open(p).read()
-old = '  { ref: "heads/main", carrierCommits: 261, exposedAtTip: true },'
+old = '  { ref: "heads/main", carrierCommits: 0, exposedAtTip: false },'
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
 new = '  { ref: "heads/some-unrelated-branch", carrierCommits: 1, exposedAtTip: false },\n' + old
 open(p, "w").write(s.replace(old, new))
@@ -545,9 +545,9 @@ mutate "M17 declare the ninth ref unaffected while the measurement says otherwis
 import sys
 p = "src/lib/deployment/remediation-manifest.ts"
 s = open(p).read()
-old = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },'
+old = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },'
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
-new = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },'
+new = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },'
 open(p, "w").write(s.replace(old, new))
 PY
 
@@ -555,9 +555,9 @@ mutate "M18 declare the ninth ref exposed at its tip when it is not" catch <<'PY
 import sys
 p = "src/lib/deployment/remediation-manifest.ts"
 s = open(p).read()
-old = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 269, exposedAtTip: false },'
+old = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },'
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
-new = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 269, exposedAtTip: true },'
+new = '  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 0, exposedAtTip: true },'
 open(p, "w").write(s.replace(old, new))
 PY
 
@@ -592,7 +592,7 @@ mutate "M22 accept an unaffected ref listed for rewriting" catch <<'PY'
 import sys
 p = "src/lib/deployment/ref-rollover-reconciliation.ts"
 s = open(p).read()
-old = "    if (!entry.affected && coverageRefs.has(entry.ref)) {"
+old = "    if (!entry.affected && coverageRefs.has(entry.ref) && measuredAffected.length > 0) {"
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
 open(p, "w").write(s.replace(old, "    if (false) {"))
 PY
@@ -634,7 +634,7 @@ mutate "M26 move the canonical carrier total off the recorded exposure" catch <<
 import sys
 p = "src/lib/deployment/remediation-manifest.ts"
 s = open(p).read()
-old = "carrierCommits: 270,"
+old = "carrierCommits: 269,"
 if s.count(old) < 1: sys.exit("anchor not found")
 open(p, "w").write(s.replace(old, "carrierCommits: 271,", 1))
 PY
@@ -652,7 +652,7 @@ mutate "M28 rewrite the reachable-commit count back to the superseded 398" catch
 import sys
 p = "src/lib/deployment/remediation-manifest.ts"
 s = open(p).read()
-old = '    authoritative: "429 (docs/secret-remediation-refs.json, generator-produced)",'
+old = '    authoritative: "840 (docs/secret-remediation-refs.json, generator-produced on a full github.com mirror after the writable rewrite)",'
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
 open(p, "w").write(s.replace(old, '    authoritative: "398 (docs/secret-remediation-refs.json, generator-produced)",'))
 PY
@@ -683,7 +683,7 @@ mutate "M31 drop the ninth ref from the runbook's exposure table" catch <<'PY'
 import sys
 p = "docs/SECRET-REMEDIATION-RUNBOOK.md"
 s = open(p).read()
-old = "| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 269 |\n"
+old = "| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 0 |\n"
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
 open(p, "w").write(s.replace(old, ""))
 PY
@@ -719,25 +719,25 @@ mutate "M35 record the ninth ref as unaffected in the exposure table" catch <<'P
 import sys
 p = "docs/SECRET-REMEDIATION-RUNBOOK.md"
 s = open(p).read()
-old = "| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 269 |"
+old = "| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 0 |"
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
-open(p, "w").write(s.replace(old, "| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 0 |"))
+open(p, "w").write(s.replace(old, "| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 269 |"))
 PY
 
 mutate "M36 treat tip-cleanliness as sufficient by relabeling main as clean" catch <<'PY'
 import sys
 p = "docs/SECRET-REMEDIATION-RUNBOOK.md"
 s = open(p).read()
-old = "| `refs/heads/main` | **EXPOSED AT TIP** | 261 |"
+old = "| `refs/heads/main` | **clean** | 0 |"
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
-open(p, "w").write(s.replace(old, "| `refs/heads/main` | **clean** | 261 |"))
+open(p, "w").write(s.replace(old, "| `refs/heads/main` | **EXPOSED AT TIP** | 0 |"))
 PY
 
 mutate "M37 let one ref satisfy two rows of the exposure table" catch <<'PY'
 import sys
 p = "docs/SECRET-REMEDIATION-RUNBOOK.md"
 s = open(p).read()
-old = "| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 269 |\n"
+old = "| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 0 |\n"
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
 open(p, "w").write(s.replace(old, old + old))
 PY
@@ -819,7 +819,7 @@ mutate "M44 ignore a missing rewrite-coverage row for an affected ref" catch <<'
 import sys
 p = "src/lib/deployment/ref-rollover-reconciliation.ts"
 s = open(p).read()
-old = "    if (measured?.affected && !coverageRefs.has(ref)) {"
+old = "    if (mustCover && !coverageRefs.has(ref)) {"
 if s.count(old) != 1: sys.exit("anchor not found exactly once")
 open(p, "w").write(s.replace(old, "    if (false) {"))
 PY
@@ -890,7 +890,7 @@ d = json.load(open(p, encoding="utf-8"))
 hit = False
 for r in d["refs"]:
     if r["ref"] == "heads/arena/01a0b293-trade-intel-bot":
-        r["affected"] = False; r["carrierCommits"] = 0; hit = True
+        r["affected"] = True; r["carrierCommits"] = 269; hit = True
 if not hit: sys.exit("the ninth ref was not in the artefact")
 open(p, "w", encoding="utf-8").write(json.dumps(d, indent=2) + "\n")
 PY
@@ -908,7 +908,7 @@ mutate "M53 move the carrier total in the artefact off the recorded exposure" ca
 import sys, json
 p = "docs/secret-remediation-refs.json"
 d = json.load(open(p, encoding="utf-8"))
-if d.get("carrierCommits") != 270: sys.exit("unexpected carrier total")
+if d.get("carrierCommits") != 269: sys.exit("unexpected carrier total")
 d["carrierCommits"] = 271
 open(p, "w", encoding="utf-8").write(json.dumps(d, indent=2) + "\n")
 PY

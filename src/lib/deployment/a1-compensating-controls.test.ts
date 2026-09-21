@@ -1,9 +1,9 @@
 /**
  * A1 compensating-controls path: issuer unavailable, revocation not claimed.
  *
- * The file the owner would file is unfiled in this tree. These cases prove the
- * evaluator, the observer, and the reader — they do not file the attestation
- * and they do not satisfy the release gate on this checkout.
+ * The owner Path C file is filed on this tree. These cases prove the evaluator,
+ * the observer, and the reader. Path C does not claim issuer revocation and does
+ * not verify A2 or the release.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -251,15 +251,48 @@ describe("A1 compensating-controls — gate contract", () => {
 });
 
 describe("A1 compensating-controls — current tree and reader", () => {
-  it("the compensating-controls file is unfiled, and A1 stays UNVERIFIED", () => {
+  it("the owner-filed Path C file verifies A1 without verifying A2 or claiming revocation", () => {
     expect(PROOF_PATHS.a1CompensatingControls).toBe(A1_COMPENSATING_PROOF_PATH);
-    expect(existsSync(resolve(root, A1_COMPENSATING_PROOF_PATH))).toBe(false);
+    expect(existsSync(resolve(root, A1_COMPENSATING_PROOF_PATH))).toBe(true);
+    const body = JSON.parse(read(A1_COMPENSATING_PROOF_PATH)) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual(
+      [
+        "accepted",
+        "acceptedAt",
+        "acceptedBy",
+        "environment",
+        "fingerprint",
+        "issuer",
+        "issuerContacted",
+        "kind",
+        "prerequisite",
+        "rationale",
+        "residualRisk",
+        "revocationClaimed",
+        "schema",
+        "source",
+      ].sort(),
+    );
+    expect(body.revocationClaimed).toBe(false);
+    expect(body.issuerContacted).toBe(false);
+    expect(typeof body.acceptedAt).toBe("number");
+    const report = assess(body, undefined, { now: (body.acceptedAt as number) + 60_000 });
+    expect(report.outcome).toBe("ADMISSIBLE");
+    expect(report.admissible).toBe(true);
+    expect(report.revocationClaimed).toBe(false);
+    const record = a1CompensatingControlsToEvidence(report);
+    expect(record.status).toBe("VERIFIED");
+    expect(record.source).toBe("owner-risk-acceptance");
+    expect(record.detail).not.toMatch(/revoked|401|403/);
     const { facts, verdict } = deriveCurrentReleaseState();
-    expect(facts.proofFilesPresent).not.toContain(A1_COMPENSATING_PROOF_PATH);
+    expect(facts.proofFilesPresent).toContain(A1_COMPENSATING_PROOF_PATH);
     const a1 = verdict.prerequisites.find((entry) => entry.id === A1_COMPENSATING_PREREQUISITE);
-    expect(a1?.state).toBe("UNVERIFIED");
+    expect(a1?.state).toBe("VERIFIED");
+    expect(verdict.prerequisites.find((entry) => entry.id === "A2_HISTORY_REWRITE")?.state).not.toBe(
+      "VERIFIED",
+    );
     expect(verdict.verdict).toBe("NOT READY");
-    expect(verdict.blockers).toContain(A1_COMPENSATING_PREREQUISITE);
+    expect(verdict.blockers).not.toContain(A1_COMPENSATING_PREREQUISITE);
     expect(verdict.blockers).toContain("A2_HISTORY_REWRITE");
   });
 
@@ -286,8 +319,6 @@ describe("A1 compensating-controls — current tree and reader", () => {
     );
     expect(state.verdict.verdict).toBe("NOT READY");
     expect(state.facts.proofFilesPresent).toContain(A1_COMPENSATING_PROOF_PATH);
-    // the real tree was not written
-    expect(existsSync(resolve(root, A1_COMPENSATING_PROOF_PATH))).toBe(false);
   });
 
   it("an in-memory filing without the runtime sources is BLOCKED, not VERIFIED", () => {

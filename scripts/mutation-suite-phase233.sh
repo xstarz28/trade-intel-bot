@@ -66,27 +66,27 @@ trap 'restore; for f in "${TARGETS[@]}"; do rm -f "$f.p233bak"; done' EXIT
 
 # The environment the perl programs read. Exported once, so the heredocs stay
 # free of shell quoting concerns entirely.
-export RB_0867_ROW='| `refs/heads/arena/01a08e67-trade-intel-bot` | **clean** | 269 |'
-export RB_MAIN_ROW='| `refs/heads/main` | **EXPOSED AT TIP** | 261 |'
-export RB_MAIN_CLEAN='| `refs/heads/main` | **clean** | 261 |'
-export RB_RC181_ROW='| `refs/tags/rc-181` | **clean** | 269 |'
-export RB_RC181_ZERO='| `refs/tags/rc-181` | **clean** | 0 |'
+export RB_0867_ROW='| `refs/heads/arena/01a08e67-trade-intel-bot` | **clean** | 0 |'
+export RB_MAIN_ROW='| `refs/heads/main` | **clean** | 0 |'
+export RB_MAIN_EXPOSED='| `refs/heads/main` | **EXPOSED AT TIP** | 0 |'
+export RB_RC181_ROW='| `refs/tags/rc-181` | **clean** | 0 |'
+export RB_RC181_INFLATE='| `refs/tags/rc-181` | **clean** | 269 |'
 export RB_AD26_ROW='| `heads/arena/01a0ad26-trade-intel-bot` | *added Phase 233* | *not rehearsed* |'
-export RB_A92B_ROW='| `refs/heads/arena/01a0a92b-trade-intel-bot` | **clean** | 269 |'
-export RB_ALL_SEVEN='**All seven**'
+export RB_A92B_ROW='| `refs/heads/arena/01a0a92b-trade-intel-bot` | **clean** | 0 |'
+export RB_ALL_NINE='**All nine**'
 export RB_ALL_FIVE='**All five**'
 export ART_MAIN_TRUE='"ref": "heads/main",
-      "affected": true,
-      "carrierCommits": 261,
-      "exposedAtTip": true'
+      "affected": false,
+      "carrierCommits": 0,
+      "exposedAtTip": false'
 export ART_MAIN_FALSE='"ref": "heads/main",
       "affected": true,
-      "carrierCommits": 261,
-      "exposedAtTip": false'
+      "carrierCommits": 0,
+      "exposedAtTip": true'
 export ART_DROP_REF='    {
       "ref": "heads/arena/01a0ad26-trade-intel-bot",
-      "affected": true,
-      "carrierCommits": 269,
+      "affected": false,
+      "carrierCommits": 0,
       "exposedAtTip": false
     },
 '
@@ -145,13 +145,13 @@ mutate "G3 duplicate the 01a08e67 row (Phase 198 defect)" "$RUNBOOK" catch '
 s|\Q$ENV{RB_0867_ROW}\E|$ENV{RB_0867_ROW}\n$ENV{RB_0867_ROW}|' "$TEST"
 
 mutate "G4 relabel main tip as clean" "$RUNBOOK" catch '
-s|\Q$ENV{RB_MAIN_ROW}\E|$ENV{RB_MAIN_CLEAN}|' "$TEST"
+s|\Q$ENV{RB_MAIN_ROW}\E|$ENV{RB_MAIN_EXPOSED}|' "$TEST"
 
 mutate "G5 zero rc-181 occurrence count" "$RUNBOOK" catch '
-s|\Q$ENV{RB_RC181_ROW}\E|$ENV{RB_RC181_ZERO}|' "$TEST"
+s|\Q$ENV{RB_RC181_ROW}\E|$ENV{RB_RC181_INFLATE}|' "$TEST"
 
 mutate "G6 revert summary to All five" "$RUNBOOK" catch '
-s|\Q$ENV{RB_ALL_SEVEN}\E|$ENV{RB_ALL_FIVE}|' "$TEST"
+s|\Q$ENV{RB_ALL_NINE}\E|$ENV{RB_ALL_FIVE}|' "$TEST"
 
 # ── the artifact going stale ──────────────────────────────────────────
 mutate "G7 artifact flips main exposedAtTip to false" "$ARTIFACT" catch '
@@ -180,13 +180,13 @@ s|\Q    if (ref.endsWith("^{}")) continue;\E\n||' "$TEST"
 
 # ── the rule set deleting itself ──────────────────────────────────────
 mutate "G13 affected-ref-missing-from-coverage rule deleted" "$FACTS" catch '
-s|\Q    if (entry.affected && !coveredRefs.includes(entry.ref)) {\E|    if (false) {|' "$TEST"
+s|\Q    if (mustCover && !coveredRefs.includes(entry.ref)) {\E|    if (false) {|' "$TEST"
 
 mutate "G14 duplicate-row rule deleted" "$FACTS" catch '
 s|\Q  for (const ref of duplicateRefs(exposedRefs)) {\E|  for (const ref of []) {|' "$TEST"
 
 mutate "G15 unaffected-labelled-affected rule deleted" "$FACTS" catch '
-s|\Q    if (!entry.affected && coveredRefs.includes(entry.ref)) {\E|    if (false) {|' "$TEST"
+s|\Q    if (!entry.affected && coveredRefs.includes(entry.ref) && anyInventoriedAffected) {\E|    if (false) {|' "$TEST"
 
 mutate "G16 tip-status comparison deleted" "$FACTS" catch '
 s|\Q    if (entry.exposedAtTip !== isMarkedExposedAtTip(row)) {\E|    if (false) {|' "$TEST"

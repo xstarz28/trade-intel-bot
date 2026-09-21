@@ -519,7 +519,7 @@ export function evaluateA2Readiness(request: A2ReadinessRequest): A2ReadinessRep
       );
     }
     advisories.push(
-      "the rewrite is rehearsed for five refs only; three affected branches have never been through a rehearsal",
+      "the writable nine-ref rewrite has landed on github.com; do not rewrite again. A2 stays unverified while GitHub-managed pull refs still reach the credential (Support #4773405 pending)",
     );
     return {
       operation: "A2",

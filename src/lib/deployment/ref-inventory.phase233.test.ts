@@ -315,7 +315,8 @@ describe("the real runbook agrees with the real remote", () => {
     const inventory = parseVerifiedInventory(INVENTORY_JSON);
     expect(inventory.fingerprint).toBe("b1ce18a1e85ba121");
     expect(inventory.refs.length).toBeGreaterThan(0);
-    expect(inventory.refs.some((r) => r.affected)).toBe(true);
+    expect(inventory.refs.every((r) => r.affected === false)).toBe(true);
+    expect(inventory.carrierCommits).toBe(269);
   });
 
   it("has no inconsistency between live refs, measurement and runbook", () => {
@@ -343,14 +344,12 @@ describe("the real runbook agrees with the real remote", () => {
     }
   });
 
-  it("records no ref as unaffected while all seven are in fact affected", () => {
+  it("keeps rewrite coverage of the nine writable refs after they measure unaffected", () => {
     const inventory = parseVerifiedInventory(INVENTORY_JSON);
-    const unaffected = inventory.refs.filter((r) => !r.affected);
-    for (const entry of unaffected) {
-      expect(
-        parseRewriteCoverage(RUNBOOK).map((r) => r.ref),
-        `${entry.ref} is unaffected and must not be in the rewrite map`,
-      ).not.toContain(entry.ref);
+    const covered = new Set(parseRewriteCoverage(RUNBOOK).map((r) => r.ref));
+    expect(inventory.refs.every((r) => r.affected === false)).toBe(true);
+    for (const entry of inventory.refs) {
+      expect(covered, `${entry.ref} remains in the executed rewrite map`).toContain(entry.ref);
     }
   });
 

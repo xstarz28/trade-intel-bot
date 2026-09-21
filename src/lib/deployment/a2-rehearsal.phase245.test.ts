@@ -621,7 +621,7 @@ describe("245 — the tool cannot reach a remote mutation (cases 24-25)", () => 
   it("26. the current real project state is still not ready", () => {
     const verdict = currentReleaseVerdict();
     expect(verdict.verdict).toBe("NOT READY");
-    expect(verdict.blockers).toContain("A1_OTP_ISSUER_REVOCATION");
+    expect(verdict.blockers).not.toContain("A1_OTP_ISSUER_REVOCATION");
     expect(verdict.blockers).toContain("A2_HISTORY_REWRITE");
     expect(verdict.ready).toBe(false);
     expect(verdict.evaluationError).toBeUndefined();

@@ -22,13 +22,12 @@
  * second hardcoded list would be exactly the defect Phase 233 removed.
  *
  * WHAT RECONCILIATION IS NOT
- * Reconciling a nine-ref inventory is **not** remediating it. The scope grew
- * because a branch was pushed; the credential is still reachable from every one
- * of those refs, the carrier count is unchanged, and §2 of the runbook still
- * blocks §3. This module therefore reports `remediationPerformed`,
- * `rewriteExecuted` and `a2Verified` as constant `false` and refuses to derive
- * any of them from a successful reconciliation — an inventory that grew is a
- * larger job, not a finished one.
+ * Reconciling a nine-ref inventory is **not** remediating it. The writable
+ * heads/tags rewrite has landed; GitHub-managed pull refs still reach the
+ * credential, so A2 stays unverified. This module therefore reports
+ * `remediationPerformed`, `rewriteExecuted` and `a2Verified` as constant
+ * `false` and refuses to derive any of them from a successful reconciliation
+ * — a correctly scoped inventory is a job, not a finished one.
  *
  * PURITY
  * No filesystem, no network, no clock and no process: every input is injected, so
@@ -375,12 +374,18 @@ export function evaluateRefRollover(input: RolloverInput): RolloverAssessment {
       continue;
     }
     if (!measured.affected) {
-      refuse(
-        "MANIFEST_EXTRA_REF",
-        `the manifest lists ${entry.ref} as affected but the measurement found no carrier commit ` +
-          `for it: classifying an unaffected ref as affected invents scope`,
-      );
-      continue;
+      // Mixed world (some inventoried refs still affected): listing an
+      // unaffected ref as rewrite-scope invents work. After the writable
+      // rewrite every inventoried head/tag is clean; listing those zeros is
+      // the post-rewrite record of the executed map, not invented scope.
+      if (measuredAffected.length > 0) {
+        refuse(
+          "MANIFEST_EXTRA_REF",
+          `the manifest lists ${entry.ref} as affected but the measurement found no carrier commit ` +
+            `for it: classifying an unaffected ref as affected invents scope`,
+        );
+        continue;
+      }
     }
     if (measured.carrierCommits !== entry.carrierCommits) {
       refuse(
@@ -438,16 +443,20 @@ export function evaluateRefRollover(input: RolloverInput): RolloverAssessment {
       refuse("RUNBOOK_EXPOSURE_MISSING_REF", `the exposure table has no row for live ref ${ref}`);
     }
     const measured = measuredByRef.get(ref);
-    if (measured?.affected && !coverageRefs.has(ref)) {
+    // Mixed world: only affected refs must appear in coverage. After the
+    // writable rewrite every inventoried head/tag is clean; coverage of those
+    // live refs is then the executed rewrite map and must still be complete.
+    const mustCover = Boolean(measured?.affected) || measuredAffected.length === 0;
+    if (mustCover && !coverageRefs.has(ref)) {
       refuse(
         "RUNBOOK_COVERAGE_MISSING_REF",
-        `${ref} is measured affected but is absent from the rewrite coverage: a surviving ref ` +
+        `${ref} is ${measured?.affected ? "measured affected" : "a live inventoried ref after the writable rewrite"} but is absent from the rewrite coverage: a surviving ref ` +
           `keeps the blob reachable and undoes the exercise`,
       );
     }
   }
   for (const entry of measurement.refs) {
-    if (!entry.affected && coverageRefs.has(entry.ref)) {
+    if (!entry.affected && coverageRefs.has(entry.ref) && measuredAffected.length > 0) {
       refuse(
         "UNAFFECTED_REF_IN_COVERAGE",
         `${entry.ref} is measured unaffected but the runbook lists it for rewriting`,
@@ -599,7 +608,8 @@ export function formatRolloverReport(assessment: RolloverAssessment): string {
   lines.push("  A2 verified:           no");
   lines.push(
     "  A reconciled inventory is a correctly scoped job, not a finished one: every ref " +
-      "above still carries the exposure, and the rotation gate still blocks the rewrite.",
+      "above is the measured rewrite-scope set. A2 stays unverified while GitHub-managed " +
+      "pull refs still reach the credential.",
   );
   return lines.join("\n");
 }

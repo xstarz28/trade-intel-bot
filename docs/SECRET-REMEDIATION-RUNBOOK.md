@@ -1,12 +1,17 @@
 # Secret Remediation Runbook — leaked OTP credential
 
-**Status: BLOCKED on credential rotation. No history rewrite has been performed.**
+**Status: Path C recorded (A1 VERIFIED without revocation). Path R unrecorded. Writable nine-ref rewrite executed on github.com. A2 UNVERIFIED — `refs/pull/1/head` still reaches the credential. GitHub Support ticket #4773405 pending. Issue #5 OPEN. Do not run another history rewrite or force-push.**
 
 This document is the rehearsal-verified procedure for removing the leaked
 third-party OTP credential from Git history. Every command below was executed
-against a disposable mirror in Phase 198 and produced the recorded results. It
-has **not** been executed against the real repository, and must not be until
-§2 (the rotation gate) is satisfied.
+against a disposable mirror in Phase 198 and produced the recorded results.
+
+The writable nine-ref rewrite (`refs/heads/*` and `refs/tags/*`) **has been
+executed** against github.com, with a heads/tags force-push. A2 remains
+**UNVERIFIED** because GitHub-managed `refs/pull/1/head` still reaches the
+credential. Do **not** run another `git filter-repo`, do **not** force-push
+again, do **not** rewrite hidden refs, and do **not** duplicate GitHub Support
+ticket **#4773405**. Issue **#5** stays OPEN until A2 can be verified.
 
 The credential value is never written in this document, never printed by any
 command here, and never committed. It is identified only by fingerprint.
@@ -48,15 +53,55 @@ Two facts per ref, and they are **not** interchangeable:
 
 | Ref | Tip today | Occurrences in that ref's history |
 |---|---|---|
-| `refs/heads/arena/01a08e67-trade-intel-bot` | **clean** | 269 |
-| `refs/heads/arena/01a0a5f5-trade-intel-bot` | **clean** | 269 |
-| `refs/heads/arena/01a0a92b-trade-intel-bot` | **clean** | 269 |
-| `refs/heads/arena/01a0ad26-trade-intel-bot` | **clean** | 269 |
-| `refs/heads/arena/01a0adfb-trade-intel-bot` | **clean** | 269 |
-| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 269 |
-| `refs/heads/main` | **EXPOSED AT TIP** | 261 |
-| `refs/heads/phase-157-live-discovery-lifecycle` | **EXPOSED AT TIP** | 262 |
-| `refs/tags/rc-181` | **clean** | 269 |
+| `refs/heads/arena/01a08e67-trade-intel-bot` | **clean** | 0 |
+| `refs/heads/arena/01a0a5f5-trade-intel-bot` | **clean** | 0 |
+| `refs/heads/arena/01a0a92b-trade-intel-bot` | **clean** | 0 |
+| `refs/heads/arena/01a0ad26-trade-intel-bot` | **clean** | 0 |
+| `refs/heads/arena/01a0adfb-trade-intel-bot` | **clean** | 0 |
+| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 0 |
+| `refs/heads/main` | **clean** | 0 |
+| `refs/heads/phase-157-live-discovery-lifecycle` | **clean** | 0 |
+| `refs/tags/rc-181` | **clean** | 0 |
+
+### Current remote measurement (writable rewrite landed)
+
+Measured 2026-09-21T01:30:21.319Z against a full `git clone --mirror` of
+`https://github.com/xstarz28/trade-intel-bot.git` (push disabled on the audit
+mirror). Generator: `scripts/secret-ref-inventory.mjs`. Artifact:
+`docs/secret-remediation-refs.json`. Fingerprint `b1ce18a1e85ba121`, leaked
+blob `e490ffda…` at `src/convex/auth/emailOtp.ts`.
+
+| Surface | Result |
+|---|---|
+| Writable heads/tags (9) | **0 carriers**, every tip **clean** |
+| `refs/pull/1/head` (`b321e507`, PR #1 MERGED) | **269 carriers**, tip clean |
+| `refs/pull/2/head` (`dc2dc113`) | 0 carriers, tip clean, still exists |
+| `refs/pull/2/merge` (`eaa9f993`) | 0 carriers, tip clean, still exists |
+| `refs/pull/3/head` (`bcc3f34d`) | 0 carriers, tip clean, still exists |
+| `refs/pull/3/merge` (`f09244e8`) | 0 carriers, tip clean, still exists |
+| `refs/pull/4/head` (`c42c734e`) | 0 carriers, tip clean, still exists |
+| `refs/pull/4/merge` (`bbc1e4d1`) | 0 carriers, tip clean, still exists |
+| `--all` reachable commits | **840** |
+| `--all` carrier commits | **269** (the pull/1 history; not a writable-ref sum) |
+| Leaked blob still in the object database | yes |
+| `rewrite-verification.json` | **absent** — A2 is not verified |
+| GitHub Support | ticket **#4773405** pending; do not duplicate |
+| Issue #5 | **OPEN** |
+
+Live writable tips (github.com, 0 carriers): `01a08e67`=`bd233a87`,
+`01a0a5f5`=`0fbab31a`, `01a0a92b`=`50dcdfa5`, `01a0ad26`=`dc2dc113`,
+`01a0adfb`=`bcc3f34d`, `01a0b293`=`c42c734e`, `main`=`b1a9e915`,
+`phase-157`=`6bf6f580`, `rc-181`=`23d25ffa` (`^{}` `4626c5ca`).
+
+The inventory generator reads heads and tags only. `carrierCommits: 269` on
+the artifact is `--all` reachability, including GitHub-managed pull refs.
+A2 cannot be considered verified while any affected PR ref still reaches the
+credential. `deny updating a hidden ref` still applies. GitHub Support must
+clear the remaining hidden refs; this project cannot.
+
+Do **not** run another filter-repo. Do **not** force-push. Do **not** amend,
+rebase, or reset this history. Do **not** merge or delete the PRs as a
+cleanup shortcut. Do **not** close Issue #5.
 
 Phase 238 note: the eighth ref (`01a0adfb`) was pushed during that phase and
 added to this table in the same phase. Its row is **derived, not re-measured
@@ -80,8 +125,9 @@ re-measured the other eight refs, so the Phase 238 row above is no longer the
 one derived row: every row in this table now rests on the same measurement.
 Total carrier commits remain **270** and reachable commits rose 398 → **429**
 (the repository grows; the exposure does not). **A nine-ref inventory is a
-larger remediation scope, not progress** — nothing has been rewritten, and §2
-still blocks §3.
+larger remediation scope, not progress** — nothing had been rewritten at that
+measurement. That Phase 249 record is historical. Current heads/tags are in
+**Current remote measurement** above.
 
 Phase 233 correction: this table listed only four refs. The three branches
 created since Phase 198 (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were absent, as
@@ -91,21 +137,24 @@ unlisted — the omission was security-relevant, not cosmetic. The rewrite map i
 §3 named five refs and was missing `01a0a92b` and `01a0ad26`, so those two
 branches appeared in **neither** table and would have survived the rewrite.
 
-Three consequences follow, and they matter more than the history question:
+Three consequences follow from the **current** measurement (the Phase 249
+note above is the pre-rewrite record of that phase):
 
-1. **`main` still serves the credential from its tip.** Anyone cloning the
-   default branch right now receives it in working-tree source. This is why
-   `main` must never be deployed and why the release gate lists this as a hard
-   blocker.
-2. The working branches are clean at HEAD — the credential was removed from
-   current source in an earlier phase — but **removal from HEAD is not
-   remediation.** All nine refs still carry it in reachable history.
-3. **Every ref is affected.** There is no unaffected ref to leave out of the
-   rewrite, and no ref may be treated as safe because its tip is clean.
+1. **`main` no longer serves the credential from its tip.** The nine writable
+   refs measure **0** carriers and **clean** tips. That is not A2 verification.
+   `main` is still never the rewrite working context
+   (`forbiddenBranches: ["main"]`).
+2. **Removal from HEAD was never remediation.** The writable rewrite removed
+   the blob from rewriteable history; GitHub-managed `refs/pull/1/head` still
+   reaches **269** carrier commits. A surviving hidden ref keeps the blob
+   reachable.
+3. **A2 stays UNVERIFIED** while any affected PR ref still reaches the
+   credential. The pending GitHub-side action is Support ticket **#4773405**.
+   Do not duplicate it. Issue **#5** stays OPEN.
 
 ---
 
-## 2. Rotation gate — **BLOCKED**
+## 2. Rotation gate — Path C recorded; Path R **BLOCKED**
 
 **The rewrite must not run before §2 is satisfied.**
 
@@ -160,15 +209,20 @@ release gate reads a valid owner-filed
 `docs/remediation/a1-compensating-controls.json` (`schema:
 a1.compensating-controls/v1`, `source: owner-risk-acceptance`,
 `revocationClaimed: false`) as VERIFIED for A1 after independently observed
-runtime controls. That file is **unfiled** on this tree. Path C is not a
+runtime controls. That file is **filed** on this tree
+(`docs/remediation/a1-compensating-controls.json`, `revocationClaimed: false`).
+Path C is not a
 401/403, not an exemption, and not self-certification by this tooling.
 
-Today **neither path is recorded**. Status remains **BLOCKED on §2**.
+Path C is **recorded**. Path R is **unrecorded**. A1 is **VERIFIED** via
+`owner-risk-acceptance`. The writable nine-ref rewrite **has been executed**
+on github.com. A2 remains **UNVERIFIED** because `refs/pull/1/head` still
+reaches the credential.
 
-Only when Path R or Path C is recorded may an authorized human operator start
-§3. This tooling does not start §3, does not force-push, and does not touch
-`main`. Path C does not mark `A2_HISTORY_REWRITE` verified and does not clear
-`refs/pull/*`.
+Path C does not mark `A2_HISTORY_REWRITE` verified and did not clear
+`refs/pull/*`. This tooling does not start another §3, does not force-push,
+and does not touch `main`. GitHub Support ticket **#4773405** is the pending
+hidden-ref cleanup; do not duplicate it.
 
 ### 2.1 Phase 251 — A1 issuer access re-measured, still BLOCKED
 
@@ -236,7 +290,7 @@ absence of the key from `HEAD` are **not** A1. A2 must not run.
 ### 2.2 Compensating-controls path — does **not** claim revocation
 
 A1 has a second, owner-filed path when the issuer is unavailable. It is **not**
-revocation evidence, **not** an exemption, and **not** filed on this tree.
+revocation evidence, **not** an exemption, and **is now filed** on this tree.
 
 | Item | Value |
 |---|---|
@@ -253,17 +307,20 @@ that the leaked key is **not** revoked at the issuer. The reader observes
 `emailOtp.ts`, `emailDelivery.ts` and `issuerPolicy.ts` independently; if any
 required control is missing, the file cannot satisfy A1.
 
-If the owner later files Path C and the A1 gate reads it as VERIFIED, §2 is
-satisfied **without claiming revocation**. An authorized human may then start
-§3. This tooling still does not start §3. A2 remains unexecuted on this tree.
-`refs/pull/*` still require GitHub Support after any heads/tags rewrite. Residual
-risk in §5 still applies: the shared key is not dead at the issuer.
+The owner has filed Path C and the A1 gate reads it as VERIFIED. §2 was
+satisfied **without claiming revocation**, and the writable nine-ref rewrite
+then landed on github.com. This tooling still does not start another §3.
+A2 remains **UNVERIFIED**. `refs/pull/1/head` still requires GitHub Support
+(ticket **#4773405**; do not duplicate). Residual risk in §5 still applies:
+the shared key is not dead at the issuer.
 
-Filing is not done here. The file is unfiled. Status remains **BLOCKED on §2**.
+Path C is **recorded**. Path R is **unrecorded**. A2 remains **UNVERIFIED**.
+The writable §3 **has been executed**; GitHub-managed pull refs have not been
+cleared.
 
 ---
 
-## 3. Rewrite procedure — rehearsed, not executed
+## 3. Rewrite procedure — writable refs executed on github.com; A2 unverified
 
 Verified in Phase 198 against a fresh `--mirror` clone in `/tmp`. The
 production repository and `main` were never touched.
@@ -346,7 +403,10 @@ Tips also move: `heads/arena/01a0a5f5-trade-intel-bot` has advanced from
 "Before" column is a rehearsal record, not an execution input. Re-read tips
 from the inventory immediately before executing.
 
-Real repository and remote untouched. Status remains **BLOCKED on §2**.
+The Phase 221 table above is a **rehearsal record**, including `heads/main`
+before `51c9ddeb`. The later writable rewrite landed on github.com; current
+tips are in **Current remote measurement**. A2 remains **UNVERIFIED** while
+`refs/pull/1/head` still reaches the credential.
 
 Phase 250 re-ran step 3 with the documented tool (`git filter-repo --replace-text`)
 on a disposable full mirror. §3.2 records that rehearsal and states the GitHub
@@ -436,11 +496,11 @@ mechanism. Either step 3 is corrected to the rehearsed mechanism, or `filter-rep
 is installed and the procedure re-rehearsed against it, before §3 runs on the
 strength of this evidence.
 
-**What this does not change.** A2 remains **UNVERIFIED** and unexecuted. §2 still
-blocks §3 on this tree: Path R is unrecorded (A1 unrevoked at the issuer) and
-Path C is unfiled. The rehearsal is evidence about a procedure, not a
-remediation, and a nine-ref rehearsal does not shrink the nine-ref exposure.
-The release verdict is unchanged: **NOT READY**.
+**What this does not change.** The rehearsal is evidence about a procedure, not
+a remediation. Path C is **recorded** and A1 is VERIFIED without claiming
+revocation. Path R is **unrecorded**. The writable nine-ref rewrite later
+landed on github.com; A2 remains **UNVERIFIED** while `refs/pull/1/head` still
+reaches the credential. The release verdict is unchanged: **NOT READY**.
 
 ### 3.2 Exact-tool rehearsal — `git filter-repo --replace-text` (Phase 250)
 
@@ -553,7 +613,10 @@ leave `refs/pull/*` at the pre-rewrite tips):
 * every *tip* looks clean, including the PR refs — which is why the tip is not
   the proof.
 
-A2 remains **UNVERIFIED** / **NOT READY**. §2 still blocks §3.
+A2 remains **UNVERIFIED** / **NOT READY**. The Phase 250 rows above are the
+pre-push GitHub surface. After the writable force-push, only
+`refs/pull/1/head` still carries 269; Support ticket **#4773405** is pending.
+Do not run §3 again.
 
 ---
 
