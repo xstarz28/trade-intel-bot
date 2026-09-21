@@ -385,7 +385,7 @@ async function fetchYahooFinanceQuote(
 function detectAssetClass(instrument: string): string {
   const s = instrument.toUpperCase().trim();
   if (s.endsWith("/USDT") || s.endsWith("/BTC") || s.endsWith("/ETH")) return "crypto";
-  if (/^(BTC|ETH|SOL|DOGE|BNB|XRP|ADA|AVAX|DOT|LINK|MATIC|UNI)[\/\-]/.test(s)) return "crypto";
+  if (/^(BTC|ETH|SOL|DOGE|BNB|XRP|ADA|AVAX|DOT|LINK|MATIC|UNI)[/-]/.test(s)) return "crypto";
   if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER)/.test(s)) return "commodity";
   if (/^(DXY|VIX|US\d+Y|WTI|CL$)/.test(s)) return "macro";
   if (s.includes("/") && s.split("/").every((p) => /^[A-Z]{3}$/.test(p))) return "forex";
