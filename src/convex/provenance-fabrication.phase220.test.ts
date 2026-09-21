@@ -199,6 +199,13 @@ describe("Phase 220 E2 — the primary price snapshot carries the provider's tim
     expect(code).not.toContain('price: { price, timestamp: Date.now(), source: "twelve-data" }');
     expect(code).toContain("timestamp: priceTimestamp");
   });
+
+  it("fetchFxRate does not stamp the request clock as the quote observation (E2 sibling)", () => {
+    const code = codeOnly(read("src/convex/marketData.ts"));
+    expect(code).not.toContain('timestamp: Date.now(), source: "twelve-data"');
+    expect(code).toContain("providerQuoteTimestampMs");
+    expect(code).toContain("malformed (quote has no provider timestamp)");
+  });
 });
 
 // ── E3 ─────────────────────────────────────────────────────────

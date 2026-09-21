@@ -37,7 +37,10 @@ const ctx = { auth: { getUserIdentity: async () => ({ subject: "u", issuer: "t" 
 const USD_EUR = { from: "USD", to: "EUR" };
 const KEY = { provider: "twelve-data", dataset: "fx-rate", qualifier: "USD>EUR" } as const;
 
-const QUOTE = { close: "1.0850", symbol: "USD/EUR", timestamp: Math.floor(Date.now() / 1000) };
+/** Provider-owned UNIX seconds — deliberately not "now", so a clock stamp is visible. */
+const PROVIDER_TS_S = 1_700_000_000;
+const PROVIDER_TS_MS = PROVIDER_TS_S * 1000;
+const QUOTE = { close: "1.0850", symbol: "USD/EUR", timestamp: PROVIDER_TS_S };
 type Route = { status?: number; body?: unknown; throws?: unknown; badJson?: boolean };
 let direct: Route = { body: QUOTE };
 let inverse: Route = { body: { ...QUOTE, symbol: "EUR/USD" } };
@@ -81,6 +84,9 @@ describe("230 FX — valid", () => {
     expect(r.success).toBe(true);
     expect(r.direct?.rate).toBe(1.085);
     expect(r.inverse?.rate).toBe(1.085);
+    expect(r.direct?.timestamp).toBe(PROVIDER_TS_MS);
+    expect(r.inverse?.timestamp).toBe(PROVIDER_TS_MS);
+    expect(r.observedAt).toBe(PROVIDER_TS_MS);
     expect(r.acquisition).toBe("observed-now");
     expect(calls.length).toBe(2);
     expect(getProviderCache().peek(KEY)).not.toBeNull();
@@ -88,7 +94,7 @@ describe("230 FX — valid", () => {
     const second = await fx(ctx, USD_EUR);
     expect(calls.length).toBe(2); // pure hit
     expect(second.acquisition).toBe("cache-reused");
-    expect(second.observedAt).toBe(r.observedAt);
+    expect(second.observedAt).toBe(PROVIDER_TS_MS);
   });
 });
 
@@ -174,7 +180,51 @@ describe("230 FX — outage vs 'no quote'", () => {
     const r = await fx(ctx, USD_EUR);
     expect(r.success).toBe(true);
     expect(r.direct?.rate).toBe(1.085);
+    expect(r.direct?.timestamp).toBe(PROVIDER_TS_MS);
+    expect(r.observedAt).toBe(PROVIDER_TS_MS);
     expect(r.inverse).toBeNull();
     expect(getProviderCache().peek(KEY)).not.toBeNull();
+  });
+});
+
+describe("230 FX — provider timestamp (Phase 220 E2 sibling)", () => {
+  it("a numeric-string provider timestamp is scaled, not replaced with the request clock", async () => {
+    direct = { body: { ...QUOTE, timestamp: String(PROVIDER_TS_S) } };
+    inverse = { body: { ...QUOTE, symbol: "EUR/USD", timestamp: String(PROVIDER_TS_S) } };
+    const before = Date.now();
+    const r = await fx(ctx, USD_EUR);
+    expect(r.success).toBe(true);
+    expect(r.observedAt).toBe(PROVIDER_TS_MS);
+    expect(r.observedAt).toBeLessThan(before - 30 * 864e5);
+  });
+
+  it("BOTH legs quoting without a provider timestamp → API_UNAVAILABLE, nothing cached, no clock stamp", async () => {
+    direct = { body: { close: "1.0850", symbol: "USD/EUR" } };
+    inverse = { body: { close: "1.0850", symbol: "EUR/USD" } };
+    const r = await fx(ctx, USD_EUR);
+    expect(r.success).toBe(false);
+    expect(r.errorCode).toBe("API_UNAVAILABLE");
+    expect(r.error).toMatch(/malformed \(quote has no provider timestamp\)/);
+    expect(r.direct).toBeUndefined();
+    expect(r.observedAt).toBeUndefined();
+    expect(getProviderCache().peek(KEY)).toBeNull();
+  });
+
+  it("one dated leg + one undated leg → partial with the surviving provider time", async () => {
+    inverse = { body: { close: "1.0850", symbol: "EUR/USD" } };
+    const r = await fx(ctx, USD_EUR);
+    expect(r.success).toBe(true);
+    expect(r.direct?.timestamp).toBe(PROVIDER_TS_MS);
+    expect(r.inverse).toBeNull();
+    expect(r.observedAt).toBe(PROVIDER_TS_MS);
+  });
+
+  it("a millisecond-scale timestamp is rejected (same window as fetchPrice), not treated as observation", async () => {
+    direct = { body: { close: "1.0850", symbol: "USD/EUR", timestamp: Date.now() } };
+    inverse = { body: { close: "1.0850", symbol: "EUR/USD", timestamp: Date.now() } };
+    const r = await fx(ctx, USD_EUR);
+    expect(r.success).toBe(false);
+    expect(r.errorCode).toBe("API_UNAVAILABLE");
+    expect(getProviderCache().peek(KEY)).toBeNull();
   });
 });

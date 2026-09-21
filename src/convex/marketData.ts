@@ -168,17 +168,27 @@ async function fetchCandlesUncached(
 }
 
 /**
- * Phase 220 — provider-observed price time.
- * `quoteTs` is Twelve Data's `/quote` `timestamp` (UNIX seconds, may be a
- * number or numeric string, may be absent). Only a finite, positive value
- * within a plausible epoch range is accepted and scaled to ms; anything
- * else falls back to the most recent candle's own datetime, which is also
- * provider-observed. Never returns the request clock.
+ * Twelve Data `/quote` `timestamp` (UNIX seconds, number or numeric string)
+ * → milliseconds, or `undefined` if it is not a plausible provider time.
+ * Never the request clock. Same window as Phase 227 `fetchPrice`.
  */
-export function resolveProviderPriceTimestamp(quoteTs: unknown, lastCandleMs: number): number {
+export function providerQuoteTimestampMs(quoteTs: unknown): number | undefined {
   const n = typeof quoteTs === "number" ? quoteTs : typeof quoteTs === "string" ? Number(quoteTs) : NaN;
   // 1e9 s = 2001-09-09, 1e11 s = year 5138 — anything outside is not seconds.
   if (Number.isFinite(n) && n >= 1e9 && n < 1e11) return n * 1000;
+  return undefined;
+}
+
+/**
+ * Phase 220 — provider-observed price time.
+ * `quoteTs` is Twelve Data's `/quote` `timestamp`. Only a finite value
+ * within the seconds window is accepted and scaled to ms; anything else
+ * falls back to the most recent candle's own datetime, which is also
+ * provider-observed. Never returns the request clock.
+ */
+export function resolveProviderPriceTimestamp(quoteTs: unknown, lastCandleMs: number): number {
+  const fromQuote = providerQuoteTimestampMs(quoteTs);
+  if (fromQuote !== undefined) return fromQuote;
   return Number.isFinite(lastCandleMs) && lastCandleMs > 0 ? lastCandleMs : 0;
 }
 
@@ -640,7 +650,14 @@ export const fetchFxRate = action({
       if (json.close === undefined) return { kind: "empty" };
       const rate = parseFloat(String(json.close));
       if (!Number.isFinite(rate) || rate <= 0) return { kind: "empty" };
-      return { kind: "ok", value: { rate, timestamp: Date.now(), source: "twelve-data", pair } };
+      // Phase 220 E2 / 227 fetchPrice — the quote's own `timestamp` is the
+      // observation. A missing/implausible provider time is not a rate we
+      // can date, and must never be re-stamped with the request clock.
+      const timestamp = providerQuoteTimestampMs(json.timestamp);
+      if (timestamp === undefined) {
+        return { kind: "failed", failure: "malformed (quote has no provider timestamp)" };
+      }
+      return { kind: "ok", value: { rate, timestamp, source: "twelve-data", pair } };
     };
 
     // Phase 178b — routed through the authoritative provider cache. The key
@@ -676,10 +693,13 @@ export const fetchFxRate = action({
             }
             return null;
           }
+          const observedAt = directLeg?.timestamp ?? inverseLeg?.timestamp;
+          // A surviving leg always carries a provider timestamp (fetchPair
+          // refuses a clock stamp). No request-clock fallback.
+          if (observedAt === undefined) return null;
           return {
             data: { direct: directLeg, inverse: inverseLeg },
-            // Observation time of the real quote, preserved across later hits.
-            observedAt: directLeg?.timestamp ?? inverseLeg?.timestamp ?? Date.now(),
+            observedAt,
           };
         },
       );
