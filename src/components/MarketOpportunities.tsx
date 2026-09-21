@@ -113,6 +113,8 @@ const REGION_OPTIONS = [
   { key: "global", label: "Global" },
 ];
 
+const EMPTY_CANDIDATES: CandidateInput[] = [];
+
 // ═══════════════════════════════════════════════════════════════
 // PROPS
 // ═══════════════════════════════════════════════════════════════
@@ -135,8 +137,14 @@ const LIFECYCLE_COLORS: Record<string, string> = {
 };
 
 interface MarketOpportunitiesProps {
-  /** Pre-computed candidates from current market state (Phase 49 fallback). */
-  candidates: CandidateInput[];
+  /**
+   * Optional Phase 49 static candidates.
+   *
+   * Ignored whenever a live `scanResult` or `liveSources` is supplied.
+   * The live path must never rank `getAllInstruments()` as a substitute
+   * market: an empty or missing live scan is empty, not a hardcoded catalog.
+   */
+  candidates?: CandidateInput[];
   /** Live candidate sources for real-time scanning (Phase 50). */
   liveSources?: LiveCandidateSource[];
   /**
@@ -386,7 +394,7 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
 // ═══════════════════════════════════════════════════════════════
 
 export function MarketOpportunities({
-  candidates,
+  candidates = EMPTY_CANDIDATES,
   liveSources,
   providerErrors,
   isScanning = false,
@@ -430,11 +438,19 @@ export function MarketOpportunities({
     if (scanResult) {
       const horizonResult = scanResult.results.get(currentHorizon);
       if (horizonResult) return horizonResult;
+      // Live scan ran but this horizon was not requested. Empty — never a
+      // hardcoded catalog. A missing horizon is not a universe.
+      return generateRecommendation([], currentHorizon, { maxResults: 10 });
     }
 
-    // Fallback to static discovery-based candidates (Phase 49)
+    if (liveSources !== undefined) {
+      // Live path is wired (even with zero sources). Never substitute
+      // getAllInstruments() for an empty acquisition.
+      return generateRecommendation([], currentHorizon, { maxResults: 10 });
+    }
+
     return generateRecommendation(candidates, currentHorizon, { maxResults: 10 });
-  }, [scanResult, currentHorizon, candidates]);
+  }, [scanResult, currentHorizon, candidates, liveSources]);
 
   // Filter by region (post-scan, since regions aren't in the scan config)
   const filteredRanked = useMemo(() => {

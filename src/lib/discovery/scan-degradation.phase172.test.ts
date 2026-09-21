@@ -21,6 +21,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { scanInstruments, type ScanConfig } from "@/lib/liveScanner";
 import type { LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { discoverCandidates } from "@/lib/recommendation-engine";
 
 const NOW = 1_735_000_000_000;
 
@@ -161,5 +162,47 @@ describe("MarketOpportunities wiring", () => {
     const idx = SRC.indexOf("const scanConfig");
     expect(idx).toBeGreaterThan(-1);
     expect(SRC.slice(idx, idx + 400)).toContain("providerErrors");
+  });
+
+  it("never ranks a static catalog when a live scan or liveSources is present", () => {
+    const idx = SRC.indexOf("const result: UniversalRecommendationResult");
+    expect(idx).toBeGreaterThan(-1);
+    const block = SRC.slice(idx, idx + 1200);
+    // Missing horizon / empty live path → empty ranking, not `candidates`.
+    expect(block).toContain("generateRecommendation([], currentHorizon");
+    expect(block).toContain("liveSources !== undefined");
+  });
+});
+
+describe("live scanner vs Phase 49 catalog", () => {
+  it("ranks a live-discovered instrument that is not in getAllInstruments()", () => {
+    const catalog = new Set(discoverCandidates().map((d) => d.instrument));
+    expect(catalog.has("NEWCOIN-USDT")).toBe(false);
+
+    const scan = scanInstruments([liveSource("NEWCOIN-USDT")], { ...BASE });
+    const ranked = (scan.results.get("SWING")?.rankedInstruments ?? []).map(
+      (r) => r.instrument,
+    );
+
+    expect(ranked).toContain("NEWCOIN-USDT");
+    for (const id of ranked) {
+      expect(catalog.has(id)).toBe(false);
+    }
+  });
+
+  it("an empty live scan does not surface the Phase 49 catalog as excluded", () => {
+    const catalog = discoverCandidates().map((d) => d.instrument);
+    const scan = scanInstruments([], {
+      ...BASE,
+      providerErrors: ["okx: discovery failed this cycle"],
+    });
+    const excluded = (scan.results.get("SWING")?.excludedInstruments ?? []).map(
+      (e) => e.instrument,
+    );
+
+    expect(excluded).toHaveLength(0);
+    for (const id of catalog) {
+      expect(excluded).not.toContain(id);
+    }
   });
 });

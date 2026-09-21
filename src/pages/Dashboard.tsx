@@ -18,7 +18,6 @@ import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
-import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { scanInstruments, type ScanResult } from "@/lib/liveScanner";
@@ -821,10 +820,12 @@ export default function Dashboard() {
   //
   // It always carries the current cycle's provider errors, so a degraded scan
   // stays visibly degraded no matter how many times the sources are re-scanned.
+  // Horizons match every tab the opportunities panel can select so a missing
+  // horizon cannot fall through to a static Phase 49 catalog.
   useEffect(() => {
     setScanResult(
       scanInstruments(liveSources, {
-        horizons: ["INTRADAY", "SWING"],
+        horizons: ["SCALPING", "INTRADAY", "SWING", "1-4_WEEKS", "1-3_MONTHS", "3-6_MONTHS", "6-12_MONTHS", "1-3_YEARS", "3+_YEARS"],
         maxResults: 10,
         maxPerCorrelationGroup: 2,
         providerErrors: cycleProviderErrorsRef.current,
@@ -1075,16 +1076,6 @@ export default function Dashboard() {
             {/* Phase 50 — Market Opportunities: live opportunity scanner */}
             <div className="hidden lg:block">
               <MarketOpportunities
-                candidates={discoverCandidates().map((d) => ({
-                  instrument: d.instrument,
-                  assetClass: d.assetClass,
-                  currentPrice: 0,
-                  dataCompleteness: "MINIMAL",
-                  dataPoints: 0,
-                  hasLiveData: false,
-                  freshness: "UNAVAILABLE",
-                  providerCoverage: "PARTIAL",
-                } as CandidateInput))}
                 liveSources={liveSources}
                 providerErrors={cycleProviderErrorsRef.current}
                 isScanning={isScanning}
