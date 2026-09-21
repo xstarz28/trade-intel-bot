@@ -55,6 +55,12 @@ export interface ProviderOutcome<T = unknown> {
   status: ProviderOutcomeStatus;
   /** Present ONLY on success. A failure never carries synthesized data. */
   data?: T;
+  /**
+   * Failure class. On `failed`/`skipped` this is why nothing arrived.
+   * On `success` it is present only for a Phase 229 partial: surviving
+   * `data` is real, but the envelope `error` named a classified sub-leg
+   * failure (`leg: class (reason)`). Absent on a complete success.
+   */
   category?: ProviderFailureCategory;
   /** Human-readable, credential-free. */
   reason?: string;
@@ -334,6 +340,20 @@ export async function runProviderLeg<T>(
       const result = await Promise.race([opts.run(controller.signal), timeout]);
 
       if (result && result.success) {
+        // Phase 229 §K.4 — a `success:true` envelope may still carry
+        // `leg: class (reason)` metadata for a failed sub-leg. That is a
+        // PARTIAL, not a complete success. Status stays `success` and
+        // surviving `data` is kept (partial remains usable); classify the
+        // error so the fan-out can name the class instead of looking
+        // identical to a complete payload. Budget `timedOut` stays false:
+        // a sub-leg timeout is not this leg's deadline firing.
+        const envelopeError =
+          typeof result.error === "string" && result.error.trim().length > 0
+            ? result.error
+            : undefined;
+        const classified = envelopeError
+          ? classifyFailure(envelopeError)
+          : undefined;
         return {
           provider: opts.provider,
           status: "success",
@@ -344,6 +364,12 @@ export async function runProviderLeg<T>(
           timedOut: false,
           rateLimited: false,
           attempts,
+          ...(classified && envelopeError
+            ? {
+                category: classified.category,
+                reason: redactDiagnostic(envelopeError),
+              }
+            : {}),
           // Passed through verbatim. `runProviderLeg` never invents a mode:
           // if the leg did not report one, the field stays absent.
           ...(result.acquisition !== undefined
@@ -558,7 +584,9 @@ export function summarize(diag: FanOutDiagnostics): string {
   const parts = diag.outcomes.map((o) => {
     const detail =
       o.status === "success"
-        ? `${o.durationMs}ms`
+        ? o.category
+          ? `${o.durationMs}ms partial/${o.category}`
+          : `${o.durationMs}ms`
         : `${o.category}${o.rateLimited ? "/rate-limited" : ""} ${o.durationMs}ms`;
     return `${o.provider}=${o.status}(${detail})`;
   });

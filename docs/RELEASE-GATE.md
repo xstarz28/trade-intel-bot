@@ -1060,7 +1060,7 @@ AV 17/17 killed (catch→undefined, 429→generic, 401/403→generic, fatal→co
 1. Single-leg providers `treasury.ts`, `cot.ts`, `eia.ts`, `okx.ts` have no 429/401/403 classification at all (0 matches) and `treasury.ts:38`, `eia.ts:51` use bare `catch {}` — out of this phase's scope (brief: AV + TA only).
 2. `marketData.ts:439/513` bare `catch {}` — unaudited this phase.
 3. Pre-existing eslint errors in `src/convex/liveProtection.ts:388` (`no-useless-escape` ×2) exist on base `6afe7b8`; not touched.
-4. `protectedAnalysis.ts` intelligence leg passes `r.error` through `classifyFailure` text patterns; the new `leg: class (reason)` strings on a `success:true` partial are not consulted there (partial is still `success`, so behaviour is unchanged, but the fan-out cannot distinguish "partial" from "complete").
+4. **CLOSED.** `runProviderLeg` now consults `error` on a `success:true` envelope (Phase 229 `leg: class (reason)` partial metadata). Status stays `success` and surviving `data` is kept — partial remains usable — but the outcome records `category`/`reason` from `classifyFailure`, and `summarize` renders `success(Nms partial/<class>)` so a partial is distinguishable from a complete success. Covered in `provider-resilience.phase177.test.ts` and `fanout-integration.phase177.test.ts`. This was out of Phase 229's original implementation scope (shared Phase 177 module) and is closed here without opening a new product phase.
 
 ### L. Release blockers (unchanged)
 A1 issuer credential not revocable by us; Phase 184 history rewrite BLOCKED on A1; production email transport/sender/required vars absent; Evidence D INCOMPLETE.

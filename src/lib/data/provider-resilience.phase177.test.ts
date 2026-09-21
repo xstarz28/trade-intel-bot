@@ -582,6 +582,147 @@ describe("envelope-path timeout (Phase 230 §M-1)", () => {
   });
 });
 
+describe("partial success envelope (Phase 229 §K.4)", () => {
+  it("consults leg: class (reason) on success:true, keeps surviving data, and does not look like a complete success", async () => {
+    const payload = {
+      sentiment: undefined as undefined,
+      fundamentals: { available: true, provider: "alpha-vantage" },
+    };
+    const outcome = await runProviderLeg({
+      provider: "alpha-vantage",
+      run: async () => ({
+        success: true,
+        data: payload,
+        error: "news: timeout (The operation timed out)",
+      }),
+      budgetMs: 200,
+    });
+
+    expect(outcome.status).toBe("success");
+    expect(outcome.data).toEqual(payload);
+    expect(successfulData(outcome)).toEqual(payload);
+    expect(outcome.category).toBe("timeout");
+    expect(outcome.reason).toMatch(/^news: timeout/);
+    expect(outcome.timedOut).toBe(false);
+    expect(outcome.rateLimited).toBe(false);
+  });
+
+  it("a complete success (no error) carries no class and is distinguishable from a partial in the same fan-out", async () => {
+    const diag = await runFanOut([
+      runProviderLeg({
+        provider: "alpha-vantage",
+        run: async () => ({
+          success: true,
+          data: { sentiment: { articleCount: 6 } },
+        }),
+        budgetMs: 200,
+      }),
+      runProviderLeg({
+        provider: "tickatlas",
+        run: async () => ({
+          success: true,
+          data: { events: [{ id: 1 }] },
+          error: "recentReleased: timeout (The operation timed out)",
+        }),
+        budgetMs: 200,
+      }),
+    ]);
+
+    const [complete, partial] = diag.outcomes;
+    expect(complete.status).toBe("success");
+    expect(complete.category).toBeUndefined();
+    expect(complete.reason).toBeUndefined();
+    expect(complete.data).toEqual({ sentiment: { articleCount: 6 } });
+
+    expect(partial.status).toBe("success");
+    expect(partial.category).toBe("timeout");
+    expect(partial.data).toEqual({ events: [{ id: 1 }] });
+    expect(successfulData(partial)).toEqual({ events: [{ id: 1 }] });
+
+    const summary = summarize(diag);
+    expect(summary).toMatch(/alpha-vantage=success\(\d+ms\)/);
+    expect(summary).not.toMatch(/alpha-vantage=success\(\d+ms partial\//);
+    expect(summary).toMatch(/tickatlas=success\(\d+ms partial\/timeout\)/);
+  });
+
+  it("classifies each Phase 229 partial class without flipping status or dropping data", async () => {
+    const cases: Array<[string, string]> = [
+      ["fundamentals: network (fetch failed)", "network"],
+      ["news: malformed (Alpha Vantage body is not JSON)", "invalid-response"],
+      ["news: provider_error (Alpha Vantage HTTP 500: x)", "unavailable"],
+      // Mixed-leg first match: timeout outranks later network.
+      [
+        "news: timeout (The operation timed out); fundamentals: network (fetch failed)",
+        "timeout",
+      ],
+    ];
+    for (const [error, category] of cases) {
+      const outcome = await runProviderLeg({
+        provider: "alpha-vantage",
+        run: async () => ({ success: true, data: { kept: true }, error }),
+        budgetMs: 100,
+      });
+      expect(outcome.status).toBe("success");
+      expect(outcome.category).toBe(category);
+      expect(outcome.data).toEqual({ kept: true });
+      expect(outcome.timedOut).toBe(false);
+    }
+  });
+
+  it("does not retry a partial and does not treat it as a budget timeout", async () => {
+    const run = vi.fn(() =>
+      Promise.resolve({
+        success: true as const,
+        data: { kept: true },
+        error: "news: timeout (The operation timed out)",
+      }),
+    );
+    const outcome = await runProviderLeg({
+      provider: "alpha-vantage",
+      run,
+      budgetMs: 500,
+      maxRetries: 5,
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(outcome.attempts).toBe(1);
+    expect(outcome.status).toBe("success");
+    expect(outcome.timedOut).toBe(false);
+    expect(outcome.data).toEqual({ kept: true });
+  });
+
+  it("redacts a credential-shaped token on the success-path error", async () => {
+    const outcome = await runProviderLeg({
+      provider: "alpha-vantage",
+      run: async () => ({
+        success: true,
+        data: { kept: true },
+        error:
+          "news: timeout (https://www.alphavantage.co/query?apikey=SUPERSECRETVALUE1234567890ABCD)",
+      }),
+      budgetMs: 200,
+    });
+    expect(outcome.status).toBe("success");
+    expect(outcome.reason).not.toContain("SUPERSECRETVALUE1234567890ABCD");
+    expect(outcome.reason).toContain("[REDACTED]");
+    expect(JSON.stringify(outcome)).not.toContain("SUPERSECRETVALUE1234567890ABCD");
+  });
+
+  it("a success:false envelope is still a failure and is not reclassified as a partial", async () => {
+    const outcome = await runProviderLeg({
+      provider: "alpha-vantage",
+      run: async () => ({
+        success: false,
+        error: "Intelligence fetch failed: every leg failed (news: timeout (The operation timed out))",
+      }),
+      budgetMs: 200,
+    });
+    expect(outcome.status).toBe("failed");
+    expect(outcome.category).toBe("timeout");
+    expect(outcome.data).toBeUndefined();
+    expect(successfulData(outcome)).toBeUndefined();
+  });
+});
+
 describe("optional-slow envelope (Phase 230 §M-3)", () => {
   it("forwards the provider payload on success and does not invent an error", async () => {
     const outcome = await runProviderLeg({

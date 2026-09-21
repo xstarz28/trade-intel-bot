@@ -20,6 +20,7 @@ import {
   runFanOut,
   runProviderLeg,
   successfulData,
+  summarize,
 } from "@/lib/data/provider-resilience";
 import { stripClientEvidence } from "./protectedAnalysis";
 import type { AnalysisInput } from "@/types/analysis";
@@ -128,6 +129,77 @@ async function serverAnalyse(legs: {
 // ═══════════════════════════════════════════════════════════
 // Partial success
 // ═══════════════════════════════════════════════════════════
+
+describe("Phase 229 §K.4 — intelligence partial is distinguishable from complete", () => {
+  it("a success:true AV partial keeps surviving fundamentals and records the news-leg class", async () => {
+    const outcome = await runProviderLeg<{
+      sentiment?: unknown;
+      fundamentals?: unknown;
+      error?: string;
+    }>({
+      provider: "alpha-vantage",
+      budgetMs: 200,
+      run: async () => ({
+        success: true,
+        data: {
+          sentiment: undefined,
+          fundamentals: { available: true, provider: "alpha-vantage" },
+          error: "news: timeout (The operation timed out)",
+        },
+        error: "news: timeout (The operation timed out)",
+      }),
+    });
+
+    expect(outcome.status).toBe("success");
+    expect(outcome.category).toBe("timeout");
+    expect(outcome.timedOut).toBe(false);
+
+    const intelligence = successfulData(outcome);
+    expect(intelligence?.fundamentals).toEqual({
+      available: true,
+      provider: "alpha-vantage",
+    });
+    expect(intelligence?.sentiment).toBeUndefined();
+
+    // Reconstruct the handler's attach-only-defined-fields rule.
+    const trusted: Record<string, unknown> = {};
+    if (intelligence) {
+      if (intelligence.sentiment !== undefined) trusted.sentimentData = intelligence.sentiment;
+      if (intelligence.fundamentals !== undefined) {
+        trusted.fundamentalData = intelligence.fundamentals;
+      }
+    }
+    expect(trusted.fundamentalData).toEqual({
+      available: true,
+      provider: "alpha-vantage",
+    });
+    expect(trusted.sentimentData).toBeUndefined();
+  });
+
+  it("the fan-out summary names a partial class and a complete success differently", async () => {
+    const fanOut = await runFanOut([
+      runProviderLeg({
+        provider: "market-data",
+        budgetMs: 200,
+        run: async () => ({ success: true, data: { data: MARKET, technical: TECH } }),
+      }),
+      runProviderLeg({
+        provider: "alpha-vantage",
+        budgetMs: 200,
+        run: async () => ({
+          success: true,
+          data: { fundamentals: { available: true } },
+          error: "news: timeout (The operation timed out)",
+        }),
+      }),
+    ]);
+
+    const text = summarize(fanOut);
+    expect(text).toMatch(/market-data=success\(\d+ms\)/);
+    expect(text).not.toMatch(/market-data=success\(\d+ms partial\//);
+    expect(text).toMatch(/alpha-vantage=success\(\d+ms partial\/timeout\)/);
+  });
+});
 
 describe("partial provider success remains usable", () => {
   it("market data succeeds while secondary providers fail", async () => {
@@ -398,6 +470,19 @@ describe("conditional policy is not weakened by budgets", () => {
     expect(SERVER).toContain("optionalSlowEnvelope(");
     // The pre-fix mapping dropped the class: `{ success: false }` with no error.
     expect(SERVER).not.toMatch(/: \{ success: false \};/);
+  });
+
+  it("the intelligence wrapper forwards the envelope error so a partial can be classified (Phase 229 §K.4)", () => {
+    const start = SERVER.indexOf("const intelligenceLeg");
+    const end = SERVER.indexOf("const calendarLeg", start);
+    const block = start === -1 || end === -1 ? "" : SERVER.slice(start, end);
+    expect(block.length).toBeGreaterThan(100);
+    expect(block).toContain("error: r.error");
+    expect(block).toContain("success: r.success");
+    // Surviving fields still attach from the success payload — the error is
+    // diagnostic, not a reason to drop the envelope.
+    expect(SERVER).toContain("if (intelligence.sentiment !== undefined)");
+    expect(SERVER).toContain("if (intelligence.fundamentals !== undefined)");
   });
 
   it("records each optional-slow outcome so group diagnostics can name the leg", () => {
