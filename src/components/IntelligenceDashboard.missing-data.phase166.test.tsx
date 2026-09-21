@@ -15,11 +15,14 @@
 
 import { describe, expect, it } from "vitest";
 import React from "react";
+import { readFileSync } from "node:fs";
 import { render } from "@testing-library/react";
 import { I18nProvider } from "@/lib/i18n";
 import en from "@/lib/i18n/en";
 import { IntelligenceDashboard } from "./IntelligenceDashboard";
 import type { PositionIntelligence } from "@/lib/position-protection/market-intelligence-analyzer";
+
+const SOURCE = readFileSync("src/components/IntelligenceDashboard.tsx", "utf8");
 
 function baseIntelligence(
   overrides: Partial<PositionIntelligence> = {},
@@ -155,6 +158,47 @@ describe("empty result vs missing data", () => {
 
     expect(text).toContain("H1 trend shifted from BEARISH to BULLISH");
     expect(text).not.toContain(en.intelligence.noMaterialChange);
+  });
+});
+
+describe("conditional hook order (Phase 235 remaining finding)", () => {
+  it("AnalyticalSummarySection calls useI18n before the intelligence early return", () => {
+    const start = SOURCE.indexOf("function AnalyticalSummarySection");
+    const end = SOURCE.indexOf("function KeyLevelsSection", start);
+    const block = start === -1 || end === -1 ? "" : SOURCE.slice(start, end);
+    expect(block.length).toBeGreaterThan(100);
+
+    const hook = block.indexOf("useI18n()");
+    const early = block.indexOf("if (!intelligence) return null");
+    expect(hook).toBeGreaterThan(-1);
+    expect(early).toBeGreaterThan(-1);
+    expect(hook).toBeLessThan(early);
+  });
+
+  it("does not crash when intelligence appears after an absent first render", () => {
+    const { rerender, container } = renderDashboard({ intelligence: null });
+    expect(container.textContent ?? "").not.toContain(en.intelligence.analyticalSummary);
+
+    expect(() =>
+      rerender(
+        <I18nProvider>
+          <IntelligenceDashboard
+            positionSide="LONG"
+            instrument="BTC/USDT"
+            intelligence={baseIntelligence()}
+          />
+        </I18nProvider>,
+      ),
+    ).not.toThrow();
+
+    expect(container.textContent ?? "").toContain(en.intelligence.analyticalSummary);
+  });
+
+  it("still omits the analytical summary when intelligence is absent", () => {
+    const { container } = renderDashboard({ intelligence: null });
+    const text = container.textContent ?? "";
+    expect(text).not.toContain(en.intelligence.analyticalSummary);
+    expect(text).not.toContain(en.intelligence.marketLabel);
   });
 });
 

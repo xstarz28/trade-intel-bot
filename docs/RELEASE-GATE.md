@@ -1681,7 +1681,14 @@ step's pre-existing findings (`Unexpected any` in `crypto-intelligence.phase41`
 and `analytical-context.phase55/56`, unnecessary escapes in
 `liveProtection.ts:388`, and a conditional-hook rule in
 `IntelligenceDashboard.tsx:467`), which `continue-on-error` has always tolerated
-and which this phase did not touch. `npm test` is the CI test command, so a green
+and which this phase did not touch. The `IntelligenceDashboard.tsx:467`
+conditional-hook finding is **CLOSED.** `AnalyticalSummarySection` now calls
+`useI18n` before `if (!intelligence) return null` — the same order as
+`KeyLevelsSection` — so an intelligence payload arriving after a null first
+render cannot change the hook count. Covered in
+`IntelligenceDashboard.missing-data.phase166.test.tsx`. This was out of Phase
+235's original scope and is closed here without opening a new product phase. The
+`liveProtection.ts:388` escapes and the test-file `any` findings are unchanged. `npm test` is the CI test command, so a green
 job means all 290 files — including the phase203 suite that used to fail — ran to
 completion on a networked runner. (A first read of the `e981f3c` annotations
 returned an empty body because the API had not yet propagated them; the numbers

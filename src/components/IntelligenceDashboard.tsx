@@ -462,9 +462,12 @@ function AnalyticalSummarySection({
   instrument: string;
   side: "LONG" | "SHORT";
 }) {
-  if (!intelligence) return null;
-
+  // Hooks must run on every render. An early return before `useI18n` made a
+  // later intelligence payload change the hook count and crash the surface
+  // (Phase 235 CI `react-hooks/rules-of-hooks` at this call). Same order as
+  // `KeyLevelsSection` below.
   const { t } = useI18n();
+  if (!intelligence) return null;
   const thesisLabel = intelligence.thesisHealth ?? "UNKNOWN";
   const thesisColor =
     thesisLabel === "HEALTHY" || thesisLabel === "STABLE" ? "text-emerald-400" :
