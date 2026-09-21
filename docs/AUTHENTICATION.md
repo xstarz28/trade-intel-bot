@@ -65,6 +65,7 @@ bundle.
 | `XSTARZ_EMAIL_SENDER_ADDRESS` | Yes, unless `console` | Must be an Xstarz-owned, verified domain |
 | `XSTARZ_EMAIL_SENDER_NAME` | No | Defaults to `Xstarz Analysis` |
 | `XSTARZ_EMAIL_TIMEOUT_MS` | No | Default 10,000; capped at 30,000 |
+| `XSTARZ_OWNER_PRINCIPALS` | No | Server-only OWNER overlay. Comma-separated `email:` / `user:` principals. Unset or malformed matches nobody. Never `VITE_`-prefix. |
 
 There is **no fallback sender**. Missing configuration throws before any
 network call. A silent fallback would send production mail from an identity the

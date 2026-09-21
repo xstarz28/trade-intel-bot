@@ -23,27 +23,37 @@ import {
 const SRC = readFileSync("src/convex/entitlements.ts", "utf8");
 
 /** Minimal server simulation: one persisted row, many client calls. */
-function makeServer(initial: Partial<EntitlementState> = {}) {
+function makeServer(
+  initial: Partial<EntitlementState> = {},
+  opts: { isOwner?: boolean } = {},
+) {
   const stored: EntitlementState = {
-    plan: initial.plan ?? "GUEST",
+    plan: initial.plan === "PREMIUM" ? "PREMIUM" : "GUEST",
     profitSignalsUsed: initial.profitSignalsUsed ?? 0,
   };
 
   return {
     stored,
     /** Mirrors consumeProfitSignal. `claim` is untrusted client input. */
-    consume(recommendation: string | undefined, claim?: Partial<EntitlementState>) {
-      // The server deliberately IGNORES `claim`.
+    consume(
+      recommendation: string | undefined,
+      claim?: Partial<EntitlementState> & { isOwner?: boolean },
+    ) {
+      // The server deliberately IGNORES `claim`, including a forged isOwner.
       void claim;
 
+      const plan = opts.isOwner ? "OWNER" : stored.plan;
       const chargeable = isProfitSignal(recommendation);
-      const decision = evaluateEntitlement(stored);
+      const decision = evaluateEntitlement({ plan, profitSignalsUsed: stored.profitSignalsUsed });
 
-      if (!chargeable) return { allowed: true, charged: false };
-      if (!decision.allowed) return { allowed: false, charged: false };
+      if (!chargeable) return { allowed: true, charged: false, plan };
+      if (!decision.allowed) return { allowed: false, charged: false, plan };
 
-      stored.profitSignalsUsed = nextUsageCount(stored, recommendation);
-      return { allowed: true, charged: stored.plan !== "PREMIUM" };
+      stored.profitSignalsUsed = nextUsageCount(
+        { plan, profitSignalsUsed: stored.profitSignalsUsed },
+        recommendation,
+      );
+      return { allowed: true, charged: plan !== "PREMIUM" && plan !== "OWNER", plan };
     },
   };
 }
@@ -121,6 +131,27 @@ describe("premium", () => {
       expect(r.charged).toBe(false);
     }
     expect(s.stored.profitSignalsUsed).toBe(0);
+  });
+});
+
+describe("owner overlay", () => {
+  it("does not decrement the free counter", () => {
+    const s = makeServer({ profitSignalsUsed: FREE_PROFIT_SIGNAL_LIMIT }, { isOwner: true });
+    for (let i = 0; i < 10; i++) {
+      const r = s.consume("BUY");
+      expect(r.allowed).toBe(true);
+      expect(r.charged).toBe(false);
+      expect(r.plan).toBe("OWNER");
+    }
+    expect(s.stored.profitSignalsUsed).toBe(FREE_PROFIT_SIGNAL_LIMIT);
+    expect(s.stored.plan).toBe("GUEST");
+  });
+
+  it("a client claiming isOwner is ignored", () => {
+    const s = makeServer({ profitSignalsUsed: FREE_PROFIT_SIGNAL_LIMIT });
+    const res = s.consume("BUY", { isOwner: true, plan: "OWNER", profitSignalsUsed: 0 });
+    expect(res.allowed).toBe(false);
+    expect(s.stored.profitSignalsUsed).toBe(FREE_PROFIT_SIGNAL_LIMIT);
   });
 });
 

@@ -1523,6 +1523,7 @@ export interface Translations {
     signInRequired: string;
     trialLabel: string;
     premiumLabel: string;
+    ownerLabel: string;
     signalsRemaining: string;
     signalsRemainingOne: string;
     signalsExhausted: string;

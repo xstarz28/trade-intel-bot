@@ -20,7 +20,7 @@ import { Lock, Sparkles } from "lucide-react";
 /** Exactly the server's `getMyEntitlement` shape. */
 export interface ServerEntitlement {
   authenticated: boolean;
-  plan: "GUEST" | "PREMIUM";
+  plan: "GUEST" | "PREMIUM" | "OWNER";
   remaining: number | null;
   limit: number;
   upgradeRequired: boolean;
@@ -37,14 +37,16 @@ export function EntitlementBadge({
   // Not resolved yet, or not signed in: render nothing. Never invent a state.
   if (!entitlement || !entitlement.authenticated) return null;
 
-  if (entitlement.plan === "PREMIUM") {
+  if (entitlement.plan === "PREMIUM" || entitlement.plan === "OWNER") {
     return (
       <Badge
         variant="outline"
         className="gap-1 font-mono text-[10px] border-primary/50 text-primary"
       >
         <Sparkles className="size-3" />
-        {t.entitlement.premiumLabel}
+        {entitlement.plan === "OWNER"
+          ? t.entitlement.ownerLabel
+          : t.entitlement.premiumLabel}
         <span className="text-muted-foreground">· {t.entitlement.unlimited}</span>
       </Badge>
     );

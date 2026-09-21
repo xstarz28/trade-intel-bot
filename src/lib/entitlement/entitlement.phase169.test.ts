@@ -125,6 +125,24 @@ describe("premium", () => {
   });
 });
 
+describe("owner overlay", () => {
+  const owner = (used = 0): EntitlementState => ({
+    plan: "OWNER",
+    profitSignalsUsed: used,
+  });
+
+  it("is never blocked and never consumes", () => {
+    expect(evaluateEntitlement(owner(0)).allowed).toBe(true);
+    expect(evaluateEntitlement(owner(FREE_PROFIT_SIGNAL_LIMIT)).allowed).toBe(true);
+    expect(evaluateEntitlement(owner(10_000)).upgradeRequired).toBe(false);
+    expect(evaluateEntitlement(owner()).reason).toBe("OWNER");
+    expect(nextUsageCount(owner(0), "BUY")).toBe(0);
+    expect(nextUsageCount(owner(FREE_PROFIT_SIGNAL_LIMIT), "LONG")).toBe(
+      FREE_PROFIT_SIGNAL_LIMIT,
+    );
+  });
+});
+
 describe("locked signal representation", () => {
   it("is explicitly locked rather than disguised as a WAIT", () => {
     const locked = lockSignal();

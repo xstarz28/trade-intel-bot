@@ -128,6 +128,7 @@ describe("189-M3 — non-actionable recommendations are always free", () => {
     );
     // A PREMIUM plan is never counted at all.
     expect(nextUsageCount({ plan: "PREMIUM", profitSignalsUsed: 0 }, "BUY")).toBe(0);
+    expect(nextUsageCount({ plan: "OWNER", profitSignalsUsed: 2 }, "BUY")).toBe(2);
   });
 });
 

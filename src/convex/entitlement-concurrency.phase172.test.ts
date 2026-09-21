@@ -293,7 +293,7 @@ describe("client-supplied values cannot bypass enforcement", () => {
     const argsBlock = SRC.split("export const consumeProfitSignal")[1]
       ?.split("handler:")[0] ?? "";
     expect(argsBlock).toContain("recommendation");
-    for (const forbidden of ["plan", "profitSignalsUsed", "isPremium", "remaining", "userId"]) {
+    for (const forbidden of ["plan", "profitSignalsUsed", "isPremium", "remaining", "userId", "isOwner", "owner"]) {
       expect(argsBlock, `args expose ${forbidden}`).not.toContain(`${forbidden}:`);
     }
   });

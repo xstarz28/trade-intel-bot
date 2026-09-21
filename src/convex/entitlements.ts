@@ -22,9 +22,14 @@ import {
   FREE_PROFIT_SIGNAL_LIMIT,
   evaluateEntitlement,
   isProfitSignal,
+  isUnlimitedPlan,
   nextUsageCount,
+  overlayOwnerPlan,
+  storedPlanFrom,
   type Plan,
+  type StoredPlan,
 } from "../lib/entitlement/entitlement";
+import { isConfiguredOwner } from "./lib/ownerPrincipals";
 
 // ═══════════════════════════════════════════════════════════════
 // AUTH RESOLUTION
@@ -61,21 +66,32 @@ async function resolveUser(ctx: Ctx): Promise<Doc<"users"> | null> {
  * so a lapsed subscription cannot keep unlimited access just because no
  * mutation happened to run.
  */
-async function readEntitlement(ctx: Ctx, userId: Id<"users">, now: number) {
+async function readEntitlement(
+  ctx: Ctx,
+  userId: Id<"users">,
+  now: number,
+  email?: string,
+) {
   const row = await ctx.db
     .query("entitlements")
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .unique();
 
-  const storedPlan: Plan = row?.plan === "PREMIUM" ? "PREMIUM" : "GUEST";
+  const storedPlan = storedPlanFrom(row?.plan);
   const expired =
     storedPlan === "PREMIUM" &&
     typeof row?.premiumUntil === "number" &&
     row.premiumUntil <= now;
+  const commercial: StoredPlan = expired ? "GUEST" : storedPlan;
+  const plan: Plan = overlayOwnerPlan(
+    commercial,
+    isConfiguredOwner({ userId, email }),
+  );
 
   return {
     row,
-    plan: (expired ? "GUEST" : storedPlan) as Plan,
+    plan,
+    commercial,
     profitSignalsUsed: row?.profitSignalsUsed ?? 0,
     premiumUntil: row?.premiumUntil,
     expired,
@@ -111,7 +127,7 @@ export const getMyEntitlement = query({
     }
 
     const now = Date.now();
-    const state = await readEntitlement(ctx, user._id, now);
+    const state = await readEntitlement(ctx, user._id, now, user.email);
     const decision = evaluateEntitlement({
       plan: state.plan,
       profitSignalsUsed: state.profitSignalsUsed,
@@ -122,7 +138,7 @@ export const getMyEntitlement = query({
       plan: state.plan,
       profitSignalsUsed: state.profitSignalsUsed,
       // Infinity is not JSON-serializable; report null for unlimited.
-      remaining: state.plan === "PREMIUM" ? null : decision.remaining,
+      remaining: isUnlimitedPlan(state.plan) ? null : decision.remaining,
       limit: FREE_PROFIT_SIGNAL_LIMIT,
       allowed: decision.allowed,
       upgradeRequired: decision.upgradeRequired,
@@ -169,7 +185,7 @@ export const consumeProfitSignal = mutation({
     if (!user) throw new Error("Unauthenticated: sign in to run an analysis.");
 
     const now = Date.now();
-    const state = await readEntitlement(ctx, user._id, now);
+    const state = await readEntitlement(ctx, user._id, now, user.email);
 
     const chargeable = isProfitSignal(args.recommendation);
     const decision = evaluateEntitlement({
@@ -184,7 +200,7 @@ export const consumeProfitSignal = mutation({
         allowed: true,
         charged: false,
         plan: state.plan,
-        remaining: state.plan === "PREMIUM" ? null : decision.remaining,
+        remaining: isUnlimitedPlan(state.plan) ? null : decision.remaining,
         upgradeRequired: false,
         reason: "NOT_CHARGEABLE" as const,
       };
@@ -209,15 +225,14 @@ export const consumeProfitSignal = mutation({
     if (state.row) {
       await ctx.db.patch(state.row._id, {
         profitSignalsUsed: updated,
-        // Persist the degraded plan so an expired subscription is not
-        // re-evaluated as PREMIUM on every read.
-        plan: state.plan,
+        // Persist the commercial plan only. OWNER is an overlay, never a row.
+        plan: state.commercial,
         updatedAt: now,
       });
     } else {
       await ctx.db.insert("entitlements", {
         userId: user._id,
-        plan: state.plan,
+        plan: state.commercial,
         profitSignalsUsed: updated,
         updatedAt: now,
       });

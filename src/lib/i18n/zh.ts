@@ -1306,6 +1306,7 @@ const zh: Translations = {
     signInRequired: "请登录后运行分析。",
     trialLabel: "试用",
     premiumLabel: "高级版",
+    ownerLabel: "所有者",
     signalsRemaining: "剩余 {count} 个免费信号",
     signalsRemainingOne: "剩余 1 个免费信号",
     signalsExhausted: "免费信号已用完",

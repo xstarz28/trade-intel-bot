@@ -564,6 +564,16 @@ upgrade button is inert and labelled as unavailable. `grantPremium` remains
 admin-only and is intentionally not client-callable — a client-callable grant
 would make Premium free.
 
+#### Owner overlay (not a stored plan)
+
+`OWNER` is a server-side overlay, not a row in `entitlements` and not a client
+flag. An authenticated caller whose Convex `users` email or document id exactly
+matches `XSTARZ_OWNER_PRINCIPALS` (`email:` / `user:` entries) receives unlimited
+analysis without consuming the free counter. Unset, empty, or malformed
+configuration matches nobody. Ordinary FREE (`FREE_PROFIT_SIGNAL_LIMIT = 2`) and
+PREMIUM are unchanged. OWNER still requires a valid session and does not bypass
+unrelated authorization.
+
 ---
 
 ### Entitlement surface — Phase 173 scope note (SUPERSEDED by Phase 174)

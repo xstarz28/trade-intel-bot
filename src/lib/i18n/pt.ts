@@ -1309,6 +1309,7 @@ const pt: Translations = {
     signInRequired: "Entre para executar uma análise.",
     trialLabel: "Teste",
     premiumLabel: "Premium",
+    ownerLabel: "Proprietário",
     signalsRemaining: "{count} sinais gratuitos restantes",
     signalsRemainingOne: "1 sinal gratuito restante",
     signalsExhausted: "Sinais gratuitos esgotados",

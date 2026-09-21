@@ -156,6 +156,13 @@ export const PRODUCTION_CONFIG_VARIABLES: readonly ConfigVariable[] = [
     requiredInProduction: true,
     shape: "deployment-identity",
   },
+  {
+    name: "XSTARZ_OWNER_PRINCIPALS",
+    secret: true,
+    consumer: "server-only OWNER analysis overlay (authenticated principal match)",
+    scope: "convex-production",
+    requiredInProduction: false,
+  },
 ];
 
 /** Provider credentials, derived from the live credential registry — not copied. */

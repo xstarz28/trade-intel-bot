@@ -101,9 +101,14 @@ import {
   FREE_PROFIT_SIGNAL_LIMIT,
   evaluateEntitlement,
   isProfitSignal,
+  isUnlimitedPlan,
   nextUsageCount,
+  overlayOwnerPlan,
+  storedPlanFrom,
   type Plan,
+  type StoredPlan,
 } from "@/lib/entitlement/entitlement";
+import { isConfiguredOwner } from "./lib/ownerPrincipals";
 
 // ═══════════════════════════════════════════════════════════════
 // INTERNAL: atomic entitlement resolution + consumption
@@ -130,6 +135,7 @@ export interface ConsumeVerdict {
     | "NOT_CHARGEABLE"
     | "CONSUMED"
     | "PREMIUM"
+    | "OWNER"
     | "WITHIN_FREE_ALLOWANCE"
     | "FREE_ALLOWANCE_EXHAUSTED";
 }
@@ -143,17 +149,24 @@ export const resolveAndConsume = internalMutation({
   handler: async (ctx, args): Promise<ConsumeVerdict> => {
     const now = Date.now();
 
+    const user = await ctx.db.get(args.userId);
+    const isOwner = isConfiguredOwner({
+      userId: args.userId,
+      email: user?.email,
+    });
+
     const row = await ctx.db
       .query("entitlements")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .unique();
 
-    const storedPlan: Plan = row?.plan === "PREMIUM" ? "PREMIUM" : "GUEST";
+    const storedPlan = storedPlanFrom(row?.plan);
     const expired =
       storedPlan === "PREMIUM" &&
       typeof row?.premiumUntil === "number" &&
       row.premiumUntil <= now;
-    const plan: Plan = expired ? "GUEST" : storedPlan;
+    const commercial: StoredPlan = expired ? "GUEST" : storedPlan;
+    const plan: Plan = overlayOwnerPlan(commercial, isOwner);
     const used = row?.profitSignalsUsed ?? 0;
 
     const decision = evaluateEntitlement({ plan, profitSignalsUsed: used });
@@ -164,7 +177,7 @@ export const resolveAndConsume = internalMutation({
         plan,
         allowed: true,
         charged: false,
-        remaining: plan === "PREMIUM" ? null : decision.remaining,
+        remaining: isUnlimitedPlan(plan) ? null : decision.remaining,
         upgradeRequired: false,
         reason: "NOT_CHARGEABLE" as const,
       };
@@ -174,7 +187,7 @@ export const resolveAndConsume = internalMutation({
       // Persist a degraded plan so an expired subscription is not re-evaluated
       // as PREMIUM forever, even though nothing is consumed here.
       if (row && expired) {
-        await ctx.db.patch(row._id, { plan, updatedAt: now });
+        await ctx.db.patch(row._id, { plan: commercial, updatedAt: now });
       }
       return {
         plan,
@@ -191,13 +204,13 @@ export const resolveAndConsume = internalMutation({
     if (row) {
       await ctx.db.patch(row._id, {
         profitSignalsUsed: updated,
-        plan,
+        plan: commercial,
         updatedAt: now,
       });
     } else {
       await ctx.db.insert("entitlements", {
         userId: args.userId,
-        plan,
+        plan: commercial,
         profitSignalsUsed: updated,
         updatedAt: now,
       });
@@ -208,8 +221,8 @@ export const resolveAndConsume = internalMutation({
     return {
       plan,
       allowed: true,
-      charged: plan !== "PREMIUM",
-      remaining: plan === "PREMIUM" ? null : after.remaining,
+      charged: !isUnlimitedPlan(plan),
+      remaining: isUnlimitedPlan(plan) ? null : after.remaining,
       upgradeRequired: false,
       reason: "CONSUMED" as const,
     };

@@ -17,15 +17,19 @@ import {
   FREE_PROFIT_SIGNAL_LIMIT,
   evaluateEntitlement,
   isProfitSignal,
+  isUnlimitedPlan,
   nextUsageCount,
+  overlayOwnerPlan,
+  storedPlanFrom,
   type Plan,
+  type StoredPlan,
 } from "@/lib/entitlement/entitlement";
 
 // ── In-memory mirror of the entitlements table ───────────────────
 
 interface Row {
   userId: string;
-  plan: Plan;
+  plan: StoredPlan;
   profitSignalsUsed: number;
   premiumUntil?: number;
   updatedAt: number;
@@ -36,15 +40,25 @@ beforeEach(() => {
   db = new Map();
 });
 
-/** Mirrors `resolveAndConsume`. `chargeable` is server-derived. */
-function resolveAndConsume(userId: string, chargeable: boolean, now: number) {
+/**
+ * Mirrors `resolveAndConsume`. `chargeable` is server-derived.
+ * `isOwner` is the already-resolved server overlay (env + authenticated
+ * principal). It is not a client argument.
+ */
+function resolveAndConsume(
+  userId: string,
+  chargeable: boolean,
+  now: number,
+  isOwner = false,
+) {
   const row = db.get(userId);
-  const stored: Plan = row?.plan === "PREMIUM" ? "PREMIUM" : "GUEST";
+  const stored = storedPlanFrom(row?.plan);
   const expired =
     stored === "PREMIUM" &&
     typeof row?.premiumUntil === "number" &&
     row.premiumUntil <= now;
-  const plan: Plan = expired ? "GUEST" : stored;
+  const commercial: StoredPlan = expired ? "GUEST" : stored;
+  const plan: Plan = overlayOwnerPlan(commercial, isOwner);
   const used = row?.profitSignalsUsed ?? 0;
   const decision = evaluateEntitlement({ plan, profitSignalsUsed: used });
 
@@ -52,19 +66,24 @@ function resolveAndConsume(userId: string, chargeable: boolean, now: number) {
     return { plan, allowed: true, charged: false, reason: "NOT_CHARGEABLE" as const };
   }
   if (!decision.allowed) {
-    if (row && expired) db.set(userId, { ...row, plan, updatedAt: now });
+    if (row && expired) db.set(userId, { ...row, plan: commercial, updatedAt: now });
     return { plan, allowed: false, charged: false, reason: decision.reason };
   }
 
   const updated = nextUsageCount({ plan, profitSignalsUsed: used }, "LONG");
   db.set(userId, {
     userId,
-    plan,
+    plan: commercial,
     profitSignalsUsed: updated,
     premiumUntil: row?.premiumUntil,
     updatedAt: now,
   });
-  return { plan, allowed: true, charged: plan !== "PREMIUM", reason: "CONSUMED" as const };
+  return {
+    plan,
+    allowed: true,
+    charged: !isUnlimitedPlan(plan),
+    reason: "CONSUMED" as const,
+  };
 }
 
 function engineResult(recommendation: string) {
@@ -100,6 +119,7 @@ function runProtectedAnalysis(
   engineVerdict: string,
   now = 1_735_000_000_000,
   clientClaim?: string,
+  isOwner = false,
 ) {
   if (!userId) {
     return { status: "UNAUTHENTICATED" as const, result: null, charged: false };
@@ -114,7 +134,7 @@ function runProtectedAnalysis(
 
   // Server-derived. The client claim is never consulted.
   const chargeable = isProfitSignal(result.recommendation as string);
-  const verdict = resolveAndConsume(userId, chargeable, now);
+  const verdict = resolveAndConsume(userId, chargeable, now, isOwner);
   const gated = gateDecision({ result, entitlement: { allowed: verdict.allowed } });
 
   return {
@@ -340,6 +360,36 @@ describe("Premium", () => {
     });
 
     expect(runProtectedAnalysis(U, "LONG", now).status).toBe("DELIVERED");
+  });
+});
+
+describe("OWNER overlay", () => {
+  it("delivers after the free allowance is exhausted and does not consume", () => {
+    db.set(U, {
+      userId: U,
+      plan: "GUEST",
+      profitSignalsUsed: FREE_PROFIT_SIGNAL_LIMIT,
+      updatedAt: 0,
+    });
+
+    for (let i = 0; i < 5; i++) {
+      const out = runProtectedAnalysis(U, "LONG", 1_735_000_000_000, undefined, true);
+      expect(out.status).toBe("DELIVERED");
+      expect(out.charged).toBe(false);
+      expect(out.plan).toBe("OWNER");
+    }
+    expect(db.get(U)?.profitSignalsUsed).toBe(FREE_PROFIT_SIGNAL_LIMIT);
+    expect(db.get(U)?.plan).toBe("GUEST");
+  });
+
+  it("unauthenticated callers cannot be OWNER", () => {
+    const out = runProtectedAnalysis(null, "LONG", 1_735_000_000_000, undefined, true);
+    expect(out.status).toBe("UNAUTHENTICATED");
+    expect(out.result).toBeNull();
+  });
+
+  it("does not bypass the unauthenticated engine guard for guests", () => {
+    expect(runProtectedAnalysis(null, "LONG").status).toBe("UNAUTHENTICATED");
   });
 });
 

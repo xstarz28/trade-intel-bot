@@ -24,7 +24,17 @@
  * tested exhaustively without a database.
  */
 
-export type Plan = "GUEST" | "PREMIUM";
+/** Persisted on the `entitlements` row. OWNER is never stored. */
+export type StoredPlan = "GUEST" | "PREMIUM";
+
+/**
+ * Effective plan for this request.
+ *
+ * OWNER is a server-side overlay from an authenticated principal. It is not
+ * a client flag, not `users.role`, and not a value written to the entitlements
+ * table.
+ */
+export type Plan = StoredPlan | "OWNER";
 
 /** Number of free profit signals a guest may consume, in total, ever. */
 export const FREE_PROFIT_SIGNAL_LIMIT = 2;
@@ -79,10 +89,25 @@ export interface EntitlementDecision {
   /** Machine-readable reason, for UI copy and for tests. */
   reason:
     | "PREMIUM"
+    | "OWNER"
     | "WITHIN_FREE_ALLOWANCE"
     | "FREE_ALLOWANCE_EXHAUSTED";
   /** True when the UI should present the upgrade path. */
   upgradeRequired: boolean;
+}
+
+/** PREMIUM and OWNER never consume the free counter. */
+export function isUnlimitedPlan(plan: Plan): boolean {
+  return plan === "PREMIUM" || plan === "OWNER";
+}
+
+/** OWNER is an overlay. The stored row stays GUEST or PREMIUM. */
+export function overlayOwnerPlan(plan: StoredPlan, isOwner: boolean): Plan {
+  return isOwner ? "OWNER" : plan;
+}
+
+export function storedPlanFrom(plan: string | undefined): StoredPlan {
+  return plan === "PREMIUM" ? "PREMIUM" : "GUEST";
 }
 
 /** Clamp a possibly-corrupt stored counter into a sane range. */
@@ -94,17 +119,17 @@ function safeUsed(used: number | null | undefined): number {
 /**
  * Decide whether an actionable profit signal may be delivered.
  *
- * Premium is unlimited. A guest is allowed strictly fewer than
+ * Premium and OWNER are unlimited. A guest is allowed strictly fewer than
  * FREE_PROFIT_SIGNAL_LIMIT consumptions.
  */
 export function evaluateEntitlement(
   state: EntitlementState,
 ): EntitlementDecision {
-  if (state.plan === "PREMIUM") {
+  if (isUnlimitedPlan(state.plan)) {
     return {
       allowed: true,
       remaining: Number.POSITIVE_INFINITY,
-      reason: "PREMIUM",
+      reason: state.plan === "OWNER" ? "OWNER" : "PREMIUM",
       upgradeRequired: false,
     };
   }
@@ -140,7 +165,7 @@ export function nextUsageCount(
   recommendation: string | null | undefined,
 ): number {
   const used = safeUsed(state.profitSignalsUsed);
-  if (state.plan === "PREMIUM") return used;
+  if (isUnlimitedPlan(state.plan)) return used;
   if (!isProfitSignal(recommendation)) return used;
   // Never exceed the limit in storage, so a race cannot inflate the number
   // into something the UI would render oddly.

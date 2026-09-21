@@ -140,7 +140,7 @@ statement about source, never about a running system.**
 | Item | Evidence | What it is NOT |
 | --- | --- | --- |
 | Auth architecture | self-only issuer policy, fails closed in production | not a working sign-in |
-| Entitlement enforcement | `FREE_PROFIT_SIGNAL_LIMIT=2`, OCC-safe consume path | not verified against a deployment |
+| Entitlement enforcement | `FREE_PROFIT_SIGNAL_LIMIT=2`, OCC-safe consume path; OWNER is a server-only env overlay, not a stored plan | not verified against a deployment |
 | Provenance controls | server-side reacquisition, 19-field allowlist | not verified with live providers |
 | Deployment preflight | 11 checks, fail-closed, mutation-tested | not a deployment |
 | Control-plane diagnostic | `scripts/verify-convex-access.mjs`, layer-accurate | not proof the network works |

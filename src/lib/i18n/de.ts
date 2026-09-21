@@ -1308,6 +1308,7 @@ const de: Translations = {
     signInRequired: "Melden Sie sich an, um eine Analyse auszuführen.",
     trialLabel: "Test",
     premiumLabel: "Premium",
+    ownerLabel: "Inhaber",
     signalsRemaining: "Noch {count} kostenlose Signale",
     signalsRemainingOne: "Noch 1 kostenloses Signal",
     signalsExhausted: "Kostenlose Signale aufgebraucht",

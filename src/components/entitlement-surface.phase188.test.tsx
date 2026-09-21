@@ -305,12 +305,38 @@ describe("188.5 — the client is never an entitlement authority", () => {
     expect(container.textContent).toMatch(/trial/i);
   });
 
-  it("14. only the server's plan value selects the Premium branch", () => {
-    // Structural guard: the Premium test must be an exact comparison against
-    // the server field, with no additional client-controlled disjunct.
-    const premiumBranch = BADGE_SRC.match(/if \(entitlement\.plan === "PREMIUM"[^)]*\)/);
+  it("14. only the server's plan value selects the unlimited branch", () => {
+    // Structural guard: the unlimited test must compare the server `plan`
+    // field, with no client-controlled disjunct (`isOwner`, `clientPremium`).
+    const premiumBranch = BADGE_SRC.match(
+      /if \(entitlement\.plan === "PREMIUM"[^)]*\)/,
+    );
     expect(premiumBranch).not.toBeNull();
-    expect(premiumBranch![0]).toBe('if (entitlement.plan === "PREMIUM")');
+    expect(premiumBranch![0]).toBe(
+      'if (entitlement.plan === "PREMIUM" || entitlement.plan === "OWNER")',
+    );
+    expect(premiumBranch![0]).not.toMatch(/isOwner|clientPremium|isPremium/);
+  });
+
+  it("OWNER from the server renders as unlimited, not as a trial count", () => {
+    const { container } = renderBadge({ ...GUEST, plan: "OWNER", remaining: null });
+    expect(container.textContent).toMatch(/owner/i);
+    expect(container.textContent).toMatch(/unlimited/i);
+    expect(container.textContent).not.toMatch(/\d+ free signals/i);
+  });
+
+  it("a client isOwner flag cannot flip a guest badge to OWNER", () => {
+    const spoofed = {
+      ...GUEST,
+      remaining: 0,
+      isOwner: true,
+      owner: true,
+      plan: "GUEST",
+    } as unknown as ServerEntitlement;
+    const { container } = renderBadge(spoofed);
+    expect(container.textContent).not.toMatch(/owner/i);
+    expect(container.textContent).not.toMatch(/unlimited/i);
+    expect(container.textContent).toMatch(/trial/i);
   });
 
   it("14. a client-supplied plan cannot be sent to the server", () => {
@@ -318,7 +344,7 @@ describe("188.5 — the client is never an entitlement authority", () => {
     // server-side and are not part of the request.
     const call = DASHBOARD_SRC.slice(DASHBOARD_SRC.indexOf("await runProtectedAnalysis("));
     const args = call.slice(0, call.indexOf("});"));
-    expect(args).not.toMatch(/plan:|premium:|remaining:|unlimited:/i);
+    expect(args).not.toMatch(/plan:|premium:|remaining:|unlimited:|isOwner:|owner:/i);
   });
 
   it("15. the upgrade CTA mutates nothing", () => {
@@ -373,6 +399,7 @@ describe("188.7 — entitlement strings exist in all nine locales", () => {
   const KEYS = [
     "trialLabel",
     "premiumLabel",
+    "ownerLabel",
     "signalsRemaining",
     "signalsRemainingOne",
     "signalsExhausted",
@@ -568,7 +595,15 @@ describe("188.10 — the production bundle carries no bypass surface", () => {
     },
   );
 
-  it.skipIf(distFiles === null)("no provider secret reaches the bundle", () => {
+    it.skipIf(distFiles === null)("OWNER config is not in the client bundle", () => {
+    for (const js of distFiles!) {
+      expect(js).not.toContain("XSTARZ_OWNER_PRINCIPALS");
+      expect(js).not.toContain("parseOwnerPrincipals");
+      expect(js).not.toContain("isConfiguredOwner");
+    }
+  });
+
+it.skipIf(distFiles === null)("no provider secret reaches the bundle", () => {
     // Phase 189: test for secret VALUES, not variable NAMES. The provider
     // registry legitimately lists `credentialEnvVars: ["TWELVE_DATA_API_KEY"]`
     // so the UI can say which credential is missing; the name is not a secret.

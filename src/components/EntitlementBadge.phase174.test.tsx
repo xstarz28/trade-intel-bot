@@ -66,6 +66,17 @@ describe("the badge renders only what the server reported", () => {
     expect(container.textContent).toContain("Unlimited");
   });
 
+  it("shows OWNER as unlimited without a trial count", () => {
+    const { container } = renderBadge({
+      ...GUEST,
+      plan: "OWNER",
+      remaining: null,
+    });
+    expect(container.textContent).toContain("Owner");
+    expect(container.textContent).toContain("Unlimited");
+    expect(container.textContent).not.toContain("Trial");
+  });
+
   it("trusts the server even when its numbers look inconsistent", () => {
     // The UI must not 'correct' the server. If the server says PREMIUM with a
     // remaining of 0, that is still PREMIUM.

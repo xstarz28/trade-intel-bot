@@ -1308,6 +1308,7 @@ const ko: Translations = {
     signInRequired: "분석을 실행하려면 로그인하세요.",
     trialLabel: "체험",
     premiumLabel: "프리미엄",
+    ownerLabel: "소유자",
     signalsRemaining: "무료 시그널 {count}개 남음",
     signalsRemainingOne: "무료 시그널 1개 남음",
     signalsExhausted: "무료 시그널을 모두 사용했습니다",

@@ -1309,6 +1309,7 @@ const ja: Translations = {
     signInRequired: "分析を実行するにはサインインしてください。",
     trialLabel: "トライアル",
     premiumLabel: "プレミアム",
+    ownerLabel: "オーナー",
     signalsRemaining: "無料シグナル残り{count}件",
     signalsRemainingOne: "無料シグナル残り1件",
     signalsExhausted: "無料シグナルを使い切りました",

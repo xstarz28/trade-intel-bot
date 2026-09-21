@@ -43,6 +43,8 @@ describe("the engine runs on the server", () => {
     expect(argsBlock).not.toContain("plan");
     expect(argsBlock).not.toContain("isPremium");
     expect(argsBlock).not.toContain("remaining");
+    expect(argsBlock).not.toContain("isOwner");
+    expect(argsBlock).not.toContain("owner");
   });
 });
 
@@ -119,6 +121,24 @@ describe("no entitlement state is trusted from the client", () => {
     expect(SERVER).not.toMatch(/args\.isPremium/);
     expect(SERVER).not.toMatch(/args\.profitSignalsUsed/);
     expect(SERVER).not.toMatch(/args\.remaining/);
+    expect(SERVER).not.toMatch(/args\.isOwner/);
+    expect(SERVER).not.toMatch(/args\.owner/);
+  });
+
+  it("OWNER is resolved from the authenticated principal, not a client flag", () => {
+    expect(SERVER).toContain("isConfiguredOwner");
+    const ownerEnv = readFileSync("src/convex/lib/ownerPrincipals.ts", "utf8");
+    expect(ownerEnv).toContain("process.env.XSTARZ_OWNER_PRINCIPALS");
+    expect(ownerEnv).not.toContain("VITE_");
+    const consumeArgs = SERVER.slice(
+      SERVER.indexOf("export const resolveAndConsume"),
+      SERVER.indexOf("handler:", SERVER.indexOf("export const resolveAndConsume")),
+    );
+    expect(consumeArgs).not.toContain("isOwner");
+    expect(DASHBOARD).not.toContain("XSTARZ_OWNER_PRINCIPALS");
+    expect(DASHBOARD).not.toContain("isConfiguredOwner");
+    expect(ENTITLEMENTS).toContain("isConfiguredOwner");
+    expect(ENTITLEMENTS).not.toMatch(/args\.(isOwner|owner)\b/);
   });
 
   it("no localStorage anywhere in the server module", () => {

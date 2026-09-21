@@ -1303,6 +1303,7 @@ const id: Translations = {
     signInRequired: "Masuk untuk menjalankan analisis.",
     trialLabel: "Uji Coba",
     premiumLabel: "Premium",
+    ownerLabel: "Pemilik",
     signalsRemaining: "{count} sinyal gratis tersisa",
     signalsRemainingOne: "1 sinyal gratis tersisa",
     signalsExhausted: "Sinyal gratis telah digunakan",
