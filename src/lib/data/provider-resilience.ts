@@ -173,6 +173,22 @@ const RATE_LIMIT_PATTERNS = [
   /quota exceeded/i,
 ];
 
+/**
+ * Envelope-path timeout text. Named `TimeoutError` / `AbortError` already
+ * classify as timeout on the thrown path; Convex re-wraps those into a
+ * `{success:false, error}` string, so the class can only survive as text.
+ *
+ * Deliberately NOT `/timed.?out/i` or a bare `/timeout/i`: those would steal
+ * socket `ETIMEDOUT` from the network class. Word-boundary `timeout` and
+ * spaced `timed out` match Phase 229/230 envelope text
+ * (`leg: timeout (The operation timed out)`) without touching ETIMEDOUT.
+ */
+const TIMEOUT_PATTERNS = [
+  /\btimeout\b/i,
+  /timed out/i,
+  /deadline[- ](?:exceeded|elapsed)/i,
+];
+
 const NETWORK_PATTERNS = [
   /econnrefused/i,
   /econnreset/i,
@@ -210,6 +226,9 @@ export function classifyFailure(raw: unknown): {
   }
   if (RATE_LIMIT_PATTERNS.some((re) => re.test(text))) {
     return { category: "rate-limit", rateLimited: true };
+  }
+  if (TIMEOUT_PATTERNS.some((re) => re.test(text))) {
+    return { category: "timeout", rateLimited: false };
   }
   if (NETWORK_PATTERNS.some((re) => re.test(text))) {
     return { category: "network", rateLimited: false };
@@ -347,6 +366,9 @@ export async function runProviderLeg<T>(
 
       // Never hammer a provider that just told us to back off.
       if (classified.rateLimited) break;
+      // An envelope timeout is the same fact as a thrown TimeoutError: the
+      // budget (HTTP or leg) is gone, so retrying cannot help.
+      if (classified.category === "timeout") break;
     } catch (err) {
       const classified = classifyFailure(err);
       last = {

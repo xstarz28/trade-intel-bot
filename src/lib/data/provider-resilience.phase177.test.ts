@@ -501,6 +501,13 @@ describe("failure classification", () => {
     [new Error("socket hang up"), "network"],
     ["OKX returned malformed JSON.", "invalid-response"],
     ["something nobody predicted", "unavailable"],
+    // Phase 230 §M-1 — envelope-path timeout text (Convex re-wraps thrown
+    // TimeoutError into a string, so the class can only survive as text).
+    ["timeout (The operation timed out)", "timeout"],
+    ["The operation timed out", "timeout"],
+    ["realCurrent: timeout (The operation timed out)", "timeout"],
+    ["OKX request failed: timeout (The operation timed out)", "timeout"],
+    ["deadline exceeded after 15000ms", "timeout"],
   ];
 
   for (const [input, expected] of CASES) {
@@ -513,6 +520,62 @@ describe("failure classification", () => {
     const e = new Error("x");
     e.name = "TimeoutError";
     expect(classifyFailure(e).category).toBe("timeout");
+  });
+
+  it("does not steal socket ETIMEDOUT from the network class", () => {
+    expect(classifyFailure(new Error("connect ETIMEDOUT")).category).toBe("network");
+    expect(classifyFailure("connect ETIMEDOUT").category).toBe("network");
+  });
+
+  it("does not reclassify a rate-limit that also mentions a wait", () => {
+    // Rate-limit stays first: a 429 is not a timeout even if the body says wait.
+    expect(classifyFailure("429 too many requests, retry after timeout").category).toBe(
+      "rate-limit",
+    );
+  });
+});
+
+describe("envelope-path timeout (Phase 230 §M-1)", () => {
+  it("classifies a success:false envelope whose error names a timeout as timeout, carries no data, and is not retried", async () => {
+    const run = vi.fn(() =>
+      Promise.resolve({
+        success: false as const,
+        error: "timeout (The operation timed out)",
+      }),
+    );
+
+    const outcome = await runProviderLeg({
+      provider: "hung",
+      run,
+      budgetMs: 500,
+      maxRetries: 5,
+    });
+
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(outcome.status).toBe("failed");
+    expect(outcome.category).toBe("timeout");
+    expect(outcome.timedOut).toBe(true);
+    expect(outcome.rateLimited).toBe(false);
+    expect(outcome.data).toBeUndefined();
+    expect("data" in outcome).toBe(false);
+    expect(successfulData(outcome)).toBeUndefined();
+  });
+
+  it("leaves a generic envelope failure as unavailable and still retryable", async () => {
+    const run = vi.fn(() =>
+      Promise.resolve({ success: false as const, error: "down" }),
+    );
+
+    const outcome = await runProviderLeg({
+      provider: "p",
+      run,
+      budgetMs: 500,
+      maxRetries: 2,
+    });
+
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(outcome.category).toBe("unavailable");
+    expect(outcome.timedOut).toBe(false);
   });
 });
 
