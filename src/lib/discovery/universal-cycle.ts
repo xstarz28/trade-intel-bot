@@ -12,6 +12,9 @@
  *   - discovery metadata is not live evidence;
  *   - only verified acquisition results become live sources (handled by
  *     the pipeline / toAcquisitionResults).
+ *
+ * Phase 235 — universal provider expansion: supports ccxt:<exchange> family
+ * via prefix fallback, preserving exact provenance.
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
@@ -84,6 +87,8 @@ export type ProviderAcquireFn = (
  *
  * An instrument whose provider has no registered acquirer fails explicitly
  * — it is never rewritten onto another provider's symbol.
+ * Phase 235: supports ccxt:<exchange> family via prefix fallback to "ccxt"
+ * handler, preserving exact provider-native identity and provenance.
  */
 export async function acquireDiscoveredBatch(
   batch: readonly DiscoveredInstrument[],
@@ -98,7 +103,10 @@ export async function acquireDiscoveredBatch(
 
   const out: NativeAcquisitionResult[] = [];
   for (const [provider, items] of groups) {
-    const acquire = acquireByProvider[provider];
+    let acquire = acquireByProvider[provider];
+    if (!acquire && provider.startsWith("ccxt:")) {
+      acquire = acquireByProvider["ccxt"];
+    }
     if (!acquire) {
       for (const item of items) {
         out.push({
@@ -115,7 +123,7 @@ export async function acquireDiscoveredBatch(
     try {
       out.push(...(await acquire(items)));
     } catch (err) {
-      const reason = err instanceof Error ? err.message : "acquisition threw";
+      const reason = err instanceof Error ? `acquisition threw: ${err.message}` : "acquisition threw";
       for (const item of items) {
         out.push({
           provider,

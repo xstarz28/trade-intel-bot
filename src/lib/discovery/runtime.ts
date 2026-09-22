@@ -47,6 +47,7 @@ interface OkxDiscoveryActionResult {
 /**
  * Normalize the Twelve Data discovery action into the universal contract.
  * Provider-native symbols are preserved exactly; extra catalog fields are dropped.
+ * Preserves Phase 234 completeness semantics.
  */
 export function normalizeTwelveDataDiscoveryAction(
   result: ProviderDiscoveryResult,
@@ -61,6 +62,27 @@ export function normalizeTwelveDataDiscoveryAction(
       providerInstrumentId: row.providerInstrumentId,
     })),
     warnings: result.warnings ?? [],
+    completeness: result.completeness,
+    pagesFetched: result.pagesFetched,
+    totalDiscovered: result.totalDiscovered,
+    catalogs: result.catalogs,
+    ...(result.error ? { error: result.error } : {}),
+  };
+}
+
+export function normalizeGenericDiscoveryAction(
+  result: ProviderDiscoveryResult,
+): ProviderDiscoveryResult {
+  return {
+    provider: result.provider,
+    success: result.success,
+    discoveredAt: result.discoveredAt,
+    instruments: result.instruments ?? [],
+    warnings: result.warnings ?? [],
+    completeness: result.completeness,
+    pagesFetched: result.pagesFetched,
+    totalDiscovered: result.totalDiscovered,
+    catalogs: result.catalogs,
     ...(result.error ? { error: result.error } : {}),
   };
 }

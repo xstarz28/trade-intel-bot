@@ -107,6 +107,20 @@ function completenessLabel(
   return t.global.loading;
 }
 
+function formatProviderDisplay(provider: string): string {
+  if (provider.startsWith("ccxt:")) {
+    const ex = provider.slice(5);
+    return `${ex} via CCXT`;
+  }
+  if (provider === "twelve-data") return "Twelve Data";
+  if (provider === "dexscreener") return "DexScreener";
+  if (provider === "geckoterminal") return "GeckoTerminal";
+  if (provider === "idx") return "IDX";
+  if (provider === "stockbit") return "Stockbit";
+  if (provider === "ajaib") return "Ajaib";
+  return provider;
+}
+
 export function InstrumentInput({
   onAnalyze,
   isAnalyzing,
@@ -230,7 +244,7 @@ export function InstrumentInput({
                     return (
                       <span key={p.provider}>
                         {i > 0 ? " · " : ""}
-                        {p.provider} {p.ok ? "✓" : t.status.unavailable} · {count} · {comp}
+                        {formatProviderDisplay(p.provider)} {p.ok ? "✓" : t.status.unavailable} · {count} · {comp}
                         {failed !== undefined ? ` — ${txi("entryForm.partialPageFailed", { page: failed })}` : ""}
                       </span>
                     );
@@ -369,7 +383,7 @@ export function InstrumentInput({
                           {assetClassLabel(row.assetClass, t)}
                         </span>
                         <span className="shrink-0 text-muted-foreground">
-                          {row.provider}
+                          {formatProviderDisplay(row.provider)}
                         </span>
                         <span className="shrink-0 text-muted-foreground">
                           {row.tradingState}
@@ -394,7 +408,7 @@ export function InstrumentInput({
               <p className="text-[11px] text-muted-foreground mt-0.5">
                 {assetClassLabel(selectedRow.assetClass, t)}
                 {" · "}
-                {selectedRow.provider}
+                {formatProviderDisplay(selectedRow.provider)}
               </p>
             </div>
           )}

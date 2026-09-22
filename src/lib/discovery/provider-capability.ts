@@ -85,6 +85,9 @@ export interface ProviderDiscoveryProfile {
  * Data-enrichment providers (funding rates, COT, inventories, yields) do NOT
  * enumerate tradable instruments and are marked accordingly — their data is
  * analytical context attached to instruments discovered elsewhere.
+ *
+ * Phase 235 — universal expansion adds ccxt family, dexscreener, geckoterminal,
+ * idx, stockbit, ajaib.
  */
 export const PROVIDER_DISCOVERY_PROFILES: ProviderDiscoveryProfile[] = [
   {
@@ -98,6 +101,48 @@ export const PROVIDER_DISCOVERY_PROFILES: ProviderDiscoveryProfile[] = [
     discoveryImplemented: true,
     providerHasDiscoveryApi: true,
     discoverableAssetClasses: ["forex", "equity", "commodity", "indices", "crypto"],
+  },
+  {
+    provider: "ccxt",
+    discoveryImplemented: true,
+    providerHasDiscoveryApi: true,
+    discoverableAssetClasses: ["crypto"],
+    note: "Dynamic CEX/DEX backbone via CCXT fetchMarkets(), exchanges discovered from ccxt.exchanges registry.",
+  },
+  {
+    provider: "dexscreener",
+    discoveryImplemented: true,
+    providerHasDiscoveryApi: true,
+    discoverableAssetClasses: ["crypto"],
+    note: "DEX pairs via DexScreener public API, pool identity = chain:dex:poolAddress.",
+  },
+  {
+    provider: "geckoterminal",
+    discoveryImplemented: true,
+    providerHasDiscoveryApi: true,
+    discoverableAssetClasses: ["crypto"],
+    note: "On-chain pools via GeckoTerminal API, networks discovered dynamically, pools paginated.",
+  },
+  {
+    provider: "idx",
+    discoveryImplemented: true,
+    providerHasDiscoveryApi: true,
+    discoverableAssetClasses: ["equity", "indices"],
+    note: "IDX public metadata discoverable, realtime requires licensed datafeed (REQUIRES_LICENSE).",
+  },
+  {
+    provider: "stockbit",
+    discoveryImplemented: false,
+    providerHasDiscoveryApi: false,
+    discoverableAssetClasses: ["equity"],
+    note: "Stockbit Live Datafeed requires paid access, no private endpoint scraping. REQUIRES_LICENSE.",
+  },
+  {
+    provider: "ajaib",
+    discoveryImplemented: false,
+    providerHasDiscoveryApi: false,
+    discoverableAssetClasses: ["equity"],
+    note: "Ajaib requires authorized access, no private endpoint scraping. REQUIRES_LICENSE.",
   },
   {
     provider: "coingecko",
@@ -170,7 +215,12 @@ export const PROVIDER_DISCOVERY_PROFILES: ProviderDiscoveryProfile[] = [
 export function getDiscoveryProfile(
   provider: string,
 ): ProviderDiscoveryProfile | undefined {
-  return PROVIDER_DISCOVERY_PROFILES.find((p) => p.provider === provider);
+  const exact = PROVIDER_DISCOVERY_PROFILES.find((p) => p.provider === provider);
+  if (exact) return exact;
+  if (provider.startsWith("ccxt:")) {
+    return PROVIDER_DISCOVERY_PROFILES.find((p) => p.provider === "ccxt");
+  }
+  return undefined;
 }
 
 // ═══════════════════════════════════════════════════════════════

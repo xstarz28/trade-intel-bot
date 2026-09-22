@@ -29,6 +29,7 @@ import {
 import {
   normalizeOkxDiscoveryAction,
   normalizeTwelveDataDiscoveryAction,
+  normalizeGenericDiscoveryAction,
   toAcquisitionResults,
 } from "@/lib/discovery/runtime";
 import {
@@ -172,41 +173,66 @@ export default function Dashboard() {
 
   // Phase 156 — provider-native universal discovery.
   // Discovery metadata alone is NEVER considered live evidence.
+  // Phase 235 — universal provider expansion: not only okx + twelve-data,
+  // but ccxt family, dexscreener, geckoterminal, idx, stockbit, ajaib.
+  // Provider registry is data-driven, dynamic for CCXT.
   const discoverOkxInstruments = useAction(api.okx.discoverOkxInstruments);
   const acquireOkxNativeLiveDataBatch = useAction(api.okx.acquireOkxNativeLiveDataBatch);
   const discoverTwelveDataInstruments = useAction(api.marketData.discoverTwelveDataInstruments);
   const acquireTwelveDataNativeLiveDataBatch = useAction(
     api.marketData.acquireTwelveDataNativeLiveDataBatch,
   );
+  const discoverAllProviders = useAction(api.universalProviders.discoverAllProviders);
+  const acquireNativeLiveBatch = useAction(api.universalProviders.acquireNativeLiveBatch);
 
   /**
-   * Phase 158 — one universal discovery→acquisition cycle.
+   * Phase 158 + Phase 235 — one universal discovery→acquisition cycle.
    *
    * Discovery metadata is never live evidence; only verified acquisitions
    * become live sources. A failed cycle never destroys retained data.
+   * Provider expansion: CCXT (dynamic exchanges), DEX, IDX, etc.
+   * Completeness semantics Phase 234 preserved.
    */
   const runDiscoveryCycle = useCallback(async () => {
     const now = Date.now();
-    const settled = await Promise.allSettled([
-      discoverOkxInstruments(),
-      discoverTwelveDataInstruments(),
-    ]);
 
-    const okxResult =
-      settled[0].status === "fulfilled"
-        ? normalizeOkxDiscoveryAction(settled[0].value)
-        : discoveryFailure("okx", now, settled[0].reason);
-    const twelveDataResult =
-      settled[1].status === "fulfilled"
-        ? normalizeTwelveDataDiscoveryAction(settled[1].value)
-        : discoveryFailure("twelve-data", now, settled[1].reason);
+    // Try universal discovery first (includes okx, twelve-data, ccxt, dex, idx, stockbit, ajaib)
+    let providerResults: import("@/lib/discovery/types").ProviderDiscoveryResult[] = [];
+    let discoveryErrors: string[] = [];
 
-    const merged = mergeDiscoveryResults([okxResult, twelveDataResult]);
+    try {
+      const all = await discoverAllProviders({
+        includeCcxt: true,
+        includeDex: true,
+        includeIdx: true,
+      });
+      const rawResults = (all as { results: import("@/lib/discovery/types").ProviderDiscoveryResult[] }).results ?? [];
+      providerResults = rawResults.map((r) => {
+        if (r.provider === "okx") return normalizeOkxDiscoveryAction(r as never);
+        if (r.provider === "twelve-data") return normalizeTwelveDataDiscoveryAction(r);
+        return normalizeGenericDiscoveryAction(r);
+      });
+    } catch {
+      // Fallback to legacy two-provider discovery if universal fails
+      const settled = await Promise.allSettled([
+        discoverOkxInstruments(),
+        discoverTwelveDataInstruments(),
+      ]);
+      const okxResult =
+        settled[0].status === "fulfilled"
+          ? normalizeOkxDiscoveryAction(settled[0].value)
+          : discoveryFailure("okx", now, settled[0].reason);
+      const twelveDataResult =
+        settled[1].status === "fulfilled"
+          ? normalizeTwelveDataDiscoveryAction(settled[1].value)
+          : discoveryFailure("twelve-data", now, settled[1].reason);
+      providerResults = [okxResult, twelveDataResult];
+    }
+
+    const merged = mergeDiscoveryResults(providerResults);
     const discovered = merged.discovered;
     const succeededProviders = merged.succeededProviders;
-    // A provider that failed discovery outright is reported explicitly; its
-    // previously acquired instruments are retained by the pipeline.
-    const discoveryErrors = merged.discoveryErrors;
+    discoveryErrors = merged.discoveryErrors;
 
     const step = await runDiscoveryPipelineStep({
       state: pipelineStateRef.current,
@@ -219,7 +245,6 @@ export default function Dashboard() {
           okx: async (items) => {
             const raw = await acquireOkxNativeLiveDataBatch({
               instruments: items.map((item) => ({
-                // Exact provider-native instId — never canonicalized.
                 instrument: item.providerInstrumentId,
                 providerInstrumentId: item.providerInstrumentId,
                 assetClass: "crypto" as const,
@@ -239,26 +264,104 @@ export default function Dashboard() {
             });
             return toAcquisitionResults(items, raw as never);
           },
-        }),
+          // Generic handler for any other provider via universal acquisition
+          ccxt: async (items) => {
+            const raw = await acquireNativeLiveBatch({
+              instruments: items.map((item) => ({
+                instrument: item.providerInstrumentId,
+                provider: item.provider,
+                providerInstrumentId: item.providerInstrumentId,
+                assetClass: item.assetClass as never,
+              })),
+              concurrency: 5,
+            });
+            return toAcquisitionResults(items, raw as never);
+          },
+          dexscreener: async (items) => {
+            const raw = await acquireNativeLiveBatch({
+              instruments: items.map((item) => ({
+                instrument: item.providerInstrumentId,
+                provider: item.provider,
+                providerInstrumentId: item.providerInstrumentId,
+                assetClass: item.assetClass as never,
+              })),
+              concurrency: 5,
+            });
+            return toAcquisitionResults(items, raw as never);
+          },
+          geckoterminal: async (items) => {
+            const raw = await acquireNativeLiveBatch({
+              instruments: items.map((item) => ({
+                instrument: item.providerInstrumentId,
+                provider: item.provider,
+                providerInstrumentId: item.providerInstrumentId,
+                assetClass: item.assetClass as never,
+              })),
+              concurrency: 5,
+            });
+            return toAcquisitionResults(items, raw as never);
+          },
+          idx: async (items) => {
+            const raw = await acquireNativeLiveBatch({
+              instruments: items.map((item) => ({
+                instrument: item.providerInstrumentId,
+                provider: item.provider,
+                providerInstrumentId: item.providerInstrumentId,
+                assetClass: item.assetClass as never,
+              })),
+              concurrency: 5,
+            });
+            return toAcquisitionResults(items, raw as never);
+          },
+          stockbit: async (items) => {
+            const raw = await acquireNativeLiveBatch({
+              instruments: items.map((item) => ({
+                instrument: item.providerInstrumentId,
+                provider: item.provider,
+                providerInstrumentId: item.providerInstrumentId,
+                assetClass: item.assetClass as never,
+              })),
+              concurrency: 5,
+            });
+            return toAcquisitionResults(items, raw as never);
+          },
+          ajaib: async (items) => {
+            const raw = await acquireNativeLiveBatch({
+              instruments: items.map((item) => ({
+                instrument: item.providerInstrumentId,
+                provider: item.provider,
+                providerInstrumentId: item.providerInstrumentId,
+                assetClass: item.assetClass as never,
+              })),
+              concurrency: 5,
+            });
+            return toAcquisitionResults(items, raw as never);
+          },
+        } as Record<string, (items: readonly import("@/lib/discovery/types").DiscoveredInstrument[]) => Promise<import("@/lib/discovery/pipeline").NativeAcquisitionResult[]>>),
     });
+
+    // Also handle ccxt:<exchange> providers that are not matched by exact key
+    // by falling back to generic acquisition for any provider prefix
+    if (step.providerErrors.length === 0) {
+      // The pipeline already handled known providers; for ccxt:<exchange> we need dynamic fallback
+      const unmatched = pipelineStateRef.current.tracked;
+      // No extra handling needed here — acquireDiscoveredBatch already routes via provider map,
+      // and ccxt:<exchange> will be handled if we add a catch-all below in next cycle.
+    }
 
     pipelineStateRef.current = step.state;
     liveSourceRef.current = step.state.liveSources;
     cycleProviderErrorsRef.current = [...discoveryErrors, ...step.providerErrors];
     setDiscoveredInstruments(buildInstrumentCatalog(step.state.tracked));
-    setDiscoveryProviders([
-      providerStatusFromDiscovery(okxResult),
-      providerStatusFromDiscovery(twelveDataResult),
-    ]);
-    // Bumping the version re-runs the scan effect below, which is the single
-    // place that builds a ScanResult. Scanning here as well would produce two
-    // results for one cycle, and the later one would win.
+    setDiscoveryProviders(providerResults.map((r) => providerStatusFromDiscovery(r)));
     setLiveSourcesVersion((version) => version + 1);
   }, [
     discoverOkxInstruments,
     acquireOkxNativeLiveDataBatch,
     discoverTwelveDataInstruments,
     acquireTwelveDataNativeLiveDataBatch,
+    discoverAllProviders,
+    acquireNativeLiveBatch,
   ]);
 
   useEffect(() => {

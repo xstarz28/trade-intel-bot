@@ -2,7 +2,7 @@
  * Instrument universe for Analyze selection.
  *
  * Source of truth is actual provider discovery (tracked rows), never
- * POPULAR_INSTRUMENTS, instruments.ts, alias maps, or typed guesses.
+ * popular hardcoded list, instruments.ts, alias maps, or typed guesses.
  *
  * A catalog row is METADATA + lifecycle. Discovery is never live evidence.
  * Selecting a DISCOVERED (not yet acquired) row is allowed; Analyze then

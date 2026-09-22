@@ -28,6 +28,13 @@ const CREDENTIAL_SPECS: Record<string, ProviderCredentialSpec> = {
   tokenomist: { providerId: "tokenomist", requiredEnvVars: [] },
   cftc: { providerId: "cftc", requiredEnvVars: [] },
   treasury: { providerId: "treasury", requiredEnvVars: [] },
+  // Phase 235 — universal expansion
+  ccxt: { providerId: "ccxt", requiredEnvVars: [] },
+  dexscreener: { providerId: "dexscreener", requiredEnvVars: [] },
+  geckoterminal: { providerId: "geckoterminal", requiredEnvVars: [] },
+  idx: { providerId: "idx", requiredEnvVars: [] },
+  stockbit: { providerId: "stockbit", requiredEnvVars: [] },
+  ajaib: { providerId: "ajaib", requiredEnvVars: [] },
 };
 
 export type EnvReader = (name: string) => string | undefined;
@@ -56,12 +63,16 @@ export interface CredentialStatus {
 /**
  * Check credential availability for a provider.
  * Returns NAMES and booleans only — credential VALUES never leave this function.
+ * Phase 235: supports ccxt:<exchange> family via prefix fallback to ccxt spec.
  */
 export function checkCredentials(
   providerId: string,
   readEnv: EnvReader = defaultEnvReader,
 ): CredentialStatus | null {
-  const spec = CREDENTIAL_SPECS[providerId];
+  let spec = CREDENTIAL_SPECS[providerId];
+  if (!spec && providerId.startsWith("ccxt:")) {
+    spec = CREDENTIAL_SPECS["ccxt"];
+  }
   if (!spec) return null;
 
   const missing = spec.requiredEnvVars.filter((name) => {

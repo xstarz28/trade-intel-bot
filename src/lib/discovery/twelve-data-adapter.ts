@@ -24,6 +24,7 @@
  * default (`include_delisted=false`), so presence in the default catalog is
  * the provider's positive assertion that the instrument is currently listed.
  * We do not request delisted rows, so we never have to guess.
+ * Completeness: COMPLETE when all catalog pages fetched, PARTIAL when later page fails, FAILED when all fail.
  */
 
 import type {

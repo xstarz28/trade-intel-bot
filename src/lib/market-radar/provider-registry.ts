@@ -247,44 +247,30 @@ function buildTwelveDataAdapter(): ProviderAdapter {
 // ═══════════════════════════════════════════════════════════════
 
 function buildCoinGeckoAdapter(): ProviderAdapter {
-  const COINGECKO_IDS: Record<string, string> = {
-    "BTC/USD": "bitcoin",
-    "ETH/USD": "ethereum",
-    "SOL/USD": "solana",
-    "DOGE/USD": "dogecoin",
-    "XRP/USD": "ripple",
-    "ADA/USD": "cardano",
-    "AVAX/USD": "avalanche-2",
-    "LINK/USD": "chainlink",
-  };
-
+  // No hardcoded ticker whitelist — source of truth is provider-native discovery.
+  // Use instrument lowercased as coingecko id attempt; if fails, return null.
   return buildAdapter(
     "coingecko",
     "CoinGecko",
     ["crypto"],
     ["quote"],
     async (instrument) => {
-      const coinId = COINGECKO_IDS[instrument];
+      const coinId = instrument.split("/")[0]?.toLowerCase() ?? instrument.toLowerCase();
       if (!coinId) return null;
-
-      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`;
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinId)}&vs_currencies=usd&include_24hr_change=true`;
       const res = await defaultTransport(url);
       if (!res.ok || !res.json) return null;
-
       const data = res.json as Record<string, { usd?: number; usd_24h_change?: number }>;
-      const price = data[coinId]?.usd;
+      const entry = data[coinId];
+      if (!entry) return null;
+      const price = entry.usd;
       if (price === undefined || !Number.isFinite(price) || price <= 0) return null;
-
-      // Phase 238 — the payload carries no observation time, so the record's
-      // `observedAt` IS the acquisition instant: it is read once here, and the
-      // same value is carried out to the acquisition result's `fetchedAt`.
       const acquiredAt = Date.now();
-
       return {
         instrument,
         assetClass: "crypto",
         price,
-        change24h: data[coinId]?.usd_24h_change,
+        change24h: entry.usd_24h_change,
         ohlcvAvailable: false,
         availableTimeframes: [],
         provider: "coingecko",
@@ -395,14 +381,12 @@ function buildTokenomistAdapter(): ProviderAdapter {
 // ═══════════════════════════════════════════════════════════════
 
 function buildOkxAdapter(): ProviderAdapter {
-  const OKX_SYMBOLS: Record<string, string> = {
-    "BTC/USD": "BTC-USDT", "ETH/USD": "ETH-USDT", "SOL/USD": "SOL-USDT",
-    "DOGE/USD": "DOGE-USDT", "XRP/USD": "XRP-USDT", "ADA/USD": "ADA-USDT",
-  };
+  // No hardcoded symbol whitelist — preserve provider-native identity.
+  // Instrument is treated as exact OKX instId (e.g. BTC-USDT) when coming from discovery.
   return buildAdapter(
     "okx", "OKX", ["crypto"], ["ohlcv", "quote"],
     async (instrument) => {
-      const sym = OKX_SYMBOLS[instrument];
+      const sym = instrument.includes("-") ? instrument : instrument;
       if (!sym) return null;
       try {
         const url = `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=1`;
@@ -412,14 +396,9 @@ function buildOkxAdapter(): ProviderAdapter {
         const rows = data.data ?? [];
         if (rows.length === 0) return null;
         const row = rows[0];
-        const price = parseFloat(row[4]); // close
+        const price = parseFloat(row[4]);
         if (!Number.isFinite(price) || price <= 0) return null;
         const ts = parseInt(row[0]);
-        // Phase 238 — one clock read for this record. The instant recorded as
-        // `observedAt` (when the provider gave no candle time) is the SAME
-        // instant its freshness is judged against; the previous form called
-        // Date.now() twice in two expressions, so the record could date itself
-        // at one instant and grade itself at another.
         const acquiredAt = Date.now();
         const observedAt = Number.isFinite(ts) ? ts : acquiredAt;
         return {
@@ -567,6 +546,25 @@ function buildEiaAdapter(): ProviderAdapter {
 // ADAPTER REGISTRY
 // ═══════════════════════════════════════════════════════════════
 
+function buildCcxtAdapter(): ProviderAdapter {
+  // CCXT dynamic backbone — no hardcoded exchange whitelist as source of truth.
+  // Live acquisition uses CCXT native when available; public data needs no private creds.
+  return buildAdapter(
+    "ccxt",
+    "CCXT",
+    ["crypto"],
+    ["ohlcv", "quote", "order_book"],
+    async (instrument) => {
+      // Instrument here is expected to be provider-native (e.g. BTC/USDT from discovery).
+      // Without exchange context, we cannot resolve which CCXT exchange to query.
+      // This adapter exists for registry health/universe capability; live path is via
+      // acquireProviderNativeLiveData with provider=ccxt:<exchangeId>.
+      // Return null to avoid fake-success.
+      return null;
+    },
+  );
+}
+
 const DEFAULT_ADAPTERS: ProviderAdapter[] = [
   buildTwelveDataAdapter(),
   buildCoinGeckoAdapter(),
@@ -574,6 +572,7 @@ const DEFAULT_ADAPTERS: ProviderAdapter[] = [
   buildDefiLlamaAdapter(),
   buildTokenomistAdapter(),
   buildOkxAdapter(),
+  buildCcxtAdapter(),
   buildAlphaVantageAdapter(),
   buildCftcAdapter(),
   buildTreasuryAdapter(),
