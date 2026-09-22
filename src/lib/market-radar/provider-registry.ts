@@ -17,6 +17,11 @@ import {
   executeLiveRequest,
   type Transport,
 } from "@/lib/data/universal/live/client";
+import type { LiveStatus } from "@/lib/data/universal/live/types";
+import {
+  classifyLiveFailure,
+  type LiveAcquisitionFailureClass,
+} from "@/lib/data/universal/live/failure-class";
 import {
   checkCredentials,
   type EnvReader,
@@ -641,6 +646,11 @@ export interface LiveAcquisitionResult {
   success: boolean;
   error?: string;
   latencyMs: number;
+  /** Verified live status from the shared live client. Absent on adapter-path results. */
+  liveStatus?: LiveStatus;
+  /** Safe failure class when unsuccessful. Never a credential. */
+  failureClass?: LiveAcquisitionFailureClass;
+  quality?: "VERIFIED" | "DEGRADED" | "UNAVAILABLE";
 }
 
 /**
@@ -733,6 +743,10 @@ export async function acquireProviderNativeLiveData(
     provider: string;
     providerInstrumentId: string;
     assetClass: AssetClass;
+    /** Provider or internal timeframe token. Defaults to 1h (scanner snapshot). */
+    timeframe?: string;
+    /** Bar count. Defaults to 100 (scanner snapshot). */
+    count?: number;
   },
   readEnv?: EnvReader,
   transport: Transport = defaultTransport,
@@ -742,8 +756,8 @@ export async function acquireProviderNativeLiveData(
   const result = await executeLiveRequest({
     instrument: input.instrument,
     capability: "ohlcv",
-    timeframe: "1h",
-    count: 100,
+    timeframe: input.timeframe ?? "1h",
+    count: input.count ?? 100,
     transport,
     readEnv,
     providerNative: {
@@ -778,6 +792,12 @@ export async function acquireProviderNativeLiveData(
       success: false,
       error: result.failureReason ?? `Live request status: ${result.status}`,
       latencyMs: result.latencyMs ?? completedAt - startTime,
+      liveStatus: result.status,
+      failureClass: classifyLiveFailure({
+        liveStatus: result.status,
+        message: result.failureReason,
+      }),
+      quality: "UNAVAILABLE",
     };
   }
 
@@ -817,6 +837,8 @@ export async function acquireProviderNativeLiveData(
     // transport reported none, so `fetchedAt` and `latencyMs` describe one
     // measurement rather than two.
     latencyMs: result.latencyMs ?? fetchedAt - startTime,
+    liveStatus: result.status,
+    quality: result.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
   };
 }
 
@@ -883,6 +905,9 @@ export function providerNativeAcquisitionToMarketData(
     candles,
     timeframe: "1h",
     dataFreshness: freshness,
+    ...(result.providerInstrumentId
+      ? { providerInstrumentId: result.providerInstrumentId }
+      : {}),
     ...(result.error ? { error: result.error } : {}),
   };
 }

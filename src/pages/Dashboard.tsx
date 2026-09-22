@@ -55,8 +55,45 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BarChart3, Briefcase } from "lucide-react";
 import { errorMessage } from "@/lib/data/json/narrow";
+import {
+  resolveLiveIdentity,
+  discoveredFromTracked,
+  assetClassToInstrumentType,
+} from "@/lib/discovery/live-identity";
+import {
+  classifyLiveFailure,
+  formatLiveFailure,
+  isLiveAcquisitionFailureClass,
+  sanitizeFailureReason,
+  type LiveAcquisitionFailureClass,
+} from "@/lib/data/universal/live/failure-class";
 import { fromDbRecord, uninterpretableRowReason } from "@/lib/analysis/from-db-record";
 import { recordDataIntegrityIssue } from "@/lib/runtime/diagnostics";
+
+
+function uiLiveFailure(message: string, errorCode?: string): string {
+  const prefix = message.split(":")[0]?.trim() ?? "";
+  if (isLiveAcquisitionFailureClass(prefix)) {
+    return sanitizeFailureReason(message);
+  }
+  const mapped: LiveAcquisitionFailureClass =
+    errorCode === "AUTH_ERROR"
+      ? "PROVIDER_AUTH"
+      : errorCode === "RATE_LIMIT"
+        ? "RATE_LIMIT"
+        : errorCode === "UNSUPPORTED_INSTRUMENT" || errorCode === "SYMBOL_UNSUPPORTED"
+          ? "SYMBOL_UNSUPPORTED"
+          : errorCode === "MALFORMED_RESPONSE"
+            ? "MALFORMED_RESPONSE"
+            : errorCode === "NETWORK_ERROR"
+              ? "NETWORK_ERROR"
+              : errorCode === "TIMEFRAME_UNAVAILABLE"
+                ? "TIMEFRAME_UNAVAILABLE"
+                : errorCode === "NO_LIVE_DATA"
+                  ? "NO_LIVE_DATA"
+                  : classifyLiveFailure({ message });
+  return formatLiveFailure(mapped, message);
+}
 
 /** Loading step for the multi-step sequence. */
 interface LoadingStep {
@@ -294,6 +331,20 @@ export default function Dashboard() {
         }
         input.requestedTimeframe = undefined;
 
+        const identity = resolveLiveIdentity({
+          typed: input.instrument,
+          instrumentType: input.instrumentType,
+          discovered: discoveredFromTracked(pipelineStateRef.current.tracked),
+        });
+        if (!identity.ok) {
+          updateStep(1, "error");
+          setFetchError(formatLiveFailure(identity.failureClass, identity.reason));
+          return;
+        }
+        input.provider = identity.provider;
+        input.providerInstrumentId = identity.providerInstrumentId;
+        input.instrumentType = assetClassToInstrumentType(identity.assetClass);
+
         // Step 2: Fetching market data + intelligence + derivatives in parallel
         updateStep(1, "active");
         let marketDataResult: MarketDataResult;
@@ -309,6 +360,8 @@ export default function Dashboard() {
               instrument: input.instrument,
               instrumentType: input.instrumentType,
               timeframe: input.timeframe,
+              provider: identity.provider,
+              providerInstrumentId: identity.providerInstrumentId,
             }),
             fetchIntelligence({
               instrument: input.instrument,
@@ -331,7 +384,12 @@ export default function Dashboard() {
           }
 
           if (!marketDataResult.success || !marketDataResult.data) {
-            throw new Error(marketDataResult.error || "Market data unavailable");
+            throw new Error(
+              uiLiveFailure(
+                marketDataResult.error || "Market data unavailable",
+                marketDataResult.errorCode,
+              ),
+            );
           }
           updateStep(1, "done");
 
@@ -349,7 +407,7 @@ export default function Dashboard() {
           }
         } catch (err: unknown) {
           updateStep(1, "error");
-          setFetchError(`Data fetch failed: ${errorMessage(err) || "provider not configured"}`);
+          setFetchError(uiLiveFailure(errorMessage(err) || "provider not configured"));
           setIsAnalyzing(false);
           return;
         }
@@ -782,7 +840,7 @@ export default function Dashboard() {
         }
       } catch (err: unknown) {
         if (!isStaleRun()) {
-          setFetchError(`Analysis failed: ${errorMessage(err) || "unknown error"}`);
+          setFetchError(uiLiveFailure(errorMessage(err) || "unknown error"));
         }
       } finally {
         // Only the newest run owns the loading UI; stale runs exit silently.
@@ -1217,6 +1275,14 @@ export default function Dashboard() {
                   <p className="mt-1.5 text-sm text-muted-foreground max-w-sm font-mono">
                     {t.dashboard.terminalDescription}
                   </p>
+                  {fetchError && (
+                    <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
+                      <p className="text-xs font-mono text-red-400">{fetchError}</p>
+                      <p className="text-[10px] font-mono text-red-400/60 mt-1">
+                        {t.onboarding.dataUnavailableHint}
+                      </p>
+                    </div>
+                  )}
                   <div className="mt-6 grid grid-cols-3 gap-3 max-w-sm">
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
                       <p className="text-lg font-bold text-primary font-mono">4</p>

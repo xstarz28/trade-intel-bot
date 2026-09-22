@@ -27,6 +27,8 @@ export interface MarketData {
   instrument: string; // Normalized symbol, e.g. "EUR/USD"
   instrumentType: "forex" | "crypto" | "stock" | "commodity" | "indices";
   provider: string;
+  /** Exact provider-native id when acquisition used one. Never a substitute. */
+  providerInstrumentId?: string;
   fetchTimestamp: number; // When this data was fetched
   price: PriceSnapshot;
   candles: OhlcvCandle[];
@@ -301,5 +303,15 @@ export interface MarketDataResult {
   data?: MarketData;
   technical?: TechnicalData;
   error?: string;
-  errorCode?: "API_UNAVAILABLE" | "UNSUPPORTED_INSTRUMENT" | "INSUFFICIENT_DATA" | "RATE_LIMIT" | "AUTH_ERROR";
+  errorCode?:
+    | "API_UNAVAILABLE"
+    | "UNSUPPORTED_INSTRUMENT"
+    | "INSUFFICIENT_DATA"
+    | "RATE_LIMIT"
+    | "AUTH_ERROR"
+    | "SYMBOL_UNSUPPORTED"
+    | "NO_LIVE_DATA"
+    | "MALFORMED_RESPONSE"
+    | "NETWORK_ERROR"
+    | "TIMEFRAME_UNAVAILABLE";
 }

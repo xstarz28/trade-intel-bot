@@ -34,6 +34,13 @@ import {
   isLiveStatus,
 } from "./types";
 import { checkCredentials, type EnvReader } from "./credentials";
+import {
+  buildOkxCandlesUrl,
+  buildTwelveDataTimeSeriesUrl,
+  inspectTwelveDataBody,
+  mapOkxBar,
+  parseTwelveDataTimeSeries,
+} from "./twelve-data-protocol";
 
 // ═══════════════════════════════════════════════════════════════
 // TRANSPORT
@@ -66,18 +73,33 @@ const num = (v: unknown): number =>
 const ENDPOINTS: Record<string, EndpointSpec> = {
   "twelve-data": {
     buildUrl: (sym, p) =>
-      `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(sym)}&interval=${p.timeframe ?? "1h"}&outputsize=${p.count ?? 100}`,
+      buildTwelveDataTimeSeriesUrl(sym, p.timeframe ?? "1h", p.count ?? 100),
     extract: (json) => {
-      const j = json as { values?: { datetime: string; open: string; high: string; low: string; close: string; volume?: string }[]; symbol?: string };
-      const candles = (j.values ?? []).map((c) => ({
-        timestamp: new Date(c.datetime).getTime(),
-        open: num(c.open),
-        high: num(c.high),
-        low: num(c.low),
-        close: num(c.close),
-        volume: c.volume !== undefined ? num(c.volume) : undefined,
-      }));
-      return { symbol: j.symbol ?? null, candles, fields: ["values", "datetime", "ohlc"] };
+      if (
+        json &&
+        typeof json === "object" &&
+        "values" in json &&
+        (json as { values?: unknown }).values != null &&
+        !Array.isArray((json as { values?: unknown }).values)
+      ) {
+        throw new Error("time_series values is not an array");
+      }
+      const parsed = parseTwelveDataTimeSeries(json);
+      if (!parsed.ok) {
+        return { symbol: null, candles: [], fields: [] };
+      }
+      return {
+        symbol: parsed.symbol,
+        candles: parsed.candles.map((c) => ({
+          timestamp: c.timestamp,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+        })),
+        fields: ["values", "datetime", "ohlc"],
+      };
     },
   },
   "alpha-vantage": {
@@ -113,7 +135,8 @@ const ENDPOINTS: Record<string, EndpointSpec> = {
     },
   },
   okx: {
-    buildUrl: (sym) => `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=100`,
+    buildUrl: (sym, p) =>
+      buildOkxCandlesUrl(sym, p.timeframe ?? "1h", p.count ?? 100) ?? "",
     extract: (json) => {
       const j = json as { data?: string[][] };
       const rows = j.data ?? [];
@@ -337,10 +360,14 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
 
     const endpoint = getEndpoint(providerId);
     if (!endpoint.buildUrl(providerSymbol, params)) {
+      const unmappedBar =
+        providerId === "okx" && params.timeframe !== undefined && mapOkxBar(params.timeframe) === undefined;
       return finish("UNSUPPORTED", completionWithoutRequest(), {
         provider: providerId,
         symbolUsed: providerSymbol,
-        failureReason: `Provider "${providerId}" has no live endpoint for "${params.capability}" in this phase.`,
+        failureReason: unmappedBar
+          ? `unsupported bar/timeframe "${params.timeframe}" for provider "${providerId}"`
+          : `Provider "${providerId}" has no live endpoint for "${params.capability}" in this phase.`,
       });
     }
 
@@ -391,6 +418,28 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
         symbolUsed: providerSymbol,
         failureReason: "Provider returned an empty response body.",
       });
+    }
+
+    if (providerId === "twelve-data") {
+      const vendor = inspectTwelveDataBody(response.json);
+      if (vendor) {
+        const classified: LiveStatus =
+          vendor.failureClass === "RATE_LIMIT"
+            ? "RATE_LIMITED"
+            : vendor.failureClass === "PROVIDER_AUTH"
+              ? "PROVIDER_ERROR"
+              : vendor.failureClass === "MALFORMED_RESPONSE"
+                ? "MALFORMED_RESPONSE"
+                : vendor.failureClass === "SYMBOL_UNSUPPORTED" ||
+                    vendor.failureClass === "TIMEFRAME_UNAVAILABLE"
+                  ? "UNSUPPORTED"
+                  : "UNAVAILABLE";
+        return finish(classified, completion, {
+          provider: providerId,
+          symbolUsed: providerSymbol,
+          failureReason: vendor.reason,
+        });
+      }
     }
 
     const nativeEndpoint = getEndpoint(providerId);
@@ -643,6 +692,28 @@ export async function executeLiveRequest(params: LiveRequestParams): Promise<Liv
       symbolUsed: providerSymbol,
       failureReason: "Response body missing or unparsable.",
     });
+  }
+
+  if (providerId === "twelve-data") {
+    const vendor = inspectTwelveDataBody(response.json);
+    if (vendor) {
+      const classified: LiveStatus =
+        vendor.failureClass === "RATE_LIMIT"
+          ? "RATE_LIMITED"
+          : vendor.failureClass === "PROVIDER_AUTH"
+            ? "PROVIDER_ERROR"
+            : vendor.failureClass === "MALFORMED_RESPONSE"
+              ? "MALFORMED_RESPONSE"
+              : vendor.failureClass === "SYMBOL_UNSUPPORTED" ||
+                  vendor.failureClass === "TIMEFRAME_UNAVAILABLE"
+                ? "UNSUPPORTED"
+                : "UNAVAILABLE";
+      return finish(classified, completion, {
+        provider: providerId,
+        symbolUsed: providerSymbol,
+        failureReason: vendor.reason,
+      });
+    }
   }
 
   // 9. Extract data

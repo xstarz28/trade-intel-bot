@@ -83,6 +83,14 @@ export interface AnalysisInput {
   instrument: string;
   instrumentType: InstrumentType;
   timeframe: Timeframe;
+  /**
+   * Provider that established the native identity (discovery). Routing only —
+   * not market evidence. A forged value cannot invent prices; acquisition
+   * still talks to the named provider with the named id.
+   */
+  provider?: string;
+  /** Exact provider-native instrument id. Never a substituted symbol. */
+  providerInstrumentId?: string;
   // Optional user-supplied data (fallback when auto-fetch is unavailable)
   currentPrice?: string;
   recentHigh?: string;

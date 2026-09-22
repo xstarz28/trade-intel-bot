@@ -33,28 +33,24 @@ import { errorMessage, isRecord } from "./lib/json";
 import { classifyLegError } from "./lib/legOutcome";
 import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
 import { createTwelveDataDiscoveryAdapter } from "../lib/discovery/twelve-data-adapter";
-import { acquireBatchProviderNativeLiveData } from "../lib/market-radar/provider-registry";
+import {
+  acquireBatchProviderNativeLiveData,
+  acquireProviderNativeLiveData,
+} from "../lib/market-radar/provider-registry";
 import type { AssetClass } from "../lib/data/universal/types";
 import type { Transport } from "../lib/data/universal/live/client";
+import {
+  mapTwelveDataInterval,
+  parseTwelveDataTimeSeries,
+  parseTwelveDataQuote,
+} from "../lib/data/universal/live/twelve-data-protocol";
+import { classifyLiveFailure } from "../lib/data/universal/live/failure-class";
 
 let dxyResolvedSymbol: string | null = null;
 let dxyAllCandidatesFailedAt: number | null = null;
 
-interface TdCandle {
-  datetime: string;
-  open: string;
-  high: string;
-  low: string;
-  close: string;
-  volume: string;
-}
-
 function mapTimeframe(tf: string): string {
-  const map: Record<string, string> = {
-    M1: "1min", M5: "5min", M15: "15min",
-    H1: "1h", H4: "4h", D1: "1day", W1: "1week",
-  };
-  return map[tf] ?? tf.toLowerCase();
+  return mapTwelveDataInterval(tf);
 }
 
 /** Fetch + normalize candles for one timeframe. Throws on failure. */
@@ -127,48 +123,11 @@ async function fetchCandlesUncached(
     { signal: AbortSignal.timeout(6_000) },
   );
   const json = await res.json();
-  if (json.code) {
-    throw new Error(`[${json.code}] ${json.message || "provider error"}`);
+  const parsedSeries = parseTwelveDataTimeSeries(json);
+  if (!parsedSeries.ok) {
+    throw new Error(parsedSeries.reason);
   }
-  const values: TdCandle[] = json.values ?? [];
-  if (values.length === 0) throw new Error("no candle data returned");
-
-  // Phase 178e — a malformed OHLC field parses to NaN. Passing that through
-  // would hand the engine an invalid market structure that still LOOKS like
-  // evidence: indicators silently propagate NaN, and a NaN high/low is not a
-  // price anyone can act on. Such rows are DROPPED rather than defaulted,
-  // because there is no honest substitute for a missing price.
-  //
-  // `volume` is treated differently on purpose: it is genuinely absent from
-  // many spot-forex feeds, and the downstream consumers already handle a zero
-  // total explicitly (`computeVolumeProfile` refuses to build a profile and
-  // reports why). A zero volume therefore cannot fabricate evidence, while a
-  // zero PRICE could.
-  const parsed = values.reverse().map((c) => ({
-    timestamp: new Date(c.datetime).getTime(),
-    open: parseFloat(c.open),
-    high: parseFloat(c.high),
-    low: parseFloat(c.low),
-    close: parseFloat(c.close),
-    volume: parseFloat(c.volume) || 0,
-  }));
-
-  const usable = parsed.filter(
-    (c) =>
-      Number.isFinite(c.timestamp) &&
-      Number.isFinite(c.open) &&
-      Number.isFinite(c.high) &&
-      Number.isFinite(c.low) &&
-      Number.isFinite(c.close),
-  );
-
-  // Every row was malformed: the provider returned no usable prices at all.
-  // Fail explicitly instead of returning a plausible-looking empty series.
-  if (usable.length === 0) {
-    throw new Error("provider returned no numerically valid candles");
-  }
-
-  return usable;
+  return parsedSeries.candles;
 }
 
 /**
@@ -232,6 +191,63 @@ export function secondaryLegFailureText(err: unknown): string {
   return `${cls.status} (${cls.reason})`;
 }
 
+function classifyPrimaryFetchFailure(err: unknown): {
+  error: string;
+  errorCode:
+    | "RATE_LIMIT"
+    | "AUTH_ERROR"
+    | "API_UNAVAILABLE"
+    | "SYMBOL_UNSUPPORTED"
+    | "NO_LIVE_DATA"
+    | "MALFORMED_RESPONSE"
+    | "NETWORK_ERROR"
+    | "TIMEFRAME_UNAVAILABLE";
+} {
+  const msg = err instanceof Error ? err.message : "unknown error";
+  if (msg.startsWith("[429]") || msg.startsWith("RATE_LIMIT")) {
+    return { error: `Rate limited: ${msg}`, errorCode: "RATE_LIMIT" };
+  }
+  if (msg.startsWith("[401]") || msg.startsWith("[403]") || msg.startsWith("AUTH_ERROR")) {
+    return { error: `Auth error: ${msg}`, errorCode: "AUTH_ERROR" };
+  }
+  const cls = classifyLiveFailure({ message: msg });
+  if (cls === "SYMBOL_UNSUPPORTED") {
+    return { error: `Unsupported symbol: ${msg}`, errorCode: "SYMBOL_UNSUPPORTED" };
+  }
+  if (cls === "TIMEFRAME_UNAVAILABLE") {
+    return { error: `Timeframe unavailable: ${msg}`, errorCode: "TIMEFRAME_UNAVAILABLE" };
+  }
+  if (cls === "MALFORMED_RESPONSE") {
+    return { error: `Malformed response: ${msg}`, errorCode: "MALFORMED_RESPONSE" };
+  }
+  if (cls === "NETWORK_ERROR") {
+    return { error: `Network error: ${msg}`, errorCode: "NETWORK_ERROR" };
+  }
+  if (cls === "NO_LIVE_DATA") {
+    return { error: `No live data: ${msg}`, errorCode: "NO_LIVE_DATA" };
+  }
+  return { error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" };
+}
+
+async function fetchOkxNativeCandles(
+  instId: string,
+  timeframe: string,
+  count: number,
+): Promise<OhlcvCandle[]> {
+  const acq = await acquireProviderNativeLiveData({
+    instrument: instId,
+    provider: "okx",
+    providerInstrumentId: instId,
+    assetClass: "crypto",
+    timeframe,
+    count,
+  });
+  if (!acq.success || !acq.candles || acq.candles.length === 0) {
+    throw new Error(acq.error ?? "no candle data returned");
+  }
+  return acq.candles;
+}
+
 export const fetchMarketData = action({
   args: {
     instrument: v.string(),
@@ -243,13 +259,15 @@ export const fetchMarketData = action({
       v.literal("indices"),
     ),
     timeframe: v.string(),
+    provider: v.optional(v.string()),
+    providerInstrumentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Requires a signed-in identity: this action spends a server-side API key.
     await requireIdentity(ctx);
 
     const apiKey = process.env.TWELVE_DATA_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && args.provider !== "okx") {
       return {
         success: false as const,
         error: "Market data provider not configured: TWELVE_DATA_API_KEY is missing. Add it in the Keys/API keys tab.",
@@ -258,22 +276,26 @@ export const fetchMarketData = action({
     }
 
     const symbol = args.instrument.toUpperCase().trim();
+    const requestSymbol =
+      typeof args.providerInstrumentId === "string" && args.providerInstrumentId.length > 0
+        ? args.providerInstrumentId
+        : symbol;
+    const useOkx = args.provider === "okx";
     resetCandleTrace();
+
+    const loadCandles = (sym: string, tf: string, n: number): Promise<OhlcvCandle[]> =>
+      useOkx
+        ? fetchOkxNativeCandles(sym, tf, n)
+        : fetchCandles(sym, tf, n, apiKey as string);
 
     try {
       // Primary (setup) timeframe — errors classified precisely (429, auth…)
       let candles: OhlcvCandle[];
       try {
-        candles = await fetchCandles(symbol, args.timeframe, 210, apiKey);
+        candles = await loadCandles(requestSymbol, args.timeframe, 210);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "unknown error";
-        if (msg.startsWith("[429]")) {
-          return { success: false as const, error: `Rate limited: ${msg}`, errorCode: "RATE_LIMIT" as const };
-        }
-        if (msg.startsWith("[401]") || msg.startsWith("[403]")) {
-          return { success: false as const, error: `Auth error: ${msg}`, errorCode: "AUTH_ERROR" as const };
-        }
-        return { success: false as const, error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" as const };
+        const classified = classifyPrimaryFetchFailure(err);
+        return { success: false as const, error: classified.error, errorCode: classified.errorCode };
       }
 
       // Live quote — NON-fatal: never discard successful candle data.
@@ -286,23 +308,31 @@ export const fetchMarketData = action({
       // independently rejects prices older than its style budget, and the
       // cached payload carries its original observation time, so a reused
       // quote ages honestly rather than appearing newly observed.
-      const quoteEvidence = await getProviderCache()
+      const quoteEvidence = useOkx
+        ? null
+        : await getProviderCache()
         .fetch<Record<string, unknown>>(
           {
             provider: "twelve-data",
             dataset: "quote",
-            instrument: symbol,
+            instrument: requestSymbol,
             instrumentType: args.instrumentType,
           },
           async () => {
             const fetched = await fetch(
-              `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+              `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(requestSymbol)}&apikey=${apiKey}`,
               // Phase 177 — non-fatal leg; a hung quote must not hold the analysis.
               { signal: AbortSignal.timeout(5_000) },
             ).then((r) => r.json());
-            // No usable quote: cache nothing, fall back to the last candle.
-            if (!fetched || fetched.close === undefined) return null;
-            return { data: fetched as Record<string, unknown>, observedAt: Date.now() };
+            const parsedQuote = parseTwelveDataQuote(fetched);
+            if (!parsedQuote.ok) return null;
+            return {
+              data: {
+                close: parsedQuote.quote.close,
+                timestamp: parsedQuote.quote.timestamp,
+              } as Record<string, unknown>,
+              observedAt: Date.now(),
+            };
           },
         )
         .catch(() => null);
@@ -342,8 +372,8 @@ export const fetchMarketData = action({
       const settled = await Promise.allSettled(
         slots.map((s) =>
           s.role === "trigger"
-            ? fetchCandles(symbol, s.timeframe, 100, apiKey)
-            : fetchCandles(symbol, s.timeframe, 120, apiKey),
+            ? loadCandles(requestSymbol, s.timeframe, 100)
+            : loadCandles(requestSymbol, s.timeframe, 120),
         ),
       );
 
@@ -405,7 +435,7 @@ export const fetchMarketData = action({
       // and unavailability is flagged explicitly instead of guessed.
       const comparator = crossAssetComparator(args.instrumentType, symbol);
       let crossAsset: TechnicalData["crossAsset"] | undefined;
-      if (comparator && comparator !== symbol.toUpperCase()) {
+      if (apiKey && comparator && comparator !== symbol.toUpperCase()) {
         // Phase 230 — secondary-leg failure state. These legs share the
         // primary Twelve Data quota; when one of them fails the failure
         // CLASS stays attached instead of folding into the generic "no
@@ -430,7 +460,7 @@ export const fetchMarketData = action({
             } else {
               const probes: Record<string, boolean> = {};
               for (const cand of DXY_CANDIDATE_SYMBOLS) {
-                const test = await fetchCandles(cand, "D1", 5, apiKey).catch((err: unknown) => {
+                const test = await fetchCandles(cand, "D1", 5, apiKey as string).catch((err: unknown) => {
                   // Phase 230 — only a DEFINITIVE provider answer may mark a
                   // candidate invalid. A quota/credential rejection or any
                   // transport/5xx/malformed failure is inconclusive: nothing
@@ -457,7 +487,7 @@ export const fetchMarketData = action({
             }
           }
           const compCandles = compSymbol
-            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey).catch((err: unknown) => {
+            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey as string).catch((err: unknown) => {
                 // Phase 230 — was `.catch(() => null)`: keep the failure
                 // class so a comparator outage is not misreported as "the
                 // provider returned no series". A DEFINITIVE answer (4xx
@@ -539,14 +569,16 @@ export const fetchMarketData = action({
       }
       if (crossAsset) technical.crossAsset = crossAsset;
 
+      const resultProvider = useOkx ? "okx" : "twelve-data";
       return {
         success: true as const,
         data: {
           instrument: symbol,
           instrumentType: args.instrumentType,
-          provider: "twelve-data",
+          provider: resultProvider,
+          providerInstrumentId: requestSymbol,
           fetchTimestamp: Date.now(),
-          price: { price, timestamp: priceTimestamp, source: "twelve-data" },
+          price: { price, timestamp: priceTimestamp, source: resultProvider },
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
@@ -563,25 +595,16 @@ export const fetchMarketData = action({
       // Phase 230 — defensive pass-through of the fatal classes: every
       // fetch path above already classifies, but an unanticipated fatal
       // throw must never collapse into a generic outage (§229 AV fix).
-      const msg = errorMessage(err) || "unknown error";
-      if (msg.startsWith("RATE_LIMIT") || msg.startsWith("[429]")) {
-        return {
-          success: false as const,
-          error: `Rate limited: ${msg}`,
-          errorCode: "RATE_LIMIT" as const,
-        };
-      }
-      if (msg.startsWith("AUTH_ERROR") || msg.startsWith("[401]") || msg.startsWith("[403]")) {
-        return {
-          success: false as const,
-          error: `Auth error: ${msg}`,
-          errorCode: "AUTH_ERROR" as const,
-        };
-      }
+      const classified = classifyPrimaryFetchFailure(err);
       return {
         success: false as const,
-        error: `Market data fetch failed: ${msg}`,
-        errorCode: "API_UNAVAILABLE" as const,
+        error:
+          classified.errorCode === "RATE_LIMIT" || classified.errorCode === "AUTH_ERROR"
+            ? classified.error
+            : classified.errorCode === "API_UNAVAILABLE"
+              ? `Market data fetch failed: ${errorMessage(err) || "unknown error"}`
+              : classified.error,
+        errorCode: classified.errorCode,
       };
     }
   },

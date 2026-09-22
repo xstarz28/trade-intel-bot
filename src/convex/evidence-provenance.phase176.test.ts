@@ -514,6 +514,8 @@ describe("classification contract", () => {
         "accountEquity",
         "instrument",
         "instrumentType",
+        "provider",
+        "providerInstrumentId",
         "riskPercent",
         "styleNotes",
         "requestedTimeframe",

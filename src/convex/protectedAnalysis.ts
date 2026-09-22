@@ -341,6 +341,11 @@ export const CLIENT_TRUSTED_INPUT_FIELDS = [
   "accountEquity",
   "riskPercent",
   "accountCurrency",
+  // Routing identity from discovery — not market evidence. A forged
+  // provider/id cannot invent prices; the server still talks to that
+  // provider with that exact native id, and failure stays explicit.
+  "provider",
+  "providerInstrumentId",
 ] as const;
 
 /**
@@ -515,6 +520,13 @@ export const runProtectedAnalysis = action({
             | "commodity"
             | "indices",
           timeframe,
+          ...(typeof trustedInput.provider === "string" && trustedInput.provider.length > 0
+            ? { provider: trustedInput.provider }
+            : {}),
+          ...(typeof trustedInput.providerInstrumentId === "string" &&
+          trustedInput.providerInstrumentId.length > 0
+            ? { providerInstrumentId: trustedInput.providerInstrumentId }
+            : {}),
         })) as {
           success: boolean;
           data?: unknown;
