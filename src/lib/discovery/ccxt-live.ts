@@ -74,7 +74,10 @@ export async function acquireCcxtLive(
       if (!Number.isFinite(close) || close <= 0) {
         throw new Error("invalid close");
       }
-      const observedAt = Number.isFinite(ts) ? ts : Date.now();
+      // Provider timestamp must be preserved separately from fetch time.
+      // When provider gives no timestamp, we do NOT fabricate observedAt from Date.now()
+      // — freshness becomes UNAVAILABLE and price timestamp sentinel 0 is used downstream.
+      const observedAt = Number.isFinite(ts) ? ts : undefined;
       const fetchedAt = Date.now();
       return {
         instrument: input.instrument,
@@ -114,7 +117,8 @@ export async function acquireCcxtLive(
     if (!Number.isFinite(price) || (price as number) <= 0) {
       throw new Error("no price");
     }
-    const observedAt = ticker.timestamp ?? Date.now();
+    // Preserve provider timestamp; do not fabricate from Date.now()
+    const observedAt = Number.isFinite(ticker.timestamp) ? ticker.timestamp : undefined;
     const fetchedAt = Date.now();
     return {
       instrument: input.instrument,
