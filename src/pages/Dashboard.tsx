@@ -28,8 +28,14 @@ import {
 } from "@/lib/discovery/pipeline";
 import {
   normalizeOkxDiscoveryAction,
+  normalizeTwelveDataDiscoveryAction,
   toAcquisitionResults,
 } from "@/lib/discovery/runtime";
+import {
+  acquireDiscoveredBatch,
+  discoveryFailure,
+  mergeDiscoveryResults,
+} from "@/lib/discovery/universal-cycle";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import { derivativesForRadar } from "@/lib/market-radar/derivatives-bridge";
@@ -123,6 +129,10 @@ export default function Dashboard() {
   // Discovery metadata alone is NEVER considered live evidence.
   const discoverOkxInstruments = useAction(api.okx.discoverOkxInstruments);
   const acquireOkxNativeLiveDataBatch = useAction(api.okx.acquireOkxNativeLiveDataBatch);
+  const discoverTwelveDataInstruments = useAction(api.marketData.discoverTwelveDataInstruments);
+  const acquireTwelveDataNativeLiveDataBatch = useAction(
+    api.marketData.acquireTwelveDataNativeLiveDataBatch,
+  );
 
   /**
    * Phase 158 — one universal discovery→acquisition cycle.
@@ -131,21 +141,27 @@ export default function Dashboard() {
    * become live sources. A failed cycle never destroys retained data.
    */
   const runDiscoveryCycle = useCallback(async () => {
-    const providerResults = [
-      normalizeOkxDiscoveryAction(await discoverOkxInstruments()),
-    ];
+    const now = Date.now();
+    const settled = await Promise.allSettled([
+      discoverOkxInstruments(),
+      discoverTwelveDataInstruments(),
+    ]);
 
-    const succeededProviders = providerResults
-      .filter((r) => r.success)
-      .map((r) => r.provider);
-    const discovered = providerResults
-      .filter((r) => r.success)
-      .flatMap((r) => r.instruments);
+    const okxResult =
+      settled[0].status === "fulfilled"
+        ? normalizeOkxDiscoveryAction(settled[0].value)
+        : discoveryFailure("okx", now, settled[0].reason);
+    const twelveDataResult =
+      settled[1].status === "fulfilled"
+        ? normalizeTwelveDataDiscoveryAction(settled[1].value)
+        : discoveryFailure("twelve-data", now, settled[1].reason);
+
+    const merged = mergeDiscoveryResults([okxResult, twelveDataResult]);
+    const discovered = merged.discovered;
+    const succeededProviders = merged.succeededProviders;
     // A provider that failed discovery outright is reported explicitly; its
     // previously acquired instruments are retained by the pipeline.
-    const discoveryErrors = providerResults
-      .filter((r) => !r.success)
-      .map((r) => `${r.provider}: ${r.error ?? "discovery failed"}`);
+    const discoveryErrors = merged.discoveryErrors;
 
     const step = await runDiscoveryPipelineStep({
       state: pipelineStateRef.current,
@@ -153,18 +169,32 @@ export default function Dashboard() {
       succeededProviders,
       batchSize: 20,
       now: Date.now(),
-      acquire: async (batch) => {
-        const raw = await acquireOkxNativeLiveDataBatch({
-          instruments: batch.map((item) => ({
-            // Exact provider-native instId — never canonicalized.
-            instrument: item.providerInstrumentId,
-            providerInstrumentId: item.providerInstrumentId,
-            assetClass: "crypto" as const,
-          })),
-          concurrency: 5,
-        });
-        return toAcquisitionResults(batch, raw as never);
-      },
+      acquire: (batch) =>
+        acquireDiscoveredBatch(batch, {
+          okx: async (items) => {
+            const raw = await acquireOkxNativeLiveDataBatch({
+              instruments: items.map((item) => ({
+                // Exact provider-native instId — never canonicalized.
+                instrument: item.providerInstrumentId,
+                providerInstrumentId: item.providerInstrumentId,
+                assetClass: "crypto" as const,
+              })),
+              concurrency: 5,
+            });
+            return toAcquisitionResults(items, raw as never);
+          },
+          "twelve-data": async (items) => {
+            const raw = await acquireTwelveDataNativeLiveDataBatch({
+              instruments: items.map((item) => ({
+                instrument: item.providerInstrumentId,
+                providerInstrumentId: item.providerInstrumentId,
+                assetClass: item.assetClass,
+              })),
+              concurrency: 5,
+            });
+            return toAcquisitionResults(items, raw as never);
+          },
+        }),
     });
 
     pipelineStateRef.current = step.state;
@@ -174,7 +204,12 @@ export default function Dashboard() {
     // place that builds a ScanResult. Scanning here as well would produce two
     // results for one cycle, and the later one would win.
     setLiveSourcesVersion((version) => version + 1);
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
+  }, [
+    discoverOkxInstruments,
+    acquireOkxNativeLiveDataBatch,
+    discoverTwelveDataInstruments,
+    acquireTwelveDataNativeLiveDataBatch,
+  ]);
 
   useEffect(() => {
     let cancelled = false;

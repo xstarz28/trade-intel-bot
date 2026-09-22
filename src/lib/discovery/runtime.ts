@@ -42,9 +42,27 @@ interface OkxDiscoveryActionResult {
 }
 
 /**
- * Normalize the OKX discovery action result into the universal contract.
- * Provider-native instIds are preserved exactly.
+ * Normalize the Twelve Data discovery action into the universal contract.
+ * Provider-native symbols are preserved exactly; extra catalog fields are dropped.
  */
+export function normalizeTwelveDataDiscoveryAction(
+  result: ProviderDiscoveryResult,
+): ProviderDiscoveryResult {
+  return {
+    provider: "twelve-data",
+    success: result.success,
+    discoveredAt: result.discoveredAt,
+    instruments: (result.instruments ?? []).map((row) => ({
+      ...row,
+      provider: "twelve-data",
+      providerInstrumentId: row.providerInstrumentId,
+    })),
+    warnings: result.warnings ?? [],
+    ...(result.error ? { error: result.error } : {}),
+  };
+}
+
+/** Normalize the OKX discovery action. Native instIds are preserved exactly. */
 export function normalizeOkxDiscoveryAction(
   result: OkxDiscoveryActionResult,
 ): ProviderDiscoveryResult {

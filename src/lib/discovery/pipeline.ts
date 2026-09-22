@@ -193,9 +193,13 @@ export async function runDiscoveryPipelineStep(
   // 4. Only verified successes become live sources.
   const liveSources = new Map(state.liveSources);
   const outcomes: AcquisitionOutcome[] = [];
+  const requested = new Set(batch.map((item) => discoveredInstrumentKey(item)));
 
   for (const result of results) {
     const key = discoveredInstrumentKey(result);
+    // An acquirer that invents an id we did not request is ignored —
+    // never a back-door onto the live set.
+    if (!requested.has(key)) continue;
 
     if (result.success && result.source && result.observedAt !== undefined) {
       liveSources.set(key, result.source);
@@ -235,7 +239,7 @@ export async function runDiscoveryPipelineStep(
     state: { tracked, liveSources, cursor: nextCursor, knownProviders },
     liveSources: Array.from(liveSources.values()),
     attempted: batch.length,
-    acquired: results.filter((r) => r.success).length,
+    acquired: outcomes.filter((outcome) => outcome.success).length,
     evicted,
     providerErrors,
   };

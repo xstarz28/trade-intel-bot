@@ -34,6 +34,8 @@ import {
   assessFreshness,
   summarizeFreshness,
 } from "./freshness";
+import { assessEvidenceConfidence } from "./evidence-confidence";
+import type { CandidateInput } from "@/lib/recommendation-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // QUALITY TIER ASSIGNMENT
@@ -71,20 +73,20 @@ function assignQualityTier(
 function scoreOpportunity(
   source: RadarCandidateSource,
   horizon: TradingMode | InvestorHorizon,
+  candidate?: CandidateInput,
 ): { score: number; confidence: number; supporting: string[]; conflicting: string[]; missing: string[]; reasons: string[] } {
   const snapshot = source.snapshot;
   const supporting: string[] = [];
   const conflicting: string[] = [];
   const missing: string[] = [];
-  let score = 50; // baseline
-  let confidence = 50;
+  let score = 50; // ranking baseline — confidence is scored separately
 
-  // ── Data Quality (affects both score and confidence) ──
+  // ── Data Quality (ranking score only; confidence uses assessEvidenceConfidence) ──
   const freshness = snapshot ? assessFreshness(snapshot.observedAt, Date.now()) : "UNAVAILABLE";
-  if (freshness === "FRESH") { score += 10; confidence += 15; supporting.push("fresh market data"); }
-  else if (freshness === "DELAYED") { score += 5; confidence += 5; supporting.push("delayed data available"); }
-  else if (freshness === "STALE") { score -= 10; confidence -= 15; conflicting.push("stale data"); }
-  else { score -= 30; confidence -= 30; missing.push("market data unavailable"); }
+  if (freshness === "FRESH") { score += 10; supporting.push("fresh market data"); }
+  else if (freshness === "DELAYED") { score += 5; supporting.push("delayed data available"); }
+  else if (freshness === "STALE") { score -= 10; conflicting.push("stale data"); }
+  else { score -= 30; missing.push("market data unavailable"); }
 
   // ── Market Structure ──
   if (snapshot?.htfBias && snapshot.htfBias !== "unknown") {
@@ -186,14 +188,9 @@ function scoreOpportunity(
     supporting.push("volatility context available");
   }
 
-  // Clamp
+  // Clamp ranking score. Confidence is NOT this baseline-plus-increments
+  // path — that clustered every live snapshot around 60.
   score = Math.max(0, Math.min(100, score));
-  confidence = Math.max(0, Math.min(100, confidence));
-
-  // Conflict adjustment
-  if (conflicting.length > 2) {
-    confidence = Math.max(0, confidence - conflicting.length * 5);
-  }
 
   // ── Phase 55: Analytical Depth (informational only, small weight) ──
   if (source.analyticalDepth) {
@@ -213,6 +210,32 @@ function scoreOpportunity(
       supporting.push(`relative value: ${ad.relativeValue}`);
     }
   }
+
+  const { confidence } = assessEvidenceConfidence({
+    freshness,
+    dataCompleteness:
+      candidate?.dataCompleteness === "FULL" ||
+      candidate?.dataCompleteness === "PARTIAL" ||
+      candidate?.dataCompleteness === "MINIMAL" ||
+      candidate?.dataCompleteness === "NONE"
+        ? candidate.dataCompleteness
+        : "NONE",
+    providerCoverage:
+      candidate?.providerCoverage === "FULL" ||
+      candidate?.providerCoverage === "PARTIAL" ||
+      candidate?.providerCoverage === "MINIMAL" ||
+      candidate?.providerCoverage === "NONE"
+        ? candidate.providerCoverage
+        : "NONE",
+    missingCriticalCount: missing.length,
+    conflictingCount: conflicting.length,
+    hasVerifiedLivePrice: Boolean(
+      snapshot && snapshot.price > 0 && snapshot.quality !== "UNAVAILABLE",
+    ),
+    hasOhlcv: Boolean(snapshot?.ohlcvAvailable),
+    hasExecutionEvidence: snapshot?.spreadBps !== undefined,
+    supportingCount: supporting.length,
+  });
 
   // Build primary reasons from top supporting evidence
   const topReasons = supporting.slice(0, 3);
@@ -360,9 +383,17 @@ export function scanRadar(
         continue;
       }
 
-      // Score the opportunity
-      const scored = scoreOpportunity(source, horizon);
-      const candidate = candidates.find(c => c.instrument === source.universe.instrument);
+      const candidate = candidates.find((c) => {
+        const native = source.universe.providerNative;
+        if (native && c.providerNative) {
+          return (
+            c.providerNative.provider === native.provider &&
+            c.providerNative.providerInstrumentId === native.providerInstrumentId
+          );
+        }
+        return c.instrument === source.universe.instrument;
+      });
+      const scored = scoreOpportunity(source, horizon, candidate);
 
       const lifecycle: OpportunityLifecycle = scored.score >= 50 ? "ACTIVE" : scored.score >= 30 ? "QUALIFIED" : "DISCOVERED";
       const qualityTier = assignQualityTier(

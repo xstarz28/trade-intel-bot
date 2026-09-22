@@ -245,9 +245,9 @@ export const consumeProfitSignal = mutation({
 
     return {
       allowed: true,
-      charged: state.plan !== "PREMIUM",
+      charged: !isUnlimitedPlan(state.plan),
       plan: state.plan,
-      remaining: state.plan === "PREMIUM" ? null : after.remaining,
+      remaining: isUnlimitedPlan(state.plan) ? null : after.remaining,
       upgradeRequired: false,
       reason: "CONSUMED" as const,
     };

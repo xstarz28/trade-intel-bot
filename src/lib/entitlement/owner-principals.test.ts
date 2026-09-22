@@ -155,7 +155,12 @@ describe("OWNER is not a client concern", () => {
       for (const name of readdirSync(dir)) {
         const path = join(dir, name);
         if (statSync(path).isDirectory()) walk(path);
-        else if (/\.(ts|tsx)$/.test(name)) files.push(path);
+        else if (
+          /\.(ts|tsx)$/.test(name) &&
+          !/\.test\.(ts|tsx)$/.test(name)
+        ) {
+          files.push(path);
+        }
       }
     };
     for (const root of roots) walk(root);

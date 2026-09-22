@@ -154,6 +154,10 @@ export function buildRadarCandidate(
     hasLiveData,
     freshness,
     providerCoverage,
+    ...(source.universe.providerNative
+      ? { providerNative: source.universe.providerNative }
+      : {}),
+    ...(source.universe.region ? { region: source.universe.region } : {}),
   };
 
   // Market structure (only from real data)

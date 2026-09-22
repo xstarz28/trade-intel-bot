@@ -32,6 +32,10 @@ import { getProviderCache } from "../lib/data/provider-cache-registry";
 import { errorMessage, isRecord } from "./lib/json";
 import { classifyLegError } from "./lib/legOutcome";
 import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
+import { createTwelveDataDiscoveryAdapter } from "../lib/discovery/twelve-data-adapter";
+import { acquireBatchProviderNativeLiveData } from "../lib/market-radar/provider-registry";
+import type { AssetClass } from "../lib/data/universal/types";
+import type { Transport } from "../lib/data/universal/live/client";
 
 let dxyResolvedSymbol: string | null = null;
 let dxyAllCandidatesFailedAt: number | null = null;
@@ -741,6 +745,99 @@ export const fetchFxRate = action({
         errorCode: "API_UNAVAILABLE" as const,
       };
     }
+  },
+});
+
+const DISCOVERED_ASSET_CLASS = v.union(
+  v.literal("crypto"),
+  v.literal("forex"),
+  v.literal("equity"),
+  v.literal("commodity"),
+  v.literal("indices"),
+  v.literal("macro"),
+);
+
+function readServerEnv(name: string): string | undefined {
+  return process.env[name];
+}
+
+/**
+ * Inject the server-side Twelve Data key into catalog/OHLCV URLs.
+ * The live client builds provider-native URLs without credentials; the key
+ * must never be logged or returned to the client.
+ */
+function twelveDataKeyedTransport(apiKey: string): Transport {
+  return async (url) => {
+    let finalUrl = url;
+    if (apiKey && url.includes("twelvedata.com") && !/[?&]apikey=/.test(url)) {
+      finalUrl = `${url}${url.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(apiKey)}`;
+    }
+    const res = await fetch(finalUrl, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      json = undefined;
+    }
+    return { ok: res.ok, status: res.status, json };
+  };
+}
+
+/**
+ * Twelve Data reference-catalog discovery.
+ *
+ * Metadata only: no prices, no direction. Missing credentials fail
+ * explicitly. Exact provider-native symbols are preserved.
+ */
+export const discoverTwelveDataInstruments = action({
+  args: {},
+  handler: async (ctx) => {
+    await requireIdentity(ctx);
+    const adapter = createTwelveDataDiscoveryAdapter(
+      async (url) => {
+        const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
+        return twelveDataKeyedTransport(apiKey)(url);
+      },
+      readServerEnv,
+    );
+    return adapter.discover(Date.now());
+  },
+});
+
+/**
+ * Batch live OHLCV acquisition for discovered Twelve Data instruments.
+ *
+ * Uses the exact provider-native id. Discovery metadata is never live
+ * evidence; only a verified snapshot becomes a live source.
+ */
+export const acquireTwelveDataNativeLiveDataBatch = action({
+  args: {
+    instruments: v.array(
+      v.object({
+        instrument: v.string(),
+        providerInstrumentId: v.string(),
+        assetClass: DISCOVERED_ASSET_CLASS,
+      }),
+    ),
+    concurrency: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireIdentity(ctx);
+    const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
+    return acquireBatchProviderNativeLiveData(
+      args.instruments.map((input) => ({
+        instrument: input.instrument,
+        provider: "twelve-data",
+        providerInstrumentId: input.providerInstrumentId,
+        assetClass: input.assetClass as AssetClass,
+      })),
+      readServerEnv,
+      Math.max(1, Math.min(Math.floor(args.concurrency ?? 5), 10)),
+      twelveDataKeyedTransport(apiKey),
+    );
   },
 });
 

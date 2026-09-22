@@ -16,6 +16,7 @@
 
 import type { AssetClass } from "./data/universal/types";
 import { getAllInstruments } from "./data/universal/instruments";
+import { assessEvidenceConfidence } from "./market-radar/evidence-confidence";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -760,12 +761,19 @@ export function scoreCandidate(
     ? Math.round(Math.min(100, horizonAdjusted / horizonWeightSum))
     : 0;
 
-  // Confidence: based on data quality + evidence coherence
-  const dqConfidence = dq.score;
-  const evidenceCoherence = assetComponents.length > 0
-    ? Math.min(100, (reasons.length / Math.max(1, assetComponents.length)) * 100)
-    : 0;
-  const confidence = Math.round((dqConfidence * 0.5 + evidenceCoherence * 0.3 + (analyticalScore > 0 ? 20 : 0)));
+  // Confidence: quality/coherence of the evidence we actually have.
+  // Not a shared 50-baseline, not P(profit), not a ticker-popularity bonus.
+  const { confidence } = assessEvidenceConfidence({
+    freshness: c.freshness,
+    dataCompleteness: c.dataCompleteness,
+    providerCoverage: c.providerCoverage,
+    missingCriticalCount: dq.issues.length,
+    conflictingCount: conflicts.length,
+    hasVerifiedLivePrice: c.hasLiveData && c.currentPrice > 0,
+    hasOhlcv: c.dataPoints > 0,
+    hasExecutionEvidence: c.hasExecutionQuality === true || c.spreadBps !== undefined,
+    supportingCount: reasons.length,
+  });
 
   if (dq.issues.length > 0) {
     conflicts.push(...dq.issues);
