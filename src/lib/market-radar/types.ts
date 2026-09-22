@@ -134,6 +134,32 @@ export interface CacheStats {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TIMESTAMP PROVENANCE — Phase 238 evidence contract unification
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Phase 238 — explicit timestamp provenance.
+ *
+ * PROVIDER_OBSERVED: provider returned explicit observation timestamp
+ *   (e.g. OKX candle ts, Twelve Data datetime/timestamp, CCXT ticker timestamp)
+ *
+ * PROVIDER_RESPONSE: provider returns quote that is documented as current-at-response
+ *   (e.g. CoinGecko simple/price — no timestamp field, but price IS current at response time)
+ *   In this case observedAt == acquiredAt by documented semantics, NOT by fabrication.
+ *
+ * APPLICATION_RECEIPT: application receipt time used as observedAt only because provider
+ *   gave no observation time and response is NOT documented as current-at-response.
+ *   This is explicitly marked as receipt, not provider observation.
+ *
+ * UNKNOWN: no trustworthy timestamp, observedAt absent, freshness UNAVAILABLE
+ */
+export type TimestampProvenance =
+  | "PROVIDER_OBSERVED"
+  | "PROVIDER_RESPONSE"
+  | "APPLICATION_RECEIPT"
+  | "UNKNOWN";
+
+// ═══════════════════════════════════════════════════════════════
 // MARKET DATA ACQUISITION
 // ═══════════════════════════════════════════════════════════════
 
@@ -189,6 +215,11 @@ export interface MarketSnapshot {
    * single read.
    */
   acquiredAt?: number;
+  /**
+   * Phase 238 — explicit provenance of observedAt.
+   * Never APPLICATION_RECEIPT labeled as PROVIDER_OBSERVED.
+   */
+  timestampProvenance?: TimestampProvenance;
   /** Data freshness. */
   freshness: FreshnessLevel;
   /** Data quality. */

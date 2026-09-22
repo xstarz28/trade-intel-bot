@@ -78,6 +78,7 @@ export async function acquireCcxtLive(
       // When provider gives no timestamp, we do NOT fabricate observedAt from Date.now()
       // — freshness becomes UNAVAILABLE and price timestamp sentinel 0 is used downstream.
       const observedAt = Number.isFinite(ts) ? ts : undefined;
+      const hasProviderTs = Number.isFinite(ts) && (ts as number) > 0;
       const fetchedAt = Date.now();
       return {
         instrument: input.instrument,
@@ -90,9 +91,10 @@ export async function acquireCcxtLive(
           ohlcvAvailable: true,
           availableTimeframes: ["H1"],
           provider: input.provider,
-          observedAt,
+          ...(observedAt !== undefined ? { observedAt } : {}),
           freshness: assessFreshness(observedAt, fetchedAt),
           quality: "VERIFIED",
+          timestampProvenance: hasProviderTs ? "PROVIDER_OBSERVED" : "UNKNOWN",
         },
         candles: candles.map((c) => ({
           timestamp: c[0],
@@ -118,7 +120,8 @@ export async function acquireCcxtLive(
       throw new Error("no price");
     }
     // Preserve provider timestamp; do not fabricate from Date.now()
-    const observedAt = Number.isFinite(ticker.timestamp) ? ticker.timestamp : undefined;
+    const hasTickerTs = Number.isFinite(ticker.timestamp) && (ticker.timestamp as number) > 0;
+    const observedAt = hasTickerTs ? ticker.timestamp : undefined;
     const fetchedAt = Date.now();
     return {
       instrument: input.instrument,
@@ -131,9 +134,10 @@ export async function acquireCcxtLive(
         ohlcvAvailable: false,
         availableTimeframes: [],
         provider: input.provider,
-        observedAt,
+        ...(observedAt !== undefined ? { observedAt } : {}),
         freshness: assessFreshness(observedAt, fetchedAt),
         quality: "VERIFIED",
+        timestampProvenance: hasTickerTs ? "PROVIDER_OBSERVED" : "UNKNOWN",
       },
       provider: input.provider,
       fetchedAt,

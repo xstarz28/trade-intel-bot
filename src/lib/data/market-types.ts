@@ -37,6 +37,11 @@ export interface MarketData {
   higherTimeframe?: string;
   dataFreshness: "realtime" | "delayed" | "stale" | "unavailable";
   error?: string; // If something went partial
+  /**
+   * Phase 238 — explicit provenance of price.timestamp.
+   * Carried from MarketSnapshot.timestampProvenance when available.
+   */
+  timestampProvenance?: "PROVIDER_OBSERVED" | "PROVIDER_RESPONSE" | "APPLICATION_RECEIPT" | "UNKNOWN";
 }
 
 /** Structural summary of one timeframe, used for HTF/LTF comparison. */

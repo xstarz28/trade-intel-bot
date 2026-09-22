@@ -27,7 +27,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createCountingClock } from "../../test-counting-clock";
-import { acquireLiveData, acquireProviderNativeLiveData, getAdapters } from "./provider-registry";
+import { acquireLiveData, acquireProviderNativeLiveData, getAdapters, resetAdapters } from "./provider-registry";
 import { executeLiveRequest } from "../data/universal/live/client";
 import { assessFreshness } from "./freshness";
 
@@ -51,7 +51,7 @@ beforeEach(() => {
       // one deliberately carries NO observation time (except OKX's candles).
       const body =
         url.includes("llama.fi") ? [{ tvl: 12_345 }] :
-        url.includes("coingecko") ? { bitcoin: { usd: 60_000, usd_24h_change: 1.2 } } :
+        url.includes("coingecko") ? { bitcoin: { usd: 60_000, usd_24h_change: 1.2 }, btc: { usd: 60_000, usd_24h_change: 1.2 } } :
         url.includes("tokenomist") ? { unlocks: [] } :
         url.includes("cftc.gov") ? {} :
         url.includes("fiscaldata") ? { data: [{ avg_interest_rate_amt: "4.1" }] } :
@@ -174,12 +174,18 @@ describe("238 — adapter records consult the clock once per record", () => {
   });
 
   it("without a provider timestamp the recorded instant IS a real clock read", async () => {
+    // Phase 238 — OKX missing candle time: observedAt must NOT be fabricated from clock.
+    // It becomes undefined with provenance UNKNOWN, while acquiredAt IS the clock read.
     rows = [candleRow("not-a-number")];
     const clock = installClock();
 
     const snapshot = await okxAdapter().fetch("BTC/USD", "crypto");
 
-    expect(clock.reads).toContain(snapshot?.observedAt);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.observedAt).toBeUndefined();
+    expect(snapshot?.timestampProvenance).toBe("UNKNOWN");
+    expect(clock.reads).toContain(snapshot?.acquiredAt);
+    expect(snapshot?.freshness).toBe("UNAVAILABLE");
   });
 
   it("the record's fetchedAt IS the instant its snapshot's freshness was judged at", async () => {
@@ -258,11 +264,13 @@ describe("238 — the sweep: adapters date one record with one read", () => {
       const snapshot = await adapterOf(id).fetch(instrument, assetClass as never, env ? (k) => env[k] : undefined);
 
       expect(snapshot).not.toBeNull();
-      // The instant the provider never gave IS the read this record was
-      // acquired at. Two reads would mean one acquisition carrying two dates
-      // for the same event — the counterfactual is a difference of exactly
-      // 1 ms, because the clock advances per read.
+      // Phase 238 — for providers with no observation time, observedAt == acquiredAt
+      // is intentional receipt-time-by-policy with explicit provenance, not silent promotion.
+      // coingecko = PROVIDER_RESPONSE (current-at-response), others = APPLICATION_RECEIPT.
+      // This is documented and not PROVIDER_OBSERVED.
       expect(snapshot?.observedAt).toBe(snapshot?.acquiredAt);
+      expect(snapshot?.timestampProvenance).not.toBe("PROVIDER_OBSERVED");
+      expect(["PROVIDER_RESPONSE", "APPLICATION_RECEIPT"]).toContain(snapshot?.timestampProvenance);
       // ...and it is a read this acquisition really took, not a value chosen
       // to look plausible.
       expect(clock.reads).toContain(snapshot?.acquiredAt);
@@ -310,9 +318,15 @@ describe("238 — the sweep: adapters date one record with one read", () => {
   });
 
   it("acquireLiveData dates its result with the snapshot's OWN instant, not a second read", async () => {
+    // Reset rows and adapters — previous tests pollute shared singleton state
+    rows = [candleRow(BASE - 60_000)];
+    resetAdapters();
     const clock = installClock();
 
     const result = await acquireLiveData("BTC/USD", "crypto");
+    if (!result.success) {
+      console.log("acquireLiveData failed:", result.error, "provider:", result.provider, "reads:", clock.reads.length);
+    }
 
     expect(result.success).toBe(true);
     // Pinned so a change in selection order is a loud failure rather than a

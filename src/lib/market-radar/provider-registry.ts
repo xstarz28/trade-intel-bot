@@ -221,6 +221,7 @@ function buildTwelveDataAdapter(): ProviderAdapter {
       // `assessFreshness`, so the verdict described an instant the record
       // never carried.
       const acquiredAt = Date.now();
+      const observedAt = new Date(latest.datetime).getTime();
 
       return {
         instrument,
@@ -233,10 +234,11 @@ function buildTwelveDataAdapter(): ProviderAdapter {
         ohlcvAvailable: true,
         availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
         provider: "twelve-data",
-        observedAt: new Date(latest.datetime).getTime(),
-        freshness: assessFreshness(new Date(latest.datetime).getTime(), acquiredAt),
+        observedAt,
+        freshness: assessFreshness(observedAt, acquiredAt),
         quality: "VERIFIED",
         acquiredAt,
+        timestampProvenance: "PROVIDER_OBSERVED",
       };
     },
   );
@@ -274,10 +276,16 @@ function buildCoinGeckoAdapter(): ProviderAdapter {
         ohlcvAvailable: false,
         availableTimeframes: [],
         provider: "coingecko",
+        // Phase 238 — CoinGecko simple/price has no timestamp field.
+        // Documented semantics: returned quote is current-at-response.
+        // So observedAt == acquiredAt with provenance PROVIDER_RESPONSE,
+        // not PROVIDER_OBSERVED. This is intentional receipt-time-by-policy,
+        // preserved per Phase220 B/C/D invariants.
         observedAt: acquiredAt,
         freshness: "FRESH",
         quality: "VERIFIED",
         acquiredAt,
+        timestampProvenance: "PROVIDER_RESPONSE",
       };
     },
   );
@@ -333,6 +341,7 @@ function buildDefiLlamaAdapter(): ProviderAdapter {
         // Phase 238 — this payload carries no observation time, so the
         // acquisition instant IS the record's `observedAt`: one read, carried
         // out on the record so the caller dates it identically.
+        // Provenance is APPLICATION_RECEIPT because no provider timestamp.
         const acquiredAt = Date.now();
         return {
           instrument, assetClass: "crypto", price: 0,
@@ -340,6 +349,7 @@ function buildDefiLlamaAdapter(): ProviderAdapter {
           provider: "defillama", observedAt: acquiredAt,
           freshness: "FRESH", quality: "VERIFIED",
           acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -360,9 +370,8 @@ function buildTokenomistAdapter(): ProviderAdapter {
         const url = `https://api.tokenomist.xyz/v1/unlocks?symbol=${symbol}`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
-        // Phase 238 — this payload carries no observation time, so the
-        // acquisition instant IS the record's `observedAt`: one read, carried
-        // out on the record so the caller dates it identically.
+        // Phase 238 — this payload carries no observation time.
+        // Provenance APPLICATION_RECEIPT.
         const acquiredAt = Date.now();
         return {
           instrument, assetClass: "crypto", price: 0,
@@ -370,6 +379,7 @@ function buildTokenomistAdapter(): ProviderAdapter {
           provider: "tokenomist", observedAt: acquiredAt,
           freshness: "FRESH", quality: "VERIFIED",
           acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -400,14 +410,20 @@ function buildOkxAdapter(): ProviderAdapter {
         if (!Number.isFinite(price) || price <= 0) return null;
         const ts = parseInt(row[0]);
         const acquiredAt = Date.now();
-        const observedAt = Number.isFinite(ts) ? ts : acquiredAt;
+        // Phase 238 — OKX candle timestamp is provider-observed (candle open time in ms).
+        // If absent/malformed, do NOT fabricate observedAt from acquiredAt.
+        // observedAt = undefined → freshness UNAVAILABLE, provenance UNKNOWN.
+        const hasProviderTs = Number.isFinite(ts) && ts > 0;
+        const observedAt = hasProviderTs ? ts : undefined;
         return {
           instrument, assetClass: "crypto", price,
           ohlcvAvailable: true, availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
-          provider: "okx", observedAt,
+          provider: "okx",
+          ...(observedAt !== undefined ? { observedAt } : {}),
           freshness: assessFreshness(observedAt, acquiredAt),
           quality: "VERIFIED",
           acquiredAt,
+          timestampProvenance: hasProviderTs ? "PROVIDER_OBSERVED" : "UNKNOWN",
         };
       } catch { return null; }
     },
@@ -434,9 +450,8 @@ function buildAlphaVantageAdapter(): ProviderAdapter {
         const d = res.json as Record<string, string>;
         const price = d["50DayMovingAverage"] ? parseFloat(d["50DayMovingAverage"]) : 0;
         if (!Number.isFinite(price) || price <= 0) return null;
-        // Phase 238 — this payload carries no observation time, so the
-        // acquisition instant IS the record's `observedAt`: one read, carried
-        // out on the record so the caller dates it identically.
+        // Phase 238 — fundamentals payload carries no observation time.
+        // Provenance APPLICATION_RECEIPT.
         const acquiredAt = Date.now();
         return {
           instrument, assetClass, price,
@@ -444,6 +459,7 @@ function buildAlphaVantageAdapter(): ProviderAdapter {
           provider: "alpha-vantage", observedAt: acquiredAt,
           freshness: "DELAYED", quality: "DEGRADED",
           acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -462,9 +478,8 @@ function buildCftcAdapter(): ProviderAdapter {
         const url = `https://www.cftc.gov/dea/futures/other_lf.htm`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
-        // Phase 238 — this payload carries no observation time, so the
-        // acquisition instant IS the record's `observedAt`: one read, carried
-        // out on the record so the caller dates it identically.
+        // Phase 238 — COT payload carries no observation time in this stub.
+        // Provenance APPLICATION_RECEIPT.
         const acquiredAt = Date.now();
         return {
           instrument, assetClass: "forex", price: 0,
@@ -472,6 +487,7 @@ function buildCftcAdapter(): ProviderAdapter {
           provider: "cftc", observedAt: acquiredAt,
           freshness: "STALE", quality: "DEGRADED",
           acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -495,15 +511,18 @@ function buildTreasuryAdapter(): ProviderAdapter {
         if (!entry?.avg_interest_rate_amt) return null;
         const yield_ = parseFloat(entry.avg_interest_rate_amt);
         if (!Number.isFinite(yield_)) return null;
-        // Phase 238 — one read, used both as the fallback observation time and
-        // as the instant this record was acquired.
+        // Phase 238 — Treasury record_date is provider-observed.
+        // Fallback to receipt only when absent, with provenance APPLICATION_RECEIPT.
         const acquiredAt = Date.now();
+        const hasRecordDate = !!entry.record_date;
+        const observedAt = hasRecordDate ? new Date(entry.record_date as string).getTime() : acquiredAt;
         return {
           instrument, assetClass: "macro", price: yield_,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "treasury", observedAt: entry.record_date ? new Date(entry.record_date).getTime() : acquiredAt,
+          provider: "treasury", observedAt,
           freshness: "STALE", quality: "DEGRADED",
           acquiredAt,
+          timestampProvenance: hasRecordDate ? "PROVIDER_OBSERVED" : "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -526,9 +545,8 @@ function buildEiaAdapter(): ProviderAdapter {
         const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPM0&facets[duession][]=NUS&sort[0][column]=period&sort[0][direction]=desc&length=1`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
-        // Phase 238 — this payload carries no observation time, so the
-        // acquisition instant IS the record's `observedAt`: one read, carried
-        // out on the record so the caller dates it identically.
+        // Phase 238 — EIA stub carries no observation time.
+        // Provenance APPLICATION_RECEIPT.
         const acquiredAt = Date.now();
         return {
           instrument, assetClass: "commodity", price: 0,
@@ -536,6 +554,7 @@ function buildEiaAdapter(): ProviderAdapter {
           provider: "eia", observedAt: acquiredAt,
           freshness: "STALE", quality: "DEGRADED",
           acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -565,19 +584,23 @@ function buildCcxtAdapter(): ProviderAdapter {
   );
 }
 
-const DEFAULT_ADAPTERS: ProviderAdapter[] = [
-  buildTwelveDataAdapter(),
-  buildCoinGeckoAdapter(),
-  buildCoinGlassAdapter(),
-  buildDefiLlamaAdapter(),
-  buildTokenomistAdapter(),
-  buildOkxAdapter(),
-  buildCcxtAdapter(),
-  buildAlphaVantageAdapter(),
-  buildCftcAdapter(),
-  buildTreasuryAdapter(),
-  buildEiaAdapter(),
-];
+function buildDefaultAdapters(): ProviderAdapter[] {
+  return [
+    buildTwelveDataAdapter(),
+    buildCoinGeckoAdapter(),
+    buildCoinGlassAdapter(),
+    buildDefiLlamaAdapter(),
+    buildTokenomistAdapter(),
+    buildOkxAdapter(),
+    buildCcxtAdapter(),
+    buildAlphaVantageAdapter(),
+    buildCftcAdapter(),
+    buildTreasuryAdapter(),
+    buildEiaAdapter(),
+  ];
+}
+
+const DEFAULT_ADAPTERS: ProviderAdapter[] = buildDefaultAdapters();
 
 let adapters: ProviderAdapter[] = [...DEFAULT_ADAPTERS];
 
@@ -590,7 +613,9 @@ export function registerAdapter(adapter: ProviderAdapter): void {
 }
 
 export function resetAdapters(): void {
-  adapters = [...DEFAULT_ADAPTERS];
+  // Phase 238 — rebuild to reset health counters (previous impl reused same objects,
+  // so totalRequests accumulated across tests and broke provider selection pinning)
+  adapters = buildDefaultAdapters();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -823,6 +848,8 @@ export async function acquireProviderNativeLiveData(
       observedAt,
       freshness,
       quality: result.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
+      // Phase 238 — candle timestamp is provider-observed, not receipt.
+      timestampProvenance: "PROVIDER_OBSERVED",
     },
     candles: candles.map((candle) => ({
       ...candle,
@@ -904,6 +931,9 @@ export function providerNativeAcquisitionToMarketData(
     candles,
     timeframe: "1h",
     dataFreshness: freshness,
+    ...(result.snapshot.timestampProvenance
+      ? { timestampProvenance: result.snapshot.timestampProvenance }
+      : {}),
     ...(result.providerInstrumentId
       ? { providerInstrumentId: result.providerInstrumentId }
       : {}),
