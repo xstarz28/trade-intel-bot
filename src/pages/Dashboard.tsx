@@ -893,8 +893,14 @@ export default function Dashboard() {
         // Phase 153 — retain the actual provider-backed market snapshot used
         // by this successful analysis. History remains persistence only and
         // must never be promoted to LIVE data.
-        liveSourceRef.current.set(result.instrument, {
+        // Phase 242 — use provider-qualified key to prevent multi-provider collision
+        const liveKey = `${input.provider}::${input.providerInstrumentId}`;
+        liveSourceRef.current.set(liveKey, {
           instrument: result.instrument,
+          providerNative: {
+            provider: input.provider,
+            providerInstrumentId: input.providerInstrumentId,
+          },
           assetClass:
             input.instrumentType === "crypto"
               ? "crypto"
