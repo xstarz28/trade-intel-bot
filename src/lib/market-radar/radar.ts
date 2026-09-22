@@ -74,6 +74,7 @@ function scoreOpportunity(
   source: RadarCandidateSource,
   horizon: TradingMode | InvestorHorizon,
   candidate?: CandidateInput,
+  now?: number,
 ): { score: number; confidence: number; supporting: string[]; conflicting: string[]; missing: string[]; reasons: string[] } {
   const snapshot = source.snapshot;
   const supporting: string[] = [];
@@ -82,7 +83,9 @@ function scoreOpportunity(
   let score = 50; // ranking baseline — confidence is scored separately
 
   // ── Data Quality (ranking score only; confidence uses assessEvidenceConfidence) ──
-  const freshness = snapshot ? assessFreshness(snapshot.observedAt, Date.now()) : "UNAVAILABLE";
+  // Phase 239: use provided timestamp for determinism, not wall clock, to preserve freshness truthfulness
+  const evalNow = now ?? Date.now();
+  const freshness = snapshot ? assessFreshness(snapshot.observedAt, evalNow) : "UNAVAILABLE";
   if (freshness === "FRESH") { score += 10; supporting.push("fresh market data"); }
   else if (freshness === "DELAYED") { score += 5; supporting.push("delayed data available"); }
   else if (freshness === "STALE") { score -= 10; conflicting.push("stale data"); }
@@ -268,6 +271,24 @@ function buildInvalidationConditions(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// OPPORTUNITY KEY — Phase 239 collision prevention
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Provider-qualified key for an opportunity.
+ * Same symbol on different providers must remain distinct.
+ * Uses provider::providerInstrumentId when available, else instrument.
+ */
+export function opportunityKey(
+  opp: Pick<RadarOpportunity, "instrument" | "providerNative">,
+): string {
+  if (opp.providerNative) {
+    return `${opp.providerNative.provider}::${opp.providerNative.providerInstrumentId}`;
+  }
+  return opp.instrument;
+}
+
+// ═══════════════════════════════════════════════════════════════
 // CORRELATION CLUSTER FILTERING
 // ═══════════════════════════════════════════════════════════════
 
@@ -301,7 +322,7 @@ function filterByCorrelation(
 // ═══════════════════════════════════════════════════════════════
 
 export interface RadarState {
-  /** Previous scan opportunities keyed by instrument. */
+  /** Previous scan opportunities keyed by provider-qualified instrument. */
   previous: Map<string, RadarOpportunity>;
   /** Timestamp of last scan. */
   lastScanAt: number;
@@ -314,7 +335,7 @@ export function scanRadar(
   now?: number,
 ): RadarScanResult {
   const startTime = Date.now();
-  const timestamp = now ?? Date.now();
+  const timestamp = now ?? config.now ?? Date.now();
   const maxResults = config.maxResults ?? 10;
 
   // Filter by asset class if configured
@@ -344,12 +365,47 @@ export function scanRadar(
       : "UNAVAILABLE";
     freshnessLevels.push(freshness);
     if (freshness === "FRESH" || freshness === "DELAYED") totalWithLiveData++;
-    const completeness = candidates.find(c => c.instrument === source.universe.instrument)?.dataCompleteness;
+    // Phase 239: use provider-qualified lookup for completeness to avoid collision on same symbol different providers
+    const completeness = candidates.find(c => {
+      const native = source.universe.providerNative;
+      if (native && c.providerNative) {
+        return c.providerNative.provider === native.provider && c.providerNative.providerInstrumentId === native.providerInstrumentId;
+      }
+      return c.instrument === source.universe.instrument;
+    })?.dataCompleteness;
     if (completeness === "NONE" || completeness === "MINIMAL") totalInsufficient++;
 
     for (const horizon of config.horizons) {
       // Freshness gate check
       const eligibility = checkFreshnessEligibility(freshness, freshness === "FRESH" || freshness === "DELAYED", horizon);
+
+      // Phase 239 — evidence traceability shared across eligible/ineligible paths
+      const providerNative = source.universe.providerNative;
+      const snap = source.snapshot;
+      const observedAt = snap?.observedAt;
+      const acquiredAt = snap?.acquiredAt;
+      const timestampProvenance = snap?.timestampProvenance;
+      const provider = snap?.provider ?? providerNative?.provider;
+
+      const buildEvidence = () => {
+        if (!snap) return undefined;
+        const price = snap.price;
+        if (!Number.isFinite(price) || price <= 0) return undefined;
+        return {
+          price,
+          ...(observedAt !== undefined ? { observedAt } : {}),
+          ...(acquiredAt !== undefined ? { acquiredAt } : {}),
+          ...(timestampProvenance ? { timestampProvenance } : {}),
+          freshness,
+          provider: provider ?? "unknown",
+          providerInstrumentId: providerNative?.providerInstrumentId ?? snap.instrument,
+          derived: {
+            ...(snap.spreadBps !== undefined ? { spreadBps: snap.spreadBps } : {}),
+            ...(snap.volatility !== undefined ? { volatility: snap.volatility } : {}),
+            ...(snap.change24h !== undefined ? { change24h: snap.change24h } : {}),
+          },
+        };
+      };
 
       if (!eligibility.eligible) {
         // Still record as opportunity with EXPIRED/INVALIDATED lifecycle
@@ -358,14 +414,24 @@ export function scanRadar(
           assetClass: source.universe.assetClass,
           region: source.universe.region,
           // Provider-native identity travels with the opportunity, unchanged.
-          ...(source.universe.providerNative
-            ? { providerNative: source.universe.providerNative }
-            : {}),
+          ...(providerNative ? { providerNative } : {}),
+          ...(provider ? { provider } : {}),
+          ...(observedAt !== undefined ? { observedAt } : {}),
+          ...(acquiredAt !== undefined ? { acquiredAt } : {}),
+          ...(timestampProvenance ? { timestampProvenance } : {}),
+          horizon,
+          evidence: buildEvidence(),
           lifecycle: "EXPIRED",
           qualityTier: "X",
           score: 0,
           confidence: 0,
-          dataCompleteness: candidates.find(c => c.instrument === source.universe.instrument)?.dataCompleteness ?? "NONE",
+          dataCompleteness: candidates.find(c => {
+            const n = source.universe.providerNative;
+            if (n && c.providerNative) {
+              return c.providerNative.provider === n.provider && c.providerNative.providerInstrumentId === n.providerInstrumentId;
+            }
+            return c.instrument === source.universe.instrument;
+          })?.dataCompleteness ?? "NONE",
           freshness,
           supportingEvidence: [],
           conflictingEvidence: [eligibility.reason],
@@ -393,7 +459,7 @@ export function scanRadar(
         }
         return c.instrument === source.universe.instrument;
       });
-      const scored = scoreOpportunity(source, horizon, candidate);
+      const scored = scoreOpportunity(source, horizon, candidate, timestamp);
 
       const lifecycle: OpportunityLifecycle = scored.score >= 50 ? "ACTIVE" : scored.score >= 30 ? "QUALIFIED" : "DISCOVERED";
       const qualityTier = assignQualityTier(
@@ -422,9 +488,13 @@ export function scanRadar(
         assetClass: source.universe.assetClass,
         region: source.universe.region,
         // Provider-native identity travels with the opportunity, unchanged.
-        ...(source.universe.providerNative
-          ? { providerNative: source.universe.providerNative }
-          : {}),
+        ...(providerNative ? { providerNative } : {}),
+        ...(provider ? { provider } : {}),
+        ...(observedAt !== undefined ? { observedAt } : {}),
+        ...(acquiredAt !== undefined ? { acquiredAt } : {}),
+        ...(timestampProvenance ? { timestampProvenance } : {}),
+        horizon,
+        evidence: buildEvidence(),
         lifecycle,
         qualityTier,
         score: scored.score,
@@ -460,23 +530,25 @@ export function scanRadar(
     allOpps.push(...limited);
   }
 
-  // Detect diffs from previous state
+  // Detect diffs from previous state — Phase 239: use provider-qualified key to prevent collision
   const diffs: OpportunityDiff[] = [];
   if (previousState) {
     const currentMap = new Map<string, RadarOpportunity>();
     for (const opp of allOpps) {
-      if (!currentMap.has(opp.instrument)) currentMap.set(opp.instrument, opp);
+      const k = opportunityKey(opp);
+      if (!currentMap.has(k)) currentMap.set(k, opp);
     }
 
-    // Check appeared/disappeared/changed
-    const allInstruments = new Set([
+    // Check appeared/disappeared/changed — keys are provider-qualified
+    const allKeys = new Set([
       ...previousState.previous.keys(),
       ...currentMap.keys(),
     ]);
 
-    for (const instrument of allInstruments) {
-      const prev = previousState.previous.get(instrument);
-      const curr = currentMap.get(instrument);
+    for (const key of allKeys) {
+      const prev = previousState.previous.get(key);
+      const curr = currentMap.get(key);
+      const instrument = curr?.instrument ?? prev?.instrument ?? key;
       const changes: string[] = [];
 
       if (!prev && curr) {
@@ -532,8 +604,9 @@ export function buildRadarState(result: RadarScanResult): RadarState {
   const previous = new Map<string, RadarOpportunity>();
   for (const [, opps] of result.results) {
     for (const opp of opps) {
-      if (!previous.has(opp.instrument)) {
-        previous.set(opp.instrument, opp);
+      const k = opportunityKey(opp);
+      if (!previous.has(k)) {
+        previous.set(k, opp);
       }
     }
   }

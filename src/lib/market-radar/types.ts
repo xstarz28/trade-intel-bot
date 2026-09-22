@@ -299,6 +299,37 @@ export interface RadarOpportunity {
     /** Total analytical dimensions attempted. */
     dimensionsTotal?: number;
   };
+
+  // ── Phase 239 — evidence traceability ───────────────────────
+  /** Provider that supplied the evidence (redundant with providerNative.provider but explicit). */
+  provider?: string;
+  /** When provider observed this evidence (truthful, not receipt unless provenance says so). */
+  observedAt?: number;
+  /** When we acquired it (receipt time). */
+  acquiredAt?: number;
+  /** Provenance of observedAt. */
+  timestampProvenance?: TimestampProvenance;
+  /** Horizon this opportunity was evaluated for (explicit). */
+  horizon?: TradingMode | InvestorHorizon;
+  /**
+   * Source evidence snapshot — exact values that produced this opportunity.
+   * Price is observed (or receipt-by-policy), spread/volatility are DERIVED and labeled as such.
+   */
+  evidence?: {
+    price: number;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: TimestampProvenance;
+    freshness: FreshnessLevel;
+    provider: string;
+    providerInstrumentId: string;
+    /** Derived metrics are explicitly marked as derived, not observed. */
+    derived?: {
+      spreadBps?: number;
+      volatility?: number;
+      change24h?: number;
+    };
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════

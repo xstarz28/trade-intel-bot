@@ -163,6 +163,11 @@ interface MarketOpportunitiesProps {
 // RANKED CARD
 // ═══════════════════════════════════════════════════════════════
 
+function opportunityDisplayKey(item: { instrument: string; providerNative?: { provider: string; providerInstrumentId: string } }): string {
+  if (item.providerNative) return `${item.providerNative.provider}::${item.providerNative.providerInstrumentId}`;
+  return item.instrument;
+}
+
 function RankedCard({ item }: { item: RankedInstrument }) {
   const { t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -171,6 +176,11 @@ function RankedCard({ item }: { item: RankedInstrument }) {
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-mono font-bold">{item.instrument}</span>
+        {item.providerNative && (
+          <Badge variant="outline" className="text-[8px] font-mono border-border/50 text-muted-foreground/70">
+            {item.providerNative.provider}
+          </Badge>
+        )}
         <Badge variant="outline" className={cn("text-[9px] font-mono", ASSET_COLORS[item.assetClass] ?? "border-border/50")}>
           {item.assetClass}
         </Badge>
@@ -281,6 +291,16 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-mono font-bold">{opp.instrument}</span>
+        {opp.providerNative && (
+          <Badge variant="outline" className="text-[8px] font-mono border-border/50 text-muted-foreground/70">
+            {opp.providerNative.provider}
+          </Badge>
+        )}
+        {opp.evidence && (
+          <Badge variant="outline" className="text-[8px] font-mono border-border/50 text-muted-foreground/50">
+            {opp.evidence.timestampProvenance ?? opp.timestampProvenance ?? "UNKNOWN"}
+          </Badge>
+        )}
         <Badge variant="outline" className={cn("text-[9px] font-mono", ASSET_COLORS[opp.assetClass] ?? "border-border/50")}>
           {opp.assetClass}{opp.region ? ` · ${opp.region}` : ""}
         </Badge>
@@ -332,6 +352,29 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
 
       {expanded && (
         <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
+          {opp.providerNative && (
+            <div className="text-[8px] font-mono text-muted-foreground/70">
+              <span>provider: {opp.providerNative.provider}</span>
+              <span className="mx-1">·</span>
+              <span>native: {opp.providerNative.providerInstrumentId}</span>
+              {opp.evidence && (
+                <>
+                  <span className="mx-1">·</span>
+                  <span>observedAt: {opp.evidence.observedAt ? new Date(opp.evidence.observedAt).toLocaleTimeString() : "unknown"}</span>
+                  <span className="mx-1">·</span>
+                  <span>provenance: {opp.evidence.timestampProvenance ?? "UNKNOWN"}</span>
+                  <span className="mx-1">·</span>
+                  <span>freshness: {opp.freshness}</span>
+                </>
+              )}
+            </div>
+          )}
+          {opp.evidence?.derived && Object.keys(opp.evidence.derived).length > 0 && (
+            <div className="text-[8px] font-mono text-muted-foreground/50">
+              derived: {Object.entries(opp.evidence.derived).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${typeof v === "number" ? v.toFixed(2) : v}`).join(", ")}
+              <span className="ml-1">(derived, not provider-observed)</span>
+            </div>
+          )}
           {opp.supportingEvidence.length > 0 && (
             <div>
               <p className="text-[9px] font-mono font-semibold text-emerald-400/80 mb-0.5">{tx("marketPanel.supportingLabel")}</p>
@@ -368,6 +411,12 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
             <span>{txi("marketPanel.coverageLabel", { value: opp.providerCoverage })}</span>
             <span className="mx-1">·</span>
             <span>{txi("marketPanel.updatedLabel", { time: new Date(opp.lastUpdated).toLocaleTimeString() })}</span>
+            {opp.horizon && (
+              <>
+                <span className="mx-1">·</span>
+                <span>horizon: {opp.horizon}</span>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -652,14 +701,14 @@ export function MarketOpportunities({
           </div>
         )}
 
-        {/* Phase 51 Radar Opportunities */}
+        {/* Phase 51 Radar Opportunities — Phase 239: provider-qualified key prevents collision */}
         {useRadar && (
           <div className="space-y-2">
             {radarOpps.filter(o => o.lifecycle !== "EXPIRED" && o.lifecycle !== "INVALIDATED").length > 0 ? (
               radarOpps
                 .filter(o => o.lifecycle !== "EXPIRED" && o.lifecycle !== "INVALIDATED")
                 .map((opp) => (
-                  <RadarCard key={opp.instrument} opp={opp} />
+                  <RadarCard key={opportunityDisplayKey(opp)} opp={opp} />
                 ))
             ) : (
               <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
@@ -684,12 +733,12 @@ export function MarketOpportunities({
           </div>
         )}
 
-        {/* Phase 50 Fallback: Static/Discovery Opportunities */}
+        {/* Phase 50 Fallback: Static/Discovery Opportunities — Phase 239: provider-qualified key */}
         {!useRadar && (
           filteredRanked.length > 0 ? (
             <div className="space-y-2">
               {filteredRanked.map((item) => (
-                <RankedCard key={item.instrument} item={item} />
+                <RankedCard key={opportunityDisplayKey(item)} item={item} />
               ))}
             </div>
           ) : (
