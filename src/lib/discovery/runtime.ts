@@ -131,9 +131,13 @@ export function toAcquisitionResults(
   batch: readonly DiscoveredInstrument[],
   raw: readonly NativeAcquisitionActionResult[],
 ): NativeAcquisitionResult[] {
-  // Index the batch by native id so results map back to their exact instrument.
-  const byNativeId = new Map(
-    batch.map((instrument) => [instrument.providerInstrumentId, instrument]),
+  // Index the batch by provider-native identity (provider + native id) so
+  // same symbol on different providers remains distinct — no collapse.
+  const byKey = new Map(
+    batch.map((instrument) => [
+      `${instrument.provider}::${instrument.providerInstrumentId}`,
+      instrument,
+    ]),
   );
 
   const results: NativeAcquisitionResult[] = [];
@@ -141,11 +145,21 @@ export function toAcquisitionResults(
 
   for (const item of raw) {
     const nativeId = item.providerInstrumentId ?? item.instrument;
-    const discovered = byNativeId.get(nativeId);
+    const provider = (item as any).provider ?? "";
+    // Prefer provider-aware key, fallback to native id alone for legacy single-provider results
+    const key = provider ? `${provider}::${nativeId}` : nativeId;
+    let discovered = byKey.get(key);
+    if (!discovered) {
+      // Fallback: try native id alone (legacy path where provider not echoed)
+      // but only if exactly one instrument matches that native id
+      const candidates = batch.filter((b) => b.providerInstrumentId === nativeId);
+      if (candidates.length === 1) discovered = candidates[0];
+    }
 
     // A result we never requested is ignored rather than trusted.
     if (!discovered) continue;
-    seen.add(nativeId);
+    const seenKey = `${discovered.provider}::${discovered.providerInstrumentId}`;
+    seen.add(seenKey);
 
     const marketData = item.success
       ? providerNativeAcquisitionToMarketData(item as never)
@@ -194,7 +208,8 @@ export function toAcquisitionResults(
 
   // Anything requested but never answered is an explicit failure.
   for (const instrument of batch) {
-    if (seen.has(instrument.providerInstrumentId)) continue;
+    const k = `${instrument.provider}::${instrument.providerInstrumentId}`;
+    if (seen.has(k)) continue;
     results.push({
       provider: instrument.provider,
       providerInstrumentId: instrument.providerInstrumentId,
