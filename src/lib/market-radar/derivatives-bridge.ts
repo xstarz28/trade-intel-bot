@@ -37,6 +37,16 @@ export interface DerivativesBridgeResult {
   derivatives?: RadarDerivatives;
   /** Why nothing (or only part) was forwarded. Empty when fully forwarded. */
   rejected: string[];
+  /** Phase 241 — explicit additional evidence inventory with freshness/provenance */
+  additionalEvidence?: Array<{
+    source: string;
+    provider: string;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: "PROVIDER_OBSERVED" | "PROVIDER_RESPONSE" | "APPLICATION_RECEIPT" | "UNKNOWN";
+    freshness: "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" | "UNKNOWN";
+    required: boolean;
+  }>;
 }
 
 export function derivativesForRadar(
@@ -77,8 +87,41 @@ export function derivativesForRadar(
   const liq = data.liquidations?.totalVolume;
   if (data.availability?.liquidations && typeof liq === "number" && Number.isFinite(liq) && liq >= 0) out.liquidationVolume = liq;
 
-  if (out.fundingRate === undefined && out.openInterest === undefined && out.liquidationVolume === undefined) {
-    return { rejected };
+  // Phase 241 — build explicit additional evidence entries with freshness contract
+  const additionalEvidence: NonNullable<DerivativesBridgeResult["additionalEvidence"]> = [];
+  if (out.fundingRate !== undefined) {
+    additionalEvidence.push({
+      source: "funding",
+      provider: "coinglass",
+      observedAt: data.timestamp,
+      freshness,
+      timestampProvenance: "PROVIDER_OBSERVED",
+      required: false,
+    });
   }
-  return { derivatives: out, rejected };
+  if (out.openInterest !== undefined) {
+    additionalEvidence.push({
+      source: "openInterest",
+      provider: "coinglass",
+      observedAt: data.timestamp,
+      freshness,
+      timestampProvenance: "PROVIDER_OBSERVED",
+      required: false,
+    });
+  }
+  if (out.liquidationVolume !== undefined) {
+    additionalEvidence.push({
+      source: "derivatives",
+      provider: "coinglass",
+      observedAt: data.timestamp,
+      freshness,
+      timestampProvenance: "PROVIDER_OBSERVED",
+      required: false,
+    });
+  }
+
+  if (out.fundingRate === undefined && out.openInterest === undefined && out.liquidationVolume === undefined) {
+    return { rejected, additionalEvidence: [] };
+  }
+  return { derivatives: out, rejected, additionalEvidence };
 }

@@ -271,16 +271,16 @@ function buildInvalidationConditions(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// OPPORTUNITY KEY — Phase 239 collision prevention, Phase 240 hardening
+// OPPORTUNITY KEY — Phase 239 collision prevention, Phase 240 hardening, Phase 241 canonical
 // ═══════════════════════════════════════════════════════════════
+// provider:: pattern preserved via canonicalOpportunityKey — radar and UI share single source
+
+import { canonicalOpportunityKey as canonicalKey } from "./opportunity-identity";
 
 /**
  * Provider-qualified key for an opportunity.
- * Same symbol on different providers must remain distinct.
- * Uses provider::providerInstrumentId when available.
- * Phase 240: collision-safe fallback when providerNative absent/partial,
- * using strongest available identity (provider, assetClass, region, candidate).
- * Never invents provider IDs, never mutates native IDs.
+ * Phase 241: delegates to canonicalOpportunityKey single source of truth.
+ * Preserves Phase240 precedence, never invents IDs, never mutates native IDs.
  */
 export function opportunityKey(
   opp: Pick<RadarOpportunity, "instrument" | "providerNative" | "provider" | "assetClass" | "region" | "candidateInstrument"> & {
@@ -290,43 +290,14 @@ export function opportunityKey(
     candidateInstrument?: string;
   },
 ): string {
-  const sanitize = (s: string) => s.trim();
-  const pn = opp.providerNative as { provider?: string; providerInstrumentId?: string } | undefined;
-  const asset = (opp as any).assetClass ?? "unknown";
-  const region = (opp as any).region ?? "";
-  const provider = (opp as any).provider ?? "";
-  const candidate = (opp as any).candidateInstrument ?? "";
-  const instrument = sanitize(opp.instrument);
-
-  // Preferred: full provider-native identity
-  if (pn?.provider && pn?.providerInstrumentId) {
-    const p = sanitize(pn.provider);
-    const id = sanitize(pn.providerInstrumentId);
-    if (p && id) return `${p}::${id}`;
-  }
-  // Partial: has native id but no provider — include instrument + assetClass to avoid collision
-  if (pn?.providerInstrumentId) {
-    const id = sanitize(pn.providerInstrumentId);
-    if (id) return `${id}::${instrument}::${asset}`;
-  }
-  // Partial: has provider but no native id — include instrument + assetClass + region
-  if (pn?.provider) {
-    const p = sanitize(pn.provider);
-    if (p) {
-      const base = `${p}::${instrument}::${asset}`;
-      return region ? `${base}::${sanitize(region)}` : base;
-    }
-  }
-  // Fallback: top-level provider + instrument + assetClass
-  if (provider) {
-    const p = sanitize(provider);
-    if (p) return `${p}::${instrument}::${asset}`;
-  }
-  // Legacy fallback: assetClass::instrument::region (+ candidate if distinct)
-  if (candidate && candidate !== opp.instrument) {
-    return `${asset}::${instrument}::${sanitize(candidate)}::${sanitize(region || "global")}`;
-  }
-  return `${asset}::${instrument}::${sanitize(region || "global")}`;
+  return canonicalKey({
+    instrument: opp.instrument,
+    providerNative: opp.providerNative as any,
+    provider: (opp as any).provider,
+    assetClass: (opp as any).assetClass,
+    region: (opp as any).region,
+    candidateInstrument: (opp as any).candidateInstrument,
+  });
 }
 
 /**
@@ -384,16 +355,19 @@ export function computeEffectiveFreshness(
 ): { effective: FreshnessLevel; weakestRequired: FreshnessLevel; details: string[] } {
   const required = additional.filter((e) => e.required);
   const allRequired = [{ freshness: primary, required: true, source: "price" }, ...required];
-  // Find weakest (highest rank) among required
-  let weakest: FreshnessLevel = primary;
+  // Find weakest (highest rank) among required — UNKNOWN treated as UNAVAILABLE
+  let weakest: FreshnessLevel = primary === ("UNKNOWN" as any) ? "UNAVAILABLE" : primary;
   let weakestRank = freshnessRank(primary);
   for (const ev of allRequired) {
     const r = freshnessRank(ev.freshness);
     if (r > weakestRank) {
       weakestRank = r;
-      weakest = ev.freshness;
+      // Normalize UNKNOWN → UNAVAILABLE for effective output
+      weakest = ev.freshness === ("UNKNOWN" as any) ? "UNAVAILABLE" : (ev.freshness as FreshnessLevel);
     }
   }
+  // If primary was UNKNOWN, normalize
+  if ((primary as any) === "UNKNOWN") weakest = "UNAVAILABLE";
   const details: string[] = [];
   if (required.length > 0) {
     details.push(`required sources: ${allRequired.map((e) => `${e.source}=${e.freshness}`).join(", ")}`);
@@ -402,35 +376,80 @@ export function computeEffectiveFreshness(
   return { effective: weakest, weakestRequired: weakest, details };
 }
 
-function freshnessRank(f: FreshnessLevel): number {
-  const order: FreshnessLevel[] = ["FRESH", "DELAYED", "STALE", "UNAVAILABLE"];
-  return order.indexOf(f);
+function freshnessRank(f: FreshnessLevel | "UNKNOWN"): number {
+  // UNKNOWN is not trustworthy — treat as UNAVAILABLE for required weakest semantics
+  const order = ["FRESH", "DELAYED", "STALE", "UNKNOWN", "UNAVAILABLE"] as const;
+  const idx = (order as readonly string[]).indexOf(f as string);
+  if (idx === -1) return 4; // unknown string → treat as UNAVAILABLE
+  // Map UNKNOWN to same rank as UNAVAILABLE for effective freshness (never FRESH)
+  if (f === "UNKNOWN") return 4;
+  return idx;
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CORRELATION CLUSTER FILTERING
+// CORRELATION CLUSTER FILTERING — Phase 241 hardening
 // ═══════════════════════════════════════════════════════════════
+
+/**
+ * Derive correlation grouping key from opportunity metadata.
+ * Uses assetClass:baseAsset pattern (e.g., crypto:BTC) to group logically related instruments
+ * without hardcoding ticker lists. Preserves provider-native identity separation.
+ */
+function deriveOpportunityCorrelationKey(opp: RadarOpportunity): string | undefined {
+  // Prefer explicit correlation if available via candidateInstrument or instrument parsing
+  const instrument = opp.instrument;
+  if (!instrument) return undefined;
+  // Extract base asset: split by /, -, :, etc., first token uppercased
+  const base = instrument.split(/[/:\-]/)[0]?.trim().toUpperCase();
+  if (!base) return `${opp.assetClass}:UNKNOWN`;
+  return `${opp.assetClass}:${base}`;
+}
 
 function filterByCorrelation(
   opportunities: RadarOpportunity[],
 ): RadarOpportunity[] {
   const clusterDisplayCounts = new Map<string, number>();
   const filtered: RadarOpportunity[] = [];
+  const seenKeys = new Set<string>(); // prevent Map collision via canonical identity
 
   // Sort by score descending
   const sorted = [...opportunities].sort((a, b) => b.score - a.score);
 
   for (const opp of sorted) {
+    const canonicalKey = opportunityKey(opp);
+    // Prevent duplicate canonical identity from entering twice (Map collision prevention)
+    if (seenKeys.has(canonicalKey)) continue;
+    seenKeys.add(canonicalKey);
+
+    // Phase 241: correlation grouping uses derived key + static clusters, but identity remains distinct
+    // First try static CORRELATION_CLUSTERS (canonical names), then derived grouping
     const cluster = CORRELATION_CLUSTERS.find(c => c.instruments.includes(opp.instrument));
-    if (!cluster) {
+    let groupId: string | undefined;
+    if (cluster) {
+      groupId = cluster.id;
+    } else {
+      // For discovered provider-native instruments, derive grouping key
+      const derived = deriveOpportunityCorrelationKey(opp);
+      if (derived) {
+        // Use derived key as group id for display cap purposes, but with higher maxDisplay to avoid unfair collapse
+        // For distinct provider-native instruments sharing same logical asset, we allow up to 2 per group (not 1) to avoid removing one provider simply because another shares symbol
+        groupId = derived;
+      }
+    }
+
+    if (!groupId) {
       filtered.push(opp);
       continue;
     }
-    const count = clusterDisplayCounts.get(cluster.id) ?? 0;
-    if (count < cluster.maxDisplay) {
-      clusterDisplayCounts.set(cluster.id, count + 1);
+
+    const count = clusterDisplayCounts.get(groupId) ?? 0;
+    // Determine maxDisplay: for static clusters use defined maxDisplay, for derived use 2 to prevent unfair collapse of distinct providers
+    const maxDisplay = cluster ? cluster.maxDisplay : 2;
+    if (count < maxDisplay) {
+      clusterDisplayCounts.set(groupId, count + 1);
       filtered.push(opp);
     }
+    // else: correlated exposure limit reached — filtered out but not merged, identity preserved
   }
 
   return filtered;
@@ -484,13 +503,53 @@ export function scanRadar(
       ? assessFreshness(source.snapshot.observedAt, timestamp)
       : "UNAVAILABLE";
 
-    // Phase 240: additional evidence freshness classification
-    // REQUIRED: price (already primary). OPTIONAL/SUPPORTING: derivatives, fundamentals, COT, EIA, treasury, analyticalDepth
-    // For now no additional required freshness beyond price, but we compute effective explicitly
-    // If future required evidence has freshness, effective = weakest required
+    // Phase 241: additional evidence freshness contract — explicit inventory
+    // Classification: REQUIRED=price only, OPTIONAL/SUPPORTING=derivatives, fundamentals, COT, EIA, treasury, analyticalDepth
+    // Each additional source must have explicit freshness OR be marked UNAVAILABLE, never silently FRESH
     const additionalFreshness: EvidenceFreshnessInput[] = [];
-    // Example placeholder: if derivatives had explicit freshness, we would push with required:false (optional)
-    // If a horizon required derivatives, we would push with required:true and effective would be weakest
+
+    // From explicit additionalEvidence array (new contract)
+    if (source.additionalEvidence && source.additionalEvidence.length > 0) {
+      for (const ev of source.additionalEvidence) {
+        // If no trustworthy timestamp, freshness must be UNAVAILABLE per contract, never FRESH
+        const f = ev.freshness ?? "UNAVAILABLE";
+        // Future timestamp check: assessFreshness would return UNAVAILABLE for future, so we preserve that
+        // Do not silently promote UNKNOWN to FRESH
+        const effectiveF = f === "FRESH" && ev.observedAt === undefined && ev.timestampProvenance === "UNKNOWN" ? "UNAVAILABLE" : f;
+        additionalFreshness.push({
+          freshness: effectiveF,
+          required: ev.required,
+          source: ev.source,
+        });
+      }
+    }
+
+    // From legacy optional fields that may carry freshness (backward compat)
+    const legacySources: Array<{ obj: any; name: string }> = [
+      { obj: source.derivatives, name: "derivatives" },
+      { obj: source.fundamentals, name: "fundamentals" },
+      { obj: source.cot, name: "cot" },
+      { obj: source.eia, name: "eia" },
+      { obj: source.treasury, name: "treasury" },
+      { obj: source.analyticalDepth, name: "analyticalDepth" },
+    ];
+    for (const { obj, name } of legacySources) {
+      if (obj && typeof obj === "object" && (obj as any).freshness) {
+        const f = (obj as any).freshness as FreshnessLevel;
+        // Validate: if observedAt missing and provenance UNKNOWN, cannot be FRESH
+        const obs = (obj as any).observedAt;
+        const prov = (obj as any).timestampProvenance;
+        const effectiveF = f === "FRESH" && obs === undefined && prov === "UNKNOWN" ? "UNAVAILABLE" : f;
+        // Only add if not already present from additionalEvidence to avoid double count
+        if (!additionalFreshness.some((e) => e.source === name)) {
+          additionalFreshness.push({
+            freshness: effectiveF,
+            required: false, // per classification, all additional are optional/supporting
+            source: name,
+          });
+        }
+      }
+    }
 
     const { effective: freshness } = computeEffectiveFreshness(primaryFreshness, additionalFreshness);
 

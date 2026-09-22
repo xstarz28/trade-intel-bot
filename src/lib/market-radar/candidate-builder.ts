@@ -9,9 +9,48 @@
  */
 
 import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation-engine";
-import type { MarketSnapshot, FreshnessLevel } from "./types";
+import type { MarketSnapshot, FreshnessLevel, TimestampProvenance } from "./types";
 import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
+
+// ────────────────────────────────────────────────────────────────
+// Phase 241 — Additional evidence freshness contract
+// ────────────────────────────────────────────────────────────────
+
+export interface AdditionalEvidenceMeta {
+  /** Source identifier, e.g. "derivatives", "cot", "eia", "treasury", "fundamentals", "analyticalDepth" */
+  source: string;
+  provider?: string;
+  /** When provider observed this evidence — undefined if no trustworthy timestamp */
+  observedAt?: number;
+  /** When we acquired it */
+  acquiredAt?: number;
+  /** Provenance of observedAt */
+  timestampProvenance?: TimestampProvenance;
+  /** Explicit freshness — never silently FRESH if no trustworthy timestamp */
+  freshness: FreshnessLevel;
+  /** Required vs optional/supporting classification */
+  required: boolean;
+}
+
+/**
+ * Classification of additional evidence sources per existing architecture semantics.
+ * REQUIRED: price/snapshot only (must be present for opportunity to be valid)
+ * OPTIONAL/SUPPORTING: derivatives, fundamentals, COT, EIA, treasury, analyticalDepth
+ * INFORMATIONAL: region, provider coverage, etc.
+ */
+export const ADDITIONAL_EVIDENCE_CLASSIFICATION: Record<string, { required: boolean; description: string }> = {
+  derivatives: { required: false, description: "funding rate, open interest — supporting for crypto" },
+  fundingRate: { required: false, description: "funding rate — supporting" },
+  openInterest: { required: false, description: "open interest — supporting" },
+  cot: { required: false, description: "COT positioning — supporting for forex/commodity" },
+  eia: { required: false, description: "EIA inventory — supporting for commodity" },
+  treasury: { required: false, description: "treasury/macro — supporting" },
+  fundamentals: { required: false, description: "P/E, revenue growth — supporting for equity/investing" },
+  riskRegime: { required: false, description: "risk regime — supporting" },
+  analyticalDepth: { required: false, description: "analytical depth — informational" },
+  relativeValue: { required: false, description: "relative value — informational" },
+};
 
 // ═══════════════════════════════════════════════════════════════
 // RADAR CANDIDATE SOURCE
@@ -27,6 +66,12 @@ export interface RadarCandidateSource {
     fundingRate?: number;
     openInterest?: number;
     liquidationVolume?: number;
+    /** Phase 241: explicit freshness metadata if available */
+    freshness?: FreshnessLevel;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: TimestampProvenance;
+    provider?: string;
   };
   /** Optional fundamentals (equity). */
   fundamentals?: {
@@ -34,22 +79,42 @@ export interface RadarCandidateSource {
     profitMargin?: number;
     marketCap?: number;
     revenueGrowth?: number;
+    freshness?: FreshnessLevel;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: TimestampProvenance;
+    provider?: string;
   };
   /** Optional COT data (forex/commodity). */
   cot?: {
     netNonCommercial?: number;
+    freshness?: FreshnessLevel;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: TimestampProvenance;
+    provider?: string;
   };
   /** Optional EIA data (commodity). */
   eia?: {
     inventory?: number;
     inventoryChange?: number;
     futuresStructure?: string;
+    freshness?: FreshnessLevel;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: TimestampProvenance;
+    provider?: string;
   };
   /** Optional treasury/macro data. */
   treasury?: {
     tenYearYield?: number;
     dxyTrend?: "rising" | "falling" | "stable";
     riskRegime?: string;
+    freshness?: FreshnessLevel;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: TimestampProvenance;
+    provider?: string;
   };
   /** Analysis result if available (optional, not required). */
   analysisResult?: {
@@ -72,7 +137,14 @@ export interface RadarCandidateSource {
     dimensionsAvailable?: number;
     dimensionsTotal?: number;
     relativeValue?: string;
+    freshness?: FreshnessLevel;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: TimestampProvenance;
+    provider?: string;
   };
+  /** Phase 241: explicit additional evidence inventory with freshness semantics */
+  additionalEvidence?: AdditionalEvidenceMeta[];
 }
 
 // ═══════════════════════════════════════════════════════════════

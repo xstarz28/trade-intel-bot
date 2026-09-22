@@ -1055,9 +1055,88 @@ export default function Dashboard() {
       // Phase 226 — CoinGlass derivatives reach the radar only through the
       // provenance-checked bridge (symbol identity, provider timestamp,
       // per-dataset availability). Anything rejected stays undefined.
-      const derivatives = ls.assetClass === "crypto"
-        ? derivativesForRadar(ls.instrument, ls.derivativesData, radarNow).derivatives
-        : undefined;
+      const bridge = ls.assetClass === "crypto"
+        ? derivativesForRadar(ls.instrument, ls.derivativesData, radarNow)
+        : { derivatives: undefined as any, additionalEvidence: [] as any[] };
+      const derivatives = bridge.derivatives;
+      // Phase 241 — explicit additional evidence inventory with freshness/provenance
+      const additionalEvidence: RadarCandidateSource["additionalEvidence"] = [];
+
+      if (derivatives) {
+        const prov = (ls.derivativesData as any)?.provider ?? "coinglass";
+        const obs = (ls.derivativesData as any)?.observedAt ?? (derivatives as any)?.observedAt;
+        const freshness = (derivatives as any)?.freshness ?? (obs ? "FRESH" : "UNAVAILABLE");
+        additionalEvidence.push({
+          source: "derivatives",
+          provider: prov,
+          observedAt: obs,
+          freshness: freshness as any,
+          timestampProvenance: obs ? "PROVIDER_OBSERVED" : "UNKNOWN",
+          required: false,
+        });
+      }
+
+      if (ls.treasuryData) {
+        const obs = (ls.treasuryData as any)?.observedAt;
+        const freshness = (ls.treasuryData as any)?.freshness ?? (obs ? "DELAYED" : "UNAVAILABLE");
+        additionalEvidence.push({
+          source: "treasury",
+          provider: "treasury",
+          observedAt: obs,
+          freshness: freshness as any,
+          timestampProvenance: obs ? "PROVIDER_OBSERVED" : "UNKNOWN",
+          required: false,
+        });
+      }
+
+      if (ls.cotData) {
+        const obsRaw = (ls.cotData as any)?.observedAt ?? (ls.cotData as any)?.latest?.reportDate;
+        const obs = typeof obsRaw === "number" ? obsRaw : obsRaw ? Date.parse(`${obsRaw}T00:00:00Z`) : undefined;
+        const freshness = (ls.cotData as any)?.freshness ?? (obs ? "DELAYED" : "UNAVAILABLE");
+        additionalEvidence.push({
+          source: "cot",
+          provider: "cftc",
+          observedAt: obs,
+          freshness: freshness as any,
+          timestampProvenance: obs ? "PROVIDER_OBSERVED" : "UNKNOWN",
+          required: false,
+        });
+      }
+
+      if (ls.eiaData) {
+        const obsRaw = (ls.eiaData as any)?.observedAt ?? (ls.eiaData as any)?.series?.[0]?.observationDate;
+        const obs = typeof obsRaw === "number" ? obsRaw : obsRaw ? Date.parse(`${obsRaw}T00:00:00Z`) : undefined;
+        const freshness = (ls.eiaData as any)?.freshness ?? (obs ? "DELAYED" : "UNAVAILABLE");
+        additionalEvidence.push({
+          source: "eia",
+          provider: "eia",
+          observedAt: obs,
+          freshness: freshness as any,
+          timestampProvenance: obs ? "PROVIDER_OBSERVED" : "UNKNOWN",
+          required: false,
+        });
+      }
+
+      if (ls.universalIntelligence || ar?.fundamentalData) {
+        additionalEvidence.push({
+          source: "fundamentals",
+          provider: ls.universalIntelligence ? "universal" : "alpha-vantage",
+          observedAt: undefined,
+          freshness: "UNAVAILABLE",
+          timestampProvenance: "UNKNOWN",
+          required: false,
+        });
+      }
+
+      const bridgeExtra = (bridge as any).additionalEvidence as any[] | undefined;
+      if (bridgeExtra && bridgeExtra.length > 0) {
+        for (const ev of bridgeExtra) {
+          if (!additionalEvidence.some((e) => e.source === ev.source)) {
+            additionalEvidence.push(ev);
+          }
+        }
+      }
+
       return {
         universe: {
           instrument: ls.instrument,
@@ -1118,6 +1197,7 @@ export default function Dashboard() {
           bias: ar.bias,
           recommendation: ar.recommendation,
         } : undefined,
+        additionalEvidence: additionalEvidence.length > 0 ? additionalEvidence : undefined,
       } as RadarCandidateSource;
     });
 

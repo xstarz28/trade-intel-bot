@@ -163,6 +163,8 @@ interface MarketOpportunitiesProps {
 // RANKED CARD
 // ═══════════════════════════════════════════════════════════════
 
+import { canonicalOpportunityKey } from "@/lib/market-radar/opportunity-identity";
+
 function opportunityDisplayKey(item: {
   instrument: string;
   providerNative?: { provider: string; providerInstrumentId: string };
@@ -171,38 +173,15 @@ function opportunityDisplayKey(item: {
   region?: string;
   candidateInstrument?: string;
 }): string {
-  const sanitize = (s: string) => s.trim();
-  const pn = item.providerNative as { provider?: string; providerInstrumentId?: string } | undefined;
-  const asset = (item as any).assetClass ?? "unknown";
-  const region = (item as any).region ?? "";
-  const provider = (item as any).provider ?? "";
-  const candidate = (item as any).candidateInstrument ?? "";
-  const instrument = sanitize(item.instrument);
-
-  if (pn?.provider && pn?.providerInstrumentId) {
-    const p = sanitize(pn.provider);
-    const id = sanitize(pn.providerInstrumentId);
-    if (p && id) return `${p}::${id}`;
-  }
-  if (pn?.providerInstrumentId) {
-    const id = sanitize(pn.providerInstrumentId);
-    if (id) return `${id}::${instrument}::${asset}`;
-  }
-  if (pn?.provider) {
-    const p = sanitize(pn.provider);
-    if (p) {
-      const base = `${p}::${instrument}::${asset}`;
-      return region ? `${base}::${sanitize(region)}` : base;
-    }
-  }
-  if (provider) {
-    const p = sanitize(provider);
-    if (p) return `${p}::${instrument}::${asset}`;
-  }
-  if (candidate && candidate !== item.instrument) {
-    return `${asset}::${instrument}::${sanitize(candidate)}::${sanitize(region || "global")}`;
-  }
-  return `${asset}::${instrument}::${sanitize(region || "global")}`;
+  // Phase 241: single canonical identity, no duplicated logic
+  return canonicalOpportunityKey({
+    instrument: item.instrument,
+    providerNative: item.providerNative as any,
+    provider: (item as any).provider,
+    assetClass: (item as any).assetClass,
+    region: (item as any).region,
+    candidateInstrument: (item as any).candidateInstrument,
+  });
 }
 
 function RankedCard({ item }: { item: RankedInstrument }) {
