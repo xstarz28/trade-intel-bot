@@ -37,14 +37,17 @@ type LocaleCode = keyof typeof BUNDLES;
 /** The canonical InstrumentType values the backend understands. */
 const CANONICAL_TYPES = ["forex", "crypto", "stock", "commodity"] as const;
 
-function renderAt(locale: string) {
+function renderAt(
+  locale: string,
+  catalog?: import("@/lib/discovery/instrument-universe").CatalogInstrument[],
+) {
   const KEY = "xstarz:locale";
   const previous = localStorage.getItem(KEY);
   localStorage.setItem(KEY, locale);
   try {
     return render(
       <I18nProvider>
-        <InstrumentInput onAnalyze={() => {}} isAnalyzing={false} />
+        <InstrumentInput onAnalyze={() => {}} isAnalyzing={false} catalog={catalog} />
       </I18nProvider>,
     );
   } finally {
@@ -149,13 +152,63 @@ describe("Phase 197 — trading style buttons are translated", () => {
 });
 
 describe("Phase 197 — instrument identity is never translated", () => {
-  it("renders provider-native symbols verbatim in every locale", () => {
+  it("renders no static popular symbols when discovery is empty", () => {
     for (const locale of ALL_LOCALES) {
       const { container } = renderAt(locale);
       const text = container.textContent ?? "";
+      expect(text).not.toContain("EUR/USD");
+      expect(text).not.toContain("BTC/USD");
+      expect(text).not.toContain("XAU/USD");
+      cleanup();
+    }
+  });
+
+  it("renders provider-native symbols verbatim in every locale when discovered", () => {
+    const catalog = [
+      {
+        provider: "twelve-data",
+        providerInstrumentId: "EUR/USD",
+        assetClass: "forex" as const,
+        subType: "forex_spot" as const,
+        baseAsset: "EUR",
+        quoteAsset: "USD",
+        tradingState: "TRADING" as const,
+        capabilities: ["ohlcv" as const, "quote" as const],
+        discoveredAt: 1,
+        lifecycle: "DISCOVERED" as const,
+      },
+      {
+        provider: "okx",
+        providerInstrumentId: "BTC-USDT",
+        assetClass: "crypto" as const,
+        subType: "crypto_spot" as const,
+        baseAsset: "BTC",
+        quoteAsset: "USDT",
+        tradingState: "TRADING" as const,
+        capabilities: ["ohlcv" as const, "quote" as const],
+        discoveredAt: 1,
+        lifecycle: "LIVE" as const,
+      },
+      {
+        provider: "twelve-data",
+        providerInstrumentId: "XAU/USD",
+        assetClass: "commodity" as const,
+        subType: "commodity_spot" as const,
+        baseAsset: "XAU",
+        quoteAsset: "USD",
+        tradingState: "TRADING" as const,
+        capabilities: ["ohlcv" as const, "quote" as const],
+        discoveredAt: 1,
+        lifecycle: "DISCOVERED" as const,
+      },
+    ];
+    for (const locale of ALL_LOCALES) {
+      const { container } = renderAt(locale, catalog);
+      const text = container.textContent ?? "";
       expect(text).toContain("EUR/USD");
-      expect(text).toContain("BTC/USD");
+      expect(text).toContain("BTC-USDT");
       expect(text).toContain("XAU/USD");
+      expect(text).not.toContain("GOLD");
       cleanup();
     }
   });

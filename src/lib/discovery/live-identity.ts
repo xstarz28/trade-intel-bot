@@ -57,8 +57,46 @@ function idsEqualIgnoreCase(a: string, b: string): boolean {
 export function resolveLiveIdentity(args: {
   typed: string;
   instrumentType?: string;
+  /** Exact provider from a catalog selection. Routing only — not live proof. */
+  provider?: string;
+  /** Exact provider-native id from a catalog selection. Never a display alias. */
+  providerInstrumentId?: string;
   discovered: readonly DiscoveredInstrument[];
 }): LiveIdentity {
+  const selectedProvider = args.provider?.trim();
+  const selectedNativeId = args.providerInstrumentId?.trim();
+
+  if (selectedProvider && selectedNativeId) {
+    if (args.discovered.length === 0) {
+      return {
+        ok: false,
+        failureClass: "SYMBOL_UNSUPPORTED",
+        reason:
+          "instrument is not present in provider discovery — typed input is not proof of a live listing",
+      };
+    }
+    const matches = args.discovered.filter(
+      (row) =>
+        row.provider === selectedProvider &&
+        row.providerInstrumentId === selectedNativeId,
+    );
+    if (matches.length === 0) {
+      return {
+        ok: false,
+        failureClass: "SYMBOL_UNSUPPORTED",
+        reason: `instrument "${selectedNativeId}" was not found as a provider-native id in discovery`,
+      };
+    }
+    const chosen = matches[0];
+    return {
+      ok: true,
+      provider: chosen.provider,
+      providerInstrumentId: chosen.providerInstrumentId,
+      assetClass: chosen.assetClass,
+      discovered: chosen,
+    };
+  }
+
   const typed = args.typed.trim();
   if (!typed) {
     return {

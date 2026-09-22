@@ -61,6 +61,12 @@ import {
   assetClassToInstrumentType,
 } from "@/lib/discovery/live-identity";
 import {
+  buildInstrumentCatalog,
+  providerStatusFromDiscovery,
+  type CatalogInstrument,
+  type DiscoveryProviderStatus,
+} from "@/lib/discovery/instrument-universe";
+import {
   classifyLiveFailure,
   formatLiveFailure,
   isLiveAcquisitionFailureClass,
@@ -153,6 +159,8 @@ export default function Dashboard() {
   const pipelineStateRef = useRef<DiscoveryPipelineState>(createPipelineState());
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
   const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
+  const [discoveredInstruments, setDiscoveredInstruments] = useState<CatalogInstrument[]>([]);
+  const [discoveryProviders, setDiscoveryProviders] = useState<DiscoveryProviderStatus[]>([]);
 
   // Provider/acquisition failures from the most recent discovery cycle.
   //
@@ -237,6 +245,11 @@ export default function Dashboard() {
     pipelineStateRef.current = step.state;
     liveSourceRef.current = step.state.liveSources;
     cycleProviderErrorsRef.current = [...discoveryErrors, ...step.providerErrors];
+    setDiscoveredInstruments(buildInstrumentCatalog(step.state.tracked));
+    setDiscoveryProviders([
+      providerStatusFromDiscovery(okxResult),
+      providerStatusFromDiscovery(twelveDataResult),
+    ]);
     // Bumping the version re-runs the scan effect below, which is the single
     // place that builds a ScanResult. Scanning here as well would produce two
     // results for one cycle, and the later one would win.
@@ -334,6 +347,8 @@ export default function Dashboard() {
         const identity = resolveLiveIdentity({
           typed: input.instrument,
           instrumentType: input.instrumentType,
+          provider: input.provider,
+          providerInstrumentId: input.providerInstrumentId,
           discovered: discoveredFromTracked(pipelineStateRef.current.tracked),
         });
         if (!identity.ok) {
@@ -341,6 +356,7 @@ export default function Dashboard() {
           setFetchError(formatLiveFailure(identity.failureClass, identity.reason));
           return;
         }
+        input.instrument = identity.providerInstrumentId;
         input.provider = identity.provider;
         input.providerInstrumentId = identity.providerInstrumentId;
         input.instrumentType = assetClassToInstrumentType(identity.assetClass);
@@ -1155,7 +1171,12 @@ export default function Dashboard() {
                 returning user never sees it flash during load. */}
             <FirstRunGuide show={!historyLoading && history.length === 0 && !currentResult} />
 
-            <InstrumentInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} />
+            <InstrumentInput
+              onAnalyze={handleAnalyze}
+              isAnalyzing={isAnalyzing}
+              catalog={discoveredInstruments}
+              discoveryProviders={discoveryProviders}
+            />
 
             <div className="hidden lg:block">
               <AnalysisHistory

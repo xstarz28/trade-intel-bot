@@ -81,6 +81,9 @@ export function createOkxDiscoveryAdapter(
     async discover(now: number): Promise<ProviderDiscoveryResult> {
       const raw = await discoverOkxInstruments(transport, now);
 
+      const completeness = raw.completeness ?? (raw.success ? "COMPLETE" : "FAILED");
+      const pagesFetched = raw.pagesFetched ?? 0;
+      const totalDiscovered = raw.totalDiscovered ?? raw.instruments.length;
       return {
         provider: "okx",
         success: raw.success,
@@ -89,6 +92,18 @@ export function createOkxDiscoveryAdapter(
           normalizeOkxInstrument(row, raw.discoveredAt),
         ),
         warnings: raw.warnings,
+        completeness,
+        pagesFetched,
+        totalDiscovered,
+        catalogs: [
+          {
+            path: "/api/v5/public/instruments",
+            assetClass: "crypto",
+            completeness,
+            pagesFetched,
+            totalDiscovered,
+          },
+        ],
         ...(raw.error ? { error: raw.error } : {}),
       };
     },

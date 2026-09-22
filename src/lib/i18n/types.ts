@@ -718,6 +718,17 @@ export interface Translations {
     typeCrypto: string;
     typeStock: string;
     typeCommodity: string;
+    typeIndices: string;
+    typeMacro: string;
+    discoveryWaiting: string;
+    instrumentNotFound: string;
+    discoveryLabel: string;
+    searchCatalog: string;
+    discoveryComplete: string;
+    discoveryPartial: string;
+    discoveryFailed: string;
+    discoveredCount: string;
+    partialPageFailed: string;
     instrumentLabel: string;
     typeLabel: string;
     timeframeLabel: string;

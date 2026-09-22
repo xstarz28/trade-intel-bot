@@ -21,6 +21,9 @@ import type {
   DataCapability,
   InstrumentSubType,
 } from "@/lib/data/universal/types";
+import type { CatalogFetchReport, DiscoveryCompleteness } from "./completeness";
+
+export type { CatalogFetchReport, DiscoveryCompleteness };
 
 // ═══════════════════════════════════════════════════════════════
 // TRADING STATE
@@ -125,6 +128,14 @@ export interface ProviderDiscoveryResult {
   instruments: DiscoveredInstrument[];
   warnings: string[];
   error?: string;
+  /**
+   * Catalog-fetch completeness. Optional so older fixtures keep compiling.
+   * Adapters always set it. HTTP 200 is not COMPLETE by itself.
+   */
+  completeness?: DiscoveryCompleteness;
+  pagesFetched?: number;
+  totalDiscovered?: number;
+  catalogs?: CatalogFetchReport[];
 }
 
 /**

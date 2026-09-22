@@ -40,6 +40,9 @@ export interface OkxDiscoveryResult {
   instruments: OkxDiscoveredInstrument[];
   warnings: string[];
   error?: string;
+  completeness?: "COMPLETE" | "PARTIAL" | "FAILED";
+  pagesFetched?: number;
+  totalDiscovered?: number;
 }
 
 function mapSubtype(instType: string): InstrumentSubType | undefined {
@@ -145,15 +148,18 @@ export async function discoverOkxInstruments(
     const warnings: string[] = [];
     const instruments: OkxDiscoveredInstrument[] = [];
     let successfulTypes = 0;
+    let failedTypes = 0;
 
     for (const response of responses) {
       if (response.error) {
         warnings.push(response.error);
+        failedTypes += 1;
         continue;
       }
 
       if (response.json === undefined) {
         warnings.push(`OKX ${response.instType} discovery returned malformed JSON.`);
+        failedTypes += 1;
         continue;
       }
 
@@ -175,12 +181,22 @@ export async function discoverOkxInstruments(
       new Map(instruments.map((instrument) => [instrument.instId, instrument])).values(),
     );
 
+    const completeness =
+      successfulTypes === 0
+        ? "FAILED"
+        : failedTypes > 0
+          ? "PARTIAL"
+          : "COMPLETE";
+
     return {
       success: successfulTypes > 0,
       provider: "okx",
       discoveredAt: now,
       instruments: deduplicated,
       warnings,
+      completeness,
+      pagesFetched: instTypes.length,
+      totalDiscovered: deduplicated.length,
       ...(successfulTypes === 0
         ? { error: "OKX discovery failed for all instrument types." }
         : {}),
@@ -192,6 +208,9 @@ export async function discoverOkxInstruments(
       discoveredAt: now,
       instruments: [],
       warnings: [],
+      completeness: "FAILED",
+      pagesFetched: 0,
+      totalDiscovered: 0,
       error: `OKX discovery failed: ${err instanceof Error ? err.message : "unknown error"}`,
     };
   }

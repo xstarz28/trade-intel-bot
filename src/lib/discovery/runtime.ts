@@ -27,6 +27,9 @@ interface OkxDiscoveryActionResult {
   discoveredAt: number;
   warnings: string[];
   error?: string;
+  completeness?: "COMPLETE" | "PARTIAL" | "FAILED";
+  pagesFetched?: number;
+  totalDiscovered?: number;
   instruments: {
     instId: string;
     instType: string;
@@ -66,6 +69,7 @@ export function normalizeTwelveDataDiscoveryAction(
 export function normalizeOkxDiscoveryAction(
   result: OkxDiscoveryActionResult,
 ): ProviderDiscoveryResult {
+  const completeness = result.completeness;
   return {
     provider: "okx",
     success: result.success,
@@ -74,6 +78,11 @@ export function normalizeOkxDiscoveryAction(
       normalizeOkxInstrument(row, result.discoveredAt),
     ),
     warnings: result.warnings ?? [],
+    ...(completeness ? { completeness } : {}),
+    ...(result.pagesFetched !== undefined ? { pagesFetched: result.pagesFetched } : {}),
+    ...(result.totalDiscovered !== undefined
+      ? { totalDiscovered: result.totalDiscovered }
+      : { totalDiscovered: result.instruments.length }),
     ...(result.error ? { error: result.error } : {}),
   };
 }

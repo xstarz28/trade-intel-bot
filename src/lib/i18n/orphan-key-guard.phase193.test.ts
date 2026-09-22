@@ -60,6 +60,10 @@ const report = loadReport();
  * Raising it requires a deliberate edit and a reason, which is the point —
  * adding vocabulary nothing renders should be a conscious act.
  *
+ * Phase 234: 228 -> 226, catalog completeness copy (complete/partial/failed/
+ * discoveredCount/partialPageFailed) is fully referenced via t.entryForm.*
+ * and txi, so referenced grows and unreferenced shrinks.
+ *
  * Phase 197: 235 -> 228, in two steps as the phase progressed. Every component
  * cleaned in this phase reused existing orphaned vocabulary rather than minting
  * new keys, which drove the real count down each time. The ratchet is retightened
@@ -68,7 +72,7 @@ const report = loadReport();
  * survives whenever this number sits above reality, and that is how both steps
  * were detected.
  */
-const UNREFERENCED_BUDGET = 228;
+const UNREFERENCED_BUDGET = 226;
 
 /**
  * Keys deliberately retained despite having no statically visible consumer.

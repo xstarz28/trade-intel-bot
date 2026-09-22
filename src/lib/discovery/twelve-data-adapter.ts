@@ -34,12 +34,19 @@ import type {
 import type { EnvReader } from "@/lib/data/universal/live/credentials";
 import { checkCredentials } from "@/lib/data/universal/live/credentials";
 import type {
+  CatalogFetchReport,
   DiscoveredInstrument,
   ProviderDiscoveryAdapter,
   ProviderDiscoveryResult,
 } from "./types";
+import { rollupCompleteness } from "./completeness";
+import {
+  fetchTwelveDataCatalogPages,
+  type FetchJson,
+} from "./twelve-data-pagination";
 
-const BASE_URL = "https://api.twelvedata.com";
+export type { FetchJson };
+
 const PROVIDER = "twelve-data";
 
 /** Twelve Data serves OHLCV + quote for every catalog below. */
@@ -112,18 +119,7 @@ const CATALOGS: CatalogSpec[] = [
   { path: "/cryptocurrencies", assetClass: "crypto", subType: "crypto_spot", identity: pairIdentity },
 ];
 
-export type FetchJson = (url: string) => Promise<{
-  ok: boolean;
-  status: number;
-  json?: unknown;
-}>;
 
-function extractRows(json: unknown): CatalogRow[] | null {
-  if (!json || typeof json !== "object") return null;
-  const data = (json as { data?: unknown }).data;
-  if (!Array.isArray(data)) return null;
-  return data as CatalogRow[];
-}
 
 export function normalizeCatalogRow(
   row: CatalogRow,
@@ -188,6 +184,10 @@ export function createTwelveDataDiscoveryAdapter(
           discoveredAt: now,
           instruments: [],
           warnings: [],
+          completeness: "FAILED",
+          pagesFetched: 0,
+          totalDiscovered: 0,
+          catalogs: [],
           error: `Required credentials not configured: ${cred.missingEnvVarNames.join(", ")}.`,
         };
       }
@@ -195,52 +195,45 @@ export function createTwelveDataDiscoveryAdapter(
       const apiKey = readEnv?.("TWELVE_DATA_API_KEY") ?? "";
       const warnings: string[] = [];
       const instruments: DiscoveredInstrument[] = [];
-      let succeeded = 0;
+      const catalogs: CatalogFetchReport[] = [];
+      let pagesFetched = 0;
 
-      const responses = await Promise.all(
-        enabled.map(async (spec) => {
-          try {
-            const res = await fetchJson(
-              `${BASE_URL}${spec.path}?apikey=${encodeURIComponent(apiKey)}`,
-            );
-            return { spec, res, error: undefined as string | undefined };
-          } catch (err) {
-            return {
-              spec,
-              res: undefined,
-              error: err instanceof Error ? err.message : "network failure",
-            };
-          }
-        }),
+      const pages = await Promise.all(
+        enabled.map((spec) =>
+          fetchTwelveDataCatalogPages(fetchJson, { path: spec.path, apiKey }).then(
+            (result) => ({ spec, result }),
+          ),
+        ),
       );
 
-      for (const { spec, res, error } of responses) {
-        if (error || !res) {
-          warnings.push(`${spec.path} discovery failed: ${error ?? "no response"}.`);
-          continue;
-        }
-        if (!res.ok) {
-          warnings.push(`${spec.path} returned HTTP ${res.status}.`);
-          continue;
-        }
+      for (const { spec, result } of pages) {
+        warnings.push(...result.warnings);
+        pagesFetched += result.pagesFetched;
 
-        const rows = extractRows(res.json);
-        if (!rows) {
-          warnings.push(`${spec.path} returned an unexpected payload shape.`);
+        if (result.completeness === "FAILED") {
+          catalogs.push({
+            path: spec.path,
+            assetClass: spec.assetClass,
+            completeness: "FAILED",
+            pagesFetched: result.pagesFetched,
+            totalDiscovered: 0,
+            ...(result.failedPage !== undefined
+              ? { failedPage: result.failedPage }
+              : {}),
+          });
           continue;
         }
-
-        // One endpoint succeeding is real coverage even if others failed.
-        succeeded += 1;
 
         let skipped = 0;
-        for (const row of rows) {
-          const normalized = normalizeCatalogRow(row, spec, now);
+        let kept = 0;
+        for (const raw of result.rows) {
+          const normalized = normalizeCatalogRow(raw as CatalogRow, spec, now);
           if (!normalized) {
             skipped += 1;
             continue;
           }
           instruments.push(normalized);
+          kept += 1;
         }
 
         if (skipped > 0) {
@@ -248,24 +241,41 @@ export function createTwelveDataDiscoveryAdapter(
             `${spec.path}: skipped ${skipped} row(s) missing identity fields.`,
           );
         }
+
+        catalogs.push({
+          path: spec.path,
+          assetClass: spec.assetClass,
+          completeness: result.completeness,
+          pagesFetched: result.pagesFetched,
+          totalDiscovered: kept,
+          ...(result.failedPage !== undefined
+            ? { failedPage: result.failedPage }
+            : {}),
+        });
       }
 
-      // Provider-scoped dedup: the same symbol may appear in two catalogs.
       const deduplicated = Array.from(
         new Map(
           instruments.map((i) => [`${i.assetClass}|${i.providerInstrumentId}`, i]),
         ).values(),
       );
 
+      const completeness = rollupCompleteness(catalogs.map((c) => c.completeness));
+      const succeeded = catalogs.some((c) => c.completeness !== "FAILED");
+
       return {
         provider: PROVIDER,
-        success: succeeded > 0,
+        success: succeeded,
         discoveredAt: now,
         instruments: deduplicated,
         warnings,
-        ...(succeeded === 0
-          ? { error: "Twelve Data discovery failed for all catalogs." }
-          : {}),
+        completeness,
+        pagesFetched,
+        totalDiscovered: deduplicated.length,
+        catalogs,
+        ...(succeeded
+          ? {}
+          : { error: "Twelve Data discovery failed for all catalogs." }),
       };
     },
   };

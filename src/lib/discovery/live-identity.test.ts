@@ -172,6 +172,38 @@ describe("resolveLiveIdentity", () => {
     expect(resolveLiveIdentity({ typed: "XAU/USD", discovered }).ok).toBe(true);
   });
 
+  it("a catalog selection uses exact provider+id and does not reinterpret the display string", () => {
+    const discovered = [
+      row({
+        provider: "okx",
+        providerInstrumentId: "BTC-USDT",
+        assetClass: "crypto",
+        subType: "crypto_spot",
+        baseAsset: "BTC",
+        quoteAsset: "USDT",
+      }),
+      row({
+        provider: "twelve-data",
+        providerInstrumentId: "BTC/USD",
+        assetClass: "crypto",
+        subType: "crypto_spot",
+        baseAsset: "BTC",
+        quoteAsset: "USD",
+      }),
+    ];
+    const r = resolveLiveIdentity({
+      typed: "BTC/USD",
+      provider: "okx",
+      providerInstrumentId: "BTC-USDT",
+      discovered,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.provider).toBe("okx");
+      expect(r.providerInstrumentId).toBe("BTC-USDT");
+    }
+  });
+
   it("source never aliases GOLD or reads the static instrument registry", () => {
     const src = readFileSync("src/lib/discovery/live-identity.ts", "utf8");
     expect(src).not.toMatch(/["']GOLD["']\s*:/);

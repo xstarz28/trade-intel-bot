@@ -50,6 +50,13 @@ export function mergeDiscoveryResults(
       continue;
     }
     succeededProviders.push(result.provider);
+    if (result.completeness === "PARTIAL") {
+      discoveryErrors.push(
+        `${result.provider}: PARTIAL — ${
+          result.warnings.join("; ") || "later catalog page failed"
+        }`,
+      );
+    }
     for (const instrument of result.instruments) {
       if (!instrument.provider || !instrument.providerInstrumentId) continue;
       byKey.set(discoveredInstrumentKey(instrument), instrument);
@@ -135,6 +142,9 @@ export function discoveryFailure(
     discoveredAt: now,
     instruments: [],
     warnings: [],
+    completeness: "FAILED",
+    pagesFetched: 0,
+    totalDiscovered: 0,
     error: error instanceof Error ? error.message : "discovery failed",
   };
 }
