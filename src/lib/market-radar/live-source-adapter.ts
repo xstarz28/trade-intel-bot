@@ -25,6 +25,23 @@ export function buildRadarSourcesFromLiveSources(
 
     const acquiredAt = marketData?.fetchTimestamp;
 
+    // Phase 240: numerical validation — price, bid, ask, volume
+    const priceVal = marketData?.price?.price;
+    const bid = marketData?.price?.bid;
+    const ask = marketData?.price?.ask;
+    const hasValidBidAsk =
+      typeof bid === "number" &&
+      typeof ask === "number" &&
+      Number.isFinite(bid) &&
+      Number.isFinite(ask) &&
+      bid > 0 &&
+      ask > 0 &&
+      ask >= bid;
+
+    const volume = (marketData as any)?.volume;
+    const hasInvalidVolume =
+      volume !== undefined && !(typeof volume === "number" && Number.isFinite(volume) && volume >= 0);
+
     return {
       universe: {
         instrument: source.instrument,
@@ -39,7 +56,7 @@ export function buildRadarSourcesFromLiveSources(
         ? {
             instrument: marketData.instrument,
             assetClass: source.assetClass,
-            price: marketData.price.price,
+            price: marketData.price.price, // raw preserved, downstream validates via isValidPrice
             ohlcvAvailable: marketData.candles.length > 0,
             availableTimeframes:
               marketData.candles.length > 0 ? [marketData.timeframe] : [],
@@ -72,16 +89,30 @@ export function buildRadarSourcesFromLiveSources(
                 ? "UNAVAILABLE"
                 : "VERIFIED",
             // Spread is DERIVED from bid/ask, not provider-observed price. Preserve as derived.
-            ...(marketData.price.bid !== undefined && marketData.price.ask !== undefined
+            // Phase 240: validate bid/ask before computing spread, never fabricate.
+            ...(hasValidBidAsk
               ? {
                   spreadBps: (() => {
-                    const mid = (marketData.price.bid! + marketData.price.ask!) / 2;
-                    const spread = marketData.price.ask! - marketData.price.bid!;
-                    if (!Number.isFinite(mid) || mid <= 0 || !Number.isFinite(spread)) return undefined;
-                    return (spread / mid) * 10000;
+                    const mid = (bid! + ask!) / 2;
+                    const spread = ask! - bid!;
+                    if (!Number.isFinite(mid) || mid <= 0 || !Number.isFinite(spread) || spread < 0) return undefined;
+                    const bps = (spread / mid) * 10000;
+                    if (!Number.isFinite(bps) || bps < 0) return undefined;
+                    return bps;
                   })(),
                 }
               : {}),
+            // Preserve change/volatility only if finite and valid — derived remains derived
+            ...((marketData as any).change24h !== undefined && Number.isFinite((marketData as any).change24h)
+              ? { change24h: (marketData as any).change24h }
+              : {}),
+            ...((marketData as any).volatility !== undefined &&
+            Number.isFinite((marketData as any).volatility) &&
+            (marketData as any).volatility >= 0
+              ? { volatility: (marketData as any).volatility }
+              : {}),
+            // Volume preserved only if valid
+            ...(hasInvalidVolume ? {} : volume !== undefined ? { volume24h: volume } : {}),
           }
         : null,
       analysisResult: analysis

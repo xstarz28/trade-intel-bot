@@ -741,7 +741,11 @@ describe("Phase239 — opportunity key integrity", () => {
 
   it("opportunityKey falls back to instrument when no providerNative", () => {
     const opp = { instrument: "BTC/USDT" } as any;
-    expect(opportunityKey(opp)).toBe("BTC/USDT");
+    // Phase240: collision-safe fallback includes assetClass and region, not bare instrument
+    const key = opportunityKey(opp);
+    expect(key).toContain("BTC/USDT");
+    expect(key).not.toBe("BTC/USDT"); // must be collision-safe
+    expect(key).toBe("unknown::BTC/USDT::global");
   });
 
   it("buildRadarState uses provider-qualified keys", () => {

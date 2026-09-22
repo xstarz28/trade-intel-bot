@@ -271,21 +271,140 @@ function buildInvalidationConditions(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// OPPORTUNITY KEY — Phase 239 collision prevention
+// OPPORTUNITY KEY — Phase 239 collision prevention, Phase 240 hardening
 // ═══════════════════════════════════════════════════════════════
 
 /**
  * Provider-qualified key for an opportunity.
  * Same symbol on different providers must remain distinct.
- * Uses provider::providerInstrumentId when available, else instrument.
+ * Uses provider::providerInstrumentId when available.
+ * Phase 240: collision-safe fallback when providerNative absent/partial,
+ * using strongest available identity (provider, assetClass, region, candidate).
+ * Never invents provider IDs, never mutates native IDs.
  */
 export function opportunityKey(
-  opp: Pick<RadarOpportunity, "instrument" | "providerNative">,
+  opp: Pick<RadarOpportunity, "instrument" | "providerNative" | "provider" | "assetClass" | "region" | "candidateInstrument"> & {
+    assetClass?: string;
+    region?: string;
+    provider?: string;
+    candidateInstrument?: string;
+  },
 ): string {
-  if (opp.providerNative) {
-    return `${opp.providerNative.provider}::${opp.providerNative.providerInstrumentId}`;
+  const sanitize = (s: string) => s.trim();
+  const pn = opp.providerNative as { provider?: string; providerInstrumentId?: string } | undefined;
+  const asset = (opp as any).assetClass ?? "unknown";
+  const region = (opp as any).region ?? "";
+  const provider = (opp as any).provider ?? "";
+  const candidate = (opp as any).candidateInstrument ?? "";
+  const instrument = sanitize(opp.instrument);
+
+  // Preferred: full provider-native identity
+  if (pn?.provider && pn?.providerInstrumentId) {
+    const p = sanitize(pn.provider);
+    const id = sanitize(pn.providerInstrumentId);
+    if (p && id) return `${p}::${id}`;
   }
-  return opp.instrument;
+  // Partial: has native id but no provider — include instrument + assetClass to avoid collision
+  if (pn?.providerInstrumentId) {
+    const id = sanitize(pn.providerInstrumentId);
+    if (id) return `${id}::${instrument}::${asset}`;
+  }
+  // Partial: has provider but no native id — include instrument + assetClass + region
+  if (pn?.provider) {
+    const p = sanitize(pn.provider);
+    if (p) {
+      const base = `${p}::${instrument}::${asset}`;
+      return region ? `${base}::${sanitize(region)}` : base;
+    }
+  }
+  // Fallback: top-level provider + instrument + assetClass
+  if (provider) {
+    const p = sanitize(provider);
+    if (p) return `${p}::${instrument}::${asset}`;
+  }
+  // Legacy fallback: assetClass::instrument::region (+ candidate if distinct)
+  if (candidate && candidate !== opp.instrument) {
+    return `${asset}::${instrument}::${sanitize(candidate)}::${sanitize(region || "global")}`;
+  }
+  return `${asset}::${instrument}::${sanitize(region || "global")}`;
+}
+
+/**
+ * Phase 240 — numerical validation helpers.
+ * Domain validity: price>0, volume>=0, bid>0, ask>0, ask>=bid, spread>=0, volatility>=0, change finite.
+ * Never fabricate replacements.
+ */
+export function isValidPrice(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v > 0;
+}
+export function isValidVolume(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0;
+}
+export function isValidBidAsk(bid: unknown, ask: unknown): boolean {
+  if (typeof bid !== "number" || typeof ask !== "number") return false;
+  if (!Number.isFinite(bid) || !Number.isFinite(ask)) return false;
+  if (bid <= 0 || ask <= 0) return false;
+  if (ask < bid) return false; // bid > ask invalid
+  return true;
+}
+export function isValidSpreadBps(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0;
+}
+export function isValidChange(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v);
+}
+export function isValidVolatility(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= 0;
+}
+export function isValidCorrelation(v: unknown): v is number {
+  return typeof v === "number" && Number.isFinite(v) && v >= -1 && v <= 1;
+}
+
+/**
+ * Phase 240 — multi-evidence freshness aggregation.
+ *
+ * Classification (existing architecture semantics):
+ * - REQUIRED: price/snapshot (must be present for opportunity to be valid)
+ * - OPTIONAL/SUPPORTING: derivatives (funding, OI), fundamentals (P/E), COT, EIA, treasury, analyticalDepth
+ *   Missing supporting → missingInformation, confidence degraded, but does NOT affect effective freshness
+ * - INFORMATIONAL: region, provider coverage, etc.
+ *
+ * For REQUIRED evidence, effective freshness = weakest (max rank) among required.
+ * For OPTIONAL, preserve primary freshness, track missing/stale separately.
+ */
+export type EvidenceFreshnessInput = {
+  freshness: FreshnessLevel;
+  required: boolean;
+  source: string; // e.g. "price", "derivatives", "cot"
+};
+
+export function computeEffectiveFreshness(
+  primary: FreshnessLevel,
+  additional: EvidenceFreshnessInput[] = [],
+): { effective: FreshnessLevel; weakestRequired: FreshnessLevel; details: string[] } {
+  const required = additional.filter((e) => e.required);
+  const allRequired = [{ freshness: primary, required: true, source: "price" }, ...required];
+  // Find weakest (highest rank) among required
+  let weakest: FreshnessLevel = primary;
+  let weakestRank = freshnessRank(primary);
+  for (const ev of allRequired) {
+    const r = freshnessRank(ev.freshness);
+    if (r > weakestRank) {
+      weakestRank = r;
+      weakest = ev.freshness;
+    }
+  }
+  const details: string[] = [];
+  if (required.length > 0) {
+    details.push(`required sources: ${allRequired.map((e) => `${e.source}=${e.freshness}`).join(", ")}`);
+    details.push(`effective=${weakest} (weakest required)`);
+  }
+  return { effective: weakest, weakestRequired: weakest, details };
+}
+
+function freshnessRank(f: FreshnessLevel): number {
+  const order: FreshnessLevel[] = ["FRESH", "DELAYED", "STALE", "UNAVAILABLE"];
+  return order.indexOf(f);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -360,9 +479,21 @@ export function scanRadar(
   }
 
   for (const source of filteredSources) {
-    const freshness = source.snapshot
+    // Phase 240: primary freshness from price/snapshot (REQUIRED)
+    const primaryFreshness = source.snapshot
       ? assessFreshness(source.snapshot.observedAt, timestamp)
       : "UNAVAILABLE";
+
+    // Phase 240: additional evidence freshness classification
+    // REQUIRED: price (already primary). OPTIONAL/SUPPORTING: derivatives, fundamentals, COT, EIA, treasury, analyticalDepth
+    // For now no additional required freshness beyond price, but we compute effective explicitly
+    // If future required evidence has freshness, effective = weakest required
+    const additionalFreshness: EvidenceFreshnessInput[] = [];
+    // Example placeholder: if derivatives had explicit freshness, we would push with required:false (optional)
+    // If a horizon required derivatives, we would push with required:true and effective would be weakest
+
+    const { effective: freshness } = computeEffectiveFreshness(primaryFreshness, additionalFreshness);
+
     freshnessLevels.push(freshness);
     if (freshness === "FRESH" || freshness === "DELAYED") totalWithLiveData++;
     // Phase 239: use provider-qualified lookup for completeness to avoid collision on same symbol different providers
@@ -390,7 +521,25 @@ export function scanRadar(
       const buildEvidence = () => {
         if (!snap) return undefined;
         const price = snap.price;
-        if (!Number.isFinite(price) || price <= 0) return undefined;
+        // Phase 240: full numerical validation — price must be valid, not zero/negative/NaN/Infinity
+        if (!isValidPrice(price)) return undefined;
+        // Validate derived fields individually, never fabricate
+        const derived: { spreadBps?: number; volatility?: number; change24h?: number } = {};
+        if (snap.spreadBps !== undefined) {
+          if (isValidSpreadBps(snap.spreadBps)) derived.spreadBps = snap.spreadBps;
+        }
+        if (snap.volatility !== undefined) {
+          if (isValidVolatility(snap.volatility)) derived.volatility = snap.volatility;
+        }
+        if (snap.change24h !== undefined) {
+          if (isValidChange(snap.change24h)) derived.change24h = snap.change24h;
+        }
+        // volume validation if present (volume24h)
+        if ((snap as any).volume24h !== undefined) {
+          if (!isValidVolume((snap as any).volume24h)) {
+            // invalid volume → treat as missing, not invented; evidence still valid for price
+          }
+        }
         return {
           price,
           ...(observedAt !== undefined ? { observedAt } : {}),
@@ -399,11 +548,7 @@ export function scanRadar(
           freshness,
           provider: provider ?? "unknown",
           providerInstrumentId: providerNative?.providerInstrumentId ?? snap.instrument,
-          derived: {
-            ...(snap.spreadBps !== undefined ? { spreadBps: snap.spreadBps } : {}),
-            ...(snap.volatility !== undefined ? { volatility: snap.volatility } : {}),
-            ...(snap.change24h !== undefined ? { change24h: snap.change24h } : {}),
-          },
+          derived: Object.keys(derived).length > 0 ? derived : undefined,
         };
       };
 
