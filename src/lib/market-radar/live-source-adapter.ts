@@ -59,7 +59,9 @@ export function buildRadarSourcesFromLiveSources(
         : null,
       analysisResult: analysis
         ? {
-            confidence: analysis.confidence,
+            // RadarCandidateSource.confidence is a string that
+            // candidate-builder parseInt()s; AnalysisResult.confidence is 0-100.
+            confidence: String(analysis.confidence),
             bias: analysis.bias,
             recommendation: analysis.recommendation,
           }

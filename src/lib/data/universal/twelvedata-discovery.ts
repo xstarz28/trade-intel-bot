@@ -46,7 +46,8 @@ interface DiscoveryOptions {
   apiKey: string;
   kinds?: TwelveDataDiscoveryKind[];
   now?: number;
-  fetchImpl?: typeof fetch;
+  /** Injected transport. Production always passes a URL string. */
+  fetchImpl?: (input: string) => Promise<Response>;
 }
 
 interface DiscoveryRow {
@@ -117,7 +118,7 @@ function mapRow(
 async function discoverKind(
   kind: TwelveDataDiscoveryKind,
   apiKey: string,
-  fetchImpl: typeof fetch,
+  fetchImpl: (input: string) => Promise<Response>,
 ): Promise<
   | { ok: true; instruments: TwelveDataDiscoveredInstrument[] }
   | { ok: false; error: string }
