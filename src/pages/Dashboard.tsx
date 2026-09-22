@@ -1076,10 +1076,6 @@ export default function Dashboard() {
             {/* Phase 50 — Market Opportunities: live opportunity scanner */}
             <div className="hidden lg:block">
               <MarketOpportunities
-<<<<<<< HEAD
-=======
-                candidates={[]}
->>>>>>> fe6496c (chore: preserve Phase 158 WIP)
                 liveSources={liveSources}
                 providerErrors={cycleProviderErrorsRef.current}
                 isScanning={isScanning}
