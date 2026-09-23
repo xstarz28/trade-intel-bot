@@ -118,14 +118,24 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <BiasIcon className={cn("size-5", biasConfig.color)} />
               </div>
               <div>
-                {/* Institutional output header: INSTRUMENT | Asset Class | Timeframe */}
-                <p className="text-sm font-bold tracking-tight font-mono">
-                  {result.instrument}
-                  <span className="text-muted-foreground"> | </span>
-                  <span className="text-xs font-medium text-muted-foreground">{ASSET_CLASS_LABEL[result.instrumentType] || result.instrumentType}</span>
-                  <span className="text-muted-foreground"> | </span>
-                  <span className="text-xs font-medium text-muted-foreground">{result.timeframe}</span>
-                </p>
+                {/* Institutional output header: INSTRUMENT | Asset Class | Timeframe + provider identity chip (Phase255) */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-bold tracking-tight font-mono">
+                    {result.instrument}
+                    <span className="text-muted-foreground"> | </span>
+                    <span className="text-xs font-medium text-muted-foreground">{ASSET_CLASS_LABEL[result.instrumentType] || result.instrumentType}</span>
+                    <span className="text-muted-foreground"> | </span>
+                    <span className="text-xs font-medium text-muted-foreground">{result.timeframe}</span>
+                  </p>
+                  {(result as any).provider && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-muted/30 border border-border/50 text-muted-foreground/70">
+                      {(result as any).provider}
+                      {(result as any).providerInstrumentId && (result as any).providerInstrumentId !== result.instrument
+                        ? `:${(result as any).providerInstrumentId}`
+                        : ""}
+                    </span>
+                  )}
+                </div>
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <span className={cn("text-sm font-semibold font-mono", biasConfig.color)}>
                     BIAS: {mapTrendLabel(result.bias, t)}

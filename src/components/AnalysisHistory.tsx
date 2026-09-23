@@ -46,6 +46,11 @@ const BIAS_COLORS = {
   Neutral: "text-muted-foreground",
 } as const;
 
+// Phase 255 — past snapshots only; provenance retained but never current.
+// This panel shows historical analyses only.
+// Freshness shown as observation date, not as a real-time tick.
+// No LIVE badge for past data.
+
 
 
 export function AnalysisHistory({
