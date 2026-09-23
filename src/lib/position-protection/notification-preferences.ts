@@ -8,7 +8,6 @@
 
 import type { Notification, NotificationCategory, NotificationSeverity } from "./notification-engine";
 import { SEVERITY_ORDER } from "./notification-engine";
-import type { RuleScope } from "./alert-rule-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES

@@ -11,8 +11,6 @@ import {
   BellOff,
   AlertTriangle,
   CheckCircle2,
-  Filter,
-  X,
   Clock,
   Eye,
   EyeOff,
@@ -92,10 +90,6 @@ export function ProtectionAlertCenter({ alerts, onAcknowledge }: AlertCenterProp
     [alerts],
   );
 
-  const historyAlerts = useMemo(
-    () => alerts.filter((a) => a.acknowledged || a.severity === "NONE"),
-    [alerts],
-  );
 
   return (
     <motion.div

@@ -6,7 +6,7 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { CandidateInput, TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
+import type { TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // OPPORTUNITY LIFECYCLE
@@ -134,6 +134,32 @@ export interface CacheStats {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// TIMESTAMP PROVENANCE — Phase 238 evidence contract unification
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Phase 238 — explicit timestamp provenance.
+ *
+ * PROVIDER_OBSERVED: provider returned explicit observation timestamp
+ *   (e.g. OKX candle ts, Twelve Data datetime/timestamp, CCXT ticker timestamp)
+ *
+ * PROVIDER_RESPONSE: provider returns quote that is documented as current-at-response
+ *   (e.g. CoinGecko simple/price — no timestamp field, but price IS current at response time)
+ *   In this case observedAt == acquiredAt by documented semantics, NOT by fabrication.
+ *
+ * APPLICATION_RECEIPT: application receipt time used as observedAt only because provider
+ *   gave no observation time and response is NOT documented as current-at-response.
+ *   This is explicitly marked as receipt, not provider observation.
+ *
+ * UNKNOWN: no trustworthy timestamp, observedAt absent, freshness UNAVAILABLE
+ */
+export type TimestampProvenance =
+  | "PROVIDER_OBSERVED"
+  | "PROVIDER_RESPONSE"
+  | "APPLICATION_RECEIPT"
+  | "UNKNOWN";
+
+// ═══════════════════════════════════════════════════════════════
 // MARKET DATA ACQUISITION
 // ═══════════════════════════════════════════════════════════════
 
@@ -163,8 +189,37 @@ export interface MarketSnapshot {
   mtfAlignment?: string;
   /** Provider that supplied this data. */
   provider: string;
-  /** Observation timestamp. */
-  observedAt: number;
+  /**
+   * When the PROVIDER observed this data.
+   *
+   * Phase 191 — optional on purpose. Some providers do not report an
+   * observation time, and the honest representation of that is absence.
+   * Substituting our own fetch time would let `assessFreshness` grade
+   * hours-old data as FRESH, which is how a cache launders stale evidence
+   * into a live claim. Absent observation time resolves to UNAVAILABLE.
+   */
+  observedAt?: number;
+  /**
+   * When WE acquired this record — one clock read, the instant its freshness
+   * was judged at.
+   *
+   * Phase 238. Distinct from `observedAt`, which is the provider's claim:
+   * a provider that reports no observation time leaves `observedAt` absent,
+   * while the record was still acquired at a definite instant. Carrying it on
+   * the snapshot lets the acquisition result (`fetchedAt`) reuse the very read
+   * the freshness verdict was computed from instead of taking a second one —
+   * two reads would be two dates for one event, and the pair could disagree
+   * (a record graded DELAYED while claiming a `fetchedAt` that implies FRESH).
+   *
+   * Optional: adapters that do not record it are dated by their caller's own
+   * single read.
+   */
+  acquiredAt?: number;
+  /**
+   * Phase 238 — explicit provenance of observedAt.
+   * Never APPLICATION_RECEIPT labeled as PROVIDER_OBSERVED.
+   */
+  timestampProvenance?: TimestampProvenance;
   /** Data freshness. */
   freshness: FreshnessLevel;
   /** Data quality. */
@@ -206,6 +261,16 @@ export interface RadarOpportunity {
   primaryReasons: string[];
   /** Provider coverage. */
   providerCoverage: string;
+  /**
+   * Phase 165 — provider and exact native instrument this opportunity
+   * describes, when it originated from provider discovery.
+   *
+   * Identity only: never evidence, never scored, never a directional input.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
   /** Last update timestamp. */
   lastUpdated: number;
   /** Source candidate for building this opportunity. */
@@ -233,6 +298,37 @@ export interface RadarOpportunity {
     dimensionsAvailable?: number;
     /** Total analytical dimensions attempted. */
     dimensionsTotal?: number;
+  };
+
+  // ── Phase 239 — evidence traceability ───────────────────────
+  /** Provider that supplied the evidence (redundant with providerNative.provider but explicit). */
+  provider?: string;
+  /** When provider observed this evidence (truthful, not receipt unless provenance says so). */
+  observedAt?: number;
+  /** When we acquired it (receipt time). */
+  acquiredAt?: number;
+  /** Provenance of observedAt. */
+  timestampProvenance?: TimestampProvenance;
+  /** Horizon this opportunity was evaluated for (explicit). */
+  horizon?: TradingMode | InvestorHorizon;
+  /**
+   * Source evidence snapshot — exact values that produced this opportunity.
+   * Price is observed (or receipt-by-policy), spread/volatility are DERIVED and labeled as such.
+   */
+  evidence?: {
+    price: number;
+    observedAt?: number;
+    acquiredAt?: number;
+    timestampProvenance?: TimestampProvenance;
+    freshness: FreshnessLevel;
+    provider: string;
+    providerInstrumentId: string;
+    /** Derived metrics are explicitly marked as derived, not observed. */
+    derived?: {
+      spreadBps?: number;
+      volatility?: number;
+      change24h?: number;
+    };
   };
 }
 
@@ -320,6 +416,18 @@ export interface UniverseEntry {
   instrument: string;
   assetClass: AssetClass;
   region?: string;
+  /**
+   * Phase 165 — exact provider-native identity when this entry came from
+   * provider discovery rather than the static metadata fixture.
+   *
+   * Radar opportunities must be able to state WHICH venue's instrument they
+   * describe. Without this the radar silently collapses two venues'
+   * instruments that happen to share a display name.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
   /** Required capabilities for full evaluation. */
   requiredCapabilities: string[];
   /** Priority (lower = higher priority). */

@@ -70,15 +70,23 @@ const schema = defineSchema(
       derivativesSummary: v.optional(v.string()),
       calendarSummary: v.optional(v.string()),
       timestamp: v.number(),
+      // Phase 252 — preserve exact provider-native identity
+      provider: v.optional(v.string()),
+      providerInstrumentId: v.optional(v.string()),
     }).index("by_user", ["userId", "timestamp"]),
 
-    // Phase 31 — Trade journal entries
+    // Phase 31 — Trade journal entries — Phase 262 adds provider-native identity
     journal: defineTable({
       userId: v.id("users"),
       instrument: v.string(),
       instrumentType: v.string(),
       timeframe: v.string(),
       style: v.string(),
+      // Phase 262 — preserve provider-native identity for distinguishable references
+      provider: v.optional(v.string()),
+      providerInstrumentId: v.optional(v.string()),
+      assetClass: v.optional(v.string()),
+      title: v.optional(v.string()),
       // Immutable analysis snapshot
       analysisSnapshot: v.object({
         analysisId: v.string(),
@@ -185,6 +193,10 @@ const schema = defineSchema(
       lastTimestamp: v.number(),
       lastSequence: v.optional(v.number()),
     })
+      // User-scoped lookup. The cursor rows carry a userId, so the index must
+      // include it — otherwise a provider/instrument lookup can return another
+      // user's row.
+      .index("by_user_provider_instrument", ["userId", "provider", "instrument"])
       .index("by_provider_instrument", ["provider", "instrument"]),
 
     // Phase 90 — Historical intelligence snapshots
@@ -331,6 +343,43 @@ const schema = defineSchema(
       unavailableComponents: v.array(v.string()),
     })
       .index("by_user", ["userId", "timestamp"]),
+
+    // Phase 169 — Commercial entitlement.
+    //
+    // Server-authoritative. The free-signal counter MUST live here rather
+    // than in localStorage: a client-side counter is reset by a reload, a
+    // private window, clearing storage, or simply calling the backend
+    // directly, which would make the free tier effectively unlimited.
+    //
+    // One row per user, created lazily on first use.
+    entitlements: defineTable({
+      userId: v.id("users"),
+      /** "GUEST" | "PREMIUM" — resolved server-side, never sent by the client. */
+      plan: v.string(),
+      /** Actionable profit signals consumed. Monotonic; never decremented. */
+      profitSignalsUsed: v.number(),
+      /** When the current Premium period ends, if any. */
+      premiumUntil: v.optional(v.number()),
+      updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
+
+    /**
+     * Phase 187 — durable OTP resend limiting.
+     *
+     * Authoritative across every Convex instance, which the previous
+     * in-memory Map could not be. Written by exactly one mutation
+     * (`otpLimiter.consumeResendAllowance`) so check-and-record stay atomic.
+     *
+     * Stores a SHA-256 hash of the normalised email, never the address.
+     */
+    otpResendBuckets: defineTable({
+      /** SHA-256 hex of the normalised identifier. */
+      identityHash: v.string(),
+      /** Send times inside the rolling window; pruned on every read. */
+      sendTimestamps: v.array(v.number()),
+      /** Most recent send, used for retention/cleanup. */
+      lastSendAt: v.number(),
+    }).index("by_identity", ["identityHash"]),
   },
   {
     schemaValidation: false,

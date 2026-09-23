@@ -92,7 +92,7 @@ function buildInput(
       candles: candles.slice(-120),
     })),
   ];
-  const mtf = buildMtfContext("D1", mtfInputs);
+  buildMtfContext("D1", mtfInputs);
 
   return {
     instrument,
@@ -408,7 +408,7 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
   describe("Cross-Instrument Isolation", () => {
     it("different instruments produce different theses", () => {
       const btc = buildLongHorizonThesis(runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000))));
-      const eth = buildLongHorizonThesis(runAndGet(buildInput("ETH/USD", "crypto", bearCandles(0, 3000))));
+      buildLongHorizonThesis(runAndGet(buildInput("ETH/USD", "crypto", bearCandles(0, 3000))));
       // At least one field should differ
       // 
         // ignore ||
@@ -539,7 +539,7 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
     it("bearish structure produces counter-thesis about bullish development", () => {
       const r = runAndGet(buildInput("ETH/USD", "crypto", bearCandles(0, 3000)));
       const lh = buildLongHorizonThesis(r);
-      const counterLower = lh.counterThesis.toLowerCase();
+      lh.counterThesis.toLowerCase();
       // Counter thesis should mention opposite direction
       expect(lh.counterThesis.length).toBeGreaterThan(0);
     });
@@ -547,7 +547,7 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
     it("bullish structure produces counter-thesis about bearish development", () => {
       const r = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
       const lh = buildLongHorizonThesis(r);
-      const counterLower = lh.counterThesis.toLowerCase();
+      lh.counterThesis.toLowerCase();
       expect(lh.counterThesis.length).toBeGreaterThan(0);
     });
   });
@@ -681,7 +681,6 @@ describe("Phase 35 — Invariants I95-I114", () => {
     const r = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
     const lh = buildLongHorizonThesis(r);
     // Both should reference the same structural bias
-    const dir = r.bias.toLowerCase();
     // At least one of them should mention the structural direction
     const invLower = lh.investorImplication.toLowerCase();
     const traderLower = lh.traderImplication.toLowerCase();

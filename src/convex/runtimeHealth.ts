@@ -7,6 +7,7 @@
 
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { authUserId } from "./lib/authUser";
 
 const MAX_HEALTH_HISTORY = 100;
 
@@ -18,12 +19,12 @@ const MAX_HEALTH_HISTORY = 100;
 export const getLatestRuntimeHealth = query({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) return null;
 
     const record = await ctx.db
       .query("runtimeHealthSnapshots")
-      .withIndex("by_user", (q: any) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .first();
 
@@ -37,14 +38,14 @@ export const getRuntimeHealthHistory = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) return [];
 
     const limit = Math.min(args.limit ?? 20, MAX_HEALTH_HISTORY);
 
     return await ctx.db
       .query("runtimeHealthSnapshots")
-      .withIndex("by_user", (q: any) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(limit);
   },
@@ -79,13 +80,13 @@ export const saveRuntimeHealth = mutation({
     unavailableComponents: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     // Dedup: skip if a snapshot with same timestamp already exists
     const existing = await ctx.db
       .query("runtimeHealthSnapshots")
-      .withIndex("by_user", (q: any) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .first();
 
@@ -94,7 +95,7 @@ export const saveRuntimeHealth = mutation({
     }
 
     const id = await ctx.db.insert("runtimeHealthSnapshots", {
-      userId: userId as any,
+      userId: userId,
       timestamp: args.timestamp,
       overallStatus: args.overallStatus,
       components: args.components,
@@ -109,7 +110,7 @@ export const saveRuntimeHealth = mutation({
     // Enforce retention: keep newest MAX_HEALTH_HISTORY
     const allSnapshots = await ctx.db
       .query("runtimeHealthSnapshots")
-      .withIndex("by_user", (q: any) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(MAX_HEALTH_HISTORY + 10);
 
@@ -128,12 +129,12 @@ export const saveRuntimeHealth = mutation({
 export const deleteAllRuntimeHealth = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const records = await ctx.db
       .query("runtimeHealthSnapshots")
-      .withIndex("by_user", (q: any) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
 
     let deleted = 0;

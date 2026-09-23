@@ -124,7 +124,26 @@ export interface HistoricalSummary {
   conflictingCount: number;
   /** Overall interpretation. */
   interpretation: string;
+  /**
+   * Phase 197 — machine-readable form of `interpretation`.
+   *
+   * `interpretation` is an English sentence assembled here for logs, tests and
+   * non-UI consumers. The UI cannot translate a finished sentence, so the same
+   * facts are also exposed structurally and re-rendered per locale. The English
+   * string is intentionally left byte-identical to preserve existing callers.
+   */
+  interpretationParts: InterpretationPart[];
 }
+
+/** A single localizable fact inside a historical interpretation (Phase 197). */
+export type InterpretationPart =
+  | { kind: "TIMEFRAME_SHIFT"; timeframe: "H1" | "M15" | "M5"; from: string; to: string }
+  | { kind: "REGIME_SHIFT"; from: string; to: string }
+  | { kind: "EVIDENCE_SUPPORTING_LEADS" }
+  | { kind: "EVIDENCE_CONFLICTING_LEADS" }
+  | { kind: "EVIDENCE_BALANCED" }
+  | { kind: "THESIS_STABLE"; thesis: string }
+  | { kind: "FIRST_ANALYSIS"; instrument: string; side: string; thesis: string };
 
 // ═══════════════════════════════════════════════════════════════
 // CHANGE DETECTION
@@ -377,6 +396,12 @@ export function generateSummary(
       supportingCount: current.supportingCount,
       conflictingCount: current.conflictingCount,
       interpretation: `First analysis for ${current.instrument} ${current.side}. Thesis: ${current.thesisState}.`,
+      interpretationParts: [{
+        kind: "FIRST_ANALYSIS",
+        instrument: current.instrument,
+        side: current.side,
+        thesis: current.thesisState,
+      }],
     };
   }
 
@@ -384,20 +409,39 @@ export function generateSummary(
   const primaryEvent = events.find(e => e.strength === "STRONG" || e.strength === "MODERATE");
   const secondaryEvent = events.find(e => e !== primaryEvent && (e.strength === "MODERATE" || e.strength === "WEAK"));
 
-  // Build interpretation
+  // Build interpretation. Phase 197: each fact is recorded structurally as it
+  // is appended, so the English sentence and the localizable parts can never
+  // drift apart.
   const parts: string[] = [];
+  const structuredParts: InterpretationPart[] = [];
 
   if (previous.h1Trend !== current.h1Trend) {
     parts.push(`H1 shifted from ${previous.h1Trend} to ${current.h1Trend}`);
+    structuredParts.push({ kind: "TIMEFRAME_SHIFT", timeframe: "H1", from: previous.h1Trend, to: current.h1Trend });
   }
   if (previous.m15Trend !== current.m15Trend) {
     parts.push(`M15 shifted from ${previous.m15Trend} to ${current.m15Trend}`);
+    structuredParts.push({ kind: "TIMEFRAME_SHIFT", timeframe: "M15", from: previous.m15Trend, to: current.m15Trend });
   }
   if (previous.m5Trend !== current.m5Trend) {
     parts.push(`M5 shifted from ${previous.m5Trend} to ${current.m5Trend}`);
+    structuredParts.push({ kind: "TIMEFRAME_SHIFT", timeframe: "M5", from: previous.m5Trend, to: current.m5Trend });
   }
   if (previous.marketRegime !== current.marketRegime) {
     parts.push(`Market regime changed from ${previous.marketRegime} to ${current.marketRegime}`);
+    structuredParts.push({ kind: "REGIME_SHIFT", from: previous.marketRegime, to: current.marketRegime });
+  }
+
+  if (structuredParts.length > 0) {
+    structuredParts.push(
+      current.supportingCount > current.conflictingCount
+        ? { kind: "EVIDENCE_SUPPORTING_LEADS" }
+        : current.conflictingCount > current.supportingCount
+          ? { kind: "EVIDENCE_CONFLICTING_LEADS" }
+          : { kind: "EVIDENCE_BALANCED" },
+    );
+  } else {
+    structuredParts.push({ kind: "THESIS_STABLE", thesis: current.thesisState });
   }
 
   const interpretation = parts.length > 0
@@ -417,6 +461,7 @@ export function generateSummary(
     supportingCount: current.supportingCount,
     conflictingCount: current.conflictingCount,
     interpretation,
+    interpretationParts: structuredParts,
   };
 }
 

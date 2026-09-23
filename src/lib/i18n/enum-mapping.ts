@@ -10,11 +10,26 @@
 
 import type { Translations } from "./types";
 
+/**
+ * Safe fallback for an unrecognized enum value.
+ *
+ * Every mapper below ends in `default: return humanize(value)`. The value is
+ * typed as `string`, but these mappers are fed data that crosses provider,
+ * persistence and network boundaries, where a field can legitimately be
+ * absent. Calling `.replace()` on `undefined` crashed the whole surface
+ * instead of degrading, so the fallback tolerates a missing value and returns
+ * an explicit marker rather than a blank or a guess.
+ */
+export function humanize(value: string | null | undefined): string {
+  if (typeof value !== "string" || value.length === 0) return "UNKNOWN";
+  return value.replace(/_/g, " ");
+}
+
 // ─── Stance Mapping ─────────────────────────────────────────
 
 /** Map news/fundamental stance enum to translated display label. */
 export function mapStance(
-  stance: string,
+  stance: string | null | undefined,
   t: Translations,
 ): string {
   switch (stance) {
@@ -23,7 +38,7 @@ export function mapStance(
     case "MIXED": return t.intelligence.stanceMixed;
     case "NEUTRAL": return t.intelligence.stanceNeutral;
     case "INSUFFICIENT": return t.intelligence.stanceInsufficient;
-    default: return stance.replace(/_/g, " ");
+    default: return humanize(stance);
   }
 }
 
@@ -31,7 +46,7 @@ export function mapStance(
 
 /** Map position impact enum to translated display label. */
 export function mapPositionImpact(
-  impact: string,
+  impact: string | null | undefined,
   t: Translations,
 ): string {
   switch (impact) {
@@ -39,7 +54,7 @@ export function mapPositionImpact(
     case "CONFLICTING": return t.intelligence.impactConflicting;
     case "NEUTRAL": return t.intelligence.impactNeutral;
     case "INSUFFICIENT": return t.intelligence.impactInsufficient;
-    default: return impact.replace(/_/g, " ");
+    default: return humanize(impact);
   }
 }
 
@@ -47,14 +62,14 @@ export function mapPositionImpact(
 
 /** Map evidence direction enum to translated display label. */
 export function mapDirection(
-  direction: string,
+  direction: string | null | undefined,
   t: Translations,
 ): string {
   switch (direction) {
     case "SUPPORTING": return t.intelligence.impactSupporting;
     case "CONFLICTING": return t.intelligence.impactConflicting;
     case "NEUTRAL": return t.intelligence.impactNeutral;
-    default: return direction.replace(/_/g, " ");
+    default: return humanize(direction);
   }
 }
 
@@ -62,7 +77,7 @@ export function mapDirection(
 
 /** Map relevance level enum to translated display label. */
 export function mapRelevance(
-  relevance: string,
+  relevance: string | null | undefined,
   t: Translations,
 ): string {
   switch (relevance) {
@@ -72,7 +87,7 @@ export function mapRelevance(
     case "LOW": return t.intelligence.relevanceLow;
     case "IRRELEVANT": return t.intelligence.relevanceIrrelevant;
     case "UNKNOWN": return t.intelligence.relevanceUnknown;
-    default: return relevance.replace(/_/g, " ");
+    default: return humanize(relevance);
   }
 }
 
@@ -80,7 +95,7 @@ export function mapRelevance(
 
 /** Map data availability enum to translated display label. */
 export function mapAvailability(
-  availability: string,
+  availability: string | null | undefined,
   t: Translations,
 ): string {
   switch (availability) {
@@ -91,7 +106,7 @@ export function mapAvailability(
     case "UNAVAILABLE": return t.status.unavailable;
     case "LIVE": return t.status.live;
     case "SIMULATED": return t.status.simulated;
-    default: return availability.replace(/_/g, " ");
+    default: return humanize(availability);
   }
 }
 
@@ -99,14 +114,14 @@ export function mapAvailability(
 
 /** Map portfolio intelligence coverage to a translated display label. */
 export function mapCoverage(
-  coverage: string,
+  coverage: string | null | undefined,
   t: Translations,
 ): string {
   switch (coverage) {
     case "FULL": return t.status.available;
     case "PARTIAL": return t.status.limited;
     case "EMPTY": return t.status.unavailable;
-    default: return coverage.replace(/_/g, " ");
+    default: return humanize(coverage);
   }
 }
 
@@ -132,7 +147,7 @@ export function mapConflictingCount(
 
 /** Map thesis health enum to translated display label. */
 export function mapThesisHealth(
-  thesisHealth: string,
+  thesisHealth: string | null | undefined,
   t: Translations,
 ): string {
   switch (thesisHealth) {
@@ -144,7 +159,7 @@ export function mapThesisHealth(
     case "INVALIDATED": return t.status.invalidated;
     case "INSUFFICIENT_DATA": return t.status.insufficientData;
     case "UNKNOWN": return t.status.unknown;
-    default: return thesisHealth.replace(/_/g, " ");
+    default: return humanize(thesisHealth);
   }
 }
 
@@ -152,18 +167,18 @@ export function mapThesisHealth(
 
 /** Map MTF/timeframe trend classification to translated display label. */
 export function mapTrendLabel(
-  trend: string,
+  trend: string | null | undefined,
   t: Translations,
 ): string {
   // Normalized so title-case and lowercase domain values (e.g. "Bullish")
   // map identically to the canonical uppercase enum values.
-  switch (trend.toUpperCase()) {
+  switch ((trend ?? "").toUpperCase()) {
     case "BULLISH": return t.analysis.bullish;
     case "BEARISH": return t.analysis.bearish;
     case "NEUTRAL": return t.intelligence.neutral;
     case "MIXED": return t.intelligence.stanceMixed;
     case "UNKNOWN": return t.status.unknown;
-    default: return trend.replace(/_/g, " ");
+    default: return humanize(trend);
   }
 }
 
@@ -171,7 +186,7 @@ export function mapTrendLabel(
 
 /** Map protection severity enum to translated display label. */
 export function mapSeverity(
-  severity: string,
+  severity: string | null | undefined,
   t: Translations,
 ): string {
   switch (severity) {
@@ -180,7 +195,7 @@ export function mapSeverity(
     case "CAUTION": return t.status.caution;
     case "HIGH_RISK": return t.status.highRisk;
     case "INVALIDATED": return t.status.invalidated;
-    default: return severity.replace(/_/g, " ");
+    default: return humanize(severity);
   }
 }
 
@@ -188,14 +203,14 @@ export function mapSeverity(
 
 /** Map portfolio risk-level label to translated display label. */
 export function mapRiskLevel(
-  level: string,
+  level: string | null | undefined,
   t: Translations,
 ): string {
   switch (level) {
     case "LOW": return t.investor.low;
     case "MODERATE": return t.investor.moderate;
     case "ELEVATED": return t.investor.elevated;
-    default: return level.replace(/_/g, " ");
+    default: return humanize(level);
   }
 }
 
@@ -203,7 +218,7 @@ export function mapRiskLevel(
 
 /** Map investment-horizon enum to translated display label. */
 export function mapHorizon(
-  horizon: string,
+  horizon: string | null | undefined,
   t: Translations,
 ): string {
   switch (horizon) {
@@ -217,7 +232,7 @@ export function mapHorizon(
     case "6-12_MONTHS": return t.marketPanel.horizon6_12Months;
     case "1-3_YEARS": return t.marketPanel.horizon1_3Years;
     case "3+_YEARS": return t.marketPanel.horizon3PlusYears;
-    default: return horizon.replace(/_/g, " ");
+    default: return humanize(horizon);
   }
 }
 
@@ -225,12 +240,12 @@ export function mapHorizon(
 
 /** Map confidence level enum to translated display label. */
 export function mapConfidence(
-  confidence: string,
+  confidence: string | null | undefined,
   t: Translations,
 ): string {
   // Normalized so lowercase provider values (e.g. "high") and uppercase
   // engine values (e.g. "STRONG_EVIDENCE") map identically.
-  switch (confidence.toUpperCase()) {
+  switch ((confidence ?? "").toUpperCase()) {
     case "STRONG_EVIDENCE": return t.intelligence.confidenceStrong;
     case "MODERATE_EVIDENCE": return t.intelligence.confidenceModerate;
     case "WEAK_EVIDENCE": return t.intelligence.confidenceWeak;
@@ -239,7 +254,7 @@ export function mapConfidence(
     case "MEDIUM": return t.intelligence.confidenceMedium;
     case "LOW": return t.intelligence.confidenceLow;
     case "UNAVAILABLE": return t.status.unavailable;
-    default: return confidence.replace(/_/g, " ");
+    default: return humanize(confidence);
   }
 }
 
@@ -247,19 +262,19 @@ export function mapConfidence(
 
 /** Map dimension name enum to translated display label. */
 export function mapDimension(
-  dimension: string,
+  dimension: string | null | undefined,
   t: Translations,
 ): string {
   // Normalized so lowercase data-availability keys (e.g. "technical")
   // map identically to the canonical uppercase enum values.
-  switch (dimension.toUpperCase()) {
+  switch ((dimension ?? "").toUpperCase()) {
     case "TECHNICAL": return t.intelligence.technical;
     case "MACRO": return t.intelligence.macro;
     case "CROSS_ASSET": return t.intelligence.crossAsset;
     case "DERIVATIVES": return t.intelligence.derivatives;
     case "NEWS": return t.intelligence.news;
     case "FUNDAMENTALS": return t.intelligence.fundamentals;
-    default: return dimension.replace(/_/g, " ");
+    default: return humanize(dimension);
   }
 }
 
@@ -267,7 +282,7 @@ export function mapDimension(
 
 /** Map macro regime value to translated display label. */
 export function mapRegimeValue(
-  value: string,
+  value: string | null | undefined,
   t: Translations,
 ): string {
   switch (value) {
@@ -313,7 +328,7 @@ export function mapRegimeValue(
     case "EASY": return t.fundamental.easing;
     case "STRESS": return t.macro.stressed;
     case "DE_ESCALATING": return t.fundamental.deescalating;
-    default: return value.replace(/_/g, " ");
+    default: return humanize(value);
   }
 }
 
@@ -321,7 +336,7 @@ export function mapRegimeValue(
 
 /** Map runtime health component name to translated display label. */
 export function mapComponentName(
-  component: string,
+  component: string | null | undefined,
   t: Translations,
 ): string {
   switch (component) {
@@ -335,7 +350,7 @@ export function mapComponentName(
     case "ALERT_RULES": return t.system.componentsAlertRules;
     case "NOTIFICATIONS": return t.system.componentsNotifications;
     case "HISTORICAL": return t.system.componentsHistorical;
-    default: return component.replace(/_/g, " ");
+    default: return humanize(component);
   }
 }
 
@@ -343,7 +358,7 @@ export function mapComponentName(
 
 /** Map intelligence cycle status to translated display label. */
 export function mapIntelligenceStatus(
-  status: string,
+  status: string | null | undefined,
   t: Translations,
 ): string {
   switch (status) {
@@ -351,7 +366,7 @@ export function mapIntelligenceStatus(
     case "DEGRADED": return t.system.degraded;
     case "UNAVAILABLE": return t.status.unavailable;
     case "UNKNOWN": return t.status.unknown;
-    default: return status.replace(/_/g, " ");
+    default: return humanize(status);
   }
 }
 
@@ -359,7 +374,7 @@ export function mapIntelligenceStatus(
 
 /** Map position sensitivity enum to translated display label. */
 export function mapSensitivity(
-  sensitivity: string,
+  sensitivity: string | null | undefined,
   t: Translations,
 ): string {
   switch (sensitivity) {
@@ -367,7 +382,7 @@ export function mapSensitivity(
     case "MODERATE": return t.investor.moderate;
     case "LOW": return t.investor.low;
     case "UNKNOWN": return t.status.unknown;
-    default: return sensitivity.replace(/_/g, " ");
+    default: return humanize(sensitivity);
   }
 }
 
@@ -375,7 +390,7 @@ export function mapSensitivity(
 
 /** Map investor portfolio monitor state to a translated display label. */
 export function mapMonitorState(
-  state: string,
+  state: string | null | undefined,
   t: Translations,
 ): string {
   switch (state) {
@@ -384,7 +399,7 @@ export function mapMonitorState(
     case "WATCH": return t.investor.monitorWatch;
     case "ELEVATED": return t.investor.monitorElevated;
     case "SEVERE": return t.investor.monitorSevere;
-    default: return state.replace(/_/g, " ");
+    default: return humanize(state);
   }
 }
 
@@ -392,7 +407,7 @@ export function mapMonitorState(
 
 /** Map investor decision-synthesis state to a translated display label. */
 export function mapDecisionState(
-  state: string,
+  state: string | null | undefined,
   t: Translations,
 ): string {
   switch (state) {
@@ -401,7 +416,7 @@ export function mapDecisionState(
     case "CAUTION": return t.status.caution;
     case "INSUFFICIENT_DATA": return t.status.insufficientData;
     case "UNAVAILABLE": return t.status.unavailable;
-    default: return state.replace(/_/g, " ");
+    default: return humanize(state);
   }
 }
 
@@ -409,7 +424,7 @@ export function mapDecisionState(
 
 /** Map market state enum (with underscores) to translated display label. */
 export function mapMarketState(
-  marketState: string,
+  marketState: string | null | undefined,
   t: Translations,
 ): string {
   switch (marketState) {
@@ -426,7 +441,7 @@ export function mapMarketState(
     case "VOLATILE_EXPANSION": return t.fundamental.volatile;
     case "VOLATILE_CONTRACTION": return t.fundamental.contracting;
     case "UNKNOWN": return t.status.unknown;
-    default: return marketState.replace(/_/g, " ");
+    default: return humanize(marketState);
   }
 }
 
@@ -434,7 +449,7 @@ export function mapMarketState(
 
 /** Map market-data freshness enum to translated display label. */
 export function mapFreshness(
-  freshness: string,
+  freshness: string | null | undefined,
   t: Translations,
 ): string {
   switch (freshness) {
@@ -443,7 +458,7 @@ export function mapFreshness(
     case "DELAYED": return t.marketPanel.freshness.delayed;
     case "STALE": return t.marketPanel.freshness.stale;
     case "UNAVAILABLE": return t.marketPanel.freshness.unavailable;
-    default: return freshness.replace(/_/g, " ");
+    default: return humanize(freshness);
   }
 }
 
@@ -451,7 +466,7 @@ export function mapFreshness(
 
 /** Map recommendation suitability enum to translated display label. */
 export function mapSuitability(
-  suitability: string,
+  suitability: string | null | undefined,
   t: Translations,
 ): string {
   switch (suitability) {
@@ -460,7 +475,7 @@ export function mapSuitability(
     case "NEUTRAL": return t.marketPanel.suitability.neutral;
     case "EXCLUDED": return t.marketPanel.suitability.excluded;
     case "INSUFFICIENT_DATA": return t.marketPanel.suitability.insufficientData;
-    default: return suitability.replace(/_/g, " ");
+    default: return humanize(suitability);
   }
 }
 
@@ -468,7 +483,7 @@ export function mapSuitability(
 
 /** Map data-completeness enum to translated display label. */
 export function mapCompleteness(
-  completeness: string,
+  completeness: string | null | undefined,
   t: Translations,
 ): string {
   switch (completeness) {
@@ -476,7 +491,7 @@ export function mapCompleteness(
     case "PARTIAL": return t.marketPanel.completeness.partial;
     case "MINIMAL": return t.marketPanel.completeness.minimal;
     case "NONE": return t.marketPanel.completeness.none;
-    default: return completeness.replace(/_/g, " ");
+    default: return humanize(completeness);
   }
 }
 
@@ -484,7 +499,7 @@ export function mapCompleteness(
 
 /** Map decision-support overall assessment to a translated display label. */
 export function mapAssessment(
-  assessment: string,
+  assessment: string | null | undefined,
   t: Translations,
 ): string {
   switch (assessment) {
@@ -496,7 +511,7 @@ export function mapAssessment(
     case "CONFLICTING": return t.intelligence.conflicting;
     case "NEUTRAL": return t.intelligence.neutral;
     case "UNAVAILABLE": return t.status.unavailable;
-    default: return assessment.replace(/_/g, " ");
+    default: return humanize(assessment);
   }
 }
 
@@ -504,7 +519,7 @@ export function mapAssessment(
 
 /** Map invalidation-condition status to a translated display label. */
 export function mapInvalidationStatus(
-  status: string,
+  status: string | null | undefined,
   t: Translations,
 ): string {
   switch (status) {
@@ -512,7 +527,7 @@ export function mapInvalidationStatus(
     case "APPROACHING": return t.decision.invalidationStatusApproaching;
     case "TRIGGERED": return t.decision.invalidationStatusTriggered;
     case "UNAVAILABLE": return t.status.unavailable;
-    default: return status.replace(/_/g, " ");
+    default: return humanize(status);
   }
 }
 
@@ -520,7 +535,7 @@ export function mapInvalidationStatus(
 
 /** Map watch/alert priority enum to a translated display label. */
 export function mapPriority(
-  priority: string,
+  priority: string | null | undefined,
   t: Translations,
 ): string {
   switch (priority) {
@@ -529,7 +544,7 @@ export function mapPriority(
     case "MEDIUM": return t.alerts.medium;
     case "LOW": return t.alerts.low;
     case "INFO": return t.alerts.info;
-    default: return priority.replace(/_/g, " ");
+    default: return humanize(priority);
   }
 }
 
@@ -537,7 +552,7 @@ export function mapPriority(
 
 /** Map alert-rule scope enum to a translated display label. */
 export function mapScope(
-  scope: string,
+  scope: string | null | undefined,
   t: Translations,
 ): string {
   switch (scope) {
@@ -545,7 +560,7 @@ export function mapScope(
     case "INSTRUMENT": return t.alerts.instrumentScope;
     case "PORTFOLIO": return t.alerts.portfolioScope;
     case "GLOBAL": return t.alerts.globalScope;
-    default: return scope.replace(/_/g, " ");
+    default: return humanize(scope);
   }
 }
 
@@ -553,7 +568,7 @@ export function mapScope(
 
 /** Map portfolio risk-context enum to a translated display label. */
 export function mapPortfolioRisk(
-  risk: string,
+  risk: string | null | undefined,
   t: Translations,
 ): string {
   switch (risk) {
@@ -561,7 +576,7 @@ export function mapPortfolioRisk(
     case "MIXED": return t.intelligence.stanceMixed;
     case "ELEVATED_CONCERN": return t.investor.elevated;
     case "INSUFFICIENT_DATA": return t.status.insufficientData;
-    default: return risk.replace(/_/g, " ");
+    default: return humanize(risk);
   }
 }
 
@@ -569,13 +584,13 @@ export function mapPortfolioRisk(
 
 /** Map position side enum to a translated display label. */
 export function mapSide(
-  side: string,
+  side: string | null | undefined,
   t: Translations,
 ): string {
-  switch (side.toUpperCase()) {
+  switch ((side ?? "").toUpperCase()) {
     case "LONG": return t.analysis.long;
     case "SHORT": return t.analysis.short;
-    default: return side.replace(/_/g, " ");
+    default: return humanize(side);
   }
 }
 
@@ -583,7 +598,7 @@ export function mapSide(
 
 /** Map pullback classification enum to a translated display label. */
 export function mapPullbackClassification(
-  classification: string,
+  classification: string | null | undefined,
   t: Translations,
 ): string {
   switch (classification) {
@@ -593,7 +608,7 @@ export function mapPullbackClassification(
     case "STRUCTURAL_REVERSAL": return t.intelligence.pullbackStructuralReversal;
     case "SHOCK_REVERSAL": return t.intelligence.pullbackShockReversal;
     case "INSUFFICIENT_DATA": return t.intelligence.pullbackInsufficientData;
-    default: return classification.replace(/_/g, " ");
+    default: return humanize(classification);
   }
 }
 
@@ -601,14 +616,14 @@ export function mapPullbackClassification(
 
 /** Map timeline change-strength enum to a translated display label. */
 export function mapStrength(
-  strength: string,
+  strength: string | null | undefined,
   t: Translations,
 ): string {
-  switch (strength.toUpperCase()) {
+  switch ((strength ?? "").toUpperCase()) {
     case "STRONG": return t.alerts.high;
     case "MODERATE": return t.alerts.medium;
     case "WEAK": return t.alerts.low;
-    default: return strength.replace(/_/g, " ");
+    default: return humanize(strength);
   }
 }
 
@@ -616,7 +631,7 @@ export function mapStrength(
 
 /** Map historical timeline event type to a translated display label. */
 export function mapTimelineEventType(
-  eventType: string,
+  eventType: string | null | undefined,
   t: Translations,
 ): string {
   switch (eventType) {
@@ -631,7 +646,64 @@ export function mapTimelineEventType(
     case "NEWS_CHANGE": return t.timeline.newsChange;
     case "MACRO_CHANGE": return t.timeline.macroChange;
     case "DATA_QUALITY_CHANGE": return t.timeline.dataQualityChange;
-    default: return eventType.replace(/_/g, " ");
+    default: return humanize(eventType);
+  }
+}
+
+// ─── Momentum / Volatility / Structure Value Mapping (Phase 197) ───
+
+/**
+ * Map a momentum classification to a translated display value.
+ * Domain: MomentumClassification from multi-timeframe-engine.
+ */
+export function mapMomentumValue(
+  momentum: string | null | undefined,
+  t: Translations,
+): string {
+  switch ((momentum ?? "").toUpperCase()) {
+    case "OVERBOUGHT": return t.intelligence.momentumOverbought;
+    case "OVERSOLD": return t.intelligence.momentumOversold;
+    case "POSITIVE": return t.intelligence.momentumPositive;
+    case "NEGATIVE": return t.intelligence.momentumNegative;
+    case "NEUTRAL": return t.intelligence.neutral;
+    case "UNKNOWN": return t.status.unknown;
+    default: return humanize(momentum);
+  }
+}
+
+/**
+ * Map a volatility classification to a translated display value.
+ * Domain: VolatilityClassification from multi-timeframe-engine.
+ */
+export function mapVolatilityValue(
+  volatility: string | null | undefined,
+  t: Translations,
+): string {
+  switch ((volatility ?? "").toUpperCase()) {
+    case "EXPANDED": return t.intelligence.volatilityExpanded;
+    case "COMPRESSED": return t.intelligence.volatilityCompressed;
+    case "NORMAL": return t.intelligence.volatilityNormal;
+    case "UNKNOWN": return t.status.unknown;
+    default: return humanize(volatility);
+  }
+}
+
+/**
+ * Map a market-structure state to a translated display value.
+ * Domain: StructureState from multi-timeframe-engine.
+ */
+export function mapStructureValue(
+  structure: string | null | undefined,
+  t: Translations,
+): string {
+  switch ((structure ?? "").toUpperCase()) {
+    case "HIGHER_HIGHS_HIGHER_LOWS": return t.intelligence.structureHhHl;
+    case "LOWER_HIGHS_LOWER_LOWS": return t.intelligence.structureLhLl;
+    case "HIGHER_HIGH_LOWER_LOW": return t.intelligence.structureHhLl;
+    case "LOWER_HIGH_HIGHER_LOW": return t.intelligence.structureLhHl;
+    case "INSUFFICIENT_DATA": return t.intelligence.insufficientData;
+    case "UNKNOWN": return t.status.unknown;
+    default: return humanize(structure);
   }
 }
 
@@ -639,7 +711,7 @@ export function mapTimelineEventType(
 
 /** Map portfolio alignment type to a translated display label. */
 export function mapAlignmentType(
-  alignmentType: string,
+  alignmentType: string | null | undefined,
   t: Translations,
 ): string {
   switch (alignmentType) {
@@ -647,7 +719,7 @@ export function mapAlignmentType(
     case "HTF_ALIGNMENT": return t.portfolio.alignmentHtfAlignment;
     case "CONCENTRATION": return t.portfolio.alignmentConcentration;
     case "DIRECTIONAL_CONCENTRATION": return t.portfolio.alignmentDirectionalConcentration;
-    default: return alignmentType.replace(/_/g, " ");
+    default: return humanize(alignmentType);
   }
 }
 
@@ -655,13 +727,60 @@ export function mapAlignmentType(
 
 /** Map portfolio conflict type to a translated display label. */
 export function mapConflictType(
-  conflictType: string,
+  conflictType: string | null | undefined,
   t: Translations,
 ): string {
   switch (conflictType) {
     case "DIRECT_DIRECTIONAL": return t.portfolio.conflictDirectDirectional;
     case "EVIDENCE_CONFLICT": return t.portfolio.conflictEvidenceConflict;
     case "REGIME": return t.portfolio.conflictRegime;
-    default: return conflictType.replace(/_/g, " ");
+    default: return humanize(conflictType);
+  }
+}
+
+// ─── Journal Lifecycle Mapping (Phase 196) ─────────────────────
+
+/**
+ * Map a journal trade status to its translated label.
+ *
+ * §3: this is the SINGLE authority for presenting a `TradeStatus`. The stored
+ * record always keeps the canonical uppercase enum — only what the user reads
+ * changes. `humanize` is the deliberate fallback so an unrecognised status
+ * degrades to a readable value instead of rendering blank.
+ */
+export function mapTradeStatus(
+  status: string | null | undefined,
+  t: Translations,
+): string {
+  switch (status) {
+    case "PLANNED": return t.journal.statusPlanned;
+    case "OPEN": return t.journal.statusOpen;
+    case "CLOSED": return t.journal.statusClosed;
+    case "CANCELLED": return t.journal.statusCancelled;
+    case "INVALIDATED": return t.journal.statusInvalidated;
+    case "NO_TRADE": return t.journal.statusNoTrade;
+    case "WAITING": return t.journal.statusWaiting;
+    default: return humanize(status);
+  }
+}
+
+/**
+ * Map a journal trade outcome to its translated label.
+ *
+ * WIN / LOSS are financial claims: the mapping is value-preserving and never
+ * derived from copy. An undefined outcome stays UNKNOWN — it must never
+ * present as BREAKEVEN (§4: unknown is not zero).
+ */
+export function mapTradeOutcome(
+  outcome: string | null | undefined,
+  t: Translations,
+): string {
+  switch (outcome) {
+    case "WIN": return t.journal.outcomeWin;
+    case "LOSS": return t.journal.outcomeLoss;
+    case "BREAKEVEN": return t.journal.outcomeBreakeven;
+    case "PARTIAL": return t.journal.outcomePartial;
+    case "UNKNOWN": return t.journal.outcomeUnknown;
+    default: return humanize(outcome);
   }
 }

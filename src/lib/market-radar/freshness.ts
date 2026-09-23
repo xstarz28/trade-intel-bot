@@ -5,7 +5,7 @@
  */
 
 import type { FreshnessLevel, FreshnessGate, OpportunityLifecycle } from "./types";
-import { meetsFreshness, HORIZON_FRESHNESS_GATES, FRESHNESS_ORDER } from "./types";
+import { meetsFreshness, HORIZON_FRESHNESS_GATES } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
 // FRESHNESS FROM TIMESTAMP

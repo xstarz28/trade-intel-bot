@@ -12,7 +12,6 @@ import type {
   InstrumentState,
   ProtectionEvent,
   MonitoringStatus,
-  Timeframe,
   EventType,
 } from "./realtime-types";
 import type { PositionContext, AlertSeverity } from "./types";
@@ -46,6 +45,12 @@ export interface MonitorState {
   dispatcher: DispatcherState;
   /** Last reevaluation timestamp per position. */
   lastReevalAt: Map<string, number>;
+}
+
+const RISK_REGIMES = ["risk_on", "risk_off", "transition", "unknown"] as const;
+type RiskRegimeValue = (typeof RISK_REGIMES)[number];
+function asRiskRegime(v: unknown): RiskRegimeValue | undefined {
+  return (RISK_REGIMES as readonly unknown[]).includes(v) ? (v as RiskRegimeValue) : undefined;
 }
 
 export function createMonitorState(): MonitorState {
@@ -170,7 +175,11 @@ function buildEvidenceFromState(
         break;
       case "REGIME_CHANGE":
         ev.riskRegimeChanged = true;
-        if (typeof evt.payload.regime === "string") ev.riskRegime = evt.payload.regime as any;
+        {
+          // Phase 227 — an unrecognised regime string is dropped, not cast.
+          const regime = asRiskRegime(evt.payload.regime);
+          if (regime) ev.riskRegime = regime;
+        }
         break;
       case "CROSS_ASSET_CHANGE":
         ev.correlatedDivergence = evt.payload.divergence === true;
@@ -259,7 +268,10 @@ export function processEvent(
   if (typeof event.payload.fundingRate === "number") inst.fundingRate = event.payload.fundingRate as number;
   if (typeof event.payload.oiChange === "number") inst.oiChange = event.payload.oiChange as number;
   if (typeof event.payload.vix === "number") inst.vix = event.payload.vix as number;
-  if (typeof event.payload.riskRegime === "string") inst.riskRegime = event.payload.riskRegime as any;
+  {
+    const regime = asRiskRegime(event.payload.riskRegime);
+    if (regime) inst.riskRegime = regime;
+  }
 
   if (event.eventType === "PROVIDER_DEGRADED") inst.providerStatus = "DEGRADED";
   if (event.eventType === "PROVIDER_RECOVERED") inst.providerStatus = "HEALTHY";

@@ -15,17 +15,18 @@
 import type { AssetClass } from "@/lib/data/universal/types";
 import {
   executeLiveRequest,
-  type LiveRequestParams,
-  type LiveRequestResult,
   type Transport,
 } from "@/lib/data/universal/live/client";
+import type { LiveStatus } from "@/lib/data/universal/live/types";
+import {
+  classifyLiveFailure,
+  type LiveAcquisitionFailureClass,
+} from "@/lib/data/universal/live/failure-class";
 import {
   checkCredentials,
   type EnvReader,
 } from "@/lib/data/universal/live/credentials";
-import { type LiveStatus, isLiveStatus } from "@/lib/data/universal/live/types";
-import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
-import type { MarketSnapshot, FreshnessLevel } from "@/lib/market-radar/types";
+import type { MarketSnapshot } from "@/lib/market-radar/types";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 import { assessFreshness } from "@/lib/market-radar/freshness";
 
@@ -131,34 +132,44 @@ function buildAdapter(
     },
     fetch: async (instrument: string, assetClass: AssetClass, readEnv?: EnvReader) => {
       health.totalRequests++;
-      health.lastRequestAt = Date.now();
-      const t0 = Date.now();
+      /*
+        Phase 238 — a request has exactly two instants: the read that opens it
+        and the read that closes it. `lastRequestAt`, `lastSuccessAt` /
+        `lastFailureAt`, `cooldownUntil` and `avgLatencyMs` are all derived from
+        those two — previously the start was read twice and the completion up
+        to three times, so a health record's average latency was measured
+        between instants the health record itself did not report.
+      */
+      const startedAt = Date.now();
+      health.lastRequestAt = startedAt;
       try {
         const result = await fetchFn(instrument, assetClass, readEnv);
-        const latency = Date.now() - t0;
+        const completedAt = Date.now();
+        const latency = completedAt - startedAt;
         health.avgLatencyMs = (health.avgLatencyMs * (health.totalRequests - 1) + latency) / health.totalRequests;
         if (result) {
           health.totalSuccesses++;
-          health.lastSuccessAt = Date.now();
+          health.lastSuccessAt = completedAt;
           health.consecutiveFailures = 0;
           health.status = "HEALTHY";
         } else {
           health.totalFailures++;
-          health.lastFailureAt = Date.now();
+          health.lastFailureAt = completedAt;
           health.consecutiveFailures++;
           health.status = health.consecutiveFailures >= 3 ? "DEGRADED" : "HEALTHY";
         }
         return result;
-      } catch (err: any) {
-        const latency = Date.now() - t0;
+      } catch (err: unknown) {
+        const completedAt = Date.now();
+        const latency = completedAt - startedAt;
         health.totalFailures++;
-        health.lastFailureAt = Date.now();
+        health.lastFailureAt = completedAt;
         health.consecutiveFailures++;
         health.avgLatencyMs = (health.avgLatencyMs * (health.totalRequests - 1) + latency) / health.totalRequests;
-        const msg = err?.message ?? String(err);
+        const msg = errorMessage(err);
         if (msg.includes("429")) {
           health.status = "RATE_LIMITED";
-          health.cooldownUntil = Date.now() + 60_000;
+          health.cooldownUntil = completedAt + 60_000;
         } else if (msg.includes("abort") || msg.includes("timeout")) {
           health.status = "TIMEOUT";
         } else if (msg.includes("401") || msg.includes("403")) {
@@ -202,10 +213,15 @@ function buildTwelveDataAdapter(): ProviderAdapter {
       const price = parseFloat(latest.close);
       if (!Number.isFinite(price) || price <= 0) return null;
 
-      const open = parseFloat(latest.open);
-      const high = parseFloat(latest.high);
-      const low = parseFloat(latest.low);
       const volume = latest.volume ? parseFloat(latest.volume) : undefined;
+
+      // Phase 238 — ONE clock read for this acquisition. `observedAt` keeps the
+      // provider's instant, and `freshness` is judged against this read; the
+      // previous form called `Date.now()` a second time inside
+      // `assessFreshness`, so the verdict described an instant the record
+      // never carried.
+      const acquiredAt = Date.now();
+      const observedAt = new Date(latest.datetime).getTime();
 
       return {
         instrument,
@@ -218,9 +234,11 @@ function buildTwelveDataAdapter(): ProviderAdapter {
         ohlcvAvailable: true,
         availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
         provider: "twelve-data",
-        observedAt: new Date(latest.datetime).getTime(),
-        freshness: assessFreshness(new Date(latest.datetime).getTime(), Date.now()),
+        observedAt,
+        freshness: assessFreshness(observedAt, acquiredAt),
         quality: "VERIFIED",
+        acquiredAt,
+        timestampProvenance: "PROVIDER_OBSERVED",
       };
     },
   );
@@ -231,45 +249,43 @@ function buildTwelveDataAdapter(): ProviderAdapter {
 // ═══════════════════════════════════════════════════════════════
 
 function buildCoinGeckoAdapter(): ProviderAdapter {
-  const COINGECKO_IDS: Record<string, string> = {
-    "BTC/USD": "bitcoin",
-    "ETH/USD": "ethereum",
-    "SOL/USD": "solana",
-    "DOGE/USD": "dogecoin",
-    "XRP/USD": "ripple",
-    "ADA/USD": "cardano",
-    "AVAX/USD": "avalanche-2",
-    "LINK/USD": "chainlink",
-  };
-
+  // No hardcoded ticker whitelist — source of truth is provider-native discovery.
+  // Use instrument lowercased as coingecko id attempt; if fails, return null.
   return buildAdapter(
     "coingecko",
     "CoinGecko",
     ["crypto"],
     ["quote"],
     async (instrument) => {
-      const coinId = COINGECKO_IDS[instrument];
+      const coinId = instrument.split("/")[0]?.toLowerCase() ?? instrument.toLowerCase();
       if (!coinId) return null;
-
-      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`;
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinId)}&vs_currencies=usd&include_24hr_change=true`;
       const res = await defaultTransport(url);
       if (!res.ok || !res.json) return null;
-
       const data = res.json as Record<string, { usd?: number; usd_24h_change?: number }>;
-      const price = data[coinId]?.usd;
+      const entry = data[coinId];
+      if (!entry) return null;
+      const price = entry.usd;
       if (price === undefined || !Number.isFinite(price) || price <= 0) return null;
-
+      const acquiredAt = Date.now();
       return {
         instrument,
         assetClass: "crypto",
         price,
-        change24h: data[coinId]?.usd_24h_change,
+        change24h: entry.usd_24h_change,
         ohlcvAvailable: false,
         availableTimeframes: [],
         provider: "coingecko",
-        observedAt: Date.now(),
+        // Phase 238 — CoinGecko simple/price has no timestamp field.
+        // Documented semantics: returned quote is current-at-response.
+        // So observedAt == acquiredAt with provenance PROVIDER_RESPONSE,
+        // not PROVIDER_OBSERVED. This is intentional receipt-time-by-policy,
+        // preserved per Phase220 B/C/D invariants.
+        observedAt: acquiredAt,
         freshness: "FRESH",
         quality: "VERIFIED",
+        acquiredAt,
+        timestampProvenance: "PROVIDER_RESPONSE",
       };
     },
   );
@@ -280,46 +296,27 @@ function buildCoinGeckoAdapter(): ProviderAdapter {
 // ═══════════════════════════════════════════════════════════════
 
 function buildCoinGlassAdapter(): ProviderAdapter {
-  const COINGLASS_SYMBOLS: Record<string, string> = {
-    "BTC/USD": "BTC", "ETH/USD": "ETH", "SOL/USD": "SOL",
-    "DOGE/USD": "DOGE", "XRP/USD": "XRP", "ADA/USD": "ADA",
-  };
   return buildAdapter(
     "coinglass", "CoinGlass", ["crypto"], ["derivatives"],
-    async (instrument, assetClass, readEnv) => {
-      const cred = checkCredentials("coinglass", readEnv);
-      if (cred && !cred.available) return null;
-      const apiKey = readEnv?.("COINGLASS_API_KEY") ?? "";
-      if (!apiKey) return null;
-      const symbol = COINGLASS_SYMBOLS[instrument]?.toUpperCase();
-      if (!symbol) return null;
-      try {
-        const baseUrl = "https://open-api-v3.coinglass.com/api";
-        const headers = { accept: "application/json", cg_api_key: apiKey };
-        const [oiRes, fundingRes] = await Promise.allSettled([
-          defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`),
-          defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`),
-        ]);
-        let price = 0;
-        let openInterest: number | undefined;
-        let fundingRate: number | undefined;
-        if (oiRes.status === "fulfilled" && oiRes.value.ok && oiRes.value.json) {
-          const d = oiRes.value.json as { data?: { openInterest?: string; lastPrice?: string } };
-          openInterest = d.data?.openInterest ? parseFloat(d.data.openInterest) : undefined;
-          price = d.data?.lastPrice ? parseFloat(d.data.lastPrice) : 0;
-        }
-        if (fundingRes.status === "fulfilled" && fundingRes.value.ok && fundingRes.value.json) {
-          const d = fundingRes.value.json as { data?: { data?: [{ value?: string }] } };
-          fundingRate = d.data?.data?.[0]?.value ? parseFloat(d.data.data[0].value) : undefined;
-        }
-        if (!Number.isFinite(price) || price <= 0) return null;
-        return {
-          instrument, assetClass, price, ohlcvAvailable: false,
-          availableTimeframes: [], provider: "coinglass",
-          observedAt: Date.now(), freshness: "FRESH", quality: "VERIFIED",
-        };
-      } catch { return null; }
-    },
+    /*
+      Phase 226 — this adapter exists so the registry, health summary and
+      universe `requiredCapabilities` know CoinGlass as the crypto
+      derivatives provider. It does NOT acquire data here:
+
+      - `MarketSnapshot` has no derivatives field, so the previous
+        implementation parsed openInterest/fundingRate and then threw them
+        away, returning only `lastPrice` stamped `observedAt: Date.now()`,
+        `freshness: "FRESH"` — a non-realtime provider labelled live.
+      - The generic transport carries no `cg_api_key` header, so the calls
+        could never authenticate.
+      - `acquireLiveData` only ever selects `quote`/`ohlcv` adapters.
+
+      Authenticated acquisition is `convex/coinglass.fetchDerivatives`
+      (server-side key, provider observation timestamp preserved); it reaches
+      the radar through `market-radar/derivatives-bridge.ts`. Returning null
+      keeps this provider honest: no price, no fabricated freshness.
+    */
+    async () => null,
   );
 }
 
@@ -341,11 +338,18 @@ function buildDefiLlamaAdapter(): ProviderAdapter {
         if (!Array.isArray(data) || data.length === 0) return null;
         const latest = data[data.length - 1];
         if (!latest || latest.tvl === undefined) return null;
+        // Phase 238 — this payload carries no observation time, so the
+        // acquisition instant IS the record's `observedAt`: one read, carried
+        // out on the record so the caller dates it identically.
+        // Provenance is APPLICATION_RECEIPT because no provider timestamp.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "crypto", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "defillama", observedAt: Date.now(),
+          provider: "defillama", observedAt: acquiredAt,
           freshness: "FRESH", quality: "VERIFIED",
+          acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -366,11 +370,16 @@ function buildTokenomistAdapter(): ProviderAdapter {
         const url = `https://api.tokenomist.xyz/v1/unlocks?symbol=${symbol}`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
+        // Phase 238 — this payload carries no observation time.
+        // Provenance APPLICATION_RECEIPT.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "crypto", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "tokenomist", observedAt: Date.now(),
+          provider: "tokenomist", observedAt: acquiredAt,
           freshness: "FRESH", quality: "VERIFIED",
+          acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -382,14 +391,12 @@ function buildTokenomistAdapter(): ProviderAdapter {
 // ═══════════════════════════════════════════════════════════════
 
 function buildOkxAdapter(): ProviderAdapter {
-  const OKX_SYMBOLS: Record<string, string> = {
-    "BTC/USD": "BTC-USDT", "ETH/USD": "ETH-USDT", "SOL/USD": "SOL-USDT",
-    "DOGE/USD": "DOGE-USDT", "XRP/USD": "XRP-USDT", "ADA/USD": "ADA-USDT",
-  };
+  // No hardcoded symbol whitelist — preserve provider-native identity.
+  // Instrument is treated as exact OKX instId (e.g. BTC-USDT) when coming from discovery.
   return buildAdapter(
     "okx", "OKX", ["crypto"], ["ohlcv", "quote"],
     async (instrument) => {
-      const sym = OKX_SYMBOLS[instrument];
+      const sym = instrument.includes("-") ? instrument : instrument;
       if (!sym) return null;
       try {
         const url = `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=1`;
@@ -399,15 +406,24 @@ function buildOkxAdapter(): ProviderAdapter {
         const rows = data.data ?? [];
         if (rows.length === 0) return null;
         const row = rows[0];
-        const price = parseFloat(row[4]); // close
+        const price = parseFloat(row[4]);
         if (!Number.isFinite(price) || price <= 0) return null;
         const ts = parseInt(row[0]);
+        const acquiredAt = Date.now();
+        // Phase 238 — OKX candle timestamp is provider-observed (candle open time in ms).
+        // If absent/malformed, do NOT fabricate observedAt from acquiredAt.
+        // observedAt = undefined → freshness UNAVAILABLE, provenance UNKNOWN.
+        const hasProviderTs = Number.isFinite(ts) && ts > 0;
+        const observedAt = hasProviderTs ? ts : undefined;
         return {
           instrument, assetClass: "crypto", price,
           ohlcvAvailable: true, availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
-          provider: "okx", observedAt: Number.isFinite(ts) ? ts : Date.now(),
-          freshness: assessFreshness(Number.isFinite(ts) ? ts : Date.now(), Date.now()),
+          provider: "okx",
+          ...(observedAt !== undefined ? { observedAt } : {}),
+          freshness: assessFreshness(observedAt, acquiredAt),
           quality: "VERIFIED",
+          acquiredAt,
+          timestampProvenance: hasProviderTs ? "PROVIDER_OBSERVED" : "UNKNOWN",
         };
       } catch { return null; }
     },
@@ -420,12 +436,65 @@ function buildOkxAdapter(): ProviderAdapter {
 
 function buildAlphaVantageAdapter(): ProviderAdapter {
   return buildAdapter(
-    "alpha-vantage", "Alpha Vantage", ["equity", "forex"], ["fundamentals"],
+    "alpha-vantage",
+    "Alpha Vantage",
+    ["equity", "forex", "indices"],
+    ["fundamentals", "ohlcv", "quote"],
     async (instrument, assetClass, readEnv) => {
       const cred = checkCredentials("alpha-vantage", readEnv);
       if (cred && !cred.available) return null;
       const apiKey = readEnv?.("ALPHA_VANTAGE_API_KEY") ?? "";
       if (!apiKey) return null;
+
+      // Phase 265 — indices via INDEX_DATA (historical/delayed)
+      if (assetClass === "indices") {
+        try {
+          const symbol = instrument.trim().toUpperCase();
+          const url = `https://www.alphavantage.co/query?function=INDEX_DATA&symbol=${encodeURIComponent(symbol)}&interval=daily&apikey=${apiKey}`;
+          const res = await defaultTransport(url);
+          if (!res.ok || !res.json) return null;
+          const json = res.json as any;
+          // Parse flexible: data array or Time Series
+          let latest: any = null;
+          if (Array.isArray(json.data) && json.data.length > 0) {
+            latest = json.data[json.data.length - 1] ?? json.data[0];
+          } else {
+            const tsKey = Object.keys(json).find((k) => k.toLowerCase().includes("time series"));
+            if (tsKey) {
+              const series = json[tsKey] as Record<string, any>;
+              const dates = Object.keys(series).sort();
+              if (dates.length > 0) {
+                const lastDate = dates[dates.length - 1];
+                latest = series[lastDate];
+                latest.date = lastDate;
+              }
+            }
+          }
+          if (!latest) return null;
+          const closeStr = latest.close ?? latest["4. close"];
+          const price = typeof closeStr === "number" ? closeStr : parseFloat(String(closeStr));
+          if (!Number.isFinite(price) || price <= 0) return null;
+          const acquiredAt = Date.now();
+          const observedTs = latest.date ? Date.parse(latest.date) : acquiredAt;
+          const observedAt = Number.isFinite(observedTs) ? observedTs : acquiredAt;
+          return {
+            instrument,
+            assetClass,
+            price,
+            ohlcvAvailable: true,
+            availableTimeframes: ["D1", "W1", "MN"],
+            provider: "alpha-vantage",
+            observedAt,
+            freshness: "DELAYED",
+            quality: "DEGRADED",
+            acquiredAt,
+            timestampProvenance: "PROVIDER_OBSERVED",
+          };
+        } catch {
+          return null;
+        }
+      }
+
       const symbol = assetClass === "forex" ? instrument.replace("/", "") : instrument;
       try {
         const url = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`;
@@ -434,13 +503,25 @@ function buildAlphaVantageAdapter(): ProviderAdapter {
         const d = res.json as Record<string, string>;
         const price = d["50DayMovingAverage"] ? parseFloat(d["50DayMovingAverage"]) : 0;
         if (!Number.isFinite(price) || price <= 0) return null;
+        // Phase 238 — fundamentals payload carries no observation time.
+        // Provenance APPLICATION_RECEIPT.
+        const acquiredAt = Date.now();
         return {
-          instrument, assetClass, price,
-          ohlcvAvailable: false, availableTimeframes: [],
-          provider: "alpha-vantage", observedAt: Date.now(),
-          freshness: "DELAYED", quality: "DEGRADED",
+          instrument,
+          assetClass,
+          price,
+          ohlcvAvailable: false,
+          availableTimeframes: [],
+          provider: "alpha-vantage",
+          observedAt: acquiredAt,
+          freshness: "DELAYED",
+          quality: "DEGRADED",
+          acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     },
   );
 }
@@ -457,11 +538,16 @@ function buildCftcAdapter(): ProviderAdapter {
         const url = `https://www.cftc.gov/dea/futures/other_lf.htm`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
+        // Phase 238 — COT payload carries no observation time in this stub.
+        // Provenance APPLICATION_RECEIPT.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "forex", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "cftc", observedAt: Date.now(),
+          provider: "cftc", observedAt: acquiredAt,
           freshness: "STALE", quality: "DEGRADED",
+          acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -485,11 +571,18 @@ function buildTreasuryAdapter(): ProviderAdapter {
         if (!entry?.avg_interest_rate_amt) return null;
         const yield_ = parseFloat(entry.avg_interest_rate_amt);
         if (!Number.isFinite(yield_)) return null;
+        // Phase 238 — Treasury record_date is provider-observed.
+        // Fallback to receipt only when absent, with provenance APPLICATION_RECEIPT.
+        const acquiredAt = Date.now();
+        const hasRecordDate = !!entry.record_date;
+        const observedAt = hasRecordDate ? new Date(entry.record_date as string).getTime() : acquiredAt;
         return {
           instrument, assetClass: "macro", price: yield_,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "treasury", observedAt: entry.record_date ? new Date(entry.record_date).getTime() : Date.now(),
+          provider: "treasury", observedAt,
           freshness: "STALE", quality: "DEGRADED",
+          acquiredAt,
+          timestampProvenance: hasRecordDate ? "PROVIDER_OBSERVED" : "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -512,11 +605,16 @@ function buildEiaAdapter(): ProviderAdapter {
         const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPM0&facets[duession][]=NUS&sort[0][column]=period&sort[0][direction]=desc&length=1`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
+        // Phase 238 — EIA stub carries no observation time.
+        // Provenance APPLICATION_RECEIPT.
+        const acquiredAt = Date.now();
         return {
           instrument, assetClass: "commodity", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
-          provider: "eia", observedAt: Date.now(),
+          provider: "eia", observedAt: acquiredAt,
           freshness: "STALE", quality: "DEGRADED",
+          acquiredAt,
+          timestampProvenance: "APPLICATION_RECEIPT",
         };
       } catch { return null; }
     },
@@ -527,18 +625,42 @@ function buildEiaAdapter(): ProviderAdapter {
 // ADAPTER REGISTRY
 // ═══════════════════════════════════════════════════════════════
 
-const DEFAULT_ADAPTERS: ProviderAdapter[] = [
-  buildTwelveDataAdapter(),
-  buildCoinGeckoAdapter(),
-  buildCoinGlassAdapter(),
-  buildDefiLlamaAdapter(),
-  buildTokenomistAdapter(),
-  buildOkxAdapter(),
-  buildAlphaVantageAdapter(),
-  buildCftcAdapter(),
-  buildTreasuryAdapter(),
-  buildEiaAdapter(),
-];
+function buildCcxtAdapter(): ProviderAdapter {
+  // CCXT dynamic backbone — no hardcoded exchange whitelist as source of truth.
+  // Live acquisition uses CCXT native when available; public data needs no private creds.
+  return buildAdapter(
+    "ccxt",
+    "CCXT",
+    ["crypto"],
+    ["ohlcv", "quote", "order_book"],
+    async (instrument) => {
+      // Instrument here is expected to be provider-native (e.g. BTC/USDT from discovery).
+      // Without exchange context, we cannot resolve which CCXT exchange to query.
+      // This adapter exists for registry health/universe capability; live path is via
+      // acquireProviderNativeLiveData with provider=ccxt:<exchangeId>.
+      // Return null to avoid fake-success.
+      return null;
+    },
+  );
+}
+
+function buildDefaultAdapters(): ProviderAdapter[] {
+  return [
+    buildTwelveDataAdapter(),
+    buildCoinGeckoAdapter(),
+    buildCoinGlassAdapter(),
+    buildDefiLlamaAdapter(),
+    buildTokenomistAdapter(),
+    buildOkxAdapter(),
+    buildCcxtAdapter(),
+    buildAlphaVantageAdapter(),
+    buildCftcAdapter(),
+    buildTreasuryAdapter(),
+    buildEiaAdapter(),
+  ];
+}
+
+const DEFAULT_ADAPTERS: ProviderAdapter[] = buildDefaultAdapters();
 
 let adapters: ProviderAdapter[] = [...DEFAULT_ADAPTERS];
 
@@ -551,7 +673,9 @@ export function registerAdapter(adapter: ProviderAdapter): void {
 }
 
 export function resetAdapters(): void {
-  adapters = [...DEFAULT_ADAPTERS];
+  // Phase 238 — rebuild to reset health counters (previous impl reused same objects,
+  // so totalRequests accumulated across tests and broke provider selection pinning)
+  adapters = buildDefaultAdapters();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -606,6 +730,11 @@ export interface LiveAcquisitionResult {
   success: boolean;
   error?: string;
   latencyMs: number;
+  /** Verified live status from the shared live client. Absent on adapter-path results. */
+  liveStatus?: LiveStatus;
+  /** Safe failure class when unsuccessful. Never a credential. */
+  failureClass?: LiveAcquisitionFailureClass;
+  quality?: "VERIFIED" | "DEGRADED" | "UNAVAILABLE";
 }
 
 /**
@@ -624,51 +753,63 @@ export async function acquireLiveData(
     ?? selectBestAdapter(instrument, assetClass, "ohlcv", readEnv);
 
   if (!adapter) {
+    // Phase 238 — one completion read dates this result AND ends the latency
+    // measurement; the previous form read the clock once per field.
+    const completedAt = Date.now();
     return {
       instrument,
       assetClass,
-      fetchedAt: Date.now(),
+      fetchedAt: completedAt,
       snapshot: null,
       provider: "none",
       success: false,
       error: "no available provider for this instrument",
-      latencyMs: Date.now() - startTime,
+      latencyMs: completedAt - startTime,
     };
   }
 
   try {
     const snapshot = await adapter.fetch(instrument, assetClass, readEnv);
+    const completedAt = Date.now();
     if (snapshot) {
       return {
         instrument,
         assetClass,
         snapshot,
         provider: adapter.id,
-        fetchedAt: Date.now(),
+        /*
+          Phase 238 — the adapter already read the clock for this record, at
+          the instant its freshness was judged. Reusing that read is what stops
+          one acquisition carrying two dates: without it the snapshot could be
+          graded against one instant while the result claimed another, e.g. a
+          DELAYED record stamped with a `fetchedAt` that implies FRESH.
+        */
+        fetchedAt: snapshot.acquiredAt ?? completedAt,
         success: true,
-        latencyMs: Date.now() - startTime,
+        latencyMs: completedAt - startTime,
       };
     }
     return {
       instrument,
       assetClass,
-      fetchedAt: Date.now(),
+      fetchedAt: completedAt,
       snapshot: null,
       provider: adapter.id,
       success: false,
       error: "provider returned null",
-      latencyMs: Date.now() - startTime,
+      latencyMs: completedAt - startTime,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const completedAt = Date.now();
     return {
       instrument,
       assetClass,
-      fetchedAt: Date.now(),
+      fetchedAt: completedAt,
       snapshot: null,
       provider: adapter.id,
       success: false,
-      error: err?.message ?? "provider error",
-      latencyMs: Date.now() - startTime,
+      error: errorMessage(err) || "provider error",
+      latencyMs: completedAt - startTime,
     };
   }
 }
@@ -686,6 +827,10 @@ export async function acquireProviderNativeLiveData(
     provider: string;
     providerInstrumentId: string;
     assetClass: AssetClass;
+    /** Provider or internal timeframe token. Defaults to 1h (scanner snapshot). */
+    timeframe?: string;
+    /** Bar count. Defaults to 100 (scanner snapshot). */
+    count?: number;
   },
   readEnv?: EnvReader,
   transport: Transport = defaultTransport,
@@ -695,8 +840,8 @@ export async function acquireProviderNativeLiveData(
   const result = await executeLiveRequest({
     instrument: input.instrument,
     capability: "ohlcv",
-    timeframe: "1h",
-    count: 100,
+    timeframe: input.timeframe ?? "1h",
+    count: input.count ?? 100,
     transport,
     readEnv,
     providerNative: {
@@ -716,21 +861,38 @@ export async function acquireProviderNativeLiveData(
     !Number.isFinite(latest.close) ||
     latest.close <= 0
   ) {
+    // Phase 238 — ONE instant closes this acquisition. The transport's own
+    // report is that instant when it exists; otherwise a single read serves as
+    // both the record's `fetchedAt` and the end of its latency, so the record
+    // cannot state a request time and a duration that refer to two instants.
+    const completedAt = result.receivedAt ?? Date.now();
     return {
       instrument: input.instrument,
       assetClass: input.assetClass,
       providerInstrumentId: input.providerInstrumentId,
       snapshot: null,
       provider: result.provider ?? input.provider,
-      fetchedAt: result.receivedAt ?? Date.now(),
+      fetchedAt: completedAt,
       success: false,
       error: result.failureReason ?? `Live request status: ${result.status}`,
-      latencyMs: result.latencyMs ?? Date.now() - startTime,
+      latencyMs: result.latencyMs ?? completedAt - startTime,
+      liveStatus: result.status,
+      failureClass: classifyLiveFailure({
+        liveStatus: result.status,
+        message: result.failureReason,
+      }),
+      quality: "UNAVAILABLE",
     };
   }
 
   const observedAt = latest.timestamp;
-  const freshness = assessFreshness(observedAt, Date.now());
+  // Phase 238 — one clock read for this record's request-time instant. The
+  // snapshot's freshness and the record's `fetchedAt` describe the SAME event
+  // (the request that just completed), so they are the same value: judged at
+  // one read and recorded at another, a snapshot could be graded STALE while
+  // the record it belongs to claims a `fetchedAt` that implies FRESH.
+  const fetchedAt = result.receivedAt ?? Date.now();
+  const freshness = assessFreshness(observedAt, fetchedAt);
 
   return {
     instrument: input.instrument,
@@ -746,16 +908,23 @@ export async function acquireProviderNativeLiveData(
       observedAt,
       freshness,
       quality: result.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
+      // Phase 238 — candle timestamp is provider-observed, not receipt.
+      timestampProvenance: "PROVIDER_OBSERVED",
     },
     candles: candles.map((candle) => ({
       ...candle,
       volume: candle.volume ?? 0,
     })),
     provider: result.provider ?? input.provider,
-    fetchedAt: result.receivedAt ?? Date.now(),
+    fetchedAt,
     success: true,
     ...(result.failureReason ? { error: result.failureReason } : {}),
-    latencyMs: result.latencyMs ?? Date.now() - startTime,
+    // Phase 238 — the latency ends at the record's OWN instant when the
+    // transport reported none, so `fetchedAt` and `latencyMs` describe one
+    // measurement rather than two.
+    latencyMs: result.latencyMs ?? fetchedAt - startTime,
+    liveStatus: result.status,
+    quality: result.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
   };
 }
 
@@ -774,14 +943,23 @@ export function providerNativeAcquisitionToMarketData(
     return null;
   }
 
+  /*
+    Phase 191 — a snapshot with no provider observation time cannot be
+    presented as realtime/delayed/stale, because every one of those labels is
+    a claim about WHEN the data was observed. `observedAt` is optional (the
+    provider may not report it), so its absence degrades freshness to
+    "unavailable" rather than inheriting a confident label.
+  */
   const freshness =
-    result.snapshot.freshness === "FRESH"
-      ? "realtime"
-      : result.snapshot.freshness === "DELAYED"
-        ? "delayed"
-        : result.snapshot.freshness === "STALE"
-          ? "stale"
-          : "unavailable";
+    result.snapshot.observedAt === undefined
+      ? "unavailable"
+      : result.snapshot.freshness === "FRESH"
+        ? "realtime"
+        : result.snapshot.freshness === "DELAYED"
+          ? "delayed"
+          : result.snapshot.freshness === "STALE"
+            ? "stale"
+            : "unavailable";
 
   const instrumentType =
     result.assetClass === "crypto"
@@ -801,12 +979,24 @@ export function providerNativeAcquisitionToMarketData(
     fetchTimestamp: result.fetchedAt,
     price: {
       price: result.snapshot.price,
-      timestamp: result.snapshot.observedAt,
+      /*
+        `PriceSnapshot.timestamp` means "when the price was last updated".
+        When the provider gave no observation time we record 0 — a sentinel
+        that `assessFreshness` treats as UNAVAILABLE — instead of `Date.now()`,
+        which would assert an observation that never happened.
+      */
+      timestamp: result.snapshot.observedAt ?? 0,
       source: result.provider,
     },
     candles,
     timeframe: "1h",
     dataFreshness: freshness,
+    ...(result.snapshot.timestampProvenance
+      ? { timestampProvenance: result.snapshot.timestampProvenance }
+      : {}),
+    ...(result.providerInstrumentId
+      ? { providerInstrumentId: result.providerInstrumentId }
+      : {}),
     ...(result.error ? { error: result.error } : {}),
   };
 }
@@ -893,6 +1083,7 @@ export function getProviderHealthSummary(): {
 // ═══════════════════════════════════════════════════════════════
 
 import type { VerificationResult, VerificationStatus } from "./verification";
+import { errorMessage } from "../data/json/narrow";
 
 /**
  * Map a Phase 54 verification status to a provider health status.

@@ -182,9 +182,17 @@ export function classifyMacroFreshness(observationDate: string, nowMs: number): 
  * A failed leg degrades gracefully: context needs AT LEAST one nominal
  * observation; the real curve simply stays unavailable if its legs fail.
  */
+/**
+ * Phase 238 — `fetchedAt` (when the data was ACQUIRED) and `nowMs` (when
+ * freshness is being judged) are two different events and are supplied
+ * separately. The previous signature took only `nowMs` and stamped it into
+ * `fetchedAt` too, so a cache hit — where the acquisition happened earlier —
+ * rebuilt that field from the read clock.
+ */
 export function buildTreasuryContext(
   nominalXmls: (string | undefined)[],
   realXmls: (string | undefined)[],
+  fetchedAt: number,
   nowMs: number,
 ): TreasuryData {
   const nominalObs = nominalXmls
@@ -219,7 +227,7 @@ export function buildTreasuryContext(
   return {
     available: true,
     source: "US Treasury (home.treasury.gov XML feed)",
-    fetchedAt: nowMs,
+    fetchedAt,
     freshness: classifyMacroFreshness(latestNominal.observationDate, nowMs),
     latest: { nominal: latestNominal, ...(latestReal ? { real: latestReal } : {}) },
     ...(prevNominal

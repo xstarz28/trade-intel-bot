@@ -7,13 +7,7 @@
 
 import React, { useMemo } from "react";
 import { useI18n } from "@/lib/i18n";
-import {
-  TrendingUp,
-  TrendingDown,
-  Minus,
-  Activity,
-  Globe,
-} from "lucide-react";
+import { Globe } from "lucide-react";
 import {
   getAllInstruments,
   getInstrumentInfo,
@@ -51,13 +45,27 @@ function InstrumentRow({
   info: InstrumentInfo;
   liveState?: LiveInstrumentState;
 }) {
-  const price = liveState?.price ?? 0;
+  // Phase 193 — the LIVE/STALE badge is a DATA-PROVENANCE claim, not chrome.
+  // `market.live` / `market.stale` / `market.unavailable` exist in all nine
+  // locales; this row previously hardcoded the English words, so a non-English
+  // user saw an untranslated assertion about data currency. The keys were
+  // reported "unreferenced" precisely because this consumer was disconnected.
+  const { t } = useI18n();
+  // A price is only usable if the provider actually reported a finite,
+  // positive number. `?? 0` alone let NaN/Infinity through, which rendered as
+  // the literal string "NaN" next to a provider name.
+  const rawPrice = liveState?.price;
+  const hasUsablePrice =
+    typeof rawPrice === "number" && Number.isFinite(rawPrice) && rawPrice > 0;
+  const price = hasUsablePrice ? rawPrice : 0;
   const sourceMode = liveState?.sourceMode ?? "UNAVAILABLE";
   const provider = liveState?.provider ?? info.primaryProvider;
 
-  const isLive = sourceMode === "LIVE" && price > 0;
-  const isStale = sourceMode === "STALE";
-  const isUnavailable = sourceMode === "UNAVAILABLE" || price === 0;
+  const isLive = sourceMode === "LIVE" && hasUsablePrice;
+  const isStale = sourceMode === "STALE" && hasUsablePrice;
+  // Simulated data is never real market data: show it as unavailable rather
+  // than letting a synthetic number sit in a price column unlabelled.
+  const isUnavailable = !hasUsablePrice || sourceMode === "UNAVAILABLE" || sourceMode === "SIMULATED";
 
   // Determine price color based on source mode
   const priceColor = isLive
@@ -88,8 +96,11 @@ function InstrumentRow({
       </span>
 
       {/* Source mode badge */}
-      <span className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${sourceColor}`}>
-        {isLive ? "LIVE" : isStale ? "STALE" : "—"}
+      <span
+        className={`text-[8px] font-mono px-1.5 py-0.5 rounded ${sourceColor}`}
+        aria-label={isLive ? t.market.live : isStale ? t.market.stale : t.market.unavailable}
+      >
+        {isLive ? t.market.live : isStale ? t.market.stale : "—"}
       </span>
 
       {/* Provider */}
@@ -110,7 +121,7 @@ interface MarketOverviewPanelProps {
 }
 
 export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
-  const { t } = useI18n();
+  const { t, txi } = useI18n();
   // Group instruments by asset class
   const grouped = useMemo(() => {
     const allSymbols = getAllInstruments();
@@ -129,7 +140,16 @@ export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
   const totalLive = useMemo(() => {
     let count = 0;
     for (const [, state] of livePrices) {
-      if (state.sourceMode === "LIVE" && state.price > 0) count++;
+      // Must match the per-row definition of "live" exactly, otherwise the
+      // "N/M live" counter can claim more live feeds than are displayed.
+      if (
+        state.sourceMode === "LIVE" &&
+        typeof state.price === "number" &&
+        Number.isFinite(state.price) &&
+        state.price > 0
+      ) {
+        count++;
+      }
     }
     return count;
   }, [livePrices]);
@@ -142,10 +162,10 @@ export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Globe className="size-3.5 text-primary" />
-          <h3 className="text-xs font-mono font-semibold">Market Overview</h3>
+          <h3 className="text-xs font-mono font-semibold">{t.market.title}</h3>
         </div>
         <span className="text-[9px] font-mono text-muted-foreground">
-          {totalLive}/{totalInstruments} live
+          {txi("market.liveCount", { live: totalLive, total: totalInstruments })}
         </span>
       </div>
 
@@ -169,7 +189,7 @@ export function MarketOverviewPanel({ livePrices }: MarketOverviewPanelProps) {
 
       {/* Footer */}
       <div className="text-[8px] font-mono text-muted-foreground/40 px-2 pt-1 border-t border-border/20">
-        Source transparency: LIVE = real provider data · STALE = data outside freshness · — = unavailable
+        {t.market.sourceTransparency}
       </div>
     </div>
   );

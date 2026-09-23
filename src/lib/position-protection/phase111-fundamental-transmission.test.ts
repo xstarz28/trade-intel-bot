@@ -14,25 +14,9 @@ import {
   buildInflationCausalTrace,
   buildFundamentalCausalResult,
   buildAssetCausalContext,
-  type MacroRegimeType,
-  type FundamentalTransmission,
-  type CausalStep,
-  type FundamentalCausalResult,
-  type AssetCausalContext,
 } from "./fundamental-transmission";
 import type {
   FundamentalRegime,
-  AssetClass,
-  InflationRegime,
-  InflationDriver,
-  RateRegime,
-  RealYieldRegime,
-  CurrencyRegime,
-  LiquidityRegime,
-  GrowthRegime,
-  EnergyRegime,
-  GeopoliticalRegime,
-  OverallRegime,
   DimensionAvailability,
 } from "./fundamental-regime";
 

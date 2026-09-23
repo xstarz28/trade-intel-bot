@@ -4,6 +4,11 @@
    * You can modify it, but some settings required to use Convex.
    */
   "compilerOptions": {
+    /* Phase 174: resolve the shared "@/..." alias so server-side functions can
+     * import the same engine modules the client uses. Mirrors tsconfig.app.json. */
+    "baseUrl": "..",
+    "paths": { "@/*": ["./*"] },
+
     /* These settings are not required by Convex and can be modified. */
     "allowJs": true,
     "strict": true,

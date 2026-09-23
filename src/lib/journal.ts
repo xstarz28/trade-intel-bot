@@ -19,7 +19,6 @@ import type {
   CreateJournalEntryInput,
   TradeStatus,
   TradeOutcome,
-  VALID_TRANSITIONS,
 } from "@/types/journal";
 import { VALID_TRANSITIONS as TRANSITIONS } from "@/types/journal";
 
@@ -82,6 +81,10 @@ export function createJournalEntry(input: CreateJournalEntryInput): JournalEntry
     instrumentType: input.instrumentType,
     timeframe: input.timeframe,
     style: input.style,
+    provider: input.provider,
+    providerInstrumentId: input.providerInstrumentId,
+    assetClass: input.assetClass,
+    title: input.title,
     analysisSnapshot: { ...input.analysisSnapshot }, // immutable copy
     status: initialStatus,
     entry: input.entry,
@@ -99,12 +102,17 @@ export function createJournalEntry(input: CreateJournalEntryInput): JournalEntry
 /**
  * Create a journal entry directly from an AnalysisResult.
  * Convenience wrapper that extracts the snapshot automatically.
+ * Phase 262 — preserves provider-native identity.
  */
 export function journalFromAnalysis(
   result: AnalysisResult,
   overrides: Partial<CreateJournalEntryInput> = {},
 ): JournalEntry {
   const snapshot = createAnalysisSnapshot(result);
+  // Preserve provider-native identity from AnalysisResult
+  const provider = (result as any).provider as string | undefined;
+  const providerInstrumentId = (result as any).providerInstrumentId as string | undefined;
+  const assetClass = overrides.assetClass ?? (result.instrumentType as string) ?? undefined;
   return createJournalEntry({
     instrument: result.instrument,
     instrumentType: result.instrumentType,
@@ -112,6 +120,11 @@ export function journalFromAnalysis(
     style: result.tradingStyle,
     analysisSnapshot: snapshot,
     ...overrides,
+    // ensure provider identity from overrides wins, but fallback to result — after spread so overrides win
+    provider: overrides.provider ?? provider,
+    providerInstrumentId: overrides.providerInstrumentId ?? providerInstrumentId,
+    assetClass: overrides.assetClass ?? assetClass,
+    title: overrides.title ?? (overrides as any).title,
   });
 }
 
@@ -166,9 +179,17 @@ export function transitionEntry(
  * Update professional review fields on a journal entry.
  * Returns a new entry (immutable update).
  */
+/** The free-text review columns a trader edits after the fact. */
+export type JournalReviewField =
+  | "entryReason" | "thesisAtEntry" | "confirmationObserved" | "invalidationObserved"
+  | "whatWentRight" | "whatWentWrong" | "lessons" | "notes";
+
+/** Trade-info columns editable inline (numeric). */
+export type JournalTradeField = "entry" | "stopLoss" | "takeProfit" | "riskReward" | "positionSize" | "notionalValue";
+
 export function updateReview(
   entry: JournalEntry,
-  review: Partial<Pick<JournalEntry, "entryReason" | "thesisAtEntry" | "confirmationObserved" | "invalidationObserved" | "whatWentRight" | "whatWentWrong" | "lessons" | "notes">>,
+  review: Partial<Pick<JournalEntry, JournalReviewField>>,
 ): JournalEntry {
   return {
     ...entry,
@@ -185,7 +206,7 @@ export function updateReview(
  */
 export function updateTradeInfo(
   entry: JournalEntry,
-  tradeInfo: Partial<Pick<JournalEntry, "entry" | "stopLoss" | "takeProfit" | "riskReward" | "positionSize" | "notionalValue">>,
+  tradeInfo: Partial<Pick<JournalEntry, JournalTradeField>>,
 ): JournalEntry {
   return {
     ...entry,
@@ -220,7 +241,7 @@ export function canCreateTrade(result: AnalysisResult): boolean {
 /**
  * Check if an analysis result is suitable for observation journaling.
  */
-export function canJournalAsObservation(result: AnalysisResult): boolean {
+export function canJournalAsObservation(_result: AnalysisResult): boolean {
   // Any result can be journaled as an observation
   return true;
 }

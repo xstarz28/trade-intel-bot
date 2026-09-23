@@ -18,6 +18,13 @@ import type {
   DeFiIntelligence,
 } from "./types";
 import { toDefiLlamaId } from "./symbols";
+import { asFiniteNumber, asRecordArray, field, isRecord } from "../json/narrow";
+
+/** Internal accumulator for the two DeFiLlama datasets. */
+interface DeFiLlamaRaw {
+  tvl?: { current: number; change7d?: number; change30d?: number };
+  fees?: { dailyFees: number; dailyRevenue: number };
+}
 
 const DEFILLAMA_BASE = "https://api.llama.fi";
 
@@ -52,7 +59,7 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
 
     let networkError: string | undefined;
     try {
-      const data: Record<string, any> = {};
+      const data: DeFiLlamaRaw = {};
 
       // Fetch TVL (chain-level)
       if (mapping.level === "chain") {
@@ -61,17 +68,22 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
             `${DEFILLAMA_BASE}/v2/historicalChainTvl/${mapping.slug}`,
           );
           if (tvlRes.ok) {
-            const tvlHistory = await tvlRes.json();
-            if (Array.isArray(tvlHistory) && tvlHistory.length > 0) {
-              const latest = tvlHistory[tvlHistory.length - 1];
-              const weekAgo = tvlHistory.find(
-                (e: any) => Math.abs(e.date - latest.date) >= 6 * 86400 && Math.abs(e.date - latest.date) <= 8 * 86400,
+            // Phase 227 — rows are `{ date: unixSeconds, tvl: number }`;
+            // anything else is skipped. A latest point without a numeric
+            // tvl/date yields no TVL dataset (was `tvl ?? 0` → a "0 TVL").
+            const points = asRecordArray(await tvlRes.json())
+              .map((e) => ({ date: asFiniteNumber(e.date), tvl: asFiniteNumber(e.tvl) }))
+              .filter((e): e is { date: number; tvl: number } => e.date !== undefined && e.tvl !== undefined);
+            if (points.length > 0) {
+              const latest = points[points.length - 1];
+              const weekAgo = points.find(
+                (e) => Math.abs(e.date - latest.date) >= 6 * 86400 && Math.abs(e.date - latest.date) <= 8 * 86400,
               );
-              const monthAgo = tvlHistory.find(
-                (e: any) => Math.abs(e.date - latest.date) >= 28 * 86400 && Math.abs(e.date - latest.date) <= 32 * 86400,
+              const monthAgo = points.find(
+                (e) => Math.abs(e.date - latest.date) >= 28 * 86400 && Math.abs(e.date - latest.date) <= 32 * 86400,
               );
               data.tvl = {
-                current: latest.tvl ?? 0,
+                current: latest.tvl,
                 change7d: weekAgo && weekAgo.tvl > 0
                   ? ((latest.tvl - weekAgo.tvl) / weekAgo.tvl) * 100
                   : undefined,
@@ -93,11 +105,11 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
             `${DEFILLAMA_BASE}/summary/fees/${mapping.slug}?dataType=dailyFees`,
           );
           if (feesRes.ok) {
-            const feesData = await feesRes.json();
-            if (feesData?.total24h !== undefined) {
+            const total24h = asFiniteNumber(field(await feesRes.json(), "total24h"));
+            if (total24h !== undefined) {
               data.fees = {
-                dailyFees: feesData.total24h,
-                dailyRevenue: feesData.total24h * 0.1, // rough protocol revenue estimate
+                dailyFees: total24h,
+                dailyRevenue: total24h * 0.1, // rough protocol revenue estimate
               };
             }
           }
@@ -146,12 +158,15 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
  * Pure function — no side effects.
  */
 export function parseDeFiLlamaResult(
-  data: Record<string, any>,
+  raw: unknown,
   instrument: string,
   observedAt: number,
 ): DeFiIntelligence {
-  const availableDatasets = data.availableDatasets ?? 0;
-  const totalDatasets = data.totalDatasets ?? 2;
+  const data = isRecord(raw) ? raw : {};
+  const availableDatasets = asFiniteNumber(data.availableDatasets) ?? 0;
+  const totalDatasets = asFiniteNumber(data.totalDatasets) ?? 2;
+  const tvlCurrent = asFiniteNumber(field(data.tvl, "current"));
+  const dailyFees = asFiniteNumber(field(data.fees, "dailyFees"));
 
   return {
     provider: "DeFiLlama",
@@ -161,17 +176,17 @@ export function parseDeFiLlamaResult(
     available: availableDatasets > 0,
     failureReason: availableDatasets === 0 ? "No DeFiLlama data available" : undefined,
 
-    tvl: data.tvl ? {
-      current: data.tvl.current ?? 0,
-      change7d: data.tvl.change7d,
-      change30d: data.tvl.change30d,
-      reliable: typeof data.tvl.current === "number" && data.tvl.current > 0,
+    tvl: isRecord(data.tvl) ? {
+      current: tvlCurrent ?? 0,
+      change7d: asFiniteNumber(data.tvl.change7d),
+      change30d: asFiniteNumber(data.tvl.change30d),
+      reliable: tvlCurrent !== undefined && tvlCurrent > 0,
     } : undefined,
 
-    fees: data.fees ? {
-      dailyFees: data.fees.dailyFees,
-      dailyRevenue: data.fees.dailyRevenue,
-      reliable: typeof data.fees.dailyFees === "number" && data.fees.dailyFees > 0,
+    fees: isRecord(data.fees) ? {
+      dailyFees: dailyFees,
+      dailyRevenue: asFiniteNumber(data.fees.dailyRevenue),
+      reliable: dailyFees !== undefined && dailyFees > 0,
     } : undefined,
 
     stablecoins: undefined,

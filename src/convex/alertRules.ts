@@ -6,6 +6,7 @@
 
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
+import { authUserId } from "./lib/authUser";
 
 // ═══════════════════════════════════════════════════════════════
 // RULES CRUD
@@ -15,11 +16,11 @@ import { query, mutation } from "./_generated/server";
 export const listRules = query({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) return [];
     return await ctx.db
       .query("alertRules")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
   },
 });
@@ -38,13 +39,13 @@ export const createRule = mutation({
     cooldownMs: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     // Count existing rules
     const existing = await ctx.db
       .query("alertRules")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
 
     if (existing.length >= 50) {
@@ -53,7 +54,7 @@ export const createRule = mutation({
 
     const now = Date.now();
     await ctx.db.insert("alertRules", {
-      userId: userId as any,
+      userId: userId,
       ruleId: args.ruleId,
       name: args.name,
       enabled: args.enabled,
@@ -79,13 +80,13 @@ export const updateRule = mutation({
     cooldownMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const rules = await ctx.db
       .query("alertRules")
       .withIndex("by_user_rule", (q) =>
-        q.eq("userId", userId as any).eq("ruleId", args.ruleId),
+        q.eq("userId", userId).eq("ruleId", args.ruleId),
       )
       .first();
 
@@ -105,13 +106,13 @@ export const updateRule = mutation({
 export const deleteRule = mutation({
   args: { ruleId: v.string() },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const rule = await ctx.db
       .query("alertRules")
       .withIndex("by_user_rule", (q) =>
-        q.eq("userId", userId as any).eq("ruleId", args.ruleId),
+        q.eq("userId", userId).eq("ruleId", args.ruleId),
       )
       .first();
 
@@ -122,7 +123,7 @@ export const deleteRule = mutation({
     const alerts = await ctx.db
       .query("ruleAlertHistory")
       .withIndex("by_user_rule", (q) =>
-        q.eq("userId", userId as any).eq("ruleId", args.ruleId),
+        q.eq("userId", userId).eq("ruleId", args.ruleId),
       )
       .collect();
 
@@ -140,12 +141,12 @@ export const deleteRule = mutation({
 export const getRecentAlerts = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) return [];
     const limit = Math.min(args.limit ?? 50, 100);
     return await ctx.db
       .query("ruleAlertHistory")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(limit);
   },
@@ -167,11 +168,11 @@ export const saveAlert = mutation({
     timestamp: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     await ctx.db.insert("ruleAlertHistory", {
-      userId: userId as any,
+      userId: userId,
       alertId: args.alertId,
       ruleId: args.ruleId,
       ruleName: args.ruleName,
@@ -191,12 +192,12 @@ export const saveAlert = mutation({
 export const clearAlerts = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await authUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const alerts = await ctx.db
       .query("ruleAlertHistory")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
 
     for (const alert of alerts) {

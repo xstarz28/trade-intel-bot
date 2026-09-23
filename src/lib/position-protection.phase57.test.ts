@@ -143,7 +143,10 @@ describe("D. P/L calculation", () => {
   it("D2 — leveraged P/L", () => {
     const m = calculateProfitMetrics(longBtc({ leverage: 10 }));
     expect(m.leveragedPnL).toBeDefined();
-    expect(m.leveragedPnL).toBeGreaterThan(m.unrealizedPnL);
+    // Both are defined for this valid fixture; assert that explicitly so the
+    // comparison is not silently skipped if the contract changes.
+    expect(m.unrealizedPnL).toBeDefined();
+    expect(m.leveragedPnL!).toBeGreaterThan(m.unrealizedPnL!);
   });
 });
 

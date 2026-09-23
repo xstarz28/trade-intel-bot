@@ -1,0 +1,319 @@
+# Phase 180 — mobile packaging builds.
+#
+# WHY THIS FILE EXISTS
+# The development sandbox has no JDK and no macOS, so the Android APK could
+# not be compiled and the iOS project could not be opened. Those were reported
+# as BLOCKED, not as passing. CI removes the blocker for Android permanently
+# and for iOS partially: a GitHub-hosted macOS runner can compile the iOS
+# project, but NO CI runner can replace testing on a physical iPhone.
+#
+# WHAT A GREEN CHECK HERE DOES AND DOES NOT MEAN
+#   Android job green  => the debug APK compiles and contains no secrets.
+#   iOS job green      => the Xcode project configures and compiles.
+#   Neither            => a signed release, a store submission, or evidence
+#                         that the app behaves correctly on real hardware.
+# App Links / Universal Links remain UNVERIFIED until the association files
+# carry a real signing fingerprint and Apple Team ID.
+name: Mobile packaging
+
+# TRIGGER STRATEGY (Phase 181 — corrected).
+#
+# The original filter listed the paths that "look mobile" (android/, ios/,
+# capacitor.config.ts, src/lib/mobile/). That was wrong, and measurably so:
+# both native apps embed the SAME dist/ produced from the whole Vite app, so a
+# change to src/pages/Dashboard.tsx alters the shipped mobile artifact while
+# matching none of those paths. Verified by building dist/ before and after a
+# web-only edit and comparing SHA-256 — the artifact changed.
+#
+# An allowlist of triggering paths is the wrong shape for this problem: it has
+# to enumerate every possible build input, and anything forgotten fails SILENTLY
+# by not running. The failure mode of an allowlist is a missed release check.
+#
+# So the filter is INVERTED. The default is to run, and we exclude only paths
+# proven not to reach the artifact. Each exclusion below is justified:
+#
+#   docs/**, **/*.md          documentation; never bundled
+#   .prettierrc/.prettierignore, eslint.config.js
+#                             formatting and lint config; `vite build` runs
+#                             neither
+#   vitest.config.ts, vitest.live.config.ts
+#                             test-runner config; not a build input
+#   .gitignore                VCS metadata
+#
+# Everything else triggers, including src/**, public/**, index.html,
+# package.json, package-lock.json, vite.config.ts, postcss.config.cjs,
+# tsconfig*.json, capacitor.config.ts, android/**, ios/** and scripts/**.
+#
+# Test files under src/ are NOT excluded. They do not ship, so excluding them
+# would be valid, but a redundant mobile build is cheap while a missed one is a
+# release-integrity defect. The asymmetry decides it.
+#
+# `src/lib/hosting/ci-trigger-coverage.phase181.test.ts` reproduces GitHub's
+# matching semantics and fails if a representative web path stops triggering.
+on:
+  workflow_dispatch:
+  push:
+    branches: ["arena/**"]
+    paths-ignore: &non_build_inputs
+      - "docs/**"
+      - "**/*.md"
+      - ".prettierrc"
+      - ".prettierignore"
+      - "eslint.config.js"
+      - ".gitignore"
+      - "vitest.config.ts"
+      - "vitest.live.config.ts"
+  pull_request:
+    paths-ignore: *non_build_inputs
+
+jobs:
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # The sandbox had no JDK at all, which is the entire reason the APK
+      # build was BLOCKED rather than attempted.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Phase 236 — do NOT let this action install its default package set.
+      #
+      # The action's default is `packages: 'tools platform-tools'`. On
+      # 2026-09-15 Google stopped serving the legacy `tools` package, so
+      # `sdkmanager tools` exits 1 and the action dies in ~9 seconds — before any
+      # build step runs. That is the entire Android failure: the
+      # `android-actions/setup-android@v3` step red, steps 6-10 skipped, first
+      # red job 2026-09-15T12:37Z after a green one at 2026-09-14T14:01Z, with no
+      # change to this file, to android/ or to package.json in between.
+      # Upstream: android-actions/setup-android#537, which reports
+      # `Failed to find package 'tools'` against this exact action commit
+      # (9fc6c4e, the tip of the `v3` tag) — and note that v4 has the same
+      # default, so upgrading would not fix it.
+      #
+      # platform-tools is the component this job actually needs: the
+      # ubuntu-latest image already ships platforms;android-35 and build-tools
+      # 35.x, which is what compileSdk 35 (android/variables.gradle) compiles
+      # against, and the default `accept-android-sdk-licenses` keeps Gradle able
+      # to fetch anything else it may need.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Build web assets and sync into the native project
+        run: npm run mobile:sync:android
+
+      # No signing material exists in this repository by design, so only the
+      # debug variant can be produced. A release build would need secrets that
+      # must never be committed.
+      - name: Assemble debug APK
+        working-directory: android
+        run: |
+          set -euo pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          test -n "$APK" || { echo "::error::no APK produced"; exit 1; }
+          # A real APK is a zip; verify structure and that the web assets and
+          # the expected application id are actually inside it.
+          unzip -l "$APK" | grep -q 'assets/public/index.html' \
+            || { echo "::error::web assets missing from the APK"; exit 1; }
+          unzip -p "$APK" assets/public/index.html | grep -q 'src="/assets/' \
+            || { echo "::error::APK uses a relative asset base"; exit 1; }
+          echo "APK: $APK ($(stat -c%s "$APK") bytes)"
+
+      - name: Verify packaged artifacts contain no secrets
+        run: npm run mobile:verify
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk-${{ github.sha }}
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+
+  ios:
+    name: iOS project build (compile only)
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Build web assets and sync into the native project
+        run: npm run mobile:sync:ios
+
+      # Phase 181: assert the step did real work. A previous run completed
+      # `pod install` in ONE SECOND, which is not plausible when Pods/ is not
+      # committed — exactly the shape of a false green. Verifying the outputs
+      # exist turns "the command exited 0" into "the dependencies are present".
+      - name: Install CocoaPods dependencies
+        working-directory: ios/App
+        run: |
+          set -euo pipefail
+          pod install --repo-update
+          test -f Podfile.lock       || { echo "::error::Podfile.lock missing — pod install did nothing"; exit 1; }
+          test -d Pods               || { echo "::error::Pods/ missing — pod install did nothing"; exit 1; }
+          test -d App.xcworkspace    || { echo "::error::App.xcworkspace missing"; exit 1; }
+          echo "Pods installed: $(ls Pods | wc -l) entries"
+
+      # CODE_SIGNING_ALLOWED=NO keeps this a pure compile check: it proves the
+      # project is structurally sound without requiring an Apple Developer
+      # account, a provisioning profile, or any certificate.
+      - name: Compile for simulator (unsigned)
+        working-directory: ios/App
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-output \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          # Prove a binary was actually produced, not just that the tool
+          # exited 0 after deciding there was nothing to do.
+          APP=$(find build-output -name 'App.app' -type d | head -1)
+          test -n "$APP" || { echo "::error::xcodebuild produced no App.app"; exit 1; }
+          test -f "$APP/App" || { echo "::error::App.app contains no executable"; exit 1; }
+          echo "Built: $APP"
+          # The web assets must be inside the bundle, or the app ships empty.
+          test -f "$APP/public/index.html" || { echo "::error::web assets missing from the iOS bundle"; exit 1; }
+          grep -q 'src="/assets/' "$APP/public/index.html" || { echo "::error::iOS bundle uses a relative asset base"; exit 1; }
+          echo "Web assets present with an absolute base."
+
+      - name: Verify packaged artifacts contain no secrets
+        run: npm run mobile:verify
+
+      - name: State the limits of this job
+        run: |
+          echo "iOS project compiled on a macOS runner."
+          echo "This does NOT verify behaviour on a physical iPhone,"
+          echo "and does NOT constitute release or store readiness."
+
+  windows:
+    name: Windows desktop package (Tauri)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      # The sandbox has no Rust toolchain and no Windows, which is why the
+      # desktop build could not be attempted locally and was reported BLOCKED.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      # The desktop app wraps the SAME production web build as the browser and
+      # both mobile platforms. If this ever diverges, the "one product, one UI"
+      # guarantee is broken.
+      - name: Build the shared web application
+        run: npm run build
+
+      # `--locked` is deliberately NOT used: Cargo.lock is not committed
+      # (the sandbox has no Rust toolchain and crates.io is unreachable, so it
+      # cannot be generated or kept honest here). Resolving fresh in CI is the
+      # correct trade-off until a lockfile can be produced and reviewed on a
+      # machine that can actually build.
+      - name: Rust unit tests (external-link allowlist)
+        working-directory: src-tauri
+        run: cargo test
+
+      # No signing material exists in this repository by design, so this
+      # produces an UNSIGNED installer. An unsigned build is a packaging
+      # check, not a distributable artifact.
+      - name: Build Windows installers (unsigned)
+        run: npx tauri build --ci
+
+      # Assert the step did real work rather than trusting an exit code —
+      # the same lesson as the iOS false green in Phase 181.
+      - name: Verify installers were produced
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUNDLE=src-tauri/target/release/bundle
+          MSI=$(find "$BUNDLE" -name '*.msi' | head -1 || true)
+          NSIS=$(find "$BUNDLE" -name '*-setup.exe' | head -1 || true)
+          test -n "$MSI"  || { echo "::error::no MSI produced"; exit 1; }
+          test -n "$NSIS" || { echo "::error::no NSIS setup.exe produced"; exit 1; }
+          echo "MSI:  $MSI  ($(stat -c%s "$MSI") bytes)"
+          echo "NSIS: $NSIS ($(stat -c%s "$NSIS") bytes)"
+
+      # The executable embeds the web assets. A relative asset base would
+      # reproduce the Phase 180 blank-page defect inside the desktop window,
+      # so it is checked on the real build output.
+      - name: Verify bundled web assets use an absolute base
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'src="/assets/' dist/index.html \
+            || { echo "::error::web assets use a relative base — desktop deep links would render blank"; exit 1; }
+          echo "Absolute asset base confirmed."
+
+      - name: Verify artifacts contain no secrets
+        run: npm run mobile:verify
+
+      - name: Scan the compiled binary for secrets and dev endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXE=$(find src-tauri/target/release -maxdepth 1 -name '*.exe' | head -1 || true)
+          test -n "$EXE" || { echo "::error::no executable found"; exit 1; }
+          # `strings` is not on a Windows runner, so extract printable ASCII
+          # with tr and grep the result.
+          tr -cd '\11\12\15\40-\176' < "$EXE" > /tmp/exe-strings.txt
+          for pattern in 'TWELVE_DATA_API_KEY=' 'ALPHA_VANTAGE_API_KEY=' 'OTP_EMAIL_API_KEY=' 'localhost:5173' '.e2b.app'; do
+            if grep -qF "$pattern" /tmp/exe-strings.txt; then
+              echo "::error::forbidden string in the desktop executable: $pattern"
+              exit 1
+            fi
+          done
+          echo "Executable scan clean."
+
+      - name: Upload Windows installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installers-${{ github.sha }}
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+          retention-days: 14
+
+      - name: State the limits of this job
+        shell: bash
+        run: |
+          echo "Windows installers built and scanned."
+          echo "They are UNSIGNED: not Microsoft Store submittable and not"
+          echo "suitable for direct download, both of which require a"
+          echo "certificate chaining to a Microsoft-trusted root."
+          echo "This does NOT verify install/uninstall on a real Windows machine."

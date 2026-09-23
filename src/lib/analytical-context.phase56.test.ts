@@ -14,7 +14,7 @@ import {
   type IndexRawData,
   type MacroRawData,
 } from "@/lib/data/universal/analytical-depth";
-import { classifyRegime, aggregateRegimes, type RegimeObservation } from "@/lib/data/universal/regime";
+import { classifyRegime } from "@/lib/data/universal/regime";
 
 // ═══════════════════════════════════════════════════════════════
 // FIXTURES

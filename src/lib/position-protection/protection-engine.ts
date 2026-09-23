@@ -18,7 +18,6 @@ import type {
   ProfitProtectionUrgency,
   WhyTpNowExplanation,
 } from "./types";
-import { alertSeverityRank } from "./types";
 import { calculateProfitMetrics } from "./profit-state";
 import {
   evaluateThesisHealth,
@@ -132,7 +131,6 @@ function determineUrgency(
   shock: ShockAssessment,
   givebackPct?: number,
 ): { urgency: ProfitProtectionUrgency; reason: string } {
-  const isProfitable = profit.profitState === "PROFITABLE" || profit.profitState === "STRONGLY_PROFITABLE";
 
   if (severity === "INVALIDATED") {
     return { urgency: "CRITICAL", reason: "Thesis invalidated — key conditions supporting the position are no longer present." };
@@ -181,7 +179,6 @@ function buildWhyTpNow(
   supportingEvidence: string[],
   conflictingEvidence: string[],
   missingData: string[],
-  givebackPct?: number,
 ): WhyTpNowExplanation {
   const rStr = profit.rMultiple !== undefined ? `${profit.rMultiple >= 0 ? "+" : ""}${profit.rMultiple.toFixed(2)}R` : `${profit.distanceFromEntryPct.toFixed(1)}%`;
   const profitStatus = `${rStr} unrealized ${profit.profitState.toLowerCase().replace("_", " ")}`;
@@ -256,8 +253,6 @@ function buildAlertMessage(
   severity: AlertSeverity,
   thesisHealth: { state: string; score: number; deteriorationCount: number },
   profit: ProfitMetrics,
-  shock: ShockAssessment,
-  supportingCount: number,
 ): string {
   switch (severity) {
     case "NONE":
@@ -300,13 +295,26 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
   const isProfit = profit.profitState === "PROFITABLE" || profit.profitState === "STRONGLY_PROFITABLE";
   const currentProfit = profit.unrealizedPnL;
 
+  // When the live P/L is unknown, the previously recorded peak must be left
+  // untouched. Overwriting or comparing against an unknown value would either
+  // erase a real peak or silently skip the giveback check — note that every
+  // comparison against NaN is false, which is exactly how this failed before.
   let peakProfitSeen = input.monitoringState?.peakProfitSeen;
-  if (isProfit && (peakProfitSeen === undefined || currentProfit > peakProfitSeen)) {
+  if (
+    currentProfit !== undefined &&
+    isProfit &&
+    (peakProfitSeen === undefined || currentProfit > peakProfitSeen)
+  ) {
     peakProfitSeen = currentProfit;
   }
 
   // Recalculate giveback if we have peak
-  if (peakProfitSeen !== undefined && peakProfitSeen > 0 && currentProfit < peakProfitSeen) {
+  if (
+    currentProfit !== undefined &&
+    peakProfitSeen !== undefined &&
+    peakProfitSeen > 0 &&
+    currentProfit < peakProfitSeen
+  ) {
     profit.peakProfit = peakProfitSeen;
     profit.givebackPct = ((peakProfitSeen - currentProfit) / peakProfitSeen) * 100;
   }
@@ -370,7 +378,7 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
 
   // 12. Build "Why TP Now?" explanation
   const whyTpNow = buildWhyTpNow(
-    severity, profit, thesisHealth, shock, supportingEvidence, conflictingEvidence, missingData, profit.givebackPct,
+    severity, profit, thesisHealth, shock, supportingEvidence, conflictingEvidence, missingData,
   );
 
   // 13. Build the alert
@@ -381,14 +389,14 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
     urgency,
     urgencyReason,
     whyTpNow,
-    thesisHealth: thesisHealth.state as any,
+    thesisHealth: thesisHealth.state,
     thesisHealthScore: thesisHealth.score,
     profit,
     shock,
     supportingEvidence,
     conflictingEvidence,
     missingData,
-    alertMessage: buildAlertMessage(severity, thesisHealth, profit, shock, supportingEvidence.length),
+    alertMessage: buildAlertMessage(severity, thesisHealth, profit),
     actionRecommendation: determineAction(severity, profit),
     protectionReference: protectionRef.available ? protectionRef.level : undefined,
     deteriorationSignals: deduplicated,

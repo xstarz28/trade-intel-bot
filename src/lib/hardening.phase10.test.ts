@@ -9,7 +9,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
-import { assemble, buildMtf, BULL_LEVELS, BEAR_LEVELS, execution, macro, sentiment } from "./benchmark-fixtures.phase9";
+import { assemble, buildMtf, BULL_LEVELS, BEAR_LEVELS, execution, sentiment } from "./benchmark-fixtures.phase9";
 import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
 
 const hawkEvents = "Fed signals hawkish stance, rate hike";
