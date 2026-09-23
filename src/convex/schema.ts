@@ -70,6 +70,9 @@ const schema = defineSchema(
       derivativesSummary: v.optional(v.string()),
       calendarSummary: v.optional(v.string()),
       timestamp: v.number(),
+      // Phase 252 — preserve exact provider-native identity
+      provider: v.optional(v.string()),
+      providerInstrumentId: v.optional(v.string()),
     }).index("by_user", ["userId", "timestamp"]),
 
     // Phase 31 — Trade journal entries

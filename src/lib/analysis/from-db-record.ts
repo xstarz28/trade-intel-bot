@@ -134,6 +134,9 @@ export function fromDbRecord(record: AnalysisRow): AnalysisResult | null {
     dataCompleteness: oneOf(COMPLETENESS, record.dataCompleteness) ?? "partial",
     dataFlags: record.dataFlags,
     timestamp: record.timestamp,
+    // Phase 252 — preserve exact provider-native identity from persisted history
+    ...((record as any).provider ? { provider: (record as any).provider as string } : {}),
+    ...((record as any).providerInstrumentId ? { providerInstrumentId: (record as any).providerInstrumentId as string } : {}),
     ...(record.price != null
       ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } }
       : {}),

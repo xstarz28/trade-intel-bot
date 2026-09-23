@@ -932,7 +932,7 @@ export default function Dashboard() {
 
         setCurrentResult(result);
 
-        // Persist to Convex (fire-and-forget)
+        // Persist to Convex (fire-and-forget) — Phase 252 preserve exact provider-native identity
         try {
           await saveAnalysis({
             instrument: result.instrument,
@@ -959,6 +959,8 @@ export default function Dashboard() {
             macroSummary: result.macroData?.confidence !== "unavailable" ? result.macroData?.summary : undefined,
             derivativesSummary: result.derivativesData?.confidence !== "unavailable" ? result.derivativesData?.interpretation : undefined,
             calendarSummary: result.calendarData?.confidence !== "unavailable" ? `Macro risk: ${result.calendarData?.macroRisk.level} — ${result.calendarData?.macroRisk.explanation}` : undefined,
+            provider: input.provider,
+            providerInstrumentId: input.providerInstrumentId,
           });
         } catch {
           // Save failed (guest user) — analysis still shows in session

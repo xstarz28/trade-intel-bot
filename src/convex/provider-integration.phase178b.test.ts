@@ -422,10 +422,10 @@ const callFx = handlerOf<
 
 const countTD = () => urls.filter((u) => u.includes("twelvedata")).length;
 
-const TD_QUOTE = { close: "1.0850", symbol: "EUR/USD" };
+const TD_QUOTE = { close: "1.0850", symbol: "EUR/USD", timestamp: Math.floor(Date.now() / 1000) };
 
 function fxResponder(url: string) {
-  if (url.includes("twelvedata")) return TD_QUOTE;
+  if (url.includes("twelvedata")) return { ...TD_QUOTE, timestamp: Math.floor(Date.now() / 1000) };
   return responderFor(url);
 }
 

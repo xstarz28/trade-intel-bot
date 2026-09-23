@@ -9,6 +9,7 @@ import { resolveUser } from "./lib/authUser";
 
 /**
  * Save an analysis to the user's history.
+ * Phase 252 — preserve exact provider-native identity.
  */
 export const save = mutation({
   args: {
@@ -17,8 +18,8 @@ export const save = mutation({
     timeframe: v.string(),
     bias: v.string(),
     confidence: v.number(),
-    recommendation: v.optional(v.string()),
-    conviction: v.optional(v.string()),
+    recommendation: v.optional(v.string()), // LONG | SHORT | NO_TRADE
+    conviction: v.optional(v.string()), // High | Medium | Low (trades only)
     noTradeReasons: v.optional(v.array(v.string())),
     riskReward: v.optional(v.number()),
     tradingStyle: v.optional(v.string()),
@@ -45,6 +46,8 @@ export const save = mutation({
     macroSummary: v.optional(v.string()),
     derivativesSummary: v.optional(v.string()),
     calendarSummary: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    providerInstrumentId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx);
@@ -76,6 +79,8 @@ export const save = mutation({
       macroSummary: args.macroSummary,
       derivativesSummary: args.derivativesSummary,
       calendarSummary: args.calendarSummary,
+      provider: args.provider,
+      providerInstrumentId: args.providerInstrumentId,
       timestamp: Date.now(),
     });
   },

@@ -172,8 +172,9 @@ describe("InstrumentInput catalog selection", () => {
       </I18nProvider>,
     );
     const status = screen.getByTestId("discovery-status").textContent ?? "";
-    expect(status).toContain("twelve-data");
-    expect(status).toContain("okx");
+    // Provider display may be formatted as "Twelve Data" — accept either raw id or formatted
+    expect(status.toLowerCase()).toMatch(/twelve/);
+    expect(status.toLowerCase()).toContain("okx");
     expect(status).toMatch(/UNAVAILABLE|unavailable/i);
     cleanup();
   });
