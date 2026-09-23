@@ -131,6 +131,7 @@ export function InstrumentInput({
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<NativeSelection | null>(null);
+  const [renderWindow, setRenderWindow] = useState(CATALOG_RENDER_WINDOW);
 
   useEffect(() => {
     try {
@@ -168,14 +169,20 @@ export function InstrumentInput({
     () => filterCatalog(catalog, { classFilter: form.classFilter, query }),
     [catalog, form.classFilter, query],
   );
+  // Reset render window when filter/query changes — ensures new filtered set starts at 80,
+  // but previous window growth does not hide that filtering operates on complete catalog.
+  useEffect(() => {
+    setRenderWindow(CATALOG_RENDER_WINDOW);
+  }, [form.classFilter, query]);
   const visibleRows = useMemo(
-    () => windowCatalog(filtered, CATALOG_RENDER_WINDOW),
-    [filtered],
+    () => windowCatalog(filtered, renderWindow),
+    [filtered, renderWindow],
   );
   const summaries = useMemo(
     () => classDiscoverySummaries(catalog, discoveryProviders),
     [catalog, discoveryProviders],
   );
+  const remaining = filtered.length - visibleRows.length;
 
   const handleSelectRow = useCallback((row: CatalogInstrument) => {
     const identity = nativeSelectionOf(row);
@@ -357,46 +364,68 @@ export function InstrumentInput({
               {t.entryForm.instrumentNotFound}
             </p>
           ) : (
-            <ScrollArea className="h-48 rounded-md border border-border/50">
-              <ul data-testid="instrument-catalog" className="divide-y divide-border/40">
-                {visibleRows.map((row) => {
-                  const active =
-                    selected?.provider === row.provider &&
-                    selected?.providerInstrumentId === row.providerInstrumentId;
-                  return (
-                    <li key={`${row.provider}::${row.providerInstrumentId}`}>
-                      <button
-                        type="button"
-                        data-testid="catalog-row"
-                        onClick={() => handleSelectRow(row)}
-                        className={cn(
-                          "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] font-mono",
-                          active
-                            ? "bg-primary/15 text-primary"
-                            : "text-foreground hover:bg-muted/40",
-                        )}
-                      >
-                        <span className="min-w-0 flex-1 truncate">
-                          {row.providerInstrumentId}
-                        </span>
-                        <span className="shrink-0 text-muted-foreground">
-                          {assetClassLabel(row.assetClass, t)}
-                        </span>
-                        <span className="shrink-0 text-muted-foreground">
-                          {formatProviderDisplay(row.provider)}
-                        </span>
-                        <span className="shrink-0 text-muted-foreground">
-                          {row.tradingState}
-                        </span>
-                        <span className="shrink-0">
-                          {row.lifecycle === "LIVE" ? t.status.live : row.lifecycle}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </ScrollArea>
+            <>
+              <ScrollArea className="h-48 rounded-md border border-border/50">
+                <ul data-testid="instrument-catalog" className="divide-y divide-border/40">
+                  {visibleRows.map((row) => {
+                    const active =
+                      selected?.provider === row.provider &&
+                      selected?.providerInstrumentId === row.providerInstrumentId;
+                    return (
+                      <li key={`${row.provider}::${row.providerInstrumentId}`}>
+                        <button
+                          type="button"
+                          data-testid="catalog-row"
+                          onClick={() => handleSelectRow(row)}
+                          className={cn(
+                            "flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[11px] font-mono",
+                            active
+                              ? "bg-primary/15 text-primary"
+                              : "text-foreground hover:bg-muted/40",
+                          )}
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            {row.providerInstrumentId}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {assetClassLabel(row.assetClass, t)}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {formatProviderDisplay(row.provider)}
+                          </span>
+                          <span className="shrink-0 text-muted-foreground">
+                            {row.tradingState}
+                          </span>
+                          <span className="shrink-0">
+                            {row.lifecycle === "LIVE" ? t.status.live : row.lifecycle}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </ScrollArea>
+              {remaining > 0 && (
+                <div className="flex items-center justify-between mt-2 text-[11px] font-mono text-muted-foreground">
+                  <span data-testid="catalog-window-info">
+                    {visibleRows.length} / {filtered.length} shown — {remaining} more via search or load more
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="catalog-load-more"
+                    onClick={() => setRenderWindow((w) => Math.min(w + CATALOG_RENDER_WINDOW, filtered.length))}
+                    className="rounded border border-border/50 bg-muted/20 px-2 py-1 hover:bg-muted/40"
+                  >
+                    Load more +{Math.min(CATALOG_RENDER_WINDOW, remaining)}
+                  </button>
+                </div>
+              )}
+              {remaining === 0 && filtered.length > CATALOG_RENDER_WINDOW && (
+                <div className="mt-2 text-[11px] font-mono text-muted-foreground" data-testid="catalog-complete-info">
+                  All {filtered.length} filtered instruments accessible — window was rendering optimization, not ceiling. Search operates on complete catalog ({catalog.length} total).
+                </div>
+              )}
+            </>
           )}
 
           {selectedRow && (

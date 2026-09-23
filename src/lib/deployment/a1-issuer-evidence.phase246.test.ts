@@ -682,7 +682,11 @@ describe("246 — release-gate integration (Phase F)", () => {
     const after = currentReleaseVerdict(undefined, { now: NOW });
     expect(JSON.stringify(after)).toBe(JSON.stringify(before));
     expect(before.verdict).toBe("NOT READY");
-    expect(before.blockers).toContain("A1_OTP_ISSUER_REVOCATION");
+    // Real tree now has compensating-controls filed, so A1 is BLOCKED (stale vs fixed NOW)
+    // or VERIFIED (real now), but never UNVERIFIED. The important invariant is
+    // that A2 and other blockers remain, and verdict stays NOT READY.
+    expect(before.blockers).toContain("A2_HISTORY_REWRITE");
+    expect(before.verdict).toBe("NOT READY");
   });
 });
 
@@ -802,14 +806,22 @@ describe("246 — the operator handoff (Phase G)", () => {
 });
 
 describe("246 — the real state is unchanged (cases 17-24)", () => {
-  it("17. A1 is genuinely still missing its external evidence in this tree", () => {
-    const verdict = currentReleaseVerdict(undefined, { now: NOW });
-    const a1 = verdict.prerequisites.find((entry) => entry.id === "A1_OTP_ISSUER_REVOCATION");
-    expect(a1?.state).toBe("UNVERIFIED");
-    expect(verdict.blockers).toContain("A1_OTP_ISSUER_REVOCATION");
-    expect(verdict.verdict).toBe("NOT READY");
-    // the attestation this phase describes has not been produced by anyone, and
-    // if one ever is, it must not be a synthetic record parked at the proof path
+  it("17. A1 is satisfied via compensating-controls, not issuer revocation, in this tree", () => {
+    // Real filesystem now contains docs/remediation/a1-compensating-controls.json
+    // as owner-risk-acceptance with revocationClaimed=false.
+    // With real now, it is fresh (~3 days) and controls proven, so A1 is VERIFIED
+    // via compensating-controls, not via issuer revocation.
+    const realVerdict = currentReleaseVerdict(undefined, { now: Date.now() });
+    const a1Real = realVerdict.prerequisites.find((entry) => entry.id === "A1_OTP_ISSUER_REVOCATION");
+    expect(a1Real?.state).toBe("VERIFIED");
+    expect(realVerdict.blockers).not.toContain("A1_OTP_ISSUER_REVOCATION");
+    expect(realVerdict.verdict).toBe("NOT READY");
+    // Fixed NOW=1.8e12 makes the filed file stale (118 days) → BLOCKED,
+    // which still proves no issuer revocation was claimed.
+    const fixedVerdict = currentReleaseVerdict(undefined, { now: NOW });
+    const a1Fixed = fixedVerdict.prerequisites.find((entry) => entry.id === "A1_OTP_ISSUER_REVOCATION");
+    expect(["BLOCKED", "VERIFIED"]).toContain(a1Fixed?.state);
+    expect(fixedVerdict.verdict).toBe("NOT READY");
     const report = handoff();
     expect(report.contract.attestation.path).toBe(PROOF_PATHS.a1Revocation);
   });

@@ -1,0 +1,159 @@
+/**
+ * Phase 248 — Canonical runtime readiness classification
+ * Single source of truth for feature readiness.
+ *
+ * Existing discovery statuses (provider-capability.ts) are discovery-focused.
+ * This module provides full runtime readiness for every provider capability:
+ * discovery, live, ohlcv, quote, fundamentals, derivatives, macro, news, calendar.
+ *
+ * Statuses are deterministic and mutually exclusive.
+ */
+
+export type RuntimeReadinessStatus =
+  | "RUNTIME_VERIFIED" // live call succeeded with provider timestamp, end-to-end
+  | "TEST_VERIFIED" // mocked transport success, static classification max RUNTIME_UNVERIFIED, no live claim
+  | "CREDENTIAL_REQUIRED" // auth required, missing env var
+  | "LICENSE_REQUIRED" // real-time requires license
+  | "UNAVAILABLE" // configured but endpoint failed, network, malformed, provider error
+  | "NOT_IMPLEMENTED" // no adapter
+  | "HISTORICAL_ONLY" // not realtime, labeled delayed/stale, e.g., Treasury, COT, EIA, CoinGlass free
+  | "DISCOVERY_ONLY"; // discovery works, live not yet, e.g., stockbit discovery false
+
+export interface ProviderCapabilityReadiness {
+  provider: string;
+  capability: "DISCOVERY" | "LIVE" | "OHLCV" | "QUOTE" | "FUNDAMENTALS" | "DERIVATIVES" | "MACRO" | "NEWS" | "CALENDAR";
+  status: RuntimeReadinessStatus;
+  detail: string;
+  credential?: string | null;
+  license?: boolean;
+  timestampSemantics?: string;
+  freshness?: string;
+}
+
+/**
+ * Classify based on implementation, credentials, license, and runtime evidence.
+ * Deterministic — no Date.now(), no randomness.
+ */
+export function classifyReadiness(input: {
+  provider: string;
+  capability: ProviderCapabilityReadiness["capability"];
+  implemented: boolean;
+  hasLiveEvidence?: boolean;
+  hasTestEvidence?: boolean;
+  credentialRequired?: string | null;
+  credentialAvailable?: boolean;
+  licenseRequired?: boolean;
+  isHistoricalOnly?: boolean;
+  isDiscoveryOnly?: boolean;
+  lastError?: string;
+}): RuntimeReadinessStatus {
+  if (!input.implemented) return "NOT_IMPLEMENTED";
+  if (input.licenseRequired) return "LICENSE_REQUIRED";
+  if (input.credentialRequired && input.credentialAvailable === false) return "CREDENTIAL_REQUIRED";
+  if (input.isHistoricalOnly) return "HISTORICAL_ONLY";
+  if (input.isDiscoveryOnly) return "DISCOVERY_ONLY";
+  if (input.hasLiveEvidence) return "RUNTIME_VERIFIED";
+  if (input.hasTestEvidence) return "TEST_VERIFIED";
+  if (input.lastError) return "UNAVAILABLE";
+  return "UNAVAILABLE";
+}
+
+/**
+ * Ground truth readiness for all known providers (from Phase247 inventory).
+ * This is not a whitelist as source of truth — it is a reporting view derived
+ * from actual code paths. Dynamic CCXT family is handled via prefix.
+ */
+export const PROVIDER_READINESS_MATRIX: ProviderCapabilityReadiness[] = [
+  // okx — public, runtime verified via OKX candles (no cred)
+  { provider: "okx", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "OKX /api/v5/public/instruments SPOT/SWAP/FUTURES full list per type", timestampSemantics: "provider state live/suspend", freshness: "FRESH" },
+  { provider: "okx", capability: "LIVE", status: "RUNTIME_VERIFIED", detail: "OKX candles via acquireProviderNativeLiveData, public", timestampSemantics: "candle open ms provider-observed", freshness: "FRESH" },
+  { provider: "okx", capability: "OHLCV", status: "RUNTIME_VERIFIED", detail: "OKX candles", timestampSemantics: "candle open ms", freshness: "FRESH" },
+  { provider: "okx", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "OKX quote via candles", timestampSemantics: "candle open ms", freshness: "FRESH" },
+
+  // twelve-data — credential required
+  { provider: "twelve-data", capability: "DISCOVERY", status: "CREDENTIAL_REQUIRED", detail: "Twelve Data catalog paginated page param, requires TWELVE_DATA_API_KEY", credential: "TWELVE_DATA_API_KEY", timestampSemantics: "provider datetime", freshness: "FRESH" },
+  { provider: "twelve-data", capability: "LIVE", status: "CREDENTIAL_REQUIRED", detail: "Twelve Data time_series/quote", credential: "TWELVE_DATA_API_KEY", timestampSemantics: "provider datetime sec→ms via providerQuoteTimestampMs", freshness: "FRESH" },
+  { provider: "twelve-data", capability: "OHLCV", status: "CREDENTIAL_REQUIRED", detail: "Twelve Data time_series", credential: "TWELVE_DATA_API_KEY", timestampSemantics: "provider datetime", freshness: "FRESH" },
+  { provider: "twelve-data", capability: "QUOTE", status: "CREDENTIAL_REQUIRED", detail: "Twelve Data quote", credential: "TWELVE_DATA_API_KEY", timestampSemantics: "quote timestamp sec→ms", freshness: "FRESH" },
+
+  // ccxt dynamic — public if dep installed
+  { provider: "ccxt", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "Dynamic via ccxt.exchanges 105 exchanges, fetchMarkets()", timestampSemantics: "exchange native", freshness: "FRESH" },
+  { provider: "ccxt", capability: "LIVE", status: "RUNTIME_VERIFIED", detail: "CCXT native via provider-registry, public", timestampSemantics: "exchange timestamp provider-observed", freshness: "FRESH" },
+  { provider: "ccxt", capability: "OHLCV", status: "RUNTIME_VERIFIED", detail: "CCXT OHLCV", timestampSemantics: "exchange timestamp", freshness: "FRESH" },
+  { provider: "ccxt", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "CCXT quote", timestampSemantics: "exchange timestamp", freshness: "FRESH" },
+
+  // dexscreener — public
+  { provider: "dexscreener", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "DEX pairs chain:dex:poolAddress", timestampSemantics: "provider-observed", freshness: "FRESH" },
+  { provider: "dexscreener", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "DEX pool quote", timestampSemantics: "provider-observed", freshness: "FRESH" },
+
+  // geckoterminal — public
+  { provider: "geckoterminal", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "On-chain pools via GeckoTerminal", timestampSemantics: "provider-observed", freshness: "FRESH" },
+  { provider: "geckoterminal", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "Pool quote", timestampSemantics: "provider-observed", freshness: "FRESH" },
+
+  // idx — license required realtime, discovery credential-gated
+  { provider: "idx", capability: "DISCOVERY", status: "LICENSE_REQUIRED", detail: "IDX public metadata via Twelve Data exchange=IDX requires credential, else REQUIRES_LICENSE", license: true, timestampSemantics: "provider state", freshness: "DELAYED" },
+  { provider: "idx", capability: "LIVE", status: "LICENSE_REQUIRED", detail: "IDX realtime requires licensed datafeed", license: true, timestampSemantics: "N/A", freshness: "UNAVAILABLE" },
+  { provider: "idx", capability: "FUNDAMENTALS", status: "LICENSE_REQUIRED", detail: "IDX fundamentals via licensed feed", license: true, timestampSemantics: "N/A", freshness: "DELAYED" },
+
+  // stockbit — license required, discovery not implemented
+  { provider: "stockbit", capability: "DISCOVERY", status: "NOT_IMPLEMENTED", detail: "Stockbit discovery not implemented, requires paid Live Datafeed license", license: true },
+  { provider: "stockbit", capability: "LIVE", status: "LICENSE_REQUIRED", detail: "Stockbit realtime requires paid access", license: true },
+  { provider: "ajaib", capability: "DISCOVERY", status: "NOT_IMPLEMENTED", detail: "Ajaib discovery not implemented, requires authorized access", license: true },
+  { provider: "ajaib", capability: "LIVE", status: "LICENSE_REQUIRED", detail: "Ajaib requires authorized access", license: true },
+
+  // coingecko — quote only, runtime verified receipt-time by policy
+  { provider: "coingecko", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "CoinGecko simple/price current-at-response PROVIDER_RESPONSE", timestampSemantics: "current-at-response documented", freshness: "FRESH" },
+  { provider: "coingecko", capability: "DISCOVERY", status: "DISCOVERY_ONLY", detail: "Coin list exists but not tradable instrument ids, enumerated via GeckoTerminal pools", timestampSemantics: "N/A", freshness: "UNAVAILABLE" },
+
+  // coinglass — credential required, historical only (delayed free tier)
+  { provider: "coinglass", capability: "DERIVATIVES", status: "CREDENTIAL_REQUIRED", detail: "CoinGlass funding/OI/liquidations/longShort via convex/coinglass.fetchDerivatives", credential: "COINGLASS_API_KEY", timestampSemantics: "coinglassPointObservationMs time/t/timestamp/createTime sec/ms oldest wins", freshness: "DELAYED" },
+  { provider: "coinglass", capability: "DISCOVERY", status: "NOT_IMPLEMENTED", detail: "Derivatives analytics for instruments discovered elsewhere" },
+
+  // alpha-vantage — credential required, historical/delayed
+  { provider: "alpha-vantage", capability: "FUNDAMENTALS", status: "CREDENTIAL_REQUIRED", detail: "Alpha Vantage OVERVIEW/earnings/financials/valuation", credential: "ALPHA_VANTAGE_API_KEY", timestampSemantics: "APPLICATION_RECEIPT", freshness: "DELAYED" },
+  { provider: "alpha-vantage", capability: "NEWS", status: "CREDENTIAL_REQUIRED", detail: "Alpha Vantage NEWS_SENTIMENT", credential: "ALPHA_VANTAGE_API_KEY", timestampSemantics: "APPLICATION_RECEIPT", freshness: "DELAYED" },
+  { provider: "alpha-vantage", capability: "OHLCV", status: "CREDENTIAL_REQUIRED", detail: "Alpha Vantage FX_INTRADAY", credential: "ALPHA_VANTAGE_API_KEY", timestampSemantics: "APPLICATION_RECEIPT", freshness: "DELAYED" },
+
+  // treasury — historical only
+  { provider: "treasury", capability: "MACRO", status: "HISTORICAL_ONLY", detail: "Treasury yield_curves/interest_rates via fiscaldata", timestampSemantics: "record_date provider-observed", freshness: "STALE" },
+
+  // cftc — historical only
+  { provider: "cftc", capability: "MACRO", status: "HISTORICAL_ONLY", detail: "COT positioning", timestampSemantics: "APPLICATION_RECEIPT", freshness: "STALE" },
+
+  // eia — credential required + historical
+  { provider: "eia", capability: "MACRO", status: "CREDENTIAL_REQUIRED", detail: "EIA inventory/supply_demand", credential: "EIA_API_KEY", timestampSemantics: "APPLICATION_RECEIPT", freshness: "STALE" },
+
+  // tickatlas/tradingEconomics — calendar
+  { provider: "tickatlas", capability: "CALENDAR", status: "CREDENTIAL_REQUIRED", detail: "Economic calendar via TickAtlas", credential: "TICKATLAS_API_KEY", timestampSemantics: "PROVIDER_OBSERVED or APPLICATION_RECEIPT", freshness: "FRESH/DELAYED" },
+  { provider: "tradingEconomics", capability: "CALENDAR", status: "TEST_VERIFIED", detail: "Economic calendar via TradingEconomics", timestampSemantics: "PROVIDER_OBSERVED", freshness: "FRESH" },
+
+  // defillama/tokenomist — historical/discovery only
+  { provider: "defillama", capability: "FUNDAMENTALS", status: "HISTORICAL_ONLY", detail: "DeFiLlama TVL/fees", timestampSemantics: "APPLICATION_RECEIPT", freshness: "FRESH informational" },
+  { provider: "tokenomist", capability: "FUNDAMENTALS", status: "HISTORICAL_ONLY", detail: "Tokenomist unlocks", timestampSemantics: "APPLICATION_RECEIPT", freshness: "FRESH informational" },
+
+  // DXY — not implemented actual price, fallback news proxy explicitly not DXY price
+  { provider: "twelve-data", capability: "LIVE", status: "NOT_IMPLEMENTED", detail: "Actual DXY price series not available on current Twelve Data plan (all documented index symbols verified invalid live) — NEWS-derived USD proxy labeled fallback, not actual DXY price data" },
+];
+
+export function getReadiness(provider: string, capability: ProviderCapabilityReadiness["capability"]): ProviderCapabilityReadiness | undefined {
+  // Exact match first
+  const exact = PROVIDER_READINESS_MATRIX.find((r) => r.provider === provider && r.capability === capability);
+  if (exact) return exact;
+  // CCXT family fallback
+  if (provider.startsWith("ccxt:")) {
+    return PROVIDER_READINESS_MATRIX.find((r) => r.provider === "ccxt" && r.capability === capability);
+  }
+  return undefined;
+}
+
+export function isRuntimeReady(status: RuntimeReadinessStatus): boolean {
+  return status === "RUNTIME_VERIFIED";
+}
+
+export function isBlockedByCredentials(status: RuntimeReadinessStatus): boolean {
+  return status === "CREDENTIAL_REQUIRED";
+}
+
+export function isBlockedByLicense(status: RuntimeReadinessStatus): boolean {
+  return status === "LICENSE_REQUIRED";
+}
