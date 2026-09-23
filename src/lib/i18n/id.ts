@@ -891,6 +891,11 @@ const id: Translations = {
     pnlPercentLabel: "L/R%",
     journalSuffix: "Jurnal",
     observationNote: "Observasi — tidak ada transaksi",
+    deleteEntry: "Hapus entri",
+    loadingJournal: "Memuat jurnal...",
+    providerLabel: "penyedia",
+    saving: "Menyimpan...",
+    idLabel: "ID",
   },
 
   // ─── Analysis History Panel (Phase 146) ─────────────────────
@@ -940,6 +945,8 @@ const id: Translations = {
       "Rekomendasi adalah peringkat analitis berdasarkan bukti yang tersedia, bukan prediksi keuntungan yang dijamin.",
     rankingConfidenceNote: "Keyakinan mencerminkan koherensi analitis, BUKAN probabilitas keuntungan.",
     liveScanNote: "Pemindaian live menggunakan data pasar terkini.",
+    derivedNotObserved: "(turunan, bukan observasi penyedia)",
+    retainedEvidenceFailed: "bukti tertahan — refresh terakhir gagal",
     horizon1_4Weeks: "1–4 Minggu",
     horizon1_3Months: "1–3 Bulan",
     horizon3_6Months: "3–6 Bulan",

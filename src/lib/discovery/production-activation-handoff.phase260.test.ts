@@ -319,7 +319,7 @@ describe("Phase260 11 — CODE_READY", () => {
         VITE_CONVEX_URL: "https://proj.convex.cloud",
         XSTARZ_DEPLOYMENT_ENV: "production",
         XSTARZ_EMAIL_TRANSPORT: "resend",
-        XSTARZ_EMAIL_API_KEY: "test-key-placeholder-but-long-enough",
+        XSTARZ_EMAIL_API_KEY: "placeholder",
         XSTARZ_EMAIL_SENDER_ADDRESS: "otp@example.com",
       },
     });
@@ -553,7 +553,7 @@ describe("Phase260 23 — secret scan", () => {
       if (!file.endsWith(".js")) continue;
       const content = read(join(distDir, file));
       // No raw secret values
-      expect(content).not.toMatch(/TWELVE_DATA_API_KEY.*=.*[a-zA-Z0-9]{10,}/);
+      expect(content).not.toMatch(/TWELVE_DATA_API_KEY\s*[:=]\s*["'][A-Za-z0-9_\-]{10,}["']/); // Phase 264: tighten — previous greedy .* matched env var name + unrelated = + minified code, now requires quoted assignment to catch real hardcoded secret;
     }
   });
 

@@ -388,7 +388,7 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
           {opp.evidence?.derived && Object.keys(opp.evidence.derived).length > 0 && (
             <div className="text-[8px] font-mono text-muted-foreground/50">
               derived: {Object.entries(opp.evidence.derived).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${typeof v === "number" ? v.toFixed(2) : v}`).join(", ")}
-              <span className="ml-1">(derived, not provider-observed)</span>
+              <span className="ml-1">{tx("marketPanel.derivedNotObserved")}</span>
             </div>
           )}
           {opp.supportingEvidence.length > 0 && (
@@ -627,7 +627,7 @@ export function MarketOpportunities({
         {/* Phase 243 — provider errors distinguish retained vs refresh success, stale vs live */}
         {isDegraded && allProviderErrors.length > 0 && (
           <div className="rounded-md bg-amber-500/5 border border-amber-500/10 p-1.5">
-            <p className="text-[8px] font-mono text-amber-400/70">retained evidence — latest refresh failed</p>
+            <p className="text-[8px] font-mono text-amber-400/70">{tx("marketPanel.retainedEvidenceFailed")}</p>
             <div className="mt-0.5 space-y-0.5">
               {allProviderErrors.slice(0, 3).map((e, i) => (
                 <p key={i} className="text-[8px] font-mono text-amber-300/60">• {e}</p>

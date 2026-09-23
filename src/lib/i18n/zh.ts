@@ -894,6 +894,11 @@ const zh: Translations = {
     pnlPercentLabel: "盈亏%",
     journalSuffix: "日志",
     observationNote: "观察 — 未进行交易",
+    deleteEntry: "删除条目",
+    loadingJournal: "正在加载日志...",
+    providerLabel: "提供方",
+    saving: "保存中...",
+    idLabel: "ID",
   },
 
   // ─── Analysis History Panel (Phase 146) ─────────────────────
@@ -943,6 +948,8 @@ const zh: Translations = {
       "推荐是基于现有证据的分析性排名，并非有保证的盈利预测。",
     rankingConfidenceNote: "置信度反映分析一致性，而非盈利概率。",
     liveScanNote: "实时扫描使用当前市场数据。",
+    derivedNotObserved: "（派生，非提供方观测）",
+    retainedEvidenceFailed: "保留证据 — 最新刷新失败",
     horizon1_4Weeks: "1–4 周",
     horizon1_3Months: "1–3 个月",
     horizon3_6Months: "3–6 个月",

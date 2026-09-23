@@ -120,8 +120,8 @@ describe("Phase257 B — Deployment secret boundary", () => {
     const dir = join(ROOT, "dist/assets");
     const jsFiles = readdirSync(dir).filter((f) => f.endsWith(".js")).map((f) => read(join("dist/assets", f)));
     for (const js of jsFiles) {
-      expect(js).not.toMatch(/TWELVE_DATA_API_KEY.*=.*[A-Za-z0-9]{16,}/);
-      expect(js).not.toMatch(/COINGLASS_API_KEY.*=.*[A-Za-z0-9]{16,}/);
+      expect(js).not.toMatch(/TWELVE_DATA_API_KEY\s*[:=]\s*["'][A-Za-z0-9_\-]{16,}["']/); // Phase 264: tighten regex — previous /.*=.*[A-Za-z0-9]{16,}/ matched env var name + unrelated = + minified alphanum across 1.4MB bundle (false positive), now requires quoted assignment;
+      expect(js).not.toMatch(/COINGLASS_API_KEY\s*[:=]\s*["'][A-Za-z0-9_\-]{16,}["']/); // Phase 264: tighten — previous greedy .* matched env var name + unrelated = + minified code, now requires quoted assignment;
       expect(js).not.toContain("XSTARZ_OWNER_PRINCIPALS");
     }
   });

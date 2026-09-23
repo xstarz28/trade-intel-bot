@@ -60,7 +60,8 @@ describe("A — static classification never overstates", () => {
 });
 
 describe("B — enrichment providers are not discovery sources", () => {
-  const enrichment = ["coinglass", "defillama", "tokenomist", "tickatlas", "treasury", "cftc", "eia"];
+  // Phase 264: coinglass now has discovery (supported-exchange-pairs COMPLETE), no longer enrichment-only
+  const enrichment = ["defillama", "tokenomist", "tickatlas", "treasury", "cftc", "eia"];
 
   it("marks analytics providers as NO_DISCOVERY_API with a reason", () => {
     for (const provider of enrichment) {

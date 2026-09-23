@@ -147,8 +147,9 @@ describe("Phase262 5 — Journal delete", () => {
   });
   it("Journal UI has delete button", () => {
     const src = read("src/components/Journal.tsx");
-    expect(src).toContain("Delete entry");
+    // Phase 264: localized via t.journal.deleteEntry, not hardcoded literal
     expect(src).toContain("handleDelete");
+    expect(src).toContain("t.journal.deleteEntry");
   });
 });
 
@@ -176,7 +177,8 @@ describe("Phase262 7 — Journal empty/loading/failure/refresh/logout", () => {
   });
   it("loading state exists", () => {
     const src = read("src/components/Journal.tsx");
-    expect(src).toContain("Loading journal");
+    // Phase 264: localized via t.journal.loadingJournal
+    expect(src).toContain("t.journal.loadingJournal");
     expect(src).toContain("loading");
   });
   it("error handling exists", () => {
@@ -186,7 +188,8 @@ describe("Phase262 7 — Journal empty/loading/failure/refresh/logout", () => {
   });
   it("refresh button exists", () => {
     const src = read("src/components/Journal.tsx");
-    expect(src).toContain("Refresh");
+    // Phase 264: localized via t.global.refresh
+    expect(src).toContain("t.global.refresh");
   });
   it("logout/session protection via RequireAuth route", () => {
     const src = read("src/main.tsx");
@@ -290,7 +293,8 @@ describe("Phase262 11 — DXY audit", () => {
   it("DXY marked NOT_IMPLEMENTED with honest detail", () => {
     const src = read("src/lib/discovery/runtime-readiness.ts");
     expect(src).toContain("NOT_IMPLEMENTED");
-    expect(src).toContain("Actual DXY price series not available");
+    // Phase 264: updated honest wording per TASK J
+    expect(src).toContain("Actual DXY price series is not currently verified as available from the configured provider");
   });
   it("DXY detail says USD proxy is not DXY price data", () => {
     const src = read("src/lib/discovery/runtime-readiness.ts");
@@ -303,7 +307,9 @@ describe("Phase262 11 — DXY audit", () => {
   });
   it("no proxy-as-price: NEWS proxy labeled fallback not actual price", () => {
     const src = read("src/lib/discovery/runtime-readiness.ts");
-    expect(src).toContain("NEWS-derived USD proxy labeled fallback");
+    // Phase 264: wording updated to remain labeled fallback / fallback only, still honest
+    expect(src).toMatch(/NEWS-derived USD.*fallback/);
+    expect(src).toContain("not actual DXY price data");
   });
   it("DXY docs honest in production-launch-gate", () => {
     const src = read("docs/production-launch-gate.md");

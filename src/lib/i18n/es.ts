@@ -897,6 +897,11 @@ const es: Translations = {
     pnlPercentLabel: "P/G%",
     journalSuffix: "Diario",
     observationNote: "Observación — sin operación",
+    deleteEntry: "Eliminar entrada",
+    loadingJournal: "Cargando diario...",
+    providerLabel: "proveedor",
+    saving: "Guardando...",
+    idLabel: "ID",
   },
 
   // ─── Analysis History Panel (Phase 146) ─────────────────────
@@ -946,6 +951,8 @@ const es: Translations = {
       "Las recomendaciones son clasificaciones analíticas basadas en la evidencia disponible y no son predicciones garantizadas de ganancias.",
     rankingConfidenceNote: "La confianza refleja coherencia analítica, NO probabilidad de ganancia.",
     liveScanNote: "El escaneo en vivo usa datos de mercado actuales.",
+    derivedNotObserved: "(derivado, no observado por el proveedor)",
+    retainedEvidenceFailed: "evidencia retenida — última actualización falló",
     horizon1_4Weeks: "1–4 Semanas",
     horizon1_3Months: "1–3 Meses",
     horizon3_6Months: "3–6 Meses",

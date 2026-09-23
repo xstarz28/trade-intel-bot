@@ -195,7 +195,10 @@ describe("Phase248 11 — provider capability truth", () => {
   });
   it("no unused capability claims", () => {
     const profiles = read("src/lib/discovery/provider-capability.ts");
-    expect(profiles).toContain("Derivatives analytics for instruments discovered elsewhere");
+    // Phase 264: coinglass now discoveryImplemented true with COMPLETE single-response contract, old note replaced
+    expect(profiles).toContain("coinglass");
+    expect(profiles).toContain("COMPLETE");
+    expect(profiles).toContain("supported-exchange-pairs");
   });
 });
 

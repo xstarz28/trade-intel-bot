@@ -790,6 +790,8 @@ export interface Translations {
     rankingDisclaimer: string;
     rankingConfidenceNote: string;
     liveScanNote: string;
+    derivedNotObserved: string;
+    retainedEvidenceFailed: string;
     horizon1_4Weeks: string;
     horizon1_3Months: string;
     horizon3_6Months: string;
@@ -1292,6 +1294,12 @@ export interface Translations {
     journalSuffix: string;
     /** Default note stored on an observation-only entry. */
     observationNote: string;
+    /** Phase 264 — previously hardcoded copy now localized */
+    deleteEntry: string;
+    loadingJournal: string;
+    providerLabel: string;
+    saving: string;
+    idLabel: string;
   };
 
   // ─── Portfolio Intelligence ─────────────────────────────────

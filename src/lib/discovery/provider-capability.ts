@@ -157,16 +157,16 @@ export const PROVIDER_DISCOVERY_PROFILES: ProviderDiscoveryProfile[] = [
   {
     provider: "alpha-vantage",
     discoveryImplemented: false,
-    providerHasDiscoveryApi: false,
-    discoverableAssetClasses: [],
-    note: "Search endpoint only; no full instrument catalog.",
+    providerHasDiscoveryApi: true,
+    discoverableAssetClasses: ["indices"],
+    note: "PROVIDER_API_SUPPORT: Alpha Vantage official docs provide INDEX_CATALOG (200+ indices) + INDEX_DATA (premium) via function=INDEX_CATALOG / INDEX_DATA. CURRENT_ADAPTER_SUPPORT: project adapter does NOT implement INDEX_CATALOG/INDEX_DATA — only NEWS_SENTIMENT/OVERVIEW/EARNINGS. DXY: Actual DXY price series is not currently verified as available from the configured provider — INDEX_CATALOG content not verified to include DXY (ICE US Dollar Index), and no adapter exists. Do not conflate provider capability with current adapter support.",
   },
   {
     provider: "coinglass",
-    discoveryImplemented: false,
-    providerHasDiscoveryApi: false,
-    discoverableAssetClasses: [],
-    note: "Derivatives analytics for instruments discovered elsewhere.",
+    discoveryImplemented: true,
+    providerHasDiscoveryApi: true,
+    discoverableAssetClasses: ["crypto"],
+    note: "CoinGlass official futures/spot supported-exchange-pairs: GET https://open-api-v4.coinglass.com/api/futures/supported-exchange-pairs + /api/spot/supported-exchange-pairs, header CG-API-KEY, complete single-response no pagination, cache 1min, exact native instrument_id preserved, providerInstrumentId=<exchange>:<instrument_id> provider-qualified coinglass::<exchange>:<id> distinct from ccxt:binance::BTC/USDT etc., CREDENTIAL_REQUIRED/RATE_LIMITED/MALFORMED_RESPONSE, COMPLETE when catalog succeeds.",
   },
   {
     provider: "defillama",

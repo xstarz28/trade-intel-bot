@@ -483,7 +483,7 @@ describe("Phase261 N — Final security", () => {
       for (const f of files) {
         if (!f.endsWith(".js")) continue;
         const content = read(join(distDir, f));
-        expect(content).not.toMatch(/TWELVE_DATA_API_KEY.*=.*[a-zA-Z0-9]{10,}/);
+        expect(content).not.toMatch(/TWELVE_DATA_API_KEY\s*[:=]\s*["'][A-Za-z0-9_\-]{10,}["']/); // Phase 264: tighten — previous greedy .* matched env var name + unrelated = + minified code, now requires quoted assignment to catch real hardcoded secret;
       }
     }
   });

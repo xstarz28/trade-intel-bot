@@ -479,9 +479,11 @@ describe("Phase263 K — DXY actual price verification", () => {
     expect(marketDataSrc).toContain("actual DXY price series is not available");
   });
   it("no provider claims actual DXY price without verification", () => {
-    const readiness = PROVIDER_READINESS_MATRIX.find((r) => r.detail.toLowerCase().includes("dxy") && r.capability === "LIVE");
+    // Phase 264: DXY LIVE now dxy provider with wording "Actual DXY price series is not currently verified as available from the configured provider" + fallback note
+    const readiness = PROVIDER_READINESS_MATRIX.find((r) => r.provider==="dxy" && r.capability === "LIVE");
     expect(readiness?.status).toBe("NOT_IMPLEMENTED");
-    expect(readiness?.detail).toMatch(/not available|fallback/);
+    expect(readiness?.detail).toMatch(/not currently verified|fallback/);
+    expect(readiness?.detail).toContain("Actual DXY price series is not currently verified as available from the configured provider");
   });
   it("rejects USD proxy as actual DXY", () => {
     const src = readFileSync("src/convex/marketData.ts", "utf8");
@@ -503,9 +505,12 @@ describe("Phase263 K — DXY actual price verification", () => {
     expect(DXY_CANDIDATE_SYMBOLS).not.toContain("UUP");
   });
   it("Twelve Data does not have actual DXY on current plan", () => {
-    const readiness = PROVIDER_READINESS_MATRIX.filter((r) => r.provider === "twelve-data" && r.detail.includes("DXY"));
-    expect(readiness.length).toBeGreaterThan(0);
-    expect(readiness[0].status).toBe("NOT_IMPLEMENTED");
+    // Phase 264: DXY moved to separate provider dxy::LIVE NOT_IMPLEMENTED, twelve-data LIVE is general CREDENTIAL_REQUIRED with DXY note
+    const dxyReadiness = PROVIDER_READINESS_MATRIX.find((r) => r.provider === "dxy" && r.capability === "LIVE");
+    expect(dxyReadiness).toBeDefined();
+    expect(dxyReadiness?.status).toBe("NOT_IMPLEMENTED");
+    expect(dxyReadiness?.detail).toContain("Twelve Data candidates");
+    expect(dxyReadiness?.detail).toContain("404");
   });
   it("OKX does not provide DXY", () => {
     const okxReadiness = PROVIDER_READINESS_MATRIX.filter((r) => r.provider === "okx" && r.detail.toLowerCase().includes("dxy"));
@@ -530,18 +535,22 @@ describe("Phase263 L — Alpha Vantage INDEX_CATALOG DXY", () => {
     expect(src).not.toContain("INDEX_DATA");
   });
   it("Alpha Vantage docs: INDEX_DATA requires premium, DXY not in supported list evidence", () => {
-    // This test documents that no code path implements INDEX_CATALOG for DXY
+    // Phase 264: PROVIDER_API_SUPPORT vs CURRENT_ADAPTER_SUPPORT — alpha-vantage now has DISCOVERY/LIVE NOT_IMPLEMENTED entries documenting INDEX_CATALOG/INDEX_DATA and DXY not verified
     const src = readFileSync("src/lib/discovery/runtime-readiness.ts", "utf8");
-    expect(src).not.toContain("alpha-vantage.*DXY");
-    // If DXY were supported via Alpha Vantage, readiness would list it
+    expect(src).toContain("INDEX_CATALOG");
+    expect(src).toContain("INDEX_DATA");
     const avDxy = PROVIDER_READINESS_MATRIX.filter((r) => r.provider === "alpha-vantage" && r.detail.toLowerCase().includes("dxy"));
-    expect(avDxy.length).toBe(0);
+    expect(avDxy.length).toBeGreaterThan(0);
+    expect(avDxy.every(r => r.status==="NOT_IMPLEMENTED")).toBe(true);
+    expect(avDxy[0].detail).toContain("DXY not verified");
   });
   it("DXY remains NOT_IMPLEMENTED honest, no proxy substitution", () => {
-    const dxyEntry = PROVIDER_READINESS_MATRIX.find((r) => r.detail.includes("Actual DXY price series not available"));
+    // Phase 264: wording updated to "Actual DXY price series is not currently verified as available from the configured provider"
+    const dxyEntry = PROVIDER_READINESS_MATRIX.find((r) => r.provider==="dxy" && r.capability==="LIVE");
     expect(dxyEntry).toBeDefined();
     expect(dxyEntry?.status).toBe("NOT_IMPLEMENTED");
-    expect(dxyEntry?.detail).toContain("NEWS-derived USD proxy labeled fallback, not actual DXY price data");
+    expect(dxyEntry?.detail).toContain("Actual DXY price series is not currently verified as available from the configured provider");
+    expect(dxyEntry?.detail).toContain("not actual DXY price data");
   });
   it("no fabricated DXY via Alpha Vantage", () => {
     const src = readFileSync("src/lib/data/alpha-vantage/normalize.ts", "utf8");
@@ -583,9 +592,11 @@ describe("Phase263 M — Final gap classification", () => {
     expect(e?.status).toBe("CREDENTIAL_REQUIRED");
   });
   it("DXY LIVE NOT_IMPLEMENTED with honest fallback message", () => {
-    const e = PROVIDER_READINESS_MATRIX.find((r) => r.detail.includes("Actual DXY price series not available"));
+    // Phase 264: DXY moved to dxy provider, wording updated but still honest
+    const e = PROVIDER_READINESS_MATRIX.find((r) => r.provider==="dxy" && r.capability==="LIVE");
     expect(e?.status).toBe("NOT_IMPLEMENTED");
-    expect(e?.detail).toContain("all documented index symbols verified invalid live");
+    expect(e?.detail).toContain("Actual DXY price series is not currently verified as available from the configured provider");
+    expect(e?.detail).toMatch(/404|fallback/);
   });
   it("no ambiguous classification", () => {
     for (const entry of PROVIDER_READINESS_MATRIX) {

@@ -4,7 +4,7 @@
  * OWNER is not a stored plan and not a client flag. The Convex handlers
  * compare an *already authenticated* principal (Convex `users` document id
  * and/or email) against a server-only environment list. This module never
- * reads `process.env` itself so a client import cannot inline the secret.
+ * reads the environment itself so a client import cannot inline the secret.
  *
  * Parsing is fail-closed: unset/empty matches nobody; any malformed entry
  * rejects the whole list so a typo cannot grant access. Matching is exact

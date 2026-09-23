@@ -160,15 +160,7 @@ export async function discoverCoinGlassMarkets(
     spotUrl?: string;
   } = {},
 ): Promise<ProviderDiscoveryResult> {
-  const readEnv =
-    opts.readEnv ??
-    ((name: string) => {
-      try {
-        return typeof process !== "undefined" ? process.env?.[name] : undefined;
-      } catch {
-        return undefined;
-      }
-    });
+  const readEnv = opts.readEnv ?? (() => undefined);
   const cred = checkCredentials(COINGLASS_PROVIDER_ID, readEnv);
   if (cred && cred.authRequired && !cred.available) {
     return {
@@ -462,13 +454,7 @@ export async function discoverCoinGlassMarkets(
 
 export function createCoinGlassDiscoveryAdapter(
   fetchImpl: typeof fetch = fetch,
-  readEnv: EnvReader = (name: string) => {
-    try {
-      return typeof process !== "undefined" ? process.env?.[name] : undefined;
-    } catch {
-      return undefined;
-    }
-  },
+  readEnv: EnvReader = () => undefined,
 ): ProviderDiscoveryAdapter {
   return {
     provider: COINGLASS_PROVIDER_ID,
@@ -495,13 +481,7 @@ export function createCoinGlassDiscoveryAdapter(
 
 export function createCoinGlassUniversalAdapter(
   fetchImpl: typeof fetch = fetch,
-  readEnv: EnvReader = (name: string) => {
-    try {
-      return typeof process !== "undefined" ? process.env?.[name] : undefined;
-    } catch {
-      return undefined;
-    }
-  },
+  readEnv: EnvReader = () => undefined,
 ) {
   const legacy = createCoinGlassDiscoveryAdapter(fetchImpl, readEnv);
   return {

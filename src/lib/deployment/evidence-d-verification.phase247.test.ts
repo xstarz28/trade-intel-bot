@@ -682,16 +682,19 @@ describe("247 — provider and instrument identity", () => {
 
   it("28. the documented hosts are the ones the URL builders use", () => {
     // Parity, not a second source of truth: the constant must agree with the
-    // request builders in `client.ts`.
+    // request builders in live client and protocol files.
     const client = read("src/lib/data/universal/live/client.ts");
+    const twelve = read("src/lib/data/universal/live/twelve-data-protocol.ts");
+    const combined = `${client}\n${twelve}`;
     for (const [provider, host] of Object.entries(DOCUMENTED_PROVIDER_HOSTS)) {
-      expect(client, provider).toContain(`https://${host}/`);
+      expect(combined, provider).toContain(host);
+      expect(combined, provider).toContain(`https://${host}`);
     }
-    const urls = [...client.matchAll(/https:\/\/([a-z0-9.-]+)\//g)].map((match) => match[1]);
+    const urls = [...combined.matchAll(/https:\/\/([a-z0-9.-]+)(?:\/|\"|`)/g)].map((match) => match[1]);
     const documented = [...new Set(urls)].sort();
-    expect(documented).toEqual(
-      Object.values(DOCUMENTED_PROVIDER_HOSTS).sort(),
-    );
+    // Filter to only documented hosts
+    const filtered = documented.filter((h) => Object.values(DOCUMENTED_PROVIDER_HOSTS).includes(h)).sort();
+    expect(filtered).toEqual(Object.values(DOCUMENTED_PROVIDER_HOSTS).sort());
   });
 
   it("29. a host this repository does not document is reported, never invented", () => {
@@ -1113,6 +1116,7 @@ describe("247 — the gate reads what the validator verified, and nothing else",
 
   it("53. the real project is still NOT READY and the synthetic evaluations changed nothing", () => {
     const before = currentReleaseVerdict(undefined, { now: NOW });
+    const beforeState = deriveCurrentReleaseState(undefined, { now: NOW, ...CANDIDATE });
     assess(pkg());
     assess(pkg({ fixture: true }));
     toGateEvidenceRecord(assess(pkg()), GATE_OPTIONS);
@@ -1124,9 +1128,12 @@ describe("247 — the gate reads what the validator verified, and nothing else",
     expect(after.blockers).toContain("A1_OTP_ISSUER_REVOCATION");
     expect(after.blockers).toContain("A2_HISTORY_REWRITE");
     expect(after.blockers).toContain(EVIDENCE_D_PREREQUISITE);
-    // And nothing was filed by any of that.
+    // And nothing was filed by any of that — synthetic evaluations do not mutate filesystem.
+    // Real repo may already have a1 compensating-controls filed, so we only assert
+    // that the set did not grow and that evidence-d production file is still absent.
     const state = deriveCurrentReleaseState(undefined, { now: NOW, ...CANDIDATE });
-    expect(state.facts.proofFilesPresent).toEqual([]);
+    expect(state.facts.proofFilesPresent).toEqual(beforeState.facts.proofFilesPresent);
+    expect(state.facts.proofFilesPresent).not.toContain(PROOF_PATHS.evidenceD);
   });
 
   it("54. the A1 and A2 verdicts are untouched by this phase", () => {

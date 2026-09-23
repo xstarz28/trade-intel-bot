@@ -896,6 +896,11 @@ const de: Translations = {
     pnlPercentLabel: "G/V%",
     journalSuffix: "Journal",
     observationNote: "Beobachtung — kein Trade eingegangen",
+    deleteEntry: "Eintrag löschen",
+    loadingJournal: "Journal wird geladen...",
+    providerLabel: "provider",
+    saving: "Speichern...",
+    idLabel: "ID",
   },
 
   // ─── Analysis History Panel (Phase 146) ─────────────────────
@@ -945,6 +950,8 @@ const de: Translations = {
       "Empfehlungen sind analytische Einstufungen auf Grundlage der verfügbaren Evidenz und keine garantierten Gewinnvorhersagen.",
     rankingConfidenceNote: "Die Konfidenz spiegelt die analytische Kohärenz wider, KEINE Gewinnwahrscheinlichkeit.",
     liveScanNote: "Der Live-Scan nutzt aktuelle Marktdaten.",
+    derivedNotObserved: "(abgeleitet, nicht vom Anbieter beobachtet)",
+    retainedEvidenceFailed: "gespeicherte Evidenz — letzte Aktualisierung fehlgeschlagen",
     horizon1_4Weeks: "1–4 Wochen",
     horizon1_3Months: "1–3 Monate",
     horizon3_6Months: "3–6 Monate",

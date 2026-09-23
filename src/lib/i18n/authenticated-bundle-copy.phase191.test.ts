@@ -27,7 +27,8 @@ const APP_MARKERS = [
 ];
 
 /** Below this the artifact is a stub, not an application. */
-const MIN_BUNDLE_CHARS = 500_000;
+// Phase 264: real production build is now ~234k (222k index + vendors) after tree-shaking, previously ~500k+ before chunk splitting; lower threshold to 200k to avoid false skip while still rejecting stub (<1k)
+const MIN_BUNDLE_CHARS = 200_000;
 
 function loadBundle(): { js: string; reason?: string } {
   if (!existsSync(DIST)) return { js: "", reason: "dist/assets does not exist" };

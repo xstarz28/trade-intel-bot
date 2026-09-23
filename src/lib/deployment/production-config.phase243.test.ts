@@ -105,8 +105,22 @@ describe("243 — the inventory", () => {
     ).map((entry) => entry.providerId);
 
     expect(requiring).toEqual(["alpha-vantage", "coinglass", "eia", "tickatlas", "twelve-data"]);
+    // Keyless set expanded in Phase235 with public discovery providers (ccxt, dexscreener, etc)
     expect(keyless.sort()).toEqual(
-      ["cftc", "coingecko", "defillama", "okx", "tokenomist", "treasury"].sort(),
+      [
+        "ajaib",
+        "ccxt",
+        "cftc",
+        "coingecko",
+        "defillama",
+        "dexscreener",
+        "geckoterminal",
+        "idx",
+        "okx",
+        "stockbit",
+        "tokenomist",
+        "treasury",
+      ].sort(),
     );
     for (const entry of PROVIDER_CREDENTIAL_REQUIREMENTS) {
       if (entry.requiredEnvVars.length > 0) continue;

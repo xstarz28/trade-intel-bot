@@ -897,6 +897,11 @@ const ja: Translations = {
     pnlPercentLabel: "損益%",
     journalSuffix: "ジャーナル",
     observationNote: "観察 — トレードなし",
+    deleteEntry: "エントリを削除",
+    loadingJournal: "ジャーナルを読み込み中...",
+    providerLabel: "プロバイダー",
+    saving: "保存中...",
+    idLabel: "ID",
   },
 
   // ─── Analysis History Panel (Phase 146) ─────────────────────
@@ -946,6 +951,8 @@ const ja: Translations = {
       "推奨は入手可能なエビデンスに基づく分析上のランク付けであり、利益の保証された予測ではありません。",
     rankingConfidenceNote: "確信度は分析の整合性を反映したものであり、利益の確率ではありません。",
     liveScanNote: "ライブスキャンは現在の市場データを使用します。",
+    derivedNotObserved: "（派生、プロバイダー観測ではない）",
+    retainedEvidenceFailed: "保持された証拠 — 最新の更新に失敗",
     horizon1_4Weeks: "1〜4週間",
     horizon1_3Months: "1〜3か月",
     horizon3_6Months: "3〜6か月",

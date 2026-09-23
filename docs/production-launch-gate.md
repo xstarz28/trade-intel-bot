@@ -32,7 +32,7 @@ Implemented in `src/lib/deployment/production-url-validation.ts` pure, no I/O.
 
 ## B — Server Environment Verification
 
-Server secrets are set in Convex deployment environment, not in client bundle. In sandbox `npx convex env list` reports `No CONVEX_DEPLOYMENT set`, so server env cannot be inspected. Local `.env.example` shows all optional provider keys empty.
+Server secrets are set in Convex deployment environment, not in client bundle. In sandbox `npx convex env list --names-only` reports `No CONVEX_DEPLOYMENT set`, so server env cannot be inspected. Local `.env.example` shows all optional provider keys empty.
 
 | Variable | Presence Check | Status |
 |---|---|---|

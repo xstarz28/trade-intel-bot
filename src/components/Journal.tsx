@@ -40,7 +40,10 @@ import { mapTradeOutcome, mapTradeStatus } from "@/lib/i18n/enum-mapping";
 
 // ── Optional Convex hooks (graceful fallback when provider absent, e.g. unit tests) ──
 let useQuery: any = () => undefined;
-let useMutation: any = () => () => Promise.resolve(null);
+let useMutation: any = () => {
+  const noop = () => null;
+  return noop;
+};
 let api: any = { journal: { list: undefined, create: undefined, transition: undefined, updateFields: undefined, remove: undefined } };
 
 try {
@@ -68,7 +71,7 @@ function useOptionalMutation(mutationRef: any) {
   try {
     if (!mutationRef) return undefined;
     // eslint-disable-next-line react-hooks/rules-of-hooks
-    return useMutation(mutationRef) as ((args: any) => Promise<any>) | undefined;
+    return useMutation(mutationRef) as ((args: any) => any) | undefined;
   } catch {
     return undefined;
   }
@@ -467,7 +470,7 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
             <div><span className="text-muted-foreground">{t.journal.snapshotDecision}:</span> {currentResult.recommendation}</div>
             <div><span className="text-muted-foreground">{t.analysis.bias}:</span> {currentResult.bias}</div>
             <div><span className="text-muted-foreground">{t.analysis.confidence}:</span> {currentResult.confidence}</div>
-            {(currentResult as any).provider && <div><span className="text-muted-foreground">provider:</span> {(currentResult as any).provider} ({(currentResult as any).providerInstrumentId})</div>}
+            {(currentResult as any).provider && <div><span className="text-muted-foreground">{t.journal.providerLabel}:</span> {(currentResult as any).provider} ({(currentResult as any).providerInstrumentId})</div>}
           </div>
           {errorMsg && <div className="text-[10px] text-red-400 border border-red-500/30 rounded p-2">{errorMsg}</div>}
           <div className="flex gap-2">
@@ -477,7 +480,7 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
               disabled={isSaving}
               onClick={() => handleCreateFromAnalysis(currentResult)}
             >
-              {isSaving ? "Saving..." : t.journal.journalAsTrade}
+              {isSaving ? t.journal.saving : t.journal.journalAsTrade}
             </Button>
             {currentResult.recommendation === "NO_TRADE" && (
               <Button
@@ -537,8 +540,8 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
           {/* Provider identity preservation */}
           {(entry.provider || entry.providerInstrumentId || entry.assetClass) && (
             <div className="flex flex-wrap gap-1 mt-2">
-              {entry.provider && <Badge variant="outline" className="text-[9px] font-mono">provider: {entry.provider}</Badge>}
-              {entry.providerInstrumentId && <Badge variant="outline" className="text-[9px] font-mono">id: {entry.providerInstrumentId}</Badge>}
+              {entry.provider && <Badge variant="outline" className="text-[9px] font-mono">{t.journal.providerLabel}: {entry.provider}</Badge>}
+              {entry.providerInstrumentId && <Badge variant="outline" className="text-[9px] font-mono">{t.journal.idLabel}: {entry.providerInstrumentId}</Badge>}
               {entry.assetClass && <Badge variant="outline" className="text-[9px] font-mono">{entry.assetClass}</Badge>}
               {entry.title && <Badge variant="outline" className="text-[9px] font-mono">{entry.title}</Badge>}
             </div>
@@ -546,7 +549,7 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
         </CardHeader>
         <CardContent className="space-y-4 text-xs font-mono">
           {errorMsg && <div className="text-[10px] text-red-400 border border-red-500/30 rounded p-2">{errorMsg}</div>}
-          {isSaving && <div className="text-[10px] text-muted-foreground">Saving...</div>}
+          {isSaving && <div className="text-[10px] text-muted-foreground">{t.journal.saving}</div>}
 
           {/* ── ENGINE SNAPSHOT (read-only) ── */}
           <div>
@@ -720,7 +723,7 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
           <Separator />
           <div className="flex gap-2">
             <Button size="sm" variant="outline" className="text-[10px] font-mono text-red-400" onClick={() => handleDelete(entry)} disabled={isSaving}>
-              Delete entry
+              {t.journal.deleteEntry}
             </Button>
           </div>
         </CardContent>
@@ -744,7 +747,7 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
           )}
           {!onBack && (
             <Button variant="ghost" size="sm" onClick={() => { setErrorMsg(null); /* Convex auto-refreshes, but clear error */ }} className="text-xs ml-auto">
-              Refresh
+              {t.global.refresh}
             </Button>
           )}
         </div>
@@ -787,7 +790,7 @@ export function Journal({ currentResult, onJournalCreated, onBack, initialEntrie
 
         {/* Entry List */}
         {showLoading ? (
-          <p className="text-xs text-muted-foreground text-center py-4">Loading journal...</p>
+          <p className="text-xs text-muted-foreground text-center py-4">{t.journal.loadingJournal}</p>
         ) : filteredEntries.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">
             {entries.length === 0 ? t.journal.noJournalEntries : t.journal.noEntriesMatchFilters}

@@ -896,6 +896,11 @@ const ko: Translations = {
     pnlPercentLabel: "손익%",
     journalSuffix: "저널",
     observationNote: "관찰 — 거래 없음",
+    deleteEntry: "항목 삭제",
+    loadingJournal: "저널 로드 중...",
+    providerLabel: "제공자",
+    saving: "저장 중...",
+    idLabel: "ID",
   },
 
   // ─── Analysis History Panel (Phase 146) ─────────────────────
@@ -945,6 +950,8 @@ const ko: Translations = {
       "추천은 사용 가능한 증거에 기반한 분석적 순위이며 수익을 보장하는 예측이 아닙니다.",
     rankingConfidenceNote: "확신도는 분석적 일관성을 반영하며 수익 확률이 아닙니다.",
     liveScanNote: "라이브 스캔은 현재 시장 데이터를 사용합니다.",
+    derivedNotObserved: "(파생, 제공자 관찰 아님)",
+    retainedEvidenceFailed: "보관된 증거 — 최근 새로고침 실패",
     horizon1_4Weeks: "1~4주",
     horizon1_3Months: "1~3개월",
     horizon3_6Months: "3~6개월",
