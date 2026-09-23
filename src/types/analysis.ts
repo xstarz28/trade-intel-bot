@@ -166,6 +166,14 @@ export interface AnalysisResult {
   instrument: string;
   instrumentType: InstrumentType;
   timeframe: Timeframe;
+  /**
+   * Provider that established the native identity (discovery). Optional for backward compat
+   * with old persisted rows — Phase252/253/255 history additions remain safe.
+   * Never fabricated for old records.
+   */
+  provider?: string;
+  /** Exact provider-native instrument id. Never a substituted symbol. Optional for old rows. */
+  providerInstrumentId?: string;
   bias: DirectionalBias;
   confidence: number; // 0-100 — evidence strength score
   /** Actionable decision — may be NO_TRADE even when bias is directional. */

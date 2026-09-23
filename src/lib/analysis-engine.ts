@@ -2395,6 +2395,8 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     instrument: typeof input.instrument === "string" ? input.instrument.toUpperCase() : "",
     instrumentType: input.instrumentType ?? "forex",
     timeframe: input.timeframe,
+    provider: input.provider,
+    providerInstrumentId: input.providerInstrumentId,
     bias,
     confidence: decision.confidence,
     recommendation: decision.recommendation,

@@ -127,11 +127,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     <span className="text-muted-foreground"> | </span>
                     <span className="text-xs font-medium text-muted-foreground">{result.timeframe}</span>
                   </p>
-                  {(result as any).provider && (
+                  {result.provider && (
                     <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-muted/30 border border-border/50 text-muted-foreground/70">
-                      {(result as any).provider}
-                      {(result as any).providerInstrumentId && (result as any).providerInstrumentId !== result.instrument
-                        ? `:${(result as any).providerInstrumentId}`
+                      {result.provider}
+                      {result.providerInstrumentId && result.providerInstrumentId !== result.instrument
+                        ? `:${result.providerInstrumentId}`
                         : ""}
                     </span>
                   )}

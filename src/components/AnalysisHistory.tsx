@@ -134,12 +134,13 @@ export function AnalysisHistory({
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-mono font-semibold">{a.instrument}</span>
                       <span className="text-[10px] text-muted-foreground font-mono">{a.timeframe}</span>
-                      {/* Phase 253 — provider/native identity disambiguation: BTC/USDT from Binance vs OKX vs Twelve Data BTC/USD */}
-                      {(a as any).provider ? (
+                      {/* Phase 253 — provider/native identity disambiguation: BTC/USDT from Binance vs OKX vs Twelve Data BTC/USD
+                          Phase 256 — typed optional fields, backward-compatible: old rows without provider render safely */}
+                      {a.provider ? (
                         <span className="text-[9px] font-mono px-1 py-0 rounded border border-border/40 bg-muted/20 text-muted-foreground">
-                          {(a as any).provider}
-                          {(a as any).providerInstrumentId && (a as any).providerInstrumentId !== a.instrument
-                            ? `:${(a as any).providerInstrumentId}`
+                          {a.provider}
+                          {a.providerInstrumentId && a.providerInstrumentId !== a.instrument
+                            ? `:${a.providerInstrumentId}`
                             : ""}
                         </span>
                       ) : null}
