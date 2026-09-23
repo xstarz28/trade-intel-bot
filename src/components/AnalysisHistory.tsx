@@ -126,9 +126,18 @@ export function AnalysisHistory({
                 >
                   <BiasIcon className={cn("size-3.5 shrink-0", BIAS_COLORS[a.bias])} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-xs font-mono font-semibold">{a.instrument}</span>
                       <span className="text-[10px] text-muted-foreground font-mono">{a.timeframe}</span>
+                      {/* Phase 253 — provider/native identity disambiguation: BTC/USDT from Binance vs OKX vs Twelve Data BTC/USD */}
+                      {(a as any).provider ? (
+                        <span className="text-[9px] font-mono px-1 py-0 rounded border border-border/40 bg-muted/20 text-muted-foreground">
+                          {(a as any).provider}
+                          {(a as any).providerInstrumentId && (a as any).providerInstrumentId !== a.instrument
+                            ? `:${(a as any).providerInstrumentId}`
+                            : ""}
+                        </span>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className={cn("text-[11px] font-mono font-medium", BIAS_COLORS[a.bias])}>

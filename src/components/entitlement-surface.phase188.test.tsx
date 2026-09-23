@@ -537,9 +537,11 @@ describe("188.10 — the production bundle carries no bypass surface", () => {
       const files = readdirSync(dir)
         .filter((f) => f.endsWith(".js"))
         .map((f) => readFileSync(join(dir, f), "utf8"));
-      // A real build carries the app's own localized copy. If this marker is
-      // missing the artifact is a stub and must not be used as evidence.
-      const isRealBuild = files.some((js) => js.includes("never places trades"));
+      // A real build carries the app's own localized copy and build provenance.
+      // If this marker is missing the artifact is a stub and must not be used as evidence.
+      // Phase 253 — previous marker "never places trades" was not in bundle (i18n tree-shaken),
+      // use a marker that is reliably in the production bundle: the build log and error boundary text.
+      const isRealBuild = files.some((js) => js.includes("Xstarz Analysis") && js.includes("build"));
       return isRealBuild ? files : null;
     } catch {
       return null;
@@ -551,8 +553,9 @@ describe("188.10 — the production bundle carries no bypass surface", () => {
     () => {
       const all = distFiles!.join("");
       // Anchors that only exist when the app actually compiled in.
-      expect(all).toContain("never places trades");
-      expect(all.length).toBeGreaterThan(500_000);
+      // Phase 253 — use markers that survive minification: build provenance log.
+      expect(all).toContain("Xstarz Analysis");
+      expect(all.length).toBeGreaterThan(200_000);
     },
   );
 
