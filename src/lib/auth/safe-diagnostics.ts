@@ -27,6 +27,7 @@ export type AuthDiagnosticCategory =
   | "email-code-send-failed"
   | "otp-verification-failed"
   | "guest-session-failed"
+  | "google-signin-failed"
   | "sign-out-failed";
 
 /**

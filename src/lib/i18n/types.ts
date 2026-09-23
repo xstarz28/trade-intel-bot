@@ -1377,6 +1377,9 @@ export interface Translations {
     emailPlaceholder: string;
     emailHelp: string;
     continueWithEmail: string;
+    continueWithGoogle: string;
+    googleHelp: string;
+    googleFailed: string;
     orDivider: string;
     continueAsGuest: string;
     guestHelp: string;
