@@ -527,6 +527,15 @@ export function MarketOpportunities({
   // LIVE means the current scan contains verified live/delayed market data.
   // Radar presence or merely having cached liveSources must never promote the badge.
   const isLive = (scanResult?.totalWithLiveData ?? 0) > 0;
+  // Phase 243 — degraded means last refresh had failures, retained evidence may still be usable
+  // UI must distinguish “last valid live evidence retained” from “latest refresh succeeded”
+  const isDegraded = Boolean(scanResult?.degraded) || (providerErrors && providerErrors.length > 0) || (scanResult?.providerErrors && scanResult.providerErrors.length > 0);
+  const allProviderErrors = useMemo(() => {
+    const fromScan = scanResult?.providerErrors ?? [];
+    const fromProps = providerErrors ?? [];
+    const fromRadar = radarResult?.providerErrors ?? [];
+    return Array.from(new Set([...fromScan, ...fromProps, ...fromRadar]));
+  }, [scanResult?.providerErrors, providerErrors, radarResult?.providerErrors]);
   const scanTimestamp = scanResult?.timestamp ?? radarResult?.timestamp;
 
   const handleRefresh = useCallback(() => {
@@ -557,6 +566,13 @@ export function MarketOpportunities({
               <><Eye className="size-2.5 mr-0.5 inline" /> {tx("marketPanel.staticBadge")}</>
             )}
           </Badge>
+
+          {/* Phase 243 — degraded badge distinguishes retained vs fresh success */}
+          {isDegraded && (
+            <Badge variant="outline" className="text-[9px] font-mono bg-amber-500/10 text-amber-400 border-amber-500/20">
+              DEGRADED
+            </Badge>
+          )}
 
           <Badge variant="outline" className="text-[9px] font-mono border-border/50">
             {txi("marketPanel.rankedCount", { count: filteredRanked.length })}
@@ -606,6 +622,21 @@ export function MarketOpportunities({
               </span>
             )}
           </p>
+        )}
+
+        {/* Phase 243 — provider errors distinguish retained vs refresh success, stale vs live */}
+        {isDegraded && allProviderErrors.length > 0 && (
+          <div className="rounded-md bg-amber-500/5 border border-amber-500/10 p-1.5">
+            <p className="text-[8px] font-mono text-amber-400/70">retained evidence — latest refresh failed</p>
+            <div className="mt-0.5 space-y-0.5">
+              {allProviderErrors.slice(0, 3).map((e, i) => (
+                <p key={i} className="text-[8px] font-mono text-amber-300/60">• {e}</p>
+              ))}
+              {allProviderErrors.length > 3 && (
+                <p className="text-[8px] font-mono text-muted-foreground/40">+{allProviderErrors.length - 3} more</p>
+              )}
+            </div>
+          </div>
         )}
       </CardHeader>
       <CardContent className="pt-0 space-y-3">

@@ -79,28 +79,22 @@ export interface ScanResult {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// FRESHNESS GATES PER HORIZON
+// FRESHNESS GATES PER HORIZON — Phase 243 centralized
 // ═══════════════════════════════════════════════════════════════
 
-const FRESHNESS_GATES: Record<string, { maxFreshness: string; requireLiveData: boolean }> = {
-  SCALPING: { maxFreshness: "FRESH", requireLiveData: true },
-  INTRADAY: { maxFreshness: "DELAYED", requireLiveData: false },
-  SWING: { maxFreshness: "STALE", requireLiveData: false },
-  "1-4_WEEKS": { maxFreshness: "STALE", requireLiveData: false },
-  "1-3_MONTHS": { maxFreshness: "STALE", requireLiveData: false },
-  "3-6_MONTHS": { maxFreshness: "STALE", requireLiveData: false },
-  "6-12_MONTHS": { maxFreshness: "STALE", requireLiveData: false },
-  "1-3_YEARS": { maxFreshness: "STALE", requireLiveData: false },
-  "3+_YEARS": { maxFreshness: "STALE", requireLiveData: false },
-};
+// Reuse canonical horizon freshness gates from market-radar/types to avoid duplicated conflicting logic
+import { HORIZON_FRESHNESS_GATES, meetsFreshness as canonicalMeetsFreshness, FRESHNESS_ORDER } from "./market-radar/types";
 
-const FRESHNESS_ORDER = ["FRESH", "DELAYED", "STALE", "UNAVAILABLE"];
+const FRESHNESS_GATES: Record<string, { maxFreshness: string; requireLiveData: boolean }> = (() => {
+  const out: Record<string, { maxFreshness: string; requireLiveData: boolean }> = {};
+  for (const [k, v] of Object.entries(HORIZON_FRESHNESS_GATES)) {
+    out[k] = { maxFreshness: v.maxFreshness, requireLiveData: v.requireLiveData };
+  }
+  return out;
+})();
 
 function meetsFreshness(freshness: string, maxAllowed: string): boolean {
-  const fi = FRESHNESS_ORDER.indexOf(freshness);
-  const mi = FRESHNESS_ORDER.indexOf(maxAllowed);
-  if (fi === -1 || mi === -1) return false;
-  return fi <= mi;
+  return canonicalMeetsFreshness(freshness as any, maxAllowed as any);
 }
 
 // ═══════════════════════════════════════════════════════════════

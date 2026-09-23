@@ -262,10 +262,75 @@ export function keysToEvict(
 /** Instruments whose retained live data is still valid for scanning. */
 export function liveEligibleInstruments(
   tracked: ReadonlyMap<string, TrackedInstrument>,
+  now?: number,
+  config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
 ): TrackedInstrument[] {
-  return Array.from(tracked.values()).filter(
-    (entry) =>
-      (entry.state === "LIVE" || entry.state === "REFRESH_FAILED") &&
-      entry.lastLiveAt !== null,
+  return Array.from(tracked.values()).filter((entry) =>
+    isRetentionEligible(entry, now, config),
   );
+}
+
+// ────────────────────────────────────────────────────────────────
+// Phase 243 — explicit eligibility predicates (centralized, deterministic)
+// ────────────────────────────────────────────────────────────────
+
+/**
+ * Retention eligibility — does this instrument have usable retained data
+ * that has not yet expired by age and has not been delisted?
+ *
+ * This is the ONLY place that decides whether a tracked instrument may stay
+ * in the scanner's live set. It does NOT decide horizon-specific freshness
+ * (FRESH/DELAYED/STALE) — that is gated later by assessFreshness +
+ * checkFreshnessEligibility.
+ *
+ * Truth table:
+ * - DISCOVERED (lastLiveAt null) → never eligible
+ * - EXPIRED / DELISTED → never eligible
+ * - LIVE / REFRESH_FAILED with lastLiveAt != null and age <= retentionMs → eligible
+ * - If now is undefined, age check is skipped (legacy path) but state check remains.
+ */
+export function isRetentionEligible(
+  entry: TrackedInstrument,
+  now?: number,
+  config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
+): boolean {
+  if (!entry) return false;
+  if (entry.lastLiveAt === null) return false;
+  if (entry.state !== "LIVE" && entry.state !== "REFRESH_FAILED") return false;
+  if (now !== undefined) {
+    const age = now - entry.lastLiveAt;
+    if (age < 0) return false;
+    if (age > config.retentionMs) return false;
+  }
+  return true;
+}
+
+export function isExpiredByRetention(
+  entry: TrackedInstrument,
+  now: number,
+  config: LifecycleConfig = DEFAULT_LIFECYCLE_CONFIG,
+): boolean {
+  if (entry.lastLiveAt === null) return false;
+  if (entry.state === "DELISTED") return false;
+  return now - entry.lastLiveAt > config.retentionMs;
+}
+
+export function isDiscoveryOnly(entry: TrackedInstrument): boolean {
+  return entry.state === "DISCOVERED" || entry.lastLiveAt === null;
+}
+
+export function isLiveState(entry: TrackedInstrument): boolean {
+  return entry.state === "LIVE";
+}
+
+export function isRefreshFailedState(entry: TrackedInstrument): boolean {
+  return entry.state === "REFRESH_FAILED";
+}
+
+export function isExpiredState(entry: TrackedInstrument): boolean {
+  return entry.state === "EXPIRED";
+}
+
+export function isDelistedState(entry: TrackedInstrument): boolean {
+  return entry.state === "DELISTED";
 }
