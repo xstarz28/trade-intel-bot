@@ -16,6 +16,8 @@
 
 import type { DiscoveredInstrument } from "./types";
 import { discoveredInstrumentKey } from "./types";
+import { STATIC_REGISTRY } from "./universal-provider-registry";
+import { isLiveEvidenceCapability } from "./live-capability";
 import {
   areEquivalentInstruments,
   explainEquivalenceMismatch,
@@ -68,13 +70,22 @@ export function findFailoverCandidates(
 ): DiscoveredInstrument[] {
   const bucket = index.get(instrumentEquivalenceKey(target)) ?? [];
 
-  return bucket.filter(
-    (candidate) =>
-      candidate.provider !== target.provider &&
-      candidate.tradingState === "TRADING" &&
-      candidate.capabilities.includes(requiredCapability as never) &&
-      areEquivalentInstruments(target, candidate),
-  );
+  return bucket.filter((candidate) => {
+    if (candidate.provider === target.provider) return false;
+    if (candidate.tradingState !== "TRADING") return false;
+    if (!candidate.capabilities.includes(requiredCapability as never)) return false;
+    if (!areEquivalentInstruments(target, candidate)) return false;
+    // Phase 268 — use canonical live predicate + liveSupported/REQUIRES_LICENSE gate
+    // to prevent historical/license/credential-blocked from becoming failover live evidence
+    if (isLiveEvidenceCapability(requiredCapability)) {
+      const reg = STATIC_REGISTRY.find((e) => e.providerId === candidate.provider);
+      if (reg) {
+        if (reg.liveSupported === false) return false;
+        if (reg.status === "REQUIRES_LICENSE") return false;
+      }
+    }
+    return true;
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════

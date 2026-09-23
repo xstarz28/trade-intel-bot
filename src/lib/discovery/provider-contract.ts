@@ -25,6 +25,7 @@ import type {
   ProviderDiscoveryResult,
 } from "./types";
 import type { DiscoveryCompleteness } from "./completeness";
+import { isLiveEvidenceCapability } from "./live-capability";
 
 // ────────────────────────────────────────────────────────────────
 // CAPABILITIES
@@ -146,8 +147,10 @@ export interface IdxProviderStatus {
 // HELPERS
 // ────────────────────────────────────────────────────────────────
 
+
 export function isLiveCapability(cap: ProviderCapability): boolean {
-  return cap !== "discovery";
+  // Phase 268 — delegate to canonical predicate to avoid ad-hoc live list
+  return isLiveEvidenceCapability(cap as string);
 }
 
 export function providerSupports(
