@@ -10,14 +10,23 @@
  */
 
 export type RuntimeReadinessStatus =
-  | "RUNTIME_VERIFIED" // live call succeeded with provider timestamp, end-to-end
+  | "RUNTIME_VERIFIED" // live call succeeded with provider timestamp, end-to-end — FULL_DYNAMIC_UNIVERSE or EVENTUALLY_COMPLETE via rotation
   | "TEST_VERIFIED" // mocked transport success, static classification max RUNTIME_UNVERIFIED, no live claim
   | "CREDENTIAL_REQUIRED" // auth required, missing env var
   | "LICENSE_REQUIRED" // real-time requires license
   | "UNAVAILABLE" // configured but endpoint failed, network, malformed, provider error
   | "NOT_IMPLEMENTED" // no adapter
   | "HISTORICAL_ONLY" // not realtime, labeled delayed/stale, e.g., Treasury, COT, EIA, CoinGlass free
-  | "DISCOVERY_ONLY"; // discovery works, live not yet, e.g., stockbit discovery false
+  | "DISCOVERY_ONLY" // discovery works, live not yet, e.g., stockbit discovery false
+  | "BOUNDED_DISCOVERY"; // Phase 250: provider API only supports search/bounded queries, cannot guarantee complete enumeration — e.g., DexScreener search/?q= — honest classification, not fake full coverage
+
+/**
+ * Reporting categories for universe coverage (not statuses, but derived):
+ * - FULL_DYNAMIC_UNIVERSE: ccxt.exchanges 105, okx /public/instruments full list per type — complete per call
+ * - EVENTUALLY_COMPLETE: CCXT 5 per cycle + cursor rotation, GeckoTerminal networks 3 per cycle + cursor rotation → eventual full coverage over N cycles
+ * - BOUNDED_DISCOVERY: DexScreener search-only API, no enumeration endpoint → bounded convenience search, not complete universe
+ * - DISCOVERY_ONLY, etc.
+ */
 
 export interface ProviderCapabilityReadiness {
   provider: string;
@@ -76,19 +85,21 @@ export const PROVIDER_READINESS_MATRIX: ProviderCapabilityReadiness[] = [
   { provider: "twelve-data", capability: "OHLCV", status: "CREDENTIAL_REQUIRED", detail: "Twelve Data time_series", credential: "TWELVE_DATA_API_KEY", timestampSemantics: "provider datetime", freshness: "FRESH" },
   { provider: "twelve-data", capability: "QUOTE", status: "CREDENTIAL_REQUIRED", detail: "Twelve Data quote", credential: "TWELVE_DATA_API_KEY", timestampSemantics: "quote timestamp sec→ms", freshness: "FRESH" },
 
-  // ccxt dynamic — public if dep installed
-  { provider: "ccxt", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "Dynamic via ccxt.exchanges 105 exchanges, fetchMarkets()", timestampSemantics: "exchange native", freshness: "FRESH" },
-  { provider: "ccxt", capability: "LIVE", status: "RUNTIME_VERIFIED", detail: "CCXT native via provider-registry, public", timestampSemantics: "exchange timestamp provider-observed", freshness: "FRESH" },
+  // ccxt dynamic — public if dep installed, EVENTUALLY_COMPLETE via rotation (Phase 249/250)
+  { provider: "ccxt", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "Dynamic via ccxt.exchanges 105 exchanges, fetchMarkets() — EVENTUALLY_COMPLETE via cursor rotation maxExchanges=5 per cycle, eventual full 105 over 21 cycles", timestampSemantics: "exchange native", freshness: "FRESH" },
+  { provider: "ccxt", capability: "LIVE", status: "RUNTIME_VERIFIED", detail: "CCXT native via provider-registry, public — FULL_DYNAMIC_UNIVERSE per exchange", timestampSemantics: "exchange timestamp provider-observed", freshness: "FRESH" },
   { provider: "ccxt", capability: "OHLCV", status: "RUNTIME_VERIFIED", detail: "CCXT OHLCV", timestampSemantics: "exchange timestamp", freshness: "FRESH" },
   { provider: "ccxt", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "CCXT quote", timestampSemantics: "exchange timestamp", freshness: "FRESH" },
 
-  // dexscreener — public
-  { provider: "dexscreener", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "DEX pairs chain:dex:poolAddress", timestampSemantics: "provider-observed", freshness: "FRESH" },
-  { provider: "dexscreener", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "DEX pool quote", timestampSemantics: "provider-observed", freshness: "FRESH" },
+  // dexscreener — public but BOUNDED_DISCOVERY (Phase 250)
+  // API only supports search/?q=, no full enumeration of chains/DEXes/pools — bounded convenience search
+  { provider: "dexscreener", capability: "DISCOVERY", status: "BOUNDED_DISCOVERY", detail: "DEX pairs chain:dex:poolAddress via search/?q= bounded queries ETH/USDC/WETH/SOL — BOUNDED_DISCOVERY not complete DEX universe, source truth API response, rotation of query partitions", timestampSemantics: "provider-observed", freshness: "FRESH" },
+  { provider: "dexscreener", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "DEX pool quote via search result", timestampSemantics: "provider-observed", freshness: "FRESH" },
 
-  // geckoterminal — public
-  { provider: "geckoterminal", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "On-chain pools via GeckoTerminal", timestampSemantics: "provider-observed", freshness: "FRESH" },
-  { provider: "geckoterminal", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "Pool quote", timestampSemantics: "provider-observed", freshness: "FRESH" },
+  // geckoterminal — public, EVENTUALLY_COMPLETE via rotation (Phase 250)
+  { provider: "geckoterminal", capability: "DISCOVERY", status: "RUNTIME_VERIFIED", detail: "On-chain pools via GeckoTerminal /networks dynamic + /networks/{id}/pools?page= paginated — EVENTUALLY_COMPLETE via cursor rotation maxNetworks=3 per cycle, maxPages=2 per network, eventual full network coverage", timestampSemantics: "provider-observed", freshness: "FRESH" },
+  { provider: "geckoterminal", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "Pool quote via GeckoTerminal", timestampSemantics: "provider-observed", freshness: "FRESH" },
+  { provider: "geckoterminal", capability: "OHLCV", status: "RUNTIME_VERIFIED", detail: "Pool OHLCV via GeckoTerminal where supported", timestampSemantics: "provider-observed", freshness: "FRESH" },
 
   // idx — license required realtime, discovery credential-gated
   { provider: "idx", capability: "DISCOVERY", status: "LICENSE_REQUIRED", detail: "IDX public metadata via Twelve Data exchange=IDX requires credential, else REQUIRES_LICENSE", license: true, timestampSemantics: "provider state", freshness: "DELAYED" },

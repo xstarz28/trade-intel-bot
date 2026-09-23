@@ -105,13 +105,18 @@ async function fetchPoolsPage(
   return { pools, hasMore };
 }
 
+let globalGeckoCursor = 0;
+export function getGeckoDiscoveryCursor(): number { return globalGeckoCursor; }
+export function setGeckoDiscoveryCursor(n: number): void { globalGeckoCursor = Math.max(0, Math.floor(n)); }
+export function resetGeckoDiscoveryCursor(): void { globalGeckoCursor = 0; }
+
 export async function discoverGeckoTerminal(
   fetchJson: FetchJson,
   now: number = Date.now(),
-  opts: { maxNetworks?: number; maxPagesPerNetwork?: number } = {},
+  opts: { maxNetworks?: number; maxPagesPerNetwork?: number; cursor?: number; disableCursorAdvance?: boolean } = {},
 ): Promise<ProviderDiscoveryResult> {
-  const maxNetworks = opts.maxNetworks ?? 3;
-  const maxPages = opts.maxPagesPerNetwork ?? 2;
+  const maxNetworks = opts.maxNetworks ?? 3; // per-cycle batch, NOT permanent ceiling — cursor rotates
+  const maxPages = opts.maxPagesPerNetwork ?? 2; // per-network pages per cycle, bounded for scalability
 
   const warnings: string[] = [];
   const instruments: DiscoveredInstrument[] = [];
@@ -120,7 +125,35 @@ export async function discoverGeckoTerminal(
 
   try {
     const networks = await fetchNetworks(fetchJson);
-    const selected = networks.slice(0, maxNetworks);
+    if (networks.length === 0) {
+      return {
+        provider: PROVIDER,
+        success: false,
+        discoveredAt: now,
+        instruments: [],
+        warnings,
+        completeness: "FAILED",
+        pagesFetched: 0,
+        totalDiscovered: 0,
+        error: "No networks available",
+      };
+    }
+
+    // ── Rotation: eventual coverage of all networks ──
+    const total = networks.length;
+    const start = opts.cursor !== undefined ? opts.cursor % total : globalGeckoCursor % total;
+    let selected: string[];
+    let nextCursor: number;
+    if (maxNetworks >= total) {
+      selected = [...networks];
+      nextCursor = 0;
+    } else if (start + maxNetworks <= total) {
+      selected = networks.slice(start, start + maxNetworks);
+      nextCursor = (start + maxNetworks) % total;
+    } else {
+      selected = networks.slice(start);
+      nextCursor = 0;
+    }
 
     for (const netId of selected) {
       let page = 1;
@@ -166,6 +199,11 @@ export async function discoverGeckoTerminal(
     );
 
     const completeness = rollupCompleteness(catalogs.map((c) => c.completeness));
+
+    // Advance cursor for next cycle — failure does not stall rotation
+    if (!opts.disableCursorAdvance && opts.cursor === undefined) {
+      globalGeckoCursor = nextCursor;
+    }
 
     return {
       provider: PROVIDER,

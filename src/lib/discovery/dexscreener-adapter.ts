@@ -1,5 +1,6 @@
 /**
  * Phase 235 — DexScreener Public API Adapter
+ * Phase 250 — Bounded discovery hardening
  *
  * Prioritas: DexScreener public capability for DEX/on-chain discovery.
  * Provides pair search and token-pairs with chain/pair/token-address identity.
@@ -19,6 +20,13 @@
  * Pool A/B and Pool C/D are NOT one instrument even if token pair same.
  *
  * Uses completeness semantics Phase 234.
+ *
+ * Phase 250 audit:
+ * - DexScreener API only supports search/?q=, no full enumeration endpoint for chains/DEXes/pools
+ * - Current queries ["ETH","USDC","WETH","SOL"] are bounded convenience search, NOT complete DEX universe
+ * - This is BOUNDED_DISCOVERY, not FULL_DYNAMIC_UNIVERSE nor EVENTUALLY_COMPLETE
+ * - Rotation implemented for query partitions for eventual coverage if more queries added
+ * - Source of truth is API response, not query list
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
@@ -71,14 +79,44 @@ function toDiscovered(pair: DexScreenerPair, now: number): DiscoveredInstrument 
   };
 }
 
+let globalDexCursor = 0;
+export function getDexScreenerCursor(): number {
+  return globalDexCursor;
+}
+export function setDexScreenerCursor(n: number): void {
+  globalDexCursor = Math.max(0, Math.floor(n));
+}
+export function resetDexScreenerCursor(): void {
+  globalDexCursor = 0;
+}
+
 export async function discoverDexScreener(
   fetchJson: DexScreenerFetch,
   now: number = Date.now(),
-  opts: { queries?: string[] } = {},
+  opts: { queries?: string[]; maxQueries?: number; cursor?: number; disableCursorAdvance?: boolean } = {},
 ): Promise<ProviderDiscoveryResult> {
-  // For scalability, bounded queries. Not a hardcoded ticker whitelist as source of truth,
-  // but seed queries to bootstrap discovery. Source of truth is DexScreener API response.
-  const queries = opts.queries ?? ["ETH", "USDC", "WETH", "SOL"];
+  // Bounded convenience search — NOT complete DEX universe.
+  // DexScreener API only supports search/?q=, no full enumeration endpoint.
+  // This is BOUNDED_DISCOVERY, not FULL_DYNAMIC_UNIVERSE.
+  const allQueries = opts.queries ?? ["ETH", "USDC", "WETH", "SOL"];
+  const maxQueries = opts.maxQueries ?? allQueries.length; // per-cycle batch, NOT permanent ceiling if more queries added
+
+  // ── Rotation: eventual coverage of query partitions ──
+  const total = allQueries.length;
+  const start = opts.cursor !== undefined ? opts.cursor % total : globalDexCursor % total;
+  let queries: string[];
+  let nextCursor: number;
+  if (maxQueries >= total) {
+    queries = [...allQueries];
+    nextCursor = 0;
+  } else if (start + maxQueries <= total) {
+    queries = allQueries.slice(start, start + maxQueries);
+    nextCursor = (start + maxQueries) % total;
+  } else {
+    queries = allQueries.slice(start);
+    nextCursor = 0;
+  }
+
   const warnings: string[] = [];
   const instruments: DiscoveredInstrument[] = [];
   const catalogs: CatalogFetchReport[] = [];
@@ -136,6 +174,11 @@ export async function discoverDexScreener(
   );
 
   const completeness = rollupCompleteness(catalogs.map((c) => c.completeness));
+
+  // Advance cursor for next cycle — failure does not stall rotation
+  if (!opts.disableCursorAdvance && opts.cursor === undefined) {
+    globalDexCursor = nextCursor;
+  }
 
   return {
     provider: PROVIDER,
