@@ -161,11 +161,13 @@ No feature in this repo is PRODUCTION_RUNTIME_VERIFIED in sandbox. All public pr
 Application shows (no raw env values):
 
 - `Credential required` — TWELVE_DATA_API_KEY, COINGLASS_API_KEY, ALPHA_VANTAGE_API_KEY, EIA_API_KEY, TICKATLAS_API_KEY, AUTH_GOOGLE_ID/SECRET, XSTARZ_EMAIL_API_KEY/SENDER
+- `Credential required` — TWELVE_DATA_API_KEY, COINGLASS_API_KEY, ALPHA_VANTAGE_API_KEY, EIA_API_KEY, TICKATLAS_API_KEY, AUTH_GOOGLE_ID/SECRET, XSTARZ_EMAIL_API_KEY/SENDER
 - `License required` — IDX realtime, Stockbit, Ajaib
 - `Unavailable` — endpoint failed, network, malformed
 - `Historical-only` — Treasury, CFTC, DefiLlama, Tokenomist, EIA delayed semantics
 - `Bounded discovery` — DEXScreener search-only, not full DEX universe
-- `Not implemented` — Journal, DXY actual price, Stockbit discovery, Ajaib discovery, CoinGlass discovery, IDX realtime without license
+- `Not implemented` — DXY actual price (Actual DXY price feed unavailable — USD proxy is not DXY price data), Stockbit discovery, Ajaib discovery, CoinGlass discovery, IDX realtime without license
+- `Code ready` — Journal persistence (authenticated, provider-native identity preserved, empty/loading/error/refresh/logout/isolation)
 
 No fabricated live data, no historical-as-live, no symbol substitution.
 
@@ -189,7 +191,7 @@ Unit tests alone are insufficient. `LIVE_VERIFIED` in `src/lib/data/universal/li
 
 ### RELEASE-READY CODE
 
-- Technical engine, dataQuality, market context, MTF, decision trace/fingerprint, analyst thesis, market scenario, professional thesis, forward path, long horizon, evidence challenge, trade plan market-derived, position sizing (when complete), score breakdown, key levels/SR zones, risk note, crypto/universal intelligence, calendar, entitlement server authoritative FREE limit 2 analyses and OWNER unlimited, workspace, portfolio, protection, history provider chip backward-compatible, locale, InstrumentInput windowed catalog (Load More), search full catalog, provider badge, freshness/provenance/failure classification, retry/race/refresh/switching, protected analysis, readiness matrix, diagnostics safe, provider/native identity typed, no substitution/fake data/timestamp, UI truth, auth PKCE/state/safe linking/no OTP after Google, email OTP console vs prod distinction, deployment config validator.
+- Technical engine, dataQuality, market context, MTF, decision trace/fingerprint, analyst thesis, market scenario, professional thesis, forward path, long horizon, evidence challenge, trade plan market-derived, position sizing (when complete), score breakdown, key levels/SR zones, risk note, crypto/universal intelligence, calendar, entitlement server authoritative FREE limit 2 analyses and OWNER unlimited, workspace, portfolio, protection, history provider chip backward-compatible, journal persistence authenticated with provider-native identity preservation (Phase 262), locale, InstrumentInput windowed catalog (Load More), search full catalog, provider badge, freshness/provenance/failure classification, retry/race/refresh/switching, protected analysis, readiness matrix, diagnostics safe, provider/native identity typed, no substitution/fake data/timestamp, UI truth, auth PKCE/state/safe linking/no OTP after Google, email OTP console vs prod distinction, deployment config validator.
 
 Entitlement: FREE tier limited to 2 profit signals, OWNER unlimited via server-only XSTARZ_OWNER_PRINCIPALS principal match, fail-closed malformed config, valid session required, client cannot unlock.
 
@@ -224,12 +226,15 @@ Entitlement: FREE tier limited to 2 profit signals, OWNER unlimited via server-o
 
 ### NOT IMPLEMENTED
 
-- Journal persistence
-- DXY actual price series (Twelve Data plan no DXY symbol, NEWS proxy labeled fallback not actual price)
-- Stockbit discovery
-- Ajaib discovery
+- DXY actual price series — Actual DXY price feed unavailable — USD proxy is not DXY price data (Twelve Data plan no DXY symbol, NEWS proxy explicitly labeled fallback not actual DXY price data)
+- Stockbit discovery (requires paid Live Datafeed license)
+- Ajaib discovery (requires authorized access)
 - CoinGlass discovery (derivatives analytics for instruments discovered elsewhere)
 - IDX realtime without license
+
+### CODE READY (Phase 262)
+
+- Journal persistence — authenticated user ownership, create/read/list own/update/delete, timestamps, deterministic ordering, empty/loading/error/refresh/logout/session protection, cross-user isolation via server-derived identity, provider-native identity preservation (provider, providerInstrumentId, assetClass, instrument), historical references never become live evidence, no localStorage persistence, no fabricated content
 
 ### ACTUALLY LIVE VERIFIED
 

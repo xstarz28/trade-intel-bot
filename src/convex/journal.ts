@@ -12,6 +12,7 @@ import type { Doc } from "./_generated/dataModel";
 
 
 // ── Create ───────────────────────────────────────────────────────
+// Phase 262 — adds provider-native identity preservation
 
 export const create = mutation({
   args: {
@@ -19,6 +20,10 @@ export const create = mutation({
     instrumentType: v.string(),
     timeframe: v.string(),
     style: v.string(),
+    provider: v.optional(v.string()),
+    providerInstrumentId: v.optional(v.string()),
+    assetClass: v.optional(v.string()),
+    title: v.optional(v.string()),
     analysisSnapshot: v.object({
       analysisId: v.string(),
       decision: v.string(),
@@ -72,6 +77,10 @@ export const create = mutation({
       instrumentType: args.instrumentType,
       timeframe: args.timeframe,
       style: args.style,
+      provider: args.provider,
+      providerInstrumentId: args.providerInstrumentId,
+      assetClass: args.assetClass,
+      title: args.title,
       analysisSnapshot: args.analysisSnapshot,
       status,
       entry: args.entry,
@@ -159,6 +168,10 @@ export const updateFields = mutation({
     whatWentWrong: v.optional(v.string()),
     lessons: v.optional(v.string()),
     notes: v.optional(v.string()),
+    title: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    providerInstrumentId: v.optional(v.string()),
+    assetClass: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx);

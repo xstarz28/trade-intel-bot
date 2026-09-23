@@ -81,6 +81,10 @@ export function createJournalEntry(input: CreateJournalEntryInput): JournalEntry
     instrumentType: input.instrumentType,
     timeframe: input.timeframe,
     style: input.style,
+    provider: input.provider,
+    providerInstrumentId: input.providerInstrumentId,
+    assetClass: input.assetClass,
+    title: input.title,
     analysisSnapshot: { ...input.analysisSnapshot }, // immutable copy
     status: initialStatus,
     entry: input.entry,
@@ -98,12 +102,17 @@ export function createJournalEntry(input: CreateJournalEntryInput): JournalEntry
 /**
  * Create a journal entry directly from an AnalysisResult.
  * Convenience wrapper that extracts the snapshot automatically.
+ * Phase 262 — preserves provider-native identity.
  */
 export function journalFromAnalysis(
   result: AnalysisResult,
   overrides: Partial<CreateJournalEntryInput> = {},
 ): JournalEntry {
   const snapshot = createAnalysisSnapshot(result);
+  // Preserve provider-native identity from AnalysisResult
+  const provider = (result as any).provider as string | undefined;
+  const providerInstrumentId = (result as any).providerInstrumentId as string | undefined;
+  const assetClass = overrides.assetClass ?? (result.instrumentType as string) ?? undefined;
   return createJournalEntry({
     instrument: result.instrument,
     instrumentType: result.instrumentType,
@@ -111,6 +120,11 @@ export function journalFromAnalysis(
     style: result.tradingStyle,
     analysisSnapshot: snapshot,
     ...overrides,
+    // ensure provider identity from overrides wins, but fallback to result — after spread so overrides win
+    provider: overrides.provider ?? provider,
+    providerInstrumentId: overrides.providerInstrumentId ?? providerInstrumentId,
+    assetClass: overrides.assetClass ?? assetClass,
+    title: overrides.title ?? (overrides as any).title,
   });
 }
 

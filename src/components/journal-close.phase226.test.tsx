@@ -19,10 +19,11 @@
  *      snapshot never yields a P/L, even with both prices known.
  *   6. Other lifecycle buttons still transition immediately (no regression).
  *
- * Authorization: this component holds local state only and does not call
- * Convex. The server side (`journal.transition`) still enforces ownership
- * and VALID_TRANSITIONS; the local flow uses the same VALID_TRANSITIONS
+ * Authorization: Phase 262 — component now calls Convex mutations when a
+ * provider is present, but server side (`journal.transition`) still enforces
+ * ownership and VALID_TRANSITIONS; the local flow uses the same VALID_TRANSITIONS
  * table so the UI can never offer a transition the server would reject.
+ * In tests without Convex provider, it falls back to local state.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import React from "react";
@@ -177,10 +178,14 @@ describe("226 — the UI can only offer transitions the server allows", () => {
     }
   });
 
-  it("the component never calls a Convex mutation directly (server authorization owns persistence)", async () => {
+  it("the component uses Convex mutations through server-authorized paths only (no direct DB access)", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync("src/components/Journal.tsx", "utf8");
-    expect(src).not.toMatch(/useMutation|api\.journal/);
+    // Phase 262 — Journal now uses Convex mutations (authenticated) while server enforces ownership.
+    // The old check forbidding useMutation/api.journal is obsolete; we now verify no direct DB access.
+    expect(src).not.toMatch(/ctx\.db\.(insert|patch|delete)/);
     expect(src).not.toContain("handleUpdateNotes"); // dead duplicate of handleUpdateReview removed
+    // Must still use server-authorized mutations, not raw client DB
+    expect(src).toMatch(/api\.journal|useMutation/);
   });
 });

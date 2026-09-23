@@ -315,6 +315,8 @@ See sections above and matrix below.
 | IDX | DISCOVERY/LIVE realtime | CODE_READY license-gated | LICENSE | BLOCKED | LICENSE_REQUIRED |
 | Stockbit | DISCOVERY/LIVE | NOT_IMPLEMENTED | LICENSE | BLOCKED | NOT_IMPLEMENTED + LICENSE_REQUIRED |
 | Ajaib | DISCOVERY/LIVE | NOT_IMPLEMENTED | LICENSE | BLOCKED | NOT_IMPLEMENTED + LICENSE_REQUIRED |
+| Journal | PERSISTENCE authenticated | CODE_READY (Phase 262) | none (Convex auth) | CODE_READY — server derives identity, cross-user isolation, provider-native identity preservation | CODE_READY |
+| DXY | LIVE actual price series | NOT_IMPLEMENTED | none — no legitimate provider path | NOT_IMPLEMENTED — Actual DXY price feed unavailable — USD proxy is not DXY price data | NOT_IMPLEMENTED |
 
 ---
 

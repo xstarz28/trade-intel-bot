@@ -75,13 +75,18 @@ const schema = defineSchema(
       providerInstrumentId: v.optional(v.string()),
     }).index("by_user", ["userId", "timestamp"]),
 
-    // Phase 31 — Trade journal entries
+    // Phase 31 — Trade journal entries — Phase 262 adds provider-native identity
     journal: defineTable({
       userId: v.id("users"),
       instrument: v.string(),
       instrumentType: v.string(),
       timeframe: v.string(),
       style: v.string(),
+      // Phase 262 — preserve provider-native identity for distinguishable references
+      provider: v.optional(v.string()),
+      providerInstrumentId: v.optional(v.string()),
+      assetClass: v.optional(v.string()),
+      title: v.optional(v.string()),
       // Immutable analysis snapshot
       analysisSnapshot: v.object({
         analysisId: v.string(),
