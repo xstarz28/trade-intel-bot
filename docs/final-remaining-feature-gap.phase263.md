@@ -1054,3 +1054,158 @@ Target 0 failed 0 skipped tsc PASS build PASS security PASS — achieved, no hid
 
 `audit(discovery): unify provider capability and readiness truth` — includes 3 fixes + 1 new test file + docs, HEAD==remote, working tree clean, 370 files 13353 passed 0 skipped 0 failed, tsc/build/bundle/security PASS, DXY NOT_IMPLEMENTED honest, global invariant generic.
 
+
+## Phase 268 — COMPLETE LIVE-CAPABILITY VOCABULARY & GLOBAL ENFORCEMENT AUDIT
+
+### TASK A — ENUMERATE ACTUAL CAPABILITY VOCABULARY
+
+Grep across repo for capability strings/enums/constants used in provider registry, adapters, discovery, acquisition, live-source, scanner/radar, readiness:
+
+- provider-contract (21): discovery, ohlcv, quote, order_book, trades, derivatives, funding, open_interest, liquidations, news, fundamentals, corporate_actions, on_chain, macro, tvl, economic_calendar, yield_curve, inventory, eod, delayed, realtime
+- universal/types DataCapability (31): ohlcv, quote, order_book, tick_data, open_interest, funding_rate, liquidations, long_short_positioning, options_data, earnings, financial_statements, valuation, dividends, corporate_actions, analyst_estimates, macroeconomic_data, interest_rates, yield_curves, cot_positioning, economic_calendar, news, sentiment, inventory, supply_demand, futures_structure, tvl, defi_fees, on_chain_analytics, tokenomics, dxy, correlation, risk_regime
+- adapters: FUTURES_CAPS open_interest,funding_rate,liquidations,long_short_positioning,ohlcv SPOT_CAPS quote,ohlcv OKX ohlcv,quote,order_book twelve-data ohlcv,quote INDEX_CAPS delayed,eod,quote,ohlcv
+- registry: discovery, derivatives, funding, open_interest, liquidations, on_chain, quote, ohlcv
+- Union canonical actual (43 distinct): discovery, ohlcv, quote, order_book, trades, tick_data, derivatives, funding, funding_rate, open_interest, liquidations, long_short_positioning, news, fundamentals, corporate_actions, on_chain, on_chain_analytics, macro, macroeconomic_data, tvl, defi_fees, tokenomics, economic_calendar, yield_curve, yield_curves, interest_rates, inventory, supply_demand, futures_structure, eod, delayed, realtime, earnings, financial_statements, valuation, dividends, analyst_estimates, cot_positioning, sentiment, dxy, correlation, risk_regime, options_data
+
+NOT_PRESENT (mentioned in prompt but not found in repo): basis, mark_price, index_price, markPrice, indexPrice, long_short_ratio, ticker (as capability), orderbook variants beyond order_book, trades variants beyond trades
+
+### TASK B — CLASSIFY
+
+- LIVE_EVIDENCE (12): ohlcv, quote, order_book, trades, tick_data, realtime, derivatives, funding, funding_rate, open_interest, liquidations, long_short_positioning — adapter behavior produces provider-observed timestamp, freshness FRESH/DELAYED possible, credential/license gated, not receipt-time fabrication
+- HISTORICAL_OR_SUPPORTING (14): eod, delayed, yield_curve, yield_curves, interest_rates, cot_positioning, inventory, supply_demand, futures_structure, tvl, defi_fees, tokenomics, macro, macroeconomic_data — timestamp semantics APPLICATION_RECEIPT or old provider-observed, freshness STALE/HISTORICAL, never LIVE
+- DISCOVERY_ONLY (3): discovery, on_chain, on_chain_analytics — metadata only, no price, no live evidence, discovery time not market observation
+- NON_MARKET (14): news, sentiment, fundamentals, earnings, financial_statements, valuation, dividends, corporate_actions, analyst_estimates, economic_calendar, dxy, correlation, risk_regime, options_data — supporting evidence for analysis but must not activate LIVE/FRESH/liveEligible/liveSources
+
+### TASK C — GLOBAL LIVE PREDICATE
+
+Created `src/lib/discovery/live-capability.ts` single canonical helper:
+
+- Sets LIVE_EVIDENCE_CAPABILITIES, HISTORICAL_OR_SUPPORTING_CAPABILITIES, DISCOVERY_ONLY_CAPABILITIES, NON_MARKET_CAPABILITIES
+- Functions `classifyCapability`, `isLiveEvidenceCapability`, `isHistoricalOrSupportingCapability`, `isDiscoveryOnlyCapability`, `isNonMarketCapability`, `getAllActualCapabilities`, `getLiveEvidenceCapabilities`, etc.
+- Fail-closed: unknown capability defaults to NON_MARKET to prevent accidental live promotion
+- Updated `src/lib/discovery/registry.ts` `selectAcquirableInstruments` to import canonical predicate, generic guard now covers all LIVE_EVIDENCE (12) not just 5 (ohlcv,quote,realtime,order_book,trades) — now covers funding, funding_rate, open_interest, liquidations, long_short_positioning, derivatives, tick_data, etc.
+- Updated `src/lib/discovery/provider-contract.ts` `isLiveCapability` to delegate to canonical predicate, removed duplicate list `cap !== "discovery"`
+- Updated `src/lib/discovery/failover.ts` `findFailoverCandidates` to use canonical predicate + liveSupported/REQUIRES_LICENSE gate, preventing historical/license/credential-blocked from becoming failover live evidence
+- All live paths now use same predicate, no adapter local ad-hoc live list
+
+### TASK D — DERIVATIVES AUDIT CoinGlass + others
+
+Trace discovery→native→capability→credential/readiness→acquisition→timestamp→freshness→liveSource→radar/scanner→analysis for funding/open interest/long-short/liquidations/basis/mark/index price + actual derivatives caps:
+
+- **Discovery:** `discoverCoinGlassMarkets` via supported-exchange-pairs COMPLETE, provider coinglass, providerInstrumentId <exchange>:<instrument_id> exact, assetClass crypto, subType crypto_perp/futures/spot, capabilities open_interest,funding_rate,liquidations,long_short_positioning,ohlcv / quote,ohlcv, discoveredAt now
+- **Native:** exact preservation byte-for-byte, provider-qualified coinglass:: distinct
+- **Capability:** funding (registry) and funding_rate (FUTURES_CAPS) both LIVE_EVIDENCE derivatives, open_interest LIVE, liquidations LIVE, long_short_positioning LIVE, derivatives generic LIVE
+- **Credential/readiness:** PROVIDER_READINESS_MATRIX coinglass DERIVATIVES CREDENTIAL_REQUIRED COINGLASS_API_KEY, DISCOVERY CREDENTIAL_REQUIRED, timestamp semantics coinglassPointObservationMs time/t/timestamp/createTime sec/ms oldest wins, freshness DELAYED — credential missing not live
+- **Acquisition:** convex/coinglass.fetchDerivatives authenticated server-side key, provider observation timestamp preserved via coinglassPointObservationMs, not receipt-time fabrication
+- **Timestamp:** provider-observed, oldest wins, not Date.now() fabrication, verified via derivatives-bridge test
+- **Freshness:** FRESH only when provider timestamp recent (<5m), DELAYED <1h, STALE <24h, historical derivatives >24h STALE not FRESH
+- **liveSource:** only when credential present + freshness FRESH/DELAYED → hasLiveData true, otherwise excluded
+- **Radar/scanner:** derivatives evidence via derivatives-bridge, explicit freshness, timestampProvenance PROVIDER_OBSERVED, quality VERIFIED
+- **Analysis:** Gate0 freshness realtime/delayed passes, historical fails NO_TRADE but can be supporting
+- **Unsupported not live:** basis, mark_price, index_price NOT_PRESENT in repo — tests mark NOT_PRESENT not fake, no fabrication
+- **Historical derivatives not FRESH:** old funding data >24h STALE, not FRESH, verified
+- **Receipt time not replacing observation time:** observedAt != receiptAt, age preserved, not fabricated to 0
+- **Native identity exact:** providerInstrumentId exact, provider coinglass, assetClass crypto
+
+### TASK E — MACRO/FUNDAMENTALS BOUNDARY
+
+Audit Treasury, CFTC, EIA, Alpha Vantage fundamentals/news, DefiLlama, Tokenomist supporting providers; supporting evidence must not activate LIVE/FRESH/liveEligible/liveSources; keep allowed supporting use for analysis but block misclassification as market-live:
+
+- **Treasury:** yield_curve, yield_curves, interest_rates — HISTORICAL_OR_SUPPORTING, freshness STALE, provenance record_date provider-observed when available else APPLICATION_RECEIPT, provider-registry returns STALE DEGRADED, not LIVE, hasLiveData false
+- **CFTC:** cot_positioning — HISTORICAL_OR_SUPPORTING, STALE, APPLICATION_RECEIPT, not LIVE
+- **EIA:** inventory, supply_demand — HISTORICAL_OR_SUPPORTING + CREDENTIAL_REQUIRED, STALE, not LIVE
+- **Alpha Vantage fundamentals/news:** fundamentals, earnings, financial_statements, valuation, dividends, corporate_actions, analyst_estimates, news, sentiment — NON_MARKET, DELAYED, APPLICATION_RECEIPT, not LIVE, allowed as supporting evidence in analysis but not market-live
+- **DefiLlama:** tvl, defi_fees — HISTORICAL_OR_SUPPORTING, STALE DEGRADED after Phase267 fix, not LIVE
+- **Tokenomist:** tokenomics — HISTORICAL_OR_SUPPORTING, STALE DEGRADED, not LIVE
+- **Verified:** supporting evidence via additionalEvidence array with freshness DELAYED/STALE, required false, timestampProvenance PROVIDER_OBSERVED or APPLICATION_RECEIPT, does not affect primary freshness FRESH, does not create liveSources, does not activate isLive
+
+### TASK F — READINESS BY CAPABILITY
+
+Readiness per capability, provider can have A live-supported B historical-only, A LIVE without B LIVE, don't downgrade live capability because other historical:
+
+- **alpha-vantage:** ohlcv historical (delayed/eod) while quote historical — both historical, not live, liveSupported false, LIVE NOT_IMPLEMENTED — mixed correctly
+- **coinglass:** derivatives live while discovery metadata not live — mixed correctly, discovery CREDENTIAL_REQUIRED, derivatives CREDENTIAL_REQUIRED
+- **okx:** ohlcv+quote+order_book all live coexistence — mixed live capabilities both live, allowed
+- **idx:** eod/delayed historical + fundamentals non-market while realtime license-blocked — eod historical allowed non-live, realtime live blocked via license gate
+- **Test:** provider can have capability A LIVE without B LIVE (selectAcquirable filters per capability) — verified, okx ohlcv live and order_book live coexist, funding not present filtered out
+- **No downgrade:** live capability not downgraded because other historical — e.g., okx ohlcv remains live even though other provider has eod historical
+
+### TASK G — BYPASS SEARCH
+
+Search liveSources/LiveCandidateSource/liveEligibleInstruments/hasLiveData/FRESH/DELAYED/LIVE/acquireLiveData/selectAcquirableInstruments/requiredCapability/capabilities/liveSupported/isAvailable/REQUIRES_LICENSE/CREDENTIAL_REQUIRED:
+
+- **Call sites found (12):** live-source-adapter.ts, market-data.ts, ccxt-live.ts, coinglass-adapter.ts, registry.ts, failover.ts, scanner, market-radar, liveScanner.ts, liveCandidateBuilder.ts, candidate-builder.ts, provider-registry.ts
+- **Bypass paths found (3):**
+  1. registry.ts only checked 5 capabilities [ohlcv,quote,realtime,order_book,trades] allowing funding/open_interest/liquidations to bypass liveSupported gate — fixed to canonical predicate covering all 12 LIVE_EVIDENCE
+  2. provider-contract.ts isLiveCapability returned cap !== "discovery" treating eod/delayed/news/fundamentals as live — fixed to delegate to canonical predicate
+  3. failover.ts findFailoverCandidates checked capabilities but not liveSupported/REQUIRES_LICENSE — fixed to use canonical predicate + liveSupported/REQUIRES_LICENSE gate
+- **Bypass paths fixed:** 3, all now via canonical predicate, preserve native identity, valid timestamp provenance, respect credential/license/readiness, not convert historical/supporting to live
+- **Remaining call sites verified:** live-source-adapter.ts converts verified runtime live sources, no ad-hoc list; market-radar provider-registry returns STALE for historical, null for indices, no FRESH fabrication; liveScanner/candidate-builder hasLiveData = FRESH||DELAYED only, STALE/HISTORICAL excluded; acquireLiveData selects best adapter via health + isAvailable (credential check), not ad-hoc
+
+### TASK H — TESTS
+
+Min 80 Phase268 deterministic tests for complete inventory, canonical predicate, every LIVE_EVIDENCE, every historical/supporting, discovery-only rejection, credential/license/NOT_IMPLEMENTED gating, CoinGlass funding/open interest/long-short/liquidations, derivatives timestamp integrity, historical derivatives cannot become live, macro/fundamentals/news cannot become market-live, capability A live while B historical, same provider mixed states, native ID exact, cross-provider collision, no bypass, FRESH not from receipt time, metadata-only cannot create radar; if CoinGlass capability NOT_PRESENT mark NOT_PRESENT not fake.
+
+Created `src/lib/discovery/complete-live-capability-vocabulary.phase268.test.ts` 103 tests (exceeds 80):
+
+- Inventory: total >=38 (actual 43), LIVE 12, historical >=10 (actual 14), discovery-only >=1 (actual 3), non-market >=10 (actual 14), NOT_PRESENT not in inventory, ProviderCapability coverage
+- Canonical predicate: isLiveEvidenceCapability true for every LIVE_EVIDENCE, false for historical/supporting, discovery-only, non-market, provider-contract delegates
+- Every LIVE_EVIDENCE explicit: 12 tests ohlcv,quote,order_book,trades,tick_data,realtime,derivatives,funding,funding_rate,open_interest,liquidations,long_short_positioning
+- Historical/supporting rejection: 14 tests
+- Discovery-only rejection: 3 tests
+- Credential/license/NOT_IMPLEMENTED gating: twelve-data CREDENTIAL_REQUIRED, coinglass CREDENTIAL_REQUIRED, idx REQUIRES_LICENSE blocked, stockbit blocked, ajaib blocked, alpha-vantage liveSupported false blocked, dxy NOT_IMPLEMENTED
+- CoinGlass derivatives: funding LIVE_EVIDENCE + registry, funding_rate LIVE, open_interest LIVE + registry, liquidations LIVE, long_short_positioning LIVE, derivatives LIVE, registry includes derivatives, credential missing not live, basis/mark_price/index_price NOT_PRESENT not fabricated
+- Derivatives timestamp integrity: provider-observed not receipt, historical derivatives cannot become FRESH, funding live but historical not FRESH
+- Macro/fundamentals/news boundary: 22 non-market caps cannot become market-live, Treasury yield, CFTC cot, EIA inventory, Alpha Vantage fundamentals/news
+- Capability A live while B historical: ohlcv live while eod historical, coinglass derivatives live while discovery not live, okx coexistence, idx eod historical while realtime blocked
+- Same provider mixed states: alpha-vantage quote historical not live due to liveSupported false, provider can have A LIVE without B LIVE
+- Native ID exact & cross-provider collision: byte-for-byte, provider::nativeID distinct, same native ID different provider distinct
+- No bypass: selectAcquirable uses canonical predicate not ad-hoc, liveSupported false blocks all LIVE_EVIDENCE, REQUIRES_LICENSE defense in depth
+- FRESH not from receipt time: FRESH from provider observedAt not receipt, missing observedAt not FRESH
+- Metadata-only cannot create radar: discovery-only cannot create live opportunity, non-market cannot create radar, historical-only cannot create radar hasLiveData false
+
+All deterministic, no network, no secrets, no randomness.
+
+### TASK I — REGRESSION
+
+- `npm run test:release` → Test Files 371 passed, Tests 13456 passed, 0 failed, 0 skipped (canonical)
+- `npx tsc -b` → PASS 0 errors
+- `npm run build` → PASS 222.56 kB gzip, 2435 modules, vite v7.3.6
+- `git diff --check` → PASS 0 whitespace errors
+- Security scans: provider secret scan clean, OAuth clean, bundle scan PASS (19 dist, 49 android, 33 ios, 3 src-tauri, 1 permission INTERNET), no hardcoded keys, no raw payloads, no userId exposure, historical→live isolation generic via canonical predicate
+
+Target 0 failed 0 skipped tsc PASS build PASS security PASS — achieved.
+
+### TASK J — NO SCOPE CREEP
+
+- No new provider added
+- No fake data, no proxy symbol, no historical→live, no delete old tests, no DXY implemented, no new feature, no generated artifacts in Git (dist gitignored, android/ios scaffolding kept intentionally from merge c225355)
+- Only global capability/live-evidence integrity: live-capability.ts canonical, registry.ts + provider-contract.ts + failover.ts centralized to canonical predicate
+
+### TASK K — FINAL REPORT 21 ITEMS
+
+1. commit hash: 9393d9d144480d2d7e6e8e315989ffa23b425c4d fix(discovery): centralize live capability enforcement
+2. total actual capability names: 43 distinct (21 ProviderCapability + 31 DataCapability union + adapter variants funding vs funding_rate)
+3. LIVE_EVIDENCE count: 12 (ohlcv,quote,order_book,trades,tick_data,realtime,derivatives,funding,funding_rate,open_interest,liquidations,long_short_positioning)
+4. historical/supporting count: 14 (eod,delayed,yield_curve,yield_curves,interest_rates,cot_positioning,inventory,supply_demand,futures_structure,tvl,defi_fees,tokenomics,macro,macroeconomic_data)
+5. discovery-only count: 3 (discovery,on_chain,on_chain_analytics)
+6. non-market count: 14 (news,sentiment,fundamentals,earnings,financial_statements,valuation,dividends,corporate_actions,analyst_estimates,economic_calendar,dxy,correlation,risk_regime,options_data)
+7. bypass paths found: 3 (registry ad-hoc 5 caps, provider-contract cap !== discovery, failover missing liveSupported/REQUIRES_LICENSE gate)
+8. bypass paths fixed: 3 (all now via canonical isLiveEvidenceCapability + liveSupported/REQUIRES_LICENSE defense in depth)
+9. CoinGlass derivatives results: funding LIVE_EVIDENCE CREDENTIAL_REQUIRED registry contains funding, funding_rate LIVE, open_interest LIVE registry, liquidations LIVE, long_short_positioning LIVE, derivatives LIVE, basis/mark_price/index_price NOT_PRESENT not fabricated, timestamp provider-observed coinglassPointObservationMs oldest wins, historical derivatives STALE not FRESH, credential missing not live, native identity exact provider-qualified coinglass:: distinct
+10. provider mixed-capability results: alpha-vantage ohlcv/quote historical blocked liveSupported false, coinglass derivatives live while discovery not live mixed correctly, okx ohlcv+quote+order_book all live coexistence, idx eod historical allowed non-live while realtime license-blocked blocked, same provider can have A LIVE without B LIVE via per-capability filter, no downgrade live capability because other historical
+11. Phase268 tests: 103 tests (exceeds min 80)
+12. canonical total tests: 13456 passed (371 files)
+13. skipped: 0
+14. failed: 0
+15. tsc: PASS (npx tsc -b 0 errors)
+16. build: PASS (npm run build 222.56 kB gzip, 2435 modules)
+17. security: PASS (provider secret scan clean, OAuth clean, bundle PASS, no hardcoded keys, no raw payloads, no userId exposure, historical→live isolation via canonical predicate)
+18. remaining external blockers: Stockbit/Ajaib/IDX LICENSE_REQUIRED (requires paid Live Datafeed/license), DXY NOT_IMPLEMENTED (no provider exposes verified DXY series, Twelve Data 404, Alpha Vantage no DXY evidence, no EUR/USD inversion/UUP/UDN/news/futures proxy), CoinGlass CREDENTIAL_REQUIRED (requires COINGLASS_API_KEY), Alpha Vantage/Twelve Data/EIA/TickAtlas CREDENTIAL_REQUIRED (requires respective API keys), Treasury/CFTC/EIA HISTORICAL_ONLY STALE, DefiLlama/Tokenomist HISTORICAL_ONLY STALE DEGRADED
+19. remaining NOT_IMPLEMENTED: DXY LIVE (Actual DXY price series not currently verified as available from the configured provider), Stockbit DISCOVERY, Ajaib DISCOVERY, Alpha Vantage LIVE (historical not real-time, DXY not verified), Twelve Data DXY-specific (via dxy entry), Coingecko DISCOVERY_ONLY, DexScreener BOUNDED_DISCOVERY
+20. HEAD==remote: YES (HEAD 9393d9d == origin/arena/01a0b293-trade-intel-bot 9393d9d via git ls-remote + gh api + update-ref verification)
+21. working tree clean: YES (git status --short clean after commit + push)
+
+## Phase 268 — Final Commit
+
+`fix(discovery): centralize live capability enforcement` — single canonical predicate `isLiveEvidenceCapability` covering 12 LIVE_EVIDENCE, 14 historical/supporting, 3 discovery-only, 14 non-market, 43 total actual capabilities, 3 bypass paths fixed, 103 Phase268 tests, 371 files 13456 passed 0 skipped 0 failed, tsc/build/security PASS, DXY NOT_IMPLEMENTED honest, historical isolation via canonical predicate, HEAD==remote, working tree clean.
