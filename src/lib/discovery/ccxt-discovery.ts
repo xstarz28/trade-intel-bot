@@ -109,7 +109,27 @@ export type CcxtDiscoveryDeps = {
   createExchange?: (id: string) => CcxtExchange;
   /** Bounded concurrency for exchange discovery */
   maxExchanges?: number;
+  /** For tests: inject cursor */
+  cursor?: number;
+  /** For tests: disable global cursor advancement */
+  disableCursorAdvance?: boolean;
 };
+
+// ── Rotation cursor: bounded per-cycle batch, eventual full coverage ──
+// maxExchanges=5 is maximum exchanges per discovery cycle, NOT permanent ceiling.
+// Over repeated cycles, cursor rotates through entire ccxt.exchanges universe.
+// No exchange permanently starved. Failure does not stall rotation.
+let globalCcxtCursor = 0;
+
+export function getCcxtDiscoveryCursor(): number {
+  return globalCcxtCursor;
+}
+export function setCcxtDiscoveryCursor(n: number): void {
+  globalCcxtCursor = Math.max(0, Math.floor(n));
+}
+export function resetCcxtDiscoveryCursor(): void {
+  globalCcxtCursor = 0;
+}
 
 function getCcxtModule(): { exchanges: string[]; [key: string]: unknown } | null {
   try {
@@ -125,7 +145,7 @@ export async function discoverCcxtMarkets(
   now: number = Date.now(),
   deps: CcxtDiscoveryDeps = {},
 ): Promise<ProviderDiscoveryResult> {
-  const maxExchanges = deps.maxExchanges ?? 5; // bounded for scalability
+  const maxExchanges = deps.maxExchanges ?? 5; // bounded per cycle for scalability, NOT permanent ceiling — cursor rotates to cover eventual 105
   const getExchanges = deps.getExchanges ?? getAvailableCcxtExchangesDynamic;
 
   const ccxtMod = getCcxtModule();
@@ -158,9 +178,25 @@ export async function discoverCcxtMarkets(
     };
   }
 
-  // Select bounded subset for discovery — source of truth is still ccxt.exchanges,
-  // not a hardcoded whitelist. We take first N for scalability, but registry knows all.
-  const selected = allExchanges.slice(0, maxExchanges);
+  // ── Rotation logic ──
+  // Deterministic sorted universe already from getAvailableCcxtExchangesDynamic.
+  // Cursor advances each cycle, wraps to 0 after full coverage, no duplicates before full coverage.
+  const total = allExchanges.length;
+  const start = deps.cursor !== undefined ? deps.cursor % total : globalCcxtCursor % total;
+  let selected: string[];
+  let nextCursor: number;
+  if (maxExchanges >= total) {
+    selected = [...allExchanges];
+    nextCursor = 0;
+  } else if (start + maxExchanges <= total) {
+    selected = allExchanges.slice(start, start + maxExchanges);
+    nextCursor = (start + maxExchanges) % total;
+  } else {
+    // Remaining less than batch — take remaining only, no wrap in same batch to avoid duplicate before full coverage.
+    // Next cycle starts at 0, beginning new rotation.
+    selected = allExchanges.slice(start);
+    nextCursor = 0;
+  }
 
   const warnings: string[] = [];
   const instruments: DiscoveredInstrument[] = [];
@@ -220,6 +256,11 @@ export async function discoverCcxtMarkets(
   );
 
   const completeness = rollupCompleteness(catalogs.map((c) => c.completeness));
+
+  // Advance cursor for next cycle — failure does not stall rotation
+  if (!deps.disableCursorAdvance && deps.cursor === undefined) {
+    globalCcxtCursor = nextCursor;
+  }
 
   return {
     provider: "ccxt",

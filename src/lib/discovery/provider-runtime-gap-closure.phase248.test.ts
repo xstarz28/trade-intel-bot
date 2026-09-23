@@ -61,10 +61,13 @@ describe("Phase248 3 — dynamic exchange loading", () => {
     const reg = read("src/lib/discovery/universal-provider-registry.ts");
     expect(reg).toContain("ccxtProviderId");
   });
-  it("registry knows all exchanges, discovery bounded for scalability", () => {
+  it("registry knows all exchanges, discovery bounded per-cycle with rotation (Phase249)", () => {
     const src = read("src/lib/discovery/ccxt-discovery.ts");
     expect(src).toContain("maxExchanges");
-    expect(src).toContain("allExchanges.slice(0, maxExchanges)");
+    // Phase249: rotation proof — not permanent ceiling
+    expect(src).toContain("globalCcxtCursor");
+    expect(src).toContain("NOT permanent ceiling");
+    expect(src).toContain("cursor rotates");
   });
 });
 
