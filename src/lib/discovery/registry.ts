@@ -131,25 +131,39 @@ export function selectAcquirableInstruments(
     ) {
       return false;
     }
-    // Phase 266 — historical index isolation: if provider's registry entry has liveSupported false,
-    // its instruments must NEVER enter live eligibility (e.g., alpha-vantage indices historical/delayed).
-    // This prevents historical/delayed data from becoming LIVE/FRESH/liveEligible/liveSources.
+    // Phase 267 — GLOBAL LIVE ELIGIBILITY INVARIANT (generic, not special-case):
+    // Historical / EOD / DELAYED-only, credential-missing, license-required,
+    // discovery-only, unavailable, historical-only MUST NOT enter liveSources.
+    // If provider's registry entry has liveSupported false, its instruments must NEVER
+    // enter live eligibility for live-evidence capabilities (ohlcv, quote, realtime, order_book, trades).
+    // This prevents historical/delayed/license/credential-blocked data from becoming LIVE/FRESH/liveEligible/liveSources.
     const reg = STATIC_REGISTRY.find((e) => e.providerId === instrument.provider);
     if (reg && reg.liveSupported === false) {
-      // For alpha-vantage indices, historical only — exclude from live acquisition.
-      // Allow if requiredCapability is explicitly historical (delayed/eod) but not for ohlcv live gate.
-      // The live pipeline always asks for ohlcv, so this blocks historical.
-      if (requiredCapability === "ohlcv" || requiredCapability === "quote") {
-        // If provider is alpha-vantage and assetClass indices, it's historical only
-        if (instrument.provider === "alpha-vantage" && instrument.assetClass === "indices") {
-          return false;
-        }
-        // Generic: if registry says liveSupported false, exclude from live ohlcv/quote
-        // Exception: coinglass has liveSupported true in registry (now true), so allowed.
-        // For alpha-vantage, liveSupported false → exclude.
-        if (reg.providerId === "alpha-vantage") {
-          return false;
-        }
+      if (
+        requiredCapability === "ohlcv" ||
+        requiredCapability === "quote" ||
+        requiredCapability === "realtime" ||
+        requiredCapability === "order_book" ||
+        requiredCapability === "trades"
+      ) {
+        // Generic: any provider with liveSupported false is excluded from live acquisition
+        // Examples: alpha-vantage indices historical/delayed, idx license-required, stockbit/ajaib license-required
+        // Exception: coinglass has liveSupported true for derivatives, but its registry capabilities do NOT include ohlcv/quote for price,
+        // so it won't be selected for price anyway. For price, liveSupported false gate is authoritative.
+        return false;
+      }
+    }
+    // Additional generic guard: if provider status is REQUIRES_LICENSE, also exclude from live ohlcv/quote
+    // (even if liveSupported true was mistakenly left true in some registry — defense in depth)
+    if (reg && reg.status === "REQUIRES_LICENSE") {
+      if (
+        requiredCapability === "ohlcv" ||
+        requiredCapability === "quote" ||
+        requiredCapability === "realtime" ||
+        requiredCapability === "order_book" ||
+        requiredCapability === "trades"
+      ) {
+        return false;
       }
     }
     return true;

@@ -100,13 +100,17 @@ export const STATIC_REGISTRY: RegistryEntry[] = [
     providerId: IDX_PROVIDER_ID,
     displayName: "IDX (Indonesia Stock Exchange)",
     assetClasses: ["equity", "indices"],
-    capabilities: ["discovery", "eod", "delayed", "realtime", "fundamentals", "corporate_actions"],
+    // Phase 267 — IDX live acquisition always returns REQUIRES_LICENSE (see idx-adapter.ts acquireIdxLive).
+    // Discovery is implemented via Twelve Data filtered to IDX when credential available, but live market-data
+    // requires official licensed datafeed. Therefore liveSupported MUST be false, status REQUIRES_LICENSE.
+    // This prevents LICENSE_REQUIRED provider from entering liveSources/liveEligible.
+    capabilities: ["discovery", "eod", "delayed", "fundamentals", "corporate_actions"],
     discoverySupported: true,
-    liveSupported: true,
-    status: "AVAILABLE",
+    liveSupported: false,
+    status: "REQUIRES_LICENSE",
     requiresLicense: true,
     licenseNote:
-      "IDX real-time requires official licensed datafeed. Public metadata discoverable, market-data acquisition requires license.",
+      "IDX real-time requires official licensed datafeed. Public metadata discoverable via Twelve Data exchange=IDX when credential available, market-data acquisition requires license. No fake price.",
   },
   {
     providerId: STOCKBIT_PROVIDER_ID,

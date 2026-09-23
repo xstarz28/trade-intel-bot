@@ -338,16 +338,15 @@ function buildDefiLlamaAdapter(): ProviderAdapter {
         if (!Array.isArray(data) || data.length === 0) return null;
         const latest = data[data.length - 1];
         if (!latest || latest.tvl === undefined) return null;
-        // Phase 238 — this payload carries no observation time, so the
-        // acquisition instant IS the record's `observedAt`: one read, carried
-        // out on the record so the caller dates it identically.
-        // Provenance is APPLICATION_RECEIPT because no provider timestamp.
+        // Phase 267 — DeFiLlama TVL/fees is HISTORICAL_ONLY / informational, not live price.
+        // ObservedAt == acquiredAt by policy with provenance APPLICATION_RECEIPT, but freshness MUST NOT be FRESH
+        // to prevent historical-only from becoming live evidence. Use STALE to keep it out of hasLiveData (FRESH||DELAYED).
         const acquiredAt = Date.now();
         return {
           instrument, assetClass: "crypto", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
           provider: "defillama", observedAt: acquiredAt,
-          freshness: "FRESH", quality: "VERIFIED",
+          freshness: "STALE", quality: "DEGRADED",
           acquiredAt,
           timestampProvenance: "APPLICATION_RECEIPT",
         };
@@ -370,14 +369,14 @@ function buildTokenomistAdapter(): ProviderAdapter {
         const url = `https://api.tokenomist.xyz/v1/unlocks?symbol=${symbol}`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
-        // Phase 238 — this payload carries no observation time.
-        // Provenance APPLICATION_RECEIPT.
+        // Phase 267 — Tokenomist unlocks is HISTORICAL_ONLY / informational, not live price.
+        // Freshness MUST NOT be FRESH to prevent historical-only entering liveSources.
         const acquiredAt = Date.now();
         return {
           instrument, assetClass: "crypto", price: 0,
           ohlcvAvailable: false, availableTimeframes: [],
           provider: "tokenomist", observedAt: acquiredAt,
-          freshness: "FRESH", quality: "VERIFIED",
+          freshness: "STALE", quality: "DEGRADED",
           acquiredAt,
           timestampProvenance: "APPLICATION_RECEIPT",
         };
