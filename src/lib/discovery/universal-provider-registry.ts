@@ -151,6 +151,16 @@ export const STATIC_REGISTRY: RegistryEntry[] = [
     status: "AVAILABLE",
     requiresCredential: true,
   },
+  {
+    providerId: "alpha-vantage",
+    displayName: "Alpha Vantage",
+    assetClasses: ["indices", "equity", "forex"],
+    capabilities: ["discovery", "ohlcv", "quote", "fundamentals", "news"],
+    discoverySupported: true,
+    liveSupported: true,
+    status: "AVAILABLE",
+    requiresCredential: true,
+  },
 ];
 
 // ────────────────────────────────────────────────────────────────

@@ -661,3 +661,132 @@ function parseAVTime(timeStr: unknown): number {
 function safeNum(val: unknown): number | undefined {
   return asFiniteNumber(val);
 }
+
+// ── Phase 265 — Index Catalog + Index Data ──────────────────────
+
+import type { ProviderDiscoveryResult } from "../lib/discovery/types";
+import type { AlphaVantageIndexDataResult } from "../lib/discovery/alpha-vantage-adapter";
+
+export const fetchIndexCatalog = action({
+  args: {},
+  handler: async (ctx): Promise<ProviderDiscoveryResult & { acquisition: string; observedAt: number }> => {
+    await requireIdentity(ctx);
+    const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
+    if (!apiKey) {
+      throw new Error("CREDENTIAL_REQUIRED: ALPHA_VANTAGE_API_KEY missing");
+    }
+
+    const { discoverAlphaVantageIndices } = await import("../lib/discovery/alpha-vantage-adapter");
+
+    const cache = getProviderCache();
+    const evidence = await cache.fetch<ProviderDiscoveryResult>(
+      {
+        provider: "alpha-vantage",
+        dataset: "index-catalog",
+        instrument: "INDEX_CATALOG",
+        instrumentType: "indices",
+        qualifier: "catalog",
+      },
+      async () => {
+        const transport = async (url: string, key: string) => {
+          const finalUrl = url.includes("apikey=") ? url : `${url}${url.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(key)}`;
+          const res = await fetch(finalUrl, {
+            headers: { accept: "application/json" },
+            signal: AbortSignal.timeout(10_000),
+          });
+          let json: unknown;
+          try {
+            json = await res.json();
+          } catch {
+            json = undefined;
+          }
+          return { ok: res.ok, status: res.status, json };
+        };
+        const readEnv = (name: string) => process.env[name];
+        const observedAt = Date.now();
+        const result = await discoverAlphaVantageIndices(observedAt, {
+          transport,
+          readEnv,
+          catalogUrl: `https://www.alphavantage.co/query?function=INDEX_CATALOG&apikey=${apiKey}`,
+        });
+        return { data: result, observedAt };
+      },
+    );
+
+    if (!evidence) {
+      throw new Error("UNAVAILABLE: index catalog fetch returned no evidence");
+    }
+
+    return {
+      ...evidence.data,
+      acquisition: evidence.acquisition,
+      observedAt: evidence.observedAt,
+    };
+  },
+});
+
+export const fetchIndexData = action({
+  args: {
+    symbol: v.string(),
+    interval: v.union(v.literal("daily"), v.literal("weekly"), v.literal("monthly")),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<AlphaVantageIndexDataResult & { acquisition: string; observedAt: number }> => {
+    await requireIdentity(ctx);
+    const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
+    if (!apiKey) {
+      throw new Error("CREDENTIAL_REQUIRED: ALPHA_VANTAGE_API_KEY missing");
+    }
+
+    const { fetchAlphaVantageIndexData } = await import("../lib/discovery/alpha-vantage-adapter");
+
+    const cache = getProviderCache();
+    const evidence = await cache.fetch<AlphaVantageIndexDataResult>(
+      {
+        provider: "alpha-vantage",
+        dataset: "index-data",
+        instrument: args.symbol,
+        instrumentType: "indices",
+        qualifier: args.interval,
+      },
+      async () => {
+        const transport = async (url: string, key: string) => {
+          const finalUrl = url.includes("apikey=") ? url : `${url}${url.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(key)}`;
+          const res = await fetch(finalUrl, {
+            headers: { accept: "application/json" },
+            signal: AbortSignal.timeout(10_000),
+          });
+          let json: unknown;
+          try {
+            json = await res.json();
+          } catch {
+            json = undefined;
+          }
+          return { ok: res.ok, status: res.status, json };
+        };
+        const readEnv = (name: string) => process.env[name];
+        const observedAt = Date.now();
+        const result = await fetchAlphaVantageIndexData(args.symbol, args.interval, observedAt, {
+          transport,
+          readEnv,
+        });
+        if (!result.success) {
+          throw new Error(result.error ?? "INDEX_DATA failed");
+        }
+        return { data: result, observedAt };
+      },
+    );
+
+    if (!evidence) {
+      throw new Error("UNAVAILABLE: index data fetch returned no evidence");
+    }
+
+    return {
+      ...evidence.data,
+      acquisition: evidence.acquisition,
+      observedAt: evidence.observedAt,
+    };
+  },
+});

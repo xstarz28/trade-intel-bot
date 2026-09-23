@@ -53,7 +53,9 @@ export type ProviderDataset =
   | "eia"
   | "order-book"
   | "instrument-spec"
-  | "fx-rate";
+  | "fx-rate"
+  | "index-catalog"
+  | "index-data";
 
 /**
  * Per-dataset TTLs, derived from how often the underlying data can actually
@@ -92,6 +94,8 @@ export const DATASET_TTL_MS: Record<ProviderDataset, number> = {
   cot: 12 * 60 * 60_000,
   fundamentals: 24 * 60 * 60_000,
   "instrument-spec": 24 * 60 * 60_000,
+  "index-catalog": 60 * 60_000,
+  "index-data": 60 * 60_000,
 };
 
 /**
@@ -113,6 +117,8 @@ export const DATASET_FRESH_MS: Record<ProviderDataset, number> = {
   cot: 7 * 24 * 60 * 60_000,
   fundamentals: 7 * 24 * 60 * 60_000,
   "instrument-spec": 7 * 24 * 60 * 60_000,
+  "index-catalog": 3 * 60 * 60_000,
+  "index-data": 3 * 60 * 60_000,
 };
 
 // ═══════════════════════════════════════════════════════════════

@@ -156,10 +156,10 @@ export const PROVIDER_DISCOVERY_PROFILES: ProviderDiscoveryProfile[] = [
   },
   {
     provider: "alpha-vantage",
-    discoveryImplemented: false,
+    discoveryImplemented: true,
     providerHasDiscoveryApi: true,
     discoverableAssetClasses: ["indices"],
-    note: "PROVIDER_API_SUPPORT: Alpha Vantage official docs provide INDEX_CATALOG (200+ indices) + INDEX_DATA (premium) via function=INDEX_CATALOG / INDEX_DATA. CURRENT_ADAPTER_SUPPORT: project adapter does NOT implement INDEX_CATALOG/INDEX_DATA — only NEWS_SENTIMENT/OVERVIEW/EARNINGS. DXY: Actual DXY price series is not currently verified as available from the configured provider — INDEX_CATALOG content not verified to include DXY (ICE US Dollar Index), and no adapter exists. Do not conflate provider capability with current adapter support.",
+    note: "Phase 265: Alpha Vantage INDEX_CATALOG implemented via GET https://www.alphavantage.co/query?function=INDEX_CATALOG&apikey=... complete single-response no pagination, exact native index symbol preserved, providerInstrumentId=symbol, assetClass indices subType index_cash, provider-qualified alpha-vantage::<symbol> distinct, deterministic ordering, dedup via provider::providerInstrumentId, CREDENTIAL_REQUIRED/RATE_LIMITED/MALFORMED_RESPONSE, COMPLETE when catalog succeeds. INDEX_DATA implemented daily/weekly/monthly OHLC with timestamp provenance, freshness DELAYED, historical semantics, premium required. DXY determination: catalog source of truth, no proxy substitution (EUR inversion, UUP/UDN, news sentiment, dollar-strength, futures rejected). PROVIDER_API_SUPPORT: INDEX_CATALOG 200+ indices + INDEX_DATA premium. CURRENT_ADAPTER_SUPPORT: now CODE_READY for both.",
   },
   {
     provider: "coinglass",

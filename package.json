@@ -29,7 +29,8 @@
     "remediation:a1:report": "node --experimental-strip-types --no-warnings scripts/a1-issuer-report.mjs",
     "evidence:d:verify": "node --experimental-strip-types --no-warnings scripts/evidence-d-verify.mjs",
     "deployment:verify": "node --experimental-strip-types --no-warnings scripts/convex-deployment-verify.mjs",
-    "production:deploy:guard": "node --experimental-strip-types --no-warnings scripts/production-deploy-guard.mjs"
+    "production:deploy:guard": "node --experimental-strip-types --no-warnings scripts/production-deploy-guard.mjs",
+    "test:release": "VITE_CONVEX_URL=https://example.convex.cloud npm run build && mkdir -p android/app/src/main/assets/public ios/App/App/public && cp dist/index.html android/app/src/main/assets/public/index.html && cp dist/index.html ios/App/App/public/index.html && vitest run"
   },
   "dependencies": {
     "@auth/core": "^0.37.4",

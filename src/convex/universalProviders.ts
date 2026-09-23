@@ -109,6 +109,37 @@ export const discoverIdx = action({
 });
 
 // ────────────────────────────────────────────────────────────────
+// ALPHA VANTAGE INDICES
+// ────────────────────────────────────────────────────────────────
+
+export const discoverAlphaVantage = action({
+  args: {},
+  handler: async (ctx): Promise<ProviderDiscoveryResult> => {
+    await requireIdentity(ctx);
+    const { discoverAlphaVantageIndices } = await import("../lib/discovery/alpha-vantage-adapter");
+    const readEnv = (name: string) => process.env[name];
+    const transport = async (url: string, key: string) => {
+      const finalUrl = url.includes("apikey=") ? url : `${url}${url.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(key)}`;
+      const res = await fetch(finalUrl, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      let json: unknown;
+      try {
+        json = await res.json();
+      } catch {
+        json = undefined;
+      }
+      return { ok: res.ok, status: res.status, json };
+    };
+    return discoverAlphaVantageIndices(Date.now(), {
+      transport,
+      readEnv,
+    });
+  },
+});
+
+// ────────────────────────────────────────────────────────────────
 // COINGLASS
 // ────────────────────────────────────────────────────────────────
 
@@ -192,6 +223,7 @@ export const discoverAllProviders = action({
     const { discoverGeckoTerminal } = await import("../lib/discovery/geckoterminal-adapter");
     const { discoverIdx } = await import("../lib/discovery/idx-adapter");
     const { discoverCoinGlassMarkets } = await import("../lib/discovery/coinglass-adapter");
+    const { discoverAlphaVantageIndices } = await import("../lib/discovery/alpha-vantage-adapter");
 
     const now = Date.now();
     const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
@@ -327,7 +359,38 @@ export const discoverAllProviders = action({
       error: err instanceof Error ? err.message : "coinglass failed",
     }));
 
-    const [okxRaw, twelveRaw, ccxtRaw, dexRaw, geckoRaw, idxRaw, coinglassRaw] = await Promise.all([
+    const alphaVantageTransport = async (url: string, key: string) => {
+      const finalUrl = url.includes("apikey=") ? url : `${url}${url.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(key)}`;
+      const res = await fetch(finalUrl, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(10_000),
+      });
+      let json: unknown;
+      try {
+        json = await res.json();
+      } catch {
+        json = undefined;
+      }
+      return { ok: res.ok, status: res.status, json };
+    };
+
+    const alphaVantagePromise = discoverAlphaVantageIndices(now, {
+      transport: alphaVantageTransport,
+      readEnv,
+    }).catch((err) => ({
+      provider: "alpha-vantage",
+      success: false,
+      discoveredAt: now,
+      instruments: [],
+      warnings: [],
+      completeness: "FAILED" as const,
+      pagesFetched: 0,
+      totalDiscovered: 0,
+      catalogs: [],
+      error: err instanceof Error ? err.message : "alpha-vantage failed",
+    }));
+
+    const [okxRaw, twelveRaw, ccxtRaw, dexRaw, geckoRaw, idxRaw, coinglassRaw, alphaVantageRaw] = await Promise.all([
       okxPromise,
       twelveDataPromise,
       ccxtPromise,
@@ -335,6 +398,7 @@ export const discoverAllProviders = action({
       geckoPromise,
       idxPromise,
       coinglassPromise,
+      alphaVantagePromise,
     ]);
 
     const results: ProviderDiscoveryResult[] = [];
@@ -371,6 +435,7 @@ export const discoverAllProviders = action({
     if (geckoRaw) results.push(geckoRaw as ProviderDiscoveryResult);
     if (idxRaw) results.push(idxRaw as ProviderDiscoveryResult);
     if (coinglassRaw) results.push(coinglassRaw as ProviderDiscoveryResult);
+    if (alphaVantageRaw) results.push(alphaVantageRaw as ProviderDiscoveryResult);
 
     // Stockbit / Ajaib as unavailable
     results.push({
@@ -520,6 +585,88 @@ export const acquireNativeLiveBatch = action({
             snapshot: null,
             error: `${provider} live acquisition requires on-chain provider (UNAVAILABLE for OHLCV)`,
           });
+        }
+        continue;
+      }
+      if (provider === "alpha-vantage") {
+        const { fetchAlphaVantageIndexData } = await import("../lib/discovery/alpha-vantage-adapter");
+        const readEnv = (name: string) => process.env[name];
+        const avTransport = async (url: string, key: string) => {
+          const finalUrl = url.includes("apikey=") ? url : `${url}${url.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(key)}`;
+          const res = await fetch(finalUrl, {
+            headers: { accept: "application/json" },
+            signal: AbortSignal.timeout(10_000),
+          });
+          let json: unknown;
+          try {
+            json = await res.json();
+          } catch {
+            json = undefined;
+          }
+          return { ok: res.ok, status: res.status, json };
+        };
+        for (const item of items) {
+          try {
+            const result = await fetchAlphaVantageIndexData(item.providerInstrumentId, "daily", Date.now(), {
+              transport: avTransport,
+              readEnv,
+            });
+            if (!result.success) {
+              allResults.push({
+                instrument: item.instrument,
+                assetClass: item.assetClass,
+                providerInstrumentId: item.providerInstrumentId,
+                provider,
+                success: false,
+                snapshot: null,
+                error: result.error,
+              });
+              continue;
+            }
+            const last = result.candles[result.candles.length - 1];
+            allResults.push({
+              instrument: item.instrument,
+              assetClass: item.assetClass,
+              providerInstrumentId: item.providerInstrumentId,
+              provider,
+              success: true,
+              snapshot: last
+                ? {
+                    price: last.close,
+                    open: last.open,
+                    high: last.high,
+                    low: last.low,
+                    close: last.close,
+                    volume: last.volume ?? 0,
+                    timestamp: last.timestamp,
+                    observedAt: result.observedAt,
+                    provider,
+                    freshness: "DELAYED",
+                    isHistorical: true,
+                    timeframe: result.interval,
+                    providerInstrumentId: item.providerInstrumentId,
+                  }
+                : null,
+              provenance: {
+                provider,
+                providerInstrumentId: item.providerInstrumentId,
+                timestamp: last?.timestamp ?? result.observedAt,
+                observedAt: result.observedAt,
+                freshness: "DELAYED",
+                isHistorical: true,
+              },
+            });
+          } catch (err) {
+            allResults.push({
+              instrument: item.instrument,
+              assetClass: item.assetClass,
+              providerInstrumentId: item.providerInstrumentId,
+              provider,
+              success: false,
+              snapshot: null,
+              error: err instanceof Error ? err.message : "alpha-vantage acquisition failed",
+            });
+          }
         }
         continue;
       }

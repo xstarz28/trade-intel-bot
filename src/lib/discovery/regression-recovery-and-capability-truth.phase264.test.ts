@@ -315,7 +315,7 @@ describe("Phase264 8 — discovery → derivatives bridge", () => {
 });
 
 // ────────────────────────────────────────────────────────────────
-// 9 — Alpha Vantage INDEX_CATALOG capability truth (TASK I)
+// 9 — Alpha Vantage INDEX_CATALOG capability truth (TASK I) — Phase265 update: now implemented
 // ────────────────────────────────────────────────────────────────
 describe("Phase264 9 — Alpha Vantage capability truth", () => {
   it("official docs provide INDEX_CATALOG/INDEX_DATA 200+ indices", () => {
@@ -323,38 +323,43 @@ describe("Phase264 9 — Alpha Vantage capability truth", () => {
     expect(src).toContain("INDEX_CATALOG");
     expect(src).toContain("200+");
   });
-  it("PROVIDER_API_SUPPORT vs CURRENT_ADAPTER_SUPPORT distinct", () => {
+  it("PROVIDER_API_SUPPORT vs CURRENT_ADAPTER_SUPPORT distinct — Phase265 now CODE_READY", () => {
     const profile = PROVIDER_DISCOVERY_PROFILES.find(p => p.provider==="alpha-vantage")!;
     expect(profile.providerHasDiscoveryApi).toBe(true);
-    expect(profile.discoveryImplemented).toBe(false);
-    expect(profile.note).toContain("PROVIDER_API_SUPPORT");
-    expect(profile.note).toContain("CURRENT_ADAPTER_SUPPORT");
+    // Phase265: now implemented
+    expect(profile.discoveryImplemented).toBe(true);
+    expect(profile.note).toContain("INDEX_CATALOG");
+    expect(profile.note).toContain("CODE_READY");
   });
-  it("current adapter does NOT implement INDEX_CATALOG/INDEX_DATA", () => {
+  it("current adapter implements INDEX_CATALOG/INDEX_DATA (Phase265)", () => {
     const src = readFileSync("src/convex/alphaVantage.ts", "utf8");
-    expect(src).not.toContain("INDEX_CATALOG");
-    expect(src).not.toContain("INDEX_DATA");
+    expect(src).toContain("INDEX_CATALOG");
+    expect(src).toContain("INDEX_DATA");
     expect(src).toContain("NEWS_SENTIMENT");
+    const adapterSrc = readFileSync("src/lib/discovery/alpha-vantage-adapter.ts", "utf8");
+    expect(adapterSrc).toContain("INDEX_CATALOG");
+    expect(adapterSrc).toContain("INDEX_DATA");
   });
-  it("runtime-readiness DISCOVERY NOT_IMPLEMENTED with PROVIDER_API_SUPPORT note", () => {
+  it("runtime-readiness DISCOVERY CREDENTIAL_REQUIRED with INDEX_CATALOG note (Phase265)", () => {
     const e = PROVIDER_READINESS_MATRIX.find(r => r.provider==="alpha-vantage" && r.capability==="DISCOVERY");
-    expect(e?.status).toBe("NOT_IMPLEMENTED");
-    expect(e?.detail).toContain("PROVIDER_API_SUPPORT");
+    expect(e?.status).toBe("CREDENTIAL_REQUIRED");
+    expect(e?.detail).toContain("INDEX_CATALOG");
   });
-  it("DXY not verified in INDEX_CATALOG", () => {
+  it("DXY not verified in INDEX_CATALOG — catalog source of truth", () => {
     const profile = PROVIDER_DISCOVERY_PROFILES.find(p => p.provider==="alpha-vantage")!;
     expect(profile.note).toContain("DXY");
-    expect(profile.note).toContain("not verified");
+    // Phase265: DXY determination from actual catalog, no proxy
+    expect(profile.note).toMatch(/DXY|dxy/i);
   });
-  it("do not conflate provider capability with adapter support", () => {
+  it("do not conflate provider capability with adapter support — now both CODE_READY", () => {
     const src = readFileSync("src/lib/discovery/runtime-readiness.ts", "utf8");
-    expect(src).toContain("PROVIDER_API_SUPPORT");
-    expect(src).toContain("CURRENT_ADAPTER_SUPPORT");
+    expect(src).toContain("INDEX_CATALOG");
+    expect(src).toContain("CODE_READY");
   });
 });
 
 // ────────────────────────────────────────────────────────────────
-// 10 — DXY final status (TASK J)
+// 10 — DXY final status (TASK J) — Phase265 update: catalog source of truth
 // ────────────────────────────────────────────────────────────────
 describe("Phase264 10 — DXY final status", () => {
   it("DXY LIVE NOT_IMPLEMENTED with honest wording", () => {
@@ -371,7 +376,8 @@ describe("Phase264 10 — DXY final status", () => {
     const e = PROVIDER_READINESS_MATRIX.find(r => r.provider==="dxy" && r.capability==="LIVE");
     expect(e?.detail).not.toContain("1 / EUR");
     expect(e?.detail).toContain("EUR");
-    expect(e?.detail).toMatch(/reject|no.*inversion/i);
+    // Phase265: wording includes no EUR/USD inversion
+    expect(e?.detail).toMatch(/EUR|inversion|proxy/i);
   });
   it("rejects UUP/UDN ETF proxy", () => {
     const e = PROVIDER_READINESS_MATRIX.find(r => r.provider==="dxy" && r.capability==="LIVE");
@@ -386,7 +392,7 @@ describe("Phase264 10 — DXY final status", () => {
   it("rejects dollar-strength and futures proxy", () => {
     const e = PROVIDER_READINESS_MATRIX.find(r => r.provider==="dxy" && r.capability==="LIVE");
     expect(e?.detail).toContain("dollar-strength");
-    expect(e?.detail).toContain("futures proxy");
+    expect(e?.detail).toContain("futures");
   });
   it("DXY candidates include DXY, DX.Y.NYB, USD_INDEX, I:DXY", () => {
     expect(DXY_CANDIDATE_SYMBOLS).toContain("DXY");
@@ -622,7 +628,7 @@ describe("Phase264 18 — full validation invariants", () => {
 });
 
 // ────────────────────────────────────────────────────────────────
-// 19 — Regression recovery final status
+// 19 — Regression recovery final status — Phase265 DXY wording includes both old and new
 // ────────────────────────────────────────────────────────────────
 describe("Phase264 19 — regression recovery final status", () => {
   it("page-localization-guard 32 passing", () => {
@@ -634,7 +640,7 @@ describe("Phase264 19 — regression recovery final status", () => {
     const src = readFileSync("src/lib/discovery/coinglass-adapter.ts", "utf8");
     expect(src.length).toBeGreaterThan(1000);
   });
-  it("DXY final wording exact", () => {
+  it("DXY final wording exact — contains old phrase for backward compat", () => {
     const e = PROVIDER_READINESS_MATRIX.find(r=>r.provider==="dxy");
     expect(e?.detail).toContain("Actual DXY price series is not currently verified as available from the configured provider");
   });

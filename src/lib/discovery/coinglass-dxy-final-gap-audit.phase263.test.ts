@@ -523,29 +523,31 @@ describe("Phase263 K — DXY actual price verification", () => {
 });
 
 // ────────────────────────────────────────────────────────────────
-// L. Alpha Vantage INDEX_CATALOG / INDEX_DATA DXY
 // ────────────────────────────────────────────────────────────────
-
+// L. Alpha Vantage INDEX_CATALOG / INDEX_DATA DXY — Phase265 update: now implemented
+// ────────────────────────────────────────────────────────────────
 describe("Phase263 L — Alpha Vantage INDEX_CATALOG DXY", () => {
-  it("Alpha Vantage implementation only NEWS_SENTIMENT, OVERVIEW, EARNINGS — no INDEX_CATALOG", () => {
+  it("Alpha Vantage implementation now includes INDEX_CATALOG/INDEX_DATA plus NEWS_SENTIMENT, OVERVIEW, EARNINGS (Phase265)", () => {
     const src = readFileSync("src/convex/alphaVantage.ts", "utf8");
     expect(src).toContain("NEWS_SENTIMENT");
     expect(src).toContain("OVERVIEW");
-    expect(src).not.toContain("INDEX_CATALOG");
-    expect(src).not.toContain("INDEX_DATA");
+    expect(src).toContain("INDEX_CATALOG");
+    expect(src).toContain("INDEX_DATA");
+    const adapterSrc = readFileSync("src/lib/discovery/alpha-vantage-adapter.ts", "utf8");
+    expect(adapterSrc).toContain("INDEX_CATALOG");
+    expect(adapterSrc).toContain("INDEX_DATA");
   });
-  it("Alpha Vantage docs: INDEX_DATA requires premium, DXY not in supported list evidence", () => {
-    // Phase 264: PROVIDER_API_SUPPORT vs CURRENT_ADAPTER_SUPPORT — alpha-vantage now has DISCOVERY/LIVE NOT_IMPLEMENTED entries documenting INDEX_CATALOG/INDEX_DATA and DXY not verified
+  it("Alpha Vantage docs: INDEX_DATA requires premium, DXY catalog source of truth (Phase265)", () => {
     const src = readFileSync("src/lib/discovery/runtime-readiness.ts", "utf8");
     expect(src).toContain("INDEX_CATALOG");
     expect(src).toContain("INDEX_DATA");
+    const avDiscovery = PROVIDER_READINESS_MATRIX.find((r) => r.provider === "alpha-vantage" && r.capability === "DISCOVERY");
+    expect(avDiscovery?.status).toBe("CREDENTIAL_REQUIRED");
+    expect(avDiscovery?.detail).toContain("INDEX_CATALOG");
     const avDxy = PROVIDER_READINESS_MATRIX.filter((r) => r.provider === "alpha-vantage" && r.detail.toLowerCase().includes("dxy"));
     expect(avDxy.length).toBeGreaterThan(0);
-    expect(avDxy.every(r => r.status==="NOT_IMPLEMENTED")).toBe(true);
-    expect(avDxy[0].detail).toContain("DXY not verified");
   });
-  it("DXY remains NOT_IMPLEMENTED honest, no proxy substitution", () => {
-    // Phase 264: wording updated to "Actual DXY price series is not currently verified as available from the configured provider"
+  it("DXY remains NOT_IMPLEMENTED honest, no proxy substitution (Phase265)", () => {
     const dxyEntry = PROVIDER_READINESS_MATRIX.find((r) => r.provider==="dxy" && r.capability==="LIVE");
     expect(dxyEntry).toBeDefined();
     expect(dxyEntry?.status).toBe("NOT_IMPLEMENTED");
