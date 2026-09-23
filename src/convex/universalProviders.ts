@@ -109,6 +109,43 @@ export const discoverIdx = action({
 });
 
 // ────────────────────────────────────────────────────────────────
+// COINGLASS
+// ────────────────────────────────────────────────────────────────
+
+export const discoverCoinGlass = action({
+  args: {},
+  handler: async (ctx): Promise<ProviderDiscoveryResult> => {
+    await requireIdentity(ctx);
+    const { discoverCoinGlassMarkets } = await import("../lib/discovery/coinglass-adapter");
+    const apiKey = process.env.COINGLASS_API_KEY ?? "";
+    const readEnv = (name: string) => process.env[name];
+    const transport = async (url: string, key: string) => {
+      const res = await fetch(url, {
+        headers: {
+          accept: "application/json",
+          "CG-API-KEY": key,
+          cg_api_key: key,
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+      let json: unknown;
+      try {
+        json = await res.json();
+      } catch {
+        json = undefined;
+      }
+      return { ok: res.ok, status: res.status, json };
+    };
+    return discoverCoinGlassMarkets(Date.now(), {
+      transport,
+      readEnv,
+      futuresUrl: "https://open-api-v4.coinglass.com/api/futures/supported-exchange-pairs",
+      spotUrl: "https://open-api-v4.coinglass.com/api/spot/supported-exchange-pairs",
+    });
+  },
+});
+
+// ────────────────────────────────────────────────────────────────
 // STOCKBIT / AJAIB (UNAVAILABLE)
 // ────────────────────────────────────────────────────────────────
 
@@ -154,9 +191,11 @@ export const discoverAllProviders = action({
     const { discoverDexScreener } = await import("../lib/discovery/dexscreener-adapter");
     const { discoverGeckoTerminal } = await import("../lib/discovery/geckoterminal-adapter");
     const { discoverIdx } = await import("../lib/discovery/idx-adapter");
+    const { discoverCoinGlassMarkets } = await import("../lib/discovery/coinglass-adapter");
 
     const now = Date.now();
     const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
+    const coinglassKey = process.env.COINGLASS_API_KEY ?? "";
 
     const readEnv = (name: string) => process.env[name];
 
@@ -254,13 +293,48 @@ export const discoverAllProviders = action({
           error: err instanceof Error ? err.message : "idx failed",
         }));
 
-    const [okxRaw, twelveRaw, ccxtRaw, dexRaw, geckoRaw, idxRaw] = await Promise.all([
+    const coinglassTransport = async (url: string, key: string) => {
+      const res = await fetch(url, {
+        headers: {
+          accept: "application/json",
+          "CG-API-KEY": key,
+          cg_api_key: key,
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+      let json: unknown;
+      try {
+        json = await res.json();
+      } catch {
+        json = undefined;
+      }
+      return { ok: res.ok, status: res.status, json };
+    };
+
+    const coinglassPromise = discoverCoinGlassMarkets(now, {
+      transport: coinglassTransport,
+      readEnv,
+    }).catch((err) => ({
+      provider: "coinglass",
+      success: false,
+      discoveredAt: now,
+      instruments: [],
+      warnings: [],
+      completeness: "FAILED" as const,
+      pagesFetched: 0,
+      totalDiscovered: 0,
+      catalogs: [],
+      error: err instanceof Error ? err.message : "coinglass failed",
+    }));
+
+    const [okxRaw, twelveRaw, ccxtRaw, dexRaw, geckoRaw, idxRaw, coinglassRaw] = await Promise.all([
       okxPromise,
       twelveDataPromise,
       ccxtPromise,
       dexPromise,
       geckoPromise,
       idxPromise,
+      coinglassPromise,
     ]);
 
     const results: ProviderDiscoveryResult[] = [];
@@ -296,6 +370,7 @@ export const discoverAllProviders = action({
     if (dexRaw) results.push(dexRaw as ProviderDiscoveryResult);
     if (geckoRaw) results.push(geckoRaw as ProviderDiscoveryResult);
     if (idxRaw) results.push(idxRaw as ProviderDiscoveryResult);
+    if (coinglassRaw) results.push(coinglassRaw as ProviderDiscoveryResult);
 
     // Stockbit / Ajaib as unavailable
     results.push({

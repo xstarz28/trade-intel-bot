@@ -382,9 +382,9 @@ describe("Phase262 15 — CoinGlass status", () => {
     expect(src).toContain("DERIVATIVES");
     expect(src).toContain("CREDENTIAL_REQUIRED");
   });
-  it("CoinGlass DISCOVERY NOT_IMPLEMENTED", () => {
+  it("CoinGlass DISCOVERY CREDENTIAL_REQUIRED (Phase263 closure)", () => {
     const src = read("src/lib/discovery/runtime-readiness.ts");
-    expect(src).toMatch(/coinglass.*DISCOVERY.*NOT_IMPLEMENTED/s);
+    expect(src).toMatch(/coinglass.*DISCOVERY.*CREDENTIAL_REQUIRED/s);
   });
   it("no fake CoinGlass discovery", () => {
     const src = read("src/lib/discovery/runtime-readiness.ts");

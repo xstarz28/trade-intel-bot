@@ -116,9 +116,9 @@ export const PROVIDER_READINESS_MATRIX: ProviderCapabilityReadiness[] = [
   { provider: "coingecko", capability: "QUOTE", status: "RUNTIME_VERIFIED", detail: "CoinGecko simple/price current-at-response PROVIDER_RESPONSE", timestampSemantics: "current-at-response documented", freshness: "FRESH" },
   { provider: "coingecko", capability: "DISCOVERY", status: "DISCOVERY_ONLY", detail: "Coin list exists but not tradable instrument ids, enumerated via GeckoTerminal pools", timestampSemantics: "N/A", freshness: "UNAVAILABLE" },
 
-  // coinglass — credential required, historical only (delayed free tier)
+  // coinglass — credential required, historical only (delayed free tier) + discovery now CODE_READY via supported-exchange-pairs COMPLETE
   { provider: "coinglass", capability: "DERIVATIVES", status: "CREDENTIAL_REQUIRED", detail: "CoinGlass funding/OI/liquidations/longShort via convex/coinglass.fetchDerivatives", credential: "COINGLASS_API_KEY", timestampSemantics: "coinglassPointObservationMs time/t/timestamp/createTime sec/ms oldest wins", freshness: "DELAYED" },
-  { provider: "coinglass", capability: "DISCOVERY", status: "NOT_IMPLEMENTED", detail: "Derivatives analytics for instruments discovered elsewhere" },
+  { provider: "coinglass", capability: "DISCOVERY", status: "CREDENTIAL_REQUIRED", detail: "CoinGlass futures/spot supported-exchange-pairs COMPLETE single-response cache 1min no pagination — provider=coinglass providerInstrumentId=<exchange>:<instrument_id> exact native, assetClass crypto subType crypto_perp/crypto_futures/crypto_spot base/quote/settle exact, tradingState TRADING, capabilities derivatives/funding/open_interest/liquidations, discoveredAt now, CREDENTIAL_REQUIRED/RATE_LIMITED/MALFORMED_RESPONSE, provider-qualified coinglass:: distinct", credential: "COINGLASS_API_KEY", timestampSemantics: "provider-observed now", freshness: "FRESH" },
 
   // alpha-vantage — credential required, historical/delayed
   { provider: "alpha-vantage", capability: "FUNDAMENTALS", status: "CREDENTIAL_REQUIRED", detail: "Alpha Vantage OVERVIEW/earnings/financials/valuation", credential: "ALPHA_VANTAGE_API_KEY", timestampSemantics: "APPLICATION_RECEIPT", freshness: "DELAYED" },
