@@ -155,9 +155,12 @@ export const STATIC_REGISTRY: RegistryEntry[] = [
     providerId: "alpha-vantage",
     displayName: "Alpha Vantage",
     assetClasses: ["indices", "equity", "forex"],
-    capabilities: ["discovery", "ohlcv", "quote", "news", "fundamentals"],
+    // Phase 266 — INDEX_DATA is historical/delayed only, not genuinely live-capable.
+    // Discovery is credential-gated, historical data is delayed/eod, LIVE remains NOT_IMPLEMENTED.
+    // liveSupported MUST be false for historical index isolation.
+    capabilities: ["discovery", "delayed", "eod", "quote", "news", "fundamentals"],
     discoverySupported: true,
-    liveSupported: true,
+    liveSupported: false,
     status: "AVAILABLE",
     requiresCredential: true,
   },

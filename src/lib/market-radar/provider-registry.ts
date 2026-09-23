@@ -446,53 +446,15 @@ function buildAlphaVantageAdapter(): ProviderAdapter {
       const apiKey = readEnv?.("ALPHA_VANTAGE_API_KEY") ?? "";
       if (!apiKey) return null;
 
-      // Phase 265 — indices via INDEX_DATA (historical/delayed)
+      // Phase 266 — indices via INDEX_DATA are HISTORICAL/DELAYED only, not LIVE.
+      // Historical index data must NEVER enter live eligibility (LIVE/FRESH/liveEligible/liveSources).
+      // Return null here to prevent historical index from becoming live via provider-registry live path.
+      // Historical data remains available via fetchAlphaVantageIndexData (explicit historical/supporting evidence)
+      // and via universalProviders.acquireNativeLiveBatch which marks isHistorical:true and freshness DELAYED
+      // but is then excluded from liveEligible by registry.ts selectAcquirableInstruments (liveSupported false).
+      // This adapter returning null ensures acquireLiveData for indices never produces FRESH/LIVE.
       if (assetClass === "indices") {
-        try {
-          const symbol = instrument.trim().toUpperCase();
-          const url = `https://www.alphavantage.co/query?function=INDEX_DATA&symbol=${encodeURIComponent(symbol)}&interval=daily&apikey=${apiKey}`;
-          const res = await defaultTransport(url);
-          if (!res.ok || !res.json) return null;
-          const json = res.json as any;
-          // Parse flexible: data array or Time Series
-          let latest: any = null;
-          if (Array.isArray(json.data) && json.data.length > 0) {
-            latest = json.data[json.data.length - 1] ?? json.data[0];
-          } else {
-            const tsKey = Object.keys(json).find((k) => k.toLowerCase().includes("time series"));
-            if (tsKey) {
-              const series = json[tsKey] as Record<string, any>;
-              const dates = Object.keys(series).sort();
-              if (dates.length > 0) {
-                const lastDate = dates[dates.length - 1];
-                latest = series[lastDate];
-                latest.date = lastDate;
-              }
-            }
-          }
-          if (!latest) return null;
-          const closeStr = latest.close ?? latest["4. close"];
-          const price = typeof closeStr === "number" ? closeStr : parseFloat(String(closeStr));
-          if (!Number.isFinite(price) || price <= 0) return null;
-          const acquiredAt = Date.now();
-          const observedTs = latest.date ? Date.parse(latest.date) : acquiredAt;
-          const observedAt = Number.isFinite(observedTs) ? observedTs : acquiredAt;
-          return {
-            instrument,
-            assetClass,
-            price,
-            ohlcvAvailable: true,
-            availableTimeframes: ["D1", "W1", "MN"],
-            provider: "alpha-vantage",
-            observedAt,
-            freshness: "DELAYED",
-            quality: "DEGRADED",
-            acquiredAt,
-            timestampProvenance: "PROVIDER_OBSERVED",
-          };
-        } catch {
-          return null;
-        }
+        return null;
       }
 
       const symbol = assetClass === "forex" ? instrument.replace("/", "") : instrument;

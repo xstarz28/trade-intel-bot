@@ -45,7 +45,11 @@ type Transport = (url: string, apiKey: string) => Promise<TransportResult>;
 
 type RawCatalogEntry = Record<string, unknown>;
 
-const INDEX_CAPS: DataCapability[] = ["ohlcv" as DataCapability, "quote" as DataCapability];
+// Phase 266 — historical index isolation: INDEX_DATA is historical/delayed only, not live.
+// Use correct existing capability terminology: delayed/eod for historical, quote for price, discovery for catalog.
+// Keep ohlcv for backward compat with Phase265 tests that check ohlcv, but primary historical is delayed/eod.
+// liveSupported must be false to prevent historical entering live eligibility.
+const INDEX_CAPS: DataCapability[] = ["delayed" as DataCapability, "eod" as DataCapability, "quote" as DataCapability, "ohlcv" as DataCapability];
 
 function defaultTransport(fetchImpl: typeof fetch = fetch): Transport {
   return async (url: string, apiKey: string): Promise<TransportResult> => {
@@ -894,10 +898,12 @@ export function createAlphaVantageIndexUniversalAdapter(
     providerId: ALPHA_VANTAGE_PROVIDER_ID,
     displayName: "Alpha Vantage",
     assetClasses: ["indices" as AssetClass],
-    capabilities: ["discovery", "ohlcv", "quote"] as any,
+    // Phase 266 — historical isolation: INDEX_DATA is DELAYED/HISTORICAL, not LIVE.
+    // Capabilities use correct terminology: discovery + delayed/eod + quote (ohlcv kept for backward compat but liveSupported false)
+    capabilities: ["discovery", "delayed", "eod", "quote", "ohlcv"] as any,
     status: "AVAILABLE" as const,
     discoverySupported: true,
-    liveSupported: true,
+    liveSupported: false,
     discover: legacy.discover,
     classifyFailure: (error: unknown) => {
       const msg = error instanceof Error ? error.message : String(error);

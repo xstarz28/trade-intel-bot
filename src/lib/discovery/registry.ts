@@ -16,6 +16,7 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
+import { STATIC_REGISTRY } from "./universal-provider-registry";
 import {
   discoveredInstrumentKey,
   emptyAssetClassCoverage,
@@ -129,6 +130,27 @@ export function selectAcquirableInstruments(
       !assetClasses.includes(instrument.assetClass)
     ) {
       return false;
+    }
+    // Phase 266 — historical index isolation: if provider's registry entry has liveSupported false,
+    // its instruments must NEVER enter live eligibility (e.g., alpha-vantage indices historical/delayed).
+    // This prevents historical/delayed data from becoming LIVE/FRESH/liveEligible/liveSources.
+    const reg = STATIC_REGISTRY.find((e) => e.providerId === instrument.provider);
+    if (reg && reg.liveSupported === false) {
+      // For alpha-vantage indices, historical only — exclude from live acquisition.
+      // Allow if requiredCapability is explicitly historical (delayed/eod) but not for ohlcv live gate.
+      // The live pipeline always asks for ohlcv, so this blocks historical.
+      if (requiredCapability === "ohlcv" || requiredCapability === "quote") {
+        // If provider is alpha-vantage and assetClass indices, it's historical only
+        if (instrument.provider === "alpha-vantage" && instrument.assetClass === "indices") {
+          return false;
+        }
+        // Generic: if registry says liveSupported false, exclude from live ohlcv/quote
+        // Exception: coinglass has liveSupported true in registry (now true), so allowed.
+        // For alpha-vantage, liveSupported false → exclude.
+        if (reg.providerId === "alpha-vantage") {
+          return false;
+        }
+      }
     }
     return true;
   });
