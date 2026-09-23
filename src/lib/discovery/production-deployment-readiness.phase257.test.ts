@@ -397,7 +397,7 @@ describe("Phase257 P — Production build", () => {
     const dir = join(ROOT, "dist/assets");
     try {
       const files = readdirSync(dir).filter((f) => f.endsWith(".js"));
-      const total = files.map((f) => read(join(dir, f))).join("").length;
+      const total = files.map((f) => readFileSync(join(dir, f), "utf8")).join("").length;
       expect(total).toBeGreaterThan(200_000);
     } catch {
       expect(true).toBe(true);
