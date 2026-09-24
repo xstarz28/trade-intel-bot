@@ -245,6 +245,9 @@ export interface TechnicalData {
   sma50?: number;
   sma100?: number;
   sma200?: number;
+  // Exponential moving averages over the SAME candle closes (live OKX slice).
+  ema20?: number;
+  ema50?: number;
 
   // RSI
   rsi14?: number;

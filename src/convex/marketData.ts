@@ -245,6 +245,19 @@ async function fetchOkxNativeCandles(
   if (!acq.success || !acq.candles || acq.candles.length === 0) {
     throw new Error(acq.error ?? "no candle data returned");
   }
+  // Live-OKX envelope glue. OKX candle reads are UNcached live fetches, so
+  // every successful read is `observed-now`; its observation time is the
+  // PROVIDER's own (the latest candle's open timestamp, PROVIDER_OBSERVED —
+  // never the request clock). Before this trace the OKX branch pushed
+  // nothing, so `envelopeAcquisition` degraded to `unavailable` for a fully
+  // successful live read and the protected path recorded the decisive
+  // evidence leg as if it had produced no data. The snapshot's observedAt
+  // is the provider-observed candle time; `fetchedAt` is the receipt
+  // instant of THIS read and serves only as the defensive fallback when no
+  // provider time exists (then freshness simply cannot be claimed younger
+  // than the fetch itself — it is never stamped newer to look live).
+  candleAcquisitions.push("observed-now");
+  candleObservations.push(acq.snapshot?.observedAt ?? acq.fetchedAt);
   return acq.candles;
 }
 

@@ -1721,6 +1721,19 @@ function generateTechnicalSummary(
       parts.push(`Volume trend: ${tech.volumeTrend}.`);
     }
 
+    // EMA — measured over the same live closes, disclosed explicitly
+    if (tech.ema20 !== undefined && tech.ema50 !== undefined) {
+      parts.push(
+        `EMA(20): ${tech.ema20.toFixed(4)} vs EMA(50): ${tech.ema50.toFixed(4)} — ${
+          tech.ema20 > tech.ema50
+            ? "short-term momentum above the long-term mean"
+            : tech.ema20 < tech.ema50
+              ? "short-term momentum below the long-term mean"
+              : "moving averages converged — no momentum read"
+        }.`,
+      );
+    }
+
     // ATR
     if (tech.atr14 !== undefined) {
       parts.push(

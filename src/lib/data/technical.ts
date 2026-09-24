@@ -355,6 +355,13 @@ export function calculateTechnical(
   const sma50Val = sma(closes, 50);
   const sma100Val = sma(closes, 100);
   const sma200Val = sma(closes, 200);
+  // Exponential moving averages over the same closes. The last value of
+  // each series is the current EMA — undefined when history is too short
+  // for the window to mean anything (same rule as the SMA fields).
+  const ema20Series = ema(closes, 20);
+  const ema50Series = ema(closes, 50);
+  const ema20Val = closes.length >= 20 ? ema20Series[closes.length - 1] : undefined;
+  const ema50Val = closes.length >= 50 ? ema50Series[closes.length - 1] : undefined;
 
   // RSI
   const rsi14Val = rsi(closes, 14);
@@ -426,6 +433,8 @@ export function calculateTechnical(
     sma50: sma50Val,
     sma100: sma100Val,
     sma200: sma200Val,
+    ema20: ema20Val,
+    ema50: ema50Val,
     rsi14: rsi14Val !== undefined ? Math.round(rsi14Val * 10) / 10 : undefined,
     rsiDivergence: rsiDiv,
     macdLine: macdResult?.line,

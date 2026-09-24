@@ -325,6 +325,22 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   </p>
                 </div>
               )}
+              {tech.ema20 !== undefined && (
+                <div className="text-center">
+                  <p className="text-[10px] font-mono text-muted-foreground">EMA(20)</p>
+                  <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                    {formatPrice(tech.ema20)}
+                  </p>
+                </div>
+              )}
+              {tech.ema50 !== undefined && (
+                <div className="text-center">
+                  <p className="text-[10px] font-mono text-muted-foreground">EMA(50)</p>
+                  <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                    {formatPrice(tech.ema50)}
+                  </p>
+                </div>
+              )}
               {tech.atr14 !== undefined && (
                 <div className="text-center">
                   <p className="text-[10px] font-mono text-muted-foreground">ATR(14)</p>
