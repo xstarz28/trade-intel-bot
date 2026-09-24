@@ -13,11 +13,8 @@ import {
   transitionEntry,
   updateReview,
   updateTradeInfo,
-  isValidTransition,
   isTerminal,
-  getValidTransitions,
   computePnl,
-  classifyOutcome,
 } from "./journal";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
@@ -187,7 +184,7 @@ describe("Phase 32 — Snapshot immutability", () => {
     const modifiedTrade = updateTradeInfo(modified, { entry: 99999 });
     const closed = transitionEntry(modifiedTrade, "OPEN");
     const closedFinal = transitionEntry(closed, "CLOSED", { pnl: 100 });
-    const reviewed = updateReview(closedFinal, { lessons: "learned" });
+    updateReview(closedFinal, { lessons: "learned" });
 
     // Original AnalysisResult completely untouched
     expect(result.bias).toBe(origBias);
@@ -331,7 +328,6 @@ describe("Phase 32 — Adversarial: instrument identity", () => {
 describe("Phase 32 — Adversarial: snapshot mutation attempts", () => {
   it("all mutations create new objects — original entry unchanged", () => {
     const entry = journalFromAnalysis(getResult("BTC/USD", "crypto", 50000));
-    const orig = { ...entry };
 
     updateReview(entry, { notes: "changed" });
     updateTradeInfo(entry, { entry: 999 });

@@ -105,7 +105,7 @@ export function onDisconnected(state: ReconnectState, now: number, error?: strin
   };
 }
 
-export function initiateReconnect(state: ReconnectState, now: number): ReconnectState {
+export function initiateReconnect(state: ReconnectState, _now: number): ReconnectState {
   if (state.attempts >= state.maxAttempts) {
     return { ...state, status: "FAILED", lastError: "Max reconnect attempts exceeded." };
   }

@@ -15,7 +15,8 @@
  */
 
 import type { AssetClass } from "./data/universal/types";
-import { getAllInstruments, getProviderSymbol, type ResolutionStatus } from "./data/universal/instruments";
+import { getAllInstruments } from "./data/universal/instruments";
+import { assessEvidenceConfidence } from "./market-radar/evidence-confidence";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -43,6 +44,23 @@ export type DataCompletenessLevel = "FULL" | "PARTIAL" | "MINIMAL" | "NONE";
 export interface CandidateInput {
   /** Canonical instrument ID (e.g. "BTC/USD", "EUR/USD", "AAPL"). */
   instrument: string;
+  /**
+   * Phase 162 — exact provider-native identity when this candidate came
+   * from provider discovery.
+   *
+   * Carried through scoring so a recommendation always states which
+   * provider and which native instrument it is actually about. Never used
+   * as evidence and never affects the score.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
+  /**
+   * Phase 165 — venue/region as reported by the provider during discovery.
+   * Never inferred from the symbol name. Undefined = provider did not say.
+   */
+  region?: string;
   /** Detected asset class. */
   assetClass: AssetClass;
   /** Current price (from last known data, 0 if unavailable). */
@@ -115,6 +133,12 @@ export interface CandidateInput {
   // ── Dedup / scoring ──
   /** Dependency groups already counted (to avoid double-counting). */
   dependencyGroupsUsed?: string[];
+  /**
+   * Phase 158 — correlation grouping key derived from provider-native
+   * metadata. Used only to cap correlated exposure in ranking output.
+   * Never directional evidence.
+   */
+  correlationKey?: string;
 
   // ── Evaluation metadata ──
   /** Analysis result confidence (0-100) if analysis was run. */
@@ -138,6 +162,22 @@ export interface CandidateInput {
 export interface RankedInstrument {
   /** Canonical instrument ID. */
   instrument: string;
+  /**
+   * Phase 162 — the provider and exact native instrument this ranking is
+   * about, when it originated from provider discovery.
+   *
+   * Without this the user cannot tell WHICH venue's instrument was
+   * analysed, and two venues' instruments could be confused for one.
+   */
+  providerNative?: {
+    provider: string;
+    providerInstrumentId: string;
+  };
+  /**
+   * Phase 165 — venue/region reported by the provider, when known.
+   * Enables region filtering from real metadata instead of a symbol whitelist.
+   */
+  region?: string;
   /** Asset class. */
   assetClass: AssetClass;
   /** Rank position (1 = highest). */
@@ -215,12 +255,6 @@ export interface UniversalRecommendationResult {
 // ═══════════════════════════════════════════════════════════════
 // HORIZON PROFILES
 // ═══════════════════════════════════════════════════════════════
-
-const ZERO_WEIGHTS: HorizonWeights = {
-  htfStructure: 0, mtfAlignment: 0, marketRegime: 0, volatility: 0,
-  liquidity: 0, fundamentals: 0, macro: 0, derivatives: 0,
-  dataQuality: 0, riskReward: 0,
-};
 
 function normalizeWeights(w: HorizonWeights): HorizonWeights {
   const total = Object.values(w).reduce((s, v) => s + v, 0);
@@ -727,12 +761,19 @@ export function scoreCandidate(
     ? Math.round(Math.min(100, horizonAdjusted / horizonWeightSum))
     : 0;
 
-  // Confidence: based on data quality + evidence coherence
-  const dqConfidence = dq.score;
-  const evidenceCoherence = assetComponents.length > 0
-    ? Math.min(100, (reasons.length / Math.max(1, assetComponents.length)) * 100)
-    : 0;
-  const confidence = Math.round((dqConfidence * 0.5 + evidenceCoherence * 0.3 + (analyticalScore > 0 ? 20 : 0)));
+  // Confidence: quality/coherence of the evidence we actually have.
+  // Not a shared 50-baseline, not P(profit), not a ticker-popularity bonus.
+  const { confidence } = assessEvidenceConfidence({
+    freshness: c.freshness,
+    dataCompleteness: c.dataCompleteness,
+    providerCoverage: c.providerCoverage,
+    missingCriticalCount: dq.issues.length,
+    conflictingCount: conflicts.length,
+    hasVerifiedLivePrice: c.hasLiveData && c.currentPrice > 0,
+    hasOhlcv: c.dataPoints > 0,
+    hasExecutionEvidence: c.hasExecutionQuality === true || c.spreadBps !== undefined,
+    supportingCount: reasons.length,
+  });
 
   if (dq.issues.length > 0) {
     conflicts.push(...dq.issues);
@@ -869,6 +910,9 @@ export function generateRecommendation(
 
     rankedInstruments.push({
       instrument: c.instrument,
+      // Provider-native identity travels with the opportunity, unchanged.
+      ...(c.providerNative ? { providerNative: c.providerNative } : {}),
+      ...(c.region ? { region: c.region } : {}),
       assetClass: c.assetClass,
       rank: i + 1,
       analyticalScore: result.analyticalScore,

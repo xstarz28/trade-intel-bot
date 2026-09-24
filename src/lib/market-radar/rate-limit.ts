@@ -5,7 +5,7 @@
  * budgets, cooldown, exponential backoff, and priority queuing.
  */
 
-import type { ProviderRateLimitState, RefreshPriority } from "./types";
+import type { ProviderRateLimitState } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
 // DEFAULT PROVIDER BUDGETS

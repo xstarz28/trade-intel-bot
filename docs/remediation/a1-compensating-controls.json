@@ -1,0 +1,16 @@
+{
+  "schema": "a1.compensating-controls/v1",
+  "prerequisite": "A1_OTP_ISSUER_REVOCATION",
+  "kind": "compensating-controls",
+  "source": "owner-risk-acceptance",
+  "environment": "production",
+  "issuer": "auth.freebuff.app",
+  "fingerprint": "b1ce18a1e85ba121",
+  "accepted": true,
+  "acceptedBy": "xstarz28",
+  "acceptedAt": 1789806403761,
+  "rationale": "I accept the residual risk because issuer-side revocation cannot currently be independently verified, while runtime protections prevent the credential from being used by the production application.",
+  "residualRisk": "The credential has not been revoked at the issuer. Residual exposure may remain through historical repository objects, clones, forks, CI caches, hidden refs, or other copies.",
+  "revocationClaimed": false,
+  "issuerContacted": false
+}

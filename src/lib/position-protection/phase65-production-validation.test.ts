@@ -32,9 +32,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { PositionContext, AlertSeverity } from "../position-protection/types";
+import type { PositionContext } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
-import type { RealTimeEvent } from "../position-protection/realtime-types";
 
 // Polling service
 import {
@@ -50,7 +49,6 @@ import {
   processPollFailure,
   getPollingDashboard,
   getInstrumentsNeedingPoll,
-  type LivePollingServiceState,
 } from "../market-stream/live-polling-service";
 
 // Provider routing
@@ -65,9 +63,7 @@ import {
 // Provider adapters
 import {
   getProviderProfile,
-  getProvidersForAssetClass,
   getPollIntervalMs,
-  isProviderAvailable,
   getAllProviders,
 } from "../market-stream/provider-adapters";
 
@@ -76,7 +72,6 @@ import {
   createBridgeState,
   bridgeQuoteToEvents,
   bridgeCandleToEvents,
-  bridgeDerivativesToEvents,
   bridgeProviderStatusChange,
   validateInstrumentIdentity,
   instrumentsMatch,
@@ -90,7 +85,6 @@ import { createMonitoringState, shouldAlert, updateMonitoringState } from "../po
 import { detectShock } from "../position-protection/shock-detector";
 import { classifyGivebackSeverity } from "../position-protection/giveback-monitor";
 import { classifyEarlyProtection } from "../position-protection/early-protection";
-import { alertSeverityRank, urgencyRank } from "../position-protection/types";
 
 // Controller
 import {
@@ -103,9 +97,6 @@ import {
 // Market event bridge
 import {
   createPriceEvent,
-  createStructureChangeEvent,
-  createMacroChangeEvent,
-  createProviderDegradedEvent,
 } from "../position-protection/market-event-bridge";
 
 // Stream orchestrator

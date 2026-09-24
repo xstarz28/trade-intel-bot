@@ -23,7 +23,7 @@
  *   S. Edge cases & empty states
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   validateOhlcvSeries,
   validateQuote,
@@ -34,7 +34,6 @@ import {
   isLiveStatus,
   type OhlcvRecord,
   type LiveStatus,
-  type DataQualityState,
   type ConsistencyVerdict,
 } from "./data/universal/live/types";
 import {
@@ -46,7 +45,6 @@ import {
   readCachedOrUnavailable,
   resetLiveState,
   type Transport,
-  type TransportResponse,
 } from "./data/universal/live/client";
 import {
   resolveInstrument,
@@ -74,7 +72,6 @@ import {
 
 const NOW = Date.now();
 const HOUR = 3_600_000;
-const MINUTE = 60_000;
 
 function makeCandle(
   overrides: Partial<OhlcvRecord> & { hoursBefore?: number } = {},
@@ -94,7 +91,7 @@ function makeCandle(
   };
 }
 
-function makeCandles(n: number, gapHours = 1): OhlcvRecord[] {
+function makeCandles(n: number): OhlcvRecord[] {
   // Oldest first (ascending timestamps)
   return Array.from({ length: n }, (_, i) => makeCandle({ hoursBefore: n - i }));
 }
@@ -108,14 +105,6 @@ function mockTransport(body: unknown, status = 200): Transport {
 function mockNetworkError(message = "ECONNREFUSED"): Transport {
   return async () => {
     throw new Error(message);
-  };
-}
-
-/** Mock transport that simulates a timeout. */
-function mockTimeout(ms = 5000): Transport {
-  return async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-    return { ok: false, status: 0 };
   };
 }
 
@@ -1242,7 +1231,6 @@ describe("Q — Concurrency", () => {
   });
 
   it("concurrent requests for different instruments maintain isolation", async () => {
-    const nowSec = Math.floor(NOW / 1000);
     const instruments = ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD"];
     const tdBase = { symbol: "X", values: [{ datetime: new Date(NOW - 3600000).toISOString().replace("T", " ").slice(0, 19), open: "100", high: "105", low: "95", close: "102", volume: "1000" }] };
 

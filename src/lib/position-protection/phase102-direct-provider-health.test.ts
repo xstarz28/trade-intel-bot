@@ -11,19 +11,12 @@ import { describe, it, expect } from "vitest";
 import {
   normalizeRuntimeHealthEvent,
   classifyError,
-  errorCategoryToStatus,
   aggregateRuntimeHealth,
   shouldPersistRuntimeHealth,
-  detectHealthTransitions,
   buildRuntimeHealthSnapshot,
-  classifyFreshness,
-  FRESH_THRESHOLD_MS,
   AGING_THRESHOLD_MS,
-  UNAVAILABLE_FAILURE_THRESHOLD,
   MAX_RUNTIME_HEALTH_MESSAGE_LENGTH,
   type RuntimeHealthEvent,
-  type RuntimeComponent,
-  type RuntimeHealthSnapshot,
 } from "./runtime-health";
 import {
   createHealthEventBuffer,
@@ -34,7 +27,6 @@ import {
   getLatestEventForComponent,
   getEventCount,
   buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 
 // ═══════════════════════════════════════════════════════════════
@@ -459,7 +451,7 @@ describe("Phase 102 — Health Aggregation", () => {
       makeEvent({ component: "OHLCV", status: "HEALTHY", timestamp: now - 1000 }),
       makeEvent({ component: "INTELLIGENCE_ENGINE", status: "HEALTHY", timestamp: now - 1000 }),
     ];
-    const components = aggregateRuntimeHealth(events, now);
+    aggregateRuntimeHealth(events, now);
     const snap = buildSnapshotFromBuffer(
       { events, lastPersistedSnapshot: null },
       now,

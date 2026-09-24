@@ -10,10 +10,7 @@ import { describe, it, expect } from "vitest";
 import type {
   RealTimeEvent,
   PositionSnapshot,
-  InstrumentState,
   EventType,
-  Timeframe,
-  MonitoringStatus,
 } from "@/lib/position-protection/realtime-types";
 import {
   TIMEFRAME_ORDER,
@@ -93,21 +90,6 @@ function longBtc(overrides?: Partial<PositionContext>): PositionContext {
     leverage: 5,
     openedAt: NOW - 86400_000,
     horizon: "SWING",
-    ...overrides,
-  };
-}
-
-function shortEur(overrides?: Partial<PositionContext>): PositionContext {
-  return {
-    instrument: "EUR/USD",
-    assetClass: "forex",
-    side: "SHORT",
-    entryPrice: 1.1,
-    currentPrice: 1.09,
-    stopLoss: 1.12,
-    takeProfit: 1.06,
-    openedAt: NOW - 86400_000,
-    horizon: "INTRADAY",
     ...overrides,
   };
 }

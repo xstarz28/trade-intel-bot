@@ -54,7 +54,7 @@ describe("mapInstrumentToCot (explicit, verified)", () => {
 
 describe("buildCotContext", () => {
   it("builds context with net position, previous report and provenance", () => {
-    const ctx = buildCotContext([row("2026-08-11"), row("2026-08-18")], "XAU/USD", NOW);
+    const ctx = buildCotContext([row("2026-08-11"), row("2026-08-18")], "XAU/USD", NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     expect(ctx.netNonCommercial).toBe(256902 - 34713);
     expect(ctx.previous?.reportDate).toBe("2026-08-11");
@@ -71,29 +71,31 @@ describe("buildCotContext", () => {
       ],
       "XAU/USD",
       NOW,
+      NOW,
     );
     if (!up.available) throw new Error("expected available");
     expect(up.changeFromPreviousReport).toBeGreaterThan(0);
 
-    const single = buildCotContext([row("2026-08-18")], "XAU/USD", NOW);
+    const single = buildCotContext([row("2026-08-18")], "XAU/USD", NOW, NOW);
     if (!single.available) throw new Error("expected available");
     expect(single.changeFromPreviousReport).toBeUndefined(); // never synthesized
     expect(single.previous).toBeUndefined();
   });
 
   it("unavailable with explicit reason for unmappable instrument (no fabricated COT for crypto)", () => {
-    const r = buildCotContext([row("2026-08-18")], "BTC/USD", NOW);
+    const r = buildCotContext([row("2026-08-18")], "BTC/USD", NOW, NOW);
     expect(r.available).toBe(false);
     if (!r.available) expect(r.reason).toMatch(/No verified CFTC futures contract mapping/);
   });
 
   it("unavailable on empty response, malformed rows, or missing report date", () => {
-    expect(buildCotContext([], "EUR/USD", NOW).available).toBe(false);
-    const malformed = buildCotContext(["garbage", null, 42], "EUR/USD", NOW);
+    expect(buildCotContext([], "EUR/USD", NOW, NOW).available).toBe(false);
+    const malformed = buildCotContext(["garbage", null, 42], "EUR/USD", NOW, NOW);
     expect(malformed.available).toBe(false);
     const noDate = buildCotContext(
       [{ report_date_as_yyyy_mm_dd: undefined, noncomm_positions_long_all: "1", noncomm_positions_short_all: "2" }],
       "EUR/USD",
+      NOW,
       NOW,
     );
     expect(noDate.available).toBe(false);
@@ -106,6 +108,7 @@ describe("buildCotContext", () => {
       ],
       "XAU/USD",
       NOW,
+      NOW,
     );
     if (!partial.available) throw new Error("expected available");
     expect(partial.latest.commercialLong).toBeUndefined();
@@ -114,6 +117,7 @@ describe("buildCotContext", () => {
     const brokenRow = buildCotContext(
       [row("2026-08-18", { noncomm_positions_long_all: undefined })],
       "XAU/USD",
+      NOW,
       NOW,
     );
     expect(brokenRow.available).toBe(false);
@@ -125,7 +129,7 @@ describe("buildCotContext", () => {
 describe("COT weekly freshness (report-date based)", () => {
   it("FRESH within a normal inter-release window — weekend is NOT staleness", () => {
     // Report Tue 2026-08-18; checked Monday 2026-08-24 (6 days) → FRESH.
-    const ctx = buildCotContext([row("2026-08-18")], "XAU/USD", NOW);
+    const ctx = buildCotContext([row("2026-08-18")], "XAU/USD", NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     expect(ctx.freshness).toBe("FRESH");
     expect(classifyCotFreshness("2026-08-15", NOW)).toBe("FRESH"); // Saturday date
@@ -134,7 +138,7 @@ describe("COT weekly freshness (report-date based)", () => {
   it("DELAYED past one window, STALE after multiple missed releases", () => {
     expect(classifyCotFreshness("2026-08-10", NOW)).toBe("DELAYED");
     expect(classifyCotFreshness("2026-07-28", NOW)).toBe("STALE");
-    const ctx = buildCotContext([row("2026-07-28")], "XAU/USD", NOW);
+    const ctx = buildCotContext([row("2026-07-28")], "XAU/USD", NOW, NOW);
     if (!ctx.available) throw new Error("expected available");
     expect(ctx.freshness).toBe("STALE");
     expect(ctx.freshness).not.toBe("UNAVAILABLE"); // stale data stays dated & disclosed
@@ -151,6 +155,7 @@ describe("deriveCotEvidence", () => {
         row("2026-08-18", { noncomm_positions_long_all: String(latestLong), open_interest_all: oi }),
       ],
       "XAU/USD",
+      NOW,
       NOW,
     ) as Extract<ReturnType<typeof buildCotContext>, { available: true }>;
   }
@@ -177,7 +182,7 @@ describe("deriveCotEvidence", () => {
   });
 
   it("single report → zero directional evidence, disclosed note", () => {
-    const single = buildCotContext([row("2026-08-18")], "XAU/USD", NOW) as Extract<
+    const single = buildCotContext([row("2026-08-18")], "XAU/USD", NOW, NOW) as Extract<
       ReturnType<typeof buildCotContext>,
       { available: true }
     >;

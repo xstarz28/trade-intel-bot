@@ -6,7 +6,17 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
+import {
+  asFiniteNumber,
+  asRecordArray,
+  asString,
+  errorMessage,
+  field,
+  isRecord,
+  type JsonRecord,
+} from "./lib/json";
 import type {
   CryptoDerivativesData,
   DerivativesResult,
@@ -16,49 +26,79 @@ import type {
   LiquidationData,
 } from "../lib/data/derivatives-types";
 
-// ── In-memory cache (10 min TTL) ────────────────────────────────
-const cache = new Map<string, { data: any; expiresAt: number }>();
-const CACHE_TTL = 10 * 60 * 1000;
-
-function getCached<T>(key: string): T | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) return entry.data as T;
-  cache.delete(key);
-  return null;
-}
-
-function setCache(key: string, data: any): void {
-  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
-}
+// ── Phase 178b — authoritative provider cache ───────────────────
+// Replaces this module's private Map cache. Derivatives are keyed on the FULL
+// provider-native instrument (not the truncated base symbol), so BTC/USDT,
+// BTC/USD and BTC-USDT-SWAP can never share an entry.
+import { getProviderCache } from "../lib/data/provider-cache-registry";
 
 // ── CoinGlass API ───────────────────────────────────────────────
 
 const CG_BASE = "https://open-api-v3.coinglass.com/api";
 
-async function cgFetch(path: string, apiKey: string): Promise<any> {
+// ── Phase 228 — per-leg outcome taxonomy ────────────────────────
+//
+// Every leg call ends in exactly one class (see lib/legOutcome.ts, shared with
+// Alpha Vantage and TickAtlas since Phase 229). The FATAL classes
+// (rate_limit, auth) are thrown out of the leg so the Phase 178b check in the
+// cache fetcher can fail the whole acquisition uncached — before Phase 228
+// each leg swallowed them (`catch { return undefined }`), so a 429 on all
+// four legs was stored and served as `success: true, confidence: unavailable`.
+// The remaining classes are NON-FATAL: the leg is reported as unavailable in
+// `availability`, and the class + reason is carried on the payload's
+// existing `error` field.
+import {
+  classifyLegError,
+  isFatalLegError,
+  runLeg,
+  summarizeLegFailures,
+  ProviderHttpError,
+  ProviderMalformedError,
+  ProviderNativeError,
+  type LegOutcome,
+} from "./lib/legOutcome";
+export { classifyLegError, isFatalLegError, summarizeLegFailures };
+export type { LegFailureKind, LegOutcome } from "./lib/legOutcome";
+
+async function cgFetch(path: string, apiKey: string): Promise<unknown> {
   const res = await fetch(`${CG_BASE}${path}`, {
+    // Phase 177 — HTTP deadline below the 8s coinglass leg budget.
+    signal: AbortSignal.timeout(7_000),
     headers: {
       accept: "application/json",
       cg_api_key: apiKey,
     },
   });
   if (!res.ok) {
-    throw new Error(`CoinGlass HTTP ${res.status}: ${res.statusText}`);
+    // Phase 228 — HTTP-level quota/credential rejections were previously a
+    // generic error, so only the JSON `code` path ever reached RATE_LIMIT /
+    // AUTH_ERROR. Both transports must classify identically.
+    if (res.status === 429) throw new Error(`RATE_LIMIT: HTTP 429 ${res.statusText}`);
+    if (res.status === 401 || res.status === 403) throw new Error(`AUTH_ERROR: HTTP ${res.status} ${res.statusText}`);
+    throw new ProviderHttpError("CoinGlass", res.status, res.statusText);
   }
-  const json = await res.json();
+  let json: unknown;
+  try {
+    json = await res.json();
+  } catch (err: unknown) {
+    throw new ProviderMalformedError(`CoinGlass body is not JSON: ${errorMessage(err)}`);
+  }
   // CoinGlass V3/V4 wraps in { code, msg, data }
-  if (json.code && json.code !== "0" && json.code !== 0) {
-    const msg = json.msg || "Unknown CoinGlass error";
-    if (String(json.code) === "429" || msg.toLowerCase().includes("rate")) {
+  const code = field(json, "code");
+  if (code !== undefined && code !== null && code !== "" && code !== "0" && code !== 0) {
+    const msg = asString(field(json, "msg")) || "Unknown CoinGlass error";
+    if (String(code) === "429" || msg.toLowerCase().includes("rate")) {
       throw new Error("RATE_LIMIT:" + msg);
     }
-    if (String(json.code) === "401" || String(json.code) === "403") {
+    if (String(code) === "401" || String(code) === "403") {
       throw new Error("AUTH_ERROR:" + msg);
     }
-    throw new Error(`CoinGlass error ${json.code}: ${msg}`);
+    throw new ProviderNativeError(`CoinGlass error ${String(code)}: ${msg}`);
   }
-  return json.data ?? json;
+  const data = field(json, "data");
+  return data ?? json;
 }
+
 
 // ── Symbol mapping ──────────────────────────────────────────────
 
@@ -74,7 +114,10 @@ export const fetchDerivatives = action({
   args: {
     instrument: v.string(),
   },
-  handler: async (_ctx, args): Promise<DerivativesResult> => {
+  handler: async (ctx, args): Promise<DerivativesResult> => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.COINGLASS_API_KEY;
     if (!apiKey) {
       return {
@@ -87,41 +130,61 @@ export const fetchDerivatives = action({
     const symbol = mapSymbolForCG(args.instrument);
 
     try {
-      const cacheKey = `deriv:${symbol}`;
-      const cached = getCached<CryptoDerivativesData>(cacheKey);
-      if (cached) {
-        return { success: true, data: cached };
-      }
-
-      // Fetch all datasets in parallel
-      const [oiResult, fundingResult, lsResult, liqResult] = await Promise.allSettled([
-        fetchOpenInterest(symbol, apiKey),
-        fetchFundingRate(symbol, apiKey),
-        fetchLongShort(symbol, apiKey),
-        fetchLiquidations(symbol, apiKey),
+      // Phase 178b — the ENTIRE acquisition runs inside the cache fetcher, so
+      // a hit skips all four upstream calls and 20 concurrent callers collapse
+      // to one acquisition instead of four-per-caller.
+      const evidence = await getProviderCache().fetch<CryptoDerivativesData>(
+        {
+          provider: "coinglass",
+          dataset: "derivatives",
+          instrument: args.instrument,
+          instrumentType: "crypto",
+          qualifier: symbol,
+        },
+        async () => {
+      // Fetch all datasets in parallel. Phase 228 — each leg settles to a
+      // classified LegOutcome; only the FATAL classes reject the promise.
+      const settled = await Promise.allSettled([
+        runLeg(() => fetchOpenInterest(symbol, apiKey)),
+        runLeg(() => fetchFundingRate(symbol, apiKey)),
+        runLeg(() => fetchLongShort(symbol, apiKey)),
+        runLeg(() => fetchLiquidations(symbol, apiKey)),
       ]);
+      const [oiResult, fundingResult, lsResult, liqResult] = settled;
 
-      const openInterest = oiResult.status === "fulfilled" ? oiResult.value : undefined;
-      const fundingRate = fundingResult.status === "fulfilled" ? fundingResult.value : undefined;
-      const longShort = lsResult.status === "fulfilled" ? lsResult.value : undefined;
-      const liquidations = liqResult.status === "fulfilled" ? liqResult.value : undefined;
+      // Phase 178b — a provider failure must THROW out of the cache fetcher.
+      // Returning an error envelope here would let `ProviderCache` store a
+      // 429 as if it were evidence. Throwing leaves the cache untouched; the
+      // catch below turns it back into the action's error envelope.
+      for (const result of settled) {
+        if (result.status !== "rejected") continue;
+        const msg = errorMessage(result.reason);
+        if (msg.startsWith("RATE_LIMIT")) throw new Error("RATE_LIMIT: CoinGlass rate limit exceeded.");
+        if (msg.startsWith("AUTH_ERROR")) throw new Error("AUTH_ERROR: CoinGlass authentication failed.");
+        // A rejection that is neither fatal class cannot come from runLeg;
+        // treat it as a provider error rather than silently dropping it.
+        throw new Error(`Derivatives fetch failed: ${msg || "unknown error"}`);
+      }
+      const legs = {
+        openInterest: (oiResult as PromiseFulfilledResult<LegOutcome<ObservedLeg<OpenInterestData>>>).value,
+        fundingRate: (fundingResult as PromiseFulfilledResult<LegOutcome<ObservedLeg<FundingRateData>>>).value,
+        longShort: (lsResult as PromiseFulfilledResult<LegOutcome<ObservedLeg<LongShortData>>>).value,
+        liquidations: (liqResult as PromiseFulfilledResult<LegOutcome<ObservedLeg<LiquidationData>>>).value,
+      };
+      const openInterest = legs.openInterest.status === "ok" ? legs.openInterest.value.data : undefined;
+      const fundingRate = legs.fundingRate.status === "ok" ? legs.fundingRate.value.data : undefined;
+      const longShort = legs.longShort.status === "ok" ? legs.longShort.value.data : undefined;
+      const liquidations = legs.liquidations.status === "ok" ? legs.liquidations.value.data : undefined;
 
-      // Check for rate limit errors
-      for (const result of [oiResult, fundingResult, lsResult, liqResult]) {
-        if (result.status === "rejected" && String(result.reason?.message).startsWith("RATE_LIMIT")) {
-          return {
-            success: false,
-            error: "CoinGlass rate limit exceeded.",
-            errorCode: "RATE_LIMIT",
-          };
-        }
-        if (result.status === "rejected" && String(result.reason?.message).startsWith("AUTH_ERROR")) {
-          return {
-            success: false,
-            error: "CoinGlass authentication failed.",
-            errorCode: "AUTH_ERROR",
-          };
-        }
+      // Phase 228 — non-fatal leg failures are carried, per leg, on the
+      // payload's existing `error` field. If EVERY leg failed for a transport
+      // or provider reason (nothing was even parsed), that is a provider
+      // outage, not "no market condition": throw so the action reports
+      // API_UNAVAILABLE and nothing is cached as evidence.
+      const legFailures = summarizeLegFailures(legs);
+      const answered = Object.values(legs).some((l) => l.status === "ok" || l.status === "unavailable");
+      if (!answered) {
+        throw new Error(`Derivatives fetch failed: every leg failed (${legFailures})`);
       }
 
       // Determine availability
@@ -141,10 +204,23 @@ export const fetchDerivatives = action({
       // Generate interpretation
       const interpretation = generateInterpretation(openInterest, fundingRate, longShort, liquidations);
 
+      // Phase 226 — `timestamp` is the provider observation, not the request
+      // clock. A Date.now() stamp made delayed CoinGlass data grade FRESH in
+      // the radar (assessFreshness of "now"). Oldest surviving-leg time wins;
+      // a missing/implausible provider time is 0 (UNAVAILABLE to the radar),
+      // never re-dated.
+      const times = [
+        observationOf(legs.openInterest),
+        observationOf(legs.fundingRate),
+        observationOf(legs.longShort),
+        observationOf(legs.liquidations),
+      ].filter((n): n is number => n !== undefined);
+      const timestamp = times.length > 0 ? Math.min(...times) : 0;
+
       const data: CryptoDerivativesData = {
         provider: "coinglass",
         symbol,
-        timestamp: Date.now(),
+        timestamp,
         freshness: "delayed", // CoinGlass free tier is not realtime
         openInterest,
         fundingRate,
@@ -153,14 +229,50 @@ export const fetchDerivatives = action({
         availability,
         confidence,
         interpretation,
+        ...(legFailures ? { error: legFailures } : {}),
       };
 
-      setCache(cacheKey, data);
-      return { success: true, data };
-    } catch (err: any) {
+          return { data, observedAt: data.timestamp };
+        },
+      );
+      if (!evidence) {
+        return {
+          success: false,
+          error: "CoinGlass returned no derivatives data.",
+          errorCode: "NO_DATA",
+        };
+      }
+      // The payload is returned verbatim on a hit, so `data.timestamp` stays
+      // the ORIGINAL provider observation time — never reset to now.
+      return {
+        success: true,
+        data: evidence.data,
+        // Phase 178d — reported by the cache, not inferred from timing.
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
+      };
+    } catch (err: unknown) {
+      // Phase 178b — preserve the original classification that the fetcher
+      // threw. Collapsing a 429 into API_UNAVAILABLE would lose the
+      // rate-limit signal Phase 177 depends on.
+      const msg = errorMessage(err) || "unknown error";
+      if (msg.startsWith("RATE_LIMIT")) {
+        return {
+          success: false,
+          error: "CoinGlass rate limit exceeded.",
+          errorCode: "RATE_LIMIT",
+        };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return {
+          success: false,
+          error: "CoinGlass authentication failed.",
+          errorCode: "AUTH_ERROR",
+        };
+      }
       return {
         success: false,
-        error: `Derivatives fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Derivatives fetch failed: ${msg}`,
         errorCode: "API_UNAVAILABLE",
       };
     }
@@ -168,145 +280,173 @@ export const fetchDerivatives = action({
 });
 
 // ── Individual Fetchers ─────────────────────────────────────────
+//
+// Phase 227 — every payload is `unknown`. `points()` coerces the two shapes
+// CoinGlass emits (array of points, or a single object) into records, and
+// `num()` reads a numeric field from the point itself or its nested `data`.
+// A field that is absent or non-numeric yields undefined, never 0: the old
+// `parseFloat(x || "0")` chain reported a *zero* funding rate / ratio as an
+// available reading when the provider had simply not sent one.
 
-async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenInterestData | undefined> {
-  try {
-    const data = await cgFetch(`/futures/openInterest/chart?symbol=${symbol}&interval=1h&limit=2`, apiKey);
-    if (!data) return undefined;
-
-    // CoinGlass returns an array of data points or a single object
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
-
-    const latest = points[points.length - 1];
-    const previous = points.length > 1 ? points[points.length - 2] : null;
-
-    const current = parseFloat(latest.openInterest || latest.value || "0");
-    if (current === 0) return undefined;
-
-    const result: OpenInterestData = { current };
-
-    if (previous) {
-      const prev = parseFloat(previous.openInterest || previous.value || "0");
-      if (prev > 0) {
-        result.change1h = Math.round(((current - prev) / prev) * 10000) / 100;
-      }
-    }
-
-    return result;
-  } catch {
-    return undefined;
-  }
+function points(data: unknown): JsonRecord[] {
+  if (Array.isArray(data)) return asRecordArray(data);
+  return isRecord(data) ? [data] : [];
 }
 
-async function fetchFundingRate(symbol: string, apiKey: string): Promise<FundingRateData | undefined> {
-  try {
-    const data = await cgFetch(`/futures/fundingRate/current?symbol=${symbol}`, apiKey);
-    if (!data) return undefined;
-
-    // CoinGlass returns { data: [...] } or a single object
-    const items = Array.isArray(data) ? data : [data];
-    if (items.length === 0) return undefined;
-
-    // Find the entry for our symbol
-    const entry = items.find((item: any) =>
-      item.symbol === symbol || item.symbol?.includes(symbol),
-    ) || items[0];
-
-    const rate = parseFloat(entry.data?.currentRate || entry.currentRate || entry.data || "0");
-    if (isNaN(rate)) return undefined;
-
-    const result: FundingRateData = {
-      currentRate: rate,
-      annualizedRate: rate * 3 * 365, // 3 funding periods per day * 365 days
-    };
-
-    // OI-weighted rate if available
-    if (entry.data?.predictedRate) {
-      result.weightedRate = parseFloat(entry.data.predictedRate);
+/**
+ * CoinGlass point time (`time` / `t` / `timestamp` / `createTime`) → ms.
+ * Accepts UNIX seconds (same window as Twelve Data) or milliseconds.
+ * Never the request clock. Undefined if the point has no plausible time.
+ */
+function coinglassPointObservationMs(point: JsonRecord | undefined): number | undefined {
+  if (!point) return undefined;
+  const nested = isRecord(field(point, "data")) ? (field(point, "data") as JsonRecord) : undefined;
+  for (const src of [point, nested]) {
+    if (!src) continue;
+    for (const key of ["time", "t", "timestamp", "createTime"] as const) {
+      const n = asFiniteNumber(src[key]);
+      if (n === undefined) continue;
+      if (n >= 1e12 && n < 1e14) return n; // already ms
+      if (n >= 1e9 && n < 1e11) return n * 1000; // seconds
     }
-
-    // Exchange-level rates
-    if (entry.data?.exchangeList && Array.isArray(entry.data.exchangeList)) {
-      result.exchanges = entry.data.exchangeList.map((ex: any) => ({
-        name: ex.exchange || ex.name || "unknown",
-        rate: parseFloat(ex.data?.currentRate || ex.rate || "0"),
-      })).filter((ex: any) => !isNaN(ex.rate));
-    }
-
-    return result;
-  } catch {
-    return undefined;
   }
+  return undefined;
 }
 
-async function fetchLongShort(symbol: string, apiKey: string): Promise<LongShortData | undefined> {
-  try {
-    const data = await cgFetch(`/futures/longShort/chart?symbol=${symbol}&interval=1h&limit=1`, apiKey);
-    if (!data) return undefined;
+type ObservedLeg<T> = { data: T; observedAt?: number };
 
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
-
-    const latest = points[points.length - 1];
-    const result: LongShortData = {};
-
-    // Account ratio
-    if (latest.longShortRatio !== undefined || latest.data?.longShortRatio !== undefined) {
-      result.accountRatio = parseFloat(latest.longShortRatio || latest.data?.longShortRatio || "0");
-    }
-
-    // Top trader ratio
-    if (latest.topTraderLongShortRatio !== undefined || latest.data?.topTraderLongShortRatio !== undefined) {
-      result.topTraderRatio = parseFloat(latest.topTraderLongShortRatio || latest.data?.topTraderLongShortRatio || "0");
-    }
-
-    // Taker ratio
-    if (latest.takerBuySellRatio !== undefined || latest.data?.takerBuySellRatio !== undefined) {
-      result.takerRatio = parseFloat(latest.takerBuySellRatio || latest.data?.takerBuySellRatio || "0");
-    }
-
-    if (result.accountRatio === undefined && result.topTraderRatio === undefined && result.takerRatio === undefined) {
-      return undefined;
-    }
-
-    return result;
-  } catch {
-    return undefined;
-  }
+function observationOf<T>(leg: LegOutcome<ObservedLeg<T>>): number | undefined {
+  return leg.status === "ok" ? leg.value.observedAt : undefined;
 }
 
-async function fetchLiquidations(symbol: string, apiKey: string): Promise<LiquidationData | undefined> {
-  try {
-    const data = await cgFetch(`/futures/liquidation/v2/history?symbol=${symbol}&interval=1h&limit=1`, apiKey);
-    if (!data) return undefined;
+/** First finite number among `point[key]` and `point.data[key]`. */
+function num(point: JsonRecord, ...keys: string[]): number | undefined {
+  const nested = field(point, "data");
+  for (const key of keys) {
+    const direct = asFiniteNumber(point[key]);
+    if (direct !== undefined) return direct;
+    const inner = asFiniteNumber(field(nested, key));
+    if (inner !== undefined) return inner;
+  }
+  return undefined;
+}
 
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
+async function fetchOpenInterest(symbol: string, apiKey: string): Promise<ObservedLeg<OpenInterestData> | undefined> {
+  const pts = points(await cgFetch(`/futures/openInterest/chart?symbol=${symbol}&interval=1h&limit=2`, apiKey));
+  if (pts.length === 0) return undefined;
 
-    const latest = points[points.length - 1];
-    const result: LiquidationData = {};
+  const latest = pts[pts.length - 1];
+  const previous = pts.length > 1 ? pts[pts.length - 2] : null;
 
-    const longVol = parseFloat(latest.longLiquidation || latest.data?.longLiquidation || "0");
-    const shortVol = parseFloat(latest.shortLiquidation || latest.data?.shortLiquidation || "0");
+  const current = num(latest, "openInterest", "value");
+  if (current === undefined || current === 0) return undefined;
 
-    if (longVol > 0 || shortVol > 0) {
-      result.longVolume = longVol;
-      result.shortVolume = shortVol;
-      result.totalVolume = longVol + shortVol;
-      if (longVol > shortVol * 1.5) result.dominantSide = "longs";
-      else if (shortVol > longVol * 1.5) result.dominantSide = "shorts";
-      else result.dominantSide = "balanced";
+  const result: OpenInterestData = { current };
+
+  if (previous) {
+    const prev = num(previous, "openInterest", "value");
+    if (prev !== undefined && prev > 0) {
+      result.change1h = Math.round(((current - prev) / prev) * 10000) / 100;
     }
+  }
 
-    if (result.totalVolume === undefined || result.totalVolume === 0) {
-      return undefined;
+  return { data: result, observedAt: coinglassPointObservationMs(latest) };
+}
+
+async function fetchFundingRate(symbol: string, apiKey: string): Promise<ObservedLeg<FundingRateData> | undefined> {
+  const items = points(await cgFetch(`/futures/fundingRate/current?symbol=${symbol}`, apiKey));
+  if (items.length === 0) return undefined;
+
+  // Find the entry for our symbol
+  const entry =
+    items.find((item) => {
+      const s = asString(item.symbol);
+      return s === symbol || (s !== undefined && s.includes(symbol));
+    }) ?? items[0];
+
+  // `data` may itself be the bare rate on some endpoints.
+  const rate = num(entry, "currentRate") ?? asFiniteNumber(entry.data);
+  if (rate === undefined) return undefined;
+
+  const result: FundingRateData = {
+    currentRate: rate,
+    annualizedRate: rate * 3 * 365, // 3 funding periods per day * 365 days
+  };
+
+  // OI-weighted rate if available
+  const predicted = asFiniteNumber(field(entry.data, "predictedRate"));
+  if (predicted !== undefined) result.weightedRate = predicted;
+
+  // Exchange-level rates
+  const exchangeList = field(entry.data, "exchangeList");
+  if (Array.isArray(exchangeList)) {
+    const exchanges: { name: string; rate: number }[] = [];
+    for (const ex of asRecordArray(exchangeList)) {
+      const exRate = num(ex, "currentRate", "rate");
+      if (exRate === undefined) continue;
+      exchanges.push({
+        name: asString(ex.exchange) || asString(ex.name) || "unknown",
+        rate: exRate,
+      });
     }
+    result.exchanges = exchanges;
+  }
 
-    return result;
-  } catch {
+  return { data: result, observedAt: coinglassPointObservationMs(entry) };
+}
+
+async function fetchLongShort(symbol: string, apiKey: string): Promise<ObservedLeg<LongShortData> | undefined> {
+  const pts = points(await cgFetch(`/futures/longShort/chart?symbol=${symbol}&interval=1h&limit=1`, apiKey));
+  if (pts.length === 0) return undefined;
+
+  const latest = pts[pts.length - 1];
+  const result: LongShortData = {};
+
+  const account = num(latest, "longShortRatio");
+  if (account !== undefined) result.accountRatio = account;
+
+  const top = num(latest, "topTraderLongShortRatio");
+  if (top !== undefined) result.topTraderRatio = top;
+
+  const taker = num(latest, "takerBuySellRatio");
+  if (taker !== undefined) result.takerRatio = taker;
+
+  if (result.accountRatio === undefined && result.topTraderRatio === undefined && result.takerRatio === undefined) {
     return undefined;
   }
+
+  return { data: result, observedAt: coinglassPointObservationMs(latest) };
+}
+
+async function fetchLiquidations(symbol: string, apiKey: string): Promise<ObservedLeg<LiquidationData> | undefined> {
+  const pts = points(await cgFetch(`/futures/liquidation/v2/history?symbol=${symbol}&interval=1h&limit=1`, apiKey));
+  if (pts.length === 0) return undefined;
+
+  const latest = pts[pts.length - 1];
+  const result: LiquidationData = {};
+
+  // One side genuinely reported as absent while the other is present is
+  // treated as 0 for the total (unchanged); both absent → unavailable.
+  const longRaw = num(latest, "longLiquidation");
+  const shortRaw = num(latest, "shortLiquidation");
+  if (longRaw === undefined && shortRaw === undefined) return undefined;
+  const longVol = longRaw ?? 0;
+  const shortVol = shortRaw ?? 0;
+
+  if (longVol > 0 || shortVol > 0) {
+    result.longVolume = longVol;
+    result.shortVolume = shortVol;
+    result.totalVolume = longVol + shortVol;
+    if (longVol > shortVol * 1.5) result.dominantSide = "longs";
+    else if (shortVol > longVol * 1.5) result.dominantSide = "shorts";
+    else result.dominantSide = "balanced";
+  }
+
+  if (result.totalVolume === undefined || result.totalVolume === 0) {
+    return undefined;
+  }
+
+  return { data: result, observedAt: coinglassPointObservationMs(latest) };
 }
 
 // ── Interpretation Generator ────────────────────────────────────

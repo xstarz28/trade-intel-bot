@@ -5,6 +5,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import type {
   EconomicEvent,
@@ -14,24 +15,35 @@ import type {
 } from "../lib/data/calendar-types";
 import { getRelevantCurrencies, calculateMacroRisk } from "../lib/data/calendar-types";
 
-// ── In-memory cache (20 min TTL) ────────────────────────────────
-const cache = new Map<string, { data: EconomicCalendarData; expiresAt: number }>();
-const CACHE_TTL = 20 * 60 * 1000;
-
-function getCached(key: string): EconomicCalendarData | null {
-  const entry = cache.get(key);
-  if (entry && Date.now() < entry.expiresAt) return entry.data;
-  cache.delete(key);
-  return null;
-}
+// ── Phase 178b — authoritative provider cache ───────────────────
+// Replaces this module's private Map cache so calendar evidence shares one
+// set of TTL / freshness / single-flight semantics with every other provider.
+import { getProviderCache } from "../lib/data/provider-cache-registry";
+import {
+  isLegFailure,
+  runLeg,
+  summarizeLegFailures,
+  ProviderHttpError,
+  ProviderMalformedError,
+} from "./lib/legOutcome";
+import {
+  asRecordArray,
+  asString,
+  errorMessage,
+  field,
+  isRecord,
+  type JsonRecord,
+} from "./lib/json";
 
 // ── TickAtlas API ────────────────────────────────────────────────
 
 const TA_BASE = "https://tickatlas.com/v1";
 
-async function taFetch(path: string, apiKey: string): Promise<any> {
+async function taFetch(path: string, apiKey: string): Promise<unknown> {
   const url = `${TA_BASE}${path}`;
   const res = await fetch(url, {
+    // Phase 177 — HTTP deadline below the 8s tickatlas leg budget.
+    signal: AbortSignal.timeout(7_000),
     headers: {
       "X-API-Key": apiKey,
       accept: "application/json",
@@ -45,9 +57,27 @@ async function taFetch(path: string, apiKey: string): Promise<any> {
     if (res.status === 429) {
       throw new Error("RATE_LIMIT:TickAtlas rate limit exceeded");
     }
-    throw new Error(`TickAtlas HTTP ${res.status}: ${text || res.statusText}`);
+    throw new ProviderHttpError("TickAtlas", res.status, text || res.statusText);
   }
-  return res.json();
+  try {
+    return await res.json();
+  } catch (err: unknown) {
+    throw new ProviderMalformedError(`TickAtlas body is not JSON: ${errorMessage(err)}`);
+  }
+}
+
+/**
+ * TickAtlas wraps the calendar as `{ success, data: { events: [...] } }` or,
+ * on older routes, `{ data: [...] }`. Anything else is "no events" — never a
+ * crash, never a synthesized event.
+ */
+function extractEvents(result: unknown): JsonRecord[] {
+  const data = field(result, "data");
+  if (field(result, "success") && Array.isArray(field(data, "events"))) {
+    return asRecordArray(field(data, "events"));
+  }
+  if (Array.isArray(data)) return asRecordArray(data);
+  return [];
 }
 
 // ── Currency → Country Mapping ───────────────────────────────────
@@ -68,40 +98,61 @@ const CURRENCY_COUNTRY: Record<string, string> = {
 
 // ── Response Normalization ───────────────────────────────────────
 
-function normalizeImportance(raw: string | undefined): EventImportance {
-  if (!raw) return 1;
+function normalizeImportance(raw: unknown): EventImportance {
+  if (typeof raw !== "string" || raw === "") return 1;
   const lower = raw.toLowerCase();
   if (lower === "high") return 3;
   if (lower === "medium") return 2;
   return 1;
 }
 
-function parseValue(raw: any): number | string | undefined {
-  if (raw === null || raw === undefined || raw === "" || raw === "‑" || raw === "—") {
-    return undefined;
-  }
+/**
+ * Actual/forecast/previous cells: numbers pass through when finite, numeric
+ * strings are parsed, other strings (e.g. "2.5%") are kept verbatim, and
+ * blanks/dashes/objects are undefined.
+ */
+function parseValue(raw: unknown): number | string | undefined {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : undefined;
+  if (typeof raw !== "string") return undefined;
+  if (raw === "" || raw === "‑" || raw === "—") return undefined;
   const num = Number(raw);
-  if (!isNaN(num) && raw !== "") return num;
-  return String(raw);
+  if (Number.isFinite(num)) return num;
+  return raw;
 }
 
-function normalizeEvent(raw: any): EconomicEvent | null {
-  if (!raw) return null;
+/** First string-valued field among `keys`, or undefined. */
+function str(raw: JsonRecord, ...keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = asString(raw[k]);
+    if (v !== undefined) return v;
+  }
+  return undefined;
+}
 
-  const id = raw.id ?? `ta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const eventName = raw.event ?? raw.Event ?? "";
+function normalizeEvent(raw: unknown): EconomicEvent | null {
+  if (!isRecord(raw)) return null;
+
+  const rawId = raw.id;
+  const id =
+    typeof rawId === "string" || typeof rawId === "number"
+      ? String(rawId)
+      : `ta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const eventName = str(raw, "event", "Event");
   if (!eventName) return null;
 
-  const currency = raw.currency ?? raw.Currency ?? "";
+  const currency = str(raw, "currency", "Currency") ?? "";
   const country = CURRENCY_COUNTRY[currency] ?? "";
 
-  // Parse datetime
-  let datetime = Date.now();
-  const dateStr = raw.datetime ?? raw.Date ?? raw.date;
-  if (dateStr) {
-    const parsed = new Date(dateStr).getTime();
-    if (!isNaN(parsed)) datetime = parsed;
-  }
+  // Parse datetime — the event's schedule time is provenance supplied by the
+  // provider. Phase 219: an event whose time is absent or unparseable is
+  // unusable (same rule as a Treasury entry without an observation date).
+  // Substituting the local clock manufactured a "scheduled right now"
+  // event that then drove status, macro-risk and the upcoming-events view.
+  const dateRaw = raw.datetime ?? raw.Date ?? raw.date;
+  if (typeof dateRaw !== "string" && typeof dateRaw !== "number") return null;
+  if (dateRaw === "") return null;
+  const datetime = new Date(dateRaw).getTime();
+  if (!Number.isFinite(datetime)) return null;
 
   // Determine status from actual/forecast
   const actual = parseValue(raw.actual ?? raw.Actual);
@@ -117,9 +168,9 @@ function normalizeEvent(raw: any): EconomicEvent | null {
   }
 
   return {
-    id: String(id),
+    id,
     event: eventName,
-    category: raw.category ?? raw.Category ?? "",
+    category: str(raw, "category", "Category") ?? "",
     country,
     currency,
     datetime,
@@ -129,8 +180,8 @@ function normalizeEvent(raw: any): EconomicEvent | null {
     revised,
     importance: normalizeImportance(raw.impact ?? raw.Importance),
     source: "tickatlas",
-    sourceUrl: raw.url ?? raw.Source_url,
-    referencePeriod: raw.period ?? raw.Period,
+    sourceUrl: str(raw, "url", "Source_url"),
+    referencePeriod: str(raw, "period", "Period"),
     status,
   };
 }
@@ -142,7 +193,10 @@ export const fetchCalendar = action({
     instrument: v.string(),
     instrumentType: v.string(),
   },
-  handler: async (_ctx, args): Promise<CalendarResult> => {
+  handler: async (ctx, args): Promise<CalendarResult> => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.TICKATLAS_API_KEY;
     if (!apiKey) {
       return {
@@ -153,21 +207,26 @@ export const fetchCalendar = action({
       };
     }
 
-    const cacheKey = `cal:${args.instrument}:${args.instrumentType}`;
-    const cached = getCached(cacheKey);
-    if (cached) {
-      return { success: true, data: cached };
-    }
-
+    // Phase 178b — the whole acquisition runs inside the cache fetcher.
+    // The instrument is upper-cased for the KEY only (the calendar response
+    // depends on the resolved currency set, which is case-insensitive), so
+    // `EUR/USD` and `eur/usd` no longer cause two calls for identical data.
+    // The request itself still uses the caller's exact instrument.
     try {
+      const evidence = await getProviderCache().fetch<EconomicCalendarData>(
+        {
+          provider: "tickatlas",
+          dataset: "calendar",
+          instrument: args.instrument.toUpperCase().trim(),
+          instrumentType: args.instrumentType,
+        },
+        async () => {
       // Determine relevant currencies for this instrument
       const relevantCurrencies = getRelevantCurrencies(args.instrument, args.instrumentType);
       if (relevantCurrencies.length === 0) {
-        return {
-          success: false,
-          error: "No relevant currencies determined for this instrument.",
-          errorCode: "NO_DATA",
-        };
+        // Phase 178b — nothing to acquire. Return null so the cache stores
+        // no entry: an absent currency mapping is not evidence.
+        return null;
       }
 
       const countryParam = relevantCurrencies
@@ -180,51 +239,48 @@ export const fetchCalendar = action({
       const dateFrom = now.toISOString().split("T")[0];
       const dateTo = in7Days.toISOString().split("T")[0];
 
-      let rawEvents: any[] = [];
-      try {
-        const result = await taFetch(
-          `/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`,
-          apiKey,
-        );
-        if (result?.success && Array.isArray(result?.data?.events)) {
-          rawEvents = result.data.events;
-        } else if (Array.isArray(result?.data)) {
-          rawEvents = result.data;
-        }
-      } catch (err: any) {
-        if (String(err?.message).startsWith("RATE_LIMIT")) {
-          return { success: false, error: "TickAtlas rate limit exceeded.", errorCode: "RATE_LIMIT" };
-        }
-        if (String(err?.message).startsWith("AUTH_ERROR")) {
-          return { success: false, error: "TickAtlas authentication failed.", errorCode: "AUTH_ERROR" };
-        }
-      }
-
-      // Also fetch recently released high-impact events (last 7 days)
+      // Phase 229 — both legs run through the shared leg taxonomy. Fatal
+      // classes (RATE_LIMIT / AUTH_ERROR) reject out of runLeg — from EITHER
+      // leg — so the Phase 178b contract holds: nothing is cached and the
+      // outer catch emits the RATE_LIMIT / AUTH_ERROR envelope. Before this
+      // phase the past leg's `catch {}` discarded a 429 outright, and a
+      // timeout / 5xx on the UPCOMING leg was swallowed into an empty event
+      // list that was then cached as a success with macroRisk LOW.
       const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
       const datePast = sevenDaysAgo.toISOString().split("T")[0];
+      const [upcomingLeg, pastLeg] = await Promise.all([
+        runLeg(async () =>
+          extractEvents(await taFetch(`/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`, apiKey)),
+        ),
+        runLeg(async () =>
+          extractEvents(await taFetch(`/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`, apiKey)),
+        ),
+      ]);
+      const legs = { upcoming: upcomingLeg, recentReleased: pastLeg };
+      const legFailures = summarizeLegFailures(legs);
 
-      try {
-        const result = await taFetch(
-          `/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`,
-          apiKey,
-        );
-        const pastEvents = result?.success && Array.isArray(result?.data?.events)
-          ? result.data.events
-          : Array.isArray(result?.data) ? result.data : [];
-        if (Array.isArray(pastEvents)) {
-          const existingIds = new Set(rawEvents.map((e: any) => e.id));
-          for (const evt of pastEvents) {
-            if (evt.id && !existingIds.has(evt.id)) {
-              const norm = normalizeEvent(evt);
-              if (norm && norm.importance === 3 && norm.actual !== undefined) {
-                rawEvents.push(evt);
-              }
+      // The upcoming window is the one macro-risk is computed from. If that
+      // leg failed for a transport/provider reason there is no calendar to
+      // assess: throw so the action reports API_UNAVAILABLE and nothing is
+      // cached — an outage must never read as "no events → LOW risk".
+      if (isLegFailure(upcomingLeg)) {
+        throw new Error(`Calendar fetch failed: ${legFailures}`);
+      }
+
+      const rawEvents: JsonRecord[] = upcomingLeg.status === "ok" ? upcomingLeg.value : [];
+
+      // Recently released high-impact events (last 7 days) are additive; a
+      // failed past leg is reported on `error`, not silently dropped.
+      if (pastLeg.status === "ok") {
+        const existingIds = new Set(rawEvents.map((e) => e.id));
+        for (const evt of pastLeg.value) {
+          if (evt.id && !existingIds.has(evt.id)) {
+            const norm = normalizeEvent(evt);
+            if (norm && norm.importance === 3 && norm.actual !== undefined) {
+              rawEvents.push(evt);
             }
           }
         }
-      } catch {
-        // Recent events fetch failed — not critical
       }
 
       // Normalize and filter by relevant currencies
@@ -276,14 +332,38 @@ export const fetchCalendar = action({
         freshness: events.length > 0 ? "recent" : "unavailable",
         confidence,
         availability,
+        // Phase 229 — partial: the past-events leg failed (class + reason).
+        ...(legFailures ? { error: legFailures } : {}),
       };
 
-      cache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL });
-      return { success: true, data };
-    } catch (err: any) {
+          return { data, observedAt: data.timestamp };
+        },
+      );
+      if (!evidence) {
+        return {
+          success: false,
+          error: "Calendar provider returned no data.",
+          errorCode: "NO_DATA",
+        };
+      }
+      // Verbatim payload: `timestamp` remains the original observation time.
+      return {
+        success: true,
+        data: evidence.data,
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
+      };
+    } catch (err: unknown) {
+      const msg = errorMessage(err) || "unknown error";
+      if (msg.startsWith("RATE_LIMIT")) {
+        return { success: false, error: "TickAtlas rate limit exceeded.", errorCode: "RATE_LIMIT" };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return { success: false, error: "TickAtlas authentication failed.", errorCode: "AUTH_ERROR" };
+      }
       return {
         success: false,
-        error: `Calendar fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Calendar fetch failed: ${msg}`,
         errorCode: "API_UNAVAILABLE",
       };
     }

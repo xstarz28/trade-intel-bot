@@ -15,7 +15,6 @@ import {
 import {
   createTimeframeData,
   analyzeMTFConfluence,
-  type TimeframeData,
   type MTFConfluence,
 } from "./multi-timeframe-engine";
 import type { Candle } from "./technical-indicators";

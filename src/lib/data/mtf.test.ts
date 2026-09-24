@@ -288,10 +288,8 @@ describe("MTF SMC context carries timeframe labels", () => {
     ]);
     for (const t of ctx.timeframes) {
       const smc = t.smc!;
-      for (const p of smc.liquidityPools) {
-        // Pools come from THIS timeframe's computation; entry is labeled.
-        expect(t.timeframe).toBeTruthy();
-      }
+      // Pools come from THIS timeframe's computation; entry is labeled.
+      smc.liquidityPools.forEach(() => expect(t.timeframe).toBeTruthy());
       for (const f of smc.fvgs) expect(f.timeframe).toBe(t.timeframe);
       for (const ob of smc.orderBlocks) expect(ob.timeframe).toBe(t.timeframe);
     }

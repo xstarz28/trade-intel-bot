@@ -255,7 +255,7 @@ export function buildPipelineErrorDiagnostic(
 
 export function computePipelineHealth(
   events: AlertDiagnosticEvent[],
-  now: number,
+  _now: number,
 ): AlertPipelineHealth {
   const cycleEvents = events.filter((e) => e.eventType === "PIPELINE_CYCLE");
   const lastCycle = cycleEvents.length > 0 ? cycleEvents[cycleEvents.length - 1].timestamp : 0;

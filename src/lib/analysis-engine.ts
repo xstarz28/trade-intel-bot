@@ -11,7 +11,7 @@ import type {
   Recommendation,
   TradePlan,
 } from "@/types/analysis";
-import type { MarketData, MtfContext, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
+import type { MtfContext, TechnicalData } from "@/lib/data/market-types";
 import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 import { resolveStyle } from "@/lib/trading-style";
@@ -2395,6 +2395,8 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     instrument: typeof input.instrument === "string" ? input.instrument.toUpperCase() : "",
     instrumentType: input.instrumentType ?? "forex",
     timeframe: input.timeframe,
+    provider: input.provider,
+    providerInstrumentId: input.providerInstrumentId,
     bias,
     confidence: decision.confidence,
     recommendation: decision.recommendation,

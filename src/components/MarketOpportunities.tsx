@@ -12,13 +12,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   generateRecommendation,
-  discoverCandidates,
-  type CandidateInput,
   type TradingMode,
   type InvestorHorizon,
   type UniversalRecommendationResult,
   type RankedInstrument,
-  type DataCompletenessLevel,
 } from "@/lib/recommendation-engine";
 import {
   scanInstruments,
@@ -27,7 +24,8 @@ import {
 } from "@/lib/liveScanner";
 import type { LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { RadarScanResult, RadarOpportunity, OpportunityDiff, QualityTier } from "@/lib/market-radar/types";
+import { matchesRegionFilter } from "@/lib/market-region";
+import type { RadarScanResult, RadarOpportunity, QualityTier } from "@/lib/market-radar/types";
 import { useI18n } from "@/lib/i18n";
 import {
   mapHorizon,
@@ -37,8 +35,6 @@ import {
 } from "@/lib/i18n/enum-mapping";
 import {
   TrendingUp,
-  Target,
-  Clock,
   Filter,
   AlertTriangle,
   ChevronDown,
@@ -47,8 +43,6 @@ import {
   RefreshCw,
   Activity,
   Eye,
-  EyeOff,
-  Zap,
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════
@@ -140,10 +134,21 @@ const LIFECYCLE_COLORS: Record<string, string> = {
 };
 
 interface MarketOpportunitiesProps {
-  /** Pre-computed candidates from current market state (Phase 49 fallback). */
-  candidates: CandidateInput[];
-  /** Live candidate sources for real-time scanning (Phase 50). */
+  /**
+   * Live candidate sources for real-time scanning (Phase 50).
+   *
+   * The production Dashboard always supplies this. An empty array is an
+   * empty market — never a substitute ranking universe.
+   */
   liveSources?: LiveCandidateSource[];
+  /**
+   * Provider/acquisition failures for the current cycle.
+   *
+   * Required whenever `liveSources` is supplied without a `scanResult`:
+   * scanning without them reports degraded === false, which renders a
+   * provider outage as a healthy, quiet market.
+   */
+  providerErrors?: string[];
   /** Whether a scan is in progress. */
   isScanning?: boolean;
   /** Last scan result (Phase 50). */
@@ -158,6 +163,27 @@ interface MarketOpportunitiesProps {
 // RANKED CARD
 // ═══════════════════════════════════════════════════════════════
 
+import { canonicalOpportunityKey } from "@/lib/market-radar/opportunity-identity";
+
+function opportunityDisplayKey(item: {
+  instrument: string;
+  providerNative?: { provider: string; providerInstrumentId: string };
+  provider?: string;
+  assetClass?: string;
+  region?: string;
+  candidateInstrument?: string;
+}): string {
+  // Phase 241: single canonical identity, no duplicated logic
+  return canonicalOpportunityKey({
+    instrument: item.instrument,
+    providerNative: item.providerNative as any,
+    provider: (item as any).provider,
+    assetClass: (item as any).assetClass,
+    region: (item as any).region,
+    candidateInstrument: (item as any).candidateInstrument,
+  });
+}
+
 function RankedCard({ item }: { item: RankedInstrument }) {
   const { t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
@@ -166,6 +192,11 @@ function RankedCard({ item }: { item: RankedInstrument }) {
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-mono font-bold">{item.instrument}</span>
+        {item.providerNative && (
+          <Badge variant="outline" className="text-[8px] font-mono border-border/50 text-muted-foreground/70">
+            {item.providerNative.provider}
+          </Badge>
+        )}
         <Badge variant="outline" className={cn("text-[9px] font-mono", ASSET_COLORS[item.assetClass] ?? "border-border/50")}>
           {item.assetClass}
         </Badge>
@@ -276,6 +307,16 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-mono font-bold">{opp.instrument}</span>
+        {opp.providerNative && (
+          <Badge variant="outline" className="text-[8px] font-mono border-border/50 text-muted-foreground/70">
+            {opp.providerNative.provider}
+          </Badge>
+        )}
+        {opp.evidence && (
+          <Badge variant="outline" className="text-[8px] font-mono border-border/50 text-muted-foreground/50">
+            {opp.evidence.timestampProvenance ?? opp.timestampProvenance ?? "UNKNOWN"}
+          </Badge>
+        )}
         <Badge variant="outline" className={cn("text-[9px] font-mono", ASSET_COLORS[opp.assetClass] ?? "border-border/50")}>
           {opp.assetClass}{opp.region ? ` · ${opp.region}` : ""}
         </Badge>
@@ -327,6 +368,29 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
 
       {expanded && (
         <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
+          {opp.providerNative && (
+            <div className="text-[8px] font-mono text-muted-foreground/70">
+              <span>provider: {opp.providerNative.provider}</span>
+              <span className="mx-1">·</span>
+              <span>native: {opp.providerNative.providerInstrumentId}</span>
+              {opp.evidence && (
+                <>
+                  <span className="mx-1">·</span>
+                  <span>observedAt: {opp.evidence.observedAt ? new Date(opp.evidence.observedAt).toLocaleTimeString() : "unknown"}</span>
+                  <span className="mx-1">·</span>
+                  <span>provenance: {opp.evidence.timestampProvenance ?? "UNKNOWN"}</span>
+                  <span className="mx-1">·</span>
+                  <span>freshness: {opp.freshness}</span>
+                </>
+              )}
+            </div>
+          )}
+          {opp.evidence?.derived && Object.keys(opp.evidence.derived).length > 0 && (
+            <div className="text-[8px] font-mono text-muted-foreground/50">
+              derived: {Object.entries(opp.evidence.derived).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}=${typeof v === "number" ? v.toFixed(2) : v}`).join(", ")}
+              <span className="ml-1">{tx("marketPanel.derivedNotObserved")}</span>
+            </div>
+          )}
           {opp.supportingEvidence.length > 0 && (
             <div>
               <p className="text-[9px] font-mono font-semibold text-emerald-400/80 mb-0.5">{tx("marketPanel.supportingLabel")}</p>
@@ -363,6 +427,12 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
             <span>{txi("marketPanel.coverageLabel", { value: opp.providerCoverage })}</span>
             <span className="mx-1">·</span>
             <span>{txi("marketPanel.updatedLabel", { time: new Date(opp.lastUpdated).toLocaleTimeString() })}</span>
+            {opp.horizon && (
+              <>
+                <span className="mx-1">·</span>
+                <span>horizon: {opp.horizon}</span>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -383,8 +453,8 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
 // ═══════════════════════════════════════════════════════════════
 
 export function MarketOpportunities({
-  candidates,
   liveSources,
+  providerErrors,
   isScanning = false,
   scanResult: externalScanResult,
   radarResult,
@@ -411,43 +481,33 @@ export function MarketOpportunities({
         horizons: [currentHorizon],
         maxResults: 10,
         assetClasses: assetFilter !== "all" ? [assetFilter] : undefined,
+        // Carried through so a locally computed scan degrades identically to
+        // the one the Dashboard computes.
+        providerErrors,
       };
       return scanInstruments(liveSources, scanConfig);
     }
 
     return null;
-  }, [liveSources, currentHorizon, assetFilter, externalScanResult]);
+  }, [liveSources, currentHorizon, assetFilter, externalScanResult, providerErrors]);
 
-  // Get ranked result for current horizon
+  // Ranked result for the current horizon comes only from the live scan.
+  // A missing horizon or an unwired scan is empty — never a substitute
+  // ranking universe.
   const result: UniversalRecommendationResult = useMemo(() => {
     if (scanResult) {
       const horizonResult = scanResult.results.get(currentHorizon);
       if (horizonResult) return horizonResult;
     }
-
-    // Fallback to static discovery-based candidates (Phase 49)
-    return generateRecommendation(candidates, currentHorizon, { maxResults: 10 });
-  }, [scanResult, currentHorizon, candidates]);
+    return generateRecommendation([], currentHorizon, { maxResults: 10 });
+  }, [scanResult, currentHorizon]);
 
   // Filter by region (post-scan, since regions aren't in the scan config)
   const filteredRanked = useMemo(() => {
     if (regionFilter === "all") return result.rankedInstruments;
-    return result.rankedInstruments.filter((item) => {
-      const inst = item.instrument.toUpperCase();
-      if (regionFilter === "us") {
-        // US equities (no .JK suffix, not crypto/forex/commodity/index/macro)
-        return item.assetClass === "equity" && !inst.endsWith(".JK");
-      }
-      if (regionFilter === "idx") {
-        // IDX equities (BBCA, BBRI, etc.) or instruments ending in .JK
-        return item.assetClass === "equity" && (inst.endsWith(".JK") || ["BBCA", "BBRI", "TLKM", "BMRI", "BBNI", "GOTO"].includes(inst));
-      }
-      if (regionFilter === "global") {
-        // Crypto, forex, commodities, indices, macro
-        return ["crypto", "forex", "commodity", "indices", "macro"].includes(item.assetClass);
-      }
-      return true;
-    });
+    return result.rankedInstruments.filter((item) =>
+      matchesRegionFilter(item, regionFilter),
+    );
   }, [result.rankedInstruments, regionFilter]);
 
   // Phase 51: radar-based opportunities
@@ -455,14 +515,9 @@ export function MarketOpportunities({
     if (!radarResult) return [];
     const opps = radarResult.results.get(currentHorizon);
     if (!opps) return [];
-    // Filter by region
+    // Filter by region using provider-reported metadata (never a symbol list).
     if (regionFilter === "all") return opps;
-    return opps.filter(o => {
-      if (regionFilter === "idx") return o.region === "idx";
-      if (regionFilter === "us") return o.region === "us";
-      if (regionFilter === "global") return !o.region || o.region === "global" || o.region === "asia" || o.region === "europe";
-      return true;
-    }).filter(o => {
+    return opps.filter(o => matchesRegionFilter(o, regionFilter)).filter(o => {
       if (assetFilter === "all") return true;
       return o.assetClass === assetFilter;
     });
@@ -472,6 +527,15 @@ export function MarketOpportunities({
   // LIVE means the current scan contains verified live/delayed market data.
   // Radar presence or merely having cached liveSources must never promote the badge.
   const isLive = (scanResult?.totalWithLiveData ?? 0) > 0;
+  // Phase 243 — degraded means last refresh had failures, retained evidence may still be usable
+  // UI must distinguish “last valid live evidence retained” from “latest refresh succeeded”
+  const isDegraded = Boolean(scanResult?.degraded) || (providerErrors && providerErrors.length > 0) || (scanResult?.providerErrors && scanResult.providerErrors.length > 0);
+  const allProviderErrors = useMemo(() => {
+    const fromScan = scanResult?.providerErrors ?? [];
+    const fromProps = providerErrors ?? [];
+    const fromRadar = radarResult?.providerErrors ?? [];
+    return Array.from(new Set([...fromScan, ...fromProps, ...fromRadar]));
+  }, [scanResult?.providerErrors, providerErrors, radarResult?.providerErrors]);
   const scanTimestamp = scanResult?.timestamp ?? radarResult?.timestamp;
 
   const handleRefresh = useCallback(() => {
@@ -502,6 +566,13 @@ export function MarketOpportunities({
               <><Eye className="size-2.5 mr-0.5 inline" /> {tx("marketPanel.staticBadge")}</>
             )}
           </Badge>
+
+          {/* Phase 243 — degraded badge distinguishes retained vs fresh success */}
+          {isDegraded && (
+            <Badge variant="outline" className="text-[9px] font-mono bg-amber-500/10 text-amber-400 border-amber-500/20">
+              DEGRADED
+            </Badge>
+          )}
 
           <Badge variant="outline" className="text-[9px] font-mono border-border/50">
             {txi("marketPanel.rankedCount", { count: filteredRanked.length })}
@@ -551,6 +622,21 @@ export function MarketOpportunities({
               </span>
             )}
           </p>
+        )}
+
+        {/* Phase 243 — provider errors distinguish retained vs refresh success, stale vs live */}
+        {isDegraded && allProviderErrors.length > 0 && (
+          <div className="rounded-md bg-amber-500/5 border border-amber-500/10 p-1.5">
+            <p className="text-[8px] font-mono text-amber-400/70">{tx("marketPanel.retainedEvidenceFailed")}</p>
+            <div className="mt-0.5 space-y-0.5">
+              {allProviderErrors.slice(0, 3).map((e, i) => (
+                <p key={i} className="text-[8px] font-mono text-amber-300/60">• {e}</p>
+              ))}
+              {allProviderErrors.length > 3 && (
+                <p className="text-[8px] font-mono text-muted-foreground/40">+{allProviderErrors.length - 3} more</p>
+              )}
+            </div>
+          </div>
         )}
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
@@ -662,14 +748,14 @@ export function MarketOpportunities({
           </div>
         )}
 
-        {/* Phase 51 Radar Opportunities */}
+        {/* Phase 51 Radar Opportunities — Phase 239: provider-qualified key prevents collision */}
         {useRadar && (
           <div className="space-y-2">
             {radarOpps.filter(o => o.lifecycle !== "EXPIRED" && o.lifecycle !== "INVALIDATED").length > 0 ? (
               radarOpps
                 .filter(o => o.lifecycle !== "EXPIRED" && o.lifecycle !== "INVALIDATED")
                 .map((opp) => (
-                  <RadarCard key={opp.instrument} opp={opp} />
+                  <RadarCard key={opportunityDisplayKey(opp)} opp={opp} />
                 ))
             ) : (
               <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
@@ -694,12 +780,12 @@ export function MarketOpportunities({
           </div>
         )}
 
-        {/* Phase 50 Fallback: Static/Discovery Opportunities */}
+        {/* Phase 50 Fallback: Static/Discovery Opportunities — Phase 239: provider-qualified key */}
         {!useRadar && (
           filteredRanked.length > 0 ? (
             <div className="space-y-2">
               {filteredRanked.map((item) => (
-                <RankedCard key={item.instrument} item={item} />
+                <RankedCard key={opportunityDisplayKey(item)} item={item} />
               ))}
             </div>
           ) : (

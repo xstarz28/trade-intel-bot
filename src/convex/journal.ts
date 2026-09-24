@@ -7,29 +7,12 @@
  */
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { resolveUser } from "./lib/authUser";
+import type { Doc } from "./_generated/dataModel";
 
-/** Resolve user from auth identity. */
-async function resolveUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ email?: string; subject: string } | null> };
-  db: any;
-}) {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity) return null;
-  if (identity.email) {
-    const byEmail = await ctx.db
-      .query("users")
-      .withIndex("email", (q: any) => q.eq("email", identity.email))
-      .unique();
-    if (byEmail) return byEmail;
-  }
-  try {
-    return await ctx.db.get(identity.subject);
-  } catch {
-    return null;
-  }
-}
 
 // ── Create ───────────────────────────────────────────────────────
+// Phase 262 — adds provider-native identity preservation
 
 export const create = mutation({
   args: {
@@ -37,6 +20,10 @@ export const create = mutation({
     instrumentType: v.string(),
     timeframe: v.string(),
     style: v.string(),
+    provider: v.optional(v.string()),
+    providerInstrumentId: v.optional(v.string()),
+    assetClass: v.optional(v.string()),
+    title: v.optional(v.string()),
     analysisSnapshot: v.object({
       analysisId: v.string(),
       decision: v.string(),
@@ -90,6 +77,10 @@ export const create = mutation({
       instrumentType: args.instrumentType,
       timeframe: args.timeframe,
       style: args.style,
+      provider: args.provider,
+      providerInstrumentId: args.providerInstrumentId,
+      assetClass: args.assetClass,
+      title: args.title,
       analysisSnapshot: args.analysisSnapshot,
       status,
       entry: args.entry,
@@ -137,9 +128,12 @@ export const transition = mutation({
     }
 
     const now = Date.now();
-    const update: Record<string, any> = {
+    // Phase 227 — typed patch. `db.patch` has no dotted-path semantics; the
+    // previous dotted-key write (hidden behind an untyped record) created a
+    // literal top-level field and never updated the nested updatedAt.
+    const update: Partial<Doc<"journal">> = {
       status: args.newStatus,
-      "timestamps.updatedAt": now,
+      timestamps: { ...entry.timestamps, updatedAt: now },
     };
 
     if (args.newStatus === "CLOSED") {
@@ -174,6 +168,10 @@ export const updateFields = mutation({
     whatWentWrong: v.optional(v.string()),
     lessons: v.optional(v.string()),
     notes: v.optional(v.string()),
+    title: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    providerInstrumentId: v.optional(v.string()),
+    assetClass: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await resolveUser(ctx);
@@ -183,15 +181,17 @@ export const updateFields = mutation({
     if (!entry) throw new Error("Journal entry not found");
     if (entry.userId !== user._id) throw new Error("Not authorized");
 
-    const update: Record<string, any> = {
-      "timestamps.updatedAt": Date.now(),
+    const { journalId: _journalId, ...fields } = args;
+    // Only include defined fields. `fields` is exactly the validated optional
+    // journal columns, so the filtered object is a Partial<Doc<"journal">>
+    // by construction — no string-keyed bag.
+    const defined = Object.fromEntries(
+      Object.entries(fields).filter(([, val]) => val !== undefined),
+    ) as Partial<typeof fields>;
+    const update: Partial<Doc<"journal">> = {
+      ...defined,
+      timestamps: { ...entry.timestamps, updatedAt: Date.now() },
     };
-
-    // Only include defined fields
-    for (const [key, val] of Object.entries(args)) {
-      if (key === "journalId") continue;
-      if (val !== undefined) update[key] = val;
-    }
 
     await ctx.db.patch(args.journalId, update);
     return args.journalId;
@@ -224,7 +224,7 @@ export const list = query({
 
     return await ctx.db
       .query("journal")
-      .withIndex("by_user_journal", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user_journal", (q) => q.eq("userId", user._id))
       .order("desc")
       .take(100);
   },
@@ -238,7 +238,7 @@ export const getByInstrument = query({
 
     return await ctx.db
       .query("journal")
-      .withIndex("by_instrument", (q: any) =>
+      .withIndex("by_instrument", (q) =>
         q.eq("userId", user._id).eq("instrument", args.instrument)
       )
       .order("desc")
@@ -254,7 +254,7 @@ export const getByStatus = query({
 
     return await ctx.db
       .query("journal")
-      .withIndex("by_status", (q: any) =>
+      .withIndex("by_status", (q) =>
         q.eq("userId", user._id).eq("status", args.status)
       )
       .order("desc")

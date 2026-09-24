@@ -82,7 +82,6 @@ export function interpretFundamental(
 ): FundamentalInterpretation {
   const hasComparison = dp.expected !== null && dp.previous !== null;
   let surpriseDirection: FundamentalInterpretation["surpriseDirection"] = "UNKNOWN";
-  let positionImpact: FundamentalInterpretation["positionImpact"] = "INSUFFICIENT";
 
   if (!hasComparison) {
     return {
@@ -142,14 +141,13 @@ function classifyFundamentalImpact(
       // Lower-than-expected → bullish for risk assets
       if (surprise === "POSITIVE") {
         // Hotter inflation
-        const isUSD = instrument.includes("USD") && !instrument.includes("XAU");
+        const isUSD = instrument.includes("USD");
         return {
           position: isLong ? (isUSD ? "CONFLICTING" : "CONFLICTING") : (isUSD ? "SUPPORTING" : "SUPPORTING"),
           description: `Inflation higher than expected — ${isLong ? "negative" : "positive"} for ${side} ${instrument}.`,
         };
       }
       if (surprise === "NEGATIVE") {
-        const isUSD = instrument.includes("USD") && !instrument.includes("XAU");
         return {
           position: isLong ? "SUPPORTING" : "CONFLICTING",
           description: `Inflation lower than expected — ${isLong ? "positive" : "negative"} for ${side} ${instrument}.`,
@@ -161,7 +159,6 @@ function classifyFundamentalImpact(
     case "INTEREST_RATE": {
       // Higher rates → USD strength
       if (surprise === "POSITIVE") {
-        const isUSD = instrument.includes("USD");
         return {
           position: isLong ? "CONFLICTING" : "SUPPORTING",
           description: `Rate higher than expected — USD strength context, ${isLong ? "negative" : "positive"} for ${side} ${instrument}.`,

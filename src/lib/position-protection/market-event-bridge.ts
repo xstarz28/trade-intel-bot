@@ -12,8 +12,6 @@
 
 import type {
   RealTimeEvent,
-  EventType,
-  EventPriority,
   Timeframe,
 } from "./realtime-types";
 

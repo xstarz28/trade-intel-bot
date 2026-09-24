@@ -80,6 +80,16 @@ export interface JournalEntry {
   /** Trading style. */
   style: string;
 
+  // ── Phase 262 — provider-native identity preservation ──
+  /** Provider id, e.g. okx, ccxt:binance, twelve-data */
+  provider?: string;
+  /** Provider-native instrument id, e.g. BTC-USDT, BTC/USDT, XAU/USD */
+  providerInstrumentId?: string;
+  /** Asset class crypto|forex|commodity|equity|indices */
+  assetClass?: string;
+  /** Optional human title/heading */
+  title?: string;
+
   // ── Analysis Snapshot (immutable) ──
   /** Snapshot of the analysis at journal creation time. */
   analysisSnapshot: AnalysisSnapshot;
@@ -177,4 +187,12 @@ export interface CreateJournalEntryInput {
   thesisAtEntry?: string;
   /** User-provided notes. */
   notes?: string;
+  /** Provider id */
+  provider?: string;
+  /** Provider-native instrument id */
+  providerInstrumentId?: string;
+  /** Asset class */
+  assetClass?: string;
+  /** Optional title */
+  title?: string;
 }

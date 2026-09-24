@@ -51,7 +51,12 @@ export type ProfitState = "LOSING" | "BREAK_EVEN_ZONE" | "PROFITABLE" | "STRONGL
 
 export interface ProfitMetrics {
   profitState: ProfitState;
-  unrealizedPnL: number;
+  /**
+   * Unrealized P/L. `undefined` when it cannot be computed because the
+   * entry or current price is missing or non-finite — a NaN P/L must never
+   * be presented as a number, and must not poison peak-profit tracking.
+   */
+  unrealizedPnL?: number;
   /** R-multiple if stopLoss is available. undefined otherwise. */
   rMultiple?: number;
   /** Distance from entry as percentage. */

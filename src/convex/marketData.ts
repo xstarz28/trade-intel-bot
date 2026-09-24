@@ -10,6 +10,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
@@ -27,28 +28,88 @@ import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../l
  * instance). Failure caching protects the Twelve Data rate budget: when no
  * candidate resolves, probing is skipped for 24h instead of every analysis.
  */
+import { getProviderCache } from "../lib/data/provider-cache-registry";
+import { errorMessage, isRecord } from "./lib/json";
+import { classifyLegError } from "./lib/legOutcome";
+import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
+import { createTwelveDataDiscoveryAdapter } from "../lib/discovery/twelve-data-adapter";
+import {
+  acquireBatchProviderNativeLiveData,
+  acquireProviderNativeLiveData,
+} from "../lib/market-radar/provider-registry";
+import type { AssetClass } from "../lib/data/universal/types";
+import type { Transport } from "../lib/data/universal/live/client";
+import {
+  mapTwelveDataInterval,
+  parseTwelveDataTimeSeries,
+  parseTwelveDataQuote,
+} from "../lib/data/universal/live/twelve-data-protocol";
+import { classifyLiveFailure } from "../lib/data/universal/live/failure-class";
+
 let dxyResolvedSymbol: string | null = null;
 let dxyAllCandidatesFailedAt: number | null = null;
 
-interface TdCandle {
-  datetime: string;
-  open: string;
-  high: string;
-  low: string;
-  close: string;
-  volume: string;
-}
-
 function mapTimeframe(tf: string): string {
-  const map: Record<string, string> = {
-    M1: "1min", M5: "5min", M15: "15min",
-    H1: "1h", H4: "4h", D1: "1day", W1: "1week",
-  };
-  return map[tf] ?? tf.toLowerCase();
+  return mapTwelveDataInterval(tf);
 }
 
 /** Fetch + normalize candles for one timeframe. Throws on failure. */
+/**
+ * Phase 178b — every OHLCV request in this module funnels through here, so
+ * this is the single place to enforce cache identity for candle data.
+ *
+ * The key carries the provider-native symbol, the timeframe AND the requested
+ * bar count: a 210-bar setup series and a 100-bar HTF series are different
+ * responses and must not share an entry. Concurrent identical requests
+ * collapse to one acquisition, which matters because a single analysis asks
+ * for the setup timeframe, higher-timeframe context and a comparator series.
+ *
+ * A throw propagates out of the fetcher, so a 429 or auth failure is never
+ * stored — the existing error classification below is unchanged.
+ */
+/**
+ * Phase 178d — per-request acquisition trace.
+ *
+ * `fetchCandles` is called several times per analysis (setup timeframe, HTF
+ * context, comparator). Each read records how it was obtained so the action
+ * can report ONE honest mode instead of assuming a fresh observation.
+ */
+type AcqMode = "observed-now" | "observed-shared" | "cache-reused";
+let candleAcquisitions: AcqMode[] = [];
+let candleObservations: number[] = [];
+
+function resetCandleTrace(): void {
+  candleAcquisitions = [];
+  candleObservations = [];
+}
+
 async function fetchCandles(
+  symbol: string,
+  tf: string,
+  outputsize: number,
+  apiKey: string,
+): Promise<OhlcvCandle[]> {
+  const evidence = await getProviderCache().fetch<OhlcvCandle[]>(
+    {
+      provider: "twelve-data",
+      dataset: "ohlcv",
+      instrument: symbol,
+      timeframe: tf,
+      qualifier: `bars=${outputsize}`,
+    },
+    async () => ({
+      data: await fetchCandlesUncached(symbol, tf, outputsize, apiKey),
+      observedAt: Date.now(),
+    }),
+  );
+  if (evidence) {
+    candleAcquisitions.push(evidence.acquisition);
+    candleObservations.push(evidence.observedAt);
+  }
+  return evidence?.data ?? [];
+}
+
+async function fetchCandlesUncached(
   symbol: string,
   tf: string,
   outputsize: number,
@@ -56,23 +117,135 @@ async function fetchCandles(
 ): Promise<OhlcvCandle[]> {
   const res = await fetch(
     `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${mapTimeframe(tf)}&outputsize=${outputsize}&apikey=${apiKey}`,
+    // Phase 177 — per-request deadline. market-data issues several of these
+    // (multi-timeframe batch + bounded DXY probe), so each must be short
+    // enough that the whole leg stays inside its 12s budget.
+    { signal: AbortSignal.timeout(6_000) },
   );
   const json = await res.json();
-  if (json.code) {
-    throw new Error(`[${json.code}] ${json.message || "provider error"}`);
+  const parsedSeries = parseTwelveDataTimeSeries(json);
+  if (!parsedSeries.ok) {
+    throw new Error(parsedSeries.reason);
   }
-  const values: TdCandle[] = json.values ?? [];
-  if (values.length === 0) throw new Error("no candle data returned");
-  return values
-    .reverse()
-    .map((c) => ({
-      timestamp: new Date(c.datetime).getTime(),
-      open: parseFloat(c.open),
-      high: parseFloat(c.high),
-      low: parseFloat(c.low),
-      close: parseFloat(c.close),
-      volume: parseFloat(c.volume) || 0,
-    }));
+  return parsedSeries.candles;
+}
+
+/**
+ * Twelve Data `/quote` `timestamp` (UNIX seconds, number or numeric string)
+ * → milliseconds, or `undefined` if it is not a plausible provider time.
+ * Never the request clock. Same window as Phase 227 `fetchPrice`.
+ */
+export function providerQuoteTimestampMs(quoteTs: unknown): number | undefined {
+  const n = typeof quoteTs === "number" ? quoteTs : typeof quoteTs === "string" ? Number(quoteTs) : NaN;
+  // 1e9 s = 2001-09-09, 1e11 s = year 5138 — anything outside is not seconds.
+  if (Number.isFinite(n) && n >= 1e9 && n < 1e11) return n * 1000;
+  return undefined;
+}
+
+/**
+ * Phase 220 — provider-observed price time.
+ * `quoteTs` is Twelve Data's `/quote` `timestamp`. Only a finite value
+ * within the seconds window is accepted and scaled to ms; anything else
+ * falls back to the most recent candle's own datetime, which is also
+ * provider-observed. Never returns the request clock.
+ */
+export function resolveProviderPriceTimestamp(quoteTs: unknown, lastCandleMs: number): number {
+  const fromQuote = providerQuoteTimestampMs(quoteTs);
+  if (fromQuote !== undefined) return fromQuote;
+  return Number.isFinite(lastCandleMs) && lastCandleMs > 0 ? lastCandleMs : 0;
+}
+
+/**
+ * Phase 230 — classification for the SECONDARY fetch legs in this module
+ * (DXY candidate probes, the comparator series, the live quote, the MTF
+ * chain, the FX pair legs). The primary candle leg already carries the
+ * §217 classification; a secondary leg failure must never be laundered into
+ * "the provider has no such data", so its class travels in the reason text.
+ *
+ * `isDefinitiveProbeRejection` answers the ONLY question the DXY negative
+ * cache may ask: did the provider DEFINITIVELY reject this candidate symbol?
+ * That is true only for an answered 4xx symbol/plan rejection and for an
+ * answered-but-empty series. A quota/credential rejection (429/401/403) or
+ * any transport/5xx/malformed failure teaches nothing about the symbol
+ * itself, so it must never arm the 24h negative cache — before this phase a
+ * `.catch(() => null)` made a 429 look exactly like a verified-invalid
+ * symbol and could poison DXY discovery for 24h.
+ */
+export function isDefinitiveProbeRejection(err: unknown): boolean {
+  const msg = errorMessage(err) || "unknown error";
+  if (msg.startsWith("[429]") || msg.startsWith("[401]") || msg.startsWith("[403]")) return false;
+  if (/^\[4\d\d\]/.test(msg)) return true; // e.g. [404] — symbol unavailable on this plan
+  if (msg.startsWith("no candle data returned")) return true;
+  if (msg.startsWith("provider returned no numerically valid candles")) return true;
+  return false; // timeout / network / 5xx / malformed — nothing learned about the symbol
+}
+
+/** Class text for a failed secondary leg — "RATE_LIMIT ([429] …)", "timeout (…)", … */
+export function secondaryLegFailureText(err: unknown): string {
+  const msg = errorMessage(err) || "unknown error";
+  if (msg.startsWith("RATE_LIMIT") || msg.startsWith("[429]")) return `RATE_LIMIT (${msg})`;
+  if (msg.startsWith("AUTH_ERROR") || msg.startsWith("[401]") || msg.startsWith("[403]")) {
+    return `AUTH_ERROR (${msg})`;
+  }
+  const cls = classifyLegError(err);
+  return `${cls.status} (${cls.reason})`;
+}
+
+function classifyPrimaryFetchFailure(err: unknown): {
+  error: string;
+  errorCode:
+    | "RATE_LIMIT"
+    | "AUTH_ERROR"
+    | "API_UNAVAILABLE"
+    | "SYMBOL_UNSUPPORTED"
+    | "NO_LIVE_DATA"
+    | "MALFORMED_RESPONSE"
+    | "NETWORK_ERROR"
+    | "TIMEFRAME_UNAVAILABLE";
+} {
+  const msg = err instanceof Error ? err.message : "unknown error";
+  if (msg.startsWith("[429]") || msg.startsWith("RATE_LIMIT")) {
+    return { error: `Rate limited: ${msg}`, errorCode: "RATE_LIMIT" };
+  }
+  if (msg.startsWith("[401]") || msg.startsWith("[403]") || msg.startsWith("AUTH_ERROR")) {
+    return { error: `Auth error: ${msg}`, errorCode: "AUTH_ERROR" };
+  }
+  const cls = classifyLiveFailure({ message: msg });
+  if (cls === "SYMBOL_UNSUPPORTED") {
+    return { error: `Unsupported symbol: ${msg}`, errorCode: "SYMBOL_UNSUPPORTED" };
+  }
+  if (cls === "TIMEFRAME_UNAVAILABLE") {
+    return { error: `Timeframe unavailable: ${msg}`, errorCode: "TIMEFRAME_UNAVAILABLE" };
+  }
+  if (cls === "MALFORMED_RESPONSE") {
+    return { error: `Malformed response: ${msg}`, errorCode: "MALFORMED_RESPONSE" };
+  }
+  if (cls === "NETWORK_ERROR") {
+    return { error: `Network error: ${msg}`, errorCode: "NETWORK_ERROR" };
+  }
+  if (cls === "NO_LIVE_DATA") {
+    return { error: `No live data: ${msg}`, errorCode: "NO_LIVE_DATA" };
+  }
+  return { error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" };
+}
+
+async function fetchOkxNativeCandles(
+  instId: string,
+  timeframe: string,
+  count: number,
+): Promise<OhlcvCandle[]> {
+  const acq = await acquireProviderNativeLiveData({
+    instrument: instId,
+    provider: "okx",
+    providerInstrumentId: instId,
+    assetClass: "crypto",
+    timeframe,
+    count,
+  });
+  if (!acq.success || !acq.candles || acq.candles.length === 0) {
+    throw new Error(acq.error ?? "no candle data returned");
+  }
+  return acq.candles;
 }
 
 export const fetchMarketData = action({
@@ -86,10 +259,15 @@ export const fetchMarketData = action({
       v.literal("indices"),
     ),
     timeframe: v.string(),
+    provider: v.optional(v.string()),
+    providerInstrumentId: v.optional(v.string()),
   },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.TWELVE_DATA_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && args.provider !== "okx") {
       return {
         success: false as const,
         error: "Market data provider not configured: TWELVE_DATA_API_KEY is missing. Add it in the Keys/API keys tab.",
@@ -98,31 +276,89 @@ export const fetchMarketData = action({
     }
 
     const symbol = args.instrument.toUpperCase().trim();
+    const requestSymbol =
+      typeof args.providerInstrumentId === "string" && args.providerInstrumentId.length > 0
+        ? args.providerInstrumentId
+        : symbol;
+    const useOkx = args.provider === "okx";
+    resetCandleTrace();
+
+    const loadCandles = (sym: string, tf: string, n: number): Promise<OhlcvCandle[]> =>
+      useOkx
+        ? fetchOkxNativeCandles(sym, tf, n)
+        : fetchCandles(sym, tf, n, apiKey as string);
 
     try {
       // Primary (setup) timeframe — errors classified precisely (429, auth…)
       let candles: OhlcvCandle[];
       try {
-        candles = await fetchCandles(symbol, args.timeframe, 210, apiKey);
+        candles = await loadCandles(requestSymbol, args.timeframe, 210);
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "unknown error";
-        if (msg.startsWith("[429]")) {
-          return { success: false as const, error: `Rate limited: ${msg}`, errorCode: "RATE_LIMIT" as const };
-        }
-        if (msg.startsWith("[401]") || msg.startsWith("[403]")) {
-          return { success: false as const, error: `Auth error: ${msg}`, errorCode: "AUTH_ERROR" as const };
-        }
-        return { success: false as const, error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" as const };
+        const classified = classifyPrimaryFetchFailure(err);
+        return { success: false as const, error: classified.error, errorCode: classified.errorCode };
       }
 
-      // Live quote — NON-fatal: never discard successful candle data
-      const quoteRes = await fetch(
-        `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
-      )
-        .then((r) => r.json())
-        .catch(() => ({}));
+      // Live quote — NON-fatal: never discard successful candle data.
+      //
+      // Phase 178d — cached under the `quote` dataset (20s TTL), the shortest
+      // TTL of any cached dataset here. This is the most freshness-sensitive
+      // value in the analysis, so the window is deliberately tight: it
+      // collapses the duplicate quote calls two back-to-back analyses would
+      // make, without letting a price outlive its meaning. The engine
+      // independently rejects prices older than its style budget, and the
+      // cached payload carries its original observation time, so a reused
+      // quote ages honestly rather than appearing newly observed.
+      const quoteEvidence = useOkx
+        ? null
+        : await getProviderCache()
+        .fetch<Record<string, unknown>>(
+          {
+            provider: "twelve-data",
+            dataset: "quote",
+            instrument: requestSymbol,
+            instrumentType: args.instrumentType,
+          },
+          async () => {
+            const fetched = await fetch(
+              `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(requestSymbol)}&apikey=${apiKey}`,
+              // Phase 177 — non-fatal leg; a hung quote must not hold the analysis.
+              { signal: AbortSignal.timeout(5_000) },
+            ).then((r) => r.json());
+            const parsedQuote = parseTwelveDataQuote(fetched);
+            if (!parsedQuote.ok) return null;
+            return {
+              data: {
+                close: parsedQuote.quote.close,
+                timestamp: parsedQuote.quote.timestamp,
+              } as Record<string, unknown>,
+              observedAt: Date.now(),
+            };
+          },
+        )
+        .catch(() => null);
+      const quoteRes: Record<string, unknown> = quoteEvidence?.data ?? {};
+      if (quoteEvidence) {
+        candleAcquisitions.push(quoteEvidence.acquisition);
+        candleObservations.push(quoteEvidence.observedAt);
+      }
 
-      const price = quoteRes.close ? parseFloat(quoteRes.close) : candles[candles.length - 1].close;
+      const price =
+        quoteRes.close !== undefined
+          ? parseFloat(String(quoteRes.close))
+          : candles[candles.length - 1].close;
+
+      // Phase 220 — `PriceSnapshot.timestamp` is documented as "when the
+      // price was last updated" by the PROVIDER. It was stamped with the
+      // request clock, so a quote the provider itself dated hours earlier
+      // graded FRESH in the radar and passed the engine's staleness gate.
+      // Use the provider's own time when it gave one (Twelve Data /quote
+      // `timestamp` is UNIX seconds); otherwise fall back to the last
+      // candle's own datetime. Both are provider-observed. The request
+      // clock is never used as an observation time.
+      const priceTimestamp = resolveProviderPriceTimestamp(
+        quoteRes.timestamp,
+        candles[candles.length - 1].timestamp,
+      );
 
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
@@ -136,8 +372,8 @@ export const fetchMarketData = action({
       const settled = await Promise.allSettled(
         slots.map((s) =>
           s.role === "trigger"
-            ? fetchCandles(symbol, s.timeframe, 100, apiKey)
-            : fetchCandles(symbol, s.timeframe, 120, apiKey),
+            ? loadCandles(requestSymbol, s.timeframe, 100)
+            : loadCandles(requestSymbol, s.timeframe, 120),
         ),
       );
 
@@ -199,7 +435,13 @@ export const fetchMarketData = action({
       // and unavailability is flagged explicitly instead of guessed.
       const comparator = crossAssetComparator(args.instrumentType, symbol);
       let crossAsset: TechnicalData["crossAsset"] | undefined;
-      if (comparator && comparator !== symbol.toUpperCase()) {
+      if (apiKey && comparator && comparator !== symbol.toUpperCase()) {
+        // Phase 230 — secondary-leg failure state. These legs share the
+        // primary Twelve Data quota; when one of them fails the failure
+        // CLASS stays attached instead of folding into the generic "no
+        // comparable series" wording.
+        let dxyProbeInconclusive: string | undefined;
+        let compFetchFailure: string | undefined;
         try {
           // Phase 7C — defensive actual-DXY discovery. The literal "DXY"
           // symbol is NOT valid on the current Twelve Data plan (verified:
@@ -218,17 +460,45 @@ export const fetchMarketData = action({
             } else {
               const probes: Record<string, boolean> = {};
               for (const cand of DXY_CANDIDATE_SYMBOLS) {
-                const test = await fetchCandles(cand, "D1", 5, apiKey).catch(() => null);
+                const test = await fetchCandles(cand, "D1", 5, apiKey as string).catch((err: unknown) => {
+                  // Phase 230 — only a DEFINITIVE provider answer may mark a
+                  // candidate invalid. A quota/credential rejection or any
+                  // transport/5xx/malformed failure is inconclusive: nothing
+                  // was learned about the symbol itself, so it must NOT arm
+                  // the 24h negative cache during a quota outage.
+                  if (!isDefinitiveProbeRejection(err)) {
+                    dxyProbeInconclusive ??= secondaryLegFailureText(err);
+                  }
+                  return null;
+                });
                 probes[cand] = !!test && test.length > 0;
                 if (probes[cand]) break; // stop at first success — minimal requests
               }
-              compSymbol = resolveWorkingSymbol(DXY_CANDIDATE_SYMBOLS, (c) => probes[c] ?? false);
-              if (compSymbol) dxyResolvedSymbol = compSymbol;
-              else dxyAllCandidatesFailedAt = Date.now();
+              // Phase 230 — an INCONCLUSIVE wave resolves nothing and arms
+              // nothing: the 24h negative cache is reserved for verified
+              // invalidity, never for "our quota died during probing".
+              if (dxyProbeInconclusive !== undefined) {
+                compSymbol = null;
+              } else {
+                compSymbol = resolveWorkingSymbol(DXY_CANDIDATE_SYMBOLS, (c) => probes[c] ?? false);
+                if (compSymbol) dxyResolvedSymbol = compSymbol;
+                else dxyAllCandidatesFailedAt = Date.now();
+              }
             }
           }
           const compCandles = compSymbol
-            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey).catch(() => null)
+            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey as string).catch((err: unknown) => {
+                // Phase 230 — was `.catch(() => null)`: keep the failure
+                // class so a comparator outage is not misreported as "the
+                // provider returned no series". A DEFINITIVE answer (4xx
+                // symbol/plan rejection, answered-but-empty series) is not a
+                // failure — it keeps the original "no comparable series"
+                // wording (§227: answered ≠ outage).
+                compFetchFailure = isDefinitiveProbeRejection(err)
+                  ? undefined
+                  : secondaryLegFailureText(err);
+                return null;
+              })
             : null;
           if (compCandles && compCandles.length >= 25) {
             const corr = pearsonCorrelation(
@@ -276,42 +546,65 @@ export const fetchMarketData = action({
               timeframe: args.timeframe,
               available: false,
               unavailableReason:
-                comparator.toUpperCase() === "DXY"
-                  ? "actual DXY price series is not available on the current Twelve Data plan (all documented index symbols verified invalid live) — NEWS-derived USD proxy remains labeled fallback"
-                  : `no comparable series returned by the provider for ${comparator}`,
+                compFetchFailure !== undefined
+                  ? `comparator series for ${comparator} could not be fetched: ${compFetchFailure} — primary data unaffected`
+                  : comparator.toUpperCase() === "DXY" && dxyProbeInconclusive !== undefined
+                    ? `actual DXY discovery is inconclusive: all documented index symbol probes failed for transport/quota reasons (${dxyProbeInconclusive}) without a verified-invalid answer — probing resumes on the next analysis; NEWS-derived USD proxy remains labeled fallback`
+                    : comparator.toUpperCase() === "DXY"
+                      ? "actual DXY price series is not available on the current Twelve Data plan (all documented index symbols verified invalid live) — NEWS-derived USD proxy remains labeled fallback"
+                      : `no comparable series returned by the provider for ${comparator}`,
             };
           }
-        } catch {
+        } catch (err: unknown) {
+          // Phase 230 — was `catch {}`: an unexpected secondary-leg error
+          // stays non-fatal, but its class remains visible in the reason
+          // instead of disappearing into an unattributed failure.
           crossAsset = {
             comparatorSymbol: comparator,
             timeframe: args.timeframe,
             available: false,
-            unavailableReason: "cross-asset fetch failed — primary data unaffected",
+            unavailableReason: `cross-asset fetch failed: ${secondaryLegFailureText(err)} — primary data unaffected`,
           };
         }
       }
       if (crossAsset) technical.crossAsset = crossAsset;
 
+      const resultProvider = useOkx ? "okx" : "twelve-data";
       return {
         success: true as const,
         data: {
           instrument: symbol,
           instrumentType: args.instrumentType,
-          provider: "twelve-data",
+          provider: resultProvider,
+          providerInstrumentId: requestSymbol,
           fetchTimestamp: Date.now(),
-          price: { price, timestamp: Date.now(), source: "twelve-data" },
+          price: { price, timestamp: priceTimestamp, source: resultProvider },
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
           dataFreshness: "delayed" as const,
         },
         technical,
+        // Phase 178d — one honest mode for the whole action: `cache-reused`
+        // only if EVERY candle read was reused. The oldest observation
+        // governs the age, so a single fresh read cannot mask older data.
+        acquisition: envelopeAcquisition(candleAcquisitions),
+        observedAt: oldestObservation(candleObservations),
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
+      // Phase 230 — defensive pass-through of the fatal classes: every
+      // fetch path above already classifies, but an unanticipated fatal
+      // throw must never collapse into a generic outage (§229 AV fix).
+      const classified = classifyPrimaryFetchFailure(err);
       return {
         success: false as const,
-        error: `Market data fetch failed: ${err?.message ?? "unknown error"}`,
-        errorCode: "API_UNAVAILABLE" as const,
+        error:
+          classified.errorCode === "RATE_LIMIT" || classified.errorCode === "AUTH_ERROR"
+            ? classified.error
+            : classified.errorCode === "API_UNAVAILABLE"
+              ? `Market data fetch failed: ${errorMessage(err) || "unknown error"}`
+              : classified.error,
+        errorCode: classified.errorCode,
       };
     }
   },
@@ -325,7 +618,10 @@ export const fetchMarketData = action({
  */
 export const fetchFxRate = action({
   args: { from: v.string(), to: v.string() },
-  handler: async (_ctx, args) => {
+  handler: async (ctx, args) => {
+    // Requires a signed-in identity: this action spends a server-side API key.
+    await requireIdentity(ctx);
+
     const apiKey = process.env.TWELVE_DATA_API_KEY;
     if (!apiKey) {
       return { success: false as const, error: "TWELVE_DATA_API_KEY missing" };
@@ -334,35 +630,237 @@ export const fetchFxRate = action({
     const to = args.to.toUpperCase();
     if (from === to) return { success: false as const, error: "same currency — no conversion needed" };
 
+    type FxRate = { rate: number; timestamp: number; source: string; pair: string };
+    /**
+     * Phase 230 — one FX leg as an explicit tri-state (was `catch { return
+     * null }`, which made a 429 indistinguishable from "no such conversion").
+     *
+     *  - FATAL quota/credential answers THROW. Both legs share the same API
+     *    key, so a 429/401/403 on either leg is a fatal class for the whole
+     *    conversion: nothing is cached and the envelope names the class.
+     *  - `empty` is a legitimate "the provider answered, but has no usable
+     *    quote for this pair" — the existing no-quote contract, uncached.
+     *  - `failed` is a transport/provider fault with its class attached; it
+     *    is never laundered into "no quote".
+     */
     const fetchPair = async (
       pair: string,
-    ): Promise<{ rate: number; timestamp: number; source: string; pair: string } | null> => {
+    ): Promise<{ kind: "ok"; value: FxRate } | { kind: "empty" } | { kind: "failed"; failure: string }> => {
+      let res: Response;
       try {
-        const res = await fetch(
+        res = await fetch(
           `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(pair)}&apikey=${apiKey}`,
-        ).then((r) => r.json());
-        if (!res || res.code || res.close === undefined) return null;
-        const rate = parseFloat(res.close);
-        if (!Number.isFinite(rate) || rate <= 0) return null;
-        return { rate, timestamp: Date.now(), source: "twelve-data", pair };
-      } catch {
-        return null;
+          // Phase 177 — HTTP deadline below the 6s fx-rate leg budget.
+          { signal: AbortSignal.timeout(5_000) },
+        );
+      } catch (err: unknown) {
+        const cls = classifyLegError(err);
+        return { kind: "failed", failure: `${cls.status} (${cls.reason})` };
       }
+      if (res.status === 429) throw new Error(`RATE_LIMIT: HTTP 429 ${res.statusText}`);
+      if (res.status === 401 || res.status === 403) {
+        throw new Error(`AUTH_ERROR: HTTP ${res.status} ${res.statusText}`);
+      }
+      if (!res.ok) return { kind: "failed", failure: `provider_error (HTTP ${res.status})` };
+      const json: unknown = await res.json().catch(() => undefined);
+      if (!isRecord(json)) return { kind: "failed", failure: "malformed (non-JSON body)" };
+      // Twelve Data also answers quota/credential problems in the JSON body
+      // (HTTP 200 with a `code`); classify them identically to HTTP status.
+      const rawCode = json.code;
+      const codeNum =
+        typeof rawCode === "number" ? rawCode : typeof rawCode === "string" ? Number(rawCode) : NaN;
+      if (codeNum === 429) throw new Error(`RATE_LIMIT: ${String(json.message ?? "HTTP 429")}`);
+      if (codeNum === 401 || codeNum === 403) {
+        throw new Error(`AUTH_ERROR: ${String(json.message ?? `HTTP ${codeNum}`)}`);
+      }
+      if (rawCode) return { kind: "empty" };
+      if (json.close === undefined) return { kind: "empty" };
+      const rate = parseFloat(String(json.close));
+      if (!Number.isFinite(rate) || rate <= 0) return { kind: "empty" };
+      // Phase 220 E2 / 227 fetchPrice — the quote's own `timestamp` is the
+      // observation. A missing/implausible provider time is not a rate we
+      // can date, and must never be re-stamped with the request clock.
+      const timestamp = providerQuoteTimestampMs(json.timestamp);
+      if (timestamp === undefined) {
+        return { kind: "failed", failure: "malformed (quote has no provider timestamp)" };
+      }
+      return { kind: "ok", value: { rate, timestamp, source: "twelve-data", pair } };
     };
 
-    // Parallel — a failing leg never blocks or corrupts the other.
-    const [direct, inverse] = await Promise.all([
-      fetchPair(`${from}/${to}`),
-      fetchPair(`${to}/${from}`),
-    ]);
+    // Phase 178b — routed through the authoritative provider cache. The key
+    // carries the conversion DIRECTION, so USD>EUR and EUR>USD are distinct
+    // entries. A hit performs no HTTP call and consumes no Twelve Data quota;
+    // concurrent identical conversions collapse to one acquisition.
+    type FxLeg = FxRate | null;
+    try {
+      const evidence = await getProviderCache().fetch<{ direct: FxLeg; inverse: FxLeg }>(
+        {
+          provider: "twelve-data",
+          dataset: "fx-rate",
+          qualifier: `${from}>${to}`,
+        },
+        async () => {
+          // Parallel — a failing leg never blocks or corrupts the other.
+          const [direct, inverse] = await Promise.all([
+            fetchPair(`${from}/${to}`),
+            fetchPair(`${to}/${from}`),
+          ]);
+          const directLeg = direct.kind === "ok" ? direct.value : null;
+          const inverseLeg = inverse.kind === "ok" ? inverse.value : null;
+          // Nothing usable: return null so no entry is stored. An absent FX
+          // quote must never be cached as if it were a rate.
+          if (!directLeg && !inverseLeg) {
+            // Phase 230 — when BOTH legs failed for transport/provider
+            // reasons that is an outage, not "no quote exists": throw so the
+            // action reports API_UNAVAILABLE with the classes, uncached.
+            if (direct.kind === "failed" && inverse.kind === "failed") {
+              throw new Error(
+                `every leg failed (direct: ${direct.failure}; inverse: ${inverse.failure})`,
+              );
+            }
+            return null;
+          }
+          const observedAt = directLeg?.timestamp ?? inverseLeg?.timestamp;
+          // A surviving leg always carries a provider timestamp (fetchPair
+          // refuses a clock stamp). No request-clock fallback.
+          if (observedAt === undefined) return null;
+          return {
+            data: { direct: directLeg, inverse: inverseLeg },
+            observedAt,
+          };
+        },
+      );
 
-    if (!direct && !inverse) {
+      if (!evidence) {
+        return {
+          success: false as const,
+          error: `no FX quote available for ${from}/${to} from the provider`,
+        };
+      }
+      return {
+        success: true as const,
+        direct: evidence.data.direct,
+        inverse: evidence.data.inverse,
+        acquisition: evidence.acquisition,
+        observedAt: evidence.observedAt,
+      };
+    } catch (err: unknown) {
+      // Phase 230 — Convex re-wraps thrown errors, so the classification can
+      // only survive to the caller as an explicitly returned envelope.
+      const msg = errorMessage(err) || "unknown error";
+      if (msg.startsWith("RATE_LIMIT")) {
+        return {
+          success: false as const,
+          error: "Twelve Data rate limit exceeded (FX quote leg).",
+          errorCode: "RATE_LIMIT" as const,
+        };
+      }
+      if (msg.startsWith("AUTH_ERROR")) {
+        return {
+          success: false as const,
+          error: "Twelve Data access rejected (FX quote leg).",
+          errorCode: "AUTH_ERROR" as const,
+        };
+      }
       return {
         success: false as const,
-        error: `no FX quote available for ${from}/${to} from the provider`,
+        error: `FX request failed: ${msg}`,
+        errorCode: "API_UNAVAILABLE" as const,
       };
     }
-    return { success: true as const, direct, inverse };
+  },
+});
+
+const DISCOVERED_ASSET_CLASS = v.union(
+  v.literal("crypto"),
+  v.literal("forex"),
+  v.literal("equity"),
+  v.literal("commodity"),
+  v.literal("indices"),
+  v.literal("macro"),
+);
+
+function readServerEnv(name: string): string | undefined {
+  return process.env[name];
+}
+
+/**
+ * Inject the server-side Twelve Data key into catalog/OHLCV URLs.
+ * The live client builds provider-native URLs without credentials; the key
+ * must never be logged or returned to the client.
+ */
+function twelveDataKeyedTransport(apiKey: string): Transport {
+  return async (url) => {
+    let finalUrl = url;
+    if (apiKey && url.includes("twelvedata.com") && !/[?&]apikey=/.test(url)) {
+      finalUrl = `${url}${url.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(apiKey)}`;
+    }
+    const res = await fetch(finalUrl, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch {
+      json = undefined;
+    }
+    return { ok: res.ok, status: res.status, json };
+  };
+}
+
+/**
+ * Twelve Data reference-catalog discovery.
+ *
+ * Metadata only: no prices, no direction. Missing credentials fail
+ * explicitly. Exact provider-native symbols are preserved.
+ */
+export const discoverTwelveDataInstruments = action({
+  args: {},
+  handler: async (ctx) => {
+    await requireIdentity(ctx);
+    const adapter = createTwelveDataDiscoveryAdapter(
+      async (url) => {
+        const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
+        return twelveDataKeyedTransport(apiKey)(url);
+      },
+      readServerEnv,
+    );
+    return adapter.discover(Date.now());
+  },
+});
+
+/**
+ * Batch live OHLCV acquisition for discovered Twelve Data instruments.
+ *
+ * Uses the exact provider-native id. Discovery metadata is never live
+ * evidence; only a verified snapshot becomes a live source.
+ */
+export const acquireTwelveDataNativeLiveDataBatch = action({
+  args: {
+    instruments: v.array(
+      v.object({
+        instrument: v.string(),
+        providerInstrumentId: v.string(),
+        assetClass: DISCOVERED_ASSET_CLASS,
+      }),
+    ),
+    concurrency: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await requireIdentity(ctx);
+    const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
+    return acquireBatchProviderNativeLiveData(
+      args.instruments.map((input) => ({
+        instrument: input.instrument,
+        provider: "twelve-data",
+        providerInstrumentId: input.providerInstrumentId,
+        assetClass: input.assetClass as AssetClass,
+      })),
+      readServerEnv,
+      Math.max(1, Math.min(Math.floor(args.concurrency ?? 5), 10)),
+      twelveDataKeyedTransport(apiKey),
+    );
   },
 });
 

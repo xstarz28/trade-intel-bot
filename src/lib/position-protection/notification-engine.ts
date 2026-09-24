@@ -134,7 +134,6 @@ const CONDITION_TO_CATEGORY: Record<RuleCondition, NotificationCategory> = {
 
 function buildNotificationTitle(alert: RuleAlert): string {
   const inst = alert.instrument ?? "";
-  const side = alert.positionId ? "" : "";
 
   switch (alert.condition) {
     case "THESIS_STATE_CHANGED":

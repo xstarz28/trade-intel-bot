@@ -6,7 +6,9 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { I18nProvider } from "@/lib/i18n";
+import en from "@/lib/i18n/en";
 import React from "react";
 import { IntelligenceDashboard } from "../../components/IntelligenceDashboard";
 import { synthesizeNews } from "./news-intelligence";
@@ -15,7 +17,12 @@ import { synthesizeMultiDimensionalIntelligence } from "./multi-dimensional-inte
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import type { MTFConfluence } from "./multi-timeframe-engine";
 import type { NewsItem } from "./news-intelligence";
-import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
+import type { FundamentalDataPoint } from "./fundamental-intelligence";
+
+// IntelligenceDashboard consumes the i18n context, so every render must be
+// wrapped in the provider exactly as the application does.
+const render = (ui: React.ReactElement) =>
+  rtlRender(<I18nProvider>{ui}</I18nProvider>);
 
 const now = Date.now();
 
@@ -70,6 +77,10 @@ function makeIntelligence(overrides: Partial<PositionIntelligence> = {}): Positi
     pullbackClassification: "NORMAL_PULLBACK",
     invalidationConditions: [{ description: "Price below 70000", type: "structural" }],
     nextMonitor: ["M5 momentum continuation"],
+    // Required by PositionIntelligence. The fixture previously omitted it,
+    // which is how the missing-data crash in IntelligenceDashboard went
+    // unnoticed while these tests were dormant.
+    actionRecommendation: "HOLD",
     ...overrides,
   } as PositionIntelligence;
 }
@@ -122,17 +133,21 @@ describe("A. IntelligenceDashboard Rendering", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("ANALYTICAL SUMMARY")).toBeTruthy();
+    expect(screen.getByText(en.intelligence.analyticalSummary)).toBeTruthy();
   });
 
   it("shows UNAVAILABLE when no intelligence", () => {
-    render(
+    const { container } = render(
       <IntelligenceDashboard
         positionSide="LONG"
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("NO MATERIAL CHANGE")).toBeTruthy();
+    // No intelligence and no whatChanged prop at all: every section must
+    // report UNAVAILABLE rather than inventing a state. This is distinct from
+    // whatChanged=[] which means "compared, nothing changed".
+    expect(container.textContent).toContain(en.status.unavailable);
+    expect(container.textContent).not.toContain(en.intelligence.noMaterialChange);
   });
 
   it("displays thesis health", () => {
@@ -166,7 +181,7 @@ describe("B. News Intelligence Display", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("NEWS INTELLIGENCE")).toBeTruthy();
+    expect(screen.getByText(en.intelligence.newsIntelligence)).toBeTruthy();
   });
 
   it("shows news when available", () => {
@@ -186,7 +201,7 @@ describe("B. News Intelligence Display", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("NEWS INTELLIGENCE")).toBeTruthy();
+    expect(screen.getByText(en.intelligence.newsIntelligence)).toBeTruthy();
   });
 });
 
@@ -209,7 +224,7 @@ describe("C. Fundamental Display", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("FUNDAMENTALS")).toBeTruthy();
+    expect(screen.getByText(en.intelligence.fundamentals)).toBeTruthy();
   });
 
   it("shows fundamentals when available", () => {
@@ -229,7 +244,7 @@ describe("C. Fundamental Display", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("FUNDAMENTALS")).toBeTruthy();
+    expect(screen.getByText(en.intelligence.fundamentals)).toBeTruthy();
   });
 });
 
@@ -253,7 +268,7 @@ describe("D. Evidence Hierarchy Display", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("EVIDENCE HIERARCHY")).toBeTruthy();
+    expect(screen.getByText(en.intelligence.evidenceHierarchy)).toBeTruthy();
   });
 });
 
@@ -277,9 +292,9 @@ describe("E. Scenarios Display", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("SCENARIOS")).toBeTruthy();
-    expect(screen.getByText("BASE CASE")).toBeTruthy();
-    expect(screen.getByText("ALTERNATIVE")).toBeTruthy();
+    expect(screen.getByText(en.intelligence.scenarios)).toBeTruthy();
+    expect(screen.getByText(en.intelligence.baseCase)).toBeTruthy();
+    expect(screen.getByText(en.intelligence.alternative)).toBeTruthy();
     expect(screen.getByText("INVALIDATION")).toBeTruthy();
   });
 });
@@ -290,7 +305,7 @@ describe("E. Scenarios Display", () => {
 
 describe("F. What Changed Display", () => {
   it("shows no change when empty", () => {
-    render(
+    const { container } = render(
       <IntelligenceDashboard
         intelligence={makeIntelligence()}
         whatChanged={[]}
@@ -298,7 +313,9 @@ describe("F. What Changed Display", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("No material change since last analysis.")).toBeTruthy();
+    // The label shares its element with an icon, so assert on the rendered
+    // text of the whole subtree rather than an exact single-node match.
+    expect(container.textContent).toContain(en.intelligence.noMaterialChange);
   });
 
   it("shows changes when present", () => {
@@ -322,7 +339,7 @@ describe("F. What Changed Display", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("Awaiting first analysis.")).toBeTruthy();
+    expect(screen.getByText(en.intelligence.awaitingFirstAnalysis)).toBeTruthy();
   });
 });
 
@@ -339,7 +356,7 @@ describe("G. LONG/SHORT Symmetry", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("LONG BTC/USDT")).toBeTruthy();
+    expect(screen.getAllByText("LONG BTC/USDT").length).toBeGreaterThan(0);
   });
 
   it("shows SHORT position side", () => {
@@ -350,7 +367,7 @@ describe("G. LONG/SHORT Symmetry", () => {
         instrument="BTC/USDT"
       />
     );
-    expect(screen.getByText("SHORT BTC/USDT")).toBeTruthy();
+    expect(screen.getAllByText("SHORT BTC/USDT").length).toBeGreaterThan(0);
   });
 });
 

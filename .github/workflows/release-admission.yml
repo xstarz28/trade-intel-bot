@@ -1,0 +1,76 @@
+# Phase 242 — the release boundary.
+#
+# Two jobs, on purpose, and the distinction between them is the point:
+#
+#   gate-logic         — "the gate behaves". Runs the machinery checks and a
+#                        display-only report. Green today.
+#   release-admission  — "the gate admits THIS release". Refuses while any
+#                        mandatory prerequisite is unverified. Red today, and
+#                        correctly so: A1, A2, the production deployment, the
+#                        production email transport and Evidence D are real,
+#                        external, unresolved blockers.
+#
+# Deliberately NOT triggered by branch pushes or pull requests. A red job whose
+# meaning is "the product is not shippable yet" must not sit on every ordinary
+# commit, or people learn to ignore red. It runs at the release boundary — a
+# version tag or a manual dispatch — and nowhere else.
+#
+# Deliberately NOT in the ordinary CI file, and deliberately not advisory:
+# `continue-on-error` on the admission job would turn an enforcement point into a
+# report, which is exactly the defect this phase removes.
+#
+# No secrets, no provider calls, no deployment: this workflow decides, and the
+# decision needs no network. The release gate is hermetic by construction.
+name: Release admission
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+      - "rc-*"
+
+concurrency:
+  group: release-admission-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  gate-logic:
+    name: Gate logic — the machine behaves
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Refuse what must be refused, admit what may be admitted
+        run: npm run release:gate-verify
+      - name: Report the current canonical verdict (display only, never a gate)
+        run: npm run release:report
+
+  release-admission:
+    name: Release admission — this candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      # The candidate is the tagged commit, not the worktree: evidence filed for
+      # a different commit must not be able to admit this one.
+      - name: Require the canonical admission for this candidate
+        env:
+          RELEASE_CANDIDATE_COMMIT: ${{ github.sha }}
+          RELEASE_CANDIDATE_REF: ${{ github.ref }}
+        run: npm run release:admission

@@ -175,9 +175,16 @@ export function classifyCotFreshness(reportDate: string, nowMs: number): CotFres
  * market by the caller). Missing fields degrade honestly; an unmappable
  * instrument or zero usable rows yields an explicit unavailable state.
  */
+/**
+ * Phase 238 — `fetchedAt` (when the rows were ACQUIRED) and `nowMs` (when
+ * freshness is being judged) are supplied separately. Stamping `fetchedAt`
+ * from the read clock made a cache hit claim an acquisition that did not
+ * happen.
+ */
 export function buildCotContext(
   rows: unknown[],
   requestedInstrument: string,
+  fetchedAt: number,
   nowMs: number,
 ): CotData {
   const mapping = mapInstrumentToCot(requestedInstrument);
@@ -205,7 +212,7 @@ export function buildCotContext(
   return {
     available: true,
     source: "CFTC Commitments of Traders (publicreporting.cftc.gov)",
-    fetchedAt: nowMs,
+    fetchedAt,
     freshness: classifyCotFreshness(latest.reportDate, nowMs),
     requestedInstrument,
     sourceInstrument: mapping.sourceInstrument,

@@ -49,10 +49,8 @@ import {
 import {
   scanInstruments,
   type ScanConfig,
-  type ScanResult,
 } from "./liveScanner";
 
-import type { CandidateInput } from "./recommendation-engine";
 import type { MarketData, TechnicalData } from "./data/market-types";
 
 // ═══════════════════════════════════════════════════════════════

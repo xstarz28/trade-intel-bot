@@ -150,11 +150,17 @@ describe("calculateProfitMetrics", () => {
   });
 
   describe("edge cases", () => {
-    it("handles entry at zero gracefully", () => {
+    it("reports an unusable entry price as unknown, not as break-even", () => {
+      // Phase 171: this previously asserted unrealizedPnL === 0. A P/L of
+      // exactly 0 is a claim that the position is breaking even, which is
+      // not something we know when the prices are unusable — the honest
+      // answer is that the value is unavailable.
       const pos = longPosition({ entryPrice: 0, currentPrice: 0 });
       const m = calculateProfitMetrics(pos);
-      expect(m.unrealizedPnL).toBe(0);
+      expect(m.unrealizedPnL).toBeUndefined();
       expect(m.distanceFromEntryPct).toBe(0);
+      // It must still not throw or leak a non-finite number.
+      expect(m.givebackPct).toBeUndefined();
     });
 
     it("handles missing stopLoss", () => {
