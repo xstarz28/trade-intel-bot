@@ -376,6 +376,20 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   Vol: {tech.volumeTrend}
                 </span>
               )}
+              {/* Phase 273 — volatility regime as computed by the engine from
+                  this exact candle series (ATR vs its own preceding baseline).
+                  Never a UI-side re-derivation: the displayed state is the
+                  same field the narrative and decision consumed. */}
+              {tech.volatilityState === "expanded" && (
+                <span className="text-[10px] font-mono text-amber-400">
+                  {t.intelligence.volatilityExpanded}{tech.atrRatio !== undefined ? ` ${tech.atrRatio.toFixed(2)}×` : ""}
+                </span>
+              )}
+              {tech.volatilityState === "compressed" && (
+                <span className="text-[10px] font-mono text-sky-400">
+                  {t.intelligence.volatilityCompressed}{tech.atrRatio !== undefined ? ` ${tech.atrRatio.toFixed(2)}×` : ""}
+                </span>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -1734,11 +1734,22 @@ function generateTechnicalSummary(
       );
     }
 
-    // ATR
+    // ATR — Phase 273: the volatility regime is the series' OWN measured
+    // ATR-vs-baseline ratio (classifyVolatility), never a constant reference
+    // like "% of price". Insufficient history is narrated as unknown, not
+    // defaulted to "normal".
     if (tech.atr14 !== undefined) {
-      parts.push(
-        `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`,
-      );
+      if (tech.volatilityState !== undefined && tech.volatilityState !== "insufficient" && tech.atrRatio !== undefined) {
+        parts.push(
+          `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.volatilityState} (${tech.atrRatio.toFixed(2)}× vs this series' preceding mean true-range baseline).`,
+        );
+      } else if (tech.volatilityState === "insufficient") {
+        parts.push(
+          `ATR(14): ${tech.atr14.toFixed(4)} — volatility regime cannot be classified (history too short for a baseline comparison; no state fabricated).`,
+        );
+      } else {
+        parts.push(`ATR(14): ${tech.atr14.toFixed(4)}.`);
+      }
     }
 
     // Cross-asset context (Phase 5) — measured from actual candles only.
@@ -1844,9 +1855,32 @@ function generateTechnicalSummary(
     if (tech.rsi14 !== undefined) {
       const rsiLabel = tech.rsi14 > 70 ? "overbought" : tech.rsi14 < 30 ? "oversold" : "neutral";
       parts.push(`RSI(14): ${tech.rsi14} (${rsiLabel}) — secondary context only.`);
+      // RSI divergence is a measured price-vs-oscillator disagreement
+      // (detectRsiDivergence) — narrate it only when it was actually found.
+      if (tech.rsiDivergence === "bullish") {
+        parts.push("RSI divergence: bullish — price printed a lower low while RSI printed a higher low (measured from the same candles).");
+      } else if (tech.rsiDivergence === "bearish") {
+        parts.push("RSI divergence: bearish — price printed a higher high while RSI printed a lower high (measured from the same candles).");
+      }
     }
     if (tech.macdHistogram !== undefined) {
-      parts.push(`MACD histogram: ${tech.macdHistogram > 0 ? "positive" : "negative"} — secondary context only.`);
+      // Interpret the actual MACD line/signal relationship, not just the
+      // histogram sign: line-vs-signal is the momentum trigger, line-vs-zero
+      // is the momentum bias. Both come from the computed values.
+      const trigger = tech.macdLine !== undefined && tech.macdSignal !== undefined
+        ? tech.macdLine > tech.macdSignal
+          ? "MACD line above signal"
+          : "MACD line below signal"
+        : undefined;
+      const biasNote =
+        tech.macdLine !== undefined
+          ? tech.macdLine > 0
+            ? "above zero"
+            : "below zero"
+          : undefined;
+      parts.push(
+        `MACD histogram: ${tech.macdHistogram > 0 ? "positive" : "negative"}${trigger ? ` (${trigger}${biasNote ? `, ${biasNote}` : ""})` : ""} — secondary context only.`,
+      );
     }
   } else if (input.currentPrice && input.recentHigh && input.recentLow) {
     if (trendScore >= 1) {

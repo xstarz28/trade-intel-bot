@@ -284,7 +284,7 @@ export function fibonacciLevels(
   };
 }
 
-// ── ATR ───────────────────────────────────────────────────────────
+// ── Volatility ────────────────────────────────────────────────────
 
 /** Average True Range over `period` candles. */
 export function atr(candles: OhlcvCandle[], period = 14): number | undefined {
@@ -302,6 +302,50 @@ export function atr(candles: OhlcvCandle[], period = 14): number | undefined {
   if (trueRanges.length < period) return undefined;
   const slice = trueRanges.slice(-period);
   return slice.reduce((a, b) => a + b, 0) / period;
+}
+
+/** All true ranges of the candle series (index-aligned to candles[1..]). */
+function trueRanges(candles: OhlcvCandle[]): number[] {
+  const out: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const high = candles[i].high;
+    const low = candles[i].low;
+    const prevClose = candles[i - 1].close;
+    out.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+  return out;
+}
+
+/**
+ * Phase 273 — volatility state classification derived ONLY from the supplied
+ * candles' own true ranges. The current ATR(period) is compared against the
+ * mean of the `lookback` true ranges that PRECEDE the current-ATR window:
+ *
+ *   ratio = currentATR / mean(prior TRs)
+ *
+ * ratio ≥ EXPANDED at ≥ 1.25, COMPRESSED at ≤ 0.75, otherwise NORMAL.
+ * No constant relative to price, no external reference — an expanding
+ * volatility regime greater than 1.25× its own recent baseline is a
+ * measurable property of this exact series. Insufficient history NEVER
+ * fabricates a state: it reports "insufficient" and ratio stays undefined.
+ */
+export type VolatilityState = "expanded" | "compressed" | "normal" | "insufficient";
+
+export function classifyVolatility(
+  candles: OhlcvCandle[],
+  period = 14,
+  lookback = 20,
+): { state: VolatilityState; atrNow?: number; atrBaseline?: number; ratio?: number } {
+  const trs = trueRanges(candles);
+  if (trs.length < period + lookback) return { state: "insufficient" };
+  const current = trs.slice(-period).reduce((a, b) => a + b, 0) / period;
+  const prior = trs.slice(-(period + lookback), -period);
+  const baseline = prior.reduce((a, b) => a + b, 0) / prior.length;
+  if (!Number.isFinite(baseline) || baseline <= 0) return { state: "insufficient" };
+  const ratio = current / baseline;
+  const state: VolatilityState =
+    ratio >= 1.25 ? "expanded" : ratio <= 0.75 ? "compressed" : "normal";
+  return { state, atrNow: current, atrBaseline: baseline, ratio };
 }
 
 // ── Volume Analysis ───────────────────────────────────────────────
@@ -422,8 +466,9 @@ export function calculateTechnical(
   // Volume
   const { avg20, trend: volumeTrend } = analyzeVolume(candles);
 
-  // ATR
+  // ATR + volatility state — same candle-derived measurement (Phase 273).
   const atr14 = atr(candles);
+  const vol = classifyVolatility(candles);
 
   // Daily range (latest candle)
   const latestCandle = candles[candles.length - 1];
@@ -451,6 +496,8 @@ export function calculateTechnical(
     avgVolume20: avg20,
     volumeTrend,
     atr14,
+    volatilityState: vol.state,
+    atrRatio: vol.ratio,
     dailyRange,
     dataPoints: candles.length,
     htfContext,

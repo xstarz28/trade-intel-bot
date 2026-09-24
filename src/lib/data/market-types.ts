@@ -284,6 +284,15 @@ export interface TechnicalData {
 
   // Volatility
   atr14?: number;
+  /**
+   * Phase 273 — volatility regime derived ONLY from this candle series:
+   * current ATR(14) vs the mean of the true ranges that precede the current
+   * ATR window (ratio ≥ 1.25 = expanded, ≤ 0.75 = compressed, else normal).
+   * `"insufficient"` means the history was too short to classify — never a
+   * fabricated state. `atrRatio` is the exact measured comparison value.
+   */
+  volatilityState?: "expanded" | "compressed" | "normal" | "insufficient";
+  atrRatio?: number;
   dailyRange?: number; // High - Low of latest candle
   dataPoints: number; // How many candles were used
 
