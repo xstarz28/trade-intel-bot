@@ -474,7 +474,17 @@ function normalizeFundamentalsFromAV(
   base.fiftyTwoWeekHigh = safeNum(overview.FiftyTwoWeekHigh);
   base.fiftyTwoWeekLow = safeNum(overview.FiftyTwoWeekLow);
 
-  const latest = asRecordArray(field(earnings, "quarterlyEarnings"))[0];
+  // Phase 276 — additional overview evidence, captured as reported.
+  base.returnOnAssets = safeNum(overview.ReturnOnAssetsTTM);
+  base.priceToSales = safeNum(overview.PriceToSalesRatioTTM);
+  base.evToRevenue = safeNum(overview.EVToRevenue);
+  base.evToEbitda = safeNum(overview.EVToEBITDA);
+  base.forwardPe = safeNum(overview.ForwardPE);
+  base.quarterlyRevenueGrowthYoY = safeNum(overview.QuarterlyRevenueGrowthYOY);
+  base.quarterlyEarningsGrowthYoY = safeNum(overview.QuarterlyEarningsGrowthYOY);
+
+  const quarterly = asRecordArray(field(earnings, "quarterlyEarnings"));
+  const latest = quarterly[0];
   if (latest) {
     base.latestEarnings = {
       date: asString(latest.fiscalDateEnding),
@@ -482,6 +492,32 @@ function normalizeFundamentalsFromAV(
       revenue: safeNum(latest.reportedRevenue),
     };
   }
+
+  // Phase 276 — preserve the full quarterly + annual earnings history
+  // (capped) so the fundamental engine can derive trends from REAL
+  // reported periods instead of a single point. Fiscal and reported
+  // dates are kept verbatim; numeric fields stay undefined when the
+  // provider omits them.
+  const qHistory = quarterly
+    .slice(0, 8)
+    .map((q) => ({
+      fiscalDateEnding: asString(q.fiscalDateEnding),
+      reportedDate: asString(q.reportedDate),
+      reportedEps: safeNum(q.reportedEPS),
+      estimatedEps: safeNum(q.estimatedEPS),
+      revenue: safeNum(q.reportedRevenue),
+    }))
+    .filter((q) => q.fiscalDateEnding !== undefined || q.reportedEps !== undefined);
+  if (qHistory.length > 0) base.quarterlyEarningsHistory = qHistory;
+
+  const aHistory = asRecordArray(field(earnings, "annualEarnings"))
+    .slice(0, 3)
+    .map((a) => ({
+      fiscalDateEnding: asString(a.fiscalDateEnding),
+      reportedEps: safeNum(a.reportedEPS),
+    }))
+    .filter((a) => a.fiscalDateEnding !== undefined || a.reportedEps !== undefined);
+  if (aHistory.length > 0) base.annualEarningsHistory = aHistory;
 
   return base;
 }

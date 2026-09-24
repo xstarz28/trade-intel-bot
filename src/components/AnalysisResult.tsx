@@ -53,6 +53,30 @@ const COMPLETENESS_LABEL_KEYS = {
   limited: "analysisResult.dataLimited",
 } as const;
 
+/** Phase 276 — deterministic fundamental assessment display maps. */
+const FA_STATE_LABEL_KEYS = {
+  improving: "analysisResult.fundamentalAssessment.improving",
+  weakening: "analysisResult.fundamentalAssessment.weakening",
+  mixed: "analysisResult.fundamentalAssessment.mixed",
+  insufficient: "analysisResult.fundamentalAssessment.insufficient",
+} as const;
+
+/** Interpretation chip colours — derived state only, never a claim. */
+const FA_STATE_STYLE = {
+  improving: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
+  weakening: "bg-red-500/15 text-red-400 border-red-500/25",
+  mixed: "bg-amber-500/15 text-amber-400 border-amber-500/25",
+  insufficient: "bg-muted/30 text-muted-foreground border-border/50",
+} as const;
+
+/** Evidence-dot colours per dimension status. */
+const FA_DIM_DOT = {
+  positive: "bg-emerald-400",
+  negative: "bg-red-400",
+  neutral: "bg-muted-foreground/50",
+  unavailable: "bg-border",
+} as const;
+
 /** Qualitative conviction level — replaces accuracy claims. Reflects actual
  *  confluence strength: High only when evidence aligns without major conflict. */
 function getConviction(confidence: number): { label: "High" | "Medium" | "Low"; color: string } {
@@ -1838,6 +1862,120 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </CardContent>
         </Card>
       )}
+
+      {/* Phase 276 — Deterministic fundamental assessment.
+          Rendered from the SAME result object the engine produced. It shows
+          only metrics the provider actually supplied, preserves the
+          reporting period and observation instants, and never presents
+          reported statements as live market data. */}
+      {result.fundamentalAssessment &&
+        (result.fundamentalAssessment.available || result.instrumentType === "stock") && (
+          <Card className="border-border/50">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                  <span className="text-primary/60">$</span>{" "}
+                  {t.analysisResult.fundamentalAssessment.title}
+                </h4>
+                {result.fundamentalAssessment.available && (
+                  <Badge
+                    variant="outline"
+                    className={cn(
+                      "text-[10px] font-mono",
+                      FA_STATE_STYLE[result.fundamentalAssessment.state],
+                    )}
+                  >
+                    {tx(FA_STATE_LABEL_KEYS[result.fundamentalAssessment.state])}
+                  </Badge>
+                )}
+                {result.fundamentalAssessment.available && (
+                  <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                    {t.analysisResult.fundamentalAssessment.confidenceLabel}:{" "}
+                    {result.fundamentalAssessment.confidence}
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0 space-y-3">
+              {!result.fundamentalAssessment.available ? (
+                <div className="space-y-1">
+                  <p className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                    {t.analysisResult.fundamentalAssessment.unavailableBody}
+                  </p>
+                  {result.fundamentalAssessment.limitations.map((limitation, i) => (
+                    <p key={i} className="text-[10px] font-mono text-muted-foreground/80">
+                      {limitation}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px] font-mono text-muted-foreground">
+                    <span>
+                      {t.analysisResult.fundamentalAssessment.providerLabel}:{" "}
+                      {result.fundamentalAssessment.provider}
+                    </span>
+                    {result.fundamentalAssessment.reportingPeriod && (
+                      <span>
+                        {t.analysisResult.fundamentalAssessment.reportingPeriodLabel}:{" "}
+                        {result.fundamentalAssessment.reportingPeriod}
+                      </span>
+                    )}
+                    {result.fundamentalAssessment.observedAt > 0 && (
+                      <span>
+                        {t.analysisResult.fundamentalAssessment.observedLabel}:{" "}
+                        {new Date(result.fundamentalAssessment.observedAt).toISOString()}
+                      </span>
+                    )}
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                      {t.analysisResult.fundamentalAssessment.dimensionsLabel}
+                    </p>
+                    <ul className="space-y-1">
+                      {result.fundamentalAssessment.dimensions
+                        .filter((d) => d.status !== "unavailable" && d.evidence)
+                        .map((d) => (
+                          <li key={d.name} className="flex items-start gap-2">
+                            <span
+                              className={cn(
+                                "mt-1.5 size-1.5 rounded-full shrink-0",
+                                FA_DIM_DOT[d.status],
+                              )}
+                            />
+                            <span className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                              {d.evidence}
+                            </span>
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+
+                  <p className="text-[10px] font-mono text-muted-foreground/80">
+                    {result.fundamentalAssessment.confidenceEvidence}
+                  </p>
+
+                  <div>
+                    <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                      {t.analysisResult.fundamentalAssessment.limitationsLabel}
+                    </p>
+                    <ul className="space-y-0.5">
+                      {result.fundamentalAssessment.limitations.map((limitation, i) => (
+                        <li
+                          key={i}
+                          className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed"
+                        >
+                          {limitation}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
       {/* Score Breakdown */}
       <Card className="border-border/50">

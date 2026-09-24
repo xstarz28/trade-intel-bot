@@ -992,6 +992,21 @@ export interface Translations {
       warnings: string;
       quantity: string;
     };
+    fundamentalAssessment: {
+      title: string;
+      improving: string;
+      weakening: string;
+      mixed: string;
+      insufficient: string;
+      providerLabel: string;
+      reportingPeriodLabel: string;
+      observedLabel: string;
+      confidenceLabel: string;
+      dimensionsLabel: string;
+      limitationsLabel: string;
+      unavailableLabel: string;
+      unavailableBody: string;
+    };
     sections: {
       dataQuality: string;
       indicators: string;

@@ -226,6 +226,11 @@ export interface AnalysisResult {
   // Intelligence layer metadata
   sentimentData?: SentimentData;
   fundamentalData?: FundamentalData;
+  // Phase 276 — deterministic fundamental assessment derived from
+  // `fundamentalData` alone (payload-only, no clock). An informational
+  // section that sits ALONGSIDE technical evidence: it never overwrites
+  // technical values, and technical values never masquerade as it.
+  fundamentalAssessment?: import("@/lib/fundamental-engine").FundamentalAssessment;
   macroData?: MacroData;
   // Crypto derivatives metadata
   derivativesData?: CryptoDerivativesData;

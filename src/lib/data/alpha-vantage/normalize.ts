@@ -161,6 +161,14 @@ export interface RawOverview {
   PriceToBookRatio?: string;
   FiftyTwoWeekHigh?: string;
   FiftyTwoWeekLow?: string;
+  // Phase 276 — additional OVERVIEW evidence captured as reported.
+  ReturnOnAssetsTTM?: string;
+  PriceToSalesRatioTTM?: string;
+  EVToRevenue?: string;
+  EVToEBITDA?: string;
+  ForwardPE?: string;
+  QuarterlyRevenueGrowthYOY?: string;
+  QuarterlyEarningsGrowthYOY?: string;
 }
 
 export interface RawEarnings {
@@ -172,6 +180,7 @@ export interface RawEarnings {
     fiscalDateEnding?: string;
     reportedDate?: string;
     reportedEPS?: string;
+    estimatedEPS?: string;
     reportedRevenue?: string;
   }>;
 }
@@ -222,6 +231,15 @@ export function normalizeFundamentals(
   base.fiftyTwoWeekHigh = safeNumber(overview.FiftyTwoWeekHigh);
   base.fiftyTwoWeekLow = safeNumber(overview.FiftyTwoWeekLow);
 
+  // Phase 276 — additional overview evidence, captured as reported.
+  base.returnOnAssets = safeNumber(overview.ReturnOnAssetsTTM);
+  base.priceToSales = safeNumber(overview.PriceToSalesRatioTTM);
+  base.evToRevenue = safeNumber(overview.EVToRevenue);
+  base.evToEbitda = safeNumber(overview.EVToEBITDA);
+  base.forwardPe = safeNumber(overview.ForwardPE);
+  base.quarterlyRevenueGrowthYoY = safeNumber(overview.QuarterlyRevenueGrowthYOY);
+  base.quarterlyEarningsGrowthYoY = safeNumber(overview.QuarterlyEarningsGrowthYOY);
+
   if (earnings?.quarterlyEarnings?.length) {
     const latest = earnings.quarterlyEarnings[0];
     base.latestEarnings = {
@@ -230,6 +248,29 @@ export function normalizeFundamentals(
       revenue: safeNumber(latest.reportedRevenue),
     };
   }
+
+  // Phase 276 — full quarterly + annual history (capped), dates kept
+  // verbatim from the provider, missing numbers left undefined.
+  const qHistory = (earnings?.quarterlyEarnings ?? [])
+    .slice(0, 8)
+    .map((q) => ({
+      fiscalDateEnding: q.fiscalDateEnding,
+      reportedDate: q.reportedDate,
+      reportedEps: safeNumber(q.reportedEPS),
+      estimatedEps: safeNumber(q.estimatedEPS),
+      revenue: safeNumber(q.reportedRevenue),
+    }))
+    .filter((q) => q.fiscalDateEnding !== undefined || q.reportedEps !== undefined);
+  if (qHistory.length > 0) base.quarterlyEarningsHistory = qHistory;
+
+  const aHistory = (earnings?.annualEarnings ?? [])
+    .slice(0, 3)
+    .map((a) => ({
+      fiscalDateEnding: a.fiscalDateEnding,
+      reportedEps: safeNumber(a.reportedEPS),
+    }))
+    .filter((a) => a.fiscalDateEnding !== undefined || a.reportedEps !== undefined);
+  if (aHistory.length > 0) base.annualEarningsHistory = aHistory;
 
   return base;
 }

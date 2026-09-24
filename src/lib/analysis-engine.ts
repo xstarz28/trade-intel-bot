@@ -55,6 +55,10 @@ import type {
   ProvenanceEntry,
 } from "@/lib/decision-trace";
 import { computeDecisionFingerprint } from "@/lib/decision-trace";
+// Phase 276 — deterministic fundamental assessment (pure function of the
+// provider payload; no clock, no options). Informational section only: it
+// never overwrites technical values and never feeds the decision gates.
+import { assessFundamentals } from "@/lib/fundamental-engine";
 
 export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels, MtfSummary };
 export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradePlan, HtfAlignment } from "@/types/analysis";
@@ -2213,6 +2217,11 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   );
   const fundamentalSummary = generateFundamentalSummary(input, fundamentalScore);
 
+  // Phase 276 — deterministic fundamental assessment, computed from the
+  // provider payload only (no clock). Attached as its own section: it never
+  // overwrites technical evidence and never masquerades as a market quote.
+  const fundamentalAssessment = assessFundamentals(input.fundamentalData);
+
   // ── Phase 3B/4: position sizing — ONLY from complete real inputs ──
   // Never fabricated. Spec resolution is honest-partial: quote currency may
   // come from literal symbol structure; contract size / quantity step exist
@@ -2479,6 +2488,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     dataSource: input.marketData?.provider,
     sentimentData: input.sentimentData,
     fundamentalData: input.fundamentalData,
+    fundamentalAssessment,
     macroData: input.macroData,
     derivativesData: input.derivativesData,
     calendarData: input.calendarData,

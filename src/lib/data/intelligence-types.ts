@@ -69,6 +69,36 @@ export interface FundamentalData {
     eps?: number;
     revenue?: number;
   };
+  /**
+   * Phase 276 — quarterly earnings history, newest first (up to 8
+   * quarters). Each entry preserves the provider's FISCAL period end and
+   * the REPORT date exactly as supplied; nothing is re-dated or filled
+   * in. An absent field is `undefined` — never a default or a fabricated
+   * value.
+   */
+  quarterlyEarningsHistory?: {
+    fiscalDateEnding?: string;
+    reportedDate?: string;
+    reportedEps?: number;
+    estimatedEps?: number;
+    revenue?: number;
+  }[];
+  /**
+   * Phase 276 — annual earnings history, newest first (up to 3 years).
+   * Same provenance rule as the quarterly history.
+   */
+  annualEarningsHistory?: {
+    fiscalDateEnding?: string;
+    reportedEps?: number;
+  }[];
+  // Phase 276 — additional OVERVIEW evidence captured as reported.
+  returnOnAssets?: number;
+  priceToSales?: number;
+  evToRevenue?: number;
+  evToEbitda?: number;
+  forwardPe?: number;
+  quarterlyRevenueGrowthYoY?: number;
+  quarterlyEarningsGrowthYoY?: number;
   // Analyst estimates (if available)
   analystTargetPrice?: number;
   // Forex/Crypto: macro-driven summary

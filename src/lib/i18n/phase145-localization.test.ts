@@ -121,7 +121,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 1212 leaves", () => {
+  it("EN is the canonical structural reference with 1225 leaves", () => {
     // 1219 -> 1222: Phase 255-261 final polish added 3 keys (journal provider identity, etc).
     // 1214 -> 1219: Phase 234 pagination completeness copy (complete/partial/
     // failed/discoveredCount/partialPageFailed).
@@ -158,7 +158,11 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // shown to users in their own language instead of only in English logs.
     // Phase 264 added 7 keys: journal.deleteEntry, loadingJournal, providerLabel, saving, idLabel + marketPanel.derivedNotObserved, retainedEvidenceFailed
     // Phase 270: 17 email-OTP keys retired (1229 → 1212).
-    expect(enCount).toBe(1212);
+    // Phase 274: 13 fundamental-assessment keys added to `analysisResult`
+    // (state chip, source/period/observation labels, dimensions,
+    // limitations, confidence, unavailable body) in all nine locales — the
+    // per-locale parity loop below still enforces exact equality with EN.
+    expect(enCount).toBe(1225);
   });
 
   for (const code of NINE) {
@@ -543,9 +547,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 1212 canonical keys with non-empty values", () => {
+  it("zh has all 1225 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(1212);
+    expect(zhLeaves.length).toBe(1225);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }
