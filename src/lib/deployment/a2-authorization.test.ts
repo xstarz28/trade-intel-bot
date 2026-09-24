@@ -77,8 +77,11 @@ describe("A2 authorization — §2 paths", () => {
 });
 
 describe("A2 authorization — rewriteable vs GitHub-managed refs", () => {
-  it("keeps the nine rewriteable refs; writable carriers are 0; --all still 269", () => {
-    expect(REWRITEABLE_REFS).toHaveLength(9);
+  it("keeps the ten rewriteable refs; writable carriers are 0; --all still 269", () => {
+    // Phase 272 — the intentionally persisted Arena recovery branch is the
+    // tenth rewriteable ref; its identity, measurement and runbook rows must
+    // still line up exactly (no weakening of the invariant).
+    expect(REWRITEABLE_REFS).toHaveLength(10);
     expect(inventory.refs.map((entry) => entry.ref)).toEqual(REWRITEABLE_REFS);
     expect(inventory.refs.every((entry) => entry.affected)).toBe(false);
     expect(inventory.refs.every((entry) => entry.carrierCommits === 0)).toBe(true);

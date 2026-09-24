@@ -98,9 +98,11 @@ describe("244 — the manifest is a measurement, not a memory", () => {
     const manifestRefs = AFFECTED_REF_EXPECTATIONS.map((entry) => entry.ref).sort();
     expect(artifact.refs.map((entry) => entry.ref).sort()).toEqual(manifestRefs);
     // A deliberate literal pin, not a derivation: the count may only move when a
-    // measurement moves it. Phase 249 measured the ninth live ref (01a0b293).
-    expect(artifact.refs.length).toBe(9);
-    expect(AFFECTED_REF_EXPECTATIONS.length).toBe(9);
+    // measurement moves it. Phase 249 measured the ninth live ref (01a0b293);
+    // Phase 272 measured the tenth — 01a0d195, the intentionally persisted
+    // Arena recovery branch.
+    expect(artifact.refs.length).toBe(10);
+    expect(AFFECTED_REF_EXPECTATIONS.length).toBe(10);
 
     for (const expectation of AFFECTED_REF_EXPECTATIONS) {
       const measured = artifact.refs.find((entry) => entry.ref === expectation.ref);

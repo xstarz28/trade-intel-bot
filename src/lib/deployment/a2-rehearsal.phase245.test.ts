@@ -216,10 +216,12 @@ describe("245 — affected-ref inventory (cases 7-11)", () => {
     expect(evaluateRehearsalRefInventory(unreadable, MANIFEST, opts).state).toBe("UNKNOWN_INVENTORY");
   });
 
-  it("10. the exact nine-ref inventory is accepted, in any order", () => {
+  it("10. the exact ten-ref inventory is accepted, in any order", () => {
     const measured = scopedBefore();
     expect(measured.map((entry) => entry.ref)).toEqual(SCOPED_REFS);
-    expect(SCOPED_REFS).toHaveLength(9);
+    // Phase 272 — the scope is the manifest: nine refs plus the
+    // intentionally persisted Arena recovery branch.
+    expect(SCOPED_REFS).toHaveLength(10);
     const verdict = evaluateRehearsalRefInventory(measured, MANIFEST, opts);
     expect(verdict.state).toBe("INVENTORY_EXACT");
     expect(verdict.ok).toBe(true);
@@ -232,7 +234,7 @@ describe("245 — affected-ref inventory (cases 7-11)", () => {
     expect(evaluateRehearsalRefInventory(clean, MANIFEST, opts).state).toBe("UNKNOWN_INVENTORY");
   });
 
-  it("11. the pre-rewrite evidence captures all eight tips and a stable digest", () => {
+  it("11. the pre-rewrite evidence captures all ten tips and a stable digest", () => {
     const package_ = captureRehearsalEvidence({
       phase: "pre",
       capturedAt: NOW,
@@ -245,7 +247,7 @@ describe("245 — affected-ref inventory (cases 7-11)", () => {
       cloneState: "FULL_CLONE_OK",
       worktreeClean: true,
     });
-    expect(package_.refs).toHaveLength(9);
+    expect(package_.refs).toHaveLength(10);
     for (const entry of package_.refs) expect(entry.tip).toMatch(/^[0-9a-f]{40}$/);
     expect(package_.digest).toMatch(/^[0-9a-f]{8}$/);
     const moved = captureRehearsalEvidence({
@@ -293,7 +295,7 @@ describe("245 — affected-ref inventory (cases 7-11)", () => {
 describe("245 — backup and restore (cases 12-13)", () => {
   it("12. a backup that misses one ref, or points somewhere else, is rejected", () => {
     const plan = planBackup(scopedBefore(), "refs/p245-backup");
-    expect(plan.entries).toHaveLength(9);
+    expect(plan.entries).toHaveLength(10);
     expect(plan.immutable).toBe(true);
     const complete = plan.entries.map((entry) => ({ backupRef: entry.backupRef, sha: entry.sha }));
     expect(verifyBackup(plan, { present: complete }).state).toBe("BACKUP_COMPLETE");
@@ -333,7 +335,7 @@ describe("245 — post-rewrite verification (cases 14-20)", () => {
     });
     expect(verdict.state).toBe("REWRITE_VERIFIED");
     expect(verdict.ok).toBe(true);
-    expect(verdict.verifiedRefs).toHaveLength(9);
+    expect(verdict.verifiedRefs).toHaveLength(10);
 
     // the mechanism is held to the approved scope: a ref nobody approved is a failure
     for (const unapproved of ["refs/pull/1/head", "refs/heads/main"]) {
@@ -386,7 +388,7 @@ describe("245 — post-rewrite verification (cases 14-20)", () => {
 
     const okBoundary = verifyRefBoundary({ before, after: rewritten, approvedRefs: SCOPED_REFS });
     expect(okBoundary.state).toBe("BOUNDARY_OK");
-    expect(okBoundary.changed).toHaveLength(9);
+    expect(okBoundary.changed).toHaveLength(10);
 
     const unapproved = verifyRefBoundary({
       before,

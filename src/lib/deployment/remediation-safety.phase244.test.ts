@@ -221,7 +221,9 @@ describe("244 — the pre-remediation evidence package (Phase D)", () => {
     expect(pkg.repository.head).toBe("cafe1234");
     expect(pkg.repository.branch).toBe(BRANCH);
     expect(pkg.credential.fingerprint).toBe(FINGERPRINT);
-    expect(pkg.exposure.refs.length).toBe(9);
+    // Phase 272 — the pre-remediation exposure set is the ten measured
+    // refs: nine plus the intentionally persisted Arena recovery branch.
+    expect(pkg.exposure.refs.length).toBe(10);
     expect(pkg.exposure.carrierCommits).toBe(270);
     expect(pkg.worktreeClean).toBe(true);
     expect(pkg.releaseVerdict).toBe(currentReleaseVerdict().verdict);

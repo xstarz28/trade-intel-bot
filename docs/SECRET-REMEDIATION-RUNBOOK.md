@@ -59,6 +59,7 @@ Two facts per ref, and they are **not** interchangeable:
 | `refs/heads/arena/01a0ad26-trade-intel-bot` | **clean** | 0 |
 | `refs/heads/arena/01a0adfb-trade-intel-bot` | **clean** | 0 |
 | `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 0 |
+| `refs/heads/arena/01a0d195-trade-intel-bot` | **clean** | 0 |
 | `refs/heads/main` | **clean** | 0 |
 | `refs/heads/phase-157-live-discovery-lifecycle` | **clean** | 0 |
 | `refs/tags/rc-181` | **clean** | 0 |
@@ -73,7 +74,7 @@ blob `e490ffda…` at `src/convex/auth/emailOtp.ts`.
 
 | Surface | Result |
 |---|---|
-| Writable heads/tags (9) | **0 carriers**, every tip **clean** |
+| Writable heads/tags (10) | **0 carriers**, every tip **clean** |
 | `refs/pull/1/head` (`b321e507`, PR #1 MERGED) | **269 carriers**, tip clean |
 | `refs/pull/2/head` (`dc2dc113`) | 0 carriers, tip clean, still exists |
 | `refs/pull/2/merge` (`eaa9f993`) | 0 carriers, tip clean, still exists |
@@ -90,7 +91,8 @@ blob `e490ffda…` at `src/convex/auth/emailOtp.ts`.
 
 Live writable tips (github.com, 0 carriers): `01a08e67`=`bd233a87`,
 `01a0a5f5`=`0fbab31a`, `01a0a92b`=`50dcdfa5`, `01a0ad26`=`dc2dc113`,
-`01a0adfb`=`bcc3f34d`, `01a0b293`=`c42c734e`, `main`=`b1a9e915`,
+`01a0adfb`=`bcc3f34d`, `01a0b293`=`c4fe1cf5`, `01a0d195`=`a4138bda`
+(Phase 270 recovery commit, tip clean), `main`=`b1a9e915`,
 `phase-157`=`6bf6f580`, `rc-181`=`23d25ffa` (`^{}` `4626c5ca`).
 
 The inventory generator reads heads and tags only. `carrierCommits: 269` on
@@ -356,13 +358,15 @@ git push --force --mirror https://github.com/xstarz28/trade-intel-bot.git
 
 ### Refs the force-push will rewrite
 
-**All nine** — every ref the remote advertises, per
+**All ten** — every ref the remote advertises, per
 `docs/secret-remediation-refs.json`. Phase 233 corrected this table twice
 over: Phase 198 listed four refs, Phase 221 added a fifth, and three branches
 created since then (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were never added at
 all despite each carrying 269 carrier commits. Phase 238 added the eighth
-(`01a0adfb`) in the phase that pushed it, and Phase 249 added the ninth
-(`01a0b293`) in the phase that pushed it — each measured, not assumed. None may
+(`01a0adfb`) in the phase that pushed it, Phase 249 added the ninth
+(`01a0b293`) in the phase that pushed it, and Phase 272 added the tenth
+(`01a0d195`, the intentionally persisted Arena recovery branch) when the
+Phase 270 recovery push made it live — each measured, not assumed. None may
 be skipped — a single surviving ref keeps the blob reachable and undoes the
 entire exercise.
 
@@ -379,6 +383,7 @@ any ref it reports that is absent from this table must be added first.
 | `heads/arena/01a0ad26-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
 | `heads/arena/01a0adfb-trade-intel-bot` | *added Phase 238* | *not rehearsed* |
 | `heads/arena/01a0b293-trade-intel-bot` | *added Phase 249* | *not rehearsed* |
+| `heads/arena/01a0d195-trade-intel-bot` | *added Phase 272* | *not rehearsed* |
 | `heads/main` | `51c9ddeb` | `b1a9e91` |
 | `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f58` |
 | `tags/rc-181` | `66323a38` | `23d25ff` |

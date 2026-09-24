@@ -78,6 +78,15 @@ const MODULE_SOURCE = read("src/lib/deployment/ref-rollover-reconciliation.ts");
 
 /** The ref this phase added to the inventory. Named in tests, never in product code. */
 const ROLLED_OVER_REF = "heads/arena/01a0b293-trade-intel-bot";
+/**
+ * Phase 272 — the Arena recovery branch was pushed to the remote
+ * intentionally (the Phase 270 recovery checkpoint), making it the TENTH
+ * live writable ref. It is accounted for in every layer like every other
+ * ref: measured, manifest-listed, runbook-listed — never deleted, never
+ * waived by mismatched identity. It is NOT a drop-in for the Phase 249
+ * rollover ref: that record stays.
+ */
+const RECOVERY_REF = "heads/arena/01a0d195-trade-intel-bot";
 /** The eight refs the inventory carried before this phase. */
 const PRIOR_REFS = [
   "heads/arena/01a08e67-trade-intel-bot",
@@ -89,6 +98,14 @@ const PRIOR_REFS = [
   "heads/phase-157-live-discovery-lifecycle",
   "tags/rc-181",
 ];
+
+/**
+ * The complete pre-Phase-272 live set — PRIOR_REFS plus the Phase 249
+ * rollover ref — extended with the intentionally persisted recovery branch.
+ * Assertions about the CURRENT remote use this list, so only refs that
+ * genuinely appeared after it (none today) register as additions.
+ */
+const PRE_RECOVERY_LIVE_REFS = [...PRIOR_REFS, ROLLED_OVER_REF];
 
 const artifact = parseVerifiedInventory(INVENTORY_JSON);
 
@@ -235,7 +252,10 @@ describe("249 — the rollover is detected and reconciled against the real repos
     const live = liveRefsOrFail();
     expect(live).toContain(ROLLED_OVER_REF);
     // Detection is a count the remote answers, not a list written down here.
-    expect(live).toHaveLength(9);
+    // Phase 272: the recovery branch made it ten — the arena recovery ref is
+    // an intentional live ref that every layer now accounts for.
+    expect(live).toContain(RECOVERY_REF);
+    expect(live).toHaveLength(10);
   });
 
   it("2. measures it from full history, not from ancestry or tip-cleanliness", () => {
@@ -410,14 +430,19 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(assessment.reconciled, assessment.problems.join("\n")).toBe(true);
     expect(assessment.affectedRefCount).toBe(0);
     expect(assessment.affectedRefs).toEqual([]);
-    expect(AFFECTED_REF_EXPECTATIONS).toHaveLength(9);
+    // Phase 272 — the manifest carries the recovery ref as its tenth row,
+    // measured facts intact (0 carriers, tip clean).
+    expect(AFFECTED_REF_EXPECTATIONS).toHaveLength(10);
+    expect(
+      AFFECTED_REF_EXPECTATIONS.find((entry) => entry.ref === RECOVERY_REF),
+    ).toEqual({ ref: RECOVERY_REF, carrierCommits: 0, exposedAtTip: false });
   });
 
   it("10. makes the remote's live-ref count equal the observed inventory", () => {
     const live = liveRefsOrFail();
     const assessment = evaluateRefRollover(realInput(live));
     expect(live).toHaveLength(artifact.refs.length);
-    expect(assessment.liveRefCount).toBe(9);
+    expect(assessment.liveRefCount).toBe(10);
     expect(assessment.affectedRefCount).toBe(0);
     expect(parseDeclaredRefCount(RUNBOOK)).toBe(live.length);
     // Every live ref is accounted for by all three layers.
@@ -455,7 +480,7 @@ describe("249 — the rollover is detected and reconciled against the real repos
   });
 
   it("14. leaves A2 readiness UNVERIFIED after the rollover", () => {
-    // The real nine-ref inventory, and no remediation evidence: the scope is now
+    // The real ten-ref inventory, and no remediation evidence: the scope is now
     // complete, and readiness still refuses, because a complete inventory is a
     // precondition for the rewrite rather than a result of it.
     //
@@ -499,8 +524,8 @@ describe("249 — the rollover is detected and reconciled against the real repos
       expect(report.verified, label).toBe(false);
       expect(report.remediationPerformed, label).toBe(false);
       // The scope it would rewrite is the nine measured refs — complete, not partial.
-      expect(report.scope.expectedRefs, label).toHaveLength(9);
-      expect(report.scope.measuredRefs, label).toHaveLength(9);
+      expect(report.scope.expectedRefs, label).toHaveLength(10);
+      expect(report.scope.measuredRefs, label).toHaveLength(10);
       expect(report.scope.missingRefs, label).toEqual([]);
       expect(report.problems.length, label).toBeGreaterThan(0);
     }
@@ -587,7 +612,14 @@ describe("249 — the rollover is detected and reconciled against the real repos
       expect(GENERATOR, `no ${forbidden.trim()}`).not.toContain(forbidden);
     }
     // The rollover arithmetic can name what grew and what shrank, and nothing shrank.
-    expect(rolloverAddedRefs(liveRefsOrFail(), PRIOR_REFS)).toEqual([ROLLED_OVER_REF]);
+    // Since Phase 272 the baseline ALSO covers the intentional recovery
+    // branch: against the pre-Phase-272 set the added refs are exactly the
+    // two arena branches each phase pushed on purpose.
+    expect(rolloverAddedRefs(liveRefsOrFail(), PRIOR_REFS)).toEqual([
+      ROLLED_OVER_REF,
+      RECOVERY_REF,
+    ]);
+    expect(rolloverAddedRefs(liveRefsOrFail(), PRE_RECOVERY_LIVE_REFS)).toEqual([RECOVERY_REF]);
     expect(rolloverDroppedRefs(liveRefsOrFail(), PRIOR_REFS)).toEqual([]);
   });
 
@@ -607,15 +639,19 @@ describe("249 — the rollover is detected and reconciled against the real repos
 
   it("22. creates no second branch to do this work", () => {
     // The rollover is reconciled on the branch that already exists; making another
-    // one would add a tenth live ref and start the cycle again.
+    // one would add an eleventh live ref and start the cycle again.
     expect(ROLLOVER_STATE_PRECEDENCE[ROLLOVER_STATE_PRECEDENCE.length - 1]).toBe(
       "ROLLOVER_RECONCILED",
     );
     const live = liveRefsOrFail();
-    expect(live.filter((ref) => ref.startsWith("heads/arena/"))).toHaveLength(6);
+    // Phase 272 — seven arena branches: the six from Phase 249's inventory
+    // plus the intentionally persisted recovery branch.
+    expect(live.filter((ref) => ref.startsWith("heads/arena/"))).toHaveLength(7);
     expect(live).toContain(ROLLED_OVER_REF);
-    // The added set is exactly one ref, and it is this branch — not a new one.
-    expect(rolloverAddedRefs(live, PRIOR_REFS)).toHaveLength(1);
+    expect(live).toContain(RECOVERY_REF);
+    // The added set against the pre-recovery baseline is exactly the recovery
+    // branch — not a new scratch branch.
+    expect(rolloverAddedRefs(live, PRE_RECOVERY_LIVE_REFS)).toHaveLength(1);
     expect(GENERATOR).not.toMatch(/checkout|switch/);
   });
 
@@ -625,7 +661,7 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(RUNBOOK).toMatch(/Rotation gate — Path C recorded; Path R \*\*BLOCKED\*\*/);
     expect(RUNBOOK).toMatch(/Removal from HEAD was never remediation/i);
     expect(RUNBOOK).toMatch(/A2 stays UNVERIFIED/);
-    expect(RUNBOOK).toMatch(/\*\*All nine\*\*/);
+    expect(RUNBOOK).toMatch(/\*\*All ten\*\*/);
     expect(RUNBOOK).toMatch(/Phase 249 note/);
     // Growth is recorded as growth, with the carrier count unchanged as the proof
     // that the exposure itself did not move.
@@ -900,16 +936,32 @@ describe("249 — every layer that can drift is refused by name", () => {
 // 3 — the artefacts this phase wrote
 // ═══════════════════════════════════════════════════════════════
 
-describe("249 — the three artefacts agree, and only the ninth row was added", () => {
-  it("the inventory artifact is the measured nine-ref set", () => {
-    expect(artifact.refs).toHaveLength(9);
+describe("249 — the three artefacts agree; Phase 272 adds the recovery row", () => {
+  it("the inventory artifact is the measured ten-ref set", () => {
+    // Phase 272 — the recovery branch's row is measured with the same
+    // fingerprint-reachability facts as every other entry.
+    expect(artifact.refs).toHaveLength(10);
+    expect(
+      artifact.refs.find((entry) => entry.ref === RECOVERY_REF),
+    ).toMatchObject({
+      ref: RECOVERY_REF,
+      affected: false,
+      carrierCommits: 0,
+      exposedAtTip: false,
+    });
     expect(artifact.refs.every((entry) => entry.affected === false)).toBe(true);
     expect(artifact.historyCommits).toBe(840);
     expect(artifact.carrierCommits).toBe(269);
     expect(artifact.generatedBy).toBe(REMEDIATION_MANIFEST.inventory.generator);
   });
 
-  it("the canonical manifest carries the ninth row with the measured facts", () => {
+  it("the canonical manifest carries the ninth and recovery rows with the measured facts", () => {
+    const recovery = AFFECTED_REF_EXPECTATIONS.find(
+      (entry) => entry.ref === RECOVERY_REF,
+    );
+    expect(recovery).toBeDefined();
+    expect(recovery?.carrierCommits).toBe(0);
+    expect(recovery?.exposedAtTip).toBe(false);
     const ninth = AFFECTED_REF_EXPECTATIONS.find((entry) => entry.ref === ROLLED_OVER_REF);
     expect(ninth).toBeDefined();
     expect(ninth?.carrierCommits).toBe(0);
@@ -922,13 +974,19 @@ describe("249 — the three artefacts agree, and only the ninth row was added", 
     }
   });
 
-  it("the runbook records the ninth ref in both of its tables", () => {
+  it("the runbook records the ninth and recovery refs in both of its tables", () => {
+    const recoveryExposure = parseExposureFacts(RUNBOOK).find(
+      (row) => row.ref === RECOVERY_REF,
+    );
+    expect(recoveryExposure?.tipStatus).toMatch(/clean/);
+    expect(recoveryExposure?.occurrences).toBe(0);
+    expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).toContain(RECOVERY_REF);
     const exposure = parseExposureFacts(RUNBOOK).find((row) => row.ref === ROLLED_OVER_REF);
     expect(exposure?.tipStatus).toMatch(/clean/);
     expect(exposure?.occurrences).toBe(0);
     expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).toContain(ROLLED_OVER_REF);
-    // The rewrite section still says what it covers, and the number is nine.
-    expect(parseDeclaredRefCount(RUNBOOK)).toBe(9);
+    // The rewrite section still says what it covers, and the number is ten.
+    expect(parseDeclaredRefCount(RUNBOOK)).toBe(10);
   });
 
   it("records the rollover as measured end-to-end, superseding the derived eighth row", () => {

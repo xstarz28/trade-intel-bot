@@ -401,9 +401,22 @@ describe("the real runbook agrees with the real remote", () => {
         deferred.push(entry.ref);
         continue;
       }
-      const atPath = execFileSync("git", ["rev-parse", `${tip}:${blobPath}`], {
+      // Phase 272 — a tip whose tree has no such path (the Phase 270
+      // retirement deleted the file from the recovery lineage) cannot serve
+      // the blob; that absence must AGREE with the artifact instead of
+      // crashing the comparison.
+      const probe = spawnSync("git", ["rev-parse", `${tip}:${blobPath}`], {
         encoding: "utf8",
-      }).trim();
+      });
+      if (probe.status !== 0) {
+        expect(
+          entry.exposedAtTip,
+          `${entry.ref} has no ${blobPath} at its tip, but the artifact claims tip exposure`,
+        ).toBe(false);
+        verified.push(entry.ref);
+        continue;
+      }
+      const atPath = probe.stdout.trim();
       expect(
         atPath === leakedBlob,
         `${entry.ref} tip exposure disagrees with docs/secret-remediation-refs.json`,

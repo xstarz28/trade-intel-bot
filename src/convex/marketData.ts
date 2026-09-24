@@ -37,6 +37,10 @@ import {
   acquireBatchProviderNativeLiveData,
   acquireProviderNativeLiveData,
 } from "../lib/market-radar/provider-registry";
+import {
+  acquireCcxtLive,
+  mapCcxtTimeframe,
+} from "../lib/discovery/ccxt-live";
 import type { AssetClass } from "../lib/data/universal/types";
 import type { Transport } from "../lib/data/universal/live/client";
 import {
@@ -45,6 +49,8 @@ import {
   parseTwelveDataQuote,
 } from "../lib/data/universal/live/twelve-data-protocol";
 import { classifyLiveFailure } from "../lib/data/universal/live/failure-class";
+import { validateOhlcvSeries } from "../lib/data/universal/live/types";
+import { instrumentTypeToAssetClass } from "../lib/discovery/live-identity";
 
 let dxyResolvedSymbol: string | null = null;
 let dxyAllCandidatesFailedAt: number | null = null;
@@ -77,10 +83,19 @@ function mapTimeframe(tf: string): string {
 type AcqMode = "observed-now" | "observed-shared" | "cache-reused";
 let candleAcquisitions: AcqMode[] = [];
 let candleObservations: number[] = [];
+/**
+ * Phase 271 — provider-assessed freshness of the primary live read when the
+ * request used a provider-native acquisition (today: OKX). `null` until the
+ * first provider-native read of the run completes, which is always the
+ * setup-timeframe primary leg.
+ */
+let providerNativeFreshness: "realtime" | "delayed" | "stale" | "unavailable" |
+  null = null;
 
 function resetCandleTrace(): void {
   candleAcquisitions = [];
   candleObservations = [];
+  providerNativeFreshness = null;
 }
 
 async function fetchCandles(
@@ -229,16 +244,105 @@ function classifyPrimaryFetchFailure(err: unknown): {
   return { error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" };
 }
 
-async function fetchOkxNativeCandles(
+/**
+ * Phase 272 — provider-native live-OHLCV dispatch for the analysis slice.
+ *
+ * The provider id is an EXACT provider-native identity (never substituted):
+ *   - `"okx"`        → the OKX adapter candle contract through
+ *                      `acquireProviderNativeLiveData` (validated per-candle
+ *                      inside `executeLiveRequest`).
+ *   - `"ccxt:<id>"`  → the CCXT dynamic exchange family through
+ *                      `acquireCcxtLive`, validated per-candle here with the
+ *                      SAME validator, using the provider's own bar opens as
+ *                      the observation times.
+ *   - anything else  → a refusal. There is no third path: an identity with
+ *                      no verified live-OHLCV leg never falls through to a
+ *                      symbol lookup against an unrelated provider.
+ *
+ * Both legs stamp the same envelope trace semantics: every read is an
+ * uncached live fetch (`observed-now`), and the observation time recorded
+ * is the PROVIDER's own newest-candle open time of the setup (primary)
+ * series — the exact evidence the engine's freshness gate evaluates.
+ */
+function isProviderNativeLiveOhlcvProvider(provider: string | undefined): boolean {
+  return provider === "okx" || (provider !== undefined && provider.startsWith("ccxt:"));
+}
+
+async function fetchProviderNativeCandles(
+  provider: string,
   instId: string,
+  assetClass: AssetClass,
   timeframe: string,
   count: number,
 ): Promise<OhlcvCandle[]> {
+  if (provider.startsWith("ccxt:")) {
+    const ccxtTimeframe = mapCcxtTimeframe(timeframe);
+    if (ccxtTimeframe === undefined) {
+      throw new Error(
+        `unsupported bar/timeframe "${timeframe}" for provider "${provider}"`,
+      );
+    }
+    const acq = await acquireCcxtLive(
+      {
+        instrument: instId,
+        provider,
+        providerInstrumentId: instId,
+        assetClass,
+        timeframe: ccxtTimeframe,
+        count,
+      },
+      (name) => process.env[name],
+    );
+    if (!acq.success || !acq.candles || acq.candles.length === 0) {
+      // `acquireCcxtLive` degrades to a quote-only ticker when the exchange
+      // reports no OHLCV — a quote is NOT evidence for OHLCV-derived
+      // indicators, so quote-only success is still a refusal on this path.
+      throw new Error(
+        acq.error ??
+          `verified live OHLCV unavailable from provider "${provider}" for "${instId}"`,
+      );
+    }
+    // The OKX leg rejects invalid candles individually inside
+    // `executeLiveRequest`; this leg enforces the SAME acceptance contract
+    // here (reject the record, never repair its numbers).
+    const validation = validateOhlcvSeries(acq.candles, { now: Date.now() });
+    const accepted = acq.candles.filter(
+      (_, i) => !validation.rejectedIndices.includes(i),
+    );
+    if (accepted.length === 0) {
+      const reasons = [...new Set(validation.issues.map((s) => s.reason))].join(", ");
+      throw new Error(
+        `provider "${provider}" returned no usable candles (all ${acq.candles.length} rejected: ${reasons})`,
+      );
+    }
+    candleAcquisitions.push("observed-now");
+    if (providerNativeFreshness === null) {
+      if (acq.snapshot?.observedAt !== undefined) {
+        candleObservations.push(acq.snapshot.observedAt);
+      }
+      providerNativeFreshness =
+        acq.snapshot?.freshness === "FRESH"
+          ? "realtime"
+          : acq.snapshot?.freshness === "DELAYED"
+            ? "delayed"
+            : acq.snapshot?.freshness === "STALE"
+              ? "stale"
+              : "unavailable";
+    }
+    return accepted;
+  }
+  // "okx" — and any provider id the dispatch predicate admitted. The
+  // predicate is the single authority on what a verified live leg is.
+  if (provider !== "okx") {
+    throw new Error(
+      `Live technical analysis unavailable: provider "${provider}" has no verified live OHLCV leg. No fallback or symbol substitution was performed.`,
+    );
+  }
   const acq = await acquireProviderNativeLiveData({
     instrument: instId,
     provider: "okx",
     providerInstrumentId: instId,
-    assetClass: "crypto",
+    assetClass,
     timeframe,
     count,
   });
@@ -257,7 +361,28 @@ async function fetchOkxNativeCandles(
   // provider time exists (then freshness simply cannot be claimed younger
   // than the fetch itself — it is never stamped newer to look live).
   candleAcquisitions.push("observed-now");
-  candleObservations.push(acq.snapshot?.observedAt ?? acq.fetchedAt);
+  // Phase 272 — the observation time the envelope reports is the SETUP
+  // series' provider-observed time. The first provider-native read of the
+  // run IS the primary leg (it precedes the quote leg and the MTF slots),
+  // marked by `providerNativeFreshness === null`. Macro/trigger bar-opens
+  // are naturally older — timeframe widening, not staleness of the read —
+  // and must never set the envelope age. That same first read carries the
+  // provider-assessed freshness the action reports: a freshness the
+  // provider's own observation clock measured, never one invented by the
+  // request clock.
+  if (providerNativeFreshness === null) {
+    if (acq.snapshot?.observedAt !== undefined) {
+      candleObservations.push(acq.snapshot.observedAt);
+    }
+    providerNativeFreshness =
+      acq.snapshot?.freshness === "FRESH"
+        ? "realtime"
+        : acq.snapshot?.freshness === "DELAYED"
+          ? "delayed"
+          : acq.snapshot?.freshness === "STALE"
+            ? "stale"
+            : "unavailable";
+  }
   return acq.candles;
 }
 
@@ -280,7 +405,35 @@ export const fetchMarketData = action({
     await requireIdentity(ctx);
 
     const apiKey = process.env.TWELVE_DATA_API_KEY;
-    if (!apiKey && args.provider !== "okx") {
+
+    const providerArg =
+      typeof args.provider === "string" && args.provider.trim().length > 0
+        ? args.provider.trim()
+        : undefined;
+    // Phase 272 — provider-native live-OHLCV dispatch. OKX and the CCXT
+    // dynamic exchange family are the repository's verified provider-native
+    // live-OHLCV acquisitors; both reach the SAME envelope, validation,
+    // technical and engine pipeline below. A provider identity with no
+    // verified live-OHLCV leg (quote-only, discovery-only, license-gated,
+    // or unknown) is an explicit refusal here — its native id must never be
+    // forwarded as a symbol to an unrelated provider in its place.
+    const useProviderNative = isProviderNativeLiveOhlcvProvider(providerArg);
+    if (
+      providerArg !== undefined &&
+      !useProviderNative &&
+      providerArg !== "twelve-data"
+    ) {
+      return {
+        success: false as const,
+        error:
+          `Live technical analysis unavailable: provider "${providerArg}" does not expose a verified live OHLCV endpoint in this build. ` +
+          `Quote-only and discovery-only capability cannot produce live OHLCV-derived indicators. ` +
+          `The provider/native identity was preserved exactly; no fallback or symbol substitution was performed.`,
+        errorCode: "NO_LIVE_DATA" as const,
+      };
+    }
+
+    if (!apiKey && !useProviderNative) {
       return {
         success: false as const,
         error: "Market data provider not configured: TWELVE_DATA_API_KEY is missing. Add it in the Keys/API keys tab.",
@@ -293,12 +446,13 @@ export const fetchMarketData = action({
       typeof args.providerInstrumentId === "string" && args.providerInstrumentId.length > 0
         ? args.providerInstrumentId
         : symbol;
-    const useOkx = args.provider === "okx";
+    const nativeAssetClass =
+      instrumentTypeToAssetClass(args.instrumentType) ?? "crypto";
     resetCandleTrace();
 
     const loadCandles = (sym: string, tf: string, n: number): Promise<OhlcvCandle[]> =>
-      useOkx
-        ? fetchOkxNativeCandles(sym, tf, n)
+      useProviderNative
+        ? fetchProviderNativeCandles(providerArg ?? "okx", sym, nativeAssetClass, tf, n)
         : fetchCandles(sym, tf, n, apiKey as string);
 
     try {
@@ -321,7 +475,7 @@ export const fetchMarketData = action({
       // independently rejects prices older than its style budget, and the
       // cached payload carries its original observation time, so a reused
       // quote ages honestly rather than appearing newly observed.
-      const quoteEvidence = useOkx
+      const quoteEvidence = useProviderNative
         ? null
         : await getProviderCache()
         .fetch<Record<string, unknown>>(
@@ -582,7 +736,9 @@ export const fetchMarketData = action({
       }
       if (crossAsset) technical.crossAsset = crossAsset;
 
-      const resultProvider = useOkx ? "okx" : "twelve-data";
+      const resultProvider = useProviderNative
+        ? (providerArg as string)
+        : "twelve-data";
       return {
         success: true as const,
         data: {

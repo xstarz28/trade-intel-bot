@@ -275,11 +275,15 @@ describe("universal live unification", () => {
     expect(dash).not.toContain("instrument.toUpperCase()");
   });
 
-  it("fetchMarketData shares the Twelve Data parser and skips the TD key for OKX", () => {
+  it("fetchMarketData shares the Twelve Data parser and skips the TD key for provider-native live legs", () => {
     const src = readFileSync("src/convex/marketData.ts", "utf8");
     expect(src).toContain("parseTwelveDataTimeSeries");
     expect(src).toContain("acquireProviderNativeLiveData");
-    expect(src).toContain('args.provider !== "okx"');
+    expect(src).toContain("acquireCcxtLive");
+    // Phase 272 — the TD key guard exempts every verified provider-native
+    // live-OHLCV leg (OKX and the CCXT family), not just the literal OKX
+    // branch of the OKX-slice era.
+    expect(src).toContain("!apiKey && !useProviderNative");
     expect(src).toContain("const symbol = args.instrument.toUpperCase()");
     expect(src).toMatch(/errorCode: \"AUTH_ERROR\"/);
     expect(src).toMatch(/errorCode: \"RATE_LIMIT\"/);

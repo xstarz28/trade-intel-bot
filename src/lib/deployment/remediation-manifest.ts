@@ -146,6 +146,11 @@ export const AFFECTED_REF_EXPECTATIONS: readonly RefExpectation[] = [
   { ref: "heads/arena/01a0ad26-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
   { ref: "heads/arena/01a0adfb-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
   { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
+  // Phase 272 — the Arena recovery branch `01a0d195` was pushed to the
+  // remote intentionally (the Phase 270 recovery checkpoint), so the
+  // expectation set accounts for it: it is measured like every other ref
+  // (0 carrier commits, tip clean), never waived by mismatched identity.
+  { ref: "heads/arena/01a0d195-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
   { ref: "heads/main", carrierCommits: 0, exposedAtTip: false },
   { ref: "heads/phase-157-live-discovery-lifecycle", carrierCommits: 0, exposedAtTip: false },
   { ref: "tags/rc-181", carrierCommits: 0, exposedAtTip: false },

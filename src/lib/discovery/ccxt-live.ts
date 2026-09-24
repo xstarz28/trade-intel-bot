@@ -29,6 +29,17 @@ type CcxtExchange = {
   has?: Record<string, boolean>;
 };
 
+/**
+ * Phase 272 — injectable exchange factory, mirroring `CcxtDiscoveryDeps` on
+ * the sibling discovery adapter. Production passes nothing and the real
+ * CCXT registry is required; probes hand a deterministic exchange so the
+ * acquisition contract (identity passthrough, provider timestamp
+ * preservation, failure classification) is verifiable without network.
+ */
+export interface CcxtLiveDeps {
+  createExchange?: (id: string) => CcxtExchange;
+}
+
 function getCcxtExchange(id: string): CcxtExchange {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const ccxt = require("ccxt") as Record<string, new () => CcxtExchange>;
@@ -36,6 +47,37 @@ function getCcxtExchange(id: string): CcxtExchange {
   if (!Cls) throw new Error(`CCXT exchange ${id} not found`);
   const ex = new Cls();
   return ex;
+}
+
+/**
+ * Phase 272 — CCXT timeframe tokens. CCXT's OHLCV contract takes native
+ * strings ("15m", "1h", "4h"); the analysis engine requests internal tokens
+ * ("M15", "H1", ...). Unmapped timeframes stay undefined — never defaulted,
+ * so an unsupported request is a refusal, not a silent re-timed series.
+ */
+const CCXT_TIMEFRAME: Record<string, string> = {
+  M1: "1m",
+  M5: "5m",
+  M15: "15m",
+  M30: "30m",
+  H1: "1h",
+  H2: "2h",
+  H4: "4h",
+  D1: "1d",
+  W1: "1w",
+  "1m": "1m",
+  "5m": "5m",
+  "15m": "15m",
+  "30m": "30m",
+  "1h": "1h",
+  "2h": "2h",
+  "4h": "4h",
+  "1d": "1d",
+  "1w": "1w",
+};
+
+export function mapCcxtTimeframe(tf: string): string | undefined {
+  return CCXT_TIMEFRAME[tf] ?? CCXT_TIMEFRAME[tf.toUpperCase()];
 }
 
 export async function acquireCcxtLive(
@@ -49,12 +91,13 @@ export async function acquireCcxtLive(
   },
   _readEnv?: (name: string) => string | undefined,
   _transport: Transport = async () => ({ ok: false, status: 500 }),
+  deps?: CcxtLiveDeps,
 ): Promise<LiveAcquisitionResult> {
   const start = Date.now();
   const exchangeId = input.provider.startsWith("ccxt:") ? input.provider.slice(5) : input.provider;
 
   try {
-    const ex = getCcxtExchange(exchangeId);
+    const ex = (deps?.createExchange ?? getCcxtExchange)(exchangeId);
     const symbol = input.providerInstrumentId;
 
     // Try OHLCV first
