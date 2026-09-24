@@ -136,6 +136,15 @@ export const fetchIntelligence = action({
       v.literal("commodity"),
       v.literal("indices"),
     ),
+    /**
+     * Phase 275 — routing identity, identical in shape to the market-data
+     * contract. When the selection pipeline supplies the discovered
+     * provider/native id, THAT exact id is what the fundamental request
+     * carries; without it the instrument string is used as before. There is
+     * no whitelist, no per-symbol branch and no substitution either way.
+     */
+    provider: v.optional(v.string()),
+    providerInstrumentId: v.optional(v.string()),
   },
   handler: async (ctx, args): Promise<IntelligenceResult> => {
     // Requires a signed-in identity: this action spends a server-side API key.
@@ -152,8 +161,16 @@ export const fetchIntelligence = action({
       };
     }
 
-    const avSymbol = mapSymbolForAV(args.instrument, args.instrumentType);
-    const ticker = mapTickerForAV(args.instrument, args.instrumentType);
+    // Phase 275 — the request targets the EXACT provider/native identity the
+    // selection passed in. `providerInstrumentId` is provider-native, so it is
+    // used verbatim (only the generic per-asset-class form mapping below is
+    // applied); there is no symbol list and no fallback to another symbol.
+    const requestedSymbol =
+      typeof args.providerInstrumentId === "string" && args.providerInstrumentId.trim().length > 0
+        ? args.providerInstrumentId.trim()
+        : args.instrument;
+    const avSymbol = mapSymbolForAV(requestedSymbol, args.instrumentType);
+    const ticker = mapTickerForAV(requestedSymbol, args.instrumentType);
 
     try {
       // Fetch news sentiment (works for all asset types).
@@ -270,6 +287,7 @@ export const fetchIntelligence = action({
                     args.instrumentType,
                     ticker,
                     observedAt,
+                    requestedSymbol,
                   ),
                   observedAt,
                 };
@@ -436,12 +454,17 @@ function normalizeFundamentalsFromAV(
   instrumentType: string,
   symbol: string,
   observedAt: number,
+  nativeSymbol?: string,
 ): FundamentalData {
   const base: FundamentalData = {
     provider: "alpha-vantage",
     timestamp: observedAt,
     instrumentType: instrumentType as FundamentalData["instrumentType"],
     symbol,
+    // Phase 275 — the exact provider/native identity the request carried,
+    // preserved verbatim (case included). `symbol` stays the provider's
+    // canonical ticker form; this field is the discovered identity itself.
+    providerInstrumentId: nativeSymbol !== undefined && nativeSymbol.length > 0 ? nativeSymbol : symbol,
     available: false,
   };
 

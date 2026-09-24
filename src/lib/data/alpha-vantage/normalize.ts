@@ -193,12 +193,16 @@ export function normalizeFundamentals(
   earnings: RawEarnings | null,
   instrumentType: string,
   symbol: string,
+  nativeSymbol?: string,
 ): FundamentalData {
   const base: FundamentalData = {
     provider: "alpha-vantage",
     timestamp: Date.now(),
     instrumentType: instrumentType as FundamentalData["instrumentType"],
     symbol,
+    // Phase 275 — exact provider/native identity, preserved verbatim.
+    providerInstrumentId:
+      nativeSymbol !== undefined && nativeSymbol.length > 0 ? nativeSymbol : symbol,
     available: false,
   };
 

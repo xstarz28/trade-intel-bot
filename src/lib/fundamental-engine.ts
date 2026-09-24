@@ -83,6 +83,12 @@ export interface FundamentalAssessment {
   available: boolean;
   /** Provider that supplied the evidence (verbatim from FundamentalData). */
   provider: string;
+  /**
+   * Phase 275 — the exact provider/native instrument identity the evidence
+   * belongs to, preserved verbatim from the payload. Never re-derived from a
+   * symbol list and never substituted for another instrument.
+   */
+  instrumentId?: string;
   /** Observation timestamp stamped at provider acquisition (NOT re-dated). */
   observedAt: number;
   /** Latest fiscal period-end present in the evidence, if any ("2025-06-30"). */
@@ -160,6 +166,7 @@ export function assessFundamentals(
 ): FundamentalAssessment {
   const provider = data?.provider ?? "none";
   const observedAt = data?.timestamp ?? 0;
+  const instrumentId = data?.providerInstrumentId ?? data?.symbol;
   const limitations: string[] = [];
 
   // ── Unavailable fast path ────────────────────────────────────
@@ -167,6 +174,7 @@ export function assessFundamentals(
     return {
       available: false,
       provider,
+      instrumentId,
       observedAt,
       periodsCount: 0,
       state: "insufficient",
@@ -482,6 +490,7 @@ export function assessFundamentals(
   return {
     available: true,
     provider,
+    instrumentId,
     observedAt,
     reportingPeriod,
     reportAgeDaysAtObservation,

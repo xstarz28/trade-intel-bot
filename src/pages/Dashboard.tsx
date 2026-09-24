@@ -485,6 +485,12 @@ export default function Dashboard() {
             fetchIntelligence({
               instrument: input.instrument,
               instrumentType: input.instrumentType,
+              // Phase 275 — the discovered provider/native identity travels
+              // with the fundamental request exactly as it does for market
+              // data, so the provider is asked for the selected instrument
+              // itself (no whitelist, no fallback, no substitution).
+              provider: identity.provider,
+              providerInstrumentId: identity.providerInstrumentId,
             }),
             fetchCalendar({
               instrument: input.instrument,

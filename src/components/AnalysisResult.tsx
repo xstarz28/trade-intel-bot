@@ -1914,6 +1914,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     <span>
                       {t.analysisResult.fundamentalAssessment.providerLabel}:{" "}
                       {result.fundamentalAssessment.provider}
+                      {result.fundamentalAssessment.instrumentId
+                        ? ` · ${result.fundamentalAssessment.instrumentId}`
+                        : ""}
                     </span>
                     {result.fundamentalAssessment.reportingPeriod && (
                       <span>

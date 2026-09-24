@@ -598,6 +598,16 @@ export const runProtectedAnalysis = action({
         const r = (await ctx.runAction(api.alphaVantage.fetchIntelligence, {
           instrument,
           instrumentType: assetClass,
+          // Phase 275 — same identity contract as the market-data leg: the
+          // EXACT provider/native id the selection resolved is what the
+          // fundamental request carries.
+          ...(typeof trustedInput.provider === "string" && trustedInput.provider.length > 0
+            ? { provider: trustedInput.provider }
+            : {}),
+          ...(typeof trustedInput.providerInstrumentId === "string" &&
+          trustedInput.providerInstrumentId.length > 0
+            ? { providerInstrumentId: trustedInput.providerInstrumentId }
+            : {}),
         })) as {
           success: boolean;
           sentiment?: unknown;

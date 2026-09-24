@@ -45,7 +45,14 @@ export interface FundamentalData {
   timestamp: number;
   instrumentType: "stock" | "forex" | "crypto" | "commodity" | "indices";
   // Stock-specific
+  /** Provider canonical ticker form of the request (e.g. "AAPL"). */
   symbol?: string;
+  /**
+   * Phase 275 — the EXACT provider/native identity the request carried,
+   * preserved verbatim from discovery. Never a substituted symbol; absent
+   * only for callers that did not supply one.
+   */
+  providerInstrumentId?: string;
   name?: string;
   sector?: string;
   industry?: string;
