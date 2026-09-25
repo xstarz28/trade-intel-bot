@@ -114,6 +114,43 @@ export const FOREX_COUNTRY_MAP: Record<string, { country: string; currency: stri
 };
 
 /**
+ * Phase 288 — the reason a calendar acquisition never happened.
+ *
+ * `getRelevantCurrencies` covers only the eight majors in
+ * {@link FOREX_COUNTRY_MAP}. For a pair whose sides are absent from that table
+ * the relevant-currency set is empty, and NO provider request can be formed.
+ * That is a COVERAGE GAP of this platform, not a provider outage: reporting it
+ * as "the provider returned no data" blames the provider for a request that was
+ * never sent, and (worse) implies an all-clear that was never assessed.
+ *
+ * Returns `undefined` when a request IS formable, so callers keep their normal
+ * path.
+ */
+export function calendarCoverageGapReason(
+  instrument: string,
+  instrumentType: string,
+): string | undefined {
+  if (getRelevantCurrencies(instrument, instrumentType).length > 0) return undefined;
+
+  const sides =
+    instrumentType === "forex"
+      ? instrument
+          .toUpperCase()
+          .split("/")
+          .map((p) => p.trim())
+          .filter((p) => p !== "")
+      : [];
+  const unmapped = sides.filter((code) => FOREX_COUNTRY_MAP[code] === undefined);
+  const mapped = Object.keys(FOREX_COUNTRY_MAP).join(", ");
+
+  return instrumentType === "forex"
+    ? `No verified economic-calendar currency mapping for ${instrument} — no calendar request was made, so macro risk is NOT assessed${
+        unmapped.length > 0 ? ` (${unmapped.join(", ")} ${unmapped.length === 1 ? "is" : "are"} not in the verified mapping)` : ""
+      }. The verified mapping covers ${mapped}; a country is never guessed for an unmapped currency.`
+    : `No verified economic-calendar currency mapping exists for the "${instrumentType}" routing domain — no calendar request was made and macro risk is not assessed.`;
+}
+
+/**
  * Resolve the relevant currencies/countries for an instrument.
  */
 export function getRelevantCurrencies(

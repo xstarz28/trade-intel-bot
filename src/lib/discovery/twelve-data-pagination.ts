@@ -15,6 +15,7 @@
  */
 
 import type { DiscoveryCompleteness } from "./completeness";
+import { redactDiagnosticText } from "../data/provenance-diagnostics";
 
 export type FetchJson = (url: string) => Promise<{
   ok: boolean;
@@ -23,6 +24,36 @@ export type FetchJson = (url: string) => Promise<{
 }>;
 
 const BASE_URL = "https://api.twelvedata.com";
+
+/** Longest provider message kept in a catalog warning. */
+const CATALOG_DETAIL_MAX_CHARS = 240;
+
+/**
+ * Phase 288 — the provider's own explanation of a rejected catalog page.
+ *
+ * Twelve Data answers a plan/credit/quota rejection with an HTTP status AND an
+ * error body (`{status:"error", code:…, message:…}`). Reporting only the status
+ * made a `429`/`403` indistinguishable from a truncated dump, so the caller
+ * (and the runtime smoke) could not say why an asset class discovered nothing.
+ * The message is credential-redacted and bounded here; nothing is invented when
+ * the body is absent or unreadable, and the status code is always kept too.
+ */
+export function catalogFailureDetail(status: number, json: unknown): string | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  const record = json as Record<string, unknown>;
+  const message = typeof record.message === "string" ? record.message.trim() : "";
+  if (message === "") return undefined;
+  const credSafe = redactDiagnosticText(message).replace(/\s+/g, " ");
+  const bounded =
+    credSafe.length > CATALOG_DETAIL_MAX_CHARS
+      ? `${credSafe.slice(0, CATALOG_DETAIL_MAX_CHARS - 1)}\u2026`
+      : credSafe;
+  const code =
+    typeof record.code === "number" || (typeof record.code === "string" && record.code.trim() !== "")
+      ? `code ${String(record.code)}`
+      : `HTTP ${status}`;
+  return `${code} — ${bounded}`;
+}
 
 export type CatalogPageParse =
   | { ok: true; rows: unknown[]; totalCount?: number }
@@ -146,15 +177,24 @@ export async function fetchTwelveDataCatalogPages(
     }
 
     if (!res.ok) {
+      // Phase 288 — a bare status code cannot distinguish a plan/credit
+      // rejection from a transport failure, and this warning is the ONLY
+      // surviving record of a failed catalog (the smoke reads it to explain
+      // why an asset class discovered nothing). Twelve Data answers a
+      // rejection with an error body; its own message is kept, credential-
+      // redacted and bounded, and the status code stays verbatim.
+      const providerDetail = catalogFailureDetail(res.status, res.json);
       if (pagesFetched === 0) {
         return {
           rows: [],
           pagesFetched: 0,
           completeness: "FAILED",
-          warnings: [`${args.path} returned HTTP ${res.status}.`],
+          warnings: [`${args.path} returned HTTP ${res.status}${providerDetail ? `: ${providerDetail}` : ""}.`],
         };
       }
-      warnings.push(`${args.path} page ${page} returned HTTP ${res.status}.`);
+      warnings.push(
+        `${args.path} page ${page} returned HTTP ${res.status}${providerDetail ? `: ${providerDetail}` : ""}.`,
+      );
       return {
         rows: collected(),
         pagesFetched,

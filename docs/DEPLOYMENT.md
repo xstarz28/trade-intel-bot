@@ -85,6 +85,7 @@ Set these in the **Convex deployment environment**. They must never appear in
 | `COINGLASS_API_KEY` | No | That provider is reported unavailable |
 | `TICKATLAS_API_KEY` | No | That provider is reported unavailable |
 | `EIA_API_KEY` | No | That provider is reported unavailable |
+| `TOKENOMIST_API_KEY` | No | The tokenomics leg is called unauthenticated and its own failure reason is reported |
 | `VLY_INTEGRATION_KEY` | No | Platform integration disabled |
 
 A missing provider key **disables that provider explicitly**. It never causes

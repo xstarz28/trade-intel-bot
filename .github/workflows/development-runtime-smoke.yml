@@ -49,7 +49,7 @@ on:
         required: false
         type: string
       max_attempts:
-        description: "Max discovery-ranked instruments tried per domain (1-3, default 1)"
+        description: "Max discovery-ranked instruments tried per domain (1-3, default 3)"
         required: false
         type: string
 

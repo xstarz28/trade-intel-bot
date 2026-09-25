@@ -235,6 +235,23 @@ const PROFILE_HIERARCHY: Record<CommodityGroup, DimensionHierarchyEntry[]> = {
 };
 
 /**
+ * Phase 288 — the physical market of a quoted PAIR is the market of its BASE
+ * leg. Provider-native commodity ids arrive as pairs (`WTI/USD`, `GAU/EUR`) and
+ * the registry does not carry every pair spelling, so when the subject itself
+ * does not classify, the base leg is resolved through the same registry + alias
+ * path. A base leg that is not a classified commodity returns "unclassified":
+ * absence of evidence is never converted into a guess, and no ticker list is
+ * consulted.
+ */
+function baseLegMarketGroup(subject: string): CommodityGroup {
+  const legs = subject.split("/");
+  if (legs.length !== 2) return "unclassified";
+  const base = legs[0]?.trim() ?? "";
+  if (base.length === 0) return "unclassified";
+  return commodityProfileOf(base).group;
+}
+
+/**
  * Classify the instrument from the CANONICAL INSTRUMENT REGISTRY (tags), not
  * from its ticker: the same function classifies WTI, BRENT, XAU/USD, COPPER and
  * any future commodity the registry gains.
@@ -384,8 +401,34 @@ export function assessCommodityFundamentals(
   ctx: CommodityFundamentalContext,
 ): FundamentalAssessment {
   const nativeId = ctx.providerInstrumentId ?? ctx.instrument;
-  const profile = commodityProfileOf(ctx.instrument.length > 0 ? ctx.instrument : nativeId);
-  const eia: EiaContext | undefined = ctx.eia && ctx.eia.available ? ctx.eia : undefined;
+  const subject = ctx.instrument.length > 0 ? ctx.instrument : nativeId;
+  const profile = commodityProfileOf(subject);
+  /**
+   * Phase 288 — resolve the PHYSICAL MARKET the instrument actually trades.
+   *
+   * A provider-native commodity id is frequently a quoted PAIR (`WTI/USD`,
+   * `GAU/EUR`), and the pair string itself is not always a canonical registry
+   * entry: `commodityProfileOf("WTI/USD")` is UNCLASSIFIED even though the base
+   * leg is WTI Crude Oil. Reading the gate off the pair string would therefore
+   * withhold a petroleum instrument's own physical feed — a false negative that
+   * is just as wrong as the cross-domain read it was added to stop. The base
+   * leg of the pair IS the traded commodity, so when the subject does not
+   * classify, the market is resolved from that leg through the same registry
+   * (no ticker list, no look-alike matching).
+   *
+   * The ONE configured physical feed is the U.S. EIA Weekly Petroleum Status
+   * Report: US crude / gasoline / distillate stocks and their
+   * supply-and-disposition flows. Petroleum is the physical market of an ENERGY
+   * commodity only, so the feed is admitted only for the energy group — exactly
+   * what this file's own hierarchy documentation already states ("no
+   * physical/inventory feed exists for bullion"). Bullion, an industrial metal
+   * or an agricultural instrument therefore reports its physical dimensions
+   * UNAVAILABLE with the real reason, instead of gaining a petroleum reading.
+   */
+  const marketGroup = profile.group !== "unclassified" ? profile.group : baseLegMarketGroup(subject);
+  const physicalFeedApplies = marketGroup === "energy";
+  const eia: EiaContext | undefined =
+    physicalFeedApplies && ctx.eia && ctx.eia.available ? ctx.eia : undefined;
   const cot: CotContext | undefined = ctx.cot && ctx.cot.available ? ctx.cot : undefined;
   const treasury: TreasuryContext | undefined =
     ctx.treasury && ctx.treasury.available ? ctx.treasury : undefined;
@@ -557,10 +600,13 @@ export function assessCommodityFundamentals(
     } else {
       dimensions.push(unavailable("inventories"));
       const reason = ctx.eia && !ctx.eia.available ? ctx.eia.reason : undefined;
+      const feedOutOfScope = !physicalFeedApplies && ctx.eia?.available === true;
       limitations.push(
-        `Inventory UNAVAILABLE — no configured inventory provider returned a stock series for this instrument${
-          reason ? ` (${reason})` : ""
-        }. The only configured inventory source is the U.S. EIA weekly petroleum report; inventory is never approximated from price or volume.`,
+        feedOutOfScope
+          ? `Inventory UNAVAILABLE — the only configured inventory feed is the U.S. EIA Weekly Petroleum Status Report (US petroleum stocks), which is the physical market of an energy commodity, not of this ${marketGroup} instrument. Its series were acquired and are deliberately NOT read here: another market's inventory is never attributed to this instrument. Inventory is never approximated from price or volume.`
+          : `Inventory UNAVAILABLE — no configured inventory provider returned a stock series for this instrument${
+              reason ? ` (${reason})` : ""
+            }. The only configured inventory source is the U.S. EIA weekly petroleum report; inventory is never approximated from price or volume.`,
       );
     }
   }
@@ -640,8 +686,11 @@ export function assessCommodityFundamentals(
     } else {
       dimensions.push(unavailable("supply-demand"));
       const detail = flows.unclassified.length > 0 ? ` (${flows.unclassified.join("; ")})` : "";
+      const flowsOutOfScope = !physicalFeedApplies && ctx.eia?.available === true;
       limitations.push(
-        `Supply/demand UNAVAILABLE${detail} — no configured provider returned production, consumption, imports/exports, refinery-utilisation or product-supplied series for this instrument. The configured EIA request fetches the WPSR STOCK series only, so a physical balance is neither reported nor estimated from stocks, price or positioning.`,
+        flowsOutOfScope
+          ? `Supply/demand UNAVAILABLE${detail} — the only configured flow feed is the U.S. EIA Weekly Petroleum Status Report supply-and-disposition series (US petroleum), which is out of scope for this ${marketGroup} instrument; it was acquired and is deliberately not read. No physical balance is reported or estimated from stocks, price or positioning.`
+          : `Supply/demand UNAVAILABLE${detail} — no configured provider returned production, consumption, imports/exports, refinery-utilisation or product-supplied series for this instrument. The configured EIA request fetches the WPSR STOCK series only, so a physical balance is neither reported nor estimated from stocks, price or positioning.`,
       );
     }
   }

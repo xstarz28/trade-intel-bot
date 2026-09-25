@@ -716,6 +716,19 @@ export const runProtectedAnalysis = action({
                 trustedInput.providerInstrumentId.length > 0
                   ? { providerInstrumentId: trustedInput.providerInstrumentId }
                   : {}),
+                // Phase 288 — the Tokenomist credential path was dead: the
+                // adapter supports an authenticated request (Bearer) and the
+                // acquisition seam accepts the key, but NO production caller
+                // ever populated it, so the tokenomics leg always called the
+                // provider unauthenticated and the deployment's key (if set)
+                // had no effect. Read here so the leg uses the same
+                // server-side environment as every other provider. Absent key
+                // = unauthenticated request exactly as before, and the leg's
+                // own failure reason is then reported on the result.
+                ...(typeof process.env.TOKENOMIST_API_KEY === "string" &&
+                process.env.TOKENOMIST_API_KEY.length > 0
+                  ? { tokenomistApiKey: process.env.TOKENOMIST_API_KEY }
+                  : {}),
               });
               const answered = acquired.legs.filter((l) => l.status === "ok").length;
               return {
@@ -1024,6 +1037,14 @@ export const runProtectedAnalysis = action({
           provider: outcome.provider,
           dataset: meta.dataset,
           outcome,
+          // Phase 288 — carry the leg's own classified failure text (a 429, a
+          // credential rejection, an empty provider series, …) instead of
+          // discarding it. Each leg already computed this on its outcome
+          // (`reason`, credential-redacted by the resolver); before this phase
+          // every surface could only say "unavailable" without saying why.
+          ...(typeof outcome.reason === "string" && outcome.reason.length > 0
+            ? { reason: outcome.reason }
+            : {}),
         });
       }
 
@@ -1060,6 +1081,12 @@ export const runProtectedAnalysis = action({
           provider: outcome.provider,
           dataset: meta.dataset,
           outcome: { status: "failed", category: "unavailable" },
+          // Same rule as the hard-failure branch: keep the leg's own report of
+          // what went wrong (here a success envelope that degraded internally)
+          // rather than reporting a bare "unavailable".
+          ...(typeof outcome.reason === "string" && outcome.reason.length > 0
+            ? { reason: outcome.reason }
+            : {}),
         });
       }
 
@@ -1082,6 +1109,18 @@ export const runProtectedAnalysis = action({
       string,
       unknown
     >;
+
+    // Phase 288 — the per-leg records above were written for the operator log
+    // and then discarded, so nothing outside the deployment could tell a rate
+    // limit from a missing credential, an unmapped provider identity or an
+    // empty provider series: every domain collapsed to the same "unavailable".
+    // The same credential-free records (provider, dataset, mode, attachment,
+    // and the failing leg's own reason) travel with the result.
+    //
+    // Attached INSIDE `result` on purpose: `gateDecision` delivers the whole
+    // object only when entitlement allows and otherwise reduces it to its own
+    // locked whitelist, so this can never become a way around the gate.
+    engineResult.providerDiagnostics = provenanceLegs;
 
     // 2. Chargeability comes from the engine's own output.
     const chargeable = isProfitSignal(

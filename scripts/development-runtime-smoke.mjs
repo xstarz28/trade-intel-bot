@@ -243,6 +243,24 @@ const SPOT_LIKE = new Set([
  * discovery metadata the provider returned. No curation, no substitution: the
  * instrument that is tried is the instrument the provider named.
  */
+/**
+ * Default number of discovery-ranked instruments tried per domain.
+ *
+ * Phase 288 — raised from 1 after the live four-asset run. The provider's
+ * catalog advertises instruments the OHLCV leg cannot price (COMMODITY was
+ * pinned to the provider-native `GAU/EUR` and produced no market evidence at
+ * all), so a one-candidate cap lets ONE arbitrary catalog row decide a whole
+ * domain's verdict. The bound stays small and the existing discipline is
+ * untouched: the loop stops the moment real market evidence arrives (so a
+ * domain that works is never re-requested), it never repeats a provider after a
+ * rate-limit or credential circuit trips, and it never substitutes a symbol —
+ * every candidate comes from the provider's own discovery, in provider order.
+ */
+export const DEFAULT_MAX_ATTEMPTS = 3;
+
+/** Hard ceiling on candidates per domain — the bounded policy, never exceeded. */
+export const MAX_CANDIDATE_ATTEMPTS = 3;
+
 export function selectCandidates(domainSpec, discovery, maxAttempts) {
   if (!discovery || discovery.success !== true) return [];
   const rows = Array.isArray(discovery.instruments) ? discovery.instruments : [];
@@ -266,7 +284,7 @@ export function selectCandidates(domainSpec, discovery, maxAttempts) {
     ...usable.filter((row) => SPOT_LIKE.has(row.subType)),
     ...usable.filter((row) => !SPOT_LIKE.has(row.subType)),
   ];
-  return ordered.slice(0, Math.max(1, Math.min(maxAttempts, 3)));
+  return ordered.slice(0, Math.max(1, Math.min(maxAttempts, MAX_CANDIDATE_ATTEMPTS)));
 }
 
 /** OKX discovery is public metadata (no key, no prices, no direction). */
@@ -282,7 +300,16 @@ export async function discoverOkx(transport) {
   };
 }
 
-/** Twelve Data reference catalogs — metadata only, needs the server-side key. */
+/**
+ * Twelve Data reference catalogs — metadata only, needs the server-side key.
+ *
+ * Phase 288 — the adapter publishes its OWN per-catalog report (which path was
+ * fetched, how many pages answered, whether a page failed, what the provider
+ * said). Discarding it made "discovered nothing" unactionable: a zero-row
+ * catalog, a plan/credit rejection, a parser that skipped rows and a transport
+ * failure all produced the same sentence. The report is carried through
+ * verbatim (sanitized), so the verdict names the actual cause.
+ */
 export async function discoverTwelveData(transport, token) {
   const r = await transport.action("marketData:discoverTwelveDataInstruments", {}, token);
   if (!r.ok) return { success: false, instruments: [], error: r.appError ?? r.transportError ?? "discovery failed" };
@@ -293,7 +320,54 @@ export async function discoverTwelveData(transport, token) {
     instruments: Array.isArray(value.instruments) ? value.instruments : [],
     error: value.error ?? null,
     warnings: Array.isArray(value.warnings) ? value.warnings.map(sanitize) : [],
+    completeness: typeof value.completeness === "string" ? value.completeness : null,
+    pagesFetched: isNumber(value.pagesFetched) ? value.pagesFetched : null,
+    totalDiscovered: isNumber(value.totalDiscovered) ? value.totalDiscovered : null,
+    catalogs: Array.isArray(value.catalogs)
+      ? value.catalogs.map((c) => ({
+          path: typeof c?.path === "string" ? c.path : null,
+          assetClass: typeof c?.assetClass === "string" ? c.assetClass : null,
+          completeness: typeof c?.completeness === "string" ? c.completeness : null,
+          pagesFetched: isNumber(c?.pagesFetched) ? c.pagesFetched : null,
+          totalDiscovered: isNumber(c?.totalDiscovered) ? c.totalDiscovered : null,
+          failedPage: isNumber(c?.failedPage) ? c.failedPage : null,
+        }))
+      : [],
   };
+}
+
+/**
+ * One line naming why a discovery produced no candidate for this asset class —
+ * built only from the provider's own report. `null` when nothing is known.
+ */
+export function discoveryDiagnosis(discovery, assetClass) {
+  if (!discovery) return null;
+  const parts = [];
+  if (typeof discovery.error === "string" && discovery.error.length > 0) {
+    parts.push(sanitize(discovery.error));
+  }
+  if (typeof discovery.completeness === "string") {
+    parts.push(`catalog completeness ${discovery.completeness}`);
+  }
+  const catalogs = Array.isArray(discovery.catalogs) ? discovery.catalogs : [];
+  if (catalogs.length > 0) {
+    parts.push(
+      `catalogs ${catalogs
+        .map((c) => {
+          const bits = [c.path ?? "?", c.completeness ?? "?"];
+          if (c.failedPage !== null) bits.push(`failed page ${c.failedPage}`);
+          if (c.totalDiscovered !== null) bits.push(`${c.totalDiscovered} kept`);
+          return bits.join(" ");
+        })
+        .join("; ")}`,
+    );
+  }
+  const warnings = Array.isArray(discovery.warnings) ? discovery.warnings : [];
+  if (warnings.length > 0) {
+    parts.push(`provider warnings: ${warnings.slice(0, 3).join(" | ")}`);
+  }
+  if (parts.length === 0) return null;
+  return `${assetClass}: ${parts.join(" — ")}`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -463,15 +537,56 @@ export function readResultEvidence(result) {
     },
   };
 
+  // Phase 288 — the runtime's own per-leg records. Each acquisition leg reports
+  // what it tried and, when it produced nothing, WHY (its classified failure
+  // text). Without this the smoke could only repeat a summary sentence, and a
+  // rate limit, a missing credential, an unmapped provider identity and an
+  // empty provider series were indistinguishable in the verdict.
+  const diagnostics = Array.isArray(r.providerDiagnostics)
+    ? r.providerDiagnostics
+        .map((d) => ({
+          provider: typeof d?.provider === "string" ? d.provider : null,
+          dataset: typeof d?.dataset === "string" ? d.dataset : null,
+          mode: typeof d?.mode === "string" ? d.mode : null,
+          acquired: d?.acquired === true,
+          attached: d?.attached === true,
+          usedByEngine: d?.usedByEngine === true,
+          reason: typeof d?.reason === "string" ? sanitize(d.reason) : null,
+        }))
+        .filter((d) => d.provider !== null)
+    : [];
+
   return {
     market,
     technical,
     fundamental,
     unified,
     provenance,
+    diagnostics,
     dataCompleteness: typeof r.dataCompleteness === "string" ? r.dataCompleteness : null,
     recommendation: typeof r.recommendation === "string" ? r.recommendation : null,
   };
+}
+
+/**
+ * The failing legs of one analysis, as one bounded line.
+ *
+ * Only legs that produced no evidence AND carried their own reason appear, so
+ * the text is the leg's diagnosis — never a restatement of the headline.
+ */
+/** Headline reason plus the failing legs' own diagnoses (bounded). */
+export function withFailingLegs(headline, evidence) {
+  const legs = failingLegText(evidence);
+  return legs === null ? headline : `${headline} — failing legs: ${legs}`;
+}
+
+export function failingLegText(evidence, limit = 3) {
+  const legs = Array.isArray(evidence?.diagnostics) ? evidence.diagnostics : [];
+  const named = legs
+    .filter((d) => d.acquired !== true && typeof d.reason === "string" && d.reason.length > 0)
+    .slice(0, Math.max(1, limit))
+    .map((d) => `${d.provider}/${d.dataset ?? "?"}: ${d.reason}`);
+  return named.length > 0 ? named.join("; ") : null;
 }
 
 /**
@@ -539,7 +654,10 @@ export function classifyDomain({ response, transportError = null }) {
     }
     return {
       headline: "UNAVAILABLE",
-      reason: `no provider market evidence with a provider observation instant — runtime said: ${reason}`,
+      reason: withFailingLegs(
+        `no provider market evidence with a provider observation instant — runtime said: ${reason}`,
+        evidence,
+      ),
       status,
       evidence,
     };
@@ -549,7 +667,10 @@ export function classifyDomain({ response, transportError = null }) {
     const reason = firstReason(evidence.unified.limitations, evidence.technical.summary);
     return {
       headline: "UNAVAILABLE",
-      reason: `market evidence is real but technical/unified evidence is not available — ${reason ?? "no reason given"}`,
+      reason: withFailingLegs(
+        `market evidence is real but technical/unified evidence is not available — ${reason ?? "no reason given"}`,
+        evidence,
+      ),
       status,
       evidence,
     };
@@ -563,7 +684,10 @@ export function classifyDomain({ response, transportError = null }) {
     );
     return {
       headline: "UNAVAILABLE",
-      reason: `market + technical + unified are real; the domain-native FUNDAMENTAL assessment is unavailable — ${reason ?? "no reason given"}`,
+      reason: withFailingLegs(
+        `market + technical + unified are real; the domain-native FUNDAMENTAL assessment is unavailable — ${reason ?? "no reason given"}`,
+        evidence,
+      ),
       status,
       evidence,
     };
@@ -575,6 +699,26 @@ export function classifyDomain({ response, transportError = null }) {
     status,
     evidence,
   };
+}
+
+/**
+ * Phase 288 — verdict severity, so a domain's verdict cannot be laundered.
+ *
+ * With more than one candidate per domain, the loop's LAST attempt used to be
+ * the recorded verdict. A deployment FAIL (transport error, rejected request)
+ * on the first candidate and a milder UNAVAILABLE on the second therefore
+ * reported "provider unavailable" for what was actually a runtime failure.
+ * The most severe outcome of the domain's attempts is reported; evidence still
+ * wins because the loop stops the moment a candidate produces market evidence.
+ */
+const VERDICT_SEVERITY = { PASS: 0, UNAVAILABLE: 1, FAIL: 2 };
+
+export function mostSevereVerdict(current, candidate) {
+  if (!current) return candidate;
+  if (!candidate) return current;
+  return (VERDICT_SEVERITY[candidate.headline] ?? 2) > (VERDICT_SEVERITY[current.headline] ?? 2)
+    ? candidate
+    : current;
 }
 
 /* ------------------------------------------------------------------ *
@@ -662,6 +806,23 @@ export function renderSummary(report) {
     lines.push(`  fundamental      : ${record.legs.fundamental}`);
     lines.push(`  unified          : ${record.legs.unified}`);
     if (record.reason) lines.push(`  reason           : ${record.reason}`);
+    if (record.discovery) {
+      const c = record.discovery;
+      lines.push(
+        `  discovery        : completeness=${c.completeness ?? "—"} pages=${c.pagesFetched ?? "—"} kept=${c.totalDiscovered ?? "—"}`,
+      );
+      for (const cat of c.catalogs ?? []) {
+        lines.push(
+          `                     ${cat.path ?? "?"} [${cat.assetClass ?? "?"}] ${cat.completeness ?? "?"}${
+            cat.failedPage !== null ? ` failed page ${cat.failedPage}` : ""
+          }`,
+        );
+      }
+      for (const w of (c.warnings ?? []).slice(0, 3)) lines.push(`                     warning: ${w}`);
+    }
+    if (Array.isArray(record.failingLegs) && record.failingLegs.length > 0) {
+      for (const leg of record.failingLegs.slice(0, 5)) lines.push(`  failing leg      : ${leg}`);
+    }
     lines.push("");
   }
   lines.push("──────────────────────────────────────────────────────────────────");
@@ -685,7 +846,9 @@ async function run() {
   const allowedHost = flag("--allow-host", argv);
   const outPath = flag("--out", argv) ?? "development-runtime-smoke.json";
   const domainsArg = flag("--domains", argv);
-  const maxAttempts = Number.parseInt(flag("--max-attempts", argv) ?? "1", 10) || 1;
+  const maxAttempts =
+    Number.parseInt(flag("--max-attempts", argv) ?? String(DEFAULT_MAX_ATTEMPTS), 10) ||
+    DEFAULT_MAX_ATTEMPTS;
   const quiet = argv.includes("--quiet");
 
   const target = validateTarget(targetUrl, allowedHost);
@@ -772,6 +935,11 @@ async function run() {
       dataCompleteness: null,
       legs: { market: "not attempted", technical: "not attempted", fundamental: "not attempted", unified: "not attempted" },
       reason: null,
+      // Phase 288 — the provider's own catalog report and the runtime's own
+      // per-leg diagnoses, so a verdict names its cause instead of restating a
+      // generic sentence.
+      discovery: null,
+      failingLegs: [],
       attempts: [],
       entitlement: null,
     };
@@ -820,7 +988,21 @@ async function run() {
 
     const candidates = selectCandidates(spec, discovery, maxAttempts);
     if (candidates.length === 0) {
-      record.reason = `discovery succeeded but listed no live ${spec.assetClass} instrument`;
+      // Phase 288 — name the cause from the provider's own catalog report
+      // instead of asserting a bare "no live instrument". A zero-row catalog,
+      // a rejected page and a parser that skipped rows are different facts
+      // with different fixes.
+      const diagnosis = discoveryDiagnosis(discovery, spec.assetClass);
+      record.discovery = {
+        completeness: discovery.completeness ?? null,
+        pagesFetched: discovery.pagesFetched ?? null,
+        totalDiscovered: discovery.totalDiscovered ?? null,
+        catalogs: discovery.catalogs ?? [],
+        warnings: discovery.warnings ?? [],
+      };
+      record.reason = diagnosis
+        ? `discovery returned no live ${spec.assetClass} instrument — ${diagnosis}`
+        : `discovery succeeded but listed no live ${spec.assetClass} instrument (the provider reported no failed catalog and no skipped rows)`;
       record.headline = "UNAVAILABLE";
       record.legs.market = "not attempted (no discovered instrument)";
       record.attempts.push({ step: "discovery", outcome: "empty", reason: record.reason });
@@ -830,6 +1012,7 @@ async function run() {
     }
 
     // ── one request per candidate, bounded, no repeats after a rate limit
+    let domainVerdict = null;
     for (const [index, candidate] of candidates.entries()) {
       const provider = candidate.provider ?? spec.discovery;
       const nativeId = spec.discovery === "okx" ? candidate.instId : candidate.providerInstrumentId;
@@ -854,6 +1037,8 @@ async function run() {
         transportError: response.ok ? null : (response.appError ?? response.transportError ?? "request failed"),
       });
 
+      domainVerdict = mostSevereVerdict(domainVerdict, verdict);
+
       record.provider = provider;
       record.providerInstrumentId = nativeId;
       record.assetClass = spec.assetClass;
@@ -869,8 +1054,21 @@ async function run() {
         reason: verdict.reason,
       });
 
+      if (spec.discovery !== "okx") {
+        record.discovery = {
+          completeness: discovery.completeness ?? null,
+          pagesFetched: discovery.pagesFetched ?? null,
+          totalDiscovered: discovery.totalDiscovered ?? null,
+          catalogs: discovery.catalogs ?? [],
+          warnings: discovery.warnings ?? [],
+        };
+      }
+
       if (verdict.evidence) {
         const e = verdict.evidence;
+        record.failingLegs = (Array.isArray(e.diagnostics) ? e.diagnostics : [])
+          .filter((d) => d.acquired !== true && typeof d.reason === "string" && d.reason.length > 0)
+          .map((d) => `${d.provider}/${d.dataset ?? "?"}: ${d.reason}`);
         record.observedAt = e.market.observedAt;
         record.dataCompleteness = e.dataCompleteness;
         record.provider = e.market.provider ?? provider;
@@ -929,6 +1127,12 @@ async function run() {
       };
 
       if (verdict.headline === "PASS" || verdict.evidence?.market?.observedAt) break;
+    }
+
+    // The attempts keep every outcome; the headline reports the worst of them.
+    if (domainVerdict && record.headline !== "PASS") {
+      record.headline = domainVerdict.headline;
+      record.reason = domainVerdict.reason;
     }
 
     const level = record.headline === "PASS" ? "notice" : record.headline === "UNAVAILABLE" ? "warning" : "error";

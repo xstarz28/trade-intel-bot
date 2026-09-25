@@ -59,7 +59,22 @@ export interface LegDiagnostic {
   attached: boolean;
   /** The engine actually consumed it for this asset class / style. */
   usedByEngine: boolean;
+  /**
+   * Phase 288 — WHY a leg produced no evidence, verbatim from the leg's own
+   * classified outcome (provider class included: `[429] …`, `timeout (…)`,
+   * `no candle data returned`, a provider message, …), passed through
+   * {@link redactDiagnosticText} and length-bounded.
+   *
+   * A leg that answered never carries this field, and it is never composed
+   * here: the text is the failing leg's own report. Before this phase the
+   * reasons were computed by each leg and then dropped on the floor, so every
+   * surface could only say "unavailable" without saying why.
+   */
+  reason?: string;
 }
+
+/** Longest reason fragment kept in diagnostics; longer text is truncated. */
+export const LEG_REASON_MAX_CHARS = 400;
 
 export interface FanOutProvenance {
   legs: LegDiagnostic[];
@@ -77,6 +92,12 @@ export interface FanOutProvenance {
 
 /** Matches anything credential-shaped so it can never reach diagnostics. */
 const CREDENTIAL_PATTERNS: RegExp[] = [
+  // Phase 288 — key/value forms FIRST: the value is what must disappear.
+  // Masking only the key NAME (`apikey=VALUE` → `[redacted]=VALUE`) left the
+  // secret in the text, which stayed invisible while these strings were only
+  // console lines and became reachable as soon as they travel with a result.
+  /(?:(?:(?:api|access|auth)[-_\s]*key|[?&]key|token|secret|password|passwd|credential)s?\s*[=:]\s*)("[^"]*"|'[^']*'|\S+)/gi,
+  /(bearer\s+)\S+/gi,
   /api[-_]?key/i,
   /apikey=/i,
   /bearer\s+\S+/i,
@@ -190,6 +211,12 @@ export function legFromFailure(input: {
   instrument?: string;
   outcome: Pick<ProviderOutcome, "status" | "category">;
   usedAt?: number;
+  /**
+   * Phase 288 — the failing leg's own reason text. Recorded verbatim (after
+   * credential redaction and bounding) so an unavailable leg keeps its
+   * diagnosis instead of collapsing to a bare "unavailable".
+   */
+  reason?: string;
 }): LegDiagnostic {
   return buildLeg({
     provider: input.provider,
@@ -203,7 +230,22 @@ export function legFromFailure(input: {
     acquired: false,
     attached: false,
     usedByEngine: false,
+    reason: input.reason,
   });
+}
+
+/**
+ * Prepare a leg's own reason text for diagnostics: credential-redacted,
+ * whitespace-collapsed and length-bounded. Returns `undefined` for blank
+ * input so an empty string never becomes a claim of explanation.
+ */
+export function boundedLegReason(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
+  const collapsed = redactDiagnosticText(raw).replace(/\s+/g, " ").trim();
+  if (collapsed.length === 0) return undefined;
+  return collapsed.length > LEG_REASON_MAX_CHARS
+    ? `${collapsed.slice(0, LEG_REASON_MAX_CHARS - 1)}\u2026`
+    : collapsed;
 }
 
 function buildLeg(input: {
@@ -216,6 +258,7 @@ function buildLeg(input: {
   acquired: boolean;
   attached: boolean;
   usedByEngine: boolean;
+  reason?: string;
 }): LegDiagnostic {
   const p: AcquisitionProvenance = recordProvenance({
     provider: input.provider,
@@ -224,6 +267,7 @@ function buildLeg(input: {
     observedAt: input.observedAt,
     usedAt: input.usedAt,
   });
+  const reason = input.acquired ? undefined : boundedLegReason(input.reason);
 
   return {
     provider: p.provider,
@@ -240,6 +284,9 @@ function buildLeg(input: {
     // A leg cannot be attached or used unless it produced data.
     attached: input.acquired && input.attached,
     usedByEngine: input.acquired && input.attached && input.usedByEngine,
+    // Only an unanswered leg has a reason to carry: a leg that produced data
+    // is described by its data, and a stray reason string would blur that.
+    ...(reason !== undefined ? { reason } : {}),
   };
 }
 
@@ -269,8 +316,12 @@ export function formatLeg(leg: LegDiagnostic): string {
   if (leg.acquired) parts.push(leg.usedByEngine ? "used" : leg.attached ? "attached" : "acquired");
   const detail = parts.length > 0 ? `(${parts.join(", ")})` : "";
   const id = leg.instrument ? ` [${leg.instrument}]` : "";
+  // Phase 288 — an unavailable leg's own reason is part of the line. It is
+  // already redacted and bounded at construction; the final redaction stays
+  // as defence in depth for the provider/dataset/instrument fields.
+  const why = leg.reason !== undefined ? ` — ${leg.reason}` : "";
   return redactDiagnosticText(
-    `${leg.provider}/${leg.dataset}${id} = ${leg.mode}${detail}`,
+    `${leg.provider}/${leg.dataset}${id} = ${leg.mode}${detail}${why}`,
   );
 }
 

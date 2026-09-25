@@ -81,6 +81,10 @@ export type Candidate = {
   tradingState?: string;
 };
 
+/** Phase 288 — candidates per domain: default and hard ceiling. */
+export const DEFAULT_MAX_ATTEMPTS: number;
+export const MAX_CANDIDATE_ATTEMPTS: number;
+
 /** Provider-native candidates, provider order preserved, bounded by maxAttempts. */
 export function selectCandidates(
   domainSpec: DomainSpec,
@@ -88,16 +92,34 @@ export function selectCandidates(
   maxAttempts: number,
 ): Candidate[];
 
+/** One catalog's own fetch report, exactly as the provider adapter published it. */
+export type CatalogReport = {
+  path: string | null;
+  assetClass: string | null;
+  completeness: string | null;
+  pagesFetched: number | null;
+  totalDiscovered: number | null;
+  failedPage: number | null;
+};
+
 export type Discovery = {
   success: boolean;
   provider?: string;
   instruments: Candidate[];
   error: string | null;
   warnings?: string[];
+  /** Phase 288 — the adapter's per-catalog report; absent on OKX discovery. */
+  completeness?: string | null;
+  pagesFetched?: number | null;
+  totalDiscovered?: number | null;
+  catalogs?: CatalogReport[];
 };
 
 export function discoverOkx(transport: Transport): Promise<Discovery>;
 export function discoverTwelveData(transport: Transport, token: string | null): Promise<Discovery>;
+
+/** Why a discovery produced no candidate — built only from the provider's report. */
+export function discoveryDiagnosis(discovery: Discovery | null, assetClass: string): string | null;
 
 /** Routing fields only — the request can carry no client-supplied evidence. */
 export function buildAnalysisInput(
@@ -171,6 +193,15 @@ export type Evidence = {
       derivatives: { available: boolean; observedAt: number | null } | null;
     };
   };
+  diagnostics: {
+    provider: string | null;
+    dataset: string | null;
+    mode: string | null;
+    acquired: boolean;
+    attached: boolean;
+    usedByEngine: boolean;
+    reason: string | null;
+  }[];
   dataCompleteness: string | null;
   recommendation: string | null;
 };
@@ -185,6 +216,23 @@ export type ContextProvenance = {
 
 /** Verbatim read of the deployed runtime's own result. Absent stays null. */
 export function readResultEvidence(result: unknown): Evidence;
+
+/**
+ * Only the diagnostics are read, so a caller that has just those (a test, or a
+ * record reconstructed from the artifact) can use these helpers too.
+ */
+export type LegDiagnosticSource = { diagnostics?: Evidence["diagnostics"] } | null | undefined;
+
+/** The failing legs' own diagnoses as one bounded line, or null. */
+export function failingLegText(evidence: LegDiagnosticSource, limit?: number): string | null;
+/** Headline reason plus the failing legs' own diagnoses (bounded). */
+export function withFailingLegs(headline: string, evidence: LegDiagnosticSource): string;
+
+/** Most severe verdict of a domain's attempts (FAIL > UNAVAILABLE > PASS). */
+export function mostSevereVerdict(
+  current: { headline: "PASS" | "UNAVAILABLE" | "FAIL"; reason: string | null } | null,
+  candidate: { headline: "PASS" | "UNAVAILABLE" | "FAIL"; reason: string | null },
+): { headline: "PASS" | "UNAVAILABLE" | "FAIL"; reason: string | null };
 
 export type DomainVerdict = {
   headline: "PASS" | "UNAVAILABLE" | "FAIL";

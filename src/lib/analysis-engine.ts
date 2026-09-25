@@ -65,6 +65,7 @@ import { attachAdvancedTechnical, assessAdvancedEvidence } from "@/lib/data/adva
 // provider payload; no clock, no options). Informational section only: it
 // never overwrites technical values and never feeds the decision gates.
 import { assessFundamentals } from "@/lib/fundamental-engine";
+import type { FundamentalAssessment } from "@/lib/fundamental-engine";
 
 export type { AnalysisInput, AnalysisResult, BiasBreakdown, DirectionalBias, FactorScore, KeyLevels, MtfSummary };
 export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradePlan, HtfAlignment } from "@/types/analysis";
@@ -1953,7 +1954,68 @@ function generateTechnicalSummary(
   return parts.join(" ");
 }
 
-function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: FactorScore): string {
+/** The domain each routing instrument type is assessed in, or `undefined`. */
+const ASSESSED_DOMAIN_BY_TYPE: Record<string, FundamentalAssessment["domain"] | undefined> = {
+  stock: "equity",
+  crypto: "crypto",
+  forex: "forex",
+  commodity: "commodity",
+};
+
+/**
+ * Phase 288 — the domain-truth fundamental line for the summary.
+ *
+ * Returns `undefined` when the assessment cannot speak for the routed domain
+ * (no assessment at all, an equity domain whose metric lines are the summary's
+ * own read, or an assessment whose domain does not match the routing — another
+ * domain's read is never presented as this one's). Otherwise:
+ *
+ *  · no usable evidence → the domain's own disclosed limitations, verbatim and
+ *    bounded, in the order the adapter emitted them, so the reason a domain is
+ *    empty is that domain's reason;
+ *  · usable evidence → the domain's plain-language summary when it has one,
+ *    else a coverage line built only from the assessment's own counts.
+ */
+function domainFundamentalText(
+  assessment: FundamentalAssessment | undefined,
+  instrumentType: AnalysisInput["instrumentType"],
+): string | undefined {
+  if (!assessment) return undefined;
+  const routed = ASSESSED_DOMAIN_BY_TYPE[String(instrumentType)];
+  if (routed === undefined || assessment.domain !== routed) return undefined;
+
+  if (!assessment.available) {
+    const lines = assessment.limitations
+      .filter((l): l is string => typeof l === "string" && l.trim() !== "")
+      .slice(0, 3);
+    if (lines.length > 0) return lines.join(" ");
+    return `No usable ${assessment.domain} fundamental evidence was supplied — absent evidence is never estimated.`;
+  }
+
+  if (typeof assessment.summary === "string" && assessment.summary.trim() !== "") {
+    return assessment.summary;
+  }
+  const withEvidence = assessment.dimensions.filter((d) => d.status !== "unavailable").length;
+  return `${assessment.domain} fundamental assessment: ${withEvidence}/${assessment.dimensions.length} dimensions carry provider evidence (state ${assessment.state}, confidence ${assessment.confidence}).`;
+}
+
+/**
+ * Phase 288 — the fundamental text of the summary.
+ *
+ * `assessment` is the deterministic domain assessment the engine produced for
+ * this instrument (equity / crypto / forex / commodity). It is passed in so
+ * the summary can speak about the domain that was ACTUALLY assessed: for a
+ * non-equity domain the Alpha Vantage payload is a leg that does not apply by
+ * construction, and printing its "Traditional company fundamentals not
+ * applicable for <domain> assets" note in its place hid the domain's own
+ * reason (no tokenomics/protocol evidence; which macro categories the calendar
+ * and Treasury legs could not supply; no applicable physical inventory feed).
+ */
+function generateFundamentalSummary(
+  input: AnalysisInput,
+  fundamentalScore: FactorScore,
+  assessment?: FundamentalAssessment,
+): string {
   const parts: string[] = [];
   const macro = input.macroData;
   const fund = input.fundamentalData;
@@ -1977,11 +2039,28 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   }
 
   // Honest unavailability notes for asset classes without real providers.
+  // Phase 288 — these notes are DATA-DERIVED, not symbol-guessed. The group
+  // comes from the same commodity classification the domain adapter used
+  // (`commodityProfile` on the assessment), and each context claim is decided
+  // by whether the provider context actually answered. The previous text was
+  // symbol-regex based and had drifted into two false statements: it told the
+  // reader no yields provider was integrated (the Treasury curve IS read as
+  // the real-yield channel) and, for every commodity outside three ticker
+  // patterns, that no inventory provider was integrated (the EIA feed is
+  // integrated — it is simply petroleum, so it does not cover them).
   if (input.instrumentType === "commodity") {
-    const sym = input.instrument.toUpperCase();
-    if (/XAU|XAG|GOLD|SILVER/.test(sym)) {
-      parts.push("Real-yield context UNAVAILABLE — no yields provider integrated; gold fundamentals use news/calendar/USD-proxy context only.");
-    } else if (/WTI|CRUDE|BRENT|OIL/.test(sym)) {
+    const group = assessment?.commodityProfile?.group;
+    const treasuryAvailable = input.treasuryData?.available === true;
+    if (group !== "energy") {
+      parts.push(
+        treasuryAvailable
+          ? "Macro-driver context: ACTUAL US Treasury curve in use (real-yield / discount-rate channel, supporting evidence only)."
+          : "Macro-driver context UNAVAILABLE — the Treasury leg returned no curve, so no real-yield or discount-rate reading is made.",
+      );
+      parts.push(
+        "Inventory: no configured feed covers this commodity's physical market — the only configured inventory source is the U.S. EIA weekly petroleum report, so inventory is never approximated from price or volume.",
+      );
+    } else {
       const eiaCtx = input.eiaData;
       if (eiaCtx?.available) {
         const crude = eiaCtx.series.find((x) => x.productId === "EPC0");
@@ -1993,10 +2072,14 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
       } else {
         parts.push("Supply/inventory data UNAVAILABLE — no EIA data; commodity fundamentals use news-derived context only.");
       }
-    } else {
-      parts.push("Supply/inventory data UNAVAILABLE — no inventory provider integrated; commodity fundamentals use news-derived context only.");
     }
   }
+
+  // Phase 288 — the domain's own read, when the routed domain is not equity.
+  // `undefined` means the domain's own text is unavailable and the previous
+  // behaviour applies unchanged (the equity payload IS the domain payload for
+  // `stock`, so its note is kept verbatim there).
+  const domainFundamentalLine = domainFundamentalText(assessment, input.instrumentType);
 
   if (fund && fund.available && input.instrumentType === "stock") {
     parts.push(`Fundamentals — ${fund.name || fund.symbol}:`);
@@ -2006,6 +2089,9 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     if (fund.marketCap !== undefined) parts.push(`Mkt Cap: $${(fund.marketCap / 1e9).toFixed(1)}B`);
     if (fund.sector) parts.push(`Sector: ${fund.sector} (sector-relative strength UNAVAILABLE — no benchmark provider)`);
     if (fund.latestEarnings?.date) parts.push(`Latest earnings: ${fund.latestEarnings.date}`);
+  } else if (domainFundamentalLine !== undefined) {
+    // A routed domain that is not equity: the assessment's own disclosure.
+    parts.push(domainFundamentalLine);
   } else if (fund && !fund.available && fund.unavailableReason) {
     parts.push(fund.unavailableReason);
   }
@@ -2305,8 +2391,6 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     alignment,
     mtf,
   );
-  const fundamentalSummary = generateFundamentalSummary(input, fundamentalScore);
-
   // Phase 276/279 — deterministic fundamental assessment, computed from the
   // provider payloads only (no clock). The DOMAIN follows the routing
   // instrumentType, so a crypto instrument is assessed with crypto-native
@@ -2337,6 +2421,16 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     eia: input.eiaData,
     macro: input.macroData,
   });
+
+  // Phase 288 — the summary is generated WITH the assessment so its
+  // fundamental line describes the domain that was actually assessed
+  // instead of an unrelated leg's not-applicable note.
+  const fundamentalSummary = generateFundamentalSummary(
+    input,
+    fundamentalScore,
+    fundamentalAssessment,
+  );
+
 
   // ── Phase 3B/4: position sizing — ONLY from complete real inputs ──
   // Never fabricated. Spec resolution is honest-partial: quote currency may

@@ -13,7 +13,11 @@ import type {
   CalendarResult,
   EventImportance,
 } from "../lib/data/calendar-types";
-import { getRelevantCurrencies, calculateMacroRisk } from "../lib/data/calendar-types";
+import {
+  getRelevantCurrencies,
+  calculateMacroRisk,
+  calendarCoverageGapReason,
+} from "../lib/data/calendar-types";
 
 // ── Phase 178b — authoritative provider cache ───────────────────
 // Replaces this module's private Map cache so calendar evidence shares one
@@ -340,9 +344,16 @@ export const fetchCalendar = action({
         },
       );
       if (!evidence) {
+        // Phase 288 — the fetcher's only `null` path is the empty
+        // relevant-currency guard (an absent currency mapping is not
+        // evidence, so no request is formed and nothing is cached). Saying
+        // "the provider returned no data" there blames the provider for a
+        // request this platform never sent, and reads as an all-clear that was
+        // never assessed. The coverage gap is named for what it is.
+        const gap = calendarCoverageGapReason(args.instrument, args.instrumentType);
         return {
           success: false,
-          error: "Calendar provider returned no data.",
+          error: gap ?? "Calendar provider returned no data.",
           errorCode: "NO_DATA",
         };
       }

@@ -215,6 +215,7 @@ commit a value.
 | CoinGlass | `COINGLASS_API_KEY` | derivatives/funding only | implemented | **NOT VERIFIED** |
 | TickAtlas | `TICKATLAS_API_KEY` | economic calendar | implemented | **NOT VERIFIED** |
 | EIA | `EIA_API_KEY` | energy macro | implemented | **NOT VERIFIED** |
+| Tokenomist | `TOKENOMIST_API_KEY` | crypto tokenomics (unlocks, supply) | implemented | **NOT VERIFIED** |
 | OKX | *(none)* | public endpoints only | implemented | **NOT VERIFIED** |
 | Treasury / CFTC (COT) | *(none)* | public endpoints | implemented | **NOT VERIFIED** |
 
