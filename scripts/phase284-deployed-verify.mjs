@@ -584,6 +584,27 @@ async function runConvexRunMode() {
   );
 
   // ── The four assets, through the deployed production action ───────
+  // Which integration does the DEPLOYED build actually carry? Field NAMES only.
+  const inventoryProbe = convexRun(
+    "protectedAnalysis:runProtectedAnalysis",
+    {
+      input: {
+        instrument: "BTC-USDT",
+        instrumentType: "crypto",
+        timeframe: "M15",
+        tradingStyle: "swing",
+        provider: "okx",
+        providerInstrumentId: "BTC-USDT",
+      },
+    },
+    identity,
+  );
+  const deployedKeys = inventoryProbe.value?.result ? Object.keys(inventoryProbe.value.result).sort() : [];
+  lines.push(
+    `deployed result field inventory (${deployedKeys.length}): ${deployedKeys.join(", ")}` +
+      ` | unified=${String(deployedKeys.includes("unifiedIntelligence"))} fundamentalAssessment=${String(deployedKeys.includes("fundamentalAssessment"))} priceSnapshot=${String(deployedKeys.includes("priceSnapshot"))}`,
+  );
+
   for (const spec of ASSETS) {
     const call = convexRun(
       "protectedAnalysis:runProtectedAnalysis",
@@ -632,6 +653,34 @@ async function runConvexRunMode() {
       { ok: attempt.ok, httpStatus: 200, appError: attempt.appError, value: attempt.value, transportError: null },
     );
     lines.push(`${spec.asset} ${spec.instrument}: ${JSON.stringify(record)}`);
+  }
+
+  // One annotation PER ASSET: annotation messages are length-limited, so the
+  // compact per-asset record is the only shape that survives intact.
+  for (const record of records) {
+    const compact = {
+      asset: record.asset,
+      instrument: record.instrument,
+      provider: record.requestedProvider,
+      providerInstrumentId: record.providerInstrumentId,
+      requestSuccess: record.request.success,
+      appStatus: record.request.appStatus,
+      providerObservationTimestamp: record.providerObservationTimestamp,
+      freshness: record.marketDataFreshness,
+      liveMarketData: record.liveMarketData,
+      recommendation: record.recommendation,
+      dataCompleteness: record.dataCompleteness,
+      technicalState: record.technicalState,
+      fundamental: record.fundamental,
+      unifiedState: record.unifiedState,
+      agreement: record.agreement,
+      actionability: record.actionability,
+      entitlement: record.entitlement,
+      radarState: record.radarState,
+      classification: record.classification,
+      failure: record.request.error ? String(record.request.error).slice(0, 220) : null,
+    };
+    annotate(`Phase 284 deployed asset — ${record.asset}`, JSON.stringify(compact));
   }
 
   const table = lines.filter((l) => l.includes(": {"));
