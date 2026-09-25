@@ -41,8 +41,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Branch, tag or SHA to run the smoke from (defaults to the dispatched ref)"
-        required: false
+        description: "Branch, tag or SHA to run the smoke from (for example: arena/01a0d195-trade-intel-bot)"
+        required: true
         type: string
       domains:
         description: "Comma-separated asset classes (default: crypto,forex,stock,commodity)"
@@ -72,10 +72,28 @@ jobs:
       XSTARZ_SMOKE_DOMAINS: ${{ inputs.domains }}
       XSTARZ_SMOKE_MAX_ATTEMPTS: ${{ inputs.max_attempts }}
     steps:
+      - name: Normalize the selected ref
+        id: source-ref
+        shell: bash
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+        run: |
+          ref="${INPUT_REF}"
+          ref="${ref#ref:}"
+          ref="${ref#branch:}"
+          ref="$(printf "%s" "$ref" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          ref="${ref#refs/heads/}"
+          if [ -z "$ref" ]; then
+            echo "::error title=Missing source ref::The smoke source ref is required. Enter only the branch/tag/SHA, e.g. arena/01a0d195-trade-intel-bot."
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+          echo "selected source ref: $ref"
+
       - name: Check out the selected ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ steps.source-ref.outputs.ref }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
