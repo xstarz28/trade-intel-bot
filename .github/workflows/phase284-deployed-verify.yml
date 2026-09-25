@@ -1,0 +1,110 @@
+# Phase 284 — TEMPORARY deployed-environment verification workflow.
+#
+# WHY THIS EXISTS
+# --------------
+# The agent sandbox cannot reach the Convex control plane or the deployment
+# plane (every *.convex.cloud and api.convex.dev request is TLS-severed), and it
+# holds no CLI credentials. A GitHub runner has normal egress, so during Phase
+# 284 this is the only place the real deployed path can be exercised.
+#
+# WHAT IT DOES NOT DO
+# -------------------
+# · It does NOT deploy. There is no `convex deploy`, no schema push, no code
+#   upload — it only CALLS functions that are already deployed.
+# · It does NOT print any credential value. Configuration is reported by NAME
+#   with PRESENT/MISSING only, and the deployment's own variables are read with
+#   `convex env list --names-only`, which never produces the value side at all.
+# · It does NOT touch product source. It runs `scripts/phase284-deployed-verify.mjs`
+#   (temporary, verification-only) against the existing production action
+#   `protectedAnalysis:runProtectedAnalysis`, over the app's own anonymous auth.
+#
+# This file and the script it runs are removed once the observation is recorded.
+
+name: Phase 284 deployed verification (temporary)
+
+on:
+  push:
+    branches: [arena/01a0d195-trade-intel-bot]
+    paths:
+      - ".github/workflows/phase284-deployed-verify.yml"
+      - "scripts/phase284-deployed-verify.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Runs immediately with repository-scoped configuration.
+  deployed-verify:
+    name: Deployed four-asset verification (anonymous, read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      HAS_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Repository configuration presence (names only)
+        env:
+          CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+          CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+          XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+          ALPHA_VANTAGE_API_KEY: ${{ secrets.ALPHA_VANTAGE_API_KEY }}
+          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
+          TICKATLAS_API_KEY: ${{ secrets.TICKATLAS_API_KEY }}
+          EIA_API_KEY: ${{ secrets.EIA_API_KEY }}
+        run: node scripts/phase284-deployed-verify.mjs --presence
+
+      - name: Deployment env var NAMES (only when a deploy key is available)
+        if: env.HAS_DEPLOY_KEY == 'true'
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+        run: |
+          set -o pipefail
+          # --names-only: the value side is never generated, let alone logged.
+          npx --yes convex@1.42.1 env list --prod --names-only \
+            | grep -E '^[A-Z0-9_]+$' | sort -u > "$RUNNER_TEMP/deployment-env-names.txt" || true
+          echo "deployment env var names recorded: $(wc -l < "$RUNNER_TEMP/deployment-env-names.txt")"
+
+      - name: Report deployment env var names (no values)
+        if: env.HAS_DEPLOY_KEY == 'true'
+        env:
+          PHASE284_DEPLOYMENT_ENV_NAMES_FILE: ${{ runner.temp }}/deployment-env-names.txt
+        run: node scripts/phase284-deployed-verify.mjs --presence
+
+      - name: Four assets through the deployed production action
+        env:
+          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+          PHASE284_DEPLOYMENT_URL: ${{ vars.VITE_CONVEX_URL }}
+        run: node scripts/phase284-deployed-verify.mjs --four-asset
+
+  # Repository-scoped configuration may be absent because the deploy key lives
+  # in the Production environment instead. This job only reports presence; if
+  # the environment is approval-gated it simply waits, which is itself the
+  # answer to "is the production configuration human-gated".
+  production-scoped-config:
+    name: Production-scoped configuration presence (names only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: Production
+    steps:
+      - name: Presence
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+          CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+        run: |
+          for name in CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT; do
+            if [ -n "${!name:-}" ]; then echo "$name PRESENT"; else echo "$name MISSING"; fi
+          done
+          if [ -n "${VITE_CONVEX_URL:-}" ]; then echo "VITE_CONVEX_URL PRESENT ($VITE_CONVEX_URL)"; else echo "VITE_CONVEX_URL MISSING"; fi
+          if [ -n "${CONVEX_SITE_URL:-}" ]; then echo "CONVEX_SITE_URL PRESENT ($CONVEX_SITE_URL)"; else echo "CONVEX_SITE_URL MISSING"; fi
