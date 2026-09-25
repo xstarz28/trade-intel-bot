@@ -38,6 +38,14 @@ export interface EiaSeriesPoint {
   change?: number;
   changePercent?: number;
   unit?: string;
+  /**
+   * Phase 280 — the OLDER observations of this same provider series (newest
+   * first, excluding the latest two, which already have their own fields).
+   * Only ever populated from rows the provider actually returned: a short
+   * window stays short, and nothing is interpolated, back-filled or defaulted.
+   * This is what makes a multi-week trend / baseline read possible.
+   */
+  recentWeeks?: { period: string; value: number }[];
 }
 
 export interface EiaContext {
@@ -93,6 +101,32 @@ export const EIA_DELAYED_DAYS = 18;
 export const EIA_SIGNAL_MIN_MBBL = 0.5;
 export const EIA_SIGNAL_THRESHOLD_PCT = 0.25; // % of stock level
 export const EIA_FULL_EFFECT_PCT = 2.0; // % of stock level
+
+/**
+ * Phase 280 — how much OBSERVATION HISTORY the framework will carry per series.
+ * Bounded for payload size; the acquisition requests a 12-week window, so the
+ * latest two weeks plus up to 10 older ones are preserved. More history is
+ * never required to read the latest release, it only enables trend/baseline.
+ */
+export const EIA_MAX_RECENT_WEEKS = 10;
+
+/**
+ * Phase 280 — a multi-week TREND needs at least four weekly observations, and
+ * the four-week change must clear the same documented materiality policy the
+ * weekly signal uses (percent of the stock level). Fewer observations or a
+ * smaller move → "stable"/"insufficient", never an inferred direction.
+ */
+export const EIA_TREND_MIN_WEEKS = 4;
+
+/** A baseline read needs at least this many older observations. */
+export const EIA_BASELINE_MIN_PERIODS = 3;
+
+/**
+ * Materiality for the multi-week trend and the baseline deviation. Pinned to
+ * the SAME documented policy percentage the weekly signal uses — a second,
+ * invented band would make one release mean two different things.
+ */
+export const EIA_TREND_MATERIAL_PCT = EIA_SIGNAL_THRESHOLD_PCT;
 
 /** Internal breakdown weights within the single EIA layer (documented). */
 const LEG_WEIGHTS: Record<string, number> = {
@@ -238,6 +272,12 @@ export function buildEiaContext(legs: EiaLegInput[], fetchedAt: number, nowMs: n
         point.changePercent = (point.change / previous.value) * 100;
       }
     }
+    // Phase 280 — preserve the provider's own older rows (bounded) so the
+    // trend/baseline reads are derived from real observations only.
+    const older = p.observations.slice(2, 2 + EIA_MAX_RECENT_WEEKS);
+    if (older.length > 0) {
+      point.recentWeeks = older.map((o) => ({ period: o.period, value: o.value }));
+    }
     series.push(point);
   }
 
@@ -251,6 +291,176 @@ export function buildEiaContext(legs: EiaLegInput[], fetchedAt: number, nowMs: n
 
   const freshness = classifyEiaFreshness(series[0].observationDate, nowMs);
   return { available: true, source: "U.S. Energy Information Administration (Weekly Petroleum Status Report)", fetchedAt, freshness, series, failedLegs };
+}
+
+// ── Phase 280 inventory regime derivations ─────────────────────────
+
+/** Documented per-leg weight, exported so the regime read uses ONE policy. */
+export function eiaLegWeight(productId: string): number {
+  return LEG_WEIGHTS[productId] ?? 0.2;
+}
+
+export interface EiaInventoryTrend {
+  direction: "declining" | "rising" | "stable" | "insufficient";
+  /** Weekly observations actually used (latest first). */
+  weeks: number;
+  change?: number;
+  changePercent?: number;
+  /** Exact reason / basis — always stated, never implied. */
+  basis: string;
+}
+
+/**
+ * Multi-week trend of ONE provider series. Compares the latest observation
+ * with the value EIA_TREND_MIN_WEEKS − 1 weeks earlier and requires the same
+ * documented materiality band as the weekly signal. Below the band, or with
+ * fewer observations than the policy minimum, the trend is "stable" /
+ * "insufficient" — a direction is never inferred from a 1–2 week series.
+ */
+export function inventoryTrend(point: EiaSeriesPoint): EiaInventoryTrend {
+  const values = [
+    point.latestValue,
+    ...(point.previousValue !== undefined ? [point.previousValue] : []),
+    ...(point.recentWeeks ?? []).map((w) => w.value),
+  ];
+  const periods = [
+    point.observationDate,
+    ...(point.previousObservationDate !== undefined ? [point.previousObservationDate] : []),
+    ...(point.recentWeeks ?? []).map((w) => w.period),
+  ];
+  if (values.length < EIA_TREND_MIN_WEEKS) {
+    return {
+      direction: "insufficient",
+      weeks: values.length,
+      basis: `${values.length} weekly observation(s) supplied; a ${EIA_TREND_MIN_WEEKS}-observation trend is not derivable from the configured request — no direction is inferred`,
+    };
+  }
+  const backIndex = EIA_TREND_MIN_WEEKS - 1;
+  const reference = values[backIndex];
+  const referencePeriod = periods[backIndex];
+  const change = point.latestValue - reference;
+  const pct = reference !== 0 ? (change / Math.abs(reference)) * 100 : undefined;
+  const material = pct !== undefined && Math.abs(pct) >= EIA_TREND_MATERIAL_PCT;
+  const direction: EiaInventoryTrend["direction"] = !material
+    ? "stable"
+    : change < 0
+      ? "declining"
+      : "rising";
+  return {
+    direction,
+    weeks: EIA_TREND_MIN_WEEKS,
+    change,
+    ...(pct !== undefined ? { changePercent: pct } : {}),
+    basis: material
+      ? `${EIA_TREND_MIN_WEEKS}-observation change ${change >= 0 ? "+" : ""}${change.toFixed(2)} ${point.unit ?? ""} (${pct!.toFixed(2)}%) from ${referencePeriod} to ${point.observationDate} — a ${EIA_TREND_MIN_WEEKS - 1}-week span`
+      : `${EIA_TREND_MIN_WEEKS}-observation change ${pct !== undefined ? `${pct.toFixed(2)}%` : "not computable"} is inside the documented noise band (±${EIA_TREND_MATERIAL_PCT}%)`,
+  };
+}
+
+export interface EiaBaselinePosition {
+  position: "below" | "above" | "at" | "insufficient";
+  /** Older observations used for the baseline mean. */
+  periods: number;
+  deviationPercent?: number;
+  basis: string;
+}
+
+/**
+ * Where the latest observation sits versus the mean of the EARLIER provider
+ * observations — the "below recent baseline" read. Requires
+ * EIA_BASELINE_MIN_PERIODS older observations and the same documented
+ * materiality band; otherwise "insufficient"/"at".
+ */
+export function baselinePosition(point: EiaSeriesPoint): EiaBaselinePosition {
+  const older = [
+    ...(point.previousValue !== undefined ? [point.previousValue] : []),
+    ...(point.recentWeeks ?? []).map((w) => w.value),
+  ];
+  if (older.length < EIA_BASELINE_MIN_PERIODS) {
+    return {
+      position: "insufficient",
+      periods: older.length,
+      basis: `${older.length} older observation(s) supplied; a baseline needs at least ${EIA_BASELINE_MIN_PERIODS} — no baseline deviation is claimed`,
+    };
+  }
+  const mean = older.reduce((a, b) => a + b, 0) / older.length;
+  if (mean === 0) {
+    return { position: "insufficient", periods: older.length, basis: "baseline mean is zero — no percentage deviation is computable" };
+  }
+  const deviation = ((point.latestValue - mean) / Math.abs(mean)) * 100;
+  const position: EiaBaselinePosition["position"] =
+    Math.abs(deviation) < EIA_TREND_MATERIAL_PCT ? "at" : deviation < 0 ? "below" : "above";
+  return {
+    position,
+    periods: older.length,
+    deviationPercent: deviation,
+    basis: `${Math.abs(deviation).toFixed(2)}% ${deviation < 0 ? "below" : "above"} the mean of the previous ${older.length} weekly observations`,
+  };
+}
+
+export interface EiaPhysicalRegime {
+  regime: "tightening" | "balanced" | "loosening" | "insufficient";
+  draws: number;
+  builds: number;
+  neutral: number;
+  /** Weighted net weekly stock change across the legs that signalled. */
+  netChange?: number;
+  basis: string;
+}
+
+/**
+ * DERIVED (never reported) physical-market regime for the ONE WPSR release:
+ * the weighted, breadth-checked direction of the week-over-week stock changes
+ * across the product legs, using the module's own leg weights and signal
+ * thresholds. This is an INTERPRETATION of provider stock changes, not a
+ * provider-reported supply/demand balance, and it is the same release the
+ * conviction engine's EIA Inventory layer scores for the decision path.
+ */
+export function derivePhysicalRegime(series: EiaSeriesPoint[]): EiaPhysicalRegime {
+  let draws = 0;
+  let builds = 0;
+  let neutral = 0;
+  let weighted = 0;
+  let weightSum = 0;
+  for (const point of series) {
+    const signal = legSignal(point);
+    if (signal.direction === 0) {
+      neutral += 1;
+      continue;
+    }
+    if (signal.direction > 0) draws += 1;
+    else builds += 1;
+    const w = eiaLegWeight(point.productId);
+    weighted += signal.direction * signal.magnitude * w;
+    weightSum += w;
+  }
+  const net = weightSum > 0 ? weighted / weightSum : undefined;
+  if (draws === 0 && builds === 0) {
+    return {
+      regime: "insufficient",
+      draws,
+      builds,
+      neutral,
+      basis: "no product leg carried a change beyond the documented signal thresholds — availability alone is not a tightening/loosening read",
+    };
+  }
+  const regime: EiaPhysicalRegime["regime"] =
+    draws > 0 && builds > 0
+      ? "balanced" // conflicting legs — never averaged into a one-sided read
+      : draws > 0
+        ? "tightening"
+        : "loosening";
+  return {
+    regime,
+    draws,
+    builds,
+    neutral,
+    ...(net !== undefined ? { netChange: net } : {}),
+    basis:
+      regime === "balanced"
+        ? `product legs disagree (${draws} draw / ${builds} build / ${neutral} neutral) — no net physical direction is claimed`
+        : `${draws > 0 ? draws : builds} leg(s) ${draws > 0 ? "drew" : "built"} beyond the documented thresholds (${neutral} neutral), weighted net ${net !== undefined ? net.toFixed(2) : "n/a"}`,
+  };
 }
 
 // ── Evidence derivation ────────────────────────────────────────────

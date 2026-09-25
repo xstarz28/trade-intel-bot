@@ -5,12 +5,22 @@
  *   GET https://api.eia.gov/v2/petroleum/sto/data/
  *     ?api_key=…&frequency=weekly&data[]=value
  *     &facets[product][]=<PRODUCT>&facets[process][]=STA
- *     &facets[area][]=NUS-Z00&sort[0][column]=period&sort[0][direction]=desc&length=2
+ *     &facets[area][]=NUS-Z00&sort[0][column]=period&sort[0][direction]=desc
+ *     &length=<HISTORY_WEEKS>
  *
  * Three independent product legs (crude EPC0 / gasoline EPM0 / distillate
  * EPD0). A failing leg never corrupts the others; a wrong facet code simply
  * fails its leg with an explicit reason. Parsing/derivation uses the SHARED
  * pure module (src/lib/data/eia.ts) — no duplicate logic.
+ *
+ * Phase 280 — the request now asks for a 12-week window instead of 2 rows.
+ * The latest two observations still drive the week-over-week release read
+ * (unchanged), while the older rows let the fundamental layer derive a
+ * multi-week trend regime and a recent-baseline deviation from REAL provider
+ * observations. No extra request is spent: the same legs return the window.
+ * This route supplies STOCK series only — production / imports / exports /
+ * refinery utilisation are a different EIA dataset and are therefore reported
+ * unavailable by the fundamental layer rather than approximated from stocks.
  *
  * The API key is read from process.env.EIA_API_KEY and NEVER hardcoded.
  * Without a key this returns an explicit unavailable state — no placeholder,
@@ -51,6 +61,8 @@ import {
 
 const BASE = "https://api.eia.gov/v2/petroleum/sto/data/";
 const PRODUCT_IDS = ["EPC0", "EPM0", "EPD0"] as const;
+/** Phase 280 — weekly observations requested per leg (2 release rows + history). */
+const HISTORY_WEEKS = 12;
 
 type ParsedEia = ReturnType<typeof parseEiaResponse>;
 type EiaLeg = { ok: boolean; requestedProductId: string; parsed?: ParsedEia; reason?: string };
@@ -77,7 +89,7 @@ async function fetchProductLegRaw(productId: string, apiKey: string): Promise<Pa
     `&frequency=weekly&data%5B0%5D=value` +
     `&facets%5Bproduct%5D%5B%5D=${encodeURIComponent(productId)}` +
     `&facets%5Bprocess%5D%5B%5D=STA&facets%5Barea%5D%5B%5D=NUS-Z00` +
-    `&sort%5B0%5D%5Bcolumn%5D=period&sort%5B0%5D%5Bdirection%5D=desc&length=2`;
+    `&sort%5B0%5D%5Bcolumn%5D=period&sort%5B0%5D%5Bdirection%5D=desc&length=${HISTORY_WEEKS}`;
   const res = await fetch(url, {
     headers: { Accept: "application/json" },
     // Phase 177 — HTTP deadline; three legs share the 10s eia budget.

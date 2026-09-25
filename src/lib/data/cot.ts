@@ -57,6 +57,13 @@ export interface CotContext {
   previous?: CotReport;
   netNonCommercial: number; // latest: nonCommercialLong − nonCommercialShort
   changeFromPreviousReport?: number; // net vs previous net; absent if no previous
+  /**
+   * Phase 280 — the provider's own OLDER weekly reports for this contract
+   * (ascending by report date, bounded by COT_MAX_HISTORY, excluding the two
+   * release rows). Real rows only: a short series stays short. This is what
+   * enables a percentile / extreme-positioning read.
+   */
+  history?: CotReport[];
 }
 
 export interface CotUnavailable {
@@ -100,6 +107,19 @@ export const COT_SIGNAL_CHANGE_OI_RATIO = 0.005;
 export const COT_FULL_EFFECT_OI_RATIO = 0.05;
 /** |net|/OI at which positioning is flagged as crowded (context only). */
 export const COT_CROWDING_OI_RATIO = 0.4;
+
+/** Phase 280 — newest-first cap on the history carried on the context. */
+export const COT_MAX_HISTORY = 52;
+
+/**
+ * A percentile reading needs a real distribution: at least six months of
+ * weekly reports. Below that the read is "insufficient" — never extrapolated
+ * from two rows.
+ */
+export const COT_PERCENTILE_MIN_REPORTS = 26;
+
+/** Net/OI percentile at which positioning counts as an extreme (context only). */
+export const COT_EXTREME_PERCENTILE = 0.9;
 
 // ── Instrument mapping (each name verified against the live dataset) ──
 
@@ -208,6 +228,8 @@ export function buildCotContext(
     };
   }
   const previous = reports.length > 1 ? reports[reports.length - 2] : undefined;
+  const older = reports.slice(0, Math.max(0, reports.length - 2));
+  const history = older.slice(-COT_MAX_HISTORY);
   const netNonCommercial = latest.nonCommercialLong - latest.nonCommercialShort;
   return {
     available: true,
@@ -221,6 +243,157 @@ export function buildCotContext(
     ...(previous ? { previous } : {}),
     netNonCommercial,
     ...(previous ? { changeFromPreviousReport: netNonCommercial - (previous.nonCommercialLong - previous.nonCommercialShort) } : {}),
+    ...(history.length > 0 ? { history } : {}),
+  };
+}
+
+// ── Phase 280 positioning classification ───────────────────────────
+
+/**
+ * Deterministic classification of ONE contract's positioning from the
+ * provider's own reports. `supportive` / `opposing` describe the DIRECTION of
+ * the report-to-report non-commercial change (scaled by open interest, using
+ * this module's documented thresholds); `crowded`, `contradictory` and the
+ * percentile are CONTEXT — an extreme is never turned into a bullish or
+ * bearish call by itself.
+ */
+export type CotPositioningLabel =
+  | "supportive"
+  | "opposing"
+  | "neutral"
+  | "crowded"
+  | "contradictory"
+  | "insufficient";
+
+export interface CotPositioningRead {
+  label: CotPositioningLabel;
+  /** Net change scaled by open interest (undefined without two reports). */
+  changeRatio?: number;
+  /** |net| / open interest on the latest report. */
+  crowdRatio?: number;
+  crowded: boolean;
+  /** Non-commercial change and commercial change moved opposite ways. */
+  contradictory: boolean;
+  /** Rank of |net|/OI inside the provider's own history (0..1). */
+  percentile?: number;
+  /** Which tail the percentile sits in, when it is extreme. */
+  extreme?: "long" | "short";
+  commercialNet?: number;
+  commercialNetChange?: number;
+  historyReports: number;
+  basis: string;
+}
+
+export function classifyCotPositioning(ctx: CotContext): CotPositioningRead {
+  const oi = ctx.latest.openInterest;
+  const crowdRatio = oi !== undefined && oi > 0 ? Math.abs(ctx.netNonCommercial) / oi : undefined;
+  const crowded = crowdRatio !== undefined && crowdRatio >= COT_CROWDING_OI_RATIO;
+  const latest = ctx.latest;
+  const previous = ctx.previous;
+  const commercialNet =
+    latest.commercialLong !== undefined && latest.commercialShort !== undefined
+      ? latest.commercialLong - latest.commercialShort
+      : undefined;
+  const commercialNetChange =
+    commercialNet !== undefined && previous?.commercialLong !== undefined && previous?.commercialShort !== undefined
+      ? commercialNet - (previous.commercialLong - previous.commercialShort)
+      : undefined;
+
+  // Percentile of the LATEST net/OI inside the provider's own history (the
+  // history reports plus the two release rows — all real observations).
+  const ratioSeries: number[] = [];
+  const push = (r: CotReport) => {
+    const rowOi = r.openInterest;
+    if (rowOi !== undefined && rowOi > 0) {
+      ratioSeries.push((r.nonCommercialLong - r.nonCommercialShort) / rowOi);
+    }
+  };
+  if (previous) push(previous);
+  for (const r of ctx.history ?? []) push(r);
+  const historyReports = ratioSeries.length;
+  let percentile: number | undefined;
+  let extreme: "long" | "short" | undefined;
+  if (ratioSeries.length >= COT_PERCENTILE_MIN_REPORTS && crowdRatio !== undefined) {
+    const latestRatio = ctx.netNonCommercial / (oi as number);
+    const below = ratioSeries.filter((v) => v < latestRatio).length;
+    const equal = ratioSeries.filter((v) => v === latestRatio).length;
+    percentile = (below + equal / 2) / ratioSeries.length;
+    if (percentile >= COT_EXTREME_PERCENTILE) extreme = "long";
+    else if (percentile <= 1 - COT_EXTREME_PERCENTILE) extreme = "short";
+  }
+
+  const oiRef = oi ?? previous?.openInterest;
+  const changeRatio =
+    ctx.changeFromPreviousReport !== undefined && oiRef !== undefined && oiRef > 0
+      ? ctx.changeFromPreviousReport / oiRef
+      : undefined;
+
+  const contradictory =
+    commercialNetChange !== undefined &&
+    ctx.changeFromPreviousReport !== undefined &&
+    Math.sign(commercialNetChange) !== 0 &&
+    Math.sign(ctx.changeFromPreviousReport) !== 0 &&
+    Math.sign(commercialNetChange) !== Math.sign(ctx.changeFromPreviousReport) &&
+    Math.abs(commercialNetChange) / (oiRef && oiRef > 0 ? oiRef : 1) >= COT_SIGNAL_CHANGE_OI_RATIO;
+
+  const bits: string[] = [];
+  if (historyReports > 0) bits.push(`${historyReports} older provider report(s) available`);
+  else bits.push("no older provider reports available — percentile context not derivable");
+  if (percentile !== undefined) bits.push(`net/OI percentile ${(percentile * 100).toFixed(0)}% of that history`);
+  else bits.push(`fewer than ${COT_PERCENTILE_MIN_REPORTS} usable history reports — percentile insufficient`);
+
+  let label: CotPositioningLabel;
+  if (changeRatio === undefined) {
+    label = "insufficient";
+    bits.push("only one usable report — no report-to-report change exists");
+  } else if (contradictory) {
+    // The two sides of the report disagree beyond the documented thresholds:
+    // the change direction is real but contested, so it is NOT promoted into a
+    // supportive/opposing label.
+    label = "contradictory";
+    bits.push("non-commercial and commercial positioning moved in opposite directions beyond the signal threshold");
+  } else if (Math.abs(changeRatio) >= COT_SIGNAL_CHANGE_OI_RATIO) {
+    label = changeRatio > 0 ? "supportive" : "opposing";
+    bits.push(
+      `non-commercial net ${changeRatio > 0 ? "increased" : "decreased"} by ${(Math.abs(changeRatio) * 100).toFixed(
+        1,
+      )}% of open interest vs the previous report`,
+    );
+    if (crowded) {
+      bits.push(
+        `crowding: non-commercial net equals ${((crowdRatio as number) * 100).toFixed(
+          1,
+        )}% of open interest — CONTEXT (continuation fuel or contrarian risk), never a direction`,
+      );
+    }
+  } else if (crowded) {
+    label = "crowded";
+    bits.push(
+      `non-commercial net equals ${((crowdRatio as number) * 100).toFixed(
+        1,
+      )}% of open interest while the report-to-report change is inside the noise band — crowded positioning is CONTEXT (continuation fuel or contrarian risk), never a direction`,
+    );
+  } else {
+    label = "neutral";
+    bits.push(
+      `non-commercial change ${(changeRatio * 100).toFixed(2)}% of open interest is inside the documented noise band (±${(
+        COT_SIGNAL_CHANGE_OI_RATIO * 100
+      ).toFixed(2)}%)`,
+    );
+  }
+
+  return {
+    label,
+    ...(changeRatio !== undefined ? { changeRatio } : {}),
+    ...(crowdRatio !== undefined ? { crowdRatio } : {}),
+    crowded,
+    contradictory,
+    ...(percentile !== undefined ? { percentile } : {}),
+    ...(extreme ? { extreme } : {}),
+    ...(commercialNet !== undefined ? { commercialNet } : {}),
+    ...(commercialNetChange !== undefined ? { commercialNetChange } : {}),
+    historyReports,
+    basis: bits.join("; "),
   };
 }
 

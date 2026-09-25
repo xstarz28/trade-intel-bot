@@ -1952,6 +1952,16 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     )}
                   </div>
 
+                  {/* Phase 280 — the domain's own plain-language assessment
+                      summary (physical market, inventory regime, supply/demand,
+                      positioning, term structure, macro, assessment, risk,
+                      periods), rendered verbatim. The UI never composes it. */}
+                  {result.fundamentalAssessment.summary && (
+                    <p className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                      {result.fundamentalAssessment.summary}
+                    </p>
+                  )}
+
                   <div>
                     <p className="text-[10px] font-mono text-muted-foreground mb-1">
                       {t.analysisResult.fundamentalAssessment.dimensionsLabel}

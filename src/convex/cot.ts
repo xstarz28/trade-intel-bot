@@ -9,6 +9,12 @@
  * Failure of any kind surfaces as an explicit unavailable state; the primary
  * analysis is never blocked and no positioning data is ever fabricated.
  *
+ * Phase 280 — the query asks for COT_HISTORY_ROWS weekly reports instead of
+ * the latest two. The latest two still drive the report-to-report change read
+ * (unchanged); the older reports let the fundamental layer place the current
+ * net position in the provider's own one-year distribution (percentile /
+ * extreme-positioning context) instead of guessing from a single change.
+ *
  * Phase 230 — single-leg failure semantics via the shared leg taxonomy
  * (lib/legOutcome.ts): HTTP 429 -> RATE_LIMIT, 401/403 -> AUTH_ERROR,
  * other non-2xx -> provider_error, non-JSON / non-array body -> malformed,
@@ -28,6 +34,13 @@ import { errorMessage } from "./lib/json";
 import { ProviderHttpError, ProviderMalformedError, classifyLegError } from "./lib/legOutcome";
 
 const DATASET = "https://publicreporting.cftc.gov/resource/6dca-aqww.json";
+
+/**
+ * Weekly reports requested: one year plus the two release rows. The pure
+ * module caps what it keeps (`COT_MAX_HISTORY`) and degrades honestly when the
+ * provider returns fewer rows than a percentile needs.
+ */
+const COT_HISTORY_ROWS = 54;
 
 export const fetchCotPositioning = action({
   args: { instrument: v.string() },
@@ -61,7 +74,7 @@ export const fetchCotPositioning = action({
         async () => {
           const url =
             `${DATASET}?market_and_exchange_names=${encodeURIComponent(mapping.sourceInstrument)}` +
-            `&%24order=report_date_as_yyyy_mm_dd%20DESC&%24limit=2`;
+            `&%24order=report_date_as_yyyy_mm_dd%20DESC&%24limit=${COT_HISTORY_ROWS}`;
           const res = await fetch(url, {
             headers: { Accept: "application/json" },
             // Phase 177 — HTTP deadline below the 8s cftc leg budget.

@@ -58,7 +58,6 @@ import type {
   FundamentalDimension,
   FundamentalDirection,
   FundamentalEvidenceItem,
-  FundamentalMetrics,
 } from "./data/fundamental-contract";
 import {
   aggregateConfidence,
@@ -66,16 +65,13 @@ import {
   countMoves,
   coverageOf,
   daysBetween,
-  dimension,
-  isFiniteNumber,
   percentChange,
   periodEndValid,
   unassessedDomain,
-  unavailable,
 } from "./fundamental/framework";
 import { assessCryptoFundamentals, CRYPTO_PARAMETERS } from "./fundamental/crypto";
 import { assessForexFundamentals } from "./fundamental/forex";
-import { assessCommodityFundamentals } from "./fundamental/commodity";
+import { assessCommodityFundamentals, type CommodityFuturesCurve } from "./fundamental/commodity";
 
 // Phase 276 public names stay importable from this module (unified-intelligence
 // and the UI import them here), so the contract types are re-exported verbatim.
@@ -113,6 +109,12 @@ export interface FundamentalDomainContext {
   cot?: CotData;
   // ── commodity evidence (petroleum inventories; absent otherwise) ──
   eia?: EiaData;
+  /**
+   * Phase 280 — a REAL multi-expiry futures curve, when a provider supplies
+   * one. No configured provider does today; the slot exists so wiring one is a
+   * data change, never a re-derivation inside the domain adapter.
+   */
+  commodityCurve?: CommodityFuturesCurve;
   macro?: MacroData;
 }
 
@@ -738,6 +740,7 @@ export function assessFundamentals(
       eia: context?.eia,
       cot: context?.cot,
       treasury: context?.treasury,
+      futuresCurve: context?.commodityCurve,
     });
   }
 

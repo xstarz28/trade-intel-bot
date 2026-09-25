@@ -122,6 +122,118 @@ export function aggregateState(dimensions: FundamentalDimension[]): FundamentalS
   return "mixed";
 }
 
+/**
+ * Phase 280 — EVIDENCE HIERARCHY for domains whose evidence is not equally
+ * informative (commodities). A dimension's role is chosen by the DOMAIN
+ * PROFILE (e.g. inventories are physical evidence for energy, while the
+ * discount-rate channel is supporting), so hierarchy is configuration, never a
+ * symbol-specific branch. Domains that do not supply a hierarchy keep the
+ * Phase 279 counting rule byte-for-byte.
+ */
+export type FundamentalDimensionRole = "primary" | "secondary" | "supporting";
+
+export interface DimensionHierarchyEntry {
+  name: FundamentalDimension["name"];
+  role: FundamentalDimensionRole;
+}
+
+/** Documented weights — a primary read outweighs a supporting one. */
+export const HIERARCHY_WEIGHTS: Record<FundamentalDimensionRole, number> = {
+  primary: 3,
+  secondary: 2,
+  supporting: 1,
+};
+
+export interface HierarchyStateResult {
+  state: FundamentalState;
+  /** Weighted totals that produced the state (exposed for the explanation). */
+  positiveWeight: number;
+  negativeWeight: number;
+  primaryPositives: number;
+  primaryNegatives: number;
+  basis: string;
+}
+
+/**
+ * Weighted state for a hierarchy-aware domain:
+ *   · no scored dimension → insufficient;
+ *   · a direction needs a strictly larger weighted total on one side;
+ *   · the winning side must contain at least one PRIMARY dimension, so
+ *     supporting context can never dictate the assessment;
+ *   · a single dimension may set the state only when at most ONE dimension
+ *     opposes it — one metric never outvotes several contrary reads;
+ *   · anything else is mixed (evidence exists, but not a defensible direction).
+ */
+export function aggregateStateWithHierarchy(
+  dimensions: FundamentalDimension[],
+  hierarchy: DimensionHierarchyEntry[],
+): HierarchyStateResult {
+  const usable = scoredDimensions(dimensions);
+  if (usable.length === 0) {
+    return {
+      state: "insufficient",
+      positiveWeight: 0,
+      negativeWeight: 0,
+      primaryPositives: 0,
+      primaryNegatives: 0,
+      basis: "no scored dimension carries evidence",
+    };
+  }
+  const roleOf = (name: FundamentalDimension["name"]): FundamentalDimensionRole =>
+    hierarchy.find((h) => h.name === name)?.role ?? "secondary";
+  const weightOf = (name: FundamentalDimension["name"]): number => HIERARCHY_WEIGHTS[roleOf(name)];
+  let positiveWeight = 0;
+  let negativeWeight = 0;
+  let primaryPositives = 0;
+  let primaryNegatives = 0;
+  let positives = 0;
+  let negatives = 0;
+  for (const d of usable) {
+    if (d.status === "positive") {
+      positives += 1;
+      positiveWeight += weightOf(d.name);
+      if (roleOf(d.name) === "primary") primaryPositives += 1;
+    } else if (d.status === "negative") {
+      negatives += 1;
+      negativeWeight += weightOf(d.name);
+      if (roleOf(d.name) === "primary") primaryNegatives += 1;
+    }
+  }
+  const basisOf = (state: FundamentalState, why: string): HierarchyStateResult => ({
+    state,
+    positiveWeight,
+    negativeWeight,
+    primaryPositives,
+    primaryNegatives,
+    basis: why,
+  });
+
+  if (positives === 0 && negatives === 0) {
+    return basisOf("mixed", "every scored dimension is neutral — evidence exists but carries no direction");
+  }
+  if (positiveWeight === negativeWeight) {
+    return basisOf("mixed", "positive and negative evidence carry equal weight — no net direction");
+  }
+  const winningPrimary = positiveWeight > negativeWeight ? primaryPositives : primaryNegatives;
+  const losingSideCount = positiveWeight > negativeWeight ? negatives : positives;
+  const winningSideCount = positiveWeight > negativeWeight ? positives : negatives;
+  if (winningPrimary === 0) {
+    return basisOf(
+      "mixed",
+      "direction is only supported by secondary/supporting evidence — a primary read is required before a fundamental direction is claimed",
+    );
+  }
+  if (winningSideCount === 1 && losingSideCount >= 2) {
+    return basisOf(
+      "mixed",
+      "one dimension cannot outvote several opposing dimensions — the read stays mixed",
+    );
+  }
+  return positiveWeight > negativeWeight
+    ? basisOf("improving", `weighted strengthening evidence ${positiveWeight} vs ${negativeWeight} with ${primaryPositives} primary dimension(s) strengthening`)
+    : basisOf("weakening", `weighted weakening evidence ${negativeWeight} vs ${positiveWeight} with ${primaryNegatives} primary dimension(s) weakening`);
+}
+
 const LEVELS = ["low", "medium", "high"] as const;
 
 export interface ConfidenceInput {
@@ -136,6 +248,18 @@ export interface ConfidenceInput {
   staleDays?: number;
   /** Domain-specific caps (already-worded), applied after the framework ones. */
   extraCaps?: string[];
+  /**
+   * Phase 280 — when supplied, the state and the confidence LEVEL come from
+   * the documented hierarchy instead of the Phase 279 counting rule:
+   * weight = primary 3 / secondary 2 / supporting 1, and confidence counts
+   * INDEPENDENT PROVIDER GROUPS plus multi-period history rather than the
+   * number of fields.
+   */
+  hierarchy?: DimensionHierarchyEntry[];
+  /** Distinct provider families behind the usable dimensions. */
+  independentGroups?: number;
+  /** Scored dimensions whose evidence carries multi-period history. */
+  historyDepth?: number;
 }
 
 export interface ConfidenceResult {
@@ -152,14 +276,35 @@ export interface ConfidenceResult {
  * reporting period measured inside the payload itself.
  */
 export function aggregateConfidence(input: ConfidenceInput): ConfidenceResult {
-  const state = aggregateState(input.dimensions);
+  const hierarchy = input.hierarchy;
+  const hierarchyState = hierarchy
+    ? aggregateStateWithHierarchy(input.dimensions, hierarchy)
+    : undefined;
+  const state = hierarchyState ? hierarchyState.state : aggregateState(input.dimensions);
   const { usable, positives, negatives } = statusCounts(input.dimensions);
   const caps: string[] = [];
 
   let level: number;
-  if (usable.length >= 5) level = 2;
-  else if (usable.length >= 3) level = 1;
-  else level = 0;
+  if (hierarchy) {
+    // Phase 280 — confidence reflects INDEPENDENT evidence groups, not field
+    // count: three provider families is the ceiling requirement, and a domain
+    // with no multi-period history can not read "high".
+    const groups = input.independentGroups ?? 0;
+    const depth = input.historyDepth ?? 0;
+    if (groups >= 3 && usable.length >= 3 && depth >= 1) level = 2;
+    else if (groups >= 2 && usable.length >= 2) level = 1;
+    else level = 0;
+    if (depth === 0 && usable.length > 0) {
+      level = Math.min(level, 1);
+      caps.push("no multi-period provider history caps confidence at medium");
+    }
+  } else if (usable.length >= 5) {
+    level = 2;
+  } else if (usable.length >= 3) {
+    level = 1;
+  } else {
+    level = 0;
+  }
 
   if (usable.length > 0 && positives > 0 && negatives > 0) {
     level = Math.min(level, 1);
@@ -186,10 +331,13 @@ export function aggregateConfidence(input: ConfidenceInput): ConfidenceResult {
       ? "no usable dimensions"
       : `${positives} strengthening / ${negatives} weakening of ${usable.length} usable dimensions`;
 
+  const hierarchyText = hierarchy
+    ? `${hierarchyState?.basis ?? ""}${hierarchyState && hierarchyState.basis.length > 0 ? "; " : ""}${input.independentGroups ?? 0} independent provider group(s), ${input.historyDepth ?? 0} dimension(s) with multi-period history`
+    : "";
   const confidenceEvidence =
     usable.length === 0
       ? "No usable fundamental dimensions — insufficient evidence, no confidence."
-      : `Confidence from ${usable.length} usable dimensions (${directionTxt}), ${input.periodsCount} ${input.periodsLabel} of history${input.reportingPeriod ? `, latest period ${input.reportingPeriod}` : ""}${caps.length > 0 ? ` — ${caps.join("; ")}` : ""}.`;
+      : `Confidence from ${usable.length} usable dimensions (${directionTxt}), ${input.periodsCount} ${input.periodsLabel} of history${input.reportingPeriod ? `, latest period ${input.reportingPeriod}` : ""}${hierarchyText ? ` — ${hierarchyText}` : ""}${caps.length > 0 ? ` — ${caps.join("; ")}` : ""}.`;
 
   return { state, confidence, confidenceEvidence, caps };
 }

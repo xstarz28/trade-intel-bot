@@ -156,6 +156,16 @@ export interface FundamentalEvidenceItem {
   freshness?: string;
   /** TRUE when WE derived the value from the inputs named in `basis`. */
   derived?: boolean;
+  /**
+   * Phase 280 — what class of evidence this item is, stated explicitly so no
+   * consumer has to infer it:
+   *   provider-reported — the provider's own field, carried verbatim
+   *   derived-metric    — computed by us from the named `basis` inputs
+   *   interpretation    — a JUDGEMENT read of derived metrics (a regime /
+   *                       classification), never a provider-reported fact
+   * Derived and interpretation items carry `derived: true` and a `basis`.
+   */
+  evidenceClass?: "provider-reported" | "derived-metric" | "interpretation";
   /** For derived values: the exact provider inputs combined. */
   basis?: string;
   /** Why a metric the domain requires is absent. */
@@ -222,6 +232,19 @@ export interface FundamentalAssessment {
    * (base vs quote), each citing the provider evidence it used.
    */
   comparisons?: string[];
+  /**
+   * Phase 280 — the domain's plain-language explanation, in the required
+   * order (physical market, inventory regime, supply/demand, positioning,
+   * term structure, macro driver, assessment, risk, periods). Built ONLY from
+   * the evidence items above; no value appears here that is not traced.
+   */
+  summary?: string;
+  /**
+   * Phase 280 — commodity only: the classification that selected the evidence
+   * hierarchy (group + where the classification came from) and the hierarchy
+   * itself, so "domain-aware" is auditable rather than implicit.
+   */
+  commodityProfile?: CommodityDomainProfile;
   /** Derived metrics (undefined where not computable — never fabricated). */
   metrics: FundamentalMetrics;
   /** Phase 279 — crypto-domain numeric metrics (never mixed into `metrics`). */
@@ -328,6 +351,16 @@ export interface ForexFundamentalMetrics {
  * fundamentals never reuse`FundamentalMetrics` (a barrel of crude has no EPS)
  * and never mix into the forex/crypto/metrics objects.
  */
+/** Phase 280 — the commodity evidence hierarchy actually applied. */
+export interface CommodityDomainProfile {
+  /** energy | precious-metals | industrial-metals | agriculture | unclassified */
+  group: string;
+  /** How the group was determined (canonical instrument registry / tags). */
+  classificationSource: string;
+  /** The documented hierarchy used for the state, in dimension order. */
+  hierarchy: { name: string; role: "primary" | "secondary" | "supporting" }[];
+}
+
 export interface CommodityFundamentalMetrics {
   /** Headline EIA WPSR stock level, in the provider's own unit. */
   inventoryLatest?: number;
@@ -347,4 +380,31 @@ export interface CommodityFundamentalMetrics {
   real10yYieldPercent?: number;
   /** Change in the nominal 10Y versus the previous observation (pp). */
   nominal10yChangePp?: number;
+  // ── Phase 280 — physical regime, history and curve reads ──
+  /** Multi-week trend of the headline provider series. */
+  inventoryTrend?: "declining" | "rising" | "stable" | "insufficient";
+  /** The multi-week change behind that trend (provider units / percent). */
+  inventoryTrendChange?: number;
+  inventoryTrendPercent?: number;
+  /** Where the latest stock level sits vs the earlier provider observations. */
+  inventoryBaselinePosition?: "below" | "above" | "at" | "insufficient";
+  inventoryBaselineDeviationPercent?: number;
+  /** Breadth of the latest release across the provider's product legs. */
+  inventoryDraws?: number;
+  inventoryBuilds?: number;
+  /** Derived physical-market regime of that release (interpretation). */
+  physicalRegime?: "tightening" | "balanced" | "loosening" | "insufficient";
+  /** Positioning classification from the provider's own reports. */
+  positioningLabel?: string;
+  /** Net/OI percentile inside the provider's own report history (0..1). */
+  positioningPercentile?: number;
+  /** |net| / open interest on the latest report. */
+  positioningCrowdRatio?: number;
+  /** Commercial (hedger) net on the latest report, when supplied. */
+  positioningCommercialNet?: number;
+  /** Multi-expiry curve reads, only when a real curve was supplied. */
+  curveStructure?: "contango" | "backwardation" | "flat" | "insufficient";
+  curveFrontPrice?: number;
+  curveBackPrice?: number;
+  curveSlopePercent?: number;
 }

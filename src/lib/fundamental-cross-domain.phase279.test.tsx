@@ -648,14 +648,26 @@ describe("279 cross-domain (E/F) — unified and radar consume the domain assess
       expect(unified.fundamental.state).toBe(assessment.state);
       expect(unified.explanation.length).toBeGreaterThan(0);
       if (domain === "commodity") {
-        // The commodity evidence the providers actually supply is already
-        // scored by the conviction engine's own layers, so the fundamental
-        // layer reports context and forces no direction — Unified must accept
-        // that honestly instead of inventing a state.
-        expect(assessment.state).toBe("insufficient");
-        expect(assessment.directionalBias).toBe("none");
-        expect(unified.confluence.agreement).toBe("not-assessable");
-        expect(unified.fundamental.state).not.toMatch(/improving|weakening/);
+        // Phase 280 — the commodity evidence the providers actually supply
+        // (CFTC positioning + the US Treasury curve here) IS scored by the
+        // generic framework, so the commodity assessment carries a real state
+        // and Unified must consume exactly it — never a re-derived one.
+        expect(assessment.state).not.toBe("insufficient");
+        expect(assessment.dimensions.some((d) => d.status !== "unavailable")).toBe(true);
+        expect(assessment.directionalBias).toBe(
+          assessment.state === "improving" ? "bullish" : assessment.state === "weakening" ? "bearish" : "none",
+        );
+        expect(unified.fundamental.state).toBe(assessment.state);
+        expect(unified.fundamental.present).toBe(true);
+        // A directional commodity state is ACCEPTED by the unified layer
+        // (usable === directional); a non-directional one is carried
+        // present-but-not-usable and named in the explanation — never
+        // converted into a direction and never dropped.
+        expect(unified.fundamental.available).toBe(
+          assessment.state === "improving" || assessment.state === "weakening",
+        );
+        expect(unified.explanation.toUpperCase()).toContain(assessment.state.toUpperCase());
+        expect(unified.state).not.toBe("insufficient");
       } else {
         expect(unified.fundamental.state).not.toBe("insufficient");
       }
