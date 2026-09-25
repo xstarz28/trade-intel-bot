@@ -345,6 +345,30 @@ two are exact inverses on the identity axis, and neither can be satisfied by the
 other's inputs. A green guard is permission to attempt a deploy. It is **not** a
 deployment, not production verification, and not release admission.
 
+### Why `protobufjs` is a declared dependency
+
+Every workflow in this repository installs with
+`npm install --legacy-peer-deps`, and that mode does **not** install peer
+dependencies. `protobufjs` is an *optional peer* of `ccxt`, yet it is required at
+bundle time: ccxt's dydx-v4 static dependencies import `protobufjs/minimal.js`.
+Left implicit, it is never installed and the Convex bundler stops with
+`Could not resolve "protobufjs/minimal.js"` — a failure with no source-level
+symptom, since `npm run build` and the test suite both pass without it. It is
+declared in `dependencies` on purpose. Nothing under `src/` imports it directly;
+removing it because it *looks* unused breaks `convex dev` bundling.
+
+### Reading a failed deploy
+
+The workflow republishes the Convex output as `::error::` annotations (error-
+shaped lines, then the tail, single-line and redacted), plus `::notice::`
+annotations for the source ref/commit and the deployment's `/version`. Read them
+with `gh api repos/<owner>/<repo>/commits/<sha>/check-runs --jq '.check_runs[]
+| select(.conclusion=="failure") | .id'` and then
+`gh api repos/<owner>/<repo>/check-runs/<id>/annotations`: the raw runner log is
+served from a URL that is not always reachable, and an unreadable failure is not
+a diagnosis. Annotations carry no credential — the deploy key is never echoed,
+and identity-shaped and key-shaped text is redacted before publication.
+
 ### After a deploy
 
 Confirm the deployed build actually carries the current result contract before

@@ -23,6 +23,19 @@
 #   --cmd` does — `convex dev` has no equivalent flag. `VITE_CONVEX_URL` is
 #   passed through from the environment when set, and the build runs either way.
 #
+# WHY `protobufjs` IS A DIRECT DEPENDENCY
+# ---------------------------------------
+# Every workflow here installs with `npm install --legacy-peer-deps`, which does
+# NOT install peer dependencies. `protobufjs` is an *optional peer* of `ccxt`
+# (see `peerDependenciesMeta` in `node_modules/ccxt/package.json`), and it is
+# genuinely needed at bundle time: ccxt's dydx-v4 static dependencies import
+# `protobufjs/minimal.js`. With the peer left implicit, `npm install
+# --legacy-peer-deps` never materialises it and the Convex bundler fails with
+# `Could not resolve "protobufjs/minimal.js"` — a deploy-time failure with no
+# source-level symptom. It is therefore declared in `dependencies` on purpose.
+# Nothing in `src/` imports it directly; removing it because it looks unused
+# breaks `convex dev` bundling.
+#
 # Required GitHub Environment: `development`
 #   secret    CONVEX_DEPLOY_KEY     a dev-scoped key
 #   variable  CONVEX_DEPLOYMENT     dev:<team>:<project>
@@ -129,18 +142,55 @@ jobs:
           echo "source ref: ${SOURCE_REF}"
           echo "commit: $(git rev-parse HEAD)"
           echo "commit subject: $(git log -1 --pretty=%s)"
+          echo "::notice title=Development deploy source::ref=${SOURCE_REF} commit=$(git rev-parse HEAD)"
 
       - name: Deploy the Convex backend to the development deployment
         # `convex dev --once` is the repository's own development deploy command
         # (docs/DEPLOYMENT-HANDOFF.md §A). Type checking is disabled here only
         # because `npm run build` (tsc -b) ran in the step above as the gate.
-        run: npx convex dev --once --typecheck disable --codegen disable
+        #
+        # The output is captured as well as printed: the step below republishes it
+        # as an annotation, because the raw runner log is served from a URL that
+        # is not always reachable and an unreadable failure is not a diagnosis.
+        # `pipefail` keeps this step's status identical to Convex's status.
+        run: |
+          set -o pipefail
+          npx convex dev --once --typecheck disable --codegen disable 2>&1 | tee "$RUNNER_TEMP/convex-dev-deploy.log"
+
+      - name: Publish the Convex output as annotations (the raw runner log is not always readable)
+        # Runs only when something above failed. Two capped, single-line, redacted
+        # annotations: the error-shaped lines, then the tail. `%`, CR and LF are
+        # escaped because the Actions command protocol treats them as separators,
+        # and annotations are length-capped and collapsed to one line by GitHub.
+        if: failure()
+        run: |
+          log="$RUNNER_TEMP/convex-dev-deploy.log"
+          if [ ! -f "$log" ]; then
+            echo "::error title=Development deploy failed::Failed before Convex produced any output — read the failing step above."
+            exit 0
+          fi
+          redact() {
+            sed -E -e 's/(dev|prod|preview|local|anonymous):[A-Za-z0-9|_.:-]+/<redacted-identity>/g' \
+                   -e 's/[A-Za-z0-9+=_-]{40,}/<redacted>/g' \
+                   -e '/[Kk]ey|[Tt]oken|[Ss]ecret/ s/[A-Za-z0-9+\/=_-]{24,}/<redacted>/g' \
+              | grep -v CONVEX_DEPLOY_KEY || true
+          }
+          escape() {
+            tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | cut -c1-700
+          }
+          errors="$(head -c 4000 "$log" | redact | grep -iE 'error|failed' | head -3 | escape)"
+          tail_text="$(tail -c 1500 "$log" | redact | escape)"
+          if [ -n "$errors" ]; then
+            echo "::error title=Convex error::${errors}"
+          fi
+          echo "::error title=Convex output (tail)::${tail_text}"
 
       - name: Report the deployed version (only when the URL is configured)
         if: env.VITE_CONVEX_URL != ''
         run: |
           version="$(curl -fsS --max-time 20 "${VITE_CONVEX_URL}/version" || echo unreachable)"
           echo "deployed version: ${version}"
+          echo "::notice title=Development deployment /version::${version}"
 
       - name: This job does not admit a release
         run: |
