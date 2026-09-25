@@ -302,6 +302,7 @@ function summarize(asset, instrumentType, instrument, provider, providerInstrume
       ? `${unified.actionable ? "actionable" : "not-actionable"}: ${unified.actionabilityReason ?? ""}`.slice(0, 300)
       : null,
     entitlement: deep(value, "entitlement") ?? null,
+    resultFields: Object.keys(result).filter((k) => /unified|fundamental|technical|evidence|provenance|radar/i.test(k)),
     // The radar is computed client-side from this delivered snapshot; the
     // server action does not return a radar verdict, so none is invented here.
     radarState: unified
@@ -531,6 +532,8 @@ function compactRecord(record) {
     entitlement: record.entitlement,
     radarState: record.radarState,
     classification: record.classification,
+    // Which integration does the DEPLOYED build carry? Field NAMES only.
+    resultFields: record.resultFields ?? null,
     failure: record.request.error ? String(record.request.error).slice(0, 220) : null,
   };
 }
