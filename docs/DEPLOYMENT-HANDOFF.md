@@ -376,3 +376,40 @@ calling the environment current — a deployment can exist, answer, and still be
 stale. The five-minute check is one analysis through the deployment and a look
 at which fields come back; a deployed runtime that predates an integration
 returns a result without it, and that absence is the finding.
+
+### Proving the deployed runtime works (Phase 287)
+
+`.github/workflows/development-runtime-smoke.yml` — **manual dispatch only**,
+GitHub Environment `development`, no secret of any kind. It runs
+`scripts/development-runtime-smoke.mjs` on a runner, which asks the LIVE
+development deployment to analyse one instrument per asset class
+(crypto, forex, stock, commodity) and reports what actually came back.
+
+Run it:
+
+```
+gh workflow run development-runtime-smoke.yml --ref <branch-or-sha>   # workflow must exist on that ref
+gh run watch $(gh run list --workflow=development-runtime-smoke.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+```
+
+Optional inputs: `ref` (branch/tag/SHA to run from), `domains`
+(e.g. `crypto,forex`), `max_attempts` (1-3).
+
+| Property | How it is guaranteed |
+| --- | --- |
+| Instruments | The deployment's OWN discovery actions (`okx:discoverOkxInstruments`, `marketData:discoverTwelveDataInstruments`) — no ticker is hardcoded in the workflow or the script |
+| No substitution | Every attempt records the provider-native id it used, verbatim |
+| No client evidence | The request carries only routing fields (identity, timeframe, trading style); a test asserts the exact key set |
+| No stubs or fixtures | The script has no fetch override and reads no fixture file; a test asserts the absence |
+| Not localhost, not production | The target validator refuses both; the workflow refuses the production host by name |
+| `observedAt` | Copied verbatim from the runtime; a missing instant stays `null` and the verdict drops to UNAVAILABLE/FAIL |
+| Guest allowance | One fresh anonymous session per asset class, so no domain spends another's quota |
+| Rate limits | A 429 or a credential error trips a per-provider circuit: no retry, no second candidate, other domains continue |
+| PASS | Only with real market evidence + provider observation instant + available technical + available domain-native fundamental + unified intelligence. HTTP 200 alone is never a pass |
+
+Exit codes: `0` = nothing FAILED (PASS and UNAVAILABLE are both honest),
+`1` = at least one domain FAILED, `2` = the deployment could not be reached and
+**nothing** about the runtime may be concluded. The run uploads
+`development-runtime-smoke.json`, a plain-text summary and the console log as an
+artifact; a could-not-look run still writes a report, with every domain marked
+`NOT_ATTEMPTED`.
