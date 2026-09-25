@@ -321,8 +321,15 @@ const ASSETS = [
 function annotate(title, body) {
   // A GitHub annotation is the one channel the agent sandbox can read back
   // (results-receiver log download is blocked; the Checks API is not).
-  const text = body.length > 60000 ? `${body.slice(0, 60000)}…` : body;
-  console.log(`::notice title=${title}::${text}`);
+  // Annotation messages are SINGLE-LINE: a raw newline terminates the workflow
+  // command, which silently truncates the report. `%0A`/`%25`/`%0D` are the
+  // documented escapes and render as real line breaks in the Checks API.
+  const escaped = body
+    .slice(0, 55000)
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A");
+  console.log(`::notice title=${title}::${escaped}`);
 }
 
 async function runFourAsset() {
