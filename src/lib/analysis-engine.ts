@@ -55,6 +55,11 @@ import type {
   ProvenanceEntry,
 } from "@/lib/decision-trace";
 import { computeDecisionFingerprint } from "@/lib/decision-trace";
+// Phase 276 — unified technical + fundamental intelligence. Pure derivation
+// ABOVE both engines: it reads their finished outputs, computes no indicator
+// or ratio of its own, and cannot modify recommendation, conviction, gates,
+// trade plan or sizing.
+import { buildUnifiedIntelligence } from "@/lib/unified-intelligence";
 // Phase 276 — deterministic fundamental assessment (pure function of the
 // provider payload; no clock, no options). Informational section only: it
 // never overwrites technical values and never feeds the decision gates.
@@ -2527,6 +2532,11 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // Phase 36 — evidence & thesis challenge audit (informational only).
   const evidenceChallenge = buildEvidenceChallenge(result as AnalysisResult);
   result.evidenceChallenge = evidenceChallenge;
+
+  // Phase 276 — unified technical + fundamental intelligence (pure derivation).
+  // Sits ABOVE both evidence sets: neither is rewritten, and a combined
+  // conclusion exists only when both classes genuinely supply evidence.
+  result.unifiedIntelligence = buildUnifiedIntelligence(result as AnalysisResult);
 
   // Phase 41 — crypto intelligence context (informational only).
   // Passes through any crypto intelligence from the input.

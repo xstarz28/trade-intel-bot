@@ -267,6 +267,12 @@ export interface AnalysisResult {
   // Phase 36 — evidence & thesis challenge audit.
   // Informational only: does not modify bias, conviction, gates, trade plan, or recommendation.
   evidenceChallenge?: import("@/lib/evidence-challenge").EvidenceChallengeContext;
+  // Phase 276 — unified technical + fundamental intelligence: ONE deterministic
+  // layer derived from the finished results of BOTH engines. It rewrites
+  // neither evidence set, states explicitly when a class is missing, and only
+  // offers a combined conclusion when both classes genuinely supply evidence.
+  // Informational only: modifies nothing in the decision.
+  unifiedIntelligence?: import("@/lib/unified-intelligence").UnifiedIntelligence;
   // ── Phase 41: Crypto intelligence context.
   // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
   // or actionability. Absent for non-crypto instruments.

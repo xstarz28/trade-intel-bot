@@ -77,6 +77,27 @@ const FA_DIM_DOT = {
   unavailable: "bg-border",
 } as const;
 
+/** Phase 276 — unified intelligence display maps (state → label key + style). */
+const UI_STATE_LABEL_KEYS = {
+  aligned_bullish: "analysisResult.unifiedIntelligence.alignedBullish",
+  aligned_bearish: "analysisResult.unifiedIntelligence.alignedBearish",
+  conflicting: "analysisResult.unifiedIntelligence.conflicting",
+  mixed: "analysisResult.unifiedIntelligence.mixed",
+  technical_only: "analysisResult.unifiedIntelligence.technicalOnly",
+  fundamental_only: "analysisResult.unifiedIntelligence.fundamentalOnly",
+  insufficient: "analysisResult.unifiedIntelligence.insufficient",
+} as const;
+
+const UI_STATE_STYLE = {
+  aligned_bullish: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
+  aligned_bearish: "bg-red-500/15 text-red-400 border-red-500/25",
+  conflicting: "bg-red-500/15 text-red-300 border-red-500/25",
+  mixed: "bg-amber-500/15 text-amber-400 border-amber-500/25",
+  technical_only: "bg-sky-500/15 text-sky-400 border-sky-500/25",
+  fundamental_only: "bg-violet-500/15 text-violet-400 border-violet-500/25",
+  insufficient: "bg-muted/30 text-muted-foreground border-border/50",
+} as const;
+
 /** Qualitative conviction level — replaces accuracy claims. Reflects actual
  *  confluence strength: High only when evidence aligns without major conflict. */
 function getConviction(confidence: number): { label: "High" | "Medium" | "Low"; color: string } {
@@ -1979,6 +2000,207 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             </CardContent>
           </Card>
         )}
+
+      {/* Phase 276 — Unified Intelligence.
+          Rendered from the SAME `unifiedIntelligence` object the engine derived:
+          no indicator, ratio or confidence is recomputed here. Technical and
+          fundamental evidence stay separate sections above; this card states
+          whether they agree, whether a combined conclusion is even possible,
+          and why. A combined directional conclusion is shown ONLY when the
+          layer marked it actionable — never for single-class evidence. */}
+      {result.unifiedIntelligence && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span>{" "}
+                {t.analysisResult.unifiedIntelligence.title}
+              </h4>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] font-mono",
+                  UI_STATE_STYLE[result.unifiedIntelligence.state],
+                )}
+              >
+                {tx(UI_STATE_LABEL_KEYS[result.unifiedIntelligence.state])}
+              </Badge>
+              <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                {t.analysisResult.unifiedIntelligence.confidenceLabel}:{" "}
+                {result.unifiedIntelligence.confidence}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={cn(
+                  "text-[10px] font-mono",
+                  result.unifiedIntelligence.actionable
+                    ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/25"
+                    : "bg-muted/30 text-muted-foreground border-border/50",
+                )}
+              >
+                {t.analysisResult.unifiedIntelligence.actionabilityLabel}:{" "}
+                {result.unifiedIntelligence.actionable
+                  ? t.analysisResult.unifiedIntelligence.actionable
+                  : t.analysisResult.unifiedIntelligence.notActionable}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  {t.analysisResult.unifiedIntelligence.technicalBiasLabel}
+                </p>
+                <p className="text-sm font-bold font-mono">
+                  {result.unifiedIntelligence.technical.bias}
+                  {result.unifiedIntelligence.technical.instrumentId
+                    ? ` · ${result.unifiedIntelligence.technical.instrumentId}`
+                    : ""}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  {t.analysisResult.unifiedIntelligence.fundamentalStateLabel}
+                </p>
+                <p className="text-sm font-bold font-mono">
+                  {result.unifiedIntelligence.fundamental.state}
+                  {result.unifiedIntelligence.fundamental.instrumentId
+                    ? ` · ${result.unifiedIntelligence.fundamental.instrumentId}`
+                    : ""}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                {t.analysisResult.unifiedIntelligence.agreementLabel}
+              </p>
+              <p className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                {result.unifiedIntelligence.confluence.agreement} — {result.unifiedIntelligence.confluence.reason}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                {t.analysisResult.unifiedIntelligence.actionabilityLabel}
+              </p>
+              <p className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                {result.unifiedIntelligence.actionabilityReason}
+              </p>
+            </div>
+
+            {/* A combined directional conclusion is rendered ONLY when the
+                unified layer marked this result actionable — i.e. both
+                evidence classes are present, directional and aligned. */}
+            {result.unifiedIntelligence.actionable &&
+              result.unifiedIntelligence.directionalConclusion && (
+                <div>
+                  <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                    {t.analysisResult.inline.directionLabel}
+                  </p>
+                  <p className="text-sm font-bold font-mono">
+                    {result.unifiedIntelligence.directionalConclusion === "long"
+                      ? t.analysis.long
+                      : t.analysis.short}
+                  </p>
+                </div>
+              )}
+
+            <div>
+              <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                {t.analysisResult.unifiedIntelligence.invalidationLabel}
+              </p>
+              <p className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                {result.unifiedIntelligence.technical.invalidation ??
+                  t.analysisResult.unifiedIntelligence.notApplicable}
+                {result.unifiedIntelligence.fundamental.reportingPeriod
+                  ? ` · ${t.analysisResult.fundamentalAssessment.reportingPeriodLabel}: ${result.unifiedIntelligence.fundamental.reportingPeriod}`
+                  : ""}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                {t.analysisResult.unifiedIntelligence.provenanceLabel}
+              </p>
+              <ul className="space-y-0.5">
+                {/* The instants are formatted HERE from the object's own
+                    provenance fields — the engine keeps them machine-readable
+                    and never re-dates the evidence. */}
+                {result.unifiedIntelligence.technical.available && (
+                  <li className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
+                    {result.unifiedIntelligence.technical.provider ?? "—"}
+                    {result.unifiedIntelligence.technical.instrumentId
+                      ? ` · ${result.unifiedIntelligence.technical.instrumentId}`
+                      : ""}
+                    {result.unifiedIntelligence.technical.observedAt !== undefined
+                      ? ` · ${t.analysisResult.fundamentalAssessment.observedLabel}: ${new Date(
+                          result.unifiedIntelligence.technical.observedAt,
+                        ).toISOString()}`
+                      : ""}
+                    {result.unifiedIntelligence.technical.dataPoints !== undefined
+                      ? ` · ${result.unifiedIntelligence.technical.dataPoints} ${t.analysisResult.candlesCount}`
+                      : ""}
+                  </li>
+                )}
+                {result.unifiedIntelligence.fundamental.present && (
+                  <li className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
+                    {result.unifiedIntelligence.fundamental.provider ?? "—"}
+                    {result.unifiedIntelligence.fundamental.instrumentId
+                      ? ` · ${result.unifiedIntelligence.fundamental.instrumentId}`
+                      : ""}
+                    {result.unifiedIntelligence.fundamental.reportingPeriod
+                      ? ` · ${t.analysisResult.fundamentalAssessment.reportingPeriodLabel}: ${result.unifiedIntelligence.fundamental.reportingPeriod}`
+                      : ""}
+                    {result.unifiedIntelligence.fundamental.observedAt !== undefined
+                      ? ` · ${t.analysisResult.fundamentalAssessment.observedLabel}: ${new Date(
+                          result.unifiedIntelligence.fundamental.observedAt,
+                        ).toISOString()}`
+                      : ""}
+                  </li>
+                )}
+                {result.unifiedIntelligence.limitations
+                  .filter((l) => /^(Technical evidence:|Fundamental evidence:)/.test(l))
+                  .map((limitation, i) => (
+                    <li
+                      key={i}
+                      className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed"
+                    >
+                      {limitation}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                {t.analysisResult.unifiedIntelligence.explanationLabel}
+              </p>
+              <p className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                {result.unifiedIntelligence.explanation}
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                {t.analysisResult.unifiedIntelligence.limitationsLabel}
+              </p>
+              <ul className="space-y-0.5">
+                {result.unifiedIntelligence.limitations
+                  .filter((l) => !/^(Technical evidence:|Fundamental evidence:)/.test(l))
+                  .map((limitation, i) => (
+                    <li
+                      key={i}
+                      className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed"
+                    >
+                      {limitation}
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Score Breakdown */}
       <Card className="border-border/50">

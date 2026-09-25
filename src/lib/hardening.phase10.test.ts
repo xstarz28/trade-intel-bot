@@ -98,6 +98,21 @@ describe("Step 7: determinism for identical snapshots", () => {
     // Strip legitimately time-dependent identity/provenance fields.
     const { id, timestamp, priceSnapshot, ...rest } = r;
     void id; void timestamp; void priceSnapshot;
+    // Phase 276 — the unified intelligence layer MIRRORS the technical
+    // observation instant (`priceSnapshot.timestamp`, stripped just above) so
+    // the UI can show where the technical evidence came from. The mirror is
+    // excluded for exactly the same reason its source is: it is provenance,
+    // not decision state. Every decision-relevant field of the unified object
+    // — state, both biases, confluence, confidence, actionability, evidence
+    // text and limitations — is still compared byte-for-byte below, and the
+    // layer's own clock-free determinism is pinned by
+    // unified-intelligence.phase276.test.tsx.
+    if (rest.unifiedIntelligence) {
+      rest.unifiedIntelligence = {
+        ...rest.unifiedIntelligence,
+        technical: { ...rest.unifiedIntelligence.technical, observedAt: undefined },
+      };
+    }
     return JSON.stringify(rest, (_k, v) => (typeof v === "number" && !Number.isFinite(v) ? String(v) : v));
   }
 

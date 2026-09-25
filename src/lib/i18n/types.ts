@@ -992,6 +992,28 @@ export interface Translations {
       warnings: string;
       quantity: string;
     };
+    unifiedIntelligence: {
+      title: string;
+      alignedBullish: string;
+      alignedBearish: string;
+      conflicting: string;
+      mixed: string;
+      technicalOnly: string;
+      fundamentalOnly: string;
+      insufficient: string;
+      technicalBiasLabel: string;
+      fundamentalStateLabel: string;
+      agreementLabel: string;
+      confidenceLabel: string;
+      actionabilityLabel: string;
+      actionable: string;
+      notActionable: string;
+      invalidationLabel: string;
+      limitationsLabel: string;
+      explanationLabel: string;
+      provenanceLabel: string;
+      notApplicable: string;
+    };
     fundamentalAssessment: {
       title: string;
       improving: string;
