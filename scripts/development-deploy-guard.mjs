@@ -1,23 +1,28 @@
 #!/usr/bin/env node
 /**
- * Phase 255 — operator/CI gate in front of a Convex production deploy.
+ * Phase 286 — operator/CI gate in front of a Convex DEVELOPMENT deploy.
  *
  * Reads CONVEX_DEPLOY_KEY / CONVEX_DEPLOYMENT / VITE_CONVEX_URL /
- * CONVEX_SITE_URL / XSTARZ_DEPLOYMENT_ENV / SOURCE_REF (or GITHUB_REF) from
- * the process environment (or --config) and asks
- * `src/lib/deployment/production-deploy-guard.ts` whether the Convex
- * production deploy command may be invoked. It never deploys, never contacts
+ * CONVEX_SITE_URL / XSTARZ_DEPLOYMENT_ENV / SOURCE_REF (or GITHUB_REF) from the
+ * process environment (or --config) and asks
+ * `src/lib/deployment/development-deploy-guard.ts` whether the Convex
+ * development deploy command may be invoked. It never deploys, never contacts
  * Convex, never prints a credential, and never admits a release.
  *
+ * It is the counterpart to `scripts/production-deploy-guard.mjs`, with the
+ * opposite polarity: production refuses anything that is not production; this
+ * refuses anything that is production (or preview / local / anonymous). The
+ * two guards share the placeholder-key, endpoint-host and forbidden-ref rules.
+ *
  * Exit codes:
- *   0 = READY_TO_INVOKE_DEPLOY (permission to attempt; NOT a deployment)
+ *   0 = READY_TO_INVOKE_DEV_DEPLOY (permission to attempt; NOT a deployment)
  *   1 = refused
  *   2 = could not evaluate
  *
  * Usage:
- *   npm run production:deploy:guard
- *   npm run production:deploy:guard -- --json
- *   npm run production:deploy:guard -- --config prod.env
+ *   npm run development:deploy:guard
+ *   npm run development:deploy:guard -- --json
+ *   npm run development:deploy:guard -- --config dev.env
  */
 
 import { readFileSync } from "node:fs";
@@ -25,8 +30,6 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { registerTypeScriptResolution } from "./lib/ts-module-loader.mjs";
 
-// Phase 286: the resolver hook moved to scripts/lib so both deploy guards load
-// the same policy modules the same way. Behaviour is unchanged.
 registerTypeScriptResolution();
 
 const argv = process.argv.slice(2);
@@ -95,11 +98,11 @@ const { env, source, parseFailure } = readConfig();
 let guard;
 try {
   guard = await import(
-    pathToFileURL(resolve(process.cwd(), "src/lib/deployment/production-deploy-guard.ts")).href
+    pathToFileURL(resolve(process.cwd(), "src/lib/deployment/development-deploy-guard.ts")).href
   );
 } catch (error) {
   console.error(
-    "REFUSED: could not load the production-deploy-guard policy module. " +
+    "REFUSED: could not load the development-deploy-guard policy module. " +
       "Run with a Node build that can load TypeScript " +
       "(node >= 22.6 with --experimental-strip-types, which the npm script sets).",
   );
@@ -108,13 +111,13 @@ try {
 }
 
 const {
-  evaluateProductionDeployGuard,
-  formatProductionDeployGuard,
-  productionDeployGuardJson,
-  productionDeployGuardExitCode,
+  evaluateDevelopmentDeployGuard,
+  formatDevelopmentDeployGuard,
+  developmentDeployGuardJson,
+  developmentDeployGuardExitCode,
 } = guard;
 
-const evaluated = evaluateProductionDeployGuard({
+const evaluated = evaluateDevelopmentDeployGuard({
   convexDeployKey: env.CONVEX_DEPLOY_KEY,
   convexDeployment: env.CONVEX_DEPLOYMENT,
   viteConvexUrl: env.VITE_CONVEX_URL,
@@ -130,15 +133,15 @@ const report = parseFailure
       mayInvokeDeploy: false,
       problems: [`configuration source ${source} is ${parseFailure}`, ...evaluated.problems],
       statement:
-        "Production deploy is refused. This is a missing or non-production input, not a negative result about any live deployment.",
+        "Development deploy is refused. This is a missing, production or non-development input, not a negative result about any live deployment.",
     }
   : evaluated;
 
 if (asJson) {
-  process.stdout.write(productionDeployGuardJson(report));
+  process.stdout.write(developmentDeployGuardJson(report));
 } else {
   process.stdout.write(`source: ${source}\n`);
-  process.stdout.write(formatProductionDeployGuard(report));
+  process.stdout.write(formatDevelopmentDeployGuard(report));
 }
 
-process.exit(productionDeployGuardExitCode(report));
+process.exit(developmentDeployGuardExitCode(report));

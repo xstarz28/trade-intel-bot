@@ -283,3 +283,72 @@ path if OTP inbox placement ever becomes the binding constraint.
 
 Until H produces that artifact, the correct description of this backend is
 **not verified** — not "should work", not "code complete".
+
+---
+
+## 5. Development deployment (Phase 286) — manual GitHub Actions workflow
+
+The **development** deployment (`dev:<team>:<project>`, e.g. `tough-goose-455`)
+is the environment a person can actually open and exercise. It is separate from
+production in every respect: separate deployment, separate URL, separate deploy
+key, separate GitHub Environment. Refreshing it is a deliberate manual action,
+never a side effect of a merge.
+
+### The workflow
+
+`.github/workflows/development-deploy.yml`
+
+| Property | Value |
+| --- | --- |
+| Trigger | `workflow_dispatch` only — no `push`, no `pull_request`, no `tags`, no `schedule` |
+| GitHub Environment | `development` (both jobs) |
+| Confirmation input | `confirm` must be exactly `DEPLOY_DEV` |
+| Checkout input | `ref` (branch, tag or SHA; defaults to the dispatched ref) |
+| Commands | `npm run development:deploy:guard -- --json`, then `npm run build`, then `npx convex dev --once` |
+| Safe metadata printed | deployment target, source ref, commit SHA and subject, and the deployment's `/version` when `VITE_CONVEX_URL` is set |
+
+### Configuration the `development` environment must hold
+
+| Name | Kind | Contents |
+| --- | --- | --- |
+| `CONVEX_DEPLOY_KEY` | secret | a **dev-scoped** key from that deployment's dashboard page |
+| `CONVEX_DEPLOYMENT` | variable | `dev:<team>:<project>` — never a `prod:` value |
+| `VITE_CONVEX_URL` | variable (optional) | `https://<deployment>.convex.cloud`; enables the post-deploy version probe |
+| `CONVEX_SITE_URL` | variable (optional) | `https://<deployment>.convex.site` |
+
+No value of any secret belongs in this document, in `.env.example`, or in a
+workflow file. Read deployment variables for verification with
+`npx convex env list --names-only` — never the plain form, which prints
+`NAME=VALUE`.
+
+### The guard, and why development gets its own
+
+`npm run development:deploy:guard` evaluates
+`src/lib/deployment/development-deploy-guard.ts` — pure, no network, no clock,
+no ambient environment — and exits non-zero unless the inputs are
+development-shaped. It shares its placeholder-key, endpoint-host and
+forbidden-source-ref rules with `src/lib/deployment/production-deploy-guard.ts`
+rather than restating them.
+
+| State | Means |
+| --- | --- |
+| `READY_TO_INVOKE_DEV_DEPLOY` | development identity + a real-looking key; permission to *attempt* a deploy |
+| `MISSING_DEPLOY_KEY` / `PLACEHOLDER_DEPLOY_KEY` | no usable key |
+| `PRODUCTION_IDENTITY` | `CONVEX_DEPLOYMENT` is `prod:…` — refused loudly |
+| `WRONG_IDENTITY` | `preview:` / `local:` / `anonymous:` / unshaped — refused, not silently accepted as "not production" |
+| `FORBIDDEN_SOURCE_REF` | `main` is not a deployable ref for any deployment |
+| `WRONG_ENVIRONMENT` | `XSTARZ_DEPLOYMENT_ENV` is set to something other than `development` |
+| `WRONG_CONVEX_URL` / `WRONG_SITE_URL` | a declared URL is not an https Convex host |
+
+The production guard refuses development and this one refuses production: the
+two are exact inverses on the identity axis, and neither can be satisfied by the
+other's inputs. A green guard is permission to attempt a deploy. It is **not** a
+deployment, not production verification, and not release admission.
+
+### After a deploy
+
+Confirm the deployed build actually carries the current result contract before
+calling the environment current — a deployment can exist, answer, and still be
+stale. The five-minute check is one analysis through the deployment and a look
+at which fields come back; a deployed runtime that predates an integration
+returns a result without it, and that absence is the finding.

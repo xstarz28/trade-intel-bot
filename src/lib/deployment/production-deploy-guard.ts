@@ -56,8 +56,15 @@ export const PRODUCTION_DEPLOY_GUARD_PRECEDENCE: readonly ProductionDeployGuardS
   "READY_TO_INVOKE_DEPLOY",
 ];
 
-const PLACEHOLDER_KEY =
+/**
+ * Phase 286 — exported so the development guard applies the same
+ * placeholder rule instead of restating it. A value that is obviously not a
+ * key must never satisfy either guard.
+ */
+export const PLACEHOLDER_DEPLOY_KEY_PATTERN =
   /^(test|mock|fixture|dummy|fake|sample|example|placeholder|changeme|todo|xxx+|your[-_ ].+|replace_with.+|sk_test_.+)$/i;
+
+const PLACEHOLDER_KEY = PLACEHOLDER_DEPLOY_KEY_PATTERN;
 
 const CONVEX_CLOUD_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.convex\.cloud$/i;
 const CONVEX_SITE_HOST = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.convex\.site$/i;
@@ -133,7 +140,12 @@ export function isForbiddenDeploySourceRef(ref: string): boolean {
   return normalised === "main";
 }
 
-function httpsHost(value: string): { host: string } | { problem: string } {
+/**
+ * Phase 286 — exported so the development guard validates Convex endpoint
+ * hosts with the SAME rule (https, not loopback) rather than a copy that can
+ * drift from this one.
+ */
+export function httpsHost(value: string): { host: string } | { problem: string } {
   let url: URL;
   try {
     url = new URL(value);
