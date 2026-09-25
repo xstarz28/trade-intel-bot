@@ -482,6 +482,10 @@ async function runFourAsset(label = "Phase 284 deployed verification") {
       r.classification,
     ].join(" | "),
   );
+  for (const record of records) {
+    annotate(`${label} — ${record.asset}`, JSON.stringify(compactRecord(record)));
+  }
+
   const report = [header, ...table].join("\n");
   console.log(report);
   annotate(
@@ -503,6 +507,32 @@ async function runFourAsset(label = "Phase 284 deployed verification") {
 
 function annotateJson(title, lines) {
   annotate(title, lines.join("\n"));
+}
+
+/** The safe-metadata record, small enough to survive an annotation intact. */
+function compactRecord(record) {
+  return {
+    asset: record.asset,
+    instrument: record.instrument,
+    provider: record.requestedProvider,
+    providerInstrumentId: record.providerInstrumentId,
+    requestSuccess: record.request.success,
+    appStatus: record.request.appStatus,
+    providerObservationTimestamp: record.providerObservationTimestamp,
+    freshness: record.marketDataFreshness,
+    liveMarketData: record.liveMarketData,
+    recommendation: record.recommendation,
+    dataCompleteness: record.dataCompleteness,
+    technicalState: record.technicalState,
+    fundamental: record.fundamental,
+    unifiedState: record.unifiedState,
+    agreement: record.agreement,
+    actionability: record.actionability,
+    entitlement: record.entitlement,
+    radarState: record.radarState,
+    classification: record.classification,
+    failure: record.request.error ? String(record.request.error).slice(0, 220) : null,
+  };
 }
 
 async function runConvexRunMode() {
@@ -660,29 +690,7 @@ async function runConvexRunMode() {
   // One annotation PER ASSET: annotation messages are length-limited, so the
   // compact per-asset record is the only shape that survives intact.
   for (const record of records) {
-    const compact = {
-      asset: record.asset,
-      instrument: record.instrument,
-      provider: record.requestedProvider,
-      providerInstrumentId: record.providerInstrumentId,
-      requestSuccess: record.request.success,
-      appStatus: record.request.appStatus,
-      providerObservationTimestamp: record.providerObservationTimestamp,
-      freshness: record.marketDataFreshness,
-      liveMarketData: record.liveMarketData,
-      recommendation: record.recommendation,
-      dataCompleteness: record.dataCompleteness,
-      technicalState: record.technicalState,
-      fundamental: record.fundamental,
-      unifiedState: record.unifiedState,
-      agreement: record.agreement,
-      actionability: record.actionability,
-      entitlement: record.entitlement,
-      radarState: record.radarState,
-      classification: record.classification,
-      failure: record.request.error ? String(record.request.error).slice(0, 220) : null,
-    };
-    annotate(`Phase 284 deployed asset — ${record.asset}`, JSON.stringify(compact));
+    annotate(`Phase 284 deployed asset — ${record.asset}`, JSON.stringify(compactRecord(record)));
   }
 
   const table = lines.filter((l) => l.includes(": {"));
