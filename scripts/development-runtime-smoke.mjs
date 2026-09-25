@@ -466,6 +466,27 @@ export function readResultEvidence(result) {
     confidence: fa?.confidence ?? null,
     directionalBias: fa?.directionalBias ?? null,
     periodsCount: isNumber(fa?.periodsCount) ? fa.periodsCount : null,
+    // Phase 289B — the deployed runtime's OWN market classification for the
+    // instrument (the field the commodity physical-feed gate reads) and whether
+    // petroleum-derived metrics were actually consumed for it.
+    commodityProfile: fa?.commodityProfile
+      ? {
+          group: typeof fa.commodityProfile.group === "string" ? fa.commodityProfile.group : null,
+          classificationSource:
+            typeof fa.commodityProfile.classificationSource === "string"
+              ? sanitize(fa.commodityProfile.classificationSource)
+              : null,
+        }
+      : null,
+    commodityMetrics: fa?.commodityMetrics
+      ? {
+          inventoryLatest: isNumber(fa.commodityMetrics.inventoryLatest)
+            ? fa.commodityMetrics.inventoryLatest
+            : null,
+          keys: Object.keys(fa.commodityMetrics).slice(0, 12),
+        }
+      : null,
+    limitations: Array.isArray(fa?.limitations) ? fa.limitations.slice(0, 12).map(sanitize) : [],
     // Phase 289 — the delivered domain dimensions with their OWN status. This is
     // the surface that answers "did this instrument receive evidence that belongs
     // to its market?" (e.g. petroleum inventories on a bullion instrument), and
@@ -690,6 +711,191 @@ export function evidenceDigest(record) {
 }
 
 /**
+ * Phase 289B — the deployed runtime's own market classification for a commodity
+ * instrument, plus whether it consumed petroleum physical evidence for it.
+ *
+ * Every field is copied from the runtime's answer. `group` and
+ * `classificationSource` are the resolution the Phase-288 feed-scope gate reads
+ * BEFORE any EIA/WPSR series may back the `inventories` dimension;
+ * `inventoryLatest` and `eiaEvidenceItems` are the observable result of that
+ * decision — evidence present means the feed was consumed for THIS instrument.
+ */
+export function commodityMarketOf(evidence) {
+  const fundamental = evidence?.fundamental ?? null;
+  const dimensions = Array.isArray(fundamental?.dimensions) ? fundamental.dimensions : [];
+  const inventories = dimensions.find((d) => d && d.name === "inventories") ?? null;
+  const providers = Array.isArray(fundamental?.evidenceProviders) ? fundamental.evidenceProviders : [];
+  const diagnostics = Array.isArray(evidence?.diagnostics) ? evidence.diagnostics : [];
+  const texts = [
+    ...(Array.isArray(fundamental?.limitations) ? fundamental.limitations : []),
+    fundamental?.summary,
+    ...diagnostics.map((d) => d?.reason),
+  ].filter((t) => typeof t === "string");
+
+  return {
+    group: fundamental?.commodityProfile?.group ?? null,
+    classificationSource: fundamental?.commodityProfile?.classificationSource ?? null,
+    inventories: inventories?.status ?? null,
+    inventoryLatest:
+      fundamental?.commodityMetrics && typeof fundamental.commodityMetrics.inventoryLatest === "number"
+        ? fundamental.commodityMetrics.inventoryLatest
+        : null,
+    eiaEvidenceItems: providers.filter((p) => /energy information administration/i.test(p)).length,
+    // The gate's own sentence. Only the Phase-288 revision produces it, so its
+    // presence (or absence) is also part of the code-path fingerprint.
+    petroleumFeedScopeText: texts.some((t) => /out of scope for this/i.test(t)),
+  };
+}
+
+/**
+ * Phase 289B — which backend code paths answered, read from the response itself.
+ *
+ * `/version` cannot answer this (it is the running Convex backend version, a
+ * deployment health signal, not this application's bundle), so the fingerprint
+ * is behavioural: the result-level `providerDiagnostics` with per-leg reasons,
+ * the calendar mapping-gap honesty text, and the commodity feed-scope text all
+ * exist ONLY in the Phase-288 revisions of the deployed functions. Absent is
+ * reported absent — the smoke never assumes a revision answered.
+ */
+export function runtimeMarkers(evidence) {
+  const diagnostics = Array.isArray(evidence?.diagnostics) ? evidence.diagnostics : [];
+  const withReason = diagnostics.filter((d) => d && typeof d.reason === "string" && d.reason.length > 0);
+  const market = commodityMarketOf(evidence);
+  const limitations = Array.isArray(evidence?.fundamental?.limitations)
+    ? evidence.fundamental.limitations
+    : [];
+  const calendarGap =
+    withReason.some((d) => /no calendar request was made/i.test(d.reason)) ||
+    limitations.some((t) => typeof t === "string" && /no calendar request was made/i.test(t));
+  return {
+    diagnostics: diagnostics.length,
+    diagnosticsWithReason: withReason.length,
+    commodityGroup: market.group,
+    commodityInventories: market.inventories,
+    commodityInventoryLatest: market.inventoryLatest,
+    eiaEvidenceItems: market.eiaEvidenceItems,
+    petroleumFeedScopeObserved: market.petroleumFeedScopeText,
+    calendarMappingGapObserved: calendarGap,
+  };
+}
+
+/** Phase 289B — how many provider-native commodity candidates the probe may classify. */
+export const ENERGY_PROBE_CANDIDATE_LIMIT = 6;
+
+/**
+ * Phase 289B — pause between probe analyses. The probe must not be the reason a
+ * provider hits its per-minute ceiling; a short wait keeps the classifications
+ * inside the same rate-limit window the four-asset run already lives in.
+ */
+export const ENERGY_PROBE_PAUSE_MS = 1_500;
+
+/**
+ * Phase 289B — the verdict for the commodity energy-gate probe.
+ *
+ * Two opposite failures are possible and both are contradictions rather than
+ * missing data: a non-energy instrument carrying petroleum evidence (the
+ * cross-domain read the gate exists to prevent), and an energy instrument being
+ * denied its own petroleum feed (the false negative the base-leg market
+ * resolution exists to prevent). Either is FAIL, named with the instrument.
+ *
+ * PASS requires BOTH directions proven with real readings: an energy-classified
+ * instrument that consumed petroleum evidence, and a non-energy-classified
+ * instrument that received none. Anything less is UNAVAILABLE with the exact
+ * reason — never a pass, and never a claim about an instrument that was not
+ * actually classified by the deployment.
+ */
+export function energyGateVerdict(samples) {
+  const list = Array.isArray(samples) ? samples.filter((s) => s && typeof s === "object") : [];
+  const classified = list.filter((s) => typeof s.group === "string");
+  const energy = classified.filter((s) => s.group === "energy");
+  const other = classified.filter((s) => s.group !== "energy");
+  const consumed = (s) =>
+    (typeof s.inventories === "string" && s.inventories !== "unavailable") ||
+    (typeof s.inventoryLatest === "number" && s.inventoryLatest > 0);
+  const describe = (s) =>
+    `${s.instrument ?? "?"}[group=${s.group ?? "?"} inventories=${s.inventories ?? "?"} inventoryLatest=${
+      s.inventoryLatest ?? "none"
+    } eiaEvidence=${s.eiaEvidenceItems ?? 0}]`;
+
+  const failures = [];
+  for (const s of other) {
+    const carriesPetroleum =
+      s.inventoryLatest !== null ||
+      (typeof s.eiaEvidenceItems === "number" && s.eiaEvidenceItems > 0) ||
+      (typeof s.inventories === "string" && s.inventories !== "unavailable");
+    if (carriesPetroleum) {
+      failures.push(
+        `${describe(s)} resolves to the ${s.group} market yet carries petroleum physical evidence — another market's inventory was attributed to it`,
+      );
+    }
+  }
+  for (const s of energy) {
+    if (s.petroleumFeedScopeText === true) {
+      failures.push(
+        `${s.instrument ?? "?"} resolves to the energy market yet its own petroleum feed was withheld as out of scope`,
+      );
+    }
+  }
+  if (failures.length > 0) {
+    return {
+      verdict: "FAIL",
+      summary: `contradiction: ${failures.join("; ")}`,
+      control: other[0] ?? null,
+      energy: energy[0] ?? null,
+      failures,
+    };
+  }
+  if (energy.length === 0) {
+    // If nothing could be classified at all, say WHY from the runtime's own
+    // reason rather than leaving "no energy candidate" to stand alone.
+    const unexplained = list.find(
+      (s) => typeof s.group !== "string" && typeof s.reason === "string" && s.reason.length > 0,
+    );
+    return {
+      verdict: "UNAVAILABLE",
+      summary: `no provider-native candidate resolved to the energy market among the ${classified.length} instrument(s) the deployed runtime classified${
+        unexplained
+          ? `; ${unexplained.instrument ?? "an instrument"} could not be classified — ${unexplained.reason}`
+          : ""
+      } — the feed-scope rule could not be exercised in either direction`,
+      control: other[0] ?? null,
+      energy: null,
+      failures,
+    };
+  }
+  const energySample = energy.find(consumed) ?? energy[0];
+  if (!consumed(energySample)) {
+    return {
+      verdict: "UNAVAILABLE",
+      summary: `the energy market resolved (${describe(energySample)}) but the deployment delivered no petroleum inventory reading — ${
+        energySample.reason ?? "no reason returned"
+      }`,
+      control: other[0] ?? null,
+      energy: energySample,
+      failures,
+    };
+  }
+  if (other.length === 0) {
+    return {
+      verdict: "UNAVAILABLE",
+      summary: `petroleum evidence was consumed by ${describe(energySample)}, but no non-energy instrument was classified in the same run, so the withholding direction is unproven`,
+      control: null,
+      energy: energySample,
+      failures,
+    };
+  }
+  return {
+    verdict: "PASS",
+    summary: `energy ${describe(energySample)} consumed its own petroleum feed, while ${describe(other[0])} received none (scope rule stated: ${
+      other[0].petroleumFeedScopeText === true
+    })`,
+    control: other[0],
+    energy: energySample,
+    failures,
+  };
+}
+
+/**
  * The verdict for one domain.
  *
  * PASS        real provider market evidence (with its own observation instant),
@@ -826,6 +1032,13 @@ export function mostSevereVerdict(current, candidate) {
  * ------------------------------------------------------------------ */
 
 const RATE_LIMIT_RE = /\b429\b|rate.?limit|RATE_LIMITED|too many requests/i;
+/**
+ * Phase 289B — the leg that carries a MARKET PROVIDER's own transport answer
+ * (its 429, its credential rejection). Named by dataset/provider rather than by
+ * a ticker or an exchange, so any provider routed through the same transport is
+ * covered.
+ */
+const MARKET_TRANSPORT_LEG_RE = /market-data|ohlcv|fx-rate|instrument-spec/i;
 const CREDENTIAL_RE = /credential|api[_ -]?key|not configured|unauthoriz|forbidden|\b401\b|\b403\b/i;
 
 /**
@@ -847,14 +1060,38 @@ export function createProviderCircuit() {
     snapshot() {
       return Object.fromEntries([...tripped.entries()]);
     },
-    classify(provider, text) {
+    classify(provider, text, legs = []) {
       if (!provider) return null;
-      if (RATE_LIMIT_RE.test(text ?? "")) {
-        this.trip(provider, `rate limited: ${sanitize(text)}`, "RATE_LIMITED");
+      // Phase 289B — attribute the failure to the provider that reported it.
+      //
+      // The circuit exists to stop REPEATED requests to a provider that refused
+      // on capacity or credentials, and the text it used to receive was the
+      // verdict's own aggregated reason — which quotes EVERY failing leg. That
+      // mis-attributed one provider's refusal to another and suppressed requests
+      // to providers that had refused nothing: a crypto verdict quoting
+      // "CoinGlass not configured: COINGLASS_API_KEY is missing" opened the okx
+      // circuit, and a twelve-data verdict quoting "Tokenomist ... HTTP 401"
+      // opened the twelve-data circuit (reproduced against the stubbed runtime in
+      // the CLI test). A failure now trips only when either
+      //   · `text` is the transport's own error for this call, or
+      //   · a leg that is THIS provider's (or the market-data transport leg, which
+      //     carries the market provider's own capacity response) reported it.
+      const own = (Array.isArray(legs) ? legs : [])
+        .filter((leg) => leg && leg.acquired !== true)
+        .filter(
+          (leg) =>
+            leg.provider === provider ||
+            MARKET_TRANSPORT_LEG_RE.test(`${leg.provider ?? ""} ${leg.dataset ?? ""}`),
+        )
+        .map((leg) => leg.reason ?? "")
+        .join(" ");
+      const attributable = `${text ?? ""} ${own}`;
+      if (RATE_LIMIT_RE.test(attributable)) {
+        this.trip(provider, `rate limited: ${sanitize(attributable)}`, "RATE_LIMITED");
         return "RATE_LIMITED";
       }
-      if (CREDENTIAL_RE.test(text ?? "")) {
-        this.trip(provider, `credentials: ${sanitize(text)}`, "CREDENTIAL_REQUIRED");
+      if (CREDENTIAL_RE.test(attributable)) {
+        this.trip(provider, `credentials: ${sanitize(attributable)}`, "CREDENTIAL_REQUIRED");
         return "CREDENTIAL_REQUIRED";
       }
       return null;
@@ -889,8 +1126,13 @@ export function renderSummary(report) {
   lines.push("──────────────────────────────────────────────────────────────────");
   lines.push("DEVELOPMENT RUNTIME SMOKE — real deployed runtime, real providers");
   lines.push(`target        : ${report.target.origin}`);
-  lines.push(`deployed build: ${report.target.version ?? "unknown (no /version answer)"}`);
-  lines.push(`source commit : ${report.source.commit ?? "unknown"}`);
+  lines.push(
+    `deployed build: ${report.target.version ?? "unknown (no /version answer)"} (running Convex backend version — NOT the function-bundle revision)`,
+  );
+  lines.push(
+    `harness commit: ${report.source.harnessCommit ?? "unknown (the workflow did not pass the checkout SHA)"}`,
+  );
+  lines.push(`dispatch ref  : ${report.source.dispatchRefSha ?? "unknown"}`);
   lines.push(
     `policy        : no stubs · no fixtures · no localhost · client evidence sent: ${report.policy.clientEvidenceSent} · one session per domain`,
   );
@@ -925,10 +1167,137 @@ export function renderSummary(report) {
     }
     lines.push("");
   }
+  if (report.energyGateProbe) {
+    lines.push(
+      `energy gate   : ${report.energyGateProbe.verdict} — ${report.energyGateProbe.summary}`,
+    );
+    for (const sample of report.energyGateProbe.samples) {
+      lines.push(
+        `                classified ${sample.instrument ?? "?"} · group=${sample.group ?? "?"} · inventories=${
+          sample.inventories ?? "?"
+        } · inventoryLatest=${sample.inventoryLatest ?? "none"} · eiaEvidence=${sample.eiaEvidenceItems ?? 0}`,
+      );
+    }
+    if (report.energyGateProbe.stopReason) lines.push(`                stopped: ${report.energyGateProbe.stopReason}`);
+  }
+  if (report.runtimeFingerprint) {
+    lines.push(
+      `code paths    : providerDiagnostics legs=${report.runtimeFingerprint.providerDiagnosticsLegs} (with reason: ${report.runtimeFingerprint.providerDiagnosticsWithReason}) · calendarMappingGap=${
+        report.runtimeFingerprint.calendarMappingGapObserved ? "observed" : "not-observed"
+      } · petroleumFeedScopeText=${
+        report.runtimeFingerprint.petroleumFeedScopeObserved ? "observed" : "not-observed"
+      }`,
+    );
+  }
   lines.push("──────────────────────────────────────────────────────────────────");
   for (const record of report.domains) lines.push(`${record.label} = ${record.headline}`);
   lines.push("──────────────────────────────────────────────────────────────────");
   return lines.join("\n");
+}
+
+/* ------------------------------------------------------------------ *
+ * The commodity energy-gate probe
+ * ------------------------------------------------------------------ */
+
+/**
+ * Exercise the Phase-288 physical-feed gate against the DEPLOYED runtime, in
+ * both directions, without naming a single instrument.
+ *
+ * The gate decides whether the U.S. EIA Weekly Petroleum Status Report may back
+ * a commodity's `inventories` dimension, and it decides that from the MARKET the
+ * instrument resolves to — for a quoted provider-native pair, from its base leg.
+ * It can be wrong in two opposite ways, and neither is observable from a single
+ * commodity: a bullion instrument can inherit petroleum inventory (the
+ * cross-domain read the gate exists to prevent), or a petroleum instrument can
+ * be denied its own feed (the false negative the base-leg resolution exists to
+ * prevent).
+ *
+ * So the probe needs one instrument of each kind and may name neither. Candidates
+ * arrive from the deployment's own discovery in the provider's own order; each is
+ * analysed under its own native id (no substitution) and classified by the
+ * DEPLOYED runtime's answer (`commodityProfile.group`, the very field the gate
+ * reads). The scan is bounded, stops as soon as both directions are represented,
+ * gives every candidate its own anonymous session (quota isolation), and honours
+ * the provider circuit — a provider that just refused on capacity or credentials
+ * receives no repeat request. A case that cannot be reached is reported
+ * UNAVAILABLE with the count actually classified, never assumed.
+ */
+export async function probeEnergyGate({
+  spec,
+  candidates,
+  transport,
+  circuit,
+  sessionFor,
+  seeds = [],
+  candidateLimit = ENERGY_PROBE_CANDIDATE_LIMIT,
+  pauseMs = ENERGY_PROBE_PAUSE_MS,
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  const samples = Array.isArray(seeds) ? [...seeds] : [];
+  const sampled = new Set(samples.map((x) => x?.instrument).filter((id) => typeof id === "string"));
+  let stopReason = null;
+
+  const bothDirections = () =>
+    samples.some((x) => x.group === "energy") &&
+    samples.some((x) => typeof x.group === "string" && x.group !== "energy");
+
+  for (const candidate of list) {
+    if (bothDirections()) break;
+    const nativeId = candidate?.instId ?? candidate?.providerInstrumentId ?? null;
+    if (typeof nativeId !== "string" || nativeId.length === 0) continue;
+    if (sampled.has(nativeId)) continue;
+    const provider = candidate.provider ?? "twelve-data";
+
+    const tripped = circuit.isTripped(provider);
+    if (tripped) {
+      stopReason = `provider circuit open (${tripped.kind}) — no repeat request to ${provider}`;
+      break;
+    }
+
+    const session = await sessionFor(`COMMODITY probe ${nativeId}`);
+    if (!session.ok) {
+      stopReason = `could not create an anonymous session for ${nativeId}: ${session.reason}`;
+      break;
+    }
+
+    const response = await transport.action(
+      "protectedAnalysis:runProtectedAnalysis",
+      buildAnalysisInput(spec, candidate),
+      session.token,
+    );
+    const verdict = classifyDomain({
+      response: response.ok ? response.value : null,
+      transportError: response.ok ? null : (response.appError ?? response.transportError ?? "request failed"),
+    });
+    circuit.classify(provider, response.appError ?? "", verdict?.evidence?.diagnostics ?? []);
+
+    sampled.add(nativeId);
+    samples.push({
+      instrument: verdict?.evidence?.market?.providerInstrumentId ?? nativeId,
+      provider,
+      runtimeStatus: verdict?.status ?? null,
+      verdict: verdict?.headline ?? null,
+      reason: verdict?.reason ?? null,
+      ...commodityMarketOf(verdict?.evidence ?? null),
+    });
+
+    if (!bothDirections() && pauseMs > 0) await sleep(pauseMs);
+  }
+
+  const outcome = energyGateVerdict(samples);
+  return {
+    candidateLimit,
+    candidatesConsidered: list
+      .map((c) => c?.instId ?? c?.providerInstrumentId ?? null)
+      .filter((id) => typeof id === "string"),
+    classified: samples.filter((x) => typeof x.group === "string").length,
+    stopReason,
+    samples,
+    verdict: outcome.verdict,
+    summary: outcome.summary,
+    failures: outcome.failures,
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -1128,9 +1497,9 @@ async function run() {
       }
 
       const request = buildAnalysisInput(spec, candidate);
-      const started = Date.now();
+      const startedAt = Date.now();
       const response = await transport.action("protectedAnalysis:runProtectedAnalysis", request, session.token);
-      const elapsedMs = Date.now() - started;
+      const elapsedMs = Date.now() - startedAt;
 
       const verdict = classifyDomain({
         response: response.ok ? response.value : null,
@@ -1217,11 +1586,11 @@ async function run() {
       record.headline = verdict.headline;
       record.reason = verdict.reason;
 
-      // A provider that just refused on capacity/credentials earns no retry.
-      circuit.classify(
-        provider,
-        `${verdict.reason ?? ""} ${response.appError ?? ""} ${record.evidence?.unified?.limitations?.join(" ") ?? ""}`,
-      );
+      // A provider that just refused on capacity/credentials earns no retry —
+      // but only for the provider that actually refused: `classify` reads the
+      // transport's own error plus the legs attributable to this provider, never
+      // another leg's reason.
+      circuit.classify(provider, response.appError ?? "", record.evidence?.diagnostics ?? []);
 
       const after = await transport.query("entitlements:getMyEntitlement", {}, session.token);
       record.entitlement = {
@@ -1239,26 +1608,92 @@ async function run() {
       record.reason = domainVerdict.reason;
     }
 
-    const level = record.headline === "PASS" ? "notice" : record.headline === "UNAVAILABLE" ? "warning" : "error";
+    const digest = evidenceDigest(record);
+    const level = record.headline === "FAIL" ? "error" : "warning";
     annotate(
       level,
       `${record.label} ${record.headline}`,
-      `${record.provider ?? "?"} · ${record.providerInstrumentId ?? "?"} · observedAt=${record.observedAt ?? "none"} · ${record.reason ?? ""}`,
+      `${record.provider ?? "?"} · ${record.providerInstrumentId ?? "?"} · observedAt=${
+        record.observedAt ?? "none"
+      } · ${record.reason ?? ""}${digest === null ? "" : ` · informational — ${digest}`}`,
     );
-
-    // Phase 289 — a second, verdict-independent line per domain. The verdict
-    // annotation above uses `notice` for a PASS, and GitHub does not surface
-    // `notice` through the check-run annotations API, so a clean domain could
-    // leave no readable evidence at all. This line is always emitted as a
-    // `warning` (the level that reliably surfaces) and is labelled informational
-    // so it is never mistaken for a verdict.
-    const digest = evidenceDigest(record);
-    if (digest !== null) {
-      annotate("warning", `${record.label} runtime evidence`, `informational — ${digest}`);
-    }
 
     domains.push(record);
   }
+
+  // ── The commodity energy-gate probe ────────────────────────────────────────
+  //
+  // Bounded, provider-disciplined, and never naming an instrument: see
+  // `probeEnergyGate`, which receives the deployment's own discovery and reads
+  // the classification back from the deployed runtime.
+  let energyGateProbe = null;
+  const commoditySpec = specs.find((s) => s.domain === "commodity");
+  if (commoditySpec && twelveDiscovery) {
+    const candidates = selectCandidates(commoditySpec, twelveDiscovery, ENERGY_PROBE_CANDIDATE_LIMIT);
+    const commodityRecord = domains.find((d) => d.domain === "commodity");
+    // The commodity domain already analysed the provider's first-ranked
+    // instrument: that delivered answer is the first sample and costs nothing.
+    const seeds =
+      commodityRecord?.evidence?.fundamental && typeof commodityRecord.providerInstrumentId === "string"
+        ? [
+            {
+              instrument: commodityRecord.providerInstrumentId,
+              provider: commodityRecord.provider ?? "twelve-data",
+              runtimeStatus: commodityRecord.headline,
+              verdict: commodityRecord.headline,
+              reason: commodityRecord.reason ?? null,
+              ...commodityMarketOf(commodityRecord.evidence),
+            },
+          ]
+        : [];
+
+    energyGateProbe = await probeEnergyGate({
+      spec: commoditySpec,
+      candidates,
+      transport,
+      circuit,
+      sessionFor,
+      seeds,
+    });
+
+    annotate(
+      energyGateProbe.verdict === "FAIL" ? "error" : "warning",
+      `COMMODITY energy-gate probe ${energyGateProbe.verdict}`,
+      `informational — classified=${energyGateProbe.classified}/${candidates.length} of the deployment's own commodity discovery${
+        energyGateProbe.stopReason === null ? "" : ` · stopped: ${energyGateProbe.stopReason}`
+      } · ${energyGateProbe.summary}`,
+    );
+  }
+
+  // The run-level code-path fingerprint, aggregated over the domains that
+  // actually returned a result. (Reinstated after the probe extraction removed
+  // it: the annotation below reads these values, so a missing definition here is
+  // a ReferenceError at the very end of a long run.)
+  const markerSets = domains.map((d) => runtimeMarkers(d.evidence ?? null));
+  const runtimeFingerprintOfRun = {
+    providerDiagnosticsLegs: markerSets.reduce((n, m) => n + m.diagnostics, 0),
+    providerDiagnosticsWithReason: markerSets.reduce((n, m) => n + m.diagnosticsWithReason, 0),
+    calendarMappingGapObserved: markerSets.some((m) => m.calendarMappingGapObserved),
+    petroleumFeedScopeObserved: markerSets.some((m) => m.petroleumFeedScopeObserved),
+    commodityGroups: [
+      ...new Set(markerSets.map((m) => m.commodityGroup).filter((g) => typeof g === "string")),
+    ],
+  };
+  // The conclusion, stated as the deduction it is: these markers exist ONLY in
+  // the Phase-288 revisions of the deployed functions, so seeing any of them
+  // proves those code paths answered. `not-observed` is never silently rounded up
+  // into a version claim — /version cannot supply one.
+  const phase288CodePathsObserved =
+    runtimeFingerprintOfRun.providerDiagnosticsWithReason > 0 ||
+    runtimeFingerprintOfRun.calendarMappingGapObserved ||
+    runtimeFingerprintOfRun.petroleumFeedScopeObserved;
+  const runtimeFingerprint = {
+    ...runtimeFingerprintOfRun,
+    phase288CodePathsObserved,
+    perDomain: Object.fromEntries(domains.map((d, i) => [d.label, markerSets[i]])),
+    semantics:
+      "behavioural fingerprint of the deployed backend (result-level providerDiagnostics with per-leg reasons; calendar mapping-gap text; commodity feed-scope text). These exist only in the Phase-288 revisions of the deployed functions; /version is not a revision surface.",
+  };
 
   const report = {
     schema: "xstarz.development-runtime-smoke/1",
@@ -1273,11 +1708,28 @@ async function run() {
       // A deployment that serves the API but not `/version` is reported as
       // exactly that, never as a version.
       versionProbe: { ok: version.ok, httpStatus: version.httpStatus, apiPlaneReachable: true },
+      // What `/version` IS, so no reader turns it into a source revision: it is
+      // served by the Convex backend and reports the RUNNING CONVEX BACKEND
+      // VERSION (the deployment health signal the Convex dashboard calls the
+      // running Convex version, and which self-hosted backends may answer as
+      // "unknown"). It was unchanged across the 2026-09-25 development deploys,
+      // so it does not track this application's function bundle.
+      versionSemantics:
+        "running Convex backend version (deployment health signal) — NOT the application function-bundle revision and NOT a git SHA",
       productionTouched: false,
     },
     source: {
       ref: process.env.GITHUB_REF ?? null,
-      commit: process.env.GITHUB_SHA ?? null,
+      // Phase 289B — the CHECKOUT is the only thing the harness can vouch for.
+      // GITHUB_SHA is the SHA of the ref the workflow file was dispatched from,
+      // which is a different commit whenever the smoke is dispatched from one
+      // ref while checking out another; conflating them (as an earlier revision
+      // of this line did) misreports provenance. Both are reported, labelled.
+      harnessCommit: process.env.XSTARZ_SMOKE_SOURCE_COMMIT ?? null,
+      harnessCommitSource: process.env.XSTARZ_SMOKE_SOURCE_COMMIT
+        ? "workflow ran `git rev-parse HEAD` on the checkout and passed it in"
+        : "unknown — the workflow did not pass the checkout SHA",
+      dispatchRefSha: process.env.GITHUB_SHA ?? null,
       runId: process.env.GITHUB_RUN_ID ?? null,
       runUrl:
         process.env.GITHUB_RUN_ID && process.env.GITHUB_REPOSITORY
@@ -1297,21 +1749,43 @@ async function run() {
     },
     transport: { calls: transport.state.calls, blocked: transport.state.blocked, lastError: transport.state.lastError },
     providerCircuit: circuit.snapshot(),
+    // Phase 289B — which backend code paths answered (read from the responses).
+    runtimeFingerprint: runtimeFingerprint,
+    // Phase 289B — the commodity physical-feed gate, exercised in both directions.
+    energyGateProbe: energyGateProbe,
     domains,
     summary: Object.fromEntries(domains.map((d) => [d.label, d.headline])),
   };
 
-  // Phase 289 — which build did this run actually measure? The artifact carries
-  // it, but the artifact is not always reachable (downloads can be
-  // egress-restricted while check-run annotations are not), and the deployed
-  // version plus the smoke's own source commit are mandatory report fields. The
-  // value is the deployment's own /version answer, or an explicit "unknown".
+  // Which build answered, and which code paths are running — one line, because
+  // GitHub does not return `notice` annotations through the check-run
+  // annotations API and it caps warning/error annotations per step.
+  //
+  // Provenance is stated for what each value actually is: `/version` is the
+  // running Convex backend version (NOT this application's function bundle), the
+  // harness commit comes from the CHECKOUT the workflow resolved, and GITHUB_SHA
+  // is reported separately as the dispatch ref. The runtime-side fingerprint is
+  // behavioural, because no runtime surface answers with our git revision: it
+  // reports the fields and sentences that exist only in the Phase-288 revisions
+  // of the deployed functions, and says "not-observed" when it did not see them.
   annotate(
     "warning",
-    "Smoke target",
-    `informational — target=${origin} · apiPlaneReachable=${version.ok} · version=${
-      version.version ?? "unknown (no /version answer)"
-    } · sourceCommit=${process.env.GITHUB_SHA ?? "unknown"}`,
+    "Smoke target and runtime code paths",
+    `informational — target=${origin} · apiPlaneReachable=${version.ok} · /version=${
+      version.version ?? "unknown (no answer)"
+    } (running Convex backend version, NOT the function-bundle revision) · harnessCommit=${
+      process.env.XSTARZ_SMOKE_SOURCE_COMMIT ?? "unknown (workflow did not pass the checkout SHA)"
+    } · dispatchRefSha=${process.env.GITHUB_SHA ?? "unknown"} · backendMarkers=providerDiagnostics-legs:${
+      runtimeFingerprintOfRun.providerDiagnosticsLegs
+    },legs-with-reason:${runtimeFingerprintOfRun.providerDiagnosticsWithReason},calendarMappingGap:${
+      runtimeFingerprintOfRun.calendarMappingGapObserved ? "observed" : "not-observed"
+    },petroleumFeedScopeText:${
+      runtimeFingerprintOfRun.petroleumFeedScopeObserved ? "observed" : "not-observed"
+    }${
+      runtimeFingerprintOfRun.commodityGroups.length > 0
+        ? `,commodityGroups:${runtimeFingerprintOfRun.commodityGroups.join("|")}`
+        : ""
+    },phase288CodePaths:${phase288CodePathsObserved ? "observed" : "not-observed"}`,
   );
 
   if (report.transport.calls === 0) {

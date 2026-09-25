@@ -163,6 +163,14 @@ export type Evidence = {
     confidence: string | null;
     directionalBias: string | null;
     periodsCount: number | null;
+    /**
+     * Phase 289B — the runtime's own market classification for a commodity
+     * instrument (the field the physical-feed gate reads) and whether
+     * petroleum-derived metrics were consumed for it.
+     */
+    commodityProfile: { group: string | null; classificationSource: string | null } | null;
+    commodityMetrics: { inventoryLatest: number | null; keys: string[] } | null;
+    limitations: string[];
     /** Phase 289 — the delivered domain dimensions with their OWN status. */
     dimensions: { name: string | null; status: string | null; role: string | null }[];
     evidenceProviders: string[];
@@ -233,6 +241,70 @@ export type LegDiagnosticSource = { diagnostics?: Evidence["diagnostics"] } | nu
  */
 export function evidenceDigest(record: unknown): string | null;
 
+/** Phase 289B — the runtime's own market + petroleum-evidence read for one instrument. */
+export type CommodityMarket = {
+  group: string | null;
+  classificationSource: string | null;
+  inventories: string | null;
+  inventoryLatest: number | null;
+  eiaEvidenceItems: number;
+  petroleumFeedScopeText: boolean;
+};
+export function commodityMarketOf(evidence: unknown): CommodityMarket;
+
+/** Phase 289B — which backend code paths answered, read from the response. */
+export type RuntimeMarkers = {
+  diagnostics: number;
+  diagnosticsWithReason: number;
+  commodityGroup: string | null;
+  commodityInventories: string | null;
+  commodityInventoryLatest: number | null;
+  eiaEvidenceItems: number;
+  petroleumFeedScopeObserved: boolean;
+  calendarMappingGapObserved: boolean;
+};
+export function runtimeMarkers(evidence: unknown): RuntimeMarkers;
+
+/** Phase 289B — probe bounds. */
+export const ENERGY_PROBE_CANDIDATE_LIMIT: number;
+export const ENERGY_PROBE_PAUSE_MS: number;
+
+/**
+ * Phase 289B — exercise the commodity physical-feed gate against the deployed
+ * runtime, in both directions, naming no instrument: candidates come from the
+ * deployment's discovery, each is analysed under its own native id, and the
+ * classification is read back from the deployed runtime's own answer.
+ */
+export function probeEnergyGate(deps: {
+  spec: DomainSpec;
+  candidates: Candidate[];
+  transport: Transport;
+  circuit: ProviderCircuit;
+  sessionFor(label: string): Promise<{ ok: boolean; token?: string | null; reason?: string | null }>;
+  seeds?: Record<string, unknown>[];
+  candidateLimit?: number;
+  pauseMs?: number;
+  sleep?: (ms: number) => Promise<unknown>;
+}): Promise<{
+  candidateLimit: number;
+  candidatesConsidered: string[];
+  classified: number;
+  stopReason: string | null;
+  samples: Record<string, unknown>[];
+  verdict: "PASS" | "UNAVAILABLE" | "FAIL";
+  summary: string;
+  failures: string[];
+}>;
+
+/** Phase 289B — the commodity energy-gate probe's verdict over the samples collected. */
+export function energyGateVerdict(samples: unknown): {
+  verdict: "PASS" | "UNAVAILABLE" | "FAIL";
+  summary: string;
+  control: Record<string, unknown> | null;
+  energy: Record<string, unknown> | null;
+  failures: string[];
+};
+
 /** The failing legs' own diagnoses as one bounded line, or null. */
 export function failingLegText(evidence: LegDiagnosticSource, limit?: number): string | null;
 /** Headline reason plus the failing legs' own diagnoses (bounded). */
@@ -261,7 +333,15 @@ export type ProviderCircuit = {
   trip(provider: string | null, reason: string, kind: string): void;
   isTripped(provider: string | null): { reason: string; kind: string } | null;
   snapshot(): Record<string, { reason: string; kind: string }>;
-  classify(provider: string | null, text: string | null): string | null;
+  /**
+   * Classify a failure, attributing it to the provider that reported it: the
+   * transport's own error text plus only the legs belonging to this provider.
+   */
+  classify(
+    provider: string | null,
+    text: string | null,
+    legs?: { provider?: string | null; dataset?: string | null; acquired?: boolean; reason?: string | null }[],
+  ): string | null;
 };
 
 /** A rate limit or a missing credential stops REPEATED requests for that provider. */

@@ -102,6 +102,13 @@ jobs:
           echo "target: ${XSTARZ_SMOKE_URL}"
           echo "deployment (provenance only): ${XSTARZ_SMOKE_DEPLOYMENT:-<not set>}"
           echo "source commit: $(git rev-parse HEAD)"
+          # Phase 289B — provenance: the CHECKOUT is what the harness ran from,
+          # and it is NOT the same thing as github.sha whenever this workflow is
+          # dispatched from one ref while checking out another (`ref` input). The
+          # smoke reports both, labelled, and never derives a revision from
+          # `/version` (that is the running Convex backend version, not this
+          # application's function bundle).
+          echo "XSTARZ_SMOKE_SOURCE_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Run the four-asset smoke against the deployed runtime
         # Exit 0 = nothing FAILED (PASS and UNAVAILABLE are both honest outcomes

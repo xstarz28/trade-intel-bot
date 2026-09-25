@@ -308,6 +308,8 @@ never a side effect of a merge.
 | Commands | `npm run development:deploy:guard -- --json`, then `npm run build`, then `npx convex dev --once` |
 | Safe metadata printed | deployment target, source ref, commit SHA and subject, and the deployment's `/version` when `VITE_CONVEX_URL` is set |
 
+**What `/version` is — and is not.** `GET /version` on a `*.convex.cloud` origin is served by the **Convex backend**, not by this repository: it reports the *running Convex backend version* (the value the Convex dashboard shows as the deployment's running Convex version, and which a self-hosted backend may answer as `unknown`). It is a reachability/health signal. It does **not** identify this application's function bundle and it is **not** a git revision — it was unchanged across the 2026-09-25 development deploys, including one that pushed new functions. Nothing in this repository may present it as a deployment's source revision; the deployed source is attested by the deploy workflow's checkout + push log, and the *behaviour* of the deployed functions is fingerprinted from their own responses (see below).
+
 ### Configuration the `development` environment must hold
 
 | Name | Kind | Contents |
@@ -362,7 +364,7 @@ removing it because it *looks* unused breaks `convex dev` bundling.
 
 The workflow republishes the Convex output as `::error::` annotations (error-
 shaped lines, then the tail, single-line and redacted), plus `::notice::`
-annotations for the source ref/commit and the deployment's `/version`. Read them
+annotations for the source ref/commit and the deployment's `/version` (backend version — not a source revision; see the metadata table). Read them
 with `gh api repos/<owner>/<repo>/commits/<sha>/check-runs --jq '.check_runs[]
 | select(.conclusion=="failure") | .id'` and then
 `gh api repos/<owner>/<repo>/check-runs/<id>/annotations`: the raw runner log is
@@ -405,8 +407,38 @@ Optional inputs: `ref` (branch/tag/SHA to run from), `domains`
 | Not localhost, not production | The target validator refuses both; the workflow refuses the production host by name |
 | `observedAt` | Copied verbatim from the runtime; a missing instant stays `null` and the verdict drops to UNAVAILABLE/FAIL |
 | Guest allowance | One fresh anonymous session per asset class, so no domain spends another's quota |
-| Rate limits | A 429 or a credential error trips a per-provider circuit: no retry, no second candidate, other domains continue |
+| Rate limits | A 429 or a credential error trips a per-provider circuit: no retry, no second candidate, other domains continue. The failure is attributed to the provider that REPORTED it (the transport's own error, or a leg belonging to that provider) — another leg's missing key never suppresses a working provider |
+| Commodity physical feed (Phase 288/289B) | The commodity energy-gate probe analyses the deployment's own discovered commodity candidates (no ticker named) until one resolves to the `energy` market and one does not, then proves both directions: the energy instrument consumed its own petroleum evidence, the other received none. Bounded and circuit-disciplined; an unreachable energy case is UNAVAILABLE, never a pass |
 | PASS | Only with real market evidence + provider observation instant + available technical + available domain-native fundamental + unified intelligence. HTTP 200 alone is never a pass |
+
+### Reading a run without the artifact
+
+Artifact download and runner logs are not always reachable from every
+environment, while check-run **annotations** generally are, so the smoke is
+written to be read from annotations alone:
+
+| Annotation | Carries |
+| --- | --- |
+| `Smoke target and runtime code paths` | the target, whether the API plane answered, the `/version` value **labelled as the running Convex backend version** (never as a source revision), the harness commit read from the *checkout* and the dispatch ref SHA reported separately, plus a behavioural fingerprint of the deployed backend (`providerDiagnostics` legs, legs carrying their own reason, the calendar mapping-gap text, the commodity feed-scope text) and its conclusion `phase288CodePaths: observed / not-observed` |
+| `<DOMAIN> PASS\|UNAVAILABLE\|FAIL` | the verdict in the title, then provider, native instrument, provider observation instant, the runtime's own reason, and after `informational —` the delivered dimensions with their statuses, the engine's domain-native text, each leg's `acquired/attached/used` flags with its classified reason, and the provider's discovery report |
+| `COMMODITY energy-gate probe PASS\|UNAVAILABLE\|FAIL` | how many of the deployment's own commodity candidates were classified, both samples (market group, inventories status, consumed metric, EIA evidence count) and why the verdict is what it is |
+
+Every domain line is emitted at `warning` level (only `error` for a FAIL) because
+GitHub does not return `notice` annotations through the checks API and caps
+warning/error annotations per step — a PASS used to leave nothing readable.
+
+### Is the deployed build the current one?
+
+`/version` cannot answer that. Three things together can:
+
+1. **The deploy run** — its checkout, `npm run build` and `npx convex dev --once`
+   output prove which commit was pushed, at what time.
+2. **The Convex dashboard** — the deployment summary's "last deployed" timestamp
+   should match that run.
+3. **The runtime's behaviour** — the smoke's `phase288CodePaths` fingerprint is
+   built from fields and sentences that exist only in the current revisions of the
+   deployed functions. `not-observed` means the deployed functions do not carry
+   them, whatever the deploy log says.
 
 Exit codes: `0` = nothing FAILED (PASS and UNAVAILABLE are both honest),
 `1` = at least one domain FAILED, `2` = the deployment could not be reached and
