@@ -14,6 +14,7 @@ import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
+import { attachAdvancedTechnical } from "../lib/data/advanced-technical";
 import { buildChain, buildMtfContext } from "../lib/data/mtf";
 import {
   crossAssetComparator,
@@ -530,6 +531,15 @@ export const fetchMarketData = action({
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
       technical.smc = computeSmcContext(candles, args.timeframe);
+      // Phase 278 — the advanced block is computed from the SAME candles and
+      // the SAME evidence the classical stack reads. The comparator series
+      // below enriches its cross-market section; nothing is invented when a
+      // comparator is unavailable.
+      technical.advanced = attachAdvancedTechnical(candles, undefined, technical, {
+        timeframe: args.timeframe,
+        provider: useProviderNative ? (providerArg as string) : "twelve-data",
+        providerInstrumentId: requestSymbol,
+      });
 
       // ── Adaptive MTF chain ─────────────────────────────────────
       // Only timeframes that actually fetch successfully enter the chain.
@@ -601,6 +611,9 @@ export const fetchMarketData = action({
       // the primary analysis is never sacrificed for secondary context,
       // and unavailability is flagged explicitly instead of guessed.
       const comparator = crossAssetComparator(args.instrumentType, symbol);
+      // Phase 278 — the ACTUAL comparator series is hoisted so the advanced
+      // cross-market section can cite it; it stays null on any failure.
+      let compCandles: OhlcvCandle[] | null = null;
       let crossAsset: TechnicalData["crossAsset"] | undefined;
       if (apiKey && comparator && comparator !== symbol.toUpperCase()) {
         // Phase 230 — secondary-leg failure state. These legs share the
@@ -653,7 +666,7 @@ export const fetchMarketData = action({
               }
             }
           }
-          const compCandles = compSymbol
+          compCandles = compSymbol
             ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey as string).catch((err: unknown) => {
                 // Phase 230 — was `.catch(() => null)`: keep the failure
                 // class so a comparator outage is not misreported as "the
@@ -735,6 +748,28 @@ export const fetchMarketData = action({
         }
       }
       if (crossAsset) technical.crossAsset = crossAsset;
+
+      // Phase 278 — cross-market evidence reaches the advanced block ONLY as
+      // the REAL comparator series that was actually fetched (with its own
+      // provenance). When the comparator leg failed, the advanced cross-market
+      // section stays explicitly unavailable instead of being estimated.
+      if (technical.advanced) {
+        technical.advanced = attachAdvancedTechnical(candles, technical.advanced, technical, {
+          timeframe: args.timeframe,
+          provider: useProviderNative ? (providerArg as string) : "twelve-data",
+          providerInstrumentId: requestSymbol,
+          ...(crossAsset?.available && compCandles && compCandles.length >= 25
+            ? {
+                comparator: {
+                  symbol: crossAsset.comparatorSymbol,
+                  provider: crossAsset.provider ?? "Twelve Data",
+                  closes: compCandles.map((c) => c.close),
+                  timeframe: args.timeframe,
+                },
+              }
+            : {}),
+        });
+      }
 
       const resultProvider = useProviderNative
         ? (providerArg as string)

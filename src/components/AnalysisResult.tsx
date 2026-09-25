@@ -2001,6 +2001,444 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </Card>
         )}
 
+      {/* Phase 278 — Advanced modern technical intelligence.
+          Everything below is read VERBATIM from the engine's own
+          `technicalData.advanced` object: no VWAP, volume profile, relative
+          volume, volatility measure or microstructure metric is recalculated
+          in React. Evidence the configured feeds do not supply is rendered as
+          an explicit "not supplied" entry, never as a zero and never as a
+          value derived from unrelated data. */}
+      {result.technicalData?.advanced && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span>{" "}
+                {t.analysisResult.advancedTechnical.title}
+              </h4>
+              {result.technicalData.advanced.provenance.timeframe && (
+                <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                  {result.technicalData.advanced.provenance.timeframe}
+                </Badge>
+              )}
+              {result.technicalData.advanced.provenance.provider && (
+                <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                  {result.technicalData.advanced.provenance.provider}
+                  {result.technicalData.advanced.provenance.providerInstrumentId
+                    ? ` · ${result.technicalData.advanced.provenance.providerInstrumentId}`
+                    : ""}
+                </Badge>
+              )}
+              {result.technicalData.advanced.provenance.observedAt !== undefined && (
+                <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                  {t.analysisResult.advancedTechnical.observedAtLabel}:{" "}
+                  {new Date(result.technicalData.advanced.provenance.observedAt).toISOString()}
+                </Badge>
+              )}
+              <Badge variant="outline" className="text-[10px] font-mono border-border/50">
+                {result.technicalData.advanced.provenance.dataPoints} {t.analysisResult.candlesCount}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            {(() => {
+              const adv = result.technicalData!.advanced!;
+              const fmt = (v: number | undefined, digits = 2) =>
+                v === undefined ? t.analysisResult.advancedTechnical.unavailableLabel : v.toFixed(digits);
+              return (
+                <>
+                  {/* ── Location / auction ── */}
+                  <div data-testid="advanced-location">
+                    <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                      {t.analysisResult.advancedTechnical.locationTitle}
+                    </p>
+                    {adv.location.available ? (
+                      <ul className="space-y-0.5">
+                        {adv.location.sessionVwap !== undefined && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.sessionVwapLabel}: {fmt(adv.location.sessionVwap)}
+                            {adv.location.sessionCandles !== undefined
+                              ? ` · ${adv.location.sessionCandles} ${t.analysisResult.advancedTechnical.barsLabel}`
+                              : ""}
+                          </li>
+                        )}
+                        {adv.location.bands && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.bandsLabel}: {fmt(adv.location.bands.minus1)} /{" "}
+                            {fmt(adv.location.bands.plus1)} · {fmt(adv.location.bands.minus2)} / {fmt(adv.location.bands.plus2)}
+                          </li>
+                        )}
+                        {adv.location.anchoredVwaps.map((a) => (
+                          <li key={`${a.anchor}-${a.anchorAt}`} className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.anchoredVwapLabel} ({a.anchor}): {fmt(a.value)}
+                            {" · "}
+                            {new Date(a.anchorAt).toISOString()}
+                            {` · ${a.candles} ${t.analysisResult.advancedTechnical.barsLabel}`}
+                          </li>
+                        ))}
+                        {adv.location.anchorUnavailable.map((a) => (
+                          <li key={a.anchor} className="text-[10px] font-mono text-muted-foreground/50">
+                            {t.analysisResult.advancedTechnical.anchoredVwapLabel} ({a.anchor}):{" "}
+                            {t.analysisResult.advancedTechnical.unavailableLabel} — {a.reason}
+                          </li>
+                        ))}
+                        {adv.location.distances.map((d) => (
+                          <li key={`${d.anchor}-${d.anchorAt ?? 0}`} className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.distanceLabel} ({d.anchor}): {fmt(d.absolute)}{" "}
+                            ({fmt(d.percent)}%{d.atrMultiple !== undefined ? ` · ${fmt(d.atrMultiple)} ATR` : ""})
+                          </li>
+                        ))}
+                        {(["day", "week", "month"] as const).map((period) => {
+                          const range = adv.location.previousPeriods[period];
+                          if (!range) return null;
+                          return (
+                            <li key={period} className="text-[10px] font-mono text-muted-foreground/80">
+                              {t.analysisResult.advancedTechnical.previousPeriodLabel} ({period}): {fmt(range.high)} /{" "}
+                              {fmt(range.low)} · {range.candles} {t.analysisResult.advancedTechnical.barsLabel}
+                            </li>
+                          );
+                        })}
+                        {adv.location.previousPeriods.unavailable.map((u) => (
+                          <li key={u.period} className="text-[10px] font-mono text-muted-foreground/50">
+                            {t.analysisResult.advancedTechnical.previousPeriodLabel} ({u.period}):{" "}
+                            {t.analysisResult.advancedTechnical.unavailableLabel} — {u.reason}
+                          </li>
+                        ))}
+                        {adv.location.openingRange && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.openingRangeLabel}: {fmt(adv.location.openingRange.high)} /{" "}
+                            {fmt(adv.location.openingRange.low)}
+                          </li>
+                        )}
+                      </ul>
+                    ) : (
+                      <p className="text-[10px] font-mono text-muted-foreground/50">
+                        {t.analysisResult.advancedTechnical.unavailableLabel} — {adv.location.unavailableReason}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ── Volume structure ── */}
+                  <div data-testid="advanced-volume">
+                    <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                      {t.analysisResult.advancedTechnical.volumeTitle}
+                    </p>
+                    {adv.volumeStructure.available ? (
+                      <ul className="space-y-0.5">
+                        {adv.volumeStructure.profile && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.pocLabel}: {fmt(adv.volumeStructure.profile.poc)} ·{" "}
+                            {t.analysisResult.advancedTechnical.vahLabel}: {fmt(adv.volumeStructure.profile.vah)} ·{" "}
+                            {t.analysisResult.advancedTechnical.valLabel}: {fmt(adv.volumeStructure.profile.val)}
+                            {` · ${adv.volumeStructure.profile.bins.length} bins`}
+                          </li>
+                        )}
+                        {adv.volumeStructure.profile && adv.volumeStructure.profile.hvn.length > 0 && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.hvnLabel}:{" "}
+                            {adv.volumeStructure.profile.hvn.map((v) => v.toFixed(2)).join(", ")}
+                          </li>
+                        )}
+                        {adv.volumeStructure.profile && adv.volumeStructure.profile.lvn.length > 0 && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.lvnLabel}:{" "}
+                            {adv.volumeStructure.profile.lvn.map((v) => v.toFixed(2)).join(", ")}
+                          </li>
+                        )}
+                        {adv.volumeStructure.relativeVolume && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.relativeVolumeLabel}:{" "}
+                            {fmt(adv.volumeStructure.relativeVolume.value)}× ({adv.volumeStructure.relativeVolume.state})
+                            {` · ${adv.volumeStructure.relativeVolume.lookback} ${t.analysisResult.advancedTechnical.barsLabel}`}
+                          </li>
+                        )}
+                        {adv.volumeStructure.expansion && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.participationLabel}: {adv.volumeStructure.expansion.state}{" "}
+                            ({fmt(adv.volumeStructure.expansion.ratio)}×)
+                          </li>
+                        )}
+                        {adv.volumeStructure.confirmation && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.priceVolumeLabel}:{" "}
+                            {adv.volumeStructure.confirmation.state} ({fmt(adv.volumeStructure.confirmation.priceChangePercent)}%{" "}
+                            price, {fmt(adv.volumeStructure.confirmation.volumeChangePercent)}% volume)
+                          </li>
+                        )}
+                      </ul>
+                    ) : (
+                      <p className="text-[10px] font-mono text-muted-foreground/50">
+                        {t.analysisResult.advancedTechnical.unavailableLabel} — {adv.volumeStructure.unavailableReason}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ── Liquidity / structure events ── */}
+                  <div data-testid="advanced-liquidity">
+                    <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                      {t.analysisResult.advancedTechnical.liquidityTitle}
+                    </p>
+                    <ul className="space-y-0.5">
+                      {adv.liquidityStructure.lastSweep && (
+                        <li className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.sweepLabel}: {adv.liquidityStructure.lastSweep.side} @{" "}
+                          {fmt(adv.liquidityStructure.lastSweep.level)}
+                        </li>
+                      )}
+                      {adv.liquidityStructure.levelInteractions.slice(0, 4).map((li) => (
+                        <li key={`${li.levelSource}-${li.breakTime}`} className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.levelInteractionLabel}: {li.state} @ {fmt(li.level)} ({li.levelSource})
+                        </li>
+                      ))}
+                      {adv.liquidityStructure.displacement && (
+                        <li className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.displacementLabel}:{" "}
+                          {adv.liquidityStructure.displacement.direction} (range{" "}
+                          {fmt(adv.liquidityStructure.displacement.rangeAtrMultiple)}× ATR)
+                        </li>
+                      )}
+                      {adv.liquidityStructure.fvgs.length > 0 && (
+                        <li className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.fvgLabel}:{" "}
+                          {adv.liquidityStructure.fvgs
+                            .slice(0, 3)
+                            .map((f) => `${f.direction} ${f.lower.toFixed(2)}–${f.upper.toFixed(2)} (${f.status})`)
+                            .join(", ")}
+                        </li>
+                      )}
+                      {adv.liquidityStructure.zones.length > 0 && (
+                        <li className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.zonesLabel}:{" "}
+                          {adv.liquidityStructure.zones
+                            .slice(0, 3)
+                            .map((z) => `${z.direction} ${z.lower.toFixed(2)}–${z.upper.toFixed(2)} (${z.status})`)
+                            .join(", ")}
+                        </li>
+                      )}
+                      {adv.liquidityStructure.sessionAuction?.available && adv.liquidityStructure.sessionAuction.location && (
+                        <li className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.sessionAuctionLabel}:{" "}
+                          {adv.liquidityStructure.sessionAuction.location}
+                        </li>
+                      )}
+                      {adv.liquidityStructure.sessionAuction && !adv.liquidityStructure.sessionAuction.available && (
+                        <li className="text-[10px] font-mono text-muted-foreground/50">
+                          {t.analysisResult.advancedTechnical.sessionAuctionLabel}:{" "}
+                          {t.analysisResult.advancedTechnical.unavailableLabel} —{" "}
+                          {adv.liquidityStructure.sessionAuction.unavailableReason}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+
+                  {/* ── Volatility / statistical regime ── */}
+                  <div data-testid="advanced-volatility">
+                    <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                      {t.analysisResult.advancedTechnical.volatilityTitle}
+                    </p>
+                    {adv.volatility.available ? (
+                      <ul className="space-y-0.5">
+                        {adv.volatility.realizedVolPercentPerBar !== undefined && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.realizedVolLabel}:{" "}
+                            {fmt(adv.volatility.realizedVolPercentPerBar, 4)}% per bar
+                            {adv.volatility.realizedVolAnnualizedPercent !== undefined
+                              ? ` · ${fmt(adv.volatility.realizedVolAnnualizedPercent)}% ${t.analysisResult.advancedTechnical.annualizedLabel}`
+                              : ""}
+                          </li>
+                        )}
+                        {adv.volatility.realizedVolPercentile !== undefined && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.percentileLabel}: RV {fmt(adv.volatility.realizedVolPercentile, 1)}
+                            {adv.volatility.atrPercentile !== undefined ? ` · ATR ${fmt(adv.volatility.atrPercentile, 1)}` : ""}
+                          </li>
+                        )}
+                        {adv.volatility.zScore !== undefined && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.zScoreLabel}: {fmt(adv.volatility.zScore, 3)}
+                            {adv.volatility.stdevPercent !== undefined ? ` · σ ${fmt(adv.volatility.stdevPercent)}%` : ""}
+                          </li>
+                        )}
+                        {adv.volatility.compression && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.compressionLabel}: {adv.volatility.compression.state}
+                            {adv.volatility.compression.atrRatio !== undefined
+                              ? ` (${fmt(adv.volatility.compression.atrRatio)}×)`
+                              : ""}
+                          </li>
+                        )}
+                        {adv.volatility.regime && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.regimeLabel}: {adv.volatility.regime.state}
+                            {adv.volatility.regime.efficiencyRatio !== undefined
+                              ? ` (ER ${fmt(adv.volatility.regime.efficiencyRatio, 3)})`
+                              : ""}
+                          </li>
+                        )}
+                        {adv.volatility.clustering && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.clusteringLabel}: {adv.volatility.clustering.state}
+                            {adv.volatility.clustering.autocorrelation !== undefined
+                              ? ` (ρ ${fmt(adv.volatility.clustering.autocorrelation, 3)})`
+                              : ""}
+                          </li>
+                        )}
+                      </ul>
+                    ) : (
+                      <p className="text-[10px] font-mono text-muted-foreground/50">
+                        {t.analysisResult.advancedTechnical.unavailableLabel} — {adv.volatility.unavailableReason}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ── Cross-market ── */}
+                  <div data-testid="advanced-crossmarket">
+                    <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                      {t.analysisResult.advancedTechnical.crossMarketTitle}
+                    </p>
+                    {adv.crossMarket.available ? (
+                      <ul className="space-y-0.5">
+                        <li className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.correlationLabel}: {fmt(adv.crossMarket.correlation, 3)} vs{" "}
+                          {adv.crossMarket.comparatorSymbol} ({adv.crossMarket.sampleSize}{" "}
+                          {t.analysisResult.advancedTechnical.barsLabel}, {adv.crossMarket.comparatorProvider})
+                        </li>
+                        {adv.crossMarket.relativeStrengthPercent !== undefined && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.relativeStrengthLabel}:{" "}
+                            {fmt(adv.crossMarket.relativeStrengthPercent)}pp
+                          </li>
+                        )}
+                        {adv.crossMarket.intermarketConfirmation && (
+                          <li className="text-[10px] font-mono text-muted-foreground/80">
+                            {t.analysisResult.advancedTechnical.intermarketLabel}: {adv.crossMarket.intermarketConfirmation}
+                          </li>
+                        )}
+                      </ul>
+                    ) : (
+                      <p className="text-[10px] font-mono text-muted-foreground/50">
+                        {t.analysisResult.advancedTechnical.unavailableLabel} — {adv.crossMarket.unavailableReason}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ── Order flow / microstructure ── */}
+                  <div data-testid="advanced-orderflow">
+                    <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                      {t.analysisResult.advancedTechnical.orderFlowTitle}
+                    </p>
+                    {adv.orderFlow.available ? (
+                      <ul className="space-y-0.5">
+                        <li className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.bidAskLabel}: {fmt(adv.orderFlow.bid)} / {fmt(adv.orderFlow.ask)} ·{" "}
+                          {t.analysisResult.advancedTechnical.spreadLabel}: {fmt(adv.orderFlow.spreadBps)} bps
+                        </li>
+                        <li className="text-[10px] font-mono text-muted-foreground/80">
+                          {t.analysisResult.advancedTechnical.depthLabel}: {fmt(adv.orderFlow.bidVolume)} /{" "}
+                          {fmt(adv.orderFlow.askVolume)} · {t.analysisResult.advancedTechnical.depthImbalanceLabel}:{" "}
+                          {fmt(adv.orderFlow.depthImbalance, 4)}
+                        </li>
+                        <li className="text-[10px] font-mono text-muted-foreground/50">
+                          {adv.orderFlow.provider}
+                          {adv.orderFlow.instrumentId ? ` · ${adv.orderFlow.instrumentId}` : ""}
+                          {adv.orderFlow.freshness ? ` · ${adv.orderFlow.freshness}` : ""}
+                        </li>
+                      </ul>
+                    ) : (
+                      <p className="text-[10px] font-mono text-muted-foreground/50">
+                        {t.analysisResult.advancedTechnical.unavailableLabel} — {adv.orderFlow.unavailableReason}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ── Derivatives context ── */}
+                  <div data-testid="advanced-derivatives">
+                    <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                      {t.analysisResult.advancedTechnical.derivativesTitle}
+                    </p>
+                    {adv.derivatives.available ? (
+                      <ul className="space-y-0.5">
+                        {adv.derivatives.entries.map((e) => (
+                          <li key={e.metric} className="text-[10px] font-mono text-muted-foreground/80">
+                            {e.metric}: {e.value} · {e.provider} · {e.instrument}
+                            {e.freshness ? ` · ${e.freshness}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-[10px] font-mono text-muted-foreground/50">
+                        {t.analysisResult.advancedTechnical.unavailableLabel} — {adv.derivatives.unavailableReason}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* ── Metrics the configured feeds genuinely do not supply ── */}
+                  {result.advancedTechnicalEvidence &&
+                    result.advancedTechnicalEvidence.unavailableMetrics.length > 0 && (
+                      <div data-testid="advanced-unavailable-metrics">
+                        <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                          {t.analysisResult.advancedTechnical.unavailableMetricsLabel}
+                        </p>
+                        <ul className="space-y-0.5">
+                          {result.advancedTechnicalEvidence.unavailableMetrics.map((m) => (
+                            <li key={m.metric} className="text-[10px] font-mono text-muted-foreground/60">
+                              {m.metric} — {m.reason}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                  {/* ── Evidence hierarchy (momentum is explicitly secondary) ── */}
+                  <div data-testid="advanced-hierarchy">
+                    <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-1">
+                      {t.analysisResult.advancedTechnical.hierarchyTitle}
+                    </p>
+                    <ul className="space-y-0.5">
+                      {adv.evidenceHierarchy.map((tier) => (
+                        <li key={tier.tier} className="text-[10px] font-mono text-muted-foreground/80">
+                          {tier.tier}. {tier.name}: {tier.available ? tier.items.join(" · ") || "—" : t.analysisResult.advancedTechnical.unavailableLabel}
+                          {tier.note ? ` · ${tier.note}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  {/* ── What the decision actually read from this evidence ── */}
+                  {result.advancedTechnicalEvidence &&
+                    (result.advancedTechnicalEvidence.confluence.length > 0 ||
+                      result.advancedTechnicalEvidence.conflicts.length > 0) && (
+                      <div data-testid="advanced-decision-evidence">
+                        {result.advancedTechnicalEvidence.confluence.map((c, i) => (
+                          <p key={`c${i}`} className="text-[10px] font-mono text-emerald-300/70">
+                            ✓ {c}
+                          </p>
+                        ))}
+                        {result.advancedTechnicalEvidence.conflicts.map((c, i) => (
+                          <p key={`x${i}`} className="text-[10px] font-mono text-amber-300/70">
+                            ⚠ {c}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                  <p className="text-[9px] font-mono text-muted-foreground/50">
+                    {t.analysisResult.advancedTechnical.parametersLabel}:{" "}
+                    {Object.entries(adv.provenance.parameters)
+                      .map(([k, v]) => `${k}=${v}`)
+                      .join(", ")}
+                  </p>
+                  <p className="text-[9px] font-mono text-muted-foreground/50">
+                    {t.analysisResult.advancedTechnical.evidenceClassesLabel}:{" "}
+                    {adv.provenance.evidenceClasses.join(", ")}
+                  </p>
+                </>
+              );
+            })()}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Phase 276 — Unified Intelligence.
           Rendered from the SAME `unifiedIntelligence` object the engine derived:
           no indicator, ratio or confidence is recomputed here. Technical and

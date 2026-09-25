@@ -94,6 +94,40 @@ describe("Step 2: conviction band reachability", () => {
 // ═══════════ STEP 7 — DETERMINISM ══════════════════════════════════
 
 describe("Step 7: determinism for identical snapshots", () => {
+  /**
+   * Phase 278 — absolute instants inside the advanced technical block are
+   * PROVIDER OBSERVATION times mirrored from the candle series (whose own
+   * `priceSnapshot.timestamp` is stripped above), and this fixture builds its
+   * candles relative to the run clock. They are therefore excluded here for
+   * exactly the same reason, while every DECISION-relevant value in the block
+   * — levels, ratios, profile bins, states, parameters, contribution rules —
+   * is still compared byte-for-byte. The layer's own clock-free determinism is
+   * pinned separately by advanced-technical.phase278.test.tsx (test 10).
+   */
+  const INSTANT_KEYS = new Set([
+    "observedAt",
+    "anchorAt",
+    "periodStart",
+    "sessionStart",
+    "candleTime",
+    "breakTime",
+    "createdAt",
+    "snapshotTs",
+    "fetchedAt",
+  ]);
+  function stripInstants<T>(value: T): T {
+    if (Array.isArray(value)) return value.map(stripInstants) as unknown as T;
+    if (value && typeof value === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (INSTANT_KEYS.has(k)) continue;
+        out[k] = stripInstants(v);
+      }
+      return out as T;
+    }
+    return value;
+  }
+
   function strip(r: AnalysisResult) {
     // Strip legitimately time-dependent identity/provenance fields.
     const { id, timestamp, priceSnapshot, ...rest } = r;
@@ -107,6 +141,12 @@ describe("Step 7: determinism for identical snapshots", () => {
     // text and limitations — is still compared byte-for-byte below, and the
     // layer's own clock-free determinism is pinned by
     // unified-intelligence.phase276.test.tsx.
+    if (rest.technicalData?.advanced) {
+      rest.technicalData = {
+        ...rest.technicalData,
+        advanced: stripInstants(rest.technicalData.advanced),
+      };
+    }
     if (rest.unifiedIntelligence) {
       rest.unifiedIntelligence = {
         ...rest.unifiedIntelligence,

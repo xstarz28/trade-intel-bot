@@ -60,6 +60,7 @@ import { computeDecisionFingerprint } from "@/lib/decision-trace";
 // or ratio of its own, and cannot modify recommendation, conviction, gates,
 // trade plan or sizing.
 import { buildUnifiedIntelligence } from "@/lib/unified-intelligence";
+import { attachAdvancedTechnical, assessAdvancedEvidence } from "@/lib/data/advanced-technical";
 // Phase 276 — deterministic fundamental assessment (pure function of the
 // provider payload; no clock, no options). Informational section only: it
 // never overwrites technical values and never feeds the decision gates.
@@ -735,6 +736,9 @@ interface TradeDecision {
    * contradiction to DECISIVE. No string matching on human-readable text.
    */
   decisiveGateDomains: string[];
+  /** Phase 278 — advanced (auction/participation/regime) rule outputs. */
+  advancedConfluence: string[];
+  advancedConflicts: string[];
   tradePlan?: TradePlan;
   conviction?: ConvictionLevel;
   confidence: number;
@@ -770,6 +774,9 @@ function decideTrade(
     return originalPush(...items);
   };
   const tech = input.technicalData;
+  // Phase 278 — the advanced block rides on the same technical object; it is
+  // read here, never recomputed (the acquisition/engine attach computed it).
+  const advancedTechnical = tech?.advanced;
   const md = input.marketData;
   // Phase 6 — style profile: decision-horizon parameters ONLY. It never
   // alters structure/liquidity/price facts, only requirements and weights.
@@ -1235,6 +1242,9 @@ function decideTrade(
   let confidence = 0;
   // Phase 11 P2 — actual per-layer contributions recorded WHILE deciding.
   const layers: ConvictionLayerContribution[] = [];
+  // Phase 278 — auditable advanced-evidence statements (real rule outputs).
+  const advancedConfluenceNotes: string[] = [];
+  const advancedConflictNotes: string[] = [];
 
   if (recommendation !== "NO_TRADE") {
     let s = 30;
@@ -1408,6 +1418,37 @@ function decideTrade(
         12,
         breakdown.sentiment === 0 ? "positioning evidence unavailable/neutral" : "positioning/sentiment agreement",
       );
+    }
+
+    // ── LAYER: advanced auction / participation / regime coherence (cap ±6) ──
+    //
+    // Phase 278 — the evidence HIERARCHY in action: accepted-vs-failed level
+    // breakouts (structure + location), price–volume confirmation
+    // (participation) and volatility-regime coherence are scored HERE, while
+    // momentum oscillators remain the small secondary modifier further down.
+    //
+    // NOTHING IS DOUBLE-COUNTED. Session/AVWAP location is scored by the VWAP
+    // layer above, sweeps by the Liquidity layer, displacement/FVG/OB by the
+    // Location layer, cross-asset co-movement by the Cross Asset layer,
+    // order-book imbalance by the Execution layer and derivative positioning
+    // by sentiment scoring — so `assessAdvancedEvidence` deliberately reads
+    // ONLY evidence no other layer consumes, and reports the exact rule and
+    // thresholds it applied.
+    {
+      const advancedEvidence = assessAdvancedEvidence(advancedTechnical, biasSign === 1 ? "long" : "short");
+      s += recordLayer(
+        "Auction Structure",
+        layerClamp(advancedEvidence.contribution, advancedEvidence.cap),
+        advancedEvidence.cap,
+        advancedEvidence.basis.length > 0
+          ? advancedEvidence.basis.join("; ")
+          : "no accepted/failed level interaction or participation evidence",
+      );
+
+      // The confluence/conflict statements are surfaced on the result so the
+      // rationale is auditable, not merely a number.
+      for (const note of advancedEvidence.confluence) advancedConfluenceNotes.push(note);
+      for (const note of advancedEvidence.conflicts) advancedConflictNotes.push(note);
     }
 
     // ── LAYER: cross-asset context (cap ±3) — measured correlation +
@@ -1625,6 +1666,8 @@ function decideTrade(
   });
 
   return {
+    advancedConfluence: advancedConfluenceNotes,
+    advancedConflicts: advancedConflictNotes,
     recommendation,
     noTradeReasons: recommendation === "NO_TRADE" ? reasons : [],
     decisiveGateDomains:
@@ -2078,6 +2121,34 @@ function generateRiskNote(
 
 export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const { completeness, flags } = assessDataCompleteness(input);
+
+  // ── Phase 278 — advanced modern technical intelligence ──
+  // The advanced block is computed from the SAME candles the classical stack
+  // read, then enriched with the REAL order-book and derivatives evidence this
+  // input carries. Absent evidence leaves its section explicitly unavailable;
+  // nothing is inferred. When the acquisition path already computed the block,
+  // its candle-derived measurements are reused (no divergence between paths).
+  if (input.technicalData && input.marketData?.candles?.length) {
+    input = {
+      ...input,
+      technicalData: {
+        ...input.technicalData,
+        advanced: attachAdvancedTechnical(
+          input.marketData.candles,
+          input.technicalData.advanced,
+          input.technicalData,
+          {
+            timeframe: input.timeframe,
+            ...(input.provider ? { provider: input.provider } : {}),
+            ...(input.providerInstrumentId ? { providerInstrumentId: input.providerInstrumentId } : {}),
+            ...(input.executionData ? { execution: input.executionData } : {}),
+            ...(input.derivativesData ? { derivatives: input.derivativesData } : {}),
+          },
+        ),
+      },
+    };
+  }
+
   const styleProfile = resolveStyle(input.tradingStyle);
 
   const trendScore = scoreTrend(input);
@@ -2147,6 +2218,20 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   });
 
   const biasSignOuter = bias === "Bullish" ? 1 : bias === "Bearish" ? -1 : 0;
+
+  // Phase 278 — auction/participation conflicts the advanced layer measured are
+  // surfaced through the SAME contradiction channel as every other opposing
+  // evidence class. They cite the exact level, rule and threshold that produced
+  // them, and — like COT/EIA/Treasury — they are never DECISIVE on their own:
+  // only an existing decision gate can force NO_TRADE.
+  if (biasSignOuter !== 0 && decision.advancedConflicts.length > 0) {
+    for (const note of decision.advancedConflicts) {
+      keyContradictions.push({
+        description: `${bias!.toLowerCase()} thesis vs ${note}`,
+        severity: /failed breakout/.test(note) ? "MATERIAL" : "MINOR",
+      });
+    }
+  }
   // Phase 7B-1 — macro-yield contradiction: ACTUAL Treasury evidence that
   // OPPOSES the thesis is surfaced explicitly (MINOR/MATERIAL by magnitude).
   // It never becomes DECISIVE on its own — only existing gates can force
@@ -2469,6 +2554,22 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     marketRegime,
     setupClassification,
     keyContradictions,
+    // Phase 278 — the advanced evidence the decision actually used, verbatim:
+    // each entry names the rule, the level/ratio it read and the threshold.
+    // Purely informational downstream (presentation + audit); it changes no
+    // decision by itself.
+    advancedTechnicalEvidence:
+      input.technicalData?.advanced !== undefined
+        ? {
+            confluence: decision.advancedConfluence,
+            conflicts: decision.advancedConflicts,
+            evidenceClasses: input.technicalData.advanced.provenance.evidenceClasses,
+            unavailableMetrics: [
+              ...input.technicalData.advanced.orderFlow.unavailableMetrics,
+              ...input.technicalData.advanced.derivatives.unavailableMetrics,
+            ],
+          }
+        : undefined,
     tradingStyle: styleProfile.style,
     styleInfo: {
       setupTimeframeUsed: input.timeframe,

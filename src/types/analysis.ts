@@ -273,6 +273,17 @@ export interface AnalysisResult {
   // offers a combined conclusion when both classes genuinely supply evidence.
   // Informational only: modifies nothing in the decision.
   unifiedIntelligence?: import("@/lib/unified-intelligence").UnifiedIntelligence;
+  // Phase 278 — the advanced (modern) technical evidence the decision used:
+  // the rule outputs that supported or opposed the thesis, which real evidence
+  // classes were present, and which microstructure metrics the configured
+  // feeds genuinely do NOT supply. Informational: it never rewrites the
+  // decision, and it is the SAME object the UI renders (no recomputation).
+  advancedTechnicalEvidence?: {
+    confluence: string[];
+    conflicts: string[];
+    evidenceClasses: string[];
+    unavailableMetrics: { metric: string; reason: string }[];
+  };
   // ── Phase 41: Crypto intelligence context.
   // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
   // or actionability. Absent for non-crypto instruments.

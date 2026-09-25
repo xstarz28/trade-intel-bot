@@ -4,6 +4,8 @@
  * analysis engine.
  */
 
+import type { AdvancedTechnicalData } from "./advanced-technical";
+
 export interface OhlcvCandle {
   timestamp: number; // Unix ms
   open: number;
@@ -312,6 +314,23 @@ export interface TechnicalData {
   // Phase 3A adaptive multi-timeframe context (null-safe optional).
   // When present it supersedes the legacy single-slot htfContext/ltfTrigger.
   mtf?: MtfContext;
+
+  /**
+   * Phase 278 — advanced modern technical intelligence: price location /
+   * auction (VWAP, AVWAP, value area, previous-period extremes, opening
+   * range), volume structure (profile, relative volume, participation
+   * confirmation), liquidity/structure events (sweeps, accepted vs failed
+   * breakouts, rejection, displacement, imbalance, validated zones),
+   * volatility/statistical regime, cross-market context, order flow and
+   * derivatives context.
+   *
+   * Every section states whether the underlying evidence existed; metrics
+   * whose evidence is absent are reported UNAVAILABLE with the reason and are
+   * never derived from unrelated data. `provenance` carries the provider,
+   * native instrument id, timeframe, the newest candle's own observation
+   * instant and the exact parameters used.
+   */
+  advanced?: AdvancedTechnicalData;
 }
 
 /** What the Convex action returns. */

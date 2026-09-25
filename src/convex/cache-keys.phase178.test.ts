@@ -223,7 +223,10 @@ describe("DXY negative cache", () => {
 
   it("suppresses probing rather than inventing a comparator", () => {
     expect(MD).toMatch(/compSymbol = null;/);
-    expect(MD).toMatch(/const compCandles = compSymbol\s*\n?\s*\?/);
+    // Phase 278 — the series is hoisted to a `let` (so the advanced
+    // cross-market section can cite it) but the conditional fetch is
+    // unchanged: a null compSymbol still probes nothing.
+    expect(MD).toMatch(/compCandles = compSymbol\s*\n?\s*\?/);
   });
 
   it("memoises a successful resolution", () => {
