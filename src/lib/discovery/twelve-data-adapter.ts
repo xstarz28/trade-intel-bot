@@ -199,15 +199,50 @@ export function createTwelveDataDiscoveryAdapter(
       const catalogs: CatalogFetchReport[] = [];
       let pagesFetched = 0;
 
-      const pages = await Promise.all(
-        enabled.map((spec) =>
-          fetchTwelveDataCatalogPages(fetchJson, { path: spec.path, apiKey }).then(
-            (result) => ({ spec, result }),
-          ),
-        ),
-      );
+      /**
+       * Phase 289C — MEMORY: catalogs are processed ONE AT A TIME, and each
+       * catalog's rows are normalized as its pages arrive.
+       *
+       * What this replaced: `Promise.all(enabled.map(fetchTwelveDataCatalogPages))`
+       * — every enabled catalog fetched concurrently, each one retaining ALL of
+       * its raw provider rows, with the normalized instruments then built on top
+       * of the still-live raw aggregate. On the development deployment this was
+       * killed by Convex's 512 MB Node.js action limit
+       * (`Node.js action execution ran out of memory (maximum memory usage:
+       * 512 MB)`), which meant forex, equity and commodity discovery all
+       * produced nothing.
+       *
+       * Peak now: the catalogs are fetched sequentially (so at most ONE catalog's
+       * response and its parsed pages are alive at any moment), the rows of each
+       * page are normalized inside the row sink and released immediately (so a
+       * catalog's raw rows are never held alongside the normalized set — the only
+       * per-catalog state that survives is a Set of the symbols already seen), and
+       * what stays resident is exactly the discovery truth itself.
+       *
+       * Nothing about the discovery contract changes: same catalog order, same
+       * page cursors, same COMPLETE/PARTIAL/FAILED rollup, same warnings, same
+       * first-occurrence dedupe, same exact provider symbols.
+       */
+      for (const spec of enabled) {
+        let skipped = 0;
+        let kept = 0;
 
-      for (const { spec, result } of pages) {
+        const result = await fetchTwelveDataCatalogPages(fetchJson, {
+          path: spec.path,
+          apiKey,
+          onRows: (rows) => {
+            for (const raw of rows) {
+              const normalized = normalizeCatalogRow(raw as CatalogRow, spec, now);
+              if (!normalized) {
+                skipped += 1;
+                continue;
+              }
+              instruments.push(normalized);
+              kept += 1;
+            }
+          },
+        });
+
         warnings.push(...result.warnings);
         pagesFetched += result.pagesFetched;
 
@@ -223,18 +258,6 @@ export function createTwelveDataDiscoveryAdapter(
               : {}),
           });
           continue;
-        }
-
-        let skipped = 0;
-        let kept = 0;
-        for (const raw of result.rows) {
-          const normalized = normalizeCatalogRow(raw as CatalogRow, spec, now);
-          if (!normalized) {
-            skipped += 1;
-            continue;
-          }
-          instruments.push(normalized);
-          kept += 1;
         }
 
         if (skipped > 0) {

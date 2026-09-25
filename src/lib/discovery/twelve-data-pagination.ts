@@ -12,6 +12,16 @@
  * never guessed-as-truncated.
  *
  * Offsets are never invented. `page` is the documented cursor.
+ *
+ * Phase 289C — MEMORY. The deployed discovery action runs under Convex's 512 MB
+ * Node.js action limit and was killed by it: every catalog's raw rows were
+ * retained until the whole discovery finished. Callers may now pass `onRows`,
+ * which delivers each page's rows as they arrive and keeps only a `Set` of the
+ * seen symbols here. The raw provider pages are then released page-by-page
+ * instead of accumulating, and `rows` comes back empty because the caller
+ * already consumed them. Every other contract — completeness, `pagesFetched`,
+ * `failedPage`, warnings, provider order, the first-occurrence dedupe rule — is
+ * identical with and without the sink.
  */
 
 import type { DiscoveryCompleteness } from "./completeness";
@@ -60,6 +70,10 @@ export type CatalogPageParse =
   | { ok: false; error: string };
 
 export type CatalogPagesResult = {
+  /**
+   * The catalog's rows. Empty when a row sink was supplied: the rows were
+   * delivered as they arrived and are deliberately NOT retained.
+   */
   rows: unknown[];
   pagesFetched: number;
   completeness: DiscoveryCompleteness;
@@ -139,16 +153,22 @@ export function catalogHasMorePages(args: {
 
 export async function fetchTwelveDataCatalogPages(
   fetchJson: FetchJson,
-  args: { path: string; apiKey: string },
+  args: { path: string; apiKey: string; onRows?: (rows: unknown[]) => void },
 ): Promise<CatalogPagesResult> {
   const warnings: string[] = [];
-  const bySymbol = new Map<string, unknown>();
+  const streaming = typeof args.onRows === "function";
+  // Streaming mode keeps ONLY identities (short strings) resident; buffered mode
+  // keeps the raw rows, which is what callers that inspect them expect.
+  const bySymbol = streaming ? null : new Map<string, unknown>();
+  const seenSymbols = streaming ? new Set<string>() : null;
   const unidentified: unknown[] = [];
   let pagesFetched = 0;
   let totalCount: number | undefined;
   let page = 1;
 
-  const collected = (): unknown[] => [...bySymbol.values(), ...unidentified];
+  const uniqueIdentities = (): number => (streaming ? seenSymbols!.size : bySymbol!.size);
+  const collected = (): unknown[] =>
+    streaming ? [] : [...bySymbol!.values(), ...unidentified];
 
   while (true) {
     const url = twelveDataCatalogUrl(args.path, args.apiKey, page);
@@ -230,33 +250,51 @@ export async function fetchTwelveDataCatalogPages(
     if (parsed.totalCount !== undefined) totalCount = parsed.totalCount;
 
     let newUnique = 0;
+    const deliverable: unknown[] = [];
     for (const row of parsed.rows) {
       const symbol = rowSymbol(row);
       if (!symbol) {
-        unidentified.push(row);
+        // A row with no symbol is not deduplicated — it is delivered and the
+        // caller counts it as a skipped identity, exactly as before.
+        if (streaming) deliverable.push(row);
+        else unidentified.push(row);
         continue;
       }
-      if (!bySymbol.has(symbol)) {
-        bySymbol.set(symbol, row);
+      if (streaming) {
+        if (seenSymbols!.has(symbol)) continue;
+        seenSymbols!.add(symbol);
+        newUnique += 1;
+        deliverable.push(row);
+        continue;
+      }
+      if (!bySymbol!.has(symbol)) {
+        bySymbol!.set(symbol, row);
         newUnique += 1;
       }
+    }
+    if (streaming && deliverable.length > 0) {
+      // Hand the page over. The array (and the rows in it) is a per-iteration
+      // local: once the next page is requested, nothing from this page is
+      // reachable from here. It is deliberately NOT cleared afterwards — the
+      // sink owns what it was given.
+      args.onRows!(deliverable);
     }
 
     if (
       !catalogHasMorePages({
         rowsThisPage: parsed.rows.length,
-        uniqueAccumulated: bySymbol.size,
+        uniqueAccumulated: uniqueIdentities(),
         totalCount,
         newUniqueThisPage: newUnique,
       })
     ) {
       if (
         totalCount !== undefined &&
-        bySymbol.size < totalCount &&
+        uniqueIdentities() < totalCount &&
         (parsed.rows.length === 0 || newUnique === 0)
       ) {
         warnings.push(
-          `${args.path} stopped at page ${page} with ${bySymbol.size} identities before provider count ${totalCount}.`,
+          `${args.path} stopped at page ${page} with ${uniqueIdentities()} identities before provider count ${totalCount}.`,
         );
         return {
           rows: collected(),

@@ -50,6 +50,7 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 /* ------------------------------------------------------------------ *
@@ -166,6 +167,53 @@ export function createTransport(origin, { timeoutMs = TIMEOUT_MS } = {}) {
     action: (path, args, token) => call("action", path, args, token),
     query: (path, args, token) => call("query", path, args, token),
   };
+}
+
+/**
+ * Phase 289C — WHICH COMMIT IS THIS HARNESS RUNNING FROM?
+ *
+ * A GitHub workflow can be dispatched from one ref while checking out another
+ * (`ref` input), and the workflow FILE that runs is the one at the dispatch ref.
+ * That is exactly how a run checked out the intended commit
+ * (`7cec9f7…`) while the smoke — whose workflow definition came from `main`
+ * and therefore had no checkout-SHA plumbing at all — reported
+ * `harnessCommit=unknown`. Provenance must not depend on which revision of the
+ * workflow file happened to execute.
+ *
+ * So the harness resolves it itself, in this order:
+ *   1. `XSTARZ_SMOKE_SOURCE_COMMIT` — an explicit override (the current workflow
+ *      resolves `git rev-parse HEAD` and passes it in; tests use it too).
+ *   2. `git rev-parse HEAD` inside the checkout the harness is running from.
+ *   3. "unknown", with the reason — never a guess, and never derived from
+ *      `/version` (that is the running Convex BACKEND version, not a git SHA).
+ */
+export function resolveCheckoutSha({
+  env = process.env,
+  cwd = process.cwd(),
+  runGit,
+} = {}) {
+  const override = env?.XSTARZ_SMOKE_SOURCE_COMMIT;
+  if (typeof override === "string" && override.trim() !== "") {
+    return { sha: override.trim(), source: "XSTARZ_SMOKE_SOURCE_COMMIT (supplied to the harness)" };
+  }
+  const git = runGit ?? ((dir) => execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: dir,
+    encoding: "utf8",
+    timeout: 5_000,
+    stdio: ["ignore", "pipe", "ignore"],
+  }));
+  try {
+    const sha = String(git(cwd) ?? "").trim();
+    if (/^[0-9a-f]{7,40}$/i.test(sha)) {
+      return { sha, source: "git rev-parse HEAD in the checkout the harness runs from" };
+    }
+    return { sha: null, source: "unknown — the checkout's HEAD is not a commit SHA" };
+  } catch {
+    return {
+      sha: null,
+      source: "unknown — no override and no readable git checkout (the harness is not running from a checkout)",
+    };
+  }
 }
 
 /** The deployment's own build/version endpoint (proves WHICH build answered). */
@@ -1130,7 +1178,7 @@ export function renderSummary(report) {
     `deployed build: ${report.target.version ?? "unknown (no /version answer)"} (running Convex backend version — NOT the function-bundle revision)`,
   );
   lines.push(
-    `harness commit: ${report.source.harnessCommit ?? "unknown (the workflow did not pass the checkout SHA)"}`,
+    `harness commit: ${report.source.harnessCommit ?? "unknown"} (${report.source.harnessCommitSource})`,
   );
   lines.push(`dispatch ref  : ${report.source.dispatchRefSha ?? "unknown"}`);
   lines.push(
@@ -1695,6 +1743,8 @@ async function run() {
       "behavioural fingerprint of the deployed backend (result-level providerDiagnostics with per-leg reasons; calendar mapping-gap text; commodity feed-scope text). These exist only in the Phase-288 revisions of the deployed functions; /version is not a revision surface.",
   };
 
+  const checkout = resolveCheckoutSha();
+
   const report = {
     schema: "xstarz.development-runtime-smoke/1",
     generatedAt: new Date().toISOString(),
@@ -1725,10 +1775,8 @@ async function run() {
       // which is a different commit whenever the smoke is dispatched from one
       // ref while checking out another; conflating them (as an earlier revision
       // of this line did) misreports provenance. Both are reported, labelled.
-      harnessCommit: process.env.XSTARZ_SMOKE_SOURCE_COMMIT ?? null,
-      harnessCommitSource: process.env.XSTARZ_SMOKE_SOURCE_COMMIT
-        ? "workflow ran `git rev-parse HEAD` on the checkout and passed it in"
-        : "unknown — the workflow did not pass the checkout SHA",
+      harnessCommit: checkout.sha,
+      harnessCommitSource: checkout.source,
       dispatchRefSha: process.env.GITHUB_SHA ?? null,
       runId: process.env.GITHUB_RUN_ID ?? null,
       runUrl:
@@ -1774,7 +1822,7 @@ async function run() {
     `informational — target=${origin} · apiPlaneReachable=${version.ok} · /version=${
       version.version ?? "unknown (no answer)"
     } (running Convex backend version, NOT the function-bundle revision) · harnessCommit=${
-      process.env.XSTARZ_SMOKE_SOURCE_COMMIT ?? "unknown (workflow did not pass the checkout SHA)"
+      checkout.sha ?? `unknown (${checkout.source})`
     } · dispatchRefSha=${process.env.GITHUB_SHA ?? "unknown"} · backendMarkers=providerDiagnostics-legs:${
       runtimeFingerprintOfRun.providerDiagnosticsLegs
     },legs-with-reason:${runtimeFingerprintOfRun.providerDiagnosticsWithReason},calendarMappingGap:${

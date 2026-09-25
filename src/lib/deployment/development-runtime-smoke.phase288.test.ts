@@ -34,6 +34,7 @@ import {
   energyGateVerdict,
   ENERGY_PROBE_CANDIDATE_LIMIT,
   probeEnergyGate,
+  resolveCheckoutSha,
 } from "../../../scripts/development-runtime-smoke.mjs";
 
 const SMOKE = readFileSync("scripts/development-runtime-smoke.mjs", "utf8");
@@ -373,6 +374,42 @@ describe("phase 289 — the deployed runtime's evidence shape stays readable", (
     ]);
   });
 
+  it("resolves the harness commit itself, so a dispatcher/checkout mismatch cannot hide it", () => {
+    // The run that exposed this: the workflow DEFINITION came from `main` (which
+    // had no checkout-SHA plumbing) while the script was checked out at 7cec9f7…,
+    // so the annotation said harnessCommit=unknown. Provenance must not depend on
+    // which revision of the workflow file happens to execute.
+    expect(
+      resolveCheckoutSha({
+        env: { XSTARZ_SMOKE_SOURCE_COMMIT: "abc1234" },
+        runGit: () => {
+          throw new Error("must not be called when an override is present");
+        },
+      }),
+    ).toEqual({ sha: "abc1234", source: "XSTARZ_SMOKE_SOURCE_COMMIT (supplied to the harness)" });
+
+    const fromGit = resolveCheckoutSha({
+      env: {},
+      cwd: "/repo",
+      runGit: (dir: string) =>
+        `${dir === "/repo" ? "7cec9f7aea35943cd624904106912d9595b28e5b" : "wrong"}\n`,
+    });
+    expect(fromGit.sha).toBe("7cec9f7aea35943cd624904106912d9595b28e5b");
+    expect(fromGit.source).toBe("git rev-parse HEAD in the checkout the harness runs from");
+
+    // No override and no readable checkout: "unknown" WITH its reason, never a guess.
+    const none = resolveCheckoutSha({ env: {}, runGit: () => { throw new Error("not a repo"); } });
+    expect(none.sha).toBeNull();
+    expect(none.source).toContain("unknown");
+    // A blank override is not an override.
+    expect(
+      resolveCheckoutSha({ env: { XSTARZ_SMOKE_SOURCE_COMMIT: "  " }, runGit: () => "deadbee" }).sha,
+    ).toBe("deadbee");
+    // And it is NEVER taken from the deployment's /version answer.
+    expect(SMOKE).not.toMatch(/harnessCommit[^\n]*version\.version/);
+    expect(SMOKE).toContain("const checkout = resolveCheckoutSha();");
+  });
+
   it("reports which deployment answered, and never calls /version a revision", () => {
     // `/version` is the running CONVEX BACKEND version (a deployment health
     // signal), not this application's function bundle — an earlier revision of
@@ -383,9 +420,7 @@ describe("phase 289 — the deployed runtime's evidence shape stays readable", (
     expect(SMOKE).toContain("apiPlaneReachable=${version.ok}");
     expect(SMOKE).toContain("(running Convex backend version, NOT the function-bundle revision)");
     expect(SMOKE).toContain("harnessCommit=${");
-    expect(SMOKE).toContain(
-      'process.env.XSTARZ_SMOKE_SOURCE_COMMIT ?? "unknown (workflow did not pass the checkout SHA)"',
-    );
+    expect(SMOKE).toContain("checkout.sha ?? `unknown (${checkout.source})`");
     expect(SMOKE).toContain('dispatchRefSha=${process.env.GITHUB_SHA ?? "unknown"}');
     expect(SMOKE).not.toContain("sourceCommit=${process.env.GITHUB_SHA");
     expect(SMOKE).toContain("running Convex backend version (deployment health signal)");

@@ -43,6 +43,18 @@ export type Transport = {
 
 export function createTransport(origin: string, options?: { timeoutMs?: number }): Transport;
 
+/**
+ * Phase 289C — where the harness's own commit comes from: an explicit override,
+ * then `git rev-parse HEAD` in the checkout, then "unknown" with the reason.
+ * Never derived from `/version` (that is the running Convex backend version).
+ */
+export function resolveCheckoutSha(options?: {
+  env?: Record<string, string | undefined>;
+  cwd?: string;
+  runGit?: (cwd: string) => string;
+}): { sha: string | null; source: string };
+
+/** The deployment's own build/version endpoint (proves WHICH build answered). */
 export function probeVersion(
   origin: string,
   options?: { timeoutMs?: number },

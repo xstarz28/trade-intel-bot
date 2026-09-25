@@ -427,6 +427,30 @@ Every domain line is emitted at `warning` level (only `error` for a FAIL) becaus
 GitHub does not return `notice` annotations through the checks API and caps
 warning/error annotations per step — a PASS used to leave nothing readable.
 
+### Discovery runs inside a 512 MB action (Phase 289C)
+
+`marketData:discoverTwelveDataInstruments` is a Convex **Node.js action**, and the
+development deployment killed it with
+`Server Error Node.js action execution ran out of memory (maximum memory usage:
+512 MB)`. The design that caused it was peak memory, not total work: every enabled
+catalog was fetched concurrently (`Promise.all`), each one retained ALL of its raw
+provider rows, and the normalized instruments were then built on top of the
+still-live raw aggregate.
+
+`src/lib/discovery/twelve-data-adapter.ts` now walks the catalogs **sequentially**
+and hands each page's rows to a sink that normalizes them immediately, so at most
+one catalog response is alive at a time and a page's raw rows are released as soon
+as they have been normalized. The only per-catalog state that survives is a `Set`
+of the symbols already seen. Discovery semantics are unchanged: same catalog order,
+same page cursors, same `COMPLETE`/`PARTIAL`/`FAILED` rollup, same warnings, same
+first-occurrence dedupe, same exact provider symbols.
+
+If this ever OOMs again, the honest reading is that **one provider page is larger
+than the action's heap** — the fix is on the request side (ask for a bounded page)
+or in the transport (stream the parse), never a silently truncated discovery
+result. Do not "fix" it by sampling the catalog: an incomplete universe presented
+as complete is exactly the kind of claim this codebase refuses.
+
 ### Is the deployed build the current one?
 
 `/version` cannot answer that. Three things together can:
