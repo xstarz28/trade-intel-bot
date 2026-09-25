@@ -161,12 +161,11 @@ jobs:
           CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
         run: node scripts/phase284-deployed-verify.mjs --convex-run
 
-      # Only when no deployment is configured anywhere: the deployment this
-      # repository's own records name as the project's dev deployment
-      # (docs/UAT-MATRIX.md §35j and the Phase 212 operator run sheet). The
-      # report always states which source produced the identity.
-      - name: Four assets against the documented dev deployment (fallback)
-        if: env.HAS_DEPLOYMENT_URL == 'false'
+      # The deployment this repository's own records name as the project's dev
+      # deployment (docs/UAT-MATRIX.md §35j and the Phase 212 operator run
+      # sheet). Its guest provider is the app's own sign-in, so this run needs
+      # no injected identity at all — it is the app's real client path.
+      - name: Four assets against the documented dev deployment (app session)
         env:
           PHASE284_FALLBACK_DEPLOYMENT: https://tough-goose-455.convex.cloud
-        run: node scripts/phase284-deployed-verify.mjs --four-asset
+        run: node scripts/phase284-deployed-verify.mjs --four-asset-dev

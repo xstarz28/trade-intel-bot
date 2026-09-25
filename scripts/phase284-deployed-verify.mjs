@@ -375,14 +375,14 @@ function annotate(title, body) {
   console.log(`::notice title=${title}::${escaped}`);
 }
 
-async function runFourAsset() {
+async function runFourAsset(label = "Phase 284 deployed verification") {
   const deployment = resolveDeploymentUrl();
   const source = resolveDeploymentSource()?.source ?? null;
   if (!deployment) {
     const blocker =
       "NOT_EXECUTED — no deployment URL is configured (VITE_CONVEX_URL / PHASE284_DEPLOYMENT_URL absent or not an https *.convex.cloud origin).";
     console.log(`[284] ${blocker}`);
-    annotate("Phase 284 deployed verification", blocker);
+    annotate(label, blocker);
     return 0;
   }
   console.log(`[284] deployment ${deployment.origin} (from ${source})`);
@@ -391,7 +391,7 @@ async function runFourAsset() {
   if (!signIn.ok) {
     const blocker = `NOT_EXECUTED — anonymous sign-in refused: ${signIn.appError ?? signIn.transportError ?? `HTTP ${signIn.httpStatus}`}`;
     console.log(`[284] ${blocker}`);
-    annotate("Phase 284 deployed verification", `${deployment.origin} (from ${source})\n${blocker}`);
+    annotate(label, `${deployment.origin} (from ${source})\n${blocker}`);
     return 0;
   }
   const token = deep(signIn.value, "token") ?? signIn.value?.token ?? null;
@@ -435,7 +435,7 @@ async function runFourAsset() {
   );
   const report = [header, ...table].join("\n");
   console.log(report);
-  annotate("Phase 284 deployed verification", `${deployment.origin} (from ${source})\n${report}`);
+  annotate(label, `${deployment.origin} (from ${source})\n${report}`);
   return 0;
 }
 
@@ -487,6 +487,14 @@ async function runConvexRunMode() {
     issuer: site || "https://pleasant-curlew-264.convex.site",
     name: "Phase 284 verification",
   };
+
+  // ── Is the deployment itself healthy, or is the analysis action the thrower?
+  // A trivial authenticated read separates the two possibilities.
+  const health = convexRun("entitlements:getMyEntitlement", {}, identity);
+  lines.push(
+    `health check entitlements:getMyEntitlement: exit=${String(health.exitCode)} ok=${String(health.ok)}` +
+      (health.ok ? ` value=${sanitize(JSON.stringify(health.value)).slice(0, 240)}` : ` stderr=${sanitize((health.stderr ?? "").replace(/\n+/g, " ¶ ")).slice(0, 300)}`),
+  );
 
   // ── The guard the product guarantees: no identity, no analysis ────
   const unauth = convexRun("protectedAnalysis:runProtectedAnalysis", {
@@ -583,6 +591,10 @@ if (has("--convex-run")) {
 }
 if (has("--four-asset")) {
   process.exit(await runFourAsset());
+}
+if (has("--four-asset-dev")) {
+  process.env.PHASE284_DEPLOYMENT_URL = process.env.PHASE284_FALLBACK_DEPLOYMENT ?? "";
+  process.exit(await runFourAsset("Phase 284 dev deployment (app-issued session)"));
 }
 console.log("usage: phase284-deployed-verify.mjs --presence | --four-asset");
 process.exit(2);
