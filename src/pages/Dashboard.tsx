@@ -1070,9 +1070,16 @@ export default function Dashboard() {
       // Phase 226 — CoinGlass derivatives reach the radar only through the
       // provenance-checked bridge (symbol identity, provider timestamp,
       // per-dataset availability). Anything rejected stays undefined.
-      const bridge = ls.assetClass === "crypto"
-        ? derivativesForRadar(ls.instrument, ls.derivativesData, radarNow)
-        : { derivatives: undefined as any, additionalEvidence: [] as any[] };
+      // Only a crypto instrument that ACTUALLY carries an acquired derivatives
+      // payload goes through the provenance-checked bridge. A crypto row with
+      // no derivatives evidence (or any other asset class) skips it entirely:
+      // calling the bridge with `undefined` would classify as "unavailable"
+      // while attaching a derivatives object, which would tell the scanner a
+      // dataset exists when the provider never answered.
+      const bridge =
+        ls.assetClass === "crypto" && ls.derivativesData
+          ? derivativesForRadar(ls.instrument, ls.derivativesData, radarNow)
+          : { derivatives: undefined as any, additionalEvidence: [] as any[] };
       const derivatives = bridge.derivatives;
       // Phase 241 — explicit additional evidence inventory with freshness/provenance
       const additionalEvidence: RadarCandidateSource["additionalEvidence"] = [];

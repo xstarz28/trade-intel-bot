@@ -680,7 +680,11 @@ export function assessCryptoFundamentals(context: CryptoFundamentalContext): Fun
         dimension(
           "market-positioning",
           "neutral",
-          `Market-structure context from ${ms.provider} (observed ${new Date(ms.timestamp).toISOString()}, freshness ${ms.freshness}): ${bits.join("; ")}.${crowded.length > 0 ? " Position: crowded/extreme — reported as risk context." : ""} Reported as traceable context only — the decision engines already score this evidence, so it is neither scored nor counted here.`,
+          `Market-structure context from ${ms.provider} (${
+            isFiniteNumber(ms.timestamp) && ms.timestamp > 0
+              ? `observed ${new Date(ms.timestamp).toISOString()}`
+              : "provider stamped no observation instant — the payload carries no provider time"
+          }, freshness ${ms.freshness}): ${bits.join("; ")}.${crowded.length > 0 ? " Position: crowded/extreme — reported as risk context." : ""} Reported as traceable context only — the decision engines already score this evidence, so it is neither scored nor counted here.`,
           { informational: true, consumedBy: MARKET_STRUCTURE_CONSUMER },
         ),
       );

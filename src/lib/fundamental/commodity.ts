@@ -1134,7 +1134,11 @@ export function assessCommodityFundamentals(
           isFiniteNumber(metrics.inventoryChangeWoW) ? `, week-over-week ${fmtSigned(metrics.inventoryChangeWoW, 2)}` : ""
         } — trend ${metrics.inventoryTrend ?? "insufficient"}${
           isFiniteNumber(metrics.inventoryTrendPercent) ? ` (${pct(metrics.inventoryTrendPercent)})` : ""
-        }, ${metrics.inventoryBaselinePosition ?? "insufficient"} the recent baseline${
+        }, ${
+          metrics.inventoryBaselinePosition !== undefined
+            ? `${metrics.inventoryBaselinePosition} the recent baseline`
+            : "recent baseline insufficient"
+        }${
           isFiniteNumber(metrics.inventoryBaselineDeviationPercent) ? ` (${pct(metrics.inventoryBaselineDeviationPercent)})` : ""
         }`
       : "Inventory: unavailable";

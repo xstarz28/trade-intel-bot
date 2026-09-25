@@ -226,7 +226,9 @@ export function evaluateUnifiedConfluence(
     policy.combinedDirectional
       ? "evidence classes aligned"
       : unified.state === "technical_only"
-        ? "fundamental evidence unavailable — technical path only, no combined claim"
+        ? fundamentalPresent
+          ? `fundamental evidence was supplied but is non-directional (${unified.fundamental.state}) — technical path only, no combined claim`
+          : "fundamental evidence unavailable — technical path only, no combined claim"
         : "no combined directional conclusion justified",
     policy.confidenceCap !== undefined
       ? `confidence capped at ${policy.confidenceCap}`
