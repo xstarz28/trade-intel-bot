@@ -605,6 +605,7 @@ async function runConvexRunMode() {
       ` | unified=${String(deployedKeys.includes("unifiedIntelligence"))} fundamentalAssessment=${String(deployedKeys.includes("fundamentalAssessment"))} priceSnapshot=${String(deployedKeys.includes("priceSnapshot"))}`,
   );
 
+  const records = [];
   for (const spec of ASSETS) {
     const call = convexRun(
       "protectedAnalysis:runProtectedAnalysis",
@@ -652,6 +653,7 @@ async function runConvexRunMode() {
       spec.providerInstrumentId,
       { ok: attempt.ok, httpStatus: 200, appError: attempt.appError, value: attempt.value, transportError: null },
     );
+    records.push(record);
     lines.push(`${spec.asset} ${spec.instrument}: ${JSON.stringify(record)}`);
   }
 
