@@ -147,6 +147,20 @@ jobs:
           PHASE284_DEPLOYMENT_URL: ${{ vars.VITE_CONVEX_URL }}
         run: node scripts/phase284-deployed-verify.mjs --four-asset
 
+      # The deployment's OWN runtime: the repository's CLI path into the
+      # production deployment, calling the same production action. The guest
+      # provider is disabled on this deployment (its anonymous sign-in answers
+      # Server Error), so the CLI injects a verification identity; the provider
+      # path under test is unchanged.
+      - name: Four assets through the deployment's own runtime (convex run)
+        if: env.HAS_DEPLOY_KEY == 'true'
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+          CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+        run: node scripts/phase284-deployed-verify.mjs --convex-run
+
       # Only when no deployment is configured anywhere: the deployment this
       # repository's own records name as the project's dev deployment
       # (docs/UAT-MATRIX.md §35j and the Phase 212 operator run sheet). The

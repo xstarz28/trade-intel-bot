@@ -43,6 +43,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
@@ -311,6 +312,48 @@ function summarize(asset, instrumentType, instrument, provider, providerInstrume
  * Run
  * ------------------------------------------------------------------ */
 
+/** Nothing that looks like key material may ever reach a log or annotation. */
+function sanitize(text) {
+  return String(text ?? "").replace(/[A-Za-z0-9_-]{32,}/g, "<redacted>");
+}
+
+/**
+ * `npx convex run --prod` — the repository's own CLI path into the deployment.
+ * The identity is injected by the CLI's admin flag because this deployment
+ * disables the guest provider (its anonymous sign-in answers Server Error);
+ * the provider path under test is the shipped one either way.
+ */
+function convexRun(functionName, fnArgs, identity) {
+  const cli = ["--yes", "convex@1.42.1", "run", "--prod", functionName, JSON.stringify(fnArgs)];
+  if (identity) cli.push("--identity", JSON.stringify(identity));
+  const result = spawnSync("npx", cli, {
+    encoding: "utf8",
+    timeout: TIMEOUT_MS,
+    env: process.env,
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  const stdout = result.stdout ?? "";
+  const first = stdout.indexOf("{");
+  const last = stdout.lastIndexOf("}");
+  let value;
+  if (first >= 0 && last > first) {
+    try {
+      value = JSON.parse(stdout.slice(first, last + 1));
+    } catch {
+      value = undefined;
+    }
+  }
+  const appError = value?.status === "error" ? (value.errorMessage ?? "error") : null;
+  return {
+    ok: result.status === 0 && !appError && value !== undefined,
+    exitCode: result.status,
+    appError,
+    value,
+    raw: sanitize(stdout.slice(0, 300)),
+    stderr: sanitize((result.stderr ?? "").slice(0, 300)),
+  };
+}
+
 const ASSETS = [
   { asset: "crypto", instrument: "BTC-USDT", instrumentType: "crypto", timeframe: "M15", tradingStyle: "swing", provider: "okx", providerInstrumentId: "BTC-USDT" },
   { asset: "forex", instrument: "EUR/USD", instrumentType: "forex", timeframe: "H4", tradingStyle: "swing", provider: "twelve-data", providerInstrumentId: "EUR/USD" },
@@ -396,9 +439,120 @@ async function runFourAsset() {
   return 0;
 }
 
+/* ------------------------------------------------------------------ *
+ * Mode: the deployment's OWN runtime, via the repository's CLI path
+ * ------------------------------------------------------------------ */
+
+function annotateJson(title, lines) {
+  annotate(title, lines.join("\n"));
+}
+
+async function runConvexRunMode() {
+  const lines = [];
+  const deployment = (process.env.CONVEX_DEPLOYMENT ?? "").trim();
+  const site = (process.env.CONVEX_SITE_URL ?? "").trim();
+  lines.push(`CONVEX_DEPLOYMENT=${deployment || "(missing)"}`);
+  lines.push(`VITE_CONVEX_URL=${(process.env.VITE_CONVEX_URL ?? "(missing)").trim()}`);
+  lines.push(`CONVEX_SITE_URL=${site || "(missing in workflow env)"}`);
+
+  // ── Deployment environment variable NAMES (never values) ──────────
+  const envList = spawnSync("npx", ["--yes", "convex@1.42.1", "env", "list", "--prod", "--names-only"], {
+    encoding: "utf8",
+    timeout: 120_000,
+    env: process.env,
+  });
+  const names = (envList.stdout ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => /^[A-Z0-9_]+$/.test(l))
+    .sort();
+  lines.push(
+    `convex env list --names-only: exit=${String(envList.status)} names=${names.length}` +
+      (envList.status === 0 ? "" : ` err=${sanitize((envList.stderr ?? "").split("\n")[0])}`),
+  );
+  if (names.length > 0) lines.push(`deployment env var names: ${names.join(", ")}`);
+  console.log(`[284] ${lines.join("\n[284] ")}`);
+
+  const identity = {
+    subject: `phase284-verification-${Date.now()}`,
+    issuer: site || "https://pleasant-curlew-264.convex.site",
+    name: "Phase 284 verification",
+  };
+
+  // ── The guard the product guarantees: no identity, no analysis ────
+  const unauth = convexRun("protectedAnalysis:runProtectedAnalysis", {
+    input: {
+      instrument: "BTC-USDT",
+      instrumentType: "crypto",
+      timeframe: "M15",
+      tradingStyle: "swing",
+      provider: "okx",
+      providerInstrumentId: "BTC-USDT",
+    },
+  }, null);
+  const unauthStatus = unauth.value?.status ?? (unauth.appError ? "error" : unauth.stderr ? "cli-error" : "unknown");
+  lines.push(`unauthenticated probe: status=${unauthStatus}${unauth.appError ? ` error=${sanitize(unauth.appError).slice(0, 160)}` : ""}`);
+
+  // ── The four assets, through the deployed production action ───────
+  for (const spec of ASSETS) {
+    const call = convexRun(
+      "protectedAnalysis:runProtectedAnalysis",
+      {
+        input: {
+          instrument: spec.instrument,
+          instrumentType: spec.instrumentType,
+          timeframe: spec.timeframe,
+          tradingStyle: spec.tradingStyle,
+          provider: spec.provider,
+          providerInstrumentId: spec.providerInstrumentId,
+        },
+      },
+      identity,
+    );
+    if (!call.ok && call.value === undefined) {
+      lines.push(
+        `${spec.asset} ${spec.instrument}: NOT_EXECUTED (cli exit=${String(call.exitCode)}${call.stderr ? ` err=${call.stderr.split("\n")[0]}` : ""})`,
+      );
+      continue;
+    }
+    const record = summarize(
+      spec.asset,
+      spec.instrumentType,
+      spec.instrument,
+      spec.provider,
+      spec.providerInstrumentId,
+      { ok: call.ok, httpStatus: 200, appError: call.appError, value: call.value, transportError: null },
+    );
+    lines.push(`${spec.asset} ${spec.instrument}: ${JSON.stringify(record)}`);
+  }
+
+  const table = lines.filter((l) => l.includes(": {"));
+  const headerLine = "ASSET | PROVIDER | DEPLOYED ENV | REAL MARKET DATA | FUNDAMENTAL | UNIFIED | RADAR | RESULT";
+  const rows = table.map((l) => {
+    const rec = JSON.parse(l.slice(l.indexOf(": {") + 2));
+    return [
+      `${rec.asset} ${rec.instrument}`,
+      rec.requestedProvider,
+      `obs=${rec.providerObservationTimestamp ?? "none"} fresh=${rec.marketDataFreshness ?? "none"}`,
+      rec.liveMarketData ? `yes (${rec.dataCompleteness ?? "?"})` : "no",
+      rec.fundamental ? `${rec.fundamental.provider ?? "?"}/${rec.fundamental.state ?? "?"}${rec.fundamental.reportingPeriod ? ` period ${rec.fundamental.reportingPeriod}` : ""}` : "none",
+      rec.unifiedState ?? "none",
+      rec.radarState ?? "none",
+      rec.classification,
+    ].join(" | ");
+  });
+  lines.push("", headerLine, ...rows);
+  console.log(`[284] ${lines.slice(-(rows.length + 2)).join("\n[284] ")}`);
+  annotateJson("Phase 284 deployed runtime (convex run)", lines.flatMap((l) => l.split("\n")));
+  return 0;
+}
+
 if (has("--presence")) {
   presenceReport();
   process.exit(0);
+}
+if (has("--convex-run")) {
+  process.exit(await runConvexRunMode());
 }
 if (has("--four-asset")) {
   process.exit(await runFourAsset());
