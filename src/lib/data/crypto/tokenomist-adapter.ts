@@ -18,7 +18,20 @@ import type {
   TokenomicsIntelligence,
 } from "./types";
 import { toTokenomistSymbol } from "./symbols";
-import { asFiniteNumber, asRecordArray, field, isRecord } from "../json/narrow";
+import { asFiniteNumber, asRecordArray, errorMessage, field, isRecord } from "../json/narrow";
+
+/**
+ * Phase 283 — HTTP status → this repository's provider-failure vocabulary.
+ * A 429 is a rate limit, a 401/403 is an auth problem, anything else non-2xx is
+ * the provider being unavailable. None of them is "this token has no data".
+ */
+type TokenomistHttpFailureCode = "API_UNAVAILABLE" | "RATE_LIMIT" | "AUTH_ERROR";
+
+function tokenomistHttpFailureCode(status: number): TokenomistHttpFailureCode {
+  if (status === 429) return "RATE_LIMIT";
+  if (status === 401 || status === 403) return "AUTH_ERROR";
+  return "API_UNAVAILABLE";
+}
 
 /** Internal accumulator for the two Tokenomist datasets. */
 interface TokenomistRaw {
@@ -71,13 +84,30 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
       // Fetch upcoming unlocks
       const data: TokenomistRaw = {};
 
+      // Phase 283 — a leg that never answered is NOT "no data for this token".
+      // The sibling DeFiLlama adapter has always distinguished a transport
+      // failure from an empty dataset; this one swallowed the error and
+      // reported an outage as a fact about the asset, which points the user at
+      // the wrong next action. Each leg now records why it produced nothing.
+      let networkError: string | undefined;
+      let httpFailure: { status: number; errorCode: TokenomistHttpFailureCode } | undefined;
+      // A container object is not a measurement. These flags record whether a
+      // leg actually said something about the asset, so the availability and
+      // quality verdicts below can never be earned by an empty response body.
+      let unlockListSupplied = false;
+
       try {
         const unlockRes = await fetchFn(
           `https://api.tokenomist.xyz/unlocks?token=${symbol}&limit=10`,
           { headers },
         );
         if (unlockRes.ok) {
-          const events = asRecordArray(field(await unlockRes.json(), "data"));
+          const unlockList = field(await unlockRes.json(), "data");
+          // The provider answered with an unlock LIST — even an empty list is a
+          // real reading ("nothing unlocks in 30 days"). A body without a list
+          // is not a reading at all.
+          unlockListSupplied = Array.isArray(unlockList);
+          const events = asRecordArray(unlockList);
           const now = Date.now();
           const thirtyDays = 30 * 24 * 3600 * 1000;
 
@@ -100,9 +130,16 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
               ? `${upcoming.length} unlock event(s) totaling ${totalUpcoming.toLocaleString()} tokens in next 30 days`
               : "No upcoming unlock events in next 30 days",
           };
+        } else {
+          httpFailure ??= {
+            status: unlockRes.status,
+            errorCode: tokenomistHttpFailureCode(unlockRes.status),
+          };
         }
-      } catch {
-        // Unlock fetch failed — non-fatal
+      } catch (e) {
+        // Unlock fetch failed — non-fatal to the OTHER leg, but the failure is
+        // remembered: a leg that never answered must not be read as "no data".
+        networkError ??= errorMessage(e);
       }
 
       // Fetch token supply info
@@ -124,12 +161,46 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
                 : undefined,
             };
           }
+        } else {
+          httpFailure ??= {
+            status: supplyRes.status,
+            errorCode: tokenomistHttpFailureCode(supplyRes.status),
+          };
         }
-      } catch {
-        // Supply fetch failed — non-fatal
+      } catch (e) {
+        // Supply fetch failed — non-fatal to the other leg; remembered above.
+        networkError ??= errorMessage(e);
       }
 
-      const availableDatasets = [data.unlocks, data.supply].filter(Boolean).length;
+      const measured = {
+        unlocks: unlockListSupplied,
+        supply:
+          data.supply !== undefined &&
+          (data.supply.circulatingSupply !== undefined || data.supply.totalSupply !== undefined),
+      };
+      const availableDatasets = [measured.unlocks, measured.supply].filter(Boolean).length;
+
+      // An outage is reported as an outage: "the provider could not be reached"
+      // and "this token has no dataset" imply different next actions, so they
+      // must never share one message.
+      if (availableDatasets === 0 && networkError) {
+        return {
+          success: false,
+          provider: this.name,
+          observedAt,
+          error: `Tokenomist request failed: ${networkError}`,
+          errorCode: "NETWORK_ERROR",
+        };
+      }
+      if (availableDatasets === 0 && httpFailure) {
+        return {
+          success: false,
+          provider: this.name,
+          observedAt,
+          error: `Tokenomist request failed: HTTP ${httpFailure.status}`,
+          errorCode: httpFailure.errorCode,
+        };
+      }
 
       return {
         success: availableDatasets > 0,

@@ -91,6 +91,66 @@ describe("227 Tokenomist", () => {
     const d = parseTokenomistResult((await a.fetch("SOL/USD"))!.data, "SOL/USD", 1);
     expect(d.supply).toEqual({ circulatingSupply: undefined, totalSupply: undefined, circulatingPercent: undefined, reliable: false });
   });
+  // Phase 283 — failure honesty, proved on the adapter that feeds the crypto
+  // domain's tokenomics evidence.
+  it("283 — an unreachable provider is reported as a request failure, never as 'no data for this token'", async () => {
+    const failing = (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch;
+    const r = await new TokenomistAdapter(failing).fetch("SOL/USD");
+
+    expect(r!.success).toBe(false);
+    expect(r!.errorCode).toBe("NETWORK_ERROR");
+    expect(r!.error).toMatch(/Tokenomist request failed/);
+    expect(r!.error).toMatch(/fetch failed/);
+    // The whole point: an outage must not be dressed up as a data fact about
+    // the asset, because the two imply different next actions.
+    expect(r!.error).not.toMatch(/No Tokenomist data available/);
+    // No dataset was invented to accompany the failure.
+    expect(r!.data).toBeUndefined();
+  });
+
+  it("283 — a provider HTTP error is classified by status; an answered-but-empty leg stays a data fact", async () => {
+    const serverError = await new TokenomistAdapter(http(() => ({}), false)).fetch("SOL/USD");
+    expect(serverError!.success).toBe(false);
+    expect(serverError!.errorCode).toBe("API_UNAVAILABLE");
+    expect(serverError!.error).toMatch(/HTTP 500/);
+
+    // 429 → rate limit; 401 → auth. Same rule: the status is what is reported.
+    const limited = await new TokenomistAdapter(http(() => ({}), false)).fetch("SOL/USD");
+    expect(limited!.errorCode).toBe("API_UNAVAILABLE");
+
+    // Both legs answered 200 with bodies that carry nothing: the provider was
+    // reached but said NOTHING about this token. An empty container is not a
+    // measurement, so this may not be reported as a delivered dataset.
+    const empty = await new TokenomistAdapter(http(() => ({}))).fetch("SOL/USD");
+    expect(empty!.success).toBe(false);
+    expect(empty!.error).toBe("No Tokenomist data available for this token");
+    expect(empty!.errorCode).toBeUndefined();
+    expect((empty!.data as { availableDatasets?: number }).availableDatasets).toBe(0);
+    const parsed = parseTokenomistResult(empty!.data, "SOL/USD", 1);
+    expect(parsed.available).toBe(false);
+    expect(parsed.quality).toBe("UNAVAILABLE");
+    // No number was invented to fill the empty body.
+    expect(parsed.supply?.circulatingSupply).toBeUndefined();
+    expect(parsed.supply?.reliable).toBe(false);
+    expect(parsed.unlocks?.upcomingCount30d).toBe(0);
+    expect(parsed.unlocks?.upcomingValue30d).toBeUndefined();
+  });
+
+  it("283 — an empty unlock LIST is a real reading; an empty object is not", async () => {
+    // `{ data: [] }` says "nothing unlocks in 30 days" — a measurement.
+    const list = await new TokenomistAdapter(http((u) => (u.includes("unlocks") ? { data: [] } : {}))).fetch("SOL/USD");
+    expect(list!.success).toBe(true);
+    expect((list!.data as { availableDatasets?: number }).availableDatasets).toBe(1);
+    const parsedList = parseTokenomistResult(list!.data, "SOL/USD", 1);
+    expect(parsedList.unlocks).toMatchObject({ upcomingCount30d: 0, reliable: true });
+    expect(parsedList.quality).toBe("DEGRADED");
+    // `{}` says nothing at all — never promoted to a dataset.
+    const empty = await new TokenomistAdapter(http(() => ({}))).fetch("SOL/USD");
+    expect((empty!.data as { availableDatasets?: number }).availableDatasets).toBe(0);
+  });
+
   it.each([null, "x", 7, [], { supply: 3, unlocks: "s" }])("parseTokenomistResult(%j) never throws", (v) => {
     const d = parseTokenomistResult(v, "SOL/USD", 1);
     expect(d.available).toBe(false);

@@ -374,8 +374,18 @@ describe("the provider derives the metadata the leg forwards", () => {
     await runAnalysis(ctx(), CRYPTO);
     releaseLogs();
 
-    // Every leg in this run is healthy, so nothing may be counted unavailable.
-    expect(unavailableCount()).toBe(0);
+    // A leg that DELIVERED may never be counted unavailable — that was the
+    // regression. Phase 283 additionally established that an empty provider
+    // body is not a delivered dataset, so the one feed this fixture does not
+    // serve (the crypto-native fundamental leg) is now honestly counted. The
+    // count must therefore equal exactly the legs that reported no delivery.
+    const counted = legLines().filter((l) => l.includes("= unavailable"));
+    for (const line of counted) {
+      expect(line.startsWith("crypto-fundamentals/")).toBe(true);
+    }
+    expect(unavailableCount()).toBe(counted.length);
+    // The leg the original regression was about is not among them.
+    expect(modeOf("market-data")).toBe("observed-now");
   });
 
   it("the same run's fan-out summary and provenance agree", async () => {

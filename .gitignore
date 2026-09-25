@@ -50,3 +50,7 @@ docs/i18n-key-usage.json
 docs/i18n-key-classification.json
 docs/component-debt.json
 docs/component-debt-table.md
+
+# Phase 283 — real-provider live smoke writes its evidence record here.
+# Local artifact: regenerate with `npm run test:live -- four-asset-live-smoke`.
+phase283-live-evidence.json
