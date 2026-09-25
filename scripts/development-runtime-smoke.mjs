@@ -466,6 +466,19 @@ export function readResultEvidence(result) {
     confidence: fa?.confidence ?? null,
     directionalBias: fa?.directionalBias ?? null,
     periodsCount: isNumber(fa?.periodsCount) ? fa.periodsCount : null,
+    // Phase 289 — the delivered domain dimensions with their OWN status. This is
+    // the surface that answers "did this instrument receive evidence that belongs
+    // to its market?" (e.g. petroleum inventories on a bullion instrument), and
+    // it was previously unreadable outside the artifact.
+    dimensions: Array.isArray(fa?.dimensions)
+      ? fa.dimensions
+          .slice(0, 10)
+          .map((d) => ({
+            name: typeof d?.name === "string" ? d.name : null,
+            status: typeof d?.status === "string" ? d.status : null,
+            role: typeof d?.role === "string" ? d.role : null,
+          }))
+      : [],
     evidenceProviders: Array.isArray(fa?.dimensions)
       ? [
           ...new Set(
@@ -587,6 +600,93 @@ export function failingLegText(evidence, limit = 3) {
     .slice(0, Math.max(1, limit))
     .map((d) => `${d.provider}/${d.dataset ?? "?"}: ${d.reason}`);
   return named.length > 0 ? named.join("; ") : null;
+}
+
+/**
+ * Phase 289 — ONE bounded line carrying the runtime's OWN evidence shape for a
+ * domain.
+ *
+ * Why this exists: the smoke's artifact and the runner log are the primary
+ * evidence, but neither is always reachable (artifact download and job logs can
+ * both be egress-restricted in a given environment, while check-run annotations
+ * are not). Without a digest, a run that PASSed left nothing readable, and the
+ * Phase-288 diagnostics — which dimension the deployment actually delivered,
+ * what the engine's domain-native text said, and whether a leg was acquired and
+ * then deliberately not consumed — could only be seen in the artifact.
+ *
+ * Everything here is copied from the runtime's own result: dimension names with
+ * their status, the engine's fundamental text, each leg's own flags with its
+ * classified reason, and the provider's discovery report. Nothing is inferred,
+ * nothing is repaired, and an absent section is absent rather than summarised.
+ * Returns null when the record carries nothing to report.
+ */
+export function evidenceDigest(record) {
+  const clip = (text, max) => {
+    const clean = String(text ?? "").replace(/\s+/g, " ").trim();
+    return clean.length > max ? `${clean.slice(0, Math.max(0, max - 1))}…` : clean;
+  };
+  if (!record || typeof record !== "object") return null;
+  const parts = [];
+
+  const fundamental = record.evidence?.fundamental;
+  if (fundamental && (fundamental.present === true || fundamental.available === true)) {
+    const dims = (Array.isArray(fundamental.dimensions) ? fundamental.dimensions : [])
+      .filter((d) => d && (d.name !== null || d.status !== null))
+      .map((d) => `${d.name ?? "?"}=${d.status ?? "?"}`)
+      .join(",");
+    parts.push(
+      clip(
+        `fundamental[domain=${fundamental.domain ?? "?"} state=${fundamental.state ?? "?"} provider=${
+          fundamental.provider ?? "?"
+        }${dims ? ` dims=${dims}` : ""}]`,
+        240,
+      ),
+    );
+    if (typeof fundamental.summary === "string" && fundamental.summary.length > 0) {
+      parts.push(clip(`engine[${fundamental.summary}]`, 200));
+    }
+  }
+
+  const diagnostics = Array.isArray(record.evidence?.diagnostics)
+    ? record.evidence.diagnostics
+    : [];
+  const legs = diagnostics
+    .filter((d) => d && typeof d.reason === "string" && d.reason.length > 0)
+    .slice(0, 2)
+    .map(
+      (d) =>
+        `${d.provider ?? "?"}/${d.dataset ?? "?"} acquired=${d.acquired === true} attached=${
+          d.attached === true
+        } used=${d.usedByEngine === true}: ${clip(d.reason, 120)}`,
+    );
+  if (legs.length > 0) parts.push(clip(`legs[${legs.join(" | ")}]`, 300));
+
+  const discovery = record.discovery;
+  if (discovery && typeof discovery === "object") {
+    const catalogs = Array.isArray(discovery.catalogs) ? discovery.catalogs : [];
+    const incomplete = catalogs.filter(
+      (c) => c && typeof c.completeness === "string" && c.completeness !== "COMPLETE",
+    );
+    const detail = [
+      `completeness=${discovery.completeness ?? "?"}`,
+      `pages=${discovery.pagesFetched ?? "?"}`,
+      `kept=${discovery.totalDiscovered ?? "?"}`,
+      `catalogs=${catalogs.length}`,
+      `incomplete=${incomplete.length}`,
+      incomplete.length > 0
+        ? `first=${incomplete[0].path ?? "?"}:${incomplete[0].completeness}`
+        : null,
+      Array.isArray(discovery.warnings) && discovery.warnings.length > 0
+        ? `warning=${clip(discovery.warnings[0], 130)}`
+        : null,
+    ]
+      .filter((piece) => piece !== null)
+      .join(" ");
+    parts.push(clip(`discovery[${detail}]`, 260));
+  }
+
+  if (parts.length === 0) return null;
+  return clip(parts.join(" · "), 900);
 }
 
 /**
@@ -1100,6 +1200,10 @@ async function run() {
           },
           fundamental: e.fundamental,
           unified: e.unified,
+          // Phase 289 — the per-leg flags travel with the record so the digest
+          // (and therefore a reader without the artifact) can see a leg that was
+          // acquired and then deliberately not consumed.
+          diagnostics: e.diagnostics,
         };
       } else {
         record.legs = {
@@ -1141,6 +1245,18 @@ async function run() {
       `${record.label} ${record.headline}`,
       `${record.provider ?? "?"} · ${record.providerInstrumentId ?? "?"} · observedAt=${record.observedAt ?? "none"} · ${record.reason ?? ""}`,
     );
+
+    // Phase 289 — a second, verdict-independent line per domain. The verdict
+    // annotation above uses `notice` for a PASS, and GitHub does not surface
+    // `notice` through the check-run annotations API, so a clean domain could
+    // leave no readable evidence at all. This line is always emitted as a
+    // `warning` (the level that reliably surfaces) and is labelled informational
+    // so it is never mistaken for a verdict.
+    const digest = evidenceDigest(record);
+    if (digest !== null) {
+      annotate("warning", `${record.label} runtime evidence`, `informational — ${digest}`);
+    }
+
     domains.push(record);
   }
 
@@ -1184,6 +1300,19 @@ async function run() {
     domains,
     summary: Object.fromEntries(domains.map((d) => [d.label, d.headline])),
   };
+
+  // Phase 289 — which build did this run actually measure? The artifact carries
+  // it, but the artifact is not always reachable (downloads can be
+  // egress-restricted while check-run annotations are not), and the deployed
+  // version plus the smoke's own source commit are mandatory report fields. The
+  // value is the deployment's own /version answer, or an explicit "unknown".
+  annotate(
+    "warning",
+    "Smoke target",
+    `informational — target=${origin} · apiPlaneReachable=${version.ok} · version=${
+      version.version ?? "unknown (no /version answer)"
+    } · sourceCommit=${process.env.GITHUB_SHA ?? "unknown"}`,
+  );
 
   if (report.transport.calls === 0) {
     console.error("COULD NOT LOOK: not one call completed against the deployment. Concluding nothing.");

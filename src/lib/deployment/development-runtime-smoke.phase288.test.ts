@@ -27,6 +27,8 @@ import {
   withFailingLegs,
   discoverTwelveData,
   classifyDomain,
+  evidenceDigest,
+  readResultEvidence,
 } from "../../../scripts/development-runtime-smoke.mjs";
 
 const SMOKE = readFileSync("scripts/development-runtime-smoke.mjs", "utf8");
@@ -243,5 +245,146 @@ describe("phase 288 — a domain's bounded candidate policy", () => {
     expect(mostSevereVerdict(fail, unavailable)).toBe(fail);
     expect(mostSevereVerdict(unavailable, { headline: "PASS", reason: "real evidence" }).headline).toBe("UNAVAILABLE");
     expect(mostSevereVerdict(null, unavailable)).toBe(unavailable);
+  });
+});
+
+describe("phase 289 — the deployed runtime's evidence shape stays readable", () => {
+  const commodityRecord = () => ({
+    label: "COMMODITY",
+    evidence: {
+      fundamental: {
+        present: true,
+        available: true,
+        domain: "commodity",
+        state: "insufficient",
+        provider: "twelve-data",
+        summary:
+          "Commodity physical evidence: inventories UNAVAILABLE — the only configured inventory feed (U.S. EIA weekly petroleum) is out of scope for this instrument.",
+        dimensions: [
+          { name: "inventories", status: "unavailable", role: "primary" },
+          { name: "supply-demand", status: "unavailable", role: "primary" },
+          { name: "futures-positioning", status: "positive", role: "secondary" },
+          { name: "term-structure", status: "unavailable", role: "secondary" },
+        ],
+      },
+      diagnostics: [
+        {
+          provider: "eia",
+          dataset: "inventories",
+          acquired: true,
+          attached: true,
+          usedByEngine: false,
+          reason:
+            "EIA WPSR series are the physical market of an energy commodity — deliberately not read for this bullion instrument.",
+        },
+        {
+          provider: "tokenomist",
+          dataset: "tokenomics",
+          acquired: false,
+          attached: false,
+          usedByEngine: false,
+          reason: "Tokenomist refused the request: HTTP 401 (credential)",
+        },
+      ],
+    },
+    discovery: {
+      completeness: "PARTIAL",
+      pagesFetched: 2,
+      totalDiscovered: 41,
+      catalogs: [
+        { path: "/commodities", assetClass: "commodity", completeness: "COMPLETE", failedPage: null },
+        { path: "/stocks", assetClass: "equity", completeness: "FAILED", failedPage: 1 },
+      ],
+      warnings: ["/stocks returned HTTP 403: code 403 — this endpoint requires a paid plan."],
+    },
+  });
+
+  it("renders the delivered dimension names with their own status", () => {
+    const digest = evidenceDigest(commodityRecord())!;
+    expect(digest).toContain("domain=commodity");
+    expect(digest).toContain("inventories=unavailable");
+    expect(digest).toContain("futures-positioning=positive");
+  });
+
+  it("carries the engine's own domain-native text, not a product blurb", () => {
+    const digest = evidenceDigest(commodityRecord())!;
+    expect(digest).toContain("engine[");
+    expect(digest).toContain("out of scope for this instrument");
+  });
+
+  it("shows a leg that was acquired and then deliberately not consumed", () => {
+    const digest = evidenceDigest(commodityRecord())!;
+    expect(digest).toContain("eia/inventories acquired=true attached=true used=false");
+    expect(digest).toContain("deliberately not read");
+  });
+
+  it("exposes a failing leg's own classified reason (a credential rejection is not silence)", () => {
+    const digest = evidenceDigest(commodityRecord())!;
+    expect(digest).toContain("tokenomist/tokenomics acquired=false");
+    expect(digest).toContain("HTTP 401");
+  });
+
+  it("reports the provider's discovery report, including an incomplete catalog", () => {
+    const digest = evidenceDigest(commodityRecord())!;
+    expect(digest).toContain("completeness=PARTIAL");
+    expect(digest).toContain("incomplete=1");
+    expect(digest).toContain("first=/stocks:FAILED");
+    expect(digest).toContain("requires a paid plan");
+  });
+
+  it("is a bounded single line and never invents a section", () => {
+    const huge = commodityRecord();
+    huge.evidence.fundamental.summary = "x".repeat(5000);
+    huge.evidence.fundamental.dimensions = Array.from({ length: 40 }, (_, i) => ({
+      name: `dimension-${i}`,
+      status: "unavailable",
+      role: "primary",
+    }));
+    const digest = evidenceDigest(huge)!;
+    expect(digest.length).toBeLessThanOrEqual(900);
+    expect(digest).not.toContain("\n");
+    // Nothing to report is null — not an empty annotation, not a guess.
+    expect(evidenceDigest({ label: "CRYPTO" })).toBeNull();
+    expect(evidenceDigest({ label: "CRYPTO", evidence: {} })).toBeNull();
+    expect(evidenceDigest(null)).toBeNull();
+  });
+
+  it("reads the delivered dimensions out of the runtime result itself", () => {
+    const evidence = readResultEvidence({
+      fundamentalAssessment: {
+        available: true,
+        domain: "commodity",
+        state: "insufficient",
+        provider: "twelve-data",
+        dimensions: [
+          { name: "inventories", status: "unavailable", role: "primary" },
+          { status: "ignored-without-a-name" },
+        ],
+      },
+    });
+    expect(evidence.fundamental.dimensions).toEqual([
+      { name: "inventories", status: "unavailable", role: "primary" },
+      { name: null, status: "ignored-without-a-name", role: null },
+    ]);
+  });
+
+  it("reports which deployment and build the run actually measured", () => {
+    // The deployed version and the smoke's source commit are mandatory report
+    // fields and are not otherwise readable without the artifact, so they are
+    // annotated as their own line — with an explicit "unknown" when the
+    // deployment does not answer /version.
+    expect(SMOKE).toContain('annotate(\n    "warning",\n    "Smoke target",');
+    expect(SMOKE).toContain("apiPlaneReachable=${version.ok}");
+    expect(SMOKE).toContain('version.version ?? "unknown (no /version answer)"');
+    expect(SMOKE).toContain("sourceCommit=${process.env.GITHUB_SHA ?? \"unknown\"}");
+  });
+
+  it("emits the digest as its own always-visible annotation", () => {
+    // The verdict annotation is a `notice` for a PASS and GitHub does not
+    // surface notices through the check-run annotations API, so the digest line
+    // is emitted at `warning` level and labelled informational.
+    expect(SMOKE).toContain('annotate("warning", `${record.label} runtime evidence`');
+    expect(SMOKE).toContain("informational — ");
+    expect(SMOKE).toContain("diagnostics: e.diagnostics,");
   });
 });

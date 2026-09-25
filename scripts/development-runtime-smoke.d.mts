@@ -163,6 +163,8 @@ export type Evidence = {
     confidence: string | null;
     directionalBias: string | null;
     periodsCount: number | null;
+    /** Phase 289 — the delivered domain dimensions with their OWN status. */
+    dimensions: { name: string | null; status: string | null; role: string | null }[];
     evidenceProviders: string[];
     summary: string | null;
   };
@@ -222,6 +224,14 @@ export function readResultEvidence(result: unknown): Evidence;
  * record reconstructed from the artifact) can use these helpers too.
  */
 export type LegDiagnosticSource = { diagnostics?: Evidence["diagnostics"] } | null | undefined;
+
+/**
+ * Phase 289 — one bounded line carrying a domain record's own evidence shape
+ * (dimension statuses, the engine's fundamental text, per-leg flags with their
+ * classified reasons, the discovery report), so a run stays readable without the
+ * artifact. Returns null when there is nothing to report.
+ */
+export function evidenceDigest(record: unknown): string | null;
 
 /** The failing legs' own diagnoses as one bounded line, or null. */
 export function failingLegText(evidence: LegDiagnosticSource, limit?: number): string | null;
