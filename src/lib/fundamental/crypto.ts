@@ -44,6 +44,7 @@ import {
   dimension,
   isFiniteNumber,
   unavailable,
+  type DimensionHierarchyEntry,
 } from "./framework";
 
 export interface CryptoFundamentalContext {
@@ -95,11 +96,52 @@ export const CRYPTO_PARAMETERS = {
   materialOverhangFdvToMcap: 2,
   /** TVL change (%) inside the window treated as network growth/contraction. */
   tvlMaterialChangePercent: 2,
+  /**
+   * Phase 281 — account long/short ratio at (or beyond) which the book is one
+   * sided. Symmetric: 1 / 2 = 0.5 marks the other extreme.
+   */
+  crowdedLongShortRatio: 2,
+  /** 24h open-interest change (%) at which a positioning build is flagged. */
+  crowdedOpenInterestChangePercent: 25,
+  /**
+   * |annualized funding| (%) at or beyond which the funding leg of the
+   * market-structure context is reported as extreme. The provider's own
+   * annualized figure is used verbatim when supplied — this adapter never
+   * annualizes a per-interval rate itself.
+   */
+  extremeFundingAnnualizedPercent: 50,
 } as const;
 
 /** The engine layer that already scores the derivatives evidence. */
 const MARKET_STRUCTURE_CONSUMER =
   "technical/derivatives scoring in the analysis engine (sentiment factor, Phase 278 market context)";
+
+/**
+ * Phase 281 — DOCUMENTED EVIDENCE HIERARCHY for a crypto asset.
+ *
+ * A token has no company and no balance sheet: what it has is a supply
+ * schedule and a network. Those two are therefore the PRIMARY evidence; the
+ * vesting schedule is SECONDARY (a scheduled future dilution next to the
+ * measured current supply structure); the derived market-cap/FDV reading is
+ * SUPPORTING, because it re-expresses the very same provider supply in market
+ * terms and must never be counted as a second supply signal; and the
+ * dimensions no configured provider supplies (chain activity, on-chain
+ * valuation, options/ETF flows) keep the lowest role so that a future wiring
+ * change is configuration, not new scoring logic.
+ *
+ * Nothing here is symbol-specific: every crypto instrument is classified by
+ * this one configuration.
+ */
+export const CRYPTO_HIERARCHY: DimensionHierarchyEntry[] = [
+  { name: "supply-structure", role: "primary" },
+  { name: "protocol-economics", role: "primary" },
+  { name: "unlock-dilution", role: "secondary" },
+  { name: "network-activity", role: "secondary" },
+  { name: "on-chain-valuation", role: "secondary" },
+  { name: "valuation-context", role: "supporting" },
+  { name: "market-positioning", role: "supporting" },
+  { name: "options-etf-flows", role: "supporting" },
+];
 
 function usd(value: number): string {
   return `$${value.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
@@ -344,19 +386,54 @@ export function assessCryptoFundamentals(context: CryptoFundamentalContext): Fun
       }
       if (change7d !== undefined) metrics.tvlChange7dPercent = change7d;
 
-      const status =
-        windowPct === undefined
+      // Phase 281 — the provider's own FEE windows. A fee trend is a second,
+      // genuinely different measurement of protocol health (usage) next to the
+      // locked value (TVL); both come from the same provider dataset, which is
+      // exactly why they are combined INSIDE this one dimension instead of
+      // being scored as two.
+      const feeWindowPct = isFiniteNumber(fees?.feeChange30d)
+        ? fees!.feeChange30d
+        : isFiniteNumber(fees?.feeChange7d)
+          ? fees!.feeChange7d
+          : undefined;
+      if (isFiniteNumber(fees?.feeChange30d)) metrics.feesChange30dPercent = fees!.feeChange30d;
+      if (isFiniteNumber(fees?.feeChange7d)) metrics.feesChange7dPercent = fees!.feeChange7d;
+
+      // Each real window is material-or-not on its own; the dimension is
+      // directional only when every measured window points the same way.
+      const legs: { label: string; pct: number }[] = [];
+      if (windowPct !== undefined) {
+        legs.push({ label: `TVL over the provider's ${change30d !== undefined ? "30-day" : "7-day"} window`, pct: windowPct });
+      }
+      if (feeWindowPct !== undefined) {
+        legs.push({
+          label: `provider fees over the provider's ${isFiniteNumber(fees?.feeChange30d) ? "30-day" : "7-day"} window`,
+          pct: feeWindowPct,
+        });
+      }
+      const material = CRYPTO_PARAMETERS.tvlMaterialChangePercent;
+      const positives = legs.filter((l) => l.pct >= material).length;
+      const negatives = legs.filter((l) => l.pct <= -material).length;
+      const status: FundamentalDimension["status"] =
+        legs.length === 0
           ? "neutral"
-          : windowPct >= CRYPTO_PARAMETERS.tvlMaterialChangePercent
+          : positives === legs.length
             ? "positive"
-            : windowPct <= -CRYPTO_PARAMETERS.tvlMaterialChangePercent
+            : negatives === legs.length
               ? "negative"
               : "neutral";
+      const legText =
+        legs.length === 0
+          ? `${isFiniteNumber(tvlCurrent) ? `TVL $${tvlCurrent.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "TVL not supplied"} with no comparable prior point, so no growth is claimed`
+          : legs.map((l) => `${formatPercent(l.pct)} in ${l.label}`).join(" and ") +
+            (legs.length > 1 && positives > 0 && negatives > 0
+              ? " — the two provider measurements disagree, so no protocol-growth direction is claimed"
+              : "");
       dimensions.push(
         dimension(
           "protocol-economics",
           status,
-          `${isFiniteNumber(tvlCurrent) ? `TVL $${tvlCurrent.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "TVL not supplied"}${windowPct !== undefined ? `, ${formatPercent(windowPct)} over the provider's ${change30d !== undefined ? "30-day" : "7-day"} window` : " with no comparable prior point, so no growth is claimed"}${fees?.reliable && isFiniteNumber(fees.dailyFees) ? `; daily protocol fees $${fees.dailyFees.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : ""}. Source ${defi!.provider}, observed ${new Date(defi!.observedAt).toISOString()}.`,
+          `${isFiniteNumber(tvlCurrent) ? `TVL $${tvlCurrent.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : "TVL not supplied"}; ${legText}${fees?.reliable && isFiniteNumber(fees.dailyFees) ? `; daily protocol fees $${fees.dailyFees.toLocaleString("en-US", { maximumFractionDigits: 0 })}` : ""}. Source ${defi!.provider}, observed ${new Date(defi!.observedAt).toISOString()}.`,
         ),
       );
 
@@ -376,9 +453,35 @@ export function assessCryptoFundamentals(context: CryptoFundamentalContext): Fun
           freshness: PUBLICATION_FRESHNESS,
         });
       }
-      limitations.push(
-        "Protocol revenue UNAVAILABLE as provider evidence — no configured provider reports protocol revenue for this instrument, and a fee-derived estimate is not treated as reported revenue.",
-      );
+
+      // Phase 281 — provider-reported protocol REVENUE, when the provider's
+      // own revenue series answers. The fee-derived estimate some layers show
+      // is never used here as reported revenue.
+      if (fees?.reliable && isFiniteNumber(fees.revenue24h)) {
+        metrics.protocolRevenue24h = fees.revenue24h;
+        evidence.push({
+          metric: "protocol_revenue_24h",
+          label: "Protocol revenue (24h, provider-reported)",
+          value: fees.revenue24h,
+          unit: "USD",
+          provider: defi!.provider,
+          providerInstrumentId: nativeId,
+          source: "protocol revenue summary (dataType=dailyRevenue, total24h)",
+          observedAt: defi!.observedAt,
+          observedAtSemantics: "acquisition-receipt",
+          period: "trailing 24 hours at the provider observation",
+          freshness: PUBLICATION_FRESHNESS,
+        });
+      } else {
+        limitations.push(
+          "Protocol revenue UNAVAILABLE as provider evidence — the provider's revenue series did not answer for this instrument, and a fee-derived estimate is not treated as reported revenue.",
+        );
+      }
+      if (feeWindowPct === undefined) {
+        limitations.push(
+          "Fee trend UNAVAILABLE — the provider's fee summary carried no 7/30-day comparison for this instrument, so no fee growth is claimed from a single point.",
+        );
+      }
       limitations.push(
         "Stablecoin liquidity UNAVAILABLE — no configured provider returns stablecoin supply for this instrument.",
       );
@@ -534,11 +637,50 @@ export function assessCryptoFundamentals(context: CryptoFundamentalContext): Fun
     }
 
     if (bits.length > 0 && ms) {
+      // Phase 281 — crowded / extreme positioning is RISK, never a direction.
+      // The levels are the provider's own, the thresholds are documented, and
+      // the reading only ever produces a contradiction + limitation: it can
+      // never move the state or the confidence (the derivatives layer already
+      // scores this exact provider evidence).
+      const crowded: string[] = [];
+      const funding = ms.availability?.fundingRate ? ms.fundingRate : undefined;
+      if (
+        funding &&
+        isFiniteNumber(funding.annualizedRate) &&
+        Math.abs(funding.annualizedRate) >= CRYPTO_PARAMETERS.extremeFundingAnnualizedPercent
+      ) {
+        crowded.push(
+          `the provider's annualized funding ${funding.annualizedRate} is beyond the documented ±${CRYPTO_PARAMETERS.extremeFundingAnnualizedPercent}% extreme threshold`,
+        );
+      }
+      const ratio = ms.availability?.longShort ? ms.longShort?.accountRatio : undefined;
+      if (isFiniteNumber(ratio) && (ratio >= CRYPTO_PARAMETERS.crowdedLongShortRatio || ratio <= 1 / CRYPTO_PARAMETERS.crowdedLongShortRatio)) {
+        crowded.push(
+          `account long/short ${ratio} is beyond the documented ±${(1 / CRYPTO_PARAMETERS.crowdedLongShortRatio).toFixed(2)}× crowding band`,
+        );
+      }
+      const oiChange = ms.availability?.openInterest ? ms.openInterest?.change24h : undefined;
+      if (isFiniteNumber(oiChange) && Math.abs(oiChange) >= CRYPTO_PARAMETERS.crowdedOpenInterestChangePercent) {
+        crowded.push(
+          `open interest moved ${formatPercent(oiChange)} in 24h, beyond the documented ${CRYPTO_PARAMETERS.crowdedOpenInterestChangePercent}% build threshold`,
+        );
+      }
+      if (crowded.length > 0) {
+        metrics.positioningRisk = "crowded";
+        contradictions.push(
+          `Crowded market-structure positioning for ${nativeId}: ${crowded.join("; ")}. Extreme positioning is continuation risk / contrarian context and is never turned into a fundamental direction by this assessment (${MARKET_STRUCTURE_CONSUMER} scores it).`,
+        );
+        limitations.push(
+          "Crowded/extreme positioning was detected and is reported as RISK, not as bullish or bearish fundamental evidence — positioning levels are never scored directionally here.",
+        );
+      } else {
+        metrics.positioningRisk = "none-detected";
+      }
       dimensions.push(
         dimension(
           "market-positioning",
           "neutral",
-          `Market-structure context from ${ms.provider} (observed ${new Date(ms.timestamp).toISOString()}, freshness ${ms.freshness}): ${bits.join("; ")}. Reported as traceable context only — the decision engines already score this evidence, so it is neither scored nor counted here.`,
+          `Market-structure context from ${ms.provider} (observed ${new Date(ms.timestamp).toISOString()}, freshness ${ms.freshness}): ${bits.join("; ")}.${crowded.length > 0 ? " Position: crowded/extreme — reported as risk context." : ""} Reported as traceable context only — the decision engines already score this evidence, so it is neither scored nor counted here.`,
           { informational: true, consumedBy: MARKET_STRUCTURE_CONSUMER },
         ),
       );
@@ -575,6 +717,33 @@ export function assessCryptoFundamentals(context: CryptoFundamentalContext): Fun
   const positives = scored.filter((d) => d.status === "positive").length;
   const negatives = scored.filter((d) => d.status === "negative").length;
 
+  // Phase 281 — INDEPENDENT EVIDENCE GROUPS behind the SCORED dimensions.
+  // One provider dataset is one group no matter how many fields it carries,
+  // and the market price counts only when it actually produced the derived
+  // valuation context. Informational dimensions never contribute a group, so
+  // evidence another layer scores can never inflate this confidence.
+  const scoredNames = new Set(scored.map((d) => d.name));
+  const groups = new Set<string>();
+  if (tokenomics && (scoredNames.has("supply-structure") || scoredNames.has("unlock-dilution"))) {
+    groups.add(tokenomics.provider);
+  }
+  if (defi && scoredNames.has("protocol-economics")) groups.add(defi.provider);
+  if (
+    scoredNames.has("valuation-context") &&
+    typeof context.priceProvider === "string" &&
+    context.priceProvider.length > 0
+  ) {
+    groups.add(context.priceProvider);
+  }
+  // Multi-period history: a scored dimension whose evidence compares TWO real
+  // provider observations (the TVL and fee windows) rather than one snapshot.
+  const hasProviderWindow =
+    metrics.tvlChange30dPercent !== undefined ||
+    metrics.tvlChange7dPercent !== undefined ||
+    metrics.feesChange30dPercent !== undefined ||
+    metrics.feesChange7dPercent !== undefined;
+  const historyDepth = hasProviderWindow && scoredNames.has("protocol-economics") ? 1 : 0;
+
   const { state, confidence, confidenceEvidence } = aggregateConfidence({
     dimensions,
     periodsCount: providers.length,
@@ -583,14 +752,13 @@ export function assessCryptoFundamentals(context: CryptoFundamentalContext): Fun
     // rather than invented, and staleness is disclosed through the dataset
     // freshness labels instead.
     extraCaps: [],
+    hierarchy: CRYPTO_HIERARCHY,
+    independentGroups: groups.size,
+    historyDepth,
   });
 
   const directionalBias =
-    positives > 0 && negatives === 0 && positives * 2 > scored.length
-      ? ("bullish" as const)
-      : negatives > 0 && positives === 0 && negatives * 2 > scored.length
-        ? ("bearish" as const)
-        : ("none" as const);
+    state === "improving" ? ("bullish" as const) : state === "weakening" ? ("bearish" as const) : ("none" as const);
 
   const directionalBiasEvidence =
     directionalBias === "none"
@@ -620,19 +788,81 @@ export function assessCryptoFundamentals(context: CryptoFundamentalContext): Fun
     defi?.observedAt ?? 0,
     marketStructure?.timestamp ?? 0,
   ].filter((t) => t > 0);
+  const observedInstant = instants.length > 0 ? Math.max(...instants) : 0;
+
+  // Phase 281 — the deterministic explanation, built ONLY from the dimension
+  // records above: network health → token economics → valuation → positioning
+  // → assessment → risk → measurement periods.
+  const dimText = (name: FundamentalDimension["name"], fallback: string) => {
+    const d = dimensions.find((x) => x.name === name);
+    return d && d.status !== "unavailable" && d.evidence ? d.evidence : fallback;
+  };
+  const tokenEconomics =
+    `${dimText("supply-structure", "unavailable — no provider supplied supply structure for this instrument.")}` +
+    (dimensions.find((d) => d.name === "unlock-dilution")?.status !== "unavailable"
+      ? ` ${dimText("unlock-dilution", "")}`
+      : " Unlock/vesting data unavailable — dilution overhang is never estimated.");
+  const riskBits: string[] = [];
+  if (contradictions.length > 0) riskBits.push(contradictions.join(" "));
+  if (dimensions.find((d) => d.name === "valuation-context")?.status === "negative") {
+    riskBits.push("the derived fully-diluted valuation carries a material future-supply overhang");
+  }
+  if (limitations.some((l) => l.startsWith("Crowded/extreme positioning"))) {
+    riskBits.push("crowded positioning is present (risk context, never a direction)");
+  }
+  // Phase 281 — a higher-level SUPPLY-VS-DEMAND reading, derived only from the
+  // dimension statuses above: when the two independent evidence groups agree,
+  // the reading is consistent; when they disagree the state already reflects the
+  // documented hierarchy, so no average is presented as the conclusion.
+  const protoDim = dimensions.find((d) => d.name === "protocol-economics");
+  const supplyDim = dimensions.find((d) => d.name === "supply-structure");
+  const supplyVsDemand =
+    protoDim && supplyDim && protoDim.status !== "unavailable" && supplyDim.status !== "unavailable" &&
+    protoDim.status !== "neutral" && supplyDim.status !== "neutral"
+      ? protoDim.status === supplyDim.status
+        ? `Supply-vs-demand reading: the two independent evidence groups agree (${supplyDim.status} supply structure with ${protoDim.status} network economics), so the higher-level read is consistent.`
+        : `Supply-vs-demand reading: the two independent evidence groups disagree (${supplyDim.status} supply structure against ${protoDim.status} network economics) — the state above follows the documented hierarchy instead of averaging them.`
+      : "";
+  // Phase 281 — source quality/freshness are carried per dataset and restated
+  // verbatim, so a reader can weigh the evidence without re-deriving anything.
+  const sourceNotes: string[] = [];
+  if (tokenomics) {
+    sourceNotes.push(`${tokenomics.provider} supply/vesting dataset (freshness ${tokenomics.freshness}, quality ${tokenomics.quality})`);
+  }
+  if (defi) {
+    sourceNotes.push(`${defi.provider} TVL and fee datasets (freshness ${defi.freshness}, quality ${defi.quality})`);
+  }
+  if (marketStructure) {
+    sourceNotes.push(`${marketStructure.provider} market-structure context (freshness ${marketStructure.freshness}, informational)`);
+  }
+  const summary =
+    `Network health: ${dimText("protocol-economics", "unavailable — no configured provider returned TVL or fee evidence")} ` +
+    `Token economics: ${tokenEconomics} ` +
+    (supplyVsDemand.length > 0 ? `${supplyVsDemand} ` : "") +
+    (sourceNotes.length > 0 ? `Sources: ${sourceNotes.join("; ")}. ` : "") +
+    `Valuation: ${dimText("valuation-context", "unavailable — neither supply structure nor price evidence was supplied, so no market-cap/FDV context is claimed.")} ` +
+    `Positioning: ${
+      dimensions.find((d) => d.name === "market-positioning")?.status !== "unavailable"
+        ? `${dimText("market-positioning", "")} (informational — already scored by ${MARKET_STRUCTURE_CONSUMER})`
+        : "unavailable — no configured derivatives provider returned market-structure evidence"
+    } ` +
+    `Assessment: ${state} · confidence ${confidence} for ${nativeId}. ` +
+    `Risk: ${riskBits.length > 0 ? riskBits.join(" ") : "no conflicting provider evidence was found in this payload."} ` +
+    `Periods: measured provider snapshots at the instants each dataset carries (latest ${observedInstant > 0 ? new Date(observedInstant).toISOString() : "not supplied"}), never a live quote.`;
 
   return {
     available: true,
     domain: "crypto",
     provider: providers.join(" + ") || provider || "none",
     instrumentId: nativeId,
-    observedAt: instants.length > 0 ? Math.max(...instants) : 0,
+    observedAt: observedInstant,
     periodsCount: providers.length,
     state,
     confidence,
     confidenceEvidence,
     directionalBias,
     directionalBiasEvidence,
+    summary,
     dimensions,
     comparisons,
     contradictions,

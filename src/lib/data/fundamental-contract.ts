@@ -297,6 +297,10 @@ export interface FundamentalMetrics {
   pegReported?: number;
   /** Dividend yield as reported by the provider. */
   dividendYield?: number;
+  /** Phase 281 — dividend per share as reported by the provider. */
+  dividendPerShare?: number;
+  /** Phase 281 — reported book value per share (the only balance-sheet level supplied). */
+  bookValuePerShare?: number;
   /** Market capitalisation as reported by the provider. */
   marketCapReported?: number;
   /** Revenue per share as reported by the provider. */
@@ -322,6 +326,19 @@ export interface CryptoFundamentalMetrics {
   tvlChange30dPercent?: number;
   /** Daily protocol fees in USD as reported by the provider. */
   dailyFees?: number;
+  /**
+   * Phase 281 — provider-reported protocol revenue (24h) from the provider's
+   * own revenue series. Never a fee-derived estimate.
+   */
+  protocolRevenue24h?: number;
+  /** Phase 281 — provider's own fee change over its 7/30-day window (%). */
+  feesChange7dPercent?: number;
+  feesChange30dPercent?: number;
+  /**
+   * Phase 281 — crowded/extreme positioning classification of the
+   * market-structure context. Reported as RISK only: it never scores.
+   */
+  positioningRisk?: "crowded" | "none-detected";
   /** Price × circulating supply — derived, cite `basis`. */
   marketCapDerived?: number;
   /** Price × total supply — derived, cite `basis`. */

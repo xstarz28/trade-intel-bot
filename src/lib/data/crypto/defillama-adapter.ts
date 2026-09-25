@@ -23,7 +23,20 @@ import { asFiniteNumber, asRecordArray, field, isRecord } from "../json/narrow";
 /** Internal accumulator for the two DeFiLlama datasets. */
 interface DeFiLlamaRaw {
   tvl?: { current: number; change7d?: number; change30d?: number };
-  fees?: { dailyFees: number; dailyRevenue: number };
+  fees?: {
+    dailyFees?: number;
+    dailyRevenue?: number;
+    /**
+     * Phase 281 — PROVIDER-REPORTED protocol revenue from DeFiLlama's own
+     * revenue series (`dataType=dailyRevenue`), when it answers. Distinct from
+     * `dailyRevenue`, which is the historical fee-derived estimate shown by
+     * older layers; the fundamental assessment never uses the estimate.
+     */
+    revenue24h?: number;
+    /** Phase 281 — the provider's own fee change over its 7/30-day windows. */
+    feeChange7d?: number;
+    feeChange30d?: number;
+  };
 }
 
 const DEFILLAMA_BASE = "https://api.llama.fi";
@@ -107,20 +120,39 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
         }
       }
 
-      // Fetch fees (chain-level)
+      // Fetch fees + revenue (chain-level). Phase 281 — the REVENUE series is
+      // its own provider dataset, fetched instead of being approximated from
+      // fees: the historical `dailyRevenue` estimate is kept for the legacy
+      // display path only and is never presented as reported revenue.
       if (mapping.level === "chain") {
         try {
-          const feesRes = await fetchFn(
-            `${DEFILLAMA_BASE}/summary/fees/${mapping.slug}?dataType=dailyFees`,
-          );
-          if (feesRes.ok) {
-            const total24h = asFiniteNumber(field(await feesRes.json(), "total24h"));
-            if (total24h !== undefined) {
-              data.fees = {
-                dailyFees: total24h,
-                dailyRevenue: total24h * 0.1, // rough protocol revenue estimate
-              };
+          const summaryUrl = (dataType: string) =>
+            `${DEFILLAMA_BASE}/summary/fees/${mapping.slug}?dataType=${dataType}`;
+          const readJson = async (url: string): Promise<unknown> => {
+            try {
+              const res = await fetchFn(url);
+              return res.ok ? await res.json() : undefined;
+            } catch {
+              return undefined;
             }
+          };
+          const [feesBody, revenueBody] = await Promise.all([
+            readJson(summaryUrl("dailyFees")),
+            readJson(summaryUrl("dailyRevenue")),
+          ]);
+          const total24h = asFiniteNumber(field(feesBody, "total24h"));
+          const revenue24h = asFiniteNumber(field(revenueBody, "total24h"));
+          const feeChange7d = asFiniteNumber(field(feesBody, "change_7d"));
+          const feeChange30d = asFiniteNumber(field(feesBody, "change_30d"));
+          if (total24h !== undefined || revenue24h !== undefined) {
+            data.fees = {
+              ...(total24h !== undefined
+                ? { dailyFees: total24h, dailyRevenue: total24h * 0.1 }
+                : {}),
+              ...(revenue24h !== undefined ? { revenue24h } : {}),
+              ...(feeChange7d !== undefined ? { feeChange7d } : {}),
+              ...(feeChange30d !== undefined ? { feeChange30d } : {}),
+            };
           }
         } catch (e) {
           networkError = e instanceof Error ? e.message : "network error";
@@ -195,6 +227,10 @@ export function parseDeFiLlamaResult(
     fees: isRecord(data.fees) ? {
       dailyFees: dailyFees,
       dailyRevenue: asFiniteNumber(data.fees.dailyRevenue),
+      // Phase 281 — provider-reported revenue + the provider's own fee windows.
+      revenue24h: asFiniteNumber(data.fees.revenue24h),
+      feeChange7d: asFiniteNumber(data.fees.feeChange7d),
+      feeChange30d: asFiniteNumber(data.fees.feeChange30d),
       reliable: dailyFees !== undefined && dailyFees > 0,
     } : undefined,
 

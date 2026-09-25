@@ -35,7 +35,14 @@ import type {
   FundamentalDimension,
   FundamentalEvidenceItem,
 } from "@/lib/data/fundamental-contract";
-import { aggregateConfidence, coverageOf, dimension, isFiniteNumber, unavailable } from "./framework";
+import {
+  aggregateConfidence,
+  coverageOf,
+  dimension,
+  isFiniteNumber,
+  unavailable,
+  type DimensionHierarchyEntry,
+} from "./framework";
 
 export interface ForexFundamentalContext {
   instrument: string;
@@ -67,7 +74,40 @@ export const FOREX_PARAMETERS = {
   rateChangeNoisePp: 0.001,
   /** Yield change (pp) treated as directional for the display read. */
   yieldMaterialPp: 0.03,
+  /**
+   * Phase 281 — |COT net non-commercial| / open interest at (or beyond) which
+   * a currency's positioning is reported as CROWDED. Crowding is risk context:
+   * it is disclosed as a contradiction and never scored, because the COT
+   * Positioning layer already consumes this exact provider report.
+   */
+  cotCrowdingOiRatio: 0.3,
 } as const;
+
+/**
+ * Phase 281 — DOCUMENTED EVIDENCE HIERARCHY for a currency pair.
+ *
+ * Monetary policy and inflation are PRIMARY: they are what a pair's relative
+ * value is fundamentally about, and each is read as a two-sided comparison of
+ * released measurements. Labour and growth are SECONDARY — they inform the
+ * same two economies but do not by themselves establish a policy-relative
+ * view. External balance is SUPPORTING: a trade balance is a slower, noisier
+ * measurement of the same macro stance and can never lead the assessment.
+ *
+ * A direction therefore requires primary (policy/inflation) evidence, and
+ * conflicting primary readings leave the pair MIXED (framework rule) instead
+ * of being averaged into a claim. Positioning, yields and event risk are not
+ * in the scored hierarchy at all: another engine layer scores them.
+ */
+export const FOREX_HIERARCHY: DimensionHierarchyEntry[] = [
+  { name: "policy-rates", role: "primary" },
+  { name: "inflation", role: "primary" },
+  { name: "labor", role: "secondary" },
+  { name: "growth", role: "secondary" },
+  { name: "external-balance", role: "supporting" },
+  { name: "rates-yields", role: "supporting" },
+  { name: "positioning", role: "supporting" },
+  { name: "event-risk", role: "supporting" },
+];
 
 type Category = "policy-rates" | "inflation" | "labor" | "growth" | "external-balance";
 
@@ -218,6 +258,8 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
   const limitations: string[] = [];
   const evidence: FundamentalEvidenceItem[] = [];
   const dimensions: FundamentalDimension[] = [];
+  /** Phase 281 — risk disclosures from informational evidence (never scored). */
+  const crowdRisks: string[] = [];
 
   // ── Without a readable pair there is no two-sided comparison ──
   if (!base || !quote) {
@@ -265,6 +307,9 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
   // Per-side released surprises (actual − consensus), accumulated across the
   // scored categories so the reported average describes the whole evidence set.
   const sideSurprises: Record<string, number[]> = { [base]: [], [quote]: [] };
+  // Phase 281 — which currency areas actually carry a released measurement.
+  // Used for the two-sided confidence group, never for inventing a reading.
+  const measuredSides = new Set<string>();
 
   for (const category of scoredCategories) {
     const baseRead = readCategory(events, category, base);
@@ -282,6 +327,7 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
 
     for (const read of [baseRead, quoteRead]) {
       if (!read) continue;
+      measuredSides.add(read.currency);
       evidence.push({
         metric: `${read.category}:${read.currency}`,
         label: `${read.currency} ${read.event.event}`,
@@ -512,9 +558,15 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
           { informational: true, consumedBy: cotConsumer },
         ),
       );
-      if (crowdRatio !== undefined && crowdRatio > 0.3) {
+      if (crowdRatio !== undefined && crowdRatio >= FOREX_PARAMETERS.cotCrowdingOiRatio) {
         comparisons.push(
           `positioning crowding: ${c.mappedAsset} net non-commercial is ${(crowdRatio * 100).toFixed(1)}% of open interest — reported as context, interpretation left to the COT layer`,
+        );
+        // Phase 281 — crowding is RISK context. It is disclosed as a
+        // contradiction and never scored: the COT Positioning layer consumes
+        // this exact report, and a positioning LEVEL is never directional.
+        crowdRisks.push(
+          `Crowded currency positioning: ${c.mappedAsset} net non-commercial is ${(crowdRatio * 100).toFixed(1)}% of open interest (documented crowding band ≥ ${(FOREX_PARAMETERS.cotCrowdingOiRatio * 100).toFixed(0)}%). Extreme positioning is continuation risk / contrarian context and is never turned into a fundamental direction for ${base}/${quote} — the COT Positioning layer scores the report itself.`,
         );
       }
     } else {
@@ -570,6 +622,12 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
     "Released macroeconomic values are provider measurements with their own reference periods and release instants — they are never presented as a live market price and never treated as one.",
   );
   limitations.push(
+    "Central-bank STANCE beyond the latest released decision (statement language, guidance, dot plots) is NOT supplied by any configured provider; only the released policy rate and its change against the previous release are read.",
+  );
+  limitations.push(
+    "Economic-surprise series (a provider's own surprise index) are NOT supplied by any configured provider — surprises are measured only where the calendar carries both an actual and that release's consensus, and they are reported per side rather than as an index.",
+  );
+  limitations.push(
     "The conviction engine's own factors already consume released macro surprises (USD-centric) and the Treasury/COT evidence; those dimensions are marked informational here so the same provider field can never be counted twice, and this assessment feeds only the unified intelligence layer and the opportunity scanner.",
   );
   limitations.push(
@@ -608,11 +666,31 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
     };
   }
 
+  // Phase 281 — INDEPENDENT EVIDENCE GROUPS. A forex assessment is asymmetric
+  // by nature: the acquisition comes from ONE provider family (the economic
+  // calendar), but the pair is measured with TWO independent statistical
+  // systems (the base and the quote currency area). Those two are counted as
+  // one additional group each time — never as many "fields" — and the
+  // informational dimensions contribute nothing, so an assessment can never
+  // gain confidence from evidence another layer scores.
+  const independentGroups =
+    (calendarProvider !== "none" && scorableCategories.length > 0 ? 1 : 0) +
+    (measuredSides.has(base) && measuredSides.has(quote) ? 1 : 0);
+  // Multi-period history: a scored category whose reading compares TWO real
+  // provider observations (a change vs the previous release, or a surprise vs
+  // the provider's own consensus) rather than one released level.
+  const historyDepth = scorableCategories.filter((d) =>
+    (d.evidence ?? "").includes("vs the previous release") || (d.evidence ?? "").includes("surprise"),
+  ).length;
+
   const { state, confidence, confidenceEvidence } = aggregateConfidence({
     dimensions,
     periodsCount: evidence.filter((e) => !/^event_risk/.test(e.metric)).length,
     periodsLabel: "provider macro measurements",
     extraCaps: [],
+    hierarchy: FOREX_HIERARCHY,
+    independentGroups,
+    historyDepth,
   });
 
   const scored = dimensions.filter((d) => !d.informational && d.status !== "unavailable");
@@ -620,11 +698,7 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
   const negatives = scored.filter((d) => d.status === "negative").length;
 
   const directionalBias =
-    positives > 0 && negatives === 0 && positives * 2 > scored.length
-      ? ("bullish" as const)
-      : negatives > 0 && positives === 0 && negatives * 2 > scored.length
-        ? ("bearish" as const)
-        : ("none" as const);
+    state === "improving" ? ("bullish" as const) : state === "weakening" ? ("bearish" as const) : ("none" as const);
 
   const directionalBiasEvidence =
     directionalBias === "none"
@@ -638,6 +712,52 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
       `${base}/${quote} macro evidence conflicts between dimensions: ${scored.filter((d) => d.status === "positive").map((d) => d.name).join(", ")} favour ${base} while ${scored.filter((d) => d.status === "negative").map((d) => d.name).join(", ")} favour ${quote}.`,
     );
   }
+  contradictions.push(...crowdRisks);
+  if (crowdRisks.length > 0) {
+    limitations.push(
+      "Crowded positioning was detected on this pair and is reported as RISK, not as bullish or bearish fundamental evidence — a positioning level is never scored directionally here.",
+    );
+  }
+
+  // Phase 281 — deterministic explanation, built ONLY from the records above:
+  // policy divergence → rates → inflation/labour/growth → positioning →
+  // event risk → assessment → risk → measurement periods. Every number it
+  // states is one the assessment already carries.
+  const dimText = (name: FundamentalDimension["name"], fallback: string) => {
+    const d = dimensions.find((x) => x.name === name);
+    return d && d.status !== "unavailable" && d.evidence ? d.evidence : fallback;
+  };
+  const surpriseTxt =
+    baseSurpriseMean !== undefined || quoteSurpriseMean !== undefined
+      ? ` Mean released surprise: ${base} ${baseSurpriseMean !== undefined ? baseSurpriseMean.toFixed(2) : "not measurable"} / ${quote} ${quoteSurpriseMean !== undefined ? quoteSurpriseMean.toFixed(2) : "not measurable"} (each side measured against the provider's own consensus).`
+      : "";
+  // Phase 281 — provider provenance restated verbatim (freshness/quality as the
+  // payload carries them), so the evidence base is auditable from the summary.
+  const fxSourceNotes: string[] = [];
+  if (calendar) {
+    fxSourceNotes.push(
+      `${calendarProvider} economic calendar (freshness ${calendar.freshness}, provider confidence ${calendar.confidence})`,
+    );
+  }
+  if (cot?.available) {
+    fxSourceNotes.push(`${cot.source.replace(/ \(.*$/, "")} positioning (freshness ${cot.freshness})`);
+  }
+  if (treasury?.available) {
+    fxSourceNotes.push(`${treasury.source.replace(/ \(.*$/, "")} curve (informational only)`);
+  }
+  const summary =
+    `Policy: ${dimText("policy-rates", "unavailable — no released rate decision for either side")} ` +
+    `Rates: ${dimText("rates-yields", "unavailable — the only yield source in this repository is the US Treasury curve, and it is informational only")} ` +
+    `Inflation: ${dimText("inflation", "unavailable — no released inflation measurement for either side")} ` +
+    `Labour: ${dimText("labor", "unavailable — no released labour measurement for either side")} ` +
+    `Growth: ${dimText("growth", "unavailable — no released growth measurement for either side")} ` +
+    `External balance: ${dimText("external-balance", "unavailable — no released trade/current-account measurement for either side")} ` +
+    `Positioning: ${dimText("positioning", "unavailable — no verified CFTC report was supplied for this pair")} ` +
+    `Event risk: ${dimText("event-risk", "unavailable — no upcoming high-impact event was supplied for either side")} ` +
+    (fxSourceNotes.length > 0 ? `Sources: ${fxSourceNotes.join("; ")}. ` : "") +
+    `Assessment: ${state} · confidence ${confidence} for ${base}/${quote}.${surpriseTxt} ` +
+    `Risk: ${contradictions.length > 0 ? contradictions.join(" ") : "no conflicting released evidence was found in this payload."} ` +
+    `Periods: released provider measurements with their own reference periods and release instants (calendar observed ${calendarObservedAt > 0 ? new Date(calendarObservedAt).toISOString() : "not supplied"}), never a market quote.`;
 
   return {
     available: true,
@@ -651,6 +771,7 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
     confidenceEvidence,
     directionalBias,
     directionalBiasEvidence,
+    summary,
     dimensions,
     comparisons,
     contradictions,

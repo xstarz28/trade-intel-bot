@@ -157,6 +157,9 @@ export interface HierarchyStateResult {
 /**
  * Weighted state for a hierarchy-aware domain:
  *   · no scored dimension → insufficient;
+ *   · PRIMARY evidence on BOTH sides is a genuine conflict → mixed (Phase 281;
+ *     the direction of a domain's most informative evidence is not claimed
+ *     while the primary reads themselves disagree);
  *   · a direction needs a strictly larger weighted total on one side;
  *   · the winning side must contain at least one PRIMARY dimension, so
  *     supporting context can never dictate the assessment;
@@ -210,6 +213,17 @@ export function aggregateStateWithHierarchy(
 
   if (positives === 0 && negatives === 0) {
     return basisOf("mixed", "every scored dimension is neutral — evidence exists but carries no direction");
+  }
+  // Phase 281 — CONFLICTING PRIMARY EVIDENCE. When the domain's most
+  // informative (primary) evidence points both ways at once, no direction is
+  // claimed: the state stays mixed and the conflict is named, so a later
+  // consumer can see WHY no direction was produced instead of a weighted
+  // average of two genuinely opposing primary reads.
+  if (primaryPositives > 0 && primaryNegatives > 0) {
+    return basisOf(
+      "mixed",
+      `primary evidence conflicts across dimensions (${primaryPositives} primary dimension(s) strengthening vs ${primaryNegatives} weakening) — the direction is not claimed while the primary reads disagree`,
+    );
   }
   if (positiveWeight === negativeWeight) {
     return basisOf("mixed", "positive and negative evidence carry equal weight — no net direction");
@@ -289,9 +303,17 @@ export function aggregateConfidence(input: ConfidenceInput): ConfidenceResult {
     // Phase 280 — confidence reflects INDEPENDENT evidence groups, not field
     // count: three provider families is the ceiling requirement, and a domain
     // with no multi-period history can not read "high".
+    //
+    // Phase 281 — a domain whose usable evidence is genuinely DEEP (at least
+    // five scored dimensions, of which at least two carry multi-period
+    // provider history) reaches the same ceiling. That is the equity shape:
+    // one provider family delivering two independent datasets (reported
+    // levels + a multi-quarter history), which is fewer independent groups
+    // than a three-provider domain but more measured history per dimension.
     const groups = input.independentGroups ?? 0;
     const depth = input.historyDepth ?? 0;
     if (groups >= 3 && usable.length >= 3 && depth >= 1) level = 2;
+    else if (usable.length >= 5 && depth >= 2) level = 2;
     else if (groups >= 2 && usable.length >= 2) level = 1;
     else level = 0;
     if (depth === 0 && usable.length > 0) {

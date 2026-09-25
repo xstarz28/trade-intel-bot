@@ -72,6 +72,13 @@ import {
 import { assessCryptoFundamentals, CRYPTO_PARAMETERS } from "./fundamental/crypto";
 import { assessForexFundamentals } from "./fundamental/forex";
 import { assessCommodityFundamentals, type CommodityFuturesCurve } from "./fundamental/commodity";
+import {
+  EQUITY_HIERARCHY,
+  EQUITY_INDEPENDENT_GROUPS,
+  EQUITY_PARAMETERS,
+  equityExplanation,
+  equityHistoryDepth,
+} from "./fundamental/equity";
 
 // Phase 276 public names stay importable from this module (unified-intelligence
 // and the UI import them here), so the contract types are re-exported verbatim.
@@ -374,11 +381,27 @@ function assessEquityFundamentals(
       // when the measured earnings growth keeps pace with the multiple.
       const growthPct = metrics.epsYoY * 100;
       const ratio = pe / growthPct;
+      const p = EQUITY_PARAMETERS;
       dimensions.push({
         name: "valuation",
-        status: ratio < 1 ? "positive" : ratio > 2.5 ? "negative" : "neutral",
-        evidence: `${bits.join(", ")}; implied growth-vs-valuation: P/E ${pe.toFixed(1)} vs measured q/q-4 EPS growth ${growthPct.toFixed(1)}% (ratio ${ratio.toFixed(2)} — derived entirely from reported evidence).`,
+        status: ratio < p.growthSupportedPeToGrowth ? "positive" : ratio > p.stretchedPeToGrowth ? "negative" : "neutral",
+        evidence: `${bits.join(", ")}; implied growth-vs-valuation: P/E ${pe.toFixed(1)} vs measured q/q-4 EPS growth ${growthPct.toFixed(1)}% (ratio ${ratio.toFixed(2)} against the documented ≤ ${p.growthSupportedPeToGrowth} growth-supported / > ${p.stretchedPeToGrowth} stretched thresholds — derived entirely from reported evidence).`,
       });
+    } else if (data.pegRatio !== undefined) {
+      // Phase 281 — the provider's OWN growth-adjusted multiple, used when the
+      // measured q/q-4 growth is not available. It is a reported field, not a
+      // recomputation, and it is the only other real valuation read in the
+      // payload that carries growth inside it.
+      const p = EQUITY_PARAMETERS;
+      const peg = data.pegRatio;
+      dimensions.push({
+        name: "valuation",
+        status: peg <= p.growthSupportedPeg ? "positive" : peg > p.stretchedPeg ? "negative" : "neutral",
+        evidence: `${bits.join(", ")}; provider-reported growth-adjusted multiple PEG ${peg.toFixed(2)} (documented ≤ ${p.growthSupportedPeg} growth-supported / > ${p.stretchedPeg} stretched). Reported q/q-4 EPS growth is not available in this payload, so the growth-vs-valuation ratio is NOT recomputed.`,
+      });
+      limitations.push(
+        "Valuation was read through the provider's own PEG because the measured q/q-4 EPS growth was not available — no ratio is recomputed from partial series.",
+      );
     } else if (bits.length > 0) {
       dimensions.push({
         name: "valuation",
@@ -573,6 +596,25 @@ function assessEquityFundamentals(
       metrics.dividendYield = data.dividendYield;
       pushReported("dividend_yield", "dividend yield", data.dividendYield, "fraction", (v) => `${(v * 100).toFixed(2)}%`);
     }
+    // Phase 281 — the two reported per-share levels the payload already carried
+    // but never cited. Both are provider-REPORTED values: the dividend is the
+    // capital-return the company actually declares, and book value per share is
+    // the only balance-sheet-derived level this endpoint supplies. Neither is
+    // recomputed from a price, and neither is extrapolated beyond its period.
+    if (data.dividendPerShare !== undefined) {
+      metrics.dividendPerShare = data.dividendPerShare;
+      pushReported("dividend_per_share", "dividend per share", data.dividendPerShare, "USD", (v) => `$${v.toFixed(2)}`);
+    }
+    if (data.bookValue !== undefined) {
+      metrics.bookValuePerShare = data.bookValue;
+      pushReported(
+        "book_value_per_share",
+        "reported book value per share",
+        data.bookValue,
+        "USD",
+        (v) => `$${v.toFixed(2)}`,
+      );
+    }
     if (data.marketCap !== undefined) {
       metrics.marketCapReported = data.marketCap;
       bits.push(`market cap $${(data.marketCap / 1e9).toFixed(1)}B`);
@@ -649,6 +691,12 @@ function assessEquityFundamentals(
     periodsLabel: "fiscal periods",
     reportingPeriod,
     staleDays: reportAgeDaysAtObservation,
+    // Phase 281 — the equity domain is hierarchy-aware: the documented roles
+    // above decide the state, and confidence counts INDEPENDENT DATASETS plus
+    // multi-period depth rather than the number of reported fields.
+    hierarchy: EQUITY_HIERARCHY,
+    independentGroups: EQUITY_INDEPENDENT_GROUPS,
+    historyDepth: equityHistoryDepth(hist),
   });
 
   const directionalBias: FundamentalDirection =
@@ -663,10 +711,25 @@ function assessEquityFundamentals(
 
   const allLimitations = [
     ...limitations,
-    "Balance-sheet line items (cash, debt, net debt, leverage, interest coverage, current ratio) are NOT supplied by the configured provider endpoints, so balance-sheet quality is unavailable rather than derived from ratios.",
+    "Analyst estimate REVISIONS (up/down revisions, revision breadth) are NOT supplied by the configured provider endpoints; the estimate comparisons above are the provider's reported-vs-estimated pairs only.",
+    "Balance-sheet line items (cash, debt, net debt, leverage/debt-to-equity, interest coverage, current ratio) are NOT supplied by the configured provider endpoints — the reported book value per share above is the only balance-sheet-derived level the payload carries, so balance-sheet QUALITY is unavailable rather than inferred from ratios.",
+    "Valuation against the instrument's OWN history is NOT supplied: the payload carries current multiples and reported periods but no historical multiple series, so no valuation percentile is computed.",
     "Free cash flow, FCF margin, ROIC, cash conversion and share-count/stock-based-compensation data are NOT supplied by the configured provider endpoints, so those dimensions are unavailable rather than estimated.",
     "Trailing/forward multiples above are as-reported point-in-time values; they are never combined with peer data (none exists) and never presented as live market prices.",
   ];
+
+  const summary = equityExplanation({
+    instrumentId: instrumentId ?? data.symbol ?? "instrument not supplied",
+    dimension: (name) => dimensions.find((d) => d.name === name),
+    state,
+    confidence,
+    reportingPeriod,
+    observedAt,
+    contradictions,
+    unavailableDimensions: dimensions.filter((d) => d.status === "unavailable").map((d) => d.name),
+    scoredDimensions: dimensions.filter((d) => d.status !== "unavailable").length,
+    totalDimensions: dimensions.length,
+  });
 
   return {
     available: true,
@@ -682,6 +745,7 @@ function assessEquityFundamentals(
     confidenceEvidence,
     directionalBias,
     directionalBiasEvidence: directionEvidence,
+    summary,
     dimensions,
     contradictions,
     unavailableDimensions: dimensions.filter((d) => d.status === "unavailable").map((d) => d.name),

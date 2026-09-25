@@ -166,7 +166,13 @@ export interface DeFiIntelligence {
   // Fees & Revenue
   fees?: {
     dailyFees?: number;
+    /** Fee-derived estimate kept for the legacy display path. */
     dailyRevenue?: number;
+    /** Phase 281 — provider-reported protocol revenue (24h), when supplied. */
+    revenue24h?: number;
+    /** Phase 281 — the provider's own fee change over its 7/30-day window (%). */
+    feeChange7d?: number;
+    feeChange30d?: number;
     /** Whether fee data is reliable. */
     reliable: boolean;
   };
