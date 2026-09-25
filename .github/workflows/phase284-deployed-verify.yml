@@ -86,6 +86,16 @@ jobs:
           PHASE284_DEPLOYMENT_URL: ${{ vars.VITE_CONVEX_URL }}
         run: node scripts/phase284-deployed-verify.mjs --four-asset
 
+      # Only if no deployment is configured above: the deployment this
+      # repository's own records name as the project's dev deployment
+      # (docs/UAT-MATRIX.md §35j and the Phase 212 operator run sheet). The
+      # report always states which source was used.
+      - name: Four assets against the documented dev deployment (fallback)
+        if: ${{ vars.VITE_CONVEX_URL == '' }}
+        env:
+          PHASE284_FALLBACK_DEPLOYMENT: https://tough-goose-455.convex.cloud
+        run: node scripts/phase284-deployed-verify.mjs --four-asset
+
   # Repository-scoped configuration may be absent because the deploy key lives
   # in the Production environment instead. This job only reports presence; if
   # the environment is approval-gated it simply waits, which is itself the
@@ -96,15 +106,44 @@ jobs:
     timeout-minutes: 5
     environment: Production
     steps:
-      - name: Presence
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Presence (reported as an annotation so it is machine-readable)
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
           CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
           VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
           CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+        run: node scripts/phase284-deployed-verify.mjs --presence
+
+      - name: Deployment env var NAMES (only when a deploy key is available)
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+          CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
         run: |
-          for name in CONVEX_DEPLOY_KEY CONVEX_DEPLOYMENT; do
-            if [ -n "${!name:-}" ]; then echo "$name PRESENT"; else echo "$name MISSING"; fi
-          done
-          if [ -n "${VITE_CONVEX_URL:-}" ]; then echo "VITE_CONVEX_URL PRESENT ($VITE_CONVEX_URL)"; else echo "VITE_CONVEX_URL MISSING"; fi
-          if [ -n "${CONVEX_SITE_URL:-}" ]; then echo "CONVEX_SITE_URL PRESENT ($CONVEX_SITE_URL)"; else echo "CONVEX_SITE_URL MISSING"; fi
+          set -o pipefail
+          npx --yes convex@1.42.1 env list --prod --names-only             | grep -E '^[A-Z0-9_]+$' | sort -u > "$RUNNER_TEMP/deployment-env-names.txt" || true
+          echo "deployment env var names recorded: $(wc -l < "$RUNNER_TEMP/deployment-env-names.txt")"
+
+      - name: Report deployment env var names (no values)
+        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        env:
+          PHASE284_DEPLOYMENT_ENV_NAMES_FILE: ${{ runner.temp }}/deployment-env-names.txt
+        run: node scripts/phase284-deployed-verify.mjs --presence
+
+      - name: Four assets through the deployed production action
+        env:
+          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+          PHASE284_DEPLOYMENT_URL: ${{ vars.VITE_CONVEX_URL }}
+        run: node scripts/phase284-deployed-verify.mjs --four-asset
+
+      - name: Four assets against the documented dev deployment (fallback)
+        if: ${{ vars.VITE_CONVEX_URL == '' }}
+        env:
+          PHASE284_FALLBACK_DEPLOYMENT: https://tough-goose-455.convex.cloud
+        run: node scripts/phase284-deployed-verify.mjs --four-asset

@@ -71,6 +71,7 @@ const DEPLOYMENT_ENV_NAMES = [
 
 function presenceReport() {
   const rows = [];
+  const lines = [];
   for (const name of [...DEPLOYMENT_ENV_NAMES, ...PROVIDER_ENV_NAMES]) {
     const value = process.env[name];
     const present = typeof value === "string" && value.trim().length > 0;
@@ -81,7 +82,9 @@ function presenceReport() {
       present && (name === "VITE_CONVEX_URL" || name === "CONVEX_SITE_URL" || name === "XSTARZ_DEPLOYMENT_ENV")
         ? ` (${value.trim()})`
         : "";
-    console.log(`[284] ${name.padEnd(24)} ${present ? "PRESENT" : "MISSING"}${printable}`);
+    const line = `${name.padEnd(24)} ${present ? "PRESENT" : "MISSING"}${printable}`;
+    console.log(`[284] ${line}`);
+    lines.push(line);
   }
 
   // The deployment's OWN environment: readable only through the CLI with a
@@ -94,10 +97,15 @@ function presenceReport() {
       .map((line) => line.split("=")[0].trim())
       .filter((n) => n.length > 0 && /^[A-Z0-9_]+$/.test(n))
       .sort();
-    console.log(`[284] deployment env var names (${names.length}): ${names.join(", ") || "(none)"}`);
+    const line = `deployment env var names (${names.length}): ${names.join(", ") || "(none)"}`;
+    console.log(`[284] ${line}`);
+    lines.push(line);
   } else {
-    console.log("[284] deployment env var names: NOT READABLE (no deploy key / no CLI access)");
+    const line = "deployment env var names: NOT READABLE (no deploy key / no CLI access)";
+    console.log(`[284] ${line}`);
+    lines.push(line);
   }
+  annotate("Phase 284 configuration presence", lines.join("\n"));
   return rows;
 }
 
@@ -105,11 +113,31 @@ function presenceReport() {
  * Convex HTTP client — the browser's own contract
  * ------------------------------------------------------------------ */
 
+/**
+ * The deployment to verify, and WHERE its identity came from.
+ *
+ * `PHASE284_FALLBACK_DEPLOYMENT` is only ever the deployment this repository's
+ * own records name as the project's development deployment
+ * (`docs/UAT-MATRIX.md` §35j / Phase 212 run sheet). It is used only when no
+ * deployment is configured in the workflow environment, and the report always
+ * states which of the two it used.
+ */
+function resolveDeploymentSource() {
+  for (const [source, value] of [
+    ["PHASE284_DEPLOYMENT_URL", process.env.PHASE284_DEPLOYMENT_URL],
+    ["VITE_CONVEX_URL", process.env.VITE_CONVEX_URL],
+    ["PHASE284_FALLBACK_DEPLOYMENT (documented dev deployment)", process.env.PHASE284_FALLBACK_DEPLOYMENT],
+  ]) {
+    const candidate = (value ?? "").trim();
+    if (candidate.length > 0) return { source, candidate };
+  }
+  return null;
+}
+
 function resolveDeploymentUrl() {
-  const explicit = (process.env.PHASE284_DEPLOYMENT_URL ?? "").trim();
-  const configured = (process.env.VITE_CONVEX_URL ?? "").trim();
-  const candidate = explicit || configured;
-  if (!candidate) return null;
+  const resolved = resolveDeploymentSource();
+  if (!resolved) return null;
+  const candidate = resolved.candidate;
   let parsed;
   try {
     parsed = new URL(candidate);
@@ -299,6 +327,7 @@ function annotate(title, body) {
 
 async function runFourAsset() {
   const deployment = resolveDeploymentUrl();
+  const source = resolveDeploymentSource()?.source ?? null;
   if (!deployment) {
     const blocker =
       "NOT_EXECUTED — no deployment URL is configured (VITE_CONVEX_URL / PHASE284_DEPLOYMENT_URL absent or not an https *.convex.cloud origin).";
@@ -306,13 +335,13 @@ async function runFourAsset() {
     annotate("Phase 284 deployed verification", blocker);
     return 0;
   }
-  console.log(`[284] deployment ${deployment.origin}`);
+  console.log(`[284] deployment ${deployment.origin} (from ${source})`);
 
   const signIn = await callConvex("action", "auth:signIn", { provider: "anonymous" });
   if (!signIn.ok) {
     const blocker = `NOT_EXECUTED — anonymous sign-in refused: ${signIn.appError ?? signIn.transportError ?? `HTTP ${signIn.httpStatus}`}`;
     console.log(`[284] ${blocker}`);
-    annotate("Phase 284 deployed verification", `${deployment.origin}\n${blocker}`);
+    annotate("Phase 284 deployed verification", `${deployment.origin} (from ${source})\n${blocker}`);
     return 0;
   }
   const token = deep(signIn.value, "token") ?? signIn.value?.token ?? null;
@@ -356,7 +385,7 @@ async function runFourAsset() {
   );
   const report = [header, ...table].join("\n");
   console.log(report);
-  annotate("Phase 284 deployed verification", `${deployment.origin}\n${report}`);
+  annotate("Phase 284 deployed verification", `${deployment.origin} (from ${source})\n${report}`);
   return 0;
 }
 
