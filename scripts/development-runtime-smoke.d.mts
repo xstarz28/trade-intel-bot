@@ -97,11 +97,17 @@ export type Candidate = {
 export const DEFAULT_MAX_ATTEMPTS: number;
 export const MAX_CANDIDATE_ATTEMPTS: number;
 
-/** Provider-native candidates, provider order preserved, bounded by maxAttempts. */
+/**
+ * Provider-native candidates, provider order preserved, bounded by
+ * `min(maxAttempts, ceiling)`. The ceiling defaults to the domain loop's policy
+ * bound; a caller with its own disclosed bound (the commodity energy-gate probe)
+ * passes it, so the bound it reports is the bound that applied.
+ */
 export function selectCandidates(
   domainSpec: DomainSpec,
   discovery: unknown,
   maxAttempts: number,
+  ceiling?: number,
 ): Candidate[];
 
 /** One catalog's own fetch report, exactly as the provider adapter published it. */
@@ -277,8 +283,10 @@ export type RuntimeMarkers = {
 };
 export function runtimeMarkers(evidence: unknown): RuntimeMarkers;
 
-/** Phase 289B — probe bounds. */
+/** Phase 289C-audit — probe scan depth (bounded, provider order, no whitelist). */
 export const ENERGY_PROBE_CANDIDATE_LIMIT: number;
+export const ENERGY_PROBE_MAX_CANDIDATE_LIMIT: number;
+export const ENERGY_PROBE_REPORT_IDENTITIES: number;
 export const ENERGY_PROBE_PAUSE_MS: number;
 
 /**

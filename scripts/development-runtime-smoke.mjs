@@ -309,7 +309,7 @@ export const DEFAULT_MAX_ATTEMPTS = 3;
 /** Hard ceiling on candidates per domain — the bounded policy, never exceeded. */
 export const MAX_CANDIDATE_ATTEMPTS = 3;
 
-export function selectCandidates(domainSpec, discovery, maxAttempts) {
+export function selectCandidates(domainSpec, discovery, maxAttempts, ceiling = MAX_CANDIDATE_ATTEMPTS) {
   if (!discovery || discovery.success !== true) return [];
   const rows = Array.isArray(discovery.instruments) ? discovery.instruments : [];
   const forClass =
@@ -332,7 +332,17 @@ export function selectCandidates(domainSpec, discovery, maxAttempts) {
     ...usable.filter((row) => SPOT_LIKE.has(row.subType)),
     ...usable.filter((row) => !SPOT_LIKE.has(row.subType)),
   ];
-  return ordered.slice(0, Math.max(1, Math.min(maxAttempts, MAX_CANDIDATE_ATTEMPTS)));
+  // Phase 289C-audit — the ceiling is a PARAMETER, not a constant.
+  //
+  // It used to be `Math.min(maxAttempts, MAX_CANDIDATE_ATTEMPTS)` unconditionally,
+  // which silently clamped the commodity energy-gate probe's declared bound of 6
+  // down to 3: the probe reported `classified=3/3` and never looked at candidates
+  // 4..N, so the fact that it could not reach an energy instrument was
+  // indistinguishable from the provider not offering one. The domain loop keeps
+  // its own policy ceiling by default (unchanged behaviour); a caller that has its
+  // own disclosed bound passes it. Provider order is preserved either way, and no
+  // instrument is ever added, ranked or substituted here.
+  return ordered.slice(0, Math.max(1, Math.min(maxAttempts, ceiling)));
 }
 
 /** OKX discovery is public metadata (no key, no prices, no direction). */
@@ -827,15 +837,36 @@ export function runtimeMarkers(evidence) {
   };
 }
 
-/** Phase 289B — how many provider-native commodity candidates the probe may classify. */
-export const ENERGY_PROBE_CANDIDATE_LIMIT = 6;
+/**
+ * Phase 289C-audit — how many provider-native commodity candidates the probe may
+ * classify, in the provider's own order.
+ *
+ * Raised from 6 to 12 after the audit established WHY the probe could not reach an
+ * energy instrument: the provider's commodity catalog carries ~31 identities whose
+ * first three are gold-gram pairs (GAU/*), while its energy instruments (WTI,
+ * Brent, Urals crude) sit further down. 12 is a scan DEPTH, not a whitelist: the
+ * order is whatever the provider returned, nothing is added or substituted, and a
+ * caller may raise it (to ENERGY_PROBE_MAX_CANDIDATE_LIMIT) when the previous
+ * run's discovered-identity list shows where the energy instruments sit.
+ */
+export const ENERGY_PROBE_CANDIDATE_LIMIT = 12;
+
+/** Phase 289C-audit — the hard bound on that scan depth. */
+export const ENERGY_PROBE_MAX_CANDIDATE_LIMIT = 40;
+
+/** Phase 289C-audit — how many discovered identities the annotation lists. */
+export const ENERGY_PROBE_REPORT_IDENTITIES = 10;
 
 /**
  * Phase 289B — pause between probe analyses. The probe must not be the reason a
- * provider hits its per-minute ceiling; a short wait keeps the classifications
- * inside the same rate-limit window the four-asset run already lives in.
+ * provider hits its per-minute ceiling; the wait keeps the classifications inside
+ * the same rate-limit window the four-asset run already lives in. The value is set
+ * from the provider's OWN refusal, observed on the deployment: "10 API credits were
+ * used, with the current limit being 8" per minute — so a deeper scan without a
+ * pause would spend its budget on 429s instead of classifications, and a 429 opens
+ * the circuit, which would end the scan before it reached an energy instrument.
  */
-export const ENERGY_PROBE_PAUSE_MS = 1_500;
+export const ENERGY_PROBE_PAUSE_MS = 8_000;
 
 /**
  * Phase 289B — the verdict for the commodity energy-gate probe.
@@ -1221,9 +1252,16 @@ export function renderSummary(report) {
     );
     for (const sample of report.energyGateProbe.samples) {
       lines.push(
-        `                classified ${sample.instrument ?? "?"} · group=${sample.group ?? "?"} · inventories=${
-          sample.inventories ?? "?"
-        } · inventoryLatest=${sample.inventoryLatest ?? "none"} · eiaEvidence=${sample.eiaEvidenceItems ?? 0}`,
+        `                classified #${sample.position ?? "?"} ${sample.instrument ?? "?"} · group=${
+          sample.group ?? "?"
+        } · inventories=${sample.inventories ?? "?"} · inventoryLatest=${
+          sample.inventoryLatest ?? "none"
+        } · eiaEvidence=${sample.eiaEvidenceItems ?? 0}`,
+      );
+    }
+    if (report.energyGateProbe.candidatesConsidered?.length > 0) {
+      lines.push(
+        `                scanned ${report.energyGateProbe.candidatesConsidered.length} of the provider's own order: ${report.energyGateProbe.candidatesConsidered.join(", ")}`,
       );
     }
     if (report.energyGateProbe.stopReason) lines.push(`                stopped: ${report.energyGateProbe.stopReason}`);
@@ -1282,7 +1320,18 @@ export async function probeEnergyGate({
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
   const list = Array.isArray(candidates) ? candidates : [];
-  const samples = Array.isArray(seeds) ? [...seeds] : [];
+  // Provider order, exactly as discovered — recorded so a reader can see WHERE in
+  // the catalog each classified instrument sat, and therefore whether an energy
+  // instrument exists at all (as opposed to being out of scan range).
+  const positions = new Map();
+  list.forEach((candidate, index) => {
+    const id = candidate?.instId ?? candidate?.providerInstrumentId ?? null;
+    if (typeof id === "string" && id.length > 0 && !positions.has(id)) positions.set(id, index + 1);
+  });
+  const samples = (Array.isArray(seeds) ? seeds : []).map((seed) => ({
+    ...seed,
+    position: positions.get(seed?.instrument) ?? null,
+  }));
   const sampled = new Set(samples.map((x) => x?.instrument).filter((id) => typeof id === "string"));
   let stopReason = null;
 
@@ -1321,8 +1370,10 @@ export async function probeEnergyGate({
     circuit.classify(provider, response.appError ?? "", verdict?.evidence?.diagnostics ?? []);
 
     sampled.add(nativeId);
+    const instrument = verdict?.evidence?.market?.providerInstrumentId ?? nativeId;
     samples.push({
-      instrument: verdict?.evidence?.market?.providerInstrumentId ?? nativeId,
+      instrument,
+      position: positions.get(nativeId) ?? positions.get(instrument) ?? null,
       provider,
       runtimeStatus: verdict?.status ?? null,
       verdict: verdict?.headline ?? null,
@@ -1367,6 +1418,15 @@ async function run() {
     Number.parseInt(flag("--max-attempts", argv) ?? String(DEFAULT_MAX_ATTEMPTS), 10) ||
     DEFAULT_MAX_ATTEMPTS;
   const quiet = argv.includes("--quiet");
+  // The probe's scan depth, disclosed and bounded. A higher value is for the case
+  // the previous run's discovered-identity list shows the energy instruments sit
+  // deeper than the default; it is never a whitelist and never reorders anything.
+  const probeLimit = (() => {
+    const raw = flag("--probe-limit", argv) ?? process.env.XSTARZ_SMOKE_PROBE_LIMIT ?? "";
+    const parsed = Number.parseInt(String(raw), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return ENERGY_PROBE_CANDIDATE_LIMIT;
+    return Math.min(parsed, ENERGY_PROBE_MAX_CANDIDATE_LIMIT);
+  })();
 
   const target = validateTarget(targetUrl, allowedHost);
   if (!target.ok) {
@@ -1677,7 +1737,16 @@ async function run() {
   let energyGateProbe = null;
   const commoditySpec = specs.find((s) => s.domain === "commodity");
   if (commoditySpec && twelveDiscovery) {
-    const candidates = selectCandidates(commoditySpec, twelveDiscovery, ENERGY_PROBE_CANDIDATE_LIMIT);
+    // The scan depth the PROBE is entitled to, passed as its own ceiling: the
+    // domain loop's policy ceiling (3) is smaller, and letting it clamp this
+    // silently is what made "no energy instrument in range" look like "the
+    // provider has no energy instrument".
+    const candidates = selectCandidates(
+      commoditySpec,
+      twelveDiscovery,
+      probeLimit,
+      probeLimit,
+    );
     const commodityRecord = domains.find((d) => d.domain === "commodity");
     // The commodity domain already analysed the provider's first-ranked
     // instrument: that delivered answer is the first sample and costs nothing.
@@ -1702,14 +1771,31 @@ async function run() {
       circuit,
       sessionFor,
       seeds,
+      candidateLimit: probeLimit,
     });
+
+    // The discovered identity list is reported because the audit could not answer
+    // the decisive question without it: is there NO energy instrument in the
+    // provider's commodity catalog, or is it simply beyond the scan? The list is
+    // the provider's own order, verbatim, with no ranking, filtering or curation.
+    const identities = energyGateProbe.candidatesConsidered;
+    const identitySample = identities.slice(0, ENERGY_PROBE_REPORT_IDENTITIES);
+    const classifiedText = energyGateProbe.samples
+      .filter((x) => typeof x.group === "string")
+      .slice(0, 4)
+      .map((x) => `${x.instrument}@${x.position ?? "?"}=${x.group}`)
+      .join(",");
 
     annotate(
       energyGateProbe.verdict === "FAIL" ? "error" : "warning",
       `COMMODITY energy-gate probe ${energyGateProbe.verdict}`,
       `informational — classified=${energyGateProbe.classified}/${candidates.length} of the deployment's own commodity discovery${
         energyGateProbe.stopReason === null ? "" : ` · stopped: ${energyGateProbe.stopReason}`
-      } · ${energyGateProbe.summary}`,
+      } · ${energyGateProbe.summary}${
+        classifiedText === "" ? "" : ` · groups: ${classifiedText}`
+      }${identities.length === 0 ? "" : ` · discovered(${identities.length}): ${identitySample.join(",")}${
+        identities.length > identitySample.length ? ",…" : ""
+      }`}`,
     );
   }
 
@@ -1800,7 +1886,10 @@ async function run() {
     // Phase 289B — which backend code paths answered (read from the responses).
     runtimeFingerprint: runtimeFingerprint,
     // Phase 289B — the commodity physical-feed gate, exercised in both directions.
+    // Phase 289C-audit — with the scan depth used and the provider-order identity
+    // list the depth was applied to.
     energyGateProbe: energyGateProbe,
+    energyGateProbeScanLimit: probeLimit,
     domains,
     summary: Object.fromEntries(domains.map((d) => [d.label, d.headline])),
   };

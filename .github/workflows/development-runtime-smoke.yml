@@ -52,6 +52,10 @@ on:
         description: "Max discovery-ranked instruments tried per domain (1-3, default 3)"
         required: false
         type: string
+      probe_limit:
+        description: "Commodity energy-gate probe scan depth in the provider's own order (1-40, default 12)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -75,6 +79,7 @@ jobs:
       XSTARZ_SMOKE_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
       XSTARZ_SMOKE_DOMAINS: ${{ inputs.domains }}
       XSTARZ_SMOKE_MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+      XSTARZ_SMOKE_PROBE_LIMIT: ${{ inputs.probe_limit }}
     steps:
       - name: Check out the selected ref
         uses: actions/checkout@v4

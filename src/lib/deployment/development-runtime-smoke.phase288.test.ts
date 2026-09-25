@@ -33,6 +33,9 @@ import {
   runtimeMarkers,
   energyGateVerdict,
   ENERGY_PROBE_CANDIDATE_LIMIT,
+  ENERGY_PROBE_MAX_CANDIDATE_LIMIT,
+  ENERGY_PROBE_REPORT_IDENTITIES,
+  ENERGY_PROBE_PAUSE_MS,
   probeEnergyGate,
   resolveCheckoutSha,
 } from "../../../scripts/development-runtime-smoke.mjs";
@@ -738,10 +741,15 @@ describe("phase 289B — the energy-gate probe reads the deployed runtime's own 
 
   it("is bounded and provider-disciplined by construction", () => {
     expect(ENERGY_PROBE_CANDIDATE_LIMIT).toBeGreaterThan(0);
-    expect(ENERGY_PROBE_CANDIDATE_LIMIT).toBeLessThanOrEqual(6);
+    // Bounded, but deep enough to be truthful: the audit found the provider's
+    // commodity catalog carries ~31 identities whose first three are gold-gram
+    // pairs, so a bound of 3 could never reach an energy instrument — and the
+    // run's "classified=3/3" was that clamp, not a provider limitation.
+    expect(ENERGY_PROBE_CANDIDATE_LIMIT).toBeGreaterThanOrEqual(6);
+    expect(ENERGY_PROBE_CANDIDATE_LIMIT).toBeLessThanOrEqual(ENERGY_PROBE_MAX_CANDIDATE_LIMIT);
     // Candidate selection comes from the deployment's own discovery, in order,
     // bounded — no ticker list, and the circuit is checked before every request.
-    expect(SMOKE).toContain("selectCandidates(commoditySpec, twelveDiscovery, ENERGY_PROBE_CANDIDATE_LIMIT)");
+    expect(SMOKE).toContain("selectCandidates(\n      commoditySpec,\n      twelveDiscovery,\n      probeLimit,\n      probeLimit,\n    )");
     expect(SMOKE).toContain("const tripped = circuit.isTripped(provider);");
     expect(SMOKE).toContain("no repeat request to ${provider}");
     // Its own anonymous session per candidate: quota isolation, no substitution.
@@ -750,5 +758,127 @@ describe("phase 289B — the energy-gate probe reads the deployed runtime's own 
     expect(SMOKE).toContain(
       'annotate(\n      energyGateProbe.verdict === "FAIL" ? "error" : "warning",',
     );
+  });
+});
+
+describe("phase 289C-audit — the probe's scan depth is real, not silently clamped", () => {
+  const spec = {
+    domain: "commodity",
+    label: "COMMODITY",
+    discovery: "twelve-data" as const,
+    assetClass: "commodity",
+  };
+
+  const discoveryOf = (count: number) => ({
+    success: true,
+    provider: "twelve-data",
+    error: null,
+    instruments: Array.from({ length: count }, (_, i) => ({
+      providerInstrumentId: `C${String(i).padStart(2, "0")}/USD`,
+      assetClass: "commodity",
+      subType: "commodity_spot",
+      tradingState: "TRADING" as const,
+    })),
+  });
+
+  it("the domain loop keeps its policy ceiling, unchanged", () => {
+    // The default ceiling must not move: bounded attempts are a deliberate
+    // provider-cost policy, and this phase changes only the probe's own bound.
+    expect(selectCandidates(spec, discoveryOf(30), 99).length).toBe(MAX_CANDIDATE_ATTEMPTS);
+    expect(selectCandidates(spec, discoveryOf(30), 3).length).toBe(3);
+    expect(selectCandidates(spec, discoveryOf(30), 1).length).toBe(1);
+  });
+
+  it("a caller that declares its own ceiling gets it — the defect that hid energy", () => {
+    // Before this fix the ceiling was unconditional: the probe asked for 6 and got
+    // 3, so candidates 4..N were never classified and its UNAVAILABLE verdict
+    // could not be distinguished from the provider not offering energy at all.
+    expect(selectCandidates(spec, discoveryOf(30), 12, 12).length).toBe(12);
+    expect(selectCandidates(spec, discoveryOf(30), 40, 40).length).toBe(30);
+    // Still bounded, still provider order, and the clamp never invents one.
+    expect(selectCandidates(spec, discoveryOf(30), 0, 12).length).toBe(1);
+  });
+
+  it("scans the provider's order verbatim, with no ranking or curation", () => {
+    const picked = selectCandidates(spec, discoveryOf(15), 12, 12);
+    expect(picked.map((c) => c.providerInstrumentId)).toEqual(
+      Array.from({ length: 12 }, (_, i) => `C${String(i).padStart(2, "0")}/USD`),
+    );
+  });
+
+  it("records each sample's position in the provider's order", async () => {
+    // Position is the evidence that separates "no energy instrument exists" from
+    // "the energy instrument is beyond the scan depth".
+    const calls: string[] = [];
+    const probe = await probeEnergyGate({
+      spec: spec as never,
+      candidates: [
+        { providerInstrumentId: "GAU/IDR", provider: "twelve-data" },
+        { providerInstrumentId: "GAU/EUR", provider: "twelve-data" },
+        { providerInstrumentId: "WTI/USD", provider: "twelve-data" },
+      ] as never,
+      transport: {
+        state: { calls: 0, lastError: null, blocked: false },
+        action: async (_p: string, args: unknown) => {
+          const id = (args as { input: { providerInstrumentId: string } }).input.providerInstrumentId;
+          calls.push(id);
+          const group = id === "WTI/USD" ? "energy" : "unclassified";
+          return {
+            ok: true,
+            httpStatus: 200,
+            appError: null,
+            value: {
+              status: "DELIVERED",
+              result: {
+                fundamentalSummary: `${id} read.`,
+                fundamentalAssessment: {
+                  available: true,
+                  domain: "commodity",
+                  provider: "twelve-data",
+                  state: "insufficient",
+                  commodityProfile: { group, classificationSource: `${id} → ${group}` },
+                  dimensions: [{ name: "inventories", status: "unavailable", role: "supporting" }],
+                  evidenceProviders: [],
+                  limitations: [],
+                },
+              },
+            },
+          };
+        },
+        query: async () => ({ ok: true, httpStatus: 200, appError: null, value: {} }),
+      } as never,
+      circuit: createProviderCircuit(),
+      sessionFor: async () => ({ ok: true, token: "t" }),
+      seeds: [],
+      pauseMs: 0,
+    });
+
+    expect(calls).toEqual(["GAU/IDR", "GAU/EUR", "WTI/USD"]);
+    expect(probe.samples.map((x) => [x.instrument, x.position, x.group])).toEqual([
+      ["GAU/IDR", 1, "unclassified"],
+      ["GAU/EUR", 2, "unclassified"],
+      ["WTI/USD", 3, "energy"],
+    ]);
+    expect(probe.candidatesConsidered).toEqual(["GAU/IDR", "GAU/EUR", "WTI/USD"]);
+  });
+
+  it("reports the discovered identities so provider coverage is decidable", () => {
+    // Without this list a reader cannot tell an absent instrument from an
+    // unreached one. It is the provider's own order, and it is bounded.
+    expect(SMOKE).toContain("const identities = energyGateProbe.candidatesConsidered;");
+    expect(SMOKE).toContain('identities.length === 0 ? "" : ` · discovered(${identities.length})');
+    expect(ENERGY_PROBE_REPORT_IDENTITIES).toBeGreaterThan(0);
+    expect(ENERGY_PROBE_REPORT_IDENTITIES).toBeLessThanOrEqual(20);
+    expect(SMOKE).toContain("scanned ${report.energyGateProbe.candidatesConsidered.length}");
+  });
+
+  it("pauses between probes at the provider's own published credit window", () => {
+    // The deployment's own 429 text: "10 API credits were used, with the current
+    // limit being 8". A faster scan would spend its budget on 429s, and a 429
+    // opens the provider circuit — which would end the scan before it reached an
+    // energy instrument.
+    expect(ENERGY_PROBE_PAUSE_MS).toBeGreaterThanOrEqual(7_500);
+    expect(SMOKE).toContain("XSTARZ_SMOKE_PROBE_LIMIT");
+    expect(SMOKE).toContain("Math.min(parsed, ENERGY_PROBE_MAX_CANDIDATE_LIMIT)");
   });
 });

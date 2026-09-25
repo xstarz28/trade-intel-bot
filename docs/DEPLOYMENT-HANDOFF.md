@@ -451,6 +451,36 @@ or in the transport (stream the parse), never a silently truncated discovery
 result. Do not "fix" it by sampling the catalog: an incomplete universe presented
 as complete is exactly the kind of claim this codebase refuses.
 
+
+### Why the energy-gate probe scans deeply (Phase 289C audit)
+
+The provider's own `/commodities` catalog documents energy instruments —
+**Crude Oil WTI Spot (`WTI/USD`), Brent Spot, Urals Crude Oil Spot** — alongside
+precious metals (Gold Spot `XAU/USD`, Gold Gram `GAU/*`, Silver) and industrial
+metals. Its category field distinguishes them (`Energy Resource` vs
+`Precious Metal` vs `Industrial Metal`).
+
+The deployed discovery returns the whole catalog (~31 identities; exactly one row
+is refused identity because its symbol carries no base/quote — the documented
+shape `HG1` — and that refusal is reported as a skipped-row warning rather than
+invented). The provider order, however, starts with gold-gram pairs, so a scan
+that only covers the first few candidates classifies nothing but precious metals.
+
+That is exactly what happened: the probe asked for a bound that the candidate
+selector silently clamped to the domain loop's policy ceiling (3), so the run
+reported `classified=3/3` and the operator could not tell "the catalog has no
+energy instrument" from "the energy instrument is out of scan range". The ceiling
+is now the caller's own bound, the probe's depth is disclosed
+(`--probe-limit` / `XSTARZ_SMOKE_PROBE_LIMIT`, default 12, hard bound 40), the
+annotation lists the discovered identities **in the provider's own order**, and
+each classified sample carries its position in that order. Ordering is never
+curated: no whitelist, no re-ranking, no substitution.
+
+Provider cadence for the deeper scan comes from the provider's own refusal seen on
+the deployment — `10 API credits were used, with the current limit being 8` per
+minute — hence the 8 s pause between probe analyses; a 429 would open the provider
+circuit and end the scan before it reached an energy instrument.
+
 ### Is the deployed build the current one?
 
 `/version` cannot answer that. Three things together can:
