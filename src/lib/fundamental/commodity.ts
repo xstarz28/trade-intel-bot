@@ -71,6 +71,7 @@
 import type { CotContext, CotData } from "@/lib/data/cot";
 import {
   classifyCotPositioning,
+  COT_CROWDING_OI_RATIO,
   COT_PERCENTILE_MIN_REPORTS,
   COT_SIGNAL_CHANGE_OI_RATIO,
 } from "@/lib/data/cot";
@@ -862,7 +863,17 @@ export function assessCommodityFundamentals(
             isFiniteNumber(twoY) ? `, 2Y ${twoY.toFixed(2)}%` : ""
           }${
             isFiniteNumber(realTenY) ? `, real 10Y ${realTenY.toFixed(2)}% (Treasury's own real-yield feed)` : ", real 10Y not supplied"
-          }${slope !== undefined ? `, 2s10s ${fmtSigned(slope, 2)}pp` : ""}; ${referenceLabel} change ${
+          }${
+            slope !== undefined
+              ? `, 2s10s ${fmtSigned(slope, 2)}pp (${
+                  Math.abs(slope) < COMMODITY_PARAMETERS.curveSlopeFlatPp
+                    ? "flat"
+                    : slope < 0
+                      ? "inverted"
+                      : "upward-sloping"
+                })`
+              : ""
+          }; ${referenceLabel} change ${
             change !== undefined ? `${fmtSigned(change, 2)}pp vs the previous observation` : "not computable (no previous observation)"
           } → ${directionText}. ${
             profile.group === "precious-metals"
@@ -1092,7 +1103,17 @@ export function assessCommodityFundamentals(
         isFiniteNumber(metrics.positioningPercentile)
           ? ` (net/OI percentile ${(metrics.positioningPercentile * 100).toFixed(0)}% of the provider's own history)`
           : " (percentile context insufficient)"
-      }${isFiniteNumber(metrics.positioningCrowdRatio) ? `, crowding ${(metrics.positioningCrowdRatio * 100).toFixed(1)}% of open interest` : ""}`
+      }${
+        isFiniteNumber(metrics.positioningCrowdRatio)
+          ? metrics.positioningLabel === "crowded"
+            ? `, crowding ${(metrics.positioningCrowdRatio * 100).toFixed(
+                1,
+              )}% of open interest (beyond the documented ${(COT_CROWDING_OI_RATIO * 100).toFixed(0)}% band)`
+            : `, |net|/OI ${(metrics.positioningCrowdRatio * 100).toFixed(1)}% (inside the documented ${(
+                COT_CROWDING_OI_RATIO * 100
+              ).toFixed(0)}% crowding band)`
+          : ""
+      }`
     : "Positioning: unavailable";
   const curveLine = metrics.curveStructure
     ? `Term structure: ${metrics.curveStructure}${
