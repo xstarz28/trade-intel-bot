@@ -390,6 +390,19 @@ async function runFourAsset(label = "Phase 284 deployed verification") {
   }
   console.log(`[284] deployment ${deployment.origin} (from ${source})`);
 
+  // A deployment answers `GET /version` with its own identity document; a dead
+  // or replaced deployment does not. This separates "no such deployment" from
+  // "deployment exists but the action failed".
+  let versionInfo = "unreachable";
+  try {
+    const versionRes = await fetch(`${deployment.origin}/version`, { signal: AbortSignal.timeout(20_000) });
+    const text = (await versionRes.text()).slice(0, 200);
+    versionInfo = `HTTP ${versionRes.status} ${sanitize(text).replace(/\n+/g, " ")}`;
+  } catch (error) {
+    versionInfo = `transport: ${error?.cause?.code ?? error?.name ?? "unknown"}`;
+  }
+  console.log(`[284] version probe: ${versionInfo}`);
+
   const signIn = await callConvex("action", "auth:signIn", { provider: "anonymous" });
   if (!signIn.ok) {
     const blocker = `NOT_EXECUTED — anonymous sign-in refused: ${signIn.appError ?? signIn.transportError ?? `HTTP ${signIn.httpStatus}`}`;
@@ -438,7 +451,10 @@ async function runFourAsset(label = "Phase 284 deployed verification") {
   );
   const report = [header, ...table].join("\n");
   console.log(report);
-  annotate(label, `${deployment.origin} (from ${source})\n${report}`);
+  annotate(
+    label,
+    [`${deployment.origin} (from ${source})`, `version probe: ${versionInfo}`, report, ...records.map((r) => JSON.stringify(r))].join("\n"),
+  );
   return 0;
 }
 
