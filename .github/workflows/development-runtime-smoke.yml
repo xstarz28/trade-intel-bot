@@ -1,0 +1,136 @@
+# Phase 287 — REAL deployed-runtime four-asset smoke.
+#
+# WHY THIS EXISTS
+# ---------------
+# A deployment can exist, answer HTTP 200, and still be stale, unauthenticated,
+# or unable to reach a single provider. The development deployment workflow
+# proves a deploy happened; it cannot prove the deployed runtime does anything
+# useful with real market data. This workflow asks the RUNNING deployment, from
+# a networked runner, to analyse one instrument per asset class and reports what
+# actually came back.
+#
+# WHAT MAKES THE RESULT TRUSTWORTHY
+# ---------------------------------
+# · It runs on a GitHub runner, not in a developer sandbox, so the deployment is
+#   reached over the public internet exactly as a user reaches it.
+# · It installs and runs the repository's OWN smoke script. No stub, no fixture
+#   and no localhost path exists in it; the request body carries only the
+#   discovered identity, timeframe and trading style.
+# · Instruments come from the deployment's OWN discovery actions at run time.
+#   No ticker is hardcoded, in the workflow or in the script.
+# · Each asset class gets its own fresh anonymous session, so one domain cannot
+#   spend another domain's guest allowance.
+# · PASS is never inferred from HTTP 200: the run is green only when the
+#   runtime returned provider market evidence with a provider observation
+#   instant, plus technical, domain-native fundamental and unified evidence.
+#   Missing provider/data is reported UNAVAILABLE with the runtime's own reason.
+# · It never targets production and never admits a release.
+#
+# CREDENTIALS
+# -----------
+# This workflow needs NO repository secret. Provider API keys live in the
+# development deployment's own environment, server-side; the runner only speaks
+# the app's public HTTP contract to it. Nothing here reads or prints a key.
+#
+# Required GitHub Environment: `development` (the same one the deploy uses)
+#   variable  CONVEX_DEPLOYMENT   dev:<team>:<project> — recorded for provenance
+
+name: Development runtime smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to run the smoke from (defaults to the dispatched ref)"
+        required: false
+        type: string
+      domains:
+        description: "Comma-separated asset classes (default: crypto,forex,stock,commodity)"
+        required: false
+        type: string
+      max_attempts:
+        description: "Max discovery-ranked instruments tried per domain (1-3, default 1)"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-runtime-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Four-asset smoke against the deployed development runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: development
+    env:
+      XSTARZ_SMOKE_URL: https://tough-goose-455.convex.cloud
+      XSTARZ_SMOKE_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+      XSTARZ_SMOKE_DOMAINS: ${{ inputs.domains }}
+      XSTARZ_SMOKE_MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+    steps:
+      - name: Check out the selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install (the repository's own install mode)
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Refuse to point this smoke at anything but a development deployment
+        run: |
+          case "${XSTARZ_SMOKE_URL}" in
+            https://*.convex.cloud) ;;
+            *) echo "::error title=Refused::XSTARZ_SMOKE_URL is not an https *.convex.cloud deployment"; exit 1 ;;
+          esac
+          case "${XSTARZ_SMOKE_URL}" in
+            *pleasant-curlew-264.convex.cloud*) echo "::error title=Refused::XSTARZ_SMOKE_URL is the PRODUCTION deployment (pleasant-curlew-264.convex.cloud)"; exit 1 ;;
+          esac
+          echo "target: ${XSTARZ_SMOKE_URL}"
+          echo "deployment (provenance only): ${XSTARZ_SMOKE_DEPLOYMENT:-<not set>}"
+          echo "source commit: $(git rev-parse HEAD)"
+
+      - name: Run the four-asset smoke against the deployed runtime
+        run: |
+          set -o pipefail
+          args=(--url "${XSTARZ_SMOKE_URL}" --out development-runtime-smoke.json)
+          if [ -n "${XSTARZ_SMOKE_DOMAINS:-}" ]; then args+=(--domains "${XSTARZ_SMOKE_DOMAINS}"); fi
+          if [ -n "${XSTARZ_SMOKE_MAX_ATTEMPTS:-}" ]; then args+=(--max-attempts "${XSTARZ_SMOKE_MAX_ATTEMPTS}"); fi
+          node scripts/development-runtime-smoke.mjs "${args[@]}" 2>&1 | tee smoke-console.log
+
+      - name: Summary (prints even when the smoke failed)
+        if: always()
+        run: |
+          if [ -f development-runtime-smoke-summary.txt ]; then
+            cat development-runtime-smoke-summary.txt
+          else
+            echo "No summary file was produced — the smoke did not get far enough to write one."
+          fi
+
+      - name: Upload the smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-runtime-smoke-${{ github.run_id }}
+          path: |
+            development-runtime-smoke.json
+            development-runtime-smoke-summary.txt
+            smoke-console.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: This job does not admit a release
+        if: always()
+        run: |
+          echo "A green runtime smoke means the development deployment answered with real provider evidence."
+          echo "It is not production verification, not Evidence D, and not release admission."
+
