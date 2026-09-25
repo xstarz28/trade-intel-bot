@@ -1,0 +1,148 @@
+# Phase 286 — manual DEVELOPMENT Convex deploy.
+#
+# WHY THIS EXISTS
+# ---------------
+# The development deployment (`dev:<team>:<project>`) is the environment a
+# person can actually open and exercise, and nothing in the repository could
+# refresh it from CI: `production-deploy.yml` is production-only by design and
+# its guard refuses any non-production identity. So development gets its own
+# workflow, with the opposite polarity — it refuses anything that is
+# production-shaped, and it refuses a `preview:`/`local:`/`anonymous:` target
+# rather than quietly accepting "not production".
+#
+# WHAT IT DOES NOT DO
+# -------------------
+# · It never runs on push or pull_request. Manual dispatch only: a deploy is a
+#   decision, not a side effect of a merge.
+# · It never targets production. `CONVEX_DEPLOYMENT` must be `dev:<team>:<project>`
+#   and a `prod:` value is refused before Convex is invoked.
+# · It never prints a credential. The deploy key is read as a secret and nothing
+#   echoes it; the guard prints the identity, key PRESENCE and endpoint hosts.
+# · It never admits a release and never writes release-gate evidence.
+# · It does not inject the frontend URL into the build the way `convex deploy
+#   --cmd` does — `convex dev` has no equivalent flag. `VITE_CONVEX_URL` is
+#   passed through from the environment when set, and the build runs either way.
+#
+# Required GitHub Environment: `development`
+#   secret    CONVEX_DEPLOY_KEY     a dev-scoped key
+#   variable  CONVEX_DEPLOYMENT     dev:<team>:<project>
+# Optional variables, used only when set:
+#   VITE_CONVEX_URL   https on *.convex.cloud (also the post-deploy version probe)
+#   CONVEX_SITE_URL   https on *.convex.site
+
+name: Development deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to deploy (defaults to the dispatched ref)"
+        required: false
+        type: string
+      confirm:
+        description: "Type DEPLOY_DEV to confirm this targets the development deployment"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-deploy
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Refuse unless the target is a development deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+      XSTARZ_DEPLOYMENT_ENV: development
+      SOURCE_REF: ${{ inputs.ref || github.ref }}
+    steps:
+      - name: Require the confirmation phrase
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY_DEV" ]; then
+            echo "::error::Refused: type DEPLOY_DEV to confirm a development deploy."
+            exit 1
+          fi
+
+      - name: Check out the selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Fail closed when the deploy inputs are absent or not development
+        run: npm run development:deploy:guard -- --json
+
+  deploy:
+    name: Convex development deploy
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: development
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+      XSTARZ_DEPLOYMENT_ENV: development
+      SOURCE_REF: ${{ inputs.ref || github.ref }}
+    steps:
+      - name: Check out the selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Re-check the development identity immediately before invoking Convex
+        run: npm run development:deploy:guard -- --json
+
+      - name: Type and build prerequisites (the same gate the production deploy runs)
+        run: npm run build
+
+      - name: Safe metadata — what is about to be deployed and where
+        run: |
+          echo "deployment target: ${CONVEX_DEPLOYMENT}"
+          echo "source ref: ${SOURCE_REF}"
+          echo "commit: $(git rev-parse HEAD)"
+          echo "commit subject: $(git log -1 --pretty=%s)"
+
+      - name: Deploy the Convex backend to the development deployment
+        # `convex dev --once` is the repository's own development deploy command
+        # (docs/DEPLOYMENT-HANDOFF.md §A). Type checking is disabled here only
+        # because `npm run build` (tsc -b) ran in the step above as the gate.
+        run: npx convex dev --once --typecheck disable --codegen disable
+
+      - name: Report the deployed version (only when the URL is configured)
+        if: env.VITE_CONVEX_URL != ''
+        run: |
+          version="$(curl -fsS --max-time 20 "${VITE_CONVEX_URL}/version" || echo unreachable)"
+          echo "deployed version: ${version}"
+
+      - name: This job does not admit a release
+        run: |
+          echo "A green development deploy means the development deployment was updated."
+          echo "It is not production verification, not Evidence D, and not release admission."
