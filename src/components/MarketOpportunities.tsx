@@ -391,6 +391,58 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
               <span className="ml-1">{tx("marketPanel.derivedNotObserved")}</span>
             </div>
           )}
+          {opp.unified && (
+            <div data-testid="radar-unified" className="rounded border border-border/30 bg-background/40 p-1.5 space-y-0.5">
+              <p className="text-[9px] font-mono font-semibold text-foreground/80">
+                {tx("marketPanel.unifiedLabel")}
+              </p>
+              <p className="text-[9px] font-mono text-muted-foreground/70">
+                {txi("marketPanel.unifiedStateLabel", { value: opp.unified.state })}
+                <span className="mx-1">·</span>
+                {txi("marketPanel.unifiedTechnicalLabel", { value: opp.unified.technicalBias })}
+                <span className="mx-1">·</span>
+                {txi("marketPanel.unifiedFundamentalLabel", { value: opp.unified.fundamentalState })}
+              </p>
+              <p className="text-[9px] font-mono text-muted-foreground/70">
+                {txi("marketPanel.unifiedConfluenceLabel", { value: opp.unified.agreement })}
+                <span className="mx-1">·</span>
+                {txi("marketPanel.unifiedConfidenceLabel", { value: opp.unified.confidence })}
+              </p>
+              <p className="text-[9px] font-mono text-muted-foreground/60">{opp.unified.explanation}</p>
+              {opp.unified.provenance.reportingPeriod && (
+                <p className="text-[9px] font-mono text-muted-foreground/60">
+                  {txi("marketPanel.unifiedReportingPeriodLabel", {
+                    value: opp.unified.provenance.reportingPeriod,
+                  })}
+                </p>
+              )}
+              {opp.unified.provenance.fundamentalProvider && (
+                <p className="text-[8px] font-mono text-muted-foreground/50">
+                  <span>fundamental provider: {opp.unified.provenance.fundamentalProvider}</span>
+                  {opp.unified.provenance.fundamentalInstrumentId && (
+                    <>
+                      <span className="mx-1">·</span>
+                      <span>native: {opp.unified.provenance.fundamentalInstrumentId}</span>
+                    </>
+                  )}
+                </p>
+              )}
+              <p className="text-[9px] font-mono text-muted-foreground/70">
+                {txi("marketPanel.unifiedActionabilityLabel", {
+                  value: opp.unified.actionable
+                    ? tx("marketPanel.unifiedActionableYes")
+                    : tx("marketPanel.unifiedActionableNo"),
+                })}
+                <span className="mx-1">·</span>
+                <span>{opp.unified.actionabilityReason}</span>
+              </p>
+              {opp.unified.invalidation && (
+                <p className="text-[9px] font-mono text-red-300/60">
+                  {txi("marketPanel.unifiedPreservedInvalidationLabel", { value: opp.unified.invalidation })}
+                </p>
+              )}
+            </div>
+          )}
           {opp.supportingEvidence.length > 0 && (
             <div>
               <p className="text-[9px] font-mono font-semibold text-emerald-400/80 mb-0.5">{tx("marketPanel.supportingLabel")}</p>

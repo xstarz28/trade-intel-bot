@@ -12,6 +12,7 @@ import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation
 import type { MarketSnapshot, FreshnessLevel, TimestampProvenance } from "./types";
 import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
+import { evaluateUnifiedConfluence } from "./unified-confluence";
 
 // ────────────────────────────────────────────────────────────────
 // Phase 241 — Additional evidence freshness contract
@@ -145,6 +146,13 @@ export interface RadarCandidateSource {
   };
   /** Phase 241: explicit additional evidence inventory with freshness semantics */
   additionalEvidence?: AdditionalEvidenceMeta[];
+  /**
+   * Phase 277 — the unified technical + fundamental assessment produced by the
+   * analysis pipeline for THIS instrument. Optional: when it is absent the
+   * scanner behaves exactly as before and assumes nothing about the missing
+   * evidence class.
+   */
+  unified?: import("@/lib/unified-intelligence").UnifiedIntelligence;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -302,6 +310,19 @@ export function buildRadarCandidate(
     candidate.hasMacro = true;
     candidate.dxyTrend = source.treasury.dxyTrend;
     candidate.riskRegime = source.treasury.riskRegime;
+  }
+
+  // Phase 277 — unified confluence evidence. Carried as EVALUATED policy
+  // (traceable to the unified state), never as an invented metric.
+  const confluence = evaluateUnifiedConfluence(source.unified);
+  if (confluence.present) {
+    candidate.hasUnifiedIntelligence = true;
+    candidate.unifiedState = confluence.state;
+    candidate.unifiedActionable = confluence.actionable;
+    candidate.unifiedScoreDelta = confluence.policy.scoreDelta;
+    if (confluence.policy.confidenceCap !== undefined) {
+      candidate.unifiedConfidenceCap = confluence.policy.confidenceCap;
+    }
   }
 
   // Analysis metadata (additive)

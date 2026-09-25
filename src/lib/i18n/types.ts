@@ -790,6 +790,17 @@ export interface Translations {
     rankingDisclaimer: string;
     rankingConfidenceNote: string;
     liveScanNote: string;
+    unifiedLabel: string;
+    unifiedStateLabel: string;
+    unifiedTechnicalLabel: string;
+    unifiedFundamentalLabel: string;
+    unifiedConfluenceLabel: string;
+    unifiedConfidenceLabel: string;
+    unifiedReportingPeriodLabel: string;
+    unifiedActionabilityLabel: string;
+    unifiedActionableYes: string;
+    unifiedActionableNo: string;
+    unifiedPreservedInvalidationLabel: string;
     derivedNotObserved: string;
     retainedEvidenceFailed: string;
     horizon1_4Weeks: string;

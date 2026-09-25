@@ -40,6 +40,7 @@ import {
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import { derivativesForRadar } from "@/lib/market-radar/derivatives-bridge";
+import { buildUnifiedIntelligence } from "@/lib/unified-intelligence";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { useNavigate } from "react-router";
@@ -1211,6 +1212,13 @@ export default function Dashboard() {
           bias: ar.bias,
           recommendation: ar.recommendation,
         } : undefined,
+        // Phase 277 — the unified technical+fundamental assessment produced for
+        // this instrument by the real pipeline is handed to the scanner as
+        // evidence. It is built from the SAME analysis result that is displayed,
+        // so the radar can never disagree with the analysis the user sees.
+        // Absent when the pipeline produced no unified object: the scanner then
+        // assumes nothing about the missing evidence class.
+        unified: ar ? buildUnifiedIntelligence(ar) : undefined,
         additionalEvidence: additionalEvidence.length > 0 ? additionalEvidence : undefined,
       } as RadarCandidateSource;
     });

@@ -157,6 +157,21 @@ export interface CandidateInput {
   hasCOT?: boolean;
   /** Whether execution quality data is available. */
   hasExecutionQuality?: boolean;
+
+  // ── Phase 277 — unified technical + fundamental confluence ──
+  /**
+   * Whether a unified assessment was supplied for this candidate. Identity of
+   * the evidence class only; the policy below is deterministic.
+   */
+  hasUnifiedIntelligence?: boolean;
+  /** Unified confluence state (aligned_*, conflicting, mixed, *_only). */
+  unifiedState?: string;
+  /** Whether the unified layer justified a combined directional conclusion. */
+  unifiedActionable?: boolean;
+  /** Deterministic ranking delta for that state (see unified-confluence.ts). */
+  unifiedScoreDelta?: number;
+  /** Upper bound on confidence implied by that state (never a raise). */
+  unifiedConfidenceCap?: number;
 }
 
 export interface RankedInstrument {

@@ -30,6 +30,10 @@ export type { RadarScanResult, RadarScanConfig, RadarOpportunity } from "./types
 import { CORRELATION_CLUSTERS } from "./universe";
 import { buildRadarCandidate, type RadarCandidateSource } from "./candidate-builder";
 import {
+  evaluateUnifiedConfluence,
+  type UnifiedConfluenceEvaluation,
+} from "./unified-confluence";
+import {
   checkFreshnessEligibility,
   assessFreshness,
   summarizeFreshness,
@@ -75,7 +79,15 @@ function scoreOpportunity(
   horizon: TradingMode | InvestorHorizon,
   candidate?: CandidateInput,
   now?: number,
-): { score: number; confidence: number; supporting: string[]; conflicting: string[]; missing: string[]; reasons: string[] } {
+): {
+  score: number;
+  confidence: number;
+  supporting: string[];
+  conflicting: string[];
+  missing: string[];
+  reasons: string[];
+  unified: UnifiedConfluenceEvaluation;
+} {
   const snapshot = source.snapshot;
   const supporting: string[] = [];
   const conflicting: string[] = [];
@@ -214,6 +226,26 @@ function scoreOpportunity(
     }
   }
 
+  // ── Phase 277 — Unified Intelligence confluence ──
+  // The unified layer's state contributes a FIXED, disclosed delta (see
+  // unified-confluence.ts) and can only ever CAP confidence. Two evidence
+  // classes never double-count here: an aligned pair adds one confluence
+  // confirmation, not a second copy of the technical evidence, and a
+  // technical-only read adds nothing at all because its evidence is already
+  // scored by the components above.
+  const unified = evaluateUnifiedConfluence(source.unified);
+  if (unified.present) {
+    score += unified.policy.scoreDelta;
+    supporting.push(...unified.supporting);
+    conflicting.push(...unified.conflicting);
+    missing.push(...unified.missing);
+  }
+
+  // Confluence may only LOWER confidence. Its supporting statements restate
+  // evidence that the components above already counted, so they are excluded
+  // from the coherence ratio — two evidence classes never double-count.
+  const supportingCountBeforeConfluence = supporting.length - unified.supporting.length;
+
   const { confidence } = assessEvidenceConfidence({
     freshness,
     dataCompleteness:
@@ -230,25 +262,57 @@ function scoreOpportunity(
       candidate?.providerCoverage === "NONE"
         ? candidate.providerCoverage
         : "NONE",
-    missingCriticalCount: missing.length,
+    // Phase 277 — a documented absence of fundamental coverage is reported in
+    // missingInformation but is NOT a critical gap: an instrument without
+    // fundamentals keeps the opportunity quality it had before this layer.
+    missingCriticalCount: missing.length - unified.informationalMissing.length,
     conflictingCount: conflicting.length,
     hasVerifiedLivePrice: Boolean(
       snapshot && snapshot.price > 0 && snapshot.quality !== "UNAVAILABLE",
     ),
     hasOhlcv: Boolean(snapshot?.ohlcvAvailable),
     hasExecutionEvidence: snapshot?.spreadBps !== undefined,
-    supportingCount: supporting.length,
+    supportingCount: supportingCountBeforeConfluence,
   });
+
+  // Confluence can only LOWER the opportunity's confidence, never raise it:
+  // the cap is applied on top of a confidence the confluence itself cannot
+  // inflate, so an aligned pair is never "more confident" merely for having
+  // two sources.
+  const cappedConfidence =
+    unified.policy.confidenceCap !== undefined
+      ? Math.min(confidence, unified.policy.confidenceCap)
+      : confidence;
 
   // Build primary reasons from top supporting evidence
   const topReasons = supporting.slice(0, 3);
 
-  return { score, confidence, supporting, conflicting, missing, reasons: topReasons };
+  return {
+    score,
+    confidence: cappedConfidence,
+    supporting,
+    conflicting,
+    missing,
+    reasons: topReasons,
+    unified,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════
 // INVALIDATION CONDITIONS
 // ═══════════════════════════════════════════════════════════════
+
+/**
+ * Phase 277 — when the unified assessment carries the technical engine's own
+ * invalidation, it is added verbatim. Nothing is fabricated: if the engine
+ * supplied no level, no level is invented here.
+ */
+function unifiedInvalidationConditions(source: RadarCandidateSource): string[] {
+  const unified = source.unified;
+  const invalidation = unified?.technical.invalidation;
+  if (!invalidation) return [];
+  return [`${invalidation} (technical invalidation, preserved by the engine)`];
+}
 
 function buildInvalidationConditions(
   source: RadarCandidateSource,
@@ -665,14 +729,45 @@ export function scanRadar(
       });
       const scored = scoreOpportunity(source, horizon, candidate, timestamp);
 
-      const lifecycle: OpportunityLifecycle = scored.score >= 50 ? "ACTIVE" : scored.score >= 30 ? "QUALIFIED" : "DISCOVERED";
-      const qualityTier = assignQualityTier(
+      // ── Phase 277 — a combined directional call is presented as "clean"
+      // only when the unified layer justified it. When it did not (conflict,
+      // mixed, insufficient, fundamental-only, or a directional pair with no
+      // invalidation) the opportunity is still shown, but its lifecycle and
+      // quality tier are capped so it cannot read as an actionable signal,
+      // and the reason is stated in the evidence lists.
+      const confluence = scored.unified;
+      const baseLifecycle: OpportunityLifecycle =
+        scored.score >= 50 ? "ACTIVE" : scored.score >= 30 ? "QUALIFIED" : "DISCOVERED";
+      const lifecycle: OpportunityLifecycle = confluence.blocksCleanActionability
+        ? baseLifecycle === "ACTIVE"
+          ? "QUALIFIED"
+          : baseLifecycle
+        : baseLifecycle;
+
+      const rawQualityTier = assignQualityTier(
         scored.score,
         scored.confidence,
         candidate?.dataCompleteness ?? "NONE",
         scored.conflicting.length,
         freshness,
       );
+      // Capped at C — "Mixed Evidence". A — Strong / B — Good are reserved for
+      // opportunities whose combined conclusion the unified layer supported.
+      const qualityTier: QualityTier =
+        confluence.blocksCleanActionability && (rawQualityTier === "A" || rawQualityTier === "B")
+          ? "C"
+          : rawQualityTier;
+
+      const conflictingEvidence = [...scored.conflicting];
+      const supportingEvidence = [...scored.supporting];
+      const missingInformation = [...scored.missing];
+      if (confluence.blocksCleanActionability) {
+        conflictingEvidence.push(
+          `unified intelligence did not justify a combined directional conclusion — ${confluence.actionabilityReason}`,
+        );
+      } else if (confluence.present) {
+        supportingEvidence.push(`unified assessment: ${confluence.explanation}`);
+      }
 
       // Phase 55: Build analytical context summary for the opportunity
       const ad = source.analyticalDepth;
@@ -705,10 +800,34 @@ export function scanRadar(
         confidence: scored.confidence,
         dataCompleteness: candidate?.dataCompleteness ?? "NONE",
         freshness,
-        supportingEvidence: scored.supporting,
-        conflictingEvidence: scored.conflicting,
-        missingInformation: scored.missing,
-        invalidationConditions: buildInvalidationConditions(source, freshness),
+        supportingEvidence,
+        conflictingEvidence,
+        missingInformation,
+        invalidationConditions: [
+          ...buildInvalidationConditions(source, freshness),
+          ...unifiedInvalidationConditions(source),
+        ],
+        // Phase 277 — the unified assessment travels with the opportunity,
+        // including the technical engine's own invalidation, both providers'
+        // native identities and the fiscal reporting period.
+        ...(confluence.present
+          ? {
+              unified: {
+                state: source.unified!.state,
+                technicalBias: source.unified!.technical.bias,
+                fundamentalState: source.unified!.fundamental.state,
+                agreement: source.unified!.confluence.agreement,
+                confidence: source.unified!.confidence,
+                actionable: confluence.actionable,
+                actionabilityReason: confluence.actionabilityReason,
+                combinedDirectional: confluence.policy.combinedDirectional,
+                blocksCleanActionability: confluence.blocksCleanActionability,
+                explanation: confluence.explanation,
+                ...(confluence.invalidation ? { invalidation: confluence.invalidation } : {}),
+                provenance: confluence.provenance,
+              },
+            }
+          : {}),
         primaryReasons: scored.reasons,
         providerCoverage: candidate?.providerCoverage ?? "NONE",
         lastUpdated: timestamp,

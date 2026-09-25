@@ -312,6 +312,30 @@ export interface RadarOpportunity {
   /** Horizon this opportunity was evaluated for (explicit). */
   horizon?: TradingMode | InvestorHorizon;
   /**
+   * Phase 277 — unified technical + fundamental confluence that qualified or
+   * rejected this opportunity. Present only when the analysis pipeline actually
+   * produced a unified assessment; its provenance (both providers, both native
+   * ids, both instants, the fiscal reporting period) travels with it, and the
+   * fiscal period is never relabelled as a market timestamp.
+   */
+  unified?: {
+    state: import("@/lib/unified-intelligence").UnifiedState;
+    technicalBias: import("@/lib/unified-intelligence").EvidenceBias;
+    fundamentalState: string;
+    agreement: string;
+    confidence: import("@/lib/unified-intelligence").UnifiedConfidence;
+    actionable: boolean;
+    actionabilityReason: string;
+    combinedDirectional: boolean;
+    blocksCleanActionability: boolean;
+    /** Deterministic one-line summary of the confluence evaluation. */
+    explanation: string;
+    /** The technical engine's own invalidation, preserved verbatim. */
+    invalidation?: string;
+    provenance: import("./unified-confluence").UnifiedConfluenceProvenance;
+  };
+
+  /**
    * Source evidence snapshot — exact values that produced this opportunity.
    * Price is observed (or receipt-by-policy), spread/volatility are DERIVED and labeled as such.
    */
