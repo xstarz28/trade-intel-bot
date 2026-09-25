@@ -183,6 +183,7 @@ async function callConvex(kind, path, fnArgs, token = null) {
       httpStatus: response.status,
       appError,
       value: body?.value,
+      rawBody: body?.value === undefined ? text.slice(0, 200) : null,
       transportError: null,
     };
   } catch (error) {
@@ -233,6 +234,7 @@ const deep = (obj, path) => path.split(".").reduce((acc, key) => (acc == null ? 
 
 function summarize(asset, instrumentType, instrument, provider, providerInstrumentId, response) {
   const value = response.value;
+  const rawBody = response.rawBody ? sanitize(String(response.rawBody)).slice(0, 200) : null;
   const result = deep(value, "result") ?? {};
   const unified = deep(result, "unifiedIntelligence") ?? null;
   const fa = deep(result, "fundamentalAssessment") ?? null;
@@ -271,6 +273,7 @@ function summarize(asset, instrumentType, instrument, provider, providerInstrume
       httpStatus: response.httpStatus,
       appStatus: entitlementStatus ?? null,
       error: failureText || null,
+      rawBody,
     },
     providerObservationTimestamp: price?.timestamp ?? null,
     marketDataFreshness: freshness,
@@ -496,6 +499,18 @@ async function runConvexRunMode() {
       (health.ok ? ` value=${sanitize(JSON.stringify(health.value)).slice(0, 240)}` : ` stderr=${sanitize((health.stderr ?? "").replace(/\n+/g, " ¶ ")).slice(0, 300)}`),
   );
 
+  // ── Does the deployment answer ANY call? (identity-injected and not) ──
+  const liveness = convexRun("auth:isAuthenticated", {}, null);
+  lines.push(
+    `liveness auth:isAuthenticated (no identity): exit=${String(liveness.exitCode)} ok=${String(liveness.ok)}` +
+      (liveness.ok ? ` value=${sanitize(JSON.stringify(liveness.value)).slice(0, 120)}` : ` stderr=${sanitize((liveness.stderr ?? "").replace(/\n+/g, " ¶ ")).slice(0, 300)}`),
+  );
+  const guest = convexRun("entitlements:getMyEntitlement", {}, null);
+  lines.push(
+    `guest entitlements:getMyEntitlement (no identity): exit=${String(guest.exitCode)} ok=${String(guest.ok)}` +
+      (guest.ok ? ` value=${sanitize(JSON.stringify(guest.value)).slice(0, 200)}` : ` stderr=${sanitize((guest.stderr ?? "").replace(/\n+/g, " ¶ ")).slice(0, 300)}`),
+  );
+
   // ── The guard the product guarantees: no identity, no analysis ────
   const unauth = convexRun("protectedAnalysis:runProtectedAnalysis", {
     input: {
@@ -508,7 +523,10 @@ async function runConvexRunMode() {
     },
   }, null);
   const unauthStatus = unauth.value?.status ?? (unauth.appError ? "error" : unauth.stderr ? "cli-error" : "unknown");
-  lines.push(`unauthenticated probe: status=${unauthStatus}${unauth.appError ? ` error=${sanitize(unauth.appError).slice(0, 160)}` : ""}`);
+  lines.push(
+    `unauthenticated probe (analysis, no identity): status=${unauthStatus}` +
+      ` stderr=${sanitize((unauth.stderr ?? "").replace(/\n+/g, " ¶ ")).slice(0, 300)}`,
+  );
 
   // ── The four assets, through the deployed production action ───────
   for (const spec of ASSETS) {
