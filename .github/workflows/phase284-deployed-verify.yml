@@ -13,10 +13,15 @@
 #   upload — it only CALLS functions that are already deployed.
 # · It does NOT print any credential value. Configuration is reported by NAME
 #   with PRESENT/MISSING only, and the deployment's own variables are read with
-#   `convex env list --names-only`, which never produces the value side at all.
+#   `convex env list --names-only`, which never generates the value side at all.
 # · It does NOT touch product source. It runs `scripts/phase284-deployed-verify.mjs`
 #   (temporary, verification-only) against the existing production action
 #   `protectedAnalysis:runProtectedAnalysis`, over the app's own anonymous auth.
+#
+# NOTE ON EXPRESSIONS: presence booleans are computed once into job-level env.
+# `secrets`/`vars` are not used inside step `if` expressions — a workflow that
+# does so is rejected at parse time (observed: the previous revision failed in
+# 0s with "workflow file issue").
 #
 # This file and the script it runs are removed once the observation is recorded.
 
@@ -34,13 +39,14 @@ permissions:
   contents: read
 
 jobs:
-  # Runs immediately with repository-scoped configuration.
+  # Repository-scoped configuration.
   deployed-verify:
     name: Deployed four-asset verification (anonymous, read-only)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       HAS_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+      HAS_DEPLOYMENT_URL: ${{ vars.VITE_CONVEX_URL != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -81,30 +87,28 @@ jobs:
         run: node scripts/phase284-deployed-verify.mjs --presence
 
       - name: Four assets through the deployed production action
+        if: env.HAS_DEPLOYMENT_URL == 'true'
         env:
-          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
           PHASE284_DEPLOYMENT_URL: ${{ vars.VITE_CONVEX_URL }}
         run: node scripts/phase284-deployed-verify.mjs --four-asset
 
-      # Only if no deployment is configured above: the deployment this
-      # repository's own records name as the project's dev deployment
-      # (docs/UAT-MATRIX.md §35j and the Phase 212 operator run sheet). The
-      # report always states which source was used.
-      - name: Four assets against the documented dev deployment (fallback)
-        if: ${{ vars.VITE_CONVEX_URL == '' }}
-        env:
-          PHASE284_FALLBACK_DEPLOYMENT: https://tough-goose-455.convex.cloud
-        run: node scripts/phase284-deployed-verify.mjs --four-asset
+      - name: No repository deployment URL configured
+        if: env.HAS_DEPLOYMENT_URL == 'false'
+        run: |
+          echo "::notice title=Phase 284 repository configuration::VITE_CONVEX_URL is not set at repository scope; see the Production-scoped job."
 
-  # Repository-scoped configuration may be absent because the deploy key lives
-  # in the Production environment instead. This job only reports presence; if
-  # the environment is approval-gated it simply waits, which is itself the
-  # answer to "is the production configuration human-gated".
+  # Repository-scoped configuration may be absent because the deploy key and the
+  # deployment URL live in the Production environment instead. That environment
+  # carries no approval gate here (observed: the job runs immediately), so this
+  # job also performs the live run when the environment supplies a URL.
   production-scoped-config:
-    name: Production-scoped configuration presence (names only)
+    name: Production-scoped configuration and deployed verification
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     environment: Production
+    env:
+      HAS_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+      HAS_DEPLOYMENT_URL: ${{ vars.VITE_CONVEX_URL != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -112,7 +116,7 @@ jobs:
         with:
           node-version: 20
 
-      - name: Presence (reported as an annotation so it is machine-readable)
+      - name: Production-scoped presence (names only)
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
           CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
@@ -121,29 +125,34 @@ jobs:
         run: node scripts/phase284-deployed-verify.mjs --presence
 
       - name: Deployment env var NAMES (only when a deploy key is available)
+        if: env.HAS_DEPLOY_KEY == 'true'
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
           CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
-        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
         run: |
           set -o pipefail
-          npx --yes convex@1.42.1 env list --prod --names-only             | grep -E '^[A-Z0-9_]+$' | sort -u > "$RUNNER_TEMP/deployment-env-names.txt" || true
+          npx --yes convex@1.42.1 env list --prod --names-only \
+            | grep -E '^[A-Z0-9_]+$' | sort -u > "$RUNNER_TEMP/deployment-env-names.txt" || true
           echo "deployment env var names recorded: $(wc -l < "$RUNNER_TEMP/deployment-env-names.txt")"
 
       - name: Report deployment env var names (no values)
-        if: ${{ secrets.CONVEX_DEPLOY_KEY != '' }}
+        if: env.HAS_DEPLOY_KEY == 'true'
         env:
           PHASE284_DEPLOYMENT_ENV_NAMES_FILE: ${{ runner.temp }}/deployment-env-names.txt
         run: node scripts/phase284-deployed-verify.mjs --presence
 
       - name: Four assets through the deployed production action
+        if: env.HAS_DEPLOYMENT_URL == 'true'
         env:
-          VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
           PHASE284_DEPLOYMENT_URL: ${{ vars.VITE_CONVEX_URL }}
         run: node scripts/phase284-deployed-verify.mjs --four-asset
 
+      # Only when no deployment is configured anywhere: the deployment this
+      # repository's own records name as the project's dev deployment
+      # (docs/UAT-MATRIX.md §35j and the Phase 212 operator run sheet). The
+      # report always states which source produced the identity.
       - name: Four assets against the documented dev deployment (fallback)
-        if: ${{ vars.VITE_CONVEX_URL == '' }}
+        if: env.HAS_DEPLOYMENT_URL == 'false'
         env:
           PHASE284_FALLBACK_DEPLOYMENT: https://tough-goose-455.convex.cloud
         run: node scripts/phase284-deployed-verify.mjs --four-asset
