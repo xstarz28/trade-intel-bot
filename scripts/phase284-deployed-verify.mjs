@@ -323,8 +323,8 @@ function sanitize(text) {
  * disables the guest provider (its anonymous sign-in answers Server Error);
  * the provider path under test is the shipped one either way.
  */
-function convexRun(functionName, fnArgs, identity) {
-  const cli = ["--yes", "convex@1.42.1", "run", "--prod", functionName, JSON.stringify(fnArgs)];
+function convexRun(functionName, fnArgs, identity, useProd = true) {
+  const cli = ["--yes", "convex@1.42.1", "run", ...(useProd ? ["--prod"] : []), functionName, JSON.stringify(fnArgs)];
   if (identity) cli.push("--identity", JSON.stringify(identity));
   const result = spawnSync("npx", cli, {
     encoding: "utf8",
@@ -350,7 +350,7 @@ function convexRun(functionName, fnArgs, identity) {
     appError,
     value,
     raw: sanitize(stdout.slice(0, 300)),
-    stderr: sanitize((result.stderr ?? "").slice(0, 300)),
+    stderr: sanitize((result.stderr ?? "").slice(0, 800)),
   };
 }
 
@@ -456,11 +456,20 @@ async function runConvexRunMode() {
   lines.push(`CONVEX_SITE_URL=${site || "(missing in workflow env)"}`);
 
   // ── Deployment environment variable NAMES (never values) ──────────
-  const envList = spawnSync("npx", ["--yes", "convex@1.42.1", "env", "list", "--prod", "--names-only"], {
-    encoding: "utf8",
-    timeout: 120_000,
-    env: process.env,
-  });
+  const runEnvList = (flags) =>
+    spawnSync("npx", ["--yes", "convex@1.42.1", "env", "list", ...flags, "--names-only"], {
+      encoding: "utf8",
+      timeout: 120_000,
+      env: process.env,
+    });
+  let envList = runEnvList(["--prod"]);
+  if (envList.status !== 0) {
+    const retry = runEnvList([]);
+    lines.push(
+      `env list --prod failed (exit=${String(envList.status)}); retried without --prod: exit=${String(retry.status)}`,
+    );
+    envList = retry;
+  }
   const names = (envList.stdout ?? "")
     .split("\n")
     .map((l) => l.trim())
@@ -468,7 +477,7 @@ async function runConvexRunMode() {
     .sort();
   lines.push(
     `convex env list --names-only: exit=${String(envList.status)} names=${names.length}` +
-      (envList.status === 0 ? "" : ` err=${sanitize((envList.stderr ?? "").split("\n")[0])}`),
+      (envList.status === 0 ? "" : ` stderr=${sanitize((envList.stderr ?? "").replace(/\n+/g, " ¶ ")).slice(0, 800)}`),
   );
   if (names.length > 0) lines.push(`deployment env var names: ${names.join(", ")}`);
   console.log(`[284] ${lines.join("\n[284] ")}`);
@@ -509,19 +518,37 @@ async function runConvexRunMode() {
       },
       identity,
     );
-    if (!call.ok && call.value === undefined) {
-      lines.push(
-        `${spec.asset} ${spec.instrument}: NOT_EXECUTED (cli exit=${String(call.exitCode)}${call.stderr ? ` err=${call.stderr.split("\n")[0]}` : ""})`,
+    let attempt = call;
+    if (!attempt.ok && attempt.value === undefined) {
+      const retry = convexRun(
+        "protectedAnalysis:runProtectedAnalysis",
+        {
+          input: {
+            instrument: spec.instrument,
+            instrumentType: spec.instrumentType,
+            timeframe: spec.timeframe,
+            tradingStyle: spec.tradingStyle,
+            provider: spec.provider,
+            providerInstrumentId: spec.providerInstrumentId,
+          },
+        },
+        identity,
+        false,
       );
-      continue;
+      if (retry.ok || retry.value !== undefined) attempt = retry;
+      else
+        lines.push(
+          `${spec.asset} ${spec.instrument}: CLI BOTH FORMS FAILED exit=${String(attempt.exitCode)}/${String(retry.exitCode)} stderr=${sanitize((retry.stderr ?? "").replace(/\n+/g, " ¶ "))}`,
+        );
     }
+    if (!attempt.ok && attempt.value === undefined) continue;
     const record = summarize(
       spec.asset,
       spec.instrumentType,
       spec.instrument,
       spec.provider,
       spec.providerInstrumentId,
-      { ok: call.ok, httpStatus: 200, appError: call.appError, value: call.value, transportError: null },
+      { ok: attempt.ok, httpStatus: 200, appError: attempt.appError, value: attempt.value, transportError: null },
     );
     lines.push(`${spec.asset} ${spec.instrument}: ${JSON.stringify(record)}`);
   }
