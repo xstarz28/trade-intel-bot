@@ -113,6 +113,38 @@ export function toTokenomistSymbol(instrument: string): string | null {
   return TOKENOMIST_MAP[instrument.toUpperCase()]?.symbol ?? null;
 }
 
+// ── Phase 279 — base-asset resolution ───────────────────────────
+//
+// The live pipeline routes crypto instruments with their EXACT provider-native
+// ids ("BTC-USDT" on OKX, "BTC/USDT" via ccxt). The base asset of such an id is
+// the asset itself, not a substituted symbol — so it can be resolved from the
+// id's own structure. Nothing here invents a mapping: DeFiLlama resolution
+// reuses the VERIFIED table above, and the Tokenomist symbol IS the base asset.
+
+/** Split a provider-native crypto id into its base asset ("BTC-USDT" → "BTC"). */
+export function baseAssetOf(instrumentRaw: string): string | null {
+  const sym = instrumentRaw.trim().toUpperCase();
+  const match = /^([A-Z0-9]{2,10})\s*[\/\-]\s*([A-Z0-9]{2,10})$/.exec(sym);
+  return match ? match[1] : null;
+}
+
+/**
+ * DeFiLlama mapping for an instrument whose base asset is already known.
+ * Uses the VERIFIED table only — a token with no verified chain entry returns
+ * null (the caller reports TVL unavailable rather than guessing a slug).
+ */
+export function toDefiLlamaIdByBaseAsset(baseAssetRaw: string): DefiLlamaMapping | null {
+  const base = baseAssetRaw.trim().toUpperCase();
+  if (!/^[A-Z0-9]{2,10}$/.test(base)) return null;
+  return DEFILLAMA_MAP[`${base}/USD`] ?? null;
+}
+
+/** Tokenomist symbol for an instrument whose base asset is already known. */
+export function toTokenomistSymbolByBaseAsset(baseAssetRaw: string): string | null {
+  const base = baseAssetRaw.trim().toUpperCase();
+  return /^[A-Z0-9]{2,10}$/.test(base) ? base : null;
+}
+
 // ── Instrument Applicability ────────────────────────────────────
 
 /**

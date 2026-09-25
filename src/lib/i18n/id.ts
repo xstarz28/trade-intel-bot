@@ -1211,6 +1211,7 @@ const id: Translations = {
       observedLabel: "Diamati",
       confidenceLabel: "Keyakinan",
       dimensionsLabel: "Dimensi",
+      comparisonsLabel: "Perbandingan",
       limitationsLabel: "Keterbatasan",
       unavailableLabel: "tidak tersedia",
       unavailableBody: "Bukti fundamental tidak tersedia untuk instrumen ini — tidak ada penilaian yang dibuat.",

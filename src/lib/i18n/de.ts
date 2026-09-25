@@ -1216,6 +1216,7 @@ const de: Translations = {
       observedLabel: "Beobachtet",
       confidenceLabel: "Konfidenz",
       dimensionsLabel: "Dimensionen",
+      comparisonsLabel: "Vergleiche",
       limitationsLabel: "Einschränkungen",
       unavailableLabel: "nicht verfügbar",
       unavailableBody: "Fundamentaldaten für dieses Instrument nicht verfügbar — keine Bewertung erstellt.",

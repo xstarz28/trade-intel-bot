@@ -48,11 +48,20 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
     return toDefiLlamaId(instrument) !== null;
   }
 
-  async fetch(instrument: string): Promise<CryptoIntelligenceProviderResult | null> {
-    if (!this.supportsInstrument(instrument)) return null;
-
-    const mapping = toDefiLlamaId(instrument);
+  /**
+   * Phase 279 — `resolvedMapping` lets the live crypto-fundamentals action pass
+   * a mapping resolved from the instrument's OWN base asset (the live pipeline
+   * routes provider-native ids such as "BTC-USDT", which the canonical table
+   * above does not key on). No new slug is ever invented: the caller can only
+   * supply a mapping that this repository's verified table already defines.
+   */
+  async fetch(
+    instrument: string,
+    resolvedMapping?: { slug: string; level: "chain" | "protocol" },
+  ): Promise<CryptoIntelligenceProviderResult | null> {
+    const mapping = resolvedMapping ?? toDefiLlamaId(instrument);
     if (!mapping) return null;
+    if (!resolvedMapping && !this.supportsInstrument(instrument)) return null;
 
     const fetchFn = this.httpFetch ?? fetch;
     const observedAt = Date.now();

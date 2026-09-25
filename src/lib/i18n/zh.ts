@@ -1214,6 +1214,7 @@ const zh: Translations = {
       observedLabel: "观测时间",
       confidenceLabel: "置信度",
       dimensionsLabel: "评估维度",
+      comparisonsLabel: "比较",
       limitationsLabel: "局限性",
       unavailableLabel: "不可用",
       unavailableBody: "该标的基本面证据不可用 — 未生成评估。",

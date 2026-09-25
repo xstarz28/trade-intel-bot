@@ -2307,10 +2307,36 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   );
   const fundamentalSummary = generateFundamentalSummary(input, fundamentalScore);
 
-  // Phase 276 — deterministic fundamental assessment, computed from the
-  // provider payload only (no clock). Attached as its own section: it never
-  // overwrites technical evidence and never masquerades as a market quote.
-  const fundamentalAssessment = assessFundamentals(input.fundamentalData);
+  // Phase 276/279 — deterministic fundamental assessment, computed from the
+  // provider payloads only (no clock). The DOMAIN follows the routing
+  // instrumentType, so a crypto instrument is assessed with crypto-native
+  // evidence (tokenomics/protocol, derivatives as context only) and a forex
+  // pair with two-sided macro evidence — never with another domain's metrics.
+  // Attached as its own section: it never overwrites technical evidence and
+  // never masquerades as a market quote.
+  const fundamentalAssessment = assessFundamentals(input.fundamentalData, {
+    instrument: input.instrument,
+    instrumentType: input.instrumentType,
+    provider: input.provider ?? input.marketData?.provider,
+    providerInstrumentId: input.providerInstrumentId ?? input.marketData?.providerInstrumentId,
+    // Crypto domain evidence (crypto only; absent for other domains).
+    crypto: input.cryptoIntelligenceContext,
+    derivatives: input.derivativesData,
+    // The market price is used ONLY for the derived market-cap context, and it
+    // is the pipeline's own price snapshot — never a re-fetch, never a guess.
+    price: input.marketData?.price?.price,
+    priceObservedAt: input.marketData?.price?.timestamp,
+    priceProvider: input.marketData?.price?.source,
+    // Forex domain evidence (macro/relative; absent for other domains).
+    calendar: input.calendarData,
+    // Forex + commodity evidence: the Treasury curve is a macro driver for
+    // both, and COT covers FX contracts and the mapped commodity contracts.
+    treasury: input.treasuryData,
+    cot: input.cotData,
+    // Commodity domain evidence (U.S. EIA petroleum stocks; absent otherwise).
+    eia: input.eiaData,
+    macro: input.macroData,
+  });
 
   // ── Phase 3B/4: position sizing — ONLY from complete real inputs ──
   // Never fabricated. Spec resolution is honest-partial: quote currency may

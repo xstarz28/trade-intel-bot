@@ -1217,6 +1217,7 @@ const es: Translations = {
       observedLabel: "Observado",
       confidenceLabel: "Confianza",
       dimensionsLabel: "Dimensiones",
+      comparisonsLabel: "Comparaciones",
       limitationsLabel: "Limitaciones",
       unavailableLabel: "no disponible",
       unavailableBody: "Evidencia fundamental no disponible para este instrumento — no se generó evaluación.",

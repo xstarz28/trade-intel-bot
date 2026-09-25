@@ -1216,6 +1216,7 @@ const ko: Translations = {
       observedLabel: "관측",
       confidenceLabel: "신뢰도",
       dimensionsLabel: "평가 항목",
+      comparisonsLabel: "비교",
       limitationsLabel: "제한 사항",
       unavailableLabel: "사용 불가",
       unavailableBody: "이 종목의 펀더멘털 증거를 사용할 수 없습니다 — 평가가 생성되지 않았습니다.",

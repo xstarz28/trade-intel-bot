@@ -41,9 +41,18 @@ export function buildCryptoIntelligenceContext(
   derivatives?: DerivativesIntelligence,
   defi?: DeFiIntelligence,
   tokenomics?: TokenomicsIntelligence,
+  /**
+   * Phase 279 — the ROUTING asset class, when the caller has one. The live
+   * pipeline routes provider-native ids ("BTC-USDT", "BTC/USDT") that are not
+   * keys of the canonical tables above, but it KNOWS the asset class from
+   * discovery/selection — so it is authoritative when supplied. Nothing is
+   * inferred from the ticker: a caller that supplies a non-crypto class still
+   * gets null, and a caller that supplies nothing keeps the table gate.
+   */
+  instrumentType?: string,
 ): CryptoIntelligenceContext | null {
   // Non-crypto instruments: explicitly not applicable
-  if (!isCryptoInstrument(instrument)) {
+  if (instrumentType !== undefined ? instrumentType !== "crypto" : !isCryptoInstrument(instrument)) {
     return null;
   }
 

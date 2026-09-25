@@ -171,7 +171,10 @@ describe("UI render validation — execution & slow data honesty", () => {
     });
     render(<AnalysisResultDisplay result={r} />);
     expect(screen.getByText(/eia-inventory/)).toBeInTheDocument();
-    expect(screen.getByText(/FRESH/)).toBeInTheDocument();
+    // The provider's own freshness label is shown — in the slow-data panel and
+    // in the fundamental assessment's EIA evidence — so presence is asserted
+    // rather than a single node.
+    expect(screen.getAllByText(/FRESH/).length).toBeGreaterThan(0);
     // Observation date verbatim; the fetchedAt clock time is NOT the obs date.
     expect(screen.getByText(/obs:\s*2026-08-15/)).toBeInTheDocument();
     expect(screen.queryByText(/obs:\s*2026-08-20/)).toBeNull(); // fetchedAt ≠ observationDate

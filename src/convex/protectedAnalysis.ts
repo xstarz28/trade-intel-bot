@@ -75,6 +75,14 @@ import { api, internal } from "./_generated/api";
 import { runAnalysis } from "@/lib/analysis-engine";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
+// Phase 279 — the crypto-native fundamental acquisition leg plus the ONE
+// crypto intelligence context builder. Both are shared with the evidence
+// consumers, so the assessment, the UI card and the evidence challenge can
+// never disagree about what the providers returned.
+import { acquireCryptoFundamentals } from "@/lib/data/crypto/fundamentals-acquisition";
+import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
+import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
+import { isRecord } from "@/lib/data/json/narrow";
 import {
   type ProviderOutcome,
   optionalSlowEnvelope,
@@ -393,6 +401,22 @@ export interface ProtectedAnalysisResponse {
 }
 
 /**
+ * Phase 279 — the instant a derivatives payload was OBSERVED.
+ *
+ * Preference order is the provider's own point timestamp (`CryptoDerivativesData
+ * .timestamp`, derived from CoinGlass data points), then the observation time
+ * the shared cache recorded for this leg. The local clock is never used: an
+ * unknown instant stays 0, which every consumer already renders as "no
+ * recorded observation" instead of inventing a fresh one.
+ */
+function derivativeObservationMs(payload: unknown, outcome: ProviderOutcome<unknown> | undefined): number {
+  const ts = isRecord(payload) ? payload.timestamp : undefined;
+  if (typeof ts === "number" && Number.isFinite(ts) && ts > 0) return ts;
+  const observed = outcome?.observedAt;
+  return typeof observed === "number" && Number.isFinite(observed) && observed > 0 ? observed : 0;
+}
+
+/**
  * Which AnalysisInput field each provider ultimately populates.
  *
  * Used only for diagnostics, to distinguish "the provider answered" from "the
@@ -418,6 +442,9 @@ const LEG_DATASET: Record<string, { dataset: string; cached: boolean }> = {
   "okx-order-book": { dataset: "order-book", cached: false },
   "okx-instrument-spec": { dataset: "instrument-spec", cached: true },
   "fx-rate": { dataset: "fx-rate", cached: true },
+  // Phase 279 — tokenomics (Tokenomist) + protocol datasets (DeFiLlama).
+  // Cached under the ONE shared cache, keyed on the provider-native identity.
+  "crypto-fundamentals": { dataset: "crypto-fundamentals", cached: true },
 };
 
 const USED_EVIDENCE_BY_PROVIDER: Record<string, string> = {
@@ -431,6 +458,7 @@ const USED_EVIDENCE_BY_PROVIDER: Record<string, string> = {
   "okx-order-book": "executionData",
   "okx-instrument-spec": "okxSpecData",
   "fx-rate": "fxRates",
+  "crypto-fundamentals": "cryptoIntelligenceContext",
 };
 
 export const runProtectedAnalysis = action({
@@ -663,6 +691,56 @@ export const runProtectedAnalysis = action({
             skippedLeg("coinglass", "not a crypto instrument"),
           );
 
+    // Phase 279 — crypto-NATIVE fundamental evidence: tokenomics (supply,
+    // unlock schedule) and protocol datasets (chain TVL, fees). These adapters
+    // existed since Phase 41 but no production path ever called them, so the
+    // crypto domain of the fundamental assessment had no crypto evidence to
+    // read. The leg runs only for crypto instruments, uses the provisioned
+    // providers only (no new provider, no substitution) and is non-fatal: an
+    // outage leaves the domain assessment explicitly unavailable.
+    const cryptoFundamentalsLeg =
+      assetClass === "crypto"
+        ? runProviderLeg<{
+            defi?: unknown;
+            tokenomics?: unknown;
+            legs: unknown;
+            observedAt?: number;
+            acquisition?: string;
+          }>({
+            provider: "crypto-fundamentals",
+            run: async () => {
+              const acquired = await acquireCryptoFundamentals({
+                instrument,
+                instrumentType,
+                ...(typeof trustedInput.providerInstrumentId === "string" &&
+                trustedInput.providerInstrumentId.length > 0
+                  ? { providerInstrumentId: trustedInput.providerInstrumentId }
+                  : {}),
+              });
+              const answered = acquired.legs.filter((l) => l.status === "ok").length;
+              return {
+                success: answered > 0,
+                data: {
+                  defi: acquired.defi,
+                  tokenomics: acquired.tokenomics,
+                  legs: acquired.legs,
+                  observedAt: acquired.observedAt,
+                  acquisition: acquired.acquisition,
+                },
+                ...(answered === 0
+                  ? {
+                      error: acquired.legs.map((l) => `${l.provider}: ${l.reason ?? "unavailable"}`).join("; "),
+                    }
+                  : {}),
+                acquisition: acquired.acquisition,
+                observedAt: acquired.observedAt,
+              };
+            },
+          })
+        : Promise.resolve(
+            skippedLeg("crypto-fundamentals", "not a crypto instrument"),
+          );
+
     // Bounded provider thunk for the Phase 15 policy module. The policy still
     // decides WHETHER a leg runs; the budget decides how long we wait for it.
     const budgeted =
@@ -787,6 +865,7 @@ export const runProtectedAnalysis = action({
       intelligenceLeg,
       calendarLeg,
       derivativesLeg,
+      cryptoFundamentalsLeg,
       slowLegTyped.then(
         (data) =>
           ({
@@ -802,8 +881,14 @@ export const runProtectedAnalysis = action({
       ),
     ]);
 
-    const [acquiredOutcome, intelOutcome, calendarOutcome, derivOutcome, slowOutcome] =
-      fanOut.outcomes;
+    const [
+      acquiredOutcome,
+      intelOutcome,
+      calendarOutcome,
+      derivOutcome,
+      cryptoFundOutcome,
+      slowOutcome,
+    ] = fanOut.outcomes;
 
     const acquired = successfulData(
       acquiredOutcome as ProviderOutcome<{ data?: unknown; technical?: unknown }>,
@@ -816,6 +901,12 @@ export const runProtectedAnalysis = action({
       }>,
     );
     const calendar = successfulData(calendarOutcome);
+    const cryptoFundamentals = successfulData(
+      cryptoFundOutcome as ProviderOutcome<{
+        defi?: unknown;
+        tokenomics?: unknown;
+      }>,
+    );
     const derivatives = successfulData(derivOutcome);
     const slow =
       successfulData(
@@ -849,6 +940,39 @@ export const runProtectedAnalysis = action({
     }
     if (calendar !== undefined) trustedInput.calendarData = calendar;
     if (derivatives !== undefined) trustedInput.derivativesData = derivatives;
+
+    // Phase 279 — assemble the ONE crypto intelligence context from the
+    // datasets that actually answered. Derivatives are folded in from the
+    // payload this run already acquired (never re-fetched), so the assessment,
+    // the UI and the evidence challenge all read one object. When no crypto
+    // dataset answered, NO context is attached: absent evidence stays absent
+    // instead of being replaced by an empty shell.
+    if (
+      assetClass === "crypto" &&
+      cryptoFundamentals !== undefined &&
+      (cryptoFundamentals.defi !== undefined || cryptoFundamentals.tokenomics !== undefined)
+    ) {
+      const derivativesIntelligence =
+        derivatives !== undefined
+          ? parseCoinGlassResult(
+              derivatives,
+              instrument,
+              derivativeObservationMs(derivatives, derivOutcome as ProviderOutcome<unknown>),
+            )
+          : undefined;
+      const context = buildCryptoIntelligenceContext(
+        instrument,
+        derivativesIntelligence,
+        cryptoFundamentals.defi as
+          | Parameters<typeof buildCryptoIntelligenceContext>[2]
+          | undefined,
+        cryptoFundamentals.tokenomics as
+          | Parameters<typeof buildCryptoIntelligenceContext>[3]
+          | undefined,
+        "crypto",
+      );
+      if (context) trustedInput.cryptoIntelligenceContext = context;
+    }
     if (slow.fxRates !== undefined) trustedInput.fxRates = slow.fxRates;
     if (slow.cotData !== undefined) trustedInput.cotData = slow.cotData;
     if (slow.executionData !== undefined) {

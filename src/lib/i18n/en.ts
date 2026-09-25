@@ -1207,6 +1207,7 @@ const en: Translations = {
       observedLabel: "Observed",
       confidenceLabel: "Confidence",
       dimensionsLabel: "Dimensions",
+      comparisonsLabel: "Comparisons",
       limitationsLabel: "Limitations",
       unavailableLabel: "unavailable",
       unavailableBody: "Fundamental evidence unavailable for this instrument — no assessment produced.",

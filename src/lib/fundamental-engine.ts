@@ -1,167 +1,135 @@
 /**
- * Phase 276 — Deterministic fundamental engine.
+ * Phase 279 — Deterministic fundamental engine (shared framework + dispatch).
  *
  * WHY THIS MODULE EXISTS
  * ----------------------
- * Until now the analysis pipeline attached raw Alpha Vantage fundamen-
- * tals (one P/E, one margin figure, the single latest quarter) and the
- * engine compared three numbers to static thresholds. No derived
- * metrics existed: trends, consistency and growth-vs-valuation context
- * were never computed, so the UI card showed raw fields with no inter-
- * pretation, no confidence behind it, and no stated limitations.
+ * Phase 276 replaced "compare three raw numbers to static thresholds" with a
+ * deterministic calculator over the Alpha Vantage equity payload. Phase 279
+ * generalises it: the SAME contract, the SAME state/confidence framework and
+ * the SAME analysis pipeline now serve all three core domains, because stock
+ * fundamentals are NOT universal fundamentals:
  *
- * This module is a PURE deterministic calculator. It takes exactly the
- * evidence the provider supplied (FundamentalData) — nothing else, not
- * even the analysis-run clock — and derives:
+ *   instrumentType "stock"  → equity adapter  (revenue/EPS/margins/valuation)
+ *   instrumentType "crypto" → crypto adapter  (supply, unlocks, TVL/fees,
+ *                             derivatived positioning as context only)
+ *   instrumentType "forex"  → forex adapter   (two-sided macro: policy,
+ *                             inflation, labour, growth, yields, positioning)
  *
- *   - growth metrics    (revenue trend, EPS trend, YoY growth when the
- *                        provider reports it or 5 comparable quarters exist)
- *   - profitability     (margins, ROE/ROA — cited as reported, not faked)
- *   - earnings quality  (per-quarter consistency, estimate beats/misses)
- *   - valuation context (P/E, forward P/E, P/B, P/S, EV ratios as reported
- *                        plus growth-vs-valuation context from real growth)
- *   - balance-sheet / debt / FCF — Alpha Vantage OVERVIEW+EARNINGS does
- *                        NOT supply balance-sheet or cash-flow line items,
- *                        so these dimensions are reported as UNAVAILABLE.
- *                        They are NEVER fabricated to complete a card.
+ *   instrumentType "commodity" → commodity adapter (EIA petroleum stocks,
+ *                             CFTC futures positioning, Treasury curve — each
+ *                             reported as information the engine already scores)
  *
- * INTEGRITY RULES
- * ---------------
- *   1. Every number in the output is traced from a provider-supplied
- *      number. No defaults, no sector averages, no synthetic peers.
- *   2. Fiscal/reporting period and provider identity are preserved on
- *      every derived series (periodEnd stored with each metric).
- *   3. `Date.now()` is NEVER used — not as an observation/report
- *      timestamp, not as a classification input, and not by the caller
- *      either. Every time comparison uses instants already contained in
- *      the evidence payload: the provider observation stamp (`timestamp`)
- *      and the fiscal period ends. Same evidence in → byte-identical
- *      assessment out, regardless of when it is computed.
- *   4. Missing metric → the dimension is UNAVAILABLE with a limitation
- *      line; it never becomes a neutral value, never blocks the rest.
- *   5. The caller cannot influence the assessment — with no clock and no
- *      options argument, the payload is the single source of truth.
+ * The domain adapters live in `lib/fundamental/{crypto,forex,commodity}.ts`; the equity
+ * adapter (the Phase 276 body, deepened with the remaining as-reported OVERVIEW
+ * fields) lives below. The shared deterministic machinery — dimensions → state,
+ * evidence-coverage confidence, staleness caps — lives in
+ * `lib/fundamental/framework.ts` and is used by every domain.
+ *
+ * INTEGRITY RULES (unchanged since Phase 276, extended in Phase 279)
+ * -----------------------------------------------------------------
+ *   1. Every number in the output is traced from provider-supplied evidence.
+ *      No defaults, no sector averages, no synthetic peers.
+ *   2. Fiscal/reporting/measurement period and provider identity are preserved
+ *      on every derived series and on every evidence item.
+ *   3. The local clock is NEVER read — neither as an observation/report
+ *      timestamp nor as a classification input. Every time comparison uses
+ *      instants the evidence already carries, so identical evidence yields a
+ *      byte-identical assessment regardless of when it is computed.
+ *   4. Missing metric → the dimension is UNAVAILABLE with a limitation line; it
+ *      never becomes a neutral value, never a zero, and never blocks the rest.
+ *   5. Evidence another engine layer already scores is reported as traceable
+ *      context but marked `informational`, so one provider field can never be
+ *      counted twice.
+ *   6. A domain card never shows another domain's metrics: crypto has no EPS
+ *      or P/E, forex has no revenue or profit, equities have no supply/TVL and
+ *      commodities have no EPS/P/E/revenue at all.
  */
 
-import type { FundamentalData } from "./data/intelligence-types";
+import type { FundamentalData, MacroData } from "./data/intelligence-types";
+import type { CryptoIntelligenceContext } from "./data/crypto/types";
+import type { CryptoDerivativesData } from "./data/derivatives-types";
+import type { EconomicCalendarData } from "./data/calendar-types";
+import type { TreasuryData } from "./data/treasury";
+import type { CotData } from "./data/cot";
+import type { EiaData } from "./data/eia";
+import type {
+  DimensionStatus,
+  FundamentalAssessment,
+  FundamentalDimension,
+  FundamentalDirection,
+  FundamentalEvidenceItem,
+  FundamentalMetrics,
+} from "./data/fundamental-contract";
+import {
+  aggregateConfidence,
+  STALE_PERIOD_DAYS,
+  countMoves,
+  coverageOf,
+  daysBetween,
+  dimension,
+  isFiniteNumber,
+  percentChange,
+  periodEndValid,
+  unassessedDomain,
+  unavailable,
+} from "./fundamental/framework";
+import { assessCryptoFundamentals, CRYPTO_PARAMETERS } from "./fundamental/crypto";
+import { assessForexFundamentals } from "./fundamental/forex";
+import { assessCommodityFundamentals } from "./fundamental/commodity";
 
-// ── Public result types ─────────────────────────────────────────
+// Phase 276 public names stay importable from this module (unified-intelligence
+// and the UI import them here), so the contract types are re-exported verbatim.
+export type { FundamentalAssessment, FundamentalState, DimensionStatus } from "./data/fundamental-contract";
+export type { FundamentalDimension, FundamentalEvidenceItem } from "./data/fundamental-contract";
 
-/** Interpretation states. Only ever derived from actual metrics. */
-export type FundamentalState =
-  | "improving"
-  | "weakening"
-  | "mixed"
-  | "insufficient";
-
-export type DimensionStatus =
-  | "positive" // evidence points to strengthening
-  | "negative" // evidence points to weakening
-  | "neutral"  // evidence present but directionally balanced/none
-  | "unavailable"; // provider did not supply usable evidence
-
-export interface FundamentalDimension {
-  name:
-    | "revenue-growth"
-    | "eps-trend"
-    | "profitability"
-    | "earnings-quality"
-    | "valuation"
-    | "balance-sheet"
-    | "cash-flow";
-  status: DimensionStatus;
-  /**
-   * Human-readable evidence derived ONLY from provider numbers, e.g.
-   * "Revenue rose in 4 of the last 4 quarters (periods 2024-12-31→2024-09-30)".
-   * Undefined when unavailable (a limitation line explains instead).
-   */
-  evidence?: string;
+/**
+ * Phase 279 — the domain evidence available to the engine besides the raw
+ * `FundamentalData` payload. One context, fed by the live pipeline, from which
+ * each domain adapter reads only what belongs to its own asset class.
+ *
+ * The commodity route reads exactly three provider contexts — the U.S. EIA
+ * petroleum stock series, the CFTC COT reports and the US Treasury curve — and
+ * nothing else; every other commodity evidence category is reported
+ * unavailable rather than inferred.
+ */
+export interface FundamentalDomainContext {
+  instrument: string;
+  instrumentType: "forex" | "crypto" | "stock" | "commodity" | "indices";
+  /** Routing provider identity (discovery), verbatim. */
+  provider?: string;
+  /** Exact provider/native instrument id, verbatim. */
+  providerInstrumentId?: string;
+  // ── crypto evidence ──
+  crypto?: CryptoIntelligenceContext;
+  derivatives?: CryptoDerivativesData;
+  /** REAL market price — used only for the DERIVED market-cap context. */
+  price?: number;
+  priceObservedAt?: number;
+  priceProvider?: string;
+  // ── forex evidence ──
+  calendar?: EconomicCalendarData;
+  // ── forex + commodity evidence (the Treasury curve drives both) ──
+  treasury?: TreasuryData;
+  cot?: CotData;
+  // ── commodity evidence (petroleum inventories; absent otherwise) ──
+  eia?: EiaData;
+  macro?: MacroData;
 }
 
-export interface FundamentalAssessment {
-  /** Whether ANY usable evidence existed at all. */
-  available: boolean;
-  /** Provider that supplied the evidence (verbatim from FundamentalData). */
-  provider: string;
-  /**
-   * Phase 275 — the exact provider/native instrument identity the evidence
-   * belongs to, preserved verbatim from the payload. Never re-derived from a
-   * symbol list and never substituted for another instrument.
-   */
-  instrumentId?: string;
-  /** Observation timestamp stamped at provider acquisition (NOT re-dated). */
-  observedAt: number;
-  /** Latest fiscal period-end present in the evidence, if any ("2025-06-30"). */
-  reportingPeriod?: string;
-  /**
-   * Payload-only freshness: days between the latest fiscal period end and
-   * the provider observation stamp. Both come from the evidence itself, so
-   * this number is stable for identical evidence. Undefined when either
-   * instant is absent (a limitation line says so).
-   */
-  reportAgeDaysAtObservation?: number;
-  /** Quarter-level evidence from `reportingPeriod` to older periods. */
-  periodsCount: number;
-  /** Interpretation + dimensions. */
-  state: FundamentalState;
-  /** Evidence-based confidence: number of usable dimensions + agreement. */
-  confidence: "high" | "medium" | "low" | "insufficient";
-  confidenceEvidence: string;
-  dimensions: FundamentalDimension[];
-  /** Derived metrics (undefined where not computable — never fabricated). */
-  metrics: {
-    /** Sequential EPS moves across quarterly history, newest→oldest pairs. */
-    epsRises?: number;
-    epsFalls?: number;
-    /** Sequential revenue moves across quarterly history. */
-    revenueRises?: number;
-    revenueFalls?: number;
-    /** EPS of latest quarter vs 4 quarters back, when both are real numbers. */
-    epsYoY?: number;
-    /** Revenue of latest quarter vs 4 quarters back, when both are real numbers. */
-    revenueYoY?: number;
-    /** Provider-reported YoY growth figures when present (as-reported). */
-    revenueGrowthReported?: number;
-    epsGrowthReported?: number;
-    /** Estimate beat/miss across quarters that carry BOTH eps values. */
-    estimateBeats?: number;
-    estimateMisses?: number;
-  };
-  /** Explicit missing-data / provenance limitations — always disclosed. */
-  limitations: string[];
-}
-
-// ── Helpers (pure) ──────────────────────────────────────────────
-
-const DAYS_MS = 86_400_000;
-/** Fiscal period ends older than this at observation time are called stale. */
-const STALE_PERIOD_DAYS = 210;
-
-function periodEndValid(iso: string | undefined): iso is string {
-  return typeof iso === "string" && /^\d{4}-\d{2}-\d{2}$/.test(iso);
-}
-
-/** Sequential move counts across a newest-first series of numbers. */
-function countMoves(valuesNewestFirst: number[]): { rises: number; falls: number } {
-  let rises = 0;
-  let falls = 0;
-  for (let i = 0; i < valuesNewestFirst.length - 1; i++) {
-    if (valuesNewestFirst[i] > valuesNewestFirst[i + 1]) rises++;
-    else if (valuesNewestFirst[i] < valuesNewestFirst[i + 1]) falls++;
-  }
-  return { rises, falls };
-}
+// The shared helpers (period validation, sequential-move counts, calendar
+// arithmetic) now live in ./fundamental/framework so every domain uses exactly
+// the same definitions.
 
 // ── Main entry ──────────────────────────────────────────────────
 
 /**
- * Deterministically assess stock fundamentals from provider evidence.
+ * Deterministically assess EQUITY fundamentals from provider evidence.
  * There is no clock parameter by design: freshness is measured between
  * instants the payload already carries (fiscal period end vs the
  * acquisition stamp), so identical evidence always yields an identical
  * assessment no matter when the analysis runs.
  */
-export function assessFundamentals(
+function assessEquityFundamentals(
   data: FundamentalData | undefined,
 ): FundamentalAssessment {
   const provider = data?.provider ?? "none";
@@ -171,8 +139,18 @@ export function assessFundamentals(
 
   // ── Unavailable fast path ────────────────────────────────────
   if (!data || !data.available || data.instrumentType !== "stock") {
+    const emptyDimensions: FundamentalDimension[] = [
+      { name: "revenue-growth", status: "unavailable" },
+      { name: "eps-trend", status: "unavailable" },
+      { name: "profitability", status: "unavailable" },
+      { name: "earnings-quality", status: "unavailable" },
+      { name: "valuation", status: "unavailable" },
+      { name: "balance-sheet", status: "unavailable" },
+      { name: "cash-flow", status: "unavailable" },
+    ];
     return {
       available: false,
+      domain: "equity",
       provider,
       instrumentId,
       observedAt,
@@ -180,15 +158,12 @@ export function assessFundamentals(
       state: "insufficient",
       confidence: "insufficient",
       confidenceEvidence: "No real fundamental evidence was supplied.",
-      dimensions: [
-        { name: "revenue-growth", status: "unavailable" },
-        { name: "eps-trend", status: "unavailable" },
-        { name: "profitability", status: "unavailable" },
-        { name: "earnings-quality", status: "unavailable" },
-        { name: "valuation", status: "unavailable" },
-        { name: "balance-sheet", status: "unavailable" },
-        { name: "cash-flow", status: "unavailable" },
-      ],
+      directionalBias: "none",
+      dimensions: emptyDimensions,
+      contradictions: [],
+      unavailableDimensions: emptyDimensions.map((d) => d.name),
+      evidenceCoverage: coverageOf(emptyDimensions, [provider]),
+      evidence: [],
       metrics: {},
       limitations: [
         data?.unavailableReason ?? "Fundamental evidence unavailable for this instrument.",
@@ -210,9 +185,7 @@ export function assessFundamentals(
   // property of the evidence, not of when the analysis happens to run.
   let reportAgeDaysAtObservation: number | undefined;
   if (reportingPeriod && observedAt > 0) {
-    const ageDays = Math.floor(
-      (observedAt - Date.parse(reportingPeriod + "T00:00:00Z")) / DAYS_MS,
-    );
+    const ageDays = daysBetween(reportingPeriod, observedAt) ?? 0;
     reportAgeDaysAtObservation = ageDays;
     if (ageDays > STALE_PERIOD_DAYS) {
       limitations.push(
@@ -432,63 +405,270 @@ export function assessFundamentals(
     );
   }
 
-  // ── Aggregate state + evidence-based confidence ──────────────
-  const usable = dimensions.filter((d) => d.status !== "unavailable");
-  const positives = usable.filter((d) => d.status === "positive").length;
-  const negatives = usable.filter((d) => d.status === "negative").length;
+  // ═══════════════════════════════════════════════════════════════
+  // Phase 279 — equity depth from the SAME as-reported payload.
+  // Only provider-supplied fields are used; every addition below is
+  // appended to an EXISTING dimension, so the Phase 276 dimension set,
+  // its statuses and its confidence counts are unchanged.
+  // ═══════════════════════════════════════════════════════════════
+  const extraEvidence: FundamentalEvidenceItem[] = [];
+  const contradictions: string[] = [];
+  const nativeEquityId = data.providerInstrumentId ?? data.symbol;
 
-  let state: FundamentalState;
-  if (usable.length === 0) {
-    state = "insufficient";
-  } else if (positives > 0 && negatives === 0 && positives >= negatives + 1 && positives * 2 > usable.length) {
-    state = "improving";
-  } else if (negatives > 0 && positives === 0 && negatives * 2 > usable.length) {
-    state = "weakening";
-  } else if (positives > 0 && negatives > 0) {
-    state = "mixed";
-  } else {
-    state = "mixed"; // all-neutral evidence cannot justify a direction
+  const appendTo = (name: FundamentalDimension["name"], suffix: string) => {
+    const target = dimensions.find((d) => d.name === name);
+    if (target?.evidence) target.evidence = target.evidence + suffix;
+  };
+
+  // ── Profitability depth: operating margin and revenue per share ──
+  {
+    const bits: string[] = [];
+    if (data.operatingMargin !== undefined) {
+      bits.push(`operating margin ${(data.operatingMargin * 100).toFixed(1)}%`);
+      extraEvidence.push({
+        metric: "operating_margin",
+        label: "Operating margin",
+        value: data.operatingMargin,
+        unit: "fraction",
+        provider: data.provider,
+        providerInstrumentId: nativeEquityId,
+        source: "OVERVIEW (OperatingMarginTTM)",
+        observedAt: data.timestamp,
+        period: reportingPeriod ?? "TTM as reported",
+      });
+    }
+    if (data.revenuePerShare !== undefined) {
+      bits.push(`revenue per share $${data.revenuePerShare.toFixed(2)}`);
+      extraEvidence.push({
+        metric: "revenue_per_share",
+        label: "Revenue per share (TTM)",
+        value: data.revenuePerShare,
+        unit: "USD",
+        provider: data.provider,
+        providerInstrumentId: nativeEquityId,
+        source: "OVERVIEW (RevenuePerShareTTM)",
+        observedAt: data.timestamp,
+        period: "TTM as reported",
+      });
+    }
+    if (bits.length > 0) appendTo("profitability", ` Reported operating evidence: ${bits.join(", ")}.`);
   }
 
-  // Confidence is a LEVEL derived from how much evidence exists, then CAPPED
-  // by (a) disagreement between dimensions and (b) staleness of the
-  // reporting period measured inside the payload itself. No arbitrary
-  // certainty: every cap is disclosed in `confidenceEvidence`.
-  const LEVELS = ["low", "medium", "high"] as const;
-  const caps: string[] = [];
-  let level: number;
-  if (usable.length >= 5) level = 2;
-  else if (usable.length >= 3) level = 1;
-  else level = 0;
-
-  if (usable.length > 0 && positives > 0 && negatives > 0) {
-    level = Math.min(level, 1);
-    caps.push("conflicting dimension evidence caps confidence at medium");
+  // ── Earnings-quality depth: the latest quarter's own surprise ──
+  {
+    const latestPair = hist.find(
+      (q) => typeof q.reportedEps === "number" && typeof q.estimatedEps === "number" && q.estimatedEps !== 0,
+    );
+    if (latestPair) {
+      const surprisePercent =
+        ((latestPair.reportedEps as number) - (latestPair.estimatedEps as number)) /
+        Math.abs(latestPair.estimatedEps as number) * 100;
+      metrics.latestEpsSurprisePercent = surprisePercent;
+      appendTo(
+        "earnings-quality",
+        ` Latest reported quarter (${latestPair.fiscalDateEnding ?? "period not supplied"}) ${surprisePercent >= 0 ? "beat" : "missed"} its own consensus by ${Math.abs(surprisePercent).toFixed(1)}% (reported ${(latestPair.reportedEps as number).toFixed(2)} vs estimated ${(latestPair.estimatedEps as number).toFixed(2)}).`,
+      );
+      extraEvidence.push({
+        metric: "latest_eps_surprise",
+        label: "Latest reported EPS surprise",
+        value: surprisePercent,
+        unit: "%",
+        provider: data.provider,
+        providerInstrumentId: nativeEquityId,
+        source: "EARNINGS (reportedEPS vs estimatedEPS)",
+        observedAt: data.timestamp,
+        period: latestPair.fiscalDateEnding,
+      });
+    }
   }
-  if (reportAgeDaysAtObservation !== undefined && reportAgeDaysAtObservation > STALE_PERIOD_DAYS) {
-    level = Math.min(level, 1);
-    caps.push(
-      `stale reporting period (${reportAgeDaysAtObservation} days between period end and observation) caps confidence at medium`,
+
+  // ── Trend depth: annual-vs-annual EPS and growth acceleration ──
+  {
+    const annual = (data.annualEarningsHistory ?? []).filter(
+      (a) => typeof a.reportedEps === "number" && Number.isFinite(a.reportedEps),
+    );
+    if (annual.length >= 2) {
+      const change = percentChange(annual[0].reportedEps, annual[1].reportedEps);
+      if (change !== undefined) {
+        metrics.annualEpsYoY = change;
+        appendTo(
+          "eps-trend",
+          ` Annual reported EPS ${annual[0].fiscalDateEnding ?? "?"} $${(annual[0].reportedEps as number).toFixed(2)} vs ${annual[1].fiscalDateEnding ?? "?"} $${(annual[1].reportedEps as number).toFixed(2)} (${change >= 0 ? "+" : ""}${change.toFixed(1)}%).`,
+        );
+        extraEvidence.push({
+          metric: "annual_eps_change",
+          label: "Annual reported EPS change",
+          value: change,
+          unit: "%",
+          provider: data.provider,
+          providerInstrumentId: nativeEquityId,
+          source: "EARNINGS (annualEarnings)",
+          observedAt: data.timestamp,
+          period: `${annual[1].fiscalDateEnding}→${annual[0].fiscalDateEnding}`,
+          derived: true,
+          basis: `annual reported EPS ${annual[0].fiscalDateEnding} ÷ ${annual[1].fiscalDateEnding} − 1`,
+        });
+      }
+    }
+
+    const revenueSeries = hist
+      .map((q) => q.revenue)
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    if (revenueSeries.length >= 6 && revenueSeries[4] !== 0 && revenueSeries[5] !== 0) {
+      const latestYoY = revenueSeries[0] / revenueSeries[4] - 1;
+      const priorYoY = revenueSeries[1] / revenueSeries[5] - 1;
+      metrics.revenueYoYAcceleration = (latestYoY - priorYoY) * 100;
+      appendTo(
+        "revenue-growth",
+        ` Growth ${metrics.revenueYoYAcceleration >= 0 ? "accelerating" : "decelerating"}: latest q/q-4 ${(latestYoY * 100).toFixed(1)}% vs the prior quarter's ${(priorYoY * 100).toFixed(1)}% (periods ${hist[5]?.fiscalDateEnding ?? "?"}→${hist[0]?.fiscalDateEnding ?? "?"}).`,
+      );
+    }
+    const epsSeriesAll = hist
+      .map((q) => q.reportedEps)
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    if (epsSeriesAll.length >= 6 && epsSeriesAll[4] !== 0 && epsSeriesAll[5] !== 0) {
+      const latestYoY = epsSeriesAll[0] / epsSeriesAll[4] - 1;
+      const priorYoY = epsSeriesAll[1] / epsSeriesAll[5] - 1;
+      metrics.epsYoYAcceleration = (latestYoY - priorYoY) * 100;
+      appendTo(
+        "eps-trend",
+        ` Earnings ${metrics.epsYoYAcceleration >= 0 ? "accelerating" : "decelerating"}: latest q/q-4 ${(latestYoY * 100).toFixed(1)}% vs the prior quarter's ${(priorYoY * 100).toFixed(1)}%.`,
+      );
+    }
+  }
+
+  // ── Valuation depth: the remaining as-reported multiples ───────
+  {
+    const bits: string[] = [];
+    const pushReported = (
+      metric: string,
+      label: string,
+      value: number | undefined,
+      unit: string,
+      format: (v: number) => string,
+    ) => {
+      if (value === undefined || !Number.isFinite(value)) return;
+      bits.push(`${label} ${format(value)}`);
+      extraEvidence.push({
+        metric,
+        label,
+        value,
+        unit,
+        provider: data.provider,
+        providerInstrumentId: nativeEquityId,
+        source: "OVERVIEW (as reported)",
+        observedAt: data.timestamp,
+        period: "latest reported TTM/level",
+      });
+    };
+    pushReported("peg_ratio", "PEG", data.pegRatio, "ratio", (v) => v.toFixed(2));
+    if (data.pegRatio !== undefined) metrics.pegReported = data.pegRatio;
+    pushReported("price_to_book", "P/B", data.priceToBook, "ratio", (v) => v.toFixed(2));
+    pushReported("price_to_sales", "P/S", data.priceToSales, "ratio", (v) => v.toFixed(2));
+    pushReported("ev_to_revenue", "EV/Revenue", data.evToRevenue, "ratio", (v) => v.toFixed(2));
+    pushReported("ev_to_ebitda", "EV/EBITDA", data.evToEbitda, "ratio", (v) => v.toFixed(2));
+    if (data.dividendYield !== undefined) {
+      metrics.dividendYield = data.dividendYield;
+      pushReported("dividend_yield", "dividend yield", data.dividendYield, "fraction", (v) => `${(v * 100).toFixed(2)}%`);
+    }
+    if (data.marketCap !== undefined) {
+      metrics.marketCapReported = data.marketCap;
+      bits.push(`market cap $${(data.marketCap / 1e9).toFixed(1)}B`);
+      extraEvidence.push({
+        metric: "market_cap",
+        label: "Market capitalisation",
+        value: data.marketCap,
+        unit: "USD",
+        provider: data.provider,
+        providerInstrumentId: nativeEquityId,
+        source: "OVERVIEW (MarketCapitalization)",
+        observedAt: data.timestamp,
+        period: "as reported at the provider observation",
+      });
+    }
+    if (bits.length > 0) appendTo("valuation", ` Additional as-reported valuation evidence: ${bits.join(", ")}.`);
+
+    if (bits.length === 0) {
+      limitations.push(
+        "Additional multiples (PEG, P/B, P/S, EV/Revenue, EV/EBITDA, dividend yield, market cap) UNAVAILABLE — none were supplied in this payload.",
+      );
+    }
+    limitations.push(
+      "Peer/sector-relative valuation UNAVAILABLE — no peer or sector benchmark data exists in this repository, so no relative multiple is computed or implied. The supplied sector/industry labels are descriptive only.",
+    );
+    limitations.push(
+      "Historical valuation context (multiple ranges, percentiles or a multi-year band) UNAVAILABLE — the provider payload carries point-in-time levels only, and no historical multiple series exists to compare against.",
     );
   }
-  if (reportAgeDaysAtObservation !== undefined && reportAgeDaysAtObservation > 400) {
-    level = Math.min(level, 0);
-    caps.push(`very old reporting period (${reportAgeDaysAtObservation} days) caps confidence at low`);
+
+  // ── Growth vs valuation: the four documented combinations ──────
+  {
+    const pe = data.peRatio;
+    const growth = metrics.epsYoY;
+    const growthPct = growth !== undefined ? growth * 100 : undefined;
+    if (pe !== undefined && growthPct !== undefined) {
+      const ratio = growthPct > 0 ? pe / growthPct : undefined;
+      if (growthPct > 0 && ratio !== undefined && ratio > 2.5) {
+        contradictions.push(
+          `Measured earnings growth (${growthPct.toFixed(1)}% q/q-4) does not keep pace with the reported P/E ${pe.toFixed(1)} (ratio ${ratio.toFixed(2)} > 2.5) — high growth, stretched valuation.`,
+        );
+      }
+      if (growthPct > 0 && ratio !== undefined && ratio <= 1) {
+        contradictions.push("");
+        contradictions.pop();
+        appendTo(
+          "valuation",
+          " Growth is positive and the reported multiple is supported by the measured growth rate (documented ratio ≤ 1).",
+        );
+      }
+      if (growthPct < 0) {
+        contradictions.push(
+          `Reported earnings are shrinking (${growthPct.toFixed(1)}% q/q-4) while a valuation multiple of ${pe.toFixed(1)} is still reported — the multiple is not supported by growth and the apparent level is not a "cheap" reading on its own.`,
+        );
+      }
+    }
+    if (metrics.revenueYoY !== undefined && metrics.revenueYoY > 0 && data.profitMargin !== undefined && data.profitMargin < 0) {
+      contradictions.push(
+        `Revenue is still growing (${(metrics.revenueYoY * 100).toFixed(1)}% q/q-4) while the reported net margin is negative (${(data.profitMargin * 100).toFixed(1)}%) — growth with deteriorating profitability.`,
+      );
+    }
   }
 
-  const confidence: FundamentalAssessment["confidence"] =
-    usable.length === 0 ? "insufficient" : LEVELS[level];
-
-  const directionTxt = usable.length === 0
-    ? "no usable dimensions"
-    : `${positives} strengthening / ${negatives} weakening of ${usable.length} usable dimensions`;
-
+  // ═══════════════════════════════════════════════════════════════
+  // Aggregate state + evidence-based confidence (shared framework)
+  // ═══════════════════════════════════════════════════════════════
   limitations.push(
     "Assessment covers only dimensions the provider actually supplies; unavailable dimensions are disclosed, never estimated.",
   );
 
+  const { state, confidence, confidenceEvidence } = aggregateConfidence({
+    dimensions,
+    periodsCount: fiscalEnds.length,
+    periodsLabel: "fiscal periods",
+    reportingPeriod,
+    staleDays: reportAgeDaysAtObservation,
+  });
+
+  const directionalBias: FundamentalDirection =
+    state === "improving" ? "bullish" : state === "weakening" ? "bearish" : "none";
+  const directionEvidence =
+    directionalBias === "none"
+      ? `No directional fundamental read: the engine's state is ${state.toUpperCase()} — a direction is never forced from non-directional evidence.`
+      : `Reported fundamentals are ${state.toUpperCase()} across the engine's scored dimensions: ${dimensions
+          .filter((d) => d.status !== "unavailable")
+          .map((d) => d.name)
+          .join(", ")}.`;
+
+  const allLimitations = [
+    ...limitations,
+    "Balance-sheet line items (cash, debt, net debt, leverage, interest coverage, current ratio) are NOT supplied by the configured provider endpoints, so balance-sheet quality is unavailable rather than derived from ratios.",
+    "Free cash flow, FCF margin, ROIC, cash conversion and share-count/stock-based-compensation data are NOT supplied by the configured provider endpoints, so those dimensions are unavailable rather than estimated.",
+    "Trailing/forward multiples above are as-reported point-in-time values; they are never combined with peer data (none exists) and never presented as live market prices.",
+  ];
+
   return {
     available: true,
+    domain: "equity",
     provider,
     instrumentId,
     observedAt,
@@ -497,12 +677,85 @@ export function assessFundamentals(
     periodsCount: fiscalEnds.length,
     state,
     confidence,
-    confidenceEvidence:
-      usable.length === 0
-        ? "No usable fundamental dimensions — insufficient evidence, no confidence."
-        : `Confidence from ${usable.length} usable dimensions (${directionTxt}), ${fiscalEnds.length} fiscal periods of history${reportingPeriod ? `, latest period ${reportingPeriod}` : ""}${caps.length > 0 ? ` — ${caps.join("; ")}` : ""}.`,
+    confidenceEvidence,
+    directionalBias,
+    directionalBiasEvidence: directionEvidence,
     dimensions,
+    contradictions,
+    unavailableDimensions: dimensions.filter((d) => d.status === "unavailable").map((d) => d.name),
+    evidenceCoverage: coverageOf(dimensions, [provider]),
+    evidence: extraEvidence,
     metrics,
-    limitations,
+    limitations: allLimitations,
   };
 }
+
+// ── Phase 279 dispatcher ────────────────────────────────────────
+
+/**
+ * Assess fundamentals for ANY instrument in the shared contract.
+ *
+ * The DOMAIN is taken from the analysis routing (`instrumentType`), never from
+ * the shape of the ticker: a stock ticker is not turned into a token and a
+ * token is not turned into a company. A domain whose evidence is absent returns
+ * the explicit unavailable state — never another domain's metrics.
+ */
+export function assessFundamentals(
+  data: FundamentalData | undefined,
+  context?: FundamentalDomainContext,
+): FundamentalAssessment {
+  const instrumentType = context?.instrumentType ?? data?.instrumentType;
+
+  if (instrumentType === "crypto") {
+    return assessCryptoFundamentals({
+      instrument: context?.instrument ?? data?.providerInstrumentId ?? data?.symbol ?? "",
+      provider: context?.provider ?? data?.provider,
+      providerInstrumentId: context?.providerInstrumentId ?? data?.providerInstrumentId ?? data?.symbol,
+      crypto: context?.crypto,
+      derivatives: context?.derivatives,
+      price: context?.price,
+      priceObservedAt: context?.priceObservedAt,
+      priceProvider: context?.priceProvider,
+    });
+  }
+
+  if (instrumentType === "forex") {
+    return assessForexFundamentals({
+      instrument: context?.instrument ?? data?.symbol ?? "",
+      provider: context?.provider ?? data?.provider,
+      providerInstrumentId: context?.providerInstrumentId ?? data?.providerInstrumentId ?? data?.symbol,
+      calendar: context?.calendar,
+      treasury: context?.treasury,
+      cot: context?.cot,
+    });
+  }
+
+  if (instrumentType === "commodity") {
+    return assessCommodityFundamentals({
+      instrument: context?.instrument ?? data?.symbol ?? "",
+      provider: context?.provider ?? data?.provider,
+      providerInstrumentId: context?.providerInstrumentId ?? data?.providerInstrumentId ?? data?.symbol,
+      eia: context?.eia,
+      cot: context?.cot,
+      treasury: context?.treasury,
+    });
+  }
+
+  if (instrumentType === "stock" || instrumentType === undefined) {
+    return assessEquityFundamentals(data);
+  }
+
+  // A routing domain this framework does not assess (for example `indices`):
+  // explicit unavailable with the named domain — never another domain's metrics.
+  return unassessedDomain(
+    String(instrumentType),
+    context?.provider ?? data?.provider ?? "",
+    context?.providerInstrumentId ?? data?.providerInstrumentId ?? data?.symbol,
+  );
+}
+
+/**
+ * Convenience re-exports for consumers that need the domain parameter sets
+ * (tests / UI footnotes). Importing them here keeps a single source of truth.
+ */
+export { CRYPTO_PARAMETERS };

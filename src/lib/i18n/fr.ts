@@ -1217,6 +1217,7 @@ const fr: Translations = {
       observedLabel: "Observé",
       confidenceLabel: "Confiance",
       dimensionsLabel: "Dimensions",
+      comparisonsLabel: "Comparaisons",
       limitationsLabel: "Limites",
       unavailableLabel: "indisponible",
       unavailableBody: "Données fondamentales indisponibles pour cet instrument — aucune évaluation produite.",

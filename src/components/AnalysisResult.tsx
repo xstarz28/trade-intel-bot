@@ -1889,8 +1889,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           only metrics the provider actually supplied, preserves the
           reporting period and observation instants, and never presents
           reported statements as live market data. */}
-      {result.fundamentalAssessment &&
-        (result.fundamentalAssessment.available || result.instrumentType === "stock") && (
+      {result.fundamentalAssessment && (
           <Card className="border-border/50">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2 flex-wrap">
@@ -1975,6 +1974,35 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         ))}
                     </ul>
                   </div>
+
+                  {/* Phase 279 — the two-sided comparisons a relative domain
+                      (forex) produced, rendered verbatim from the assessment.
+                      Absent for domains that make no such comparison. */}
+                  {result.fundamentalAssessment.comparisons &&
+                    result.fundamentalAssessment.comparisons.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-mono text-muted-foreground mb-1">
+                          {t.analysisResult.fundamentalAssessment.comparisonsLabel}
+                        </p>
+                        <ul className="space-y-1">
+                          {result.fundamentalAssessment.comparisons.map(
+                            (comparison, i) => (
+                              <li key={i} className="flex items-start gap-2">
+                                <span
+                                  className={cn(
+                                    "mt-1.5 size-1.5 rounded-full shrink-0",
+                                    "bg-muted-foreground/40",
+                                  )}
+                                />
+                                <span className="text-[11px] font-mono text-muted-foreground leading-relaxed">
+                                  {comparison}
+                                </span>
+                              </li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    )}
 
                   <p className="text-[10px] font-mono text-muted-foreground/80">
                     {result.fundamentalAssessment.confidenceEvidence}

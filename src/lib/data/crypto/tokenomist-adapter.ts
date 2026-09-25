@@ -44,11 +44,19 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
     return toTokenomistSymbol(instrument) !== null;
   }
 
-  async fetch(instrument: string): Promise<CryptoIntelligenceProviderResult | null> {
-    if (!this.supportsInstrument(instrument)) return null;
-
-    const symbol = toTokenomistSymbol(instrument);
+  /**
+   * Phase 279 — `resolvedSymbol` lets the live crypto-fundamentals action pass
+   * the base asset of a provider-native crypto id ("BTC-USDT" → "BTC"), which
+   * IS the token identity the provider expects. Callers that pass nothing keep
+   * the exact Phase 41 behaviour (canonical table only).
+   */
+  async fetch(
+    instrument: string,
+    resolvedSymbol?: string,
+  ): Promise<CryptoIntelligenceProviderResult | null> {
+    const symbol = resolvedSymbol ?? toTokenomistSymbol(instrument);
     if (!symbol) return null;
+    if (!resolvedSymbol && !this.supportsInstrument(instrument)) return null;
 
     const fetchFn = this.httpFetch ?? fetch;
     const observedAt = Date.now();

@@ -1217,6 +1217,7 @@ const ja: Translations = {
       observedLabel: "観測",
       confidenceLabel: "信頼度",
       dimensionsLabel: "評価軸",
+      comparisonsLabel: "比較",
       limitationsLabel: "制約",
       unavailableLabel: "利用不可",
       unavailableBody: "この銘柄のファンダメンタル証拠は利用できません — 評価は生成されませんでした。",

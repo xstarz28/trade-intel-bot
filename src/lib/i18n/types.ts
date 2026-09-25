@@ -1091,6 +1091,7 @@ export interface Translations {
       observedLabel: string;
       confidenceLabel: string;
       dimensionsLabel: string;
+      comparisonsLabel: string;
       limitationsLabel: string;
       unavailableLabel: string;
       unavailableBody: string;

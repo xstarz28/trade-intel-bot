@@ -53,6 +53,7 @@ export type ProviderDataset =
   | "eia"
   | "order-book"
   | "instrument-spec"
+  | "crypto-fundamentals"
   | "fx-rate";
 
 /**
@@ -92,6 +93,10 @@ export const DATASET_TTL_MS: Record<ProviderDataset, number> = {
   cot: 12 * 60 * 60_000,
   fundamentals: 24 * 60 * 60_000,
   "instrument-spec": 24 * 60 * 60_000,
+  // Phase 279 — tokenomics/DeFi datasets move on protocol cadence, not on a
+  // price cadence: 6h reuse keeps the rate budget safe and the freshness
+  // labelling honest (see DATASET_FRESH_MS).
+  "crypto-fundamentals": 6 * 60 * 60_000,
 };
 
 /**
@@ -113,6 +118,7 @@ export const DATASET_FRESH_MS: Record<ProviderDataset, number> = {
   cot: 7 * 24 * 60 * 60_000,
   fundamentals: 7 * 24 * 60 * 60_000,
   "instrument-spec": 7 * 24 * 60 * 60_000,
+  "crypto-fundamentals": 24 * 60 * 60_000,
 };
 
 // ═══════════════════════════════════════════════════════════════
