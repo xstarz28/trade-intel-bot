@@ -410,8 +410,41 @@ async function runFourAsset(label = "Phase 284 deployed verification") {
     annotate(label, `${deployment.origin} (from ${source})\n${blocker}`);
     return 0;
   }
-  const token = deep(signIn.value, "token") ?? signIn.value?.token ?? null;
+  // The session token lives in whichever shape the app's auth component
+  // returned. Its KEY NAMES are reported (never a value): the token itself must
+  // not reach a log or an annotation.
+  const signInShape = (() => {
+    const shapes = [];
+    const walk = (obj, prefix, depth) => {
+      if (!obj || typeof obj !== "object" || depth > 3) return;
+      for (const [k, v] of Object.entries(obj)) {
+        const path = prefix ? `${prefix}.${k}` : k;
+        if (v && typeof v === "object") {
+          shapes.push(`${path}{${Object.keys(v).join(",")}}`);
+          walk(v, path, depth + 1);
+        }
+      }
+    };
+    walk(signIn.value, "", 0);
+    return shapes.join(" ") || "(no object keys)";
+  })();
+  const token =
+    [
+      signIn.value?.token,
+      signIn.value?.sessionToken,
+      signIn.value?.tokens?.token,
+      signIn.value?.tokens?.accessToken,
+      signIn.value?.value?.token,
+      deep(signIn.value, "tokens.token"),
+    ].find((t) => typeof t === "string" && t.length > 10) ?? null;
+  console.log(`[284] sign-in envelope shape: ${signInShape}`);
   console.log(`[284] anonymous session ${token ? "established" : "returned no token"}`);
+  if (!token) {
+    const note = `AUTHENTICATION_NOT_AVAILABLE — the deployment answered auth:signIn but returned no session token. Envelope shape: ${signInShape}`;
+    console.log(`[284] ${note}`);
+    annotate(label, `${deployment.origin}\n${note}`);
+    return 0;
+  }
 
   const records = [];
   for (const spec of ASSETS) {
@@ -453,7 +486,13 @@ async function runFourAsset(label = "Phase 284 deployed verification") {
   console.log(report);
   annotate(
     label,
-    [`${deployment.origin} (from ${source})`, `version probe: ${versionInfo}`, report, ...records.map((r) => JSON.stringify(r))].join("\n"),
+    [
+      `${deployment.origin} (from ${source})`,
+      `version probe: ${versionInfo}`,
+      `sign-in envelope shape: ${signInShape}`,
+      report,
+      ...records.map((r) => JSON.stringify(r)),
+    ].join("\n"),
   );
   return 0;
 }
