@@ -235,20 +235,70 @@ const PROFILE_HIERARCHY: Record<CommodityGroup, DimensionHierarchyEntry[]> = {
 };
 
 /**
- * Phase 288 — the physical market of a quoted PAIR is the market of its BASE
- * leg. Provider-native commodity ids arrive as pairs (`WTI/USD`, `GAU/EUR`) and
- * the registry does not carry every pair spelling, so when the subject itself
- * does not classify, the base leg is resolved through the same registry + alias
- * path. A base leg that is not a classified commodity returns "unclassified":
- * absence of evidence is never converted into a guess, and no ticker list is
- * consulted.
+ * The base leg of a quoted PAIR — a STRUCTURAL split on the provider's own
+ * delimiter, never a ticker pattern. Null when the subject is not pair-form,
+ * which is exactly the Phase-288 rule in one place.
  */
-function baseLegMarketGroup(subject: string): CommodityGroup {
+function baseLegOf(subject: string): string | null {
   const legs = subject.split("/");
-  if (legs.length !== 2) return "unclassified";
+  if (legs.length !== 2) return null;
   const base = legs[0]?.trim() ?? "";
-  if (base.length === 0) return "unclassified";
-  return commodityProfileOf(base).group;
+  return base.length > 0 ? base : null;
+}
+
+/**
+ * Phase 289 — the EFFECTIVE commodity profile of a provider-native
+ * identity: the ONE profile every part of the assessment must read.
+ *
+ * WHY THIS EXISTS (live defect, smoke run 36208494796)
+ * ---------------------------------------------------
+ * Provider-native commodity ids are frequently quoted PAIRS (`WTI/USD`,
+ * `GAU/EUR`) and the pair STRING is not always a canonical registry entry:
+ * `commodityProfileOf("WTI/USD")` is `unclassified` even though its base leg is
+ * WTI Crude Oil. Phase 288 resolved that base leg for the physical-feed gate
+ * ONLY, and the assessment then kept reading the ORIGINAL pair-level profile for
+ * everything else — the hierarchy handed to the aggregation, the
+ * precious-metal macro branch, and the `commodityProfile` it returned. The
+ * deployed runtime therefore analysed the provider-native petroleum pair and
+ * reported `group=unclassified` while its own `inventories` dimension held
+ * petroleum stocks from the EIA WPSR feed: the classification leaked away
+ * between the gate and the contract.
+ *
+ * WHAT IT DOES
+ * ------------
+ *   · A directly classified identity keeps its profile UNCHANGED (the exact same
+ *     object `commodityProfileOf` returns — no re-derivation, no reworded source).
+ *   · A pair that does not classify as a whole resolves its BASE leg — the
+ *     traded commodity — through the SAME canonical registry + alias path
+ *     `commodityProfileOf` uses, and inherits that profile's group and hierarchy.
+ *   · A base leg the registry does not classify stays `unclassified`, with the
+ *     attempt stated in the source text.
+ *
+ * WHAT IT NEVER DOES: no ticker list, no symbol pattern, no provider alias of its
+ * own (aliases come from the registry's own ALIAS_MAP), no look-alike matching
+ * and no substitution. The profile describes the base leg's MARKET; every
+ * identity-bearing field of the assessment keeps the exact provider-native id.
+ */
+export function effectiveCommodityProfile(instrument: string): CommodityProfile {
+  const direct = commodityProfileOf(instrument);
+  // A directly classified identity is returned untouched, semantics and text.
+  if (direct.group !== "unclassified") return direct;
+
+  const base = baseLegOf(instrument);
+  if (base === null) return direct;
+
+  const baseProfile = commodityProfileOf(base);
+  if (baseProfile.group === "unclassified") {
+    return {
+      ...direct,
+      classificationSource: `${direct.classificationSource}; its base leg "${base}" is not classified by the same canonical registry either, so the generic physical-first hierarchy stands (the base-leg path consults the registry, never a ticker list)`,
+    };
+  }
+  return {
+    group: baseProfile.group,
+    classificationSource: `pair "${instrument}" is not itself a canonical registry entry (the registry does not carry every provider pair spelling); its base leg "${base}" — the traded commodity — resolved through the same canonical registry + alias path: ${baseProfile.classificationSource}`,
+    hierarchy: baseProfile.hierarchy,
+  };
 }
 
 /**
@@ -402,19 +452,26 @@ export function assessCommodityFundamentals(
 ): FundamentalAssessment {
   const nativeId = ctx.providerInstrumentId ?? ctx.instrument;
   const subject = ctx.instrument.length > 0 ? ctx.instrument : nativeId;
-  const profile = commodityProfileOf(subject);
   /**
-   * Phase 288 — resolve the PHYSICAL MARKET the instrument actually trades.
+   * Phase 288/289 — the PHYSICAL MARKET the instrument actually trades, taken
+   * from ONE effective profile that the WHOLE assessment then uses.
    *
    * A provider-native commodity id is frequently a quoted PAIR (`WTI/USD`,
    * `GAU/EUR`), and the pair string itself is not always a canonical registry
    * entry: `commodityProfileOf("WTI/USD")` is UNCLASSIFIED even though the base
    * leg is WTI Crude Oil. Reading the gate off the pair string would therefore
    * withhold a petroleum instrument's own physical feed — a false negative that
-   * is just as wrong as the cross-domain read it was added to stop. The base
-   * leg of the pair IS the traded commodity, so when the subject does not
-   * classify, the market is resolved from that leg through the same registry
-   * (no ticker list, no look-alike matching).
+   * is just as wrong as the cross-domain read it was added to stop. The base leg
+   * of the pair IS the traded commodity, so an unclassified pair resolves it
+   * through the same canonical registry + alias path (no ticker list, no
+   * look-alike matching).
+   *
+   * Phase 289 — that resolution is now the EFFECTIVE profile, and it is used
+   * consistently for the physical feed's applicability, the evidence hierarchy
+   * handed to the aggregation, the macro-driver branch, and the
+   * `commodityProfile` this function RETURNS. Resolving it for the gate alone let
+   * a live petroleum pair come back as `unclassified` while carrying petroleum
+   * inventories — the same market, described two different ways.
    *
    * The ONE configured physical feed is the U.S. EIA Weekly Petroleum Status
    * Report: US crude / gasoline / distillate stocks and their
@@ -425,7 +482,8 @@ export function assessCommodityFundamentals(
    * or an agricultural instrument therefore reports its physical dimensions
    * UNAVAILABLE with the real reason, instead of gaining a petroleum reading.
    */
-  const marketGroup = profile.group !== "unclassified" ? profile.group : baseLegMarketGroup(subject);
+  const profile = effectiveCommodityProfile(subject);
+  const marketGroup = profile.group;
   const physicalFeedApplies = marketGroup === "energy";
   const eia: EiaContext | undefined =
     physicalFeedApplies && ctx.eia && ctx.eia.available ? ctx.eia : undefined;

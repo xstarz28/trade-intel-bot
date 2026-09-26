@@ -180,7 +180,15 @@ describe("phase 288 — the WPSR feed backs energy only", () => {
       eia: WPSR,
       treasury,
     });
-    expect(a.commodityProfile?.group).toBe("unclassified");
+    // Phase 289 correction: this assertion used to read `unclassified` and was
+    // WRONG — it pinned the leak the live smoke later exposed (run 36208494796:
+    // `classified #7 WTI/USD · group=unclassified` while the same assessment
+    // consumed petroleum stocks). The base leg had been resolved for the FEED
+    // only; the returned profile kept the pair-level verdict.
+    // `effectiveCommodityProfile` now supplies ONE profile to the feed, the
+    // aggregation hierarchy, the macro branch and the contract. The gate
+    // assertions around it are unchanged.
+    expect(a.commodityProfile?.group).toBe("energy");
     expect(dim(a, "inventories").status).not.toBe("unavailable");
     expect(a.commodityMetrics?.inventoryLatest).toBe(412_500);
     expect(a.limitations.join(" ")).not.toContain("out of scope");
