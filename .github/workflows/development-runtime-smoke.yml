@@ -56,6 +56,18 @@ on:
         description: "Commodity energy-gate probe scan depth in the provider's own order (1-40, default 12)"
         required: false
         type: string
+      pacing_window_ms:
+        description: "Twelve Data minute-window pacing: window length in ms (default 60000; 0 DISABLES pacing)"
+        required: false
+        type: string
+      pacing_limit:
+        description: "Twelve Data minute-window pacing: modelled credits per window (default 8 = the plan the runtime's own 429 named)"
+        required: false
+        type: string
+      pacing_max_wait_ms:
+        description: "Twelve Data minute-window pacing: total wait budget for the run (default 900000, cap 1500000; 0 DISABLES pacing)"
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -80,6 +92,12 @@ jobs:
       XSTARZ_SMOKE_DOMAINS: ${{ inputs.domains }}
       XSTARZ_SMOKE_MAX_ATTEMPTS: ${{ inputs.max_attempts }}
       XSTARZ_SMOKE_PROBE_LIMIT: ${{ inputs.probe_limit }}
+      # Phase 289 quota-audit — minute-window pacing (see scripts/development-runtime-smoke.mjs).
+      # These mirror CLI flags of the same name; an empty input falls back to the
+      # script's own bounded default (a 60 s window, 8 credits, 15 min budget).
+      XSTARZ_SMOKE_PACING_WINDOW_MS: ${{ inputs.pacing_window_ms }}
+      XSTARZ_SMOKE_PACING_LIMIT: ${{ inputs.pacing_limit }}
+      XSTARZ_SMOKE_PACING_MAX_WAIT_MS: ${{ inputs.pacing_max_wait_ms }}
     steps:
       - name: Check out the selected ref
         uses: actions/checkout@v4

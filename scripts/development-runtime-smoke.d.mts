@@ -289,6 +289,127 @@ export const ENERGY_PROBE_MAX_CANDIDATE_LIMIT: number;
 export const ENERGY_PROBE_REPORT_IDENTITIES: number;
 export const ENERGY_PROBE_PAUSE_MS: number;
 
+/* ------------------------------------------------------------------ *
+ * Phase 289 quota-audit — Twelve Data minute-window pacing
+ *
+ * A SCHEDULING device only: identity, provider order, selection, completeness,
+ * classification and the petroleum feed gate are untouched. It waits for the
+ * provider's next wall-clock minute when the LOCAL (conservative) model of this
+ * run's own spend says the current one cannot serve the next request. It never
+ * claims a credit count: the transports keep `{ok,status,json}` only, so the
+ * provider's `api-credits-*` headers are not observable.
+ * ------------------------------------------------------------------ */
+
+/** Twelve Data's documented weight for catalogs, /time_series and /quote. */
+export const TWELVE_DATA_CREDIT_PER_REQUEST: number;
+/** The per-minute allowance of the plan the deployment's own 429 named. */
+export const TWELVE_DATA_MINUTE_CREDITS: number;
+/** One provider minute (Twelve Data resets on the wall-clock minute). */
+export const TWELVE_DATA_WINDOW_MS: number;
+/** Conservative worst-case credit fan-out of ONE Twelve Data analysis. */
+export const TWELVE_DATA_ANALYSIS_MAX_CREDITS: number;
+export const PACING_DEFAULT_MAX_WAIT_MS: number;
+export const PACING_MAX_WAIT_MS_CAP: number;
+export const PACING_LIMIT_CAP: number;
+export const PACING_WINDOW_MS_CAP: number;
+
+export type PacingGate = {
+  waitedMs: number;
+  deferred: boolean;
+  exhausted: boolean;
+  windowStartAt: number | null;
+  modelledCredits?: number;
+  reason?: string;
+};
+
+/** A gate that applies to nothing (another provider, or pacing switched off). */
+export const PACING_NOT_APPLIED: PacingGate;
+
+/** The next wall-clock window boundary strictly after `nowMs`. */
+export function nextTwelveDataWindowStart(nowMs: number, windowMs?: number): number;
+
+/** Bounded pacing knobs: CLI flag first, environment second, `windowMs 0` = off. */
+export function resolvePacingConfig(options?: {
+  argv?: readonly string[];
+  env?: Record<string, string | undefined>;
+}): { windowMs: number; limit: number; maxTotalWaitMs: number };
+
+/** A catalog report's own counts, every field optional (only counts are read). */
+export type CatalogCounts = {
+  path?: string | null;
+  assetClass?: string | null;
+  completeness?: string | null;
+  pagesFetched?: number | null;
+  totalDiscovered?: number | null;
+  failedPage?: number | null;
+};
+
+/**
+ * The run's OWN discovery spend, from the provider's own catalog report. Only the
+ * counts are read, so the input is the structural subset it consumes.
+ */
+export function discoveryCreditSpend(
+  discovery: { pagesFetched?: number | null; catalogs?: CatalogCounts[] | null } | null | undefined,
+): number;
+
+export type TwelveDataQuotaPacer = {
+  enabled: boolean;
+  limit: number;
+  windowMs: number;
+  maxTotalWaitMs: number;
+  charge(credits: number, label?: string | null): number;
+  reserve(options?: { cost?: number; label?: string | null }): Promise<PacingGate>;
+  snapshot(): {
+    enabled: boolean;
+    windowMs: number;
+    limit: number;
+    maxTotalWaitMs: number;
+    modelledCredits: number;
+    windowStartAt: number | null;
+    charges: { label: string | null; credits: number; windowStartAt: number | null }[];
+    waits: { label: string | null; waitedMs: number; windowStartAt: number | null }[];
+    waitsCount: number;
+    totalWaitMs: number;
+    exhaustedReason: string | null;
+    model: string;
+  };
+};
+
+/**
+ * The local, conservative model of this run's Twelve Data spend over wall-clock
+ * minute windows. `now`/`sleep` are injectable so the policy is unit-testable
+ * with a fake clock.
+ */
+export function createTwelveDataQuotaPacer(options?: {
+  limit?: number;
+  windowMs?: number;
+  maxTotalWaitMs?: number;
+  now?: () => number;
+  sleep?: (ms: number) => Promise<unknown>;
+}): TwelveDataQuotaPacer;
+
+/** Reserve a slot, or do nothing when there is no pacer. */
+export function reserveAnalysisSlot(
+  pacer: TwelveDataQuotaPacer | null | undefined,
+  options?: { cost?: number; label?: string | null },
+): Promise<PacingGate>;
+
+export type PacingDelta = {
+  enabled: boolean;
+  waits: number;
+  waitedMs: number;
+  deferred: string[];
+} | null;
+
+/** One caller's own pacing, as a delta over the shared pacer. */
+export function pacingDelta(
+  before: { waitsCount?: number; waits?: unknown[] } | null,
+  after: { waitsCount?: number; waits?: unknown[]; enabled?: boolean; totalWaitMs?: number } | null,
+): PacingDelta;
+
+/** One bounded sentence about the run's pacing. */
+export function pacingSummary(pacing: unknown): string;
+
 /**
  * Phase 289B — exercise the commodity physical-feed gate against the deployed
  * runtime, in both directions, naming no instrument: candidates come from the
@@ -303,6 +424,12 @@ export function probeEnergyGate(deps: {
   sessionFor(label: string): Promise<{ ok: boolean; token?: string | null; reason?: string | null }>;
   seeds?: Record<string, unknown>[];
   candidateLimit?: number;
+  /**
+   * Phase 289 quota-audit — the shared minute-window pacer. When supplied it
+   * governs WHEN each candidate's analysis may leave; the circuit check stays
+   * first, so a real 429 is never waited out or retried.
+   */
+  pacer?: TwelveDataQuotaPacer | null;
   pauseMs?: number;
   sleep?: (ms: number) => Promise<unknown>;
 }): Promise<{
@@ -314,6 +441,8 @@ export function probeEnergyGate(deps: {
   verdict: "PASS" | "UNAVAILABLE" | "FAIL";
   summary: string;
   failures: string[];
+  /** The pacing THIS probe did (a delta over the shared pacer), or null. */
+  pacing: PacingDelta;
 }>;
 
 /** Phase 289B — the commodity energy-gate probe's verdict over the samples collected. */

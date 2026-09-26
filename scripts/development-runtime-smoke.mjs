@@ -1266,6 +1266,21 @@ export function renderSummary(report) {
     }
     if (report.energyGateProbe.stopReason) lines.push(`                stopped: ${report.energyGateProbe.stopReason}`);
   }
+  if (report.pacing) {
+    // Phase 289 quota-audit — the run's own pacing, stated as what it is: a LOCAL
+    // schedule over the provider's minute windows, never the provider's counter.
+    lines.push(
+      `td pacing     : ${pacingSummary(report.pacing)}${
+        report.pacing.enabled === true
+          ? ` · provider minute window ${report.pacing.windowMs} ms · local model limit ${report.pacing.limit} credits`
+          : ""
+      }`,
+    );
+    for (const w of (report.pacing.waits ?? []).slice(0, 8)) {
+      lines.push(`                waited ${w.waitedMs} ms before ${w.label ?? "a request"}`);
+    }
+    if (report.pacing.exhaustedReason) lines.push(`                ${report.pacing.exhaustedReason}`);
+  }
   if (report.runtimeFingerprint) {
     lines.push(
       `code paths    : providerDiagnostics legs=${report.runtimeFingerprint.providerDiagnosticsLegs} (with reason: ${report.runtimeFingerprint.providerDiagnosticsWithReason}) · calendarMappingGap=${
@@ -1279,6 +1294,290 @@ export function renderSummary(report) {
   for (const record of report.domains) lines.push(`${record.label} = ${record.headline}`);
   lines.push("──────────────────────────────────────────────────────────────────");
   return lines.join("\n");
+}
+
+/* ------------------------------------------------------------------ *
+ * Phase 289 quota-audit - Twelve Data minute-window pacing
+ * ------------------------------------------------------------------ */
+
+/**
+ * WHY (audited, not assumed - /home/user/phase289/RUN-289-QUOTA-AUDIT.md):
+ *
+ * `runProtectedAnalysis` issues NO catalog requests: discovery is the HARNESS's
+ * own call (`marketData:discoverTwelveDataInstruments`), and because neither
+ * production call site scopes the adapter (`options.assetClasses` exists but is
+ * unused there) that call walks ALL FIVE catalogs. Every catalog request costs
+ * 1 API credit, so a run spends ~6 credits before its first analysis. One Twelve
+ * Data analysis can then fan out to 8 more (primary time_series + quote + the
+ * MTF chain + the defensive DXY probe wave), while the plan the deployment's own
+ * 429 names allows 8 credits per WALL-CLOCK MINUTE ("10 API credits were used,
+ * with the current limit being 8"). The consequence: the request that follows
+ * the run's own discovery can already be inside an exhausted minute, and the
+ * provider's 429 then opens the circuit and stops the energy-gate probe BEFORE
+ * it reaches the provider-native energy instrument (run 36164289791: `WTI/USD`
+ * sat at provider position #7 and the scan died at #1).
+ *
+ * WHAT THIS IS: a SCHEDULING device. Identity, provider order, selection,
+ * completeness, classification and the petroleum feed gate are untouched - the
+ * pacer only decides WHEN a request may leave, and it waits for the provider's
+ * next minute window when the local model says this one cannot serve it.
+ *
+ * WHAT THIS IS NOT: a claim about the provider's counter. The transports keep
+ * `{ok, status, json}` only, so `api-credits-used`/`api-credits-left` are
+ * discarded and the remaining count is NOT observable. The model is therefore
+ * deliberately CONSERVATIVE: every analysis is charged the FULL worst-case
+ * fan-out, so it can only over-estimate this run's spend. Over-estimating costs
+ * wall-clock time; it never invents evidence and never claims a credit count to
+ * a reader.
+ *
+ * THE CIRCUIT STAYS THE AUTHORITY: every caller checks `circuit.isTripped`
+ * BEFORE the pacing gate, so a provider that really answered 429 is never waited
+ * out, never retried, and the scan still ends with the provider's own reason.
+ * Pacing only defers requests the provider has not refused, and only until the
+ * next wall-clock minute.
+ */
+
+/** Twelve Data's documented data weight for catalogs, /time_series and /quote. */
+export const TWELVE_DATA_CREDIT_PER_REQUEST = 1;
+
+/**
+ * The per-minute API-credit allowance of the plan this deployment's OWN 429 named
+ * (`with the current limit being 8`) - the documented Basic plan. The provider
+ * restores the full quota at each wall-clock minute boundary.
+ */
+export const TWELVE_DATA_MINUTE_CREDITS = 8;
+
+/** One provider minute. Twelve Data resets on the wall-clock minute, not on a rolling 60s. */
+export const TWELVE_DATA_WINDOW_MS = 60_000;
+
+/**
+ * Conservative worst-case credit fan-out of ONE Twelve Data analysis:
+ *   /time_series primary              1   (src/convex/marketData.ts:457 -> :135)
+ *   /quote (short TTL, one per attempt) 1  (:479-500)
+ *   MTF chain for D1 (W1 + H4)         2   (src/lib/data/mtf.ts:26, :43-51)
+ *   defensive DXY probe wave         <= 4  (:613-670; src/lib/market-context.ts:305)
+ *                                     --
+ *                                      8
+ * A plan-restricted or invalid instrument returns after the FIRST request and
+ * costs 1, so this over-charges those; that is the safe direction, because
+ * under-charging is exactly what produces the 429 this exists to avoid.
+ */
+export const TWELVE_DATA_ANALYSIS_MAX_CREDITS = 8;
+
+/** Default TOTAL pacing budget for one run (bounded; see PACING_MAX_WAIT_MS_CAP). */
+export const PACING_DEFAULT_MAX_WAIT_MS = 15 * 60_000;
+/** Hard cap on the configurable pacing budget. */
+export const PACING_MAX_WAIT_MS_CAP = 25 * 60_000;
+/** Hard cap on the configurable modelled per-minute allowance. */
+export const PACING_LIMIT_CAP = 1_000;
+/** Hard cap on the configurable window length. */
+export const PACING_WINDOW_MS_CAP = 3_600_000;
+
+/** A gate that applies to nothing (a provider other than Twelve Data, or pacing off). */
+export const PACING_NOT_APPLIED = Object.freeze({
+  waitedMs: 0,
+  deferred: false,
+  exhausted: false,
+  windowStartAt: null,
+});
+
+/** The next wall-clock window boundary strictly after `nowMs`. */
+export function nextTwelveDataWindowStart(nowMs, windowMs = TWELVE_DATA_WINDOW_MS) {
+  const width = Number.isFinite(windowMs) && windowMs > 0 ? windowMs : TWELVE_DATA_WINDOW_MS;
+  return (Math.floor(nowMs / width) + 1) * width;
+}
+
+function boundedInt(raw, fallback, min, max) {
+  const parsed = Number.parseInt(String(raw ?? "").trim(), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(parsed, max));
+}
+
+/**
+ * Pacing knobs: the CLI flag first, the environment second (the shape
+ * `--probe-limit` already uses). Every value is bounded, and `windowMs 0` means
+ * "pacing disabled" - used by spawned-process tests, and available to an operator
+ * who deliberately wants the provider's own 429 to be the only governor. Nothing
+ * here can raise the provider's allowance: the pacer never claims a credit count.
+ */
+export function resolvePacingConfig({ argv = [], env = {} } = {}) {
+  const read = (flagName, envName) => flag(flagName, argv) ?? env[envName] ?? "";
+  return {
+    windowMs: boundedInt(
+      read("--pacing-window-ms", "XSTARZ_SMOKE_PACING_WINDOW_MS"),
+      TWELVE_DATA_WINDOW_MS,
+      0,
+      PACING_WINDOW_MS_CAP,
+    ),
+    limit: boundedInt(
+      read("--pacing-limit", "XSTARZ_SMOKE_PACING_LIMIT"),
+      TWELVE_DATA_MINUTE_CREDITS,
+      1,
+      PACING_LIMIT_CAP,
+    ),
+    maxTotalWaitMs: boundedInt(
+      read("--pacing-max-wait-ms", "XSTARZ_SMOKE_PACING_MAX_WAIT_MS"),
+      PACING_DEFAULT_MAX_WAIT_MS,
+      0,
+      PACING_MAX_WAIT_MS_CAP,
+    ),
+  };
+}
+
+/**
+ * The run's OWN discovery spend, read from the provider's own catalog report -
+ * not an assumption. It charges
+ *   · every page that ANSWERED (`pagesFetched`), and
+ *   · every attempted page the report does NOT count: a catalog whose first page
+ *     never answered (a transport failure or a refusal - run 36164289791's
+ *     `/stocks`), and a page whose failure sits beyond the answered count.
+ * The provider counts attempted requests, so this can only be >= what happened.
+ * Nothing reaches into the provider: it is arithmetic over the report the adapter
+ * already publishes.
+ */
+export function discoveryCreditSpend(discovery) {
+  const catalogs = Array.isArray(discovery?.catalogs) ? discovery.catalogs : [];
+  const answeredTotal = isNumber(discovery?.pagesFetched) ? Math.max(0, Math.trunc(discovery.pagesFetched)) : 0;
+  const uncounted = catalogs.filter((c) => {
+    const answered = isNumber(c?.pagesFetched) ? Math.max(0, Math.trunc(c.pagesFetched)) : 0;
+    if (answered <= 0) return true;
+    return isNumber(c?.failedPage) && c.failedPage > answered;
+  }).length;
+  const requests = answeredTotal + uncounted;
+  return requests > 0 ? requests * TWELVE_DATA_CREDIT_PER_REQUEST : TWELVE_DATA_CREDIT_PER_REQUEST;
+}
+
+/**
+ * The local, conservative model of THIS RUN's Twelve Data spend over wall-clock
+ * minute windows. It is a scheduler, not a meter: `modelledCredits` is what the
+ * run cost as modelled HERE, and is never presented as the provider's counter.
+ */
+export function createTwelveDataQuotaPacer({
+  limit = TWELVE_DATA_MINUTE_CREDITS,
+  windowMs = TWELVE_DATA_WINDOW_MS,
+  maxTotalWaitMs = PACING_DEFAULT_MAX_WAIT_MS,
+  now = () => Date.now(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+} = {}) {
+  const enabled = windowMs > 0 && limit > 0 && maxTotalWaitMs > 0;
+  const charges = [];
+  const waits = [];
+  let windowStartAt = enabled ? Math.floor(now() / windowMs) * windowMs : null;
+  let modelledCredits = 0;
+  let totalWaitMs = 0;
+  let exhaustedReason = null;
+
+  const advance = (at) => {
+    if (!enabled) return;
+    const current = Math.floor(at / windowMs) * windowMs;
+    if (current !== windowStartAt) {
+      windowStartAt = current;
+      modelledCredits = 0;
+    }
+  };
+
+  return {
+    enabled,
+    limit,
+    windowMs,
+    maxTotalWaitMs,
+
+    /** Record spend the run has ALREADY incurred (the catalog walk, each analysis issued). */
+    charge(credits, label = null) {
+      if (!enabled) return 0;
+      const modelled = Number.isFinite(credits) && credits > 0 ? Math.ceil(credits) : 0;
+      if (modelled === 0) return 0;
+      advance(now());
+      modelledCredits += modelled;
+      charges.push({ label, credits: modelled, windowStartAt });
+      return modelled;
+    },
+
+    /**
+     * Reserve room for the NEXT request. Waits for the provider's next window when
+     * the current one cannot serve it; returns `exhausted` (and the caller issues
+     * NOTHING) when the run's pacing budget cannot cover that wait. A single
+     * request is never modelled as more than one whole window, so at most one
+     * happens per window and no loop can spin.
+     */
+    async reserve({ cost = TWELVE_DATA_ANALYSIS_MAX_CREDITS, label = null } = {}) {
+      if (!enabled) return { ...PACING_NOT_APPLIED };
+      const modelled = Math.min(limit, Math.max(TWELVE_DATA_CREDIT_PER_REQUEST, Math.ceil(cost)));
+      advance(now());
+      if (modelledCredits + modelled <= limit) {
+        modelledCredits += modelled;
+        return { waitedMs: 0, deferred: false, exhausted: false, windowStartAt, modelledCredits: modelled };
+      }
+      if (exhaustedReason !== null) {
+        return { waitedMs: 0, deferred: false, exhausted: true, reason: exhaustedReason, windowStartAt };
+      }
+      const at = now();
+      const waitMs = Math.max(0, nextTwelveDataWindowStart(at, windowMs) - at);
+      if (totalWaitMs + waitMs > maxTotalWaitMs) {
+        exhaustedReason =
+          `local pacing refused to wait ${waitMs} ms for the provider's next ${windowMs} ms window: ` +
+          `the ${maxTotalWaitMs} ms pacing budget for this run is spent - no request was issued`;
+        return { waitedMs: 0, deferred: false, exhausted: true, reason: exhaustedReason, windowStartAt };
+      }
+      await sleep(waitMs);
+      advance(now());
+      totalWaitMs += waitMs;
+      waits.push({ label, waitedMs: waitMs, windowStartAt });
+      modelledCredits = modelled;
+      return { waitedMs: waitMs, deferred: true, exhausted: false, windowStartAt, modelledCredits: modelled };
+    },
+
+    snapshot() {
+      return {
+        enabled,
+        windowMs,
+        limit,
+        maxTotalWaitMs,
+        modelledCredits,
+        windowStartAt,
+        charges: [...charges],
+        waits: [...waits],
+        waitsCount: waits.length,
+        totalWaitMs,
+        exhaustedReason,
+        model:
+          "LOCAL, conservative scheduling model of this run's Twelve Data spend (a catalog page is 1 credit; every analysis is charged its worst-case fan-out). It is NOT the provider's counter: the transports keep {ok,status,json} only, so api-credits-used/api-credits-left are not observable.",
+      };
+    },
+  };
+}
+
+/** Reserve a slot, or do nothing when there is no pacer (another provider, or pacing off). */
+export async function reserveAnalysisSlot(pacer, { cost = TWELVE_DATA_ANALYSIS_MAX_CREDITS, label = null } = {}) {
+  if (!pacer || typeof pacer.reserve !== "function") return { ...PACING_NOT_APPLIED };
+  return pacer.reserve({ cost, label });
+}
+
+/**
+ * What one caller's own bookkeeping shows for the pacing it did, as a delta over
+ * the shared pacer. `null` when no pacer was supplied: "no pacing" is reported as
+ * absent, never as "waited 0".
+ */
+export function pacingDelta(before, after) {
+  if (!before || !after) return null;
+  const waits = (Array.isArray(after.waits) ? after.waits : []).slice(before.waitsCount ?? 0);
+  return {
+    enabled: after.enabled === true,
+    waits: Math.max(0, (after.waitsCount ?? 0) - (before.waitsCount ?? 0)),
+    waitedMs: Math.max(0, (after.totalWaitMs ?? 0) - (before.totalWaitMs ?? 0)),
+    deferred: waits.map((w) => w.label).filter((l) => typeof l === "string"),
+  };
+}
+
+/** One bounded, honest sentence about the run's pacing, for the annotation and the summary. */
+export function pacingSummary(pacing) {
+  if (!pacing) return "not-configured";
+  if (pacing.enabled !== true) {
+    return `disabled (window ${pacing.windowMs ?? 0} ms, budget ${pacing.maxTotalWaitMs ?? 0} ms) - no wait was computed`;
+  }
+  return `waits:${pacing.waitsCount ?? 0},waited:~${Math.round((pacing.totalWaitMs ?? 0) / 1000)}s,modelled-credits:${
+    pacing.modelledCredits ?? 0
+  }`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1307,6 +1606,12 @@ export function renderSummary(report) {
  * the provider circuit — a provider that just refused on capacity or credentials
  * receives no repeat request. A case that cannot be reached is reported
  * UNAVAILABLE with the count actually classified, never assumed.
+ *
+ * Phase 289 quota-audit: when a `pacer` is supplied, it also governs WHEN each
+ * candidate's analysis may leave (the provider's per-minute credit window). The
+ * circuit check stays FIRST, so a real 429 is never waited out or retried, and the
+ * pacing it did is reported as a delta — "waited for the next minute" and "the
+ * provider refused" must never read the same.
  */
 export async function probeEnergyGate({
   spec,
@@ -1316,9 +1621,11 @@ export async function probeEnergyGate({
   sessionFor,
   seeds = [],
   candidateLimit = ENERGY_PROBE_CANDIDATE_LIMIT,
+  pacer = null,
   pauseMs = ENERGY_PROBE_PAUSE_MS,
   sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 }) {
+  const pacingBefore = typeof pacer?.snapshot === "function" ? pacer.snapshot() : null;
   const list = Array.isArray(candidates) ? candidates : [];
   // Provider order, exactly as discovered — recorded so a reader can see WHERE in
   // the catalog each classified instrument sat, and therefore whether an energy
@@ -1349,6 +1656,20 @@ export async function probeEnergyGate({
     const tripped = circuit.isTripped(provider);
     if (tripped) {
       stopReason = `provider circuit open (${tripped.kind}) — no repeat request to ${provider}`;
+      break;
+    }
+
+    // Phase 289 quota-audit — the minute-window gate, deliberately AFTER the
+    // circuit check above: a provider that actually answered 429 must never be
+    // waited out or retried. This only defers a request the provider has NOT
+    // refused, and only until its next wall-clock minute. WHO is asked, and in
+    // which order, is decided entirely above this line.
+    const gate = await reserveAnalysisSlot(pacer, {
+      cost: TWELVE_DATA_ANALYSIS_MAX_CREDITS,
+      label: `COMMODITY probe ${nativeId}`,
+    });
+    if (gate.exhausted) {
+      stopReason = `${gate.reason} — candidate ${nativeId} was not requested`;
       break;
     }
 
@@ -1384,6 +1705,7 @@ export async function probeEnergyGate({
     if (!bothDirections() && pauseMs > 0) await sleep(pauseMs);
   }
 
+  const pacingAfter = typeof pacer?.snapshot === "function" ? pacer.snapshot() : null;
   const outcome = energyGateVerdict(samples);
   return {
     candidateLimit,
@@ -1396,6 +1718,9 @@ export async function probeEnergyGate({
     verdict: outcome.verdict,
     summary: outcome.summary,
     failures: outcome.failures,
+    // Phase 289 quota-audit — the pacing THIS probe did, as a delta over the
+    // shared pacer (so the run's discovery/domain waits are not claimed here).
+    pacing: pacingDelta(pacingBefore, pacingAfter),
   };
 }
 
@@ -1445,6 +1770,11 @@ async function run() {
 
   const transport = createTransport(origin);
   const circuit = createProviderCircuit();
+  // Phase 289 quota-audit — ONE pacer for every Twelve Data request this run
+  // issues: the catalog walk, the domain loop and the energy-gate probe all draw
+  // on the same provider minute, so they must share one model of it.
+  const pacing = resolvePacingConfig({ argv, env: process.env });
+  const pacer = createTwelveDataQuotaPacer(pacing);
 
   const version = await probeVersion(origin);
   const reachability = version.ok ? { ok: true } : await probeApiLiveness(transport);
@@ -1542,6 +1872,11 @@ async function run() {
       if (twelveDiscovery === null && twelveDiscoveryError === null) {
         const found = await discoverTwelveData(transport, session.token);
         twelveDiscovery = found;
+        // The catalog walk is the run's FIRST Twelve Data spend and the only part
+        // of it the provider itself reports a count for (`pagesFetched` plus every
+        // catalog that was attempted without an answered page). Charged here so
+        // the domain loop and the probe see the minute as it really is.
+        pacer.charge(discoveryCreditSpend(found), "discovery");
         if (found.success !== true) {
           twelveDiscoveryError = found.error ?? "discovery returned no instruments";
           circuit.classify("twelve-data", twelveDiscoveryError);
@@ -1602,6 +1937,27 @@ async function run() {
           reason: `provider circuit open (${tripped.kind}); no repeated requests to ${provider}`,
         });
         continue;
+      }
+
+      // Phase 289 quota-audit — the minute-window gate. It decides WHEN, never
+      // WHICH: candidate, provider order and the bounded attempts above are
+      // untouched, and an okx candidate spends another provider's quota, so it is
+      // never paced by the Twelve Data model.
+      const gate =
+        spec.discovery === "twelve-data"
+          ? await reserveAnalysisSlot(pacer, {
+              cost: TWELVE_DATA_ANALYSIS_MAX_CREDITS,
+              label: `${spec.label} ${nativeId}`,
+            })
+          : { ...PACING_NOT_APPLIED };
+      if (gate.exhausted) {
+        record.attempts.push({
+          step: "analysis",
+          instrument: nativeId,
+          outcome: "skipped",
+          reason: gate.reason,
+        });
+        break;
       }
 
       const request = buildAnalysisInput(spec, candidate);
@@ -1772,6 +2128,7 @@ async function run() {
       sessionFor,
       seeds,
       candidateLimit: probeLimit,
+      pacer,
     });
 
     // The discovered identity list is reported because the audit could not answer
@@ -1785,6 +2142,15 @@ async function run() {
       .slice(0, 4)
       .map((x) => `${x.instrument}@${x.position ?? "?"}=${x.group}`)
       .join(",");
+    // Phase 289 quota-audit — the probe's own pacing, said out loud: waiting for
+    // the provider's next minute window is NOT a refusal, and a reader must be
+    // able to tell the two apart. (A refusal lands in `stopped:` above.)
+    const pacingText =
+      energyGateProbe.pacing && energyGateProbe.pacing.waits > 0
+        ? ` · pacing: waited ${energyGateProbe.pacing.waits}× (~${Math.round(
+            energyGateProbe.pacing.waitedMs / 1000,
+          )} s) for the provider's next minute window`
+        : "";
 
     annotate(
       energyGateProbe.verdict === "FAIL" ? "error" : "warning",
@@ -1795,7 +2161,7 @@ async function run() {
         classifiedText === "" ? "" : ` · groups: ${classifiedText}`
       }${identities.length === 0 ? "" : ` · discovered(${identities.length}): ${identitySample.join(",")}${
         identities.length > identitySample.length ? ",…" : ""
-      }`}`,
+      }`}${pacingText}`,
     );
   }
 
@@ -1883,6 +2249,10 @@ async function run() {
     },
     transport: { calls: transport.state.calls, blocked: transport.state.blocked, lastError: transport.state.lastError },
     providerCircuit: circuit.snapshot(),
+    // Phase 289 quota-audit — the run's LOCAL pacing model of its own Twelve Data
+    // spend (never the provider's counter, which is not observable) plus every
+    // wait it performed, labelled with the request it deferred.
+    pacing: pacer.snapshot(),
     // Phase 289B — which backend code paths answered (read from the responses).
     runtimeFingerprint: runtimeFingerprint,
     // Phase 289B — the commodity physical-feed gate, exercised in both directions.
@@ -1922,7 +2292,9 @@ async function run() {
       runtimeFingerprintOfRun.commodityGroups.length > 0
         ? `,commodityGroups:${runtimeFingerprintOfRun.commodityGroups.join("|")}`
         : ""
-    },phase288CodePaths:${phase288CodePathsObserved ? "observed" : "not-observed"}`,
+    },phase288CodePaths:${phase288CodePathsObserved ? "observed" : "not-observed"} · pacing=${pacingSummary(
+      pacer.snapshot(),
+    )}`,
   );
 
   if (report.transport.calls === 0) {

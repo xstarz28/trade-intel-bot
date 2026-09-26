@@ -200,6 +200,13 @@ beforeAll(() => {
           GITHUB_ACTIONS: "true",
           XSTARZ_SMOKE_SOURCE_COMMIT: HARNESS_COMMIT,
           GITHUB_SHA: "b".repeat(40),
+          // Phase 289 quota-audit — this stub answers instantly, so the run's
+          // own conservative pacing model would have nothing to wait FOR; real
+          // minute waits would only make the test slow without proving anything.
+          // The pacing POLICY itself is pinned by the fake-clock tests in
+          // `development-runtime-smoke.phase289-pacing.test.ts`; here it is
+          // switched off and reported as switched off.
+          XSTARZ_SMOKE_PACING_WINDOW_MS: "0",
         },
         timeout: 120_000,
       },
@@ -288,6 +295,23 @@ describe("phase 289B — the smoke CLI runs end to end", () => {
     // Discovery detail and leg reasons reach the annotation, not only the file.
     expect(stdout).toContain("first=/stocks:FAILED");
     expect(stdout).toContain("Tokenomist");
+  });
+
+  it("reports its pacing as a LOCAL model, and as switched off when it is", () => {
+    const report = JSON.parse(readFileSync(outPath, "utf8"));
+    expect(report.pacing).toBeTruthy();
+    expect(report.pacing.enabled).toBe(false);
+    expect(report.pacing.waitsCount).toBe(0);
+    // It is never presented as the provider's counter — the transports keep
+    // {ok,status,json} only, so those headers are not observable.
+    expect(report.pacing.model).toContain("LOCAL");
+    expect(report.pacing.model).toContain("NOT the provider's counter");
+    expect(stdout).toContain("pacing=disabled");
+    // The summary carries the same line (the run is `--quiet`, so the summary
+    // goes to its file rather than the console).
+    const summary = readFileSync(outPath.replace(/\.json$/, "") + "-summary.txt", "utf8");
+    expect(summary).toContain("td pacing     :");
+    expect(summary).toContain("disabled");
   });
 
   it("keeps the energy probe bounded to the deployment's own discovered instruments", () => {

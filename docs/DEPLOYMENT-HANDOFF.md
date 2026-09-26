@@ -476,10 +476,53 @@ annotation lists the discovered identities **in the provider's own order**, and
 each classified sample carries its position in that order. Ordering is never
 curated: no whitelist, no re-ranking, no substitution.
 
-Provider cadence for the deeper scan comes from the provider's own refusal seen on
-the deployment — `10 API credits were used, with the current limit being 8` per
-minute — hence the 8 s pause between probe analyses; a 429 would open the provider
-circuit and end the scan before it reached an energy instrument.
+### Why the energy-gate probe is PACED to the provider's minute (Phase 289 quota audit)
+
+Provider cadence comes from the provider's own refusal seen on the deployment —
+`10 API credits were used, with the current limit being 8` per minute. The
+harness's fixed 8 s pause between probe analyses turned out **not** to be enough:
+run 36164289791 spent the minute before the probe's second candidate existed,
+because the run's own work already costs more than the plan allows — the catalog
+walk (six requests: five catalogs plus a continuation page, each 1 credit) plus
+the domains analysed before commodity (one priced analysis can issue eight
+requests: primary `time_series`, `quote`, the MTF chain and the defensive DXY
+probe wave). The 429 that followed opened the provider circuit and the scan died
+at candidate #1, with the energy instrument sitting at provider position #7.
+
+So the harness schedules its Twelve Data requests over the provider's **wall-clock
+minute windows** (`createTwelveDataQuotaPacer`): it charges what the run has
+already spent — the catalog walk from the adapter's own `pagesFetched` report,
+then a conservative worst-case 8 credits per analysis — and, when the current
+minute cannot serve the next request, it waits for the next boundary instead of
+issuing it. Facts a reader must keep straight:
+
+* **It is a schedule, not a meter.** Both Twelve Data transports keep only
+  `{ok, status, json}`, so `api-credits-used`/`api-credits-left` are discarded and
+  the provider's remaining count is NOT observable. The model over-estimates on
+  purpose (a plan-restricted instrument really costs 1 credit, not 8); the report
+  labels it `pacing.model` and never presents `modelledCredits` as the provider's
+  counter.
+* **The circuit stays the authority.** The provider-circuit check runs BEFORE the
+  pacing gate in the domain loop and in the probe, so a provider that actually
+  answered 429 is never waited out and never retried — the scan still ends with
+  the provider's own reason. "Waited for the next minute" and "the provider
+  refused" are reported as different things (`pacing: waited …`, `stopped: …`).
+* **Bounded.** One wait is never longer than one window, a declined request is
+  never repeated, and the whole run has a pacing budget (default 15 min, hard cap
+  25 min). When the budget cannot cover a wait, the pacer **issues nothing** and
+  says so in the record's reason (`outcome: skipped`) instead of silently
+  starving the run. The smoke job timeout is 30 minutes.
+* **Off by request.** `--pacing-window-ms 0` / `XSTARZ_SMOKE_PACING_WINDOW_MS=0`
+  disables it (the report then says `pacing=disabled`), which is how the spawned
+  CLI test runs against its instant stub.
+* **Nothing else moved.** Provider order, discovered identities, the disclosed
+  scan depth, the domain ceiling (3), classification and the Phase-288
+  petroleum-feed gate are untouched; the pacing code names no instrument at all.
+
+Operator note: on the current plan a commodity-only run costs ~13 credits, so the
+paced probe needs about two provider minutes — one wait across a minute boundary
+per analysis after the first. That is expected, and visible in the artifact as
+`pacing.waits`.
 
 ### Is the deployed build the current one?
 
