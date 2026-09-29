@@ -1144,6 +1144,8 @@ export interface TwelveDataStagePage {
   nextAfterSeq: number | null;
   stagedRows: number;
   totalDiscovered: number;
+  /** Phase 289G — the provider's own count for this catalog, when reported. */
+  providerCount: number | null;
   completeness: string | null;
   transportState: DiscoveryTransportState | null;
   catalogPath: string | null;
@@ -1172,6 +1174,7 @@ export const readTwelveDataCatalogStage = action({
       nextAfterSeq: page.nextAfterSeq,
       stagedRows: page.stagedRows,
       totalDiscovered: page.totalDiscovered,
+      providerCount: page.providerCount,
       completeness: page.completeness,
       transportState: (page.transportState ?? null) as DiscoveryTransportState | null,
       catalogPath: page.catalogPath,

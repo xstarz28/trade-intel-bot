@@ -298,9 +298,13 @@ describe("289F — transport truth is reported separately from catalog completen
     expect(catalog?.completeness).toBe("COMPLETE");
     expect(catalog?.totalDiscovered).toBe(STOCK_COUNT);
     // ...while the TRANSPORT says exactly how much of it is available.
+    //
+    // Phase 289G: rows are confirmed in FULL batches, so the count is the batch
+    // size that really committed — never "whatever the last chunk held", and
+    // never rounded up to look complete.
     expect(catalog?.transport?.mode).toBe("staged");
     expect(catalog?.transport?.state).toBe("partial");
-    expect(catalog?.transport?.stagedRows).toBe(512);
+    expect(catalog?.transport?.stagedRows).toBe(STAGE_WRITE_BATCH_ROWS);
     expect(catalog?.transport?.totalKept).toBe(STOCK_COUNT);
     expect(result.warnings.join(" ")).toContain("/stocks: staged transport partial");
     // The universe size is still the provider's real count.

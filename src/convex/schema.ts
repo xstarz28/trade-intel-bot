@@ -409,6 +409,8 @@ const schema = defineSchema(
       stagedRows: v.number(),
       /** Rows the provider walk kept — the real universe size. */
       totalDiscovered: v.number(),
+      /** Phase 289G — the provider's OWN `count` for this catalog, verbatim. */
+      providerCount: v.optional(v.number()),
       /** The catalog walk's own COMPLETE/PARTIAL/FAILED (never the transport's). */
       completeness: v.string(),
       /** Transport truth: complete | partial | failed. */
@@ -442,6 +444,41 @@ const schema = defineSchema(
     })
       .index("by_stage", ["stageId"])
       .index("by_stage_seq", ["stageId", "seq"]),
+
+    /**
+     * Phase 289G — the SAME staged rows, one document per bounded chunk.
+     *
+     * Measured on the real mutation: Convex charges per DOCUMENT write, so a
+     * per-row insert loop costs ~124,000 writes for the stock catalog and the
+     * provider read was throttled behind them (33,289 rows staged before the
+     * 30 s transport budget expired). A chunk document holds an ordered run of
+     * rows in the same shape — same identity fields, same provider order — so
+     * the catalog costs ~500 writes instead of ~124,000 while every row stays
+     * individually addressable.
+     */
+    discoveryStageChunks: defineTable({
+      stageId: v.string(),
+      /** Provider `seq` of the FIRST row in this chunk: the ordering key. */
+      seqStart: v.number(),
+      rows: v.array(
+        v.object({
+          seq: v.number(),
+          provider: v.string(),
+          providerInstrumentId: v.string(),
+          assetClass: v.string(),
+          subType: v.string(),
+          baseAsset: v.string(),
+          quoteAsset: v.string(),
+          settleAsset: v.optional(v.string()),
+          tradingState: v.string(),
+          providerState: v.optional(v.string()),
+          capabilities: v.array(v.string()),
+          region: v.optional(v.string()),
+          discoveredAt: v.number(),
+          precisionJson: v.optional(v.string()),
+        }),
+      ),
+    }).index("by_stage_seq", ["stageId", "seqStart"]),
   },
   {
     schemaValidation: false,

@@ -39,8 +39,66 @@ export const CONVEX_MAX_ARRAY_LENGTH = 8192;
  */
 export const DISCOVERY_INLINE_LIMIT = 5461;
 
-/** Rows handed to one staging mutation. Bounded write, provider order kept. */
-export const STAGE_WRITE_BATCH_ROWS = 256;
+/**
+ * Phase 289G — ROWS PER STAGING MUTATION. Bounded write, provider order kept.
+ *
+ * MEASURED, not chosen. The deployed 289F run staged 33,289 of ~124,000 rows
+ * before the catalog transport budget expired, which is 130 mutations of the
+ * old 256-row batch (256 x 130 = 33,280) — the write path, not the parser, was
+ * the throttle. Benchmarked in this repository against the real staging
+ * mutation (see `twelve-data-stage-throughput.phase289g.test.ts`):
+ *
+ *   payload  doc shape        rows/s    ms/mutation
+ *   256      1 doc per row     52,719      4.86
+ *   1024     1 doc per row     54,005     18.96
+ *   1024     4 docs of 256     73,500     13.93
+ *   2048     8 docs of 256     68,443     29.92
+ *   4096    16 docs of 256     70,015     58.50
+ *
+ * Throughput plateaus at a 1024-row payload while the payload keeps growing, so
+ * 1024 rows per mutation is the measured sweet spot: it cuts the mutation count
+ * for the stock catalog from 485 to 122 without an oversized argument (a
+ * 1024-row payload is ~0.25 MB, well inside Convex's 1 MiB value limit and its
+ * 16 MiB argument limit).
+ */
+export const STAGE_WRITE_BATCH_ROWS = 1024;
+
+/**
+ * Phase 289G — ROWS PER STORED DOCUMENT.
+ *
+ * Convex charges per DOCUMENT write, and the measured cost of the old one-row-
+ * per-document model is what throttled the provider read: 124,000 document
+ * writes for `/stocks` versus ~485 chunk writes. A chunk holds an ordered run
+ * of rows in the exact same shape, so identity and provider order are preserved
+ * row-for-row while the write cost drops by the chunk size. 256 is the measured
+ * best (73,500 rows/s vs 66,957 at 1024 rows/doc) and keeps each document around
+ * 60 KB — far below the 1 MiB document limit, and small enough that reading one
+ * page never loads a large document.
+ */
+export const STAGE_CHUNK_ROWS = 256;
+
+/**
+ * Phase 289G — ROWS RETAINED BETWEEN DRAINS (the real backpressure bound).
+ *
+ * The staging queue may hold at most this many rows before the row scanner
+ * pauses and the queue is persisted, so memory stays bounded no matter how the
+ * transport chunks the body: a 30 MB catalog delivered as ONE chunk cannot
+ * accumulate the whole universe in the action. 4096 rows is ~1 MB of normalized
+ * instruments — bounded, and large enough that the queue never becomes the
+ * expensive part of the write path.
+ */
+export const STAGE_QUEUE_ROWS = 4096;
+
+/**
+ * Phase 289G — STAGING WRITES IN FLIGHT AT ONCE.
+ *
+ * The provider read used to STOP at every transport chunk while the mutation
+ * for the previous rows committed (the 289F loop awaited each drain), so the
+ * read rate was capped by the write latency. A bounded number of writes may now
+ * overlap the read. The bound is what keeps memory finite: at most
+ * `concurrency` full batches plus one partial batch are ever retained.
+ */
+export const STAGE_WRITE_IN_FLIGHT = 3;
 
 /** Rows returned by one stage read. Bounded read, provider order kept. */
 export const STAGE_READ_ROWS = 2048;

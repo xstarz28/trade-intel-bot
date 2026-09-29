@@ -291,6 +291,8 @@ export type TwelveDataDiscoveryReport = {
     completeness: string | null;
     pagesFetched: number | null;
     totalDiscovered: number | null;
+    /** Phase 289G — the provider's own row count, verbatim (optional). */
+    providerCount?: number | null;
     failedPage: number | null;
     /**
      * Phase 289F — how this catalog crossed the function boundary. A catalog
@@ -305,6 +307,8 @@ export type TwelveDataDiscoveryReport = {
       stagedRows: number | null;
       totalKept: number | null;
       chunkRows: number | null;
+      /** Phase 289G — rows per stored stage document (the write-side chunk). */
+      writeChunkRows?: number | null;
       stageId: string | null;
       detail: string | null;
     } | null;
@@ -324,6 +328,12 @@ export type StageRead = {
   state: string | null;
   hasMore?: boolean | null;
   nextAfterSeq?: number | null;
+  /** Phase 289G — the staged catalog's OWN completeness, read from the stage. */
+  catalogCompleteness?: string | null;
+  /** Rows the walk kept (the stage's `totalDiscovered`). */
+  catalogRows?: number | null;
+  /** The provider's own count, verbatim, when it reported one. */
+  providerCount?: number | null;
   identitySample: string[];
   reason: string | null;
 };

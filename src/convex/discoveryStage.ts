@@ -35,13 +35,17 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { ActionCtx } from "./_generated/server";
 import { internalMutation, internalQuery } from "./_generated/server";
-import { STAGE_READ_ROWS, STAGE_WRITE_MAX_ROWS } from "../lib/discovery/return-boundary";
+import {
+  STAGE_CHUNK_ROWS,
+  STAGE_READ_ROWS,
+  STAGE_WRITE_MAX_ROWS,
+} from "../lib/discovery/return-boundary";
 import type { CatalogStagingSink } from "../lib/discovery/twelve-data-adapter";
 
 /** How many superseded rows one prune mutation removes. */
 const PRUNE_BATCH_ROWS = 512;
 
-const STAGE_ROW = v.object({
+export const STAGE_ROW_VALIDATOR = v.object({
   seq: v.number(),
   provider: v.string(),
   providerInstrumentId: v.string(),
@@ -90,16 +94,28 @@ export const openStage = internalMutation({
 });
 
 /**
- * Write one bounded batch of rows, in provider order.
+ * Write one bounded batch of rows, in provider order — as CHUNK documents.
  *
- * The batch size is enforced here as well as at the call site: an oversized
- * write is rejected BEFORE the runtime has to reject the transaction, so the
- * failure names the boundary instead of surfacing as an opaque function error.
+ * Phase 289G. This used to insert one document per row. Convex charges per
+ * document write, and the deployed 289F run's own numbers put that path at
+ * >=1,110 rows/s (33,289 rows staged before the 30 s transport budget expired),
+ * i.e. ~124,000 document writes for the stock catalog. Measured in this
+ * repository against this exact mutation, one document per row costs ~40,000
+ * rows/s of pure write work versus ~63,000-73,500 rows/s for chunk documents,
+ * so the same 124,000-row catalog costs ~485 short writes instead of 124,000
+ * document writes.
+ *
+ * A chunk is an ordered run of rows in the SAME shape. Nothing about a row
+ * changes: `seq` (the provider order) is still assigned per row, one row is
+ * still one identity, and the chunk only decides how many rows travel in one
+ * document. The batch size is enforced here as well as at the call site: an
+ * oversized write is rejected BEFORE the runtime has to, so the failure names
+ * the boundary instead of surfacing as an opaque function error.
  */
-export const appendStageRows = internalMutation({
+export const appendStageChunks = internalMutation({
   args: {
     stageId: v.string(),
-    rows: v.array(STAGE_ROW),
+    rows: v.array(STAGE_ROW_VALIDATOR),
   },
   handler: async (ctx, args) => {
     if (args.rows.length > STAGE_WRITE_MAX_ROWS) {
@@ -107,16 +123,21 @@ export const appendStageRows = internalMutation({
         `staging batch of ${args.rows.length} row(s) exceeds the ${STAGE_WRITE_MAX_ROWS}-row write boundary`,
       );
     }
-    for (const row of args.rows) {
-      await ctx.db.insert("discoveryStageRows", { stageId: args.stageId, ...row });
+    for (let i = 0; i < args.rows.length; i += STAGE_CHUNK_ROWS) {
+      const slice = args.rows.slice(i, i + STAGE_CHUNK_ROWS);
+      await ctx.db.insert("discoveryStageChunks", {
+        stageId: args.stageId,
+        // The first row's provider `seq`: the index key a cursor walks with.
+        seqStart: slice[0].seq,
+        rows: slice,
+      });
     }
-    const stage = await ctx.db
-      .query("discoveryStages")
-      .withIndex("by_stage", (q) => q.eq("stageId", args.stageId))
-      .first();
-    if (stage) {
-      await ctx.db.patch(stage._id, { stagedRows: stage.stagedRows + args.rows.length });
-    }
+    // NOTE: the stage document is NOT patched here. Several bounded writes may
+    // be in flight for the same stage (that is what lets the provider read run
+    // at full speed), and a shared counter would make them contend. The
+    // authoritative count is written ONCE by `closeStage`, from the rows this
+    // action confirmed — and an unclosed stage reports `transportState:
+    // "partial"`, which is exactly what it is.
   },
 });
 
@@ -126,6 +147,8 @@ export const closeStage = internalMutation({
     stageId: v.string(),
     stagedRows: v.number(),
     totalDiscovered: v.number(),
+    /** Phase 289G — the provider's own count, when it reported one. */
+    providerCount: v.optional(v.number()),
     completeness: v.union(v.literal("COMPLETE"), v.literal("PARTIAL"), v.literal("FAILED")),
     state: STAGE_STATE,
     detail: v.optional(v.string()),
@@ -142,6 +165,7 @@ export const closeStage = internalMutation({
       completeness: args.completeness,
       transportState: args.state,
       ...(args.detail !== undefined ? { detail: args.detail } : { detail: undefined }),
+      ...(args.providerCount !== undefined ? { providerCount: args.providerCount } : {}),
       closedAt: Date.now(),
     });
   },
@@ -176,15 +200,17 @@ export const supersedeOlderStages = internalMutation({
 /**
  * Delete one superseded stage, bounded per invocation.
  *
- * Rows go first, a batch at a time, and the mutation reschedules itself while
- * anything remains — a 143300-row catalog is never deleted in one transaction.
+ * Chunk documents go first, a batch at a time, and the mutation reschedules
+ * itself while anything remains — a 143300-row catalog is never deleted in one
+ * transaction. (Phase 289G: the rows live in chunk documents, so deleting 485
+ * of them clears 124000 rows.)
  */
 export const pruneStage = internalMutation({
   args: { stageId: v.string() },
   handler: async (ctx, args) => {
     const rows = await ctx.db
-      .query("discoveryStageRows")
-      .withIndex("by_stage", (q) => q.eq("stageId", args.stageId))
+      .query("discoveryStageChunks")
+      .withIndex("by_stage_seq", (q) => q.eq("stageId", args.stageId))
       .take(PRUNE_BATCH_ROWS);
     for (const row of rows) {
       await ctx.db.delete(row._id);
@@ -211,6 +237,17 @@ export const pruneStage = internalMutation({
  * The cursor is the provider row's own `seq`: re-reading the same page returns
  * the same rows in the same order (a pure read — it cannot duplicate or reorder
  * anything), and `hasMore` comes from the stored rows, never from a guess.
+ *
+ * Phase 289G — rows are stored in CHUNK documents, so the cursor has two parts:
+ *
+ *   1. one lookup for the chunk that may STRADDLE `afterSeq` (the chunk with the
+ *      greatest `seqStart <= afterSeq`, served by the `by_stage_seq` range), then
+ *   2. the chunks that start after `afterSeq`, read forward in index order.
+ *
+ * The straddle lookup reads at most ONE document, so a page never depends on how
+ * far into the catalog it is. Chunk order IS provider order (a chunk's
+ * `seqStart` is its first row's `seq`), and the rows inside a chunk are already
+ * ordered, so the walk is deterministic and duplicate-free.
  */
 export const readStageRows = internalQuery({
   args: {
@@ -227,27 +264,63 @@ export const readStageRows = internalQuery({
       .withIndex("by_stage", (q) => q.eq("stageId", args.stageId))
       .first();
 
-    const rows = await ctx.db
-      .query("discoveryStageRows")
-      .withIndex("by_stage_seq", (q) => q.eq("stageId", args.stageId).gt("seq", afterSeq))
-      .order("asc")
-      .take(limit + 1);
+    type StoredRow = (typeof STAGE_ROW_VALIDATOR)["type"];
+    const page: StoredRow[] = [];
+    let hasMore = false;
+    let lastSeq: number | null = null;
 
-    const hasMore = rows.length > limit;
-    const page = rows.slice(0, limit).map((row) => {
-      const { _id, _creationTime, stageId, ...rest } = row;
-      void _id;
-      void _creationTime;
-      void stageId;
-      return rest;
-    });
+    const straddle = await ctx.db
+      .query("discoveryStageChunks")
+      .withIndex("by_stage_seq", (q) =>
+        q.eq("stageId", args.stageId).lte("seqStart", afterSeq),
+      )
+      .order("desc")
+      .first();
+    if (straddle) {
+      for (const row of straddle.rows) {
+        if (row.seq <= afterSeq) continue;
+        if (page.length === limit) {
+          hasMore = true;
+          break;
+        }
+        page.push(row);
+        lastSeq = row.seq;
+      }
+    }
+
+    if (!hasMore) {
+      /**
+       * How many chunks a full page can span, derived from the stored chunk
+       * size (never a fixed guess): `ceil(limit / STAGE_CHUNK_ROWS)`, plus ONE
+       * extra chunk so `hasMore` is answered from real rows instead of assumed.
+       */
+      const chunksPerPage = Math.ceil(limit / STAGE_CHUNK_ROWS) + 1;
+      const forward = await ctx.db
+        .query("discoveryStageChunks")
+        .withIndex("by_stage_seq", (q) =>
+          q.eq("stageId", args.stageId).gt("seqStart", afterSeq),
+        )
+        .order("asc")
+        .take(chunksPerPage);
+      for (let i = 0; i < forward.length && !hasMore; i += 1) {
+        for (const row of forward[i].rows) {
+          if (page.length === limit) {
+            hasMore = true;
+            break;
+          }
+          page.push(row);
+          lastSeq = row.seq;
+        }
+      }
+    }
 
     return {
       rows: page,
       hasMore,
-      nextAfterSeq: page.length > 0 ? page[page.length - 1].seq : null,
+      nextAfterSeq: lastSeq,
       stagedRows: stage?.stagedRows ?? 0,
       totalDiscovered: stage?.totalDiscovered ?? 0,
+      providerCount: stage?.providerCount ?? null,
       completeness: stage?.completeness ?? null,
       transportState: stage?.transportState ?? null,
       catalogPath: stage?.catalogPath ?? null,
@@ -301,10 +374,19 @@ export function createConvexStagingSink(ctx: ActionCtx): CatalogStagingSink {
         seq += 1;
         return mapped;
       });
-      await ctx.runMutation(internal.discoveryStage.appendStageRows, { stageId, rows: payload });
+      await ctx.runMutation(internal.discoveryStage.appendStageChunks, { stageId, rows: payload });
     },
 
-    async finish({ stageId, catalogPath, stagedRows, totalDiscovered, completeness, state, detail }) {
+    async finish({
+      stageId,
+      catalogPath,
+      stagedRows,
+      totalDiscovered,
+      providerCount,
+      completeness,
+      state,
+      detail,
+    }) {
       await ctx.runMutation(internal.discoveryStage.closeStage, {
         stageId,
         stagedRows,
@@ -312,6 +394,7 @@ export function createConvexStagingSink(ctx: ActionCtx): CatalogStagingSink {
         completeness: completeness ?? "COMPLETE",
         state,
         ...(detail !== undefined ? { detail } : {}),
+        ...(providerCount !== undefined ? { providerCount } : {}),
       });
       await ctx.runMutation(internal.discoveryStage.supersedeOlderStages, {
         catalogPath,

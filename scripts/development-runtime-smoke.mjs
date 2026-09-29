@@ -404,6 +404,11 @@ export async function discoverTwelveData(transport, token) {
           completeness: typeof c?.completeness === "string" ? c.completeness : null,
           pagesFetched: isNumber(c?.pagesFetched) ? c.pagesFetched : null,
           totalDiscovered: isNumber(c?.totalDiscovered) ? c.totalDiscovered : null,
+          // Phase 289G — the provider's OWN row count, verbatim, beside the rows
+          // this walk kept. Identity dedupe inside a catalog legitimately makes
+          // them differ, and hiding either number would make the completeness
+          // claim unverifiable.
+          providerCount: isNumber(c?.providerCount) ? c.providerCount : null,
           failedPage: isNumber(c?.failedPage) ? c.failedPage : null,
           // Phase 289F — how this catalog crossed the function boundary. A
           // catalog above Convex's return boundary is staged (persisted in
@@ -418,6 +423,12 @@ export async function discoverTwelveData(transport, token) {
                 stagedRows: isNumber(c.transport.stagedRows) ? c.transport.stagedRows : null,
                 totalKept: isNumber(c.transport.totalKept) ? c.transport.totalKept : null,
                 chunkRows: isNumber(c.transport.chunkRows) ? c.transport.chunkRows : null,
+                // Phase 289G — rows per stored stage document (the write-side
+                // chunk). Reported so the write path can be described from the
+                // run's own artifact instead of from memory.
+                writeChunkRows: isNumber(c.transport.writeChunkRows)
+                  ? c.transport.writeChunkRows
+                  : null,
                 stageId: typeof c.transport.stageId === "string" ? c.transport.stageId : null,
                 detail: typeof c.transport.detail === "string" ? sanitize(c.transport.detail) : null,
               }
@@ -457,16 +468,25 @@ export function discoveryDigest(discovery) {
             `${isNumber(c.pagesFetched) ? c.pagesFetched : "?"}p`,
             `${isNumber(c.totalDiscovered) ? c.totalDiscovered : "?"}kept`,
           ];
+          // Phase 289G — the provider's own count, so a reader can compare what
+          // the provider published with what this walk kept without opening the
+          // artifact.
+          if (isNumber(c.providerCount)) parts.push(`of:${c.providerCount}`);
           if (isNumber(c.failedPage)) parts.push(`failedPage=${c.failedPage}`);
-          // Phase 289F — a catalog above the return boundary is staged, not
+          // Phase 289F/289G — a catalog above the return boundary is staged, not
           // truncated: its kept count stays the provider's real number and the
-          // marker names the transport that carries it.
+          // marker names the transport that carries it, the rows it really
+          // holds, the chunk it pages with and the chunk it was WRITTEN in.
           if (c.transport?.mode === "staged") {
             parts.push(
               `staged:${isNumber(c.transport.stagedRows) ? c.transport.stagedRows : "?"}:${
                 c.transport.state ?? "?"
               }`,
             );
+            if (isNumber(c.transport.chunkRows)) parts.push(`chunk=${c.transport.chunkRows}`);
+            if (isNumber(c.transport.writeChunkRows)) {
+              parts.push(`writeChunk=${c.transport.writeChunkRows}`);
+            }
           }
           return parts.join("/");
         })
@@ -547,6 +567,11 @@ export async function probeDiscoveryStages(discovery, transport, token, limit = 
         rows: 0,
         stagedRows,
         state: null,
+        hasMore: false,
+        nextAfterSeq: null,
+        catalogCompleteness: null,
+        catalogRows: null,
+        providerCount: null,
         identitySample: [],
         reason: sanitize(first.appError ?? first.transportError ?? "stage read failed"),
       });
@@ -555,6 +580,15 @@ export async function probeDiscoveryStages(discovery, transport, token, limit = 
 
     const value = first.value ?? {};
     const rows = Array.isArray(value.rows) ? value.rows : [];
+    // Phase 289G — the stage's OWN record of the catalog it holds: the walk's
+    // completeness, the rows it kept and the count the PROVIDER reported. They
+    // are reported next to the read proof, so the run states the catalog's
+    // completeness and its staged total independently of how much of it the
+    // proof transferred.
+    const catalogCompleteness =
+      typeof value.completeness === "string" ? value.completeness : null;
+    const catalogRows = isNumber(value.totalDiscovered) ? value.totalDiscovered : null;
+    const providerCount = isNumber(value.providerCount) ? value.providerCount : null;
     const identities = rows.map((row) =>
       typeof row?.providerInstrumentId === "string" ? row.providerInstrumentId : "?",
     );
@@ -602,6 +636,9 @@ export async function probeDiscoveryStages(discovery, transport, token, limit = 
       state,
       hasMore,
       nextAfterSeq,
+      catalogCompleteness,
+      catalogRows,
+      providerCount,
       identitySample: identities.slice(0, DISCOVERY_IDENTITY_SAMPLE),
       reason,
     });
@@ -619,6 +656,13 @@ export function stageReadDigest(reads) {
       `${isNumber(read.rows) ? read.rows : "?"}of${isNumber(read.stagedRows) ? read.stagedRows : "?"}`,
     ];
     if (typeof read.state === "string") bits.push(`state=${read.state}`);
+    // Phase 289G — the catalog's own completeness and total, read from the
+    // stage: a bounded page proves readability, never completeness.
+    if (typeof read.catalogCompleteness === "string") {
+      bits.push(`catalog=${read.catalogCompleteness}`);
+    }
+    if (isNumber(read.catalogRows)) bits.push(`total=${read.catalogRows}`);
+    if (isNumber(read.providerCount)) bits.push(`of:${read.providerCount}`);
     if (Array.isArray(read.identitySample) && read.identitySample.length > 0) {
       bits.push(read.identitySample.slice(0, 2).join(","));
     }
@@ -2426,6 +2470,11 @@ async function run() {
               rows: 0,
               stagedRows: null,
               state: null,
+              hasMore: false,
+              nextAfterSeq: null,
+              catalogCompleteness: null,
+              catalogRows: null,
+              providerCount: null,
               identitySample: [],
               reason: sanitize(error instanceof Error ? error.message : "stage probe failed"),
             },

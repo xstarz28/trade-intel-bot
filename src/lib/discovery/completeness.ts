@@ -44,6 +44,8 @@ export interface CatalogTransportReport {
   totalKept: number;
   /** Provider-order chunk size a consumer should page with. */
   chunkRows?: number;
+  /** Phase 289G — rows stored per stage document (the write-side chunk). */
+  writeChunkRows?: number;
   /** Server-side stage identifier; present only for the staged mode. */
   stageId?: string;
   /** Why the transport state is not `complete`. */
@@ -56,6 +58,13 @@ export type CatalogFetchReport = {
   completeness: DiscoveryCompleteness;
   pagesFetched: number;
   totalDiscovered: number;
+  /**
+   * Phase 289G — the provider's own row count for this catalog, verbatim.
+   * Reported beside `totalDiscovered` so a reader can see both the number the
+   * provider published and the number this walk kept (identity dedupe inside a
+   * catalog legitimately makes them differ; neither is invented).
+   */
+  providerCount?: number;
   failedPage?: number;
   /** Phase 289F — how (and how completely) the rows crossed the boundary. */
   transport?: CatalogTransportReport;

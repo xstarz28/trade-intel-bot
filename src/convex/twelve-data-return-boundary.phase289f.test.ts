@@ -37,6 +37,7 @@ import {
   arrayBoundViolations,
   CONVEX_MAX_ARRAY_LENGTH,
   DISCOVERY_INLINE_LIMIT,
+  STAGE_CHUNK_ROWS,
   STAGE_READ_ROWS,
   STAGE_WRITE_BATCH_ROWS,
   STAGE_WRITE_MAX_ROWS,
@@ -105,7 +106,14 @@ interface StageDoc {
 }
 
 function createStageStore(options: { failOpen?: boolean; failAppendAfterRows?: number } = {}) {
-  const stages = new Map<string, { doc: StageDoc; rows: Record<string, unknown>[] }>();
+  const stages = new Map<
+    string,
+    {
+      doc: StageDoc;
+      rows: Record<string, unknown>[];
+      chunks: { seqStart: number; rows: Record<string, unknown>[] }[];
+    }
+  >();
   const pruned: string[] = [];
   const scheduled: string[] = [];
   const writes: number[] = [];
@@ -128,10 +136,11 @@ function createStageStore(options: { failOpen?: boolean; failAppendAfterRows?: n
             transportState: "partial",
           },
           rows: [],
+          chunks: [],
         });
         return null;
       }
-      case "discoveryStage:appendStageRows": {
+      case "discoveryStage:appendStageChunks": {
         const batch = args.rows as Record<string, unknown>[];
         writes.push(batch.length);
         if (batch.length > STAGE_WRITE_MAX_ROWS) {
@@ -147,8 +156,16 @@ function createStageStore(options: { failOpen?: boolean; failAppendAfterRows?: n
         ) {
           throw new Error("stage store rejected the write");
         }
+        // Phase 289G: the rows are stored as CHUNK documents, exactly as the
+        // real mutation does — one document per STAGE_CHUNK_ROWS rows, keyed by
+        // the first row's provider `seq`.
+        for (let i = 0; i < batch.length; i += STAGE_CHUNK_ROWS) {
+          const slice = batch.slice(i, i + STAGE_CHUNK_ROWS);
+          stage.chunks.push({ seqStart: Number(slice[0].seq), rows: slice });
+        }
         stage.rows.push(...batch);
-        stage.doc.stagedRows = stage.rows.length;
+        // The stage document is not patched per write (that is what lets writes
+        // overlap); the count is settled by closeStage, as the real action does.
         return null;
       }
       case "discoveryStage:closeStage": {
@@ -176,8 +193,13 @@ function createStageStore(options: { failOpen?: boolean; failAppendAfterRows?: n
         pruned.push(stageId);
         const stage = stages.get(stageId);
         if (stage) {
-          stage.rows.splice(0, 512);
-          if (stage.rows.length === 0) stages.delete(stageId);
+          // Phase 289G: pruning deletes CHUNK documents, 512 per invocation.
+          const removed = stage.chunks.splice(0, 512);
+          for (const chunk of removed) {
+            const rows = new Set(chunk.rows.map((row) => row.seq));
+            stage.rows = stage.rows.filter((row) => !rows.has(row.seq));
+          }
+          if (stage.chunks.length === 0) stages.delete(stageId);
         }
         return null;
       }
@@ -189,19 +211,45 @@ function createStageStore(options: { failOpen?: boolean; failAppendAfterRows?: n
   const runQuery = async (ref: unknown, args: Record<string, unknown>) => {
     expect(getFunctionName(ref as never)).toBe("discoveryStage:readStageRows");
     const stage = stages.get(String(args.stageId));
-    const all = (stage?.rows ?? []).slice().sort((a, b) => Number(a.seq) - Number(b.seq));
     const limit = Math.max(1, Math.min(Number(args.limit), STAGE_READ_ROWS));
     const afterSeq = Number(args.afterSeq);
-    const remaining = all.filter((row) => Number(row.seq) > afterSeq);
-    const page: Record<string, unknown>[] = remaining.slice(0, limit).map((row) => {
-      const { stageId, ...rest } = row as Record<string, unknown>;
-      void stageId;
-      return rest;
-    });
+    // The real reader's TWO-part cursor: the straddling chunk (greatest
+    // seqStart <= afterSeq) first, then the chunks that start after it.
+    const chunks = (stage?.chunks ?? []).slice().sort((a, b) => a.seqStart - b.seqStart);
+    const page: Record<string, unknown>[] = [];
+    let hasMore = false;
+    let lastSeq: number | null = null;
+    const push = (rows: Record<string, unknown>[]) => {
+      for (const row of rows) {
+        if (Number(row.seq) <= afterSeq) continue;
+        if (page.length === limit) {
+          hasMore = true;
+          return;
+        }
+        const { stageId: _stageId, ...rest } = row as Record<string, unknown>;
+        void _stageId;
+        page.push(rest);
+        lastSeq = Number(row.seq);
+      }
+    };
+    const straddle = [...chunks].reverse().find((chunk) => chunk.seqStart <= afterSeq);
+    if (straddle) push(straddle.rows);
+    if (!hasMore) {
+      // The real reader takes `ceil(limit / STAGE_CHUNK_ROWS) + 1` chunks.
+      const span = Math.ceil(limit / STAGE_CHUNK_ROWS) + 1;
+      let taken = 0;
+      for (const chunk of chunks) {
+        if (chunk.seqStart <= afterSeq) continue;
+        if (taken >= span) break;
+        taken += 1;
+        push(chunk.rows);
+        if (hasMore) break;
+      }
+    }
     return {
       rows: page,
-      hasMore: remaining.length > page.length,
-      nextAfterSeq: page.length > 0 ? Number(page[page.length - 1].seq) : null,
+      hasMore,
+      nextAfterSeq: lastSeq,
       stagedRows: stage?.doc.stagedRows ?? 0,
       totalDiscovered: stage?.doc.totalDiscovered ?? 0,
       completeness: stage?.doc.completeness ?? null,
@@ -386,9 +434,14 @@ describe("289F — one catalog execution stays inside the return boundary", () =
     expect(catalog.completeness).toBe("COMPLETE");
     expect(catalog.totalDiscovered).toBe(STOCK_COUNT);
     // ...while the TRANSPORT reports exactly how much of it is available.
+    //
+    // Phase 289G: the rows that reached the store are counted in FULL BATCHES —
+    // the batch size is a measured constant, not whatever a transport chunk
+    // happened to contain — so the confirmed count is one full batch (1024).
     expect(catalog.transport?.mode).toBe("staged");
     expect(catalog.transport?.state).toBe("partial");
-    expect(catalog.transport?.stagedRows).toBe(512);
+    expect(catalog.transport?.stagedRows).toBe(STAGE_WRITE_BATCH_ROWS);
+    expect(catalog.transport?.stagedRows).toBe(1024);
     expect(result.warnings.join(" ")).toContain("/stocks: staged transport partial");
     // The universe size is still the provider's real count.
     expect(result.totalDiscovered).toBe(STOCK_COUNT);

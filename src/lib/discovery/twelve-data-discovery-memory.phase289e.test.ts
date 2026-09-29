@@ -393,6 +393,12 @@ describe("289E — normalized output keeps the provider truth, with bounded stat
         completeness: "COMPLETE",
         pagesFetched: 1,
         totalDiscovered: 6,
+        // Phase 289G — the provider's own `count` is reported verbatim beside
+        // the rows this walk kept. The two legitimately differ HERE: the
+        // provider published 7 rows and one of them ("HG1") carries no identity,
+        // so the walk kept 6. Reporting both is what makes the difference
+        // visible instead of hidden.
+        providerCount: 7,
         transport: {
           mode: "inline",
           state: "complete",
@@ -607,8 +613,13 @@ describe("289E — the retention that caused the OOM stays fixed (structural gua
     expect(adapter).toContain("onRows:");
     // The old double copy of the whole normalized set is gone.
     expect(adapter).not.toContain("const deduplicated = Array.from(");
-    // Transport exposes the body instead of parsing it up front for catalogs.
-    expect(transport).toContain("body: stream");
+    // Transport hands over the RAW BODY instead of parsing it up front for
+    // catalogs. Phase 289G wraps that stream so it can enforce the split
+    // deadlines (headers / stall / total) while forwarding every chunk verbatim
+    // — the rows are still read from the provider's own bytes.
+    expect(transport).toContain("body: guarded");
+    expect(transport).toContain("for await (const chunk of stream");
+    expect(transport).toContain("yield chunk;");
   });
 
   it("the discovery entry point delegates one catalog per function execution", async () => {

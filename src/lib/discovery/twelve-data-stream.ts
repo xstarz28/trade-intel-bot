@@ -66,10 +66,30 @@ export async function scanTwelveDataCatalogRows(
    * persists rows uses this as backpressure: its pending-write queue is drained
    * before more body text is read, so a 30 MB catalog never turns into 30 MB of
    * queued writes. Purely optional — every existing caller passes nothing.
+   *
+   * Phase 289G — `rowsPerPause` + `onPause` bound the QUEUE, not the response.
+   *
+   * A transport may hand the whole catalog over in one chunk (a proxy, a test,
+   * a retry buffer), so "one chunk" is not a memory bound. The scanner therefore
+   * pauses ITSELF: after every `rowsPerPause` rows delivered, the text is left
+   * exactly where it stopped, `onPause` is awaited, and scanning resumes at the
+   * same character. Characters are never skipped and never reprocessed, so the
+   * row stream is byte-for-byte what it was — only its timing changes.
    */
-  hooks: { onChunk?: () => Promise<void> } = {},
+  hooks: {
+    onChunk?: () => Promise<void>;
+    /** Awaited mid-chunk after `rowsPerPause` rows: the caller persists. */
+    onPause?: () => Promise<void>;
+    /** How many rows may be delivered between pauses. 0 disables pausing. */
+    rowsPerPause?: number;
+  } = {},
 ): Promise<CatalogRowScanResult> {
   const decoder = new TextDecoder();
+  const pauseEvery =
+    typeof hooks.rowsPerPause === "number" && hooks.rowsPerPause > 0
+      ? Math.floor(hooks.rowsPerPause)
+      : 0;
+  let rowsSincePause = 0;
 
   let mode: Mode = "start";
   let pendingKey: string | null = null;
@@ -136,13 +156,21 @@ export async function scanTwelveDataCatalogRows(
     try {
       onRow(JSON.parse(raw) as unknown);
       rowsSeen += 1;
+      rowsSincePause += 1;
     } catch {
       failure = "catalog row is not valid JSON";
     }
   };
 
-  const process = (text: string) => {
-    for (let i = 0; i < text.length && failure === null; i += 1) {
+  const process = (text: string, from = 0): { next: number; paused: boolean } => {
+    let i = from;
+    for (; i < text.length && failure === null; i += 1) {
+      // Phase 289G — the pause point. It sits BEFORE the next character is
+      // consumed, so the resume index is exactly where this call stopped: no
+      // character is dropped and none is processed twice.
+      if (pauseEvery > 0 && rowsSincePause >= pauseEvery) {
+        return { next: i, paused: true };
+      }
       const c = text[i];
 
       switch (mode) {
@@ -341,6 +369,7 @@ export async function scanTwelveDataCatalogRows(
         }
       }
     }
+    return { next: i, paused: false };
   };
 
   let carry = "";
@@ -359,7 +388,15 @@ export async function scanTwelveDataCatalogRows(
       } else {
         carry = "";
       }
-      process(slice);
+      let cursor = 0;
+      while (cursor < slice.length) {
+        const step = process(slice, cursor);
+        cursor = step.next;
+        if (!step.paused) break;
+        rowsSincePause = 0;
+        if (hooks.onPause) await hooks.onPause();
+        if (failure !== null) return { ok: false, error: failure };
+      }
       if (hooks.onChunk) await hooks.onChunk();
       if (failure !== null) return { ok: false, error: failure };
     }
@@ -372,7 +409,17 @@ export async function scanTwelveDataCatalogRows(
     };
   }
 
-  if (carry !== "") process(carry);
+  if (carry !== "") {
+    let cursor = 0;
+    while (cursor < carry.length) {
+      const step = process(carry, cursor);
+      cursor = step.next;
+      if (!step.paused) break;
+      rowsSincePause = 0;
+      if (hooks.onPause) await hooks.onPause();
+      if (failure !== null) return { ok: false, error: failure };
+    }
+  }
   if (failure !== null) return { ok: false, error: failure };
 
   // `mode` is mutated inside `process`, so read it once into a value the

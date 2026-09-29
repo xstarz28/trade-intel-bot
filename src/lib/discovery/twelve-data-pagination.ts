@@ -235,8 +235,15 @@ export async function fetchTwelveDataCatalogPages(
      * there and hands this hook the drain. It is awaited between transport
      * chunks and after a buffered page, so the queue never grows past one
      * transport chunk while the scanner's row-by-row contract stays intact.
+     *
+     * Phase 289G — `rowsPerDrain` bounds the queue INDEPENDENTLY of the
+     * transport: the scanner pauses itself after that many rows and awaits the
+     * same drain, so a single oversized chunk can no longer accumulate the whole
+     * catalog. The bound belongs to the caller that owns the queue.
      */
     drain?: () => Promise<void>;
+    /** Rows the scanner may deliver before pausing for `drain`. */
+    rowsPerDrain?: number;
   },
 ): Promise<CatalogPagesResult> {
   const warnings: string[] = [];
@@ -341,7 +348,13 @@ export async function fetchTwelveDataCatalogPages(
       const scan = await scanTwelveDataCatalogRows(
         res.body,
         consumer.consume,
-        args.drain ? { onChunk: args.drain } : {},
+        args.drain
+          ? {
+              onChunk: args.drain,
+              onPause: args.drain,
+              ...(args.rowsPerDrain !== undefined ? { rowsPerPause: args.rowsPerDrain } : {}),
+            }
+          : {},
       );
       flush();
       if (args.drain) await args.drain();

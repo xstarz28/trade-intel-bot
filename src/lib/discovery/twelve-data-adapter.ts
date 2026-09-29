@@ -45,8 +45,11 @@ import { rollupCompleteness } from "./completeness";
 import {
   boundedInlineLimit,
   DISCOVERY_INLINE_LIMIT,
+  STAGE_CHUNK_ROWS,
+  STAGE_QUEUE_ROWS,
   STAGE_READ_ROWS,
   STAGE_WRITE_BATCH_ROWS,
+  STAGE_WRITE_IN_FLIGHT,
 } from "./return-boundary";
 import {
   fetchTwelveDataCatalogPages,
@@ -326,6 +329,8 @@ export interface CatalogStagingSink {
     catalogPath: string;
     stagedRows: number;
     totalDiscovered: number;
+    /** The provider's own `count`, when it reported one. */
+    providerCount?: number;
     completeness: ProviderDiscoveryResult["completeness"];
     state: DiscoveryTransportState;
     detail?: string;
@@ -473,72 +478,160 @@ export function createTwelveDataDiscoveryAdapter(
         let stagingState: DiscoveryTransportState = "complete";
         let stagingDetail: string | undefined;
 
-        // Bounded write queue. `onRows` is synchronous (the row scanner calls
-        // it), so full batches queue here and `drain` persists them as soon as
-        // the pagination yields — the queue never exceeds one transport chunk.
+        /**
+         * Phase 289G — BOUNDED, PIPELINED STAGING QUEUE.
+         *
+         * WHAT CHANGED AND WHY (measured, see `return-boundary.ts`):
+         *
+         *  1. A TRANSPORT CHUNK NO LONGER FORCES A WRITE. 289F called `drain`
+         *     (which flushed whatever was pending) after every chunk, so the
+         *     provider read was stalled on a mutation per chunk and the write
+         *     batch was whatever the chunk happened to contain. Now a row joins
+         *     `pending`; only a FULL `STAGE_WRITE_BATCH_ROWS` batch is eligible
+         *     to persist. Batch boundaries are decided by the batch size, never
+         *     by the transport's chunking.
+         *  2. THE FINAL, SHORT BATCH IS FLUSHED EXACTLY ONCE, at the end of the
+         *     catalog walk (`settle`), never per chunk.
+         *  3. WRITES OVERLAP THE READ, WITH A BOUND. Up to
+         *     `STAGE_WRITE_IN_FLIGHT` mutations run while the body is still being
+         *     read, so the read rate is no longer capped by write latency; the
+         *     queue is what bounds memory, and it is bounded on both sides —
+         *     `STAGE_QUEUE_ROWS` (the scanner pauses when it is reached) and the
+         *     in-flight count here.
+         */
         let pending: DiscoveredInstrument[] = [];
-        const pendingBatches: DiscoveredInstrument[][] = [];
+        /** Full batches, waiting for a free write slot. */
+        const fullBatches: DiscoveredInstrument[][] = [];
+        const inFlight = new Set<Promise<void>>();
+        /** Set once a write fails: rows are no longer accepted into a stage. */
+        let queueFailure: string | null = null;
+
         const queueRows = (rows: readonly DiscoveredInstrument[]) => {
           for (const row of rows) pending.push(row);
           while (pending.length >= STAGE_WRITE_BATCH_ROWS) {
-            pendingBatches.push(pending.splice(0, STAGE_WRITE_BATCH_ROWS));
+            fullBatches.push(pending.splice(0, STAGE_WRITE_BATCH_ROWS));
           }
-        };
-        const flushPending = () => {
-          if (pending.length > 0) pendingBatches.push(pending.splice(0, pending.length));
         };
 
-        const drain = async (): Promise<void> => {
-          if (!stagedMode) return;
-          flushPending();
-          if (staging === undefined) {
-            // No sink: rows past the boundary have nowhere to go. They are NOT
-            // silently inlined (that would be a truncated catalog) — the
-            // transport says exactly what happened instead.
-            pendingBatches.length = 0;
-            stagedRows = 0;
-            stagingState = "failed";
-            stagingDetail ??=
-              `catalog holds ${kept} row(s), above the ${inlineLimit}-row inline boundary, and no staging sink is configured`;
-            return;
-          }
-          while (pendingBatches.length > 0) {
-            const batch = pendingBatches.shift()!;
-            if (stagingState === "failed") break;
-            if (stageId === null) {
+        const failQueue = (detail: string, planted: boolean) => {
+          queueFailure = detail;
+          stagingState = stagedRows > 0 ? "partial" : "failed";
+          if (planted) stagingDetail = detail;
+          else stagingDetail ??= detail;
+          fullBatches.length = 0;
+          pending.length = 0;
+        };
+
+        /**
+         * Open the stage EXACTLY ONCE for this catalog.
+         *
+         * Several writes may be in flight at the same time (that is what keeps
+         * the provider read at full speed), so a naive `if (stageId === null)
+         * begin()` lets the first few writes each open their OWN stage and split
+         * one catalog across several stage documents. The promise below is
+         * created once and awaited by every write, so one catalog is one stage —
+         * which is what makes `stagedRows`, the cursor walk and the transport
+         * report describe the same store.
+         */
+        let stageOpening: Promise<string | null> | null = null;
+        const openStageOnce = async (): Promise<string | null> => {
+          if (stageOpening === null) {
+            stageOpening = (async () => {
               try {
-                const started = await staging.begin({
+                const started = await staging!.begin({
                   catalogPath: spec.path,
                   assetClass: spec.assetClass,
                   discoveredAt: now,
                 });
                 stageId = started.stageId;
+                return started.stageId;
               } catch (error) {
-                stagingState = "failed";
-                stagingDetail = `staging could not be opened: ${
-                  error instanceof Error ? error.message : "unknown error"
-                }`;
-                break;
+                failQueue(
+                  `staging could not be opened: ${
+                    error instanceof Error ? error.message : "unknown error"
+                  }`,
+                  true,
+                );
+                return null;
               }
-            }
-            try {
-              await staging.append({ stageId, rows: batch });
-              stagedRows += batch.length;
-            } catch (error) {
-              stagingState = stagedRows > 0 ? "partial" : "failed";
-              stagingDetail = `staging write failed after ${stagedRows} row(s): ${
+            })();
+          }
+          return stageOpening;
+        };
+
+        /** Persist ONE full batch. Counts only what the sink CONFIRMED. */
+        const writeBatch = async (batch: DiscoveredInstrument[]): Promise<void> => {
+          if (queueFailure !== null) return;
+          if (staging === undefined) {
+            // No sink: rows past the boundary have nowhere to go. They are NOT
+            // silently inlined (that would be a truncated catalog) — the
+            // transport says exactly what happened instead.
+            stagedRows = 0;
+            failQueue(
+              `catalog holds ${kept} row(s), above the ${inlineLimit}-row inline boundary, and no staging sink is configured`,
+              true,
+            );
+            return;
+          }
+          const opened = await openStageOnce();
+          if (opened === null) return;
+          try {
+            await staging.append({ stageId: opened, rows: batch });
+            stagedRows += batch.length;
+          } catch (error) {
+            failQueue(
+              `staging write failed after ${stagedRows} row(s): ${
                 error instanceof Error ? error.message : "unknown error"
-              }`;
+              }`,
+              false,
+            );
+          }
+        };
+
+        /**
+         * Persist every full batch, keeping at most `STAGE_WRITE_IN_FLIGHT`
+         * writes outstanding. Awaits the OLDEST write when the pipeline is full,
+         * which is the backpressure: the read cannot outrun the writes by more
+         * than the in-flight bound plus one partial batch.
+         */
+        const drain = async (): Promise<void> => {
+          if (!stagedMode) return;
+          while (fullBatches.length > 0) {
+            while (inFlight.size >= STAGE_WRITE_IN_FLIGHT) {
+              await Promise.race(inFlight);
+            }
+            if (queueFailure !== null) {
+              fullBatches.length = 0;
               break;
             }
+            const batch = fullBatches.shift()!;
+            const write = writeBatch(batch).finally(() => {
+              inFlight.delete(write);
+            });
+            inFlight.add(write);
           }
-          pendingBatches.length = 0;
+        };
+
+        /**
+         * End of the catalog walk: flush the single remaining short batch (once)
+         * and wait for every write to settle before the stage is closed, so the
+         * counts that are published are counts that really committed.
+         */
+        const settle = async (): Promise<void> => {
+          if (!stagedMode) return;
+          if (pending.length > 0) fullBatches.push(pending.splice(0, pending.length));
+          await drain();
+          await Promise.all([...inFlight]);
         };
 
         const result = await fetchTwelveDataCatalogPages(fetchJson, {
           path: spec.path,
           apiKey,
           drain,
+          // The queue bound travels with the read: the scanner pauses itself
+          // after this many rows, so the retained set never depends on how the
+          // transport chunks the body.
+          rowsPerDrain: STAGE_QUEUE_ROWS,
           onRows: (rows) => {
             for (const raw of rows) {
               const normalized = normalizeCatalogRow(raw as CatalogRow, spec, now);
@@ -575,7 +668,7 @@ export function createTwelveDataDiscoveryAdapter(
           },
         });
 
-        if (stagedMode) await drain();
+        await settle();
 
         warnings.push(...result.warnings);
         pagesFetched += result.pagesFetched;
@@ -587,6 +680,7 @@ export function createTwelveDataDiscoveryAdapter(
             completeness: "FAILED",
             pagesFetched: result.pagesFetched,
             totalDiscovered: 0,
+            ...(result.totalCount !== undefined ? { providerCount: result.totalCount } : {}),
             transport: {
               mode: "inline",
               state: "failed",
@@ -623,6 +717,7 @@ export function createTwelveDataDiscoveryAdapter(
                 totalDiscovered: kept,
                 completeness: result.completeness,
                 state: stagingState,
+                ...(result.totalCount !== undefined ? { providerCount: result.totalCount } : {}),
                 ...(stagingDetail !== undefined ? { detail: stagingDetail } : {}),
               });
             } catch (error) {
@@ -638,7 +733,11 @@ export function createTwelveDataDiscoveryAdapter(
             inlineRows: 0,
             stagedRows,
             totalKept: kept,
+            // How a consumer should page (`STAGE_READ_ROWS`) and how wide one
+            // stored document is — both reported, so a reader — or the smoke —
+            // can prove the numbers without inspecting the deployment.
             chunkRows: STAGE_READ_ROWS,
+            writeChunkRows: STAGE_CHUNK_ROWS,
             ...(stageId !== null ? { stageId } : {}),
             ...(stagingDetail !== undefined ? { detail: stagingDetail } : {}),
           };
@@ -673,6 +772,12 @@ export function createTwelveDataDiscoveryAdapter(
           completeness: result.completeness,
           pagesFetched: result.pagesFetched,
           totalDiscovered: kept,
+          // The provider's OWN `count`, verbatim and unbounded by us. It is
+          // reported next to `totalDiscovered` (what the walk kept) instead of
+          // being compared away: `/stocks` really does report more rows than it
+          // publishes unique symbols for, and hiding either number would make
+          // the completeness claim unverifiable.
+          ...(result.totalCount !== undefined ? { providerCount: result.totalCount } : {}),
           transport,
           ...(result.failedPage !== undefined
             ? { failedPage: result.failedPage }
