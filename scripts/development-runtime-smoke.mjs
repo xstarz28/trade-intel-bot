@@ -70,6 +70,17 @@ export const PRODUCTION_HOST = "pleasant-curlew-264.convex.cloud";
 const TIMEOUT_MS = 60_000;
 
 /**
+ * Phase 289F — the discovery call gets its own, longer budget.
+ *
+ * A catalog above Convex's return boundary is now PERSISTED in bounded batches
+ * instead of being returned, so the discovery action does real write work (a
+ * 143300-row catalog is hundreds of stage writes) on top of the provider read.
+ * That work is the fix, not a fault: aborting the call at the ordinary 60 s
+ * would fail the run for succeeding. Every other call keeps the normal budget.
+ */
+const DISCOVERY_CALL_TIMEOUT_MS = 240_000;
+
+/**
  * Refuse anything that is not the development deployment.
  *
  * - https only (a plaintext smoke would send a session bearer over the wire);
@@ -128,9 +139,10 @@ export function sanitize(text) {
 export function createTransport(origin, { timeoutMs = TIMEOUT_MS } = {}) {
   const state = { calls: 0, lastError: null, blocked: false };
 
-  async function call(kind, path, args, token = null) {
+  async function call(kind, path, args, token = null, options = {}) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const callTimeoutMs = isNumber(options.timeoutMs) ? options.timeoutMs : timeoutMs;
+    const timer = setTimeout(() => controller.abort(), callTimeoutMs);
     try {
       const response = await fetch(`${origin}/api/${kind}`, {
         method: "POST",
@@ -164,8 +176,8 @@ export function createTransport(origin, { timeoutMs = TIMEOUT_MS } = {}) {
 
   return {
     state,
-    action: (path, args, token) => call("action", path, args, token),
-    query: (path, args, token) => call("query", path, args, token),
+    action: (path, args, token, options) => call("action", path, args, token, options),
+    query: (path, args, token, options) => call("query", path, args, token, options),
   };
 }
 
@@ -369,7 +381,11 @@ export async function discoverOkx(transport) {
  * verbatim (sanitized), so the verdict names the actual cause.
  */
 export async function discoverTwelveData(transport, token) {
-  const r = await transport.action("marketData:discoverTwelveDataInstruments", {}, token);
+  // A staged catalog is written server-side during this call; the ordinary
+  // client budget would abort that work. The bound is still a bound.
+  const r = await transport.action("marketData:discoverTwelveDataInstruments", {}, token, {
+    timeoutMs: DISCOVERY_CALL_TIMEOUT_MS,
+  });
   if (!r.ok) return { success: false, instruments: [], error: r.appError ?? r.transportError ?? "discovery failed" };
   const value = r.value ?? {};
   return {
@@ -389,6 +405,23 @@ export async function discoverTwelveData(transport, token) {
           pagesFetched: isNumber(c?.pagesFetched) ? c.pagesFetched : null,
           totalDiscovered: isNumber(c?.totalDiscovered) ? c.totalDiscovered : null,
           failedPage: isNumber(c?.failedPage) ? c.failedPage : null,
+          // Phase 289F — how this catalog crossed the function boundary. A
+          // catalog above Convex's return boundary is staged (persisted in
+          // provider order, read back in chunks) and its kept count stays the
+          // provider's real number; the transport state is the READABILITY
+          // truth, distinct from the catalog's own completeness.
+          transport: c?.transport
+            ? {
+                mode: typeof c.transport.mode === "string" ? c.transport.mode : null,
+                state: typeof c.transport.state === "string" ? c.transport.state : null,
+                inlineRows: isNumber(c.transport.inlineRows) ? c.transport.inlineRows : null,
+                stagedRows: isNumber(c.transport.stagedRows) ? c.transport.stagedRows : null,
+                totalKept: isNumber(c.transport.totalKept) ? c.transport.totalKept : null,
+                chunkRows: isNumber(c.transport.chunkRows) ? c.transport.chunkRows : null,
+                stageId: typeof c.transport.stageId === "string" ? c.transport.stageId : null,
+                detail: typeof c.transport.detail === "string" ? sanitize(c.transport.detail) : null,
+              }
+            : null,
         }))
       : [],
   };
@@ -425,6 +458,16 @@ export function discoveryDigest(discovery) {
             `${isNumber(c.totalDiscovered) ? c.totalDiscovered : "?"}kept`,
           ];
           if (isNumber(c.failedPage)) parts.push(`failedPage=${c.failedPage}`);
+          // Phase 289F — a catalog above the return boundary is staged, not
+          // truncated: its kept count stays the provider's real number and the
+          // marker names the transport that carries it.
+          if (c.transport?.mode === "staged") {
+            parts.push(
+              `staged:${isNumber(c.transport.stagedRows) ? c.transport.stagedRows : "?"}:${
+                c.transport.state ?? "?"
+              }`,
+            );
+          }
           return parts.join("/");
         })
         .join(" · "),
@@ -432,6 +475,8 @@ export function discoveryDigest(discovery) {
   } else {
     bits.push("no per-catalog report");
   }
+  const stageReads = stageReadDigest(discovery.stageReads);
+  if (stageReads !== null) bits.push(`stageRead=${stageReads}`);
   const instruments = Array.isArray(discovery.instruments) ? discovery.instruments : [];
   if (instruments.length > 0) {
     bits.push(
@@ -451,6 +496,143 @@ export function discoveryDigest(discovery) {
 
 /** How many discovered identities are named in the digest. */
 export const DISCOVERY_IDENTITY_SAMPLE = 6;
+
+/**
+ * Phase 289F — HOW MANY ROWS ONE STAGE READ MOVES.
+ *
+ * The proof only has to show that a staged catalog is READABLE in provider
+ * order — it must never transfer the universe it is proving. The bound belongs
+ * to the harness (the deployment's own chunk size is reported separately by the
+ * catalog's transport record), and it is small enough that the probe cannot
+ * become a second, accidental copy of the catalog.
+ */
+export const STAGE_READ_PROOF_ROWS = 2;
+
+/**
+ * Phase 289F — READ ONE BOUNDED PAGE OF EVERY STAGED CATALOG.
+ *
+ * The deployment cannot return a catalog above Convex's array boundary
+ * (`Array length is too long (143300 > maximum length 8192)`), so such a catalog
+ * is persisted server-side in provider order and the response carries only its
+ * transport record. This reads one small page back through the deployment's own
+ * read action — twice, to show the same page comes back identically — and
+ * records the provider-native identities it contains.
+ *
+ * NOTHING IS ASSUMED: `ok` requires rows to have arrived, the stage's own
+ * transport state to be `complete`, the page to fit what the stage says it
+ * holds, and the repeat read to agree. A failed read is reported with its
+ * reason; the probe never falls back to an inline slice, and it never treats a
+ * catalog's completeness as proof that its rows are readable.
+ */
+export async function probeDiscoveryStages(discovery, transport, token, limit = STAGE_READ_PROOF_ROWS) {
+  const catalogs = Array.isArray(discovery?.catalogs) ? discovery.catalogs : [];
+  const staged = catalogs.filter(
+    (c) => c?.transport && c.transport.mode === "staged" && typeof c.transport.stageId === "string",
+  );
+  if (staged.length === 0) return [];
+  const pageRows = Math.max(1, Math.min(isNumber(limit) ? Math.floor(limit) : STAGE_READ_PROOF_ROWS, 8));
+
+  const reads = [];
+  for (const catalog of staged) {
+    const record = catalog.transport;
+    const stagedRows = isNumber(record.stagedRows) ? record.stagedRows : null;
+    const path = typeof catalog.path === "string" ? catalog.path : null;
+    const args = { stageId: record.stageId, afterSeq: -1, limit: pageRows };
+
+    const first = await transport.action("marketData:readTwelveDataCatalogStage", args, token);
+    if (!first.ok) {
+      reads.push({
+        path,
+        ok: false,
+        rows: 0,
+        stagedRows,
+        state: null,
+        identitySample: [],
+        reason: sanitize(first.appError ?? first.transportError ?? "stage read failed"),
+      });
+      continue;
+    }
+
+    const value = first.value ?? {};
+    const rows = Array.isArray(value.rows) ? value.rows : [];
+    const identities = rows.map((row) =>
+      typeof row?.providerInstrumentId === "string" ? row.providerInstrumentId : "?",
+    );
+    const nativeIdentity = rows.every(
+      (row) =>
+        typeof row?.providerInstrumentId === "string" &&
+        row.providerInstrumentId.length > 0 &&
+        typeof row?.provider === "string" &&
+        typeof row?.assetClass === "string",
+    );
+    const state = typeof value.transportState === "string" ? value.transportState : null;
+    const hasMore = value.hasMore === true;
+    const nextAfterSeq = isNumber(value.nextAfterSeq) ? value.nextAfterSeq : null;
+    const withinStage = stagedRows === null || rows.length <= stagedRows;
+    const moreConsistent = stagedRows === null || stagedRows <= rows.length || hasMore;
+
+    // Re-reading the same page must return the same provider rows: a stable read
+    // is a pure read — no duplicate, no reorder, no side effect.
+    let stable = false;
+    const again = await transport.action("marketData:readTwelveDataCatalogStage", args, token);
+    if (again.ok) {
+      const againRows = Array.isArray(again.value?.rows) ? again.value.rows : [];
+      stable =
+        againRows.length === rows.length &&
+        againRows.every((row, i) => row?.providerInstrumentId === rows[i]?.providerInstrumentId);
+    }
+
+    const ok = nativeIdentity && rows.length > 0 && state === "complete" && withinStage && moreConsistent && stable;
+    const reason = ok
+      ? null
+      : rows.length === 0
+        ? "the stage returned no rows"
+        : state !== "complete"
+          ? `the stage's own transport state is ${state ?? "unknown"}`
+          : !stable
+            ? "re-reading the same page returned different rows"
+            : !nativeIdentity
+              ? "a staged row lost its provider-native identity"
+              : "the read is inconsistent with what the stage says it holds";
+    reads.push({
+      path,
+      ok,
+      rows: rows.length,
+      stagedRows,
+      state,
+      hasMore,
+      nextAfterSeq,
+      identitySample: identities.slice(0, DISCOVERY_IDENTITY_SAMPLE),
+      reason,
+    });
+  }
+  return reads;
+}
+
+/** The stage reads as ONE bounded, credential-redacted line. */
+export function stageReadDigest(reads) {
+  if (!Array.isArray(reads) || reads.length === 0) return null;
+  const parts = reads.slice(0, 5).map((read) => {
+    const bits = [
+      read.path ?? "?",
+      read.ok === true ? "ok" : "FAILED",
+      `${isNumber(read.rows) ? read.rows : "?"}of${isNumber(read.stagedRows) ? read.stagedRows : "?"}`,
+    ];
+    if (typeof read.state === "string") bits.push(`state=${read.state}`);
+    if (Array.isArray(read.identitySample) && read.identitySample.length > 0) {
+      bits.push(read.identitySample.slice(0, 2).join(","));
+    }
+    if (read.ok !== true && typeof read.reason === "string" && read.reason.length > 0) {
+      bits.push(sanitize(read.reason).slice(0, 80));
+    }
+    return bits.join(":");
+  });
+  const text = sanitize(parts.join(" · "));
+  return text.length > 300 ? text.slice(0, 300) : text;
+}
+
+/** How many of the assessment's evidence items are carried into the report. */
+export const EVIDENCE_ITEM_SAMPLE = 24;
 
 /**
  * One line naming why a discovery produced no candidate for this asset class —
@@ -616,15 +798,54 @@ export function readResultEvidence(result) {
             role: typeof d?.role === "string" ? d.role : null,
           }))
       : [],
-    evidenceProviders: Array.isArray(fa?.dimensions)
+    // Phase 289F — THE CANONICAL EVIDENCE ITEMS.
+    //
+    // The assessment carries per-item provenance on its own `evidence` array
+    // (metric, provider, source, observedAt, period, value…). The per-DIMENSION
+    // `evidence` field is PROSE. The previous derivation read the prose, so the
+    // provider list came back empty on every instrument and `eiaEvidence=0` sat
+    // next to a consumed EIA leg and a real inventory reading. The items are read
+    // here, bounded and sanitized, and every provider list is derived FROM THEM.
+    evidenceItemCount: Array.isArray(fa?.evidence) ? fa.evidence.length : 0,
+    // Phase 289F — the EIA slice of the canonical items, counted over the WHOLE
+    // array. The report below is deliberately bounded; the METRIC must not be,
+    // or a real EIA item past the sample would read as zero evidence while the
+    // leg that consumed it says otherwise.
+    eiaEvidenceItemCount: Array.isArray(fa?.evidence)
+      ? fa.evidence.filter((e) => isEiaProviderIdentity(e?.provider)).length
+      : 0,
+    eiaEvidenceMetrics: Array.isArray(fa?.evidence)
       ? [
           ...new Set(
-            fa.dimensions
-              .flatMap((d) => (Array.isArray(d?.evidence) ? d.evidence : []))
-              .map((e) => e?.provider)
-              .filter((p) => typeof p === "string"),
+            fa.evidence
+              .filter((e) => isEiaProviderIdentity(e?.provider))
+              .map((e) => e?.metric)
+              .filter((m) => typeof m === "string"),
+          ),
+        ].slice(0, 6)
+      : [],
+    evidenceProviders: Array.isArray(fa?.evidence)
+      ? [
+          ...new Set(
+            fa.evidence.map((e) => e?.provider).filter((p) => typeof p === "string"),
           ),
         ]
+      : [],
+    evidenceItems: Array.isArray(fa?.evidence)
+      ? fa.evidence.slice(0, EVIDENCE_ITEM_SAMPLE).map((e) => ({
+          metric: typeof e?.metric === "string" ? e.metric : null,
+          provider: typeof e?.provider === "string" ? sanitize(e.provider) : null,
+          source: typeof e?.source === "string" ? sanitize(e.source) : null,
+          unit: typeof e?.unit === "string" ? sanitize(e.unit) : null,
+          value:
+            isNumber(e?.value) ? e.value : typeof e?.value === "string" ? sanitize(e.value) : null,
+          observedAt: isNumber(e?.observedAt) && e.observedAt > 0 ? e.observedAt : null,
+          period: typeof e?.period === "string" ? sanitize(e.period) : null,
+          derived: e?.derived === true,
+          evidenceClass: typeof e?.evidenceClass === "string" ? e.evidenceClass : null,
+          consumedElsewhere:
+            typeof e?.consumedElsewhere === "string" ? sanitize(e.consumedElsewhere) : null,
+        }))
       : [],
     summary: typeof r.fundamentalSummary === "string" ? sanitize(r.fundamentalSummary) : null,
   };
@@ -853,6 +1074,7 @@ export function commodityMarketOf(evidence) {
   ].filter((t) => typeof t === "string");
 
   const eia = eiaLegRecord(evidence);
+  const eiaEvidence = eiaEvidenceRecord(evidence);
 
   return {
     group: fundamental?.commodityProfile?.group ?? null,
@@ -862,7 +1084,12 @@ export function commodityMarketOf(evidence) {
       fundamental?.commodityMetrics && typeof fundamental.commodityMetrics.inventoryLatest === "number"
         ? fundamental.commodityMetrics.inventoryLatest
         : null,
-    eiaEvidenceItems: providers.filter((p) => /energy information administration/i.test(p)).length,
+    // Phase 289F — the metric counts CANONICAL EIA evidence items and nothing
+    // else; `eiaEvidenceState` says whether it agrees with the leg's own state.
+    eiaEvidenceItems: eiaEvidence.items,
+    eiaEvidenceState: eiaEvidence.state,
+    eiaEvidenceDetail: eiaEvidence.detail,
+    eiaEvidenceMetrics: eiaEvidence.metrics,
     // The gate's own sentence. Only the Phase-288 revision produces it, so its
     // presence (or absence) is also part of the code-path fingerprint.
     petroleumFeedScopeText: texts.some((t) => /out of scope for this/i.test(t)),
@@ -902,6 +1129,87 @@ export function eiaLegRecord(evidence) {
           ? "acquired-not-attached"
           : "no-evidence";
   return { present: true, state, leg };
+}
+
+/**
+ * Phase 289F — WHAT `eiaEvidence` IS SUPPOSED TO MEAN.
+ *
+ * The canonical EIA provider identity, exactly as the runtime writes it on the
+ * evidence items it derived from the EIA/ WPSR payload (`provider`) and exactly
+ * as `providerDiagnostics` names the leg (`provider: "eia"`). Identity is
+ * matched, never a loose keyword: a provider that merely MENTIONS the agency in
+ * its source text is not EIA evidence.
+ */
+export const EIA_PROVIDER_ID = "eia";
+export const EIA_PROVIDER_SOURCE_NAME = "U.S. Energy Information Administration";
+
+export function isEiaProviderIdentity(provider) {
+  if (typeof provider !== "string") return false;
+  const text = provider.trim();
+  if (text === "") return false;
+  if (text.toLowerCase() === EIA_PROVIDER_ID) return true;
+  // The canonical provider name EXACTLY as the commodity adapter writes it on
+  // the evidence items it derived from the EIA payload. A provider that merely
+  // resembles the agency (a mirror, an aggregator, the name with a suffix bolted
+  // onto it) is not EIA evidence and can never raise the metric.
+  return text === EIA_PROVIDER_SOURCE_NAME;
+}
+
+/**
+ * The EIA evidence metric and its agreement with the leg's own state.
+ *
+ * `items` counts the CANONICAL evidence items of the assessment whose provider
+ * identity is EIA — nothing else can raise it: not an HTTP 200, not the leg
+ * record, not a provider list, not a string that mentions the agency. The leg
+ * state (from `providerDiagnostics`) must AGREE with it:
+ *
+ *   consistent-consumed     the leg was consumed AND its evidence items are attached
+ *   consistent-not-consumed the leg produced nothing AND no item is attached
+ *   inconsistent            the two surfaces disagree — named explicitly, so a
+ *                           consumed leg with no evidence (or evidence with no
+ *                           consumption) is a visible contradiction rather than
+ *                           a silent zero or a silent pass.
+ */
+export function eiaEvidenceRecord(evidence) {
+  const fundamental = evidence?.fundamental ?? null;
+  // The raw assessment carries its canonical items on `evidence`; the smoke's
+  // bounded projection carries the same items (sampled) as `evidenceItems`.
+  const rawItems = Array.isArray(fundamental?.evidence) ? fundamental.evidence : [];
+  const items = Array.isArray(fundamental?.evidenceItems) ? fundamental.evidenceItems : rawItems;
+  const eiaItems = items.filter((item) => isEiaProviderIdentity(item?.provider));
+  // The normalizer counts the EIA items over the whole canonical array; the
+  // sample above is only for display. Fall back to the sample for a caller that
+  // hands over a raw assessment (e.g. a unit test).
+  const eiaCount = isNumber(fundamental?.eiaEvidenceItemCount)
+    ? fundamental.eiaEvidenceItemCount
+    : eiaItems.length;
+  const eiaMetrics =
+    Array.isArray(fundamental?.eiaEvidenceMetrics) && fundamental.eiaEvidenceMetrics.length > 0
+      ? fundamental.eiaEvidenceMetrics
+      : eiaItems.map((item) => item?.metric);
+  const totalItems = isNumber(fundamental?.evidenceItemCount)
+    ? fundamental.evidenceItemCount
+    : rawItems.length > 0
+      ? rawItems.length
+      : items.length;
+  const leg = eiaLegRecord(evidence);
+  const consumed = leg.state === "consumed";
+  const present = eiaCount > 0;
+  const state = present === consumed ? (consumed ? "consistent-consumed" : "consistent-not-consumed") : "inconsistent";
+  let detail = null;
+  if (state === "inconsistent" && consumed) {
+    detail = `the eia leg was consumed but the assessment carries no eia evidence item (evidenceItems=${totalItems})`;
+  } else if (state === "inconsistent") {
+    detail = `the assessment carries ${eiaCount} eia evidence item(s) while the eia leg is ${leg.state}`;
+  }
+  return {
+    items: eiaCount,
+    metrics: [...new Set(eiaMetrics.filter((m) => typeof m === "string"))].slice(0, 6),
+    providers: [...new Set(items.map((item) => item?.provider).filter((p) => typeof p === "string"))].slice(0, 8),
+    legState: leg.state,
+    state,
+    detail,
+  };
 }
 
 /** The same record as ONE bounded, credential-redacted line. */
@@ -1070,14 +1378,17 @@ export function energyGateVerdict(samples) {
   const describe = (s) =>
     `${s.instrument ?? "?"}[group=${s.group ?? "?"} inventories=${s.inventories ?? "?"} inventoryLatest=${
       s.inventoryLatest ?? "none"
-    } eiaEvidence=${s.eiaEvidenceItems ?? 0} eiaLeg=${s.eiaLegState ?? "not-reported"}]`;
+    } eiaEvidence=${s.eiaEvidenceItems ?? 0}${
+      typeof s.eiaEvidenceState === "string" ? `/${s.eiaEvidenceState}` : ""
+    } eiaLeg=${s.eiaLegState ?? "not-reported"}]`;
 
   const failures = [];
   for (const s of other) {
     const carriesPetroleum =
       s.inventoryLatest !== null ||
       (typeof s.eiaEvidenceItems === "number" && s.eiaEvidenceItems > 0) ||
-      (typeof s.inventories === "string" && s.inventories !== "unavailable");
+      (typeof s.inventories === "string" && s.inventories !== "unavailable") ||
+      s.eiaEvidenceState === "inconsistent";
     if (carriesPetroleum) {
       failures.push(
         `${describe(s)} resolves to the ${s.group} market yet carries petroleum physical evidence — another market's inventory was attributed to it`,
@@ -1125,6 +1436,24 @@ export function energyGateVerdict(samples) {
       summary: `the energy market resolved (${describe(energySample)}) but the deployment delivered no petroleum inventory reading — ${
         energySample.reason ?? "no reason returned"
       }`,
+      control: other[0] ?? null,
+      energy: energySample,
+      failures,
+    };
+  }
+  if (energySample.eiaEvidenceState === "inconsistent") {
+    // Phase 289F — the EIA leg says it was consumed and the assessment's own
+    // canonical evidence says otherwise (or the reverse). That disagreement is a
+    // defect in the telemetry both surfaces exist to prove, so it FAILS the
+    // probe: a consumed leg may never be reported while the evidence metric
+    // stays at zero, and no metric may claim evidence the leg never consumed.
+    const reason = `${describe(energySample)} — the EIA leg and the assessment's own evidence disagree: ${
+      energySample.eiaEvidenceDetail ?? "no detail"
+    }`;
+    failures.push(reason);
+    return {
+      verdict: "FAIL",
+      summary: `contradiction: ${reason}`,
       control: other[0] ?? null,
       energy: energySample,
       failures,
@@ -1432,7 +1761,9 @@ export function renderSummary(report) {
           sample.group ?? "?"
         } · inventories=${sample.inventories ?? "?"} · inventoryLatest=${
           sample.inventoryLatest ?? "none"
-        } · eiaEvidence=${sample.eiaEvidenceItems ?? 0}`,
+        } · eiaEvidence=${sample.eiaEvidenceItems ?? 0}${
+          typeof sample.eiaEvidenceState === "string" ? ` (${sample.eiaEvidenceState})` : ""
+        }`,
       );
     }
     if (report.energyGateProbe.candidatesConsidered?.length > 0) {
@@ -2081,6 +2412,25 @@ async function run() {
       if (!discoveryReported && discovery !== null) {
         discoveryReported = true;
         discoveryReport = discovery;
+        // Phase 289F — prove the staged rows are really readable WITHOUT moving
+        // the universe: one bounded page per staged catalog, in the provider
+        // order the stage was written in. A read that fails is reported as
+        // failed; nothing is assumed from the catalog's own completeness.
+        try {
+          discovery.stageReads = await probeDiscoveryStages(discovery, transport, session.token);
+        } catch (error) {
+          discovery.stageReads = [
+            {
+              path: "(stage probe)",
+              ok: false,
+              rows: 0,
+              stagedRows: null,
+              state: null,
+              identitySample: [],
+              reason: sanitize(error instanceof Error ? error.message : "stage probe failed"),
+            },
+          ];
+        }
         const text = discoveryDigest(discovery);
         annotate(
           discovery.success === true ? "notice" : "warning",

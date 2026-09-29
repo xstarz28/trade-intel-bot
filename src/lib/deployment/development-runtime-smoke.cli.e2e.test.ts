@@ -44,9 +44,10 @@ const NON_ENERGY = {
     group: "unclassified",
     classificationSource: '"GAU/EUR" is not in the canonical instrument registry — generic physical-first commodity hierarchy applied',
   },
+  evidence: [{ metric: "yield10y", provider: "US Treasury", source: "treasury" }],
   dimensions: [
-    { name: "inventories", status: "unavailable", role: "supporting", evidence: [] },
-    { name: "macro-drivers", status: "negative", role: "supporting", evidence: [{ provider: "US Treasury" }] },
+    { name: "inventories", status: "unavailable", role: "supporting", evidence: "Inventory series unavailable for this instrument." },
+    { name: "macro-drivers", status: "negative", role: "supporting", evidence: "Macro drivers are negative." },
   ],
   limitations: [
     "Inventory UNAVAILABLE — the only configured inventory feed is the U.S. EIA Weekly Petroleum Status Report (US petroleum stocks), which is out of scope for this unclassified instrument.",
@@ -63,12 +64,21 @@ const ENERGY = {
     classificationSource: 'canonical registry entry "WTI" (WTI Crude Oil), tags [energy, futures]',
   },
   commodityMetrics: { inventoryLatest: 412500 },
+  evidence: [
+    {
+      metric: "inventoryLatest",
+      provider: "U.S. Energy Information Administration",
+      source: "EIA Weekly Petroleum Status Report",
+      value: 412500,
+      unit: "MBBL",
+    },
+  ],
   dimensions: [
     {
       name: "inventories",
       status: "positive",
       role: "primary",
-      evidence: [{ provider: "U.S. Energy Information Administration" }],
+      evidence: "US crude stocks fell 2,600 thousand barrels.",
     },
   ],
   limitations: [],
@@ -122,7 +132,40 @@ const respond = (path, args) => {
     const fundamentalAssessment =
       native === "WTI/USD" ? ENERGY : native === "GAU/EUR" ? NON_ENERGY : null;
     const result = fundamentalAssessment
-      ? { ...MARKET(native), fundamentalAssessment, fundamentalSummary: "Commodity physical evidence read." }
+      ? {
+          ...MARKET(native),
+          fundamentalAssessment,
+          fundamentalSummary: "Commodity physical evidence read.",
+          // Phase 289F — the leg diagnostics the real runtime delivers WITH the
+          // assessment: the energy instrument's petroleum feed was consumed, the
+          // control's was acquired for the run and deliberately not applied. The
+          // metric and the leg state are read from these two surfaces and must
+          // agree, so a double that omits the leg is not a faithful double.
+          providerDiagnostics:
+            native === "WTI/USD"
+              ? [
+                  {
+                    provider: "eia",
+                    dataset: "inventories",
+                    mode: "observed-now",
+                    acquired: true,
+                    attached: true,
+                    usedByEngine: true,
+                    reason: null,
+                  },
+                ]
+              : [
+                  {
+                    provider: "eia",
+                    dataset: "inventories",
+                    mode: "observed-now",
+                    acquired: true,
+                    attached: true,
+                    usedByEngine: false,
+                    reason: null,
+                  },
+                ],
+        }
       : {
           provider: "okx",
           providerInstrumentId: native,

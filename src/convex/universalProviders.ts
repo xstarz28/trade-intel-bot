@@ -3,6 +3,7 @@
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { requireIdentity } from "./lib/requireIdentity";
+import { createConvexStagingSink } from "./discoveryStage";
 import type { ProviderDiscoveryResult } from "../lib/discovery/types";
 
 // ────────────────────────────────────────────────────────────────
@@ -259,6 +260,10 @@ export const discoverAllProviders = action({
     const twelveDataAdapter = createTwelveDataDiscoveryAdapter(
       createTwelveDataCatalogTransport({ apiKey }),
       readEnv,
+      // Phase 289F — the SAME bounded transport as the isolated catalog action:
+      // a catalog that cannot cross the function return boundary is persisted in
+      // provider order and read back in chunks, never truncated.
+      { staging: createConvexStagingSink(ctx) },
     );
     const twelveDataPromise = twelveDataAdapter.discover(now);
 

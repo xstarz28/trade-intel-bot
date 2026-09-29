@@ -223,7 +223,21 @@ export const STREAM_BATCH_ROWS = 512;
 
 export async function fetchTwelveDataCatalogPages(
   fetchJson: FetchJson,
-  args: { path: string; apiKey: string; onRows?: (rows: unknown[]) => void },
+  args: {
+    path: string;
+    apiKey: string;
+    onRows?: (rows: unknown[]) => void;
+    /**
+     * Phase 289F — backpressure for a sink that PERSISTS rows.
+     *
+     * `onRows` is synchronous because it is called from inside the row scanner,
+     * so a sink that must await (a database write, say) queues bounded batches
+     * there and hands this hook the drain. It is awaited between transport
+     * chunks and after a buffered page, so the queue never grows past one
+     * transport chunk while the scanner's row-by-row contract stays intact.
+     */
+    drain?: () => Promise<void>;
+  },
 ): Promise<CatalogPagesResult> {
   const warnings: string[] = [];
   const streaming = typeof args.onRows === "function";
@@ -324,8 +338,13 @@ export async function fetchTwelveDataCatalogPages(
     let pageTotalCount: number | undefined;
 
     if (res.body) {
-      const scan = await scanTwelveDataCatalogRows(res.body, consumer.consume);
+      const scan = await scanTwelveDataCatalogRows(
+        res.body,
+        consumer.consume,
+        args.drain ? { onChunk: args.drain } : {},
+      );
       flush();
+      if (args.drain) await args.drain();
       if (!scan.ok) {
         if (pagesFetched === 0 && deliveredRows === 0) {
           return {
@@ -374,6 +393,7 @@ export async function fetchTwelveDataCatalogPages(
       // A sink may be attached even when this page came from `json` (a caller
       // that could not stream): hand it over in batches too, exactly once.
       flush();
+      if (args.drain) await args.drain();
       rowsThisPage = parsed.rows.length;
       pageTotalCount = parsed.totalCount;
     }

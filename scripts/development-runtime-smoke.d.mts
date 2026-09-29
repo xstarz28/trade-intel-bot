@@ -37,8 +37,18 @@ export type TransportResult = {
 
 export type Transport = {
   state: { calls: number; lastError: string | null; blocked: boolean };
-  action(path: string, args?: unknown, token?: string | null): Promise<TransportResult>;
-  query(path: string, args?: unknown, token?: string | null): Promise<TransportResult>;
+  action(
+    path: string,
+    args?: unknown,
+    token?: string | null,
+    options?: { timeoutMs?: number },
+  ): Promise<TransportResult>;
+  query(
+    path: string,
+    args?: unknown,
+    token?: string | null,
+    options?: { timeoutMs?: number },
+  ): Promise<TransportResult>;
 };
 
 export function createTransport(origin: string, options?: { timeoutMs?: number }): Transport;
@@ -282,13 +292,64 @@ export type TwelveDataDiscoveryReport = {
     pagesFetched: number | null;
     totalDiscovered: number | null;
     failedPage: number | null;
+    /**
+     * Phase 289F — how this catalog crossed the function boundary. A catalog
+     * above Convex's return boundary is staged (persisted in provider order and
+     * read back in chunks); `state` is the TRANSPORT truth, distinct from the
+     * catalog's own completeness.
+     */
+    transport?: {
+      mode: string | null;
+      state: string | null;
+      inlineRows: number | null;
+      stagedRows: number | null;
+      totalKept: number | null;
+      chunkRows: number | null;
+      stageId: string | null;
+      detail: string | null;
+    } | null;
   }[];
   warnings: string[];
   error: string | null;
+  /** Phase 289F — one bounded page read from each staged catalog. */
+  stageReads?: StageRead[];
+};
+
+/** Phase 289F — one bounded page read of a staged catalog. */
+export type StageRead = {
+  path: string | null;
+  ok: boolean;
+  rows: number;
+  stagedRows: number | null;
+  state: string | null;
+  hasMore?: boolean | null;
+  nextAfterSeq?: number | null;
+  identitySample: string[];
+  reason: string | null;
 };
 
 /** How many discovered identities the digest names. */
 export const DISCOVERY_IDENTITY_SAMPLE: number;
+
+/** How many of the assessment's evidence items the report carries. */
+export const EVIDENCE_ITEM_SAMPLE: number;
+
+/** Phase 289F — rows read from each staged catalog as a readability proof. */
+export const STAGE_READ_PROOF_ROWS: number;
+
+/**
+ * Phase 289F — read ONE bounded page of every staged catalog, without moving the
+ * universe, so the run proves the staged rows are readable in provider order.
+ */
+export function probeDiscoveryStages(
+  discovery: TwelveDataDiscoveryReport | null,
+  transport: Transport,
+  token: string | null,
+  limit?: number,
+): Promise<StageRead[]>;
+
+/** The stage reads as ONE bounded, credential-redacted line. */
+export function stageReadDigest(reads: StageRead[] | null | undefined): string | null;
 
 /**
  * Phase 289E — one bounded, credential-redacted line stating what the catalog
@@ -317,6 +378,32 @@ export function eiaLegRecord(evidence: unknown): EiaLegRecord;
 /** The same record as ONE bounded, credential-redacted line. */
 export function eiaLegDigest(evidence: unknown): string;
 
+/**
+ * Phase 289F — the canonical EIA provider identity, exactly as the runtime
+ * writes it on evidence items and on the diagnostics leg.
+ */
+export const EIA_PROVIDER_ID: string;
+export const EIA_PROVIDER_SOURCE_NAME: string;
+export function isEiaProviderIdentity(provider: unknown): boolean;
+
+/**
+ * Phase 289F — the EIA evidence metric and its agreement with the leg's state.
+ *
+ * `items` counts ONLY the assessment's canonical evidence items whose provider
+ * identity is EIA. `state` is `consistent-consumed` / `consistent-not-consumed`
+ * when the metric and the leg agree, and `inconsistent` (with `detail`) when
+ * they do not — the contradiction this metric exists to expose.
+ */
+export type EiaEvidenceRecord = {
+  items: number;
+  metrics: string[];
+  providers: string[];
+  legState: EiaLegRecord["state"];
+  state: "consistent-consumed" | "consistent-not-consumed" | "inconsistent";
+  detail: string | null;
+};
+export function eiaEvidenceRecord(evidence: unknown): EiaEvidenceRecord;
+
 /** Phase 289D — the deployed `eia:fetchEiaInventory` action's OWN answer. */
 export type EiaActionProbe = {
   answered: boolean;
@@ -338,7 +425,11 @@ export type CommodityMarket = {
   classificationSource: string | null;
   inventories: string | null;
   inventoryLatest: number | null;
+  /** Phase 289F — canonical EIA evidence items; never inferred from HTTP. */
   eiaEvidenceItems: number;
+  eiaEvidenceState: EiaEvidenceRecord["state"] | null;
+  eiaEvidenceDetail: string | null;
+  eiaEvidenceMetrics: string[];
   petroleumFeedScopeText: boolean;
   /** Phase 289D — the EIA leg's own state and its own reason, never inferred. */
   eiaLegState: EiaLegRecord["state"];

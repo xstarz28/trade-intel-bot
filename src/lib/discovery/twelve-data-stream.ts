@@ -61,6 +61,13 @@ const isWhitespace = (c: string) => c === " " || c === "\n" || c === "\r" || c =
 export async function scanTwelveDataCatalogRows(
   body: AsyncIterable<Uint8Array | string>,
   onRow: (row: unknown) => void,
+  /**
+   * Phase 289F — awaited after each transport chunk is processed. A caller that
+   * persists rows uses this as backpressure: its pending-write queue is drained
+   * before more body text is read, so a 30 MB catalog never turns into 30 MB of
+   * queued writes. Purely optional — every existing caller passes nothing.
+   */
+  hooks: { onChunk?: () => Promise<void> } = {},
 ): Promise<CatalogRowScanResult> {
   const decoder = new TextDecoder();
 
@@ -353,6 +360,7 @@ export async function scanTwelveDataCatalogRows(
         carry = "";
       }
       process(slice);
+      if (hooks.onChunk) await hooks.onChunk();
       if (failure !== null) return { ok: false, error: failure };
     }
   } catch (error) {

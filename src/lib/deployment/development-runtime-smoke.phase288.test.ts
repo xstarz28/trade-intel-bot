@@ -458,7 +458,20 @@ describe("phase 289B — the energy-gate probe reads the deployed runtime's own 
         { name: "inventories", status: "positive", role: "primary" },
         { name: "futures-positioning", status: "positive", role: "secondary" },
       ],
-      evidenceProviders: ["U.S. Energy Information Administration", "twelve-data", "CFTC"],
+      // The canonical items — the `evidence` array the delivered assessment really
+      // carries. A provider LIST was a test double: nothing in src/ ever emitted
+      // it, so it proved nothing about the deployment's payload.
+      evidence: [
+        {
+          metric: "inventoryLatest",
+          provider: "U.S. Energy Information Administration",
+          source: "EIA Weekly Petroleum Status Report",
+          value: 412_500,
+          unit: "MBBL",
+        },
+        { metric: "price", provider: "twelve-data", source: "ohlcv" },
+        { metric: "cotPositioning", provider: "CFTC", source: "COT" },
+      ],
       limitations: [],
       summary: "Inventory build: US crude stocks fell 2,600 thousand barrels.",
     },
@@ -481,7 +494,7 @@ describe("phase 289B — the energy-gate probe reads the deployed runtime's own 
         { name: "inventories", status: "unavailable", role: "supporting" },
         { name: "supply-demand", status: "unavailable", role: "supporting" },
       ],
-      evidenceProviders: ["US Treasury"],
+      evidence: [{ metric: "yield10y", provider: "US Treasury", source: "treasury" }],
       limitations: [
         "Inventory UNAVAILABLE — the only configured inventory feed is the U.S. EIA Weekly Petroleum Status Report (US petroleum stocks), which is physical market of an energy commodity, not of this unclassified instrument, so it is out of scope for this instrument.",
       ],
@@ -606,14 +619,17 @@ describe("phase 289B — the energy-gate probe reads the deployed runtime's own 
       "GAU/EUR": {
         fundamentalAssessment: NON_ENERGY_EVIDENCE.fundamental,
         fundamentalSummary: NON_ENERGY_EVIDENCE.fundamental.summary,
+        providerDiagnostics: NON_ENERGY_EVIDENCE.diagnostics,
       },
       "XAG/USD": {
         fundamentalAssessment: NON_ENERGY_EVIDENCE.fundamental,
         fundamentalSummary: NON_ENERGY_EVIDENCE.fundamental.summary,
+        providerDiagnostics: NON_ENERGY_EVIDENCE.diagnostics,
       },
       "WTI/USD": {
         fundamentalAssessment: ENERGY_EVIDENCE.fundamental,
         fundamentalSummary: ENERGY_EVIDENCE.fundamental.summary,
+        providerDiagnostics: ENERGY_EVIDENCE.diagnostics,
       },
     };
     const transport = {
@@ -838,7 +854,7 @@ describe("phase 289C-audit — the probe's scan depth is real, not silently clam
                   state: "insufficient",
                   commodityProfile: { group, classificationSource: `${id} → ${group}` },
                   dimensions: [{ name: "inventories", status: "unavailable", role: "supporting" }],
-                  evidenceProviders: [],
+                  evidence: [],
                   limitations: [],
                 },
               },

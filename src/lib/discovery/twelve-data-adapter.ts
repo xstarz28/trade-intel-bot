@@ -40,7 +40,14 @@ import type {
   ProviderDiscoveryAdapter,
   ProviderDiscoveryResult,
 } from "./types";
+import type { CatalogTransportReport, DiscoveryTransportState } from "./completeness";
 import { rollupCompleteness } from "./completeness";
+import {
+  boundedInlineLimit,
+  DISCOVERY_INLINE_LIMIT,
+  STAGE_READ_ROWS,
+  STAGE_WRITE_BATCH_ROWS,
+} from "./return-boundary";
 import {
   fetchTwelveDataCatalogPages,
   type FetchJson,
@@ -248,6 +255,8 @@ export function mergeTwelveDataCatalogRuns(
   const warnings: string[] = [];
   const catalogs: CatalogFetchReport[] = [];
   let pagesFetched = 0;
+  /** Kept rows per catalog, including the ones that live in a stage. */
+  let totalDiscovered = 0;
 
   for (const part of parts) {
     for (const instrument of part.instruments) {
@@ -258,7 +267,15 @@ export function mergeTwelveDataCatalogRuns(
     }
     warnings.push(...part.warnings);
     pagesFetched += part.pagesFetched ?? 0;
-    catalogs.push(...(part.catalogs ?? []));
+    for (const catalog of part.catalogs ?? []) {
+      totalDiscovered += catalog.totalDiscovered;
+      catalogs.push(catalog);
+    }
+    // A part that reports no per-catalog rows (a credential failure) still
+    // contributes its own total, which is zero by construction.
+    if ((part.catalogs ?? []).length === 0) {
+      totalDiscovered += part.totalDiscovered ?? 0;
+    }
   }
 
   const completeness = rollupCompleteness(catalogs.map((c) => c.completeness));
@@ -272,10 +289,85 @@ export function mergeTwelveDataCatalogRuns(
     warnings,
     completeness,
     pagesFetched,
-    totalDiscovered: instruments.length,
+    totalDiscovered,
     catalogs,
     ...(succeeded ? {} : { error: "Twelve Data discovery failed for all catalogs." }),
   };
+}
+
+/**
+ * Phase 289F — where a catalog that CANNOT cross the function boundary goes.
+ *
+ * Convex rejects any function return (or argument) carrying an array longer than
+ * 8192 elements, and the provider returns the whole `/stocks` catalog — 143300
+ * rows — in one response. The adapter therefore stages such a catalog
+ * server-side: the rows are written in provider order, the response carries a
+ * bounded descriptor instead of the array, and consumers read the universe back
+ * in chunks. Nothing is dropped, nothing is capped, and the catalog's
+ * completeness stays the provider walk's own truth.
+ *
+ * `begin` → `append` (once per bounded batch, in order) → `finish`. A sink that
+ * throws makes the catalog's TRANSPORT state partial/failed; the catalog's own
+ * COMPLETE/PARTIAL/FAILED is untouched, because the two answer different
+ * questions.
+ */
+export interface CatalogStagingSink {
+  begin(args: {
+    catalogPath: string;
+    assetClass: string;
+    discoveredAt: number;
+  }): Promise<{ stageId: string }>;
+  append(args: {
+    stageId: string;
+    rows: readonly DiscoveredInstrument[];
+  }): Promise<void>;
+  finish(args: {
+    stageId: string;
+    catalogPath: string;
+    stagedRows: number;
+    totalDiscovered: number;
+    completeness: ProviderDiscoveryResult["completeness"];
+    state: DiscoveryTransportState;
+    detail?: string;
+  }): Promise<void>;
+}
+
+/**
+ * Phase 289F — settle a catalog's transport state after its walk finished.
+ *
+ * `observed` is what the sink reported while rows were being written; the final
+ * state can only be worse, never better: a catalog that staged fewer rows than
+ * it kept is `partial` (some rows available) or `failed` (none), and a catalog
+ * that staged everything is `complete`. Kept as a standalone function so the
+ * state is settled in ONE place — the same rule for every catalog.
+ */
+export function settleCatalogTransport(
+  observed: DiscoveryTransportState,
+  stagedRows: number,
+  kept: number,
+): { state: DiscoveryTransportState; detail?: string } {
+  if (observed === "failed") return { state: "failed" };
+  if (stagedRows < kept) {
+    return {
+      state: stagedRows > 0 ? "partial" : "failed",
+      detail: `${stagedRows} of ${kept} row(s) staged`,
+    };
+  }
+  // The sink already reported a partial write: it can never be upgraded to
+  // complete just because the counts happen to line up.
+  if (observed === "partial") {
+    return { state: "partial", detail: "the staging sink reported a partial write" };
+  }
+  return { state: "complete" };
+}
+
+export interface TwelveDataDiscoveryOptions {
+  assetClasses?: readonly AssetClass[];
+  catalogPaths?: readonly string[];
+  /** Rows ONE response may carry inline. Defaults to the boundary constant. */
+  inlineLimit?: number;
+  /** Persists catalogs that exceed `inlineLimit`. */
+  staging?: CatalogStagingSink;
 }
 
 /**
@@ -289,7 +381,7 @@ export function mergeTwelveDataCatalogRuns(
 export function createTwelveDataDiscoveryAdapter(
   fetchJson: FetchJson,
   readEnv?: EnvReader,
-  options: { assetClasses?: readonly AssetClass[]; catalogPaths?: readonly string[] } = {},
+  options: TwelveDataDiscoveryOptions = {},
 ): ProviderDiscoveryAdapter {
   const requestedPaths = options.catalogPaths;
   const enabled = CATALOGS.filter(
@@ -347,16 +439,106 @@ export function createTwelveDataDiscoveryAdapter(
        * already parsed the largest catalog. One Map, first occurrence wins, no
        * second copy. (The same first-occurrence rule is applied again when
        * per-catalog runs are composed.)
+       *
+       * Phase 289F — THE RETURN BOUNDARY. Memory was not the last limit: Convex
+       * also rejects any return value carrying an array longer than 8192
+       * elements, and `/stocks` is 143300 instruments — the deployed runtime
+       * answered
+       *
+       *   `return value invalid: Array length is too long (143300 > maximum length 8192)`
+       *
+       * Slicing to 8192 would present a truncated catalog as the universe, so a
+       * catalog that does not fit `inlineLimit` moves AS A WHOLE onto the staged
+       * transport: every row is persisted in provider order and the response
+       * carries only a bounded descriptor. `totalDiscovered` stays the real
+       * count, the catalog's own completeness is untouched, and the transport
+       * state says whether every row really is available.
        */
+      const inlineLimit = boundedInlineLimit(options.inlineLimit);
+      const staging = options.staging;
       const byIdentity = new Map<string, DiscoveredInstrument>();
 
       for (const spec of enabled) {
         let skipped = 0;
         let kept = 0;
+        /** Identity dedupe INSIDE this catalog (provider order preserved). */
+        const seen = new Set<string>();
+        /** Rows of this catalog that are still small enough to travel inline. */
+        const inlineInCatalog: DiscoveredInstrument[] = [];
+
+        // ── this catalog's transport state ────────────────────────────
+        let stagedMode = false;
+        let stageId: string | null = null;
+        let stagedRows = 0;
+        let stagingState: DiscoveryTransportState = "complete";
+        let stagingDetail: string | undefined;
+
+        // Bounded write queue. `onRows` is synchronous (the row scanner calls
+        // it), so full batches queue here and `drain` persists them as soon as
+        // the pagination yields — the queue never exceeds one transport chunk.
+        let pending: DiscoveredInstrument[] = [];
+        const pendingBatches: DiscoveredInstrument[][] = [];
+        const queueRows = (rows: readonly DiscoveredInstrument[]) => {
+          for (const row of rows) pending.push(row);
+          while (pending.length >= STAGE_WRITE_BATCH_ROWS) {
+            pendingBatches.push(pending.splice(0, STAGE_WRITE_BATCH_ROWS));
+          }
+        };
+        const flushPending = () => {
+          if (pending.length > 0) pendingBatches.push(pending.splice(0, pending.length));
+        };
+
+        const drain = async (): Promise<void> => {
+          if (!stagedMode) return;
+          flushPending();
+          if (staging === undefined) {
+            // No sink: rows past the boundary have nowhere to go. They are NOT
+            // silently inlined (that would be a truncated catalog) — the
+            // transport says exactly what happened instead.
+            pendingBatches.length = 0;
+            stagedRows = 0;
+            stagingState = "failed";
+            stagingDetail ??=
+              `catalog holds ${kept} row(s), above the ${inlineLimit}-row inline boundary, and no staging sink is configured`;
+            return;
+          }
+          while (pendingBatches.length > 0) {
+            const batch = pendingBatches.shift()!;
+            if (stagingState === "failed") break;
+            if (stageId === null) {
+              try {
+                const started = await staging.begin({
+                  catalogPath: spec.path,
+                  assetClass: spec.assetClass,
+                  discoveredAt: now,
+                });
+                stageId = started.stageId;
+              } catch (error) {
+                stagingState = "failed";
+                stagingDetail = `staging could not be opened: ${
+                  error instanceof Error ? error.message : "unknown error"
+                }`;
+                break;
+              }
+            }
+            try {
+              await staging.append({ stageId, rows: batch });
+              stagedRows += batch.length;
+            } catch (error) {
+              stagingState = stagedRows > 0 ? "partial" : "failed";
+              stagingDetail = `staging write failed after ${stagedRows} row(s): ${
+                error instanceof Error ? error.message : "unknown error"
+              }`;
+              break;
+            }
+          }
+          pendingBatches.length = 0;
+        };
 
         const result = await fetchTwelveDataCatalogPages(fetchJson, {
           path: spec.path,
           apiKey,
+          drain,
           onRows: (rows) => {
             for (const raw of rows) {
               const normalized = normalizeCatalogRow(raw as CatalogRow, spec, now);
@@ -365,12 +547,35 @@ export function createTwelveDataDiscoveryAdapter(
                 continue;
               }
               const identity = `${normalized.assetClass}|${normalized.providerInstrumentId}`;
-              if (byIdentity.has(identity)) continue;
-              byIdentity.set(identity, normalized);
+              if (seen.has(identity)) continue;
+              seen.add(identity);
               kept += 1;
+
+              if (!stagedMode) {
+                if (kept <= inlineLimit) {
+                  inlineInCatalog.push(normalized);
+                  continue;
+                }
+                // Crossing the boundary. The catalog moves to the staged
+                // transport AS A WHOLE: the rows already collected are persisted
+                // too, so the stage holds the entire catalog in provider order
+                // and the response carries none of it (no first-N prefix).
+                stagedMode = true;
+                for (const row of inlineInCatalog) {
+                  const key = `${row.assetClass}|${row.providerInstrumentId}`;
+                  if (byIdentity.get(key) === row) byIdentity.delete(key);
+                }
+                queueRows(inlineInCatalog.splice(0, inlineInCatalog.length));
+                queueRows([normalized]);
+                continue;
+              }
+
+              queueRows([normalized]);
             }
           },
         });
+
+        if (stagedMode) await drain();
 
         warnings.push(...result.warnings);
         pagesFetched += result.pagesFetched;
@@ -382,11 +587,78 @@ export function createTwelveDataDiscoveryAdapter(
             completeness: "FAILED",
             pagesFetched: result.pagesFetched,
             totalDiscovered: 0,
+            transport: {
+              mode: "inline",
+              state: "failed",
+              inlineRows: 0,
+              stagedRows: 0,
+              totalKept: 0,
+              detail: "the catalog was not read, so there is nothing to transport",
+            },
             ...(result.failedPage !== undefined
               ? { failedPage: result.failedPage }
               : {}),
           });
           continue;
+        }
+
+        // The walk is done: settle the staged transport and record its real
+        // numbers before the catalog is reported.
+        let transport: CatalogTransportReport;
+        if (stagedMode) {
+          const settled = settleCatalogTransport(stagingState, stagedRows, kept);
+          stagingState = settled.state;
+          if (settled.detail !== undefined) stagingDetail ??= settled.detail;
+          if (stageId === null) {
+            stagingState = stagedRows > 0 ? "partial" : "failed";
+            stagingDetail ??=
+              `catalog holds ${kept} row(s) and no stage was opened; nothing is readable through the boundary`;
+          }
+          if (staging !== undefined && stageId !== null) {
+            try {
+              await staging.finish({
+                stageId,
+                catalogPath: spec.path,
+                stagedRows,
+                totalDiscovered: kept,
+                completeness: result.completeness,
+                state: stagingState,
+                ...(stagingDetail !== undefined ? { detail: stagingDetail } : {}),
+              });
+            } catch (error) {
+              stagingState = stagedRows > 0 ? "partial" : "failed";
+              stagingDetail = `stage metadata write failed: ${
+                error instanceof Error ? error.message : "unknown error"
+              }`;
+            }
+          }
+          transport = {
+            mode: "staged",
+            state: stagingState,
+            inlineRows: 0,
+            stagedRows,
+            totalKept: kept,
+            chunkRows: STAGE_READ_ROWS,
+            ...(stageId !== null ? { stageId } : {}),
+            ...(stagingDetail !== undefined ? { detail: stagingDetail } : {}),
+          };
+          if (stagingState !== "complete") {
+            warnings.push(
+              `${spec.path}: staged transport ${stagingState} — ${stagingDetail ?? "no detail"}. The provider walk reported ${result.completeness}; this catalog's rows are not fully available.`,
+            );
+          }
+        } else {
+          for (const row of inlineInCatalog) {
+            const identity = `${row.assetClass}|${row.providerInstrumentId}`;
+            if (!byIdentity.has(identity)) byIdentity.set(identity, row);
+          }
+          transport = {
+            mode: "inline",
+            state: "complete",
+            inlineRows: inlineInCatalog.length,
+            stagedRows: 0,
+            totalKept: kept,
+          };
         }
 
         if (skipped > 0) {
@@ -401,6 +673,7 @@ export function createTwelveDataDiscoveryAdapter(
           completeness: result.completeness,
           pagesFetched: result.pagesFetched,
           totalDiscovered: kept,
+          transport,
           ...(result.failedPage !== undefined
             ? { failedPage: result.failedPage }
             : {}),
@@ -410,6 +683,10 @@ export function createTwelveDataDiscoveryAdapter(
       const instruments = Array.from(byIdentity.values());
       const completeness = rollupCompleteness(catalogs.map((c) => c.completeness));
       const succeeded = catalogs.some((c) => c.completeness !== "FAILED");
+      // Phase 289F — `totalDiscovered` is the sum of what the walks actually
+      // kept, NOT the length of the inline array. With a staged catalog the two
+      // differ, and reporting the inline length would understate the universe.
+      const totalDiscovered = catalogs.reduce((n, c) => n + c.totalDiscovered, 0);
 
       return {
         provider: PROVIDER,
@@ -419,7 +696,7 @@ export function createTwelveDataDiscoveryAdapter(
         warnings,
         completeness,
         pagesFetched,
-        totalDiscovered: instruments.length,
+        totalDiscovered,
         catalogs,
         ...(succeeded
           ? {}

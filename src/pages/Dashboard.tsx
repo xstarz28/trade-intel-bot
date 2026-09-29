@@ -37,6 +37,7 @@ import {
   discoveryFailure,
   mergeDiscoveryResults,
 } from "@/lib/discovery/universal-cycle";
+import { hydrateStagedCatalogs } from "@/lib/discovery/staged-catalog";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import { derivativesForRadar } from "@/lib/market-radar/derivatives-bridge";
@@ -185,6 +186,10 @@ export default function Dashboard() {
   );
   const discoverAllProviders = useAction(api.universalProviders.discoverAllProviders);
   const acquireNativeLiveBatch = useAction(api.universalProviders.acquireNativeLiveBatch);
+  // Phase 289F — a catalog too large for one Convex return value lives in the
+  // server-side stage; this reads it back in bounded chunks so the pipeline
+  // still sees the provider's whole universe.
+  const readTwelveDataCatalogStage = useAction(api.marketData.readTwelveDataCatalogStage);
 
   /**
    * Phase 158 + Phase 235 — one universal discovery→acquisition cycle.
@@ -201,6 +206,24 @@ export default function Dashboard() {
     let providerResults: import("@/lib/discovery/types").ProviderDiscoveryResult[] = [];
     let discoveryErrors: string[] = [];
 
+    /**
+     * Phase 289F — walk any staged Twelve Data catalog back to its end.
+     *
+     * A staged catalog is COMPLETE at the catalog level; the response simply
+     * cannot carry it. Hydration restores the full instrument array the pipeline
+     * has always received, and a walk that cannot complete is reported as a
+     * provider error instead of quietly shrinking the scanned universe.
+     */
+    const stagingErrors: string[] = [];
+    const hydrateTwelveData = async (
+      result: import("@/lib/discovery/types").ProviderDiscoveryResult,
+    ): Promise<void> => {
+      const hydration = await hydrateStagedCatalogs(result, (args) =>
+        readTwelveDataCatalogStage(args),
+      );
+      stagingErrors.push(...hydration.errors);
+    };
+
     try {
       const all = await discoverAllProviders({
         includeCcxt: true,
@@ -208,11 +231,17 @@ export default function Dashboard() {
         includeIdx: true,
       });
       const rawResults = (all as { results: import("@/lib/discovery/types").ProviderDiscoveryResult[] }).results ?? [];
-      providerResults = rawResults.map((r) => {
-        if (r.provider === "okx") return normalizeOkxDiscoveryAction(r as never);
-        if (r.provider === "twelve-data") return normalizeTwelveDataDiscoveryAction(r);
-        return normalizeGenericDiscoveryAction(r);
-      });
+      providerResults = [];
+      for (const r of rawResults) {
+        const normalized =
+          r.provider === "okx"
+            ? normalizeOkxDiscoveryAction(r as never)
+            : r.provider === "twelve-data"
+              ? normalizeTwelveDataDiscoveryAction(r)
+              : normalizeGenericDiscoveryAction(r);
+        if (normalized.provider === "twelve-data") await hydrateTwelveData(normalized);
+        providerResults.push(normalized);
+      }
     } catch {
       // Fallback to legacy two-provider discovery if universal fails
       const settled = await Promise.allSettled([
@@ -227,13 +256,16 @@ export default function Dashboard() {
         settled[1].status === "fulfilled"
           ? normalizeTwelveDataDiscoveryAction(settled[1].value)
           : discoveryFailure("twelve-data", now, settled[1].reason);
+      if (settled[1].status === "fulfilled") await hydrateTwelveData(twelveDataResult);
       providerResults = [okxResult, twelveDataResult];
     }
 
     const merged = mergeDiscoveryResults(providerResults);
     const discovered = merged.discovered;
     const succeededProviders = merged.succeededProviders;
-    discoveryErrors = merged.discoveryErrors;
+    // A staged catalog that could not be walked is an explicit discovery error,
+    // never a quietly smaller universe.
+    discoveryErrors = [...merged.discoveryErrors, ...stagingErrors];
 
     const step = await runDiscoveryPipelineStep({
       state: pipelineStateRef.current,

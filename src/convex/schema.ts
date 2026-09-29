@@ -385,6 +385,63 @@ const schema = defineSchema(
       /** Most recent send, used for retention/cleanup. */
       lastSendAt: v.number(),
     }).index("by_identity", ["identityHash"]),
+    /**
+     * Phase 289F — staged provider catalogs.
+     *
+     * A catalog bigger than one Convex function return can carry (the runtime
+     * rejects any array above 8192 elements, and Twelve Data returns the whole
+     * `/stocks` catalog — 143300 rows — in one response) is persisted here in
+     * provider order instead of being truncated. Metadata is one row per stage;
+     * the instruments are one row per instrument, indexed by provider order.
+     *
+     * Only the newest stage of a catalog is served; superseded stages are pruned
+     * in bounded batches. These tables hold discovery METADATA only — never a
+     * price, never a direction, never a substitute symbol.
+     */
+    discoveryStages: defineTable({
+      stageId: v.string(),
+      provider: v.string(),
+      catalogPath: v.string(),
+      assetClass: v.string(),
+      /** Provider discovery instant carried from the run that staged it. */
+      discoveredAt: v.number(),
+      /** Rows persisted; compared against `totalDiscovered` on every read. */
+      stagedRows: v.number(),
+      /** Rows the provider walk kept — the real universe size. */
+      totalDiscovered: v.number(),
+      /** The catalog walk's own COMPLETE/PARTIAL/FAILED (never the transport's). */
+      completeness: v.string(),
+      /** Transport truth: complete | partial | failed. */
+      transportState: v.string(),
+      detail: v.optional(v.string()),
+      /** Our own receipt instant for the stage (bookkeeping, not provider data). */
+      createdAt: v.number(),
+      closedAt: v.optional(v.number()),
+      supersededAt: v.optional(v.number()),
+    })
+      .index("by_stage", ["stageId"])
+      .index("by_path", ["catalogPath"]),
+
+    discoveryStageRows: defineTable({
+      stageId: v.string(),
+      /** Provider order inside the catalog: 0-based, dense, monotonic. */
+      seq: v.number(),
+      provider: v.string(),
+      providerInstrumentId: v.string(),
+      assetClass: v.string(),
+      subType: v.string(),
+      baseAsset: v.string(),
+      quoteAsset: v.string(),
+      settleAsset: v.optional(v.string()),
+      tradingState: v.string(),
+      providerState: v.optional(v.string()),
+      capabilities: v.array(v.string()),
+      region: v.optional(v.string()),
+      discoveredAt: v.number(),
+      precisionJson: v.optional(v.string()),
+    })
+      .index("by_stage", ["stageId"])
+      .index("by_stage_seq", ["stageId", "seq"]),
   },
   {
     schemaValidation: false,

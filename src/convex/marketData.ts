@@ -10,7 +10,7 @@
 "use node";
 
 import { action } from "./_generated/server";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
@@ -42,7 +42,14 @@ import {
   twelveDataCredentialGate,
 } from "../lib/discovery/twelve-data-adapter";
 import { createTwelveDataCatalogTransport } from "../lib/discovery/twelve-data-transport";
-import type { ProviderDiscoveryResult } from "../lib/discovery/types";
+import { createConvexStagingSink } from "./discoveryStage";
+import { fromDiscoveryStageRow } from "../lib/discovery/staged-catalog";
+import {
+  DISCOVERY_INLINE_LIMIT,
+  STAGE_READ_ROWS,
+} from "../lib/discovery/return-boundary";
+import type { DiscoveryTransportState } from "../lib/discovery/completeness";
+import type { DiscoveredInstrument, ProviderDiscoveryResult } from "../lib/discovery/types";
 import {
   acquireBatchProviderNativeLiveData,
   acquireProviderNativeLiveData,
@@ -1044,14 +1051,20 @@ function twelveDataKeyedTransport(apiKey: string): Transport {
  * explicit failure, never an arbitrary fetch.
  */
 export const discoverTwelveDataCatalog = action({
-  args: { path: v.string() },
+  args: { path: v.string(), inlineLimit: v.optional(v.number()) },
   handler: async (ctx, args) => {
     await requireIdentity(ctx);
     const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
     const adapter = createTwelveDataDiscoveryAdapter(
       createTwelveDataCatalogTransport({ apiKey }),
       readServerEnv,
-      { catalogPaths: [args.path] },
+      {
+        catalogPaths: [args.path],
+        ...(args.inlineLimit !== undefined ? { inlineLimit: args.inlineLimit } : {}),
+        // Phase 289F — a catalog that cannot cross the return boundary is
+        // persisted (provider order preserved) instead of truncated.
+        staging: createConvexStagingSink(ctx),
+      },
     );
     return adapter.discover(Date.now());
   },
@@ -1082,9 +1095,20 @@ export const discoverTwelveDataInstruments = action({
     if (credentialFailure) return credentialFailure;
 
     const parts: ProviderDiscoveryResult[] = [];
+    // Phase 289F — ONE SHARED INLINE BUDGET. Convex rejects any return value
+    // whose arrays exceed 8192 elements, so the catalogs split the same bounded
+    // allowance the single-catalog action respects: a catalog that does not fit
+    // the remaining budget is staged whole (never sliced, never dropped), and
+    // the composed response stays inside the boundary by construction.
+    let inlineBudget = DISCOVERY_INLINE_LIMIT;
     for (const path of TWELVE_DATA_CATALOG_PATHS) {
       try {
-        parts.push(await ctx.runAction(api.marketData.discoverTwelveDataCatalog, { path }));
+        const part = await ctx.runAction(api.marketData.discoverTwelveDataCatalog, {
+          path,
+          inlineLimit: Math.max(0, inlineBudget),
+        });
+        inlineBudget -= part.instruments.length;
+        parts.push(part);
       } catch (error) {
         // A failed execution is reported as that catalog's own FAILED report
         // (with the runtime's message), never as an empty catalog and never as
@@ -1098,6 +1122,61 @@ export const discoverTwelveDataInstruments = action({
     // the instruments, so release the array before the result is returned.
     parts.length = 0;
     return merged;
+  },
+});
+
+/**
+ * Phase 289F — read a staged catalog back, one bounded chunk at a time.
+ *
+ * A catalog larger than the function boundary lives in the `discoveryStage*`
+ * tables in provider order. This action hands a consumer the same instruments it
+ * would have received inline — same exact provider identity, same order, same
+ * discovery instant — in chunks that respect the boundary. `hasMore` and
+ * `nextAfterSeq` come from the stored rows, so a walk terminates on the data
+ * itself; `stagedRows` is what a complete walk must return, and a caller that
+ * gets fewer rows knows the read was short rather than guessing.
+ *
+ * Re-reading a chunk is a pure read: no duplicate, no reorder, no side effect.
+ */
+export interface TwelveDataStagePage {
+  rows: DiscoveredInstrument[];
+  hasMore: boolean;
+  nextAfterSeq: number | null;
+  stagedRows: number;
+  totalDiscovered: number;
+  completeness: string | null;
+  transportState: DiscoveryTransportState | null;
+  catalogPath: string | null;
+  provider: string | null;
+}
+
+export const readTwelveDataCatalogStage = action({
+  args: {
+    stageId: v.string(),
+    afterSeq: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<TwelveDataStagePage> => {
+    await requireIdentity(ctx);
+    const requested = Number.isFinite(args.limit) ? Math.floor(args.limit as number) : STAGE_READ_ROWS;
+    const limit = Math.max(1, Math.min(requested, STAGE_READ_ROWS));
+    const afterSeq = Number.isFinite(args.afterSeq) ? Math.floor(args.afterSeq as number) : -1;
+    const page = await ctx.runQuery(internal.discoveryStage.readStageRows, {
+      stageId: args.stageId,
+      afterSeq,
+      limit,
+    });
+    return {
+      rows: page.rows.map((row) => fromDiscoveryStageRow(row)),
+      hasMore: page.hasMore,
+      nextAfterSeq: page.nextAfterSeq,
+      stagedRows: page.stagedRows,
+      totalDiscovered: page.totalDiscovered,
+      completeness: page.completeness,
+      transportState: (page.transportState ?? null) as DiscoveryTransportState | null,
+      catalogPath: page.catalogPath,
+      provider: page.provider,
+    };
   },
 });
 

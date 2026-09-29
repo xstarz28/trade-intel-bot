@@ -383,6 +383,9 @@ describe("289E — normalized output keeps the provider truth, with bounded stat
     expect(result.completeness).toBe("COMPLETE");
     expect(result.pagesFetched).toBe(1);
     expect(result.totalDiscovered).toBe(6);
+    // Phase 289F extends the per-catalog report with its TRANSPORT record: this
+    // catalog fits the inline boundary, so every kept row travelled inline and
+    // the transport is complete. The catalog's own completeness is unchanged.
     expect(result.catalogs).toEqual([
       {
         path: "/commodities",
@@ -390,6 +393,13 @@ describe("289E — normalized output keeps the provider truth, with bounded stat
         completeness: "COMPLETE",
         pagesFetched: 1,
         totalDiscovered: 6,
+        transport: {
+          mode: "inline",
+          state: "complete",
+          inlineRows: 6,
+          stagedRows: 0,
+          totalKept: 6,
+        },
       },
     ]);
   });
@@ -589,7 +599,9 @@ describe("289E — the retention that caused the OOM stays fixed (structural gua
     const transport = readFileSync("src/lib/discovery/twelve-data-transport.ts", "utf8");
 
     // The streaming source exists and is wired into the page reader.
-    expect(pagination).toContain("scanTwelveDataCatalogRows(res.body");
+    expect(pagination).toContain("if (res.body) {");
+    expect(pagination).toContain("await scanTwelveDataCatalogRows(");
+    expect(pagination).toContain("res.body,");
     expect(pagination).toContain("res.body");
     // The adapter consumes rows through the sink (no raw accumulation).
     expect(adapter).toContain("onRows:");
@@ -604,7 +616,11 @@ describe("289E — the retention that caused the OOM stays fixed (structural gua
     const src = readFileSync("src/convex/marketData.ts", "utf8");
     // A per-catalog action exists and the composed parent calls it.
     expect(src).toContain("export const discoverTwelveDataCatalog = action(");
-    expect(src).toContain("ctx.runAction(api.marketData.discoverTwelveDataCatalog, { path })");
+    expect(src).toContain("ctx.runAction(api.marketData.discoverTwelveDataCatalog, {");
+    expect(src).toContain("path,");
+    // Phase 289F — the parent hands each catalog its share of ONE shared inline
+    // budget, so the composed response stays inside Convex's array boundary.
+    expect(src).toContain("inlineLimit: Math.max(0, inlineBudget),");
     // A failed catalog execution becomes that catalog's FAILED report.
     expect(src).toContain("twelveDataCatalogFailure(path, now, errorMessage(error))");
   });
