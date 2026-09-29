@@ -266,6 +266,38 @@ export type LegDiagnosticSource = { diagnostics?: Evidence["diagnostics"] } | nu
 export function evidenceDigest(record: unknown): string | null;
 
 /**
+ * Phase 289E — Twelve Data discovery as the runtime answered it (the shape the
+ * smoke's own consumer keeps: verdict, per-catalog reports, totals).
+ */
+export type TwelveDataDiscoveryReport = {
+  success: boolean;
+  completeness: string | null;
+  pagesFetched: number | null;
+  totalDiscovered: number | null;
+  instruments: unknown[];
+  catalogs: {
+    path: string | null;
+    assetClass: string | null;
+    completeness: string | null;
+    pagesFetched: number | null;
+    totalDiscovered: number | null;
+    failedPage: number | null;
+  }[];
+  warnings: string[];
+  error: string | null;
+};
+
+/** How many discovered identities the digest names. */
+export const DISCOVERY_IDENTITY_SAMPLE: number;
+
+/**
+ * Phase 289E — one bounded, credential-redacted line stating what the catalog
+ * walk returned: verdict, completeness, pages, total, and per catalog which one
+ * was read, how many rows it kept and whether a page failed.
+ */
+export function discoveryDigest(discovery: TwelveDataDiscoveryReport | null): string | null;
+
+/**
  * Phase 289D — the EIA leg's own record. `state` is derived ONLY from the
  * runtime's flags (attached + usedByEngine); an HTTP status is never evidence.
  */

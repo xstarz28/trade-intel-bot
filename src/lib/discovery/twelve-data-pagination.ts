@@ -22,15 +22,36 @@
  * already consumed them. Every other contract — completeness, `pagesFetched`,
  * `failedPage`, warnings, provider order, the first-occurrence dedupe rule — is
  * identical with and without the sink.
+ *
+ * Phase 289E — THE PROVIDER DOES NOT PAGINATE THESE CATALOGS.
+ *
+ * Probed against the live endpoint: `?page=2` returns the SAME complete catalog
+ * as page 1 for `/stocks`, `/forex_pairs` and `/commodities`, and `count` always
+ * equals the rows in that one response. So page 1 IS the whole catalog — for
+ * `/stocks` about 124k rows / 30 MB — and no cursor value can shrink it. The
+ * remaining lever is not how many pages are requested but how a single response
+ * is READ: when the transport exposes the raw body (`body`), the page is scanned
+ * row-by-row and each row is handed to the sink as it completes, so the body text
+ * and the full parsed array are never resident at the same time. Without a body
+ * stream the buffered `json` path is used unchanged (tests, other callers), and
+ * every semantic above is identical on both paths.
  */
 
 import type { DiscoveryCompleteness } from "./completeness";
 import { redactDiagnosticText } from "../data/provenance-diagnostics";
+import { scanTwelveDataCatalogRows } from "./twelve-data-stream";
 
 export type FetchJson = (url: string) => Promise<{
   ok: boolean;
   status: number;
   json?: unknown;
+  /**
+   * Phase 289E — the raw response body, when the transport can expose it.
+   * Preferred over `json`: it lets a catalog be consumed row-by-row instead of
+   * materializing the whole payload. Optional — the buffered `json` path stays
+   * the contract for every caller that cannot stream.
+   */
+  body?: AsyncIterable<Uint8Array | string>;
 }>;
 
 const BASE_URL = "https://api.twelvedata.com";
@@ -151,6 +172,55 @@ export function catalogHasMorePages(args: {
   return args.uniqueAccumulated < args.totalCount;
 }
 
+/**
+ * Phase 289E — ONE row consumer for both sources.
+ *
+ * Dedupe, provider order, skipped-identity counting and the "first occurrence
+ * wins" rule live here so the streamed and buffered paths cannot drift apart.
+ * In streaming mode an identity that survives is emitted immediately instead of
+ * being collected into a page-sized array.
+ */
+function rowConsumer(args: {
+  streaming: boolean;
+  bySymbol: Map<string, unknown> | null;
+  seenSymbols: Set<string> | null;
+  unidentified: unknown[];
+  emit: (row: unknown) => void;
+}) {
+  const counts = { rowsSeen: 0, newUnique: 0 };
+  const consume = (row: unknown) => {
+    counts.rowsSeen += 1;
+    const symbol = rowSymbol(row);
+    if (!symbol) {
+      // A row with no symbol is not deduplicated — it is delivered and the
+      // caller counts it as a skipped identity, exactly as before.
+      if (args.streaming) args.emit(row);
+      else args.unidentified.push(row);
+      return;
+    }
+    if (args.streaming) {
+      if (args.seenSymbols!.has(symbol)) return;
+      args.seenSymbols!.add(symbol);
+      counts.newUnique += 1;
+      args.emit(row);
+      return;
+    }
+    if (!args.bySymbol!.has(symbol)) {
+      args.bySymbol!.set(symbol, row);
+      counts.newUnique += 1;
+    }
+  };
+  return { consume, counts };
+}
+
+/**
+ * Phase 289E — how many rows are handed to the sink at a time on the streaming
+ * path. Small enough that a single response (the provider ignores `page`, so the
+ * whole catalog arrives at once) never becomes a retained array, large enough
+ * that the sink is not called once per row.
+ */
+export const STREAM_BATCH_ROWS = 512;
+
 export async function fetchTwelveDataCatalogPages(
   fetchJson: FetchJson,
   args: { path: string; apiKey: string; onRows?: (rows: unknown[]) => void },
@@ -225,73 +295,104 @@ export async function fetchTwelveDataCatalogPages(
       };
     }
 
-    const parsed = parseTwelveDataCatalogPage(res.json);
-    if (!parsed.ok) {
-      if (pagesFetched === 0) {
+    // Phase 289E — batching. On the streaming path rows are handed to the sink
+    // as they arrive, in bounded batches, so neither the body text NOR a
+    // page-sized array of raw rows is ever resident. On the buffered path the
+    // sink does not exist and rows are collected exactly as before.
+    const batch: unknown[] = [];
+    let deliveredRows = 0;
+    const flush = () => {
+      if (batch.length === 0) return;
+      const rows = batch.splice(0, batch.length);
+      deliveredRows += rows.length;
+      if (streaming) args.onRows!(rows);
+    };
+
+    const consumer = rowConsumer({
+      streaming,
+      bySymbol,
+      seenSymbols,
+      unidentified,
+      emit: (row) => {
+        if (!streaming) return;
+        batch.push(row);
+        if (batch.length >= STREAM_BATCH_ROWS) flush();
+      },
+    });
+
+    let rowsThisPage: number;
+    let pageTotalCount: number | undefined;
+
+    if (res.body) {
+      const scan = await scanTwelveDataCatalogRows(res.body, consumer.consume);
+      flush();
+      if (!scan.ok) {
+        if (pagesFetched === 0 && deliveredRows === 0) {
+          return {
+            rows: [],
+            pagesFetched: 0,
+            completeness: "FAILED",
+            warnings: [`${args.path} ${scan.error}.`],
+          };
+        }
+        // Rows genuinely arrived before the failure: they are kept and the
+        // catalog is PARTIAL. A short read is never reported as COMPLETE.
+        warnings.push(`${args.path} page ${page} ${scan.error}.`);
         return {
-          rows: [],
-          pagesFetched: 0,
-          completeness: "FAILED",
-          warnings: [`${args.path} ${parsed.error}.`],
+          rows: collected(),
+          pagesFetched,
+          completeness: "PARTIAL",
+          ...(totalCount !== undefined ? { totalCount } : {}),
+          warnings,
+          failedPage: page,
         };
       }
-      warnings.push(`${args.path} page ${page} ${parsed.error}.`);
-      return {
-        rows: collected(),
-        pagesFetched,
-        completeness: "PARTIAL",
-        ...(totalCount !== undefined ? { totalCount } : {}),
-        warnings,
-        failedPage: page,
-      };
+      rowsThisPage = scan.rowsSeen;
+      pageTotalCount = scan.totalCount;
+    } else {
+      const parsed = parseTwelveDataCatalogPage(res.json);
+      if (!parsed.ok) {
+        if (pagesFetched === 0) {
+          return {
+            rows: [],
+            pagesFetched: 0,
+            completeness: "FAILED",
+            warnings: [`${args.path} ${parsed.error}.`],
+          };
+        }
+        warnings.push(`${args.path} page ${page} ${parsed.error}.`);
+        return {
+          rows: collected(),
+          pagesFetched,
+          completeness: "PARTIAL",
+          ...(totalCount !== undefined ? { totalCount } : {}),
+          warnings,
+          failedPage: page,
+        };
+      }
+      for (const row of parsed.rows) consumer.consume(row);
+      // A sink may be attached even when this page came from `json` (a caller
+      // that could not stream): hand it over in batches too, exactly once.
+      flush();
+      rowsThisPage = parsed.rows.length;
+      pageTotalCount = parsed.totalCount;
     }
 
     pagesFetched += 1;
-    if (parsed.totalCount !== undefined) totalCount = parsed.totalCount;
-
-    let newUnique = 0;
-    const deliverable: unknown[] = [];
-    for (const row of parsed.rows) {
-      const symbol = rowSymbol(row);
-      if (!symbol) {
-        // A row with no symbol is not deduplicated — it is delivered and the
-        // caller counts it as a skipped identity, exactly as before.
-        if (streaming) deliverable.push(row);
-        else unidentified.push(row);
-        continue;
-      }
-      if (streaming) {
-        if (seenSymbols!.has(symbol)) continue;
-        seenSymbols!.add(symbol);
-        newUnique += 1;
-        deliverable.push(row);
-        continue;
-      }
-      if (!bySymbol!.has(symbol)) {
-        bySymbol!.set(symbol, row);
-        newUnique += 1;
-      }
-    }
-    if (streaming && deliverable.length > 0) {
-      // Hand the page over. The array (and the rows in it) is a per-iteration
-      // local: once the next page is requested, nothing from this page is
-      // reachable from here. It is deliberately NOT cleared afterwards — the
-      // sink owns what it was given.
-      args.onRows!(deliverable);
-    }
+    if (pageTotalCount !== undefined) totalCount = pageTotalCount;
 
     if (
       !catalogHasMorePages({
-        rowsThisPage: parsed.rows.length,
+        rowsThisPage,
         uniqueAccumulated: uniqueIdentities(),
         totalCount,
-        newUniqueThisPage: newUnique,
+        newUniqueThisPage: consumer.counts.newUnique,
       })
     ) {
       if (
         totalCount !== undefined &&
         uniqueIdentities() < totalCount &&
-        (parsed.rows.length === 0 || newUnique === 0)
+        (rowsThisPage === 0 || consumer.counts.newUnique === 0)
       ) {
         warnings.push(
           `${args.path} stopped at page ${page} with ${uniqueIdentities()} identities before provider count ${totalCount}.`,

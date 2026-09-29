@@ -395,6 +395,64 @@ export async function discoverTwelveData(transport, token) {
 }
 
 /**
+ * Phase 289E — WHAT THE DISCOVERY ACTUALLY RETURNED, in one bounded line.
+ *
+ * The deployment killed the discovery action with an out-of-memory error and the
+ * annotation could only say that the run had no candidate. Now that each catalog
+ * is fetched in its own execution, the run has to report the result as a whole:
+ * the verdict, the catalog completeness, the pages fetched, the real total, and
+ * per catalog which one was read, how many rows it kept and whether a page
+ * failed. Values come from the runtime's own response — nothing is inferred
+ * here, and the identity sample is bounded and credential-redacted.
+ */
+export function discoveryDigest(discovery) {
+  if (!discovery) return null;
+  const bits = [
+    `success=${discovery.success === true}`,
+    `completeness=${discovery.completeness ?? "unknown"}`,
+    `pages=${isNumber(discovery.pagesFetched) ? discovery.pagesFetched : "unknown"}`,
+    `total=${isNumber(discovery.totalDiscovered) ? discovery.totalDiscovered : "unknown"}`,
+  ];
+  const catalogs = Array.isArray(discovery.catalogs) ? discovery.catalogs : [];
+  if (catalogs.length > 0) {
+    bits.push(
+      catalogs
+        .map((c) => {
+          const parts = [
+            c.path ?? "?",
+            c.completeness ?? "?",
+            `${isNumber(c.pagesFetched) ? c.pagesFetched : "?"}p`,
+            `${isNumber(c.totalDiscovered) ? c.totalDiscovered : "?"}kept`,
+          ];
+          if (isNumber(c.failedPage)) parts.push(`failedPage=${c.failedPage}`);
+          return parts.join("/");
+        })
+        .join(" · "),
+    );
+  } else {
+    bits.push("no per-catalog report");
+  }
+  const instruments = Array.isArray(discovery.instruments) ? discovery.instruments : [];
+  if (instruments.length > 0) {
+    bits.push(
+      `identities=${instruments
+        .slice(0, DISCOVERY_IDENTITY_SAMPLE)
+        .map((i) => String(i?.providerInstrumentId ?? "?"))
+        .join(",")}`,
+    );
+  }
+  const warnings = Array.isArray(discovery.warnings) ? discovery.warnings : [];
+  if (warnings.length > 0) bits.push(`warnings=${warnings.slice(0, 3).join(" | ")}`);
+  if (typeof discovery.error === "string" && discovery.error.length > 0) {
+    bits.push(`error=${discovery.error}`);
+  }
+  return sanitize(bits.join(" · "));
+}
+
+/** How many discovered identities are named in the digest. */
+export const DISCOVERY_IDENTITY_SAMPLE = 6;
+
+/**
  * One line naming why a discovery produced no candidate for this asset class —
  * built only from the provider's own report. `null` when nothing is known.
  */
@@ -1387,6 +1445,9 @@ export function renderSummary(report) {
     if (report.energyGateProbe.eiaLeg) {
       lines.push(`  eia leg       : ${report.energyGateProbe.eiaLeg}`);
     }
+    if (report.discovery) {
+      lines.push(`  discovery     : ${discoveryDigest(report.discovery) ?? "none"}`);
+    }
     if (report.energyGateProbe.eiaActionProbe) {
       lines.push(
         `  eia action    : ${eiaActionProbeDigest(report.energyGateProbe.eiaActionProbe)}`,
@@ -1942,6 +2003,9 @@ async function run() {
   const okxDiscovery = specs.some((s) => s.discovery === "okx") ? await discoverOkx(transport) : null;
   let twelveDiscovery = null;
   let twelveDiscoveryError = null;
+  // Phase 289E — the discovery result is annotated once per run.
+  let discoveryReported = false;
+  let discoveryReport = null;
 
   /** Each domain gets its OWN session, so one domain cannot spend another's quota. */
   async function sessionFor(label) {
@@ -2010,6 +2074,20 @@ async function run() {
         }
       }
       discovery = twelveDiscovery;
+
+      // Phase 289E — the discovery result is reported ONCE, before any domain
+      // verdict, so a failed or partial catalog walk is readable from the run's
+      // annotations alone (the artifact is not always downloadable).
+      if (!discoveryReported && discovery !== null) {
+        discoveryReported = true;
+        discoveryReport = discovery;
+        const text = discoveryDigest(discovery);
+        annotate(
+          discovery.success === true ? "notice" : "warning",
+          `Twelve Data discovery ${discovery.success === true ? "OK" : "UNAVAILABLE"}`,
+          `informational — ${text ?? "no discovery result"}`,
+        );
+      }
     }
 
     if (!discovery || discovery.success !== true) {
@@ -2426,6 +2504,9 @@ async function run() {
     // Phase 289C-audit — with the scan depth used and the provider-order identity
     // list the depth was applied to.
     energyGateProbe: energyGateProbe,
+    // Phase 289E — what the Twelve Data catalog walk returned, as the runtime
+    // reported it (verdict, per-catalog completeness/pages/kept, totals).
+    discovery: discoveryReport,
     energyGateProbeScanLimit: probeLimit,
     domains,
     summary: Object.fromEntries(domains.map((d) => [d.label, d.headline])),

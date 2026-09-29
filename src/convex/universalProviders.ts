@@ -220,6 +220,9 @@ export const discoverAllProviders = action({
     const { createTwelveDataDiscoveryAdapter } = await import(
       "../lib/discovery/twelve-data-adapter"
     );
+    const { createTwelveDataCatalogTransport } = await import(
+      "../lib/discovery/twelve-data-transport"
+    );
     const { discoverCcxtMarkets } = await import("../lib/discovery/ccxt-discovery");
     const { discoverDexScreener } = await import("../lib/discovery/dexscreener-adapter");
     const { discoverGeckoTerminal } = await import("../lib/discovery/geckoterminal-adapter");
@@ -249,24 +252,12 @@ export const discoverAllProviders = action({
 
     const okxPromise = discoverOkxPure((url) => fetch(url, { headers: { Accept: "application/json" } }));
 
+    // Phase 289E — the SAME catalog transport as the isolated discovery action:
+    // the response body is consumed as a stream, so this action never holds a raw
+    // catalog payload (Twelve Data returns the complete `/stocks` catalog, ~30 MB,
+    // for any `page` value) alongside every other provider's results.
     const twelveDataAdapter = createTwelveDataDiscoveryAdapter(
-      async (url: string) => {
-        let finalUrl = url;
-        if (apiKey && url.includes("twelvedata.com") && !/[?&]apikey=/.test(url)) {
-          finalUrl = `${url}${url.includes("?") ? "&" : "?"}apikey=${encodeURIComponent(apiKey)}`;
-        }
-        const res = await fetch(finalUrl, {
-          headers: { Accept: "application/json" },
-          signal: AbortSignal.timeout(10_000),
-        });
-        let json: unknown;
-        try {
-          json = await res.json();
-        } catch {
-          json = undefined;
-        }
-        return { ok: res.ok, status: res.status, json };
-      },
+      createTwelveDataCatalogTransport({ apiKey }),
       readEnv,
     );
     const twelveDataPromise = twelveDataAdapter.discover(now);

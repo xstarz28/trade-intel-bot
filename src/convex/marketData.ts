@@ -10,6 +10,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { api } from "./_generated/api";
 import { requireIdentity } from "./lib/requireIdentity";
 import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
@@ -33,7 +34,15 @@ import { getProviderCache } from "../lib/data/provider-cache-registry";
 import { errorMessage, isRecord } from "./lib/json";
 import { classifyLegError } from "./lib/legOutcome";
 import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
-import { createTwelveDataDiscoveryAdapter } from "../lib/discovery/twelve-data-adapter";
+import {
+  createTwelveDataDiscoveryAdapter,
+  mergeTwelveDataCatalogRuns,
+  TWELVE_DATA_CATALOG_PATHS,
+  twelveDataCatalogFailure,
+  twelveDataCredentialGate,
+} from "../lib/discovery/twelve-data-adapter";
+import { createTwelveDataCatalogTransport } from "../lib/discovery/twelve-data-transport";
+import type { ProviderDiscoveryResult } from "../lib/discovery/types";
 import {
   acquireBatchProviderNativeLiveData,
   acquireProviderNativeLiveData,
@@ -1014,23 +1023,81 @@ function twelveDataKeyedTransport(apiKey: string): Transport {
 }
 
 /**
+ * Phase 289E — ONE Twelve Data catalog per function execution.
+ *
+ * WHY THE BOUNDARY MOVED HERE
+ * ---------------------------
+ * The single-action discovery was killed by Convex's 512 MB Node.js action
+ * limit. The provider's catalog endpoints do not paginate: `?page=2` returns the
+ * SAME complete catalog as page 1 (probed live for `/stocks`, `/forex_pairs`,
+ * `/commodities`), so one catalog arrives as ONE response — `/stocks` is about
+ * 124k rows / 30 MB — and every catalog used to be read inside the same
+ * execution that also held the others plus the whole assembled universe.
+ *
+ * Now each catalog is fetched, parsed and normalized in its own execution, with
+ * the body consumed as a stream (see `twelve-data-transport` /
+ * `twelve-data-stream`), and each reports its own COMPLETE/PARTIAL/FAILED. A
+ * catalog that cannot be read can no longer suppress the others, and the run's
+ * own diagnostics name it.
+ *
+ * The path is validated against the adapter's registry: an unknown path is an
+ * explicit failure, never an arbitrary fetch.
+ */
+export const discoverTwelveDataCatalog = action({
+  args: { path: v.string() },
+  handler: async (ctx, args) => {
+    await requireIdentity(ctx);
+    const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
+    const adapter = createTwelveDataDiscoveryAdapter(
+      createTwelveDataCatalogTransport({ apiKey }),
+      readServerEnv,
+      { catalogPaths: [args.path] },
+    );
+    return adapter.discover(Date.now());
+  },
+});
+
+/**
  * Twelve Data reference-catalog discovery.
  *
  * Metadata only: no prices, no direction. Missing credentials fail
  * explicitly. Exact provider-native symbols are preserved.
+ *
+ * Phase 289E — this action now COMPOSES the per-catalog executions instead of
+ * reading every catalog itself. The returned contract is unchanged: same
+ * provider order, same first-occurrence dedupe, same per-catalog reports, same
+ * COMPLETE/PARTIAL/FAILED rollup, same exact provider symbols. What changed is
+ * the memory envelope: this execution retains only the normalized universe it
+ * must return, never a raw catalog payload.
  */
 export const discoverTwelveDataInstruments = action({
   args: {},
   handler: async (ctx) => {
     await requireIdentity(ctx);
-    const adapter = createTwelveDataDiscoveryAdapter(
-      async (url) => {
-        const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
-        return twelveDataKeyedTransport(apiKey)(url);
-      },
-      readServerEnv,
-    );
-    return adapter.discover(Date.now());
+    const now = Date.now();
+
+    // The credential rule is answered once, here, so a deployment without the
+    // key reports exactly what a single-catalog run always reported.
+    const credentialFailure = twelveDataCredentialGate(readServerEnv, now);
+    if (credentialFailure) return credentialFailure;
+
+    const parts: ProviderDiscoveryResult[] = [];
+    for (const path of TWELVE_DATA_CATALOG_PATHS) {
+      try {
+        parts.push(await ctx.runAction(api.marketData.discoverTwelveDataCatalog, { path }));
+      } catch (error) {
+        // A failed execution is reported as that catalog's own FAILED report
+        // (with the runtime's message), never as an empty catalog and never as
+        // a silent shrink of the universe.
+        parts.push(twelveDataCatalogFailure(path, now, errorMessage(error)));
+      }
+    }
+
+    const merged = mergeTwelveDataCatalogRuns(parts, now);
+    // The per-catalog shells are no longer needed: the merged universe holds
+    // the instruments, so release the array before the result is returned.
+    parts.length = 0;
+    return merged;
   },
 });
 

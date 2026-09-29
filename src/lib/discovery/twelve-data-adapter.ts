@@ -120,7 +120,17 @@ const CATALOGS: CatalogSpec[] = [
   { path: "/cryptocurrencies", assetClass: "crypto", subType: "crypto_spot", identity: pairIdentity },
 ];
 
+/**
+ * Phase 289E — the catalog paths this adapter owns, in provider order.
+ * Callers that run ONE catalog per function execution (so a single oversized
+ * catalog cannot take down the others, and so the failing catalog is named)
+ * enumerate this list; it is the single source of truth for the path set.
+ */
+export const TWELVE_DATA_CATALOG_PATHS: readonly string[] = CATALOGS.map((c) => c.path);
 
+function catalogSpecOf(path: string): CatalogSpec | undefined {
+  return CATALOGS.find((c) => c.path === path);
+}
 
 export function normalizeCatalogRow(
   row: CatalogRow,
@@ -153,21 +163,141 @@ export function normalizeCatalogRow(
 }
 
 /**
+ * Phase 289E — the credential gate, shared by every discovery entry point.
+ *
+ * Missing credentials are an explicit FAILURE, never a silent empty catalog.
+ * Exported so the composing action can answer identically to a single-catalog
+ * run instead of re-implementing (and drifting from) this rule.
+ */
+export function twelveDataCredentialGate(
+  readEnv: EnvReader | undefined,
+  now: number,
+): ProviderDiscoveryResult | null {
+  const cred = checkCredentials(PROVIDER, readEnv);
+  if (cred && cred.authRequired && !cred.available) {
+    return {
+      provider: PROVIDER,
+      success: false,
+      discoveredAt: now,
+      instruments: [],
+      warnings: [],
+      completeness: "FAILED",
+      pagesFetched: 0,
+      totalDiscovered: 0,
+      catalogs: [],
+      error: `Required credentials not configured: ${cred.missingEnvVarNames.join(", ")}.`,
+    };
+  }
+  return null;
+}
+
+/**
+ * Phase 289E — a catalog that could not be run at all.
+ *
+ * Used when one catalog is executed in its own function execution and that
+ * execution fails (transport timeout, runtime memory limit, provider outage).
+ * The result names the catalog, keeps the runtime's own message, and reports
+ * FAILED — a catalog that was never read is never presented as COMPLETE and its
+ * absence never silently shrinks the universe.
+ */
+export function twelveDataCatalogFailure(
+  path: string,
+  now: number,
+  reason: string,
+): ProviderDiscoveryResult {
+  const spec = catalogSpecOf(path);
+  const warning = `${path} discovery failed: ${reason}.`;
+  return {
+    provider: PROVIDER,
+    success: false,
+    discoveredAt: now,
+    instruments: [],
+    warnings: [warning],
+    completeness: "FAILED",
+    pagesFetched: 0,
+    totalDiscovered: 0,
+    catalogs: [
+      {
+        path,
+        assetClass: spec?.assetClass ?? "",
+        completeness: "FAILED",
+        pagesFetched: 0,
+        totalDiscovered: 0,
+      },
+    ],
+    error: warning,
+  };
+}
+
+/**
+ * Phase 289E — compose per-catalog runs into the universal discovery result.
+ *
+ * The external contract is byte-for-byte the one a single-run discovery always
+ * produced: provider order (catalog order, then the provider's own row order),
+ * first-occurrence dedupe by `assetClass|providerInstrumentId`, the per-catalog
+ * reports, the summed page count, the real total, and the COMPLETE/PARTIAL/FAILED
+ * rollup. What changed is only WHO holds the memory: each catalog was fetched and
+ * normalized in its own execution.
+ */
+export function mergeTwelveDataCatalogRuns(
+  parts: readonly ProviderDiscoveryResult[],
+  now: number,
+): ProviderDiscoveryResult {
+  const byIdentity = new Map<string, DiscoveredInstrument>();
+  const instruments: DiscoveredInstrument[] = [];
+  const warnings: string[] = [];
+  const catalogs: CatalogFetchReport[] = [];
+  let pagesFetched = 0;
+
+  for (const part of parts) {
+    for (const instrument of part.instruments) {
+      const identity = `${instrument.assetClass}|${instrument.providerInstrumentId}`;
+      if (byIdentity.has(identity)) continue;
+      byIdentity.set(identity, instrument);
+      instruments.push(instrument);
+    }
+    warnings.push(...part.warnings);
+    pagesFetched += part.pagesFetched ?? 0;
+    catalogs.push(...(part.catalogs ?? []));
+  }
+
+  const completeness = rollupCompleteness(catalogs.map((c) => c.completeness));
+  const succeeded = catalogs.some((c) => c.completeness !== "FAILED");
+
+  return {
+    provider: PROVIDER,
+    success: succeeded,
+    discoveredAt: now,
+    instruments,
+    warnings,
+    completeness,
+    pagesFetched,
+    totalDiscovered: instruments.length,
+    catalogs,
+    ...(succeeded ? {} : { error: "Twelve Data discovery failed for all catalogs." }),
+  };
+}
+
+/**
  * Build the Twelve Data discovery adapter.
  *
  * `readEnv` is injectable so tests never touch real secrets, matching the
- * existing credential-awareness design.
+ * existing credential-awareness design. `catalogPaths` restricts the run to
+ * specific catalogs (used by the per-catalog execution boundary); an unknown
+ * path is an explicit failure, never an arbitrary fetch.
  */
 export function createTwelveDataDiscoveryAdapter(
   fetchJson: FetchJson,
   readEnv?: EnvReader,
-  options: { assetClasses?: readonly AssetClass[] } = {},
+  options: { assetClasses?: readonly AssetClass[]; catalogPaths?: readonly string[] } = {},
 ): ProviderDiscoveryAdapter {
+  const requestedPaths = options.catalogPaths;
   const enabled = CATALOGS.filter(
     (c) =>
-      !options.assetClasses ||
-      options.assetClasses.length === 0 ||
-      options.assetClasses.includes(c.assetClass),
+      (!requestedPaths || requestedPaths.includes(c.path)) &&
+      (!options.assetClasses ||
+        options.assetClasses.length === 0 ||
+        options.assetClasses.includes(c.assetClass)),
   );
 
   return {
@@ -175,10 +305,8 @@ export function createTwelveDataDiscoveryAdapter(
     assetClasses: Array.from(new Set(enabled.map((c) => c.assetClass))),
 
     async discover(now: number): Promise<ProviderDiscoveryResult> {
-      // Credentials are required. Missing credentials is an explicit failure,
-      // never a silent empty catalog.
-      const cred = checkCredentials(PROVIDER, readEnv);
-      if (cred && cred.authRequired && !cred.available) {
+      const unknownPaths = (requestedPaths ?? []).filter((p) => catalogSpecOf(p) === undefined);
+      if (unknownPaths.length > 0) {
         return {
           provider: PROVIDER,
           success: false,
@@ -189,13 +317,17 @@ export function createTwelveDataDiscoveryAdapter(
           pagesFetched: 0,
           totalDiscovered: 0,
           catalogs: [],
-          error: `Required credentials not configured: ${cred.missingEnvVarNames.join(", ")}.`,
+          error: `Unknown Twelve Data catalog path(s): ${unknownPaths.join(", ")}.`,
         };
       }
 
+      // Credentials are required. Missing credentials is an explicit failure,
+      // never a silent empty catalog.
+      const credentialFailure = twelveDataCredentialGate(readEnv, now);
+      if (credentialFailure) return credentialFailure;
+
       const apiKey = readEnv?.("TWELVE_DATA_API_KEY") ?? "";
       const warnings: string[] = [];
-      const instruments: DiscoveredInstrument[] = [];
       const catalogs: CatalogFetchReport[] = [];
       let pagesFetched = 0;
 
@@ -206,23 +338,18 @@ export function createTwelveDataDiscoveryAdapter(
        * What this replaced: `Promise.all(enabled.map(fetchTwelveDataCatalogPages))`
        * — every enabled catalog fetched concurrently, each one retaining ALL of
        * its raw provider rows, with the normalized instruments then built on top
-       * of the still-live raw aggregate. On the development deployment this was
-       * killed by Convex's 512 MB Node.js action limit
-       * (`Node.js action execution ran out of memory (maximum memory usage:
-       * 512 MB)`), which meant forex, equity and commodity discovery all
-       * produced nothing.
+       * of the still-live raw aggregate.
        *
-       * Peak now: the catalogs are fetched sequentially (so at most ONE catalog's
-       * response and its parsed pages are alive at any moment), the rows of each
-       * page are normalized inside the row sink and released immediately (so a
-       * catalog's raw rows are never held alongside the normalized set — the only
-       * per-catalog state that survives is a Set of the symbols already seen), and
-       * what stays resident is exactly the discovery truth itself.
-       *
-       * Nothing about the discovery contract changes: same catalog order, same
-       * page cursors, same COMPLETE/PARTIAL/FAILED rollup, same warnings, same
-       * first-occurrence dedupe, same exact provider symbols.
+       * Phase 289E — MEMORY: the accumulating index below IS the result. The
+       * previous shape kept BOTH the growing `instruments` array and, at the end,
+       * a second full array produced from a `Map` of the same instruments — so
+       * the complete normalized set existed twice at the moment the action had
+       * already parsed the largest catalog. One Map, first occurrence wins, no
+       * second copy. (The same first-occurrence rule is applied again when
+       * per-catalog runs are composed.)
        */
+      const byIdentity = new Map<string, DiscoveredInstrument>();
+
       for (const spec of enabled) {
         let skipped = 0;
         let kept = 0;
@@ -237,7 +364,9 @@ export function createTwelveDataDiscoveryAdapter(
                 skipped += 1;
                 continue;
               }
-              instruments.push(normalized);
+              const identity = `${normalized.assetClass}|${normalized.providerInstrumentId}`;
+              if (byIdentity.has(identity)) continue;
+              byIdentity.set(identity, normalized);
               kept += 1;
             }
           },
@@ -278,12 +407,7 @@ export function createTwelveDataDiscoveryAdapter(
         });
       }
 
-      const deduplicated = Array.from(
-        new Map(
-          instruments.map((i) => [`${i.assetClass}|${i.providerInstrumentId}`, i]),
-        ).values(),
-      );
-
+      const instruments = Array.from(byIdentity.values());
       const completeness = rollupCompleteness(catalogs.map((c) => c.completeness));
       const succeeded = catalogs.some((c) => c.completeness !== "FAILED");
 
@@ -291,11 +415,11 @@ export function createTwelveDataDiscoveryAdapter(
         provider: PROVIDER,
         success: succeeded,
         discoveredAt: now,
-        instruments: deduplicated,
+        instruments,
         warnings,
         completeness,
         pagesFetched,
-        totalDiscovered: deduplicated.length,
+        totalDiscovered: instruments.length,
         catalogs,
         ...(succeeded
           ? {}
