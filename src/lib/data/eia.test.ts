@@ -29,11 +29,11 @@ function legResponse(
         value: r.value,
         product: productId,
         "product-name": productName,
-        process: "STA",
+        process: "SAX",
         units: "million barrels",
       })),
     },
-    request: { command: "/v2/petroleum/sto/data/" },
+    request: { command: "/v2/petroleum/stoc/wstk/data/" },
     apiVersion: "2.1.12",
   };
 }

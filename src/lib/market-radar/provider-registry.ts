@@ -563,7 +563,11 @@ function buildEiaAdapter(): ProviderAdapter {
       const apiKey = readEnv?.("EIA_API_KEY") ?? "";
       if (!apiKey) return null;
       try {
-        const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPM0&facets[duession][]=NUS&sort[0][column]=period&sort[0][direction]=desc&length=1`;
+        // Phase 289 — `duession` is not a facet of this dataset; the API answers
+        // `{"error":"Invalid facet 'duession' provided. The only valid facets are
+        // 'duoarea', 'product', 'process', and 'series'."}`. The valid request is
+        // below (verified live: U.S. weekly retail gasoline price).
+        const url = `https://api.eia.gov/v2/petroleum/pri/gnd/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPM0&facets[duoarea][]=NUS&sort[0][column]=period&sort[0][direction]=desc&length=1`;
         const res = await defaultTransport(url);
         if (!res.ok || !res.json) return null;
         // Phase 238 — EIA stub carries no observation time.

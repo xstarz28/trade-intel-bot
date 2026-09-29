@@ -1,11 +1,15 @@
 /**
  * Phase 7D — U.S. EIA Weekly Petroleum Status Report inventories (pure module).
  *
- * Source: EIA Open Data API v2, route `/v2/petroleum/sto/data/`
- *   (verified live: requires api_key → 403 without one; docs verified at
- *   eia.gov/opendata/documentation.php — response is
+ * Source: EIA Open Data API v2, route `/v2/petroleum/stoc/wstk/data/` — the
+ *   Weekly Petroleum Status Report weekly STOCKS dataset. Phase 289 corrected
+ *   this from `…/v2/petroleum/sto/data/`, which is not a valid APIv2 path (the
+ *   API answers `{"error":"Requested path /petroleum/sto is not valid."}`), with
+ *   the per-product process facets the dataset really publishes
+ *   (crude = SAX "Ending Stocks Excluding SPR", gasoline/distillate = SAE).
+ *   Verified live: requires api_key → 403 without one; response is
  *   `{ response: { data: [ { period, value, ... } ] }, request, apiVersion }`,
- *   data values standardized as STRINGS since v2.1.6).
+ *   data values standardized as STRINGS since v2.1.6.
  *
  * NON-NEGOTIABLE:
  * - Inventory values come ONLY from actual EIA observations. No estimates,
@@ -15,9 +19,10 @@
  * - Crude + gasoline + distillate from the SAME WPSR release = ONE
  *   evidence layer with an internal breakdown, never three votes.
  * - Availability ≠ confluence: sub-threshold changes contribute zero.
- * - Product facet codes (EPC0/EPD0/EPM0) are documented-but-not-live-
- *   verifiable until a key exists; a wrong code simply fails its leg
- *   independently and is reported — never substituted or fabricated.
+ * - Product facet codes (EPC0/EPD0/EPM0) and the per-product process facets
+ *   (SAX/SAE) were verified against the live API in Phase 289 (see the route
+ *   note above); a wrong code still simply fails its leg independently and is
+ *   reported — never substituted or fabricated.
  *
  * No `@/` alias imports: this module is also consumed by Convex actions.
  */
@@ -152,7 +157,7 @@ export interface ParsedEiaError {
 }
 
 /**
- * Parses ONE product leg of an EIA v2 /petroleum/sto/data response.
+ * Parses ONE product leg of an EIA v2 /petroleum/stoc/wstk/data response.
  * Handles: valid payloads, API error objects ({error, code}), empty data,
  * malformed rows, non-numeric values, and unexpected schemas — always
  * returning an explicit failure reason instead of throwing or guessing.

@@ -452,7 +452,12 @@ function buildVerificationUrl(spec: VerificationSpec, apiKey: string): string | 
     case "eia":
       // EIA requires API key — only verifiable if key present
       if (!apiKey) return null;
-      return `https://api.eia.gov/v2/petroleum/sto/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPC0&facets[process][]=STA&facets[area][]=NUS-Z00&sort[0][column]=period&sort[0][direction]=desc&length=1`;
+      // Phase 289 — the pre-fix URL used `…/petroleum/sto/` (not a valid APIv2
+      // path: `{"error":"Requested path /petroleum/sto is not valid."}`) with a
+      // `facets[area]` that the weekly-stocks dataset does not carry (it is
+      // `duoarea`). The route and facets below are the ones the live API
+      // answers with real WPSR rows (U.S. crude ending stocks excluding SPR).
+      return `https://api.eia.gov/v2/petroleum/stoc/wstk/data/?api_key=${apiKey}&frequency=weekly&data[0]=value&facets[product][]=EPC0&facets[process][]=SAX&facets[duoarea][]=NUS&sort[0][column]=period&sort[0][direction]=desc&length=1`;
     case "tokenomist":
       // Tokenomist public API is not reliably available for verification
       return null;

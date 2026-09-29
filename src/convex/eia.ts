@@ -1,12 +1,27 @@
 /**
  * Phase 7D — EIA Weekly Petroleum Status Report inventory fetch action.
  *
- * Route (documented + auth behavior verified live — 403 without key):
- *   GET https://api.eia.gov/v2/petroleum/sto/data/
- *     ?api_key=…&frequency=weekly&data[]=value
- *     &facets[product][]=<PRODUCT>&facets[process][]=STA
- *     &facets[area][]=NUS-Z00&sort[0][column]=period&sort[0][direction]=desc
+ * Route — Phase 289 correction, verified against the live API:
+ *   GET https://api.eia.gov/v2/petroleum/stoc/wstk/data/
+ *     ?api_key=…&frequency=weekly&data[0]=value
+ *     &facets[product][]=<PRODUCT>&facets[process][]=<PROCESS>
+ *     &facets[duoarea][]=NUS&sort[0][column]=period&sort[0][direction]=desc
  *     &length=<HISTORY_WEEKS>
+ *
+ * WHAT WAS WRONG (live defect, smoke run 36210208186)
+ * --------------------------------------------------
+ * The pre-Phase-289 request used `…/v2/petroleum/sto/data/` with
+ * `facets[process][]=STA` and `facets[area][]=NUS-Z00`. `/petroleum/sto` is not
+ * a valid APIv2 path — the API answers
+ * `{"error":"Requested path /petroleum/sto is not valid.","code":400}`, and
+ * `area` is not a facet of the weekly-stocks dataset (`duoarea` is). Every leg
+ * therefore failed as a non-2xx transport fault before any parse, the wave
+ * raised `every leg failed (…)`, the action returned `success:false`, and the
+ * optional-leg contract dropped the payload — the assessment reported
+ * `inventories=unavailable` with no provider reading, for every instrument,
+ * even with a valid key. The route and the per-product process facets below
+ * were verified with real requests (EPC0+SAX+NUS → series WCESTUS1;
+ * EPM0+SAE+NUS → WGTSTUS1; EPD0+SAE+NUS → WDISTUS1; units MBBL).
  *
  * Three independent product legs (crude EPC0 / gasoline EPM0 / distillate
  * EPD0). A failing leg never corrupts the others; a wrong facet code simply
@@ -59,8 +74,24 @@ import {
   type LegOutcome,
 } from "./lib/legOutcome";
 
-const BASE = "https://api.eia.gov/v2/petroleum/sto/data/";
-const PRODUCT_IDS = ["EPC0", "EPM0", "EPD0"] as const;
+const BASE = "https://api.eia.gov/v2/petroleum/stoc/wstk/data/";
+/**
+ * Phase 289 — the WPSR weekly-stocks legs, each with the PROCESS facet the
+ * dataset actually publishes for that product (verified live, see the header):
+ * crude is quoted EXCLUDING SPR (SAX — the headline U.S. crude series,
+ * WCESTUS1), gasoline and distillate as total ending stocks (SAE).
+ *
+ * The dataset is instrument-INDEPENDENT — it is U.S. aggregate petroleum
+ * stocks, and this action takes no instrument argument at all (`args: {}`).
+ * WHICH instruments consume it is decided by the caller's feed-scope rule
+ * (`fetchOptionalSlowData`), never by a symbol facet here.
+ */
+const PRODUCT_LEGS = [
+  { productId: "EPC0", processId: "SAX" },
+  { productId: "EPM0", processId: "SAE" },
+  { productId: "EPD0", processId: "SAE" },
+] as const;
+const PRODUCT_IDS = PRODUCT_LEGS.map((leg) => leg.productId);
 /** Phase 280 — weekly observations requested per leg (2 release rows + history). */
 const HISTORY_WEEKS = 12;
 
@@ -83,12 +114,16 @@ async function eiaErrorDetail(res: Response): Promise<string> {
  * classified provider faults; returns the parse outcome otherwise (an EIA
  * error body is a parse-level fact, not a transport failure).
  */
-async function fetchProductLegRaw(productId: string, apiKey: string): Promise<ParsedEia> {
+async function fetchProductLegRaw(
+  leg: (typeof PRODUCT_LEGS)[number],
+  apiKey: string,
+): Promise<ParsedEia> {
   const url =
     `${BASE}?api_key=${encodeURIComponent(apiKey)}` +
     `&frequency=weekly&data%5B0%5D=value` +
-    `&facets%5Bproduct%5D%5B%5D=${encodeURIComponent(productId)}` +
-    `&facets%5Bprocess%5D%5B%5D=STA&facets%5Barea%5D%5B%5D=NUS-Z00` +
+    `&facets%5Bproduct%5D%5B%5D=${encodeURIComponent(leg.productId)}` +
+    `&facets%5Bprocess%5D%5B%5D=${encodeURIComponent(leg.processId)}` +
+    `&facets%5Bduoarea%5D%5B%5D=NUS` +
     `&sort%5B0%5D%5Bcolumn%5D=period&sort%5B0%5D%5Bdirection%5D=desc&length=${HISTORY_WEEKS}`;
   const res = await fetch(url, {
     headers: { Accept: "application/json" },
@@ -141,7 +176,7 @@ export const fetchEiaInventory = action({
           // Phase 230 — each leg settles to a classified LegOutcome; only
           // the FATAL classes reject the promise.
           const settled = await Promise.allSettled(
-            PRODUCT_IDS.map((p) => runLeg(() => fetchProductLegRaw(p, apiKey))),
+            PRODUCT_LEGS.map((leg) => runLeg(() => fetchProductLegRaw(leg, apiKey))),
           );
 
           // Phase 178b — fatal failures must THROW out of the cache fetcher,

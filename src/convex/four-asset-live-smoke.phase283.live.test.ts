@@ -305,7 +305,10 @@ const PROVIDER_ENDPOINTS: Array<{
   { provider: "tickatlas", host: "tickatlas.com", credentialEnv: "TICKATLAS_API_KEY", url: "https://tickatlas.com/v1/calendar" },
   { provider: "cftc", host: "publicreporting.cftc.gov", credentialEnv: null, url: "https://publicreporting.cftc.gov/resource/6dca-aqww.json?$limit=1" },
   { provider: "us-treasury", host: "home.treasury.gov", credentialEnv: null, url: "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve" },
-  { provider: "eia", host: "api.eia.gov", credentialEnv: "EIA_API_KEY", url: "https://api.eia.gov/v2/petroleum/sto/data/?api_key=DEMO_KEY&length=1" },
+  // Phase 289 — probe the route the product actually calls. The pre-fix URL
+  // used `…/petroleum/sto/`, which is not a valid path (the API answers
+  // `Requested path /petroleum/sto is not valid.`) and could never be reached.
+  { provider: "eia", host: "api.eia.gov", credentialEnv: "EIA_API_KEY", url: "https://api.eia.gov/v2/petroleum/stoc/wstk/data/?api_key=DEMO_KEY&length=1" },
   { provider: "tokenomist", host: "api.tokenomist.xyz", credentialEnv: null, url: "https://api.tokenomist.xyz/token/BTC/supply" },
   { provider: "defillama", host: "api.llama.fi", credentialEnv: null, url: "https://api.llama.fi/v2/historicalChainTvl/ethereum" },
 ];

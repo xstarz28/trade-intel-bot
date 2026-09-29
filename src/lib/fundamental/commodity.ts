@@ -565,7 +565,7 @@ export function assessCommodityFundamentals(
         unit: s.unit,
         provider: "U.S. Energy Information Administration",
         providerInstrumentId: nativeId,
-        source: `Weekly Petroleum Status Report stocks (EIA Open Data v2 /petroleum/sto/data; series ${s.productId})`,
+        source: `Weekly Petroleum Status Report stocks (EIA Open Data v2 /petroleum/stoc/wstk/data; series ${s.productId})`,
         observedAt: eia.fetchedAt,
         observedAtSemantics: "acquisition-receipt",
         period: s.observationDate,
