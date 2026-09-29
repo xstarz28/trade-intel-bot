@@ -50,11 +50,24 @@ export interface MarketData {
 export interface TimeframeStructureContext {
   timeframe: string;
   structure: "HH/HL" | "LH/LL" | "range" | "unknown";
+  /**
+   * Legacy label view of a break: "price is currently beyond the most recent
+   * swing level". Kept for continuity (UI labels, older readers). It is NOT an
+   * event and carries no candle — the event-based truth for this timeframe is
+   * `structuralEvidence` below.
+   */
   bosDirection: "bullish" | "bearish" | "none";
   chochDirection: "bullish" | "bearish" | "none";
   lastSwingHigh?: number;
   lastSwingLow?: number;
   dataPoints: number;
+  /**
+   * Phase 290-A — the confirmed, event-based structural read for this
+   * timeframe: the exact swing level broken, the candle whose close broke it,
+   * the event time, the structural invalidation level and an explicit evidence
+   * state. Present whenever the structural engine could run.
+   */
+  structuralEvidence?: import("./structure").StructuralRead;
 }
 
 // ── Phase 2: liquidity / structure / confluence types ─────────────
@@ -170,6 +183,13 @@ export interface SmcContext {
   liquidityPools: LiquidityPool[];
   recentSweep?: LiquiditySweepEvent;
   internalExternal: InternalExternalStructure;
+  /**
+   * Phase 290-A — the event-based structural pair (external regime + internal
+   * leg) computed from the same candles with different windows. Consumers that
+   * need a structural DIRECTION (MTF, analysis, recommendation) read this;
+   * `internalExternal` keeps its label role.
+   */
+  structural?: import("./structure").StructurePair;
   fvgs: FairValueGap[]; // most recent first
   displacement?: DisplacementEvent;
   orderBlocks: OrderBlock[]; // most recent first
@@ -191,6 +211,18 @@ export interface MtfTimeframeData {
   unavailableReason?: string;
   /** Full Phase-2 SMC context for THIS timeframe (never copied from another). */
   smc?: SmcContext;
+  /**
+   * Phase 290-A — THIS timeframe's own confirmed structural read (direction,
+   * latest event, broken level, event time, invalidation, evidence state).
+   * Never copied from another timeframe; absent only when the SMC layer could
+   * not run at all.
+   */
+  structural?: import("./structure").StructuralRead;
+  /**
+   * Phase 290-A — this timeframe's external/internal structural pair, so a
+   * reader can see whether the internal leg contradicts the external regime.
+   */
+  structuralPair?: import("./structure").StructurePair;
 }
 
 export type MtfAlignmentState =
@@ -215,6 +247,12 @@ export interface MtfContext {
   htfTimeframe?: string;
   setupTimeframe: string;
   triggerTimeframe?: string;
+  /**
+   * Phase 290-A — deterministic structural confluence across the chain: the
+   * actual per-timeframe structural states (not a weighted score), including
+   * whether the trigger is pulling back inside an intact higher structure.
+   */
+  structuralConfluence?: import("./structure").StructuralConfluence;
   /** A genuine external BOS/CHoCH on a HTF — can legitimately flip context. */
   htfReversal?: {
     timeframe: string;

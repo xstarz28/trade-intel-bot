@@ -11,7 +11,12 @@ import type {
   Recommendation,
   TradePlan,
 } from "@/types/analysis";
-import type { MtfContext, TechnicalData } from "@/lib/data/market-types";
+import type {
+  MtfContext,
+  TechnicalData,
+  TimeframeStructureContext,
+} from "@/lib/data/market-types";
+import type { StructuralRead } from "@/lib/data/structure";
 import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 import { resolveStyle } from "@/lib/trading-style";
@@ -55,6 +60,7 @@ import type {
   ProvenanceEntry,
 } from "@/lib/decision-trace";
 import { computeDecisionFingerprint } from "@/lib/decision-trace";
+import { structureDigest } from "@/lib/data/structure";
 // Phase 276 — unified technical + fundamental intelligence. Pure derivation
 // ABOVE both engines: it reads their finished outputs, computes no indicator
 // or ratio of its own, and cannot modify recommendation, conviction, gates,
@@ -102,11 +108,27 @@ function clampScore(score: number): FactorScore {
 
 type TfDirection = "long" | "short" | "none";
 
-/** Directional read of one timeframe from its structure + CHoCH. */
+/**
+ * Directional read of one timeframe from its structure + CHoCH.
+ *
+ * Phase 290-A: when the timeframe carries a confirmed structural EVENT read
+ * (the last BOS/CHoCH that actually closed beyond a confirmed swing level), that
+ * read decides the direction. The legacy label path (a CHoCH label overriding a
+ * structure label) remains for inputs built without the event layer.
+ */
 function tfDirection(
   structure: "HH/HL" | "LH/LL" | "range" | "unknown" | undefined,
   choch: "bullish" | "bearish" | "none" | undefined,
+  structuralEvidence?: TimeframeStructureContext["structuralEvidence"],
 ): TfDirection {
+  // The event record is authoritative WHEN IT SPEAKS. An event read that
+  // established no direction means "no confirmed break yet" — that is absence
+  // of evidence, not evidence against the direction, so the legacy label path
+  // below still answers (exactly as it did before the event layer existed).
+  if (structuralEvidence) {
+    if (structuralEvidence.direction === "bullish") return "long";
+    if (structuralEvidence.direction === "bearish") return "short";
+  }
   // A confirmed CHoCH overrides a stale structure label — it is the
   // earliest algorithmic signal of a character change.
   if (choch === "bullish") return "long";
@@ -121,8 +143,12 @@ function computeAlignment(input: AnalysisInput): HtfAlignment | undefined {
   if (!htf || htf.dataPoints < 20) return undefined;
 
   const ltf = input.technicalData;
-  const htfDir = tfDirection(htf.structure, htf.chochDirection);
-  const ltfDir = tfDirection(ltf?.structure, ltf?.chochDirection);
+  const htfDir = tfDirection(htf.structure, htf.chochDirection, htf.structuralEvidence);
+  const ltfDir = tfDirection(
+    ltf?.structure,
+    ltf?.chochDirection,
+    ltf?.smc?.structural?.external,
+  );
 
   let state: HtfAlignment["state"];
   if (ltfDir === "none") {
@@ -152,6 +178,16 @@ function computeAlignment(input: AnalysisInput): HtfAlignment | undefined {
  * BOS/CHoCH carried by mtf.htfReversal.
  */
 function structuralDirection(tech?: TechnicalData): TfDirection {
+  // Phase 290-A — the external read comes from the confirmed EVENT record
+  // (direction established by an actual close beyond a confirmed swing level).
+  // When the record established no direction (an unbroken structure, not a
+  // contrary one) the legacy label answers, so a thesis is never vetoed merely
+  // because no break has happened yet.
+  const evidence = tech?.smc?.structural?.external;
+  if (evidence) {
+    if (evidence.direction === "bullish") return "long";
+    if (evidence.direction === "bearish") return "short";
+  }
   const label = (isUsableSmc(tech?.smc)
     ? tech!.smc!.internalExternal!.external!.structure
     : undefined) ?? tech?.structure;
@@ -2547,6 +2583,77 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     }
   }
 
+  // ── Phase 290-A — deterministic structural evidence (facts, not scores) ──
+  // Built FROM the already-computed reads: the setup timeframe's own event
+  // record, every available chain timeframe's read, and the structural
+  // confluence. Purely additive — it changes no bias, gate or plan.
+  const structuralEvidence = ((): AnalysisResult["structuralEvidence"] => {
+    const tech = input.technicalData;
+    const digest: string[] = [];
+    const timeframes: NonNullable<AnalysisResult["structuralEvidence"]>["timeframes"] = [];
+    const pushRead = (tf: string, role: string, read: StructuralRead | undefined) => {
+      if (!read) return;
+      timeframes.push({
+        timeframe: tf,
+        role,
+        direction: read.direction,
+        evidenceState: read.evidenceState,
+        regime: read.regime,
+        ...(read.lastEvent
+          ? {
+              event: {
+                kind: read.lastEvent.kind,
+                direction: read.lastEvent.direction,
+                brokenLevel: read.lastEvent.brokenLevel,
+                candleIndex: read.lastEvent.candleIndex,
+                candleTime: read.lastEvent.candleTime,
+              },
+            }
+          : {}),
+        ...(read.invalidation
+          ? {
+              invalidation: {
+                level: read.invalidation.level,
+                swingKind: read.invalidation.swingKind,
+                swingIndex: read.invalidation.swingIndex,
+                timestamp: read.invalidation.timestamp,
+              },
+            }
+          : {}),
+        reason: read.reason,
+      });
+      digest.push(...structureDigest(read));
+    };
+    // Setup timeframe (the requested one) from the SMC layer's own pair.
+    pushRead(input.timeframe, "setup", tech?.smc?.structural?.external);
+    // Every OTHER available chain timeframe, each from its own candles only.
+    for (const entry of mtf?.timeframes ?? []) {
+      if (entry.timeframe === input.timeframe) continue;
+      pushRead(entry.timeframe, entry.role, entry.structural);
+    }
+    const confluence = mtf?.structuralConfluence;
+    if (confluence) digest.push(`MTF structural confluence ${confluence.state}: ${confluence.detail}`);
+    if (timeframes.length === 0 && !confluence) return undefined;
+    return {
+      setupTimeframe: input.timeframe,
+      timeframes,
+      ...(confluence
+        ? {
+            confluence: {
+              state: confluence.state,
+              htfDirection: confluence.htfDirection,
+              ...(confluence.htfTimeframe ? { htfTimeframe: confluence.htfTimeframe } : {}),
+              setupDirection: confluence.setupDirection,
+              triggerDirection: confluence.triggerDirection,
+              triggerPullback: confluence.triggerPullback,
+              detail: confluence.detail,
+            },
+          }
+        : {}),
+      digest,
+    };
+  })();
+
   // Phase 3A — compact MTF transparency summary for the UI.
   const mtfSummary: MtfSummary | undefined = mtf
     ? {
@@ -2671,6 +2778,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     tradePlan: decision.tradePlan,
     htfAlignment: alignment,
     mtfSummary,
+    ...(structuralEvidence ? { structuralEvidence } : {}),
     marketRegime,
     setupClassification,
     keyContradictions,

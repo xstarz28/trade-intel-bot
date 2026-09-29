@@ -7,6 +7,7 @@
  */
 
 import type { OhlcvCandle, TechnicalData } from "./market-types";
+import { readStructure } from "./structure";
 
 // ── Moving Averages ───────────────────────────────────────────────
 
@@ -437,11 +438,17 @@ export function calculateTechnical(
     const htfSwings = detectSwings(higherTimeframeCandles, htfLookback);
     const htfStructure = analyzeStructure(htfSwings.highs, htfSwings.lows);
     const htfLastClose = higherTimeframeCandles[higherTimeframeCandles.length - 1].close;
+    // Phase 290-A — the confirmed, event-based read for the SAME candles. The
+    // label fields above stay for continuity; this is the evidence layer.
+    const htfStructuralEvidence = readStructure(higherTimeframeCandles, htfLabel, {
+      lookback: htfLookback,
+    });
     htfContext = {
       timeframe: htfLabel,
       structure: htfStructure,
       bosDirection: detectBos(htfSwings.highs, htfSwings.lows, htfLastClose),
       chochDirection: detectChoch(htfSwings.highs, htfSwings.lows, htfStructure, htfLastClose),
+      structuralEvidence: htfStructuralEvidence,
       lastSwingHigh:
         htfSwings.highs.length > 0 ? htfSwings.highs[htfSwings.highs.length - 1] : undefined,
       lastSwingLow:

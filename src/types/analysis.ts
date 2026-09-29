@@ -66,6 +66,48 @@ export interface MtfSummary {
   triggerTimeframe?: string;
 }
 
+/**
+ * Phase 290-A — the confirmed structural evidence the decision actually used.
+ * Deterministic facts only: which swing level broke, on which candle, in which
+ * direction, where the invalidation sits and what the across-timeframe state is.
+ * No scores, no probabilities, no decorative language.
+ */
+export interface StructuralEvidenceSummary {
+  setupTimeframe: string;
+  timeframes: {
+    timeframe: string;
+    role: string;
+    direction: "bullish" | "bearish" | "none";
+    evidenceState: string;
+    regime: string;
+    event?: {
+      kind: "BOS" | "CHOCH";
+      direction: "bullish" | "bearish";
+      brokenLevel: number;
+      candleIndex: number;
+      candleTime: number;
+    };
+    invalidation?: {
+      level: number;
+      swingKind: "high" | "low";
+      swingIndex: number;
+      timestamp: number;
+    };
+    reason: string;
+  }[];
+  confluence?: {
+    state: string;
+    htfDirection: string;
+    htfTimeframe?: string;
+    setupDirection: string;
+    triggerDirection: string;
+    triggerPullback: boolean;
+    detail: string;
+  };
+  /** Deterministic fact lines (engine style). */
+  digest: string[];
+}
+
 export interface BiasBreakdown {
   trend: FactorScore;
   indicator: FactorScore;
@@ -188,6 +230,8 @@ export interface AnalysisResult {
   htfAlignment?: HtfAlignment;
   /** Adaptive multi-timeframe summary (Phase 3A) when MTF data exists. */
   mtfSummary?: MtfSummary;
+  /** Phase 290-A — confirmed event-based structural evidence behind the decision. */
+  structuralEvidence?: StructuralEvidenceSummary;
   /** Phase 5 — multi-evidence market regime (UNKNOWN when evidence is thin). */
   marketRegime?: import("@/lib/market-context").MarketRegimeInfo;
   /** Phase 5 — explicit setup classification (context/evidence, not a UI label). */

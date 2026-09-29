@@ -416,6 +416,30 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   CHoCH {tech.chochDirection}
                 </span>
               )}
+              {/* Phase 290-A — the confirmed structural event record for this
+                  timeframe: what actually broke, at which level, on which candle.
+                  Engine output quoted verbatim, never re-derived in the UI. */}
+              {tech.smc?.structural?.external.lastEvent && (
+                <span className="text-[10px] font-mono text-foreground/80">
+                  {tech.smc.structural.external.lastEvent.kind}{" "}
+                  {tech.smc.structural.external.lastEvent.direction} @{" "}
+                  {tech.smc.structural.external.lastEvent.brokenLevel.toFixed(4)}{" "}
+                  ({new Date(tech.smc.structural.external.lastEvent.candleTime).toISOString()})
+                </span>
+              )}
+              {tech.smc?.structural?.external.invalidation && (
+                <span className="text-[10px] font-mono text-red-400/80">
+                  inv {tech.smc.structural.external.invalidation.level.toFixed(4)} (
+                  {tech.smc.structural.external.invalidation.swingKind})
+                </span>
+              )}
+              {/* Engine enum rendered verbatim (same convention as the MTF
+                  alignment chip) — no untranslated prose is introduced here. */}
+              {tech.smc?.structural && tech.smc.structural.state !== "ALIGNED" && (
+                <span className="text-[10px] font-mono text-amber-400">
+                  {tech.smc.structural.state}
+                </span>
+              )}
               {tech.volumeTrend !== "unknown" && (
                 <span className="text-[10px] font-mono text-muted-foreground">
                   Vol: {tech.volumeTrend}
@@ -783,6 +807,27 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 {t.analysisResult.labels.trigger}: <span className="text-foreground">{result.mtfSummary.triggerTimeframe ?? "—"}</span>
               </div>
             </div>
+            {/* Phase 290-A — the deterministic structural evidence behind the
+                decision: per-timeframe confirmed events and the confluence state,
+                quoted from the engine (never re-derived in the UI). */}
+            {result.structuralEvidence && (
+              <div className="mt-2 pt-2 border-t border-border/30 space-y-1">
+                <div className="text-[10px] font-mono text-muted-foreground">
+                  structural confluence:{" "}
+                  <span className="text-foreground">
+                    {result.structuralEvidence.confluence?.state ?? "UNKNOWN"}
+                  </span>
+                  {result.structuralEvidence.confluence
+                    ? ` — ${result.structuralEvidence.confluence.detail}`
+                    : ""}
+                </div>
+                {result.structuralEvidence.digest.map((line, i) => (
+                  <div key={i} className="text-[10px] font-mono text-muted-foreground/80">
+                    {line}
+                  </div>
+                ))}
+              </div>
+            )}
             {result.mtfSummary.unavailable.length > 0 && (
               <p className="mt-2 pt-2 border-t border-border/30 text-[10px] font-mono text-amber-400/90">
                 ⚠ unavailable (not synthesized): {result.mtfSummary.unavailable.map((u) => u.timeframe).join(", ")}

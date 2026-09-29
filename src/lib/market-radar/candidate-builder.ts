@@ -250,6 +250,17 @@ export function buildRadarCandidate(
   if (snapshot?.mtfAlignment) {
     candidate.mtfAlignment = snapshot.mtfAlignment;
   }
+  // Phase 290-A — confirmed structural facts travel with the candidate.
+  if (snapshot?.structuralEvent) {
+    candidate.structuralEvent = snapshot.structuralEvent;
+    candidate.structuralDirection = snapshot.structuralEvent.direction;
+  }
+  if (snapshot?.structuralInvalidation) {
+    candidate.structuralInvalidation = snapshot.structuralInvalidation;
+  }
+  if (snapshot?.structuralPairState) {
+    candidate.structuralPairState = snapshot.structuralPairState;
+  }
   if (snapshot?.volatility) {
     candidate.atr = snapshot.volatility;
   }

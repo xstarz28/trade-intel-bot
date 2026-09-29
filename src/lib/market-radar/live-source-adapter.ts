@@ -66,6 +66,41 @@ export function buildRadarSourcesFromLiveSources(
                 : analysis?.bias === "Bearish"
                   ? "short"
                   : "neutral",
+            // Phase 290-A — confirmed structural evidence, carried verbatim from
+            // the analysis engine (never re-derived here). Absent when the
+            // engine produced no event read for this instrument.
+            ...(() => {
+              const setup = analysis?.structuralEvidence?.timeframes.find(
+                (t) => t.role === "setup",
+              );
+              const inv = setup?.invalidation;
+              const ev = setup?.event;
+              const pair = analysis?.technicalData?.smc?.structural;
+              if (!setup || (!ev && !inv && !pair)) return {};
+              return {
+                ...(ev
+                  ? {
+                      structuralEvent: {
+                        kind: ev.kind,
+                        direction: ev.direction,
+                        brokenLevel: ev.brokenLevel,
+                        candleTime: ev.candleTime,
+                        timeframe: setup.timeframe,
+                      },
+                    }
+                  : {}),
+                ...(inv
+                  ? {
+                      structuralInvalidation: {
+                        level: inv.level,
+                        timeframe: setup.timeframe,
+                        swingKind: inv.swingKind,
+                      },
+                    }
+                  : {}),
+                ...(pair ? { structuralPairState: pair.state } : {}),
+              };
+            })(),
             marketRegime: "UNKNOWN",
             provider: marketData.provider,
             // Phase 239: preserve provider observation time truthfully.

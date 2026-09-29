@@ -187,6 +187,26 @@ export interface MarketSnapshot {
   marketRegime?: string;
   /** MTF alignment. */
   mtfAlignment?: string;
+  /**
+   * Phase 290-A — confirmed structural evidence for this snapshot: the event
+   * that last broke a confirmed swing level, the broken level and the level
+   * whose breach invalidates the structure. Facts only — the radar quotes
+   * them, it does not re-score or re-derive them.
+   */
+  structuralEvent?: {
+    kind: "BOS" | "CHOCH";
+    direction: "bullish" | "bearish";
+    brokenLevel: number;
+    candleTime: number;
+    timeframe: string;
+  };
+  structuralInvalidation?: {
+    level: number;
+    timeframe: string;
+    swingKind: "high" | "low";
+  };
+  /** External/internal relationship when both reads exist. */
+  structuralPairState?: string;
   /** Provider that supplied this data. */
   provider: string;
   /**

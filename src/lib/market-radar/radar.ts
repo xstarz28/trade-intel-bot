@@ -125,6 +125,20 @@ function scoreOpportunity(
     score += 3;
     supporting.push(`regime: ${snapshot.marketRegime}`);
   }
+  // Phase 290-A — the radar REPORTS the confirmed structural facts verbatim.
+  // No score is added here: the facts were already weighted where they belong
+  // (HTF/MTF evidence); inventing a second bonus would double-count them.
+  if (snapshot?.structuralEvent) {
+    const e = snapshot.structuralEvent;
+    supporting.push(
+      `confirmed ${e.kind} ${e.direction} through ${e.brokenLevel} on ${e.timeframe} (close beyond the confirmed swing level at ${new Date(e.candleTime).toISOString()})`,
+    );
+  }
+  if (snapshot?.structuralPairState === "INTERNAL_COUNTERTREND") {
+    conflicting.push(
+      "internal structure is counter-trend against an intact external regime (trigger context, external regime unchanged)",
+    );
+  }
 
   // ── Execution Quality ──
   if (snapshot?.spreadBps !== undefined) {
@@ -320,6 +334,14 @@ function buildInvalidationConditions(
 ): string[] {
   const conditions: string[] = [];
   conditions.push(`price structure invalidation`);
+  // Phase 290-A — when a confirmed structural read established the level, the
+  // condition names it instead of leaving the generic one alone.
+  if (source.snapshot?.structuralInvalidation) {
+    const inv = source.snapshot.structuralInvalidation;
+    conditions.push(
+      `confirmed close beyond ${inv.level} (${inv.timeframe} confirmed swing ${inv.swingKind})`,
+    );
+  }
   if (freshness !== "FRESH") {
     conditions.push(`freshness expiration at current level`);
   }

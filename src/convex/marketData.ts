@@ -610,6 +610,9 @@ export const fetchMarketData = action({
         lastSwingHigh: e.smc!.internalExternal.external.lastSwingHigh,
         lastSwingLow: e.smc!.internalExternal.external.lastSwingLow,
         dataPoints: e.smc!.internalExternal.external.dataPoints,
+        // Phase 290-A — the same slot also carries the confirmed event read
+        // (broken level, event candle/time, invalidation, evidence state).
+        ...(e.structural ? { structuralEvidence: e.structural } : {}),
       });
       if (structureEntry) technical.htfContext = legacyCtx(structureEntry);
       else delete technical.htfContext;

@@ -37,6 +37,7 @@ import type {
   VwapContext,
 } from "./market-types";
 import { atr as computeAtr } from "./technical";
+import { readStructurePair } from "./structure";
 
 // ── Documented constants ──────────────────────────────────────────
 
@@ -617,6 +618,18 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
 
 // ── Assembler ─────────────────────────────────────────────────────
 
+/**
+ * External (major) swing window. Slow on purpose: with >100 candles the major
+ * structure is a 7-bar fractal, otherwise 5 — the same policy the label view
+ * used, now shared with the event engine so both read the same swings.
+ */
+export function externalLookbackFor(candleCount: number): number {
+  return candleCount > 100 ? 7 : 5;
+}
+
+/** Internal (minor) swing window — the shorter-term leg/trigger read. */
+export const INTERNAL_LOOKBACK = 3;
+
 export function computeSmcContext(
   candles: OhlcvCandle[],
   timeframe: string,
@@ -624,8 +637,8 @@ export function computeSmcContext(
   const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : 0;
   const atrValue = computeAtr(candles, 14);
 
-  const majorLookback = candles.length > 100 ? 7 : 5;
-  const minorLookback = 3;
+  const majorLookback = externalLookbackFor(candles.length);
+  const minorLookback = INTERNAL_LOOKBACK;
   const majorPts = detectSwingPoints(candles, majorLookback);
   const minorPts = detectSwingPoints(candles, minorLookback);
 
@@ -684,6 +697,15 @@ export function computeSmcContext(
     dataPoints: candles.length,
   });
 
+  // ── Phase 290-A — event-based structure over the SAME candles ──
+  // The label fields above stay (they are what older readers render); this is
+  // the confirmed-event view: which swing level broke, on which candle's close,
+  // in which direction, and where the structural invalidation sits.
+  const structural = readStructurePair(candles, timeframe, {
+    externalLookback: majorLookback,
+    internalLookback: minorLookback,
+  });
+
   const internalExternal: InternalExternalStructure = {
     external: mkCtx(timeframe, externalStructure, externalBos, externalChoch, extLastHigh, extLastLow),
     internal: mkCtx(timeframe + ":internal", internalStructure, internalBos, internalChoch, intLastHigh, intLastLow),
@@ -700,6 +722,7 @@ export function computeSmcContext(
     liquidityPools: pools.sort((a, b) => b.touches - a.touches),
     recentSweep,
     internalExternal,
+    structural,
     fvgs: detectFvgs(candles, timeframe, atrValue),
     displacement: detectDisplacement(candles, atrValue),
     orderBlocks: detectOrderBlocks(candles, timeframe, atrValue),

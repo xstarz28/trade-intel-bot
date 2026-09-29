@@ -126,12 +126,69 @@ function assessDataCompleteness(source: LiveCandidateSource): DataCompletenessLe
 // STRUCTURE EXTRACTION
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Phase 290-A — the HTF bias comes from the CONFIRMED structural event read
+ * when it exists (an actual close beyond a confirmed swing level), and only
+ * falls back to the structure label otherwise. The label can sit above an old
+ * swing for many candles; the event cannot.
+ */
 function extractHtfBias(tech: TechnicalData | undefined): "long" | "short" | "neutral" | "unknown" {
   if (!tech) return "unknown";
+  const evidence = tech.smc?.structural?.external;
+  if (evidence) {
+    if (evidence.direction === "bullish") return "long";
+    if (evidence.direction === "bearish") return "short";
+    if (evidence.regime === "range") return "neutral";
+    return "unknown";
+  }
   if (tech.structure === "HH/HL") return "long";
   if (tech.structure === "LH/LL") return "short";
   if (tech.structure === "range") return "neutral";
   return "unknown";
+}
+
+/** Phase 290-A — deterministic structural facts for the candidate. */
+function extractStructuralFields(tech: TechnicalData | undefined): {
+  structuralDirection?: "bullish" | "bearish" | "none";
+  structuralEvent?: {
+    kind: "BOS" | "CHOCH";
+    direction: "bullish" | "bearish";
+    brokenLevel: number;
+    candleTime: number;
+    timeframe: string;
+  };
+  structuralInvalidation?: { level: number; timeframe: string; swingKind: "high" | "low" };
+  structuralPairState?: string;
+  structuralReason?: string;
+} {
+  const pair = tech?.smc?.structural;
+  if (!pair) return {};
+  const external = pair.external;
+  return {
+    structuralDirection: external.direction,
+    ...(external.lastEvent
+      ? {
+          structuralEvent: {
+            kind: external.lastEvent.kind,
+            direction: external.lastEvent.direction,
+            brokenLevel: external.lastEvent.brokenLevel,
+            candleTime: external.lastEvent.candleTime,
+            timeframe: external.timeframe,
+          },
+        }
+      : {}),
+    ...(external.invalidation
+      ? {
+          structuralInvalidation: {
+            level: external.invalidation.level,
+            timeframe: external.timeframe,
+            swingKind: external.invalidation.swingKind,
+          },
+        }
+      : {}),
+    structuralPairState: pair.state,
+    structuralReason: pair.reason,
+  };
 }
 
 function extractMarketRegime(tech: TechnicalData | undefined): string | undefined {
@@ -261,10 +318,11 @@ export function buildCandidateFromSource(
     ...(source.providerNative ? { providerNative: source.providerNative } : {}),
     ...(source.region ? { region: source.region } : {}),
 
-    // Structure
+    // Structure — the confirmed event record first, the label only as fallback.
     htfBias: extractHtfBias(tech),
     marketRegime: extractMarketRegime(tech),
     mtfAlignment: extractMtfAlignment(ar),
+    ...extractStructuralFields(tech),
     keySupport: undefined,
     keyResistance: undefined,
     riskReward: ar?.tradePlan?.riskReward,

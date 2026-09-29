@@ -83,6 +83,28 @@ export interface CandidateInput {
   marketRegime?: string;
   /** MTF alignment: "ALIGNED_BULLISH", "ALIGNED_BEARISH", "MIXED", "COUNTER_TREND", "INSUFFICIENT_DATA". */
   mtfAlignment?: string;
+
+  // ── Phase 290-A — confirmed structural evidence (facts, never scores) ──
+  /** Direction established by the last confirmed structural event (or "none"). */
+  structuralDirection?: "bullish" | "bearish" | "none";
+  /** The confirmed event itself: what broke, when, on which timeframe. */
+  structuralEvent?: {
+    kind: "BOS" | "CHOCH";
+    direction: "bullish" | "bearish";
+    brokenLevel: number;
+    candleTime: number;
+    timeframe: string;
+  };
+  /** The structural level whose breach invalidates the current structure. */
+  structuralInvalidation?: {
+    level: number;
+    timeframe: string;
+    swingKind: "high" | "low";
+  };
+  /** External/internal relationship: ALIGNED | INTERNAL_COUNTERTREND | … */
+  structuralPairState?: string;
+  /** Why the pair reads the way it does (deterministic wording from the engine). */
+  structuralReason?: string;
   /** Key support level (as number for comparison). */
   keySupport?: number;
   /** Key resistance level (as number for comparison). */
@@ -213,6 +235,11 @@ export interface RankedInstrument {
   risks: string[];
   /** Conditions that would invalidate the thesis. */
   invalidationConditions: string[];
+  /**
+   * Phase 290-A — the confirmed structural facts behind this ranking, in
+   * engine form (event, broken level, event time, invalidation level).
+   */
+  structuralFacts?: string[];
   /** Data completeness level. */
   dataCompleteness: DataCompletenessLevel;
   /** Data freshness. */
@@ -654,10 +681,47 @@ function getAssetClassScore(c: CandidateInput): ScoreComponent[] {
 // SCORING ENGINE
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Phase 290-A — deterministic structural fact lines.
+ *
+ * These are FACTS the structural engine recorded (a close beyond a confirmed
+ * swing level, the level itself, the event candle time, the invalidation), not
+ * scores. They are appended to the evidence lists only; the horizon weights and
+ * the numeric scoring are untouched, and nothing here invents a probability.
+ */
+export function structuralEvidenceFacts(c: CandidateInput): string[] {
+  const facts: string[] = [];
+  const e = c.structuralEvent;
+  if (e) {
+    facts.push(
+      `Structure ${e.direction}: confirmed ${e.kind} at ${e.brokenLevel} on ${e.timeframe} (close beyond the confirmed swing level at ${new Date(e.candleTime).toISOString()})`,
+    );
+  } else if (c.structuralDirection && c.structuralDirection !== "none") {
+    facts.push(`Structure ${c.structuralDirection} (confirmed structural read)`);
+  }
+  if (c.structuralInvalidation) {
+    facts.push(
+      `Structural invalidation ${c.structuralInvalidation.level} (${c.structuralInvalidation.timeframe} confirmed swing ${c.structuralInvalidation.swingKind})`,
+    );
+  }
+  if (c.structuralPairState === "INTERNAL_COUNTERTREND") {
+    facts.push(
+      "Internal structure is counter-trend against an intact external regime — trigger context only, the external regime is unchanged",
+    );
+  }
+  return facts;
+}
+
 export function scoreCandidate(
   c: CandidateInput,
   horizon: TradingMode | InvestorHorizon,
-): { analyticalScore: number; confidence: number; reasons: string[]; conflicts: string[] } {
+): {
+  analyticalScore: number;
+  confidence: number;
+  reasons: string[];
+  conflicts: string[];
+  structuralFacts: string[];
+} {
   const weights = HORIZON_PROFILES[horizon];
   const assetComponents = getAssetClassScore(c);
 
@@ -670,6 +734,15 @@ export function scoreCandidate(
   for (const comp of assetComponents) {
     if (comp.score >= 60) reasons.push(comp.reason);
     else if (comp.score < 40) conflicts.push(comp.reason);
+  }
+
+  // Phase 290-A — confirmed structural evidence joins the evidence lists.
+  // The factual lines are not scored: they make the decision's structure
+  // auditable without inventing a new weight or a probability.
+  const structuralFacts = structuralEvidenceFacts(c);
+  for (const fact of structuralFacts) {
+    if (fact.startsWith("Internal structure is counter-trend")) conflicts.push(fact);
+    else reasons.push(fact);
   }
 
   // Apply horizon weights to asset-class evidence.
@@ -799,6 +872,7 @@ export function scoreCandidate(
     confidence: Math.min(100, confidence),
     reasons,
     conflicts,
+    structuralFacts,
   };
 }
 
@@ -940,7 +1014,15 @@ export function generateRecommendation(
       invalidationConditions: [
         ...result.conflicts.filter(c => c.includes("unavailable")),
         "structural reversal on HTF",
+        // Phase 290-A — the level the structure actually sits on, when one was
+        // established by a confirmed read (never an invented threshold).
+        ...(c.structuralInvalidation
+          ? [
+              `thesis is void on a confirmed close beyond ${c.structuralInvalidation.level} (${c.structuralInvalidation.timeframe} confirmed swing ${c.structuralInvalidation.swingKind})`,
+            ]
+          : []),
       ],
+      ...(result.structuralFacts.length > 0 ? { structuralFacts: result.structuralFacts } : {}),
       dataCompleteness: c.dataCompleteness,
       freshness: c.freshness,
       executionQuality: c.spreadBps,
