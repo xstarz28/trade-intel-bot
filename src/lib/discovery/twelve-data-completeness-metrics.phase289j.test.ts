@@ -182,6 +182,185 @@ describe("289J — provider rows vs unique instruments are different questions (
   });
 });
 
+describe("289 FINAL — providerCount reconciliation is EXACT, never silently complete (1–9)", () => {
+  type Walk = Awaited<ReturnType<typeof fetchTwelveDataCatalogPages>>;
+
+  /** A fetch that serves the given pages in order. */
+  function paged(pages: { data: unknown[]; count?: number }[]): {
+    fetchJson: FetchJson;
+    calls: () => number;
+  } {
+    let call = 0;
+    const fetchJson: FetchJson = async () => {
+      const page = pages[Math.min(call, pages.length - 1)];
+      call += 1;
+      const body = `{"status":"ok",${page.count === undefined ? "" : `"count":${page.count},`}"data":[${page.data
+        .map((row) => JSON.stringify(row))
+        .join(",")}]}`;
+      return { ok: true, status: 200, body: chunked(body) };
+    };
+    return { fetchJson, calls: () => call };
+  }
+
+  const walk = (pages: { data: unknown[]; count?: number }[]): Promise<Walk> =>
+    fetchTwelveDataCatalogPages(paged(pages).fetchJson, { path: "/stocks", apiKey: "test-key" });
+
+  const symbols = (...names: string[]) => names.map((symbol) => ({ symbol, currency: "USD" }));
+
+  it("1. providerCount 5 / rawRowsSeen 5 — the ONLY complete reconciliation", async () => {
+    const result = await walk([{ data: symbols("A", "B", "C", "D", "E"), count: 5 }]);
+    expect(result.completeness).toBe("COMPLETE");
+    expect(result.rawRowsSeen).toBe(5);
+    expect(result.totalCount).toBe(5);
+    expect(result.rawRowsSeen).toBe(result.totalCount);
+    expect(result.duplicateRows).toBe(0);
+  });
+
+  it("2. providerCount 5 / rawRowsSeen 4 — short, never COMPLETE", async () => {
+    // Page 1 hands over 4 of the 5 rows the provider counted; page 2 is empty, so
+    // paging stops with an unsatisfied count.
+    const result = await walk([
+      { data: symbols("A", "B", "C", "D"), count: 5 },
+      { data: [], count: 5 },
+    ]);
+    expect(result.completeness).toBe("PARTIAL");
+    expect(result.rawRowsSeen).toBe(4);
+    expect(result.totalCount).toBe(5);
+    expect(result.rawRowsSeen! < result.totalCount!).toBe(true);
+    expect(result.warnings.join(" ")).toContain("provider count short");
+    expect(result.warnings.join(" ")).toContain("read 4 raw row(s) of the 5");
+    expect(result.completeness).not.toBe("COMPLETE");
+  });
+
+  it("3. providerCount 5 / rawRowsSeen 6 — exceeded, explicit mismatch, never COMPLETE", async () => {
+    const result = await walk([{ data: symbols("A", "B", "C", "D", "E", "F"), count: 5 }]);
+    expect(result.completeness).toBe("PARTIAL");
+    expect(result.rawRowsSeen).toBe(6);
+    expect(result.totalCount).toBe(5);
+    expect(result.rawRowsSeen! > result.totalCount!).toBe(true);
+    // The diagnostic names BOTH numbers and the fact that the count was exceeded.
+    const text = result.warnings.join(" ");
+    expect(text).toContain("provider count exceeded");
+    expect(text).toContain("read 6 raw row(s)");
+    expect(text).toContain("counted 5");
+  });
+
+  it("4. a provider count BELOW the unique rows is a mismatch, not an automatic COMPLETE", async () => {
+    // Three distinct instruments with a provider count of 2: the walk read more
+    // raw rows than the provider counted, so the catalog cannot be complete.
+    const result = await walk([{ data: symbols("A", "B", "C"), count: 2 }]);
+    expect(result.completeness).toBe("PARTIAL");
+    expect(result.rawRowsSeen).toBe(3);
+    expect(result.totalCount).toBe(2);
+    // The comparison that fired is raw-vs-provider, never kept-vs-provider.
+    expect(result.rawRowsSeen).toBeGreaterThan(result.totalCount!);
+    expect(result.warnings.join(" ")).toContain("provider count exceeded");
+  });
+
+  it("5. skipped identity rows still reconcile: raw == providerCount is COMPLETE", async () => {
+    const rows = [
+      { symbol: "WTI/USD", name: "Crude Oil WTI Spot" },
+      { symbol: "GAU", name: "Gold (unidentified row)" },
+      { symbol: "XAU/USD", name: "Gold Spot" },
+    ];
+    const adapter = createTwelveDataDiscoveryAdapter(
+      streamingFetch(catalogText(rows, 3)),
+      KEYED,
+      { catalogPaths: ["/commodities"] },
+    );
+    const result = await adapter.discover(1_700_000_000_000);
+    const catalog = (result.catalogs ?? [])[0];
+
+    expect(catalog.completeness).toBe("COMPLETE");
+    expect(catalog.rawRowsSeen).toBe(3);
+    expect(catalog.providerCount).toBe(3);
+    expect(catalog.totalDiscovered).toBe(2);
+    expect(catalog.skippedIdentityRows).toBe(1);
+    // raw == providerCount, and raw == kept + skipped + duplicates.
+    expect(catalog.rawRowsSeen).toBe(
+      catalog.totalDiscovered + catalog.skippedIdentityRows! + catalog.duplicateRows!,
+    );
+  });
+
+  it("6. duplicate rows: raw == providerCount while kept < providerCount is COMPLETE", async () => {
+    const rows = [
+      { symbol: "WTI/USD", name: "Crude Oil WTI Spot" },
+      { symbol: "WTI/USD", name: "Crude Oil WTI Spot" },
+      { symbol: "XAU/USD", name: "Gold Spot" },
+    ];
+    const adapter = createTwelveDataDiscoveryAdapter(
+      streamingFetch(catalogText(rows, 3)),
+      KEYED,
+      { catalogPaths: ["/commodities"] },
+    );
+    const result = await adapter.discover(1_700_000_000_000);
+    const catalog = (result.catalogs ?? [])[0];
+
+    expect(catalog.completeness).toBe("COMPLETE");
+    expect(catalog.rawRowsSeen).toBe(catalog.providerCount);
+    expect(catalog.totalDiscovered).toBe(2);
+    expect(catalog.totalDiscovered! < catalog.providerCount!).toBe(true);
+    expect(catalog.duplicateRows).toBe(1);
+    expect(catalog.rawRowsSeen).toBe(
+      catalog.totalDiscovered + catalog.skippedIdentityRows! + catalog.duplicateRows!,
+    );
+  });
+
+  it("7. no providerCount — the documented complete-dump semantics are preserved", async () => {
+    const result = await walk([{ data: symbols("A", "B") }]);
+    expect(result.completeness).toBe("COMPLETE");
+    expect(result.totalCount).toBeUndefined();
+    expect(result.rawRowsSeen).toBe(2);
+    // Nothing invented: no count means no count, and the dump is complete.
+    expect(result.completeness).not.toBe("PARTIAL");
+  });
+
+  it("8. a provider that ignores `page` is never walked forever", async () => {
+    // Every page returns the SAME three rows while counting five: the walk must
+    // stop at the first page that yields no new identity, and must not claim
+    // completeness — the repeated body pushed the raw count past the provider's.
+    const same = symbols("A", "B", "C");
+    const { fetchJson, calls } = paged([
+      { data: same, count: 5 },
+      { data: same, count: 5 },
+      { data: same, count: 5 },
+    ]);
+    const result = await fetchTwelveDataCatalogPages(fetchJson, {
+      path: "/cryptocurrencies",
+      apiKey: "test-key",
+    });
+
+    // Two requests: the repeated page ends the walk (it is never asked again).
+    expect(calls()).toBe(2);
+    expect(result.completeness).toBe("PARTIAL");
+    expect(result.rawRowsSeen).toBe(6);
+    expect(result.totalCount).toBe(5);
+    // The repeated rows are counted as duplicates rather than dropped silently.
+    expect(result.duplicateRows).toBe(3);
+  });
+
+  it("9. a truncated body is short of the provider count and never COMPLETE", async () => {
+    const text = catalogText(symbols("A", "B", "C"), 5);
+    const result = await fetchTwelveDataCatalogPages(
+      streamingFetch(text.slice(0, text.length - 12)),
+      { path: "/stocks", apiKey: "test-key" },
+    );
+    expect(result.completeness).toBe("PARTIAL");
+    expect(result.rawRowsSeen).toBe(2);
+    expect(result.rawRowsSeen! < result.totalCount!).toBe(true);
+  });
+
+  it("the shortfall and the excess are distinct, named classifications", async () => {
+    const short = await walk([{ data: symbols("A"), count: 3 }, { data: [], count: 3 }]);
+    const excess = await walk([{ data: symbols("A", "B", "C", "D"), count: 3 }]);
+    expect(short.warnings.join(" ")).toContain("provider count short");
+    expect(excess.warnings.join(" ")).toContain("provider count exceeded");
+    expect(short.rawRowsSeen).toBe(1);
+    expect(excess.rawRowsSeen).toBe(4);
+    expect([short.completeness, excess.completeness]).toEqual(["PARTIAL", "PARTIAL"]);
+  });
+});
+
 describe("289J — a failed walk is never a complete stage (I, J)", () => {
   function sink(options: { failAppendAt?: number } = {}) {
     const appends: number[] = [];

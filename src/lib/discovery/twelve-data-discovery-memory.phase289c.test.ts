@@ -113,15 +113,21 @@ describe("phase 289C — discovery runs in bounded memory", () => {
       ok: true,
       status: 200,
       json: {
-        count: 3,
+        // Phase 289 FINAL — the provider counts the ROWS it sends, not the
+        // unique instruments they identify: four raw rows arrive across the two
+        // pages below (one of them a repeat), so the count states four. Counting
+        // three here would make the second page exceed the provider's own count,
+        // which is now an explicit mismatch rather than a silent COMPLETE.
+        count: 4,
         data: [
           { symbol: "A/USD", currency_base: "A", currency_quote: "USD" },
           { symbol: "B/USD", currency_base: "B", currency_quote: "USD" },
         ],
       },
     });
-    // Page 2's payload: `count` says 3, so paging continues; the second page
-    // repeats one row and adds one — dedupe still applies while streaming.
+    // Page 2's payload: `count` says 4, so paging continues to satisfy it; the
+    // second page repeats one row and adds one — dedupe still applies while
+    // streaming, and the repeat is counted.
     let call = 0;
     const pagingFetch: FetchJson = async (url) => {
       call += 1;
@@ -131,7 +137,7 @@ describe("phase 289C — discovery runs in bounded memory", () => {
         ok: true,
         status: 200,
         json: {
-          count: 3,
+          count: 4,
           data: [
             { symbol: "B/USD", currency_base: "B", currency_quote: "USD" },
             { symbol: "C/USD", currency_base: "C", currency_quote: "USD" },
@@ -155,6 +161,12 @@ describe("phase 289C — discovery runs in bounded memory", () => {
     expect(result.rows).toEqual([]);
     expect(result.completeness).toBe("COMPLETE");
     expect(result.pagesFetched).toBe(2);
+    // Phase 289 FINAL — exact reconciliation: four raw rows read, four the
+    // provider counted, three unique instruments kept, one repeat accounted for.
+    expect(result.rawRowsSeen).toBe(4);
+    expect(result.totalCount).toBe(4);
+    expect(result.duplicateRows).toBe(1);
+    expect(result.completeness).toBe("COMPLETE");
   });
 
   it("without a sink the buffered contract is unchanged (diagnostics depend on it)", async () => {

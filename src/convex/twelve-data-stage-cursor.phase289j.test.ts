@@ -292,6 +292,42 @@ describe("289J — the cursor walks chunk documents without gaps or repeats", ()
   });
 });
 
+describe("289 FINAL — the provider-count reconciliation survives into the stage and the read", () => {
+  it("10. the stage document and the read action both carry providerCount and rawRowsSeen", async () => {
+    const t = convexTest(schema, modules);
+    const total = 700;
+    // A walk whose raw rows reconcile exactly with the provider's own count.
+    const { stageId } = await stage(t, total);
+
+    // (a) THE STAGE DOCUMENT — the same walk, as persisted.
+    const doc = await t.run(async ({ db }) => {
+      const stages = await db.query("discoveryStages").collect();
+      return stages[0];
+    });
+    expect(doc?.providerCount).toBe(total);
+    expect(doc?.rawRowsSeen).toBe(total);
+    expect(doc?.skippedIdentityRows).toBe(0);
+    expect(doc?.duplicateRows).toBe(0);
+    expect(doc?.stagedRows).toBe(total);
+    expect(doc?.totalDiscovered).toBe(total);
+    expect(doc?.completeness).toBe("COMPLETE");
+    expect(doc?.transportState).toBe("complete");
+
+    // (b) THE READ ACTION — the bounded proof a consumer gets, without the walk.
+    const page = await read(t, stageId, -1, 50);
+    expect(page.providerCount).toBe(total);
+    expect(page.rawRowsSeen).toBe(total);
+    expect(page.skippedIdentityRows).toBe(0);
+    expect(page.duplicateRows).toBe(0);
+    expect(page.completeness).toBe("COMPLETE");
+    expect(page.transportState).toBe("complete");
+    // The four numbers that answer four different questions agree here only
+    // because this walk skipped nothing and repeated nothing.
+    expect(page.rawRowsSeen).toBe(page.providerCount);
+    expect(page.stagedRows).toBe(page.totalDiscovered);
+  });
+});
+
 describe("289J — an unclosed stage is never COMPLETE, and a failed write is never silent", () => {
   it("reports an open stage as PARTIAL, with only the rows it really holds", async () => {
     const t = convexTest(schema, modules);

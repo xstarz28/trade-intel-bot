@@ -710,6 +710,32 @@ export function createTwelveDataDiscoveryAdapter(
          */
         const rawRowsSeen = result.rawRowsSeen ?? 0;
         const duplicateRows = (result.duplicateRows ?? 0) + duplicates;
+        /**
+         * Phase 289 FINAL — THE SECOND RECONCILIATION: EVERY RAW ROW ACCOUNTED FOR.
+         *
+         * For a fully consumed body, the rows the provider sent must all have gone
+         * somewhere, and this walk has exactly three destinations: kept as a
+         * unique usable instrument, skipped for missing identity, or dropped as a
+         * repeat. So
+         *
+         *   rawRowsSeen === totalDiscovered + skippedIdentityRows + duplicateRows
+         *
+         * must hold. It is asserted here rather than assumed: if the identity ever
+         * breaks (a future change to the delivery path, say), the catalog must NOT
+         * be published as COMPLETE with rows silently unaccounted for — it is
+         * downgraded to PARTIAL with the numbers named.
+         */
+        const accountedRows = kept + skipped + duplicateRows;
+        const accountingExact = rawRowsSeen === accountedRows;
+        let walkCompleteness: ProviderDiscoveryResult["completeness"] = result.completeness;
+        if (result.completeness === "COMPLETE" && !accountingExact) {
+          walkCompleteness = "PARTIAL";
+          warnings.push(
+            `${spec.path} read ${rawRowsSeen} raw row(s) but accounted for ${accountedRows} (kept ${kept} + skipped ${skipped} + duplicates ${duplicateRows}): ${Math.abs(
+              rawRowsSeen - accountedRows,
+            )} provider row(s) are unaccounted for, so the catalog is not complete.`,
+          );
+        }
 
         if (result.completeness === "FAILED") {
           catalogs.push({
@@ -756,7 +782,7 @@ export function createTwelveDataDiscoveryAdapter(
                 catalogPath: spec.path,
                 stagedRows,
                 totalDiscovered: kept,
-                completeness: result.completeness,
+                completeness: walkCompleteness,
                 state: stagingState,
                 rawRowsSeen,
                 skippedIdentityRows: skipped,
@@ -787,7 +813,7 @@ export function createTwelveDataDiscoveryAdapter(
           };
           if (stagingState !== "complete") {
             warnings.push(
-              `${spec.path}: staged transport ${stagingState} — ${stagingDetail ?? "no detail"}. The provider walk reported ${result.completeness}; this catalog's rows are not fully available.`,
+              `${spec.path}: staged transport ${stagingState} — ${stagingDetail ?? "no detail"}. The provider walk reported ${walkCompleteness}; this catalog's rows are not fully available.`,
             );
           }
         } else {
@@ -813,7 +839,7 @@ export function createTwelveDataDiscoveryAdapter(
         catalogs.push({
           path: spec.path,
           assetClass: spec.assetClass,
-          completeness: result.completeness,
+          completeness: walkCompleteness,
           pagesFetched: result.pagesFetched,
           totalDiscovered: kept,
           // The provider's OWN `count`, verbatim and unbounded by us. It is

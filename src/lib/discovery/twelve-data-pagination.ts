@@ -183,10 +183,23 @@ export function parseTwelveDataCatalogPage(json: unknown): CatalogPageParse {
  * the same symbol made the walk re-fetch a provider that does not paginate (it
  * ignores `page`), and then read the repeat as "stopped early". The raw count is
  * the honest signal for "has the body the provider described already arrived",
- * and completeness is decided on it (see the reconciliation in
- * `fetchTwelveDataCatalogPages`). Unique-identity progress is still required to
- * page forward (`newUniqueThisPage`), so a provider that repeats itself can
- * never be walked forever.
+ * and completeness is decided on it — EXACTLY (see the reconciliation in
+ * `fetchTwelveDataCatalogPages`): equality is COMPLETE, a shortfall and an excess
+ * are both non-COMPLETE.
+ *
+ * This function only answers "should another page be requested", and it says no
+ * in every case that cannot end in COMPLETE:
+ *
+ *   1. raw rows already at (or past) the provider's count → nothing more to ask
+ *      for: equality is decided now, and an excess is the provider contradicting
+ *      its own count;
+ *   2. the page produced no new identities → a provider that ignores `page`
+ *      (or repeats itself) must never be walked forever;
+ *   3. the page was empty → the provider has nothing further to send;
+ *   4. no count was published → the documented complete-dump semantics.
+ *
+ * Unique-identity progress is required only to page FORWARD; it is never used as
+ * the raw completeness proof.
  */
 export function catalogHasMorePages(args: {
   rowsThisPage: number;
@@ -502,38 +515,46 @@ export async function fetchTwelveDataCatalogPages(
         newUniqueThisPage: consumer.counts.newUnique,
       })
     ) {
-      if (
-        totalCount !== undefined &&
-        uniqueIdentities() < totalCount &&
-        (rowsThisPage === 0 || consumer.counts.newUnique === 0)
-      ) {
-        warnings.push(
-          `${args.path} stopped at page ${page} with ${uniqueIdentities()} identities before provider count ${totalCount}.`,
-        );
-        return {
-          rows: collected(),
-          pagesFetched,
-          completeness: "PARTIAL",
-          ...metrics(),
-          warnings,
-          failedPage: page,
-        };
-      }
       /**
-       * Phase 289J — THE PRIMARY RAW PROOF.
+       * Phase 289 FINAL — THE PROVIDER-COUNT RECONCILIATION, EXACT AND EXPLICIT.
        *
-       * The provider said how many rows it was sending (`count`). If the body
-       * handed over fewer raw elements than that, the read ended early — this is
-       * NOT a normalization question, and it is never COMPLETE. The unique usable
-       * instrument count is deliberately NOT part of this test: normalization
-       * legitimately discards rows missing identity (the deployed run reports
-       * `/commodities` 31 kept of 32) and a duplicate symbol is still a row the
-       * provider sent. Those rows are counted, never hidden (see
-       * `skippedIdentityRows` / `duplicateRows` on the catalog report).
+       * The provider's `count` is the number of rows it says it is sending, and
+       * `rawRowsSeen` is the number of `data` elements this walk actually parsed.
+       * The ONLY state those two numbers describe as complete is EQUALITY:
+       *
+       *   rawRowsSeen === totalCount  -> COMPLETE
+       *   rawRowsSeen <  totalCount  -> the body/walk ended before every provider
+       *                                 row arrived            -> PARTIAL
+       *   rawRowsSeen >  totalCount  -> the provider sent MORE rows than it
+       *                                 counted: its own count is inconsistent
+       *                                 with its own body      -> PARTIAL
+       *   totalCount undefined       -> the provider published no count: the
+       *                                 documented complete-dump semantics are
+       *                                 preserved, and no count is invented.
+       *
+       * `> totalCount` used to be accepted silently, which meant a provider-count
+       * mismatch could be reported as COMPLETE. It no longer can. The diagnostic
+       * names BOTH numbers (and the fact that the count was exceeded/is short),
+       * and it is bounded.
+       *
+       * Neither comparison involves unique usable instruments: normalization
+       * legitimately keeps fewer rows than the provider sent (missing identity is
+       * counted in `skippedIdentityRows`, a repeated symbol in `duplicateRows`),
+       * so `totalDiscovered` is NOT a completeness signal and is never compared
+       * against `totalCount`.
        */
-      if (totalCount !== undefined && rawRowsSeen < totalCount) {
+      if (totalCount !== undefined && rawRowsSeen !== totalCount) {
+        const exceeded = rawRowsSeen > totalCount;
+        const reason = exceeded
+          ? `${args.path} read ${rawRowsSeen} raw row(s) but the provider counted ${totalCount} (provider count exceeded).`
+          : `${args.path} read ${rawRowsSeen} raw row(s) of the ${totalCount} the provider counted (provider count short).`;
+        // A repeated page is worth naming when that is why the walk stopped: the
+        // provider ignores `page`, so re-reading it cannot ever satisfy the count.
+        const repeatedPage = consumer.counts.newUnique === 0;
         warnings.push(
-          `${args.path} read ${rawRowsSeen} raw row(s) of the ${totalCount} the provider reported: the body ended before every provider row arrived.`,
+          repeatedPage && !exceeded
+            ? `${reason} The provider returned no new identities for page ${page}, so paging stopped.`
+            : reason,
         );
         return {
           rows: collected(),
