@@ -643,6 +643,10 @@ export function readResultEvidence(result) {
           acquired: d?.acquired === true,
           attached: d?.attached === true,
           usedByEngine: d?.usedByEngine === true,
+          // Phase 289D — the provider's OWN acquisition instant, copied only
+          // when the runtime recorded a finite number. Never derived here, and
+          // never re-timed: an absent instant stays null.
+          observedAt: isNumber(d?.observedAt) ? d.observedAt : null,
           reason: typeof d?.reason === "string" ? sanitize(d.reason) : null,
         }))
         .filter((d) => d.provider !== null)
@@ -790,6 +794,8 @@ export function commodityMarketOf(evidence) {
     ...diagnostics.map((d) => d?.reason),
   ].filter((t) => typeof t === "string");
 
+  const eia = eiaLegRecord(evidence);
+
   return {
     group: fundamental?.commodityProfile?.group ?? null,
     classificationSource: fundamental?.commodityProfile?.classificationSource ?? null,
@@ -802,7 +808,118 @@ export function commodityMarketOf(evidence) {
     // The gate's own sentence. Only the Phase-288 revision produces it, so its
     // presence (or absence) is also part of the code-path fingerprint.
     petroleumFeedScopeText: texts.some((t) => /out of scope for this/i.test(t)),
+    // Phase 289D — the EIA leg's own state and its own classified reason, so a
+    // sample can never leave the decisive question unanswered again.
+    eiaLegState: eia.state,
+    eiaLeg: eiaLegDigest(evidence),
   };
+}
+
+/**
+ * Phase 289D — the EIA leg's own record, as the runtime reported it.
+ *
+ * WHY: the energy gate could only say `eiaEvidence=0`. The per-leg diagnostics
+ * existed on the result, but the failing-leg line is bounded to three legs, so
+ * the EIA leg was hidden behind the market-data / news / derivatives failures
+ * that always precede it — a missing credential, a rejected credential, a rate
+ * limit, a provider/transport fault and an empty dataset all looked identical
+ * from outside. This reads the leg's OWN flags and its OWN classified reason.
+ *
+ * It asserts NOTHING about HTTP status: a leg is only "consumed" when the
+ * runtime itself attached the payload AND the engine recorded that it used it.
+ * A 200 that produced no observation is `no-evidence` with its reason, never a
+ * success. No timestamp is derived: `observedAt` is passed through verbatim.
+ */
+export function eiaLegRecord(evidence) {
+  const diagnostics = Array.isArray(evidence?.diagnostics) ? evidence.diagnostics : null;
+  if (diagnostics === null) return { present: false, state: "not-reported", leg: null };
+  const leg = diagnostics.find((d) => d && d.provider === "eia") ?? null;
+  if (leg === null) return { present: false, state: "not-scheduled", leg: null };
+  const state =
+    leg.attached === true && leg.usedByEngine === true
+      ? "consumed"
+      : leg.attached === true
+        ? "attached-not-used"
+        : leg.acquired === true
+          ? "acquired-not-attached"
+          : "no-evidence";
+  return { present: true, state, leg };
+}
+
+/** The same record as ONE bounded, credential-redacted line. */
+export function eiaLegDigest(evidence) {
+  const { present, state, leg } = eiaLegRecord(evidence);
+  const bits = [`eia-leg: ${state}`];
+  if (present && leg) {
+    if (typeof leg.dataset === "string" && leg.dataset.length > 0) bits.push(`dataset=${leg.dataset}`);
+    if (typeof leg.mode === "string" && leg.mode.length > 0) bits.push(`mode=${leg.mode}`);
+    bits.push(`observedAt=${isNumber(leg.observedAt) ? leg.observedAt : "none"}`);
+    bits.push(
+      `reason=${
+        typeof leg.reason === "string" && leg.reason.length > 0 ? sanitize(leg.reason) : "none"
+      }`,
+    );
+  } else if (state === "not-scheduled") {
+    bits.push("reason=no eia leg in providerDiagnostics (the eligibility predicate did not fire)");
+  } else {
+    bits.push("reason=the result carried no provider-diagnostics array");
+  }
+  return sanitize(bits.join(" \u00b7 "));
+}
+
+/**
+ * Phase 289D — the deployed `eia:fetchEiaInventory` action's OWN envelope.
+ *
+ * A direct, read-only probe of the runtime branch (missing key / AUTH_ERROR /
+ * RATE_LIMIT / provider fault / empty dataset / success) that does not depend on
+ * the analysis pipeline reaching the leg. Values are copied from the envelope:
+ * `success` is the action's own flag — never an HTTP status — and an observation
+ * period is reported only verbatim from the provider's series. Credential-free.
+ */
+export function eiaActionEnvelope(response) {
+  if (!response || response.ok !== true) {
+    return {
+      answered: false,
+      reason: sanitize(response?.appError ?? response?.transportError ?? "request failed"),
+      success: null,
+      errorCode: null,
+      error: null,
+      acquisition: null,
+      observedAt: null,
+      seriesCount: null,
+      observationDates: [],
+    };
+  }
+  const value = response.value ?? {};
+  const data = value?.data ?? null;
+  const series = Array.isArray(data?.series) ? data.series : [];
+  return {
+    answered: true,
+    reason: null,
+    success: value.success === true,
+    errorCode: typeof value.errorCode === "string" ? value.errorCode : null,
+    error: typeof value.error === "string" ? sanitize(value.error) : null,
+    acquisition: typeof value.acquisition === "string" ? value.acquisition : null,
+    observedAt: isNumber(value.observedAt) ? value.observedAt : null,
+    seriesCount: Array.isArray(data?.series) ? series.length : null,
+    observationDates: series
+      .map((s) => (typeof s?.observationDate === "string" ? s.observationDate : null))
+      .filter((d) => typeof d === "string"),
+  };
+}
+
+/** One bounded line for the envelope above. */
+export function eiaActionProbeDigest(probe) {
+  if (!probe) return null;
+  if (probe.answered !== true) return sanitize(`eia-action: unanswered · reason=${probe.reason}`);
+  const bits = [`eia-action: ${probe.success === true ? "success" : "no-evidence"}`];
+  if (probe.errorCode) bits.push(`errorCode=${probe.errorCode}`);
+  if (probe.acquisition) bits.push(`acquisition=${probe.acquisition}`);
+  bits.push(`observedAt=${isNumber(probe.observedAt) ? probe.observedAt : "none"}`);
+  bits.push(`seriesCount=${probe.seriesCount ?? "none"}`);
+  if (probe.observationDates.length > 0) bits.push(`periods=${probe.observationDates.join(",")}`);
+  bits.push(`error=${probe.error ?? "none"}`);
+  return sanitize(bits.join(" \u00b7 "));
 }
 
 /**
@@ -832,6 +949,7 @@ export function runtimeMarkers(evidence) {
     commodityInventories: market.inventories,
     commodityInventoryLatest: market.inventoryLatest,
     eiaEvidenceItems: market.eiaEvidenceItems,
+    eiaLegState: market.eiaLegState,
     petroleumFeedScopeObserved: market.petroleumFeedScopeText,
     calendarMappingGapObserved: calendarGap,
   };
@@ -894,7 +1012,7 @@ export function energyGateVerdict(samples) {
   const describe = (s) =>
     `${s.instrument ?? "?"}[group=${s.group ?? "?"} inventories=${s.inventories ?? "?"} inventoryLatest=${
       s.inventoryLatest ?? "none"
-    } eiaEvidence=${s.eiaEvidenceItems ?? 0}]`;
+    } eiaEvidence=${s.eiaEvidenceItems ?? 0} eiaLeg=${s.eiaLegState ?? "not-reported"}]`;
 
   const failures = [];
   for (const s of other) {
@@ -1265,6 +1383,15 @@ export function renderSummary(report) {
       );
     }
     if (report.energyGateProbe.stopReason) lines.push(`                stopped: ${report.energyGateProbe.stopReason}`);
+    // Phase 289D — the decisive line, printed even when the annotation is long.
+    if (report.energyGateProbe.eiaLeg) {
+      lines.push(`  eia leg       : ${report.energyGateProbe.eiaLeg}`);
+    }
+    if (report.energyGateProbe.eiaActionProbe) {
+      lines.push(
+        `  eia action    : ${eiaActionProbeDigest(report.energyGateProbe.eiaActionProbe)}`,
+      );
+    }
   }
   if (report.pacing) {
     // Phase 289 quota-audit — the run's own pacing, stated as what it is: a LOCAL
@@ -2131,6 +2258,30 @@ async function run() {
       pacer,
     });
 
+    // Phase 289D — THE ENERGY SAMPLE'S EIA LEG, read from the probe's own
+    // result. The gate could only say `eiaEvidence=0`; the per-leg diagnostics
+    // existed but the failing-leg line is bounded to three legs, so a missing
+    // credential, a rejected credential, a rate limit, a provider fault, an
+    // empty dataset and a leg that was never scheduled all looked identical
+    // from outside. The leg's own state and its own classified reason are read
+    // here and reported before anything that can be truncated.
+    const energySample = energyGateProbe.samples.find((x) => x.group === "energy") ?? null;
+    const eiaLegText = energySample?.eiaLeg ?? null;
+    energyGateProbe.eiaLeg = eiaLegText;
+    energyGateProbe.eiaLegState = energySample?.eiaLegState ?? null;
+
+    // A direct, read-only probe of the deployed action's OWN envelope — the only
+    // surface that separates "the analysis never scheduled the leg" from "the leg
+    // ran and the provider/credential said no". It reports the action's own
+    // `success` flag (NEVER an HTTP status), its classified error code and text,
+    // and the provider's own observation periods verbatim. Nothing is derived,
+    // nothing is fabricated, and no credential is read, printed or inferred.
+    const eiaSession = await sessionFor("EIA inventory probe");
+    const eiaProbe = eiaSession.ok
+      ? eiaActionEnvelope(await transport.action("eia:fetchEiaInventory", {}, eiaSession.token))
+      : { answered: false, reason: sanitize(`no session: ${eiaSession.reason}`) };
+    energyGateProbe.eiaActionProbe = eiaProbe;
+
     // The discovered identity list is reported because the audit could not answer
     // the decisive question without it: is there NO energy instrument in the
     // provider's commodity catalog, or is it simply beyond the scan? The list is
@@ -2155,13 +2306,29 @@ async function run() {
     annotate(
       energyGateProbe.verdict === "FAIL" ? "error" : "warning",
       `COMMODITY energy-gate probe ${energyGateProbe.verdict}`,
-      `informational — classified=${energyGateProbe.classified}/${candidates.length} of the deployment's own commodity discovery${
+      `informational — classified=${energyGateProbe.classified}/${candidates.length}${
+        eiaLegText === null ? "" : ` · ${eiaLegText}`
+      } of the deployment's own commodity discovery${
         energyGateProbe.stopReason === null ? "" : ` · stopped: ${energyGateProbe.stopReason}`
       } · ${energyGateProbe.summary}${
         classifiedText === "" ? "" : ` · groups: ${classifiedText}`
       }${identities.length === 0 ? "" : ` · discovered(${identities.length}): ${identitySample.join(",")}${
         identities.length > identitySample.length ? ",…" : ""
       }`}${pacingText}`,
+    );
+
+    annotate(
+      energySample?.eiaLegState === "consumed" ? "notice" : "warning",
+      `COMMODITY energy-gate EIA leg ${energySample?.eiaLegState ?? "not-reported"}`,
+      `informational — ${
+        energySample?.instrument ?? "no energy-classified instrument in the probe"
+      }${
+        energySample?.position === null || energySample?.position === undefined
+          ? ""
+          : ` (provider position #${energySample.position})`
+      } · ${eiaLegText ?? "the energy sample carried no eia leg record"} · ${
+        eiaActionProbeDigest(eiaProbe) ?? "the deployed EIA action was not probed"
+      }`,
     );
   }
 
@@ -2292,9 +2459,9 @@ async function run() {
       runtimeFingerprintOfRun.commodityGroups.length > 0
         ? `,commodityGroups:${runtimeFingerprintOfRun.commodityGroups.join("|")}`
         : ""
-    },phase288CodePaths:${phase288CodePathsObserved ? "observed" : "not-observed"} · pacing=${pacingSummary(
-      pacer.snapshot(),
-    )}`,
+    },phase288CodePaths:${phase288CodePathsObserved ? "observed" : "not-observed"},eiaLeg:${
+      energyGateProbe?.eiaLegState ?? "not-observed"
+    } · pacing=${pacingSummary(pacer.snapshot())}`,
   );
 
   if (report.transport.calls === 0) {

@@ -228,6 +228,12 @@ export type Evidence = {
     acquired: boolean;
     attached: boolean;
     usedByEngine: boolean;
+    /**
+     * Phase 289D — the provider's own acquisition instant, verbatim when the
+     * runtime recorded one. Optional so a record reconstructed WITHOUT it reads
+     * as absent rather than as a required field.
+     */
+    observedAt?: number | null;
     reason: string | null;
   }[];
   dataCompleteness: string | null;
@@ -259,6 +265,41 @@ export type LegDiagnosticSource = { diagnostics?: Evidence["diagnostics"] } | nu
  */
 export function evidenceDigest(record: unknown): string | null;
 
+/**
+ * Phase 289D — the EIA leg's own record. `state` is derived ONLY from the
+ * runtime's flags (attached + usedByEngine); an HTTP status is never evidence.
+ */
+export type EiaLegRecord = {
+  present: boolean;
+  state:
+    | "consumed"
+    | "attached-not-used"
+    | "acquired-not-attached"
+    | "no-evidence"
+    | "not-scheduled"
+    | "not-reported";
+  leg: Evidence["diagnostics"][number] | null;
+};
+export function eiaLegRecord(evidence: unknown): EiaLegRecord;
+
+/** The same record as ONE bounded, credential-redacted line. */
+export function eiaLegDigest(evidence: unknown): string;
+
+/** Phase 289D — the deployed `eia:fetchEiaInventory` action's OWN answer. */
+export type EiaActionProbe = {
+  answered: boolean;
+  reason: string | null;
+  success: boolean | null;
+  errorCode: string | null;
+  error: string | null;
+  acquisition: string | null;
+  observedAt: number | null;
+  seriesCount: number | null;
+  observationDates: string[];
+};
+export function eiaActionEnvelope(response: unknown): EiaActionProbe;
+export function eiaActionProbeDigest(probe: unknown): string | null;
+
 /** Phase 289B — the runtime's own market + petroleum-evidence read for one instrument. */
 export type CommodityMarket = {
   group: string | null;
@@ -267,6 +308,9 @@ export type CommodityMarket = {
   inventoryLatest: number | null;
   eiaEvidenceItems: number;
   petroleumFeedScopeText: boolean;
+  /** Phase 289D — the EIA leg's own state and its own reason, never inferred. */
+  eiaLegState: EiaLegRecord["state"];
+  eiaLeg: string;
 };
 export function commodityMarketOf(evidence: unknown): CommodityMarket;
 
@@ -278,6 +322,7 @@ export type RuntimeMarkers = {
   commodityInventories: string | null;
   commodityInventoryLatest: number | null;
   eiaEvidenceItems: number;
+  eiaLegState: EiaLegRecord["state"];
   petroleumFeedScopeObserved: boolean;
   calendarMappingGapObserved: boolean;
 };
