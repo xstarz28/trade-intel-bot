@@ -29,7 +29,8 @@
 const ERROR_BODY_MAX_CHARS = 2048;
 
 /**
- * Phase 289G — THE CATALOG READ BUDGETS, MEASURED.
+ * Phase 289G/289J — THE CATALOG READ BUDGETS, MEASURED, AND EXACTLY WHAT EACH
+ * ONE PROTECTS.
  *
  * The 289F run staged 33,289 of the catalog's rows and then died with
  * `catalog stream failed: The operation was aborted due to timeout`: a SINGLE
@@ -40,20 +41,27 @@ const ERROR_BODY_MAX_CHARS = 2048;
  * >=1,110 rows/s (33,289 rows / 30 s) — a 143,300-row catalog needs ~129 s at
  * that observed rate.
  *
- * So the deadline is split by WHAT IT IS PROTECTING:
+ * So the deadline is split by WHAT IT IS PROTECTING, and each guard is armed only
+ * while the thing it protects is actually being waited on:
  *
- *   HEADERS — how long the provider may take to answer at all.
- *   STALL   — how long the body may go WITHOUT ANY BYTES. This is the one that
- *             catches a real network/provider stall, and it fires in seconds
- *             rather than minutes, because it measures silence, not progress.
- *   TOTAL   — a finite ceiling on one catalog read. Derived from the worst rate
- *             this path has actually been observed at (1,110 rows/s for the
- *             largest provider catalog -> ~129 s), rounded up. It exists so a
- *             stream that trickles forever still terminates; it is NOT the
- *             budget a healthy read is expected to use. With 289G's batching
- *             (4x fewer mutations, ~256x fewer document writes, writes
- *             overlapped with the read) the measured local path runs at
- *             ~70,000-127,000 rows/s, i.e. seconds, not minutes.
+ *   HEADERS — how long the provider may take to answer at all. Armed before the
+ *             request, disarmed the moment the response arrives.
+ *   STALL   — how long the transport may WAIT FOR THE NEXT BODY BYTES. Armed
+ *             immediately after the headers arrive (so a provider that sends
+ *             nothing at all is caught before its first chunk), disarmed the
+ *             instant a chunk arrives or the body ends, and re-armed when the
+ *             next chunk is awaited. Because it is armed ONLY while a chunk is
+ *             being awaited, local work — parsing, the bounded staging queue, a
+ *             database write — can never be reported as provider silence.
+ *   TOTAL   — a finite ceiling on one catalog read, armed for the WHOLE body and
+ *             never re-armed. It stays armed while rows are parsed and staged, so
+ *             a stream that trickles forever, or a local pipeline that never
+ *             finishes, still terminates with an explicit failure. Derived from
+ *             the worst rate this path has actually been observed at (1,110
+ *             rows/s for the largest provider catalog -> ~129 s), rounded up.
+ *             With 289G's batching (4x fewer mutations, ~256x fewer document
+ *             writes, writes overlapped with the read) the measured local path
+ *             runs at ~70,000-127,000 rows/s, i.e. seconds, not minutes.
  *
  * Every one of them is finite, and a timeout still surfaces as an explicit
  * PARTIAL/FAILED catalog — never as a short catalog presented as complete.
@@ -100,23 +108,49 @@ export function createTwelveDataCatalogTransport(options: {
     }
 
     /**
-     * One controller for the whole read, re-armed as the response makes
-     * progress. Aborting it fails the body stream with the reason below, which
-     * the row scanner reports verbatim as `catalog stream failed: …`, so the
-     * catalog stays PARTIAL/FAILED with the real cause attached.
+     * One controller for the whole read; the guards below abort it with the
+     * reason they were protecting against, and that reason is what the caller
+     * reports. The reason is also recorded in `abortReason`, so the failure text
+     * is identical no matter how the runtime surfaces an aborted body stream.
      */
     const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const arm = (ms: number, reason: string) => {
-      if (timer !== null) clearTimeout(timer);
-      timer = setTimeout(() => controller.abort(new Error(reason)), Math.max(1, ms));
+    let abortReason: string | null = null;
+    let headerTimer: ReturnType<typeof setTimeout> | null = null;
+    let stallTimer: ReturnType<typeof setTimeout> | null = null;
+    let totalTimer: ReturnType<typeof setTimeout> | null = null;
+
+    /**
+     * A guard that has fired must END the read by itself. Aborting the fetch is
+     * not enough: an environment whose body stream does not surface the abort
+     * would leave the reader waiting forever, which is exactly the semantic hole
+     * this phase closes. So each guard rejects this promise, the body loop races
+     * every wait against it, and the read fails with the guard's own reason.
+     */
+    let fireGuard: ((reason: string) => void) | null = null;
+    const guardFailure = new Promise<never>((_resolve, reject) => {
+      fireGuard = (reason: string) => reject(new Error(reason));
+    });
+    // Nothing awaits it until the body loop does; keep a rejected guard from
+    // ever surfacing as an unhandled rejection in the meantime.
+    guardFailure.catch(() => {});
+
+    const timer = (ms: number, reason: string): ReturnType<typeof setTimeout> => {
+      const handle = setTimeout(() => {
+        abortReason ??= reason;
+        controller.abort(new Error(reason));
+        fireGuard?.(reason);
+      }, Math.max(1, ms));
+      // A guard must never hold a process open after its read has ended.
+      const unref = (handle as unknown as { unref?: () => void }).unref;
+      if (typeof unref === "function") unref.call(handle);
+      return handle;
     };
-    const disarm = () => {
-      if (timer !== null) clearTimeout(timer);
-      timer = null;
+    const clear = (handle: ReturnType<typeof setTimeout> | null) => {
+      if (handle !== null) clearTimeout(handle);
     };
 
-    arm(headersMs, `no response headers within ${headersMs} ms`);
+    // ── HEADERS: until the provider answers at all. ──────────────────────────
+    headerTimer = timer(headersMs, `no response headers within ${headersMs} ms`);
     let response: Response;
     try {
       response = await doFetch(finalUrl, {
@@ -124,20 +158,27 @@ export function createTwelveDataCatalogTransport(options: {
         signal: controller.signal,
       });
     } catch (error) {
-      disarm();
+      clear(headerTimer);
+      clear(stallTimer);
+      clear(totalTimer);
       throw error;
     }
+    clear(headerTimer);
 
     if (!response.ok) {
-      disarm();
       // The provider explains a rejection in the body; keep it (bounded) so the
       // caller can name the cause instead of only the status.
       let json: unknown;
+      totalTimer = timer(timeoutMs, `catalog read exceeded ${timeoutMs} ms`);
       try {
         const text = (await response.text()).slice(0, ERROR_BODY_MAX_CHARS);
         json = text.trim() === "" ? undefined : (JSON.parse(text) as unknown);
-      } catch {
+      } catch (error) {
+        if (abortReason !== null) throw new Error(abortReason);
         json = undefined;
+      } finally {
+        clear(totalTimer);
+        totalTimer = null;
       }
       return { ok: false, status: response.status, json };
     }
@@ -149,39 +190,85 @@ export function createTwelveDataCatalogTransport(options: {
     if (stream && typeof stream[Symbol.asyncIterator] === "function") {
       const deadline = Date.now() + timeoutMs;
       /**
-       * The body is handed over still guarded: the timer is re-armed for every
-       * chunk (silence -> stall), and the total ceiling is enforced on the same
-       * controller. When the stream ends — normally or by failure — the guard is
-       * disarmed, so a long-lived process never keeps a stray timer alive.
+       * TOTAL — armed ONCE, here, and disarmed only when the body is over.
+       *
+       * It is deliberately armed before the first chunk is awaited and before any
+       * consumer code runs, so the whole body — provider waits, parsing, the
+       * bounded write queue, staging mutations — lives inside one finite budget.
+       */
+      totalTimer = timer(timeoutMs, `catalog read exceeded ${timeoutMs} ms`);
+
+      /**
+       * The body is handed over still guarded:
+       *
+       *   · while the NEXT chunk is awaited, the STALL guard is armed;
+       *   · the moment a chunk arrives (or the body ends, or the wait fails) the
+       *     STALL guard is disarmed, BEFORE control passes to the consumer — so
+       *     the consumer's own duration is never measured as provider silence;
+       *   · when the consumer comes back for more, the guard is armed again for
+       *     exactly the next wait;
+       *   · the TOTAL guard stays armed throughout, consumer time included.
        */
       const guarded: AsyncIterable<Uint8Array | string> = {
         async *[Symbol.asyncIterator]() {
+          const iterator = (stream as AsyncIterable<Uint8Array | string>)[
+            Symbol.asyncIterator
+          ]();
+          const remaining = () => deadline - Date.now();
           try {
-            for await (const chunk of stream as AsyncIterable<Uint8Array | string>) {
-              const left = deadline - Date.now();
+            for (;;) {
+              const left = remaining();
               if (left <= 0) {
-                controller.abort(new Error(`catalog read exceeded ${timeoutMs} ms`));
+                const reason = `catalog read exceeded ${timeoutMs} ms`;
+                abortReason ??= reason;
+                controller.abort(new Error(reason));
+                throw new Error(reason);
               }
-              arm(
-                Math.min(stallMs, left),
-                `no catalog bytes for ${stallMs} ms`,
-              );
-              yield chunk;
+              stallTimer = timer(Math.min(stallMs, left), `no catalog bytes for ${stallMs} ms`);
+              let step: IteratorResult<Uint8Array | string>;
+              // The wait for the next chunk is raced against the guards, so a
+              // silent provider (and a body stream that ignores the abort) ends
+              // the read with the guard's reason instead of hanging.
+              const pending = iterator.next();
+              pending.catch(() => {});
+              try {
+                step = await Promise.race([pending, guardFailure]);
+              } catch (error) {
+                // A guard that fired reports its own reason verbatim; a real
+                // transport error is reported as it is.
+                if (abortReason !== null) throw new Error(abortReason);
+                throw error;
+              } finally {
+                clear(stallTimer);
+                stallTimer = null;
+              }
+              if (step.done === true) return;
+              // Control passes to the consumer only after the guard is disarmed.
+              yield step.value;
             }
           } finally {
-            disarm();
+            clear(stallTimer);
+            clear(totalTimer);
+            stallTimer = null;
+            totalTimer = null;
           }
         },
       };
       return { ok: true, status: response.status, body: guarded };
     }
 
-    disarm();
+    // Buffered transport (no readable body): progress is not observable here, so
+    // only the finite TOTAL ceiling applies while the body is read.
+    totalTimer = timer(timeoutMs, `catalog read exceeded ${timeoutMs} ms`);
     let json: unknown;
     try {
       json = await response.json();
-    } catch {
+    } catch (error) {
+      if (abortReason !== null) throw new Error(abortReason);
       json = undefined;
+    } finally {
+      clear(totalTimer);
+      totalTimer = null;
     }
     return { ok: true, status: response.status, json };
   };

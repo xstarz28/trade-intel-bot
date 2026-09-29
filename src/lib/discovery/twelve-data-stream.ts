@@ -37,7 +37,12 @@ export type CatalogRowScanResult =
       status?: string;
       message?: string;
     }
-  | { ok: false; error: string };
+  /**
+   * Phase 289J — a FAILED scan still states how many provider rows it parsed
+   * before it failed. A truncated body is never a complete catalog, and the
+   * caller can account for every row that did arrive.
+   */
+  | { ok: false; error: string; rowsSeen: number; totalCount?: number };
 
 type Mode =
   | "start"
@@ -111,6 +116,17 @@ export async function scanTwelveDataCatalogRows(
   let rowsSeen = 0;
   let sawDataArray = false;
   let totalCount: number | undefined;
+  /**
+   * Phase 289J — ONE failure constructor. Every failed scan reports how many
+   * provider rows it parsed and, when the provider had already reported its
+   * count, that count too — so a truncated body is never a silent short read.
+   */
+  const fail = (error: string): CatalogRowScanResult => ({
+    ok: false,
+    error,
+    rowsSeen,
+    ...(totalCount !== undefined ? { totalCount } : {}),
+  });
   let status: string | undefined;
   let message: string | undefined;
   let failure: string | null = null;
@@ -395,18 +411,17 @@ export async function scanTwelveDataCatalogRows(
         if (!step.paused) break;
         rowsSincePause = 0;
         if (hooks.onPause) await hooks.onPause();
-        if (failure !== null) return { ok: false, error: failure };
+        if (failure !== null) return fail(failure);
       }
       if (hooks.onChunk) await hooks.onChunk();
-      if (failure !== null) return { ok: false, error: failure };
+      if (failure !== null) return fail(failure);
     }
   } catch (error) {
-    return {
-      ok: false,
-      error: `catalog stream failed: ${
+    return fail(
+      `catalog stream failed: ${
         error instanceof Error ? error.message : "transport error"
       }`,
-    };
+    );
   }
 
   if (carry !== "") {
@@ -417,24 +432,30 @@ export async function scanTwelveDataCatalogRows(
       if (!step.paused) break;
       rowsSincePause = 0;
       if (hooks.onPause) await hooks.onPause();
-      if (failure !== null) return { ok: false, error: failure };
+      if (failure !== null) return fail(failure);
     }
   }
-  if (failure !== null) return { ok: false, error: failure };
+  if (failure !== null) return fail(failure);
 
   // `mode` is mutated inside `process`, so read it once into a value the
   // compiler will not narrow to the "start" literal it saw at declaration.
   const finalMode = mode as Mode;
-  if (finalMode === "data") return { ok: false, error: "catalog payload ended inside the data array" };
-  if (finalMode === "start") return { ok: false, error: "catalog payload is not an object" };
+  if (finalMode === "data") {
+    return fail("catalog payload ended inside the data array");
+  }
+  if (finalMode === "start") {
+    return fail("catalog payload is not an object");
+  }
   if (finalMode !== "end" && finalMode !== "member") {
-    return { ok: false, error: "catalog payload ended unexpectedly" };
+    return fail("catalog payload ended unexpectedly");
   }
 
   if (status === "error") {
-    return { ok: false, error: message ?? "provider returned a catalog error" };
+    return fail(message ?? "provider returned a catalog error");
   }
-  if (!sawDataArray) return { ok: false, error: "catalog returned no instrument array" };
+  if (!sawDataArray) {
+    return fail("catalog returned no instrument array");
+  }
 
   return {
     ok: true,

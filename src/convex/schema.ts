@@ -411,6 +411,16 @@ const schema = defineSchema(
       totalDiscovered: v.number(),
       /** Phase 289G — the provider's OWN `count` for this catalog, verbatim. */
       providerCount: v.optional(v.number()),
+      /**
+       * Phase 289J — the RAW side of the walk, so a reader of the stage alone
+       * can check the provider-count reconciliation without re-running the walk:
+       * provider `data` elements parsed, rows skipped for missing identity, and
+       * rows dropped as duplicates. `rawRowsSeen` is what reconciles with
+       * `providerCount`; `totalDiscovered` stays the unique usable count.
+       */
+      rawRowsSeen: v.optional(v.number()),
+      skippedIdentityRows: v.optional(v.number()),
+      duplicateRows: v.optional(v.number()),
       /** The catalog walk's own COMPLETE/PARTIAL/FAILED (never the transport's). */
       completeness: v.string(),
       /** Transport truth: complete | partial | failed. */

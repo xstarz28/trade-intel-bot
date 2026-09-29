@@ -99,6 +99,22 @@ export type CatalogPagesResult = {
   pagesFetched: number;
   completeness: DiscoveryCompleteness;
   totalCount?: number;
+  /**
+   * Phase 289J — how many provider `data` array elements were actually parsed.
+   *
+   * This is the RAW count, before identity dedupe and before normalization, and
+   * it is the number that reconciles with the provider's own `count`: a complete
+   * body must have handed over exactly as many elements as the provider said it
+   * was sending (`rawRowsSeen >= totalCount`). It is deliberately NOT compared
+   * against the unique usable instruments — normalization legitimately discards
+   * rows without identity, and a duplicate symbol is still a row.
+   */
+  rawRowsSeen?: number;
+  /**
+   * Phase 289J — elements dropped because their provider identity had already
+   * been seen in this catalog (first occurrence wins, provider order kept).
+   */
+  duplicateRows?: number;
   warnings: string[];
   failedPage?: number;
 };
@@ -157,19 +173,32 @@ export function parseTwelveDataCatalogPage(json: unknown): CatalogPageParse {
 }
 
 /**
- * Continue only when the provider itself reported a total larger than
- * what we have collected. A missing count is a complete dump.
+ * Continue only when the provider itself reported a total larger than the RAW
+ * rows this walk has already parsed. A missing count is a complete dump.
+ *
+ * Phase 289J — THE COMPARISON IS AGAINST RAW ROWS, NOT UNIQUE IDENTITIES.
+ *
+ * The provider's `count` describes the rows it is sending, not how many distinct
+ * instruments they identify. Asking for another page because two rows carried
+ * the same symbol made the walk re-fetch a provider that does not paginate (it
+ * ignores `page`), and then read the repeat as "stopped early". The raw count is
+ * the honest signal for "has the body the provider described already arrived",
+ * and completeness is decided on it (see the reconciliation in
+ * `fetchTwelveDataCatalogPages`). Unique-identity progress is still required to
+ * page forward (`newUniqueThisPage`), so a provider that repeats itself can
+ * never be walked forever.
  */
 export function catalogHasMorePages(args: {
   rowsThisPage: number;
-  uniqueAccumulated: number;
+  /** Provider `data` elements parsed so far, across every page. */
+  rawRowsSeen: number;
   totalCount?: number;
   newUniqueThisPage: number;
 }): boolean {
   if (args.rowsThisPage === 0) return false;
   if (args.newUniqueThisPage === 0) return false;
   if (args.totalCount === undefined) return false;
-  return args.uniqueAccumulated < args.totalCount;
+  return args.rawRowsSeen < args.totalCount;
 }
 
 /**
@@ -187,7 +216,13 @@ function rowConsumer(args: {
   unidentified: unknown[];
   emit: (row: unknown) => void;
 }) {
-  const counts = { rowsSeen: 0, newUnique: 0 };
+  /**
+   * `rowsSeen` counts every element handed to the consumer; `duplicateRows`
+   * counts the ones dropped because their identity was already taken. Together
+   * with the caller's own skipped-identity count they account for every raw row
+   * a catalog's body carried — nothing is dropped silently (Phase 289J).
+   */
+  const counts = { rowsSeen: 0, newUnique: 0, duplicateRows: 0 };
   const consume = (row: unknown) => {
     counts.rowsSeen += 1;
     const symbol = rowSymbol(row);
@@ -199,7 +234,10 @@ function rowConsumer(args: {
       return;
     }
     if (args.streaming) {
-      if (args.seenSymbols!.has(symbol)) return;
+      if (args.seenSymbols!.has(symbol)) {
+        counts.duplicateRows += 1;
+        return;
+      }
       args.seenSymbols!.add(symbol);
       counts.newUnique += 1;
       args.emit(row);
@@ -208,7 +246,9 @@ function rowConsumer(args: {
     if (!args.bySymbol!.has(symbol)) {
       args.bySymbol!.set(symbol, row);
       counts.newUnique += 1;
+      return;
     }
+    counts.duplicateRows += 1;
   };
   return { consume, counts };
 }
@@ -256,10 +296,36 @@ export async function fetchTwelveDataCatalogPages(
   let pagesFetched = 0;
   let totalCount: number | undefined;
   let page = 1;
+  /**
+   * Phase 289J — the raw side of completeness. `rawRowsSeen` counts provider
+   * `data` elements actually parsed; `duplicateRows` counts the ones the
+   * identity rule dropped. Reported on every return so a caller can account for
+   * every row the provider sent (see `CatalogPagesResult`).
+   */
+  let rawRowsSeen = 0;
+  let duplicateRows = 0;
+  /** Rows handed to a sink (streaming path) across the whole walk. */
+  let deliveredRows = 0;
 
   const uniqueIdentities = (): number => (streaming ? seenSymbols!.size : bySymbol!.size);
+  /**
+   * Phase 289J — rows this walk is actually holding. On the streaming path that
+   * is what the sink confirmed; on the buffered path the rows live in the index
+   * itself. The distinction matters when a body dies mid-read: a failure is only
+   * "nothing usable arrived" when there really is nothing, and the two paths must
+   * agree on that (before this they did not, and a buffered walk discarded rows
+   * it had already parsed).
+   */
+  const rowsRetained = (): number =>
+    streaming ? deliveredRows : bySymbol!.size + unidentified.length;
   const collected = (): unknown[] =>
     streaming ? [] : [...bySymbol!.values(), ...unidentified];
+  /** The metrics every return carries, so no path can hide them. */
+  const metrics = (): { rawRowsSeen: number; duplicateRows: number; totalCount?: number } => ({
+    rawRowsSeen,
+    duplicateRows,
+    ...(totalCount !== undefined ? { totalCount } : {}),
+  });
 
   while (true) {
     const url = twelveDataCatalogUrl(args.path, args.apiKey, page);
@@ -273,6 +339,7 @@ export async function fetchTwelveDataCatalogPages(
           rows: [],
           pagesFetched: 0,
           completeness: "FAILED",
+          ...metrics(),
           warnings: [`${args.path} discovery failed: ${reason}.`],
         };
       }
@@ -281,7 +348,7 @@ export async function fetchTwelveDataCatalogPages(
         rows: collected(),
         pagesFetched,
         completeness: "PARTIAL",
-        ...(totalCount !== undefined ? { totalCount } : {}),
+        ...metrics(),
         warnings,
         failedPage: page,
       };
@@ -300,6 +367,7 @@ export async function fetchTwelveDataCatalogPages(
           rows: [],
           pagesFetched: 0,
           completeness: "FAILED",
+          ...metrics(),
           warnings: [`${args.path} returned HTTP ${res.status}${providerDetail ? `: ${providerDetail}` : ""}.`],
         };
       }
@@ -310,7 +378,7 @@ export async function fetchTwelveDataCatalogPages(
         rows: collected(),
         pagesFetched,
         completeness: "PARTIAL",
-        ...(totalCount !== undefined ? { totalCount } : {}),
+        ...metrics(),
         warnings,
         failedPage: page,
       };
@@ -321,7 +389,6 @@ export async function fetchTwelveDataCatalogPages(
     // page-sized array of raw rows is ever resident. On the buffered path the
     // sink does not exist and rows are collected exactly as before.
     const batch: unknown[] = [];
-    let deliveredRows = 0;
     const flush = () => {
       if (batch.length === 0) return;
       const rows = batch.splice(0, batch.length);
@@ -358,12 +425,22 @@ export async function fetchTwelveDataCatalogPages(
       );
       flush();
       if (args.drain) await args.drain();
+      // Phase 289J — account for every raw row this page delivered, whether or
+      // not the scan finished cleanly. The scanner reports its own count even on
+      // a failure, so a truncated body still states how much of it arrived.
+      rawRowsSeen += scan.rowsSeen;
+      duplicateRows += consumer.counts.duplicateRows;
       if (!scan.ok) {
-        if (pagesFetched === 0 && deliveredRows === 0) {
+        // Phase 289J — the scanner read the provider's `count` before it failed,
+        // so a truncated body can still state how many rows the provider said it
+        // was sending against how many actually arrived.
+        if (scan.totalCount !== undefined) totalCount = scan.totalCount;
+        if (pagesFetched === 0 && rowsRetained() === 0) {
           return {
             rows: [],
             pagesFetched: 0,
             completeness: "FAILED",
+            ...metrics(),
             warnings: [`${args.path} ${scan.error}.`],
           };
         }
@@ -374,7 +451,7 @@ export async function fetchTwelveDataCatalogPages(
           rows: collected(),
           pagesFetched,
           completeness: "PARTIAL",
-          ...(totalCount !== undefined ? { totalCount } : {}),
+          ...metrics(),
           warnings,
           failedPage: page,
         };
@@ -389,6 +466,7 @@ export async function fetchTwelveDataCatalogPages(
             rows: [],
             pagesFetched: 0,
             completeness: "FAILED",
+            ...metrics(),
             warnings: [`${args.path} ${parsed.error}.`],
           };
         }
@@ -397,7 +475,7 @@ export async function fetchTwelveDataCatalogPages(
           rows: collected(),
           pagesFetched,
           completeness: "PARTIAL",
-          ...(totalCount !== undefined ? { totalCount } : {}),
+          ...metrics(),
           warnings,
           failedPage: page,
         };
@@ -407,6 +485,8 @@ export async function fetchTwelveDataCatalogPages(
       // that could not stream): hand it over in batches too, exactly once.
       flush();
       if (args.drain) await args.drain();
+      rawRowsSeen += parsed.rows.length;
+      duplicateRows += consumer.counts.duplicateRows;
       rowsThisPage = parsed.rows.length;
       pageTotalCount = parsed.totalCount;
     }
@@ -417,7 +497,7 @@ export async function fetchTwelveDataCatalogPages(
     if (
       !catalogHasMorePages({
         rowsThisPage,
-        uniqueAccumulated: uniqueIdentities(),
+        rawRowsSeen,
         totalCount,
         newUniqueThisPage: consumer.counts.newUnique,
       })
@@ -434,7 +514,32 @@ export async function fetchTwelveDataCatalogPages(
           rows: collected(),
           pagesFetched,
           completeness: "PARTIAL",
-          totalCount,
+          ...metrics(),
+          warnings,
+          failedPage: page,
+        };
+      }
+      /**
+       * Phase 289J — THE PRIMARY RAW PROOF.
+       *
+       * The provider said how many rows it was sending (`count`). If the body
+       * handed over fewer raw elements than that, the read ended early — this is
+       * NOT a normalization question, and it is never COMPLETE. The unique usable
+       * instrument count is deliberately NOT part of this test: normalization
+       * legitimately discards rows missing identity (the deployed run reports
+       * `/commodities` 31 kept of 32) and a duplicate symbol is still a row the
+       * provider sent. Those rows are counted, never hidden (see
+       * `skippedIdentityRows` / `duplicateRows` on the catalog report).
+       */
+      if (totalCount !== undefined && rawRowsSeen < totalCount) {
+        warnings.push(
+          `${args.path} read ${rawRowsSeen} raw row(s) of the ${totalCount} the provider reported: the body ended before every provider row arrived.`,
+        );
+        return {
+          rows: collected(),
+          pagesFetched,
+          completeness: "PARTIAL",
+          ...metrics(),
           warnings,
           failedPage: page,
         };
@@ -443,7 +548,7 @@ export async function fetchTwelveDataCatalogPages(
         rows: collected(),
         pagesFetched,
         completeness: "COMPLETE",
-        ...(totalCount !== undefined ? { totalCount } : {}),
+        ...metrics(),
         warnings,
       };
     }

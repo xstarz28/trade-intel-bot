@@ -331,6 +331,15 @@ export interface CatalogStagingSink {
     totalDiscovered: number;
     /** The provider's own `count`, when it reported one. */
     providerCount?: number;
+    /**
+     * Phase 289J — provider `data` elements parsed, carried onto the stage
+     * document so the READ PROOF can state the raw reconciliation without
+     * re-running the walk.
+     */
+    rawRowsSeen?: number;
+    /** Phase 289J — rows skipped for missing identity / dropped as duplicates. */
+    skippedIdentityRows?: number;
+    duplicateRows?: number;
     completeness: ProviderDiscoveryResult["completeness"];
     state: DiscoveryTransportState;
     detail?: string;
@@ -466,6 +475,15 @@ export function createTwelveDataDiscoveryAdapter(
       for (const spec of enabled) {
         let skipped = 0;
         let kept = 0;
+        /**
+         * Phase 289J — rows dropped HERE because their identity was already
+         * taken. The pagination layer already de-duplicates by provider symbol;
+         * this is the second, identity-level rule (the same `assetClass|id` key
+         * the universe is indexed by), so both counts are reported: with
+         * `skipped` and the walk's raw row count they account for every row the
+         * provider sent.
+         */
+        let duplicates = 0;
         /** Identity dedupe INSIDE this catalog (provider order preserved). */
         const seen = new Set<string>();
         /** Rows of this catalog that are still small enough to travel inline. */
@@ -640,7 +658,10 @@ export function createTwelveDataDiscoveryAdapter(
                 continue;
               }
               const identity = `${normalized.assetClass}|${normalized.providerInstrumentId}`;
-              if (seen.has(identity)) continue;
+              if (seen.has(identity)) {
+                duplicates += 1;
+                continue;
+              }
               seen.add(identity);
               kept += 1;
 
@@ -673,6 +694,23 @@ export function createTwelveDataDiscoveryAdapter(
         warnings.push(...result.warnings);
         pagesFetched += result.pagesFetched;
 
+        /**
+         * Phase 289J — the walk's raw accounting, in ONE place:
+         *
+         *   rawRowsSeen         provider `data` elements actually parsed
+         *   skippedIdentityRows rows without the identity this catalog requires
+         *   duplicateRows       rows whose identity was already taken
+         *   kept                unique usable instruments (the universe size)
+         *
+         * For a catalog whose body was fully consumed these reconcile exactly:
+         * `rawRowsSeen === kept + skippedIdentityRows + duplicateRows`. Nothing
+         * is hidden, and the provider's own `count` is compared against
+         * `rawRowsSeen` — never against `kept`, because normalization may
+         * legitimately keep fewer rows than the provider sent.
+         */
+        const rawRowsSeen = result.rawRowsSeen ?? 0;
+        const duplicateRows = (result.duplicateRows ?? 0) + duplicates;
+
         if (result.completeness === "FAILED") {
           catalogs.push({
             path: spec.path,
@@ -680,6 +718,9 @@ export function createTwelveDataDiscoveryAdapter(
             completeness: "FAILED",
             pagesFetched: result.pagesFetched,
             totalDiscovered: 0,
+            rawRowsSeen,
+            skippedIdentityRows: skipped,
+            duplicateRows,
             ...(result.totalCount !== undefined ? { providerCount: result.totalCount } : {}),
             transport: {
               mode: "inline",
@@ -717,6 +758,9 @@ export function createTwelveDataDiscoveryAdapter(
                 totalDiscovered: kept,
                 completeness: result.completeness,
                 state: stagingState,
+                rawRowsSeen,
+                skippedIdentityRows: skipped,
+                duplicateRows,
                 ...(result.totalCount !== undefined ? { providerCount: result.totalCount } : {}),
                 ...(stagingDetail !== undefined ? { detail: stagingDetail } : {}),
               });
@@ -778,6 +822,10 @@ export function createTwelveDataDiscoveryAdapter(
           // publishes unique symbols for, and hiding either number would make
           // the completeness claim unverifiable.
           ...(result.totalCount !== undefined ? { providerCount: result.totalCount } : {}),
+          // Phase 289J — the raw accounting behind that claim (see above).
+          rawRowsSeen,
+          skippedIdentityRows: skipped,
+          duplicateRows,
           transport,
           ...(result.failedPage !== undefined
             ? { failedPage: result.failedPage }

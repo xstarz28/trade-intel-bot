@@ -103,7 +103,7 @@ describe("Phase 234 — Twelve Data pagination contract", () => {
     expect(
       catalogHasMorePages({
         rowsThisPage: 2,
-        uniqueAccumulated: 2,
+        rawRowsSeen: 2,
         totalCount: undefined,
         newUniqueThisPage: 2,
       }),
@@ -114,7 +114,7 @@ describe("Phase 234 — Twelve Data pagination contract", () => {
     expect(
       catalogHasMorePages({
         rowsThisPage: 2,
-        uniqueAccumulated: 2,
+        rawRowsSeen: 2,
         totalCount: 5,
         newUniqueThisPage: 2,
       }),

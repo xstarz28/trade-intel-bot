@@ -68,7 +68,18 @@ const STAGE_STATE = v.union(
   v.literal("failed"),
 );
 
-/** Register a stage before its first row is written. */
+/**
+ * Register a stage before its first row is written.
+ *
+ * Phase 289J — AN OPEN STAGE IS NEVER COMPLETE. It was inserted with
+ * `completeness: "COMPLETE"` before a single row had been written, which meant a
+ * stage whose walk died (or never ran) could be read back as a COMPLETE catalog:
+ * zero rows, complete claim. The initial state is now `PARTIAL` — semantically
+ * "not yet a complete catalog" — and `closeStage` remains the ONE writer of the
+ * catalog's final COMPLETE/PARTIAL/FAILED verdict, taken from the walk's own
+ * result. Transport truth (`transportState`) stays a separate field and starts
+ * `partial`, because no row is persisted yet.
+ */
 export const openStage = internalMutation({
   args: {
     stageId: v.string(),
@@ -86,7 +97,7 @@ export const openStage = internalMutation({
       discoveredAt: args.discoveredAt,
       stagedRows: 0,
       totalDiscovered: 0,
-      completeness: "COMPLETE",
+      completeness: "PARTIAL",
       transportState: "partial",
       createdAt: Date.now(),
     });
@@ -149,6 +160,10 @@ export const closeStage = internalMutation({
     totalDiscovered: v.number(),
     /** Phase 289G — the provider's own count, when it reported one. */
     providerCount: v.optional(v.number()),
+    /** Phase 289J — the walk's raw accounting, carried onto the stage. */
+    rawRowsSeen: v.optional(v.number()),
+    skippedIdentityRows: v.optional(v.number()),
+    duplicateRows: v.optional(v.number()),
     completeness: v.union(v.literal("COMPLETE"), v.literal("PARTIAL"), v.literal("FAILED")),
     state: STAGE_STATE,
     detail: v.optional(v.string()),
@@ -166,6 +181,11 @@ export const closeStage = internalMutation({
       transportState: args.state,
       ...(args.detail !== undefined ? { detail: args.detail } : { detail: undefined }),
       ...(args.providerCount !== undefined ? { providerCount: args.providerCount } : {}),
+      ...(args.rawRowsSeen !== undefined ? { rawRowsSeen: args.rawRowsSeen } : {}),
+      ...(args.skippedIdentityRows !== undefined
+        ? { skippedIdentityRows: args.skippedIdentityRows }
+        : {}),
+      ...(args.duplicateRows !== undefined ? { duplicateRows: args.duplicateRows } : {}),
       closedAt: Date.now(),
     });
   },
@@ -321,6 +341,9 @@ export const readStageRows = internalQuery({
       stagedRows: stage?.stagedRows ?? 0,
       totalDiscovered: stage?.totalDiscovered ?? 0,
       providerCount: stage?.providerCount ?? null,
+      rawRowsSeen: stage?.rawRowsSeen ?? null,
+      skippedIdentityRows: stage?.skippedIdentityRows ?? null,
+      duplicateRows: stage?.duplicateRows ?? null,
       completeness: stage?.completeness ?? null,
       transportState: stage?.transportState ?? null,
       catalogPath: stage?.catalogPath ?? null,
@@ -383,6 +406,9 @@ export function createConvexStagingSink(ctx: ActionCtx): CatalogStagingSink {
       stagedRows,
       totalDiscovered,
       providerCount,
+      rawRowsSeen,
+      skippedIdentityRows,
+      duplicateRows,
       completeness,
       state,
       detail,
@@ -391,10 +417,16 @@ export function createConvexStagingSink(ctx: ActionCtx): CatalogStagingSink {
         stageId,
         stagedRows,
         totalDiscovered,
-        completeness: completeness ?? "COMPLETE",
+        // Phase 289J — a walk that produced no verdict is NOT complete. This
+        // fallback used to be "COMPLETE", so an unknown outcome read back as a
+        // complete catalog; the honest default is PARTIAL.
+        completeness: completeness ?? "PARTIAL",
         state,
         ...(detail !== undefined ? { detail } : {}),
         ...(providerCount !== undefined ? { providerCount } : {}),
+        ...(rawRowsSeen !== undefined ? { rawRowsSeen } : {}),
+        ...(skippedIdentityRows !== undefined ? { skippedIdentityRows } : {}),
+        ...(duplicateRows !== undefined ? { duplicateRows } : {}),
       });
       await ctx.runMutation(internal.discoveryStage.supersedeOlderStages, {
         catalogPath,

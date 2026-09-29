@@ -1148,6 +1148,10 @@ export interface TwelveDataStagePage {
   providerCount: number | null;
   completeness: string | null;
   transportState: DiscoveryTransportState | null;
+  /** Phase 289J — the walk's raw accounting, so the read proof reconciles. */
+  rawRowsSeen: number | null;
+  skippedIdentityRows: number | null;
+  duplicateRows: number | null;
   catalogPath: string | null;
   provider: string | null;
 }
@@ -1175,6 +1179,9 @@ export const readTwelveDataCatalogStage = action({
       stagedRows: page.stagedRows,
       totalDiscovered: page.totalDiscovered,
       providerCount: page.providerCount,
+      rawRowsSeen: page.rawRowsSeen,
+      skippedIdentityRows: page.skippedIdentityRows,
+      duplicateRows: page.duplicateRows,
       completeness: page.completeness,
       transportState: (page.transportState ?? null) as DiscoveryTransportState | null,
       catalogPath: page.catalogPath,

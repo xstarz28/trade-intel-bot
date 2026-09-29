@@ -409,6 +409,15 @@ export async function discoverTwelveData(transport, token) {
           // them differ, and hiding either number would make the completeness
           // claim unverifiable.
           providerCount: isNumber(c?.providerCount) ? c.providerCount : null,
+          // Phase 289J — the RAW side of the same walk: provider `data`
+          // elements parsed, rows skipped for missing identity, rows dropped as
+          // duplicates. Reported verbatim so the run's own numbers state the
+          // provider-count reconciliation instead of a reader having to trust
+          // "unique rows == provider count", which normalization legitimately
+          // breaks (the deployed `/commodities` reads 31 kept of 32).
+          rawRowsSeen: isNumber(c?.rawRowsSeen) ? c.rawRowsSeen : null,
+          skippedIdentityRows: isNumber(c?.skippedIdentityRows) ? c.skippedIdentityRows : null,
+          duplicateRows: isNumber(c?.duplicateRows) ? c.duplicateRows : null,
           failedPage: isNumber(c?.failedPage) ? c.failedPage : null,
           // Phase 289F — how this catalog crossed the function boundary. A
           // catalog above Convex's return boundary is staged (persisted in
@@ -472,6 +481,13 @@ export function discoveryDigest(discovery) {
           // the provider published with what this walk kept without opening the
           // artifact.
           if (isNumber(c.providerCount)) parts.push(`of:${c.providerCount}`);
+          // Phase 289J — the raw row count this walk really parsed, next to the
+          // provider's own count and the unique rows kept. `raw==of` is the raw
+          // completeness proof; `skipped`/`dupes` explain any difference between
+          // the raw rows and the unique instruments, and are never hidden.
+          if (isNumber(c.rawRowsSeen)) parts.push(`raw:${c.rawRowsSeen}`);
+          if (isNumber(c.skippedIdentityRows)) parts.push(`skipped:${c.skippedIdentityRows}`);
+          if (isNumber(c.duplicateRows)) parts.push(`dupes:${c.duplicateRows}`);
           if (isNumber(c.failedPage)) parts.push(`failedPage=${c.failedPage}`);
           // Phase 289F/289G — a catalog above the return boundary is staged, not
           // truncated: its kept count stays the provider's real number and the
@@ -572,6 +588,9 @@ export async function probeDiscoveryStages(discovery, transport, token, limit = 
         catalogCompleteness: null,
         catalogRows: null,
         providerCount: null,
+        rawRowsSeen: null,
+        skippedIdentityRows: null,
+        duplicateRows: null,
         identitySample: [],
         reason: sanitize(first.appError ?? first.transportError ?? "stage read failed"),
       });
@@ -589,6 +608,14 @@ export async function probeDiscoveryStages(discovery, transport, token, limit = 
       typeof value.completeness === "string" ? value.completeness : null;
     const catalogRows = isNumber(value.totalDiscovered) ? value.totalDiscovered : null;
     const providerCount = isNumber(value.providerCount) ? value.providerCount : null;
+    // Phase 289J — the stage document also carries the walk's raw accounting,
+    // so the read proof states the provider-count reconciliation without the
+    // discovery response.
+    const rawRowsSeen = isNumber(value.rawRowsSeen) ? value.rawRowsSeen : null;
+    const skippedIdentityRows = isNumber(value.skippedIdentityRows)
+      ? value.skippedIdentityRows
+      : null;
+    const duplicateRows = isNumber(value.duplicateRows) ? value.duplicateRows : null;
     const identities = rows.map((row) =>
       typeof row?.providerInstrumentId === "string" ? row.providerInstrumentId : "?",
     );
@@ -639,6 +666,9 @@ export async function probeDiscoveryStages(discovery, transport, token, limit = 
       catalogCompleteness,
       catalogRows,
       providerCount,
+      rawRowsSeen,
+      skippedIdentityRows,
+      duplicateRows,
       identitySample: identities.slice(0, DISCOVERY_IDENTITY_SAMPLE),
       reason,
     });
@@ -663,6 +693,10 @@ export function stageReadDigest(reads) {
     }
     if (isNumber(read.catalogRows)) bits.push(`total=${read.catalogRows}`);
     if (isNumber(read.providerCount)) bits.push(`of:${read.providerCount}`);
+    // Phase 289J — the raw reconciliation, verbatim from the stage document.
+    if (isNumber(read.rawRowsSeen)) bits.push(`raw:${read.rawRowsSeen}`);
+    if (isNumber(read.skippedIdentityRows)) bits.push(`skipped:${read.skippedIdentityRows}`);
+    if (isNumber(read.duplicateRows)) bits.push(`dupes:${read.duplicateRows}`);
     if (Array.isArray(read.identitySample) && read.identitySample.length > 0) {
       bits.push(read.identitySample.slice(0, 2).join(","));
     }

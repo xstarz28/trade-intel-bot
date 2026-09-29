@@ -65,6 +65,32 @@ export type CatalogFetchReport = {
    * catalog legitimately makes them differ; neither is invented).
    */
   providerCount?: number;
+  /**
+   * Phase 289J — THE RAW SIDE OF THE SAME QUESTION.
+   *
+   *   `rawRowsSeen` — provider `data` elements actually parsed, before identity
+   *                   dedupe and before normalization. This is the number that
+   *                   reconciles with `providerCount`: a COMPLETE catalog has
+   *                   consumed a body that handed over at least as many raw rows
+   *                   as the provider said it was sending.
+   *   `skippedIdentityRows` — raw rows discarded because they carry none of the
+   *                   identity fields this catalog requires. Counted, never
+   *                   hidden and never turned into a fabricated identity.
+   *   `duplicateRows` — raw rows discarded because their identity had already
+   *                   been taken (first occurrence wins, provider order kept).
+   *
+   * Accounting, for every catalog a walk completed:
+   *   `rawRowsSeen == totalDiscovered + skippedIdentityRows + duplicateRows`.
+   *
+   * `totalDiscovered` (unique usable instruments) is deliberately NOT required to
+   * equal `providerCount`: normalization may legitimately keep fewer rows than
+   * the provider sent, and the deployed run states exactly that for
+   * `/commodities` (31 kept of 32). Completeness is decided on the RAW
+   * reconciliation above, never on unique-instrument equality.
+   */
+  rawRowsSeen?: number;
+  skippedIdentityRows?: number;
+  duplicateRows?: number;
   failedPage?: number;
   /** Phase 289F — how (and how completely) the rows crossed the boundary. */
   transport?: CatalogTransportReport;

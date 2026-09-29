@@ -399,6 +399,14 @@ describe("289E — normalized output keeps the provider truth, with bounded stat
         // so the walk kept 6. Reporting both is what makes the difference
         // visible instead of hidden.
         providerCount: 7,
+        // Phase 289J — the RAW accounting behind that difference: 7 provider
+        // rows were parsed, 1 was skipped for missing identity, none was a
+        // duplicate, so 6 unique instruments were kept. The provider's count
+        // reconciles with the RAW rows (7 == 7), which is why this catalog is
+        // COMPLETE even though it kept fewer rows than the provider published.
+        rawRowsSeen: 7,
+        skippedIdentityRows: 1,
+        duplicateRows: 0,
         transport: {
           mode: "inline",
           state: "complete",
@@ -617,9 +625,21 @@ describe("289E — the retention that caused the OOM stays fixed (structural gua
     // catalogs. Phase 289G wraps that stream so it can enforce the split
     // deadlines (headers / stall / total) while forwarding every chunk verbatim
     // — the rows are still read from the provider's own bytes.
+    //
+    // Phase 289J — the guard wraps the provider's iterator ONE chunk at a time
+    // (so the no-byte guard covers the very first chunk and is disarmed before
+    // the consumer runs), and the chunk it fetched is the chunk it hands over.
+    // The guarantee is unchanged: the body is streamed through, never parsed up
+    // front, and every byte the provider sent is forwarded verbatim.
     expect(transport).toContain("body: guarded");
-    expect(transport).toContain("for await (const chunk of stream");
-    expect(transport).toContain("yield chunk;");
+    expect(transport).toContain("const iterator = (stream as AsyncIterable<Uint8Array | string>)[");
+    expect(transport).toContain("const pending = iterator.next();");
+    expect(transport).toContain("step = await Promise.race([pending, guardFailure]);");
+    expect(transport).toContain("yield step.value;");
+    // …and it is NOT read as one buffered payload on this path.
+    expect(transport.indexOf("body: guarded")).toBeLessThan(
+      transport.indexOf("json = await response.json()"),
+    );
   });
 
   it("the discovery entry point delegates one catalog per function execution", async () => {

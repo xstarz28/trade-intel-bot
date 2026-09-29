@@ -181,6 +181,9 @@ describe("289G — a complete large catalog reaches the provider's own count", (
         completeness: string;
         totalDiscovered: number;
         providerCount?: number;
+        rawRowsSeen?: number;
+        skippedIdentityRows?: number;
+        duplicateRows?: number;
         transport?: { mode: string; state: string; stagedRows: number; stageId?: string };
       }[];
     };
@@ -192,17 +195,42 @@ describe("289G — a complete large catalog reaches the provider's own count", (
     expect(result.catalogs[0].completeness).toBe("COMPLETE");
     expect(result.catalogs[0].providerCount).toBe(STOCK_COUNT);
     expect(result.catalogs[0].totalDiscovered).toBe(STOCK_COUNT);
+    /**
+     * Phase 289J — the numbers that DECIDE completeness, stated separately.
+     *
+     * The provider's count reconciles with the RAW rows this walk parsed, and the
+     * persisted rows reconcile with the unique instruments it kept. Neither
+     * equality is `providerCount == totalDiscovered` — for this catalog all three
+     * happen to be equal, and the test proves they are equal for the RIGHT
+     * reasons: nothing was skipped and nothing was a duplicate.
+     */
+    expect(result.catalogs[0].rawRowsSeen).toBe(STOCK_COUNT);
+    expect(result.catalogs[0].skippedIdentityRows).toBe(0);
+    expect(result.catalogs[0].duplicateRows).toBe(0);
+    expect(
+      result.catalogs[0].rawRowsSeen! -
+        (result.catalogs[0].totalDiscovered +
+          result.catalogs[0].skippedIdentityRows! +
+          result.catalogs[0].duplicateRows!),
+    ).toBe(0);
     expect(result.catalogs[0].transport).toMatchObject({
       mode: "staged",
       state: "complete",
       stagedRows: STOCK_COUNT,
     });
+    // stagedRows == totalKept is the TRANSPORT's completeness proof.
+    expect(result.catalogs[0].transport?.stagedRows).toBe(result.catalogs[0].totalDiscovered);
 
     const docs = await countDocs(t);
     // ONE stage, and the rows are stored in bounded chunk documents.
     expect(docs.stages).toBe(1);
     expect(docs.stage?.stagedRows).toBe(STOCK_COUNT);
     expect(docs.stage?.providerCount).toBe(STOCK_COUNT);
+    // Phase 289J — the stage document carries the raw accounting too, so the
+    // READ PROOF can state the provider-count reconciliation on its own.
+    expect(docs.stage?.rawRowsSeen).toBe(STOCK_COUNT);
+    expect(docs.stage?.skippedIdentityRows).toBe(0);
+    expect(docs.stage?.duplicateRows).toBe(0);
     expect(docs.stage?.completeness).toBe("COMPLETE");
     expect(docs.stage?.transportState).toBe("complete");
     expect(docs.rowsInsideChunks).toBe(STOCK_COUNT);
@@ -240,6 +268,9 @@ describe("289G — a complete large catalog reaches the provider's own count", (
         stagedRows: number;
         totalDiscovered: number;
         providerCount: number | null;
+        rawRowsSeen: number | null;
+        skippedIdentityRows: number | null;
+        duplicateRows: number | null;
         completeness: string | null;
         transportState: string | null;
       };
@@ -252,6 +283,10 @@ describe("289G — a complete large catalog reaches the provider's own count", (
         expect(page.stagedRows).toBe(STOCK_COUNT);
         expect(page.totalDiscovered).toBe(STOCK_COUNT);
         expect(page.providerCount).toBe(STOCK_COUNT);
+        // Phase 289J — the bounded read proof states the same reconciliation.
+        expect(page.rawRowsSeen).toBe(STOCK_COUNT);
+        expect(page.skippedIdentityRows).toBe(0);
+        expect(page.duplicateRows).toBe(0);
         expect(page.completeness).toBe("COMPLETE");
         expect(page.transportState).toBe("complete");
         expect(page.nextAfterSeq).toBe(STOCK_COUNT - 1);
