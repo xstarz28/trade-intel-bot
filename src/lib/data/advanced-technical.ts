@@ -52,7 +52,15 @@ import type { OhlcvCandle } from "./market-types";
 import type { CryptoDerivativesData } from "./derivatives-types";
 import type { BookLevel, ExecutionData } from "@/lib/execution-quality";
 import type { FairValueGap, DisplacementEvent, LiquiditySweepEvent, OrderBlock } from "./market-types";
-import { buildLiquidityPools, detectFvgs, detectDisplacement, detectOrderBlocks, detectSwingPoints } from "./smc";
+import {
+  buildLiquidityPools,
+  detectDisplacement,
+  detectFvgs,
+  detectOrderBlocks,
+  detectSwingPoints,
+  externalLookbackFor,
+} from "./smc";
+import { readStructure, type StructuralRead } from "./structure";
 import { atr } from "./technical";
 
 // ═══════════════════════════════════════════════════════════════
@@ -408,6 +416,13 @@ export interface AdvancedMarketContext {
   eventAnchorAt?: number;
   /** What the explicit event anchor IS (e.g. "CPI release 2025-07-04"). */
   eventAnchorBasis?: string;
+  /**
+   * Phase 291 — the confirmed structural read of the SAME candles, when the
+   * caller already has one. Supplying it keeps every order-block validation in
+   * the app on one rule; when it is absent this module derives the read itself
+   * from the same candles (never a second, weaker rule).
+   */
+  structural?: StructuralRead;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1000,6 +1015,8 @@ function computeLiquidityStructure(
   volumeStructure: VolumeStructureContext,
   timeframe: string,
   atr14: number | undefined,
+  /** Phase 291 — the caller's confirmed structural read of these same candles. */
+  structural?: StructuralRead,
 ): LiquidityStructureContext {
   if (candles.length === 0) {
     return {
@@ -1045,10 +1062,19 @@ function computeLiquidityStructure(
 
   const levelInteractions = detectLevelInteractions(candles, levels);
 
-  // Displacement, FVGs and validated reaction zones — same pure SMC routines.
+  // Displacement, FVGs and validated reaction zones — same pure SMC routines,
+  // and the SAME validation rule the SMC layer uses: a block qualifies only on
+  // the authoritative confirmed structural event of these candles (Phase 291).
+  // The legacy heuristic is never used here, so this block cannot report a zone
+  // the engine's own SMC layer rejects.
+  const structuralRead =
+    structural ??
+    readStructure(candles, timeframe ?? "unspecified", {
+      lookback: externalLookbackFor(candles.length),
+    });
   const displacement = detectDisplacement(candles, atr14);
   const fvgs = detectFvgs(candles, timeframe ?? "unspecified", atr14).slice(0, 8);
-  const zones = detectOrderBlocks(candles, timeframe ?? "unspecified", atr14).slice(0, 6);
+  const zones = detectOrderBlocks(candles, timeframe ?? "unspecified", atr14, structuralRead).slice(0, 6);
 
   // Session auction context — is price trading inside the previous session's
   // value area? Requires a previous COMPLETE session's own volume distribution.
@@ -1708,7 +1734,14 @@ export function computeAdvancedTechnical(
 
   const location = computeLocation(candles, ctx, atr14);
   const volumeStructure = computeVolumeStructure(candles);
-  const liquidityStructure = computeLiquidityStructure(candles, location, volumeStructure, timeframe, atr14);
+  const liquidityStructure = computeLiquidityStructure(
+    candles,
+    location,
+    volumeStructure,
+    timeframe,
+    atr14,
+    ctx.structural,
+  );
   const volatility = computeVolatility(candles, technical.structure ?? "unknown");
   const crossMarket = computeCrossMarket(candles, ctx);
   const orderFlow = computeOrderFlow(ctx.execution);

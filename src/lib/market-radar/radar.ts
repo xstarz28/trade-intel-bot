@@ -92,6 +92,12 @@ function scoreOpportunity(
   const supporting: string[] = [];
   const conflicting: string[] = [];
   const missing: string[] = [];
+  // Phase 291 — the trade-location verdict and the liquidity-event line restate
+  // facts that the components above already scored (structure, HTF/MTF bias,
+  // zone engagement). They are REPORTED in full but excluded from the
+  // coherence ratio, because two evidence classes never double-count.
+  let reportOnlySupporting = 0;
+  let reportOnlyConflicting = 0;
   let score = 50; // ranking baseline — confidence is scored separately
 
   // ── Data Quality (ranking score only; confidence uses assessEvidenceConfidence) ──
@@ -133,6 +139,35 @@ function scoreOpportunity(
     supporting.push(
       `confirmed ${e.kind} ${e.direction} through ${e.brokenLevel} on ${e.timeframe} (close beyond the confirmed swing level at ${new Date(e.candleTime).toISOString()})`,
     );
+  }
+  // Phase 291 — trade location and setup context, REPORTED verbatim. Like the
+  // structural facts above, no score delta is invented here: the location
+  // evidence is already weighted where it belongs (HTF/MTF/structure), and a
+  // second bonus for the same fact would double-count it.
+  if (snapshot?.setupContext) {
+    const sc = snapshot.setupContext;
+    const dir = sc.direction !== "none" ? ` ${sc.direction}` : "";
+    const text = `setup context ${sc.state}${dir}: ${sc.reasons.join("; ")}`;
+    if (sc.state === "CONFIRMED_SETUP_CONTEXT" || sc.state === "STRUCTURAL_SETUP") {
+      supporting.push(text);
+      reportOnlySupporting += 1;
+    } else if (
+      sc.state === "COUNTER_TREND_SETUP" ||
+      sc.state === "INVALID_SETUP_CONTEXT" ||
+      sc.state === "LOCATION_ONLY"
+    ) {
+      conflicting.push(text);
+      reportOnlyConflicting += 1;
+    } else {
+      missing.push(text);
+    }
+  }
+  if (snapshot?.liquidityEvent) {
+    const le = snapshot.liquidityEvent;
+    supporting.push(
+      `liquidity event: ${le.side} at ${le.level} on ${le.timeframe} (${le.ageCandles === 1 ? "1 candle ago" : `${le.ageCandles} candles ago`}) — location evidence, not a signal by itself`,
+    );
+    reportOnlySupporting += 1;
   }
   if (snapshot?.structuralPairState === "INTERNAL_COUNTERTREND") {
     conflicting.push(
@@ -280,13 +315,13 @@ function scoreOpportunity(
     // missingInformation but is NOT a critical gap: an instrument without
     // fundamentals keeps the opportunity quality it had before this layer.
     missingCriticalCount: missing.length - unified.informationalMissing.length,
-    conflictingCount: conflicting.length,
+    conflictingCount: Math.max(0, conflicting.length - reportOnlyConflicting),
     hasVerifiedLivePrice: Boolean(
       snapshot && snapshot.price > 0 && snapshot.quality !== "UNAVAILABLE",
     ),
     hasOhlcv: Boolean(snapshot?.ohlcvAvailable),
     hasExecutionEvidence: snapshot?.spreadBps !== undefined,
-    supportingCount: supportingCountBeforeConfluence,
+    supportingCount: supportingCountBeforeConfluence - reportOnlySupporting,
   });
 
   // Confluence can only LOWER the opportunity's confidence, never raise it:

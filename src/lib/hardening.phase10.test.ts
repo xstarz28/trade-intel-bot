@@ -128,9 +128,46 @@ describe("Step 7: determinism for identical snapshots", () => {
     return value;
   }
 
+  /**
+   * Phase 291 — the trade-location block describes the fixture's OWN candles,
+   * and this fixture builds those candles relative to the run clock. Its
+   * instants (the observation time, each zone's creation/validation, the sweep
+   * candle, the pool's formation) and the ISO instants quoted inside its fact
+   * lines are therefore provenance, exactly like `priceSnapshot.timestamp`
+   * above. Every decision-relevant value — states, levels, bounds, positions,
+   * counts and the rest of the fact text — is still compared byte-for-byte, and
+   * the block's own clock-free determinism is pinned by
+   * trade-location.phase291.test.ts.
+   */
+  const LOCATION_INSTANT_KEYS = new Set([
+    ...INSTANT_KEYS,
+    "atTime",
+    "knownAt",
+    "poolFormedAtTime",
+    "mitigatedAt",
+    "invalidatedAt",
+  ]);
+  const ISO_INSTANT = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g;
+  function stripLocationInstants<T>(value: T): T {
+    if (Array.isArray(value)) return value.map(stripLocationInstants) as unknown as T;
+    if (value && typeof value === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (LOCATION_INSTANT_KEYS.has(k)) continue;
+        out[k] = stripLocationInstants(v);
+      }
+      return out as T;
+    }
+    if (typeof value === "string") return value.replace(ISO_INSTANT, "<instant>") as unknown as T;
+    return value;
+  }
+
   function strip(r: AnalysisResult) {
     // Strip legitimately time-dependent identity/provenance fields.
     const { id, timestamp, priceSnapshot, ...rest } = r;
+    if (rest.tradeLocation) {
+      rest.tradeLocation = stripLocationInstants(rest.tradeLocation);
+    }
     void id; void timestamp; void priceSnapshot;
     // Phase 276 — the unified intelligence layer MIRRORS the technical
     // observation instant (`priceSnapshot.timestamp`, stripped just above) so

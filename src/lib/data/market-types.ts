@@ -91,6 +91,25 @@ export interface LiquidityPool {
   sweptAtTime?: number;
   /** true = price closed through the level (breakout, no longer liquidity). */
   broken: boolean;
+  /**
+   * Phase 291 — CAUSAL KNOWLEDGE TIME. The candle at which the LAST
+   * participating swing became confirmed: before this candle the level was not
+   * knowable, so nothing here (and no sweep) may be credited to it earlier.
+   */
+  formedAtIndex: number;
+  formedAtTime: number;
+  /** The exact swings that created this level, with their own confirmation times. */
+  sourceSwings: LiquiditySourceSwing[];
+}
+
+/** One confirmed swing that participates in a liquidity level. */
+export interface LiquiditySourceSwing {
+  price: number;
+  index: number;
+  /** Candle at which this swing became knowable (index + fractal lookback). */
+  confirmedAtIndex: number;
+  /** Provider timestamp of the swing candle itself. */
+  timestamp: number;
 }
 
 export interface LiquiditySweepEvent {
@@ -100,6 +119,9 @@ export interface LiquiditySweepEvent {
   candleIndex: number;
   candleTime: number;
   timeframe: string;
+  /** Phase 291 — the pool's causal knowledge time (always < candleIndex). */
+  poolFormedAtIndex: number;
+  poolFormedAtTime: number;
 }
 
 /** Minor (internal) vs major (external) structural read. */
@@ -118,9 +140,22 @@ export interface FairValueGap {
   upper: number;
   lower: number;
   timeframe: string;
+  /** Third candle of the three-candle pattern — the candle that created the gap. */
   createdAtIndex: number;
   createdAt: number;
+  /**
+   * Current state from later candles only. `mitigated` = price traded back into
+   * the gap; `invalidated` = price CLOSED beyond the far side. Invalidation
+   * outranks mitigation, and both are recorded independently below so a zone
+   * that was retested and later invalidated never reports as merely mitigated.
+   */
   status: FvgStatus;
+  /** First candle that traded back into the gap. */
+  mitigatedAtIndex?: number;
+  mitigatedAt?: number;
+  /** First candle that CLOSED beyond the far side of the gap. */
+  invalidatedAtIndex?: number;
+  invalidatedAt?: number;
 }
 
 export interface DisplacementEvent {
@@ -139,14 +174,52 @@ export interface OrderBlock {
   upper: number;
   lower: number;
   timeframe: string;
+  /** Timestamp of the SOURCE (opposing) candle — provenance, not knowledge time. */
   createdAt: number;
   status: ObStatus;
+  /** Index of the source candle. */
+  sourceIndex: number;
+  /** Candle that first showed displacement in the block's direction. */
+  displacementIndex: number;
+  displacementTime: number;
+  /**
+   * The confirmed structural event (Phase 290-A) that VALIDATED this block.
+   * Absent only on the legacy fallback path used when a caller supplies no
+   * structural read for these candles.
+   */
+  structuralEvent?: {
+    kind: "BOS" | "CHOCH";
+    direction: "bullish" | "bearish";
+    brokenLevel: number;
+    brokenSwingIndex: number;
+    candleIndex: number;
+    candleTime: number;
+  };
+  /**
+   * Phase 291 — CAUSAL VALIDATION TIME: the candle at which the last piece of
+   * evidence (displacement then the structural break) had actually printed. The
+   * block does not exist before this candle, and its status is derived from
+   * candles AFTER it only.
+   */
+  validatedAtIndex: number;
+  validatedAt: number;
+  /** First candle that traded back into the block after validation. */
+  mitigatedAtIndex?: number;
+  mitigatedAt?: number;
+  /** First candle that CLOSED beyond the far side of the block after validation. */
+  invalidatedAtIndex?: number;
+  invalidatedAt?: number;
   /** Traceable evidence for why this zone qualifies as an OB. */
   evidence: {
     precedingOpposingCandle: boolean;
     displacementAfter: boolean;
     structuralBreakAfter: boolean;
     displacementRangeAtr: number;
+    /** Which rule validated the block: a confirmed structural event, or the
+     *  legacy pre-window close-through used when no structural read is given. */
+    validationMethod: "confirmed_structural_event" | "legacy_pre_window_close";
+    /** The pre-window extreme the legacy rule watches (context for both paths). */
+    preWindowExtreme: number;
   };
 }
 
@@ -223,6 +296,13 @@ export interface MtfTimeframeData {
    * reader can see whether the internal leg contradicts the external regime.
    */
   structuralPair?: import("./structure").StructurePair;
+  /**
+   * Phase 291 — the exact observation this timeframe was read at (its own last
+   * candle). Recorded when the context is built so a later reader can describe
+   * location against the zone bounds WITHOUT the candle array being passed
+   * around, and without borrowing another timeframe's price.
+   */
+  anchor?: { price: number; lastIndex: number; atTime: number };
 }
 
 export type MtfAlignmentState =

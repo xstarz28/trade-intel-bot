@@ -116,6 +116,7 @@ export function buildMtfContext(
     }
     try {
       const smc = computeSmcContext(input.candles, input.timeframe);
+      const last = input.candles[input.candles.length - 1];
       timeframes.push({
         timeframe: input.timeframe,
         role: input.role,
@@ -124,6 +125,8 @@ export function buildMtfContext(
         // This timeframe's OWN confirmed structural read — never borrowed.
         ...(smc.structural ? { structural: smc.structural.external } : {}),
         ...(smc.structural ? { structuralPair: smc.structural } : {}),
+        // Phase 291 — the observation this timeframe was actually read at.
+        anchor: { price: last.close, lastIndex: input.candles.length - 1, atTime: last.timestamp },
       });
     } catch (err) {
       unavailable.push({

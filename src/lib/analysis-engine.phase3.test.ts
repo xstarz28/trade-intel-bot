@@ -133,7 +133,7 @@ function bullishSetupSmc(): SmcContext {
   return {
     timeframe: "H4",
     liquidityPools: [
-      { level: 108, side: "buy_side", source: "equal_highs", touches: 2, swept: false, broken: false },
+      { level: 108, side: "buy_side", source: "equal_highs", touches: 2, swept: false, broken: false, formedAtIndex: 200, formedAtTime: Date.now(), sourceSwings: [{ price: 108, index: 196, confirmedAtIndex: 200, timestamp: Date.now() }] },
     ],
     internalExternal: {
       external: { timeframe: "H4", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 210 },
@@ -142,7 +142,7 @@ function bullishSetupSmc(): SmcContext {
     },
     fvgs: [{ direction: "bullish", upper: 99.5, lower: 98, timeframe: "H4", createdAtIndex: 208, createdAt: Date.now(), status: "fresh" }],
     displacement: { direction: "bullish", candleIndex: 209, candleTime: Date.now(), bodyRatio: 0.8, rangeAtrMultiple: 2.1 },
-    orderBlocks: [{ direction: "bullish", upper: 97, lower: 95.5, timeframe: "H4", createdAt: Date.now(), status: "fresh", evidence: { precedingOpposingCandle: true, displacementAfter: true, structuralBreakAfter: true, displacementRangeAtr: 2.0 } }],
+    orderBlocks: [{ direction: "bullish", upper: 97, lower: 95.5, timeframe: "H4", createdAt: Date.now(), status: "fresh", sourceIndex: 207, displacementIndex: 208, displacementTime: Date.now(), validatedAtIndex: 209, validatedAt: Date.now(), evidence: { precedingOpposingCandle: true, displacementAfter: true, structuralBreakAfter: true, displacementRangeAtr: 2.0, validationMethod: "confirmed_structural_event", preWindowExtreme: 96.5 } }],
     vwap: { available: true, sessionVwap: 99, priceLocation: "above_vwap" },
     volumeProfile: { available: true, poc: 98, vah: 101, val: 96 },
   };
@@ -318,7 +318,7 @@ describe("MTF NO_TRADE gates", () => {
       swingLows: [],
       smc: {
         timeframe: "H4",
-        liquidityPools: [{ level: 90, side: "sell_side", source: "swing_low", touches: 1, swept: false, broken: false }],
+        liquidityPools: [{ level: 90, side: "sell_side", source: "swing_low", touches: 1, swept: false, broken: false, formedAtIndex: 200, formedAtTime: Date.now(), sourceSwings: [{ price: 90, index: 196, confirmedAtIndex: 200, timestamp: Date.now() }] }],
         internalExternal: {
           external: { timeframe: "H4", structure: "LH/LL", bosDirection: "bearish", chochDirection: "none", dataPoints: 210 },
           internal: { timeframe: "H4:int", structure: "LH/LL", bosDirection: "none", chochDirection: "none", dataPoints: 210 },
@@ -392,7 +392,7 @@ describe("HTF liquidity / FVG / OB integration", () => {
       timeframes: [
         mtfTf("D1", "structure", { structure: "HH/HL" }, {
           liquidityPools: [
-            { level: 112, side: "buy_side", source: "equal_highs", touches: 3, swept: false, broken: false },
+            { level: 112, side: "buy_side", source: "equal_highs", touches: 3, swept: false, broken: false, formedAtIndex: 200, formedAtTime: Date.now(), sourceSwings: [{ price: 112, index: 196, confirmedAtIndex: 200, timestamp: Date.now() }] },
           ],
         }),
         mtfTf("H1", "trigger", { structure: "HH/HL" }),

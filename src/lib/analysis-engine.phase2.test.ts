@@ -94,8 +94,10 @@ function bullishSmc(): SmcContext {
   return {
     ...emptySmc(),
     liquidityPools: [
-      { level: 94.0, side: "sell_side", source: "equal_lows", touches: 2, swept: true, sweptAtIndex: 208, sweptAtTime: Date.now(), broken: false },
-      { level: 108, side: "buy_side", source: "equal_highs", touches: 2, swept: false, broken: false },
+      // Fixture provenance: the level rests from candle 200 (its pivot sat at 196,
+      // confirmed 4 candles later) — always before the sweep candle it interacts with.
+      { level: 94.0, side: "sell_side", source: "equal_lows", touches: 2, swept: true, sweptAtIndex: 208, sweptAtTime: Date.now(), broken: false, formedAtIndex: 200, formedAtTime: Date.now(), sourceSwings: [{ price: 94.0, index: 196, confirmedAtIndex: 200, timestamp: Date.now() }] },
+      { level: 108, side: "buy_side", source: "equal_highs", touches: 2, swept: false, broken: false, formedAtIndex: 200, formedAtTime: Date.now(), sourceSwings: [{ price: 108, index: 196, confirmedAtIndex: 200, timestamp: Date.now() }] },
     ],
     recentSweep: {
       level: 94.0,
@@ -104,6 +106,8 @@ function bullishSmc(): SmcContext {
       candleIndex: 208,
       candleTime: Date.now(),
       timeframe: "H4",
+      poolFormedAtIndex: 200,
+      poolFormedAtTime: Date.now(),
     },
     displacement: {
       direction: "bullish",
@@ -131,11 +135,18 @@ function bullishSmc(): SmcContext {
         timeframe: "H4",
         createdAt: Date.now(),
         status: "fresh",
+        sourceIndex: 207,
+        displacementIndex: 208,
+        displacementTime: Date.now(),
+        validatedAtIndex: 209,
+        validatedAt: Date.now(),
         evidence: {
           precedingOpposingCandle: true,
           displacementAfter: true,
           structuralBreakAfter: true,
           displacementRangeAtr: 2.0,
+          validationMethod: "confirmed_structural_event",
+          preWindowExtreme: 97.5,
         },
       },
     ],

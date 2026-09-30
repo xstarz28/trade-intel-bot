@@ -261,6 +261,18 @@ export function buildRadarCandidate(
   if (snapshot?.structuralPairState) {
     candidate.structuralPairState = snapshot.structuralPairState;
   }
+  // Phase 291 — the setup verdict travels with the candidate unchanged.
+  if (snapshot?.setupContext) {
+    candidate.setupContextState = snapshot.setupContext.state;
+    candidate.setupDirection = snapshot.setupContext.direction;
+    candidate.setupFacts = snapshot.setupContext.reasons;
+  }
+  if (snapshot?.zoneContext) {
+    candidate.zoneContext = snapshot.zoneContext;
+  }
+  if (snapshot?.liquidityEvent) {
+    candidate.liquidityEvent = snapshot.liquidityEvent;
+  }
   if (snapshot?.volatility) {
     candidate.atr = snapshot.volatility;
   }

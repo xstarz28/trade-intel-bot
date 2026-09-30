@@ -101,6 +101,46 @@ export function buildRadarSourcesFromLiveSources(
                 ...(pair ? { structuralPairState: pair.state } : {}),
               };
             })(),
+            // Phase 291 — the location/setup verdict, carried verbatim. No
+            // location is recomputed here from another timeframe's price.
+            ...(() => {
+              const tl = analysis?.tradeLocation;
+              if (!tl) return {};
+              const nearest = tl.zones[0];
+              const sweep = tl.liquidity.sweep;
+              return {
+                setupContext: {
+                  state: tl.context.state,
+                  direction: tl.context.direction,
+                  location: tl.location,
+                  reasons: tl.context.reasons,
+                },
+                ...(nearest
+                  ? {
+                      zoneContext: {
+                        kind: nearest.kind,
+                        direction: nearest.direction,
+                        lower: nearest.lower,
+                        upper: nearest.upper,
+                        position: nearest.position,
+                        status: nearest.status,
+                        timeframe: tl.setupTimeframe,
+                      },
+                    }
+                  : {}),
+                ...(sweep
+                  ? {
+                      liquidityEvent: {
+                        side: sweep.side,
+                        level: sweep.level,
+                        candleTime: sweep.candleTime,
+                        ageCandles: sweep.ageCandles,
+                        timeframe: tl.setupTimeframe,
+                      },
+                    }
+                  : {}),
+              };
+            })(),
             marketRegime: "UNKNOWN",
             provider: marketData.provider,
             // Phase 239: preserve provider observation time truthfully.

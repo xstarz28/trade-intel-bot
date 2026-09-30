@@ -35,6 +35,26 @@ export interface TradePlan {
   setupTimeframe?: string;
   /** Timeframe whose trigger refined the entry. */
   triggerTimeframe?: string;
+  /**
+   * Phase 291 — the invalidation references the risk layer may consume, with
+   * full provenance. The stop level itself is never chosen by how attractive the
+   * reward/risk ratio looks: these are the levels the analysis actually
+   * established (confirmed swing, validated zone boundary, swept/broken
+   * liquidity). Empty when no such level exists — never invented.
+   */
+  invalidationReferences?: {
+    source: string;
+    level: number;
+    timeframe: string;
+    note: string;
+  }[];
+  /** Phase 291 — the invalidation boundary of the zone carrying the setup. */
+  zoneInvalidation?: {
+    kind: string;
+    level: number;
+    timeframe: string;
+    basis: string;
+  };
 }
 
 /** Higher-timeframe vs lower-timeframe relationship. */
@@ -105,6 +125,94 @@ export interface StructuralEvidenceSummary {
     detail: string;
   };
   /** Deterministic fact lines (engine style). */
+  digest: string[];
+}
+
+/**
+ * Phase 291 — TRADE LOCATION & SETUP CONTEXT.
+ *
+ * Plain deterministic facts: where the latest provider observation sits against
+ * the REAL zone bounds, which liquidity event is current, and the setup-context
+ * state that the evidence names. No scores, no probabilities, and every zone
+ * belongs to the timeframe that produced it.
+ */
+export interface TradeLocationSummary {
+  setupTimeframe: string;
+  /** The observation the location was described against. */
+  price: number;
+  atTime: number;
+  location: string;
+  flags: {
+    insideFvg: boolean;
+    atFvgBoundary: boolean;
+    insideOb: boolean;
+    atObBoundary: boolean;
+    nearLiquidity: boolean;
+    afterSweep: boolean;
+    displacedAway: boolean;
+    outsideZones: boolean;
+  };
+  context: {
+    state: string;
+    direction: "bullish" | "bearish" | "none";
+    reasons: string[];
+  };
+  /** The setup timeframe's own zones, nearest to price first. */
+  zones: {
+    kind: string;
+    direction: "bullish" | "bearish";
+    upper: number;
+    lower: number;
+    status: string;
+    position: string;
+    createdAtIndex: number;
+    createdAt: number;
+    knownAtIndex: number;
+    ageCandles: number;
+  }[];
+  liquidity: {
+    sweep?: {
+      side: string;
+      level: number;
+      candleIndex: number;
+      candleTime: number;
+      ageCandles: number;
+      poolFormedAtIndex: number;
+    };
+    nearestBuySide?: { level: number; distance: number };
+    nearestSellSide?: { level: number; distance: number };
+    atLiquidityLevel: boolean;
+    afterSweep: boolean;
+    brokenLevels: number[];
+  };
+  /**
+   * Every available timeframe's OWN structure, zones and liquidity event — each
+   * computed from that timeframe's candles, never copied up or down the chain.
+   */
+  timeframes: {
+    timeframe: string;
+    role: string;
+    externalStructure: string;
+    internalStructure: string;
+    pairState: string;
+    location: string;
+    setupState: string;
+    fvg?: { direction: string; lower: number; upper: number; status: string; position: string };
+    ob?: { direction: string; lower: number; upper: number; status: string; position: string };
+    sweep?: { side: string; level: number; candleIndex: number };
+    /** This timeframe's own deterministic fact lines. */
+    facts?: string[];
+  }[];
+  /** Levels the existing risk layer may consume, with their provenance. */
+  invalidationEvidence: {
+    source: string;
+    level: number;
+    timeframe: string;
+    note: string;
+  }[];
+  /** The setup timeframe's own deterministic fact lines. */
+  setupFacts: string[];
+  /** Deterministic fact lines (engine style), setup timeframe first. */
   digest: string[];
 }
 
@@ -232,6 +340,8 @@ export interface AnalysisResult {
   mtfSummary?: MtfSummary;
   /** Phase 290-A — confirmed event-based structural evidence behind the decision. */
   structuralEvidence?: StructuralEvidenceSummary;
+  /** Phase 291 — trade location, zone context and setup validity. */
+  tradeLocation?: TradeLocationSummary;
   /** Phase 5 — multi-evidence market regime (UNKNOWN when evidence is thin). */
   marketRegime?: import("@/lib/market-context").MarketRegimeInfo;
   /** Phase 5 — explicit setup classification (context/evidence, not a UI label). */

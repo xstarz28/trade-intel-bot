@@ -191,6 +191,133 @@ function extractStructuralFields(tech: TechnicalData | undefined): {
   };
 }
 
+/**
+ * Phase 291 — trade-location / setup-context evidence.
+ *
+ * Read straight from the analysis result (which assembled it from the SMC
+ * objects and the confirmed structural pair). The facts are the engine's own
+ * deterministic lines; nothing is re-derived here and no score is invented.
+ */
+function extractSetupEvidence(ar: AnalysisResult | undefined): {
+  setupContextState?: string;
+  setupDirection?: "bullish" | "bearish" | "none";
+  zoneContext?: {
+    kind: "FVG" | "OB" | "FVG+OB" | "none";
+    direction: "bullish" | "bearish" | "none";
+    lower?: number;
+    upper?: number;
+    position: string;
+    status?: string;
+    timeframe: string;
+  };
+  fvgState?: {
+    direction: "bullish" | "bearish";
+    upper: number;
+    lower: number;
+    status: string;
+    position: string;
+    timeframe: string;
+    createdAt: number;
+  };
+  obState?: {
+    direction: "bullish" | "bearish";
+    upper: number;
+    lower: number;
+    status: string;
+    position: string;
+    timeframe: string;
+    validatedAt: number;
+  };
+  liquidityEvent?: {
+    side: string;
+    level: number;
+    candleTime: number;
+    timeframe: string;
+    ageCandles: number;
+  };
+  setupFacts?: string[];
+  /** One deterministic context line per other timeframe, keyed by timeframe. */
+  setupEvidenceByTimeframe?: Record<string, string>;
+} {
+  const tl = ar?.tradeLocation;
+  if (!tl) return {};
+
+  const fvg = tl.zones.find((z) => z.kind === "FVG");
+  const ob = tl.zones.find((z) => z.kind === "OB");
+  const nearest = tl.zones[0];
+  const kind: "FVG" | "OB" | "FVG+OB" | "none" =
+    fvg && ob ? "FVG+OB" : fvg ? "FVG" : ob ? "OB" : "none";
+  const sweep = tl.liquidity.sweep;
+
+  return {
+    setupContextState: tl.context.state,
+    setupDirection: tl.context.direction,
+    ...(nearest
+      ? {
+          zoneContext: {
+            kind,
+            direction: nearest.direction,
+            lower: nearest.lower,
+            upper: nearest.upper,
+            position: nearest.position,
+            status: nearest.status,
+            timeframe: tl.setupTimeframe,
+          },
+        }
+      : { zoneContext: { kind: "none" as const, direction: "none" as const, position: "outside", timeframe: tl.setupTimeframe } }),
+    ...(fvg
+      ? {
+          fvgState: {
+            direction: fvg.direction,
+            upper: fvg.upper,
+            lower: fvg.lower,
+            status: fvg.status,
+            position: fvg.position,
+            timeframe: tl.setupTimeframe,
+            createdAt: fvg.createdAt,
+          },
+        }
+      : {}),
+    ...(ob
+      ? {
+          obState: {
+            direction: ob.direction,
+            upper: ob.upper,
+            lower: ob.lower,
+            status: ob.status,
+            position: ob.position,
+            timeframe: tl.setupTimeframe,
+            validatedAt: 0,
+          },
+        }
+      : {}),
+    ...(sweep
+      ? {
+          liquidityEvent: {
+            side: sweep.side,
+            level: sweep.level,
+            candleTime: sweep.candleTime,
+            timeframe: tl.setupTimeframe,
+            ageCandles: sweep.ageCandles,
+          },
+        }
+      : {}),
+    // The digest is small and deterministic; the setup-timeframe facts are the
+    // ones that describe THIS candidate's location.
+    // The setup timeframe's own facts describe THIS candidate's location; every
+    // other timeframe contributes exactly one context line of its own.
+    setupFacts: tl.setupFacts,
+    setupEvidenceByTimeframe: Object.fromEntries(
+      tl.timeframes
+        .filter((row) => row.timeframe !== tl.setupTimeframe)
+        .map((row) => [
+          row.timeframe,
+          `${row.timeframe} (${row.role}): structure ${row.externalStructure}, location ${row.location}, setup ${row.setupState}`,
+        ]),
+    ),
+  };
+}
+
 function extractMarketRegime(tech: TechnicalData | undefined): string | undefined {
   if (!tech) return undefined;
   if (tech.structure === "HH/HL" || tech.structure === "LH/LL") return "TRENDING";
@@ -323,6 +450,8 @@ export function buildCandidateFromSource(
     marketRegime: extractMarketRegime(tech),
     mtfAlignment: extractMtfAlignment(ar),
     ...extractStructuralFields(tech),
+    // Trade location / setup context (Phase 291) — evidence, never a new score.
+    ...extractSetupEvidence(ar),
     keySupport: undefined,
     keyResistance: undefined,
     riskReward: ar?.tradePlan?.riskReward,

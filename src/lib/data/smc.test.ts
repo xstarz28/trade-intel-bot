@@ -34,14 +34,26 @@ function candle(
 
 const T = (i: number) => 1700000000000 + i * 3600000;
 
+/**
+ * A swing that is ALREADY knowable at its own candle. These fixtures exist to
+ * pin the equal-level / sweep / breakout RULES, so they deliberately model a
+ * level that is already confirmed rather than a fractally confirmed pivot
+ * (Phase 291 causal-timing tests build those lags explicitly).
+ */
+const knownSwing = (price: number, index: number): SwingPoint => ({
+  price,
+  index,
+  confirmedAtIndex: index,
+});
+
 // ── Equal highs / lows ────────────────────────────────────────────
 
 describe("detectEqualLevels", () => {
   it("groups swing highs within the documented relative tolerance", () => {
     const pts: SwingPoint[] = [
-      { price: 100.0, index: 0 },
-      { price: 100.05, index: 5 }, // |100−100.05|/100.05 ≈ 0.05% ≤ 0.15% ✓
-      { price: 105.0, index: 10 }, // far above — separate
+      knownSwing(100.0, 0),
+      knownSwing(100.05, 5), // |100−100.05|/100.05 ≈ 0.05% ≤ 0.15% ✓
+      knownSwing(105.0, 10), // far above — separate
     ];
     const groups = detectEqualLevels(pts, EQUAL_LEVEL_TOLERANCE);
     expect(groups).toHaveLength(1);
@@ -51,8 +63,8 @@ describe("detectEqualLevels", () => {
 
   it("does NOT group levels beyond the tolerance", () => {
     const pts: SwingPoint[] = [
-      { price: 100.0, index: 0 },
-      { price: 101.0, index: 5 }, // 1% apart > 0.15%
+      knownSwing(100.0, 0),
+      knownSwing(101.0, 5), // 1% apart > 0.15%
     ];
     expect(detectEqualLevels(pts, EQUAL_LEVEL_TOLERANCE)).toHaveLength(0);
   });
@@ -68,8 +80,8 @@ describe("buildLiquidityPools", () => {
     ];
     const { pools, sweeps } = buildLiquidityPools(
       candles,
-      [{ price: 100.5, index: 0 }],
-      [{ price: 97.0, index: 1 }],
+      [knownSwing(100.5, 0)],
+      [knownSwing(97.0, 1)],
     );
     expect(sweeps).toHaveLength(0);
     const buy = pools.find((p) => p.source === "swing_high");
@@ -87,7 +99,7 @@ describe("buildLiquidityPools", () => {
       // Wick above 100.5 but close back below → sweep, not breakout
       candle(T(2), 99.8, 100.8, 99.5, 99.9),
     ];
-    const { pools, sweeps } = buildLiquidityPools(candles, [{ price: 100.5, index: 1 }], []);
+    const { pools, sweeps } = buildLiquidityPools(candles, [knownSwing(100.5, 1)], []);
     expect(pools[0].swept).toBe(true);
     expect(pools[0].broken).toBe(false);
     expect(sweeps).toHaveLength(1);
@@ -100,7 +112,7 @@ describe("buildLiquidityPools", () => {
       candle(T(1), 99, 99.5, 98.5, 99),
       candle(T(2), 100, 100.9, 99.8, 100.7), // close > 100.5
     ];
-    const { pools, sweeps } = buildLiquidityPools(candles, [{ price: 100.5, index: 1 }], []);
+    const { pools, sweeps } = buildLiquidityPools(candles, [knownSwing(100.5, 1)], []);
     expect(pools[0].broken).toBe(true);
     expect(pools[0].swept).toBe(false);
     expect(sweeps).toHaveLength(0);
@@ -114,8 +126,8 @@ describe("buildLiquidityPools", () => {
     const { pools } = buildLiquidityPools(
       candles,
       [
-        { price: 100.0, index: 0 },
-        { price: 100.05, index: 1 },
+        knownSwing(100.0, 0),
+        knownSwing(100.05, 1),
       ],
       [],
     );

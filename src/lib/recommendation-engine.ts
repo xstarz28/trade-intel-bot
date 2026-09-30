@@ -103,6 +103,53 @@ export interface CandidateInput {
   };
   /** External/internal relationship: ALIGNED | INTERNAL_COUNTERTREND | … */
   structuralPairState?: string;
+  // ── Phase 291 — trade location & setup context (facts, never scores) ──
+  /** The deterministic setup verdict for the setup timeframe. */
+  setupContextState?: string;
+  /** Direction the setup was evaluated for. */
+  setupDirection?: "bullish" | "bearish" | "none";
+  /** Nearest qualifying zone to the latest observation. */
+  zoneContext?: {
+    kind: "FVG" | "OB" | "FVG+OB" | "none";
+    direction: "bullish" | "bearish" | "none";
+    lower?: number;
+    upper?: number;
+    position: string;
+    status?: string;
+    timeframe: string;
+  };
+  /** Fair-value-gap state on the setup timeframe. */
+  fvgState?: {
+    direction: "bullish" | "bearish";
+    upper: number;
+    lower: number;
+    status: string;
+    position: string;
+    timeframe: string;
+    createdAt: number;
+  };
+  /** Validated order-block state on the setup timeframe. */
+  obState?: {
+    direction: "bullish" | "bearish";
+    upper: number;
+    lower: number;
+    status: string;
+    position: string;
+    timeframe: string;
+    validatedAt: number;
+  };
+  /** The current liquidity event (sweep) with its causal pool knowledge time. */
+  liquidityEvent?: {
+    side: string;
+    level: number;
+    candleTime: number;
+    timeframe: string;
+    ageCandles: number;
+  };
+  /** The engine's own deterministic location/setup fact lines. */
+  setupFacts?: string[];
+  /** One deterministic context line per other timeframe, keyed by timeframe. */
+  setupEvidenceByTimeframe?: Record<string, string>;
   /** Why the pair reads the way it does (deterministic wording from the engine). */
   structuralReason?: string;
   /** Key support level (as number for comparison). */
@@ -240,6 +287,10 @@ export interface RankedInstrument {
    * engine form (event, broken level, event time, invalidation level).
    */
   structuralFacts?: string[];
+  /** Phase 291 — the deterministic setup verdict this ranking was built with. */
+  setupContextState?: string;
+  /** Phase 291 — the setup/location evidence lines (verbatim engine facts). */
+  setupFacts?: string[];
   /** Data completeness level. */
   dataCompleteness: DataCompletenessLevel;
   /** Data freshness. */
@@ -712,6 +763,61 @@ export function structuralEvidenceFacts(c: CandidateInput): string[] {
   return facts;
 }
 
+/**
+ * Phase 291 — deterministic location / setup fact lines.
+ *
+ * These describe WHERE price is and WHAT the evidence names (a zone, a sweep,
+ * a setup state). They join the evidence lists exactly as the Phase 290-A
+ * structural facts do: no weight changes, no probability, and at most one
+ * verdict line so a single setup can never be counted several times.
+ */
+export function setupContextEvidenceFacts(c: CandidateInput): string[] {
+  const facts: string[] = [];
+  const state = c.setupContextState;
+  if (!state) return facts;
+  // Exactly one line per other timeframe (sorted, so repeated calls are
+  // byte-identical); the closed list is what keeps a single fact from being
+  // counted more than once.
+  const otherTimeframes = Object.entries(c.setupEvidenceByTimeframe ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, line]) => line);
+
+  const dir = c.setupDirection && c.setupDirection !== "none" ? ` ${c.setupDirection}` : "";
+  const zone = c.zoneContext;
+  const zoneText =
+    zone && zone.kind !== "none" && zone.lower !== undefined && zone.upper !== undefined
+      ? ` — nearest ${zone.kind} zone ${zone.lower}–${zone.upper} (${zone.position})`
+      : "";
+
+  switch (state) {
+    case "CONFIRMED_SETUP_CONTEXT":
+      facts.push(`Setup context confirmed for the${dir} thesis: direction, qualifying zone and confirmation agree${zoneText}`);
+      break;
+    case "STRUCTURAL_SETUP":
+      facts.push(`Structural setup only for the${dir} thesis: the structure agrees but the location is not engaged${zoneText}`);
+      break;
+    case "LOCATION_ONLY":
+      facts.push(`Location only${zoneText}: a zone or a liquidity event without structural confirmation — not a setup on its own`);
+      break;
+    case "COUNTER_TREND_SETUP":
+      facts.push(`Counter-trend setup for the${dir} thesis: location turns against an intact higher-timeframe structure — the regime is unchanged until it says otherwise`);
+      break;
+    case "INVALID_SETUP_CONTEXT":
+      facts.push(`Setup context invalid for the${dir} thesis: the structure of these candles points the other way${zoneText}`);
+      break;
+    default:
+      facts.push("No setup context: no qualifying zone, no current liquidity event and no structural confirmation");
+      break;
+  }
+
+  if (c.liquidityEvent) {
+    facts.push(
+      `Liquidity event: ${c.liquidityEvent.side} at ${c.liquidityEvent.level} on ${c.liquidityEvent.timeframe} (${c.liquidityEvent.ageCandles === 1 ? "1 candle ago" : `${c.liquidityEvent.ageCandles} candles ago`}) — location evidence, not a signal by itself`,
+    );
+  }
+  return [...facts, ...otherTimeframes];
+}
+
 export function scoreCandidate(
   c: CandidateInput,
   horizon: TradingMode | InvestorHorizon,
@@ -743,6 +849,28 @@ export function scoreCandidate(
   for (const fact of structuralFacts) {
     if (fact.startsWith("Internal structure is counter-trend")) conflicts.push(fact);
     else reasons.push(fact);
+  }
+
+  // Phase 291 — the setup verdict joins the same lists. A setup that contradicts
+  // the thesis (or turns against the dominant structure) is CONFLICTING evidence,
+  // exactly like the internal-counter-trend line above; a confirmed/structural
+  // setup is supporting evidence. The score itself is untouched.
+  const setupFacts = setupContextEvidenceFacts(c);
+  let setupSupporting = 0;
+  let setupConflicting = 0;
+  for (const fact of setupFacts) {
+    if (
+      fact.startsWith("Setup context invalid") ||
+      fact.startsWith("Counter-trend setup") ||
+      fact.startsWith("Location only") ||
+      fact.startsWith("No setup context")
+    ) {
+      conflicts.push(fact);
+      setupConflicting += 1;
+    } else {
+      reasons.push(fact);
+      setupSupporting += 1;
+    }
   }
 
   // Apply horizon weights to asset-class evidence.
@@ -856,11 +984,16 @@ export function scoreCandidate(
     dataCompleteness: c.dataCompleteness,
     providerCoverage: c.providerCoverage,
     missingCriticalCount: dq.issues.length,
-    conflictingCount: conflicts.length,
+    // Phase 291 — the setup-context block RESTATES evidence this layer already
+    // scored (structure, HTF/MTF alignment, zone engagement, the liquidity
+    // event). It is published in full, but it never enters the coherence ratio:
+    // two evidence classes never double-count (the Phase 277 rule), so one setup
+    // cannot move the confidence by being described twice.
+    conflictingCount: Math.max(0, conflicts.length - setupConflicting),
     hasVerifiedLivePrice: c.hasLiveData && c.currentPrice > 0,
     hasOhlcv: c.dataPoints > 0,
     hasExecutionEvidence: c.hasExecutionQuality === true || c.spreadBps !== undefined,
-    supportingCount: reasons.length,
+    supportingCount: Math.max(0, reasons.length - setupSupporting),
   });
 
   if (dq.issues.length > 0) {
@@ -968,7 +1101,7 @@ export function generateRecommendation(
   const excludedInstruments: { instrument: string; reason: string }[] = [];
 
   // Score and filter each candidate
-  const scored: { input: CandidateInput; result: ReturnType<typeof scoreCandidate> }[] = [];
+  const scored: { input: CandidateInput; result: ReturnType<typeof scoreCandidate>; setupEvidence: string[] }[] = [];
 
   for (const c of candidates) {
     const eligibility = isEligible(c, horizon);
@@ -978,7 +1111,10 @@ export function generateRecommendation(
     }
 
     const result = scoreCandidate(c, horizon);
-    scored.push({ input: c, result });
+    // The evidence lines are produced once and reused for the ranked output, so
+    // the facts shown are exactly the facts that were scored.
+    const setupEvidence = c.setupContextState ? setupContextEvidenceFacts(c) : [];
+    scored.push({ input: c, result, setupEvidence });
   }
 
   // Sort by analyticalScore (descending), then confidence, then instrument name (deterministic tiebreak)
@@ -990,7 +1126,7 @@ export function generateRecommendation(
 
   // Take top N and format
   for (let i = 0; i < Math.min(scored.length, maxResults); i++) {
-    const { input: c, result } = scored[i];
+    const { input: c, result, setupEvidence } = scored[i];
     const suitability = classifySuitability(result.analyticalScore, result.confidence, c.dataCompleteness);
 
     const recommendedType = isTradingMode
@@ -1014,6 +1150,14 @@ export function generateRecommendation(
       invalidationConditions: [
         ...result.conflicts.filter(c => c.includes("unavailable")),
         "structural reversal on HTF",
+        // Phase 291 — the zone that carries the location evidence dies on a close
+        // through its far side; quoted with its own provenance, never selected
+        // for how the reward/risk ratio looks.
+        ...(c.zoneContext && c.zoneContext.kind !== "none"
+          ? [
+              `location evidence is void on a close through ${c.zoneContext.direction === "bullish" ? c.zoneContext.lower : c.zoneContext.upper} (${c.zoneContext.kind} zone on ${c.zoneContext.timeframe})`,
+            ]
+          : []),
         // Phase 290-A — the level the structure actually sits on, when one was
         // established by a confirmed read (never an invented threshold).
         ...(c.structuralInvalidation
@@ -1023,6 +1167,8 @@ export function generateRecommendation(
           : []),
       ],
       ...(result.structuralFacts.length > 0 ? { structuralFacts: result.structuralFacts } : {}),
+      ...(c.setupContextState ? { setupContextState: c.setupContextState } : {}),
+      ...(setupEvidence.length > 0 ? { setupFacts: setupEvidence } : {}),
       dataCompleteness: c.dataCompleteness,
       freshness: c.freshness,
       executionQuality: c.spreadBps,

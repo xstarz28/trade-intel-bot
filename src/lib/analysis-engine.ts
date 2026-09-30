@@ -43,6 +43,12 @@ import {
   detectContradictions,
   isUsableSmc,
 } from "@/lib/market-context";
+import {
+  anchorFromCandles,
+  invalidationEvidence,
+  readSetupContext,
+  readZoneLocation,
+} from "@/lib/data/trade-location";
 import { GATE_IDS } from "@/lib/decision-trace";
 import { assessDataQuality } from "@/lib/data-quality";
 import { buildAnalystThesis } from "@/lib/analyst-thesis";
@@ -2654,6 +2660,237 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     };
   })();
 
+  // ── Phase 291 — TRADE LOCATION, ZONE CONTEXT & SETUP VALIDITY ──
+  // Assembled FROM the objects that already exist (this timeframe's own FVGs,
+  // validated order blocks, liquidity pools/sweeps and the Phase 290-A
+  // structural pair). It adds no score and no probability: it answers where
+  // price is and whether that location is a setup, and it keeps every timeframe
+  // attached to its OWN zones.
+  const tradeLocation = ((): AnalysisResult["tradeLocation"] => {
+    const tech = input.technicalData;
+    // A malformed context is not a location: the engine's own usability gate
+    // decides, and anything unusable degrades to "no location" rather than to a
+    // guessed one.
+    const smc = isUsableSmc(tech?.smc) ? tech!.smc! : undefined;
+    const candles = input.marketData?.candles;
+    // A location describes an OBSERVATION: without the candles there is nothing
+    // to describe, and nothing is invented to fill the gap.
+    if (!smc || !candles || candles.length === 0) return undefined;
+    const thesis: "bullish" | "bearish" | "none" =
+      bias === "Bullish" ? "bullish" : bias === "Bearish" ? "bearish" : "none";
+    const directionArg = thesis !== "none" ? { direction: thesis } : {};
+
+    const anchor = anchorFromCandles(candles);
+    const location = readZoneLocation(input.timeframe, smc, anchor, thesis);
+    const context = readSetupContext({
+      timeframe: input.timeframe,
+      pair: smc.structural,
+      location,
+      ...directionArg,
+    });
+
+    type TfRow = NonNullable<AnalysisResult["tradeLocation"]>["timeframes"][number];
+    const rows: TfRow[] = [];
+    const seen = new Set<string>();
+    const addRow = (
+      timeframe: string,
+      role: string,
+      tfSmc: typeof smc,
+      tfAnchor: { price: number; lastIndex: number; atTime: number } | undefined,
+    ) => {
+      if (seen.has(timeframe)) return;
+      seen.add(timeframe);
+      // A timeframe whose context is malformed (or absent) is disclosed as
+      // unavailable — its structure is reported only when it is actually there.
+      if (!isUsableSmc(tfSmc)) {
+        rows.push({
+          timeframe,
+          role,
+          externalStructure: tfSmc?.structural?.external.direction ?? "none",
+          internalStructure: tfSmc?.structural?.internal.direction ?? "none",
+          pairState: tfSmc?.structural?.state ?? "BOTH_UNKNOWN",
+          location: "unknown",
+          setupState: "NO_SETUP_EVIDENCE",
+          facts: [
+            `${timeframe} (${role}): no usable structural context on this timeframe — no location computed`,
+          ],
+        });
+        return;
+      }
+      if (!tfAnchor) {
+        // No recorded observation for this timeframe: report its structure only,
+        // never a location computed from another timeframe's price.
+        rows.push({
+          timeframe,
+          role,
+          externalStructure: tfSmc.structural?.external.direction ?? "none",
+          internalStructure: tfSmc.structural?.internal.direction ?? "none",
+          pairState: tfSmc.structural?.state ?? "BOTH_UNKNOWN",
+          location: "unknown",
+          setupState: "NO_SETUP_EVIDENCE",
+          facts: [
+            `${timeframe} (${role}): no recorded observation for this timeframe — structure only, location not computed`,
+          ],
+        });
+        return;
+      }
+      const tfLoc = readZoneLocation(timeframe, tfSmc, tfAnchor, thesis);
+      const tfCtx = readSetupContext({
+        timeframe,
+        pair: tfSmc.structural,
+        location: tfLoc,
+        ...directionArg,
+      });
+      rows.push({
+        timeframe,
+        role,
+        externalStructure: tfCtx.evidence.externalStructure,
+        internalStructure: tfCtx.evidence.internalStructure,
+        pairState: tfCtx.evidence.pairState,
+        location: tfLoc.location,
+        setupState: tfCtx.state,
+        facts: [...tfLoc.facts, ...tfCtx.facts],
+        ...(tfLoc.fvg
+          ? {
+              fvg: {
+                direction: tfLoc.fvg.direction,
+                lower: tfLoc.fvg.lower,
+                upper: tfLoc.fvg.upper,
+                status: String(tfLoc.fvg.status),
+                position: tfLoc.fvg.position,
+              },
+            }
+          : {}),
+        ...(tfLoc.ob
+          ? {
+              ob: {
+                direction: tfLoc.ob.direction,
+                lower: tfLoc.ob.lower,
+                upper: tfLoc.ob.upper,
+                status: String(tfLoc.ob.status),
+                position: tfLoc.ob.position,
+              },
+            }
+          : {}),
+        ...(tfLoc.liquidity.sweep
+          ? {
+              sweep: {
+                side: tfLoc.liquidity.sweep.side,
+                level: tfLoc.liquidity.sweep.level,
+                candleIndex: tfLoc.liquidity.sweep.candleIndex,
+              },
+            }
+          : {}),
+      });
+    };
+
+    for (const t of mtf?.timeframes ?? []) {
+      if (t.smc) addRow(t.timeframe, t.role, t.smc, t.anchor);
+    }
+    // The setup timeframe is always represented, chain or not.
+    addRow(input.timeframe, "setup", smc, anchor);
+
+    // The setup timeframe's own facts lead; every other timeframe then speaks for
+    // itself in the same deterministic style.
+    const setupFacts = [...location.facts, ...context.facts];
+    const digest = [
+      ...setupFacts,
+      ...rows
+        .filter((r) => r.timeframe !== input.timeframe)
+        .map(
+          (r) =>
+            `${r.timeframe} (${r.role}): structure ${r.externalStructure}, location ${r.location}, setup ${r.setupState}`,
+        ),
+    ];
+
+    // ── Risk handoff ──
+    // The levels the analysis actually established (confirmed 290-A swing,
+    // validated zone boundary, swept/broken liquidity) are exposed to the
+    // existing risk layer with their provenance. Nothing about the plan changes
+    // and the stop is never re-picked: the level that gets the nicest reward/
+    // risk ratio is not a reason to publish it.
+    const plan = decision.tradePlan;
+    if (plan) {
+      const refs = invalidationEvidence(input.timeframe, smc, smc.structural);
+      if (refs.length > 0) plan.invalidationReferences = refs;
+      // The zone that CARRIES the thesis — the same object the setup context
+      // read. An opposing zone is never published as "the invalidation" of a
+      // thesis it argues against: when there is no supporting zone, there is no
+      // zone invalidation, and the list above still carries every real level.
+      const supportingZone = context.evidence.supportingZone;
+      if (supportingZone && thesis !== "none") {
+        plan.zoneInvalidation = {
+          kind: supportingZone.kind,
+          level: thesis === "bullish" ? supportingZone.lower : supportingZone.upper,
+          timeframe: input.timeframe,
+          basis: `${supportingZone.direction} ${supportingZone.kind} ${supportingZone.lower}–${supportingZone.upper} (${String(supportingZone.status)}, ${supportingZone.position === "outside" ? "not engaged" : supportingZone.position}, created candle ${supportingZone.createdAtIndex})`,
+        };
+      }
+    }
+
+    return {
+      setupTimeframe: input.timeframe,
+      price: location.price,
+      atTime: location.atTime,
+      location: location.location,
+      flags: location.flags,
+      context: {
+        state: context.state,
+        direction: context.direction,
+        reasons: context.reasons,
+      },
+      zones: location.zones.map((z) => ({
+        kind: z.kind,
+        direction: z.direction,
+        upper: z.upper,
+        lower: z.lower,
+        status: String(z.status),
+        position: z.position,
+        createdAtIndex: z.createdAtIndex,
+        createdAt: z.createdAt,
+        knownAtIndex: z.knownAtIndex,
+        ageCandles: z.ageCandles,
+      })),
+      liquidity: {
+        ...(location.liquidity.sweep
+          ? {
+              sweep: {
+                side: location.liquidity.sweep.side,
+                level: location.liquidity.sweep.level,
+                candleIndex: location.liquidity.sweep.candleIndex,
+                candleTime: location.liquidity.sweep.candleTime,
+                ageCandles: location.liquidity.sweep.ageCandles,
+                poolFormedAtIndex: location.liquidity.sweep.poolFormedAtIndex,
+              },
+            }
+          : {}),
+        ...(location.liquidity.nearestBuySide
+          ? {
+              nearestBuySide: {
+                level: location.liquidity.nearestBuySide.level,
+                distance: location.liquidity.nearestBuySide.distance,
+              },
+            }
+          : {}),
+        ...(location.liquidity.nearestSellSide
+          ? {
+              nearestSellSide: {
+                level: location.liquidity.nearestSellSide.level,
+                distance: location.liquidity.nearestSellSide.distance,
+              },
+            }
+          : {}),
+        atLiquidityLevel: location.liquidity.atLiquidityLevel,
+        afterSweep: location.liquidity.afterSweep,
+        brokenLevels: location.liquidity.brokenLevels,
+      },
+      timeframes: rows,
+      invalidationEvidence: invalidationEvidence(input.timeframe, smc, smc.structural),
+      setupFacts,
+      digest,
+    };
+  })();
+
   // Phase 3A — compact MTF transparency summary for the UI.
   const mtfSummary: MtfSummary | undefined = mtf
     ? {
@@ -2779,6 +3016,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     htfAlignment: alignment,
     mtfSummary,
     ...(structuralEvidence ? { structuralEvidence } : {}),
+    ...(tradeLocation ? { tradeLocation } : {}),
     marketRegime,
     setupClassification,
     keyContradictions,

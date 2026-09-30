@@ -828,6 +828,57 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 ))}
               </div>
             )}
+            {/* Phase 291 — trade location & setup context. Every line is the
+                engine's own deterministic fact, printed verbatim: where price is,
+                which zone carries the evidence and which levels invalidate it. */}
+            {result.tradeLocation && (
+              <div className="mt-2 pt-2 border-t border-border/30 space-y-1">
+                <div className="text-[10px] font-mono text-muted-foreground">
+                  setup context:{" "}
+                  <span className="text-foreground">{result.tradeLocation.context.state}</span>
+                  {result.tradeLocation.context.direction !== "none"
+                    ? ` (${result.tradeLocation.context.direction})`
+                    : ""}
+                  {" — location: "}
+                  <span className="text-foreground">{result.tradeLocation.location}</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[10px] font-mono text-muted-foreground">
+                  {result.tradeLocation.timeframes.map((tf) => (
+                    <div key={tf.timeframe}>
+                      {tf.timeframe} ({tf.role}):{" "}
+                      <span className="text-foreground">{tf.externalStructure}</span>
+                      {" · "}
+                      <span className="text-foreground">{tf.location}</span>
+                      {" · "}
+                      <span className="text-foreground">{tf.setupState}</span>
+                    </div>
+                  ))}
+                </div>
+                {result.tradeLocation.setupFacts.map((line, i) => (
+                  <div key={i} className="text-[10px] font-mono text-muted-foreground/80">
+                    {line}
+                  </div>
+                ))}
+                {result.tradeLocation.invalidationEvidence.length > 0 && (
+                  <div className="pt-1 space-y-0.5">
+                    {result.tradeLocation.invalidationEvidence.map((ev, i) => (
+                      <div key={i} className="text-[10px] font-mono text-muted-foreground/80">
+                        invalidation — {ev.source} {ev.level} ({ev.timeframe}): {ev.note}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {result.tradeLocation.context.reasons.length > 0 && (
+                  <div className="pt-1 space-y-0.5">
+                    {result.tradeLocation.context.reasons.map((line, i) => (
+                      <div key={i} className="text-[10px] font-mono text-muted-foreground/80">
+                        {line}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             {result.mtfSummary.unavailable.length > 0 && (
               <p className="mt-2 pt-2 border-t border-border/30 text-[10px] font-mono text-amber-400/90">
                 ⚠ unavailable (not synthesized): {result.mtfSummary.unavailable.map((u) => u.timeframe).join(", ")}

@@ -27,6 +27,7 @@ import type {
   FairValueGap,
   InternalExternalStructure,
   LiquidityPool,
+  LiquiditySourceSwing,
   LiquiditySweepEvent,
   OhlcvCandle,
   OrderBlock,
@@ -37,7 +38,7 @@ import type {
   VwapContext,
 } from "./market-types";
 import { atr as computeAtr } from "./technical";
-import { readStructurePair } from "./structure";
+import { readStructurePair, type StructuralRead } from "./structure";
 
 // ── Documented constants ──────────────────────────────────────────
 
@@ -54,6 +55,13 @@ const VALUE_AREA_COVERAGE = 0.7; // 70% of volume inside Value Area
 export interface SwingPoint {
   price: number;
   index: number;
+  /**
+   * Phase 291 — the candle at which this pivot became KNOWABLE: a fractal needs
+   * `lookback` candles on each side, so a pivot at index `i` only exists from
+   * `i + lookback`. Consumers that derive levels from swings (liquidity pools)
+   * must not treat the level as resting before this candle.
+   */
+  confirmedAtIndex: number;
 }
 
 /** Fractal swing detection that keeps the candle index of each swing. */
@@ -63,18 +71,20 @@ export function detectSwingPoints(
 ): { highs: SwingPoint[]; lows: SwingPoint[] } {
   const highs: SwingPoint[] = [];
   const lows: SwingPoint[] = [];
+  const L = Math.max(1, Math.floor(lookback));
 
-  for (let i = lookback; i < candles.length - lookback; i++) {
+  for (let i = L; i < candles.length - L; i++) {
     const c = candles[i];
     let isHigh = true;
     let isLow = true;
-    for (let j = i - lookback; j <= i + lookback; j++) {
+    for (let j = i - L; j <= i + L; j++) {
       if (j === i) continue;
       if (candles[j].high > c.high) isHigh = false;
       if (candles[j].low < c.low) isLow = false;
     }
-    if (isHigh) highs.push({ price: c.high, index: i });
-    if (isLow) lows.push({ price: c.low, index: i });
+    const confirmedAtIndex = i + L;
+    if (isHigh) highs.push({ price: c.high, index: i, confirmedAtIndex });
+    if (isLow) lows.push({ price: c.low, index: i, confirmedAtIndex });
   }
 
   return { highs, lows };
@@ -149,26 +159,90 @@ export function buildLiquidityPools(
   const clusteredHighIdx = new Set(eqHighGroups.flat().map((p) => p.index));
   const clusteredLowIdx = new Set(eqLowGroups.flat().map((p) => p.index));
 
-  const candidates: Array<Omit<LiquidityPool, "swept" | "broken" | "sweptAtIndex" | "sweptAtTime"> & { formedIndex: number }> = [];
+  /**
+   * A pool is knowable only once EVERY swing that formed it has been confirmed:
+   * the last participant's confirmation candle. Before that candle the level is
+   * not resting liquidity, so a wick through it is not a sweep of this pool.
+   * `candles.length - 1` is the natural clamp for the live edge.
+   */
+  const knowledgeOf = (points: SwingPoint[]): { index: number; swings: LiquiditySourceSwing[] } => {
+    const last = candles.length - 1;
+    const confirmed = points.map((p) =>
+      Math.min(last, Math.max(0, Math.floor(p.confirmedAtIndex ?? p.index))),
+    );
+    return {
+      index: Math.max(...confirmed),
+      swings: points.map((p, k) => ({
+        price: p.price,
+        index: p.index,
+        confirmedAtIndex: confirmed[k],
+        timestamp: candles[p.index]?.timestamp ?? candles[last].timestamp,
+      })),
+    };
+  };
+
+  const candidates: Array<{
+    level: number;
+    side: LiquidityPool["side"];
+    source: LiquidityPool["source"];
+    touches: number;
+    formedAtIndex: number;
+    formedAtTime: number;
+    sourceSwings: LiquiditySourceSwing[];
+  }> = [];
 
   for (const group of eqHighGroups) {
     const level = Math.max(...group.map((p) => p.price));
-    const formedIndex = Math.max(...group.map((p) => p.index));
-    candidates.push({ level, side: "buy_side", source: "equal_highs", touches: group.length, formedIndex });
+    const knowledge = knowledgeOf(group);
+    candidates.push({
+      level,
+      side: "buy_side",
+      source: "equal_highs",
+      touches: group.length,
+      formedAtIndex: knowledge.index,
+      formedAtTime: candles[knowledge.index].timestamp,
+      sourceSwings: knowledge.swings,
+    });
   }
   for (const group of eqLowGroups) {
     const level = Math.min(...group.map((p) => p.price));
-    const formedIndex = Math.max(...group.map((p) => p.index));
-    candidates.push({ level, side: "sell_side", source: "equal_lows", touches: group.length, formedIndex });
+    const knowledge = knowledgeOf(group);
+    candidates.push({
+      level,
+      side: "sell_side",
+      source: "equal_lows",
+      touches: group.length,
+      formedAtIndex: knowledge.index,
+      formedAtTime: candles[knowledge.index].timestamp,
+      sourceSwings: knowledge.swings,
+    });
   }
   // Recent unclustered majors — keep the last 3 of each side to limit noise
   const soloHighs = majorHighs.filter((p) => !clusteredHighIdx.has(p.index)).slice(-3);
   const soloLows = majorLows.filter((p) => !clusteredLowIdx.has(p.index)).slice(-3);
   for (const p of soloHighs) {
-    candidates.push({ level: p.price, side: "buy_side", source: "swing_high", touches: 1, formedIndex: p.index });
+    const knowledge = knowledgeOf([p]);
+    candidates.push({
+      level: p.price,
+      side: "buy_side",
+      source: "swing_high",
+      touches: 1,
+      formedAtIndex: knowledge.index,
+      formedAtTime: candles[knowledge.index].timestamp,
+      sourceSwings: knowledge.swings,
+    });
   }
   for (const p of soloLows) {
-    candidates.push({ level: p.price, side: "sell_side", source: "swing_low", touches: 1, formedIndex: p.index });
+    const knowledge = knowledgeOf([p]);
+    candidates.push({
+      level: p.price,
+      side: "sell_side",
+      source: "swing_low",
+      touches: 1,
+      formedAtIndex: knowledge.index,
+      formedAtTime: candles[knowledge.index].timestamp,
+      sourceSwings: knowledge.swings,
+    });
   }
 
   for (const cand of candidates) {
@@ -179,8 +253,14 @@ export function buildLiquidityPools(
       touches: cand.touches,
       swept: false,
       broken: false,
+      formedAtIndex: cand.formedAtIndex,
+      formedAtTime: cand.formedAtTime,
+      sourceSwings: cand.sourceSwings,
     };
-    for (let j = cand.formedIndex + 1; j < candles.length; j++) {
+    // Sweep/breakout classification is unchanged — it just starts at the first
+    // candle AFTER the level became knowable, never between the pivot candle and
+    // its confirmation.
+    for (let j = cand.formedAtIndex + 1; j < candles.length; j++) {
       const c = candles[j];
       if (cand.side === "buy_side") {
         if (c.close > cand.level) {
@@ -198,8 +278,10 @@ export function buildLiquidityPools(
             candleIndex: j,
             candleTime: c.timestamp,
             timeframe: timeframeRef || "primary",
+            poolFormedAtIndex: cand.formedAtIndex,
+            poolFormedAtTime: cand.formedAtTime,
           });
-          break; // pool consumed by the sweep
+          break; // pool consumed by the sweep — one sweep per level, never a duplicate
         }
       } else {
         if (c.close < cand.level) {
@@ -217,6 +299,8 @@ export function buildLiquidityPools(
             candleIndex: j,
             candleTime: c.timestamp,
             timeframe: timeframeRef || "primary",
+            poolFormedAtIndex: cand.formedAtIndex,
+            poolFormedAtTime: cand.formedAtTime,
           });
           break;
         }
@@ -257,18 +341,28 @@ export function detectFvgs(
         createdAt: c2.timestamp,
         status: "fresh",
       };
-      // Status from subsequent candles
+      // Status from subsequent candles ONLY (candles ≤ i created the gap and can
+      // never change it). Mitigation and invalidation are tracked independently
+      // so a zone that was retested and later invalidated reports as invalidated
+      // rather than staying frozen at the first touch.
       for (let j = i + 1; j < candles.length; j++) {
         const cj = candles[j];
-        if (cj.close < gap.lower) {
-          gap.status = "invalidated"; // closed through the far side
-          break;
+        if (gap.invalidatedAtIndex === undefined && cj.close < gap.lower) {
+          gap.invalidatedAtIndex = j;
+          gap.invalidatedAt = cj.timestamp;
         }
-        if (cj.low <= gap.upper) {
-          gap.status = "mitigated"; // price traded back into the zone
-          break;
+        if (gap.mitigatedAtIndex === undefined && cj.low <= gap.upper) {
+          gap.mitigatedAtIndex = j;
+          gap.mitigatedAt = cj.timestamp;
         }
+        if (gap.invalidatedAtIndex !== undefined && gap.mitigatedAtIndex !== undefined) break;
       }
+      gap.status =
+        gap.invalidatedAtIndex !== undefined
+          ? "invalidated"
+          : gap.mitigatedAtIndex !== undefined
+            ? "mitigated"
+            : "fresh";
       fvgs.push(gap);
     }
 
@@ -285,15 +379,22 @@ export function detectFvgs(
       };
       for (let j = i + 1; j < candles.length; j++) {
         const cj = candles[j];
-        if (cj.close > gap.upper) {
-          gap.status = "invalidated";
-          break;
+        if (gap.invalidatedAtIndex === undefined && cj.close > gap.upper) {
+          gap.invalidatedAtIndex = j;
+          gap.invalidatedAt = cj.timestamp;
         }
-        if (cj.high >= gap.lower) {
-          gap.status = "mitigated";
-          break;
+        if (gap.mitigatedAtIndex === undefined && cj.high >= gap.lower) {
+          gap.mitigatedAtIndex = j;
+          gap.mitigatedAt = cj.timestamp;
         }
+        if (gap.invalidatedAtIndex !== undefined && gap.mitigatedAtIndex !== undefined) break;
       }
+      gap.status =
+        gap.invalidatedAtIndex !== undefined
+          ? "invalidated"
+          : gap.mitigatedAtIndex !== undefined
+            ? "mitigated"
+            : "fresh";
       fvgs.push(gap);
     }
   }
@@ -341,16 +442,26 @@ export function detectDisplacement(
 // ── Order Blocks (validated only) ─────────────────────────────────
 
 /**
- * A candle qualifies as an Order Block ONLY when ALL hold:
- * 1. It is an opposing-color candle before a directional move.
+ * A candle qualifies as an Order Block ONLY when ALL hold, in this ORDER:
+ * 1. It is an opposing-color candle before a directional move (the candidate).
  * 2. Within the next 3 candles there is displacement in the move direction.
- * 3. Within OB_BOS_WINDOW candles price closes beyond the extreme of the
- *    preceding 5 candles (structural break / BOS).
+ * 3. A CONFIRMED structural event (Phase 290-A BOS/CHoCH) occurs at or after that
+ *    displacement candle and within `OB_BOS_WINDOW` candles of the candidate — a
+ *    real close beyond a confirmed swing level in the block's direction. The
+ *    event candle is when the block becomes VALIDATED; nothing about the block
+ *    exists before it, and its status is derived from candles after it.
+ *
+ * When the caller supplies no structural read for these candles, step 3 falls
+ * back to the legacy pre-window close-through. The fallback exists only so
+ * direct callers keep working; every production path passes the structural read
+ * so the authoritative event engine decides, and `evidence.validationMethod`
+ * always states which rule was used.
  */
 export function detectOrderBlocks(
   candles: OhlcvCandle[],
   timeframe: string,
   atrValue?: number,
+  structural?: StructuralRead,
 ): OrderBlock[] {
   const blocks: OrderBlock[] = [];
   let refRange = atrValue;
@@ -373,7 +484,7 @@ export function detectOrderBlocks(
     const direction: "bullish" | "bearish" = bullishCandidate ? "bullish" : "bearish";
 
     // 2. Displacement within next 3 candles in the move direction
-    let displacementAfter = false;
+    let displacementIndex = -1;
     let displacementRangeAtr = 0;
     for (let j = i + 1; j <= Math.min(i + 3, candles.length - 1); j++) {
       const c = candles[j];
@@ -385,52 +496,94 @@ export function detectOrderBlocks(
         ((direction === "bullish" && c.close > c.open) ||
           (direction === "bearish" && c.close < c.open));
       if (isDisp) {
-        displacementAfter = true;
+        displacementIndex = j;
         displacementRangeAtr = Math.round((range / refRange) * 100) / 100;
         break;
       }
     }
-    if (!displacementAfter) continue;
+    if (displacementIndex < 0) continue;
 
-    // 3. Structural break within OB_BOS_WINDOW
+    // 3. Confirmed structural evidence at or after the displacement candle.
+    const windowEnd = Math.min(i + OB_BOS_WINDOW, candles.length - 1);
     const preWindow = candles.slice(Math.max(0, i - 5), i);
     if (preWindow.length === 0) continue;
-    const structuralBreakAfter =
+    const preWindowExtreme =
       direction === "bullish"
-        ? candles
-            .slice(i + 1, Math.min(i + OB_BOS_WINDOW + 1, candles.length))
-            .some((c) => c.close > Math.max(...preWindow.map((p) => p.high)))
-        : candles
-            .slice(i + 1, Math.min(i + OB_BOS_WINDOW + 1, candles.length))
-            .some((c) => c.close < Math.min(...preWindow.map((p) => p.low)));
-    if (!structuralBreakAfter) continue;
+        ? Math.max(...preWindow.map((p) => p.high))
+        : Math.min(...preWindow.map((p) => p.low));
 
-    // Validated Order Block — determine status from later price action
-    const zoneUpper = ob.high;
-    const zoneLower = ob.low;
-    let status: OrderBlock["status"] = "fresh";
-    for (let j = i + 4; j < candles.length; j++) {
-      const cj = candles[j];
-      if (direction === "bullish") {
-        if (cj.close < zoneLower) {
-          status = "invalidated";
-          break;
-        }
-        if (cj.low <= zoneUpper) {
-          status = "mitigated";
-          break;
-        }
-      } else {
-        if (cj.close > zoneUpper) {
-          status = "invalidated";
-          break;
-        }
-        if (cj.high >= zoneLower) {
-          status = "mitigated";
+    let structuralEvent: OrderBlock["structuralEvent"];
+    let validatedAtIndex = -1;
+    let validationMethod: OrderBlock["evidence"]["validationMethod"];
+
+    if (structural) {
+      // Authoritative evidence: a CONFIRMED BOS/CHoCH in the block's direction,
+      // at or after the displacement, closing beyond a confirmed swing level.
+      const event = structural.events.find(
+        (e) =>
+          e.candleIndex >= displacementIndex &&
+          e.candleIndex <= windowEnd &&
+          e.direction === direction &&
+          e.brokenSwingKind === (direction === "bullish" ? "high" : "low"),
+      );
+      if (!event) continue;
+      structuralEvent = {
+        kind: event.kind,
+        direction: event.direction,
+        brokenLevel: event.brokenLevel,
+        brokenSwingIndex: event.brokenSwingIndex,
+        candleIndex: event.candleIndex,
+        candleTime: event.candleTime,
+      };
+      validatedAtIndex = event.candleIndex;
+      validationMethod = "confirmed_structural_event";
+    } else {
+      // Legacy fallback — still causal: the FIRST candle in the window whose
+      // close cleared the pre-window extreme is when the evidence existed.
+      for (let j = displacementIndex; j <= windowEnd; j += 1) {
+        const c = candles[j];
+        const cleared = direction === "bullish" ? c.close > preWindowExtreme : c.close < preWindowExtreme;
+        if (cleared) {
+          validatedAtIndex = j;
           break;
         }
       }
+      if (validatedAtIndex < 0) continue;
+      validationMethod = "legacy_pre_window_close";
     }
+
+    // Validated Order Block — status from candles AFTER the validation candle
+    // only (the block was not knowable before it).
+    const zoneUpper = ob.high;
+    const zoneLower = ob.low;
+    const validated: Pick<
+      OrderBlock,
+      "mitigatedAtIndex" | "mitigatedAt" | "invalidatedAtIndex" | "invalidatedAt"
+    > = {};
+    for (let j = validatedAtIndex + 1; j < candles.length; j++) {
+      const cj = candles[j];
+      if (
+        validated.invalidatedAtIndex === undefined &&
+        (direction === "bullish" ? cj.close < zoneLower : cj.close > zoneUpper)
+      ) {
+        validated.invalidatedAtIndex = j;
+        validated.invalidatedAt = cj.timestamp;
+      }
+      if (
+        validated.mitigatedAtIndex === undefined &&
+        (direction === "bullish" ? cj.low <= zoneUpper : cj.high >= zoneLower)
+      ) {
+        validated.mitigatedAtIndex = j;
+        validated.mitigatedAt = cj.timestamp;
+      }
+      if (validated.invalidatedAtIndex !== undefined && validated.mitigatedAtIndex !== undefined) break;
+    }
+    const status: OrderBlock["status"] =
+      validated.invalidatedAtIndex !== undefined
+        ? "invalidated"
+        : validated.mitigatedAtIndex !== undefined
+          ? "mitigated"
+          : "fresh";
 
     blocks.push({
       direction,
@@ -439,11 +592,20 @@ export function detectOrderBlocks(
       timeframe,
       createdAt: ob.timestamp,
       status,
+      sourceIndex: i,
+      displacementIndex,
+      displacementTime: candles[displacementIndex].timestamp,
+      ...(structuralEvent ? { structuralEvent } : {}),
+      validatedAtIndex,
+      validatedAt: candles[validatedAtIndex].timestamp,
+      ...validated,
       evidence: {
         precedingOpposingCandle: true,
         displacementAfter: true,
         structuralBreakAfter: true,
         displacementRangeAtr,
+        validationMethod,
+        preWindowExtreme,
       },
     });
 
@@ -725,7 +887,10 @@ export function computeSmcContext(
     structural,
     fvgs: detectFvgs(candles, timeframe, atrValue),
     displacement: detectDisplacement(candles, atrValue),
-    orderBlocks: detectOrderBlocks(candles, timeframe, atrValue),
+    // Phase 291 — the block validator consumes the AUTHORITATIVE structural
+    // events of these same candles (a confirmed close beyond a confirmed swing
+    // level), never an arbitrary close beyond a five-candle window.
+    orderBlocks: detectOrderBlocks(candles, timeframe, atrValue, structural.external),
     vwap: computeVwap(candles),
     volumeProfile: computeVolumeProfile(candles),
   };

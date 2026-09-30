@@ -207,6 +207,35 @@ export interface MarketSnapshot {
   };
   /** External/internal relationship when both reads exist. */
   structuralPairState?: string;
+  /**
+   * Phase 291 — trade-location verdict carried verbatim from the analysis
+   * engine. The radar QUOTES it; it never re-derives a location from another
+   * timeframe's price and never turns the verdict into a new score.
+   */
+  setupContext?: {
+    state: string;
+    direction: "bullish" | "bearish" | "none";
+    location: string;
+    reasons: string[];
+  };
+  /** Phase 291 — the nearest qualifying zone this verdict was read from. */
+  zoneContext?: {
+    kind: "FVG" | "OB" | "FVG+OB" | "none";
+    direction: "bullish" | "bearish" | "none";
+    lower?: number;
+    upper?: number;
+    position: string;
+    status?: string;
+    timeframe: string;
+  };
+  /** Phase 291 — the current liquidity event, if any. */
+  liquidityEvent?: {
+    side: string;
+    level: number;
+    candleTime: number;
+    ageCandles: number;
+    timeframe: string;
+  };
   /** Provider that supplied this data. */
   provider: string;
   /**

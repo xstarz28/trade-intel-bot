@@ -354,7 +354,7 @@ describe("contradiction engine (Phase 5)", () => {
       regime: "RANGING",
       technicalData: techBase({
         ...bullishSmcSafe(),
-        recentSweep: { side: "buy_side" as const, level: 106, source: "equal_highs" as const, candleIndex: 205, candleTime: Date.now(), timeframe: "H4" },
+        recentSweep: { side: "buy_side" as const, level: 106, source: "equal_highs" as const, candleIndex: 205, candleTime: Date.now(), timeframe: "H4", poolFormedAtIndex: 200, poolFormedAtTime: Date.now() },
       }),
     });
     const sev = items.map((i) => i.severity);
