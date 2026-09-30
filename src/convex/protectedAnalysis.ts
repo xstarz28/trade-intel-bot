@@ -328,6 +328,14 @@ export const CLIENT_UNTRUSTED_EVIDENCE_FIELDS = [
   // rewrites position sizing (measured: quantity 0 -> 20 on the same plan).
   // The server acquires this from OKX instead.
   "instrumentSpec",
+  // ── Phase 295 ──
+  // The DECISION CLOCK is not client intent and not market evidence: it declares
+  // the instant an analysis claims to be made at, and the freshness gates read
+  // it. A client-supplied clock could declare a stale snapshot "current" and
+  // walk straight through Gate 0, which is exactly the protection the live path
+  // must keep. Recorded replays set it inside the evaluator (server-side), never
+  // through this boundary.
+  "decisionClock",
 ] as const;
 
 /**

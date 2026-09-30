@@ -157,6 +157,26 @@ describe("§2 canonical clock resolution", () => {
   });
 });
 
+describe("§5 the client boundary can never move the clock", () => {
+  it("classifies decisionClock as untrusted and strips it from client input", async () => {
+    const { CLIENT_TRUSTED_INPUT_FIELDS, CLIENT_UNTRUSTED_EVIDENCE_FIELDS, stripClientEvidence } = await import(
+      "@/convex/protectedAnalysis"
+    );
+    expect(CLIENT_UNTRUSTED_EVIDENCE_FIELDS).toContain("decisionClock");
+    expect(CLIENT_TRUSTED_INPUT_FIELDS).not.toContain("decisionClock");
+
+    const clean = stripClientEvidence({
+      instrument: "EUR/USD",
+      instrumentType: "forex",
+      timeframe: "H4",
+      // A forged instantaneous clock must never reach the engine.
+      decisionClock: { mode: "HISTORICAL_AS_OF", asOfMs: NOW + 10 * 365 * DAY },
+    });
+    expect(clean.instrument).toBe("EUR/USD");
+    expect(clean.decisionClock).toBeUndefined();
+  });
+});
+
 describe("§3/§5 Gate 0 behaviour per mode", () => {
   it("LIVE accepts a fresh snapshot", () => {
     const result = runAnalysis(inputWith({ priceTimestamp: NOW }));
