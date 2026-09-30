@@ -1,0 +1,258 @@
+# Phase 300 — publish the VERIFIED frontend to the development, browser-facing site.
+#
+# WHY THIS EXISTS
+# ---------------
+# Phase 299 closed the build side: the artifact proves which revision it is, the
+# development deploy is pinned to one branch, and a checker refuses a legacy,
+# off-theme or wrong-commit bundle. It also found the hole this workflow fills:
+# `convex dev` refreshes FUNCTIONS. It does not upload static files, no workflow
+# in this repository hosted the site, and the browser-facing URL kept serving
+# whatever the external host had built from `main` — a retired scaffold with a
+# green primary, "secured by freebuff.com" and an email-OTP sign-in.
+#
+# So publication is its own deliberate, manual act with its own evidence:
+#
+#   1. the pinned branch is required (main is refused by name, and so is every
+#      other ref) — the same one-line pin the development deploy uses;
+#   2. `npm run verify:frontend` must pass on the freshly built `dist/`;
+#   3. the SAME bytes are uploaded to the existing development host project —
+#      they are not rebuilt by the host, which would make "verified" and
+#      "published" two different things;
+#   4. the browser-facing host is pointed at that deployment;
+#   5. `npm run verify:published` FETCHES the browser-facing URL and refuses
+#      acceptance unless it serves the expected branch, the exact commit, the
+#      byte-identical provenance file and the same content-hashed bundles, with
+#      no retired platform/OTP surface and the current Google + guest sign-in.
+#
+# A green run of this workflow is still not proof by itself; step 5 is, and it
+# runs against the public URL rather than the pipeline. If the credential that
+# the host needs is absent, the run FAILS with a named reason (`HOST_CREDENTIAL_
+# ABSENT`) rather than skipping the upload and reporting success.
+#
+# WHAT IT DOES NOT DO
+# -------------------
+# · It never runs on push or pull_request — a publication is a decision.
+# · It never deploys Convex functions, never touches production, and never
+#   changes an analysis, provider, scoring or threshold behaviour.
+# · It never prints, echoes or writes a credential value; the host token is read
+#   from the environment (never from `argv`, so it cannot appear in a process
+#   listing) and only its PRESENCE is reported.
+# · It never creates a host project: `VERCEL_ORG_ID`/`VERCEL_PROJECT_ID` must
+#   name the EXISTING development project, and the run fails closed without them.
+#
+# Required GitHub Environment: `development`
+#   secret    VERCEL_TOKEN          a Vercel token scoped to the existing project
+#   variable  VERCEL_ORG_ID         the team/user id that owns that project
+#   variable  VERCEL_PROJECT_ID     the EXISTING development web project
+#   variable  FRONTEND_HOST_URL     the browser-facing https origin to publish to
+#   variable  VITE_CONVEX_URL       https on *.convex.cloud (baked into the build)
+#
+# Verify-only mode exists so the browser-facing URL can be judged WITHOUT
+# publishing anything: it needs no credential and no build, and it still refuses
+# acceptance on a mismatch.
+
+name: Publish development frontend
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch to publish — must be the pinned development source branch (main is refused)"
+        required: true
+        default: "arena/01a0d195-trade-intel-bot"
+        type: string
+      confirm:
+        description: "Type PUBLISH_FRONTEND to confirm this replaces the browser-facing development frontend"
+        required: true
+        type: string
+      mode:
+        description: "publish = build, upload and verify; verify-only = fetch the live URL and judge it"
+        required: true
+        default: publish
+        type: choice
+        options:
+          - publish
+          - verify-only
+      host_url:
+        description: "Optional: override the browser-facing https origin to publish to and verify"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-development-frontend
+  cancel-in-progress: false
+
+env:
+  # The one place the intended frontend source branch is declared. The guard
+  # refuses every other ref by name, and the published check refuses a site whose
+  # own provenance says anything else.
+  XSTARZ_REQUIRED_SOURCE_BRANCH: arena/01a0d195-trade-intel-bot
+
+jobs:
+  guard:
+    name: Refuse unless this is the pinned branch with a browser-facing target
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: development
+    env:
+      SOURCE_REF: ${{ inputs.ref || github.ref }}
+      XSTARZ_FRONTEND_MODE: ${{ inputs.mode }}
+      XSTARZ_FRONTEND_HOST_URL: ${{ inputs.host_url || vars.FRONTEND_HOST_URL }}
+      # Presence only. The guard reports whether these are set, never a value.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Require the confirmation phrase
+        run: |
+          if [ "${{ inputs.confirm }}" != "PUBLISH_FRONTEND" ]; then
+            echo "::error::Refused: type PUBLISH_FRONTEND to confirm a frontend publication."
+            exit 1
+          fi
+
+      - name: Check out the selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Fail closed when the ref, the target or the credential is wrong
+        # Exit 1 here is the whole point: a publication that cannot happen must
+        # not look like a publication that did.
+        run: |
+          npm run frontend:publish:guard -- \
+            --json \
+            --require-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" \
+            --host-url "$XSTARZ_FRONTEND_HOST_URL" \
+            --mode "$XSTARZ_FRONTEND_MODE"
+
+  publish:
+    name: Publish the verified artifact, then verify the published URL
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: development
+    env:
+      SOURCE_REF: ${{ inputs.ref || github.ref }}
+      XSTARZ_FRONTEND_MODE: ${{ inputs.mode }}
+      XSTARZ_FRONTEND_HOST_URL: ${{ inputs.host_url || vars.FRONTEND_HOST_URL }}
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Check out the selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Detect the host credential (presence only — never a value)
+        id: credential
+        run: |
+          if [ -n "$VERCEL_TOKEN" ] && [ -n "$VERCEL_ORG_ID" ] && [ -n "$VERCEL_PROJECT_ID" ]; then
+            echo "state=present" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Host credential::present — the publication can proceed"
+          else
+            echo "state=absent" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Host credential absent::VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID are not all configured in the 'development' environment, so the verified artifact CANNOT be published and the browser-facing site is unchanged."
+          fi
+
+      - name: Build the pinned branch
+        if: inputs.mode == 'publish'
+        run: npm run build
+
+      - name: Verify the built artifact before any byte leaves this runner
+        if: inputs.mode == 'publish'
+        id: artifact
+        run: |
+          npm run verify:frontend -- \
+            --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" \
+            --expect-commit "$(git rev-parse HEAD)" \
+            --require-clean
+          # The two things the published check will compare against, read from
+          # the artifact that just passed — not recomputed later, and not
+          # recomputed by the host.
+          sha="$(sha256sum dist/build-info.json | cut -d' ' -f1)"
+          entry="$(grep -oE '(src|href)="[^"]+\.(js|css)"' dist/index.html | sed -E 's/.*="//; s/"$//; s|^/||' | paste -sd, -)"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "entry=$entry" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Verified artifact::commit=$(git rev-parse HEAD) provenance-sha256=${sha}"
+
+      - name: Publish the verified bytes to the existing development project
+        if: inputs.mode == 'publish' && steps.credential.outputs.state == 'present'
+        id: deploy
+        # `vercel deploy <dir>` uploads a static directory as-is; it does not
+        # rebuild it, which is what keeps "verified" and "published" the same
+        # bytes. The token is passed through the environment, never through
+        # argv, so it cannot appear in a process listing or a log line.
+        run: |
+          set -o pipefail
+          url="$(npx --yes vercel@latest deploy dist --yes 2>&1 | tail -n 1 | tr -d '\r')"
+          case "$url" in
+            https://*) ;;
+            *) echo "::error title=Publication produced no deployment URL::The host CLI did not print a deployment URL. Last line: ${url}"; exit 1 ;;
+          esac
+          echo "deployment=$url" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Published::${url} (provenance sha256 ${{ steps.artifact.outputs.sha256 }})"
+
+      - name: Point the browser-facing host at this exact deployment
+        if: inputs.mode == 'publish' && steps.credential.outputs.state == 'present'
+        # Without this the upload exists but nobody's browser sees it. A failing
+        # alias fails the run: "uploaded somewhere" is not a publication.
+        run: |
+          host="$(printf '%s' "$XSTARZ_FRONTEND_HOST_URL" | sed -E 's|^https?://||; s|/.*$||')"
+          if [ -z "$host" ]; then
+            echo "::error title=No browser-facing host configured::FRONTEND_HOST_URL is empty, so there is nothing to point at this deployment."
+            exit 1
+          fi
+          npx --yes vercel@latest alias set "${{ steps.deploy.outputs.deployment }}" "$host"
+          echo "::notice title=Browser-facing host updated::https://${host} now serves ${{ steps.deploy.outputs.deployment }}"
+
+      - name: Verify the PUBLISHED frontend — the acceptance evidence
+        # This is the step that decides. Everything above is preparation; a
+        # browser gets what this fetch returns.
+        run: |
+          npm run verify:published -- \
+            --url "$XSTARZ_FRONTEND_HOST_URL" \
+            --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" \
+            --expect-commit "$(git rev-parse HEAD)" \
+            ${{ inputs.mode == 'publish' && format('--expect-build-info-sha256 {0} --expect-asset-names {1}', steps.artifact.outputs.sha256, steps.artifact.outputs.entry) || '' }}
+
+      - name: Fail closed when the verified artifact could not be published
+        if: inputs.mode == 'publish' && steps.credential.outputs.state == 'absent'
+        run: |
+          echo "::error title=Frontend NOT published (HOST_CREDENTIAL_ABSENT)::The pinned branch was built and verified, but no host credential is configured in the 'development' environment, so nothing was uploaded. The browser-facing site still serves whatever the host last built — most likely the retired 'main' scaffold. The published check was not run, because running it would only report on the OLD site."
+          exit 1
+
+      - name: What this run did and did not prove
+        if: success()
+        run: |
+          echo "published commit: $(git rev-parse HEAD)"
+          echo "source ref: ${SOURCE_REF}"
+          echo "browser-facing host: ${XSTARZ_FRONTEND_HOST_URL}"
+          if [ "${{ inputs.mode }}" = "publish" ]; then
+            echo "deployment url: ${{ steps.deploy.outputs.deployment }}"
+          fi
+          echo "The evidence above is the FETCH of the published URL, not this workflow's status."
+          echo "This is a development frontend publication. It is not production verification and not release admission."

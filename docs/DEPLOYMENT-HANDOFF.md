@@ -2,6 +2,10 @@
 
 **Deployment baseline: `5b3f0c4` on `arena/01a08e67-trade-intel-bot`.**
 Phase 200 prepared everything that can be prepared without credentials. This
+> **Phase 300 — the frontend publication path.** The browser-facing site is
+> published by `.github/workflows/publish-development-frontend.yml` and proven
+> by fetching the public URL. See `docs/FRONTEND-PUBLICATION.md`.
+
 document is the ordered procedure for an operator who has them.
 
 Nothing here has been executed. Every step that needs credentials or network
