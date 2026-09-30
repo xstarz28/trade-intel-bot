@@ -1,0 +1,41 @@
+{
+  "dataset": {
+    "datasetId": "cftc-cot-EURO-FX-weekly",
+    "schemaVersion": "phase296.1",
+    "evidenceDomain": "cot_positioning",
+    "metric": "commitments_of_traders_legacy_futures_only",
+    "sourceClassification": "RECORDED_HISTORICAL",
+    "provider": "cftc",
+    "providerNativeId": "EURO FX - CHICAGO MERCANTILE EXCHANGE",
+    "instrument": "EUR/USD",
+    "observationCadence": "weekly (Tuesday report date)",
+    "asOfSemantics": "publication instant — CFTC publishes each Tuesday report on the following Friday at 15:30 America/New_York; the level is never knowable at the observation date itself",
+    "requestedPeriod": "14 most recent reports for the mapped contract",
+    "returnedPeriod": "2026-06-23 → 2026-09-22 (weekly report dates)",
+    "requestUrl": "https://publicreporting.cftc.gov/resource/6dca-aqww.json?$select=market_and_exchange_names,report_date_as_yyyy_mm_dd,open_interest_all,noncomm_positions_long_all,noncomm_positions_short_all,comm_positions_long_all,comm_positions_short_all&$where=contract_market_name='EURO FX'&$order=report_date_as_yyyy_mm_dd DESC&$limit=14",
+    "source": "CFTC Commitments of Traders (publicreporting.cftc.gov)",
+    "capturedAt": "2026-09-30T03:53:27Z",
+    "captureTransport": "page-fetch transport (direct egress from the sandbox is blocked)",
+    "valuesUnmodified": true,
+    "rowOrder": "provider response order (newest first)",
+    "availabilityRule": "availableFrom = the Friday 15:30 America/New_York instant strictly after the Tuesday report date (documented CFTC release schedule); no report is used before it was published",
+    "valuesSubstituted": false,
+    "mappingNote": "Maps to EUR/USD through the repository's verified COT mapping (contractSide=base)."
+  },
+  "rows": [
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-09-22T00:00:00.000", "open_interest_all": "821689", "noncomm_positions_long_all": "220708", "noncomm_positions_short_all": "273042", "comm_positions_long_all": "489579", "comm_positions_short_all": "460612" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-09-15T00:00:00.000", "open_interest_all": "920035", "noncomm_positions_long_all": "209000", "noncomm_positions_short_all": "235993", "comm_positions_long_all": "485267", "comm_positions_short_all": "485057" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-09-08T00:00:00.000", "open_interest_all": "942464", "noncomm_positions_long_all": "198509", "noncomm_positions_short_all": "241125", "comm_positions_long_all": "593162", "comm_positions_short_all": "586432" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-09-01T00:00:00.000", "open_interest_all": "865412", "noncomm_positions_long_all": "203477", "noncomm_positions_short_all": "228402", "comm_positions_long_all": "533920", "comm_positions_short_all": "542647" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-08-25T00:00:00.000", "open_interest_all": "818524", "noncomm_positions_long_all": "198919", "noncomm_positions_short_all": "235271", "comm_positions_long_all": "493442", "comm_positions_short_all": "493002" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-08-18T00:00:00.000", "open_interest_all": "804940", "noncomm_positions_long_all": "196241", "noncomm_positions_short_all": "255329", "comm_positions_long_all": "486327", "comm_positions_short_all": "462272" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-08-11T00:00:00.000", "open_interest_all": "801884", "noncomm_positions_long_all": "197186", "noncomm_positions_short_all": "257196", "comm_positions_long_all": "480008", "comm_positions_short_all": "450805" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-08-04T00:00:00.000", "open_interest_all": "799909", "noncomm_positions_long_all": "201847", "noncomm_positions_short_all": "259938", "comm_positions_long_all": "475669", "comm_positions_short_all": "444207" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-07-28T00:00:00.000", "open_interest_all": "819806", "noncomm_positions_long_all": "204975", "noncomm_positions_short_all": "277422", "comm_positions_long_all": "500674", "comm_positions_short_all": "448960" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-07-21T00:00:00.000", "open_interest_all": "800061", "noncomm_positions_long_all": "220465", "noncomm_positions_short_all": "261803", "comm_positions_long_all": "468045", "comm_positions_short_all": "450070" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-07-14T00:00:00.000", "open_interest_all": "799495", "noncomm_positions_long_all": "230307", "noncomm_positions_short_all": "242912", "comm_positions_long_all": "457594", "comm_positions_short_all": "470984" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-07-07T00:00:00.000", "open_interest_all": "794833", "noncomm_positions_long_all": "223430", "noncomm_positions_short_all": "239657", "comm_positions_long_all": "460669", "comm_positions_short_all": "470693" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-06-30T00:00:00.000", "open_interest_all": "790076", "noncomm_positions_long_all": "235658", "noncomm_positions_short_all": "234559", "comm_positions_long_all": "448473", "comm_positions_short_all": "473152" },
+    { "market_and_exchange_names": "EURO FX - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-06-23T00:00:00.000", "open_interest_all": "785477", "noncomm_positions_long_all": "247332", "noncomm_positions_short_all": "217174", "comm_positions_long_all": "431837", "comm_positions_short_all": "489020" }
+  ]
+}

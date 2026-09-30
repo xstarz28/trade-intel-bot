@@ -1,0 +1,42 @@
+{
+  "dataset": {
+    "datasetId": "cftc-cot-BITCOIN-weekly",
+    "schemaVersion": "phase296.1",
+    "evidenceDomain": "cot_positioning",
+    "metric": "commitments_of_traders_legacy_futures_only",
+    "sourceClassification": "RECORDED_HISTORICAL",
+    "provider": "cftc",
+    "providerNativeId": "BITCOIN - CHICAGO MERCANTILE EXCHANGE",
+    "instrument": "BTC/USDT",
+    "observationCadence": "weekly (Tuesday report date)",
+    "asOfSemantics": "publication instant — CFTC publishes each Tuesday report on the following Friday at 15:30 America/New_York",
+    "requestedPeriod": "14 most recent reports for the contract",
+    "returnedPeriod": "2026-06-23 → 2026-09-22 (weekly report dates)",
+    "requestUrl": "https://publicreporting.cftc.gov/resource/6dca-aqww.json?$select=market_and_exchange_names,report_date_as_yyyy_mm_dd,open_interest_all,noncomm_positions_long_all,noncomm_positions_short_all,comm_positions_long_all,comm_positions_short_all&$where=contract_market_name='BITCOIN'&$order=report_date_as_yyyy_mm_dd DESC&$limit=14",
+    "source": "CFTC Commitments of Traders (publicreporting.cftc.gov)",
+    "capturedAt": "2026-09-30T03:53:27Z",
+    "captureTransport": "page-fetch transport (direct egress from the sandbox is blocked)",
+    "valuesUnmodified": true,
+    "rowOrder": "provider response order (newest first)",
+    "availabilityRule": "availableFrom = the Friday 15:30 America/New_York instant strictly after the Tuesday report date (documented CFTC release schedule)",
+    "valuesSubstituted": false,
+    "mappingNote": "The repository's COT mapping has NO verified mapping for crypto spot by design. This dataset is therefore captured but NEVER mapped onto BTC/USDT — it stays informational and is recorded as an unapplied dataset.",
+    "applicableInReplay": false
+  },
+  "rows": [
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-09-22T00:00:00.000", "open_interest_all": "22315", "noncomm_positions_long_all": "17658", "noncomm_positions_short_all": "14902", "comm_positions_long_all": "66", "comm_positions_short_all": "3175" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-09-15T00:00:00.000", "open_interest_all": "20773", "noncomm_positions_long_all": "16744", "noncomm_positions_short_all": "14276", "comm_positions_long_all": "107", "comm_positions_short_all": "2764" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-09-08T00:00:00.000", "open_interest_all": "21083", "noncomm_positions_long_all": "17600", "noncomm_positions_short_all": "16076", "comm_positions_long_all": "64", "comm_positions_short_all": "2125" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-09-01T00:00:00.000", "open_interest_all": "19697", "noncomm_positions_long_all": "16530", "noncomm_positions_short_all": "15827", "comm_positions_long_all": "423", "comm_positions_short_all": "1500" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-08-25T00:00:00.000", "open_interest_all": "22216", "noncomm_positions_long_all": "16582", "noncomm_positions_short_all": "14633", "comm_positions_long_all": "380", "comm_positions_short_all": "2170" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-08-18T00:00:00.000", "open_interest_all": "21760", "noncomm_positions_long_all": "17370", "noncomm_positions_short_all": "14634", "comm_positions_long_all": "209", "comm_positions_short_all": "2657" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-08-11T00:00:00.000", "open_interest_all": "21185", "noncomm_positions_long_all": "18184", "noncomm_positions_short_all": "14319", "comm_positions_long_all": "38", "comm_positions_short_all": "3593" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-08-04T00:00:00.000", "open_interest_all": "20143", "noncomm_positions_long_all": "17559", "noncomm_positions_short_all": "13807", "comm_positions_long_all": "38", "comm_positions_short_all": "3370" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-07-28T00:00:00.000", "open_interest_all": "20019", "noncomm_positions_long_all": "15572", "noncomm_positions_short_all": "11668", "comm_positions_long_all": "38", "comm_positions_short_all": "3600" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-07-21T00:00:00.000", "open_interest_all": "20527", "noncomm_positions_long_all": "16402", "noncomm_positions_short_all": "13348", "comm_positions_long_all": "97", "comm_positions_short_all": "3083" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-07-14T00:00:00.000", "open_interest_all": "19385", "noncomm_positions_long_all": "15899", "noncomm_positions_short_all": "12808", "comm_positions_long_all": "71", "comm_positions_short_all": "2976" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-07-07T00:00:00.000", "open_interest_all": "18832", "noncomm_positions_long_all": "16073", "noncomm_positions_short_all": "12573", "comm_positions_long_all": "38", "comm_positions_short_all": "3255" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-06-30T00:00:00.000", "open_interest_all": "18336", "noncomm_positions_long_all": "16495", "noncomm_positions_short_all": "12725", "comm_positions_long_all": "72", "comm_positions_short_all": "3608" },
+    { "market_and_exchange_names": "BITCOIN - CHICAGO MERCANTILE EXCHANGE", "report_date_as_yyyy_mm_dd": "2026-06-23T00:00:00.000", "open_interest_all": "20554", "noncomm_positions_long_all": "16348", "noncomm_positions_short_all": "12824", "comm_positions_long_all": "70", "comm_positions_short_all": "3323" }
+  ]
+}

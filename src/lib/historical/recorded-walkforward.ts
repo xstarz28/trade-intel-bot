@@ -21,8 +21,14 @@ import type { AnalysisInput } from "@/types/analysis";
 import type { OutcomeCandle, OutcomeValidationReport, WalkForwardAlignment } from "../outcome-validation";
 import { runWalkForward } from "../outcome-validation";
 import { historicalAsOfClock, type DecisionClockMode } from "../decision-clock";
+import { stableSerialize } from "../decision-trace";
 import type { HistoricalCandle, ParsedDataset } from "./dataset";
 import type { BenchmarkSelection } from "./benchmark";
+import type {
+  EvidenceCoverage,
+  EvidenceProvenanceRecord,
+  HistoricalEvidenceAttachment,
+} from "./evidence";
 
 export type RecordedClockMode = "HISTORICAL_AS_OF" | "WALL_CLOCK_ALIGNED";
 
@@ -44,6 +50,21 @@ export interface RecordedRunOptions {
   maxFutureCandles?: number;
   minPrefixCandles?: number;
   evaluationIndices?: readonly number[];
+  /**
+   * Phase 296 — recorded NON-PRICE evidence, resolved per evaluation.
+   *
+   * The hook receives the HISTORICAL as-of instant (the prefix's last closed
+   * provider candle) and the index. It never receives the wall clock, so
+   * evidence cannot be selected from "now", and it is called before the engine
+   * runs, so the decision only ever sees evidence knowable at or before its own
+   * instant. Returned fields are merged onto the input AFTER the price builder,
+   * and only the documented evidence fields are merged.
+   */
+  evidence?: (context: {
+    index: number;
+    asOfMs: number | undefined;
+    decisionClockMode: RecordedClockMode;
+  }) => HistoricalEvidenceAttachment | undefined;
 }
 
 export const HISTORICAL_AS_OF_NOTE =
@@ -83,6 +104,19 @@ export interface RecordedDatasetRun {
   closedCandles: number;
   /** Forming bars excluded from decisions (recorded, never used). */
   formingCandlesExcluded: number;
+  /**
+   * Phase 296 — provenance of the non-price evidence actually attached, plus
+   * how complete the evidence was at each decision instant. Absent when no
+   * evidence hook was supplied (the Phase 294/295 behaviour is unchanged).
+   */
+  evidence?: {
+    provenance: EvidenceProvenanceRecord[];
+    coverageByAsOf: EvidenceCoverage[];
+    completeness: { FULL: number; PARTIAL: number; NONE: number };
+    /** Decisions that received at least one engine-visible evidence field. */
+    decisionsWithEvidence: number;
+    decisionsEvaluated: number;
+  };
   report: OutcomeValidationReport;
 }
 
@@ -119,12 +153,46 @@ export function runRecordedDataset(
 
   // The historical as-of instant is the prefix's last CLOSED candle — taken from
   // the prefix itself, so it can never drift onto the capture instant or today.
+  const evidenceProvenance = new Map<string, EvidenceProvenanceRecord>();
+  const coverageByAsOf = new Map<string, EvidenceCoverage>();
+  const completenessCounts = { FULL: 0, PARTIAL: 0, NONE: 0 };
+  let decisionsWithEvidence = 0;
+  let decisionsEvaluated = 0;
+
   const clockedBuildInput = (prefix: readonly OutcomeCandle[], index: number): AnalysisInput => {
     const input = buildInput(prefix, index);
-    if (clockMode !== "HISTORICAL_AS_OF") return input;
     const asOf = prefix[prefix.length - 1]?.timestamp;
-    if (asOf === undefined) return input;
-    return { ...input, decisionClock: historicalAsOfClock(asOf) };
+    let merged: AnalysisInput = input;
+    if (options.evidence) {
+      decisionsEvaluated += 1;
+      const attachment = options.evidence({ index, asOfMs: asOf, decisionClockMode: clockMode });
+      if (attachment) {
+        for (const record of attachment.provenance) {
+          const key = `${record.datasetId}|${record.availableFrom}|${stableSerialize(record.valuesUsed)}`;
+          evidenceProvenance.set(key, record);
+        }
+        coverageByAsOf.set(attachment.coverage.asOf, attachment.coverage);
+        completenessCounts[attachment.coverage.completeness] += 1;
+        // Only the documented evidence fields are merged; price/identity fields
+        // belong to the recorded price builder and are never overwritten here.
+        const evidenceFields: Partial<AnalysisInput> = {};
+        if (attachment.derivativesData !== undefined) {
+          evidenceFields.derivativesData = attachment.derivativesData;
+        }
+        if (attachment.cotData !== undefined) evidenceFields.cotData = attachment.cotData;
+        if (attachment.macroData !== undefined) evidenceFields.macroData = attachment.macroData;
+        if (
+          attachment.derivativesData !== undefined ||
+          attachment.cotData !== undefined ||
+          attachment.macroData !== undefined
+        ) {
+          decisionsWithEvidence += 1;
+        }
+        merged = { ...input, ...evidenceFields };
+      }
+    }
+    if (clockMode !== "HISTORICAL_AS_OF" || asOf === undefined) return merged;
+    return { ...merged, decisionClock: historicalAsOfClock(asOf) };
   };
 
   const report = runWalkForward(candles, clockedBuildInput, {
@@ -151,6 +219,19 @@ export function runRecordedDataset(
     capturedAt: parsed.provenance.capturedAt,
     closedCandles: candles.length,
     formingCandlesExcluded: excluded,
+    ...(options.evidence
+      ? {
+          evidence: {
+            provenance: [...evidenceProvenance.values()].sort((a, b) =>
+              `${a.domain}|${a.datasetId}|${a.availableFrom}`.localeCompare(`${b.domain}|${b.datasetId}|${b.availableFrom}`),
+            ),
+            coverageByAsOf: [...coverageByAsOf.values()].sort((a, b) => a.asOf.localeCompare(b.asOf)),
+            completeness: completenessCounts,
+            decisionsWithEvidence,
+            decisionsEvaluated,
+          },
+        }
+      : {}),
     report,
   };
 }

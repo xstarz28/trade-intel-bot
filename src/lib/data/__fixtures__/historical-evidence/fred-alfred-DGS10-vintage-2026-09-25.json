@@ -1,0 +1,37 @@
+{
+  "dataset": {
+    "datasetId": "fred-alfred-DGS10-vintage-2026-09-25",
+    "schemaVersion": "phase296.1",
+    "evidenceDomain": "macro_rates_point_in_time",
+    "metric": "treasury_constant_maturity_10y_as_known_at_vintage",
+    "sourceClassification": "RECORDED_HISTORICAL",
+    "provider": "alfred",
+    "providerNativeId": "DGS10",
+    "units": "percent",
+    "observationCadence": "daily vintage snapshot",
+    "asOfSemantics": "vintage date — this is the provider's own as-known-at record: the column header carries the vintage and the rows are the values as published on that date. Used to verify that the macro dataset's values are the values that were available at the time (no retrospective revision leaked backward).",
+    "requestedPeriod": "vintage 2026-09-25, observations 2026-09-10 →",
+    "returnedPeriod": "2026-09-10 → 2026-09-24",
+    "requestUrl": "https://alfred.stlouisfed.org/graph/alfredgraph.csv?id=DGS10&vintage_date=2026-09-25&cosd=2026-09-10",
+    "capturedAt": "2026-09-30T03:53:27Z",
+    "captureTransport": "page-fetch transport (direct egress from the sandbox is blocked)",
+    "valuesUnmodified": true,
+    "rowOrder": "provider response order (oldest first)",
+    "availabilityRule": "availableFrom = the vintage date (the provider's own as-known-at boundary)",
+    "valuesSubstituted": false,
+    "evidenceKind": "point_in_time_verification_snapshot"
+  },
+  "rows": [
+    ["2026-09-10", 4.95],
+    ["2026-09-11", 4.96],
+    ["2026-09-14", 4.97],
+    ["2026-09-15", 5.00],
+    ["2026-09-16", 5.01],
+    ["2026-09-17", 4.94],
+    ["2026-09-18", 5.01],
+    ["2026-09-21", 4.96],
+    ["2026-09-22", 4.96],
+    ["2026-09-23", 5.11],
+    ["2026-09-24", 5.18]
+  ]
+}
