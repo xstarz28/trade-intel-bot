@@ -209,10 +209,44 @@ describe("Phase 291 — setup evidence routing in the recommendation", () => {
     );
     expect(withSetup.reasons.some((r) => r.startsWith("Setup context confirmed"))).toBe(true);
     expect(withoutSetup.reasons.some((r) => r.startsWith("Setup context"))).toBe(false);
-    // The analytical score is a function of the existing weighted layers only:
-    // no weight was added for the new evidence, and the coherence confidence
-    // moves only through the existing supporting/conflicting inputs.
+    // REPORT-ONLY, proven both ways: the analytical score is a function of the
+    // EXISTING weighted layers only (no weight was added for the new evidence),
+    // and the coherence confidence is unchanged because the block is excluded
+    // from its supporting/conflicting inputs.
+    expect(withoutSetup.analyticalScore).toBe(withSetup.analyticalScore);
     expect(withoutSetup.confidence).toBe(withSetup.confidence);
+  });
+
+  it("report-only evidence changes no ranking, and a conflicting verdict never removes the candidate", () => {
+    const base = candidateFromRecordedCandles();
+    const conflicting: CandidateInput = {
+      ...base,
+      setupContextState: "INVALID_SETUP_CONTEXT",
+      setupDirection: "bullish",
+      setupFacts: [
+        "Setup context invalid for the bullish thesis: the structure of these candles points the other way",
+      ],
+      setupEvidenceByTimeframe: undefined,
+    };
+    const withVerdict = generateRecommendation([base], "SWING");
+    const withConflict = generateRecommendation([conflicting], "SWING");
+
+    // The candidate is still ranked — the verdict is evidence, not a filter.
+    expect(withConflict.rankedInstruments).toHaveLength(1);
+    expect(withConflict.excludedInstruments).toHaveLength(0);
+    // Same instrument, same rank, same analytical score: the verdict only
+    // changed which evidence list carries the line.
+    expect(withConflict.rankedInstruments[0].instrument).toBe(withVerdict.rankedInstruments[0].instrument);
+    expect(withConflict.rankedInstruments[0].rank).toBe(1);
+    expect(withConflict.rankedInstruments[0].analyticalScore).toBe(
+      withVerdict.rankedInstruments[0].analyticalScore,
+    );
+    // And the line is reported on the conflicting side, verbatim.
+    expect(
+      withConflict.rankedInstruments[0].conflictingEvidence.some((l) =>
+        l.startsWith("Setup context invalid"),
+      ),
+    ).toBe(true);
   });
 
   it("carries the verdict and verbatim facts into the ranked output", () => {
