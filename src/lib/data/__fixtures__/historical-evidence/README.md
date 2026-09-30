@@ -30,7 +30,14 @@ documented publication instant, for weekly COT). Nothing here is `CURRENT_ONLY`.
 | `fred-alfred-DGS10-vintage-2026-09-25` | alfred | macro rates (point-in-time) | daily vintage | 11 | 2026-09-10 → 2026-09-24 |
 
 Acquisition instant for all eight: `2026-09-30T03:53:27Z` (299 rows total).
-Registry fingerprint: `fnv1a32:64974137`.
+Registry fingerprint: `fnv1a32:5b58092d`.
+
+> Phase 297 note: this value was stale. The registry fingerprint is computed from each
+> dataset's content-addressed fingerprint, and the `note` fields added to the two OKX 1H
+> datasets after the first hash was taken changed it. The fingerprint below is the value the
+> committed parser computes from these exact files; `evidence-consumption.phase297.test.ts`
+> re-derives it from the directory so the documented value cannot drift again.
+> Nothing about the rows, the values, the classification or the as-of rules changed.
 
 The BTC COT contract is captured but marked `applicableInReplay: false`: the repository's COT
 mapping is explicitly limited to verified CFTC futures contracts (EUR/USD, GBP/USD, AUD/USD,

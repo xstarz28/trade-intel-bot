@@ -100,6 +100,23 @@ export interface DecisionTrace {
     vetoApplied: boolean;
     vetoReason?: string;
     finalBias: "Bullish" | "Bearish" | "Neutral";
+    /**
+     * Phase 297 — DIAGNOSTICS ONLY. The core factor scores the engine had
+     * already computed before weighting them (`scoreTrend`, `scoreFundamentals`,
+     * `scoreSentiment`, `scoreIndicators`), exposed so an audit can say exactly
+     * which factor moved the bias and which one stayed at zero.
+     *
+     * This is not a new score: it is the same number `calculateBias` consumed,
+     * reported instead of discarded. It is deliberately NOT part of
+     * `computeDecisionFingerprint`, which reads only rawBias/finalBias/veto.
+     */
+    factorScores?: {
+      trend: number;
+      fundamental: number;
+      sentiment: number;
+      indicator: number;
+      coreWeights: { trend: number; fundamental: number; sentiment: number };
+    };
   };
   evidenceLayers: EvidenceLayerSummary[];
   gates: GateTraceEntry[];

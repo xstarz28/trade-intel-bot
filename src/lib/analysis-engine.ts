@@ -3259,6 +3259,16 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
       vetoApplied: decision.vetoApplied,
       ...(structuralVetoReason ? { vetoReason: structuralVetoReason } : {}),
       finalBias: bias,
+      // Phase 297 — report the already-computed factor scores (diagnostics only;
+      // nothing below reads them, and they are excluded from the decision
+      // fingerprint). Values are the exact numbers calculateBias() consumed.
+      factorScores: {
+        trend: trendScore,
+        fundamental: fundamentalScore,
+        sentiment: sentimentScore,
+        indicator: indicatorScore,
+        coreWeights: { ...CORE_WEIGHTS },
+      },
     },
     evidenceLayers,
     gates: decision.gateTrace,
