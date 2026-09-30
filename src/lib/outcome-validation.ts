@@ -41,6 +41,7 @@
  * O(maxEvaluations × prefix) — never O(N²) over the whole history.
  */
 import { runAnalysis } from "./analysis-engine";
+import { GATE_IDS } from "@/lib/decision-trace";
 import type { AnalysisResult, AnalysisInput } from "@/types/analysis";
 import { classifyOutcome, computePnl } from "./journal";
 import type { TradeOutcome } from "@/types/journal";
@@ -105,6 +106,16 @@ export interface WalkForwardDecision {
   obEngaged: boolean;
   structuralEventPresent: boolean;
   noTradeReasons: string[];
+  /**
+   * Phase 295 — gate facts copied from the engine's own DecisionTrace at the
+   * evaluation instant. Descriptive only: they attribute WHY a decision was
+   * declined and never influence the decision itself.
+   */
+  failedGates?: string[];
+  /** Earliest FAIL in the engine's canonical gate order — an observation, not a score. */
+  firstBlockingGate?: string;
+  /** True when a data-validity gate (GATE0/1/2) failed for this evaluation. */
+  dataQualityFailure?: boolean;
 }
 
 export interface OutcomeEvaluation {
@@ -187,6 +198,31 @@ export function decisionFromResult(
     obEngaged: !!(loc?.flags.insideOb || loc?.flags.atObBoundary),
     structuralEventPresent: !!result.structuralEvidence?.timeframes.some((t) => t.event !== undefined),
     noTradeReasons: result.noTradeReasons ?? [],
+    ...gateFactsFromTrace(result),
+  };
+}
+
+/** Phase 295 — read the engine's gate trace; never recompute a gate here. */
+export function gateFactsFromTrace(result: AnalysisResult): {
+  failedGates?: string[];
+  firstBlockingGate?: string;
+  dataQualityFailure?: boolean;
+} {
+  const trace = result.decisionTrace;
+  if (!trace || !Array.isArray(trace.gates)) return {};
+  const failed = new Set(trace.gates.filter((g) => g.status === "FAIL").map((g) => g.gateId));
+  if (failed.size === 0) return { failedGates: [] };
+  const canonical = GATE_IDS.filter((id) => failed.has(id));
+  const unknown = [...failed].filter((id) => !(GATE_IDS as readonly string[]).includes(id)).sort();
+  const failedGates = [...canonical, ...unknown];
+  const firstBlockingGate = failedGates[0];
+  const dataQualityFailure = failedGates.some(
+    (id) => id === "GATE0_DATA_FRESHNESS" || id === "GATE1_LIVE_PRICE" || id === "GATE2_COMPLETENESS",
+  );
+  return {
+    failedGates,
+    ...(firstBlockingGate !== undefined ? { firstBlockingGate } : {}),
+    dataQualityFailure,
   };
 }
 

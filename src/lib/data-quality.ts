@@ -11,6 +11,7 @@
 
 import type { AnalysisInput } from "@/types/analysis";
 import type { TechnicalData, MtfContext } from "@/lib/data/market-types";
+import { resolveDecisionNow } from "@/lib/decision-clock";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -115,9 +116,15 @@ function assessPrimaryData(
       };
     }
 
-    // Validate timestamp
+    // Validate timestamp (Phase 295: against the canonical decision clock, so a
+    // recorded replay is judged as of its own evaluation instant and a snapshot
+    // dated after that instant is still impossible input).
     const ts = md.price?.timestamp;
-    if (ts !== undefined && (!Number.isFinite(ts) || ts <= 0 || ts > Date.now() + 90_000)) {
+    const decisionNowMs = resolveDecisionNow(input.decisionClock);
+    if (
+      ts !== undefined &&
+      (!Number.isFinite(ts) || !Number.isFinite(decisionNowMs) || ts <= 0 || ts > decisionNowMs + 90_000)
+    ) {
       return {
         status: "INVALID",
         reason: "Price timestamp is invalid or implausibly future",

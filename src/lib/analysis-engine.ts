@@ -53,6 +53,7 @@ import {
   type TradeLocation,
 } from "@/lib/data/trade-location";
 import { GATE_IDS } from "@/lib/decision-trace";
+import { resolveDecisionNow } from "@/lib/decision-clock";
 import { assessDataQuality } from "@/lib/data-quality";
 import { buildAnalystThesis } from "@/lib/analyst-thesis";
 import { buildMarketScenario } from "@/lib/market-scenario";
@@ -881,6 +882,13 @@ function decideTrade(
   alignment: HtfAlignment | undefined,
   mtf?: MtfContext,
   structuralVeto?: string,
+  /**
+   * Phase 295 — the ONE instant this decision claims to be made at, resolved
+   * once by `runAnalysis` from the canonical decision clock. Live transport
+   * resolves it to the wall clock (unchanged); a recorded replay resolves it to
+   * its historical evaluation instant.
+   */
+  decisionNowMs: number = Date.now(),
 ): TradeDecision {
   const reasons: string[] = [];
   // Phase 11 P3 — gate trace: failures are captured at push-time while the
@@ -944,12 +952,12 @@ function decideTrade(
   const PRICE_STALE_MS = styleProfile.priceStaleMs;
   if (md) {
     const ts = md.price.timestamp;
-    const isValidTs = Number.isFinite(ts) && ts > 0 && ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
+    const isValidTs = Number.isFinite(ts) && Number.isFinite(decisionNowMs) && ts > 0 && ts <= decisionNowMs + PRICE_FUTURE_SKEW_MS;
     if (!isValidTs) {
       reasons.push(
         `Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.`,
       );
-    } else if (Date.now() - ts > PRICE_STALE_MS) {
+    } else if (decisionNowMs - ts > PRICE_STALE_MS) {
       reasons.push(
         `Price snapshot is older than ${PRICE_STALE_MS / 60000} minutes — treating it as stale rather than live.`,
       );
@@ -1129,7 +1137,7 @@ function decideTrade(
       Array.isArray(input.calendarData?.events) &&
       input.calendarData!.events.length > 0
     ) {
-      const now = Date.now();
+      const now = decisionNowMs;
       const cutoff = now + styleProfile.eventRiskWindowHours! * 3600e3;
       const imminent = input.calendarData.events.some(
         (e) => e.status === "upcoming" && e.importance === 3 && e.datetime > now && e.datetime <= cutoff,
@@ -2300,6 +2308,8 @@ function generateFundamentalSummary(
   input: AnalysisInput,
   fundamentalScore: FactorScore,
   assessment?: FundamentalAssessment,
+  /** Phase 295 — canonical decision instant (one resolution per analysis). */
+  decisionNowMs: number = Date.now(),
 ): string {
   const parts: string[] = [];
   const macro = input.macroData;
@@ -2410,7 +2420,7 @@ function generateFundamentalSummary(
     const upcomingHighImpact = cal.events.filter((e) => e.status === "upcoming" && e.importance === 3);
     if (upcomingHighImpact.length > 0) {
       const eventNames = upcomingHighImpact.slice(0, 3).map((e) => {
-        const hrs = Math.round((e.datetime - Date.now()) / (1000 * 60 * 60));
+        const hrs = Math.round((e.datetime - decisionNowMs) / (1000 * 60 * 60));
         return `${e.event} [${e.currency}] in ${hrs}h`;
       });
       parts.push(`Upcoming high-impact: ${eventNames.join(", ")}.`);
@@ -2505,6 +2515,13 @@ function generateRiskNote(
 export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const { completeness, flags } = assessDataCompleteness(input);
 
+  // ── Phase 295 — CANONICAL DECISION CLOCK ──
+  // Resolved exactly once per analysis and threaded to every freshness check.
+  // Live transport (no clock supplied) keeps the real wall clock; a recorded
+  // replay supplies an as-of instant, and an unusable one fails closed (NaN)
+  // instead of borrowing today's clock.
+  const decisionNowMs = resolveDecisionNow(input.decisionClock);
+
   // ── Phase 278 — advanced modern technical intelligence ──
   // The advanced block is computed from the SAME candles the classical stack
   // read, then enriched with the REAL order-book and derivatives evidence this
@@ -2577,6 +2594,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     alignment,
     mtf,
     structuralVetoReason,
+    decisionNowMs,
   );
 
   // Phase 8 P4 — DECISIVE derivation is STRUCTURED, never string-matched:
@@ -2726,6 +2744,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     input,
     fundamentalScore,
     fundamentalAssessment,
+    decisionNowMs,
   );
 
 
@@ -2769,6 +2788,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
           accountCurrency: input.accountCurrency,
           fxDirect: input.fxRates?.direct,
           fxInverse: input.fxRates?.inverse,
+          // Phase 295 — one canonical clock: a recorded replay measures FX
+          // freshness against its own evaluation instant, live transport keeps
+          // the wall clock exactly as before.
+          now: decisionNowMs,
         });
     if (sizing.available) {
       positionSizing = sizing;
@@ -3317,7 +3340,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     positionSizing,
     dataCompleteness: completeness,
     dataFlags: flags,
-    timestamp: Date.now(),
+    timestamp: decisionNowMs,
     priceSnapshot: input.marketData?.price,
     technicalData: input.technicalData,
     dataSource: input.marketData?.provider,

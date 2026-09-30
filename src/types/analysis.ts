@@ -301,6 +301,15 @@ export interface AnalysisInput {
   instrumentType: InstrumentType;
   timeframe: Timeframe;
   /**
+   * Phase 295 — the ONE instant this analysis claims to be made at.
+   * Absent (or `LIVE_WALL_CLOCK`) = live transport: freshness uses the real wall
+   * clock, exactly as before. A recorded replay supplies `HISTORICAL_AS_OF`
+   * (the historical evaluation instant) or a deterministic test clock; an
+   * unusable deterministic clock fails closed instead of using today's time.
+   * Never a substitute for the provider's own candle/observation timestamps.
+   */
+  decisionClock?: import("@/lib/decision-clock").DecisionClock;
+  /**
    * Provider that established the native identity (discovery). Routing only —
    * not market evidence. A forged value cannot invent prices; acquisition
    * still talks to the named provider with the named id.

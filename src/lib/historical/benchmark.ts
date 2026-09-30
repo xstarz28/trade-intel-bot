@@ -25,6 +25,12 @@ import { formatValidationDiagnostics } from "../outcome-validation";
 import type { ParsedDataset } from "./dataset";
 import { datasetDiagnostics, formatDatasetDiagnostics } from "./dataset";
 import { ACQUISITION_GAPS, type RecordedFixtureEntry } from "./fixtures";
+import {
+  buildGateBottleneckReport,
+  formatGateBottleneckReport,
+  mergeGateBottleneckReports,
+  type GateBottleneckReport,
+} from "./gate-diagnostics";
 
 export const BENCHMARK_SELECTION_RULE =
   "one instrument per asset class with recorded provider history; most recorded candles wins; ties by provider then provider instrument id; all recorded timeframes of the winner included; coverage facts only — evaluation results never consulted";
@@ -201,6 +207,8 @@ export interface CoverageReport {
   byAssetClass: { assetClass: string; evaluations: number; actionable: number; resolved: number }[];
   bySetupState: { state: string; evaluations: number; resolved: number; sampleSufficient: boolean }[];
   calibrationStatus: string;
+  /** Phase 295 — why the recorded evaluations did or did not become actionable. */
+  gates: GateBottleneckReport;
 }
 
 export function buildCoverageReport(
@@ -254,6 +262,7 @@ export function buildCoverageReport(
     calibrationStatus: runs.every((r) => r.report.calibration.status === "INSUFFICIENT_SAMPLE")
       ? "INSUFFICIENT_SAMPLE"
       : "DESCRIPTIVE_ONLY",
+    gates: mergeGateBottleneckReports(runs.map((run) => buildGateBottleneckReport(run.report.evaluations))),
   };
 }
 
@@ -269,6 +278,7 @@ export function formatCoverageReport(coverage: CoverageReport, runs: readonly { 
   lines.push(`Actionable decisions: ${coverage.actionable} · NO_TRADE: ${coverage.noTrade}`);
   lines.push(`Resolved outcomes: ${coverage.resolved} · ambiguous: ${coverage.ambiguous} · insufficient future data: ${coverage.insufficientFutureData}`);
   lines.push(`Calibration: ${coverage.calibrationStatus}`);
+  lines.push(...formatGateBottleneckReport(coverage.gates));
   for (const entry of coverage.byAssetClass) {
     lines.push(`• ${entry.assetClass}: ${entry.evaluations} windows, ${entry.actionable} actionable, ${entry.resolved} resolved`);
   }
@@ -281,9 +291,18 @@ export function formatCoverageReport(coverage: CoverageReport, runs: readonly { 
   }
   for (const run of runs) {
     const p = run.report.provenance;
-    if (p.firstProviderTime !== undefined && p.lastProviderTime !== undefined) {
-      // The decisions were taken on the provider's own bars; the aligned clock
-      // reading is a presentation detail, so the recorded window is printed too.
+    if (run.report.alignment.mode === "PROVIDER_TIMESTAMPS") {
+      // The canonical historical as-of clock: each window is decided at its own
+      // recorded provider instant. Named explicitly so no reader can mistake it
+      // for a live evaluation.
+      if (p.firstDecisionTime !== undefined && p.lastDecisionTime !== undefined) {
+        lines.push(
+          `${run.dataset.provenance.datasetId}: Decision clock — HISTORICAL AS-OF. Provider instants ${new Date(p.firstDecisionTime).toISOString()} → ${new Date(p.lastDecisionTime).toISOString()}; a recorded/historical sample decided at its own instants, never a live feed and never evaluated against today's clock.`,
+        );
+      }
+    } else if (p.firstProviderTime !== undefined && p.lastProviderTime !== undefined) {
+      // Legacy wall-clock alignment: the aligned reading is a presentation detail,
+      // so the recorded window is printed alongside it.
       lines.push(
         `${run.dataset.provenance.datasetId}: recorded decision window (provider instants): ${new Date(p.firstProviderTime).toISOString()} → ${new Date(p.lastProviderTime).toISOString()}`,
       );

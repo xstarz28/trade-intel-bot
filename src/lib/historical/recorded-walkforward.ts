@@ -20,19 +20,57 @@
 import type { AnalysisInput } from "@/types/analysis";
 import type { OutcomeCandle, OutcomeValidationReport, WalkForwardAlignment } from "../outcome-validation";
 import { runWalkForward } from "../outcome-validation";
+import { historicalAsOfClock, type DecisionClockMode } from "../decision-clock";
 import type { HistoricalCandle, ParsedDataset } from "./dataset";
 import type { BenchmarkSelection } from "./benchmark";
 
+export type RecordedClockMode = "HISTORICAL_AS_OF" | "WALL_CLOCK_ALIGNED";
+
 export interface RecordedRunOptions {
-  alignment: WalkForwardAlignment;
+  /**
+   * Decision-clock policy for the run.
+   *  · HISTORICAL_AS_OF (default, Phase 295): each evaluation is decided as of
+   *    the prefix's last CLOSED provider candle. Provider timestamps are used
+   *    verbatim — no bar is moved — and freshness is measured against that
+   *    historical instant.
+   *  · WALL_CLOCK_ALIGNED (Phase 294 legacy): the whole window is re-timed by
+   *    one constant so the decision candle reads "now". Kept for the wall-clock
+   *    alignment path; it does not represent a historical decision instant.
+   */
+  clock?: RecordedClockMode;
+  /** Observation instant for the legacy aligned mode only. */
+  wallClockNowMs?: number;
   maxEvaluations?: number;
   maxFutureCandles?: number;
   minPrefixCandles?: number;
   evaluationIndices?: readonly number[];
 }
 
+export const HISTORICAL_AS_OF_NOTE =
+  "Each evaluation is decided as of the prefix's last CLOSED provider candle (historical as-of decision clock); provider timestamps are used verbatim and no bar is re-timed. RECORDED / HISTORICAL sample — never a live feed, and never evaluated against today's clock.";
+
+export const WALL_CLOCK_ALIGNED_NOTE =
+  "Phase 294 legacy wall-clock alignment: one constant shift re-times the window so the decision candle reads the observation instant. Prefer the historical as-of clock for recorded replays.";
+
+/** Alignment used for the legacy wall-clock mode (the as-of mode uses provider timestamps). */
+function legacyAlignment(nowMs: number): WalkForwardAlignment {
+  return { mode: "WALL_CLOCK_ALIGNED", nowMs, note: WALL_CLOCK_ALIGNED_NOTE };
+}
+
 export interface RecordedDatasetRun {
   datasetId: string;
+  /**
+   * Which decision clock produced these decisions:
+   *  · HISTORICAL_AS_OF — the prefix's last closed provider candle;
+   *  · LIVE_WALL_CLOCK — the legacy aligned mode, which consumes the process
+   *    clock (the live transport clock) on re-timed candles. It names the clock
+   *    source only: the candles remain recorded provider history and are still
+   *    reported as a RECORDED sample.
+   */
+  decisionClockMode: DecisionClockMode;
+  /** Historical as-of instants of the first and last evaluation (recorded). */
+  asOfFirst?: number;
+  asOfLast?: number;
   provider: string;
   providerInstrumentId: string;
   instrument: string;
@@ -77,16 +115,32 @@ export function runRecordedDataset(
   options: RecordedRunOptions,
 ): RecordedDatasetRun {
   const { candles, excluded } = closedOutcomeCandles(parsed);
-  const report = runWalkForward(candles, buildInput, {
-    alignment: options.alignment,
+  const clockMode: RecordedClockMode = options.clock ?? "HISTORICAL_AS_OF";
+
+  // The historical as-of instant is the prefix's last CLOSED candle — taken from
+  // the prefix itself, so it can never drift onto the capture instant or today.
+  const clockedBuildInput = (prefix: readonly OutcomeCandle[], index: number): AnalysisInput => {
+    const input = buildInput(prefix, index);
+    if (clockMode !== "HISTORICAL_AS_OF") return input;
+    const asOf = prefix[prefix.length - 1]?.timestamp;
+    if (asOf === undefined) return input;
+    return { ...input, decisionClock: historicalAsOfClock(asOf) };
+  };
+
+  const report = runWalkForward(candles, clockedBuildInput, {
+    alignment: clockMode === "HISTORICAL_AS_OF" ? { mode: "PROVIDER_TIMESTAMPS", note: HISTORICAL_AS_OF_NOTE } : legacyAlignment(options.wallClockNowMs ?? Date.now()),
     ...(options.maxEvaluations !== undefined ? { maxEvaluations: options.maxEvaluations } : {}),
     ...(options.maxFutureCandles !== undefined ? { maxFutureCandles: options.maxFutureCandles } : {}),
     ...(options.minPrefixCandles !== undefined ? { minPrefixCandles: options.minPrefixCandles } : {}),
     ...(options.evaluationIndices !== undefined ? { evaluationIndices: options.evaluationIndices } : {}),
   });
 
+  const asOfs = report.evaluations.map((e) => e.decision.evaluationTime);
+
   return {
     datasetId: parsed.provenance.datasetId,
+    decisionClockMode: clockMode === "HISTORICAL_AS_OF" ? "HISTORICAL_AS_OF" : "LIVE_WALL_CLOCK",
+    ...(clockMode === "HISTORICAL_AS_OF" && asOfs.length > 0 ? { asOfFirst: asOfs[0], asOfLast: asOfs[asOfs.length - 1] } : {}),
     provider: parsed.provenance.provider,
     providerInstrumentId: parsed.provenance.providerInstrumentId,
     instrument: parsed.provenance.instrument,

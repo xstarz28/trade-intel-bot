@@ -9,7 +9,7 @@
  */
 import { readFileSync } from "node:fs";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runAnalysis } from "@/lib/analysis-engine";
 import { buildChain, buildMtfContext } from "@/lib/data/mtf";
@@ -50,15 +50,15 @@ import {
   runRecordedBenchmark,
 } from "@/lib/historical/recorded-walkforward";
 
-// One observation instant for every run in this suite: the engine's freshness
-// gate is a wall-clock rule, so a historical replay presents itself "as of now"
-// (one constant shift per window) and the recorded instants travel alongside.
+// Phase 295 — a recorded replay is decided with the canonical HISTORICAL AS-OF
+// decision clock: each window's "now" is its own last CLOSED provider candle, so
+// no bar is re-timed and freshness is measured at the historical instant. The
+// legacy Phase 294 wall-clock alignment stays available for comparison.
 const NOW = Date.now();
-const ALIGNMENT = {
-  mode: "WALL_CLOCK_ALIGNED" as const,
-  nowMs: NOW,
-  note: "Recorded provider candles presented at the observation instant for the live-transport freshness gate; each decision keeps its own provider instant.",
-};
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const fixtures = loadRecordedFixtures();
 
@@ -111,7 +111,7 @@ function inputBuilder(parsed: ParsedDataset, designedContext?: { instrumentType:
   };
 }
 
-const RUN_OPTIONS = { alignment: ALIGNMENT, minPrefixCandles: 24, maxEvaluations: 10, maxFutureCandles: 10 };
+const RUN_OPTIONS = { minPrefixCandles: 24, maxEvaluations: 10, maxFutureCandles: 10 };
 /** 10 windows per dataset: 8 datasets × 10 = 80 recorded windows. */
 const WINDOWS_PER_DATASET = 10;
 
@@ -349,27 +349,52 @@ describe("§8/§9/§13 recorded benchmark through the Phase 293 evaluator", () =
     );
   });
 
-  it("keeps each decision's provider instant and shifts only the clock reading", () => {
+  it("decides each window as of its own last closed provider candle", () => {
     const intervalOf: Record<string, number> = { H1: 3_600_000, H4: 14_400_000, D1: 86_400_000, W1: 604_800_000 };
     for (const entry of runs) {
-      const providerTimes = entry.report.evaluations.map((e) => e.decision.providerEvaluationTime!);
-      // The evaluation candle reads "now" — that is the only thing alignment changes.
-      expect(entry.report.evaluations.every((e) => e.decision.evaluationTime === NOW)).toBe(true);
-      expect([...providerTimes].sort((a, b) => a - b)).toEqual(providerTimes);
+      expect(entry.decisionClockMode).toBe("HISTORICAL_AS_OF");
+      expect(entry.report.alignment.mode).toBe("PROVIDER_TIMESTAMPS");
+      const times = entry.report.evaluations.map((e) => e.decision.evaluationTime);
       const dataset = fixtures.datasets.find((d) => d.provenance.datasetId === entry.datasetId)!;
-      for (const providerTime of providerTimes) {
-        expect(dataset.candles.some((c) => c.timestamp === providerTime && c.closed)).toBe(true);
+      const captureInstant = Date.parse(dataset.provenance.capturedAt);
+      for (const time of times) {
+        // The evaluation instant IS a recorded closed candle of the dataset.
+        expect(dataset.candles.some((c) => c.timestamp === time && c.closed)).toBe(true);
+        // …and never the dataset's capture instant.
+        expect(time).not.toBe(captureInstant);
       }
-      // Bars keep their own spacing: the windows are the provider's bars, not a resampled series.
-      for (let i = 1; i < providerTimes.length; i += 1) {
-        const delta = providerTimes[i] - providerTimes[i - 1];
+      expect(entry.asOfFirst).toBe(times[0]);
+      expect(entry.asOfLast).toBe(times[times.length - 1]);
+      // No bar was re-timed: the decision bars keep the provider's own spacing.
+      for (let i = 1; i < times.length; i += 1) {
+        const delta = times[i] - times[i - 1];
         expect(delta % intervalOf[entry.timeframe]).toBe(0);
         expect(delta).toBeGreaterThan(0);
       }
-      expect(entry.report.alignment.mode).toBe("WALL_CLOCK_ALIGNED");
-      expect(entry.report.provenance.alignmentShiftMs).toBe(NOW - providerTimes[0]);
-      expect(entry.report.alignment.note).toContain("provider instant");
+      // The provider's instant is the decision instant, so no shift is recorded.
+      expect(entry.report.evaluations.every((e) => e.decision.providerEvaluationTime === undefined)).toBe(true);
+      expect(entry.report.provenance.alignmentShiftMs).toBeUndefined();
+      expect(entry.report.alignment.note).toContain("RECORDED / HISTORICAL");
     }
+  });
+
+  it("keeps the legacy wall-clock alignment available and decision-neutral", () => {
+    const parsed = fixtures.datasets[4];
+    const asOf = runRecordedBenchmark([parsed], selectBenchmark([parsed]), inputBuilder(parsed), RUN_OPTIONS).runs[0];
+    const aligned = runRecordedBenchmark([parsed], selectBenchmark([parsed]), inputBuilder(parsed), {
+      ...RUN_OPTIONS,
+      clock: "WALL_CLOCK_ALIGNED",
+      wallClockNowMs: NOW,
+    }).runs[0];
+    expect(aligned.decisionClockMode).toBe("LIVE_WALL_CLOCK");
+    expect(aligned.report.alignment.mode).toBe("WALL_CLOCK_ALIGNED");
+    expect(aligned.report.evaluations.every((e) => e.decision.evaluationTime === NOW)).toBe(true);
+    expect(aligned.report.provenance.alignmentShiftMs).toBe(
+      NOW - aligned.report.evaluations[0].decision.providerEvaluationTime!,
+    );
+    // ALIGNMENT MOVES THE CLOCK READING ONLY — the decisive facts are identical
+    // to the historical as-of run over the same recorded candles.
+    expect(decisiveProjection(aligned.report)).toEqual(decisiveProjection(asOf.report));
   });
 
   it("reports the recorded windows honestly — no plan is invented, no calibration is claimed", () => {
@@ -382,12 +407,14 @@ describe("§8/§9/§13 recorded benchmark through the Phase 293 evaluator", () =
       expect(entry.report.evaluations.every((e) => e.decision.entry === undefined && e.decision.stopLoss === undefined)).toBe(true);
       expect(entry.report.calibration.status).toBe("INSUFFICIENT_SAMPLE");
       expect(entry.report.calibration.productionConfidenceUnchanged).toBe(true);
+      expect(entry.report.alignment.mode).toBe("PROVIDER_TIMESTAMPS");
       expect(entry.report.expectancy.sampleSize).toBe(0);
       expect(entry.report.expectancy.meanRealizedR).toBeUndefined();
       const fields = toEmpiricalValidationFields(entry.report);
       expect(fields.affectsProductionDecision).toBe(false);
       const text = formatValidationDiagnostics(entry.report).join("\n");
-      expect(text).toContain("Chronology: RECORDED / HISTORICAL");
+      expect(text).toContain("Chronology: provider timestamps used verbatim (no alignment)");
+      expect(text).toContain("RECORDED / HISTORICAL");
       expect(text).toContain("never a live feed");
       expect(text).not.toMatch(/\bLIVE\b/);
     }
@@ -441,7 +468,8 @@ describe("§8/§9/§13 recorded benchmark through the Phase 293 evaluator", () =
     expect(text).toContain("Recorded historical datasets: 8 (620 candles)");
     expect(text).toContain("Actionable decisions: 0 · NO_TRADE: 80");
     expect(text).toContain("Calibration: INSUFFICIENT_SAMPLE");
-    expect(text).not.toMatch(/\b(best|worst|rank(?:ed|ing)?|winner)\b/i);
+    expect(text).toContain("not a ranking");
+    expect(text).not.toMatch(/\b(best|worst|ranked|winner)\b/i);
     expect(text).not.toMatch(/accurate|win rate|probability|guaranteed/i);
     expect(formatCoverageReport(coverage, pairs)).toEqual(lines);
 
@@ -465,7 +493,7 @@ describe("§8/§9/§13 recorded benchmark through the Phase 293 evaluator", () =
 describe("§12 no-lookahead on real recorded series", () => {
   const okx4h = loadRecordedFixture("okx-BTC-USDT-4H.json");
   const indices = [45, 50, 55] as const;
-  const options = { alignment: ALIGNMENT, minPrefixCandles: 40, maxFutureCandles: 12, evaluationIndices: indices };
+  const options = { minPrefixCandles: 40, maxFutureCandles: 12, evaluationIndices: indices };
 
   it("gives identical decisions for a recorded prefix whether or not its future candles exist", () => {
     const full = runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), inputBuilder(okx4h), options).runs[0];
@@ -496,13 +524,45 @@ describe("§12 no-lookahead on real recorded series", () => {
     expect(shortHorizon.report.sample).toEqual(longHorizon.report.sample);
   });
 
-  it("cannot be moved by the process clock: a different observation instant shifts the clock, not the decision", () => {
-    const later = runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), inputBuilder(okx4h), {
-      ...options,
-      alignment: { ...ALIGNMENT, nowMs: NOW + 3 * 86_400_000 },
-    }).runs[0];
-    expect(decisiveProjection(later.report)).toEqual(decisiveProjection(runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), inputBuilder(okx4h), options).runs[0].report));
-    expect(later.report.provenance.alignmentShiftMs).toBe(NOW + 3 * 86_400_000 - later.report.evaluations[0].decision.providerEvaluationTime!);
+  it("cannot be moved by the process clock: the decision instant is the provider's own", () => {
+    const baseline = runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), inputBuilder(okx4h), options).runs[0];
+    const instants = baseline.report.evaluations.map((e) => e.decision.evaluationTime);
+    const dataset = fixtures.datasets.find((d) => d.provenance.datasetId === "okx-BTC-USDT-4H")!;
+    // Simulate "today" moving three days forward.
+    vi.spyOn(Date, "now").mockReturnValue(NOW + 3 * 86_400_000);
+    const later = runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), inputBuilder(okx4h), options).runs[0];
+    expect(later.report.evaluations.map((e) => e.decision.evaluationTime)).toEqual(instants);
+    expect(decisiveProjection(later.report)).toEqual(decisiveProjection(baseline.report));
+    for (const time of instants) expect(dataset.candles.some((c) => c.timestamp === time)).toBe(true);
+  });
+
+  it("never hands the engine a candle dated after the evaluation instant", () => {
+    const handed: number[] = [];
+    const probing = (prefix: readonly OutcomeCandle[], index: number) => {
+      const times = prefix.map((c) => c.timestamp);
+      expect([...times].sort((a, b) => a - b)).toEqual(times); // chronological
+      expect(new Set(times).size).toBe(times.length); // no repeated bar
+      handed.push(times[times.length - 1]);
+      return inputBuilder(okx4h)(prefix, index);
+    };
+    const entry = runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), probing, options).runs[0];
+    expect(handed).toEqual(entry.report.evaluations.map((e) => e.decision.evaluationTime));
+    // The prefix ENDS at the decision instant: nothing from the future is visible.
+    expect(entry.report.evaluations.every((e, i) => handed[i] === e.decision.evaluationTime)).toBe(true);
+  });
+
+  it("produces byte-identical diagnostics when the process clock changes", () => {
+    const pairsOf = (run: { datasetId: string; report: Parameters<typeof buildCoverageReport>[1][number]["report"] }) => ({
+      dataset: okx4h,
+      report: run.report,
+    });
+    const baseline = runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), inputBuilder(okx4h), options).runs[0];
+    const before = formatCoverageReport(buildCoverageReport([okx4h], [pairsOf(baseline)]), [pairsOf(baseline)]).join("\n");
+    vi.spyOn(Date, "now").mockReturnValue(NOW + 5 * 86_400_000);
+    const later = runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), inputBuilder(okx4h), options).runs[0];
+    const after = formatCoverageReport(buildCoverageReport([okx4h], [pairsOf(later)]), [pairsOf(later)]).join("\n");
+    expect(after).toBe(before);
+    expect(after).toContain("Decision clock — HISTORICAL AS-OF");
   });
 
   it("hands the engine closed candles only", () => {
@@ -559,7 +619,6 @@ describe("§14/§16 designed material is separate and work is bounded", () => {
       return inputBuilder(okx4h)(prefix, index);
     };
     const entry = runRecordedBenchmark([okx4h], selectBenchmark([okx4h]), counted, {
-      alignment: ALIGNMENT,
       minPrefixCandles: 40,
       maxEvaluations: 6,
       maxFutureCandles: 8,
@@ -620,7 +679,7 @@ describe("§8 append invariance through the Phase 294 pipeline", () => {
     );
   }
 
-  const options = { alignment: ALIGNMENT, minPrefixCandles: 60, maxFutureCandles: 20, evaluationIndices: [199] as const };
+  const options = { minPrefixCandles: 60, maxFutureCandles: 20, evaluationIndices: [199] as const };
 
   it("publishes the same plan before and after 20 future candles are appended", () => {
     const all = designedRows();
@@ -693,7 +752,6 @@ describe("§13 the Phase 293 recorded OKX material is retained", () => {
     expect(parsed.candles).toHaveLength(32);
     expect(parsed.status).toBe("OK");
     const entry = runRecordedBenchmark([parsed], selectBenchmark([parsed]), inputBuilder(parsed), {
-      alignment: ALIGNMENT,
       minPrefixCandles: 24,
       maxEvaluations: 3,
       maxFutureCandles: 6,
@@ -745,7 +803,8 @@ describe("§10/§11/§17 the floors, reproducibility and the wording of the diag
     ].join("\n");
     expect(text).toMatch(/provider okx, instrument BTC\/USDT, timeframe H4/);
     expect(text).toMatch(/insufficient sample/i);
-    expect(text).toMatch(/recorded decision window \(provider instants\): \d{4}-\d{2}-\d{2}T/);
+    expect(text).toContain("Decision clock — HISTORICAL AS-OF");
+    expect(text).toMatch(/Provider instants \d{4}-\d{2}-\d{2}T/);
     expect(text).not.toMatch(/accurate|accuracy|win rate|win-rate|probability|guarantee|AI predicts|proven/i);
     expect(text).not.toMatch(/LIVE/);
   });
