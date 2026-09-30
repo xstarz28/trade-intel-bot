@@ -43,11 +43,14 @@ import {
   detectContradictions,
   isUsableSmc,
 } from "@/lib/market-context";
+import { EQUAL_LEVEL_TOLERANCE } from "@/lib/data/smc";
 import {
   anchorFromCandles,
   invalidationEvidence,
   readSetupContext,
   readZoneLocation,
+  type SetupContext,
+  type TradeLocation,
 } from "@/lib/data/trade-location";
 import { GATE_IDS } from "@/lib/decision-trace";
 import { assessDataQuality } from "@/lib/data-quality";
@@ -788,6 +791,79 @@ interface TradeDecision {
   keyLevels: KeyLevels;
 }
 
+/**
+ * Phase 292 — the Phase 291 location/setup verdict for the current thesis,
+ * computed from objects that already exist (this timeframe's own FVGs, validated
+ * order blocks, causal liquidity pools/sweeps and the confirmed 290-A read).
+ *
+ * Pure and additive: it answers "where is the reference price, and what does the
+ * engine's own setup context say about it". Nothing here is invented for a plan.
+ */
+function readTradeLocationAt(
+  input: AnalysisInput,
+  bias: DirectionalBias,
+): { location: TradeLocation; context: SetupContext } | undefined {
+  const tech = input.technicalData;
+  const smc = isUsableSmc(tech?.smc) ? tech!.smc! : undefined;
+  const candles = input.marketData?.candles;
+  if (!smc || !candles || candles.length === 0) return undefined;
+  const thesis: "bullish" | "bearish" | "none" =
+    bias === "Bullish" ? "bullish" : bias === "Bearish" ? "bearish" : "none";
+  const location = readZoneLocation(input.timeframe, smc, anchorFromCandles(candles), thesis);
+  const context = readSetupContext({
+    timeframe: input.timeframe,
+    pair: smc.structural,
+    location,
+    ...(thesis !== "none" ? { direction: thesis } : {}),
+  });
+  return { location, context };
+}
+
+/**
+ * Phase 292 — ENTRY SEMANTICS. The published entry is the provider's market
+ * reference, never a filled order and never a claimed trigger. This produces the
+ * factual line that says so, plus the engine's own setup verdict at that instant.
+ */
+function buildEntryContext(
+  entry: number,
+  input: AnalysisInput,
+  bias: DirectionalBias,
+): NonNullable<TradePlan["entryContext"]> {
+  const md = input.marketData;
+  const observedAt = md?.price.timestamp;
+  const source = md?.price.source ?? md?.provider ?? input.provider ?? "provider";
+  const stamp =
+    observedAt !== undefined && Number.isFinite(observedAt)
+      ? new Date(observedAt).toISOString()
+      : "unavailable timestamp";
+  const reference = `market reference ${entry} observed ${stamp} (${source})`;
+
+  const located = readTradeLocationAt(input, bias);
+  if (!located) {
+    return {
+      reference,
+      location: "unknown",
+      triggerConfirmed: false,
+      note: `${reference} — no usable trade-location context for this timeframe, so no confirmed-trigger claim is made`,
+    };
+  }
+  const { location, context } = located;
+  const qualifying = context.evidence.supportingZone;
+  const position =
+    qualifying === undefined
+      ? "no qualifying zone in the thesis direction"
+      : `${qualifying.kind} ${qualifying.lower}–${qualifying.upper} (${String(qualifying.status)}, price ${qualifying.position === "inside" ? "inside" : qualifying.position === "at_boundary" ? "at the boundary of" : "outside"} it)`;
+  return {
+    reference,
+    location: location.location,
+    setupState: context.state,
+    // The engine's OWN verdict decides; a price sitting inside a zone is not a
+    // trigger by itself.
+    triggerConfirmed: context.state === "CONFIRMED_SETUP_CONTEXT",
+    note: `${reference} — ${context.state}, ${position}; the price is a market reference, not a filled order`,
+  };
+}
+
 function parseLevel(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const n = parseFloat(value);
@@ -1111,6 +1187,12 @@ function decideTrade(
   let slBasis = "";
   let tpLevel: number | undefined;
   let tpBasis = "";
+  // Phase 292 — provenance of the chosen levels. Both are MARKET objects; the
+  // stop may never be moved to manufacture a reward/risk ratio.
+  let stopSelection: NonNullable<TradePlan["stopProvenance"]> | undefined;
+  let targetProvenance: NonNullable<TradePlan["targetProvenance"]> | undefined;
+  let structuralInvalidation: NonNullable<TradePlan["structuralInvalidation"]> | undefined;
+  const located = readTradeLocationAt(input, bias);
 
   if (entry !== undefined && entry > 0) {
     const smcPools = isUsableSmc(tech?.smc) ? tech!.smc!.liquidityPools : [];
@@ -1124,9 +1206,60 @@ function decideTrade(
         (t.smc?.liquidityPools ?? []).map((p) => ({ ...p, tf: t.timeframe })),
       );
 
+    // ── The canonical invalidation the engine already publishes ──
+    // Phase 290-A reads the level whose CONFIRMED breach voids the thesis. When
+    // it protects this direction it is the honest stop, and it is preferred:
+    // a stop that disagrees with the published invalidation would be incoherent.
+    const structuralRead = isUsableSmc(tech?.smc) ? tech!.smc!.structural?.external : undefined;
+    const inv = structuralRead?.invalidation;
+    const invProtects =
+      inv !== undefined &&
+      (bias === "Bullish" ? inv.level < price : bias === "Bearish" ? inv.level > price : false);
+    if (inv && invProtects) {
+      structuralInvalidation = {
+        level: inv.level,
+        timeframe: structuralRead!.timeframe,
+        swingKind: inv.swingKind,
+        note: `${structuralRead!.timeframe} confirmed swing ${inv.swingKind} (swing #${inv.swingIndex}, ${new Date(inv.timestamp).toISOString()}) — the level the engine publishes as the thesis invalidation`,
+      };
+    }
+    // A level the engine has already CLOSED THROUGH is not protective: it is
+    // listed among the closed-through liquidity of this timeframe. Prefer a real
+    // unbroken level when one exists; if every candidate was already breached,
+    // the nearest is still used and its provenance says so.
+    const brokenLevels = located?.location.liquidity.brokenLevels ?? [];
+    const isClosedThrough = (l: number) =>
+      brokenLevels.some((b) => Math.abs(b - l) <= Math.abs(b) * EQUAL_LEVEL_TOLERANCE);
+    const smcTf = tech?.smc ? tech.smc.timeframe : input.timeframe;
+
     if (bias === "Bullish") {
-      stopLevel = swingSupports[0];
-      slBasis = stopLevel !== undefined ? `nearest market swing low (structural${tech?.smc ? `, ${tech.smc.timeframe}` : ""})` : "";
+      const legacy = swingSupports[0];
+      if (inv && invProtects) {
+        stopLevel = inv.level;
+        slBasis = `confirmed structural invalidation (${structuralRead!.timeframe} swing ${inv.swingKind})`;
+        stopSelection = {
+          source: "structural_invalidation",
+          level: inv.level,
+          timeframe: structuralRead!.timeframe,
+          buffer: 0,
+          publishedStop: inv.level,
+          note: `stop anchored at the ${structuralRead!.timeframe} confirmed structural invalidation ${inv.level}`,
+        };
+      } else {
+        stopLevel = legacy;
+        slBasis = stopLevel !== undefined ? `nearest market swing low (structural${tech?.smc ? `, ${smcTf}` : ""})` : "";
+        if (stopLevel !== undefined) {
+          const breached = isClosedThrough(stopLevel);
+          stopSelection = {
+            source: "swing_level",
+            level: stopLevel,
+            timeframe: smcTf,
+            buffer: 0,
+            publishedStop: stopLevel,
+            note: `${breached ? "already closed through, so carried with that caveat" : "no confirmed structural invalidation available — nearest unbroken market swing low"} ${stopLevel} (${smcTf})`,
+          };
+        }
+      }
       // Prefer a resting buy-side liquidity pool as target when available,
       // else an HTF pool, else the nearest swing resistance.
       const buyPoolAbove = smcPools
@@ -1137,15 +1270,62 @@ function decideTrade(
         .sort((a, b) => a.level - b.level)[0];
       tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? swingResistances[0];
       tpBasis = buyPoolAbove
-        ? `resting buy-side liquidity (${buyPoolAbove.source}, ${buyPoolAbove.touches} touch${buyPoolAbove.touches > 1 ? "es" : ""}${tech?.smc ? `, ${tech.smc.timeframe}` : ""})`
+        ? `resting buy-side liquidity (${buyPoolAbove.source}, ${buyPoolAbove.touches} touch${buyPoolAbove.touches > 1 ? "es" : ""}${tech?.smc ? `, ${smcTf}` : ""})`
         : htfBuyPool
           ? `resting buy-side liquidity on ${htfBuyPool.tf} (${htfBuyPool.source}, ${htfBuyPool.touches} touch${htfBuyPool.touches > 1 ? "es" : ""}) — HTF target`
           : tpLevel !== undefined
             ? "nearest market swing high / resistance (structural)"
             : "";
+      targetProvenance = buyPoolAbove
+        ? {
+            source: "resting_liquidity",
+            level: buyPoolAbove.level,
+            timeframe: smcTf,
+            note: `resting buy-side liquidity ${buyPoolAbove.level} (${buyPoolAbove.source}, ${buyPoolAbove.touches} touch${buyPoolAbove.touches > 1 ? "es" : ""}, ${smcTf}) — observed and not swept or closed through`,
+          }
+        : htfBuyPool
+          ? {
+              source: "htf_resting_liquidity",
+              level: htfBuyPool.level,
+              timeframe: htfBuyPool.tf,
+              note: `resting buy-side liquidity ${htfBuyPool.level} on ${htfBuyPool.tf} (${htfBuyPool.source}, ${htfBuyPool.touches} touch${htfBuyPool.touches > 1 ? "es" : ""}) — higher-timeframe fallback, timeframe stated`,
+            }
+          : tpLevel !== undefined
+            ? {
+                source: "structural_swing",
+                level: tpLevel,
+                timeframe: smcTf,
+                note: `no resting liquidity pool above the reference price — nearest opposing market swing high ${tpLevel} (${smcTf})`,
+              }
+            : undefined;
     } else if (bias === "Bearish") {
-      stopLevel = swingResistances[0];
-      slBasis = stopLevel !== undefined ? `nearest market swing high (structural${tech?.smc ? `, ${tech.smc.timeframe}` : ""})` : "";
+      const legacy = swingResistances[0];
+      if (inv && invProtects) {
+        stopLevel = inv.level;
+        slBasis = `confirmed structural invalidation (${structuralRead!.timeframe} swing ${inv.swingKind})`;
+        stopSelection = {
+          source: "structural_invalidation",
+          level: inv.level,
+          timeframe: structuralRead!.timeframe,
+          buffer: 0,
+          publishedStop: inv.level,
+          note: `stop anchored at the ${structuralRead!.timeframe} confirmed structural invalidation ${inv.level}`,
+        };
+      } else {
+        stopLevel = legacy;
+        slBasis = stopLevel !== undefined ? `nearest market swing high (structural${tech?.smc ? `, ${smcTf}` : ""})` : "";
+        if (stopLevel !== undefined) {
+          const breached = isClosedThrough(stopLevel);
+          stopSelection = {
+            source: "swing_level",
+            level: stopLevel,
+            timeframe: smcTf,
+            buffer: 0,
+            publishedStop: stopLevel,
+            note: `${breached ? "already closed through, so carried with that caveat" : "no confirmed structural invalidation available — nearest unbroken market swing high"} ${stopLevel} (${smcTf})`,
+          };
+        }
+      }
       const sellPoolBelow = smcPools
         .filter((p) => p.side === "sell_side" && !p.swept && !p.broken && p.level < price)
         .sort((a, b) => b.level - a.level)[0];
@@ -1154,12 +1334,34 @@ function decideTrade(
         .sort((a, b) => b.level - a.level)[0];
       tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? swingSupports[0];
       tpBasis = sellPoolBelow
-        ? `resting sell-side liquidity (${sellPoolBelow.source}, ${sellPoolBelow.touches} touch${sellPoolBelow.touches > 1 ? "es" : ""}${tech?.smc ? `, ${tech.smc.timeframe}` : ""})`
+        ? `resting sell-side liquidity (${sellPoolBelow.source}, ${sellPoolBelow.touches} touch${sellPoolBelow.touches > 1 ? "es" : ""}${tech?.smc ? `, ${smcTf}` : ""})`
         : htfSellPool
           ? `resting sell-side liquidity on ${htfSellPool.tf} (${htfSellPool.source}, ${htfSellPool.touches} touch${htfSellPool.touches > 1 ? "es" : ""}) — HTF target`
           : tpLevel !== undefined
             ? "nearest market swing low / support (structural)"
             : "";
+      targetProvenance = sellPoolBelow
+        ? {
+            source: "resting_liquidity",
+            level: sellPoolBelow.level,
+            timeframe: smcTf,
+            note: `resting sell-side liquidity ${sellPoolBelow.level} (${sellPoolBelow.source}, ${sellPoolBelow.touches} touch${sellPoolBelow.touches > 1 ? "es" : ""}, ${smcTf}) — observed and not swept or closed through`,
+          }
+        : htfSellPool
+          ? {
+              source: "htf_resting_liquidity",
+              level: htfSellPool.level,
+              timeframe: htfSellPool.tf,
+              note: `resting sell-side liquidity ${htfSellPool.level} on ${htfSellPool.tf} (${htfSellPool.source}, ${htfSellPool.touches} touch${htfSellPool.touches > 1 ? "es" : ""}) — higher-timeframe fallback, timeframe stated`,
+            }
+          : tpLevel !== undefined
+            ? {
+                source: "structural_swing",
+                level: tpLevel,
+                timeframe: smcTf,
+                note: `no resting liquidity pool below the reference price — nearest opposing market swing low ${tpLevel} (${smcTf})`,
+              }
+            : undefined;
     }
 
     if (bias !== "Neutral" && stopLevel !== undefined && tpLevel !== undefined) {
@@ -1218,10 +1420,22 @@ function decideTrade(
     entry !== undefined && entry > 0 &&
     stopLevel !== undefined && tpLevel !== undefined
   ) {
-    const risk = Math.abs(entry - stopLevel);
+    // Phase 292 — R:R INTEGRITY. The reward/risk that gates and is published is
+    // measured from the PUBLISHED entry / stop / target, so the displayed numbers
+    // always form one consistent set. The same formula at the RAW invalidation
+    // level is reported separately as `structuralRiskReward` when it differs.
+    const buffer =
+      tech?.atr14 !== undefined && Number.isFinite(tech.atr14) && tech.atr14 > 0
+        ? tech.atr14 * 0.2
+        : 0;
+    const publishedStop = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
+    const risk = Math.abs(entry - publishedStop);
+    const structuralRisk = Math.abs(entry - stopLevel);
     const reward = Math.abs(tpLevel - entry);
-    if (risk <= 0) {
+    if (risk <= 0 || !Number.isFinite(risk)) {
       reasons.push("Structural stop level equals entry price — invalid risk distance.");
+    } else if (!(reward > 0) || !Number.isFinite(reward)) {
+      reasons.push("Target equals entry price — invalid reward distance.");
     } else {
       const rr = Math.round((reward / risk) * 100) / 100;
       if (rr < MIN_RR) {
@@ -1229,29 +1443,58 @@ function decideTrade(
           `Projected R:R ${rr.toFixed(2)} is below the ${MIN_RR.toFixed(2)} minimum for actionable setups.`,
         );
       } else {
-        // Small technical buffer beyond the structural level (ATR-based
-        // when available). The buffer is disclosed — the invalidation
-        // BASE remains the structural level, never a fixed percentage.
-        const buffer =
-          tech?.atr14 !== undefined && Number.isFinite(tech.atr14) && tech.atr14 > 0
-            ? tech.atr14 * 0.2
-            : 0;
-        const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
         const decimals = entry < 10 ? 5 : 2;
+        // Small protective buffer beyond the invalidation level (ATR-based when
+        // available). The buffer is disclosed — the invalidation BASE remains the
+        // structural level, never a fixed percentage.
+        const bufferRule =
+          buffer > 0
+            ? "0.2 × ATR14 protective buffer beyond the invalidation level (existing documented rule)"
+            : undefined;
         const bufferNote =
           buffer > 0
-            ? ` (incl. ${((buffer / entry) * 100).toFixed(3)}% technical ATR buffer beyond structural level)`
+            ? ` (incl. ${((buffer / entry) * 100).toFixed(3)}% technical ATR buffer beyond ${stopSelection?.source === "structural_invalidation" ? "the confirmed structural invalidation" : "the structural level"})`
             : "";
+        // The ratio at the RAW invalidation level, always recomputed there — a
+        // protective buffer moves the published stop, and that must never be
+        // confused with the structural level's own ratio.
+        const structuralRr =
+          structuralRisk > 0 && Number.isFinite(structuralRisk)
+            ? Math.round((reward / structuralRisk) * 100) / 100
+            : undefined;
+        const entryContext = buildEntryContext(entry, input, bias);
 
         tradePlan = {
           direction: bias === "Bullish" ? "long" : "short",
           entry: entry.toString(),
           entryBasis: "live market price at analysis time",
-          stopLoss: sl.toFixed(decimals),
+          stopLoss: publishedStop.toFixed(decimals),
           slBasis: `${slBasis}${bufferNote}`,
           takeProfit: tpLevel.toFixed(decimals),
           tpBasis,
           riskReward: rr,
+          ...(stopSelection
+            ? {
+                stopProvenance: {
+                  ...stopSelection,
+                  buffer,
+                  ...(bufferRule ? { bufferRule } : {}),
+                  publishedStop,
+                  note:
+                    buffer > 0
+                      ? `${stopSelection.note}; published stop ${publishedStop.toFixed(decimals)} = that level plus the documented ATR protective buffer ${buffer.toFixed(decimals)}; R:R ${rr.toFixed(2)} at the published stop${structuralRr !== undefined && structuralRr !== rr ? `, ${structuralRr.toFixed(2)} at the raw invalidation level` : ""}`
+                      : `${stopSelection.note}; published stop ${publishedStop.toFixed(decimals)} = that level (no buffer applied); R:R ${rr.toFixed(2)} at the published stop`,
+                },
+              }
+            : {}),
+          ...(targetProvenance ? { targetProvenance } : {}),
+          ...(structuralInvalidation ? { structuralInvalidation } : {}),
+          // Named separately and only when it differs, so `riskReward` can never
+          // be mistaken for a ratio computed from a different stop.
+          ...(structuralRr !== undefined && structuralRr !== rr
+            ? { structuralRiskReward: structuralRr }
+            : {}),
+          entryContext,
           ...(mtf
             ? {
                 htfBias: `${mtf.htfTimeframe ?? "HTF"} ${mtf.htfBias} external structure${mtf.htfReversal ? ` (genuine ${mtf.htfReversal.kind} ${mtf.htfReversal.direction})` : ""}`,
@@ -2235,9 +2478,21 @@ function generateRiskNote(
         `Conviction ${conviction} at ${confidence}% evidence strength. Position sizing unavailable${sizingUnavailableReason ? ` (${sizingUnavailableReason})` : ""} — it requires your account equity, your own risk-per-trade choice, and a complete instrument specification (contract size, quote currency, quantity step); none are assumed on your behalf. As general guidance only, many traders risk 1–2% per trade, but that is not optimal for every account or instrument.`,
       );
     }
-    parts.push(
-      `Invalidation: thesis is void if price trades through ${tradePlan.stopLoss} or if structure/HTF context changes against the position.`,
-    );
+    // Phase 292 — the invalidation LEVEL and the published PROTECTIVE STOP are
+    // named separately whenever they differ, so a protective buffer can never
+    // hide the level that actually voids the thesis.
+    if (tradePlan.stopProvenance) {
+      const sp = tradePlan.stopProvenance;
+      parts.push(
+        sp.buffer > 0
+          ? `Invalidation: ${sp.note}. The thesis is void beyond ${sp.level}; the published stop is ${tradePlan.stopLoss}, which is that level plus the disclosed protective buffer.`
+          : `Invalidation: ${sp.note}. The thesis is void beyond ${sp.level}, which is also the published stop.`,
+      );
+    } else {
+      parts.push(
+        `Invalidation: thesis is void if price trades through ${tradePlan.stopLoss} or if structure/HTF context changes against the position.`,
+      );
+    }
   }
 
   parts.push("This is NOT financial advice. Always verify with your own analysis and risk management rules.");
@@ -2481,6 +2736,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // snapshots — never constants, never silent inversion.
   let positionSizing: PositionSizingResult | undefined;
   let specUnavailableReason: string | undefined;
+  // Phase 292 — WHY sizing is unavailable, whichever input failed (spec, equity,
+  // chosen risk, FX conversion, minimum quantity). The result stays absent —
+  // never a guessed quantity — and the reason is disclosed.
+  let sizingUnavailableReason: string | undefined;
   // Phase 7E — slippage estimate from the REAL calculated quantity only.
   let slippageEstimate: import("@/lib/execution-quality").SlippageEstimate | undefined;
   const executionWarnings: string[] = [];
@@ -2513,6 +2772,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
         });
     if (sizing.available) {
       positionSizing = sizing;
+      sizingUnavailableReason = undefined;
       // Phase 7E — walk the REAL book with the REAL risk-engine quantity.
       // Sizing unavailable → slippage unavailable (no synthetic quantity);
       // contract size unavailable → mapping refused honestly.
@@ -2525,6 +2785,9 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
           { quantityBase: sizing.quantity, contractSize: resolvedSpec.spec?.contractSize },
         );
       }
+    }
+    if (!sizing.available) {
+      sizingUnavailableReason = sizing.unavailableReason ?? specUnavailableReason;
     }
     // Sizing itself failed (spec/FX/inputs incomplete) on an actionable
     // thesis → disclose why there is no slippage figure; never invent one.
@@ -2545,7 +2808,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     decision.keyLevels,
     positionSizing,
     !positionSizing?.available && decision.recommendation !== "NO_TRADE"
-      ? specUnavailableReason
+      ? sizingUnavailableReason ?? specUnavailableReason
       : undefined,
   );
 

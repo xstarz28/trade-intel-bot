@@ -168,6 +168,17 @@ describe("Step 7: determinism for identical snapshots", () => {
     if (rest.tradeLocation) {
       rest.tradeLocation = stripLocationInstants(rest.tradeLocation);
     }
+    // Phase 292 — `tradePlan.entryContext` quotes the observation instant of the
+    // price the plan is priced from, and the stop/target provenance notes quote
+    // the candle instants of the levels they name. Those are PROVENANCE, exactly
+    // like `priceSnapshot.timestamp` stripped above; this fixture builds its
+    // candles relative to the run clock. Every plan VALUE — entry, stop, target,
+    // buffer, R:R, structuralRiskReward, sources, states — is still compared
+    // byte-for-byte, and the plan's clock-free determinism is pinned by
+    // trade-plan.phase292.test.ts.
+    if (rest.tradePlan) {
+      rest.tradePlan = stripLocationInstants(rest.tradePlan);
+    }
     void id; void timestamp; void priceSnapshot;
     // Phase 276 — the unified intelligence layer MIRRORS the technical
     // observation instant (`priceSnapshot.timestamp`, stripped just above) so

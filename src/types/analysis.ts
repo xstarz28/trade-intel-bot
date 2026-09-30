@@ -35,6 +35,73 @@ export interface TradePlan {
   setupTimeframe?: string;
   /** Timeframe whose trigger refined the entry. */
   triggerTimeframe?: string;
+  // ── Phase 292 — risk & trade-plan integrity ─────────────────────────────
+  /**
+   * What the entry reference actually IS. The published entry is a market
+   * observation, not a filled order and not a confirmed trigger: this states the
+   * reference price/time and the engine's setup verdict at that instant.
+   */
+  entryContext?: {
+    /** Deterministic factual line: price, observation time, provider source. */
+    reference: string;
+    /** Phase 291 location of the price inside its own timeframe's zones. */
+    location: string;
+    /** Phase 291 setup-context state — omitted when no usable location exists. */
+    setupState?: string;
+    /** True only when the engine's own setup verdict is CONFIRMED_SETUP_CONTEXT. */
+    triggerConfirmed: boolean;
+    /** Deterministic digest of the above (engine wording, never decorative). */
+    note: string;
+  };
+  /**
+   * Where the PUBLISHED stop comes from, and the raw market-derived level it was
+   * derived from. The published stop and the invalidation level are separately
+   * named so a protective buffer can never hide the level that actually voids
+   * the thesis.
+   */
+  stopProvenance?: {
+    /** Which market object supplied the level. */
+    source: "structural_invalidation" | "swing_level";
+    /** The raw level: confirmed swing / market swing / user-observed level. */
+    level: number;
+    timeframe: string;
+    /** Absolute protective buffer applied on top of `level` (0 = none). */
+    buffer: number;
+    /** The documented rule that produced the buffer, when one was applied. */
+    bufferRule?: string;
+    /** The exact stop that is published (level ± buffer). */
+    publishedStop: number;
+    /** Deterministic provenance line. */
+    note: string;
+  };
+  /**
+   * Where the published target comes from. Only resting liquidity (never a
+   * swept or closed-through level) or a real opposing swing qualifies.
+   */
+  targetProvenance?: {
+    source: "resting_liquidity" | "htf_resting_liquidity" | "structural_swing";
+    level: number;
+    timeframe: string;
+    note: string;
+  };
+  /**
+   * The confirmed Phase 290-A structural invalidation for THIS thesis, when the
+   * engine published one on the correct side of entry. It is the level whose
+   * confirmed breach voids the thesis — independent of the stop that was chosen.
+   */
+  structuralInvalidation?: {
+    level: number;
+    timeframe: string;
+    swingKind: "high" | "low";
+    note: string;
+  };
+  /**
+   * Reward/risk measured to the RAW structural invalidation instead of the
+   * published stop. Published only when it differs from `riskReward`, so the two
+   * numbers can never be confused: `riskReward` always matches the published
+   * entry / stopLoss / takeProfit.
+   */
+  structuralRiskReward?: number;
   /**
    * Phase 291 — the invalidation references the risk layer may consume, with
    * full provenance. The stop level itself is never chosen by how attractive the

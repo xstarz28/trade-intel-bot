@@ -1698,6 +1698,14 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.entry}</p>
                 <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5">{t.analysisResult.marketPriceNote}</p>
+                {/* Phase 292 — the entry is a market REFERENCE, never a filled
+                    order and never a claimed trigger: the engine's own setup
+                    verdict at that instant travels with it verbatim. */}
+                {result.tradePlan.entryContext && (
+                  <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">
+                    {result.tradePlan.entryContext.note}
+                  </p>
+                )}
               </div>
               <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2.5">
                 <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-1">
@@ -1705,6 +1713,13 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.stopLoss}</p>
                 <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">{result.tradePlan.slBasis}</p>
+                {/* Phase 292 — the published stop and the invalidation LEVEL are
+                    named separately, so the buffer can never hide the level. */}
+                {result.tradePlan.stopProvenance && (
+                  <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">
+                    {result.tradePlan.stopProvenance.note}
+                  </p>
+                )}
               </div>
               <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2.5">
                 <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-1">
@@ -1712,7 +1727,35 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.takeProfit}</p>
                 <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">{result.tradePlan.tpBasis}</p>
+                {result.tradePlan.targetProvenance && (
+                  <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">
+                    {result.tradePlan.targetProvenance.note}
+                  </p>
+                )}
               </div>
+            </div>
+            {/* Phase 292 — risk & plan integrity, stated as deterministic facts.
+                The R:R shown in the header is measured from THESE published
+                levels; when the raw structural invalidation sits at a different
+                level its own ratio is reported separately. */}
+            <div className="mt-2 pt-2 border-t border-border/30 space-y-0.5">
+              {result.tradePlan.structuralInvalidation && (
+                <p className="text-[10px] font-mono text-muted-foreground/80 break-words">
+                  structural invalidation {result.tradePlan.structuralInvalidation.level} —{" "}
+                  {result.tradePlan.structuralInvalidation.note}
+                </p>
+              )}
+              <p className="text-[10px] font-mono text-muted-foreground/80">
+                R:R {result.tradePlan.riskReward.toFixed(2)} measured from the published entry, stop and target
+                {result.tradePlan.structuralRiskReward !== undefined
+                  ? ` · ${result.tradePlan.structuralRiskReward.toFixed(2)} at the raw invalidation level`
+                  : ""}
+              </p>
+              <p className="text-[10px] font-mono text-muted-foreground/80">
+                {result.tradePlan.entryContext?.triggerConfirmed
+                  ? "setup context CONFIRMED_SETUP_CONTEXT at the reference price — the engine's own verdict, not a filled order"
+                  : `no confirmed trigger at the reference price (${result.tradePlan.entryContext?.setupState ?? "no setup context"}) — the plan is a market reference, not an executed order`}
+              </p>
             </div>
           </CardContent>
         </Card>
