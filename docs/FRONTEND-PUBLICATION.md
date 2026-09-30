@@ -96,6 +96,23 @@ VERCEL_TOKEN=... npm run frontend:resolve -- --json
 # environment, or leave them unset — the workflow resolves them itself.
 ```
 
+**Identity before evidence (Phase 300 fix).** A project can be returned by more
+than one listing — the personal scope *and* a team scope. Those records are
+collapsed to **one candidate** by the host's own `project.id`, because otherwise
+one project seen twice looked like two projects sharing a name and the resolver
+refused a publication it should have allowed. The merge is deliberately narrow:
+
+- different ids are always different projects — two projects with the same name,
+  or two linking the same repository, remain **ambiguous and refused**;
+- a record with no `id` cannot be proven identical to anything, so it is never
+  merged (an absent identity is not a shared identity);
+- matches are still ranked with the Git link **stronger** than the name.
+
+**Which scope becomes `VERCEL_ORG_ID`:** the project record's own `accountId`
+when the API returns it (the host stating the owner); otherwise the single team
+scope that listed it, else the personal scope. Two team scopes and no
+`accountId` → `ORG_NOT_DETERMINABLE`, rather than a coin flip.
+
 The resolver is **read-only** (`GET` only): it never creates, links, deploys or
 renames anything. With no token it prints `NO_CREDENTIAL` and resolves nothing;
 if the API cannot be reached it prints `API_UNREACHABLE`. Both exit `2`, because

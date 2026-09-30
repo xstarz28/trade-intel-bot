@@ -51,7 +51,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
 import { registerTypeScriptResolution } from "./lib/ts-module-loader.mjs";
-import { chooseHostUrl, projectDomains, selectVercelProject, vercelGet } from "./resolve-vercel-target.mjs";
+import {
+  chooseHostUrl,
+  dedupeProjects,
+  projectDomains,
+  scopeForProject,
+  selectVercelProject,
+  vercelGet,
+} from "./resolve-vercel-target.mjs";
 
 // The source-pin rule lives in ONE module used by the workflow, the guard CLI
 // and this command; loading it needs the same TypeScript resolution hook the
@@ -160,13 +167,16 @@ export async function resolveIdentifiers({ token, expectedName, repoFullName, ho
   if (personalId) scopes.push({ kind: "personal", id: personalId });
   for (const team of teams) scopes.push({ kind: "team", id: team.id, slug: team.slug ?? team.name });
 
-  const seen = [];
+  const raw = [];
   for (const scope of scopes) {
     const query = scope.kind === "team" ? `?limit=100&teamId=${encodeURIComponent(scope.id)}` : "?limit=100";
     const projects = await vercelGet(`/v9/projects${query}`, { token, fetchImpl });
     if (!projects.ok) continue;
-    for (const project of projects.json?.projects ?? []) seen.push({ ...project, __scope: scope });
+    for (const project of projects.json?.projects ?? []) raw.push({ ...project, __scope: scope });
   }
+  // Same project through two listings is ONE project (Phase 300 fix): its own
+  // id is the identity. Distinct ids remain distinct and stay ambiguous.
+  const seen = dedupeProjects(raw);
   const selection = selectVercelProject({ projects: seen, expectedName, repoFullName });
   if (!selection.chosen) {
     return {
@@ -175,7 +185,9 @@ export async function resolveIdentifiers({ token, expectedName, repoFullName, ho
     };
   }
   const chosen = selection.chosen;
-  const scope = chosen.__scope;
+  const ownership = scopeForProject(chosen, { personalId });
+  if (!ownership.scope) return { problem: ownership.problem };
+  const scope = ownership.scope;
   const detail = await vercelGet(
     `/v9/projects/${encodeURIComponent(chosen.id)}${scope?.kind === "team" ? `?teamId=${encodeURIComponent(scope.id)}` : ""}`,
     { token, fetchImpl },
@@ -188,7 +200,8 @@ export async function resolveIdentifiers({ token, expectedName, repoFullName, ho
   const domains = projectDomains(project, domainsCall.json?.domains);
   const host = chooseHostUrl({ explicit: hostUrl, domains, allowUnverifiedHost: false });
   return {
-    orgId: scope?.id ?? null,
+    orgId: scope.id,
+    orgSource: ownership.source,
     projectId: chosen.id,
     projectName: project.name ?? chosen.name,
     matchedBy: selection.matchedBy,

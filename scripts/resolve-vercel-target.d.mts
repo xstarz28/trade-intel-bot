@@ -17,9 +17,15 @@ export type VercelProject = {
    *  minimal project object by a test. */
   id?: string;
   name?: string | null;
+  /** The host's own statement of which account/team owns the project. */
+  accountId?: string | null;
   link?: VercelLink;
   alias?: string[] | null;
   targets?: { production?: { alias?: string[] | null } | null } | null;
+  /** Scope metadata added while enumerating: `__scope` on one record, and
+   *  `__scopes` after identical records are merged. */
+  __scope?: VercelScope;
+  __scopes?: VercelScope[];
 };
 
 export type ProjectSelection = {
@@ -70,3 +76,70 @@ export function vercelGet(
   path: string,
   options: { token: string; timeoutMs?: number; fetchImpl?: typeof fetch },
 ): Promise<VercelGetResult>;
+
+/** What a listing told us: which scope, and whether it is a person or a team. */
+export type VercelScope = { kind: string; id: string; label?: string };
+
+/**
+ * Collapse records of the SAME project (same `id`) returned by several listings
+ * into one candidate. Different ids are never merged; a record without an id is
+ * never merged either, because an absent identity is not a shared identity.
+ */
+export function dedupeProjects(
+  projects: (VercelProject & { __scope?: VercelScope })[],
+): (VercelProject & { __scopes?: VercelScope[]; __dedupedRecords?: number })[];
+
+export type DedupeSummary = { rawRecords: number; distinctProjects: number; collapsed: number };
+
+export function dedupeSummary(
+  rawProjects: VercelProject[],
+  dedupedProjects: { id?: string | null }[],
+): DedupeSummary;
+
+export type ScopeChoice = {
+  scope: VercelScope | null;
+  source: string | null;
+  certain: boolean;
+  scopes: VercelScope[];
+  problem?: string;
+};
+
+/**
+ * The scope that owns a project — the value `VERCEL_ORG_ID` must be. The
+ * project's own `accountId` is authoritative; without it, one team scope is
+ * preferred and the preference is disclosed.
+ */
+export function scopeForProject(
+  project: (VercelProject & { __scopes?: VercelScope[]; __scope?: VercelScope }) | null,
+  options?: { personalId?: string | null },
+): ScopeChoice;
+
+export type VercelTargetReport = {
+  schema: string;
+  state: string;
+  orgId: string | null;
+  orgKind?: string | null;
+  orgSource?: string | null;
+  projectId: string | null;
+  projectName?: string | null;
+  hostUrl: string | null;
+  hostSource?: string | null;
+  domains?: string[];
+  matchedBy?: string | null;
+  projectsSeen?: number;
+  dedupe?: DedupeSummary;
+  evidence?: string[];
+  problems?: string[];
+  candidates?: { name?: string | null; id?: string | null; scopes?: string[] }[];
+};
+
+/**
+ * The whole resolution with injectable inputs, so the operator's exact situation
+ * (one project returned by both the personal and the team scope) is reproducible
+ * in a test without a network or a credential.
+ */
+export function resolveVercelTarget(options?: {
+  argv?: string[];
+  env?: Record<string, string | undefined>;
+  fetchImpl?: typeof fetch;
+}): Promise<VercelTargetReport>;

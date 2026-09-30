@@ -23,11 +23,16 @@
  *
  * HOW A PROJECT IS IDENTIFIED (all evidence, no heuristics)
  * --------------------------------------------------------
- *   1. strongest — the project's Git link names this repository
+ *   1. strengthen the identity — records returned by several listings (personal
+ *      and team) are collapsed to one candidate by the project's own `id`, so
+ *      the same project seen twice is not mistaken for two projects;
+ *   2. strongest evidence — the project's Git link names this repository
  *      (`link.type === "github"` and `link.repo === "<owner>/<repo>"`);
- *   2. otherwise — the project's name equals the expected name, which defaults
+ *   3. otherwise — the project's name equals the expected name, which defaults
  *      to the repository name read from `git remote.origin.url`;
- *   3. exactly one match, or the run FAILS and lists every candidate it saw.
+ *   4. exactly one match, or the run FAILS and lists every candidate it saw.
+ *      Distinct ids stay distinct: two projects with the same name, or two
+ *      projects linking the same repository, are still refused.
  *
  * The host URL is likewise taken from the project's own data — a verified
  * custom domain if it has one, else the production alias the project reports.
@@ -114,6 +119,121 @@ export function selectVercelProject({ projects, expectedName, repoFullName }) {
     problem: expectedName
       ? `no project in this scope is named ${expectedName} or links ${repoFullName ?? "this repository"}`
       : "no expected project name was given and no project links this repository",
+  };
+}
+
+/**
+ * Collapse the SAME project seen through several scopes into ONE candidate.
+ *
+ * WHY: a Vercel project can be returned by more than one listing — the personal
+ * scope and a team scope can both include it. Counting those as two candidates
+ * makes an unambiguous project look like two projects that happen to share a
+ * name, and the guard then refuses a publication it should have allowed. The
+ * project's own `id` is the stable identity the host assigns, so it is the key.
+ *
+ * WHAT IS *NOT* MERGED:
+ *   · different ids are always different projects — two projects with the same
+ *     name, or two projects linking the same repository, stay ambiguous and are
+ *     refused by `selectVercelProject`;
+ *   · a record with no `id` cannot be proven identical to anything, so it is
+ *     never merged (an absent identity is not a shared identity).
+ *
+ * Scope metadata is preserved (`__scopes`, in first-seen order) because the org
+ * id has to be one of them, and the first occurrence's fields win so the result
+ * does not depend on the order the API happened to answer.
+ */
+export function dedupeProjects(projects) {
+  const byId = new Map();
+  const withoutId = [];
+  for (const project of Array.isArray(projects) ? projects : []) {
+    const id = typeof project?.id === "string" && project.id.trim() ? project.id : null;
+    const scopesOf = (p) => {
+      const scopes = Array.isArray(p?.__scopes) ? [...p.__scopes] : [];
+      if (p?.__scope && !scopes.some((s) => s.kind === p.__scope.kind && s.id === p.__scope.id)) {
+        scopes.push(p.__scope);
+      }
+      return scopes;
+    };
+    if (!id) {
+      withoutId.push({ ...project, __scopes: scopesOf(project) });
+      continue;
+    }
+    const existing = byId.get(id);
+    if (!existing) {
+      byId.set(id, { ...project, __scopes: scopesOf(project) });
+      continue;
+    }
+    const merged = new Set([...existing.__scopes, ...scopesOf(project)].map((s) => `${s.kind}:${s.id}`));
+    byId.set(id, {
+      ...existing,
+      __scopes: [...existing.__scopes, ...scopesOf(project)].filter(
+        (s, i, all) => all.findIndex((o) => `${o.kind}:${o.id}` === `${s.kind}:${s.id}`) === i,
+      ),
+      __dedupedRecords: (existing.__dedupedRecords ?? 1) + 1,
+      __mergedScopeCount: merged.size,
+    });
+  }
+  return [...byId.values(), ...withoutId];
+}
+
+/** How many records collapsed into each distinct project id. */
+export function dedupeSummary(rawProjects, dedupedProjects) {
+  const raw = Array.isArray(rawProjects) ? rawProjects.length : 0;
+  const distinct = Array.isArray(dedupedProjects) ? dedupedProjects.length : 0;
+  return { rawRecords: raw, distinctProjects: distinct, collapsed: Math.max(0, raw - distinct) };
+}
+
+/**
+ * Which scope owns the chosen project — i.e. the value `VERCEL_ORG_ID` must be.
+ *
+ * The project record's OWN `accountId` is authoritative when the API returns it,
+ * because that is the host stating the owner; the enumerated scopes are then
+ * only used to name it. When `accountId` is absent, one team scope is preferred
+ * over the personal scope and the choice is DISCLOSED as a preference rather
+ * than presented as a fact.
+ */
+export function scopeForProject(project, { personalId = null } = {}) {
+  const scopes = Array.isArray(project?.__scopes)
+    ? project.__scopes
+    : project?.__scope
+      ? [project.__scope]
+      : [];
+  const accountId = typeof project?.accountId === "string" && project.accountId.trim() ? project.accountId : null;
+  if (accountId) {
+    const known = scopes.find((s) => s.id === accountId) ?? null;
+    const kind = known?.kind ?? (personalId && accountId === personalId ? "personal" : "team");
+    return {
+      scope: { kind, id: accountId, label: known?.label ?? `${kind} ${accountId}` },
+      source: "the project record's own accountId",
+      certain: true,
+      scopes,
+    };
+  }
+  const teamScopes = scopes.filter((s) => s.kind === "team");
+  if (teamScopes.length === 1) {
+    return { scope: teamScopes[0], source: "the single team scope that listed it", certain: true, scopes };
+  }
+  if (teamScopes.length > 1) {
+    return {
+      scope: null,
+      source: null,
+      certain: false,
+      scopes,
+      problem: `the project was listed under ${teamScopes.length} team scopes (${teamScopes
+        .map((s) => s.label)
+        .join(", ")}) and reports no accountId, so its owning scope cannot be determined`,
+    };
+  }
+  const personal = scopes.find((s) => s.kind === "personal") ?? null;
+  if (personal) {
+    return { scope: personal, source: "the personal scope that listed it", certain: true, scopes };
+  }
+  return {
+    scope: null,
+    source: null,
+    certain: false,
+    scopes,
+    problem: "the project was listed without a scope and reports no accountId, so VERCEL_ORG_ID cannot be determined",
   };
 }
 
@@ -213,7 +333,11 @@ function repoFullNameFromGit() {
   }
 }
 
-async function resolve(argv, env) {
+/**
+ * The whole resolution, with injectable argv/env/fetch so the operator's exact
+ * situation can be reproduced in a test without a network or a credential.
+ */
+export async function resolveVercelTarget({ argv = [], env = process.env, fetchImpl = fetch } = {}) {
   const args = { expectedName: env.XSTARZ_VERCEL_PROJECT_NAME ?? null, teamId: env.XSTARZ_VERCEL_TEAM_ID ?? null, hostUrl: env.XSTARZ_FRONTEND_HOST_URL ?? null, allowUnverifiedHost: false, json: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -238,7 +362,7 @@ async function resolve(argv, env) {
   }
 
   const evidence = [];
-  const user = await vercelGet("/v2/user", { token });
+  const user = await vercelGet("/v2/user", { token, fetchImpl });
   evidence.push(`GET /v2/user -> ${user.status ?? "transport failure"}`);
   if (!user.ok) {
     return {
@@ -256,7 +380,7 @@ async function resolve(argv, env) {
 
   const teams = args.teamId
     ? { ok: true, json: { teams: [] } }
-    : await vercelGet("/v2/teams?limit=100", { token });
+    : await vercelGet("/v2/teams?limit=100", { token, fetchImpl });
   evidence.push(`GET /v2/teams -> ${teams.status ?? "transport failure"}`);
   const teamList = Array.isArray(teams.json?.teams) ? teams.json.teams : [];
 
@@ -269,13 +393,25 @@ async function resolve(argv, env) {
     // personal scope is still searched because a personal token can own the app.
   }
 
-  const seen = [];
+  const raw = [];
   for (const scope of scopes) {
     const query = scope.kind === "team" ? `?limit=100&teamId=${encodeURIComponent(scope.id)}` : "?limit=100";
-    const projects = await vercelGet(`/v9/projects${query}`, { token });
+    const projects = await vercelGet(`/v9/projects${query}`, { token, fetchImpl });
     evidence.push(`GET /v9/projects [${scope.label}] -> ${projects.status ?? "transport failure"} (${(projects.json?.projects ?? []).length} project(s))`);
     if (!projects.ok) continue;
-    for (const project of projects.json?.projects ?? []) seen.push({ ...project, __scope: scope });
+    for (const project of projects.json?.projects ?? []) raw.push({ ...project, __scope: scope });
+  }
+
+  // The same project can be returned by several listings (personal + team).
+  // Its own id is the identity, so those records are ONE candidate — otherwise
+  // an unambiguous project looks like two projects that share a name and the
+  // guard refuses a publication it should allow.
+  const seen = dedupeProjects(raw);
+  const summary = dedupeSummary(raw, seen);
+  if (summary.collapsed > 0) {
+    evidence.push(
+      `deduped ${summary.rawRecords} project record(s) across ${scopes.length} scope(s) into ${summary.distinctProjects} distinct project id(s) — ${summary.collapsed} record(s) were the same project seen twice`,
+    );
   }
 
   const selection = selectVercelProject({
@@ -288,20 +424,24 @@ async function resolve(argv, env) {
       state: "PROJECT_NOT_IDENTIFIED",
       problems: [selection.problem].filter(Boolean),
       evidence,
-      candidates: seen.map((p) => ({ name: p.name, id: p.id, scope: p.__scope?.label ?? null })),
+      candidates: seen.map((p) => ({
+        name: p.name,
+        id: p.id,
+        scopes: (p.__scopes ?? []).map((sc) => sc.label),
+      })),
+      dedupe: summary,
     };
   }
 
   const chosen = selection.chosen;
-  const scope = chosen.__scope;
-  const detail = await vercelGet(
-    `/v9/projects/${encodeURIComponent(chosen.id)}${scope?.kind === "team" ? `?teamId=${encodeURIComponent(scope.id)}` : ""}`,
-    { token },
-  );
+  const ownership = scopeForProject(chosen, { personalId });
+  const scope = ownership.scope;
+  const teamQuery = scope?.kind === "team" ? `?teamId=${encodeURIComponent(scope.id)}` : "";
+  const detail = await vercelGet(`/v9/projects/${encodeURIComponent(chosen.id)}${teamQuery}`, { token, fetchImpl });
   evidence.push(`GET /v9/projects/${chosen.id} -> ${detail.status ?? "transport failure"}`);
   const domainsCall = await vercelGet(
-    `/v9/projects/${encodeURIComponent(chosen.id)}/domains${scope?.kind === "team" ? `?teamId=${encodeURIComponent(scope.id)}` : ""}`,
-    { token },
+    `/v9/projects/${encodeURIComponent(chosen.id)}/domains${teamQuery}`,
+    { token, fetchImpl },
   );
   evidence.push(`GET /v9/projects/${chosen.id}/domains -> ${domainsCall.status ?? "transport failure"}`);
 
@@ -313,11 +453,22 @@ async function resolve(argv, env) {
     allowUnverifiedHost: args.allowUnverifiedHost,
   });
 
+  const problems = [];
+  if (ownership.problem) problems.push(ownership.problem);
+  if (host.problem) problems.push(host.problem);
+  if (scope && ownership.source) {
+    evidence.push(
+      `owning scope determined from ${ownership.source}: ${scope.label} (id ${scope.id})` +
+        (ownership.certain ? "" : " — NOT certain"),
+    );
+  }
+
   const report = {
     schema: VERCEL_TARGET_SCHEMA,
-    state: host.hostUrl ? "RESOLVED" : "HOST_NOT_DISCOVERABLE",
+    state: !scope ? "ORG_NOT_DETERMINABLE" : host.hostUrl ? "RESOLVED" : "HOST_NOT_DISCOVERABLE",
     orgId: scope?.id ?? null,
     orgKind: scope?.kind ?? null,
+    orgSource: ownership.source ?? null,
     projectId: chosen.id ?? null,
     projectName: project.name ?? chosen.name ?? null,
     hostUrl: host.hostUrl,
@@ -325,8 +476,9 @@ async function resolve(argv, env) {
     domains: domains.map((d) => d.name),
     matchedBy: selection.matchedBy,
     projectsSeen: seen.length,
+    dedupe: summary,
     evidence,
-    problems: host.problem ? [host.problem] : [],
+    problems,
   };
   return report;
 }
@@ -334,7 +486,14 @@ async function resolve(argv, env) {
 function formatReport(report) {
   const lines = [`vercel target: ${report.state}`, `  VERCEL_ORG_ID: ${report.orgId ?? "(not resolved)"}`, `  VERCEL_PROJECT_ID: ${report.projectId ?? "(not resolved)"}`, `  FRONTEND_HOST_URL: ${report.hostUrl ?? "(not resolved)"}`];
   if (report.projectName) lines.push(`  project: ${report.projectName} (identified by ${report.matchedBy})`);
-  if (report.orgKind) lines.push(`  scope: ${report.orgKind}`);
+  if (report.orgKind) lines.push(`  scope: ${report.orgKind}`)
+  if (report.orgSource) lines.push(`  org id source: ${report.orgSource}`)
+  if (report.dedupe) {
+    lines.push(
+      `  projects: ${report.dedupe.distinctProjects} distinct id(s) from ${report.dedupe.rawRecords} record(s) across all scopes` +
+        (report.dedupe.collapsed > 0 ? ` — ${report.dedupe.collapsed} duplicate record(s) collapsed` : ""),
+    );
+  };
   if (report.hostSource) lines.push(`  host source: ${report.hostSource}`);
   if (report.domains?.length) lines.push(`  domains on the project: ${report.domains.join(", ")}`);
   lines.push(`  projects seen: ${report.projectsSeen ?? 0}`);
@@ -348,7 +507,7 @@ function formatReport(report) {
 const invokedDirectly = process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 if (invokedDirectly) {
   const argv = process.argv.slice(2);
-  const report = await resolve(argv, process.env);
+  const report = await resolveVercelTarget({ argv, env: process.env });
   process.stdout.write(argv.includes("--json") ? `${JSON.stringify(report, null, 2)}\n` : formatReport(report));
   process.exit(report.state === "RESOLVED" ? 0 : report.state === "NO_CREDENTIAL" || report.state === "API_UNREACHABLE" ? 2 : 1);
 }
