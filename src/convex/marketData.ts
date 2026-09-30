@@ -34,6 +34,10 @@ import { getProviderCache } from "../lib/data/provider-cache-registry";
 import { errorMessage, isRecord } from "./lib/json";
 import { classifyLegError } from "./lib/legOutcome";
 import { envelopeAcquisition, oldestObservation } from "../lib/data/provenance-diagnostics";
+// Phase 298 — the runtime's existing provider-observation-age scale
+// (FRESH < 5 min, DELAYED < 1 h, STALE < 24 h, UNAVAILABLE beyond). The
+// non-native leg reuses it instead of inventing a second freshness scale.
+import { assessFreshness } from "../lib/market-radar/freshness";
 import {
   createTwelveDataDiscoveryAdapter,
   mergeTwelveDataCatalogRuns,
@@ -108,11 +112,105 @@ let candleObservations: number[] = [];
  */
 let providerNativeFreshness: "realtime" | "delayed" | "stale" | "unavailable" |
   null = null;
+/**
+ * Phase 298 — the NON-native (Twelve Data) leg's primary-series provenance.
+ *
+ * `null` until the first series read of the run completes, which is always the
+ * setup-timeframe primary leg (the same ordering the provider-native leg
+ * relies on). These two values are the PROVIDER's own: the newest bar's open
+ * time and the series' own median bar cadence, as returned in the payload.
+ * Neither is ever taken from the request clock.
+ */
+let primarySeriesObservation: number | null = null;
+let primarySeriesBarSpacingMs: number | null = null;
 
 function resetCandleTrace(): void {
   candleAcquisitions = [];
   candleObservations = [];
   providerNativeFreshness = null;
+  primarySeriesObservation = null;
+  primarySeriesBarSpacingMs = null;
+}
+
+/**
+ * Phase 298 — the provider's own bar cadence, inferred from the series it
+ * actually returned (median of the positive gaps between consecutive bars, so
+ * a weekend gap or a halved session cannot redefine the interval). Returns
+ * `undefined` when the series is too short or too irregular to state a cadence
+ * — in which case no cadence claim is made.
+ */
+export function medianBarSpacingMs(
+  candles: readonly { timestamp: number }[],
+): number | undefined {
+  const gaps: number[] = [];
+  for (let i = 1; i < candles.length; i++) {
+    const gap = candles[i].timestamp - candles[i - 1].timestamp;
+    if (Number.isFinite(gap) && gap > 0) gaps.push(gap);
+  }
+  // Two spacings is the minimum for a median that is not just one gap.
+  if (gaps.length < 2) return undefined;
+  gaps.sort((a, b) => a - b);
+  const mid = Math.floor(gaps.length / 2);
+  const median =
+    gaps.length % 2 === 0 ? (gaps[mid - 1] + gaps[mid]) / 2 : gaps[mid];
+  return Number.isFinite(median) && median > 0 ? median : undefined;
+}
+
+/**
+ * Phase 298 — series freshness for the non-native (Twelve Data) leg.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * This leg used to report the constant `"delayed"` for every successful read.
+ * A series whose newest bar was days old was therefore indistinguishable from
+ * a current one in the envelope, and — because the engine's Gate 0 and the
+ * radar both read `dataFreshness` — a historical series could back an
+ * executable plan while being labelled only "delayed".
+ *
+ * THE RULE (uses only evidence the provider supplied)
+ * --------------------------------------------------
+ *   - the provider's own newest bar time is the observation instant;
+ *   - `"unavailable"` when the provider gave no usable instant, or one
+ *     implausibly in the future (same skew tolerance as the live scanner);
+ *   - `"stale"` only when the instant falls outside the runtime's EXISTING
+ *     observation-age scale (>= 24 h, i.e. `assessFreshness` = UNAVAILABLE)
+ *     AND is older than two of the series' own bar periods — the current bar
+ *     plus one bar period of publication lag. The cadence test keeps weekly /
+ *     daily setup series from being flagged merely for spanning a session,
+ *     and it cannot be satisfied by clock skew;
+ *   - `"delayed"` otherwise. This leg NEVER claims `"realtime"`: Twelve Data is
+ *     a delayed class feed here, and the runtime does not upgrade a feed class
+ *     on the strength of a fresh bar alone.
+ *
+ * The function can only ever degrade or hold a label; it can never make a
+ * series look fresher than the constant it replaces. Nothing here weakens a
+ * freshness check.
+ */
+export function providerSeriesFreshness(input: {
+  /** Provider-observed newest bar time of the PRIMARY (setup) series. */
+  newestBarTimestamp: number | null | undefined;
+  /** Median bar spacing of that same series, when derivable. */
+  barSpacingMs: number | null | undefined;
+  now: number;
+}): "delayed" | "stale" | "unavailable" {
+  const observedAt = input.newestBarTimestamp;
+  if (observedAt === null || observedAt === undefined) return "unavailable";
+  if (!Number.isFinite(observedAt) || observedAt <= 0) return "unavailable";
+
+  const ageMs = input.now - observedAt;
+  // Future beyond the documented clock-skew tolerance: unverifiable.
+  if (ageMs < -60_000) return "unavailable";
+
+  if (assessFreshness(observedAt, input.now) === "UNAVAILABLE") {
+    const spacing = input.barSpacingMs;
+    if (spacing === null || spacing === undefined || !Number.isFinite(spacing) || spacing <= 0) {
+      // The cadence cannot be stated, so the series cannot be shown current
+      // beyond the runtime's own scale: refuse rather than assume.
+      return "stale";
+    }
+    if (ageMs > 2 * spacing) return "stale";
+  }
+  return "delayed";
 }
 
 async function fetchCandles(
@@ -134,11 +232,36 @@ async function fetchCandles(
       observedAt: Date.now(),
     }),
   );
+  const candles = evidence?.data ?? [];
   if (evidence) {
     candleAcquisitions.push(evidence.acquisition);
-    candleObservations.push(evidence.observedAt);
+    /*
+      Phase 298 — the observation time this leg records is the PROVIDER's own
+      newest bar open of the primary (setup) series, never the receipt clock.
+
+      Before this, every read pushed the cache entry's write instant, so the
+      envelope reported the request clock as an observation time — the exact
+      fabrication `resolveProviderPriceTimestamp` above forbids for the price
+      leg and that the provider-native leg already avoids. The cache entry's
+      own instant is still its age basis (unchanged); only the EVIDENCE trace
+      uses the provider's clock.
+
+      Only the primary read is recorded: the envelope's observation time is
+      documented as the setup series' provider-observed time, and the HTF /
+      comparator legs are naturally older (timeframe widening, not staleness).
+    */
+    if (primarySeriesObservation === null) {
+      const newest = candles[candles.length - 1]?.timestamp;
+      if (newest !== undefined && Number.isFinite(newest) && newest > 0) {
+        primarySeriesObservation = newest;
+        primarySeriesBarSpacingMs = medianBarSpacingMs(candles) ?? null;
+        candleObservations.push(newest);
+      }
+    } else {
+      candleObservations.push(evidence.observedAt);
+    }
   }
-  return evidence?.data ?? [];
+  return candles;
 }
 
 async function fetchCandlesUncached(
@@ -157,7 +280,19 @@ async function fetchCandlesUncached(
   const json = await res.json();
   const parsedSeries = parseTwelveDataTimeSeries(json);
   if (!parsedSeries.ok) {
-    throw new Error(parsedSeries.reason);
+    /*
+      Phase 298 — the HTTP status is part of the failure class.
+
+      A 401/403 from this endpoint used to be thrown as the vendor body's own
+      text ("[4011] HTTP 401"), which the primary-leg classifier could only
+      read as a generic "no live data" — an authentication failure surfaced as
+      missing market data. The `[<status>]` prefix is this runtime's existing
+      convention for the fatal classes (see `classifyPrimaryFetchFailure`),
+      so the status travels with the reason and the class is preserved.
+    */
+    const statusPrefix =
+      !res.ok && Number.isFinite(res.status) ? `[${res.status}] ` : "";
+    throw new Error(`${statusPrefix}${parsedSeries.reason}`);
   }
   return parsedSeries.candles;
 }
@@ -793,6 +928,36 @@ export const fetchMarketData = action({
       const resultProvider = useProviderNative
         ? (providerArg as string)
         : "twelve-data";
+      /*
+        Phase 298 — freshness as EVIDENCE, not as a constant.
+
+        The envelope used to report the literal `"delayed"` for every
+        successful read on BOTH legs. For the provider-native leg that
+        discarded a freshness the provider's own observation clock had already
+        produced (`providerNativeFreshness`, computed above and never read);
+        for the Twelve Data leg it meant a series whose newest bar was days old
+        was indistinguishable from a current one, so Gate 0 / the data-quality
+        layer / the radar could not surface "stale data" at all.
+
+        Both replacements can only hold or LOWER the label that was reported
+        before — they can never make a series look fresher:
+          - provider-native: the provider's own assessment is honoured when it
+            is more conservative (stale / unavailable); otherwise the previous
+            `"delayed"` stands;
+          - Twelve Data: derived from the provider's newest bar time and the
+            series' own cadence (`providerSeriesFreshness`), and it never
+            claims `"realtime"`.
+      */
+      const envelopeNow = Date.now();
+      const dataFreshness = useProviderNative
+        ? providerNativeFreshness === "stale" || providerNativeFreshness === "unavailable"
+          ? providerNativeFreshness
+          : ("delayed" as const)
+        : providerSeriesFreshness({
+            newestBarTimestamp: primarySeriesObservation,
+            barSpacingMs: primarySeriesBarSpacingMs,
+            now: envelopeNow,
+          });
       return {
         success: true as const,
         data: {
@@ -800,12 +965,12 @@ export const fetchMarketData = action({
           instrumentType: args.instrumentType,
           provider: resultProvider,
           providerInstrumentId: requestSymbol,
-          fetchTimestamp: Date.now(),
+          fetchTimestamp: envelopeNow,
           price: { price, timestamp: priceTimestamp, source: resultProvider },
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
-          dataFreshness: "delayed" as const,
+          dataFreshness,
         },
         technical,
         // Phase 178d — one honest mode for the whole action: `cache-reused`

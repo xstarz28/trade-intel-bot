@@ -333,7 +333,18 @@ describe("the provider derives the metadata the leg forwards", () => {
     expect(typeof env.observedAt).toBe("number");
     // A real observation is not in the future, and is not the epoch.
     expect(env.observedAt!).toBeLessThanOrEqual(Date.now() + 1_000);
-    expect(env.observedAt!).toBeGreaterThan(Date.now() - 60_000);
+    /*
+      Phase 298 — the observation instant is the PROVIDER's own newest bar of
+      the setup series (the fixture's newest candle, one hour back), not the
+      cache receipt. The previous assertion — `observedAt > Date.now() - 60s` —
+      encoded the very fabrication Phase 298 removed: because this fixture's
+      bars are hourly while the series is a day old at its head, a receipt
+      clock passed that window while claiming an observation that no provider
+      had made. Equality with the provider's own bar is the stronger property.
+    */
+    const newestBarMs = new Date(CANDLES[CANDLES.length - 1].datetime).getTime();
+    expect(env.observedAt!).toBe(newestBarMs);
+    expect(env.observedAt!).toBeLessThanOrEqual(Date.now() + 1_000);
   });
 
   it("a completed market-data acquisition is never reported unavailable", async () => {
