@@ -124,9 +124,43 @@ describe("Phase 290-A — real provider candles through the production chain", (
       // The event time IS the provider candle's timestamp — provenance kept.
       expect(read.lastEvent.candleTime).toBe(H4[read.lastEvent.candleIndex].timestamp);
       expect(read.lastEvent.confirmedAtIndex).toBe(read.lastEvent.candleIndex);
+      // And on real provider candles too the event is a genuine CROSSING: the
+      // candle before it closed on the level's original side.
+      const breaking = H4[read.lastEvent.candleIndex];
+      const previous = H4[read.lastEvent.candleIndex - 1];
+      if (read.lastEvent.direction === "bullish") {
+        expect(breaking.close).toBeGreaterThan(read.lastEvent.brokenLevel);
+        expect(previous.close).toBeLessThanOrEqual(read.lastEvent.brokenLevel);
+      } else {
+        expect(breaking.close).toBeLessThan(read.lastEvent.brokenLevel);
+        expect(previous.close).toBeGreaterThanOrEqual(read.lastEvent.brokenLevel);
+      }
+      // Every event this read issued obeys the same invariant.
+      for (const e of read.events) {
+        const close = H4[e.candleIndex].close;
+        const prev = H4[e.candleIndex - 1].close;
+        if (e.direction === "bullish") {
+          expect(close).toBeGreaterThan(e.brokenLevel);
+          expect(prev).toBeLessThanOrEqual(e.brokenLevel);
+        } else {
+          expect(close).toBeLessThan(e.brokenLevel);
+          expect(prev).toBeGreaterThanOrEqual(e.brokenLevel);
+        }
+      }
     }
     if (read.invalidation) {
       expect(H4[read.invalidation.swingIndex].timestamp).toBe(read.invalidation.timestamp);
+    }
+    if (read.majorInvalidation) {
+      // A regime line exists only when the regime itself produced the swing.
+      expect(read.lastEvent).toBeDefined();
+      expect(read.majorInvalidation.swingIndex).toBeGreaterThan(read.lastEvent!.candleIndex);
+      expect(read.majorInvalidation.swingKind).toBe(
+        read.direction === "bullish" ? "low" : "high",
+      );
+      expect(H4[read.majorInvalidation.swingIndex].timestamp).toBe(
+        read.majorInvalidation.timestamp,
+      );
     }
 
     // ── MTF: every timeframe read independently; hierarchy stated ──

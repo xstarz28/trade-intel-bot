@@ -25,6 +25,7 @@ import {
   structureDigest,
 } from "./structure";
 import { buildMtfContext } from "./mtf";
+import type { ConfirmedSwing } from "./structure";
 import type { OhlcvCandle } from "./market-types";
 
 // ── Fixture helpers ───────────────────────────────────────────────
@@ -63,6 +64,74 @@ function legSeries(start: number, legs: Array<[number, number]>, wick = 0.15): O
   }
   return out;
 }
+
+/**
+ * Bullish regime fixture (lookback 2) with the pre-event extreme DELIBERATELY
+ * more extreme than the post-event one:
+ *   high 101.4 @2 (confirmed at 4) · low 98.4 @4 (confirmed at 6)   ← pre-event
+ *   BOS bullish at candle 8 (close 102.2 > 101.4)                   ← regime event
+ *   low 100.2 @11 (confirmed at 13) · low 100.7 @15 (confirmed at 17) ← post-event
+ * `98.4` is the pre-BOS protection and must never become the regime's major line.
+ */
+const REGIME_BULL_ROWS: Row[] = [
+  [100.0, 100.5, 98.0, 100.2],
+  [100.2, 101.0, 99.5, 100.8],
+  [100.8, 101.4, 99.8, 101.2],
+  [101.2, 101.3, 99.9, 100.5],
+  [100.5, 100.9, 98.4, 99.0],
+  [99.0, 99.6, 98.6, 99.4],
+  [99.4, 100.2, 98.9, 100.0],
+  [100.0, 101.0, 99.6, 100.8],
+  [100.8, 102.5, 100.6, 102.2],
+  [102.2, 103.0, 102.0, 102.6],
+  [102.6, 103.2, 100.9, 101.2],
+  [101.2, 101.5, 100.2, 100.4],
+  [100.4, 101.9, 100.3, 100.8],
+  [100.8, 101.5, 101.0, 101.4],
+  [101.4, 101.5, 101.0, 101.2],
+  [101.2, 101.3, 100.7, 100.9],
+  [101.6, 102.2, 101.2, 101.9],
+  [101.9, 102.4, 101.5, 102.0],
+];
+
+/**
+ * Exact mirror of a fixture around its own mid-price: highs become lows and
+ * strict inequalities survive untouched, so a bullish case becomes the
+ * structurally identical bearish case (regime event, protected side, extremes).
+ */
+const mirrorRows = (rows: Row[]): Row[] => {
+  const m = Math.max(...rows.map((r) => r[1])) + Math.min(...rows.map((r) => r[2]));
+  return rows.map(([o, h, l, c]) => [m - o, m - l, m - h, m - c]);
+};
+
+/**
+ * Lagging-confirmation fixture: a swing whose confirmation LAGS the first
+ * close-through — the contract this walk accepts from any caller-supplied swing
+ * list (a streamed feed, a slower confirmation policy, a replayed list).
+ *   · pivot high 105 @2, only knowable at candle 5;
+ *   · candle 3 already CLOSES at 106 — beyond 105, BEFORE the level existed;
+ *   · candle 5 (the confirmation candle) is still beyond it;
+ *   · newer pivot high 112 @7, knowable at candle 10, still below it until 12.
+ */
+const LAGGING_BREAK_ROWS: Row[] = [
+  [100.0, 101.0, 99.0, 100.0],
+  [100.0, 104.5, 99.0, 104.0],
+  [104.0, 105.0, 103.0, 104.5],
+  [104.5, 107.0, 104.0, 106.0],
+  [106.0, 108.0, 105.5, 107.0],
+  [107.0, 109.0, 105.5, 108.0],
+  [108.0, 110.0, 107.0, 109.0],
+  [109.0, 112.0, 108.0, 111.0],
+  [111.0, 111.5, 109.0, 110.0],
+  [110.0, 111.0, 110.5, 110.8],
+  [110.8, 111.0, 109.5, 110.0],
+  [110.0, 111.0, 110.5, 110.7],
+  [110.7, 113.0, 110.6, 112.5],
+];
+const laggingSwings = (candles: OhlcvCandle[]): ConfirmedSwing[] => [
+  { kind: "high", price: 105.0, index: 2, confirmedAtIndex: 5, timestamp: candles[2].timestamp },
+  { kind: "high", price: 112.0, index: 7, confirmedAtIndex: 10, timestamp: candles[7].timestamp },
+];
 
 /** Monotone rise: no fractal swing exists at all. */
 const MONOTONE_UP = () => legSeries(100, [[30, 1]]);
@@ -235,6 +304,79 @@ describe("B — BOS timing", () => {
 });
 
 // ══════════════════════════════════════════════════════════════════
+// B2 — a break must be a CROSSING, never a state found already beyond
+// ══════════════════════════════════════════════════════════════════
+
+describe("B2 — lagging confirmation cannot create a late BOS/CHoCH", () => {
+  const rows = LAGGING_BREAK_ROWS;
+  const candles = mk(rows);
+  const swings = laggingSwings(candles);
+
+  it("emits nothing at the confirmation candle for a pre-confirmation close-through", () => {
+    // Candle 3 closed through 105 while the level was still unknowable.
+    expect(candles[3].close).toBeGreaterThan(105.0);
+    const upToConfirmation = detectStructureEvents(candles.slice(0, 6), swings);
+    expect(upToConfirmation.events).toEqual([]);
+    // …and nothing is backdated to the candle that really closed through it.
+    expect(upToConfirmation.events.some((e) => e.candleIndex === 3)).toBe(false);
+    // It is a state, not a rejection either: no wick claim is invented.
+    expect(upToConfirmation.wickOnlyRejections).toBe(0);
+  });
+
+  it("still reports a genuine later crossing, at the crossing candle, on the newer level", () => {
+    const { events } = detectStructureEvents(candles, swings);
+    expect(events).toHaveLength(1);
+    const e = events[0];
+    expect(e.kind).toBe("BOS"); // no prior regime → establishing break, never CHoCH
+    expect(e.direction).toBe("bullish");
+    expect(e.brokenLevel).toBe(112.0); // the newer confirmed level
+    expect(e.brokenSwingIndex).toBe(7);
+    expect(e.candleIndex).toBe(12); // the candle that CROSSED, not the confirmation candle
+    expect(e.confirmedAtIndex).toBe(12);
+    expect(e.candleTime).toBe(candles[12].timestamp);
+    // The candle before the event is on the original side of the level.
+    expect(candles[11].close).toBeLessThanOrEqual(e.brokenLevel);
+    expect(candles[12].close).toBeGreaterThan(e.brokenLevel);
+  });
+
+  it("the same rule holds on the downside (mirrored series)", () => {
+    const downRows = mirrorRows(rows);
+    const downCandles = mk(downRows);
+    const downSwings: ConfirmedSwing[] = [
+      { kind: "low", price: downRows[2][2], index: 2, confirmedAtIndex: 5, timestamp: downCandles[2].timestamp },
+      { kind: "low", price: downRows[7][2], index: 7, confirmedAtIndex: 10, timestamp: downCandles[7].timestamp },
+    ];
+    expect(downCandles[3].close).toBeLessThan(downSwings[0].price);
+    expect(detectStructureEvents(downCandles.slice(0, 6), downSwings).events).toEqual([]);
+    const { events } = detectStructureEvents(downCandles, downSwings);
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("BOS");
+    expect(events[0].direction).toBe("bearish");
+    expect(events[0].brokenLevel).toBe(downSwings[1].price);
+    expect(events[0].candleIndex).toBe(12);
+  });
+
+  it("prefix walk: no level before confirmation, no late event at it, real crossings after", () => {
+    const full = detectStructureEvents(candles, swings).events;
+    for (let n = 1; n <= candles.length; n += 1) {
+      const { events } = detectStructureEvents(candles.slice(0, n), swings);
+      // Nothing may appear before the confirmation candle at all…
+      if (n <= 6) expect(events).toEqual([]);
+      // …and every prefix agrees exactly with the events already known by then.
+      expect(events).toEqual(full.filter((e) => e.candleIndex <= n - 1));
+      for (const e of events) {
+        const prev = candles[e.candleIndex - 1].close;
+        const crossedUp = e.direction === "bullish" && prev <= e.brokenLevel;
+        const crossedDown = e.direction === "bearish" && prev >= e.brokenLevel;
+        expect(crossedUp || crossedDown).toBe(true);
+      }
+    }
+    expect(full).toHaveLength(1);
+    expect(full[0].candleIndex).toBe(12);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
 // C — CHoCH timing
 // ══════════════════════════════════════════════════════════════════
 
@@ -372,6 +514,75 @@ describe("E — structural invalidation", () => {
     expect(read.direction).toBe("none");
     expect(read.invalidation).toBeUndefined();
     expect(read.majorInvalidation).toBeUndefined();
+  });
+
+  it("majorInvalidation is scoped to the POST-event regime, never a pre-event extreme", () => {
+    const read = readStructure(mk(REGIME_BULL_ROWS), "H1", { lookback: 2 });
+    const event = read.lastEvent!;
+    expect(read.direction).toBe("bullish");
+    expect(event.kind).toBe("BOS");
+    expect(event.candleIndex).toBe(8); // the regime-establishing event
+
+    // Trailing protection is UNCHANGED: the latest confirmed protected low.
+    expect(read.invalidation!.swingKind).toBe("low");
+    expect(read.invalidation!.swingIndex).toBe(15);
+    expect(read.invalidation!.level).toBeCloseTo(100.7, 10);
+
+    // The regime line comes from the post-event sequence only…
+    expect(read.majorInvalidation!.swingKind).toBe("low");
+    expect(read.majorInvalidation!.swingIndex).toBe(11);
+    expect(read.majorInvalidation!.level).toBeCloseTo(100.2, 10);
+    expect(read.majorInvalidation!.swingIndex).toBeGreaterThan(event.candleIndex);
+    // …and the MORE extreme pre-BOS low (98.4 @4) is not it.
+    const preEventLow = read.swings.find((s) => s.kind === "low" && s.index === 4)!;
+    expect(preEventLow.price).toBeCloseTo(98.4, 10);
+    expect(preEventLow.price).toBeLessThan(read.majorInvalidation!.level);
+    expect(read.majorInvalidation!.level).not.toBeCloseTo(preEventLow.price, 10);
+    // The output states both lines when they differ.
+    expect(structureDigest(read).join("\n")).toContain(
+      "H1 regime invalidation 100.2 (extreme low #11)",
+    );
+  });
+
+  it("the mirrored bearish regime obeys the same scope", () => {
+    const rows = mirrorRows(REGIME_BULL_ROWS);
+    const read = readStructure(mk(rows), "H1", { lookback: 2 });
+    const event = read.lastEvent!;
+    expect(read.direction).toBe("bearish");
+    expect(event.direction).toBe("bearish");
+    expect(event.candleIndex).toBe(8);
+    expect(read.invalidation!.swingKind).toBe("high");
+    expect(read.invalidation!.swingIndex).toBe(15);
+    expect(read.majorInvalidation!.swingIndex).toBe(11);
+    expect(read.majorInvalidation!.swingIndex).toBeGreaterThan(event.candleIndex);
+    // The pre-event high is the more extreme one and must stay ignored.
+    const preEventHighs = read.swings.filter(
+      (s) => s.kind === "high" && s.index < event.candleIndex,
+    );
+    expect(preEventHighs.length).toBeGreaterThan(0);
+    expect(read.majorInvalidation!.level).toBeLessThan(
+      Math.max(...preEventHighs.map((s) => s.price)),
+    );
+  });
+
+  it("a regime with no post-event protected swing exposes NO major level", () => {
+    // Prefix ending just after the BOS: the only protected low (98.4 @4) predates it.
+    const read = readStructure(mk(REGIME_BULL_ROWS.slice(0, 10)), "H1", { lookback: 2 });
+    expect(read.direction).toBe("bullish");
+    expect(read.lastEvent!.candleIndex).toBe(8);
+    expect(read.majorInvalidation).toBeUndefined(); // absence preserved, nothing invented
+    expect(read.swings.filter((s) => s.kind === "low" && s.index > 8)).toEqual([]);
+    // …while the trailing invalidation keeps the pre-event protection it always had.
+    expect(read.invalidation!.swingIndex).toBe(4);
+    expect(read.invalidation!.level).toBeCloseTo(98.4, 10);
+
+    // Production fixture: TREND_UP's BOS is followed by a monotone rally.
+    const trend = readStructure(TREND_UP(), "H1", { lookback: 5 });
+    expect(trend.lastEvent!.kind).toBe("BOS");
+    expect(trend.events[trend.events.length - 1].direction).toBe("bullish");
+    expect(trend.swings.filter((s) => s.kind === "low" && s.index > trend.lastEvent!.candleIndex)).toEqual([]);
+    expect(trend.invalidation).toBeDefined();
+    expect(trend.majorInvalidation).toBeUndefined();
   });
 });
 
@@ -657,6 +868,73 @@ describe("J — no lookahead", () => {
           (s) => s.index === e.brokenSwingIndex && s.kind === e.brokenSwingKind,
         )!;
         expect(swing.confirmedAtIndex).toBeLessThanOrEqual(e.candleIndex);
+      }
+    }
+  });
+
+  it("every event ever emitted is a genuine close-through, for every prefix", () => {
+    const fixtures: Array<[string, OhlcvCandle[], number]> = [
+      ["EVENTS", candles, 1],
+      ["TREND_UP", TREND_UP(), 3],
+      ["TREND_DOWN", TREND_DOWN(), 3],
+      ["STAIRCASE", STAIRCASE(), 5],
+      ["CONVERGING_RANGE", CONVERGING_RANGE(), 3],
+      ["REGIME_BULL", mk(REGIME_BULL_ROWS), 2],
+      ["REGIME_BEAR", mk(mirrorRows(REGIME_BULL_ROWS)), 2],
+    ];
+    let checked = 0;
+    for (const [name, series, lookback] of fixtures) {
+      for (let n = 1; n <= series.length; n += 1) {
+        const read = readStructure(series.slice(0, n), "H1", { lookback });
+        for (const e of read.events) {
+          checked += 1;
+          const close = series[e.candleIndex].close;
+          const prev = series[e.candleIndex - 1].close;
+          if (e.direction === "bullish") {
+            expect(close, `${name} close@${e.candleIndex}`).toBeGreaterThan(e.brokenLevel);
+            expect(prev, `${name} prevClose@${e.candleIndex}`).toBeLessThanOrEqual(e.brokenLevel);
+          } else {
+            expect(close, `${name} close@${e.candleIndex}`).toBeLessThan(e.brokenLevel);
+            expect(prev, `${name} prevClose@${e.candleIndex}`).toBeGreaterThanOrEqual(e.brokenLevel);
+          }
+          // The event is stamped by the candle that confirmed it, never backdated…
+          expect(e.confirmedAtIndex).toBe(e.candleIndex);
+          expect(e.candleTime).toBe(series[e.candleIndex].timestamp);
+          // …and its level belonged to a swing that was already knowable by then.
+          const owner = read.swings.find(
+            (s) => s.index === e.brokenSwingIndex && s.kind === e.brokenSwingKind,
+          );
+          expect(owner, `${name} owner@${e.brokenSwingIndex}`).toBeDefined();
+          expect(owner!.confirmedAtIndex).toBeLessThanOrEqual(e.candleIndex);
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it("a lagging swing is unusable before confirmation and never relabelled at it", () => {
+    const series = mk(LAGGING_BREAK_ROWS);
+    const swings = laggingSwings(series);
+    const full = detectStructureEvents(series, swings).events;
+    expect(full).toHaveLength(1);
+    expect(full[0].candleIndex).toBe(12);
+
+    for (let n = 1; n <= series.length; n += 1) {
+      const { events } = detectStructureEvents(series.slice(0, n), swings);
+      // Prefix invariance in the presence of an unconfirmed swing.
+      expect(events).toEqual(full.filter((e) => e.candleIndex <= n - 1));
+      // Before the level is knowable it can never appear as a broken level…
+      if (n <= 5) {
+        expect(events).toEqual([]);
+        expect(events.some((e) => e.brokenLevel === 105.0)).toBe(false);
+      }
+      // …and the confirmation candle does not convert that earlier close-through
+      // into a fresh event.
+      if (n === 6) expect(events).toEqual([]);
+      for (const e of events) {
+        const owner = swings.find((s) => s.index === e.brokenSwingIndex)!;
+        expect(owner.confirmedAtIndex).toBeLessThanOrEqual(e.candleIndex);
+        expect(e.candleTime).toBe(series[e.candleIndex].timestamp);
       }
     }
   });

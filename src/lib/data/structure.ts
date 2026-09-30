@@ -41,6 +41,18 @@
  *    consumed by its break and cannot fire twice. Price remaining beyond an old
  *    level produces no further events.
  *
+ *    A break must also be a genuine CROSSING: the event candle's close has to
+ *    move from the level's original side to beyond it. If price was ALREADY
+ *    beyond the level when the swing became knowable — because a close-through
+ *    happened before `confirmedAtIndex` — that is a state the new level simply
+ *    inherits, so no event is emitted at the confirmation candle and nothing is
+ *    backdated to the candle that really closed through it. The level stays
+ *    active, so a genuine later re-cross can still be reported. (Confirmed
+ *    fractal swings make this unreachable — a pre-confirmation close beyond a
+ *    fractal extreme is impossible, because that candle's high/low would have
+ *    denied the fractal — so the rule holds unconditionally for every caller of
+ *    this function rather than only for the detector's own output.)
+ *
  * 4. BOS vs CHoCH. A break in the direction of the established regime continues
  *    it (BOS). The first break AGAINST an established regime is a CHoCH, and it
  *    flips the regime. With no established regime there is nothing to change
@@ -55,8 +67,11 @@
  *        (a trailing structural stop: lose it and the sequence of higher
  *        lows / lower highs is broken);
  *      · `majorInvalidation` — the EXTREME confirmed swing on the protected
- *        side since the event that established the regime (the regime-level
- *        line: lose it and the trend itself is void).
+ *        side that formed AFTER the event that established the regime (the
+ *        regime-level line: lose it and the trend itself is void). Protection
+ *        from before the event belongs to the previous regime and is never
+ *        re-used; a regime that has not yet produced such a swing exposes NO
+ *        major level instead of inventing one.
  *    Neither is chosen for how a reward/risk ratio looks.
  *
  * 6. EXTERNAL vs INTERNAL. The two reads use different windows and are computed
@@ -335,10 +350,14 @@ export function detectStructureEvents(
 
     const candle = candles[k];
     const close = candle.close;
+    // The close of the candle that came BEFORE this one. A break is only a
+    // break when this candle's close CROSSES the level from its original side;
+    // "still beyond a level that just became knowable" is a state, not an event.
+    const prevClose = k > 0 ? candles[k - 1].close : undefined;
 
     // ── break UP: the active confirmed swing high ──────────────────
     if (activeHigh && activeHigh.index < k) {
-      if (close > activeHigh.price) {
+      if (close > activeHigh.price && (prevClose === undefined || prevClose <= activeHigh.price)) {
         const direction: "bullish" = "bullish";
         // A bullish break against an established bearish regime changes
         // character; with no regime (or with a bullish one) it continues it.
@@ -359,7 +378,7 @@ export function detectStructureEvents(
         activeHigh = undefined;
         continue;
       }
-      if (candle.high > activeHigh.price) {
+      if (close <= activeHigh.price && candle.high > activeHigh.price) {
         // Pierced, closed back below: liquidity behaviour, NOT structure.
         wickOnlyRejections += 1;
       }
@@ -367,7 +386,7 @@ export function detectStructureEvents(
 
     // ── break DOWN: the active confirmed swing low ─────────────────
     if (activeLow && activeLow.index < k) {
-      if (close < activeLow.price) {
+      if (close < activeLow.price && (prevClose === undefined || prevClose >= activeLow.price)) {
         const direction: "bearish" = "bearish";
         const kind: StructureEventKind = regime === "bullish" ? "CHOCH" : "BOS";
         events.push({
@@ -385,7 +404,7 @@ export function detectStructureEvents(
         activeLow = undefined;
         continue;
       }
-      if (candle.low < activeLow.price) {
+      if (close >= activeLow.price && candle.low < activeLow.price) {
         wickOnlyRejections += 1;
       }
     }
@@ -444,17 +463,27 @@ function invalidationOf(
     distance: Math.abs(price - s.price),
   });
 
-  // Regime-level protection: extremes since the regime was established. When the
-  // regime came from a bullish event, only lows formed at/after the broken swing
-  // belong to that regime's own sequence.
-  const from = lastEvent ? Math.max(0, lastEvent.brokenSwingIndex) : 0;
-  const regimeSwings = usable.filter((s) => s.index >= from);
-  const scoped = regimeSwings.length > 0 ? regimeSwings : usable;
-  const extreme = scoped.reduce((best, s) =>
-    side === "low" ? (s.price < best.price ? s : best) : s.price > best.price ? s : best,
-  );
+  // Regime-level protection: the EXTREME protected-side swing that formed
+  // AFTER the event which established the regime — the first legs of the new
+  // regime's own sequence. Protection that existed before the event belongs to
+  // the previous regime and can never become this regime's major line, and a
+  // regime that has not yet produced a qualifying swing has NO major level:
+  // absence is reported, never back-filled from an earlier regime.
+  let majorInvalidation: StructuralInvalidation | undefined;
+  if (lastEvent) {
+    const postEvent = usable.filter((s) => s.index > lastEvent.candleIndex);
+    if (postEvent.length > 0) {
+      const extreme = postEvent.reduce((best, s) =>
+        side === "low" ? (s.price < best.price ? s : best) : s.price > best.price ? s : best,
+      );
+      majorInvalidation = mk(extreme);
+    }
+  }
 
-  return { invalidation: mk(latest), majorInvalidation: mk(extreme) };
+  return {
+    invalidation: mk(latest),
+    ...(majorInvalidation ? { majorInvalidation } : {}),
+  };
 }
 
 /**
