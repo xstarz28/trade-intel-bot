@@ -77,19 +77,74 @@ run when it fails.
 
 ---
 
+## 2b. The three identifiers, and where they come from (Phase 300 continuation)
+
+A publication needs three values. None of them is guessed, and none is a secret:
+
+| Value | What it is | Where it comes from | Safe as a GitHub Environment VARIABLE? |
+| --- | --- | --- | --- |
+| `VERCEL_ORG_ID` | the account/team that owns the host project | `GET /v2/user` (id) or `GET /v2/teams` (team id), read with the token | **Yes** — an identifier, it authorises nothing on its own |
+| `VERCEL_PROJECT_ID` | the project that serves the site | the project object that **links this repository** (`link.repo`), else the one project whose name is `trade-intel-bot`; several or none means the run stops and lists candidates | **Yes** — same reason |
+| `FRONTEND_HOST_URL` | the https origin a browser opens | the project's own verified custom domain, else its production alias — never composed by hand | **Yes** — it is public by definition |
+
+```bash
+# Reads all three from the account the token authorises, and prints the evidence:
+VERCEL_TOKEN=... npm run frontend:resolve
+VERCEL_TOKEN=... npm run frontend:resolve -- --json
+
+# Pin the results (identifiers only, never the token) in the `development`
+# environment, or leave them unset — the workflow resolves them itself.
+```
+
+The resolver is **read-only** (`GET` only): it never creates, links, deploys or
+renames anything. With no token it prints `NO_CREDENTIAL` and resolves nothing;
+if the API cannot be reached it prints `API_UNREACHABLE`. Both exit `2`, because
+"could not evaluate" is not a result about any site.
+
+---
+
+## 2c. One command that publishes and proves it (no dispatcher needed)
+
+GitHub only offers a `workflow_dispatch` workflow once its **file exists on the
+default branch**. This repository's default branch is `main`, which does not
+carry `.github/workflows/publish-development-frontend.yml`, so until that file
+reaches the default branch the workflow cannot be started from the Actions UI.
+The same publication is therefore available as one command, run wherever the
+token lives:
+
+```bash
+VERCEL_TOKEN=... npm run frontend:publish -- --host-url https://<dev-host>
+VERCEL_TOKEN=... npm run frontend:publish -- --target production   # only if the host is the project's production domain
+VERCEL_TOKEN=... npm run frontend:publish -- --skip-build          # reuse an existing dist/
+```
+
+It refuses unless the checkout is the pinned branch and the tree is clean, builds,
+runs `verify:frontend`, fingerprints the artifact it just verified, resolves or
+validates the host target, uploads **that same directory** (never a rebuild),
+points the browser-facing host at the deployment, and finishes by fetching the
+public URL with `--expect-build-info-sha256` and `--expect-asset-names`. A
+failure in that last step fails the command.
+
+The token is read from the environment only — never from `argv`, which is
+visible in a process listing — and never printed. The default deploy target is
+`preview` aliased to the host, so a project's production deployment can only be
+replaced deliberately.
+
+---
+
 ## 3. One-time setup (operator) — required before a real publication can happen
 
 The publication path is complete and tested, but it is **credential-gated**: with
 no credential the run fails with `HOST_CREDENTIAL_ABSENT` instead of skipping the
 upload. Configure, in the GitHub **`development`** environment:
 
-| Kind | Name | What it is |
-| --- | --- | --- |
-| secret | `VERCEL_TOKEN` | a token scoped to the **existing** project that serves the development site |
-| variable | `VERCEL_ORG_ID` | the team/user that owns that project |
-| variable | `VERCEL_PROJECT_ID` | that project's id (this workflow never creates a project) |
-| variable | `FRONTEND_HOST_URL` | the browser-facing https origin, e.g. `https://<dev-host>` |
-| variable | `VITE_CONVEX_URL` | already set for the development deploy; baked into the build |
+| Kind | Name | What it is | Required? |
+| --- | --- | --- | --- |
+| secret | `VERCEL_TOKEN` | a token scoped to the **existing** project that serves the development site | **Yes** for `publish`; not needed for `verify-only` |
+| variable | `VERCEL_ORG_ID` | the team/user that owns that project | optional — resolved from the token when unset (see §2b) |
+| variable | `VERCEL_PROJECT_ID` | that project's id (nothing here creates a project) | optional — resolved from the token when unset |
+| variable | `FRONTEND_HOST_URL` | the browser-facing https origin, e.g. `https://<dev-host>` | optional for `publish`; **required** for `verify-only` |
+| variable | `VITE_CONVEX_URL` | already set for the development deploy; baked into the build | yes for `publish` |
 
 Alternatively, if the `freebuff-web` project (or any other host) is to remain the
 publisher, point **it** at `arena/01a0d195-trade-intel-bot` instead of the default

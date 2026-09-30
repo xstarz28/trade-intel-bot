@@ -19,6 +19,8 @@
     "verify:frontend": "node scripts/verify-frontend-artifact.mjs",
     "verify:published": "node scripts/verify-published-frontend.mjs",
     "frontend:publish:guard": "node --experimental-strip-types --no-warnings scripts/frontend-publication-guard.mjs",
+    "frontend:resolve": "node scripts/resolve-vercel-target.mjs",
+    "frontend:publish": "node --experimental-strip-types --no-warnings scripts/publish-frontend.mjs",
     "desktop:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "desktop:build": "tauri build",
     "convex:preflight": "node --experimental-strip-types --no-warnings scripts/verify-deployment-config.mjs",

@@ -1,0 +1,226 @@
+/**
+ * Phase 300 — resolving the host identifiers, and the one-command publication.
+ *
+ * WHY THESE ASSERTIONS EXIST
+ * --------------------------
+ * A publication needs three values — which account, which project, which
+ * browser-facing URL. Two ways to get them are unacceptable: inventing them, and
+ * publishing to whichever project happens to come back first. The resolver
+ * therefore has to be checkable on the cases that matter:
+ *
+ *   · a project that LINKS this repository is chosen over a name coincidence;
+ *   · several matches, or none, is a refusal that names the candidates;
+ *   · the host URL comes from the project's own data, and an explicit host the
+ *     project does not serve is refused rather than trusted;
+ *   · with no credential the resolver reports exactly that — exit 2, and no
+ *     identifier printed as if it were known.
+ *
+ * The publisher is checked structurally for the same reason the workflow is:
+ * the order (verify → upload the same bytes → alias → fetch the public URL) is
+ * the guarantee, and a reordering would silently weaken it.
+ */
+
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+import {
+  chooseHostUrl,
+  projectDomains,
+  selectVercelProject,
+} from "../../../scripts/resolve-vercel-target.mjs";
+import { artifactFingerprint, deploymentUrlFrom } from "../../../scripts/publish-frontend.mjs";
+
+const root = process.cwd();
+const read = (path: string) => readFileSync(resolve(root, path), "utf8");
+
+const REPO = "xstarz28/trade-intel-bot";
+
+describe("300 — the host project is identified by evidence, never by hope", () => {
+  it("prefers the project that LINKS this repository", () => {
+    const projects = [
+      { id: "prj_a", name: "trade-intel-bot", link: { type: "github", repo: REPO } },
+      { id: "prj_b", name: "trade-intel-bot", link: null },
+    ];
+    const selection = selectVercelProject({ projects, expectedName: "trade-intel-bot", repoFullName: REPO });
+    expect(selection.chosen?.id).toBe("prj_a");
+    expect(selection.matchedBy).toBe("git-link");
+  });
+
+  it("accepts a unique name match when nothing links the repository", () => {
+    const projects = [
+      { id: "prj_a", name: "trade-intel-bot" },
+      { id: "prj_b", name: "something-else" },
+    ];
+    const selection = selectVercelProject({ projects, expectedName: "trade-intel-bot", repoFullName: REPO });
+    expect(selection.chosen?.id).toBe("prj_a");
+    expect(selection.matchedBy).toBe("name");
+  });
+
+  it("refuses several matches, and names them", () => {
+    const projects = [
+      { id: "prj_a", name: "trade-intel-bot", link: { type: "github", repo: REPO } },
+      { id: "prj_b", name: "trade-intel-bot", link: { type: "github", repo: REPO } },
+    ];
+    const selection = selectVercelProject({ projects, expectedName: "trade-intel-bot", repoFullName: REPO });
+    expect(selection.chosen).toBeNull();
+    expect(selection.problem).toMatch(/refusing to choose/);
+    expect(selection.problem).toContain("prj_a");
+    expect(selection.problem).toContain("prj_b");
+  });
+
+  it("refuses when nothing matches, and names what it saw", () => {
+    const projects = [{ id: "prj_x", name: "unrelated" }];
+    const selection = selectVercelProject({ projects, expectedName: "trade-intel-bot", repoFullName: REPO });
+    expect(selection.chosen).toBeNull();
+    expect(selection.problem).toMatch(/no project in this scope is named trade-intel-bot/);
+  });
+
+  it("does not match a repo with a similar name", () => {
+    const projects = [{ id: "prj_a", name: "trade-intel-bot", link: { type: "github", repo: "someone/trade-intel-bot-fork" } }];
+    const selection = selectVercelProject({ projects, expectedName: "other-name", repoFullName: REPO });
+    expect(selection.chosen).toBeNull();
+  });
+});
+
+describe("300 — the browser-facing URL is read from the project, not composed", () => {
+  it("collects aliases and domains once each, lower-cased", () => {
+    const domains = projectDomains(
+      { alias: ["Trade-Intel-Bot.vercel.app"], targets: { production: { alias: ["trade-intel-bot.freebuff.app"] } } },
+      [{ name: "trade-intel-bot.freebuff.app", verified: true }, { name: "", verified: true }],
+    );
+    expect(domains.map((d: { name: string }) => d.name)).toEqual(["trade-intel-bot.vercel.app", "trade-intel-bot.freebuff.app"]);
+  });
+
+  it("prefers a verified custom domain over the vercel.app alias", () => {
+    const chosen = chooseHostUrl({
+      explicit: null,
+      domains: [
+        { name: "trade-intel-bot.vercel.app", source: "project alias", verified: true },
+        { name: "trade-intel-bot.freebuff.app", source: "project domain", verified: true },
+      ],
+    });
+    expect(chosen.hostUrl).toBe("https://trade-intel-bot.freebuff.app");
+    expect(chosen.source).toMatch(/project's own domain/);
+  });
+
+  it("falls back to the project's own production alias", () => {
+    const chosen = chooseHostUrl({
+      explicit: null,
+      domains: [{ name: "trade-intel-bot.vercel.app", source: "project alias", verified: true }],
+    });
+    expect(chosen.hostUrl).toBe("https://trade-intel-bot.vercel.app");
+  });
+
+  it("reports the missing prerequisite when the project lists no host at all", () => {
+    const chosen = chooseHostUrl({ explicit: null, domains: [] });
+    expect(chosen.hostUrl).toBeNull();
+    expect(chosen.problem).toMatch(/no verified domain or production alias/);
+  });
+
+  it("accepts an explicit host only when the project serves it", () => {
+    const listed = chooseHostUrl({
+      explicit: "https://trade-intel-bot.freebuff.app/",
+      domains: [{ name: "trade-intel-bot.freebuff.app", source: "project domain", verified: true }],
+    });
+    expect(listed.hostUrl).toBe("https://trade-intel-bot.freebuff.app");
+
+    const unlisted = chooseHostUrl({ explicit: "https://some-other-site.example", domains: [] });
+    expect(unlisted.hostUrl).toBeNull();
+    expect(unlisted.problem).toMatch(/not among the project's domains/);
+
+    const forced = chooseHostUrl({ explicit: "https://some-other-site.example", domains: [], allowUnverifiedHost: true });
+    expect(forced.hostUrl).toBe("https://some-other-site.example");
+    expect(forced.source).toMatch(/NOT listed/);
+  });
+});
+
+describe("300 — the resolver refuses, loudly, when it cannot know", () => {
+  it("exits 2 with NO_CREDENTIAL and resolves nothing", () => {
+    const result = spawnSync("node", ["scripts/resolve-vercel-target.mjs"], {
+      cwd: root,
+      encoding: "utf8",
+      env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "" },
+    });
+    // Exit 2 means "could not evaluate", which is NOT a result about any site.
+    expect(result.status).toBe(2);
+    const output = result.stdout;
+    expect(output).toContain("NO_CREDENTIAL");
+    expect(output).toContain("VERCEL_ORG_ID: (not resolved)");
+    expect(output).toContain("VERCEL_PROJECT_ID: (not resolved)");
+    expect(output).toContain("FRONTEND_HOST_URL: (not resolved)");
+  });
+
+  it("never prints the credential it is given", () => {
+    const source = read("scripts/resolve-vercel-target.mjs");
+    // The token reaches the API call and nothing else.
+    expect(source).not.toMatch(/console\.log\([^)]*token/);
+    expect(source).not.toMatch(/authorization:\s*`Bearer \$\{token\}`[^\n]*\n[^\n]*console/);
+    expect(source).toMatch(/authorization: `Bearer \$\{token\}`/);
+  });
+});
+
+describe("300 — the one-command publication keeps the verified bytes and proves the result", () => {
+  it("reads the deployment URL from the host CLI's last https line", () => {
+    const stdout = [
+      "Vercel CLI 48.0.0",
+      "Inspect: https://vercel.com/team/project/abc",
+      "https://trade-intel-bot-abc123.vercel.app",
+    ].join("\n");
+    expect(deploymentUrlFrom(stdout)).toBe("https://trade-intel-bot-abc123.vercel.app");
+    expect(deploymentUrlFrom("no url here")).toBeNull();
+  });
+
+  it("fingerprints the artifact that will be uploaded", () => {
+    const dir = mkdtempSync(join(tmpdir(), "phase300-dist-"));
+    const info = {
+      schema: "xstarz.build-info/v1",
+      commit: "7684323b7de578906038cf2c9e08bf2e9290bc2c",
+      shortCommit: "7684323b",
+      branch: "arena/01a0d195-trade-intel-bot",
+      builtAt: "2026-09-30T06:59:32.000Z",
+      source: "git",
+      worktreeDirty: false,
+      unsafeSource: false,
+    };
+    writeFileSync(join(dir, "build-info.json"), `${JSON.stringify(info)}\n`);
+    writeFileSync(join(dir, "index.html"), '<script src="/assets/index-abc.js"></script><link href="/assets/index-abc.css">');
+    const fingerprint = artifactFingerprint(dir);
+    expect(fingerprint?.buildInfo.commit).toBe(info.commit);
+    expect(fingerprint?.entry).toBe("assets/index-abc.js,assets/index-abc.css");
+    expect(fingerprint?.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(artifactFingerprint(mkdtempSync(join(tmpdir(), "phase300-empty-")))).toBeNull();
+  });
+
+  it("keeps the order: verify the artifact, upload the same bytes, alias the host, fetch the public URL", () => {
+    const source = read("scripts/publish-frontend.mjs");
+    const verifyArtifact = source.indexOf("scripts/verify-frontend-artifact.mjs");
+    const upload = source.indexOf('"deploy", args.dist');
+    const alias = source.indexOf('"alias", "set"');
+    const verifyPublished = source.indexOf("scripts/verify-published-frontend.mjs");
+    for (const at of [verifyArtifact, upload, alias, verifyPublished]) expect(at).toBeGreaterThan(-1);
+    expect(verifyArtifact).toBeLessThan(upload);
+    expect(upload).toBeLessThan(alias);
+    expect(alias).toBeLessThan(verifyPublished);
+    // Never a token on argv, and the acceptance failure fails the command.
+    expect(source).not.toMatch(/--token/);
+    expect(source).toMatch(/the published URL did not pass the acceptance check/);
+  });
+
+  it("is wired as npm scripts, and the workflow resolves identifiers it was not given", () => {
+    const pkg = JSON.parse(read("package.json"));
+    expect(pkg.scripts["frontend:resolve"]).toBe("node scripts/resolve-vercel-target.mjs");
+    expect(pkg.scripts["frontend:publish"]).toContain("scripts/publish-frontend.mjs");
+
+    const wf = read(".github/workflows/publish-development-frontend.yml");
+    expect(wf).toMatch(/npm run frontend:resolve/);
+    expect(wf).toMatch(/VERCEL_ORG_ID=\$org/);
+    expect(wf).toMatch(/XSTARZ_FRONTEND_HOST_URL=\$host/);
+    // The documented dispatch limitation is stated where a reader will hit it.
+    expect(wf).toMatch(/DEFAULT branch/);
+    expect(read("docs/FRONTEND-PUBLICATION.md")).toMatch(/npm run frontend:publish/);
+  });
+});
