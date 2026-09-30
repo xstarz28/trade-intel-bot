@@ -1468,6 +1468,22 @@ const de: Translations = {
       "Marktdaten können verzögert, unvollständig oder nicht verfügbar sein. In diesem Fall weist die App darauf hin, statt die Lücke mit einer Schätzung zu füllen. Sie sind dafür verantwortlich, zu prüfen, worauf Sie reagieren.",
     backHome: "Zurück zu Xstarz Analysis",
   },
+  buildInfo: {
+    title: "Build-Herkunft",
+    intro:
+      "Die genaue Frontend-Revision, von der diese Seite ausgeliefert wurde. Nur Fakten — keine Kontodaten, keine Umgebungswerte, keine Zugangsdaten.",
+    commitLabel: "Commit",
+    shortCommitLabel: "Kurzer Commit",
+    branchLabel: "Branch",
+    builtAtLabel: "Gebaut am (Commit-Zeitpunkt, UTC)",
+    sourceLabel: "Erfasst aus",
+    schemaLabel: "Schema",
+    unsafeSource:
+      "Dieses Artefakt wurde aus {branch} gebaut, was keine gültige Produktquelle ist. Es ist nicht das Artefakt des aktuellen Branches.",
+    machineReadable:
+      "Maschinenlesbar: /build-info.json. Dieselben Werte sind als xstarz-build-*-Meta-Tags im ausgelieferten HTML eingebettet.",
+    backToApp: "Zurück zur App",
+  },
 };
 
 export default de;

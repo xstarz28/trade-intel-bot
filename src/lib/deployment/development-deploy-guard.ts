@@ -47,6 +47,7 @@ import {
   httpsHost,
   isForbiddenDeploySourceRef,
 } from "./production-deploy-guard";
+import { normalizeGitRef } from "../build-provenance";
 
 export const DEVELOPMENT_DEPLOY_GUARD_SCHEMA = "phase286.development-deploy-guard/v1";
 
@@ -55,6 +56,7 @@ export type DevelopmentDeployGuardState =
   | "PLACEHOLDER_DEPLOY_KEY"
   | "MISSING_DEPLOY_KEY"
   | "FORBIDDEN_SOURCE_REF"
+  | "WRONG_SOURCE_BRANCH"
   | "PRODUCTION_IDENTITY"
   | "WRONG_IDENTITY"
   | "MISSING_DEPLOYMENT_IDENTITY"
@@ -66,6 +68,7 @@ export const DEVELOPMENT_DEPLOY_GUARD_PRECEDENCE: readonly DevelopmentDeployGuar
   "PLACEHOLDER_DEPLOY_KEY",
   "MISSING_DEPLOY_KEY",
   "FORBIDDEN_SOURCE_REF",
+  "WRONG_SOURCE_BRANCH",
   "PRODUCTION_IDENTITY",
   "WRONG_IDENTITY",
   "MISSING_DEPLOYMENT_IDENTITY",
@@ -102,6 +105,21 @@ export interface DevelopmentDeployGuardInput {
    * imported rather than re-decided here.
    */
   sourceRef?: string;
+  /**
+   * Phase 299 — the branch this deployment MUST build from, when the caller
+   * pins one (`--require-branch`, `XSTARZ_REQUIRED_SOURCE_BRANCH`).
+   *
+   * WHY: the same origin has served both the current product UI and a retired
+   * build-platform scaffold, and the only difference an operator could see was
+   * the colours. "Do not deploy `main`" is a denial; pinning the intended
+   * branch is a positive statement about WHICH ref may be deployed, and it is
+   * checkable. Absent means the caller asserts no specific branch (the
+   * deny-list still applies).
+   *
+   * Compared after ref normalisation, so `refs/heads/X`, `origin/X` and the
+   * input value `X` are the same branch. Case-sensitive: branch names are.
+   */
+  requiredSourceBranch?: string;
 }
 
 export interface DevelopmentDeployGuardReport {
@@ -130,6 +148,8 @@ export interface DevelopmentDeployGuardReport {
     resolved: string | null;
     isDevelopment: boolean;
   };
+  /** Phase 299 — the branch this deploy was pinned to, when the caller set one. */
+  requiredSourceBranch: string | null;
   problems: readonly string[];
   statement: string;
 }
@@ -172,6 +192,21 @@ export function evaluateDevelopmentDeployGuard(
     problems.push(
       "source ref is main; main still serves the leaked OTP credential at its tip and must not be deployed to any deployment, development included",
     );
+  }
+
+  // Phase 299 — the positive form of the same rule: when a deployment pins the
+  // branch it must build from, any other ref is refused by name. Checked with
+  // the same normalisation the forbidden-ref rule uses, so a correct ref is
+  // never refused for its spelling.
+  const requiredBranch = normalizeGitRef(trim(input.requiredSourceBranch));
+  if (requiredBranch) {
+    const normalisedSource = normalizeGitRef(sourceRef);
+    if (normalisedSource !== requiredBranch) {
+      states.push("WRONG_SOURCE_BRANCH");
+      problems.push(
+        `source ref ${normalisedSource || "<absent>"} is not the pinned deploy source branch ${requiredBranch}; this deployment must be built from that branch, not from another ref`,
+      );
+    }
   }
 
   const deployment = trim(input.convexDeployment) || null;
@@ -267,6 +302,7 @@ export function evaluateDevelopmentDeployGuard(
     deployment: { declared: deployment, developmentShaped, productionShaped },
     urls: { viteConvexUrlHost: viteHost, convexSiteUrlHost: siteHost },
     environment: { declared: declaredEnv, resolved, isDevelopment },
+    requiredSourceBranch: requiredBranch || null,
     problems,
     statement: mayInvokeDeploy
       ? "Inputs are development-shaped and a deploy key is present. This is not a deployment and not a release admission."
@@ -287,6 +323,7 @@ export function formatDevelopmentDeployGuard(report: DevelopmentDeployGuardRepor
     `VITE_CONVEX_URL host: ${report.urls.viteConvexUrlHost ?? "<absent>"}`,
     `CONVEX_SITE_URL host: ${report.urls.convexSiteUrlHost ?? "<absent>"}`,
     `environment: ${report.environment.resolved ?? "undeclared"}`,
+    `required source branch: ${report.requiredSourceBranch ?? "<not pinned>"}`,
     "",
     "problems:",
     ...(report.problems.length === 0 ? ["  none"] : report.problems.map((line) => `  - ${line}`)),

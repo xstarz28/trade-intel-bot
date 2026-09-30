@@ -1469,6 +1469,22 @@ const pt: Translations = {
       "Os dados de mercado podem estar atrasados, incompletos ou indisponíveis. Quando isso acontece, o aplicativo informa em vez de preencher a lacuna com uma estimativa. Você é responsável por verificar aquilo em que agir.",
     backHome: "Voltar ao Xstarz Analysis",
   },
+  buildInfo: {
+    title: "Procedência da compilação",
+    intro:
+      "A revisão exata do frontend a partir da qual esta página foi servida. Apenas factos — sem dados de conta, sem valores de ambiente, sem credenciais.",
+    commitLabel: "Commit",
+    shortCommitLabel: "Commit curto",
+    branchLabel: "Ramo",
+    builtAtLabel: "Compilado em (hora do commit, UTC)",
+    sourceLabel: "Registado de",
+    schemaLabel: "Esquema",
+    unsafeSource:
+      "Este artefacto foi compilado a partir de {branch}, que não é uma fonte de produto válida. Não é o artefacto do ramo atual.",
+    machineReadable:
+      "Legível por máquina: /build-info.json. Os mesmos valores estão incorporados no HTML servido como etiquetas meta xstarz-build-*.",
+    backToApp: "Voltar à aplicação",
+  },
 };
 
 export default pt;

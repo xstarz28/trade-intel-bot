@@ -1463,6 +1463,22 @@ const id: Translations = {
       "Data pasar dapat tertunda, tidak lengkap, atau tidak tersedia. Bila itu terjadi, aplikasi menyatakannya, bukan menutupi kekosongan dengan perkiraan. Anda bertanggung jawab memverifikasi apa pun yang Anda tindak lanjuti.",
     backHome: "Kembali ke Xstarz Analysis",
   },
+  buildInfo: {
+    title: "Asal usul build",
+    intro:
+      "Revisi frontend persis yang menyajikan halaman ini. Hanya fakta — tanpa data akun, tanpa nilai lingkungan, tanpa kredensial.",
+    commitLabel: "Commit",
+    shortCommitLabel: "Commit singkat",
+    branchLabel: "Cabang",
+    builtAtLabel: "Dibangun pada (waktu commit, UTC)",
+    sourceLabel: "Sumber tercatat",
+    schemaLabel: "Skema",
+    unsafeSource:
+      "Artefak ini dibangun dari {branch}, yang bukan sumber produk yang sah. Ini bukan artefak cabang saat ini.",
+    machineReadable:
+      "Dapat dibaca mesin: /build-info.json. Nilai yang sama tertanam di HTML yang disajikan sebagai tag meta xstarz-build-*.",
+    backToApp: "Kembali ke aplikasi",
+  },
 };
 
 export default id;

@@ -98,6 +98,12 @@ jobs:
       - name: Scan the built artifact for embedded credentials
         run: npm run mobile:verify
 
+      - name: Verify the built frontend artifact (identity, theme, no legacy branding)
+        # Phase 299 — the same artifact contract the development deploy
+        # enforces. A production build that shipped the retired scaffold's
+        # green palette or its platform branding is not production software.
+        run: npm run verify:frontend -- --require-clean
+
       - name: Keep the frontend artifact
         uses: actions/upload-artifact@v4
         with:

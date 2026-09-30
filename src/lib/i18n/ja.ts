@@ -1465,6 +1465,22 @@ const ja: Translations = {
       "マーケットデータは遅延、欠落、または利用不可となる場合があります。その際、アプリは推定値で補わずにその旨を明示します。行動の根拠となる情報の確認はお客様の責任です。",
     backHome: "Xstarz Analysis に戻る",
   },
+  buildInfo: {
+    title: "ビルドの出所",
+    intro:
+      "このページを配信したフロントエンドの正確なリビジョンです。事実のみ — アカウントデータ、環境値、認証情報は含みません。",
+    commitLabel: "コミット",
+    shortCommitLabel: "短縮コミット",
+    branchLabel: "ブランチ",
+    builtAtLabel: "ビルド日時（コミット時刻、UTC）",
+    sourceLabel: "記録元",
+    schemaLabel: "スキーマ",
+    unsafeSource:
+      "この成果物は {branch} からビルドされており、有効な製品ソースではありません。現在のブランチの成果物ではありません。",
+    machineReadable:
+      "機械可読: /build-info.json。同じ値は配信される HTML に xstarz-build-* メタタグとして埋め込まれています。",
+    backToApp: "アプリに戻る",
+  },
 };
 
 export default ja;

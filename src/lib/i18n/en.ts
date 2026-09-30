@@ -1459,6 +1459,29 @@ const en: Translations = {
       "Market data can be delayed, incomplete or unavailable. When that happens the app says so rather than filling the gap with an estimate. You are responsible for verifying anything you act on.",
     backHome: "Back to Xstarz Analysis",
   },
+  /**
+   * Phase 299 — `/build`, the deployed artifact identifying itself.
+   *
+   * The same URL has served two different products, so "which revision is this?"
+   * must be answerable from the page itself. These strings name the fields and
+   * say plainly what is NOT shown.
+   */
+  buildInfo: {
+    title: "Build provenance",
+    intro:
+      "The exact frontend revision this page was served from. Facts only — no account data, no environment values, no credentials.",
+    commitLabel: "Commit",
+    shortCommitLabel: "Short commit",
+    branchLabel: "Branch",
+    builtAtLabel: "Built at (commit time, UTC)",
+    sourceLabel: "Recorded from",
+    schemaLabel: "Schema",
+    unsafeSource:
+      "This artifact was built from {branch}, which is not a valid product source. It is not the current branch artifact.",
+    machineReadable:
+      "Machine-readable: /build-info.json. The same values are embedded in the served HTML as xstarz-build-* meta tags.",
+    backToApp: "Back to the app",
+  },
 };
 
 export default en;

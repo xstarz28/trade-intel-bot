@@ -42,6 +42,25 @@
 # Optional variables, used only when set:
 #   VITE_CONVEX_URL   https on *.convex.cloud (also the post-deploy version probe)
 #   CONVEX_SITE_URL   https on *.convex.site
+#
+# Phase 299 — WHICH REF MAY BE DEPLOYED (the deployment-source rule)
+# -----------------------------------------------------------------
+# The development deployment is the environment a person opens, and the same
+# URL has served two different products: the current UI (Xstarz blue, Google +
+# guest sign-in) and a retired build-platform scaffold (green primary,
+# "secured by freebuff.com", email-OTP sign-in). Distinguishing them by colour
+# is not a verification, so the deploy source is pinned:
+#
+#   · `main` is refused (repository-wide rule: its tip still carries the
+#     leaked OTP credential and the retired scaffold);
+#   · the intended branch below is REQUIRED — the guard refuses every other
+#     ref by name, not merely `main`;
+#   · the built frontend artifact is inspected before it is uploaded, so a
+#     wrong-theme / legacy-branded / wrong-commit bundle cannot leave the job.
+#
+# The pin is ONE variable, XSTARZ_REQUIRED_SOURCE_BRANCH (below), used by
+# both the guard and the artifact check, so changing the intended branch is a
+# one-line edit rather than a hunt.
 
 name: Development deploy
 
@@ -49,8 +68,9 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Branch, tag or SHA to deploy (defaults to the dispatched ref)"
-        required: false
+        description: "Branch to deploy — must be the pinned development source branch (main is refused)"
+        required: true
+        default: "arena/01a0d195-trade-intel-bot"
         type: string
       confirm:
         description: "Type DEPLOY_DEV to confirm this targets the development deployment"
@@ -63,6 +83,12 @@ permissions:
 concurrency:
   group: development-deploy
   cancel-in-progress: false
+
+env:
+  # The one place the intended development deploy source is declared.
+  # The guard refuses any other ref, and the artifact check below refuses a
+  # bundle whose recorded branch is not this one.
+  XSTARZ_REQUIRED_SOURCE_BRANCH: arena/01a0d195-trade-intel-bot
 
 jobs:
   guard:
@@ -100,7 +126,7 @@ jobs:
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Fail closed when the deploy inputs are absent or not development
-        run: npm run development:deploy:guard -- --json
+        run: npm run development:deploy:guard -- --json --require-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH"
 
   deploy:
     name: Convex development deploy
@@ -131,10 +157,22 @@ jobs:
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Re-check the development identity immediately before invoking Convex
-        run: npm run development:deploy:guard -- --json
+        run: npm run development:deploy:guard -- --json --require-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH"
 
       - name: Type and build prerequisites (the same gate the production deploy runs)
         run: npm run build
+
+      - name: Refuse to proceed with a legacy, off-theme or wrong-commit frontend artifact
+        # The artifact, not the pipeline, decides what a person would open:
+        # provenance present and matching this checkout, no retired platform
+        # branding, no retired OTP surface, Xstarz blue primary, current
+        # sign-in copy. Exit 2 (nothing to inspect) is a failure too, not a
+        # licence to continue.
+        run: |
+          npm run verify:frontend -- \
+            --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" \
+            --expect-commit "$(git rev-parse HEAD)" \
+            --require-clean
 
       - name: Safe metadata — what is about to be deployed and where
         run: |
@@ -142,7 +180,8 @@ jobs:
           echo "source ref: ${SOURCE_REF}"
           echo "commit: $(git rev-parse HEAD)"
           echo "commit subject: $(git log -1 --pretty=%s)"
-          echo "::notice title=Development deploy source::ref=${SOURCE_REF} commit=$(git rev-parse HEAD)"
+          echo "frontend build provenance:"; cat dist/build-info.json
+          echo "::notice title=Development deploy source::ref=${SOURCE_REF} commit=$(git rev-parse HEAD) frontend=$(node -p "const b=require('./dist/build-info.json'); b.shortCommit + ' (' + b.branch + ') built ' + b.builtAt")"
 
       - name: Deploy the Convex backend to the development deployment
         # `convex dev --once` is the repository's own development deploy command

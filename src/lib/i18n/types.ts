@@ -1683,4 +1683,25 @@ export interface Translations {
     termsAccuracyBody: string;
     backHome: string;
   };
+  /**
+   * Phase 299 — `/build`, where the deployed artifact identifies its own
+   * revision. Truthfulness copy: it must state that the values shown are the
+   * artifact's own embedded metadata and that nothing about the account or the
+   * environment is displayed. `unsafeSource` interpolates `{branch}`.
+   */
+  buildInfo: {
+    title: string;
+    intro: string;
+    commitLabel: string;
+    shortCommitLabel: string;
+    branchLabel: string;
+    builtAtLabel: string;
+    sourceLabel: string;
+    schemaLabel: string;
+    /** Interpolates `{branch}` — the ref the artifact was built from. */
+    unsafeSource: string;
+    /** Names the static file and the embedded meta tags; both are technical notation. */
+    machineReadable: string;
+    backToApp: string;
+  };
 }

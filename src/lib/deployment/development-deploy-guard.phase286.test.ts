@@ -256,6 +256,57 @@ describe("286 — the development workflow is manual, development-scoped and fai
     expect(workflow).toMatch(/DEPLOY_DEV/);
   });
 
+  it("refuses any ref that is not the PINNED deploy source branch (Phase 299)", () => {
+    // `main` is a denial; a pin is a positive statement about which ref may be
+    // deployed, and the same origin has served two different products.
+    const PINNED = "arena/01a0d195-trade-intel-bot";
+    const pinned = (sourceRef: string | undefined) =>
+      evaluateDevelopmentDeployGuard({ ...DEV, sourceRef, requiredSourceBranch: PINNED });
+
+    // The pinned branch is accepted in every spelling of the same ref.
+    for (const ref of [
+      PINNED,
+      `refs/heads/${PINNED}`,
+      `origin/${PINNED}`,
+      `refs/remotes/origin/${PINNED}`,
+    ]) {
+      expect(pinned(ref).state, ref).toBe("READY_TO_INVOKE_DEV_DEPLOY");
+    }
+
+    // Everything else is refused by name, including refs that are not `main`.
+    for (const ref of [
+      "main",
+      "refs/heads/arena/01a08e67-trade-intel-bot",
+      "refs/heads/phase-157-live-discovery-lifecycle",
+      undefined,
+    ]) {
+      const report = pinned(ref);
+      expect(report.state, String(ref)).toBe(
+        ref === "main" || ref === "refs/heads/main" ? "FORBIDDEN_SOURCE_REF" : "WRONG_SOURCE_BRANCH",
+      );
+      expect(report.mayInvokeDeploy, String(ref)).toBe(false);
+    }
+
+    // The pin is reported, and never a credential or a resolution.
+    expect(pinned(PINNED).requiredSourceBranch).toBe(PINNED);
+    expect(pinned(undefined).requiredSourceBranch).toBe(PINNED);
+    expect(pinned("main").problems.join(" ")).toMatch(/main/);
+
+    // Unpinned callers keep the previous behaviour (deny-list only).
+    expect(
+      evaluateDevelopmentDeployGuard({ ...DEV, sourceRef: "refs/heads/other", requiredSourceBranch: "" })
+        .state,
+    ).toBe("READY_TO_INVOKE_DEV_DEPLOY");
+  });
+
+  it("the development workflow pins the branch it deploys (Phase 299)", () => {
+    const wf = read(WORKFLOW);
+    expect(wf).toMatch(/XSTARZ_REQUIRED_SOURCE_BRANCH: arena\/01a0d195-trade-intel-bot/);
+    expect(wf).toMatch(/--require-branch "\$XSTARZ_REQUIRED_SOURCE_BRANCH"/);
+    expect(wf).toMatch(/default: "arena\/01a0d195-trade-intel-bot"/);
+    expect(wf).not.toMatch(/default: "main"/);
+  });
+
   it("cannot switch live provider verification on", () => {
     expect(workflow).not.toMatch(/LIVE_PROVIDER_VERIFICATION/);
   });

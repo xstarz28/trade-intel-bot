@@ -48,6 +48,13 @@ jobs:
       - name: Typecheck and production build
         run: npm run build
 
+      - name: Verify the built frontend artifact (identity, theme, no legacy branding)
+        # Phase 299 — a green build is not evidence about WHICH product the
+        # artifact is. This inspects dist/ itself: build provenance matching
+        # this checkout, no retired platform/OTP surface, the Xstarz blue
+        # primary present and the retired teal-green one absent.
+        run: npm run verify:frontend -- --expect-commit "$GITHUB_SHA" --require-clean
+
       # Lint is advisory: the repository carries a known warning backlog, so a
       # hard failure here would block every change. The count is surfaced for
       # review instead of silently discarded.

@@ -2,7 +2,14 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { execSync } from "node:child_process";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
+import {
+  buildInfoJson,
+  buildInfoMetaTags,
+  buildProvenance,
+  resolveBuildCommit,
+  resolveBuildRef,
+} from "./src/lib/build-provenance";
 
 /**
  * Phase 180 — build provenance.
@@ -26,15 +33,28 @@ import { defineConfig } from "vite";
  * CI override: SOURCE_DATE_EPOCH (the reproducible-builds standard) is
  * honoured when set, so a tarball build with no git metadata is still
  * deterministic.
+ *
+ * Phase 299 — the SAME derivation now also emits `dist/build-info.json` and
+ * `<meta name="xstarz-build-*">` tags, so a deployed artifact answers "which
+ * commit am I?" over plain HTTP (see `src/lib/build-provenance.ts`). The ref
+ * and commit come from `XSTARZ_BUILD_REF` / `SOURCE_REF` / `GITHUB_REF_NAME`
+ * and `XSTARZ_BUILD_COMMIT` / `GITHUB_SHA` first, because a CI checkout is
+ * usually detached and `git rev-parse --abbrev-ref HEAD` then answers "HEAD".
  */
-function gitInfo(): { commit: string; branch: string; time: string } {
+function gitInfo() {
   const read = (cmd: string): string => {
     try {
       return execSync(cmd, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
     } catch {
-      return "unknown";
+      return "";
     }
   };
+
+  const envCommit = resolveBuildCommit(process.env);
+  const envRef = resolveBuildRef(process.env);
+
+  const gitCommit = read("git rev-parse HEAD");
+  const commit = envCommit || gitCommit || "unknown";
 
   const epoch = process.env.SOURCE_DATE_EPOCH;
   const commitEpoch = epoch ?? read("git log -1 --format=%ct");
@@ -42,16 +62,61 @@ function gitInfo(): { commit: string; branch: string; time: string } {
     ? new Date(Number(commitEpoch) * 1000).toISOString()
     : "unknown";
 
-  return {
-    commit: read("git rev-parse --short HEAD"),
-    // In CI the checkout is often detached, where `--abbrev-ref HEAD` yields
-    // "HEAD". GITHUB_REF_NAME carries the real branch in that case.
-    branch: process.env.GITHUB_REF_NAME ?? read("git rev-parse --abbrev-ref HEAD"),
-    time,
-  };
+  // Detached HEAD reports the literal "HEAD"; recording that as the branch
+  // would be a claim no reader could act on, so it degrades to `unknown`
+  // rather than to a plausible-looking wrong answer.
+  const gitBranch = read("git rev-parse --abbrev-ref HEAD");
+  const branch =
+    envRef ||
+    (gitBranch && gitBranch !== "HEAD" ? gitBranch : "") ||
+    "unknown";
+
+  const source = envCommit
+    ? ("xstarz-env" as const)
+    : envRef
+      ? ("ci-env" as const)
+      : commit !== "unknown"
+        ? ("git" as const)
+        : ("unknown" as const);
+
+  // An uncommitted tree does not correspond to the commit it names, so the
+  // artifact says so rather than implying reproducibility it does not have.
+  const status = read("git status --porcelain");
+  const worktreeDirty =
+    gitCommit.length === 0 ? null : status.trim().length > 0;
+
+  return buildProvenance({ commit, branch, builtAt: time, source, worktreeDirty });
 }
 
 const BUILD = gitInfo();
+
+/**
+ * Phase 299 — provenance at the artifact boundary.
+ *
+ * The metadata is emitted where a deployed artifact can be inspected without
+ * running it: a static JSON file next to `index.html`, and `<meta>` tags inside
+ * it. Both are generated from the same object the runtime logs, so the three
+ * surfaces cannot disagree.
+ */
+function buildProvenancePlugin(): Plugin {
+  return {
+    name: "xstarz-build-provenance",
+    transformIndexHtml() {
+      return buildInfoMetaTags(BUILD).map((tag) => ({
+        tag: "meta",
+        attrs: { name: tag.name, content: tag.content },
+        injectTo: "head" as const,
+      }));
+    },
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "build-info.json",
+        source: buildInfoJson(BUILD),
+      });
+    },
+  };
+}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -81,9 +146,13 @@ export default defineConfig({
       : './',
   define: {
     // Injected at build time; safe to expose (commit id, branch, timestamp).
+    // Same object that produces build-info.json and the meta tags.
     __BUILD_COMMIT__: JSON.stringify(BUILD.commit),
+    __BUILD_COMMIT_SHORT__: JSON.stringify(BUILD.shortCommit),
     __BUILD_BRANCH__: JSON.stringify(BUILD.branch),
-    __BUILD_TIME__: JSON.stringify(BUILD.time),
+    __BUILD_TIME__: JSON.stringify(BUILD.builtAt),
+    __BUILD_SOURCE__: JSON.stringify(BUILD.source),
+    __BUILD_DIRTY__: JSON.stringify(BUILD.worktreeDirty),
   },
   // Phase 224 — the build-platform plugin (`vlyPlugin` from
   // @vly-ai/integrations) is intentionally absent. Its transformIndexHtml hook
@@ -91,7 +160,7 @@ export default defineConfig({
   // listeners that postMessage every runtime error (message, stack, filename,
   // line/col) to `window.parent` with target origin "*". That is a diagnostic
   // leak to any embedding frame, and the platform editor it served is gone.
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), buildProvenancePlugin()],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -170,6 +239,18 @@ export default defineConfig({
       '@convex-dev/auth/react',
       'framer-motion',
     ],
+  },
+  // Static preview of the built artifact (`npm run preview`).
+  //
+  // Mirrors the dev server's host policy: bind all interfaces and accept the
+  // sandbox/proxied preview host, because a preview that answers only to
+  // `localhost` cannot be opened by the person who asked for it. This serves
+  // the REAL built bundle (including build-info.json), which is what makes a
+  // browser-facing verification of a deployment possible.
+  preview: {
+    host: true,
+    port: 4173,
+    allowedHosts: true,
   },
   // Performance hints
   server: {

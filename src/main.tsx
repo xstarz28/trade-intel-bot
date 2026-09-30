@@ -41,6 +41,7 @@ import NotFound from "./pages/NotFound.tsx";
 // served by the same BrowserRouter and the same SPA rewrite as every other
 // route, so a real custom domain can later serve them with no routing change.
 import Download from "./pages/Download.tsx";
+import BuildInfo from "./pages/BuildInfo.tsx";
 import Privacy from "./pages/Privacy.tsx";
 import Terms from "./pages/Terms.tsx";
 
@@ -196,6 +197,12 @@ createRoot(document.getElementById("root")!).render(
                 statement and the download options before creating an account.
               */}
               <Route path="/download" element={<Download />} />
+              {/*
+                Phase 299 — public build provenance. Also deliberately
+                unauthenticated: "which revision is this site serving?" must be
+                answerable by anyone looking at it, without an account.
+              */}
+              <Route path="/build" element={<BuildInfo />} />
               <Route path="/privacy" element={<Privacy />} />
               <Route path="/terms" element={<Terms />} />
               <Route path="*" element={<NotFound />} />

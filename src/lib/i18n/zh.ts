@@ -1458,6 +1458,22 @@ const zh: Translations = {
       "市场数据可能延迟、不完整或无法获取。出现这种情况时，应用会明确说明，而不会用估算值填补空缺。您有责任核实据以行动的任何信息。",
     backHome: "返回 Xstarz Analysis",
   },
+  buildInfo: {
+    title: "构建来源",
+    intro:
+      "提供此页面的前端的确切修订版本。仅事实——不包含账户数据、环境值或凭据。",
+    commitLabel: "提交",
+    shortCommitLabel: "短提交",
+    branchLabel: "分支",
+    builtAtLabel: "构建时间（提交时间，UTC）",
+    sourceLabel: "记录来源",
+    schemaLabel: "架构",
+    unsafeSource:
+      "此产物由 {branch} 构建，这不是有效的产品来源。它不是当前分支的产物。",
+    machineReadable:
+      "机器可读：/build-info.json。相同的值以 xstarz-build-* 元标签嵌入在所提供 HTML 中。",
+    backToApp: "返回应用",
+  },
 };
 
 export default zh;

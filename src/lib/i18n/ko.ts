@@ -1464,6 +1464,22 @@ const ko: Translations = {
       "시장 데이터는 지연되거나 불완전하거나 제공되지 않을 수 있습니다. 그런 경우 앱은 추정치로 공백을 메우지 않고 그 사실을 알립니다. 행동의 근거가 되는 정보는 사용자가 확인할 책임이 있습니다.",
     backHome: "Xstarz Analysis로 돌아가기",
   },
+  buildInfo: {
+    title: "빌드 출처",
+    intro:
+      "이 페이지를 제공한 프런트엔드의 정확한 리비전입니다. 사실만 표시 — 계정 데이터, 환경 값, 자격 증명은 없습니다.",
+    commitLabel: "커밋",
+    shortCommitLabel: "짧은 커밋",
+    branchLabel: "브랜치",
+    builtAtLabel: "빌드 시각(커밋 시간, UTC)",
+    sourceLabel: "기록 출처",
+    schemaLabel: "스키마",
+    unsafeSource:
+      "이 아티팩트는 {branch}에서 빌드되었으며 유효한 제품 소스가 아닙니다. 현재 브랜치의 아티팩트가 아닙니다.",
+    machineReadable:
+      "기계 판독 가능: /build-info.json. 동일한 값이 제공되는 HTML에 xstarz-build-* 메타 태그로 포함되어 있습니다.",
+    backToApp: "앱으로 돌아가기",
+  },
 };
 
 export default ko;

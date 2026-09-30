@@ -19,10 +19,17 @@
  *   1 = refused
  *   2 = could not evaluate
  *
+ * Phase 299 adds the positive half of the source rule: `--require-branch
+ * <branch>` (or XSTARZ_REQUIRED_SOURCE_BRANCH) pins the branch this deployment
+ * must be built from. `main` stays refused either way; a pinned branch refuses
+ * every OTHER ref by name, so "which ref is deployed?" is answered by the gate
+ * rather than by trusting the dispatcher.
+ *
  * Usage:
  *   npm run development:deploy:guard
  *   npm run development:deploy:guard -- --json
  *   npm run development:deploy:guard -- --config dev.env
+ *   npm run development:deploy:guard -- --require-branch arena/01a0d195-trade-intel-bot
  */
 
 import { readFileSync } from "node:fs";
@@ -41,6 +48,24 @@ if (configIdx >= 0 && (!configPath || configPath.startsWith("--"))) {
   console.error("REFUSED: --config needs a path.");
   process.exit(2);
 }
+
+/** Phase 299 — the branch this deployment must build from. */
+function readRequiredBranch() {
+  const flagIdx = argv.findIndex((a) => a === "--require-branch" || a.startsWith("--require-branch="));
+  if (flagIdx >= 0) {
+    const inline = argv[flagIdx].includes("=")
+      ? argv[flagIdx].slice("--require-branch=".length)
+      : argv[flagIdx + 1];
+    if (!inline || inline.startsWith("--")) {
+      console.error("REFUSED: --require-branch needs a branch name.");
+      process.exit(2);
+    }
+    return inline.trim();
+  }
+  return (process.env.XSTARZ_REQUIRED_SOURCE_BRANCH ?? "").trim();
+}
+
+const requiredSourceBranch = readRequiredBranch();
 
 function parseEnvFile(path) {
   const out = {};
@@ -124,6 +149,7 @@ const evaluated = evaluateDevelopmentDeployGuard({
   convexSiteUrl: env.CONVEX_SITE_URL,
   xstarzDeploymentEnv: env.XSTARZ_DEPLOYMENT_ENV,
   sourceRef: env.SOURCE_REF || env.GITHUB_REF || env.GIT_REF,
+  requiredSourceBranch,
 });
 
 const report = parseFailure

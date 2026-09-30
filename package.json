@@ -16,6 +16,7 @@
     "mobile:sync:android": "npm run mobile:build && cap sync android",
     "mobile:sync:ios": "npm run mobile:build && cap sync ios",
     "mobile:verify": "node scripts/verify-mobile-artifacts.mjs",
+    "verify:frontend": "node scripts/verify-frontend-artifact.mjs",
     "desktop:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "desktop:build": "tauri build",
     "convex:preflight": "node --experimental-strip-types --no-warnings scripts/verify-deployment-config.mjs",
