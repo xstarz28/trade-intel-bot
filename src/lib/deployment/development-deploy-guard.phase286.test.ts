@@ -299,6 +299,18 @@ describe("286 — the development workflow is manual, development-scoped and fai
     ).toBe("READY_TO_INVOKE_DEV_DEPLOY");
   });
 
+  it("hands the person who publishes the frontend the artifact that passed the check (Phase 299)", () => {
+    // `convex dev` does not host static files and this repository has no
+    // hosting workflow, so the verified bundle is kept as a workflow artifact
+    // rather than rebuilt by someone else and hoped to match.
+    const wf = read(WORKFLOW);
+    expect(wf).toMatch(/actions\/upload-artifact@v4/);
+    expect(wf).toMatch(/name: development-frontend/);
+    expect(wf).toMatch(/path: dist/);
+    // Only after a successful deploy: a failing run must leave nothing to publish.
+    expect(wf).toMatch(/if: success\(\)/);
+  });
+
   it("the development workflow pins the branch it deploys (Phase 299)", () => {
     const wf = read(WORKFLOW);
     expect(wf).toMatch(/XSTARZ_REQUIRED_SOURCE_BRANCH: arena\/01a0d195-trade-intel-bot/);
