@@ -201,6 +201,20 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
+      - name: Pin build provenance to the verified checkout (never the dispatch SHA)
+        # The workflow file is registered from the default branch, so a
+        # workflow_dispatch run can carry a GITHUB_SHA that is NOT the source
+        # this job checked out (run 36821835039 recorded the default-branch
+        # commit in dist/build-info.json and was rightly refused by the
+        # artifact check). `build-provenance` prefers an explicit
+        # XSTARZ_BUILD_COMMIT over GITHUB_SHA and an explicit XSTARZ_BUILD_REF
+        # over every other ref source — so pin BOTH to the verified checkout
+        # before anything is built.
+        run: |
+          echo "XSTARZ_BUILD_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "XSTARZ_BUILD_REF=${SOURCE_REF}" >> "$GITHUB_ENV"
+          echo "provenance pinned to the verified checkout: commit=$(git rev-parse HEAD) ref=${SOURCE_REF}"
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -257,6 +271,23 @@ jobs:
             echo "XSTARZ_FRONTEND_HOST_URL=$host"
           } >> "$GITHUB_ENV"
           echo "::notice title=Host target resolved from the credential::org=${org} project=${project} host=${host} — pin these as 'development' variables to skip this step"
+
+      - name: Fail closed unless VITE_CONVEX_URL is a convex.cloud HTTPS origin
+        # Read from the 'development' environment (vars.VITE_CONVEX_URL in the
+        # job env) — never hardcoded in this file. An empty or non-convex.cloud
+        # value would bake a dead backend URL into the published bundle, so the
+        # run stops BEFORE building and names the exact misconfiguration.
+        if: inputs.mode == 'publish'
+        run: |
+          if [ -z "$VITE_CONVEX_URL" ]; then
+            echo "::error title=VITE_CONVEX_URL is not set::Add the variable VITE_CONVEX_URL (https://<deployment>.convex.cloud) to the 'development' environment — the publish job builds with it, and the bundle would otherwise carry no backend URL."
+            exit 1
+          fi
+          if ! printf '%s' "$VITE_CONVEX_URL" | grep -Eq '^https://[a-z0-9][a-z0-9-]*\.convex\.cloud$'; then
+            echo "::error title=VITE_CONVEX_URL is not a convex.cloud HTTPS origin::Expected exactly https://<deployment>.convex.cloud — refusing to build and publish against the configured value (value not printed)."
+            exit 1
+          fi
+          echo "::notice title=VITE_CONVEX_URL accepted::HTTPS origin on *.convex.cloud (value not printed)"
 
       - name: Build the pinned branch
         if: inputs.mode == 'publish'
