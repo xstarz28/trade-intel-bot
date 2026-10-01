@@ -474,14 +474,10 @@ jobs:
             echo "::error title=No browser-facing host resolved::nothing to point at this deployment."
             exit 1
           fi
-          if [ -z "$VERCEL_ORG_ID" ]; then
-            echo "::error title=No org id for the alias call::VERCEL_ORG_ID is empty — the teamId-scoped alias API call cannot be made."
-            exit 1
-          fi
           deployment_host="$(printf '%s' "${{ steps.deploy.outputs.deployment }}" | sed -E 's|^https?://||; s|/.*$||')"
           body_file="$RUNNER_TEMP/alias-response.json"
           code="$(curl -sS -o "$body_file" -w '%{http_code}' -X POST \
-            "https://api.vercel.com/v2/deployments/${deployment_host}/aliases?teamId=${VERCEL_ORG_ID}" \
+            "https://api.vercel.com/v2/deployments/${deployment_host}/aliases" \
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"alias\":\"${host}\"}")" || {
