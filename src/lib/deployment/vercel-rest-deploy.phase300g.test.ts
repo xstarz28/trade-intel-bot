@@ -99,6 +99,7 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     const result = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: dir,
       expectCommit: COMMIT,
@@ -109,6 +110,7 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     const urls = recorded.map((r) => new URL(r.url).pathname);
     expect(urls.some((p) => p === "/v2/user")).toBe(false);
     expect(urls.some((p) => p.startsWith("/teams/"))).toBe(false);
+    expect(urls.some((p) => p.startsWith("/v9/projects/"))).toBe(false);
     for (const url of recorded.map((r) => r.url)) {
       expect(url).toContain(`teamId=${ORG}`);
     }
@@ -120,6 +122,7 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: dir,
       expectCommit: COMMIT,
@@ -152,8 +155,6 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     const impl = async (url: string, init: { method: string; headers: Record<string, string> }) => {
       recorded.push({ url, init });
       const path = new URL(url).pathname;
-      if (path === "/v9/projects/prj_ms5x9MGeIkAQ1kvi5iBrgRBItJEb")
-        return json(200, { id: PROJECT, name: "trade-intel-bot" });
       if (path === "/v13/deployments" && init.method === "POST") {
         missingRequested = true;
         const files = JSON.parse((init as unknown as { body: string }).body).files as Array<{
@@ -171,6 +172,7 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     const result = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: dir,
       expectCommit: COMMIT,
@@ -186,6 +188,7 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     const result2 = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: dir,
       expectCommit: COMMIT,
@@ -208,6 +211,7 @@ describe("phase300g · fail-closed before any byte leaves the runner", () => {
     const noConfig = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: dir,
       expectCommit: COMMIT,
@@ -219,6 +223,7 @@ describe("phase300g · fail-closed before any byte leaves the runner", () => {
     const wrongCommit = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: await makeOutput({ commit: "fca4575a14a1f6542f065482788f761d5cf7c5b8" }),
       expectCommit: COMMIT,
@@ -228,32 +233,31 @@ describe("phase300g · fail-closed before any byte leaves the runner", () => {
     expect(wrongCommit.problems.join(" ")).toContain("not the verified artifact");
   });
 
-  it("refuses when the project read fails or resolves a DIFFERENT project", async () => {
+  it("does not perform a redundant project-settings read after target verification", async () => {
     const dir = await makeOutput();
-    const refused = await restDeployPrebuilt({
+    const recorded: Recorded[] = [];
+    const impl = async (url: string, init: { method: string; headers: Record<string, string> }) => {
+      recorded.push({ url, init });
+      const path = new URL(url).pathname;
+      if (path.startsWith("/v9/projects/"))
+        return json(403, { error: { code: "forbidden", message: "Not authorized" } });
+      if (path === "/v13/deployments" && init.method === "POST")
+        return json(200, { id: "dpl_2", url: "trade-intel-bot-y.vercel.app", missing: [], readyState: "READY" });
+      if (path === "/v13/deployments/dpl_2")
+        return json(200, { id: "dpl_2", url: "trade-intel-bot-y.vercel.app", readyState: "READY" });
+      throw new Error(`unexpected endpoint: ${path}`);
+    };
+    const result = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: dir,
       expectCommit: COMMIT,
-      fetchImpl: async () => json(403, { error: { code: "forbidden" } }),
+      fetchImpl: impl,
     });
-    expect(refused.state).toBe(REST_DEPLOY_STATES.PROJECT_READ_FAILED);
-    expect(refused.problems.join(" ")).toContain("HTTP 403");
-
-    const other = await restDeployPrebuilt({
-      orgId: ORG,
-      projectId: PROJECT,
-      token: TOKEN,
-      outputDir: dir,
-      expectCommit: COMMIT,
-      fetchImpl: async (url) =>
-        new URL(url).pathname.startsWith("/v9/projects/")
-          ? json(200, { id: "prj_someOTHERproject", name: "other" })
-          : json(200, {}),
-    });
-    expect(other.state).toBe(REST_DEPLOY_STATES.PROJECT_READ_FAILED);
-    expect(other.problems.join(" ")).toContain("DIFFERENT project");
+    expect(result.state).toBe(REST_DEPLOY_STATES.DEPLOYED);
+    expect(recorded.some((r) => new URL(r.url).pathname.startsWith("/v9/projects/"))).toBe(false);
   });
 
   it("names the create refusal and the deployment failure instead of hiding them", async () => {
@@ -261,6 +265,7 @@ describe("phase300g · fail-closed before any byte leaves the runner", () => {
     const createRefused = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: dir,
       expectCommit: COMMIT,
@@ -275,6 +280,7 @@ describe("phase300g · fail-closed before any byte leaves the runner", () => {
     const failed = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: dir,
       expectCommit: COMMIT,
@@ -294,6 +300,7 @@ describe("phase300g · fail-closed before any byte leaves the runner", () => {
     const noToken = await restDeployPrebuilt({
       orgId: ORG,
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: "",
       outputDir: await makeOutput(),
       fetchImpl: happyFetch().impl,
@@ -303,6 +310,7 @@ describe("phase300g · fail-closed before any byte leaves the runner", () => {
     const incomplete = await restDeployPrebuilt({
       orgId: "",
       projectId: PROJECT,
+      projectName: "trade-intel-bot",
       token: TOKEN,
       outputDir: await makeOutput(),
       fetchImpl: happyFetch().impl,
@@ -316,9 +324,9 @@ describe("phase300g · fail-closed before any byte leaves the runner", () => {
   it("keeps the token out of every verdict, including failures", async () => {
     const dir = await makeOutput();
     const results = await Promise.all([
-      restDeployPrebuilt({ orgId: ORG, projectId: PROJECT, token: TOKEN, outputDir: dir, expectCommit: COMMIT, fetchImpl: happyFetch().impl }),
-      restDeployPrebuilt({ orgId: ORG, projectId: PROJECT, token: TOKEN, outputDir: dir, expectCommit: COMMIT, fetchImpl: async () => json(403, {}) }),
-      restDeployPrebuilt({ orgId: ORG, projectId: PROJECT, token: "", outputDir: dir, fetchImpl: happyFetch().impl }),
+      restDeployPrebuilt({ orgId: ORG, projectId: PROJECT, projectName: "trade-intel-bot", token: TOKEN, outputDir: dir, expectCommit: COMMIT, fetchImpl: happyFetch().impl }),
+      restDeployPrebuilt({ orgId: ORG, projectId: PROJECT, projectName: "trade-intel-bot", token: TOKEN, outputDir: dir, expectCommit: COMMIT, fetchImpl: async () => json(403, {}) }),
+      restDeployPrebuilt({ orgId: ORG, projectId: PROJECT, projectName: "trade-intel-bot", token: "", outputDir: dir, fetchImpl: happyFetch().impl }),
     ]);
     for (const result of results) {
       expect(JSON.stringify(result)).not.toContain(TOKEN);
@@ -332,6 +340,9 @@ describe("phase300g · the workflow and publisher use this path, with full error
     expect(workflow).toContain("env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID node scripts/deploy-frontend-rest.mjs");
     expect(workflow).toContain('>"$out_file" 2>"$err_file"');
     expect(workflow).toContain("deploy_status=$?");
+    expect(workflow).toContain('project_name="$(jq -r '.projectName // empty' "$target_report")"');
+    expect(workflow).toContain('--project-name "$XSTARZ_VERCEL_PROJECT_NAME"');
+    expect(workflow).not.toContain("GET /v9/projects/<id>");
     // the OLD swallowing pipeline is gone for good
     expect(workflow).not.toContain("deploy --prebuilt --yes 2>&1 | tail -n 1");
     expect(workflow).not.toContain("vercel@latest deploy");
