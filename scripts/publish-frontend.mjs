@@ -74,6 +74,10 @@ import {
 
 import { registerTypeScriptResolution } from "./lib/ts-module-loader.mjs";
 import {
+  PROJECT_ACCESS_STATES,
+  verifyVercelProjectAccess,
+} from "./verify-vercel-project-access.mjs";
+import {
   chooseHostUrl,
   dedupeProjects,
   projectDomains,
@@ -327,6 +331,31 @@ async function main() {
     );
   } else {
     report.push(`host target pinned: org ${target.orgId}, project ${target.projectId}, host ${target.hostUrl}`);
+    // A pinned identifier is a CLAIM, not a fact: verify it against THIS
+    // credential with the same read-only project-settings call the host CLI
+    // makes at deploy time (run 36823507179 failed there, opaquely — "Could
+    // not retrieve Project Settings."). Same named verdicts as the workflow's
+    // pinned path: TOKEN_CANNOT_ACCESS_ORG / PROJECT_NOT_UNDER_ORG /
+    // HOST_NOT_ON_PROJECT / PROJECT_ACCESS_VERIFIED.
+    const verdict = await verifyVercelProjectAccess({
+      argv: [
+        "--org-id",
+        target.orgId ?? "",
+        "--project-id",
+        target.projectId ?? "",
+        "--host-url",
+        target.hostUrl ?? "",
+      ],
+      env: process.env,
+    });
+    if (verdict.state !== PROJECT_ACCESS_STATES.VERIFIED) {
+      fail(
+        `the pinned host target was rejected by the credential: ${verdict.state} — ${(verdict.problems ?? []).join("; ")}`,
+      );
+    }
+    report.push(
+      `pinned target verified against the credential (project settings -> ${verdict.httpStatus}${verdict.projectName ? `, project ${verdict.projectName}` : ""})`,
+    );
   }
 
   // 5. Assemble the host's Build Output API directory from the SAME directory

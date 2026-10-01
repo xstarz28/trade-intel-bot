@@ -236,7 +236,22 @@ jobs:
               echo "VERCEL_PROJECT_ID=$XSTARZ_PINNED_PROJECT_ID"
               echo "XSTARZ_FRONTEND_HOST_URL=$XSTARZ_PINNED_HOST_URL"
             } >> "$GITHUB_ENV"
-            echo "::notice title=Host target pinned::org/project/host came from the 'development' environment variables — nothing had to be resolved"
+            echo "::notice title=Host target pinned::org/project/host came from the 'development' environment variables"
+            # A pinned identifier is a CLAIM, not a fact. Verify the pinned
+            # (org, project, host) against THIS job's credential with the same
+            # read-only "project settings" call the host CLI makes at deploy
+            # time — run 36823507179 failed exactly there, opaquely. This turns
+            # that failure into a named pre-deploy verdict (exit classes:
+            # TOKEN_CANNOT_ACCESS_ORG / PROJECT_NOT_UNDER_ORG /
+            # HOST_NOT_ON_PROJECT), instead of a build wasted on a target the
+            # credential cannot serve.
+            if ! node scripts/verify-vercel-project-access.mjs \
+                 --org-id "$XSTARZ_PINNED_ORG_ID" \
+                 --project-id "$XSTARZ_PINNED_PROJECT_ID" \
+                 --host-url "$XSTARZ_PINNED_HOST_URL"; then
+              echo "::error title=Pinned Vercel target failed credential validation::TOKEN_CANNOT_ACCESS_ORG => the 'development' secret VERCEL_TOKEN cannot read this org (regenerate/re-scope the token); PROJECT_NOT_UNDER_ORG => the pinned ids do not match this credential (re-derive with 'npm run frontend:resolve', then re-pin); HOST_NOT_ON_PROJECT => the pinned host is not served by this project. Exact evidence and HTTP status are in the output above."
+              exit 1
+            fi
             exit 0
           fi
           npm run frontend:resolve -- \
