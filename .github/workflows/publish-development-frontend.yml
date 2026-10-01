@@ -390,30 +390,61 @@ jobs:
             --expect-commit "$XSTARZ_ARTIFACT_COMMIT" \
             --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH"
 
-      - name: Publish the verified bytes to the existing project
+      - name: Publish the verified bytes to the existing project (project-scoped REST)
         if: inputs.mode == 'publish' && steps.credential.outputs.state == 'present'
         id: deploy
-        # `--prebuilt` uploads `.vercel/output` as-is and the host runs NO build.
-        # `vercel deploy <dir>` must not come back: the host treats an uploaded
-        # directory as source, runs the project's build command in its own
-        # builder (which failed with "vite: command not found"), and would serve
-        # bytes from a build nobody verified. The token reaches the CLI through
-        # the environment, never argv.
+        # Phase 300g — the deployment goes through the project-scoped REST API
+        # (scripts/deploy-frontend-rest.mjs), NOT through the Vercel CLI.
+        # Reproduced against a local mock of the API with CLI 62.1.0 AND 59.1.3:
+        # `vercel deploy --prebuilt` performs the vercel/vercel#17506 scope
+        # lookups (GET /v2/user -> 404, GET /teams/<org> -> 403 code
+        # "forbidden") and throws "Could not retrieve Project Settings." BEFORE
+        # uploading — no invocation shape avoids it, and the CLI tolerates only
+        # the `team_unauthorized` 403 flavor. The REST path replicates the
+        # CLI's EXACT prebuilt request (POST /v13/deployments?...prebuilt=1
+        # with the `.vercel/output` sha list, missing-file uploads to
+        # /v2/files, poll until READY) and touches ONLY project-scoped
+        # endpoints. `.vercel/output` is uploaded as-is; the host runs NO
+        # build; the token reaches the script through the environment, never
+        # argv; the org/project ids reach it as ARGV identifiers while BOTH
+        # env vars are still dropped from the child environment.
         #
-        # vercel/vercel#17506: with a project-scoped token, the CLI's user/team
-        # scope lookups throw "Could not retrieve Project Settings." — and
-        # VERCEL_ORG_ID/VERCEL_PROJECT_ID as ENV VARS is the shape that drives
-        # that path. The project selector here is the `.vercel/project.json`
-        # file the prebuilt step wrote via --link-project (the proven-working
-        # shape), so those two variables are deliberately DROPPED for this
-        # invocation. `--prebuilt` semantics are unchanged; nothing else
-        # consumes them in this step.
+        # Error handling: the CLI's stdout/stderr are captured to files and
+        # BOTH are printed in full — nothing (no `tail`, no command
+        # substitution under `set -e`) can swallow the deploy tool's actual
+        # error again (run 36840069831 failed invisibly that way). The exit
+        # code is read directly; the deployment URL is parsed from the
+        # captured FULL stdout.
         run: |
-          set -o pipefail
-          url="$(env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID npx --yes vercel@latest deploy --prebuilt --yes 2>&1 | tail -n 1 | tr -d '\r')"
+          org="${XSTARZ_PINNED_ORG_ID:-${VERCEL_ORG_ID:-}}"
+          project="${XSTARZ_PINNED_PROJECT_ID:-${VERCEL_PROJECT_ID:-}}"
+          if [ -z "$org" ] || [ -z "$project" ]; then
+            echo "::error title=No org/project ids for the REST deploy::Both identifiers are required (pinned vars or the resolve step)."
+            exit 1
+          fi
+          out_file="$RUNNER_TEMP/rest-deploy.stdout"
+          err_file="$RUNNER_TEMP/rest-deploy.stderr"
+          set +e
+          env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID node scripts/deploy-frontend-rest.mjs \
+            --org-id "$org" \
+            --project-id "$project" \
+            --target preview \
+            --expect-commit "$XSTARZ_ARTIFACT_COMMIT" \
+            >"$out_file" 2>"$err_file"
+          deploy_status=$?
+          set -e
+          echo "--- rest deploy stdout ---"
+          cat "$out_file"
+          echo "--- rest deploy stderr ---"
+          cat "$err_file" >&2
+          if [ "$deploy_status" -ne 0 ]; then
+            echo "::error title=REST deploy failed (exit ${deploy_status})::The named state and evidence are printed above. Nothing further was changed (no alias, no domain)."
+            exit 1
+          fi
+          url="$(grep -oE 'https://[A-Za-z0-9.-]+' "$out_file" | tail -n 1)"
           case "$url" in
             https://*) ;;
-            *) echo "::error title=Publication produced no deployment URL::The host CLI did not print a deployment URL. Last line: ${url}"; exit 1 ;;
+            *) echo "::error title=Publication produced no deployment URL::The deploy script exited 0 but its captured stdout has no https URL."; exit 1 ;;
           esac
           echo "deployment=$url" >> "$GITHUB_OUTPUT"
           echo "::notice title=Published::${url} (provenance sha256 ${{ steps.artifact.outputs.sha256 }})"
