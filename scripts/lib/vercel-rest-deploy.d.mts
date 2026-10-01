@@ -59,7 +59,7 @@ export function restDeployPrebuilt(options?: {
   apiBase?: string;
   orgId: string;
   projectId: string;
-  projectName?: string | null;
+  projectName: string;
   target?: "preview" | "production";
   token?: string;
   outputDir: string;
