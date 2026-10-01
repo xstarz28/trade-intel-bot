@@ -11,6 +11,7 @@ export const VERCEL_PROJECT_ACCESS_SCHEMA: string;
 
 export const PROJECT_ACCESS_STATES: {
   readonly VERIFIED: "PROJECT_ACCESS_VERIFIED";
+  readonly SCOPE_METADATA_RISK: "PROJECT_ACCESS_SCOPE_METADATA_RISK";
   readonly TOKEN_CANNOT_ACCESS_ORG: "TOKEN_CANNOT_ACCESS_ORG";
   readonly PROJECT_NOT_UNDER_ORG: "PROJECT_NOT_UNDER_ORG";
   readonly PROJECT_SETTINGS_UNREACHABLE: "PROJECT_SETTINGS_UNREACHABLE";
@@ -30,6 +31,8 @@ export type ProjectAccessReport = {
   evidence: string[];
   /** HTTP status of the settings call; `null` when it never completed. */
   httpStatus: number | null;
+  /** vercel/vercel#17506 disclosure, present only on SCOPE_METADATA_RISK. */
+  scopeNote?: string;
   orgId?: string;
   projectId?: string;
   projectName?: string | null;

@@ -65,6 +65,12 @@ export const VERCEL_PROJECT_ACCESS_SCHEMA = "phase300.vercel-project-access/v1";
 /** The named states, with the exit class each maps to. */
 export const PROJECT_ACCESS_STATES = {
   VERIFIED: "PROJECT_ACCESS_VERIFIED",
+  /** vercel/vercel#17506: the settings ARE readable by this credential, but
+   *  the CLI's own user/team scope lookups are the poisoned part for
+   *  project-scoped tokens. Publication proceeds — the pipeline avoids those
+   *  lookups (project.json link, org/project env dropped at deploy, REST
+   *  alias). */
+  SCOPE_METADATA_RISK: "PROJECT_ACCESS_SCOPE_METADATA_RISK",
   TOKEN_CANNOT_ACCESS_ORG: "TOKEN_CANNOT_ACCESS_ORG",
   PROJECT_NOT_UNDER_ORG: "PROJECT_NOT_UNDER_ORG",
   PROJECT_SETTINGS_UNREACHABLE: "PROJECT_SETTINGS_UNREACHABLE",
@@ -77,6 +83,7 @@ export const PROJECT_ACCESS_STATES = {
 /** 0 = verified, 2 = cannot evaluate (environment), 1 = refused (named). */
 export function exitCodeFor(state) {
   if (state === PROJECT_ACCESS_STATES.VERIFIED) return 0;
+  if (state === PROJECT_ACCESS_STATES.SCOPE_METADATA_RISK) return 0;
   if (
     state === PROJECT_ACCESS_STATES.NO_CREDENTIAL ||
     state === PROJECT_ACCESS_STATES.API_UNREACHABLE
@@ -168,11 +175,42 @@ export async function verifyVercelProjectAccess({
       };
     }
     if (detail.status === 401 || detail.status === 403) {
+      // vercel/vercel#17506 — for a project-scoped token the teamId-suffixed
+      // project read is NOT a reliable access verdict: the CLI's own trace
+      // shows /v2/user -> 404, /teams/<org> -> 403, and the SAME suffixed
+      // project read -> 200, and it still threw. So a 401/403 here is judged
+      // only after an UNSUFFIXED read of the same project: if THAT succeeds,
+      // the credential CAN read the project and the failing part is the CLI's
+      // scope-metadata combining (case B), not the token (case A).
+      const unsuffixed = await vercelGet(`/v9/projects/${encodeURIComponent(args.projectId)}`, {
+        token,
+        fetchImpl,
+      });
+      evidence.push(
+        `GET /v9/projects/${args.projectId} (no teamId) -> ${unsuffixed.status ?? "transport failure"}`,
+      );
+      if (unsuffixed.ok) {
+        const project = unsuffixed.json?.project ?? unsuffixed.json ?? {};
+        return {
+          schema: VERCEL_PROJECT_ACCESS_SCHEMA,
+          state: PROJECT_ACCESS_STATES.SCOPE_METADATA_RISK,
+          problems: [],
+          evidence,
+          httpStatus: unsuffixed.status,
+          orgId: args.orgId,
+          projectId: args.projectId,
+          projectName: typeof project.name === "string" ? project.name : null,
+          hostUrl: null,
+          scopeNote:
+            `the suffixed read was refused (HTTP ${detail.status}) but the unsuffixed read succeeded — ` +
+            "the credential CAN read this project (vercel/vercel#17506); publication proceeds: the project link is the .vercel/project.json file, the deploy step drops the org/project env vars, and the alias is assigned through the teamId-scoped REST API instead of the CLI's user lookup",
+        };
+      }
       return {
         schema: VERCEL_PROJECT_ACCESS_SCHEMA,
         state: PROJECT_ACCESS_STATES.TOKEN_CANNOT_ACCESS_ORG,
         problems: [
-          `the credential was refused for this org's project (HTTP ${detail.status}) — the token authenticates but cannot read org ${args.orgId}; regenerate/re-scope the 'development' secret VERCEL_TOKEN with access to that org (the pinned identifiers are not the fault)`,
+          `the credential was refused for this project with AND without the org scope (HTTP ${detail.status}, then ${unsuffixed.status}) — a genuine token-access refusal (case A), not the CLI's scope-metadata artifact: the credential cannot read project ${args.projectId} under org ${args.orgId}`,
         ],
         evidence,
         httpStatus: detail.status,
@@ -269,6 +307,7 @@ function formatReport(report) {
   if (report.projectName) lines.push(`  project: ${report.projectName}`);
   if (report.hostUrl) lines.push(`  host: ${report.hostUrl}`);
   lines.push("", "evidence:", ...(report.evidence ?? []).map((e) => `  - ${e}`));
+  if (report.scopeNote) lines.push(`  - note: ${report.scopeNote}`);
   if (report.problems?.length) {
     lines.push("", "problems:", ...report.problems.map((p) => `  - ${p}`));
   }

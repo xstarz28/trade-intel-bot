@@ -339,7 +339,11 @@ describe("300 — the publication still verifies, pins and proves, in that order
     const assemble = source.indexOf("materializeBuildOutput({");
     const proveOutput = source.indexOf("verifyBuildOutput({");
     const upload = source.indexOf("prebuiltDeployArgs(");
-    const alias = source.indexOf('"alias", "set"');
+    // Phase 300e: the alias is assigned through the teamId-scoped REST API
+    // (vercel/vercel#17506 — `vercel alias set` performs a user lookup a
+    // project-scoped token cannot satisfy). The call site moved; the ORDER
+    // (upload -> alias -> verify published) is the contract under test.
+    const alias = source.indexOf("/aliases?teamId=");
     const verifyPublished = source.indexOf("scripts/verify-published-frontend.mjs");
     for (const at of [verifyArtifact, assemble, proveOutput, upload, alias, verifyPublished]) {
       expect(at).toBeGreaterThan(-1);
@@ -386,7 +390,7 @@ describe("300 — the publication still verifies, pins and proves, in that order
     const verifyArtifact = wf.indexOf("npm run verify:frontend --");
     const prepare = wf.indexOf("npm run frontend:prebuilt --");
     const upload = wf.indexOf("vercel@latest deploy --prebuilt");
-    const alias = wf.indexOf("vercel@latest alias set");
+    const alias = wf.indexOf("v2/deployments/${deployment_host}/aliases");
     const verifyPublished = wf.indexOf("npm run verify:published --");
     for (const at of [verifyArtifact, prepare, upload, alias, verifyPublished]) expect(at).toBeGreaterThan(-1);
     expect(verifyArtifact).toBeLessThan(prepare);

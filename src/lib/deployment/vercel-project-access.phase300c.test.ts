@@ -89,7 +89,9 @@ describe("300c — pinned target verification classifies the run-36823507179 fai
     });
     expect(report.state).toBe(PROJECT_ACCESS_STATES.TOKEN_CANNOT_ACCESS_ORG);
     expect(report.httpStatus).toBe(403);
-    expect(report.problems.join(" ")).toContain("regenerate");
+    // Phase 300e: case A is only named with per-endpoint evidence (both reads
+    // refused) — never a blanket 403 => "token wrong" (vercel/vercel#17506).
+    expect(report.problems.join(" ")).toContain("with AND without the org scope");
     expect(exitCodeFor(report.state)).toBe(1);
   });
 

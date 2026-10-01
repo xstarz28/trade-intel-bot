@@ -84,6 +84,7 @@ import {
   scopeForProject,
   selectVercelProject,
   vercelGet,
+  VERCEL_API,
 } from "./resolve-vercel-target.mjs";
 
 // The source-pin rule lives in ONE module used by the workflow, the guard CLI
@@ -348,13 +349,19 @@ async function main() {
       ],
       env: process.env,
     });
-    if (verdict.state !== PROJECT_ACCESS_STATES.VERIFIED) {
+    const acceptable =
+      verdict.state === PROJECT_ACCESS_STATES.VERIFIED ||
+      verdict.state === PROJECT_ACCESS_STATES.SCOPE_METADATA_RISK;
+    if (!acceptable) {
       fail(
         `the pinned host target was rejected by the credential: ${verdict.state} — ${(verdict.problems ?? []).join("; ")}`,
       );
     }
     report.push(
-      `pinned target verified against the credential (project settings -> ${verdict.httpStatus}${verdict.projectName ? `, project ${verdict.projectName}` : ""})`,
+      `pinned target verified against the credential (project settings -> ${verdict.httpStatus}${verdict.projectName ? `, project ${verdict.projectName}` : ""})` +
+        (verdict.state === PROJECT_ACCESS_STATES.SCOPE_METADATA_RISK
+          ? " — scope-metadata risk (vercel/vercel#17506): proceeding with the project.json link, no org/project env at deploy, REST alias"
+          : ""),
     );
   }
 
@@ -397,14 +404,19 @@ async function main() {
 
   const deployArgs = prebuiltDeployArgs({ target: args.target });
   report.push(`uploading prebuilt (npx ${deployArgs.join(" ")})…`);
+  // vercel/vercel#17506: a project-scoped token makes the CLI's LINKED-FLOW
+  // scope lookups throw "Could not retrieve Project Settings." — and passing
+  // VERCEL_ORG_ID/VERCEL_PROJECT_ID as ENV VARS is the shape that goes through
+  // them. The project selector here is the `.vercel/project.json` file that
+  // `ensureLocalProjectLink` just wrote (the proven-working shape), so those
+  // two env vars are deliberately DROPPED from the child environment. The
+  // token stays an environment variable; `--prebuilt` is unchanged.
+  const deployEnv = { ...process.env, VERCEL_TOKEN: token };
+  delete deployEnv.VERCEL_ORG_ID;
+  delete deployEnv.VERCEL_PROJECT_ID;
   const deploy = run("npx", deployArgs, {
     cwd: process.cwd(),
-    env: {
-      ...process.env,
-      VERCEL_TOKEN: token,
-      VERCEL_ORG_ID: target.orgId,
-      VERCEL_PROJECT_ID: target.projectId,
-    },
+    env: deployEnv,
   });
   if (deploy.status !== 0) fail(`the upload failed: ${deploy.failureText ?? "no output"}\n${deploy.stdout}\n${deploy.stderr}`);
   const deploymentUrl = deploymentUrlFrom(deploy.stdout);
@@ -418,23 +430,37 @@ async function main() {
   //    more honest than running an alias that would be refused).
   if (args.target === "preview") {
     const host = String(target.hostUrl).replace(/^https?:\/\//, "");
-    const alias = run("npx", ["--yes", "vercel@latest", "alias", "set", deploymentUrl, host], {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        VERCEL_TOKEN: token,
-        VERCEL_ORG_ID: target.orgId,
-        VERCEL_PROJECT_ID: target.projectId,
-      },
-    });
-    if (alias.status !== 0) {
+    // vercel/vercel#17506 — the CLI's `alias set` performs a USER lookup that
+    // a project-scoped token cannot satisfy, so the alias is assigned through
+    // the teamId-scoped REST API instead (the proven workaround): one POST,
+    // no user/team scope resolution, nothing created but the alias itself.
+    const aliasHost = deploymentUrl.replace(/^https?:\/\//, "");
+    const aliasUrl = `${VERCEL_API}/v2/deployments/${encodeURIComponent(aliasHost)}/aliases?teamId=${encodeURIComponent(target.orgId ?? "")}`;
+    let aliasStatus = null;
+    let aliasBody = "";
+    try {
+      const response = await fetch(aliasUrl, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ alias: host }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      aliasStatus = response.status;
+      aliasBody = (await response.text()).slice(0, 400);
+    } catch (error) {
+      aliasBody = error instanceof Error ? error.message : String(error);
+    }
+    if (aliasStatus !== 200) {
       fail(
         `the deployment exists (${deploymentUrl}) but the browser-facing host could not be pointed at it ` +
-          `(${alias.failureText ?? "no output"}):\n${alias.stdout}\n${alias.stderr}\n` +
+          `(alias REST call -> HTTP ${aliasStatus ?? "transport failure"}): ${aliasBody}\n` +
           `If ${host} is this project's production domain, re-run with --target production so the standard domain assignment applies.`,
       );
     }
-    report.push(`host updated: ${target.hostUrl} -> ${deploymentUrl}`);
+    report.push(`host updated via the teamId-scoped alias API: ${target.hostUrl} -> ${deploymentUrl}`);
   } else {
     report.push(`production deployment of the host project: ${target.hostUrl} serves it (no alias needed)`);
   }
