@@ -364,7 +364,8 @@ describe("phase300g · the workflow and publisher use this path, with full error
   it("the alias path is untouched: teamId-scoped REST, from the 300e/300f contract", () => {
     const workflow = read(".github/workflows/publish-development-frontend.yml");
     const publisher = read("scripts/publish-frontend.mjs");
-    expect(workflow).toContain("v2/deployments/${deployment_host}/aliases?teamId=${VERCEL_ORG_ID}");
-    expect(publisher).toContain("/aliases?teamId=");
+    expect(workflow).not.toContain("v2/deployments/${deployment_host}/aliases?teamId=");
+    expect(workflow).toContain("v2/deployments/${deployment_host}/aliases");
+    expect(publisher).toContain("/aliases");
   });
 });
