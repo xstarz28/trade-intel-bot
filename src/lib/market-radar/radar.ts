@@ -39,6 +39,7 @@ import {
   summarizeFreshness,
 } from "./freshness";
 import { assessEvidenceConfidence } from "./evidence-confidence";
+import { STYLE_MTF_CONTEXT, resolveStyle } from "@/lib/trading-style";
 import type { CandidateInput } from "@/lib/recommendation-engine";
 
 // ═══════════════════════════════════════════════════════════════
@@ -73,6 +74,21 @@ function assignQualityTier(
 // ═══════════════════════════════════════════════════════════════
 // OPPORTUNITY SCORING
 // ═══════════════════════════════════════════════════════════════
+
+/**
+ * Phase 300 runtime-integration fix — the timeframe chain a TRADING-MODE
+ * horizon ranks against (pure configuration from trading-style.ts; the radar
+ * remains informational and touches no decision rule). Investor horizons
+ * have no timeframe chain — they return undefined and rank exactly as before.
+ */
+function styleChainForHorizon(
+  horizon: TradingMode | InvestorHorizon,
+): { mode: string; setup: string[]; chain: string[] } | undefined {
+  if (horizon !== "SCALPING" && horizon !== "INTRADAY" && horizon !== "SWING") return undefined;
+  const style = resolveStyle(horizon.toLowerCase()).style;
+  const profile = STYLE_MTF_CONTEXT[style];
+  return { mode: style, setup: profile.setup, chain: [...profile.setup, ...profile.context] };
+}
 
 function scoreOpportunity(
   source: RadarCandidateSource,
@@ -110,22 +126,61 @@ function scoreOpportunity(
   else { score -= 30; missing.push("market data unavailable"); }
 
   // ── Market Structure ──
+  // Phase 300 runtime-integration fix — structure/MTF credit is HORIZON-AWARE.
+  // A trading-mode horizon scores HTF-bias/MTF-alignment only when the
+  // snapshot's VERIFIED timeframes actually intersect that horizon's chain;
+  // a generic H1 scanner quote can no longer earn structure points in the
+  // scalping/intraday/swing rankings. Missing chain coverage is recorded as
+  // missing evidence — never as "neutral" direction and never silently.
+  const chainPolicy = styleChainForHorizon(horizon);
+  const snapshotTfs = snapshot?.availableTimeframes ?? [];
+  const chainIntersection =
+    chainPolicy && snapshotTfs.filter((tf) => chainPolicy.chain.includes(tf));
+  const chainRelevant =
+    !chainPolicy || (chainIntersection !== undefined && chainIntersection.length > 0);
   if (snapshot?.htfBias && snapshot.htfBias !== "unknown") {
-    score += 5;
-    supporting.push(`HTF bias: ${snapshot.htfBias}`);
+    if (chainRelevant) {
+      score += 5;
+      supporting.push(`HTF bias: ${snapshot.htfBias}`);
+    } else {
+      missing.push(
+        `HTF bias ${snapshot.htfBias} was computed on ${snapshotTfs.join(", ")} — outside the ${chainPolicy!.mode} chain (${chainPolicy!.setup.join(", ")}) — informational here, not scored`,
+      );
+    }
   } else {
     missing.push("HTF structure");
   }
   if (snapshot?.mtfAlignment) {
     if (snapshot.mtfAlignment.includes("ALIGNED")) {
-      score += 8;
-      supporting.push(`MTF aligned: ${snapshot.mtfAlignment}`);
+      if (chainRelevant) {
+        score += 8;
+        supporting.push(`MTF aligned: ${snapshot.mtfAlignment}`);
+      } else {
+        missing.push(
+          `MTF alignment ${snapshot.mtfAlignment} was computed on ${snapshotTfs.join(", ")} — outside the ${chainPolicy!.mode} chain — informational here, not scored`,
+        );
+      }
     } else if (snapshot.mtfAlignment === "MIXED") {
-      score -= 3;
-      conflicting.push("MTF mixed signals");
+      if (chainRelevant) {
+        score -= 3;
+        conflicting.push("MTF mixed signals");
+      } else {
+        missing.push(
+          `MTF alignment ${snapshot.mtfAlignment} was computed on ${snapshotTfs.join(", ")} — outside the ${chainPolicy!.mode} chain — informational here`,
+        );
+      }
     }
   } else {
     missing.push("MTF alignment");
+  }
+  if (chainPolicy && chainIntersection && chainIntersection.length > 0) {
+    supporting.push(
+      `verified OHLCV on ${chainIntersection.join(", ")} — inside the ${chainPolicy.mode} chain (${chainPolicy.setup.join(", ")} setups)`,
+    );
+  } else if (chainPolicy && snapshotTfs.length > 0) {
+    missing.push(
+      `no verified OHLCV on the ${chainPolicy.mode} chain timeframes (${chainPolicy.chain.join(", ")}) — snapshot covers ${snapshotTfs.join(", ")}`,
+    );
   }
   if (snapshot?.marketRegime && snapshot.marketRegime !== "UNKNOWN") {
     score += 3;

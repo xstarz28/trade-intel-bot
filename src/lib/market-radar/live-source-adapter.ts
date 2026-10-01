@@ -60,12 +60,16 @@ export function buildRadarSourcesFromLiveSources(
             ohlcvAvailable: marketData.candles.length > 0,
             availableTimeframes:
               marketData.candles.length > 0 ? [marketData.timeframe] : [],
+            // Phase 300 — absent analysis stays "unknown", never a default
+            // "neutral" (same contract as the Dashboard radar builder).
             htfBias:
               analysis?.bias === "Bullish"
                 ? "long"
                 : analysis?.bias === "Bearish"
                   ? "short"
-                  : "neutral",
+                  : analysis?.bias === "Neutral"
+                    ? "neutral"
+                    : "unknown",
             // Phase 290-A — confirmed structural evidence, carried verbatim from
             // the analysis engine (never re-derived here). Absent when the
             // engine produced no event read for this instrument.

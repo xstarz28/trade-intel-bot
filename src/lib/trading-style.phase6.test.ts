@@ -14,19 +14,21 @@ import { adaptSetupTimeframe } from "./trading-style";
 
 describe("adaptSetupTimeframe", () => {
   it("keeps in-horizon requests unchanged", () => {
-    expect(adaptSetupTimeframe("scalping", "M15")).toEqual({ timeframe: "M15", fallbackApplied: false });
+    // Phase 300 runtime-integration fix — the product timeframe model:
+    // SCALPING executes on M1/M5, INTRADAY on M15/M30/H1, SWING on H4/D1/W1.
+    expect(adaptSetupTimeframe("scalping", "M5")).toEqual({ timeframe: "M5", fallbackApplied: false });
     expect(adaptSetupTimeframe("swing", "W1")).toEqual({ timeframe: "W1", fallbackApplied: false });
-    expect(adaptSetupTimeframe("intraday", "H4")).toEqual({ timeframe: "H4", fallbackApplied: false });
+    expect(adaptSetupTimeframe("intraday", "M30")).toEqual({ timeframe: "M30", fallbackApplied: false });
   });
 
   it("falls back to the nearest supported horizon TF and discloses it", () => {
     const r1 = adaptSetupTimeframe("scalping", "D1");
-    expect(r1.timeframe).toBe("H1");
+    expect(r1.timeframe).toBe("M5");
     expect(r1.fallbackApplied).toBe(true);
-    expect(r1.reason).toMatch(/fell back to H1/);
+    expect(r1.reason).toMatch(/fell back to M5/);
 
     expect(adaptSetupTimeframe("swing", "M15").timeframe).toBe("H4");
-    expect(adaptSetupTimeframe("intraday", "W1").timeframe).toBe("H4");
+    expect(adaptSetupTimeframe("intraday", "W1").timeframe).toBe("M15");
   });
 });
 

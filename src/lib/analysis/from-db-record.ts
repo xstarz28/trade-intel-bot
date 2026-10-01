@@ -43,7 +43,7 @@ import type {
 import { TRADING_STYLES, type TradingStyle } from "@/lib/trading-style";
 
 const INSTRUMENT_TYPES: readonly InstrumentType[] = ["forex", "crypto", "stock", "commodity", "indices"];
-const TIMEFRAMES: readonly Timeframe[] = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"];
+const TIMEFRAMES: readonly Timeframe[] = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"];
 const BIASES: readonly DirectionalBias[] = ["Bullish", "Bearish", "Neutral"];
 const RECOMMENDATIONS: readonly Recommendation[] = ["LONG", "SHORT", "NO_TRADE"];
 const CONVICTIONS: readonly ConvictionLevel[] = ["High", "Medium", "Low"];

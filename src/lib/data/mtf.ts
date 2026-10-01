@@ -26,6 +26,7 @@ import {
   type StructuralConfluencePart,
 } from "./structure";
 import type { OhlcvCandle } from "./market-types";
+import { resolveStyle, STYLE_MTF_CONTEXT } from "../trading-style";
 
 /** Standard ladder from execution to macro timeframes. */
 export const TF_LADDER = ["M15", "H1", "H4", "D1", "W1"] as const;
@@ -53,6 +54,46 @@ export function buildChain(requestedTf: string): ChainSlot[] {
     if (idx + 1 < TF_LADDER.length) slots.push({ timeframe: TF_LADDER[idx + 1], role: "structure" });
     if (idx > 0) slots.push({ timeframe: TF_LADDER[idx - 1], role: "trigger" });
   }
+  return slots;
+}
+
+/**
+ * Phase 300 runtime-integration fix — style-aware MTF chain selection.
+ *
+ * The FROZEN positional ladder above and `buildChain` are UNCHANGED: every
+ * setup timeframe that was in `TF_LADDER` before this phase (M15, H1, H4,
+ * D1, W1) gets EXACTLY the chain it always got, from the same function. This
+ * is asserted by test so the analytical checkpoint cannot drift.
+ *
+ * What changed is the previously-missing coverage: M1, M5 and M30 used to
+ * return [] (analyzed standalone, no MTF context at all). For those setups —
+ * and only for those — the chain now derives positionally from the style's
+ * own chain (STYLE_MTF_CONTEXT in trading-style.ts) over the full eight-rung
+ * ladder, using the SAME role rules: structure = first chain timeframe above
+ * the setup, macro = the next one above that, trigger = the nearest chain
+ * timeframe below. Unknown style strings normalize through the existing
+ * `resolveStyle` policy (intraday default), exactly as the analysis pipeline
+ * already does. A requested timeframe outside the style's chain still gets
+ * [] — analyzed standalone rather than inventing relationships.
+ */
+const STYLE_TF_LADDER = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"] as const;
+
+export function buildStyleMtfChain(style: string, requestedTf: string): ChainSlot[] {
+  // Frozen path — byte-identical to the pre-existing behavior.
+  if ((TF_LADDER as readonly string[]).includes(requestedTf)) {
+    return buildChain(requestedTf);
+  }
+  const profile = STYLE_MTF_CONTEXT[resolveStyle(style).style];
+  const chain = STYLE_TF_LADDER.filter(
+    (tf) => profile.setup.includes(tf) || profile.context.includes(tf),
+  );
+  const idx = chain.indexOf(requestedTf as (typeof STYLE_TF_LADDER)[number]);
+  if (idx < 0) return [];
+  const above = chain.slice(idx + 1);
+  const slots: ChainSlot[] = [];
+  if (above[1]) slots.push({ timeframe: above[1], role: "macro" });
+  if (above[0]) slots.push({ timeframe: above[0], role: "structure" });
+  if (idx > 0) slots.push({ timeframe: chain[idx - 1], role: "trigger" });
   return slots;
 }
 

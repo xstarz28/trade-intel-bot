@@ -3432,7 +3432,10 @@ export const POPULAR_INSTRUMENTS = [
 ];
 
 export const TIMEFRAMES: { value: string; label: string }[] = [
+  { value: "M1", label: "1 Minute" },
+  { value: "M5", label: "5 Minutes" },
   { value: "M15", label: "15 Minutes" },
+  { value: "M30", label: "30 Minutes" },
   { value: "H1", label: "1 Hour" },
   { value: "H4", label: "4 Hour" },
   { value: "D1", label: "Daily" },

@@ -28,6 +28,17 @@ import type { DiscoveredInstrument, ProviderDiscoveryResult } from "./types";
 import type { CatalogFetchReport } from "./completeness";
 import { rollupCompleteness } from "./completeness";
 import { ccxtProviderId, getAvailableCcxtExchangesDynamic } from "./universal-provider-registry";
+import { mapCcxtTimeframeInternal } from "./ccxt-live";
+
+/** Native ccxt token ("15m", "1h", "1d") → internal token ("M15", "H1", "D1"). */
+function mapCcxtNativeToInternal(native: string): string | undefined {
+  const m = /^(\d+)(m|h|d|w)$/i.exec(native);
+  if (!m) return undefined;
+  const internal = mapCcxtTimeframeInternal(native);
+  // mapCcxtTimeframeInternal echoes unknown natives back — reject those so a
+  // provider-only interval ("3m") never masquerades as a supported one.
+  return internal === native ? undefined : internal;
+}
 
 type CcxtMarket = {
   id: string;
@@ -50,6 +61,11 @@ type CcxtExchange = {
   has?: Record<string, boolean>;
   markets?: Record<string, CcxtMarket>;
   fetchMarkets: () => Promise<CcxtMarket[]>;
+  /**
+   * Phase 300 — the exchange's OWN OHLCV timeframe map (native token →
+   * provider interval), when the ccxt class truthfully publishes one.
+   */
+  timeframes?: Record<string, string>;
 };
 
 function mapMarketType(market: CcxtMarket): DiscoveredInstrument["subType"] {
@@ -69,6 +85,13 @@ function toDiscovered(
   market: CcxtMarket,
   exchangeId: string,
   now: number,
+  /**
+   * Phase 300 runtime-integration fix — the exchange-level OHLCV timeframes
+   * the provider TRUTHFULLY reports (mapped to internal tokens, sorted).
+   * Absent when the capability cannot be established: discovery must never
+   * claim timeframe-specific LIVE readiness it cannot substantiate.
+   */
+  supportedOhlcvTimeframes?: string[],
 ): DiscoveredInstrument | null {
   // Exclude inactive markets — provider's positive assertion of active listing
   if ((market.active as unknown) === false) {
@@ -100,6 +123,9 @@ function toDiscovered(
     },
     region: "global",
     discoveredAt: now,
+    ...(supportedOhlcvTimeframes && supportedOhlcvTimeframes.length > 0
+      ? { supportedOhlcvTimeframes }
+      : {}),
   };
 }
 
@@ -222,9 +248,24 @@ export async function discoverCcxtMarkets(
       const ex = createExchange(exId);
       const markets = await ex.fetchMarkets();
       pagesFetched += 1;
+      // Phase 300 — exchange-level OHLCV timeframe capability, taken only
+      // when the provider truthfully publishes it. Exchange-level (not
+      // per-market): a per-market capability model would need the provider's
+      // own market metadata, which ccxt does not expose uniformly.
+      const supportedOhlcvTimeframes =
+        ex.timeframes && typeof ex.timeframes === "object"
+          ? Object.keys(ex.timeframes)
+              .map((native) =>
+                /^(\d+)(m|h|d|w)$/i.test(native)
+                  ? mapCcxtNativeToInternal(native)
+                  : undefined,
+              )
+              .filter((tf): tf is string => tf !== undefined)
+              .sort()
+          : undefined;
       let kept = 0;
       for (const m of markets) {
-        const disc = toDiscovered(m, exId, now);
+        const disc = toDiscovered(m, exId, now, supportedOhlcvTimeframes);
         if (!disc) continue;
         instruments.push(disc);
         kept += 1;

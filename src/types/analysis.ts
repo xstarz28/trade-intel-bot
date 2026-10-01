@@ -4,7 +4,7 @@ import type { EconomicCalendarData } from "@/lib/data/calendar-types";
 
 export type InstrumentType = "forex" | "crypto" | "stock" | "commodity" | "indices";
 
-export type Timeframe = "M1" | "M5" | "M15" | "H1" | "H4" | "D1" | "W1";
+export type Timeframe = "M1" | "M5" | "M15" | "M30" | "H1" | "H4" | "D1" | "W1";
 
 export type DirectionalBias = "Bullish" | "Bearish" | "Neutral";
 

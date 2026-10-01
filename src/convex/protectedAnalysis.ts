@@ -556,6 +556,14 @@ export const runProtectedAnalysis = action({
             | "commodity"
             | "indices",
           timeframe,
+          // Phase 300 runtime-integration fix — the trading style is part of
+          // the user's *intent* (never evidence): it only selects which REAL
+          // timeframes the MTF acquisition climbs through for setups outside
+          // the frozen ladder.
+          ...(typeof trustedInput.tradingStyle === "string" &&
+          trustedInput.tradingStyle.length > 0
+            ? { tradingStyle: trustedInput.tradingStyle }
+            : {}),
           ...(typeof trustedInput.provider === "string" && trustedInput.provider.length > 0
             ? { provider: trustedInput.provider }
             : {}),

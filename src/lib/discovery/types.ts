@@ -99,6 +99,15 @@ export interface DiscoveredInstrument {
   capabilities: DataCapability[];
   /** Provider-reported precision/sizing. */
   precision?: InstrumentPrecision;
+  /**
+   * Phase 300 runtime-integration fix — the OHLCV timeframes the provider
+   * itself truthfully reports for this exchange/market (internal tokens,
+   * sorted). ABSENT when the capability cannot be established: discovery
+   * must never imply timeframe-specific LIVE readiness it cannot
+   * substantiate. A generic scanner snapshot (single verified timeframe or
+   * quote-only) never broadens this list.
+   */
+  supportedOhlcvTimeframes?: string[];
   /** Region/venue when the provider reports it. */
   region?: string;
   /** When this metadata was observed. Metadata freshness, NOT price freshness. */

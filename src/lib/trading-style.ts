@@ -70,8 +70,10 @@ export interface StyleProfile {
 export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
   scalping: {
     style: "scalping",
-    allowedSetupTfs: ["M15", "H1"],
-    fallbackTf: "H1",
+    // Phase 300 runtime-integration fix — the product timeframe model:
+    // SCALPING executes on M1/M5; M15/H1 are CONTEXT timeframes, not setups.
+    allowedSetupTfs: ["M1", "M5"],
+    fallbackTf: "M5",
     priceStaleMs: 10 * 60 * 1000,
     fundamentalLayerMultiplier: 0.5,
     fundamentalLayerCap: 8,
@@ -86,8 +88,10 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
   },
   intraday: {
     style: "intraday",
-    allowedSetupTfs: ["M15", "H1", "H4"],
-    fallbackTf: "H4",
+    // Phase 300 runtime-integration fix — INTRADAY setups span M15/M30/H1;
+    // H4 is higher-timeframe context (see STYLE_MTF_CONTEXT below).
+    allowedSetupTfs: ["M15", "M30", "H1"],
+    fallbackTf: "M15",
     priceStaleMs: 30 * 60 * 1000,
     fundamentalLayerMultiplier: 1,
     fundamentalLayerCap: 15,
@@ -116,6 +120,32 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     requiresHtfContext: true,
     eventRiskWindowHours: null,
   },
+};
+
+/**
+ * Phase 300 runtime-integration fix — per-style MTF chain policy.
+ *
+ * The product timeframe model, as pure configuration (NOT a new analytical
+ * method — this selects which REAL series the existing MTF engine acquires
+ * and labels; it changes no indicator, gate, threshold or scoring rule):
+ *
+ *   SCALPING — setup/execution M1, M5; higher-timeframe context M15, H1
+ *   INTRADAY — setup/execution M15, M30, H1; higher-timeframe context H4
+ *   SWING    — setup/execution H4, D1, W1; context is the higher portion of
+ *              its own chain (D1/W1 above an H4 setup, W1 above D1)
+ *
+ * `setup` mirrors `allowedSetupTfs`. `context` lists the timeframes the MTF
+ * acquisition may climb through ABOVE the setup timeframe, in ascending
+ * ladder order. Slots are still acquired per-timeframe from the provider and
+ * failures stay explicit per-slot (never synthesized, never neutral).
+ */
+export const STYLE_MTF_CONTEXT: Record<
+  TradingStyle,
+  { setup: string[]; context: string[] }
+> = {
+  scalping: { setup: ["M1", "M5"], context: ["M15", "H1"] },
+  intraday: { setup: ["M15", "M30", "H1"], context: ["M30", "H1", "H4"] },
+  swing: { setup: ["H4", "D1", "W1"], context: ["D1", "W1"] },
 };
 
 export function resolveStyle(style?: TradingStyle | string): StyleProfile {

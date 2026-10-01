@@ -16,7 +16,7 @@ import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { attachAdvancedTechnical } from "../lib/data/advanced-technical";
-import { buildChain, buildMtfContext } from "../lib/data/mtf";
+import { buildChain, buildMtfContext, buildStyleMtfChain } from "../lib/data/mtf";
 import {
   crossAssetComparator,
   DXY_CANDIDATE_SYMBOLS,
@@ -549,6 +549,11 @@ export const fetchMarketData = action({
       v.literal("indices"),
     ),
     timeframe: v.string(),
+    // Phase 300 runtime-integration fix — the user's trading style selects
+    // which REAL timeframes the MTF acquisition climbs through for setup
+    // timeframes that live outside the frozen ladder (M1/M5/M30). Timeframes
+    // inside the frozen ladder keep their byte-identical chains regardless.
+    tradingStyle: v.optional(v.string()),
     provider: v.optional(v.string()),
     providerInstrumentId: v.optional(v.string()),
   },
@@ -617,6 +622,20 @@ export const fetchMarketData = action({
         return { success: false as const, error: classified.error, errorCode: classified.errorCode };
       }
 
+      // Phase 300 runtime-integration fix — an ANSWERED-BUT-EMPTY series is a
+      // definitive data state, not an analysis input. Previously an empty
+      // array could fall through to `candles[candles.length - 1].close`
+      // (TypeError on `undefined`) and collapse into a generic failure — or
+      // worse, reach the engine and come back as an evidence-less NO_TRADE
+      // shell that looked like a normal analysis. Refuse here, explicitly.
+      if (candles.length === 0) {
+        return {
+          success: false as const,
+          error: `Provider "${useProviderNative ? providerArg : "twelve-data"}" returned an empty series for "${requestSymbol}" on ${args.timeframe} — no live OHLCV data is available for this request.`,
+          errorCode: "NO_LIVE_DATA" as const,
+        };
+      }
+
       // Live quote — NON-fatal: never discard successful candle data.
       //
       // Phase 178d — cached under the `quote` dataset (20s TTL), the shortest
@@ -666,6 +685,18 @@ export const fetchMarketData = action({
           ? parseFloat(String(quoteRes.close))
           : candles[candles.length - 1].close;
 
+      // Phase 300 runtime-integration fix — never emit an evidence-less
+      // envelope. A response without a usable price and without candles must
+      // be an explicit data-unavailable refusal, not a shell the engine
+      // dresses up as a NO_TRADE analysis.
+      if (!Number.isFinite(price) || (price as number) <= 0) {
+        return {
+          success: false as const,
+          error: `No live market price available for "${requestSymbol}" — the provider returned neither a usable quote nor candle closes.`,
+          errorCode: "NO_LIVE_DATA" as const,
+        };
+      }
+
       // Phase 220 — `PriceSnapshot.timestamp` is documented as "when the
       // price was last updated" by the PROVIDER. It was stamped with the
       // request clock, so a quote the provider itself dated hours earlier
@@ -696,7 +727,14 @@ export const fetchMarketData = action({
       // Only timeframes that actually fetch successfully enter the chain.
       // Failures (rate limits included) preserve all successful data and
       // mark the slot unavailable — nothing is ever synthesized.
-      const slots = buildChain(args.timeframe);
+      // Phase 300 runtime-integration fix — when the request carries the
+      // user's trading style, setup timeframes OUTSIDE the frozen ladder
+      // (M1/M5/M30) get their style-derived chain instead of being analyzed
+      // standalone. Timeframes inside the frozen ladder keep their exact
+      // pre-existing chain (buildStyleMtfChain delegates to buildChain).
+      const slots = args.tradingStyle
+        ? buildStyleMtfChain(args.tradingStyle, args.timeframe)
+        : buildChain(args.timeframe);
       const settled = await Promise.allSettled(
         slots.map((s) =>
           s.role === "trigger"

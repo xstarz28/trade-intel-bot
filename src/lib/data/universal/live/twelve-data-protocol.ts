@@ -26,6 +26,10 @@ const INTERVAL: Record<string, string> = {
   M1: "1min",
   M5: "5min",
   M15: "15min",
+  // Phase 300 runtime-integration fix — M30 was missing from the provider
+  // interval map, so an M30 request degraded to the raw token "m30" (an
+  // invalid Twelve Data interval) instead of the provider's real "30min".
+  M30: "30min",
   H1: "1h",
   H4: "4h",
   D1: "1day",
@@ -33,6 +37,7 @@ const INTERVAL: Record<string, string> = {
   "1min": "1min",
   "5min": "5min",
   "15min": "15min",
+  "30min": "30min",
   "1h": "1h",
   "4h": "4h",
   "1day": "1day",

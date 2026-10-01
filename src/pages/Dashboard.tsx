@@ -512,6 +512,9 @@ export default function Dashboard() {
               instrument: input.instrument,
               instrumentType: input.instrumentType,
               timeframe: input.timeframe,
+              // Phase 300 — style selects the MTF chain for setups outside
+              // the frozen ladder (M1/M5/M30); frozen timeframes unaffected.
+              tradingStyle: input.tradingStyle,
               provider: identity.provider,
               providerInstrumentId: identity.providerInstrumentId,
             }),
@@ -1214,11 +1217,18 @@ export default function Dashboard() {
           availableTimeframes: ls.marketData.candles.length > 0
             ? [ls.marketData.timeframe]
             : [],
+          // Phase 300 runtime-integration fix — "neutral" is a real engine
+          // verdict (it evaluated the timeframe and concluded neutral). No
+          // analysis at all must stay "unknown": encoding absent evidence as
+          // "neutral" manufactured a +5 radar bonus and a fake PARTIAL
+          // completeness tier for every pre-analysis candidate.
           htfBias: ar?.bias === "Bullish"
             ? "long"
             : ar?.bias === "Bearish"
               ? "short"
-              : "neutral",
+              : ar?.bias === "Neutral"
+                ? "neutral"
+                : "unknown",
           marketRegime: "UNKNOWN",
           provider: ls.marketData.provider,
           /*
