@@ -261,15 +261,94 @@ export async function restDeployPrebuilt(options = {}) {
   const createBody = JSON.stringify(
     buildDeploymentRequestBody({ files, projectName: resolvedName, projectId, target }),
   );
-  const createResponse = await fetchImpl(createUrl, {
-    method: "POST",
-    headers: { ...jsonHeaders },
-    body: createBody,
-  });
-  const createText = await createResponse.text();
+  const contentBySha = new Map();
+  for (const info of files) contentBySha.set(info.sha, info);
+
+  async function uploadMissingFiles(missing, deploymentId = null) {
+    for (const entry of missing) {
+      const sha = typeof entry === "string" ? entry : entry?.sha;
+      const info = contentBySha.get(sha);
+      if (!info) {
+        return {
+          ok: false,
+          state: REST_DEPLOY_STATES.UPLOAD_FAILED,
+          deploymentId,
+          problem: `the server asked for sha ${sha} which is not in the verified file list — refusing to fetch it from anywhere else`,
+        };
+      }
+      const content = await readFile(join(outputDir, relative(".vercel/output", info.file)));
+      const uploadResponse = await fetchImpl(`${apiBase}/v2/files`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/octet-stream",
+          "x-now-digest": sha,
+          "x-now-size": String(content.length),
+        },
+        body: content,
+      });
+      evidence.push(`POST /v2/files (${info.file}, ${content.length} bytes) -> ${uploadResponse.status}`);
+      if (!uploadResponse.ok) {
+        const uploadText = await uploadResponse.text();
+        return {
+          ok: false,
+          state: REST_DEPLOY_STATES.UPLOAD_FAILED,
+          deploymentId,
+          problem: `the file upload was refused (HTTP ${uploadResponse.status}) for ${info.file}. Body excerpt: ${cap(uploadText)}`,
+        };
+      }
+    }
+    return { ok: true, state: null, deploymentId, problem: null };
+  }
+
+  const createDeployment = async () => {
+    const response = await fetchImpl(createUrl, {
+      method: "POST",
+      headers: { ...jsonHeaders },
+      body: createBody,
+    });
+    const textBody = await response.text();
+    let payload = null;
+    try {
+      payload = JSON.parse(textBody);
+    } catch {
+      // Keep the raw body for the named failure below.
+    }
+    return { response, textBody, payload };
+  };
+
+  let { response: createResponse, textBody: createText, payload: deployment } = await createDeployment();
   evidence.push(
     `POST /v13/deployments?...&prebuilt=1 -> ${createResponse.status} (${files.length} files listed, ${createBody.length} bytes)`,
   );
+
+  // Vercel can return HTTP 400/missing_files as a preflight response rather than
+  // 2xx with a deployment id. Upload that exact missing-sha set, then retry the
+  // SAME verified create request once. No bytes outside the artifact may be used.
+  if (
+    !createResponse.ok &&
+    createResponse.status === 400 &&
+    deployment?.error?.code === "missing_files" &&
+    Array.isArray(deployment.missing)
+  ) {
+    evidence.push(`create preflight: server reports ${deployment.missing.length} missing file sha(s); uploading them before retry`);
+    const upload = await uploadMissingFiles(deployment.missing);
+    if (!upload.ok) {
+      return {
+        schema: VERCEL_REST_DEPLOY_SCHEMA,
+        state: upload.state,
+        problems: [upload.problem],
+        evidence,
+        deploymentUrl: null,
+        deploymentId: null,
+      };
+    }
+    ({ response: createResponse, textBody: createText, payload: deployment } = await createDeployment());
+    evidence.push(
+      `POST /v13/deployments retry -> ${createResponse.status} (${files.length} files listed, ${createBody.length} bytes)`,
+    );
+  }
+
   if (!createResponse.ok) {
     return {
       schema: VERCEL_REST_DEPLOY_SCHEMA,
@@ -282,10 +361,7 @@ export async function restDeployPrebuilt(options = {}) {
       deploymentId: null,
     };
   }
-  let deployment;
-  try {
-    deployment = JSON.parse(createText);
-  } catch {
+  if (!deployment) {
     return {
       schema: VERCEL_REST_DEPLOY_SCHEMA,
       state: REST_DEPLOY_STATES.CREATE_REFUSED,
@@ -307,57 +383,23 @@ export async function restDeployPrebuilt(options = {}) {
     };
   }
 
-  // 3. Upload whatever the server says it lacks (raw content, CLI headers).
+  // 3. Upload whatever a successful create response says it still lacks.
   const missing = Array.isArray(deployment.missing) ? deployment.missing : [];
   if (missing.length > 0) {
-    const contentBySha = new Map();
-    for (const info of files) contentBySha.set(info.sha, info);
-    for (const entry of missing) {
-      const sha = typeof entry === "string" ? entry : entry?.sha;
-      const info = contentBySha.get(sha);
-      if (!info) {
-        return {
-          schema: VERCEL_REST_DEPLOY_SCHEMA,
-          state: REST_DEPLOY_STATES.UPLOAD_FAILED,
-          problems: [
-            `the server asked for sha ${sha} which is not in the verified file list — refusing to fetch it from anywhere else`,
-          ],
-          evidence,
-          deploymentUrl: null,
-          deploymentId,
-        };
-      }
-      const content = await readFile(join(outputDir, relative(".vercel/output", info.file)));
-      const uploadUrl = `${apiBase}/v2/files`;
-      const uploadResponse = await fetchImpl(uploadUrl, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/octet-stream",
-          "x-now-digest": sha,
-          "x-now-size": String(content.length),
-        },
-        body: content,
-      });
-      evidence.push(`POST /v2/files (${info.file}, ${content.length} bytes) -> ${uploadResponse.status}`);
-      if (!uploadResponse.ok) {
-        const uploadText = await uploadResponse.text();
-        return {
-          schema: VERCEL_REST_DEPLOY_SCHEMA,
-          state: REST_DEPLOY_STATES.UPLOAD_FAILED,
-          problems: [
-            `the file upload was refused (HTTP ${uploadResponse.status}) for ${info.file}. Body excerpt: ${cap(uploadText)}`,
-          ],
-          evidence,
-          deploymentUrl: null,
-          deploymentId,
-        };
-      }
+    const upload = await uploadMissingFiles(missing, deploymentId);
+    if (!upload.ok) {
+      return {
+        schema: VERCEL_REST_DEPLOY_SCHEMA,
+        state: upload.state,
+        problems: [upload.problem],
+        evidence,
+        deploymentUrl: null,
+        deploymentId,
+      };
     }
   } else {
     evidence.push("no missing files — the server accepted every sha on creation");
   }
-
   // 4. Poll until the deployment leaves BUILDING/PENDING/QUEUED.
   const deadline = Date.now() + timeoutMs;
   for (;;) {
