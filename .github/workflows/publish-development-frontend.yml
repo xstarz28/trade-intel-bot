@@ -268,20 +268,27 @@ jobs:
             } >> "$GITHUB_ENV"
             echo "::notice title=Host target pinned::org/project/host came from the 'development' environment variables"
             # A pinned identifier is a CLAIM, not a fact. Verify the pinned
-            # (org, project, host) against THIS job's credential with the same
-            # read-only "project settings" call the host CLI makes at deploy
-            # time — run 36823507179 failed exactly there, opaquely. This turns
-            # that failure into a named pre-deploy verdict (exit classes:
-            # TOKEN_CANNOT_ACCESS_ORG / PROJECT_NOT_UNDER_ORG /
-            # HOST_NOT_ON_PROJECT), instead of a build wasted on a target the
-            # credential cannot serve.
-            if ! node scripts/verify-vercel-project-access.mjs \
-                 --org-id "$XSTARZ_PINNED_ORG_ID" \
-                 --project-id "$XSTARZ_PINNED_PROJECT_ID" \
-                 --host-url "$XSTARZ_PINNED_HOST_URL"; then
-              echo "::error title=Pinned Vercel target failed credential validation::TOKEN_CANNOT_ACCESS_ORG => the credential was refused with AND without the org scope — per-endpoint evidence is in the verifier output above (vercel/vercel#17506 distinguishes this genuine refusal from the CLI's scope-metadata artifact, which exits 0); PROJECT_NOT_UNDER_ORG => the pinned ids do not match this credential (re-derive with 'npm run frontend:resolve', then re-pin); HOST_NOT_ON_PROJECT => the pinned host is not served by this project."
+            # (org, project, host) against THIS job's credential. Capture the
+            # successful verifier response once so the deploy step can reuse
+            # the exact project name it proved, instead of performing a second
+            # project-settings read that can have different authorization
+            # behavior for the same project-scoped credential.
+            target_report="$RUNNER_TEMP/vercel-target-check.json"
+            set +e
+            node scripts/verify-vercel-project-access.mjs                  --json                  --org-id "$XSTARZ_PINNED_ORG_ID"                  --project-id "$XSTARZ_PINNED_PROJECT_ID"                  --host-url "$XSTARZ_PINNED_HOST_URL"                  >"$target_report" 2>&1
+            target_status=$?
+            set -e
+            cat "$target_report"
+            if [ "$target_status" -ne 0 ]; then
+              echo "::error title=Pinned Vercel target failed credential validation::The read-only target verifier refused the pinned target; its JSON evidence is printed above."
               exit 1
             fi
+            project_name="$(jq -r '.projectName // empty' "$target_report")"
+            if [ -z "$project_name" ]; then
+              echo "::error title=Verifier returned no project name::The target was readable but did not provide the project name required by the deployment API."
+              exit 1
+            fi
+            echo "XSTARZ_VERCEL_PROJECT_NAME=$project_name" >> "$GITHUB_ENV"
             exit 0
           fi
           npm run frontend:resolve -- \
@@ -428,6 +435,7 @@ jobs:
           env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID node scripts/deploy-frontend-rest.mjs \
             --org-id "$org" \
             --project-id "$project" \
+            --project-name "$XSTARZ_VERCEL_PROJECT_NAME" \
             --target preview \
             --expect-commit "$XSTARZ_ARTIFACT_COMMIT" \
             >"$out_file" 2>"$err_file"
