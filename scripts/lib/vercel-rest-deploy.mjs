@@ -31,10 +31,10 @@
  *        "files":[{"file":".vercel/output/config.json","size":85,"mode":33188,
  *                  "sha":"<sha1 of content>"}, ...]}
  *     -> response.missing lists shas the server lacks; each is uploaded via
- *        POST /v2/files?teamId=<org>
+ *        POST /v2/files
  *          headers: content-type application/octet-stream, x-now-digest <sha>,
  *                   x-now-size <size>; body = raw file content
- *     -> then GET /v13/deployments/<id>?teamId=<org> is polled until the
+ *     -> then GET /v13/deployments/<id> is polled until the
  *        deployment leaves BUILDING/PENDING.
  *
  * SAFETY
@@ -253,9 +253,11 @@ export async function restDeployPrebuilt(options = {}) {
   const resolvedName = projectName;
   evidence.push(`project: ${resolvedName} (supplied by the verified target; no project-settings lookup)`);
 
-  // 2. Create the prebuilt deployment — the CLI's exact request shape.
+  // 2. Create the prebuilt deployment. A project-scoped token is denied team-level
+  //    resources, so do not append teamId here; the request carries the verified
+  //    project id in its body and the token scope supplies the authorization.
   const createUrl =
-    `${apiBase}/v13/deployments?skipAutoDetectionConfirmation=1&prebuilt=1&teamId=${encodeURIComponent(orgId)}`;
+    `${apiBase}/v13/deployments?skipAutoDetectionConfirmation=1&prebuilt=1`;
   const createBody = JSON.stringify(
     buildDeploymentRequestBody({ files, projectName: resolvedName, projectId, target }),
   );
@@ -326,7 +328,7 @@ export async function restDeployPrebuilt(options = {}) {
         };
       }
       const content = await readFile(join(outputDir, relative(".vercel/output", info.file)));
-      const uploadUrl = `${apiBase}/v2/files?teamId=${encodeURIComponent(orgId)}`;
+      const uploadUrl = `${apiBase}/v2/files`;
       const uploadResponse = await fetchImpl(uploadUrl, {
         method: "POST",
         headers: {
@@ -360,7 +362,7 @@ export async function restDeployPrebuilt(options = {}) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const pollResponse = await fetchImpl(
-      `${apiBase}/v13/deployments/${encodeURIComponent(deploymentId)}?teamId=${encodeURIComponent(orgId)}`,
+      `${apiBase}/v13/deployments/${encodeURIComponent(deploymentId)}`,
       { method: "GET", headers: { ...readHeaders } },
     );
     const pollText = await pollResponse.text();
