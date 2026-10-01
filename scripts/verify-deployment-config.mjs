@@ -135,6 +135,26 @@ const CLASSES = [
       { name: "CONVEX_SITE_URL", secret: false, requiredInProduction: true },
       { name: DEPLOYMENT_ENV_VAR, secret: false, requiredInProduction: false },
       { name: FEDERATED_ISSUER_VAR, secret: false, forbiddenInProduction: true },
+      /*
+       * Phase 300 — Google sign-in credentials.
+       *
+       * `@convex-dev/auth` fills the Google provider from the Convex
+       * deployment environment (`@auth/core` `setEnvDefaults` reads
+       * `AUTH_<PROVIDER_ID>_ID` / `AUTH_<PROVIDER_ID>_SECRET`, i.e. these two
+       * names for the `google` provider), and it then sends `client_id` to
+       * Google without validating it — the comment in the library's
+       * authorization-url builder says so in as many words. A missing pair is
+       * therefore only observable at the OAuth endpoint, as
+       * `401 invalid_client`, after a real user clicks sign in.
+       *
+       * That is not acceptable for a fail-closed preflight: the variables that
+       * `docs/production-activation-checklist.md` §4 and
+       * `docs/production-launch-gate.md` §E already require were invisible to
+       * every check in this script. They are production requirements now, with
+       * presence and plausibility checks only — values are never printed.
+       */
+      { name: "AUTH_GOOGLE_ID", secret: true, requiredInProduction: true },
+      { name: "AUTH_GOOGLE_SECRET", secret: true, requiredInProduction: true },
     ],
   },
   {

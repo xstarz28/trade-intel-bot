@@ -76,6 +76,18 @@ const PLACEHOLDER_KEY = ["re", "placeholder", "not", "a", "key"].join("_");
  */
 const PLAUSIBLE_KEY = ["re", "8Kd92Lfm4QpXvR7nT3wY6bZa"].join("_");
 
+/**
+ * A plausible Google OAuth client id for the VALID_PRODUCTION fixture.
+ *
+ * Assembled at runtime for the same reason as PLAUSIBLE_KEY — a literal that
+ * looks like a real Google client id trips the Phase 12 credential scanner —
+ * and long enough to clear the preflight's own plausibility check, because a
+ * *valid* production fixture has to look real. It was never a credential.
+ */
+const GOOGLE_CLIENT_ID_FIXTURE =
+  ["726184920113", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"].join("-") +
+  ".apps.googleusercontent.com";
+
 /** Copy of a config with one key removed, without leaving an unused binding. */
 function without<T extends Record<string, string>>(base: T, key: keyof T): Record<string, string> {
   const copy: Record<string, string> = { ...base };
@@ -87,6 +99,13 @@ function without<T extends Record<string, string>>(base: T, key: keyof T): Recor
 const VALID_PRODUCTION = {
   XSTARZ_DEPLOYMENT_ENV: "production",
   CONVEX_SITE_URL: "https://example-deployment.convex.site",
+  // Phase 300 — the Google pair `docs/production-activation-checklist.md` §4
+  // and `docs/production-launch-gate.md` §E already required. Convex Auth
+  // reads them as AUTH_<PROVIDER_ID>_ID / _SECRET; without them sign-in dies
+  // at Google as `401 invalid_client`, so a valid production fixture has to
+  // carry them.
+  AUTH_GOOGLE_ID: GOOGLE_CLIENT_ID_FIXTURE,
+  AUTH_GOOGLE_SECRET: PLAUSIBLE_KEY,
 };
 
 describe("Phase 186 — deployment preflight exists and is wired up", () => {
@@ -439,5 +458,65 @@ describe("Phase 200 — credential plausibility", () => {
     expect(statusOf(run, "credential-plausibility")).toBe("PASS");
     // Plausibility is not validity, and the report must say so.
     expect(detailOf(run, "credential-plausibility")).toMatch(/NOT VERIFIED/i);
+  });
+});
+
+describe("Phase 300 — Google OAuth credentials are a production requirement", () => {
+  /*
+   * Root cause this encodes: `@convex-dev/auth` fills the Google provider from
+   * the Convex deployment environment (`AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`
+   * via `@auth/core` `setEnvDefaults`) and sends `client_id` to Google without
+   * validating it. When the pair is absent the only symptom is Google's
+   * `401 invalid_client` in a real browser, after the user clicks sign in.
+   *
+   * The preflight must refuse that configuration instead of passing it, and it
+   * must never print either value while doing so.
+   */
+  it("fails closed when the client id is absent on production", () => {
+    const run = runPreflight(without(VALID_PRODUCTION, "AUTH_GOOGLE_ID"));
+    expect(run.exitCode).toBe(1);
+    expect(statusOf(run, "required-production-vars")).toBe("FAIL");
+    expect(detailOf(run, "required-production-vars")).toContain("AUTH_GOOGLE_ID");
+  });
+
+  it("fails closed when the client secret is absent on production", () => {
+    const run = runPreflight(without(VALID_PRODUCTION, "AUTH_GOOGLE_SECRET"));
+    expect(run.exitCode).toBe(1);
+    expect(statusOf(run, "required-production-vars")).toBe("FAIL");
+    expect(detailOf(run, "required-production-vars")).toContain("AUTH_GOOGLE_SECRET");
+  });
+
+  it("passes when both names are present, and still refuses to call the exchange verified", () => {
+    const run = runPreflight(VALID_PRODUCTION);
+    expect(statusOf(run, "required-production-vars")).toBe("PASS");
+    // Presence is configuration, not a sign-in. The report keeps saying so.
+    expect(run.report.notVerified.join(" ")).toMatch(/deployed Convex runtime behaviour/i);
+  });
+
+  it("never prints either value", () => {
+    const idSentinel = ["726184920113", "sentinelid"].join("-");
+    const secretSentinel = ["zz", "sentinel", "google", "9902"].join("_");
+    const run = runPreflight({
+      ...VALID_PRODUCTION,
+      AUTH_GOOGLE_ID: idSentinel,
+      AUTH_GOOGLE_SECRET: secretSentinel,
+    });
+    const text = JSON.stringify(run.report);
+    expect(text).not.toContain(idSentinel);
+    expect(text).not.toContain(secretSentinel);
+  });
+
+  it("rejects a placeholder Google client before it can reach Google", () => {
+    const run = runPreflight({
+      ...VALID_PRODUCTION,
+      AUTH_GOOGLE_ID: ["placeholder", "google", "client", "id"].join("-"),
+    });
+    expect(statusOf(run, "credential-plausibility")).toBe("FAIL");
+  });
+
+  it("the script declares the two names the library actually reads", () => {
+    const src = readFileSync(SCRIPT, "utf8");
+    expect(src).toContain("AUTH_GOOGLE_ID");
+    expect(src).toContain("AUTH_GOOGLE_SECRET");
   });
 });
