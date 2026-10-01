@@ -417,6 +417,7 @@ async function main() {
   const deploy = await restDeployPrebuilt({
     orgId: target.orgId,
     projectId: target.projectId,
+    projectName: target.projectName,
     target: args.target === "production" ? "production" : "preview",
     token,
     outputDir: BUILD_OUTPUT_DIR,
