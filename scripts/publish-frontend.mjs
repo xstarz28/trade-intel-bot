@@ -45,10 +45,11 @@
  * Exit codes: 0 published AND verified · 1 refused or the published check failed
  * · 2 nothing to publish / could not evaluate.
  */
-import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
+
+import { gitOutput, resolveExecutable, runCommand } from "./lib/executable.mjs";
 
 import { registerTypeScriptResolution } from "./lib/ts-module-loader.mjs";
 import {
@@ -70,22 +71,18 @@ const { evaluateFrontendPublicationGuard } = await import(
 
 export const PUBLISH_FRONTEND_SCHEMA = "phase300.publish-frontend/v1";
 
-/** Run a command, streaming nothing, returning its status and output. */
-export function run(command, args, { env = process.env, cwd = process.cwd() } = {}) {
-  const result = spawnSync(command, args, { env, cwd, encoding: "utf8" });
-  return {
-    status: result.status ?? 1,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-  };
+/**
+ * Run a command through the platform-safe resolver: `npm.cmd`/`npx.cmd` (and a
+ * shell, which Node requires for a `.cmd`) on Windows, the bare name everywhere
+ * else. A failure carries `failureText`, so a process that could not even start
+ * reports WHY instead of returning empty stdout and stderr.
+ */
+export function run(command, args, { env = process.env, cwd = process.cwd(), platform } = {}) {
+  return runCommand(command, args, { env, cwd, ...(platform ? { platform } : {}) });
 }
 
 function git(args) {
-  try {
-    return execFileSync("git", args, { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
-  } catch {
-    return null;
-  }
+  return gitOutput(args, { stdio: ["ignore", "pipe", "ignore"] });
 }
 
 /** The entry bundles and provenance hash of the artifact that passed the check. */
@@ -251,9 +248,9 @@ async function main() {
 
   // 2. Build.
   if (!args.skipBuild) {
-    report.push("building…");
+    report.push(`building… (${resolveExecutable("npm").command})`);
     const build = run("npm", ["run", "build"], { cwd: process.cwd() });
-    if (build.status !== 0) fail(`the build failed:\n${build.stdout}\n${build.stderr}`, 2);
+    if (build.status !== 0) fail(`the build failed: ${build.failureText ?? "no output"}\n${build.stdout}\n${build.stderr}`, 2);
   }
 
   // 3. Verify the artifact before anything leaves this machine.
@@ -270,7 +267,11 @@ async function main() {
     ],
     { cwd: process.cwd() },
   );
-  if (verifyArtifact.status !== 0) fail(`the built artifact did not satisfy the contract:\n${verifyArtifact.stdout}`);
+  if (verifyArtifact.status !== 0) {
+    fail(
+      `the built artifact did not satisfy the contract${verifyArtifact.failureText ? ` (${verifyArtifact.failureText})` : ""}:\n${verifyArtifact.stdout}`,
+    );
+  }
   const fingerprint = artifactFingerprint(args.dist);
   if (!fingerprint) fail("the artifact has no readable provenance", 2);
   report.push(
@@ -319,10 +320,10 @@ async function main() {
       VERCEL_PROJECT_ID: target.projectId,
     },
   });
-  if (deploy.status !== 0) fail(`the upload failed:\n${deploy.stdout}\n${deploy.stderr}`);
+  if (deploy.status !== 0) fail(`the upload failed: ${deploy.failureText ?? "no output"}\n${deploy.stdout}\n${deploy.stderr}`);
   const deploymentUrl = deploymentUrlFrom(deploy.stdout);
   if (!deploymentUrl) fail(`the host CLI produced no deployment URL; last output:\n${deploy.stdout}`);
-  report.push(`uploaded: ${deploymentUrl}`);
+  report.push(`uploaded: ${deploymentUrl} (via ${deploy.executable ?? resolveExecutable("npx").command})`);
 
   // 6. Point the browser-facing host at it (preview only — a production
   //    deployment already serves the project's own domains, and saying so is
@@ -340,7 +341,8 @@ async function main() {
     });
     if (alias.status !== 0) {
       fail(
-        `the deployment exists (${deploymentUrl}) but the browser-facing host could not be pointed at it:\n${alias.stdout}\n${alias.stderr}\n` +
+        `the deployment exists (${deploymentUrl}) but the browser-facing host could not be pointed at it ` +
+          `(${alias.failureText ?? "no output"}):\n${alias.stdout}\n${alias.stderr}\n` +
           `If ${host} is this project's production domain, re-run with --target production so the standard domain assignment applies.`,
       );
     }

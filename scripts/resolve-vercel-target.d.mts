@@ -143,3 +143,12 @@ export function resolveVercelTarget(options?: {
   env?: Record<string, string | undefined>;
   fetchImpl?: typeof fetch;
 }): Promise<VercelTargetReport>;
+
+/**
+ * A DNS hostname and nothing else. Part of the guard because the host is passed
+ * to the host CLI's alias command, which is a shell-run `.cmd` on Windows.
+ */
+export function isHostnameShaped(value: unknown): boolean;
+
+/** git, through the platform-safe runner (`scripts/lib/executable.mjs`). */
+export function gitOutput(args: string[]): string | null;

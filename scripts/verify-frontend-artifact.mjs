@@ -54,7 +54,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { execSync } from "node:child_process";
+
+import { gitOutput } from "./lib/executable.mjs";
 
 /* ------------------------------------------------------------------ *
  * Expectations — the strings that decide which product this artifact is
@@ -346,14 +347,16 @@ export function formatReport(result) {
  * CLI
  * ------------------------------------------------------------------ */
 
+/**
+ * The checked-out revision, or null.
+ *
+ * Routed through the platform-safe runner so this script also works on Windows,
+ * where `git` is `git.exe`/`git.cmd` and spawning it by its bare name cannot
+ * start it (see `scripts/lib/executable.mjs`). A missing git is not an error
+ * here — the caller debugs the unresolved commit separately.
+ */
 function gitHead() {
-  try {
-    return execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
-  } catch {
-    return null;
-  }
+  return gitOutput(["rev-parse", "HEAD"]);
 }
 
 function collectTextAssets(distDir) {

@@ -63,7 +63,7 @@
  *   1 = refused (missing/ambiguous/wrong target — the report names it)
  *   2 = could not evaluate (no token, or the API could not be reached)
  */
-import { execFileSync } from "node:child_process";
+import { gitOutput } from "./lib/executable.mjs";
 
 export const VERCEL_API = "https://api.vercel.com";
 export const VERCEL_TARGET_SCHEMA = "phase300.vercel-target/v1";
@@ -237,12 +237,32 @@ export function scopeForProject(project, { personalId = null } = {}) {
   };
 }
 
+/**
+ * A DNS hostname and nothing else — no scheme, path, credentials, spaces, quotes
+ * or shell metacharacters.
+ *
+ * WHY THIS IS PART OF THE GUARD, NOT A NICETY: the browser-facing host is passed
+ * to the host CLI's alias command, and on Windows that CLI is a `.cmd` run
+ * through a shell (see `scripts/lib/executable.mjs`). A value that is a hostname
+ * cannot break out of that command; anything else is refused before it gets near
+ * a shell.
+ */
+export function isHostnameShaped(value) {
+  const host = String(value ?? "").trim().toLowerCase();
+  if (host.length === 0 || host.length > 253) return false;
+  if (!/^[a-z0-9.-]+$/.test(host)) return false;
+  if (host.startsWith(".") || host.endsWith(".") || host.includes("..")) return false;
+  return host.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label));
+}
+
 /** The domains a project reports, from both the project object and `/domains`. */
 export function projectDomains(project, domainList) {
   const out = [];
   const push = (name, source, verified) => {
     const value = String(name ?? "").trim().toLowerCase();
-    if (!value || out.some((d) => d.name === value)) return;
+    // A domain that is not a hostname is not a browser-facing URL anyone can
+    // open safely, so it is dropped rather than carried into the alias command.
+    if (!value || !isHostnameShaped(value) || out.some((d) => d.name === value)) return;
     out.push({ name: value, source, verified: verified !== false });
   };
   const alias = project?.alias ?? project?.targets?.production?.alias ?? [];
@@ -267,6 +287,13 @@ export function chooseHostUrl({ explicit, domains, allowUnverifiedHost }) {
   const clean = (value) => String(value ?? "").trim().replace(/\/+$/, "").toLowerCase();
   if (explicit) {
     const want = clean(explicit).replace(/^https?:\/\//, "");
+    if (!isHostnameShaped(want)) {
+      return {
+        hostUrl: null,
+        source: null,
+        problem: `the configured host is not a hostname (${JSON.stringify(String(explicit))}) — refusing to hand a non-hostname to the host CLI`,
+      };
+    }
     const found = list.find((d) => d.name === want);
     if (found) return { hostUrl: `https://${want}`, source: `explicit, listed on the project (${found.source})` };
     if (allowUnverifiedHost) {
@@ -318,19 +345,17 @@ export async function vercelGet(path, { token, timeoutMs = 20_000, fetchImpl = f
   }
 }
 
+/**
+ * `owner/repo` from the checkout's origin, or null. Through the platform-safe
+ * runner, so the resolver behaves the same from Windows CMD as from a shell
+ * (see `scripts/lib/executable.mjs`).
+ */
 function repoFullNameFromGit() {
-  try {
-    const url = execFileSync("git", ["config", "--get", "remote.origin.url"], {
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .toString()
-      .trim();
-    const match =
-      url.match(/github\.com[:/]([^/]+\/[^/.]+?)(?:\.git)?$/i) ?? url.match(/^([^/]+\/[^/]+?)(?:\.git)?$/);
-    return match ? match[1] : null;
-  } catch {
-    return null;
-  }
+  const url = gitOutput(["config", "--get", "remote.origin.url"]);
+  if (!url) return null;
+  const match =
+    url.match(/github\.com[:/]([^/]+\/[^/.]+?)(?:\.git)?$/i) ?? url.match(/^([^/]+\/[^/]+?)(?:\.git)?$/);
+  return match ? match[1] : null;
 }
 
 /**

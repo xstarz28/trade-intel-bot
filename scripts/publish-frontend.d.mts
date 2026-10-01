@@ -10,13 +10,29 @@
 
 export const PUBLISH_FRONTEND_SCHEMA: string;
 
-export type RunResult = { status: number; stdout: string; stderr: string };
+export type RunResult = {
+  status: number;
+  stdout: string;
+  stderr: string;
+  /** Why the process did not produce output — always non-empty when it failed. */
+  failureText: string | null;
+  /** The executable actually used (`npm.cmd` on Windows, `npm` elsewhere). */
+  executable: string;
+  /** True only for a `.cmd`/`.bat` on Windows, which Node requires a shell for. */
+  shell: boolean;
+  attempts: { executable: string; shell: boolean; status: number | null; error: string | null }[];
+};
 
-/** Run a command without a shell, returning its status and captured output. */
+/**
+ * Run a command through the platform-safe resolver: `npm.cmd`/`npx.cmd` (run
+ * through a shell, as Node requires on Windows) on win32, the bare name
+ * everywhere else. `platform` is injectable so the Windows mapping is testable
+ * off Windows.
+ */
 export function run(
   command: string,
   args: string[],
-  options?: { env?: Record<string, string | undefined>; cwd?: string },
+  options?: { env?: Record<string, string | undefined>; cwd?: string; platform?: string },
 ): RunResult;
 
 export type ArtifactFingerprint = {
