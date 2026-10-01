@@ -112,7 +112,7 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     expect(urls.some((p) => p.startsWith("/teams/"))).toBe(false);
     expect(urls.some((p) => p.startsWith("/v9/projects/"))).toBe(false);
     for (const url of recorded.map((r) => r.url)) {
-      expect(url).toContain(`teamId=${ORG}`);
+      expect(url).not.toContain("teamId=");
     }
   });
 
@@ -132,7 +132,7 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     expect(create).toBeTruthy();
     expect(new URL(create!.url).search).toContain("skipAutoDetectionConfirmation=1");
     expect(new URL(create!.url).search).toContain("prebuilt=1");
-    expect(new URL(create!.url).search).toContain(`teamId=${ORG}`);
+    expect(new URL(create!.url).search).not.toContain("teamId=");
     expect(create!.init.headers.authorization).toBe(`Bearer ${TOKEN}`);
     const body = JSON.parse((create!.init as unknown as { body: string }).body as string);
     expect(Object.keys(body)).toEqual(
