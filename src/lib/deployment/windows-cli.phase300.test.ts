@@ -214,7 +214,8 @@ describe("300h — the hotfix weakened no guard", () => {
   it("still verifies the artifact before upload and the PUBLISHED url after", () => {
     const source = read("scripts/publish-frontend.mjs");
     const verifyArtifact = source.indexOf("scripts/verify-frontend-artifact.mjs");
-    const upload = source.indexOf('"deploy", args.dist');
+    // The call site, not the import line at the top of the file.
+    const upload = source.indexOf("prebuiltDeployArgs({");
     const alias = source.indexOf('"alias", "set"');
     const verifyPublished = source.indexOf("scripts/verify-published-frontend.mjs");
     expect(verifyArtifact).toBeLessThan(upload);

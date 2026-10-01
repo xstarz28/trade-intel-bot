@@ -215,7 +215,9 @@ describe("300 — the published check is wired where it can refuse acceptance", 
     const wf = read(WORKFLOW);
     // Order matters: verification, then upload, then the published fetch.
     const verifyArtifact = wf.indexOf("npm run verify:frontend --");
-    const publish = wf.indexOf("vercel@latest deploy dist");
+    // The upload is the PREBUILT one: a plain directory deploy would make the
+    // host run its own build instead of serving the verified bytes.
+    const publish = wf.indexOf("vercel@latest deploy --prebuilt");
     const alias = wf.indexOf("vercel@latest alias set");
     const verifyPublished = wf.indexOf("npm run verify:published --");
     for (const at of [verifyArtifact, publish, alias, verifyPublished]) expect(at).toBeGreaterThan(-1);

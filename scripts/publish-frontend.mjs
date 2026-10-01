@@ -20,12 +20,25 @@
  *   3. `verify:frontend` on the built artifact (identity, theme, no legacy
  *      surface) — before a single byte can leave the machine;
  *   4. resolve/validate the host target (org, project, URL) from the token;
- *   5. upload the SAME directory that passed step 3 — never a rebuild;
+ *   5. assemble the host's Build Output API directory (`.vercel/output`) from
+ *      the SAME bytes that passed step 3, prove it is those bytes, and upload it
+ *      with `--prebuilt` — the host runs no build at all;
  *   6. point the browser-facing host at that deployment;
  *   7. `verify:published` against the PUBLIC url with the artifact's provenance
  *      hash and entry-bundle names — the only acceptance evidence there is.
  *
  * A green step 5 is not a publication. If step 7 fails, this command fails.
+ *
+ * WHY `--prebuilt` AND NOT `vercel deploy <dir>`
+ * ----------------------------------------------
+ * Uploading a directory makes the host treat it as SOURCE: it runs the
+ * project's configured build command in its own builder, which has none of the
+ * checkout's dependencies. That is what produced
+ * `sh: line 1: vite: command not found` / `Command "vite build" exited with 127`
+ * — and, worse than the failure, a successful remote build would have served
+ * bytes from a build nobody verified, under the URL this command then checks.
+ * `--prebuilt` uploads `.vercel/output` exactly as assembled here, so the
+ * published bytes ARE the verified bytes and no build happens anywhere.
  *
  * SAFETY
  * ------
@@ -50,6 +63,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
 import { gitOutput, resolveExecutable, runCommand } from "./lib/executable.mjs";
+import {
+  BUILD_OUTPUT_DIR,
+  VERCEL_CONFIG_FILE,
+  ensureLocalProjectLink,
+  materializeBuildOutput,
+  prebuiltDeployArgs,
+  verifyBuildOutput,
+} from "./lib/vercel-prebuilt.mjs";
 
 import { registerTypeScriptResolution } from "./lib/ts-module-loader.mjs";
 import {
@@ -308,9 +329,45 @@ async function main() {
     report.push(`host target pinned: org ${target.orgId}, project ${target.projectId}, host ${target.hostUrl}`);
   }
 
-  // 5. Upload the SAME directory that passed step 3.
-  const deployArgs = ["--yes", "vercel@latest", "deploy", args.dist];
-  if (args.target === "production") deployArgs.push("--prod");
+  // 5. Assemble the host's Build Output API directory from the SAME directory
+  //    that passed step 3, and prove it is that directory, then upload it as
+  //    PREBUILT.
+  //
+  //    `vercel deploy dist` is deliberately not used and must not come back: the
+  //    host treats an uploaded directory as SOURCE, runs the project's build
+  //    command remotely (which failed with "vite: command not found" — and would
+  //    have served bytes from a build nobody verified even if it had succeeded).
+  //    `--prebuilt` uploads `.vercel/output` as-is, so nothing is built anywhere.
+  const output = materializeBuildOutput({
+    distDir: args.dist,
+    outDir: BUILD_OUTPUT_DIR,
+    vercelJsonPath: VERCEL_CONFIG_FILE,
+  });
+  if (!output.ok) {
+    fail(`the build output could not be assembled from the verified artifact: ${output.problem}`, 2);
+  }
+  const outputCheck = verifyBuildOutput({
+    distDir: args.dist,
+    outDir: BUILD_OUTPUT_DIR,
+    vercelJsonPath: VERCEL_CONFIG_FILE,
+    expectCommit: head,
+    expectBranch: args.pinnedBranch ?? branch,
+  });
+  if (!outputCheck.ok) {
+    fail(
+      `the assembled build output is not the verified artifact, so nothing was uploaded: ${outputCheck.problems.join("; ")}`,
+    );
+  }
+  const link = ensureLocalProjectLink({ orgId: target.orgId, projectId: target.projectId });
+  if (!link.ok) fail(`the host project could not be selected locally: ${link.problem}`);
+  report.push(
+    `build output assembled from the verified artifact: ${output.files} file(s), ${output.bytes} bytes, ` +
+      `static/build-info.json sha256 ${output.buildInfoSha256}, routing ` +
+      `(filesystem, then ${output.rewrites.map((r) => `${r.source} -> ${r.destination}`).join(", ") || "no rewrites"})`,
+  );
+
+  const deployArgs = prebuiltDeployArgs({ target: args.target });
+  report.push(`uploading prebuilt (npx ${deployArgs.join(" ")})…`);
   const deploy = run("npx", deployArgs, {
     cwd: process.cwd(),
     env: {
@@ -323,7 +380,9 @@ async function main() {
   if (deploy.status !== 0) fail(`the upload failed: ${deploy.failureText ?? "no output"}\n${deploy.stdout}\n${deploy.stderr}`);
   const deploymentUrl = deploymentUrlFrom(deploy.stdout);
   if (!deploymentUrl) fail(`the host CLI produced no deployment URL; last output:\n${deploy.stdout}`);
-  report.push(`uploaded: ${deploymentUrl} (via ${deploy.executable ?? resolveExecutable("npx").command})`);
+  report.push(
+    `uploaded: ${deploymentUrl} (prebuilt — the host built nothing; via ${deploy.executable ?? resolveExecutable("npx").command})`,
+  );
 
   // 6. Point the browser-facing host at it (preview only — a production
   //    deployment already serves the project's own domains, and saying so is

@@ -54,3 +54,9 @@ docs/component-debt-table.md
 # Phase 283 — real-provider live smoke writes its evidence record here.
 # Local artifact: regenerate with `npm run test:live -- four-asset-live-smoke`.
 phase283-live-evidence.json
+
+# Phase 300 — the host CLI's local state: the prebuilt Build Output API directory
+# the publisher assembles from the verified artifact, and the project link file
+# it writes from the RESOLVED identifiers. Both are local and regenerable, and
+# ignoring them keeps `--require-clean` meaningful. NEVER commit them.
+.vercel/

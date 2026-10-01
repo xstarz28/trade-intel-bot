@@ -19,9 +19,11 @@
 #      `frontend:resolve` — which refuses rather than guessing, and never
 #      creates a project;
 #   3. `npm run verify:frontend` must pass on the freshly built `dist/`;
-#   4. the SAME bytes are uploaded to that existing project — they are not
-#      rebuilt by the host, which would make "verified" and "published" two
-#      different things;
+#   4. the SAME bytes are assembled into the host's Build Output API directory
+#      (`.vercel/output`) and uploaded with `--prebuilt`, so the host runs NO
+#      build: uploading a directory instead makes the host treat it as source
+#      and run `vite build` remotely, which both fails (no dependencies in its
+#      builder) and would serve bytes from a build nobody verified;
 #   5. the browser-facing host is pointed at that deployment;
 #   6. `npm run verify:published` FETCHES the browser-facing URL and refuses
 #      acceptance unless it serves the expected branch, the exact commit, the
@@ -277,15 +279,33 @@ jobs:
           echo "entry=$entry" >> "$GITHUB_OUTPUT"
           echo "::notice title=Verified artifact::commit=$(git rev-parse HEAD) provenance-sha256=${sha}"
 
+      - name: Assemble the host's prebuilt output from the verified artifact
+        if: inputs.mode == 'publish'
+        # This is the step that keeps "verified" and "published" the same bytes.
+        # It copies the artifact that just passed the contract into
+        # `.vercel/output/static` (Build Output API) and writes the routing,
+        # derived from `vercel.json`, then PROVES the copy is byte-identical and
+        # carries the expected commit/branch. Nothing is built here, and nothing
+        # is uploaded until this passes.
+        run: |
+          npm run frontend:prebuilt -- \
+            --dist dist \
+            --link-project \
+            --expect-commit "$(git rev-parse HEAD)" \
+            --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH"
+
       - name: Publish the verified bytes to the existing project
         if: inputs.mode == 'publish' && steps.credential.outputs.state == 'present'
         id: deploy
-        # `vercel deploy <dir>` uploads a static directory as-is; it does not
-        # rebuild it, which is what keeps "verified" and "published" the same
-        # bytes. The token reaches the CLI through the environment, never argv.
+        # `--prebuilt` uploads `.vercel/output` as-is and the host runs NO build.
+        # `vercel deploy <dir>` must not come back: the host treats an uploaded
+        # directory as source, runs the project's build command in its own
+        # builder (which failed with "vite: command not found"), and would serve
+        # bytes from a build nobody verified. The token reaches the CLI through
+        # the environment, never argv.
         run: |
           set -o pipefail
-          url="$(npx --yes vercel@latest deploy dist --yes 2>&1 | tail -n 1 | tr -d '\r')"
+          url="$(npx --yes vercel@latest deploy --prebuilt --yes 2>&1 | tail -n 1 | tr -d '\r')"
           case "$url" in
             https://*) ;;
             *) echo "::error title=Publication produced no deployment URL::The host CLI did not print a deployment URL. Last line: ${url}"; exit 1 ;;

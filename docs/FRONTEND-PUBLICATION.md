@@ -39,12 +39,51 @@ Two things, both deterministic:
    publication.
 2. **`.github/workflows/publish-development-frontend.yml`** — the manual
    publication path:
-   `guard → build → verify:frontend → upload the exact bytes → alias the
-   browser-facing host → verify:published (fetch the public URL)`.
+   `guard → build → verify:frontend → assemble the prebuilt Build Output API
+   directory → upload it with --prebuilt → alias the browser-facing host →
+   verify:published (fetch the public URL)`.
 
-It uploads the directory that already passed `verify:frontend`
-(`vercel deploy dist` uploads static files as-is; it does not rebuild them), so
-"verified" and "published" are the same bytes rather than two similar builds.
+It uploads the directory that already passed `verify:frontend`, assembled into
+the host's Build Output API layout and deployed with `--prebuilt`, so "verified"
+and "published" are the same bytes rather than two similar builds — and the host
+runs **no build at all**.
+
+**Why prebuilt, and not `vercel deploy dist` (Phase 300 final hotfix).**
+Uploading a directory makes the host treat it as *source*: it runs the project's
+configured build command in its own builder, which has none of the checkout's
+dependencies. The observed failure was
+
+```
+Running "vercel build"
+sh: line 1: vite: command not found
+Error: Command "vite build" exited with 127
+```
+
+Only that half is loud. The other half is that a *successful* remote build would
+have served bytes from a build nobody verified, under the URL `verify:published`
+then checks. `vercel deploy --prebuilt` uploads `.vercel/output` as-is and the
+host builds nothing, so the published bytes are the verified bytes.
+
+**`scripts/lib/vercel-prebuilt.mjs`** + **`scripts/prepare-vercel-output.mjs`**
+(`npm run frontend:prebuilt`) do the assembly: they copy the artifact that passed
+the contract into `.vercel/output/static`, write `.vercel/output/config.json`
+(version 3) with routing derived from `vercel.json`, and then **prove** the
+output is byte-identical to that artifact and records the expected commit/branch.
+A `vercel.json` key the converter cannot carry over (redirects, headers,
+cleanUrls, …) is a refusal, not a silent change of runtime behaviour.
+
+`vercel.json`'s SPA rewrite is preserved with the same ordering the host applies
+to it — the filesystem phase runs first, so `/assets/*` is served and unknown
+paths fall back to `/index.html`:
+
+```json
+{ "version": 3, "routes": [ { "handle": "filesystem" }, { "src": "/(.*)", "dest": "/index.html" } ] }
+```
+
+`vercel build` is deliberately **not** used: it runs the project's build command
+locally (a second `vite build`) and would replace the verified directory with a
+fresh one, which is exactly the "derived from the same verified build" invariant
+this step must not break.
 
 **`scripts/verify-published-frontend.mjs`** (`npm run verify:published`) is the
 acceptance check. It fetches the public URL and refuses acceptance, by name,
@@ -137,10 +176,17 @@ VERCEL_TOKEN=... npm run frontend:publish -- --skip-build          # reuse an ex
 
 It refuses unless the checkout is the pinned branch and the tree is clean, builds,
 runs `verify:frontend`, fingerprints the artifact it just verified, resolves or
-validates the host target, uploads **that same directory** (never a rebuild),
-points the browser-facing host at the deployment, and finishes by fetching the
-public URL with `--expect-build-info-sha256` and `--expect-asset-names`. A
-failure in that last step fails the command.
+validates the host target, assembles that **same artifact** into
+`.vercel/output` (Build Output API) and proves it is byte-identical, uploads it
+with `vercel deploy --prebuilt` (the host runs no build), points the
+browser-facing host at the deployment, and finishes by fetching the public URL
+with `--expect-build-info-sha256` and `--expect-asset-names`. A failure in that
+last step fails the command.
+
+The GitHub workflow runs the same preparation as a named step
+(`npm run frontend:prebuilt`), so the runner and the one-command path assemble the
+identical bytes. Both leave `.vercel/` behind locally; it is ignored by git
+(Phase 300 note in `.gitignore`).
 
 The token is read from the environment only — never from `argv`, which is
 visible in a process listing — and never printed. The default deploy target is
