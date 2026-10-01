@@ -323,16 +323,23 @@ export async function restDeployPrebuilt(options = {}) {
   );
 
   // Vercel can return HTTP 400/missing_files as a preflight response rather than
-  // 2xx with a deployment id. Upload that exact missing-sha set, then retry the
-  // SAME verified create request once. No bytes outside the artifact may be used.
+  // 2xx with a deployment id. The missing sha list is nested under `error` in
+  // the live response, so accept both that shape and the older top-level shape.
+  // Upload that exact missing-sha set, then retry the SAME verified create request
+  // once. No bytes outside the artifact may be used.
+  const preflightMissing = Array.isArray(deployment?.error?.missing)
+    ? deployment.error.missing
+    : Array.isArray(deployment?.missing)
+      ? deployment.missing
+      : null;
   if (
     !createResponse.ok &&
     createResponse.status === 400 &&
     deployment?.error?.code === "missing_files" &&
-    Array.isArray(deployment.missing)
+    preflightMissing !== null
   ) {
-    evidence.push(`create preflight: server reports ${deployment.missing.length} missing file sha(s); uploading them before retry`);
-    const upload = await uploadMissingFiles(deployment.missing);
+    evidence.push(`create preflight: server reports ${preflightMissing.length} missing file sha(s); uploading them before retry`);
+    const upload = await uploadMissingFiles(preflightMissing);
     if (!upload.ok) {
       return {
         schema: VERCEL_REST_DEPLOY_SCHEMA,
