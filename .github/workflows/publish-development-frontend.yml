@@ -333,13 +333,45 @@ jobs:
         # directory as source, runs the project's build command in its own
         # builder (which failed with "vite: command not found"), and would serve
         # bytes from a build nobody verified. The token reaches the CLI through
-        # the environment, never argv.
+        # the environment (never argv, never echoed).
+        #
+        # Run 36823507179: the old `$(… 2>&1 | tail -n 1)` swallowed the host
+        # CLI's real error behind a generic message. Now stdout+stderr are
+        # captured to files, the exit code is read DIRECTLY (no pipe, nothing
+        # can mask it), the captured output is printed to the Actions log on
+        # BOTH paths, success requires exit 0 AND a deployment URL parsed from
+        # the FULL stdout by the same `deploymentUrlFrom` helper the manual
+        # publisher uses (scripts/publish-frontend.mjs), and a failure prints
+        # the host CLI's exact error and exits 1.
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
-          set -o pipefail
-          url="$(npx --yes vercel@latest deploy --prebuilt --yes 2>&1 | tail -n 1 | tr -d '\r')"
+          set +e
+          npx --yes vercel@latest deploy --prebuilt --yes \
+            > "$RUNNER_TEMP/vercel-deploy.stdout" 2> "$RUNNER_TEMP/vercel-deploy.stderr"
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            echo "::error title=Vercel deploy failed (exit $status)::the host CLI's own output follows — no alias was moved, the browser-facing host is unchanged"
+            echo "----- vercel stdout -----"
+            cat "$RUNNER_TEMP/vercel-deploy.stdout"
+            echo "----- vercel stderr -----"
+            cat "$RUNNER_TEMP/vercel-deploy.stderr" >&2
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/vercel-deploy.stdout"
+          url="$(node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { pathToFileURL } from "node:url";
+            const { deploymentUrlFrom } = await import(
+              pathToFileURL("scripts/publish-frontend.mjs").href
+            );
+            const u = deploymentUrlFrom(readFileSync(process.argv[1], "utf8"));
+            if (u) process.stdout.write(u);
+          ' "$RUNNER_TEMP/vercel-deploy.stdout")"
           case "$url" in
             https://*) ;;
-            *) echo "::error title=Publication produced no deployment URL::The host CLI did not print a deployment URL. Last line: ${url}"; exit 1 ;;
+            *) echo "::error title=Vercel exited 0 but produced no deployment URL::full stdout follows"; cat "$RUNNER_TEMP/vercel-deploy.stdout"; exit 1 ;;
           esac
           echo "deployment=$url" >> "$GITHUB_OUTPUT"
           echo "::notice title=Published::${url} (provenance sha256 ${{ steps.artifact.outputs.sha256 }})"
