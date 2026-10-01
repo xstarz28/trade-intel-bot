@@ -353,6 +353,7 @@ describe("phase300g · the workflow and publisher use this path, with full error
   it("the publisher deploys through restDeployPrebuilt and fails by named state", () => {
     const publisher = read("scripts/publish-frontend.mjs");
     expect(publisher).toContain("restDeployPrebuilt({");
+    expect(publisher).toContain("projectName: target.projectName");
     expect(publisher).toContain("expectCommit: head");
     expect(publisher).toContain("REST_DEPLOY_STATES.DEPLOYED");
     expect(publisher).toContain("the upload failed");
