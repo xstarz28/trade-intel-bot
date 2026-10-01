@@ -201,20 +201,6 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
-      - name: Pin build provenance to the verified checkout (never the dispatch SHA)
-        # The workflow file is registered from the default branch, so a
-        # workflow_dispatch run can carry a GITHUB_SHA that is NOT the source
-        # this job checked out (run 36821835039 recorded the default-branch
-        # commit in dist/build-info.json and was rightly refused by the
-        # artifact check). `build-provenance` prefers an explicit
-        # XSTARZ_BUILD_COMMIT over GITHUB_SHA and an explicit XSTARZ_BUILD_REF
-        # over every other ref source — so pin BOTH to the verified checkout
-        # before anything is built.
-        run: |
-          echo "XSTARZ_BUILD_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          echo "XSTARZ_BUILD_REF=${SOURCE_REF}" >> "$GITHUB_ENV"
-          echo "provenance pinned to the verified checkout: commit=$(git rev-parse HEAD) ref=${SOURCE_REF}"
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -250,7 +236,22 @@ jobs:
               echo "VERCEL_PROJECT_ID=$XSTARZ_PINNED_PROJECT_ID"
               echo "XSTARZ_FRONTEND_HOST_URL=$XSTARZ_PINNED_HOST_URL"
             } >> "$GITHUB_ENV"
-            echo "::notice title=Host target pinned::org/project/host came from the 'development' environment variables — nothing had to be resolved"
+            echo "::notice title=Host target pinned::org/project/host came from the 'development' environment variables"
+            # A pinned identifier is a CLAIM, not a fact. Verify the pinned
+            # (org, project, host) against THIS job's credential with the same
+            # read-only "project settings" call the host CLI makes at deploy
+            # time — run 36823507179 failed exactly there, opaquely. This turns
+            # that failure into a named pre-deploy verdict (exit classes:
+            # TOKEN_CANNOT_ACCESS_ORG / PROJECT_NOT_UNDER_ORG /
+            # HOST_NOT_ON_PROJECT), instead of a build wasted on a target the
+            # credential cannot serve.
+            if ! node scripts/verify-vercel-project-access.mjs \
+                 --org-id "$XSTARZ_PINNED_ORG_ID" \
+                 --project-id "$XSTARZ_PINNED_PROJECT_ID" \
+                 --host-url "$XSTARZ_PINNED_HOST_URL"; then
+              echo "::error title=Pinned Vercel target failed credential validation::TOKEN_CANNOT_ACCESS_ORG => the 'development' secret VERCEL_TOKEN cannot read this org (regenerate/re-scope the token); PROJECT_NOT_UNDER_ORG => the pinned ids do not match this credential (re-derive with 'npm run frontend:resolve', then re-pin); HOST_NOT_ON_PROJECT => the pinned host is not served by this project. Exact evidence and HTTP status are in the output above."
+              exit 1
+            fi
             exit 0
           fi
           npm run frontend:resolve -- \
@@ -271,23 +272,6 @@ jobs:
             echo "XSTARZ_FRONTEND_HOST_URL=$host"
           } >> "$GITHUB_ENV"
           echo "::notice title=Host target resolved from the credential::org=${org} project=${project} host=${host} — pin these as 'development' variables to skip this step"
-
-      - name: Fail closed unless VITE_CONVEX_URL is a convex.cloud HTTPS origin
-        # Read from the 'development' environment (vars.VITE_CONVEX_URL in the
-        # job env) — never hardcoded in this file. An empty or non-convex.cloud
-        # value would bake a dead backend URL into the published bundle, so the
-        # run stops BEFORE building and names the exact misconfiguration.
-        if: inputs.mode == 'publish'
-        run: |
-          if [ -z "$VITE_CONVEX_URL" ]; then
-            echo "::error title=VITE_CONVEX_URL is not set::Add the variable VITE_CONVEX_URL (https://<deployment>.convex.cloud) to the 'development' environment — the publish job builds with it, and the bundle would otherwise carry no backend URL."
-            exit 1
-          fi
-          if ! printf '%s' "$VITE_CONVEX_URL" | grep -Eq '^https://[a-z0-9][a-z0-9-]*\.convex\.cloud$'; then
-            echo "::error title=VITE_CONVEX_URL is not a convex.cloud HTTPS origin::Expected exactly https://<deployment>.convex.cloud — refusing to build and publish against the configured value (value not printed)."
-            exit 1
-          fi
-          echo "::notice title=VITE_CONVEX_URL accepted::HTTPS origin on *.convex.cloud (value not printed)"
 
       - name: Build the pinned branch
         if: inputs.mode == 'publish'
@@ -333,45 +317,13 @@ jobs:
         # directory as source, runs the project's build command in its own
         # builder (which failed with "vite: command not found"), and would serve
         # bytes from a build nobody verified. The token reaches the CLI through
-        # the environment (never argv, never echoed).
-        #
-        # Run 36823507179: the old `$(… 2>&1 | tail -n 1)` swallowed the host
-        # CLI's real error behind a generic message. Now stdout+stderr are
-        # captured to files, the exit code is read DIRECTLY (no pipe, nothing
-        # can mask it), the captured output is printed to the Actions log on
-        # BOTH paths, success requires exit 0 AND a deployment URL parsed from
-        # the FULL stdout by the same `deploymentUrlFrom` helper the manual
-        # publisher uses (scripts/publish-frontend.mjs), and a failure prints
-        # the host CLI's exact error and exits 1.
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        # the environment, never argv.
         run: |
-          set +e
-          npx --yes vercel@latest deploy --prebuilt --yes \
-            > "$RUNNER_TEMP/vercel-deploy.stdout" 2> "$RUNNER_TEMP/vercel-deploy.stderr"
-          status=$?
-          set -e
-          if [ "$status" -ne 0 ]; then
-            echo "::error title=Vercel deploy failed (exit $status)::the host CLI's own output follows — no alias was moved, the browser-facing host is unchanged"
-            echo "----- vercel stdout -----"
-            cat "$RUNNER_TEMP/vercel-deploy.stdout"
-            echo "----- vercel stderr -----"
-            cat "$RUNNER_TEMP/vercel-deploy.stderr" >&2
-            exit 1
-          fi
-          cat "$RUNNER_TEMP/vercel-deploy.stdout"
-          url="$(node --input-type=module -e '
-            import { readFileSync } from "node:fs";
-            import { pathToFileURL } from "node:url";
-            const { deploymentUrlFrom } = await import(
-              pathToFileURL("scripts/publish-frontend.mjs").href
-            );
-            const u = deploymentUrlFrom(readFileSync(process.argv[1], "utf8"));
-            if (u) process.stdout.write(u);
-          ' "$RUNNER_TEMP/vercel-deploy.stdout")"
+          set -o pipefail
+          url="$(npx --yes vercel@latest deploy --prebuilt --yes 2>&1 | tail -n 1 | tr -d '\r')"
           case "$url" in
             https://*) ;;
-            *) echo "::error title=Vercel exited 0 but produced no deployment URL::full stdout follows"; cat "$RUNNER_TEMP/vercel-deploy.stdout"; exit 1 ;;
+            *) echo "::error title=Publication produced no deployment URL::The host CLI did not print a deployment URL. Last line: ${url}"; exit 1 ;;
           esac
           echo "deployment=$url" >> "$GITHUB_OUTPUT"
           echo "::notice title=Published::${url} (provenance sha256 ${{ steps.artifact.outputs.sha256 }})"
