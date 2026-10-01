@@ -85,6 +85,21 @@ locally (a second `vite build`) and would replace the verified directory with a
 fresh one, which is exactly the "derived from the same verified build" invariant
 this step must not break.
 
+**Byte-level reproduction across platforms (found in the post-publication audit).**
+Asset names are content hashes, and the content depends on the checkout's line
+endings: a Git-for-Windows default checkout (`core.autocrlf=true`) has CRLF
+sources, so its chunk hashes differ from a Linux (LF) checkout of the *same*
+commit with the *same* environment — e.g. commit `53ea339` builds the entry chunk
+`assets/index-CVKqmW0a.js` on Windows and `assets/index-DIWLEqpB.js` on Linux, both
+from a clean tree.
+
+That is not tampering and it does not weaken verification: the file the checks
+compare byte-for-byte is `dist/build-info.json`, which is generated JSON (always
+LF) and therefore identical in both, and the commit/branch it records are the
+same. To reproduce a deployed asset name exactly, build with the same line
+endings; if a hash differs, compare `/build-info.json` and the commit first
+before concluding anything about the artifact.
+
 **`scripts/verify-published-frontend.mjs`** (`npm run verify:published`) is the
 acceptance check. It fetches the public URL and refuses acceptance, by name,
 when:
