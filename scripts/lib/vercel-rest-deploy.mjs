@@ -147,7 +147,7 @@ export async function restDeployPrebuilt(options = {}) {
     apiBase = "https://api.vercel.com",
     orgId,
     projectId,
-    projectName, // optional — read from the project when absent
+    projectName,
     target = "preview",
     token,
     outputDir,
@@ -171,21 +171,26 @@ export async function restDeployPrebuilt(options = {}) {
       deploymentId: null,
     };
   }
-  if (!orgId || !projectId || !outputDir) {
+  if (!orgId || !projectId || !projectName || !outputDir) {
     return {
       schema: VERCEL_REST_DEPLOY_SCHEMA,
       state: REST_DEPLOY_STATES.INCOMPLETE_TARGET,
       problems: [
-        `orgId, projectId and outputDir are all required (got orgId=${orgId ? "set" : "EMPTY"}, projectId=${projectId ? "set" : "EMPTY"}, outputDir=${outputDir ?? "EMPTY"})`,
+        `orgId, projectId, projectName and outputDir are all required (got orgId=${orgId ? "set" : "EMPTY"}, projectId=${projectId ? "set" : "EMPTY"}, projectName=${projectName ? "set" : "EMPTY"}, outputDir=${outputDir ?? "EMPTY"})`,
       ],
       evidence,
       deploymentUrl: null,
       deploymentId: null,
     };
   }
-  const authHeaders = {
+  const jsonHeaders = {
     authorization: `Bearer ${token}`,
     "content-type": "application/json",
+    accept: "application/json",
+  };
+  const readHeaders = {
+    authorization: `Bearer ${token}`,
+    accept: "application/json",
   };
 
   // 0. The artifact must be the verified one — read-only checks, fail closed.
@@ -239,55 +244,14 @@ export async function restDeployPrebuilt(options = {}) {
   }
   evidence.push(`file list: ${files.length} file(s), ${files.reduce((n, f) => n + f.size, 0)} bytes`);
 
-  // 1. Resolve the project NAME for the deployment body with the ONE read the
-  //    token is proven to satisfy (same endpoint as the access verifier).
-  let resolvedName = projectName;
-  const projectUrl = `${apiBase}/v9/projects/${encodeURIComponent(projectId)}?teamId=${encodeURIComponent(orgId)}`;
-  const projectResponse = await fetchImpl(projectUrl, { method: "GET", headers: { ...authHeaders } });
-  const projectText = await projectResponse.text();
-  evidence.push(`GET /v9/projects/<id> -> ${projectResponse.status}`);
-  if (!projectResponse.ok) {
-    return {
-      schema: VERCEL_REST_DEPLOY_SCHEMA,
-      state: REST_DEPLOY_STATES.PROJECT_READ_FAILED,
-      problems: [
-        `the project read failed (HTTP ${projectResponse.status}) before any upload — nothing was deployed. Body excerpt: ${cap(projectText)}`,
-      ],
-      evidence,
-      deploymentUrl: null,
-      deploymentId: null,
-    };
-  }
-  try {
-    const project = JSON.parse(projectText);
-    if (project.id && project.id !== projectId) {
-      return {
-        schema: VERCEL_REST_DEPLOY_SCHEMA,
-        state: REST_DEPLOY_STATES.PROJECT_READ_FAILED,
-        problems: [
-          `the credential resolved a DIFFERENT project (${project.id}) than the pinned one (${projectId}) — refusing to upload`,
-        ],
-        evidence,
-        deploymentUrl: null,
-        deploymentId: null,
-      };
-    }
-    resolvedName = resolvedName ?? project.name;
-  } catch {
-    /* name stays null; the create call will name the problem if it matters */
-  }
-  if (!resolvedName) {
-    return {
-      schema: VERCEL_REST_DEPLOY_SCHEMA,
-      state: REST_DEPLOY_STATES.PROJECT_READ_FAILED,
-      problems: [
-        "the project response carried no name and none was provided — the deployment body needs it; nothing was uploaded",
-      ],
-      evidence,
-      deploymentUrl: null,
-      deploymentId: null,
-    };
-  }
+  // 1. The target verifier already proved the pinned project and returned its
+  //    canonical name. Do not re-read project settings here: production run
+  //    36845812412 proved that a second GET can return 403 even immediately
+  //    after the verifier's identical project read returned 200 for the same
+  //    credential. The deployment request carries the pinned project id plus
+  //    this verifier-supplied name, so no redundant authorization check occurs.
+  const resolvedName = projectName;
+  evidence.push(`project: ${resolvedName} (supplied by the verified target; no project-settings lookup)`);
 
   // 2. Create the prebuilt deployment — the CLI's exact request shape.
   const createUrl =
@@ -297,7 +261,7 @@ export async function restDeployPrebuilt(options = {}) {
   );
   const createResponse = await fetchImpl(createUrl, {
     method: "POST",
-    headers: { ...authHeaders },
+    headers: { ...jsonHeaders },
     body: createBody,
   });
   const createText = await createResponse.text();
@@ -397,7 +361,7 @@ export async function restDeployPrebuilt(options = {}) {
   for (;;) {
     const pollResponse = await fetchImpl(
       `${apiBase}/v13/deployments/${encodeURIComponent(deploymentId)}?teamId=${encodeURIComponent(orgId)}`,
-      { method: "GET", headers: { ...authHeaders } },
+      { method: "GET", headers: { ...readHeaders } },
     );
     const pollText = await pollResponse.text();
     if (!pollResponse.ok) {
