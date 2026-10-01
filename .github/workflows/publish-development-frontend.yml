@@ -249,7 +249,7 @@ jobs:
                  --org-id "$XSTARZ_PINNED_ORG_ID" \
                  --project-id "$XSTARZ_PINNED_PROJECT_ID" \
                  --host-url "$XSTARZ_PINNED_HOST_URL"; then
-              echo "::error title=Pinned Vercel target failed credential validation::TOKEN_CANNOT_ACCESS_ORG => the 'development' secret VERCEL_TOKEN cannot read this org (regenerate/re-scope the token); PROJECT_NOT_UNDER_ORG => the pinned ids do not match this credential (re-derive with 'npm run frontend:resolve', then re-pin); HOST_NOT_ON_PROJECT => the pinned host is not served by this project. Exact evidence and HTTP status are in the output above."
+              echo "::error title=Pinned Vercel target failed credential validation::TOKEN_CANNOT_ACCESS_ORG => the credential was refused with AND without the org scope — per-endpoint evidence is in the verifier output above (vercel/vercel#17506 distinguishes this genuine refusal from the CLI's scope-metadata artifact, which exits 0); PROJECT_NOT_UNDER_ORG => the pinned ids do not match this credential (re-derive with 'npm run frontend:resolve', then re-pin); HOST_NOT_ON_PROJECT => the pinned host is not served by this project."
               exit 1
             fi
             exit 0
@@ -318,9 +318,18 @@ jobs:
         # builder (which failed with "vite: command not found"), and would serve
         # bytes from a build nobody verified. The token reaches the CLI through
         # the environment, never argv.
+        #
+        # vercel/vercel#17506: with a project-scoped token, the CLI's user/team
+        # scope lookups throw "Could not retrieve Project Settings." — and
+        # VERCEL_ORG_ID/VERCEL_PROJECT_ID as ENV VARS is the shape that drives
+        # that path. The project selector here is the `.vercel/project.json`
+        # file the prebuilt step wrote via --link-project (the proven-working
+        # shape), so those two variables are deliberately DROPPED for this
+        # invocation. `--prebuilt` semantics are unchanged; nothing else
+        # consumes them in this step.
         run: |
           set -o pipefail
-          url="$(npx --yes vercel@latest deploy --prebuilt --yes 2>&1 | tail -n 1 | tr -d '\r')"
+          url="$(env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID npx --yes vercel@latest deploy --prebuilt --yes 2>&1 | tail -n 1 | tr -d '\r')"
           case "$url" in
             https://*) ;;
             *) echo "::error title=Publication produced no deployment URL::The host CLI did not print a deployment URL. Last line: ${url}"; exit 1 ;;
@@ -332,13 +341,36 @@ jobs:
         if: inputs.mode == 'publish' && steps.credential.outputs.state == 'present'
         # Without this the upload exists but nobody's browser sees it. A failing
         # alias fails the run: "uploaded somewhere" is not a publication.
+        #
+        # vercel/vercel#17506: `vercel alias set` performs a USER lookup that a
+        # project-scoped token cannot satisfy, so the alias is assigned through
+        # the teamId-scoped REST API instead (proven workaround — one POST, no
+        # user/team scope resolution, and it creates only the alias).
         run: |
           host="$(printf '%s' "$XSTARZ_FRONTEND_HOST_URL" | sed -E 's|^https?://||; s|/.*$||')"
           if [ -z "$host" ]; then
             echo "::error title=No browser-facing host resolved::nothing to point at this deployment."
             exit 1
           fi
-          npx --yes vercel@latest alias set "${{ steps.deploy.outputs.deployment }}" "$host"
+          if [ -z "$VERCEL_ORG_ID" ]; then
+            echo "::error title=No org id for the alias call::VERCEL_ORG_ID is empty — the teamId-scoped alias API call cannot be made."
+            exit 1
+          fi
+          deployment_host="$(printf '%s' "${{ steps.deploy.outputs.deployment }}" | sed -E 's|^https?://||; s|/.*$||')"
+          body_file="$RUNNER_TEMP/alias-response.json"
+          code="$(curl -sS -o "$body_file" -w '%{http_code}' -X POST \
+            "https://api.vercel.com/v2/deployments/${deployment_host}/aliases?teamId=${VERCEL_ORG_ID}" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"alias\":\"${host}\"}")" || {
+            echo "::error title=Alias REST call failed::curl could not reach api.vercel.com."
+            exit 1
+          }
+          cat "$body_file" 2>/dev/null; echo
+          if [ "$code" != "200" ]; then
+            echo "::error title=Alias refused (HTTP ${code})::The teamId-scoped alias API refused (body above). If ${host} is this project's production domain, re-run with mode=production so the project's own domains serve it."
+            exit 1
+          fi
           echo "::notice title=Browser-facing host updated::https://${host} now serves ${{ steps.deploy.outputs.deployment }}"
 
       - name: Verify the PUBLISHED frontend — the acceptance evidence
