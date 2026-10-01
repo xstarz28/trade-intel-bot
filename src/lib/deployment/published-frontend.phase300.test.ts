@@ -230,7 +230,12 @@ describe("300 — the published check is wired where it can refuse acceptance", 
     expect(wf).toMatch(/--expect-build-info-sha256/);
     expect(wf).toMatch(/--expect-asset-names/);
     expect(wf).toMatch(/--expect-branch "\$XSTARZ_REQUIRED_SOURCE_BRANCH"/);
-    expect(wf).toMatch(/--expect-commit "\$\(git rev-parse HEAD\)"/);
+    // 300f: every --expect-commit compares against the RESOLVED artifact
+    // commit ($XSTARZ_ARTIFACT_COMMIT = artifact_commit input or the tip),
+    // so "verified" and "published" stay the same bytes even though the
+    // branch tip has moved past the accepted artifact.
+    expect(wf).toMatch(/--expect-commit "\$XSTARZ_ARTIFACT_COMMIT"/);
+    expect(wf).not.toContain('--expect-commit "$(git rev-parse HEAD)"');
     // Never a token on argv (it would be visible in a process listing / log).
     expect(wf).not.toMatch(/--token/);
   });

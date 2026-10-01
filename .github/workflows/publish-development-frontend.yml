@@ -94,6 +94,11 @@ on:
         required: false
         default: ""
         type: string
+      artifact_commit:
+        description: "Optional: build THE accepted artifact from this commit (e.g. bdd1715edfb563cbe5dfc04e77f1f0203c40f659) instead of the branch tip — the published bytes are then exactly the verified phase artifact"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -200,6 +205,10 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
+          # Full history: the pinned-artifact step below may detach to an
+          # ancestor commit (e.g. the accepted phase artifact), and a shallow
+          # clone would not carry its objects.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -209,6 +218,27 @@ jobs:
 
       - name: Install
         run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Resolve the artifact commit to build and publish
+        # Empty input = build the checkout tip (previous behaviour). A pinned
+        # artifact commit builds THE accepted bytes instead of re-stamping
+        # whatever the tip is now; every --expect-commit below compares
+        # against THIS value, so "verified" and "published" stay the same
+        # bytes even though the branch tip has moved on.
+        run: |
+          if [ -n "${ARTIFACT_COMMIT_INPUT}" ]; then
+            if ! git cat-file -e "${ARTIFACT_COMMIT_INPUT}^{commit}" 2>/dev/null; then
+              echo "::error title=artifact_commit is not a commit in this history::${ARTIFACT_COMMIT_INPUT} is not reachable from this checkout"
+              exit 1
+            fi
+            echo "XSTARZ_ARTIFACT_COMMIT=${ARTIFACT_COMMIT_INPUT}" >> "$GITHUB_ENV"
+            echo "::notice title=Artifact commit pinned::building and publishing ${ARTIFACT_COMMIT_INPUT}"
+          else
+            echo "XSTARZ_ARTIFACT_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+            echo "::notice title=Artifact commit::the checkout tip $(git rev-parse HEAD) (no artifact_commit input)"
+          fi
+        env:
+          ARTIFACT_COMMIT_INPUT: ${{ inputs.artifact_commit }}
 
       - name: Detect the host credential (presence only — never a value)
         id: credential
@@ -273,6 +303,47 @@ jobs:
           } >> "$GITHUB_ENV"
           echo "::notice title=Host target resolved from the credential::org=${org} project=${project} host=${host} — pin these as 'development' variables to skip this step"
 
+      - name: Check out the pinned artifact content for the build
+        # Detach to the accepted artifact commit so the build consumes ITS
+        # sources (the branch tip's publication scripts differ, not the app).
+        # dist/ is untracked, so it survives the restore step after verify.
+        if: inputs.mode == 'publish' && inputs.artifact_commit != ''
+        run: |
+          echo "XSTARZ_BUILD_TIP_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          git checkout --detach "$XSTARZ_ARTIFACT_COMMIT"
+          echo "::notice title=Detached to the artifact commit::$(git rev-parse HEAD) (the branch tip ${XSTARZ_BUILD_TIP_SHA} is restored before the upload)"
+
+      - name: Pin build provenance to the verified checkout (never the dispatch SHA)
+        # RESTORED — lost in the 4d3d8b5 plumbing: run 36821835039 recorded the
+        # default-branch commit in dist/build-info.json and was rightly refused.
+        # `build-provenance` prefers an explicit XSTARZ_BUILD_COMMIT over
+        # GITHUB_SHA and an explicit XSTARZ_BUILD_REF over every other ref
+        # source — so pin BOTH, AFTER the detach above, so the artifact records
+        # exactly the commit it was built from.
+        if: inputs.mode == 'publish'
+        run: |
+          echo "XSTARZ_BUILD_COMMIT=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "XSTARZ_BUILD_REF=${SOURCE_REF}" >> "$GITHUB_ENV"
+          echo "provenance pinned: commit=$(git rev-parse HEAD) ref=${SOURCE_REF}"
+
+      - name: Fail closed unless VITE_CONVEX_URL is a convex.cloud HTTPS origin
+        # RESTORED — lost in the 4d3d8b5 plumbing. Read from the 'development'
+        # environment (vars.VITE_CONVEX_URL in the job env) — never hardcoded
+        # in this file. An empty or non-convex.cloud value would bake a dead
+        # backend URL into the published bundle, so the run stops BEFORE
+        # building and names the exact misconfiguration.
+        if: inputs.mode == 'publish'
+        run: |
+          if [ -z "$VITE_CONVEX_URL" ]; then
+            echo "::error title=VITE_CONVEX_URL is not set::Add the variable VITE_CONVEX_URL (https://<deployment>.convex.cloud) to the 'development' environment — the publish job builds with it, and the bundle would otherwise carry no backend URL."
+            exit 1
+          fi
+          if ! printf '%s' "$VITE_CONVEX_URL" | grep -Eq '^https://[a-z0-9][a-z0-9-]*\.convex\.cloud$'; then
+            echo "::error title=VITE_CONVEX_URL is not a convex.cloud HTTPS origin::Expected exactly https://<deployment>.convex.cloud — refusing to build and publish against the configured value (value not printed)."
+            exit 1
+          fi
+          echo "::notice title=VITE_CONVEX_URL accepted::HTTPS origin on *.convex.cloud (value not printed)"
+
       - name: Build the pinned branch
         if: inputs.mode == 'publish'
         run: npm run build
@@ -283,7 +354,7 @@ jobs:
         run: |
           npm run verify:frontend -- \
             --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" \
-            --expect-commit "$(git rev-parse HEAD)" \
+            --expect-commit "$XSTARZ_ARTIFACT_COMMIT" \
             --require-clean
           # The two things the published check will compare against, read from
           # the artifact that just passed — not recomputed later, and not
@@ -292,7 +363,17 @@ jobs:
           entry="$(grep -oE '(src|href)="[^"]+\.(js|css)"' dist/index.html | sed -E 's/.*="//; s/"$//; s|^/||' | paste -sd, -)"
           echo "sha256=$sha" >> "$GITHUB_OUTPUT"
           echo "entry=$entry" >> "$GITHUB_OUTPUT"
-          echo "::notice title=Verified artifact::commit=$(git rev-parse HEAD) provenance-sha256=${sha}"
+          echo "::notice title=Verified artifact::commit=${XSTARZ_ARTIFACT_COMMIT} provenance-sha256=${sha}"
+
+      - name: Restore the branch tip for the publication steps
+        # The verified dist/ is untracked and survives this reset; only the
+        # scripts that UPLOAD and VERIFY it return to the pinned tip (they
+        # carry the vercel/vercel#17506 deploy and alias handling).
+        if: inputs.mode == 'publish' && inputs.artifact_commit != ''
+        run: |
+          git checkout "$XSTARZ_BUILD_TIP_SHA"
+          git reset --hard "$XSTARZ_BUILD_TIP_SHA"
+          echo "::notice title=Branch tip restored::$(git rev-parse HEAD) — the verified artifact directory (untracked build output) is untouched"
 
       - name: Assemble the host's prebuilt output from the verified artifact
         if: inputs.mode == 'publish'
@@ -306,7 +387,7 @@ jobs:
           npm run frontend:prebuilt -- \
             --dist dist \
             --link-project \
-            --expect-commit "$(git rev-parse HEAD)" \
+            --expect-commit "$XSTARZ_ARTIFACT_COMMIT" \
             --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH"
 
       - name: Publish the verified bytes to the existing project
@@ -380,7 +461,7 @@ jobs:
           npm run verify:published -- \
             --url "$XSTARZ_FRONTEND_HOST_URL" \
             --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" \
-            --expect-commit "$(git rev-parse HEAD)" \
+            --expect-commit "$XSTARZ_ARTIFACT_COMMIT" \
             ${{ inputs.mode == 'publish' && format('--expect-build-info-sha256 {0} --expect-asset-names {1}', steps.artifact.outputs.sha256, steps.artifact.outputs.entry) || '' }}
 
       - name: Fail closed when the verified artifact could not be published
@@ -392,7 +473,7 @@ jobs:
       - name: What this run did and did not prove
         if: success()
         run: |
-          echo "published commit: $(git rev-parse HEAD)"
+          echo "published commit: ${XSTARZ_ARTIFACT_COMMIT}"
           echo "source ref: ${SOURCE_REF}"
           echo "browser-facing host: $XSTARZ_FRONTEND_HOST_URL"
           if [ "${{ inputs.mode }}" = "publish" ]; then
