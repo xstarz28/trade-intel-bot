@@ -30,10 +30,19 @@
  *                             `npm run frontend:resolve` and re-pin.
  *   PROJECT_SETTINGS_UNREACHABLE  any other HTTP status (named, with the
  *                             status and a capped body excerpt).
- *   HOST_NOT_ON_PROJECT       settings retrieved, but the pinned host is not
- *                             among the project's own domains/aliases
+ *   HOST_NOT_ON_PROJECT       settings retrieved, the pinned host is not
+ *                             among the project's own domains/aliases AND the
+ *                             deployment-alias lookup did not prove it either
+ *                             (404 / no projectId / other non-refusal status)
  *                             (`--allow-unverified-host` to accept).
- *   PROJECT_ACCESS_VERIFIED   200 and host listed — the deploy's first host
+ *   HOST_POINTS_TO_DIFFERENT_PROJECT  the deployment-alias lookup resolved the
+ *                             host to a deployment of a DIFFERENT project.
+ *   DEPLOYMENT_LOOKUP_REFUSED  the deployment-alias lookup was refused
+ *                             (401/403) — a per-endpoint permission finding,
+ *                             never a blanket token verdict.
+ *   PROJECT_ACCESS_VERIFIED   200 and the host is listed on the project OR
+ *                             resolves through a deployment that belongs to
+ *                             the pinned project — the deploy's first host
  *                             API call is known-good before the run invests
  *                             a build in it.
  *   NO_CREDENTIAL / API_UNREACHABLE / INCOMPLETE_TARGET — cannot evaluate.
@@ -75,6 +84,8 @@ export const PROJECT_ACCESS_STATES = {
   PROJECT_NOT_UNDER_ORG: "PROJECT_NOT_UNDER_ORG",
   PROJECT_SETTINGS_UNREACHABLE: "PROJECT_SETTINGS_UNREACHABLE",
   HOST_NOT_ON_PROJECT: "HOST_NOT_ON_PROJECT",
+  HOST_POINTS_TO_DIFFERENT_PROJECT: "HOST_POINTS_TO_DIFFERENT_PROJECT",
+  DEPLOYMENT_LOOKUP_REFUSED: "DEPLOYMENT_LOOKUP_REFUSED",
   NO_CREDENTIAL: "NO_CREDENTIAL",
   INCOMPLETE_TARGET: "INCOMPLETE_TARGET",
   API_UNREACHABLE: "API_UNREACHABLE",
@@ -266,9 +277,57 @@ export async function verifyVercelProjectAccess({
         hostUrl = `https://${want}`;
         evidence.push(`host ${want} is NOT listed on the project (accepted with --allow-unverified-host)`);
       } else {
-        problems.push(
-          `the pinned host ${want} is not among the project's domains/aliases (${domains.map((d) => d.name).join(", ") || "none"}) — refusing to alias a host this project does not serve`,
+        // A browser-facing *.vercel.app host is often a DEPLOYMENT alias, not
+        // a project domain record (run 36834839301: project settings -> 200,
+        // domains/aliases "none", yet the host serves the project). Before
+        // refusing, prove host -> deployment -> pinned project with one
+        // read-only lookup. `--allow-unverified-host` remains the explicit
+        // operator override and is never applied automatically.
+        const lookup = await vercelGet(
+          `/v13/deployments/${encodeURIComponent(want)}?teamId=${encodeURIComponent(args.orgId)}`,
+          { token, fetchImpl },
         );
+        evidence.push(
+          `GET /v13/deployments/${want} (deployment-alias resolution) -> ${lookup.status ?? "transport failure"}`,
+        );
+        if (lookup.ok && lookup.json?.projectId === args.projectId) {
+          hostUrl = `https://${want}`;
+          evidence.push(
+            `browser-facing host resolves to deployment belonging to pinned project (deployment projectId ${lookup.json.projectId})`,
+          );
+        } else if (lookup.ok && lookup.json?.projectId) {
+          return {
+            schema: VERCEL_PROJECT_ACCESS_SCHEMA,
+            state: PROJECT_ACCESS_STATES.HOST_POINTS_TO_DIFFERENT_PROJECT,
+            problems: [
+              `the pinned host ${want} currently resolves to a deployment of a DIFFERENT project (deployment projectId ${lookup.json.projectId}, pinned ${args.projectId}) — pointing it at this publication would hijack another project's host`,
+            ],
+            evidence,
+            httpStatus: 200,
+            orgId: args.orgId,
+            projectId: args.projectId,
+            projectName,
+            hostUrl: null,
+          };
+        } else if (lookup.status === 401 || lookup.status === 403) {
+          return {
+            schema: VERCEL_PROJECT_ACCESS_SCHEMA,
+            state: PROJECT_ACCESS_STATES.DEPLOYMENT_LOOKUP_REFUSED,
+            problems: [
+              `the deployment-alias lookup was refused (GET /v13/deployments/${want} -> HTTP ${lookup.status}) — the credential reads the project settings but cannot resolve the browser-facing host; a per-endpoint permission finding (vercel/vercel#17506), not a blanket token verdict`,
+            ],
+            evidence,
+            httpStatus: 200,
+            orgId: args.orgId,
+            projectId: args.projectId,
+            projectName,
+            hostUrl: null,
+          };
+        } else {
+          problems.push(
+            `the pinned host ${want} is not among the project's domains/aliases (${domains.map((d) => d.name).join(", ") || "none"}) and the deployment-alias lookup did not prove it either (GET /v13/deployments/${want} -> ${lookup.status ?? "transport failure"}${lookup.ok ? ", response carried no projectId" : ""}) — refusing to alias a host this project does not serve`,
+          );
+        }
       }
     }
   }
