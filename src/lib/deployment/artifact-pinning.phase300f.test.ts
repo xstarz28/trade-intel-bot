@@ -80,7 +80,9 @@ describe("phase300f · the artifact_commit input pins the published bytes", () =
     // verify:frontend, frontend:prebuilt and verify:published all compare
     // against the same value (the deploy/alias steps are contract-locked in
     // publication-scope-metadata.phase300e.test.ts)
-    expect(workflow.match(/--expect-commit "\$XSTARZ_ARTIFACT_COMMIT"/g)?.length).toBe(3);
+    // verify:frontend, frontend:prebuilt, the REST deployer (300g) and
+    // verify:published all compare against the same resolved value.
+    expect(workflow.match(/--expect-commit "\$XSTARZ_ARTIFACT_COMMIT"/g)?.length).toBe(4);
     expect(workflow).toContain("::notice title=Verified artifact::commit=${XSTARZ_ARTIFACT_COMMIT}");
     expect(workflow).toContain('echo "published commit: ${XSTARZ_ARTIFACT_COMMIT}"');
   });

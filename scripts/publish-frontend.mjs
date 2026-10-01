@@ -68,9 +68,9 @@ import {
   VERCEL_CONFIG_FILE,
   ensureLocalProjectLink,
   materializeBuildOutput,
-  prebuiltDeployArgs,
   verifyBuildOutput,
 } from "./lib/vercel-prebuilt.mjs";
+import { restDeployPrebuilt, REST_DEPLOY_STATES } from "./lib/vercel-rest-deploy.mjs";
 
 import { registerTypeScriptResolution } from "./lib/ts-module-loader.mjs";
 import {
@@ -402,27 +402,36 @@ async function main() {
       `(filesystem, then ${output.rewrites.map((r) => `${r.source} -> ${r.destination}`).join(", ") || "no rewrites"})`,
   );
 
-  const deployArgs = prebuiltDeployArgs({ target: args.target });
-  report.push(`uploading prebuilt (npx ${deployArgs.join(" ")})…`);
-  // vercel/vercel#17506: a project-scoped token makes the CLI's LINKED-FLOW
-  // scope lookups throw "Could not retrieve Project Settings." — and passing
-  // VERCEL_ORG_ID/VERCEL_PROJECT_ID as ENV VARS is the shape that goes through
-  // them. The project selector here is the `.vercel/project.json` file that
-  // `ensureLocalProjectLink` just wrote (the proven-working shape), so those
-  // two env vars are deliberately DROPPED from the child environment. The
-  // token stays an environment variable; `--prebuilt` is unchanged.
-  const deployEnv = { ...process.env, VERCEL_TOKEN: token };
-  delete deployEnv.VERCEL_ORG_ID;
-  delete deployEnv.VERCEL_PROJECT_ID;
-  const deploy = run("npx", deployArgs, {
-    cwd: process.cwd(),
-    env: deployEnv,
+  // Phase 300g: the upload is the REST prebuilt deployment. Reproduced against
+  // a local mock of the Vercel API (CLI 62.1.0 AND 59.1.3): `vercel deploy
+  // --prebuilt` performs the vercel/vercel#17506 user/team lookups and throws
+  // "Could not retrieve Project Settings." for a project-scoped token whose
+  // `GET /teams/<org>` 403 carries the code "forbidden" (no invocation shape —
+  // --scope, VERCEL_TEAM_ID, --project — avoids it). The REST path below sends
+  // the CLI's EXACT prebuilt request (captured from a real CLI run) and
+  // touches ONLY project-scoped endpoints, so the poisoned lookups are not
+  // part of this path at all. `.vercel/output` is uploaded as-is (Build Output
+  // API v3 — the host builds nothing), the token is passed in-process and
+  // never printed, and the deployment is created on the SAME verified project.
+  report.push("uploading prebuilt via the project-scoped REST deployment API…");
+  const deploy = await restDeployPrebuilt({
+    orgId: target.orgId,
+    projectId: target.projectId,
+    target: args.target === "production" ? "production" : "preview",
+    token,
+    outputDir: BUILD_OUTPUT_DIR,
+    expectCommit: head,
   });
-  if (deploy.status !== 0) fail(`the upload failed: ${deploy.failureText ?? "no output"}\n${deploy.stdout}\n${deploy.stderr}`);
-  const deploymentUrl = deploymentUrlFrom(deploy.stdout);
-  if (!deploymentUrl) fail(`the host CLI produced no deployment URL; last output:\n${deploy.stdout}`);
+  report.push(...(deploy.evidence ?? []).map((line) => `rest deploy: ${line}`));
+  if (deploy.state !== REST_DEPLOY_STATES.DEPLOYED) {
+    fail(
+      `the upload failed: ${deploy.state} — ${(deploy.problems ?? []).join("; ")}` +
+        (deploy.deploymentId ? ` (deployment ${deploy.deploymentId} exists but did not become READY)` : ""),
+    );
+  }
+  const deploymentUrl = deploy.deploymentUrl;
   report.push(
-    `uploaded: ${deploymentUrl} (prebuilt — the host built nothing; via ${deploy.executable ?? resolveExecutable("npx").command})`,
+    `uploaded: ${deploymentUrl} (prebuilt — the host built nothing; project-scoped REST, no user/team lookups)`,
   );
 
   // 6. Point the browser-facing host at it (preview only — a production

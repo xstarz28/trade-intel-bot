@@ -217,7 +217,7 @@ describe("300 — the published check is wired where it can refuse acceptance", 
     const verifyArtifact = wf.indexOf("npm run verify:frontend --");
     // The upload is the PREBUILT one: a plain directory deploy would make the
     // host run its own build instead of serving the verified bytes.
-    const publish = wf.indexOf("vercel@latest deploy --prebuilt");
+    const publish = wf.indexOf("node scripts/deploy-frontend-rest.mjs");
     // 300e: alias through the teamId-scoped REST API (vercel/vercel#17506)
     const alias = wf.indexOf("v2/deployments/${deployment_host}/aliases");
     const verifyPublished = wf.indexOf("npm run verify:published --");

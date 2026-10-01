@@ -77,7 +77,6 @@ export function verifyBuildOutput(options?: {
  * `npx <...>` arguments for `vercel deploy --prebuilt` — the only deploy shape
  * this publication uses (a plain directory deploy would trigger a host build).
  */
-export function prebuiltDeployArgs(options?: { target?: string }): string[];
 
 /** Write `.vercel/project.json` from resolved ids; refuse a disagreeing link. */
 export function ensureLocalProjectLink(options?: {

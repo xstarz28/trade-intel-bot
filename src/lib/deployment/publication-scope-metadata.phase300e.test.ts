@@ -152,13 +152,16 @@ describe("phase300e · verifier splits a refused suffixed read into case A vs ca
 });
 
 describe("phase300e · the deploy step no longer drives the poisoned scope path", () => {
-  it("the publisher selects the project through the link file and drops org/project env at deploy", () => {
+  it("the publisher selects the project through the link file and never drives the poisoned env shape", () => {
     const publisher = read("scripts/publish-frontend.mjs");
-    expect(publisher).toContain("delete deployEnv.VERCEL_ORG_ID");
-    expect(publisher).toContain("delete deployEnv.VERCEL_PROJECT_ID");
-    expect(publisher).toContain("vercel/vercel#17506");
-    // no org/project ids injected into the deploy child environment anymore
+    // Phase 300g: the deploy is the in-process REST deployer — there is NO
+    // child process at all, hence no org/project env injection (the shape
+    // that drove the CLI's poisoned scope resolution) and no CLI to trigger it.
+    expect(publisher).toContain("restDeployPrebuilt({");
+    expect(publisher).toContain("orgId: target.orgId");
     expect(publisher).not.toMatch(/VERCEL_ORG_ID:\s*target\.orgId/);
+    expect(publisher).not.toMatch(/run\(\s*"npx"\s*,\s*deployArgs/);
+    expect(publisher).toContain("vercel/vercel#17506");
   });
 
   it("the publisher assigns the alias through the teamId-scoped REST API, not `vercel alias set`", () => {
@@ -180,10 +183,30 @@ describe("phase300e · the deploy step no longer drives the poisoned scope path"
 
   it("the workflow deploy invocation drops both org/project env vars and stays prebuilt", () => {
     const workflow = read(".github/workflows/publish-development-frontend.yml");
-    expect(workflow).toContain(
-      "env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID npx --yes vercel@latest deploy --prebuilt --yes",
-    );
+    // Phase 300g: the deploy is the project-scoped REST script (the CLI's
+    // linked flow reproduces the #17506 refusal before uploading), the ids go
+    // in as ARGV identifiers, and BOTH env vars are still dropped from the
+    // child environment.
+    expect(workflow).toContain("env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID node scripts/deploy-frontend-rest.mjs");
+    expect(workflow).toContain('--org-id "$org"');
+    expect(workflow).toContain('--project-id "$project"');
+    expect(workflow).toContain("--expect-commit \"$XSTARZ_ARTIFACT_COMMIT\"");
     expect(workflow).toContain("vercel/vercel#17506");
+  });
+
+  it("the workflow deploy step captures and prints BOTH streams and reads the exit code directly", () => {
+    const workflow = read(".github/workflows/publish-development-frontend.yml");
+    const deployStep = workflow.slice(workflow.indexOf("Publish the verified bytes"));
+    expect(deployStep).toContain('>"$out_file" 2>"$err_file"');
+    expect(deployStep).toContain('cat "$out_file"');
+    expect(deployStep).toContain('cat "$err_file" >&2');
+    expect(deployStep).toContain("deploy_status=$?");
+    // nothing pipes the deploy command itself; no `tail` can hide an error
+    expect(deployStep).not.toMatch(/node scripts\/deploy-frontend-rest\.mjs[^\n]*\|/);
+    // the URL is parsed from the captured FULL stdout, after both streams print
+    const catAt = deployStep.indexOf('cat "$err_file" >&2');
+    const parseAt = deployStep.indexOf('grep -oE');
+    expect(parseAt).toBeGreaterThan(catAt);
   });
 
   it("the workflow alias step uses the REST endpoint and no longer calls `vercel alias set`", () => {

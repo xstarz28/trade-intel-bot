@@ -191,8 +191,10 @@ describe("300h — every child process in the publication path goes through the 
   it("names the executable it used, so a Windows log is diagnosable", () => {
     const source = read(PUBLISH);
     expect(source).toMatch(/building… \(\$\{resolveExecutable\("npm"\)\.command\}\)/);
-    expect(source).toMatch(/via \$\{deploy\.executable \?\? resolveExecutable\("npx"\)\.command\}/);
-    expect(source).toMatch(/failureText/);
+    // Phase 300g: the deploy no longer spawns the host CLI (the REST deployer
+    // is in-process), so there is no npx executable to name for it — the
+    // failure text still must be surfaced verbatim.
+    expect(source).toMatch(/failureText|problems \?\? \[\]\.join/);
   });
 });
 
@@ -215,7 +217,7 @@ describe("300h — the hotfix weakened no guard", () => {
     const source = read("scripts/publish-frontend.mjs");
     const verifyArtifact = source.indexOf("scripts/verify-frontend-artifact.mjs");
     // The call site, not the import line at the top of the file.
-    const upload = source.indexOf("prebuiltDeployArgs({");
+    const upload = source.indexOf("restDeployPrebuilt({");
     // 300e: alias through the teamId-scoped REST API (vercel/vercel#17506)
     const alias = source.indexOf("/aliases?teamId=");
     const verifyPublished = source.indexOf("scripts/verify-published-frontend.mjs");

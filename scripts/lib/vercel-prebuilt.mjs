@@ -62,7 +62,9 @@
  * · It never runs a build. The only input is the directory that already passed
  *   the artifact contract.
  * · It never deploys. `vercel deploy --prebuilt` is a separate call made by the
- *   caller, and `prebuiltDeployArgs()` is the only deploy invocation shape this
+ *   caller, and the deploy itself is the project-scoped REST path in
+ *   `vercel-rest-deploy.mjs` (phase 300g — the CLI's link flow reproduces the
+ *   vercel/vercel#17506 refusal for project-scoped tokens).
  *   publication knows — there is no fallback to a build-triggering deploy.
  * · It never writes outside `.vercel/` (a local, ignored directory): the link
  *   file it may create contains the org/project ids the resolver READ, never a
@@ -377,12 +379,6 @@ export function verifyBuildOutput({
  * from a build nobody verified. `vercel deploy dist` is therefore not reachable
  * from here, not even as a fallback.
  */
-export function prebuiltDeployArgs({ target = "preview" } = {}) {
-  const args = ["--yes", "vercel@latest", "deploy", "--prebuilt"];
-  if (target === "production") args.push("--prod");
-  return args;
-}
-
 /**
  * Make sure the host CLI knows WHICH project is being deployed.
  *

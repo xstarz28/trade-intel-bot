@@ -413,7 +413,7 @@ describe("300 — the one-command publication keeps the verified bytes and prove
     const source = read("scripts/publish-frontend.mjs");
     const verifyArtifact = source.indexOf("scripts/verify-frontend-artifact.mjs");
     // The call site, not the import line at the top of the file.
-    const upload = source.indexOf("prebuiltDeployArgs({");
+    const upload = source.indexOf("restDeployPrebuilt({");
     // 300e: alias through the teamId-scoped REST API (vercel/vercel#17506)
     const alias = source.indexOf("/aliases?teamId=");
     const verifyPublished = source.indexOf("scripts/verify-published-frontend.mjs");

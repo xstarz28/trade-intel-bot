@@ -46,10 +46,17 @@ import {
   buildOutputConfig,
   ensureLocalProjectLink,
   materializeBuildOutput,
-  prebuiltDeployArgs,
+
   routesForBuildOutput,
   verifyBuildOutput,
 } from "../../../scripts/lib/vercel-prebuilt.mjs";
+import {
+  REST_DEPLOY_STATES,
+  buildDeploymentRequestBody,
+  collectOutputFiles,
+  exitCodeFor as restExitCodeFor,
+  restDeployPrebuilt,
+} from "../../../scripts/lib/vercel-rest-deploy.mjs";
 import { resolveExecutable } from "../../../scripts/lib/executable.mjs";
 
 const root = process.cwd();
@@ -279,31 +286,43 @@ describe("300 — a host-side rebuild, or any other mismatch, is refused by name
 });
 
 describe("300 — the deploy invocation cannot trigger a host build, on Windows or Unix", () => {
-  it("always deploys --prebuilt, never a bare directory", () => {
-    expect(prebuiltDeployArgs({ target: "preview" })).toEqual(["--yes", "vercel@latest", "deploy", "--prebuilt"]);
-    expect(prebuiltDeployArgs({ target: "production" })).toEqual([
-      "--yes",
-      "vercel@latest",
-      "deploy",
-      "--prebuilt",
-      "--prod",
-    ]);
-    for (const target of ["preview", "production"] as const) {
-      expect(prebuiltDeployArgs({ target })).toContain("--prebuilt");
-      // No positional directory: a positional upload is what made the host run
-      // `vite build` remotely in the first place.
-      expect(prebuiltDeployArgs({ target })[3]).toBe("--prebuilt");
-      expect(prebuiltDeployArgs({ target })).not.toContain("dist");
-    }
+  it("always deploys --prebuilt (prebuilt=1 on the REST create), never a bare directory", () => {
+    // Phase 300g: the upload is the project-scoped REST deployment. The
+    // `prebuilt=1` query parameter IS the --prebuilt semantics: the request
+    // carries the assembled `.vercel/output` sha list and the host runs NO
+    // build. No CLI spawn and no positional directory exist anymore.
+    const body = buildDeploymentRequestBody({
+      files: [{ file: ".vercel/output/config.json", size: 1, mode: 33188, sha: "a" }],
+      projectName: "trade-intel-bot",
+      projectId: "prj_x",
+      target: "production",
+    });
+    expect(body.source).toBe("cli");
+    expect(body.version).toBe(2);
+    expect(body.target).toBe("production");
+    expect(body.name).toBe("trade-intel-bot");
+    expect(body.project).toBe("prj_x");
+    const previewBody = buildDeploymentRequestBody({
+      files: [],
+      projectName: "trade-intel-bot",
+      projectId: "prj_x",
+      target: "preview",
+    });
+    expect(previewBody.target).toBeUndefined(); // preview = omitted, like the CLI
+    // No positional directory and no CLI spawn anywhere in the publisher: a
+    // positional upload is what made the host run `vite build` remotely, and
+    // the CLI's link flow reproduces the #17506 refusal (phase 300g).
+    const source = read("scripts/publish-frontend.mjs");
+    expect(source).toContain("restDeployPrebuilt(");
+    expect(source).not.toMatch(/run\(\s*"npx"\s*,\s*deployArgs/);
+    expect(source).not.toContain("vercel@latest");
   });
 
-  it("routes the host CLI through the platform-safe resolver on both platforms", () => {
+  it("routes the local tool invocations through the platform-safe resolver on both platforms", () => {
     expect(resolveExecutable("npx", "win32")).toMatchObject({ command: "npx.cmd", shell: true });
     expect(resolveExecutable("npx", "linux")).toMatchObject({ command: "npx", shell: false });
     expect(resolveExecutable("node", "win32")).toMatchObject({ command: "node.exe", shell: false });
-    // The publisher reaches the host CLI only through `run("npx", …)`.
     const source = read("scripts/publish-frontend.mjs");
-    expect(source).toMatch(/run\(\s*"npx",\s*deployArgs/);
     expect(source).toMatch(/runCommand/);
   });
 });
@@ -338,7 +357,8 @@ describe("300 — the publication still verifies, pins and proves, in that order
     // Call sites, not the import lines at the top of the file.
     const assemble = source.indexOf("materializeBuildOutput({");
     const proveOutput = source.indexOf("verifyBuildOutput({");
-    const upload = source.indexOf("prebuiltDeployArgs(");
+    // Phase 300g: the upload is the in-process REST deployer (no CLI spawn).
+    const upload = source.indexOf("restDeployPrebuilt({");
     // Phase 300e: the alias is assigned through the teamId-scoped REST API
     // (vercel/vercel#17506 — `vercel alias set` performs a user lookup a
     // project-scoped token cannot satisfy). The call site moved; the ORDER
@@ -389,7 +409,7 @@ describe("300 — the publication still verifies, pins and proves, in that order
     const wf = read(".github/workflows/publish-development-frontend.yml");
     const verifyArtifact = wf.indexOf("npm run verify:frontend --");
     const prepare = wf.indexOf("npm run frontend:prebuilt --");
-    const upload = wf.indexOf("vercel@latest deploy --prebuilt");
+    const upload = wf.indexOf("node scripts/deploy-frontend-rest.mjs");
     const alias = wf.indexOf("v2/deployments/${deployment_host}/aliases");
     const verifyPublished = wf.indexOf("npm run verify:published --");
     for (const at of [verifyArtifact, prepare, upload, alias, verifyPublished]) expect(at).toBeGreaterThan(-1);
