@@ -102,6 +102,15 @@ Exact requirements:
 
 Sandbox: GOOGLE_OAUTH_PRODUCTION_CONFIG_REQUIRED, no fake login.
 
+Preflight coverage (Phase 300): `scripts/verify-deployment-config.mjs` declares both names in
+the authentication class as secret and required-in-production, so `npm run convex:preflight`
+refuses a production configuration missing either one (`required-production-vars`) and rejects
+a value that is an obvious placeholder or implausibly short (`credential-plausibility`). It
+still prints names and verdicts only. Configuration presence is not a verified sign-in: the
+browser reaching Google's consent screen is the only proof, and the exact callback the client
+must authorize is `CONVEX_SITE_URL` + `/api/auth/callback/google` — set the pair on the
+deployment the published frontend actually calls, not only on a production one.
+
 ---
 
 ## 5. Provider Activation Matrix
