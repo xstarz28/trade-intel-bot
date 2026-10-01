@@ -148,6 +148,46 @@ describe("phase300g · the REST deployer never performs the poisoned scope looku
     expect(files.some((f) => f.file === ".vercel/output/static/assets/app.js")).toBe(true);
   });
 
+  it("handles a 400/missing_files preflight by uploading and retrying the same create request", async () => {
+    const dir = await makeOutput();
+    const recorded: Recorded[] = [];
+    let createCalls = 0;
+    let missingSha = "";
+    const impl = async (url: string, init: { method: string; headers: Record<string, string>; body?: unknown }) => {
+      recorded.push({ url, init });
+      const path = new URL(url).pathname;
+      if (path === "/v13/deployments" && init.method === "POST") {
+        createCalls += 1;
+        const files = JSON.parse(init.body as string).files as Array<{ file: string; sha: string }>;
+        if (createCalls === 1) {
+          missingSha = files.find((f) => f.file === ".vercel/output/static/assets/app.js")!.sha;
+          return json(400, { error: { code: "missing_files", message: "Missing files", missing: [missingSha] } });
+        }
+        return json(200, { id: "dpl_retry", url: "trade-intel-bot-retry.vercel.app", missing: [], readyState: "READY" });
+      }
+      if (path === "/v2/files") return json(200, {});
+      if (path === "/v13/deployments/dpl_retry")
+        return json(200, { id: "dpl_retry", url: "trade-intel-bot-retry.vercel.app", readyState: "READY" });
+      throw new Error("unexpected endpoint: " + path);
+    };
+
+    const result = await restDeployPrebuilt({
+      orgId: ORG,
+      projectId: PROJECT,
+      projectName: "trade-intel-bot",
+      token: TOKEN,
+      outputDir: dir,
+      expectCommit: COMMIT,
+      fetchImpl: impl,
+    });
+
+    expect(result.state).toBe(REST_DEPLOY_STATES.DEPLOYED);
+    expect(createCalls).toBe(2);
+    expect(recorded.some((r) => new URL(r.url).pathname === "/v2/files")).toBe(true);
+    expect(recorded.every((r) => !r.url.includes("teamId="))).toBe(true);
+    expect(result.evidence.some((line) => line.includes("missing file sha(s)"))).toBe(true);
+    expect(result.deploymentUrl).toBe("https://trade-intel-bot-retry.vercel.app");
+  });
   it("uploads only the shas the server names as missing, with the CLI's digest headers", async () => {
     const dir = await makeOutput();
     const recorded: Recorded[] = [];
