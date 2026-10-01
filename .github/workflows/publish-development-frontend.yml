@@ -298,14 +298,16 @@ jobs:
           cat "$RUNNER_TEMP/vercel-target.json"
           org="$(jq -r '.orgId // empty' "$RUNNER_TEMP/vercel-target.json")"
           project="$(jq -r '.projectId // empty' "$RUNNER_TEMP/vercel-target.json")"
+          project_name="$(jq -r '.projectName // empty' "$RUNNER_TEMP/vercel-target.json")"
           host="$(jq -r '.hostUrl // empty' "$RUNNER_TEMP/vercel-target.json")"
-          if [ -z "$org" ] || [ -z "$project" ] || [ -z "$host" ]; then
+          if [ -z "$org" ] || [ -z "$project" ] || [ -z "$project_name" ] || [ -z "$host" ]; then
             echo "::error title=Host target not resolvable::$(jq -r '.problems // [] | join("; ")' "$RUNNER_TEMP/vercel-target.json")"
             exit 1
           fi
           {
             echo "VERCEL_ORG_ID=$org"
             echo "VERCEL_PROJECT_ID=$project"
+            echo "XSTARZ_VERCEL_PROJECT_NAME=$project_name"
             echo "XSTARZ_FRONTEND_HOST_URL=$host"
           } >> "$GITHUB_ENV"
           echo "::notice title=Host target resolved from the credential::org=${org} project=${project} host=${host} — pin these as 'development' variables to skip this step"
