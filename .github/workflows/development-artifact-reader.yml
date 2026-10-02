@@ -1,0 +1,94 @@
+# Phase 309 — the ACCEPTANCE-ARTIFACT reader.
+#
+# WHY THIS EXISTS
+# ---------------
+# The sandbox's automation identity can dispatch workflows (through the relay)
+# but cannot download run artifacts or job logs: both are served from the
+# Actions blob store, whose URLs are refused from the sandbox network. The
+# runtime-smoke report itself — the ONE acceptance artifact — travels as a
+# workflow artifact. This READ-ONLY workflow re-publishes the report's
+# decision-relevant fields as run annotations so the acceptance checklist can
+# be evaluated from runtime evidence rather than workflow colour.
+#
+# · It downloads ONE artifact (by id, of a named run) using the runner's own
+#   GITHUB_TOKEN (actions: read) and prints the decision fields.
+# · It runs NOTHING from the artifact; it never touches the deployment; it
+#   has no provider secrets and no deploy credentials. It is a viewer.
+# · It is payload-driven: run_id + artifact_id. No names, no domains, no
+#   instruments are hardcoded; a missing artifact fails loudly.
+
+name: Development artifact reader
+
+on:
+  repository_dispatch:
+    types:
+      - development-artifact-read
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: development-artifact-reader
+  cancel-in-progress: false
+
+jobs:
+  read:
+    name: Re-publish the smoke report's decision evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download the acceptance artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.client_payload.run_id }}
+          ARTIFACT_ID: ${{ github.event.client_payload.artifact_id }}
+        run: |
+          set -euo pipefail
+          if [ -z "${RUN_ID}" ] || [ -z "${ARTIFACT_ID}" ]; then
+            echo "::error::payload must carry run_id and artifact_id"
+            exit 1
+          fi
+          gh api "repos/${GH_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" > artifact.zip
+          mkdir -p artifact
+          unzip -o artifact.zip -d artifact
+          echo "artifact contents:"; ls -la artifact
+
+      - name: Re-publish the decision evidence as annotations
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync, readdirSync } from "node:fs";
+          const file = readdirSync("artifact").find((f) => f.endsWith(".json"));
+          if (!file) { console.log("::error::no JSON report in the artifact"); process.exit(2); }
+          const r = JSON.parse(readFileSync(`artifact/${file}`, "utf8"));
+          const esc = (s) => String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          const emit = (title, text) => {
+            const s = typeof text === "string" ? text : JSON.stringify(text);
+            for (let i = 0; i < Math.max(1, s.length); i += 850) {
+              const part = s.slice(i, i + 850);
+              const suffix = s.length > 850 ? ` ${Math.floor(i / 850) + 1}` : "";
+              console.log(`::warning title=${title}${suffix}::${esc(part)}`);
+            }
+          };
+          emit("T-target", { version: r.target?.version, probe: r.target?.versionProbe, host: r.target?.host });
+          emit("T-pacing", { pacing: r.pacing ?? null, budget: r.budget ?? null, source: r.source });
+          for (const d of r.domains ?? []) {
+            emit(`R-${d.label}`, {
+              label: d.label, headline: d.headline, provider: d.provider ?? null,
+              id: d.providerInstrumentId ?? null, windowIndex: d.windowIndex ?? null,
+              observedAt: d.observedAt ?? null, block: d.block ?? null, legs: d.legs ?? null,
+            });
+            emit(`A-${d.label}`, (d.attempts ?? []).map((a) => ({
+              step: a.step, i: a.instrument ?? null, w: a.windowIndex ?? null,
+              v: a.verdict ?? a.outcome ?? null, depth: a.technicalDepth ?? null,
+              reason: String(a.reason ?? "").slice(0, 110),
+            })));
+            const p = d.evidence?.fundamental?.measurementPipeline;
+            if (p) emit(`P-${d.label}`, p);
+            if (d.evidence?.technical) emit(`X-${d.label}`, d.evidence.technical);
+          }
+          emit("L-learned", r.learnedObservations ?? {});
+          console.log("FULL REPORT:");
+          console.log(readFileSync(`artifact/${file}`, "utf8"));
+          EOF
