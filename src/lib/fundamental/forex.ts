@@ -30,6 +30,7 @@ import type { EconomicCalendarData, EconomicEvent } from "@/lib/data/calendar-ty
 import type { TreasuryContext, TreasuryData } from "@/lib/data/treasury";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import type {
+  ForexMeasurementPipeline,
   ForexFundamentalMetrics,
   FundamentalAssessment,
   FundamentalDimension,
@@ -294,6 +295,42 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
   const events = calendar && Array.isArray(calendar.events) ? calendar.events : [];
   const calendarProvider = calendar?.provider ?? "none";
   const calendarObservedAt = calendar?.timestamp ?? 0;
+
+  // Phase 306 — the released-measurement PIPELINE, counted stage by stage.
+  // Attached to every forex assessment (available or not), so an
+  // EXTERNAL_DATA_GAP verdict carries the proof of WHERE the chain stopped:
+  // provider rows -> released+actual rows -> per-side matches -> category
+  // reads -> final availability. All counts are read from the delivered
+  // evidence; nothing is inferred and nothing is fabricated.
+  const releasedWithActual = events.filter(
+    (e) => e.status === "released" && numeric(e.actual) !== undefined,
+  );
+  const baseReleasedMatched = releasedWithActual.filter(
+    (e) => e.currency?.toUpperCase() === base,
+  ).length;
+  const quoteReleasedMatched = releasedWithActual.filter(
+    (e) => e.currency?.toUpperCase() === quote,
+  ).length;
+  const acquisition = calendar?.releasedAcquisition;
+  const measurementPipeline = (available: boolean): ForexMeasurementPipeline => ({
+    eventsReceived: events.length,
+    releasedWithActual: releasedWithActual.length,
+    baseReleasedMatched,
+    quoteReleasedMatched,
+    policyRatesBase: readCategory(events, "policy-rates", base) !== undefined,
+    policyRatesQuote: readCategory(events, "policy-rates", quote) !== undefined,
+    inflationBase: readCategory(events, "inflation", base) !== undefined,
+    inflationQuote: readCategory(events, "inflation", quote) !== undefined,
+    acquisition: {
+      ...(acquisition?.lookbackDays !== undefined ? { lookbackDays: acquisition.lookbackDays } : {}),
+      ...(acquisition?.upcomingFetched !== undefined ? { upcomingFetched: acquisition.upcomingFetched } : {}),
+      ...(acquisition?.pastFetched !== undefined ? { pastFetched: acquisition.pastFetched } : {}),
+      ...(acquisition?.pastWithActual !== undefined ? { pastWithActual: acquisition.pastWithActual } : {}),
+      ...(acquisition?.merged !== undefined ? { merged: acquisition.merged } : {}),
+      ...(acquisition?.pastLeg !== undefined ? { pastLeg: acquisition.pastLeg } : {}),
+    },
+    availability: available,
+  });
   const metrics: ForexFundamentalMetrics = {};
   const comparisons: string[] = [];
   const providers: string[] = [];
@@ -659,6 +696,7 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
       evidenceCoverage: coverageOf(dimensions, providers),
       evidence,
       metrics: {},
+      measurementPipeline: measurementPipeline(false),
       limitations: [
         `No released macroeconomic measurement was supplied for ${base} or ${quote} — no two-sided fundamental assessment is produced, and none is invented.`,
         ...limitations,
@@ -764,6 +802,7 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
     domain: "forex",
     provider: calendarProvider !== "none" ? calendarProvider : (provider ?? "none"),
     instrumentId: nativeId,
+    measurementPipeline: measurementPipeline(true),
     observedAt: calendarObservedAt,
     periodsCount: evidence.length,
     state,

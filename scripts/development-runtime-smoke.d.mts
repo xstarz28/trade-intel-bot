@@ -679,9 +679,13 @@ export function escapeAnnotation(text: unknown): string;
 
 export function renderSummary(report: unknown): string;
 
-/** Phase 304 — bounded staged-catalog candidate selection (workstream A). */
+/** Phase 304/306 — bounded staged-catalog candidate selection (workstream A). */
 export const STAGED_SELECTION_PAGE_ROWS: number;
 export const STAGED_SELECTION_MAX_ROWS: number;
+/** Phase 306 — bounded provider-order scan windows for a plan-restricted head block. */
+export const STAGED_MAX_WINDOWS: number;
+/** Phase 303/306 — the ranked learning-pool depth (96): deep enough to see past a struck head block. */
+export const CANDIDATE_POOL_WINDOW: number;
 
 export type StagedCatalogRefView = {
   path: string | null;
@@ -704,6 +708,7 @@ export type StagedSelectionProvenance = {
   usableRows: number;
   selected: string[];
   window: string;
+  windowIndex: number;
   readError?: string;
 };
 
@@ -729,6 +734,8 @@ export function selectCandidatesFromStagedCatalog(
     };
     pageRows?: number;
     maxRows?: number;
+    /** Phase 306 — 0-based provider-order scan window (advanced on plan-restriction evidence). */
+    windowIndex?: number;
   },
 ): Promise<StagedSelectionResult>;
 

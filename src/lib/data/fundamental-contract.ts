@@ -187,6 +187,39 @@ export interface FundamentalEvidenceCoverage {
   evidenceClasses: string[];
 }
 
+/**
+ * Phase 306 — the forex released-measurement pipeline, provider-true counts.
+ * Every stage between the provider's calendar answer and the assessment's
+ * final availability, in one bounded structure.
+ */
+export interface ForexMeasurementPipeline {
+  /** Events the delivered calendar carried (all statuses). */
+  eventsReceived: number;
+  /** Of those, events with status "released" AND a parseable actual value. */
+  releasedWithActual: number;
+  /** Released+actual events matching the BASE side currency. */
+  baseReleasedMatched: number;
+  /** Released+actual events matching the QUOTE side currency. */
+  quoteReleasedMatched: number;
+  /** Whether a policy-rate measurement was read for each side. */
+  policyRatesBase: boolean;
+  policyRatesQuote: boolean;
+  /** Whether an inflation measurement was read for each side. */
+  inflationBase: boolean;
+  inflationQuote: boolean;
+  /** The calendar acquisition's own counts (lookback, fetched, merged), verbatim. */
+  acquisition: {
+    lookbackDays?: number;
+    upcomingFetched?: number;
+    pastFetched?: number;
+    pastWithActual?: number;
+    merged?: number;
+    pastLeg?: "ok" | "failed";
+  };
+  /** The pipeline's conclusion — the same value the assessment reports. */
+  availability: boolean;
+}
+
 export interface FundamentalAssessment {
   /** Whether ANY usable evidence existed at all. */
   available: boolean;
@@ -232,6 +265,14 @@ export interface FundamentalAssessment {
    * (base vs quote), each citing the provider evidence it used.
    */
   comparisons?: string[];
+  /**
+   * Phase 306 — forex only: the released-measurement pipeline, counted stage
+   * by stage (provider rows -> released+actual rows -> per-side matches ->
+   * category reads -> final availability). Present on EVERY forex assessment,
+   * so an EXTERNAL_DATA_GAP verdict carries the proof of where the chain
+   * stopped — never a bare assertion.
+   */
+  measurementPipeline?: ForexMeasurementPipeline;
   /**
    * Phase 280 — the domain's plain-language explanation, in the required
    * order (physical market, inventory regime, supply/demand, positioning,

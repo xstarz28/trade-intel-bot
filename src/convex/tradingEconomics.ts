@@ -292,10 +292,18 @@ export const fetchCalendar = action({
       }
 
       const rawEvents: JsonRecord[] = upcomingLeg.status === "ok" ? upcomingLeg.value : [];
+      const upcomingFetched = rawEvents.length;
 
-      // Recently released high-impact events (last 7 days) are additive; a
-      // failed past leg is reported on `error`, not silently dropped.
+      // Recently released high-impact events are additive; a failed past leg
+      // is reported on `error`, not silently dropped. Phase 306 — every stage
+      // of this acquisition is COUNTED into the calendar's own provenance, so
+      // "no released measurement was delivered" can be PROVEN stage by stage
+      // (provider rows -> rows carrying the provider's own actual -> merged).
+      let pastFetched = 0;
+      let pastWithActual = 0;
+      let merged = 0;
       if (pastLeg.status === "ok") {
+        pastFetched = pastLeg.value.length;
         const existingIds = new Set(rawEvents.map((e) => e.id));
         for (const evt of pastLeg.value) {
           if (evt.id && !existingIds.has(evt.id)) {
@@ -306,8 +314,12 @@ export const fetchCalendar = action({
             // Importance gates nothing else: macroRisk stays computed from
             // UPCOMING events only, and the forex extractor classifies by the
             // event's own category/currency, never by importance.
-            if (norm && norm.importance >= RELEASED_MERGE_MIN_IMPORTANCE && norm.actual !== undefined) {
-              rawEvents.push(evt);
+            if (norm && norm.importance >= RELEASED_MERGE_MIN_IMPORTANCE) {
+              if (norm.actual !== undefined) pastWithActual += 1;
+              if (norm.actual !== undefined) {
+                rawEvents.push(evt);
+                merged += 1;
+              }
             }
           }
         }
@@ -362,6 +374,17 @@ export const fetchCalendar = action({
         freshness: events.length > 0 ? "recent" : "unavailable",
         confidence,
         availability,
+        // Phase 306 — the released-measurement leg's own provenance: the
+        // provider-true counts that stand between "we asked" and "a released
+        // usable measurement was delivered".
+        releasedAcquisition: {
+          lookbackDays: CALENDAR_RELEASED_LOOKBACK_DAYS,
+          upcomingFetched,
+          pastFetched,
+          pastWithActual,
+          merged,
+          pastLeg: pastLeg.status === "ok" ? "ok" : "failed",
+        },
         // Phase 229 — partial: the past-events leg failed (class + reason).
         ...(legFailures ? { error: legFailures } : {}),
       };

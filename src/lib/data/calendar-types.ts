@@ -63,6 +63,30 @@ export interface MacroRiskAssessment {
   };
 }
 
+/**
+ * Phase 306 — provider-true provenance for the RELEASED-measurement acquisition
+ * (the leg the forex fundamental reads). Each stage is counted as it happened:
+ * how many events the provider returned per leg, how many of the RECENT leg
+ * carried the provider's own `actual` value (the eligible released prints),
+ * how many were merged into the delivered event list, and whether the recent
+ * leg itself answered. This is what lets a run PROVE "no released usable
+ * measurement was delivered" instead of asserting it.
+ */
+export interface ReleasedAcquisitionProvenance {
+  /** The released-lookback window the request used (days). */
+  lookbackDays: number;
+  /** Events returned by the forward (upcoming) leg. */
+  upcomingFetched: number;
+  /** Events returned by the recent/released leg (before eligibility filtering). */
+  pastFetched: number;
+  /** Recent-leg events carrying the provider's OWN actual value. */
+  pastWithActual: number;
+  /** Recent-leg events merged into the delivered list (dedup + eligibility). */
+  merged: number;
+  /** Whether the recent leg answered at all (`failed` = no released read happened). */
+  pastLeg: "ok" | "failed";
+}
+
 /** Combined economic calendar intelligence. */
 export interface EconomicCalendarData {
   provider: CalendarSource;
@@ -70,6 +94,12 @@ export interface EconomicCalendarData {
   events: EconomicEvent[];
   /** Macro risk assessment */
   macroRisk: MacroRiskAssessment;
+  /**
+   * Phase 306 — how the RELEASED-measurement leg was actually acquired
+   * (provider-true counts; see ReleasedAcquisitionProvenance). Present when
+   * the provider answered; a run without it made no released read.
+   */
+  releasedAcquisition?: ReleasedAcquisitionProvenance;
   /** Fetched timestamp */
   timestamp: number;
   /** Data freshness */

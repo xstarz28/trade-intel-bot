@@ -201,7 +201,10 @@ describe("phase303 · D — within-run macro-measurement learning (no whitelist)
   it("the learning is per-run, selection-driven, and bounded by the attempt budget", () => {
     expect(smoke).toContain("const observedMacroGaps = new Set()");
     expect(smoke).toContain("macroGapCurrencies: observedMacroGaps");
-    expect(smoke).toContain("const learningQueueCeiling = Math.max(maxAttempts, MACRO_LEARNING_QUEUE_CEILING);");
+    // Phase 306: the learning-pool depth is CANDIDATE_POOL_WINDOW (96) — deep
+    // enough to rank past a contiguous struck head block (run 36960231581's
+    // thin-quote OKX head), with the REQUEST budget still max_attempts.
+    expect(smoke).toContain("const learningQueueCeiling = Math.max(maxAttempts, CANDIDATE_POOL_WINDOW);");
     // Phase 304: the macro-gap sentence rule moved into the pure observer.
     expect(smoke).toContain("observeAttemptOutcome({");
   });
