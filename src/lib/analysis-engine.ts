@@ -77,6 +77,8 @@ import { structureDigest } from "@/lib/data/structure";
 // trade plan or sizing.
 import { buildUnifiedIntelligence } from "@/lib/unified-intelligence";
 import { attachAdvancedTechnical, assessAdvancedEvidence } from "@/lib/data/advanced-technical";
+import { buildStrategyContext } from "@/lib/strategy/context";
+import { buildReasoningChain } from "@/lib/strategy/explanation";
 // Phase 276 — deterministic fundamental assessment (pure function of the
 // provider payload; no clock, no options). Informational section only: it
 // never overwrites technical values and never feeds the decision gates.
@@ -2529,10 +2531,17 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // nothing is inferred. When the acquisition path already computed the block,
   // its candle-derived measurements are reused (no divergence between paths).
   if (input.technicalData && input.marketData?.candles?.length) {
+    // Phase 312 — descriptive strategy context from the SAME candles (zones,
+    // patterns, formations, Unicorn composition). Context only: never scored.
+    const strategyContext = buildStrategyContext(
+      input.marketData.candles,
+      String(input.timeframe),
+    );
     input = {
       ...input,
       technicalData: {
         ...input.technicalData,
+        strategy: strategyContext,
         advanced: attachAdvancedTechnical(
           input.marketData.candles,
           input.technicalData.advanced,
@@ -3400,6 +3409,11 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // Sits ABOVE both evidence sets: neither is rewritten, and a combined
   // conclusion exists only when both classes genuinely supply evidence.
   result.unifiedIntelligence = buildUnifiedIntelligence(result as AnalysisResult);
+
+  // Phase 312 — the structured factual reasoning chain over the finished
+  // result (MARKET STRUCTURE → … → LIMITATIONS). Pure read-back of fields
+  // this result already carries; it can change no decision.
+  result.reasoningChain = buildReasoningChain(result as AnalysisResult);
 
   // Phase 41 — crypto intelligence context (informational only).
   // Passes through any crypto intelligence from the input.

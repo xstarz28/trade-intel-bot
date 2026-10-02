@@ -13,6 +13,7 @@
  */
 
 import type { AnalysisResult } from "@/types/analysis";
+import { rMultipleFromTrade } from "@/lib/strategy/ev";
 import type {
   JournalEntry,
   AnalysisSnapshot,
@@ -220,6 +221,60 @@ export function updateTradeInfo(
 /**
  * Check if a journal entry is terminal (no more transitions allowed).
  */
+/**
+ * Phase 312 — deterministic R-multiple of a journal entry from RECORDED data.
+ *
+ * Two honest paths, in order:
+ *   1. direction + entry + stopLoss + exitPrice recorded → per-unit R via
+ *      rMultipleFromTrade (direction-aware).
+ *   2. pnl + positionSize + entry + stopLoss recorded → R = pnl / risk amount.
+ * Anything less leaves the R-multiple UNDEFINED — it is never guessed, never
+ * zero-filled.
+ */
+export function computeRMultiple(rec: {
+  direction?: "long" | "short";
+  entry?: number;
+  stopLoss?: number;
+  exitPrice?: number;
+  positionSize?: number;
+  pnl?: number;
+}): { available: boolean; rMultiple?: number; unavailableReason?: string } {
+  const {
+    direction,
+    entry,
+    stopLoss,
+    exitPrice,
+    positionSize,
+    pnl,
+  } = rec;
+  if (
+    direction !== undefined &&
+    typeof entry === "number" &&
+    typeof stopLoss === "number" &&
+    typeof exitPrice === "number"
+  ) {
+    const r = rMultipleFromTrade({ direction, entry, stop: stopLoss, exit: exitPrice });
+    return r.available ? { available: true, rMultiple: r.rMultiple } : { available: false, unavailableReason: r.unavailableReason };
+  }
+  if (
+    typeof pnl === "number" &&
+    typeof positionSize === "number" &&
+    typeof entry === "number" &&
+    typeof stopLoss === "number"
+  ) {
+    const riskAmount = positionSize * Math.abs(entry - stopLoss);
+    if (!(riskAmount > 0)) {
+      return { available: false, unavailableReason: "stop must differ from entry to define one unit of risk" };
+    }
+    return { available: true, rMultiple: pnl / riskAmount };
+  }
+  return {
+    available: false,
+    unavailableReason:
+      "recorded data cannot define one unit of risk (need direction+entry+stop+exit, or pnl+positionSize+entry+stop)",
+  };
+}
+
 export function isTerminal(entry: JournalEntry): boolean {
   return TRANSITIONS[entry.status]?.length === 0;
 }

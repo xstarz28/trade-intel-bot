@@ -6,6 +6,7 @@
  * Never trust client-provided ownership fields.
  */
 import { v } from "convex/values";
+import { computeRMultiple } from "@/lib/journal";
 import { mutation, query } from "./_generated/server";
 import { resolveUser } from "./lib/authUser";
 import type { Doc } from "./_generated/dataModel";
@@ -55,6 +56,8 @@ export const create = mutation({
     riskReward: v.optional(v.number()),
     positionSize: v.optional(v.number()),
     notionalValue: v.optional(v.number()),
+    // Phase 312 — direction defines one unit of risk for the R-multiple.
+    direction: v.optional(v.union(v.literal("long"), v.literal("short"))),
     entryReason: v.optional(v.string()),
     thesisAtEntry: v.optional(v.string()),
     notes: v.optional(v.string()),
@@ -89,6 +92,7 @@ export const create = mutation({
       riskReward: args.riskReward,
       positionSize: args.positionSize,
       notionalValue: args.notionalValue,
+      direction: args.direction,
       entryReason: args.entryReason,
       thesisAtEntry: args.thesisAtEntry,
       notes: args.notes,
@@ -142,6 +146,14 @@ export const transition = mutation({
       if (args.pnl !== undefined) update.pnl = args.pnl;
       if (args.pnlPercent !== undefined) update.pnlPercent = args.pnlPercent;
       if (args.outcome !== undefined) update.outcome = args.outcome;
+      // Phase 312 — derive the R-multiple from the RECORDED trade data only;
+      // absent when the recorded fields cannot define one unit of risk.
+      const r = computeRMultiple({
+        ...entry,
+        exitPrice: args.exitPrice ?? entry.exitPrice,
+        pnl: args.pnl ?? entry.pnl,
+      });
+      if (r.available && r.rMultiple !== undefined) update.rMultiple = r.rMultiple;
     }
 
     await ctx.db.patch(args.journalId, update);
@@ -192,6 +204,19 @@ export const updateFields = mutation({
       ...defined,
       timestamps: { ...entry.timestamps, updatedAt: Date.now() },
     };
+
+    // Phase 312 — keep the derived R-multiple in sync with the recorded data.
+    if (
+      defined.entry !== undefined ||
+      defined.stopLoss !== undefined ||
+      defined.positionSize !== undefined ||
+      entry.rMultiple !== undefined ||
+      entry.exitPrice !== undefined
+    ) {
+      const merged = { ...entry, ...defined };
+      const r = computeRMultiple(merged);
+      if (r.available && r.rMultiple !== undefined) update.rMultiple = r.rMultiple;
+    }
 
     await ctx.db.patch(args.journalId, update);
     return args.journalId;

@@ -449,6 +449,13 @@ export interface TechnicalData {
    * instant and the exact parameters used.
    */
   advanced?: AdvancedTechnicalData;
+  /**
+   * Phase 312 — descriptive strategy context (supply/demand zone kinds,
+   * chart patterns, candle formations, Unicorn-component composition)
+   * derived from the SAME real candles as everything above. Context only:
+   * nothing in this block feeds any score.
+   */
+  strategy?: import("@/lib/strategy/context").StrategyContext;
 }
 
 /** What the Convex action returns. */

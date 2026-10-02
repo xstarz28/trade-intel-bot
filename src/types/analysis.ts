@@ -461,6 +461,10 @@ export interface AnalysisResult {
   // section that sits ALONGSIDE technical evidence: it never overwrites
   // technical values, and technical values never masquerade as it.
   fundamentalAssessment?: import("@/lib/fundamental-engine").FundamentalAssessment;
+  // Phase 312 — the structured factual reasoning chain (MARKET STRUCTURE →
+  // … → LIMITATIONS), built from this result's own fields; every layer
+  // without evidence says so explicitly.
+  reasoningChain?: import("@/lib/strategy/explanation").ReasoningChain;
   // Phase 310 — the runtime's own per-provider acquisition provenance
   // (protectedAnalysis attaches these legs to every result since phase 288;
   // see LegDiagnostic). The type previously omitted the field the runtime

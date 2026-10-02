@@ -120,11 +120,17 @@ const schema = defineSchema(
       riskReward: v.optional(v.number()),
       positionSize: v.optional(v.number()),
       notionalValue: v.optional(v.number()),
+      // Phase 312 — trade direction, needed to define one unit of risk.
+      direction: v.optional(v.union(v.literal("long"), v.literal("short"))),
       // Outcome
       exitPrice: v.optional(v.number()),
       pnl: v.optional(v.number()),
       pnlPercent: v.optional(v.number()),
       outcome: v.optional(v.string()),
+      // Phase 312 — deterministic R-multiple derived from the RECORDED trade
+      // data (see computeRMultiple); absent when the recorded fields cannot
+      // define it. Never fabricated.
+      rMultiple: v.optional(v.number()),
       closedAt: v.optional(v.number()),
       // Review
       entryReason: v.optional(v.string()),

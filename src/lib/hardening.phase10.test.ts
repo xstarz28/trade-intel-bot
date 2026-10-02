@@ -195,6 +195,12 @@ describe("Step 7: determinism for identical snapshots", () => {
         advanced: stripInstants(rest.technicalData.advanced),
       };
     }
+    if (rest.technicalData?.strategy) {
+      rest.technicalData = {
+        ...rest.technicalData,
+        strategy: stripStrategyTimes(rest.technicalData.strategy) as typeof rest.technicalData.strategy,
+      };
+    }
     if (rest.unifiedIntelligence) {
       rest.unifiedIntelligence = {
         ...rest.unifiedIntelligence,
@@ -203,6 +209,25 @@ describe("Step 7: determinism for identical snapshots", () => {
     }
     return JSON.stringify(rest, (_k, v) => (typeof v === "number" && !Number.isFinite(v) ? String(v) : v));
   }
+
+  // Phase 312: the strategy layer records provenance VERBATIM from candle
+  // timestamps (zone/formation/unicorn *_At / *_AtTime / ids). The phase-9
+  // fixture mints candles at Date.now() per run, so these provenance fields
+  // differ between runs exactly like fetchTimestamp/observedAt above — they
+  // are run-time artifacts, not decision content, and are normalized here.
+  const stripStrategyTimes = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(stripStrategyTimes);
+    if (v && typeof v === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        if (/(At|AtTime|timestamp|observedAt)$/i.test(k)) out[k] = "<t>";
+        else if (k === "id" || /Id$/.test(k)) out[k] = "<id>";
+        else out[k] = stripStrategyTimes(val);
+      }
+      return out;
+    }
+    return v;
+  };
 
   const spec: Spec = {
     structure: "HH/HL", bos: "bullish",
