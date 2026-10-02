@@ -211,8 +211,11 @@ describe("phase300e · the deploy step no longer drives the poisoned scope path"
 
   it("the workflow alias step uses the REST endpoint and no longer calls `vercel alias set`", () => {
     const workflow = read(".github/workflows/publish-development-frontend.yml");
-    expect(workflow).toContain("v2/deployments/${deployment_host}/aliases?teamId=${VERCEL_ORG_ID}");
-    expect(workflow).toContain('"{\\"alias\\":\\"${host}\\"}"');
+    // Phase 300I: the project-scoped token cannot use the teamId-scoped alias
+    // form — the alias is the PROJECT-scoped REST POST without teamId (live
+    // verified by the 300K deployment).
+    expect(workflow).toContain('"https://api.vercel.com/v2/deployments/${deployment_host}/aliases"');
+    expect(workflow).not.toContain("/aliases?teamId=");
     expect(workflow).not.toContain("vercel@latest alias set");
     // the refusal still fails the run with a named annotation
     expect(workflow).toContain("::error title=Alias refused (HTTP ${code})");
@@ -220,7 +223,14 @@ describe("phase300e · the deploy step no longer drives the poisoned scope path"
 
   it("the workflow verifier refusal annotation reflects the A/B split (no blanket 'regenerate token')", () => {
     const workflow = read(".github/workflows/publish-development-frontend.yml");
-    expect(workflow).toContain("TOKEN_CANNOT_ACCESS_ORG");
+    // Phase 300I-K: the runner no longer restates the verdict taxonomy inline —
+    // it points at the verifier's own JSON evidence (which carries the named
+    // states), so the annotation cannot drift from the classifier again. The
+    // verifier still names both cases.
+    expect(workflow).toContain("::error title=Pinned Vercel target failed credential validation");
+    expect(workflow).toContain("its JSON evidence is printed above");
     expect(workflow).not.toMatch(/regenerate[^\n]*token/i);
+    const verifier = read("scripts/verify-vercel-project-access.mjs");
+    expect(verifier).toContain("TOKEN_CANNOT_ACCESS_ORG");
   });
 });

@@ -380,7 +380,7 @@ describe("phase300g · the workflow and publisher use this path, with full error
     expect(workflow).toContain("env -u VERCEL_ORG_ID -u VERCEL_PROJECT_ID node scripts/deploy-frontend-rest.mjs");
     expect(workflow).toContain('>"$out_file" 2>"$err_file"');
     expect(workflow).toContain("deploy_status=$?");
-    expect(workflow).toContain('project_name="$(jq -r '.projectName // empty' "$target_report")"');
+    expect(workflow).toContain(`project_name="$(jq -r '.projectName // empty' "$target_report")"`);
     expect(workflow).toContain('--project-name "$XSTARZ_VERCEL_PROJECT_NAME"');
     expect(workflow).not.toContain("GET /v9/projects/<id>");
     // the OLD swallowing pipeline is gone for good

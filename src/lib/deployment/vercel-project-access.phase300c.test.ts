@@ -174,6 +174,7 @@ describe("300c — pinned target verification classifies the run-36823507179 fai
 });
 
 describe("300c — the pinned path must never trust pinned identifiers blindly again", () => {
+  const VERIFIER = "scripts/verify-vercel-project-access.mjs";
   const WORKFLOW = read(".github/workflows/publish-development-frontend.yml");
   const PUBLISHER = read("scripts/publish-frontend.mjs");
 
@@ -184,11 +185,15 @@ describe("300c — the pinned path must never trust pinned identifiers blindly a
     expect(WORKFLOW).toContain('--host-url "$XSTARZ_PINNED_HOST_URL"');
   });
 
-  it("a refusal fails the run, with the failure modes named in the annotation", () => {
+  it("a refusal fails the run, with the failure modes named by the verifier evidence", () => {
+    // Phase 300I-K: the runner fails with a pointer to the verifier's JSON
+    // evidence instead of restating the taxonomy inline (which had drifted
+    // once already); the named states live in the verifier itself.
     expect(WORKFLOW).toContain("Pinned Vercel target failed credential validation");
-    expect(WORKFLOW).toContain("TOKEN_CANNOT_ACCESS_ORG");
-    expect(WORKFLOW).toContain("PROJECT_NOT_UNDER_ORG");
-    expect(WORKFLOW).toContain("HOST_NOT_ON_PROJECT");
+    expect(WORKFLOW).toContain("its JSON evidence is printed above");
+    for (const named of ["TOKEN_CANNOT_ACCESS_ORG", "PROJECT_NOT_UNDER_ORG", "HOST_NOT_ON_PROJECT"]) {
+      expect(read(VERIFIER)).toContain(named);
+    }
   });
 
   it("the unpinned path still resolves from the credential (discovery unchanged)", () => {
