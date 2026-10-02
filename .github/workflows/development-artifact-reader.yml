@@ -55,13 +55,24 @@ jobs:
           unzip -o artifact.zip -d artifact
           echo "artifact contents:"; ls -la artifact
 
-      - name: Re-publish the decision evidence as annotations
+      # GitHub keeps only the FIRST 10 annotations PER STEP, so the emission is
+      # split across steps that each stay at or below that cap.
+      - name: Write the report fields for the emitters
         run: |
           node --input-type=module <<'EOF'
-          import { readFileSync, readdirSync } from "node:fs";
+          import { readFileSync, readdirSync, writeFileSync } from "node:fs";
           const file = readdirSync("artifact").find((f) => f.endsWith(".json"));
           if (!file) { console.log("::error::no JSON report in the artifact"); process.exit(2); }
           const r = JSON.parse(readFileSync(`artifact/${file}`, "utf8"));
+          writeFileSync("report.json", JSON.stringify(r));
+          writeFileSync("full-report.txt", readFileSync(`artifact/${file}`, "utf8"));
+          console.log("report loaded:", r.schema ?? "(no schema)", "domains:", (r.domains ?? []).map((d) => d.label).join(","));
+          EOF
+      - name: Emit target + pacing provenance
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync } from "node:fs";
+          const r = JSON.parse(readFileSync("report.json", "utf8"));
           const esc = (s) => String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
           const emit = (title, text) => {
             const s = typeof text === "string" ? text : JSON.stringify(text);
@@ -72,23 +83,63 @@ jobs:
             }
           };
           emit("T-target", { version: r.target?.version, probe: r.target?.versionProbe, host: r.target?.host });
-          emit("T-pacing", { pacing: r.pacing ?? null, budget: r.budget ?? null, source: r.source });
+          emit("T-pacing", { pacing: r.pacing ?? null, source: r.source });
+          emit("L-learned", r.learnedObservations ?? {});
+          EOF
+      - name: Emit per-domain records (first half)
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync } from "node:fs";
+          const r = JSON.parse(readFileSync("report.json", "utf8"));
+          const esc = (s) => String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          const emit = (title, text) => {
+            const s = typeof text === "string" ? text : JSON.stringify(text);
+            for (let i = 0; i < Math.max(1, s.length); i += 850) {
+              const part = s.slice(i, i + 850);
+              const suffix = s.length > 850 ? ` ${Math.floor(i / 850) + 1}` : "";
+              console.log(`::warning title=${title}${suffix}::${esc(part)}`);
+            }
+          };
+          for (const d of (r.domains ?? []).slice(0, 2)) {
+            emit(`R-${d.label}`, { label: d.label, headline: d.headline, provider: d.provider ?? null, id: d.providerInstrumentId ?? null, windowIndex: d.windowIndex ?? null, observedAt: d.observedAt ?? null, block: d.block ?? null, legs: d.legs ?? null });
+            emit(`A-${d.label}`, (d.attempts ?? []).map((a) => ({ step: a.step, i: a.instrument ?? null, w: a.windowIndex ?? null, v: a.verdict ?? a.outcome ?? null, depth: a.technicalDepth ?? null, reason: String(a.reason ?? "").slice(0, 90) })));
+          }
+          EOF
+      - name: Emit per-domain records (second half)
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync } from "node:fs";
+          const r = JSON.parse(readFileSync("report.json", "utf8"));
+          const esc = (s) => String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          const emit = (title, text) => {
+            const s = typeof text === "string" ? text : JSON.stringify(text);
+            for (let i = 0; i < Math.max(1, s.length); i += 850) {
+              const part = s.slice(i, i + 850);
+              const suffix = s.length > 850 ? ` ${Math.floor(i / 850) + 1}` : "";
+              console.log(`::warning title=${title}${suffix}::${esc(part)}`);
+            }
+          };
+          for (const d of (r.domains ?? []).slice(2)) {
+            emit(`R-${d.label}`, { label: d.label, headline: d.headline, provider: d.provider ?? null, id: d.providerInstrumentId ?? null, windowIndex: d.windowIndex ?? null, observedAt: d.observedAt ?? null, block: d.block ?? null, legs: d.legs ?? null });
+            emit(`A-${d.label}`, (d.attempts ?? []).map((a) => ({ step: a.step, i: a.instrument ?? null, w: a.windowIndex ?? null, v: a.verdict ?? a.outcome ?? null, depth: a.technicalDepth ?? null, reason: String(a.reason ?? "").slice(0, 90) })));
+          }
+          EOF
+      - name: Emit the forex measurement pipelines
+        run: |
+          node --input-type=module <<'EOF'
+          import { readFileSync } from "node:fs";
+          const r = JSON.parse(readFileSync("report.json", "utf8"));
+          const esc = (s) => String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+          const emit = (title, text) => {
+            const s = typeof text === "string" ? text : JSON.stringify(text);
+            for (let i = 0; i < Math.max(1, s.length); i += 850) {
+              const part = s.slice(i, i + 850);
+              const suffix = s.length > 850 ? ` ${Math.floor(i / 850) + 1}` : "";
+              console.log(`::warning title=${title}${suffix}::${esc(part)}`);
+            }
+          };
           for (const d of r.domains ?? []) {
-            emit(`R-${d.label}`, {
-              label: d.label, headline: d.headline, provider: d.provider ?? null,
-              id: d.providerInstrumentId ?? null, windowIndex: d.windowIndex ?? null,
-              observedAt: d.observedAt ?? null, block: d.block ?? null, legs: d.legs ?? null,
-            });
-            emit(`A-${d.label}`, (d.attempts ?? []).map((a) => ({
-              step: a.step, i: a.instrument ?? null, w: a.windowIndex ?? null,
-              v: a.verdict ?? a.outcome ?? null, depth: a.technicalDepth ?? null,
-              reason: String(a.reason ?? "").slice(0, 110),
-            })));
             const p = d.evidence?.fundamental?.measurementPipeline;
             if (p) emit(`P-${d.label}`, p);
-            if (d.evidence?.technical) emit(`X-${d.label}`, d.evidence.technical);
           }
-          emit("L-learned", r.learnedObservations ?? {});
-          console.log("FULL REPORT:");
-          console.log(readFileSync(`artifact/${file}`, "utf8"));
           EOF
