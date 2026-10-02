@@ -52,6 +52,9 @@ jobs:
       - name: Relay to the requested workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The relay job checks nothing out, so gh cannot infer the repository
+          # from a git remote — pin it explicitly.
+          GH_REPO: ${{ github.repository }}
           EVENT_TYPE: ${{ github.event.action }}
           PAYLOAD_JSON: ${{ toJSON(github.event.client_payload) }}
         run: |
