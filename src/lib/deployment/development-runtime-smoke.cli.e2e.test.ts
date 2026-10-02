@@ -363,7 +363,10 @@ describe("phase 289B — the smoke CLI runs end to end", () => {
     // Candidate selection is the domain's own: the forex pair returned by the
     // same discovery call is never a commodity candidate, so the probe cannot
     // wander into another asset class.
-    expect(report.energyGateProbe.candidatesConsidered).toEqual(["GAU/EUR", "WTI/USD"]);
+    // Phase 302: the probe walks the eligibility-ranked candidate order — the
+    // plan-restricted GAU/EUR keeps its listed place, but the analysable
+    // WTI/USD is examined first.
+    expect(report.energyGateProbe.candidatesConsidered).toEqual(["WTI/USD", "GAU/EUR"]);
     expect(
       report.energyGateProbe.samples.map((s: { instrument: string }) => s.instrument),
     ).not.toContain("EUR/USD");

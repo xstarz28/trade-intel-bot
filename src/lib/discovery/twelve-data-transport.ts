@@ -97,7 +97,16 @@ export function createTwelveDataCatalogTransport(options: {
   const stallMs = options.stallMs ?? CATALOG_STALL_TIMEOUT_MS;
   const headersMs = options.headersMs ?? CATALOG_HEADERS_TIMEOUT_MS;
 
-  return async (url: string): Promise<CatalogTransportResult> => {
+  // Phase 302 — ONE bounded retry for TRANSIENT timeout guards only. Live
+  // evidence (run 36951359320): `/stocks` died with "no response headers within
+  // 20000 ms" while every other catalog answered — a gateway/slow-origin
+  // behavior, not a provider rejection. A rejection is a `{ok:false}` result
+  // and is NEVER retried; only the two timeout-guard failures earn exactly one
+  // fresh attempt, and the retry's own failure is what the caller sees, with
+  // the first attempt's reason preserved in the message.
+  const TRANSIENT_GUARD_PREFIXES = ["no response headers within", "catalog read exceeded"];
+
+  const attemptOnce = async (url: string): Promise<CatalogTransportResult> => {
     let finalUrl = url;
     if (
       options.apiKey &&
@@ -271,5 +280,21 @@ export function createTwelveDataCatalogTransport(options: {
       totalTimer = null;
     }
     return { ok: true, status: response.status, json };
+  };
+
+  return async (url: string): Promise<CatalogTransportResult> => {
+    try {
+      return await attemptOnce(url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const transient = TRANSIENT_GUARD_PREFIXES.some((prefix) => message.startsWith(prefix));
+      if (!transient) throw error;
+      try {
+        return await attemptOnce(url);
+      } catch (retryError) {
+        const retryMessage = retryError instanceof Error ? retryError.message : String(retryError);
+        throw new Error(`${retryMessage} (transient-guard retry after: ${message})`);
+      }
+    }
   };
 }

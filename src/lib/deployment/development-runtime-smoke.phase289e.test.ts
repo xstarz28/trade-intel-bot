@@ -20,7 +20,12 @@ type Candidate = { providerInstrumentId?: string; instId?: string; subType?: str
 const commoditySpec = { domain: "commodity", label: "Commodity", discovery: "twelve-data" as const, assetClass: "commodity" };
 
 describe("289E — smoke candidates stay provider-native", () => {
-  it("selects the provider's own rows, in the provider's own order", () => {
+  it("selects the provider's own rows — provider order preserved WITHIN eligibility tiers (phase 302)", () => {
+    // Phase 302: capability-aware eligibility ranks candidates the provider
+    // can actually analyse ahead of known-restricted ones (run 36951359320:
+    // the GAU/* family is plan-restricted and consumed the whole attempt
+    // budget). Provider order is preserved WITHIN each tier; no row is added,
+    // dropped or rewritten; every candidate carries its named reasons.
     const discovery = {
       success: true,
       instruments: [
@@ -30,8 +35,11 @@ describe("289E — smoke candidates stay provider-native", () => {
       ],
     };
     const picked = selectCandidates(commoditySpec, discovery, 3) as Candidate[];
-    expect(picked.map((c) => c.providerInstrumentId)).toEqual(["GAU/EUR", "HG1", "WTI/USD"]);
+    // HG1 and WTI/USD are eligible; the plan-restricted GAU/EUR keeps its
+    // listed place but no longer outranks analysable instruments.
+    expect(picked.map((c) => c.providerInstrumentId)).toEqual(["HG1", "WTI/USD", "GAU/EUR"]);
     expect(picked.every((c) => c.subType === "commodity_spot")).toBe(true);
+    expect(picked.every((c) => "eligibility" in c)).toBe(true);
   });
 
   it("takes no candidate from a failed discovery and invents none", () => {

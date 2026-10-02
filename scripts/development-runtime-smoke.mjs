@@ -39,7 +39,8 @@
  *     [--url https://tough-goose-455.convex.cloud] \
  *     [--out development-runtime-smoke.json] \
  *     [--domains crypto,forex,stock,commodity] \
- *     [--max-attempts 2] [--allow-host <host>] [--quiet]
+ *     [--max-attempts 2] [--allow-host <host>] [--quiet] \
+ *     [--exact provider:assetClass:nativeId,...]   (phase 302 exact live-verification)
  *
  * Exit codes:
  *   0  no domain FAILED (PASS and UNAVAILABLE are both non-failures)
@@ -50,6 +51,11 @@
  */
 
 import { writeFileSync } from "node:fs";
+import {
+  classifyInstrumentEligibility,
+  parseExactInstrumentSpecs,
+  rankByAnalysisEligibility,
+} from "./lib/analysis-eligibility.mjs";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
@@ -354,7 +360,17 @@ export function selectCandidates(domainSpec, discovery, maxAttempts, ceiling = M
   // its own policy ceiling by default (unchanged behaviour); a caller that has its
   // own disclosed bound passes it. Provider order is preserved either way, and no
   // instrument is ever added, ranked or substituted here.
-  return ordered.slice(0, Math.max(1, Math.min(maxAttempts, ceiling)));
+  // Phase 302 — capability-aware eligibility BEFORE selection: candidates the
+  // provider cannot actually analyse (known plan restrictions, unmapped
+  // calendar currencies, unsupported downstream formats) rank BEHIND those it
+  // can, within the SAME provider order. Discovery truth is untouched — every
+  // candidate stays listed with its named reasons, and the bounded budget
+  // below simply stops being spent on candidates that were never analysable.
+  const ranked = rankByAnalysisEligibility(ordered, {
+    provider: domainSpec.discovery,
+    assetClass: domainSpec.assetClass,
+  });
+  return ranked.slice(0, Math.max(1, Math.min(maxAttempts, ceiling)));
 }
 
 /** OKX discovery is public metadata (no key, no prices, no direction). */
@@ -2365,6 +2381,18 @@ async function run() {
     process.exit(2);
   }
 
+  // Phase 302 — the EXACT live-verification mode (opt-in). Identities come from
+  // the operator/workflow as provider:assetClass:nativeId — the repository's
+  // established exact paths (BTC = okx BTC-USDT, XAU = twelve-data XAU/USD,
+  // plus a calendar-mapped major) — and are NEVER substituted for discovery.
+  // Invalid specs refuse the whole run before anything is requested.
+  const exactArg = flag("--exact", argv) ?? process.env.XSTARZ_SMOKE_EXACT ?? "";
+  const exactParsed = parseExactInstrumentSpecs(exactArg);
+  if (!exactParsed.ok && exactArg.trim() !== "") {
+    console.error(`REFUSED: ${exactParsed.problem}`);
+    process.exit(2);
+  }
+
   const transport = createTransport(origin);
   const circuit = createProviderCircuit();
   // Phase 289 quota-audit — ONE pacer for every Twelve Data request this run
@@ -2701,7 +2729,17 @@ async function run() {
         remainingAfter: after.value?.remaining ?? response.value?.entitlement?.remaining ?? null,
       };
 
-      if (verdict.headline === "PASS" || verdict.evidence?.market?.observedAt) break;
+      // Phase 302 — a domain that WORKS is never re-requested; but market bytes
+      // alone are not "works": run 36951359320 stopped on BTC-PLN's real price
+      // while its MTF chain was unusable (D1=3/W1=1/H4=12 candles). The loop
+      // now stops on a genuine full-evidence verdict (or PASS), and otherwise
+      // lets the NEXT discovery-ranked candidate be tried within the same
+      // bounded budget, pacing and circuit discipline as before.
+      const evidenceComplete =
+        Boolean(verdict.evidence?.market?.observedAt) &&
+        verdict.evidence?.technical?.available === true &&
+        verdict.evidence?.unified?.present === true;
+      if (verdict.headline === "PASS" || evidenceComplete) break;
     }
 
     // The attempts keep every outcome; the headline reports the worst of them.
@@ -2875,6 +2913,104 @@ async function run() {
 
   const checkout = resolveCheckoutSha();
 
+  // ── Phase 302 — EXACT live verification (Workstreams B/C/D) ──────────────
+  // One request per declared identity, through the SAME protected analysis
+  // action, the SAME anonymous-session discipline and the SAME honest verdict
+  // classifier as the generic domains. CoinGlass/order-book/calendar absences
+  // are reported through the runtime's own failing-leg reasons — OPTIONAL
+  // dependencies degrade honestly; a REQUIRED dependency that cannot be
+  // produced is a genuine blocker, never faked.
+  for (const exact of exactParsed.ok ? exactParsed.specs : []) {
+    const label = `EXACT ${exact.label}`;
+    const record = {
+      domain: `exact-${exact.label}`,
+      label,
+      provider: exact.provider,
+      providerInstrumentId: exact.providerInstrumentId,
+      assetClass: exact.assetClass,
+      attempts: [],
+    };
+    const eligibility = classifyInstrumentEligibility({
+      provider: exact.provider,
+      providerInstrumentId: exact.providerInstrumentId,
+      assetClass: exact.assetClass,
+    });
+    record.eligibility = { tier: eligibility.tier, reasons: eligibility.reasons, degradedLegs: eligibility.degradedLegs };
+    const session = await sessionFor(label);
+    if (!session.ok) {
+      record.headline = "UNAVAILABLE";
+      record.reason = `no anonymous session: ${sanitize(session.appError ?? "sign-in failed")}`;
+      record.attempts.push({ step: "session", outcome: "unavailable", reason: record.reason });
+      annotate("warning", `${label} UNAVAILABLE`, record.reason);
+      domains.push(record);
+      continue;
+    }
+    const domainSpec = { domain: `exact-${exact.label}`, label, discovery: exact.provider, assetClass: exact.assetClass };
+    const candidate = {
+      provider: exact.provider,
+      providerInstrumentId: exact.providerInstrumentId,
+      ...(exact.provider === "okx" ? { instId: exact.providerInstrumentId } : {}),
+    };
+    const request = buildAnalysisInput(domainSpec, candidate);
+    const response = await transport.action("protectedAnalysis:runProtectedAnalysis", request, session.token);
+    const verdict = classifyDomain({
+      response: response.ok ? response.value : null,
+      transportError: response.ok ? null : (response.appError ?? response.transportError ?? "request failed"),
+    });
+    record.headline = verdict.headline;
+    record.reason = verdict.reason;
+    record.attempts.push({
+      step: "analysis",
+      function: "protectedAnalysis:runProtectedAnalysis",
+      instrument: exact.providerInstrumentId,
+      provider: exact.provider,
+      httpStatus: response.httpStatus,
+      verdict: verdict.headline,
+      reason: verdict.reason,
+    });
+    if (verdict.evidence) {
+      const e = verdict.evidence;
+      record.observedAt = e.market.observedAt;
+      record.failingLegs = (Array.isArray(e.diagnostics) ? e.diagnostics : [])
+        .filter((d) => d.acquired !== true && typeof d.reason === "string" && d.reason.length > 0)
+        .map((d) => `${d.provider}/${d.dataset ?? "?"}: ${d.reason}`);
+      record.legs = {
+        market: e.market.present
+          ? `real (${e.market.source ?? "provider"}) price=${e.market.price} observedAt=${e.market.observedAt}`
+          : "none returned",
+        technical: e.technical.available
+          ? `available (${e.technical.bias ?? "?"} ${e.technical.confidence ?? "?"})`
+          : `unavailable (${e.technical.summary ?? "no technical evidence"})`,
+        fundamental: e.fundamental.available
+          ? `available (${e.fundamental.domain ?? "?"} ${e.fundamental.state ?? "?"} via ${e.fundamental.provider ?? "?"})`
+          : `unavailable (state=${e.fundamental.state ?? "none"}, providers=${e.fundamental.evidenceProviders.join(",") || "none"})`,
+        unified: e.unified.present
+          ? `available (state=${e.unified.state ?? "?"}, agreement=${e.unified.agreement ?? "?"}, actionable=${e.unified.actionable})`
+          : "unavailable",
+      };
+      record.evidence = {
+        market: e.market,
+        technical: { available: e.technical.available, bias: e.technical.bias, confidence: e.technical.confidence },
+        fundamental: e.fundamental,
+        unified: e.unified,
+        diagnostics: e.diagnostics,
+      };
+    } else {
+      record.legs = { market: "not delivered", technical: "not delivered", fundamental: "not delivered", unified: "not delivered" };
+    }
+    circuit.classify(exact.provider, response.appError ?? "", record.evidence?.diagnostics ?? []);
+    // The annotations API returns warnings/errors — the harness's established
+    // informational-warning convention carries every verdict to the run log.
+    annotate(
+      verdict.headline === "FAIL" ? "error" : "warning",
+      `${label} ${verdict.headline}`,
+      `${exact.provider} · ${exact.providerInstrumentId} · observedAt=${record.observedAt ?? "none"} · ${record.reason ?? ""}${
+        record.failingLegs?.length ? ` · failing legs: ${record.failingLegs.join(" | ")}` : ""
+      } · eligibility=${eligibility.tier}`,
+    );
+    domains.push(record);
+  }
+
   const report = {
     schema: "xstarz.development-runtime-smoke/1",
     generatedAt: new Date().toISOString(),
@@ -2942,6 +3078,9 @@ async function run() {
     discovery: discoveryReport,
     energyGateProbeScanLimit: probeLimit,
     domains,
+    exactInstruments: exactParsed.ok
+      ? exactParsed.specs.map((spec) => ({ provider: spec.provider, assetClass: spec.assetClass, providerInstrumentId: spec.providerInstrumentId }))
+      : [],
     summary: Object.fromEntries(domains.map((d) => [d.label, d.headline])),
   };
 
