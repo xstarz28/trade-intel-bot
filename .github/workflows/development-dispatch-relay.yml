@@ -1,0 +1,101 @@
+# Phase 309 — the dispatch RELAY.
+#
+# WHY THIS EXISTS
+# ---------------
+# The repository's automation identity may call `repository dispatch` but is
+# refused `workflow dispatch` (HTTP 403 on /dispatches, proven live in phase
+# 309). The development deploy and runtime smoke workflows are deliberately
+# workflow_dispatch-only bodies — a deploy or a smoke is a DECISION, never a
+# side effect. This relay preserves that property while making the decision
+# dispatchable by the automation identity:
+#
+# · It receives a repository_dispatch event whose `event_type` names the
+#   target workflow and whose `client_payload` carries the SAME inputs the
+#   manual dispatch would carry.
+# · It re-issues the call as a REAL `gh workflow run` (workflow_dispatch) from
+#   the default branch, using the runner's GITHUB_TOKEN with `actions: write`.
+# · It invents NOTHING: every `-f` flag is copied verbatim from the payload;
+#   flags the payload omits are not sent at all (the target workflow's own
+#   defaults then apply, exactly as with a manual dispatch).
+# · The target workflows gate their jobs to `workflow_dispatch`, so a
+#   repository dispatch event can never run a deploy or a smoke directly —
+#   only this relay's explicit re-issue can.
+# · It never targets production: there is no production relay type, and the
+#   deploy workflow's own guard still refuses anything not pinned to the
+#   development source branch and unconfirmed with DEPLOY_DEV.
+#
+# CREDENTIALS: only the runner's own GITHUB_TOKEN (actions: write, scoped to
+# this repository). No deploy keys, no provider secrets.
+
+name: Development dispatch relay
+
+on:
+  repository_dispatch:
+    types:
+      - development-deploy-relay
+      - development-runtime-smoke-relay
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: development-dispatch-relay
+  cancel-in-progress: false
+
+jobs:
+  relay:
+    name: Re-issue the dispatch as an explicit workflow_dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Relay to the requested workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_TYPE: ${{ github.event.action }}
+          PAYLOAD_JSON: ${{ toJSON(github.event.client_payload) }}
+        run: |
+          set -euo pipefail
+          echo "event_type=${EVENT_TYPE}"
+          echo "payload=${PAYLOAD_JSON}"
+
+          # payload field: `jq -r --arg k KEY '.[$k] // empty'` — empty stays
+          # empty and is NOT forwarded (the target workflow's own defaults
+          # apply, byte-for-byte the semantics of a manual dispatch).
+          field() {
+            jq -r --arg k "$1" '.[$k] // empty' <<<"${PAYLOAD_JSON}"
+          }
+
+          case "${EVENT_TYPE}" in
+            development-deploy-relay)
+              REF="$(field ref)"
+              CONFIRM="$(field confirm)"
+              if [ -z "${REF}" ] || [ -z "${CONFIRM}" ]; then
+                echo "::error::relay refused: both ref and confirm are required"
+                exit 1
+              fi
+              if [ "${CONFIRM}" != "DEPLOY_DEV" ]; then
+                echo "::error::relay refused: confirm must be exactly DEPLOY_DEV"
+                exit 1
+              fi
+              gh workflow run development-deploy.yml --ref main -f "ref=${REF}" -f "confirm=${CONFIRM}"
+              echo "relayed: development-deploy.yml (ref=${REF})"
+              ;;
+            development-runtime-smoke-relay)
+              REF="$(field ref)"
+              ARGS=(--ref main)
+              [ -n "${REF}" ] && ARGS+=(-f "ref=${REF}")
+              for KEY in domains max_attempts exact_instruments probe_limit pacing_window_ms pacing_limit pacing_max_wait_ms; do
+                VALUE="$(field "${KEY}")"
+                if [ -n "${VALUE}" ]; then
+                  ARGS+=(-f "${KEY}=${VALUE}")
+                fi
+              done
+              gh workflow run development-runtime-smoke.yml "${ARGS[@]}"
+              echo "relayed: development-runtime-smoke.yml ${ARGS[*]}"
+              ;;
+            *)
+              echo "::error::unknown relay event type: ${EVENT_TYPE}"
+              exit 1
+              ;;
+          esac

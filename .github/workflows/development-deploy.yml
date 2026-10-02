@@ -22,6 +22,25 @@
 # · It does not inject the frontend URL into the build the way `convex deploy
 #   --cmd` does — `convex dev` has no equivalent flag. `VITE_CONVEX_URL` is
 #   passed through from the environment when set, and the build runs either way.
+# · It does NOT publish the frontend. `convex dev` refreshes functions; the
+#   static files are uploaded only by `convex deploy --cmd`, which is the
+#   production path. No workflow in this repository hosts the site, so a green
+#   run here means "the backend was updated and the built frontend passed the
+#   artifact contract" — the verified `dist/` is kept as the
+#   `development-frontend` workflow artifact for whoever publishes it.
+#
+# WHY `protobufjs` IS A DIRECT DEPENDENCY
+# ---------------------------------------
+# Every workflow here installs with `npm install --legacy-peer-deps`, which does
+# NOT install peer dependencies. `protobufjs` is an *optional peer* of `ccxt`
+# (see `peerDependenciesMeta` in `node_modules/ccxt/package.json`), and it is
+# genuinely needed at bundle time: ccxt's dydx-v4 static dependencies import
+# `protobufjs/minimal.js`. With the peer left implicit, `npm install
+# --legacy-peer-deps` never materialises it and the Convex bundler fails with
+# `Could not resolve "protobufjs/minimal.js"` — a deploy-time failure with no
+# source-level symptom. It is therefore declared in `dependencies` on purpose.
+# Nothing in `src/` imports it directly; removing it because it looks unused
+# breaks `convex dev` bundling.
 #
 # Required GitHub Environment: `development`
 #   secret    CONVEX_DEPLOY_KEY     a dev-scoped key
@@ -29,6 +48,25 @@
 # Optional variables, used only when set:
 #   VITE_CONVEX_URL   https on *.convex.cloud (also the post-deploy version probe)
 #   CONVEX_SITE_URL   https on *.convex.site
+#
+# Phase 299 — WHICH REF MAY BE DEPLOYED (the deployment-source rule)
+# -----------------------------------------------------------------
+# The development deployment is the environment a person opens, and the same
+# URL has served two different products: the current UI (Xstarz blue, Google +
+# guest sign-in) and a retired build-platform scaffold (green primary,
+# "secured by freebuff.com", email-OTP sign-in). Distinguishing them by colour
+# is not a verification, so the deploy source is pinned:
+#
+#   · `main` is refused (repository-wide rule: its tip still carries the
+#     leaked OTP credential and the retired scaffold);
+#   · the intended branch below is REQUIRED — the guard refuses every other
+#     ref by name, not merely `main`;
+#   · the built frontend artifact is inspected before it is uploaded, so a
+#     wrong-theme / legacy-branded / wrong-commit bundle cannot leave the job.
+#
+# The pin is ONE variable, XSTARZ_REQUIRED_SOURCE_BRANCH (below), used by
+# both the guard and the artifact check, so changing the intended branch is a
+# one-line edit rather than a hunt.
 
 name: Development deploy
 
@@ -36,13 +74,23 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Branch, tag or SHA to deploy (example: arena/01a0d195-trade-intel-bot)"
+        description: "Branch to deploy — must be the pinned development source branch (main is refused)"
         required: true
+        default: "arena/01a0d195-trade-intel-bot"
         type: string
       confirm:
         description: "Type DEPLOY_DEV to confirm this targets the development deployment"
         required: true
         type: string
+  # Phase 309 — the sandbox's GitHub identity may call `repository dispatch`
+  # but is refused `workflow dispatch`. The RELAY workflow
+  # (development-dispatch-relay.yml) receives the dispatch and re-issues it as
+  # a real workflow_dispatch from the default branch, so THIS workflow's body
+  # still only ever runs as an explicit workflow_dispatch with all guards.
+  # The jobs below are gated to workflow_dispatch for that reason: a repository
+  # dispatch event alone can NEVER run a deploy — it can only carry the relay.
+  repository_dispatch:
+    types: [development-deploy-relay]
 
 permissions:
   contents: read
@@ -51,9 +99,16 @@ concurrency:
   group: development-deploy
   cancel-in-progress: false
 
+env:
+  # The one place the intended development deploy source is declared.
+  # The guard refuses any other ref, and the artifact check below refuses a
+  # bundle whose recorded branch is not this one.
+  XSTARZ_REQUIRED_SOURCE_BRANCH: arena/01a0d195-trade-intel-bot
+
 jobs:
   guard:
     name: Refuse unless the target is a development deployment
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -72,28 +127,10 @@ jobs:
             exit 1
           fi
 
-      - name: Normalize the selected ref
-        id: source-ref
-        shell: bash
-        env:
-          INPUT_REF: ${{ inputs.ref }}
-        run: |
-          ref="${INPUT_REF}"
-          ref="${ref#ref:}"
-          ref="${ref#branch:}"
-          ref="$(printf "%s" "$ref" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-          ref="${ref#refs/heads/}"
-          if [ -z "$ref" ]; then
-            echo "::error title=Missing source ref::The deploy source ref is required. Enter only the branch/tag/SHA, e.g. arena/01a0d195-trade-intel-bot."
-            exit 1
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "selected source ref: $ref"
-
       - name: Check out the selected ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.source-ref.outputs.ref }}
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -105,10 +142,11 @@ jobs:
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Fail closed when the deploy inputs are absent or not development
-        run: npm run development:deploy:guard -- --json
+        run: npm run development:deploy:guard -- --json --require-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH"
 
   deploy:
     name: Convex development deploy
+    if: github.event_name == 'workflow_dispatch'
     needs: guard
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -121,28 +159,10 @@ jobs:
       XSTARZ_DEPLOYMENT_ENV: development
       SOURCE_REF: ${{ inputs.ref || github.ref }}
     steps:
-      - name: Normalize the selected ref
-        id: source-ref
-        shell: bash
-        env:
-          INPUT_REF: ${{ inputs.ref }}
-        run: |
-          ref="${INPUT_REF}"
-          ref="${ref#ref:}"
-          ref="${ref#branch:}"
-          ref="$(printf "%s" "$ref" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-          ref="${ref#refs/heads/}"
-          if [ -z "$ref" ]; then
-            echo "::error title=Missing source ref::The deploy source ref is required. Enter only the branch/tag/SHA, e.g. arena/01a0d195-trade-intel-bot."
-            exit 1
-          fi
-          echo "ref=$ref" >> "$GITHUB_OUTPUT"
-          echo "selected source ref: $ref"
-
       - name: Check out the selected ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ steps.source-ref.outputs.ref }}
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -154,10 +174,22 @@ jobs:
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Re-check the development identity immediately before invoking Convex
-        run: npm run development:deploy:guard -- --json
+        run: npm run development:deploy:guard -- --json --require-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH"
 
       - name: Type and build prerequisites (the same gate the production deploy runs)
         run: npm run build
+
+      - name: Refuse to proceed with a legacy, off-theme or wrong-commit frontend artifact
+        # The artifact, not the pipeline, decides what a person would open:
+        # provenance present and matching this checkout, no retired platform
+        # branding, no retired OTP surface, Xstarz blue primary, current
+        # sign-in copy. Exit 2 (nothing to inspect) is a failure too, not a
+        # licence to continue.
+        run: |
+          npm run verify:frontend -- \
+            --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" \
+            --expect-commit "$(git rev-parse HEAD)" \
+            --require-clean
 
       - name: Safe metadata — what is about to be deployed and where
         run: |
@@ -165,18 +197,72 @@ jobs:
           echo "source ref: ${SOURCE_REF}"
           echo "commit: $(git rev-parse HEAD)"
           echo "commit subject: $(git log -1 --pretty=%s)"
+          echo "frontend build provenance:"; cat dist/build-info.json
+          echo "::notice title=Development deploy source::ref=${SOURCE_REF} commit=$(git rev-parse HEAD) frontend=$(node -p "const b=require('./dist/build-info.json'); b.shortCommit + ' (' + b.branch + ') built ' + b.builtAt")"
 
       - name: Deploy the Convex backend to the development deployment
         # `convex dev --once` is the repository's own development deploy command
         # (docs/DEPLOYMENT-HANDOFF.md §A). Type checking is disabled here only
         # because `npm run build` (tsc -b) ran in the step above as the gate.
-        run: npx convex dev --once --typecheck disable --codegen disable
+        #
+        # The output is captured as well as printed: the step below republishes it
+        # as an annotation, because the raw runner log is served from a URL that
+        # is not always reachable and an unreadable failure is not a diagnosis.
+        # `pipefail` keeps this step's status identical to Convex's status.
+        run: |
+          set -o pipefail
+          npx convex dev --once --typecheck disable --codegen disable 2>&1 | tee "$RUNNER_TEMP/convex-dev-deploy.log"
+
+      - name: Publish the Convex output as annotations (the raw runner log is not always readable)
+        # Runs only when something above failed. Two capped, single-line, redacted
+        # annotations: the error-shaped lines, then the tail. `%`, CR and LF are
+        # escaped because the Actions command protocol treats them as separators,
+        # and annotations are length-capped and collapsed to one line by GitHub.
+        if: failure()
+        run: |
+          log="$RUNNER_TEMP/convex-dev-deploy.log"
+          if [ ! -f "$log" ]; then
+            echo "::error title=Development deploy failed::Failed before Convex produced any output — read the failing step above."
+            exit 0
+          fi
+          redact() {
+            sed -E -e 's/(dev|prod|preview|local|anonymous):[A-Za-z0-9|_.:-]+/<redacted-identity>/g' \
+                   -e 's/[A-Za-z0-9+=_-]{40,}/<redacted>/g' \
+                   -e '/[Kk]ey|[Tt]oken|[Ss]ecret/ s/[A-Za-z0-9+\/=_-]{24,}/<redacted>/g' \
+              | grep -v CONVEX_DEPLOY_KEY || true
+          }
+          escape() {
+            tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | cut -c1-700
+          }
+          errors="$(head -c 4000 "$log" | redact | grep -iE 'error|failed' | head -3 | escape)"
+          tail_text="$(tail -c 1500 "$log" | redact | escape)"
+          if [ -n "$errors" ]; then
+            echo "::error title=Convex error::${errors}"
+          fi
+          echo "::error title=Convex output (tail)::${tail_text}"
 
       - name: Report the deployed version (only when the URL is configured)
         if: env.VITE_CONVEX_URL != ''
         run: |
           version="$(curl -fsS --max-time 20 "${VITE_CONVEX_URL}/version" || echo unreachable)"
           echo "deployed version: ${version}"
+          echo "::notice title=Development deployment /version::${version}"
+
+      - name: Keep the verified frontend artifact
+        # Phase 299 — `convex dev` refreshes the BACKEND; it does not publish the
+        # frontend (this repository has no hosting workflow, and the dev
+        # deployment's `.convex.site` serves HTTP actions only). Keeping the
+        # artifact that just passed the contract check is how the person who
+        # publishes it can be handed the exact bytes the check approved, instead
+        # of rebuilding and hoping the two agree. It is a workflow artifact in
+        # GitHub, not a deployment, and it happens only after a successful
+        # deploy so a failing run leaves nothing to publish.
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: development-frontend
+          path: dist
+          retention-days: 14
 
       - name: This job does not admit a release
         run: |

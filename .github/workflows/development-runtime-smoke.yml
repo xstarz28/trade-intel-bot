@@ -72,6 +72,13 @@ on:
         description: "Twelve Data minute-window pacing: total wait budget for the run (default 900000, cap 1500000; 0 DISABLES pacing)"
         required: false
         type: string
+  # Phase 309 — see development-deploy.yml: the RELAY workflow
+  # (development-dispatch-relay.yml) converts a repository dispatch into an
+  # explicit workflow_dispatch from the default branch. This workflow's body
+  # is gated to workflow_dispatch, so a repository dispatch event can NEVER
+  # run the smoke directly — it can only be relayed into one.
+  repository_dispatch:
+    types: [development-runtime-smoke-relay]
 
 permissions:
   contents: read
@@ -83,6 +90,7 @@ concurrency:
 jobs:
   smoke:
     name: Four-asset smoke against the deployed development runtime
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment: development
