@@ -678,3 +678,59 @@ export function createProviderCircuit(): ProviderCircuit;
 export function escapeAnnotation(text: unknown): string;
 
 export function renderSummary(report: unknown): string;
+
+/** Phase 304 — bounded staged-catalog candidate selection (workstream A). */
+export const STAGED_SELECTION_PAGE_ROWS: number;
+export const STAGED_SELECTION_MAX_ROWS: number;
+
+export type StagedCatalogRefView = {
+  path: string | null;
+  transport: { mode: string; state?: string | null; stageId?: string | null; stagedRows?: number | null };
+} | null;
+
+export function stagedCatalogFor(
+  discovery: unknown,
+  assetClass: string,
+): StagedCatalogRefView;
+
+export type StagedSelectionProvenance = {
+  source: "staged-catalog";
+  catalogPath: string | null;
+  stageId: string;
+  stagedRows: number | null;
+  pagesRead: number;
+  rowsRead: number;
+  lastAfterSeq: number;
+  usableRows: number;
+  selected: string[];
+  window: string;
+  readError?: string;
+};
+
+export type StagedSelectionResult = {
+  ok: boolean;
+  reason: string | null;
+  ranked: Array<Record<string, unknown> & { eligibility: unknown }>;
+  candidates: Array<Record<string, unknown>>;
+  provenance: StagedSelectionProvenance | null;
+};
+
+export function selectCandidatesFromStagedCatalog(
+  domainSpec: { discovery: string; assetClass: string },
+  discovery: unknown,
+  transport: { action(path: string, args: unknown, token?: string): Promise<{ ok: boolean; value?: unknown; appError?: string; transportError?: string }> },
+  token: string,
+  options?: {
+    maxAttempts?: number;
+    observations?: {
+      macroGapCurrencies?: Set<string>;
+      planRestrictedFamilies?: Set<string>;
+      technicallyInsufficientFamilies?: Set<string>;
+    };
+    pageRows?: number;
+    maxRows?: number;
+  },
+): Promise<StagedSelectionResult>;
+
+/** Phase 304 — one bounded line about the OKX discovery pool. */
+export function okxDiscoveryDigest(discovery: unknown): string;

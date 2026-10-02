@@ -60,6 +60,7 @@ import { writeFileSync } from "node:fs";
 import {
   classifyInstrumentEligibility,
   parseExactInstrumentSpecs,
+  observeAttemptOutcome,
   rankByAnalysisEligibility,
 } from "./lib/analysis-eligibility.mjs";
 import {
@@ -135,6 +136,12 @@ export function validateTarget(rawUrl, allowedHost = null) {
  * ------------------------------------------------------------------ */
 
 const SESSION_TOKEN_RE = /[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g;
+
+/** Bounded text for digests/annotations (one place, so bounds stay honest). */
+function clipText(text, max) {
+  const clean = String(text ?? "").replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, Math.max(0, max - 1))}…` : clean;
+}
 
 export function sanitize(text) {
   return String(text ?? "")
@@ -352,6 +359,138 @@ export const MACRO_LEARNING_QUEUE_CEILING = 12;
 function candidateKey(domainSpec, candidate) {
   const id = domainSpec.discovery === "okx" ? candidate?.instId : candidate?.providerInstrumentId;
   return `${candidate?.provider ?? domainSpec.discovery}:${String(id ?? "")}`;
+}
+
+/**
+ * Phase 304 — bounded staged-catalog candidate selection (workstream A).
+ *
+ * THE SEAM (live evidence, run 36957205385): `marketData:discoverTwelveDataInstruments`
+ * reports `/stocks COMPLETE 143212 kept` while `discovery.instruments` carries NO
+ * equity row — a catalog larger than the runtime's inline limit is written to the
+ * server-side stage in provider order, so the client-visible instrument array is
+ * empty exactly where the catalog is COMPLETEST. Selecting from the inline array
+ * alone reported "no live equity instrument" behind a COMPLETE catalog.
+ *
+ * This reads the stage the way the phase-289F proof already does —
+ * `marketData:readTwelveDataCatalogStage` with the `afterSeq` cursor, one bounded
+ * page at a time, in PROVIDER ORDER — filters by the SAME identity/trading-state
+ * rules as `selectCandidates`, and ranks the window with the SAME
+ * capability-aware ranker (learning observations included). It NEVER loads the
+ * catalog wholesale: the window is `STAGED_SELECTION_MAX_ROWS` rows of the
+ * provider's own head order, and the provenance (stageId, pagesRead, rowsRead,
+ * lastAfterSeq, usableRows, selected identities) travels with the record so the
+ * run can PROVE the candidate came from the staged catalog.
+ */
+export const STAGED_SELECTION_PAGE_ROWS = 480;
+export const STAGED_SELECTION_MAX_ROWS = 960;
+
+export function stagedCatalogFor(discovery, assetClass) {
+  const catalogs = Array.isArray(discovery?.catalogs) ? discovery.catalogs : [];
+  return (
+    catalogs.find(
+      (c) =>
+        c?.assetClass === assetClass &&
+        c?.transport?.mode === "staged" &&
+        typeof c.transport.stageId === "string" &&
+        c.transport.stageId.length > 0,
+    ) ?? null
+  );
+}
+
+export async function selectCandidatesFromStagedCatalog(
+  domainSpec,
+  discovery,
+  transport,
+  token,
+  {
+    maxAttempts = 3,
+    observations = undefined,
+    pageRows = STAGED_SELECTION_PAGE_ROWS,
+    maxRows = STAGED_SELECTION_MAX_ROWS,
+  } = {},
+) {
+  const catalog = stagedCatalogFor(discovery, domainSpec.assetClass);
+  if (!catalog) {
+    return { ok: false, reason: "no staged catalog for this asset class", ranked: [], candidates: [], provenance: null };
+  }
+  const stageRef = catalog.transport;
+  const provenance = {
+    source: "staged-catalog",
+    catalogPath: catalog.path ?? null,
+    stageId: stageRef.stageId,
+    stagedRows: isNumber(stageRef.stagedRows) ? stageRef.stagedRows : null,
+    pagesRead: 0,
+    rowsRead: 0,
+    lastAfterSeq: -1,
+    usableRows: 0,
+    selected: [],
+    window: `provider-order head window, bounded at ${maxRows} rows (${Math.ceil(maxRows / pageRows)} pages of ${pageRows})`,
+  };
+  const rows = [];
+  let afterSeq = -1;
+  while (provenance.rowsRead < maxRows) {
+    const page = await transport.action(
+      "marketData:readTwelveDataCatalogStage",
+      { stageId: stageRef.stageId, afterSeq, limit: pageRows },
+      token,
+    );
+    if (!page.ok) {
+      provenance.readError = sanitize(page.appError ?? page.transportError ?? "stage read failed");
+      break;
+    }
+    const value = page.value ?? {};
+    const batch = Array.isArray(value.rows) ? value.rows : [];
+    rows.push(...batch);
+    provenance.pagesRead += 1;
+    provenance.rowsRead += batch.length;
+    afterSeq = isNumber(value.nextAfterSeq) ? value.nextAfterSeq : afterSeq;
+    provenance.lastAfterSeq = afterSeq;
+    if (value.hasMore !== true || batch.length === 0) break;
+  }
+  const usable = rows
+    .filter((row) => row.assetClass === domainSpec.assetClass)
+    .filter((row) => row.tradingState !== "disabled")
+    .filter((row) => typeof row.providerInstrumentId === "string" && row.providerInstrumentId.length > 0)
+    // identity completeness, the discovery walk's own rule: a row without its
+    // base/quote identity is the row the walk itself would have skipped.
+    .filter((row) => typeof row.baseAsset === "string" && row.baseAsset.length > 0)
+    .filter((row) => typeof row.quoteAsset === "string" && row.quoteAsset.length > 0);
+  provenance.usableRows = usable.length;
+  const ranked = rankByAnalysisEligibility(usable, {
+    provider: domainSpec.discovery,
+    assetClass: domainSpec.assetClass,
+  }, observations);
+  const candidates = ranked.slice(0, Math.max(1, Math.min(maxAttempts, MAX_CANDIDATE_ATTEMPTS)));
+  provenance.selected = candidates.map((c) => c.providerInstrumentId);
+  return {
+    ok: candidates.length > 0,
+    reason: candidates.length > 0 ? null : "no identity-complete live row in the bounded provider-order stage window",
+    ranked,
+    candidates,
+    provenance,
+  };
+}
+
+/**
+ * Phase 304 — the OKX discovery digest, mirroring the Twelve Data one: the
+ * crypto domain's attempts were previously reported without ANY visibility of
+ * the pool they came from (runs 36954328849 and 36957205385 both picked
+ * USDC-PLN and the run could not show whether alternatives existed).
+ */
+export function okxDiscoveryDigest(discovery) {
+  if (!discovery || typeof discovery !== "object") return "no okx discovery result";
+  const rows = Array.isArray(discovery.instruments) ? discovery.instruments : [];
+  const sample = rows.slice(0, 6).map((r) => r?.instId ?? "?").join(",");
+  const warnings = Array.isArray(discovery.warnings) ? discovery.warnings : [];
+  return [
+    `success=${discovery.success === true}`,
+    `completeness=${discovery.completeness ?? "?"}`,
+    `total=${rows.length}`,
+    `identities=${sample || "none"}`,
+    warnings.length > 0 ? `warning=${clipText(String(warnings[0]), 130)}` : null,
+  ]
+    .filter((piece) => piece !== null)
+    .join(" · ");
 }
 
 export function selectCandidates(domainSpec, discovery, maxAttempts, ceiling = MAX_CANDIDATE_ATTEMPTS, observations = undefined) {
@@ -2476,14 +2615,27 @@ async function run() {
     maxAttempts,
   });
 
-  // Phase 303 — within-run macro-measurement learning (workstream C): sides of
-  // attempted pairs whose macro leg reported no released measurement. Lives for
-  // THIS RUN only; re-ranks later picks; never persisted, never a whitelist.
+  // Phase 303/304 — within-run learning (workstreams C/B/D): sides whose macro
+  // leg reported no released measurement (303), provider-proven plan-restricted
+  // families and technically-insufficient families (304). All three live for
+  // THIS RUN only; they re-rank later picks via the ranker's observations; they
+  // are never persisted, never a whitelist, and never drop a candidate.
   const observedMacroGaps = new Set();
+  const observedPlanRestrictedFamilies = new Set();
+  const observedTechnicallyInsufficientFamilies = new Set();
 
   // One discovery per provider per run: the reference catalogs are shared by
   // three domains and re-asking would be a repeated request for nothing.
   const okxDiscovery = specs.some((s) => s.discovery === "okx") ? await discoverOkx(transport) : null;
+  // Phase 304 — the crypto pool is now VISIBLE (runs 36954328849/36957205385
+  // picked USDC-PLN with no way to see whether the pool held alternatives).
+  if (okxDiscovery) {
+    annotate(
+      okxDiscovery.success === true ? "notice" : "warning",
+      `OKX discovery ${okxDiscovery.success === true ? "OK" : "UNAVAILABLE"}`,
+      `informational — ${okxDiscoveryDigest(okxDiscovery)}`,
+    );
+  }
   let twelveDiscovery = null;
   let twelveDiscoveryError = null;
   // Phase 289E — the discovery result is annotated once per run.
@@ -2752,12 +2904,54 @@ async function run() {
       continue;
     }
 
-    const candidates = selectCandidates(spec, discovery, maxAttempts);
+    let candidates = selectCandidates(spec, discovery, maxAttempts);
+    let candidateSource = "discovery-instruments";
+    let stagedPool = null;
+    let stagedProvenance = null;
+    // Phase 304 — the staged-catalog seam (workstream A): a catalog the walk
+    // STAGED (live: /stocks, run 36957205385 — COMPLETE, 143212 kept, zero
+    // inline rows) never reaches `discovery.instruments`, so inline-only
+    // selection reported "no live equity instrument" behind a COMPLETE
+    // catalog. When the inline pool is empty and a staged catalog exists for
+    // this asset class, read a BOUNDED provider-order window from the stage
+    // (cursor/afterSeq, never a wholesale load) and select from it with the
+    // SAME capability-aware ranker.
+    if (candidates.length === 0 && spec.discovery === "twelve-data") {
+      const staged = await selectCandidatesFromStagedCatalog(spec, discovery, transport, session.token, {
+        maxAttempts,
+        observations: {
+          macroGapCurrencies: observedMacroGaps,
+          planRestrictedFamilies: observedPlanRestrictedFamilies,
+          technicallyInsufficientFamilies: observedTechnicallyInsufficientFamilies,
+        },
+      });
+      stagedProvenance = staged.provenance;
+      if (staged.ok) {
+        candidates = staged.candidates;
+        stagedPool = staged.ranked;
+        candidateSource = "staged-catalog";
+        record.discovery = {
+          completeness: discovery.completeness ?? null,
+          pagesFetched: discovery.pagesFetched ?? null,
+          totalDiscovered: discovery.totalDiscovered ?? null,
+          catalogs: discovery.catalogs ?? [],
+          warnings: discovery.warnings ?? [],
+          stagedSelection: staged.provenance,
+        };
+        annotate(
+          "notice",
+          `${spec.label} staged-catalog selection`,
+          `informational — candidates read from the staged catalog: stageId=${staged.provenance.stageId} · stagedRows=${staged.provenance.stagedRows} · pagesRead=${staged.provenance.pagesRead} · rowsRead=${staged.provenance.rowsRead} (bounded window) · usable=${staged.provenance.usableRows} · selected=${staged.provenance.selected.join(",") || "none"}`,
+        );
+      }
+    }
     if (candidates.length === 0) {
       // Phase 288 — name the cause from the provider's own catalog report
       // instead of asserting a bare "no live instrument". A zero-row catalog,
       // a rejected page and a parser that skipped rows are different facts
-      // with different fixes.
+      // with different fixes. Phase 304: catalog COMPLETE no longer implies
+      // candidate available — the staged seam was attempted and its outcome
+      // (or the reason there was nothing to read) is part of the verdict.
       const diagnosis = discoveryDiagnosis(discovery, spec.assetClass);
       record.discovery = {
         completeness: discovery.completeness ?? null,
@@ -2765,10 +2959,14 @@ async function run() {
         totalDiscovered: discovery.totalDiscovered ?? null,
         catalogs: discovery.catalogs ?? [],
         warnings: discovery.warnings ?? [],
+        stagedSelection: stagedProvenance,
       };
+      const stagedNote = stagedProvenance
+        ? ` — staged-catalog seam attempted: ${stagedProvenance.readError ?? stagedProvenance.reason ?? `rowsRead=${stagedProvenance.rowsRead}, usable=${stagedProvenance.usableRows}`}`
+        : "";
       record.reason = diagnosis
-        ? `discovery returned no live ${spec.assetClass} instrument — ${diagnosis}`
-        : `discovery succeeded but listed no live ${spec.assetClass} instrument (the provider reported no failed catalog and no skipped rows)`;
+        ? `discovery returned no live ${spec.assetClass} instrument — ${diagnosis}${stagedNote}`
+        : `discovery succeeded but listed no live ${spec.assetClass} instrument (the provider reported no failed catalog and no skipped rows)${stagedNote}`;
       record.headline = "UNAVAILABLE";
       record.legs.market = "not attempted (no discovered instrument)";
       record.attempts.push({ step: "discovery", outcome: "empty", reason: record.reason });
@@ -2789,11 +2987,25 @@ async function run() {
     // any discovered pair can still be picked first when nothing was observed.
     let domainVerdict = null;
     const learningQueueCeiling = Math.max(maxAttempts, MACRO_LEARNING_QUEUE_CEILING);
+    const learningObservations = () => ({
+      macroGapCurrencies: observedMacroGaps,
+      planRestrictedFamilies: observedPlanRestrictedFamilies,
+      technicallyInsufficientFamilies: observedTechnicallyInsufficientFamilies,
+    });
     const triedInstruments = new Set();
     for (let index = 0; triedInstruments.size < maxAttempts; index += 1) {
-      const queue = selectCandidates(spec, discovery, learningQueueCeiling, learningQueueCeiling, {
-        macroGapCurrencies: observedMacroGaps,
-      });
+      // Phase 304 — the pick is re-derived before EVERY attempt: inline pools
+      // via selectCandidates, staged-catalog pools by re-ranking the SAME
+      // bounded window with the run's learning sets. Either way the source of
+      // truth is the provider's own discovery, the budget stays maxAttempts,
+      // and a demoted candidate sinks without ever being dropped.
+      const queue =
+        candidateSource === "staged-catalog"
+          ? rankByAnalysisEligibility(stagedPool, {
+              provider: spec.discovery,
+              assetClass: spec.assetClass,
+            }, learningObservations())
+          : selectCandidates(spec, discovery, learningQueueCeiling, learningQueueCeiling, learningObservations());
       const candidate = queue.find((row) => !triedInstruments.has(candidateKey(spec, row)));
       if (!candidate) break;
       triedInstruments.add(candidateKey(spec, candidate));
@@ -2841,19 +3053,21 @@ async function run() {
         transportError: response.ok ? null : (response.appError ?? response.transportError ?? "request failed"),
       });
 
-      // Phase 303 — observe this attempt's macro-measurement reality (if any):
-      // the runtime's own sentence names the sides it could not measure.
-      let macroGapSides = [];
-      if (
-        spec.assetClass === "forex" &&
-        typeof verdict.reason === "string" &&
-        /no released (macroeconomic|policy rates|inflation) measurement/i.test(verdict.reason)
-      ) {
-        macroGapSides = String(nativeId)
-          .split("/")
-          .filter((side) => /^[A-Z]{3}$/.test(side) && verdict.reason.includes(side));
-        for (const side of macroGapSides) observedMacroGaps.add(side);
+      // Phase 303/304 — observe this attempt's outcome from the runtime's OWN
+      // sentences: released-measurement gaps (macro sides), provider-proven
+      // plan-restricted families, technically-insufficient families. The
+      // observations re-rank the NEXT pick within the same bounded budget.
+      const observed = observeAttemptOutcome({
+        providerInstrumentId: nativeId,
+        assetClass: spec.assetClass,
+        verdictReason: verdict.reason,
+      });
+      for (const side of observed.macroGapSides) observedMacroGaps.add(side);
+      if (observed.planRestrictedFamily) observedPlanRestrictedFamilies.add(observed.planRestrictedFamily);
+      if (observed.technicallyInsufficientFamily) {
+        observedTechnicallyInsufficientFamilies.add(observed.technicallyInsufficientFamily);
       }
+      const macroGapSides = observed.macroGapSides;
 
       domainVerdict = mostSevereVerdict(domainVerdict, verdict);
 
@@ -2880,6 +3094,9 @@ async function run() {
           totalDiscovered: discovery.totalDiscovered ?? null,
           catalogs: discovery.catalogs ?? [],
           warnings: discovery.warnings ?? [],
+          // Phase 304 — a staged-catalog selection keeps its provenance on
+          // every refresh of this record (the candidate CAME from the stage).
+          ...(stagedProvenance ? { stagedSelection: stagedProvenance } : {}),
         };
       }
 
@@ -2964,7 +3181,14 @@ async function run() {
         // outcome run 36954328849 reported. A pair with no released
         // measurement is not a complete forex evidence set, so the next
         // learned-rank candidate is tried within the same bounded budget.
-        (spec.assetClass !== "forex" || verdict.evidence?.fundamental?.present === true);
+        // Phase 304 — BUG FIX (run 36957205385): the check read
+        // `fundamental.present`, but the runtime DELIVERS a fundamental
+        // assessment object even when it carries `available: false` (the
+        // honest "we looked and found nothing" assessment), so
+        // `present === true` held for an UNAVAILABLE fundamental and ended
+        // the forex loop after ONE attempt (AUD/CAD was the only try). The
+        // gate is `available` — the same field the PASS verdict itself uses.
+        (spec.assetClass !== "forex" || verdict.evidence?.fundamental?.available === true);
       if (verdict.headline === "PASS" || evidenceComplete) break;
     }
 
@@ -2974,6 +3198,28 @@ async function run() {
       record.reason = domainVerdict.reason;
     }
 
+    // Phase 304 — every generic verdict names its provider-block class from
+    // the provider's/runtime's own sentence (workstream E): a plan-restricted
+    // commodity reads PLAN_RESTRICTED (never "discovery failure"), a missing
+    // released measurement reads EXTERNAL_DATA_GAP (never a capability bug).
+    const genericBlock =
+      record.headline === "PASS"
+        ? null
+        : classifyProviderBlock(
+            (record.failingLegs ?? []).find((leg) => /^(market-data|ohlcv|fx-rate)/.test(leg)) ??
+              record.reason ??
+              "",
+          );
+    record.block = genericBlock?.class ?? null;
+    record.candidateSource = candidateSource;
+
+    // Phase 304 — the ATTEMPT TRAVEL IS VISIBLE (workstream D): each attempt
+    // and its outcome, in order, so a reader can see a candidate switch and
+    // the reason the next candidate was tried.
+    const attemptTrail = record.attempts
+      .map((a) => `${a.instrument ?? a.step ?? "?"}=${a.outcome ?? a.verdict ?? "skipped"}`)
+      .join(">");
+
     const digest = evidenceDigest(record);
     const level = record.headline === "FAIL" ? "error" : "warning";
     annotate(
@@ -2981,7 +3227,9 @@ async function run() {
       `${record.label} ${record.headline}`,
       `${record.provider ?? "?"} · ${record.providerInstrumentId ?? "?"} · observedAt=${
         record.observedAt ?? "none"
-      } · ${record.reason ?? ""}${digest === null ? "" : ` · informational — ${digest}`}`,
+      } · ${record.reason ?? ""}${digest === null ? "" : ` · informational — ${digest}`}${
+        record.block ? ` · block=${record.block}` : ""
+      }${attemptTrail ? ` · attempts=[${attemptTrail}]` : ""}`,
     );
 
     domains.push(record);
@@ -3209,7 +3457,14 @@ async function run() {
     // request: exact buckets, then discovery, then domain worst cases) and the
     // macro-measurement gaps this run observed and learned from.
     providerBudgetPlan,
-    learnedMacroGaps: [...observedMacroGaps],
+    // Phase 303/304 — everything this run LEARNED from its own attempts (all
+    // within-run, none persisted): released-measurement gaps, provider-proven
+    // plan-restricted families, technically-insufficient families.
+    learnedObservations: {
+      macroGapCurrencies: [...observedMacroGaps],
+      planRestrictedFamilies: [...observedPlanRestrictedFamilies],
+      technicallyInsufficientFamilies: [...observedTechnicallyInsufficientFamilies],
+    },
     domains,
     exactInstruments: exactParsed.ok
       ? exactParsed.specs.map((spec) => ({ provider: spec.provider, assetClass: spec.assetClass, providerInstrumentId: spec.providerInstrumentId }))

@@ -47,11 +47,31 @@ export function classifyInstrumentEligibility(options: {
   assetClass: string | null | undefined;
 }): InstrumentEligibility;
 
+export interface RankObservations {
+  macroGapCurrencies?: Set<string> | Iterable<string>;
+  planRestrictedFamilies?: Set<string> | Iterable<string>;
+  technicallyInsufficientFamilies?: Set<string> | Iterable<string>;
+}
+
+export interface AttemptObservation {
+  macroGapSides: string[];
+  planRestrictedFamily: string | null;
+  technicallyInsufficientFamily: string | null;
+}
+
 export function rankByAnalysisEligibility<T extends Record<string, unknown>>(
   candidates: T[],
   options: { provider: string; assetClass: string },
-  observations?: { macroGapCurrencies?: Set<string> | Iterable<string> },
+  observations?: RankObservations,
 ): Array<T & { eligibility: InstrumentEligibility }>;
+
+export function familyOf(providerInstrumentId: string | null | undefined): string;
+
+export function observeAttemptOutcome(input: {
+  providerInstrumentId: string | null | undefined;
+  assetClass: string | null | undefined;
+  verdictReason: string | null | undefined;
+}): AttemptObservation;
 
 export type ExactInstrumentSpec = {
   label: string;

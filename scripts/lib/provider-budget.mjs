@@ -81,6 +81,7 @@ export const PROVIDER_BLOCK_CLASSES = Object.freeze({
   PLAN_RESTRICTED: "PLAN_RESTRICTED",
   NO_DATA: "NO_DATA",
   NOT_CONFIGURED: "NOT_CONFIGURED",
+  EXTERNAL_DATA_GAP: "EXTERNAL_DATA_GAP",
   PROVIDER_FAILURE: "PROVIDER_FAILURE",
 });
 
@@ -122,6 +123,20 @@ export function classifyProviderBlock(reason) {
     return {
       class: PROVIDER_BLOCK_CLASSES.NOT_CONFIGURED,
       evidence: "the runtime names a missing environment credential, not a provider refusal",
+    };
+  }
+  // Phase 304 — the runtime's OWN sentence for an external data absence: the
+  // calendar provider supplied no RELEASED measurement for the sides (live,
+  // run 36957205385: EXACT EUR/USD — market+technical+unified REAL, yet
+  // `No released macroeconomic measurement was supplied for EUR or USD` while
+  // the SAME record named upcoming high-impact events, proving the source is
+  // reachable but holds no released values at run time). This is neither a
+  // capability bug nor a plan restriction — classifying it otherwise would
+  // point the next phase at code instead of at the external provider.
+  if (/no released (macroeconomic|policy rates|inflation) measurement/i.test(text)) {
+    return {
+      class: PROVIDER_BLOCK_CLASSES.EXTERNAL_DATA_GAP,
+      evidence: "the runtime's own sentence names an external released-measurement absence, not a capability failure",
     };
   }
   if (/no live data|no data for|symbol not found|unknown symbol/i.test(text)) {

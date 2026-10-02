@@ -35,9 +35,13 @@ describe("289E — smoke candidates stay provider-native", () => {
       ],
     };
     const picked = selectCandidates(commoditySpec, discovery, 3) as Candidate[];
-    // HG1 and WTI/USD are eligible; the plan-restricted GAU/EUR keeps its
+    // WTI/USD and HG1 are eligible; the plan-restricted GAU/EUR keeps its
     // listed place but no longer outranks analysable instruments.
-    expect(picked.map((c) => c.providerInstrumentId)).toEqual(["HG1", "WTI/USD", "GAU/EUR"]);
+    // Phase 304: WTI/USD is additionally route-preferred (the capability
+    // registry's proven petroleum route) within the eligible tier — live
+    // evidence run 36957205385 spent the window on XAU/CHF while the proven
+    // route sat at provider position #2.
+    expect(picked.map((c) => c.providerInstrumentId)).toEqual(["WTI/USD", "HG1", "GAU/EUR"]);
     expect(picked.every((c) => c.subType === "commodity_spot")).toBe(true);
     expect(picked.every((c) => "eligibility" in c)).toBe(true);
   });

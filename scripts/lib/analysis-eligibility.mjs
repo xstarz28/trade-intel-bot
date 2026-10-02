@@ -106,6 +106,66 @@ export function alphaVantageTickerIncompatible(providerInstrumentId) {
 }
 
 /**
+ * The provider-family of a native identity: the segment before the first
+ * separator. `XAU/CHF` -> `XAU` (slash-form), `USDC-PLN` -> `USDC` (dash-form).
+ * Families are the unit of within-run learning: a family the PROVIDER itself
+ * proved unusable this run (a plan-restricted OHLCV read, a candle series too
+ * thin for the technical engine) demotes its SIBLINGS on later picks —
+ * within THIS run only, disclosed in the report, never persisted, never a
+ * whitelist (a demoted family stays discoverable and pickable when nothing
+ * better exists).
+ */
+export function familyOf(providerInstrumentId) {
+  const id = String(providerInstrumentId ?? "");
+  const slash = id.indexOf("/");
+  if (slash > 0) return id.slice(0, slash);
+  const dash = id.indexOf("-");
+  if (dash > 0) return id.slice(0, dash);
+  return id;
+}
+
+/**
+ * Phase 304 — ONE pure observer for an attempt's outcome, feeding the ranker's
+ * within-run learning sets. The provider's/runtime's OWN sentences are the
+ * only input that adds an observation:
+ *
+ *   macro-gap                   `No released macroeconomic measurement ...`
+ *                               names the sides that had no released data;
+ *   plan-restricted family      `available starting with the ... plan` on the
+ *                               OHLCV leg proves the FAMILY is beyond the plan
+ *                               (live: GAU/*, XAG/*, XAU/CHF — runs 36951359320,
+ *                               36954328849, 36957205385);
+ *   technically-insufficient    `market evidence is real but technical/unified
+ *                               evidence is not available` proves this
+ *                               instrument's family delivered no usable candle
+ *                               series (live: USDC-PLN, runs 36954328849 and
+ *                               36957205385).
+ *
+ * Returns the observations; the CALLER adds them to its run-level sets. Pure:
+ * no state, no I/O, nothing invented.
+ */
+export function observeAttemptOutcome({ providerInstrumentId, assetClass, verdictReason }) {
+  const reason = String(verdictReason ?? "");
+  const out = { macroGapSides: [], planRestrictedFamily: null, technicallyInsufficientFamily: null };
+  if (reason.length === 0) return out;
+  if (
+    assetClass === "forex" &&
+    /no released (macroeconomic|policy rates|inflation) measurement/i.test(reason)
+  ) {
+    out.macroGapSides = String(providerInstrumentId ?? "")
+      .split("/")
+      .filter((side) => /^[A-Z]{3}$/.test(side) && reason.includes(side));
+  }
+  if (/available starting with the [a-z ]+plan/i.test(reason)) {
+    out.planRestrictedFamily = familyOf(providerInstrumentId);
+  }
+  if (/market evidence is real but technical\/unified evidence is not available/i.test(reason)) {
+    out.technicallyInsufficientFamily = familyOf(providerInstrumentId);
+  }
+  return out;
+}
+
+/**
  * Provider-native commodity routes — the identity model's capability registry.
  * Evidence: WTI/USD consumed its own EIA petroleum feed live (run 36951359320,
  * eia-leg=consumed, seriesCount=3); the provider's gold route on the current
@@ -228,30 +288,69 @@ export function rankByAnalysisEligibility(candidates, { provider, assetClass }, 
   });
   // Array.prototype.sort is stable (ES2019+) — equal tiers keep provider order.
   classified.sort((a, b) => TIER_RANK[a.eligibility.tier] - TIER_RANK[b.eligibility.tier]);
-  // Phase 303 — WITHIN-RUN MACRO MEASUREMENT LEARNING (workstream C). A
-  // calendar-MAPPED pair can still have no RELEASED measurement this run (live
-  // evidence, run 36954328849: AUD/CAD is mapped on both sides yet the macro
-  // leg reported `No released macroeconomic measurement was supplied for AUD or
-  // CAD`). Mapping is provider capability; released measurement is provider
-  // DATA, observable only by attempting. Once a run OBSERVES a side currency
-  // without measurements, later picks within the SAME tier prefer pairs whose
-  // sides have no such observation — deterministic, dynamic (any discovered
-  // pair can still be first if nothing was observed), and NOT a whitelist: the
-  // observed pair stays eligible and listed, and the observation lives only for
-  // this run.
+
+  // Phase 303/304 — WITHIN-RUN LEARNING inside the eligible tier. Everything
+  // here reorders candidates the PROVIDER ITSELF discovered; nothing is added,
+  // dropped, whitelisted or persisted, and every set lives only for this run:
+  //
+  //   route-preferred (phase 304): the capability registry's provider-native
+  //     routes (e.g. XAU/USD, WTI/USD) rank ahead of same-tier peers WHEN the
+  //     provider's own catalog contains them — a preference over discovered
+  //     rows, never a discovery substitute. Live evidence (run 36957205385):
+  //     the commodity window spent attempts on XAU/CHF while the proven route
+  //     WTI/USD sat at provider position #2.
+  //   plan-restricted family (phase 304): after the PROVIDER proved a family
+  //     plan-restricted this run (the 404-that-names-a-plan), siblings sink —
+  //     except the registry's own routes, which the live evidence proved
+  //     plan-SUPPORTED (XAU/USD exact = PASS).
+  //   technically-insufficient family (phase 304): after an attempt delivered
+  //     real market bytes but no usable technical series, siblings sink (live:
+  //     USDC-PLN).
+  //   macro-gap-free (phase 303): pairs whose sides carry no observed
+  //     released-measurement gap rank ahead of observed-gap pairs.
   const gaps = observations?.macroGapCurrencies instanceof Set
     ? observations.macroGapCurrencies
     : new Set(observations?.macroGapCurrencies ?? []);
-  if (gaps.size > 0) {
-    const gapFree = (entry) => {
+  const planFamilies = observations?.planRestrictedFamilies instanceof Set
+    ? observations.planRestrictedFamilies
+    : new Set(observations?.planRestrictedFamilies ?? []);
+  const techFamilies = observations?.technicallyInsufficientFamilies instanceof Set
+    ? observations.technicallyInsufficientFamilies
+    : new Set(observations?.technicallyInsufficientFamilies ?? []);
+  const routeIds = new Set(
+    Object.values(COMMODITY_NATIVE_ROUTES)
+      .filter((route) => route.provider === provider)
+      .map((route) => route.providerInstrumentId),
+  );
+  const hasLearning =
+    gaps.size > 0 || planFamilies.size > 0 || techFamilies.size > 0 ||
+    (routeIds.size > 0 && assetClass === "commodity");
+  if (hasLearning) {
+    const learning = (entry) => {
       const id = nativeIdOf(entry.candidate);
-      return pairSides(id).every((side) => !gaps.has(side));
+      const routePreferred = assetClass === "commodity" && routeIds.has(id) ? 1 : 0;
+      const family = familyOf(id);
+      const familyDemoted =
+        routePreferred === 1
+          ? 0 // the registry's route is the plan-PROVEN exception to its family
+          : planFamilies.has(family) || techFamilies.has(family)
+            ? 1
+            : 0;
+      const gapFree =
+        assetClass === "forex" && gaps.size > 0
+          ? pairSides(id).every((side) => !gaps.has(side))
+            ? 1
+            : 0
+          : 1;
+      return { routePreferred, familyDemoted, gapFree };
     };
-    const withIndex = classified.map((entry, i) => ({ entry, i }));
+    const withIndex = classified.map((entry, i) => ({ entry, i, learning: learning(entry) }));
     withIndex.sort(
       (a, b) =>
         TIER_RANK[a.entry.eligibility.tier] - TIER_RANK[b.entry.eligibility.tier] ||
-        Number(gapFree(b.entry)) - Number(gapFree(a.entry)) ||
+        b.learning.routePreferred - a.learning.routePreferred ||
+        a.learning.familyDemoted - b.learning.familyDemoted ||
+        b.learning.gapFree - a.learning.gapFree ||
         a.i - b.i,
     );
     return withIndex.map(({ entry }) => ({ ...entry.candidate, eligibility: entry.eligibility }));

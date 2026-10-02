@@ -18,10 +18,11 @@ export declare const PROVIDER_BLOCK_CLASSES: Readonly<{
   PLAN_RESTRICTED: "PLAN_RESTRICTED";
   NO_DATA: "NO_DATA";
   NOT_CONFIGURED: "NOT_CONFIGURED";
+  EXTERNAL_DATA_GAP: "EXTERNAL_DATA_GAP";
   PROVIDER_FAILURE: "PROVIDER_FAILURE";
 }>;
 
-export type ProviderBlockClass = "RATE_LIMITED" | "PLAN_RESTRICTED" | "NO_DATA" | "NOT_CONFIGURED" | "PROVIDER_FAILURE";
+export type ProviderBlockClass = "RATE_LIMITED" | "PLAN_RESTRICTED" | "NO_DATA" | "NOT_CONFIGURED" | "EXTERNAL_DATA_GAP" | "PROVIDER_FAILURE";
 export type ProviderBudgetBucket = "exact-verification" | "catalog-discovery" | "domain-analysis";
 
 export interface ProviderBlockClassification {

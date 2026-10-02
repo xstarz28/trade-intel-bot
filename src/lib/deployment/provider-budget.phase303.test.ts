@@ -202,7 +202,8 @@ describe("phase303 · D — within-run macro-measurement learning (no whitelist)
     expect(smoke).toContain("const observedMacroGaps = new Set()");
     expect(smoke).toContain("macroGapCurrencies: observedMacroGaps");
     expect(smoke).toContain("const learningQueueCeiling = Math.max(maxAttempts, MACRO_LEARNING_QUEUE_CEILING);");
-    expect(smoke).toContain("/no released (macroeconomic|policy rates|inflation) measurement/i");
+    // Phase 304: the macro-gap sentence rule moved into the pure observer.
+    expect(smoke).toContain("observeAttemptOutcome({");
   });
 });
 
@@ -229,13 +230,18 @@ describe("phase303 · E — the smoke's orchestration contract", () => {
   });
 
   it("forex evidence-completeness requires the macro fundamental (the AUD/CAD case)", () => {
-    expect(smoke).toContain('(spec.assetClass !== "forex" || verdict.evidence?.fundamental?.present === true)');
+    // Phase 304: `available` — the runtime delivers a present-but-unavailable
+    // fundamental assessment, which made the 303 `present` gate end the forex
+    // loop after one attempt (run 36957205385, AUD/CAD the only try).
+    expect(smoke).toContain('(spec.assetClass !== "forex" || verdict.evidence?.fundamental?.available === true)');
   });
 
   it("the run reports the plan and what it learned — acceptance reads the run, not the checkmark", () => {
     expect(smoke).toContain("providerBudgetPlan,");
-    expect(smoke).toContain("learnedMacroGaps: [...observedMacroGaps],");
-    expect(smoke).toContain("order:${providerBudgetPlan.order.join(\">\")}");
+    // Phase 304: the learned report now carries all three observation sets.
+    expect(smoke).toContain("learnedObservations: {");
+    expect(smoke).toContain("planRestrictedFamilies: [...observedPlanRestrictedFamilies],");
+    expect(smoke).toContain('order:${providerBudgetPlan.order.join(">")}');
   });
 
   it("a real 429 is never retried: the circuit discipline is still the authority", () => {

@@ -113,10 +113,13 @@ describe("phase302 · discovery order survives; tiers reorder it", () => {
 
   it("the bounded attempt window spends itself on candidates the provider can analyse", () => {
     const ranked = rankByAnalysisEligibility(commodityRows, { provider: "twelve-data", assetClass: "commodity" });
-    // provider order preserved WITHIN tiers: URALS before WTI (all eligible).
     // Phase 303: XAG/AUD joined the RESTRICTED families — live evidence run
     // 36954328849 gave silver the SAME plan sentence as the tokenized gold.
-    expect(ranked.map((r) => r.providerInstrumentId).slice(0, 3)).toEqual(["URALS/USD", "WTI/USD", "GAU/EUR"]);
+    // Phase 304: the capability registry's route (WTI/USD) is route-preferred
+    // WITHIN the eligible tier — ahead of same-tier peers, provider order
+    // otherwise (live: run 36957205385 spent the window on XAU/CHF while the
+    // proven route sat at provider position #2).
+    expect(ranked.map((r) => r.providerInstrumentId).slice(0, 3)).toEqual(["WTI/USD", "URALS/USD", "GAU/EUR"]);
     // the restricted families sink, still present (never dropped from discovery);
     // within the restricted tier the provider's own order is preserved
     const last = ranked[ranked.length - 1];
@@ -128,8 +131,8 @@ describe("phase302 · discovery order survives; tiers reorder it", () => {
   it("selectCandidates hands the ATTEMPT BUDGET eligible candidates first", () => {
     const candidates = selectCandidates(spec as never, { success: true, instruments: commodityRows }, 3);
     expect(candidates.map((c: { providerInstrumentId?: string }) => c.providerInstrumentId)).toEqual([
-      "URALS/USD",
       "WTI/USD",
+      "URALS/USD",
       "GAU/EUR",
     ]);
     expect(candidates[0]).toHaveProperty("eligibility");
