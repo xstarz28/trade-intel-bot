@@ -176,7 +176,9 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
 
   const rawQuantity = riskAmount / riskPerUnit;
   const step = spec.quantityStep!;
-  let quantity = Math.floor(rawQuantity / step) * step;
+  // Guard the float residue of the division BEFORE flooring (e.g. 0.2/0.01
+  // landing at 19.999…): floor must never shave a whole step off an exact fit.
+  let quantity = Math.floor(rawQuantity / step + 1e-9) * step;
 
   // Guard floating-point residue before the minimum-quantity comparison.
   quantity = Math.round(quantity * 1e9) / 1e9;

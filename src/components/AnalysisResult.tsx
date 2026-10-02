@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScoreBreakdown } from "@/components/ScoreBreakdown";
+import { SignalCard } from "@/components/SignalCard";
 import type { AnalysisResult as AnalysisResultType, InstrumentType } from "@/types/analysis";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
@@ -154,6 +155,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
   return (
     <div className="space-y-4">
+      {/* Phase 312 addendum — the coherent signal card (chart + plan + mechanics) */}
+      {result.signal ? <SignalCard signal={result.signal} /> : null}
       {/* Header — Bias + Confidence */}
       <Card className={cn("border", biasConfig.border, "overflow-hidden")}>
         <div className={cn("px-5 py-4", biasConfig.bg)}>

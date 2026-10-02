@@ -79,6 +79,7 @@ import { buildUnifiedIntelligence } from "@/lib/unified-intelligence";
 import { attachAdvancedTechnical, assessAdvancedEvidence } from "@/lib/data/advanced-technical";
 import { buildStrategyContext } from "@/lib/strategy/context";
 import { buildReasoningChain } from "@/lib/strategy/explanation";
+import { buildSignalResponse } from "@/lib/strategy/signal";
 // Phase 276 — deterministic fundamental assessment (pure function of the
 // provider payload; no clock, no options). Informational section only: it
 // never overwrites technical values and never feeds the decision gates.
@@ -3414,6 +3415,20 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // result (MARKET STRUCTURE → … → LIMITATIONS). Pure read-back of fields
   // this result already carries; it can change no decision.
   result.reasoningChain = buildReasoningChain(result as AnalysisResult);
+
+  // Phase 312 addendum — the coherent signal response (chart + adaptive plan +
+  // position mechanics + probability status + invalidation + limitations),
+  // derived READ-ONLY from this finished result and the SAME candle snapshot.
+  // It feeds no score and can never create an order. No risk policy, instrument
+  // spec or journal history exists inside the engine, so those sections carry
+  // their explicit not-configured / unavailable states here; the UI layer can
+  // enrich them from user input and recorded outcomes.
+  (result as AnalysisResult).signal = buildSignalResponse({
+    result: result as AnalysisResult,
+    candles: input.marketData?.candles ?? [],
+    ...(input.provider ? { provider: input.provider } : {}),
+    ...(input.providerInstrumentId ? { providerInstrumentId: input.providerInstrumentId } : {}),
+  });
 
   // Phase 41 — crypto intelligence context (informational only).
   // Passes through any crypto intelligence from the input.

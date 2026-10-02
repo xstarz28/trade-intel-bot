@@ -1711,6 +1711,65 @@ export interface Translations {
    * artifact's own embedded metadata and that nothing about the account or the
    * environment is displayed. `unsafeSource` interpolates `{branch}`.
    */
+  // ─── Phase 312 addendum — signal card & chart ───────────────
+  signal: {
+    buyLong: string;
+    sellShort: string;
+    noDirection: string;
+    planPrefix: string;
+    why: string;
+    tradePlan: string;
+    positionMechanics: string;
+    neverExecuted: string;
+    riskHeading: string;
+    invalidationHeading: string;
+    limitationsHeading: string;
+    entry: string;
+    stopLoss: string;
+    tp1: string;
+    tp2: string;
+    riskDistance: string;
+    rewardDistance: string;
+    riskReward: string;
+    entryBasis: string;
+    invalidationBasis: string;
+    targetBasisTp1: string;
+    targetBasisTp2: string;
+    riskAmount: string;
+    quantity: string;
+    slDistance: string;
+    expectedLossAtSl: string;
+    specLabel: string;
+    conversionLabel: string;
+    riskAmountSuffix: string;
+    stopDistancePips: string;
+    targetDistancePips: string;
+    pipValuePerStdLot: string;
+    lotsStandard: string;
+    lotsMini: string;
+    lotsMicro: string;
+    shares: string;
+    riskPerShare: string;
+    notional: string;
+    leverageRangeLabel: string;
+    liquidationSafe: string;
+    liquidationUnsafe: string;
+    liquidationCheckLabel: string;
+    sizingNotComputed: string;
+    probabilityEstimatedLabel: string;
+    probabilityWinRate: string;
+    probabilityLossRate: string;
+    probabilityAvgR: string;
+    probabilityExpectedR: string;
+    probabilityLimitedLabel: string;
+    probabilityUnavailableLabel: string;
+    chartObserved: string;
+    chartSnapshotCandles: string;
+    chartInputHash: string;
+    chartOverlayNote: string;
+    chartRoleLabel: string;
+    chartUnavailableFallback: string;
+  };
   buildInfo: {
     title: string;
     intro: string;

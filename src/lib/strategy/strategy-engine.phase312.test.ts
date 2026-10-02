@@ -53,6 +53,17 @@ import type {
 import type { DimensionHierarchyEntry } from "../fundamental/framework";
 import { generateRecommendation, type CandidateInput } from "../recommendation-engine";
 import { buildCandidateFromSource, type LiveCandidateSource } from "../liveCandidateBuilder";
+import { readFileSync } from "node:fs";
+import { STYLE_PROFILES } from "../trading-style";
+import type { AnalysisResult } from "@/types/analysis";
+import { buildSignalChart, CHART_MIN_CANDLES } from "./chart";
+import { buildAdaptiveTradePlan } from "./trade-plan";
+import { assessHistoricalProbability, type HistoricalOutcomeRecord } from "./probability";
+import { buildPositionMechanics, type ContractMeta, type SizingSpec } from "./position";
+import { normalizeRiskPolicy } from "./policy";
+import { buildSignalResponse } from "./signal";
+import { runAnalysis } from "../analysis-engine";
+import { assemble, BULL_LEVELS } from "../benchmark-fixtures.phase9";
 
 /* ------------------------------------------------------------------ *
  * Fixture helpers                                                     *
@@ -847,5 +858,479 @@ describe("312.11 — timestamp provenance", () => {
     expect(POLE_MIN_MOVE_ATR).toBeGreaterThan(0);
     expect(FLAG_MAX_RETRACE).toBeGreaterThan(0);
     void detectSupplyDemandZones;
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * PHASE 312 ADDENDUM — signal chart + adaptive plan + position sizing  *
+ * ------------------------------------------------------------------ */
+
+/* Shared addendum fixture: a result with an engine plan plus REAL strategy
+ * context derived from the same deterministic candles. */
+function addendumCandles(): OhlcvCandle[] {
+  return concatTimestamps([leg(8, 95, 0.5), base(4, 100), leg(6, 100, 0.6)]);
+}
+
+function addendumResult(tf: string, candles: OhlcvCandle[], opts: {
+  instrument?: string;
+  instrumentType?: "forex" | "crypto" | "stock" | "commodity";
+  withContext?: boolean;
+  withPlan?: boolean;
+  provider?: string;
+  providerInstrumentId?: string;
+} = {}): AnalysisResult {
+  const withContext = opts.withContext !== false;
+  const withPlan = opts.withPlan !== false;
+  const td: Record<string, unknown> = { dataPoints: candles.length };
+  if (withContext) {
+    td.strategy = buildStrategyContext(candles, tf);
+    td.structure = "HH/HL";
+    td.bosDirection = "bullish";
+  }
+  return {
+    id: "addendum-fixture",
+    instrument: opts.instrument ?? "EUR/USD",
+    instrumentType: opts.instrumentType ?? "forex",
+    timeframe: tf,
+    ...(opts.provider !== undefined ? { provider: opts.provider } : {}),
+    ...(opts.providerInstrumentId !== undefined ? { providerInstrumentId: opts.providerInstrumentId } : {}),
+    bias: "Bullish",
+    confidence: 70,
+    recommendation: withPlan ? "LONG" : "NO_TRADE",
+    noTradeReasons: withPlan ? [] : ["GATE8_RR: no structural target available"],
+    ...(withPlan
+      ? {
+          tradePlan: {
+            direction: "long" as const,
+            entry: "103.6",
+            entryBasis: "live market price at analysis time",
+            stopLoss: "102.00",
+            slBasis: "nearest market swing low (structural)",
+            takeProfit: "112.00",
+            tpBasis: "nearest market swing high / resistance (structural)",
+            riskReward: 4.2,
+            stopProvenance: {
+              source: "swing_level" as const,
+              level: 102,
+              timeframe: tf,
+              buffer: 0,
+              publishedStop: 102,
+              note: "no confirmed structural invalidation available — nearest unbroken market swing low 102",
+            },
+            targetProvenance: {
+              source: "resting_liquidity" as const,
+              level: 112,
+              timeframe: tf,
+              note: "resting liquidity at 112 (never a swept level)",
+            },
+            structuralInvalidation: {
+              level: 99.85,
+              timeframe: tf,
+              swingKind: "low" as const,
+              note: "confirmed swing low 99.85 voids the bullish thesis",
+            },
+          },
+        }
+      : {}),
+    technicalData: td,
+    keyLevels: { support: "95", resistance: "112", invalidation: "99.85" },
+    dataFlags: ["Volume limitation: zero-volume series"],
+  } as unknown as AnalysisResult;
+}
+
+const BANNED_LANGUAGE = [
+  "guaranteed profit",
+  "full profit",
+  "pasti menang",
+  "safe leverage",
+  "win probability",
+];
+
+describe("312.12 — timeframe matrix and the evidence chart", () => {
+  it("(A) the chart works across M1…W1 with the style policy intact", () => {
+    expect(STYLE_PROFILES.scalping.allowedSetupTfs).toEqual(["M1", "M5"]);
+    expect(STYLE_PROFILES.intraday.allowedSetupTfs).toEqual(["M15", "M30", "H1"]);
+    expect(STYLE_PROFILES.swing.allowedSetupTfs).toEqual(["H4", "D1", "W1"]);
+    for (const tf of ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"] as const) {
+      const candles = addendumCandles();
+      const result = addendumResult(tf, candles, {
+        provider: "twelve-data",
+        providerInstrumentId: "EUR/USD",
+      });
+      const spec = buildSignalChart(result, candles, { entry: 103.6, stop: 100.15, tp1: 112 });
+      expect(spec.available, tf).toBe(true);
+      expect(spec.meta!.timeframe).toBe(tf); // verbatim — no substitution
+      expect(spec.meta!.provider).toBe("twelve-data");
+      expect(spec.meta!.providerInstrumentId).toBe("EUR/USD");
+      expect(spec.meta!.observedAt).toBe(candles[candles.length - 1].timestamp);
+      expect(spec.candles!.length).toBe(candles.length);
+      expect(spec.candles![0].timestamp).toBe(candles[0].timestamp);
+    }
+  });
+
+  it(`(B) fewer than ${CHART_MIN_CANDLES} candles → explicit unavailable chart, never synthetic`, () => {
+    const spec = buildSignalChart(addendumResult("M5", []), addendumCandles().slice(0, 2));
+    expect(spec.available).toBe(false);
+    expect(spec.unavailableReason).toContain("Chart unavailable — insufficient OHLCV");
+    expect(spec.candles).toBeUndefined();
+  });
+
+  it("(C) overlays exist ONLY for evidence actually detected — nothing fabricated", () => {
+    const candles = addendumCandles();
+    const bare = addendumResult("H1", candles, { withContext: false });
+    const bareSpec = buildSignalChart(bare, candles, { entry: 103.6, stop: 102, tp1: 112 });
+    const kinds = new Set(bareSpec.overlays!.map((o) => o.kind));
+    for (const absent of ["zone", "order_block", "fvg", "liquidity", "confirmation"]) {
+      expect(kinds.has(absent as never), absent).toBe(false);
+    }
+    expect(kinds.has("entry")).toBe(true);
+    expect(kinds.has("stop")).toBe(true);
+    expect(kinds.has("tp1")).toBe(true);
+    const ctx = buildStrategyContext(candles, "H1");
+    const full = addendumResult("H1", candles);
+    const fullSpec = buildSignalChart(full, candles, { entry: 103.6, stop: 100.15, tp1: 112 });
+    for (const o of fullSpec.overlays!) {
+      expect(Number.isFinite(o.price)).toBe(true);
+      if (o.provenance.knownAt !== undefined) {
+        expect(candles.some((c) => c.timestamp === o.provenance.knownAt), o.label).toBe(true);
+      }
+      void ctx;
+    }
+  });
+
+  it("(D) the chart is reproducible from the same snapshot (stable hash, verbatim candles)", () => {
+    const candles = addendumCandles();
+    const a = JSON.stringify(buildSignalChart(addendumResult("M15", candles), candles));
+    const b = JSON.stringify(buildSignalChart(addendumResult("M15", candles), candles));
+    expect(a).toBe(b);
+    const spec = JSON.parse(a);
+    expect(spec.candles).toEqual(candles.slice(-120));
+  });
+
+  it("(E) the visual narrative chapters STRUCTURE→LOCATION→CONFIRMATION→ENTRY→SL→TARGET honestly", () => {
+    const candles = addendumCandles();
+    const spec = buildSignalChart(addendumResult("H1", candles), candles, { entry: 103.6, stop: 100.15, tp1: 112 });
+    expect(spec.story![0].startsWith("STRUCTURE:")).toBe(true);
+    expect(spec.story!.some((s) => s.startsWith("LOCATION:"))).toBe(true);
+    expect(spec.story!.some((s) => s.startsWith("CONFIRMATION:"))).toBe(true);
+    expect(spec.story!.some((s) => s.startsWith("ENTRY: 103.6"))).toBe(true);
+    expect(spec.story!.some((s) => s.startsWith("SL: 100.15"))).toBe(true);
+    expect(spec.story!.some((s) => s.startsWith("TARGET: 112"))).toBe(true);
+  });
+});
+
+describe("312.13 — the adaptive trade plan", () => {
+  it("(F) entry comes from the DETECTED zone (proximal), stop from its distal — R:R exact", () => {
+    const candles = addendumCandles();
+    const result = addendumResult("H1", candles);
+    const ctx = buildStrategyContext(candles, "H1");
+    const zone = ctx.zones.find((z) => z.side === "demand" && z.proximal > 99 && z.proximal < 101);
+    expect(zone).toBeDefined();
+    const plan = buildAdaptiveTradePlan(result);
+    expect(plan.available).toBe(true);
+    expect(plan.direction).toBe("long");
+    expect(plan.entrySetup!.kind).toBe("supply_demand_zone");
+    expect(plan.entry).toBe(zone!.proximal);
+    expect(plan.stop).toBe(zone!.distal);
+    expect(plan.riskDistance).toBeCloseTo(zone!.proximal - zone!.distal, 10);
+    expect(plan.tp1).toBe(112);
+    expect(plan.rewardDistance).toBeCloseTo(112 - zone!.proximal, 10);
+    expect(plan.riskReward).toBeCloseTo((112 - zone!.proximal) / (zone!.proximal - zone!.distal), 10);
+    // No opposing structural object beyond TP1 in this fixture → no TP2 invented.
+    expect(plan.tp2).toBeUndefined();
+    expect(plan.limitations.some((l) => l.includes("no second structural target"))).toBe(true);
+  });
+
+  it("(G) with no valid history the plan falls to WAIT — never assumes a win rate", () => {
+    const plan = buildAdaptiveTradePlan(addendumResult("H1", addendumCandles()));
+    expect(plan.actionability).toBe("WAIT");
+    expect(plan.actionabilityReason).toContain("expectancy is undefined");
+  });
+
+  it("(H) a recorded negative expectancy forces NO_TRADE; a limited sample forces WAIT", () => {
+    const result = addendumResult("H1", addendumCandles());
+    const negative = buildAdaptiveTradePlan(result, {
+      expectancy: { status: "historically_estimated", sampleSize: 12, expectedR: -0.2, winRate: 0.4, lossRate: 0.5, breakevenRate: 0.1, averageR: -0.2, winRateUncertainty: { low: 0.1, high: 0.7, level: 0.95 } },
+    });
+    expect(negative.actionability).toBe("NO_TRADE");
+    expect(negative.actionabilityReason).toContain("negative");
+    const zero = buildAdaptiveTradePlan(result, {
+      expectancy: { status: "historically_estimated", sampleSize: 12, expectedR: 0, winRate: 0.5, lossRate: 0.5, breakevenRate: 0, averageR: 0, winRateUncertainty: { low: 0.2, high: 0.8, level: 0.95 } },
+    });
+    expect(zero.actionability).toBe("WAIT");
+    const limited = buildAdaptiveTradePlan(result, {
+      expectancy: { status: "limited_sample", sampleSize: 3, reason: "too few" },
+    });
+    expect(limited.actionability).toBe("WAIT");
+    expect(limited.actionabilityReason).toContain("too small");
+  });
+
+  it("(I) the user's minimum-R:R policy can force WAIT — the plan is never dressed up", () => {
+    const policy = normalizeRiskPolicy({ minAcceptableRR: 99 });
+    expect(policy.available).toBe(false); // no equity/risk → policy inactive for sizing
+    const plan = buildAdaptiveTradePlan(addendumResult("H1", addendumCandles()), {
+      policy: { available: true, riskAmount: 100, equity: 1000, minAcceptableRR: 99 } as never,
+      expectancy: { status: "historically_estimated", sampleSize: 12, expectedR: 0.5, winRate: 0.6, lossRate: 0.3, breakevenRate: 0.1, averageR: 0.5, winRateUncertainty: { low: 0.3, high: 0.8, level: 0.95 } },
+    });
+    expect(plan.actionability).toBe("WAIT");
+    expect(plan.actionabilityReason).toContain("below the configured minimum acceptable R:R");
+  });
+
+  it("(J) engine NO_TRADE is never upgraded and no plan is invented", () => {
+    const plan = buildAdaptiveTradePlan(addendumResult("H1", addendumCandles(), { withPlan: false }));
+    expect(plan.available).toBe(false);
+    expect(plan.actionability).toBe("NO_TRADE");
+    expect(plan.engineNoTradeReasons!.length).toBeGreaterThan(0);
+    expect(plan.entry).toBeUndefined();
+    expect(plan.stop).toBeUndefined();
+  });
+});
+
+describe("312.14 — probability statuses from recorded outcomes only", () => {
+  const records: HistoricalOutcomeRecord[] = [
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: 1.8 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: 2.2 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: 1.5 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: -1 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: 1.9 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: -1 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: 2.5 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: 1.2 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: -1 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: 0 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: 1.6 },
+    { instrument: "BTC/USDT", timeframe: "M5", direction: "long", rMultiple: -0.8 },
+  ];
+
+  it("(K) historically estimated: exact stats + Wilson uncertainty from 12 recorded outcomes", () => {
+    const a = assessHistoricalProbability(records, { instrument: "BTC/USDT", timeframe: "M5", direction: "long" });
+    expect(a.status).toBe("historically_estimated");
+    expect(a.sampleSize).toBe(12);
+    expect(a.winRate).toBeCloseTo(7 / 12, 10);
+    expect(a.lossRate).toBeCloseTo(4 / 12, 10);
+    expect(a.breakevenRate).toBeCloseTo(1 / 12, 10);
+    expect(a.expectedR).toBeCloseTo(8.9 / 12, 10);
+    expect(a.winRateUncertainty!.low).toBeGreaterThanOrEqual(0);
+    expect(a.winRateUncertainty!.high).toBeLessThanOrEqual(1);
+    expect(a.winRateUncertainty!.low).toBeLessThanOrEqual(a.winRate!);
+    expect(a.winRateUncertainty!.high).toBeGreaterThanOrEqual(a.winRate!);
+  });
+
+  it("(L) limited sample reports the count and NO rate figures", () => {
+    const a = assessHistoricalProbability(records.slice(0, 3), { instrument: "BTC/USDT", timeframe: "M5", direction: "long" });
+    expect(a.status).toBe("limited_sample");
+    expect(a.sampleSize).toBe(3);
+    expect(a.winRate).toBeUndefined();
+    expect(a.expectedR).toBeUndefined();
+    expect(a.reason).toContain("NOT a statistically reliable probability");
+  });
+
+  it("(M) unavailable: no records → no numbers; mismatched context → no numbers", () => {
+    const none = assessHistoricalProbability(undefined, { instrument: "BTC/USDT", timeframe: "M5" });
+    expect(none.status).toBe("unavailable");
+    expect(none.winRate).toBeUndefined();
+    expect(none.expectedR).toBeUndefined();
+    const mismatch = assessHistoricalProbability(records, { instrument: "SOL/USDT", timeframe: "M5", direction: "long" });
+    expect(mismatch.status).toBe("unavailable");
+    expect(mismatch.sampleSize).toBe(0);
+    // Indicator agreement can NEVER create a probability: the function accepts
+    // only recorded outcomes — a rich technical result still yields unavailable
+    // (asserted end-to-end in test W's engine run and the acceptance test T).
+  });
+});
+
+describe("312.15 — product position mechanics (risk first, never executed)", () => {
+  const cryptoSpec: SizingSpec = {
+    assetClass: "crypto", contractSize: 1, quoteCurrency: "USDT", quantityStep: 0.1, source: "user-provided",
+  };
+  const policy = normalizeRiskPolicy({ accountEquity: 1000, maxRiskPercent: 0.02 });
+  expect(policy.available).toBe(true);
+
+  it("(N) default policy → sizing is NEVER computed (nothing is risked silently)", () => {
+    const m = buildPositionMechanics({
+      instrumentType: "crypto", productType: "spot", direction: "long",
+      entry: 100, stop: 95,
+    });
+    expect(m.sizing.available).toBe(false);
+    expect(m.sizing.unavailableReason).toContain("no risk policy configured");
+    expect(m.executesOrders).toBe(false);
+  });
+
+  it("(O) crypto spot sizing is exact risk-first math", () => {
+    const m = buildPositionMechanics({
+      instrumentType: "crypto", productType: "spot", direction: "long",
+      entry: 100, stop: 95, policy, spec: cryptoSpec,
+    });
+    expect(m.sizing.available).toBe(true);
+    expect(m.sizing.riskAmount).toBe(20);
+    expect(m.spot!.quantity).toBe(4);
+    expect(m.spot!.notional).toBe(400);
+    expect(m.spot!.slDistance).toBe(5);
+    expect(m.spot!.expectedLossAtSL).toBe(20);
+  });
+
+  it("(P) futures: leverage never changes size; compatibility + liquidation only with REAL contract data", () => {
+    const base = { instrumentType: "crypto", direction: "long" as const, entry: 100, stop: 95, policy, spec: cryptoSpec };
+    const withoutMeta = buildPositionMechanics({ ...base, productType: "perpetual" });
+    const withSpot = buildPositionMechanics({ ...base, productType: "spot" });
+    expect(withoutMeta.sizing.quantity).toBe(withSpot.sizing.quantity); // size identical — leverage is not sizing
+    expect(withoutMeta.futures!.leverage!.available).toBe(false);
+    expect(withoutMeta.futures!.leverage!.mechanicsNote).toContain("does NOT change the loss at the stop");
+    const meta: ContractMeta = { source: "okx contract metadata", maintenanceMarginRate: 0.005, maxLeverage: 100 };
+    const withMeta = buildPositionMechanics({ ...base, productType: "perpetual", contractMeta: meta });
+    const lev = withMeta.futures!.leverage!;
+    expect(lev.available).toBe(true);
+    expect(lev.suggestedRange!.min).toBe(1); // 400 notional fits half of 1000 equity at 1x
+    expect(lev.liquidationCheck!.available).toBe(true);
+    expect(lev.liquidationCheck!.checkedLeverage).toBe(100); // checked at the top of the compatible range
+    expect(lev.liquidationCheck!.approximateLiquidationPrice).toBeCloseTo(100 * (1 - 1 / 100 + 0.005), 10);
+    expect(lev.liquidationCheck!.stopIsSafe).toBe(true);
+    expect(lev.fundingCaveat).toBeUndefined(); // no provider funding data → no caveat invented
+    const withFunding = buildPositionMechanics({
+      ...base, productType: "perpetual",
+      contractMeta: { ...meta, fundingRate: 0.0001, fundingObservedAt: 1_760_000_000_000 },
+    });
+    expect(withFunding.futures!.leverage!.fundingCaveat).toContain("0.0001");
+  });
+
+  it("(Q) forex pip/lot math is exact and auditable; lot nomenclature from the spec", () => {
+    const spec: SizingSpec = {
+      assetClass: "forex", contractSize: 100000, quoteCurrency: "USD", pipSize: 0.0001, quantityStep: 0.01, source: "user-provided",
+    };
+    const m = buildPositionMechanics({
+      instrumentType: "forex", direction: "long",
+      entry: 1.1, stop: 1.095, target: 1.12, policy: normalizeRiskPolicy({ accountEquity: 10000, accountCurrency: "USD", maxRiskPercent: 0.01 }),
+      spec,
+    });
+    expect(m.sizing.available).toBe(true);
+    expect(m.forex!.stopDistancePips).toBeCloseTo(50, 10);
+    expect(m.forex!.targetDistancePips).toBeCloseTo(200, 10);
+    expect(m.forex!.pipValuePerStandardLot).toBeCloseTo(10, 10);
+    expect(m.forex!.standardLots).toBeCloseTo(0.2, 10); // $100 / (50 pips × $10)
+    expect(m.forex!.miniLots).toBeCloseTo(2, 10);
+    expect(m.forex!.microLots).toBeCloseTo(20, 10);
+  });
+
+  it("(R) forex with missing conversion → exact LOT SIZE UNAVAILABLE — nothing invented", () => {
+    const spec: SizingSpec = {
+      assetClass: "forex", contractSize: 100000, quoteCurrency: "EUR", pipSize: 0.0001, quantityStep: 0.01, source: "user-provided",
+    };
+    const m = buildPositionMechanics({
+      instrumentType: "forex", direction: "long",
+      entry: 1.1, stop: 1.095, policy: normalizeRiskPolicy({ accountEquity: 10000, accountCurrency: "USD", maxRiskPercent: 0.01 }),
+      spec, // EUR quote, USD account, NO fx snapshots provided
+    });
+    expect(m.sizing.available).toBe(false);
+    expect(m.forex!.available).toBe(false);
+    expect(m.forex!.reason).toContain("LOT SIZE UNAVAILABLE — missing conversion/spec evidence");
+    expect(m.forex!.standardLots).toBeUndefined();
+  });
+
+  it("(S) stock shares: floor under the risk budget, risk per share explicit", () => {
+    const spec: SizingSpec = { assetClass: "stock", contractSize: 1, quoteCurrency: "USD", quantityStep: 1, source: "user-provided" };
+    const m = buildPositionMechanics({
+      instrumentType: "stock", direction: "long",
+      entry: 50, stop: 45, target: 60,
+      policy: normalizeRiskPolicy({ accountEquity: 5000, maxRiskPercent: 0.01 }),
+      spec,
+    });
+    expect(m.stock!.shares).toBe(10);
+    expect(m.stock!.riskPerShare).toBe(5);
+    expect(m.stock!.notional).toBe(500);
+    expect(m.sizing.riskAmount).toBe(50);
+  });
+
+  it("(T) commodity contracts use the ACTUAL multiplier; no spec → unavailable, never a universal lot", () => {
+    const spec: SizingSpec = { assetClass: "commodity", contractSize: 1000, quoteCurrency: "USD", quantityStep: 1, source: "user-provided" };
+    const m = buildPositionMechanics({
+      instrumentType: "commodity", direction: "long",
+      entry: 80, stop: 79.5, policy: normalizeRiskPolicy({ accountEquity: 100000, maxRiskPercent: 0.02 }),
+      spec,
+    });
+    expect(m.commodity!.mode).toBe("contracts");
+    expect(m.commodity!.contracts).toBe(4);
+    expect(m.commodity!.units).toBe(4000);
+    expect(m.commodity!.contractMultiplier).toBe(1000);
+    const noSpec = buildPositionMechanics({
+      instrumentType: "commodity", direction: "long",
+      entry: 80, stop: 79.5, policy: normalizeRiskPolicy({ accountEquity: 100000, maxRiskPercent: 0.02 }),
+    });
+    expect(noSpec.commodity!.available).toBe(false);
+    expect(noSpec.commodity!.reason).toContain("never assumed");
+  });
+});
+
+describe("312.16 — one coherent signal response + language/execution guards", () => {
+  it("(U) acceptance: BTC/USDT M5 yields CHART+WHY+PLAN+R:R+PROBABILITY+RISK+SIZING+INVALIDATION+LIMITS in one object", () => {
+    const candles = addendumCandles();
+    const result = addendumResult("M5", candles, { instrument: "BTC/USDT", instrumentType: "crypto", provider: "okx", providerInstrumentId: "BTC-USDT" });
+    const outcomes: HistoricalOutcomeRecord[] = Array.from({ length: 12 }, (_, i) => ({
+      instrument: "BTC/USDT", timeframe: "M5", direction: "long", style: "scalping",
+      rMultiple: i % 3 === 0 ? -1 : 1.5,
+    }));
+    const signal = buildSignalResponse({
+      result, candles, provider: "okx", providerInstrumentId: "BTC-USDT",
+      policy: { accountEquity: 1000, maxRiskPercent: 0.02, accountCurrency: "USDT", productType: "spot", tradingStyle: "scalping" },
+      spec: { assetClass: "crypto", contractSize: 1, quoteCurrency: "USDT", quantityStep: 0.1, source: "user-provided" },
+      historicalOutcomes: outcomes,
+    });
+    expect(signal.available).toBe(true);
+    expect(signal.instrument).toBe("BTC/USDT");
+    expect(signal.timeframe).toBe("M5");
+    expect(signal.provider).toBe("okx");
+    expect(signal.providerInstrumentId).toBe("BTC-USDT");
+    expect(signal.direction).toBe("long");
+    expect(signal.chart.available).toBe(true);
+    expect(signal.chart.meta!.timeframe).toBe("M5");
+    expect(signal.why.length).toBeGreaterThan(0);
+    expect(signal.plan.entry).toBeDefined();
+    expect(signal.plan.stop).toBeDefined();
+    expect(signal.plan.tp1).toBe(112);
+    expect(signal.plan.riskReward).toBeGreaterThan(0);
+    expect(signal.probability.status).toBe("historically_estimated");
+    expect(signal.probability.sampleSize).toBe(12);
+    expect(signal.position.sizing.available).toBe(true);
+    expect(signal.position.spot!.quantity).toBeGreaterThan(0);
+    expect(signal.risk.policyConfigured).toBe(true);
+    expect(signal.risk.riskAmount).toBe(20);
+    expect(signal.invalidation.condition.length).toBeGreaterThan(0);
+    expect(signal.limitations.some((l) => l.includes("input hash"))).toBe(true);
+    expect(signal.noGuaranteeNote).toContain("promises profit");
+    // scalping style policy survived into the probability match key
+    expect(signal.probability.matchedOn!.instrument).toBe("BTC/USDT");
+  });
+
+  it("(V) no guaranteed-profit language anywhere in the response, and unavailable probability carries no figures", () => {
+    const candles = addendumCandles();
+    const signal = buildSignalResponse({ result: addendumResult("H1", candles), candles });
+    const text = JSON.stringify(signal).toLowerCase();
+    for (const banned of BANNED_LANGUAGE) expect(text.includes(banned), banned).toBe(false);
+    expect(signal.probability.status).toBe("unavailable");
+    expect(signal.probability.winRate).toBeUndefined();
+    expect(signal.probability.expectedR).toBeUndefined();
+  });
+
+  it("(W) the plan/chart/position modules contain no order-execution path", () => {
+    for (const f of ["position.ts", "signal.ts", "trade-plan.ts", "chart.ts"]) {
+      const src = readFileSync(new URL(`./${f}`, import.meta.url), "utf-8");
+      expect(/placeOrder|createOrder|submitOrder|\.order\(|axios|XMLHttpRequest|fetch\(/.test(src), `${f} must not execute`).toBe(false);
+    }
+  });
+
+  it("(X) runAnalysis attaches the signal response with honest engine-context states", () => {
+    const base = assemble({
+      structure: "HH/HL", bos: "bullish",
+      support: BULL_LEVELS.support, resistance: BULL_LEVELS.resistance,
+      events: "Fed signals hawkish stance, rate hike",
+    } as never);
+    const result = runAnalysis({ ...base, structure: "HH/HL", bos: "bullish", support: BULL_LEVELS.support, resistance: BULL_LEVELS.resistance, events: "Fed signals hawkish stance, rate hike" } as never);
+    expect(result.signal).toBeDefined();
+    expect(result.signal!.available).toBe(true);
+    expect(result.signal!.timeframe).toBe(result.timeframe);
+    expect(result.signal!.chart.available).toBe(true);
+    expect(result.signal!.probability.status).toBe("unavailable");
+    expect(result.signal!.probability.reason).toContain("no recorded trade outcomes");
+    expect(result.signal!.risk.policyConfigured).toBe(false);
+    expect(result.signal!.risk.note).toContain("risks nothing by default");
   });
 });

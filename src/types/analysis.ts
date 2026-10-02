@@ -465,6 +465,13 @@ export interface AnalysisResult {
   // … → LIMITATIONS), built from this result's own fields; every layer
   // without evidence says so explicitly.
   reasoningChain?: import("@/lib/strategy/explanation").ReasoningChain;
+  /**
+   * Phase 312 addendum — the coherent signal response (chart + adaptive plan +
+   * position mechanics + probability status + invalidation + limitations),
+   * built from the SAME finished result and OHLCV snapshot. Read-only,
+   * non-scoring; absent when no candle evidence existed.
+   */
+  signal?: import("@/lib/strategy/signal").SignalResponse;
   // Phase 310 — the runtime's own per-provider acquisition provenance
   // (protectedAnalysis attaches these legs to every result since phase 288;
   // see LegDiagnostic). The type previously omitted the field the runtime

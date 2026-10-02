@@ -201,13 +201,24 @@ describe("Step 7: determinism for identical snapshots", () => {
         strategy: stripStrategyTimes(rest.technicalData.strategy) as typeof rest.technicalData.strategy,
       };
     }
+    // Phase 312 addendum: the signal response embeds the chart candles and
+    // their input hash — provenance of the SAME run-time candle snapshot, so
+    // it is normalized exactly like the strategy block above. Decision
+    // content (plan, probability, sizing, invalidation, limitations) is
+    // still compared byte-for-byte.
+    if (rest.signal) {
+      rest.signal = stripStrategyTimes(rest.signal, { hash: true }) as typeof rest.signal;
+    }
     if (rest.unifiedIntelligence) {
       rest.unifiedIntelligence = {
         ...rest.unifiedIntelligence,
         technical: { ...rest.unifiedIntelligence.technical, observedAt: undefined },
       };
     }
-    return JSON.stringify(rest, (_k, v) => (typeof v === "number" && !Number.isFinite(v) ? String(v) : v));
+    return JSON.stringify(rest, (_k, v) => (typeof v === "number" && !Number.isFinite(v) ? String(v) : v)).replace(
+      /input hash [0-9a-f]{8}/g,
+      "input hash <hash>", // sentence-embedded snapshot hash (run-time artifact)
+    );
   }
 
   // Phase 312: the strategy layer records provenance VERBATIM from candle
@@ -215,14 +226,15 @@ describe("Step 7: determinism for identical snapshots", () => {
   // fixture mints candles at Date.now() per run, so these provenance fields
   // differ between runs exactly like fetchTimestamp/observedAt above — they
   // are run-time artifacts, not decision content, and are normalized here.
-  const stripStrategyTimes = (v: unknown): unknown => {
-    if (Array.isArray(v)) return v.map(stripStrategyTimes);
+  const stripStrategyTimes = (v: unknown, opts = { hash: false }): unknown => {
+    if (Array.isArray(v)) return v.map((x) => stripStrategyTimes(x, opts));
     if (v && typeof v === "object") {
       const out: Record<string, unknown> = {};
       for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-        if (/(At|AtTime|timestamp|observedAt)$/i.test(k)) out[k] = "<t>";
+        if (/(At|AtTime|fromTime|toTime|timestamp|observedAt)$/i.test(k)) out[k] = "<t>";
+        else if (opts.hash && k === "inputHash") out[k] = "<hash>";
         else if (k === "id" || /Id$/.test(k)) out[k] = "<id>";
-        else out[k] = stripStrategyTimes(val);
+        else out[k] = stripStrategyTimes(val, opts);
       }
       return out;
     }
