@@ -160,6 +160,7 @@ jobs:
       SOURCE_REF: ${{ inputs.ref || github.ref }}
     steps:
       - name: Check out the selected ref
+        id: source
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
@@ -177,6 +178,15 @@ jobs:
         run: npm run development:deploy:guard -- --json --require-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH"
 
       - name: Type and build prerequisites (the same gate the production deploy runs)
+        env:
+          # Phase 309 — the artifact must record the COMMIT THAT WAS CHECKED
+          # OUT. This workflow is dispatched from main (where its file lives)
+          # with the deploy source as an INPUT, so the run event's GITHUB_SHA
+          # is MAIN's tip — not the checkout's. Stamping it silently would
+          # fail the verify step below (a wrong-commit artifact), and worse,
+          # a successful wrong stamp would misattribute the deploy.
+          XSTARZ_BUILD_COMMIT: ${{ steps.source.outputs.commit }}
+          XSTARZ_BUILD_REF: ${{ inputs.ref || github.ref }}
         run: npm run build
 
       - name: Refuse to proceed with a legacy, off-theme or wrong-commit frontend artifact
