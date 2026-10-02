@@ -50,6 +50,7 @@ export function classifyInstrumentEligibility(options: {
 export function rankByAnalysisEligibility<T extends Record<string, unknown>>(
   candidates: T[],
   options: { provider: string; assetClass: string },
+  observations?: { macroGapCurrencies?: Set<string> | Iterable<string> },
 ): Array<T & { eligibility: InstrumentEligibility }>;
 
 export type ExactInstrumentSpec = {

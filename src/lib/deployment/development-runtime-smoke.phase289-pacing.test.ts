@@ -643,7 +643,10 @@ describe("phase 289 quota-audit — pacing defers, the probe still decides WHO",
   it("wires the pacer into the run without touching selection, order or the circuit", () => {
     expect(SMOKE).toContain("const pacing = resolvePacingConfig({ argv, env: process.env });");
     expect(SMOKE).toContain("const pacer = createTwelveDataQuotaPacer(pacing);");
-    expect(SMOKE).toContain('pacer.charge(discoveryCreditSpend(found), "discovery");');
+    // Phase 303: the walk now RESERVES its worst-case spend before it issues
+    // and charges only the delta above the reservation afterwards.
+    expect(SMOKE).toContain("cost: TWELVE_DATA_DISCOVERY_CREDITS");
+    expect(SMOKE).toContain('pacer.charge(actualDiscoverySpend - TWELVE_DATA_DISCOVERY_CREDITS, "discovery (delta above reservation)");');
     expect(SMOKE).toContain("await reserveAnalysisSlot(pacer, {");
     expect(SMOKE).toContain("candidateLimit: probeLimit,\n      pacer,");
     expect(SMOKE).toContain("pacing: pacer.snapshot(),");

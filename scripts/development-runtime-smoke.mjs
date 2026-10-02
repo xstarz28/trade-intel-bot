@@ -42,6 +42,12 @@
  *     [--max-attempts 2] [--allow-host <host>] [--quiet] \
  *     [--exact provider:assetClass:nativeId,...]   (phase 302 exact live-verification)
  *
+ * Phase 303 — deterministic provider budget orchestration: exact verification
+ * runs FIRST on its own fresh Twelve Data minute-windows; the catalog walk and
+ * every generic analysis attempt reserve their worst-case credits BEFORE they
+ * issue (see scripts/lib/provider-budget.mjs); a real 429 is classified and
+ * reported, never retried.
+ *
  * Exit codes:
  *   0  no domain FAILED (PASS and UNAVAILABLE are both non-failures)
  *   1  at least one domain FAILED
@@ -56,6 +62,12 @@ import {
   parseExactInstrumentSpecs,
   rankByAnalysisEligibility,
 } from "./lib/analysis-eligibility.mjs";
+import {
+  PROVIDER_BLOCK_CLASSES,
+  TWELVE_DATA_DISCOVERY_CREDITS,
+  buildProviderBudgetPlan,
+  classifyProviderBlock,
+} from "./lib/provider-budget.mjs";
 import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
@@ -327,7 +339,22 @@ export const DEFAULT_MAX_ATTEMPTS = 3;
 /** Hard ceiling on candidates per domain — the bounded policy, never exceeded. */
 export const MAX_CANDIDATE_ATTEMPTS = 3;
 
-export function selectCandidates(domainSpec, discovery, maxAttempts, ceiling = MAX_CANDIDATE_ATTEMPTS) {
+/**
+ * Phase 303 — how deep the macro-learning PICKS may reach into the ranked
+ * discovery pool. This is NOT the attempt budget: requests stay bounded by
+ * `maxAttempts`. It only lets a learned macro gap (a mapped pair the calendar
+ * provider held no released measurement for) move the next pick to a pair
+ * whose sides carry no such observation, without re-requesting anything.
+ */
+export const MACRO_LEARNING_QUEUE_CEILING = 12;
+
+/** Stable identity of a candidate within one domain's learning loop. */
+function candidateKey(domainSpec, candidate) {
+  const id = domainSpec.discovery === "okx" ? candidate?.instId : candidate?.providerInstrumentId;
+  return `${candidate?.provider ?? domainSpec.discovery}:${String(id ?? "")}`;
+}
+
+export function selectCandidates(domainSpec, discovery, maxAttempts, ceiling = MAX_CANDIDATE_ATTEMPTS, observations = undefined) {
   if (!discovery || discovery.success !== true) return [];
   const rows = Array.isArray(discovery.instruments) ? discovery.instruments : [];
   const forClass =
@@ -366,10 +393,15 @@ export function selectCandidates(domainSpec, discovery, maxAttempts, ceiling = M
   // can, within the SAME provider order. Discovery truth is untouched — every
   // candidate stays listed with its named reasons, and the bounded budget
   // below simply stops being spent on candidates that were never analysable.
-  const ranked = rankByAnalysisEligibility(ordered, {
-    provider: domainSpec.discovery,
-    assetClass: domainSpec.assetClass,
-  });
+  const ranked = rankByAnalysisEligibility(
+    ordered,
+    {
+      provider: domainSpec.discovery,
+      assetClass: domainSpec.assetClass,
+    },
+    // Phase 303 — within-run macro-measurement learning (see the ranker).
+    observations,
+  );
   return ranked.slice(0, Math.max(1, Math.min(maxAttempts, ceiling)));
 }
 
@@ -2435,6 +2467,20 @@ async function run() {
 
   const domains = [];
 
+  // Phase 303 — deterministic provider budget plan: computed BEFORE anything is
+  // issued, reported verbatim in the run, and driven by the reservations below
+  // (exact buckets first, then the catalog walk, then per-domain worst cases).
+  const providerBudgetPlan = buildProviderBudgetPlan({
+    exactSpecs: exactParsed.ok ? exactParsed.specs : [],
+    domainLabels: specs.filter((s) => s.discovery === "twelve-data").map((s) => s.label),
+    maxAttempts,
+  });
+
+  // Phase 303 — within-run macro-measurement learning (workstream C): sides of
+  // attempted pairs whose macro leg reported no released measurement. Lives for
+  // THIS RUN only; re-ranks later picks; never persisted, never a whitelist.
+  const observedMacroGaps = new Set();
+
   // One discovery per provider per run: the reference catalogs are shared by
   // three domains and re-asking would be a repeated request for nothing.
   const okxDiscovery = specs.some((s) => s.discovery === "okx") ? await discoverOkx(transport) : null;
@@ -2457,6 +2503,131 @@ async function run() {
       before: entitlement.value ?? null,
     };
   }
+
+  // ── Phase 302/303 — EXACT live verification (runs FIRST, on reserved windows) ──
+  // One request per declared identity, through the SAME protected analysis
+  // action, the SAME anonymous-session discipline and the SAME honest verdict
+  // classifier as the generic domains. CoinGlass/order-book/calendar absences
+  // are reported through the runtime's own failing-leg reasons — OPTIONAL
+  // dependencies degrade honestly; a REQUIRED dependency that cannot be
+  // produced is a genuine blocker, never faked.
+  for (const exact of exactParsed.ok ? exactParsed.specs : []) {
+    const label = `EXACT ${exact.label}`;
+    const record = {
+      domain: `exact-${exact.label}`,
+      label,
+      provider: exact.provider,
+      providerInstrumentId: exact.providerInstrumentId,
+      assetClass: exact.assetClass,
+      attempts: [],
+    };
+    const eligibility = classifyInstrumentEligibility({
+      provider: exact.provider,
+      providerInstrumentId: exact.providerInstrumentId,
+      assetClass: exact.assetClass,
+    });
+    record.eligibility = { tier: eligibility.tier, reasons: eligibility.reasons, degradedLegs: eligibility.degradedLegs };
+    const session = await sessionFor(label);
+    if (!session.ok) {
+      record.headline = "UNAVAILABLE";
+      record.reason = `no anonymous session: ${sanitize(session.appError ?? "sign-in failed")}`;
+      record.attempts.push({ step: "session", outcome: "unavailable", reason: record.reason });
+      annotate("warning", `${label} UNAVAILABLE`, record.reason);
+      domains.push(record);
+      continue;
+    }
+    const domainSpec = { domain: `exact-${exact.label}`, label, discovery: exact.provider, assetClass: exact.assetClass };
+    const candidate = {
+      provider: exact.provider,
+      providerInstrumentId: exact.providerInstrumentId,
+      ...(exact.provider === "okx" ? { instId: exact.providerInstrumentId } : {}),
+    };
+    // Phase 303 — the exact identity RESERVES its full worst-case window before
+    // it issues (run 36954328849: the unreserved exact analysis shared the
+    // generic domains' minute and drew the provider's 11-vs-8 429). The exact
+    // block also runs FIRST in the run, so no generic spend can precede it.
+    if (exact.provider === "twelve-data") {
+      const gate = await reserveAnalysisSlot(pacer, { cost: TWELVE_DATA_ANALYSIS_MAX_CREDITS, label });
+      if (gate.exhausted) {
+        record.headline = "UNAVAILABLE";
+        record.reason = gate.reason;
+        record.block = "RATE_LIMITED";
+        record.attempts.push({ step: "pacing", outcome: "skipped", reason: gate.reason });
+        annotate("warning", `${label} UNAVAILABLE`, `${exact.provider} · ${exact.providerInstrumentId} · observedAt=none · ${gate.reason} · block=RATE_LIMITED`);
+        domains.push(record);
+        continue;
+      }
+    }
+    const request = buildAnalysisInput(domainSpec, candidate);
+    const response = await transport.action("protectedAnalysis:runProtectedAnalysis", request, session.token);
+    const verdict = classifyDomain({
+      response: response.ok ? response.value : null,
+      transportError: response.ok ? null : (response.appError ?? response.transportError ?? "request failed"),
+    });
+    record.headline = verdict.headline;
+    record.reason = verdict.reason;
+    record.attempts.push({
+      step: "analysis",
+      function: "protectedAnalysis:runProtectedAnalysis",
+      instrument: exact.providerInstrumentId,
+      provider: exact.provider,
+      httpStatus: response.httpStatus,
+      verdict: verdict.headline,
+      reason: verdict.reason,
+    });
+    if (verdict.evidence) {
+      const e = verdict.evidence;
+      record.observedAt = e.market.observedAt;
+      record.failingLegs = (Array.isArray(e.diagnostics) ? e.diagnostics : [])
+        .filter((d) => d.acquired !== true && typeof d.reason === "string" && d.reason.length > 0)
+        .map((d) => `${d.provider}/${d.dataset ?? "?"}: ${d.reason}`);
+      record.legs = {
+        market: e.market.present
+          ? `real (${e.market.source ?? "provider"}) price=${e.market.price} observedAt=${e.market.observedAt}`
+          : "none returned",
+        technical: e.technical.available
+          ? `available (${e.technical.bias ?? "?"} ${e.technical.confidence ?? "?"})`
+          : `unavailable (${e.technical.summary ?? "no technical evidence"})`,
+        fundamental: e.fundamental.available
+          ? `available (${e.fundamental.domain ?? "?"} ${e.fundamental.state ?? "?"} via ${e.fundamental.provider ?? "?"})`
+          : `unavailable (state=${e.fundamental.state ?? "none"}, providers=${e.fundamental.evidenceProviders.join(",") || "none"})`,
+        unified: e.unified.present
+          ? `available (state=${e.unified.state ?? "?"}, agreement=${e.unified.agreement ?? "?"}, actionable=${e.unified.actionable})`
+          : "unavailable",
+      };
+      record.evidence = {
+        market: e.market,
+        technical: { available: e.technical.available, bias: e.technical.bias, confidence: e.technical.confidence },
+        fundamental: e.fundamental,
+        unified: e.unified,
+        diagnostics: e.diagnostics,
+      };
+    } else {
+      record.legs = { market: "not delivered", technical: "not delivered", fundamental: "not delivered", unified: "not delivered" };
+    }
+    circuit.classify(exact.provider, response.appError ?? "", record.evidence?.diagnostics ?? "");
+    // Phase 303 — name the provider-block class explicitly (workstream B.4):
+    // RATE_LIMITED is a minute-window budget fact, PLAN_RESTRICTED a plan-tier
+    // fact, NO_DATA an absence — never blurred, never retried on 429.
+    const marketBlockLeg = (record.failingLegs ?? []).find(
+      (leg) => leg.startsWith("market-data") || leg.startsWith(`${exact.provider}/`),
+    );
+    const marketBlock = classifyProviderBlock(
+      marketBlockLeg ?? (verdict.headline === "UNAVAILABLE" || verdict.headline === "FAIL" ? record.reason : ""),
+    );
+    record.block = verdict.headline === "PASS" ? null : (marketBlock?.class ?? null);
+    // The annotations API returns warnings/errors — the harness's established
+    // informational-warning convention carries every verdict to the run log.
+    annotate(
+      verdict.headline === "FAIL" ? "error" : "warning",
+      `${label} ${verdict.headline}`,
+      `${exact.provider} · ${exact.providerInstrumentId} · observedAt=${record.observedAt ?? "none"} · ${record.reason ?? ""}${
+        record.failingLegs?.length ? ` · failing legs: ${record.failingLegs.join(" | ")}` : ""
+      } · eligibility=${eligibility.tier}${record.block ? ` · block=${record.block}` : ""}`,
+    );
+    domains.push(record);
+  }
+
 
   for (const spec of specs) {
     const record = {
@@ -2498,16 +2669,33 @@ async function run() {
       discovery = okxDiscovery;
     } else {
       if (twelveDiscovery === null && twelveDiscoveryError === null) {
+        // Phase 303 — the walk RESERVES its worst-case spend BEFORE it issues
+        // (run 36954328849: unreserved catalog credits shared a minute with an
+        // analysis fan-out and produced the provider's 11-vs-8 429). The
+        // post-hoc charge then bills only the delta above the reservation, so
+        // the ledger stays conservative without double-counting.
+        const discoveryGate = await reserveAnalysisSlot(pacer, {
+          cost: TWELVE_DATA_DISCOVERY_CREDITS,
+          label: "discovery",
+        });
+        if (discoveryGate.exhausted) {
+          twelveDiscovery = { success: false, instruments: [], error: discoveryGate.reason };
+          twelveDiscoveryError = discoveryGate.reason;
+        } else {
         const found = await discoverTwelveData(transport, session.token);
         twelveDiscovery = found;
         // The catalog walk is the run's FIRST Twelve Data spend and the only part
         // of it the provider itself reports a count for (`pagesFetched` plus every
         // catalog that was attempted without an answered page). Charged here so
         // the domain loop and the probe see the minute as it really is.
-        pacer.charge(discoveryCreditSpend(found), "discovery");
-        if (found.success !== true) {
-          twelveDiscoveryError = found.error ?? "discovery returned no instruments";
-          circuit.classify("twelve-data", twelveDiscoveryError);
+        const actualDiscoverySpend = discoveryCreditSpend(found);
+        if (actualDiscoverySpend > TWELVE_DATA_DISCOVERY_CREDITS) {
+          pacer.charge(actualDiscoverySpend - TWELVE_DATA_DISCOVERY_CREDITS, "discovery (delta above reservation)");
+        }
+        }
+        if (twelveDiscovery.success !== true && twelveDiscoveryError === null && twelveDiscovery.error) {
+          twelveDiscoveryError = twelveDiscovery.error;
+          if (!discoveryGate.exhausted) circuit.classify("twelve-data", twelveDiscoveryError);
         }
       }
       discovery = twelveDiscovery;
@@ -2589,9 +2777,26 @@ async function run() {
       continue;
     }
 
-    // ── one request per candidate, bounded, no repeats after a rate limit
+    // ── one request per candidate, bounded, no repeats after a rate limit.
+    //
+    // Phase 303 — the pick is RE-DERIVED before every attempt from the SAME
+    // discovery truth plus this run's own macro-measurement observations
+    // (workstream C): mapping is provider capability, a RELEASED measurement is
+    // provider DATA — observable only by attempting. Once a pair's macro leg
+    // reports no released measurement for a side currency, later picks prefer
+    // pairs whose sides carry no such observation, within the SAME bounded
+    // attempt budget, pacing and circuit discipline. Nothing is whitelisted:
+    // any discovered pair can still be picked first when nothing was observed.
     let domainVerdict = null;
-    for (const [index, candidate] of candidates.entries()) {
+    const learningQueueCeiling = Math.max(maxAttempts, MACRO_LEARNING_QUEUE_CEILING);
+    const triedInstruments = new Set();
+    for (let index = 0; triedInstruments.size < maxAttempts; index += 1) {
+      const queue = selectCandidates(spec, discovery, learningQueueCeiling, learningQueueCeiling, {
+        macroGapCurrencies: observedMacroGaps,
+      });
+      const candidate = queue.find((row) => !triedInstruments.has(candidateKey(spec, row)));
+      if (!candidate) break;
+      triedInstruments.add(candidateKey(spec, candidate));
       const provider = candidate.provider ?? spec.discovery;
       const nativeId = spec.discovery === "okx" ? candidate.instId : candidate.providerInstrumentId;
       const tripped = circuit.isTripped(provider);
@@ -2636,6 +2841,20 @@ async function run() {
         transportError: response.ok ? null : (response.appError ?? response.transportError ?? "request failed"),
       });
 
+      // Phase 303 — observe this attempt's macro-measurement reality (if any):
+      // the runtime's own sentence names the sides it could not measure.
+      let macroGapSides = [];
+      if (
+        spec.assetClass === "forex" &&
+        typeof verdict.reason === "string" &&
+        /no released (macroeconomic|policy rates|inflation) measurement/i.test(verdict.reason)
+      ) {
+        macroGapSides = String(nativeId)
+          .split("/")
+          .filter((side) => /^[A-Z]{3}$/.test(side) && verdict.reason.includes(side));
+        for (const side of macroGapSides) observedMacroGaps.add(side);
+      }
+
       domainVerdict = mostSevereVerdict(domainVerdict, verdict);
 
       record.provider = provider;
@@ -2651,6 +2870,7 @@ async function run() {
         verdict: verdict.headline,
         elapsedMs,
         reason: verdict.reason,
+        ...(macroGapSides.length > 0 ? { macroGapObserved: macroGapSides } : {}),
       });
 
       if (spec.discovery !== "okx") {
@@ -2738,7 +2958,13 @@ async function run() {
       const evidenceComplete =
         Boolean(verdict.evidence?.market?.observedAt) &&
         verdict.evidence?.technical?.available === true &&
-        verdict.evidence?.unified?.present === true;
+        verdict.evidence?.unified?.present === true &&
+        // Phase 303 — for forex the domain-defining leg is the macro
+        // fundamental: market+technical+unified alone is exactly the AUD/CAD
+        // outcome run 36954328849 reported. A pair with no released
+        // measurement is not a complete forex evidence set, so the next
+        // learned-rank candidate is tried within the same bounded budget.
+        (spec.assetClass !== "forex" || verdict.evidence?.fundamental?.present === true);
       if (verdict.headline === "PASS" || evidenceComplete) break;
     }
 
@@ -2913,104 +3139,6 @@ async function run() {
 
   const checkout = resolveCheckoutSha();
 
-  // ── Phase 302 — EXACT live verification (Workstreams B/C/D) ──────────────
-  // One request per declared identity, through the SAME protected analysis
-  // action, the SAME anonymous-session discipline and the SAME honest verdict
-  // classifier as the generic domains. CoinGlass/order-book/calendar absences
-  // are reported through the runtime's own failing-leg reasons — OPTIONAL
-  // dependencies degrade honestly; a REQUIRED dependency that cannot be
-  // produced is a genuine blocker, never faked.
-  for (const exact of exactParsed.ok ? exactParsed.specs : []) {
-    const label = `EXACT ${exact.label}`;
-    const record = {
-      domain: `exact-${exact.label}`,
-      label,
-      provider: exact.provider,
-      providerInstrumentId: exact.providerInstrumentId,
-      assetClass: exact.assetClass,
-      attempts: [],
-    };
-    const eligibility = classifyInstrumentEligibility({
-      provider: exact.provider,
-      providerInstrumentId: exact.providerInstrumentId,
-      assetClass: exact.assetClass,
-    });
-    record.eligibility = { tier: eligibility.tier, reasons: eligibility.reasons, degradedLegs: eligibility.degradedLegs };
-    const session = await sessionFor(label);
-    if (!session.ok) {
-      record.headline = "UNAVAILABLE";
-      record.reason = `no anonymous session: ${sanitize(session.appError ?? "sign-in failed")}`;
-      record.attempts.push({ step: "session", outcome: "unavailable", reason: record.reason });
-      annotate("warning", `${label} UNAVAILABLE`, record.reason);
-      domains.push(record);
-      continue;
-    }
-    const domainSpec = { domain: `exact-${exact.label}`, label, discovery: exact.provider, assetClass: exact.assetClass };
-    const candidate = {
-      provider: exact.provider,
-      providerInstrumentId: exact.providerInstrumentId,
-      ...(exact.provider === "okx" ? { instId: exact.providerInstrumentId } : {}),
-    };
-    const request = buildAnalysisInput(domainSpec, candidate);
-    const response = await transport.action("protectedAnalysis:runProtectedAnalysis", request, session.token);
-    const verdict = classifyDomain({
-      response: response.ok ? response.value : null,
-      transportError: response.ok ? null : (response.appError ?? response.transportError ?? "request failed"),
-    });
-    record.headline = verdict.headline;
-    record.reason = verdict.reason;
-    record.attempts.push({
-      step: "analysis",
-      function: "protectedAnalysis:runProtectedAnalysis",
-      instrument: exact.providerInstrumentId,
-      provider: exact.provider,
-      httpStatus: response.httpStatus,
-      verdict: verdict.headline,
-      reason: verdict.reason,
-    });
-    if (verdict.evidence) {
-      const e = verdict.evidence;
-      record.observedAt = e.market.observedAt;
-      record.failingLegs = (Array.isArray(e.diagnostics) ? e.diagnostics : [])
-        .filter((d) => d.acquired !== true && typeof d.reason === "string" && d.reason.length > 0)
-        .map((d) => `${d.provider}/${d.dataset ?? "?"}: ${d.reason}`);
-      record.legs = {
-        market: e.market.present
-          ? `real (${e.market.source ?? "provider"}) price=${e.market.price} observedAt=${e.market.observedAt}`
-          : "none returned",
-        technical: e.technical.available
-          ? `available (${e.technical.bias ?? "?"} ${e.technical.confidence ?? "?"})`
-          : `unavailable (${e.technical.summary ?? "no technical evidence"})`,
-        fundamental: e.fundamental.available
-          ? `available (${e.fundamental.domain ?? "?"} ${e.fundamental.state ?? "?"} via ${e.fundamental.provider ?? "?"})`
-          : `unavailable (state=${e.fundamental.state ?? "none"}, providers=${e.fundamental.evidenceProviders.join(",") || "none"})`,
-        unified: e.unified.present
-          ? `available (state=${e.unified.state ?? "?"}, agreement=${e.unified.agreement ?? "?"}, actionable=${e.unified.actionable})`
-          : "unavailable",
-      };
-      record.evidence = {
-        market: e.market,
-        technical: { available: e.technical.available, bias: e.technical.bias, confidence: e.technical.confidence },
-        fundamental: e.fundamental,
-        unified: e.unified,
-        diagnostics: e.diagnostics,
-      };
-    } else {
-      record.legs = { market: "not delivered", technical: "not delivered", fundamental: "not delivered", unified: "not delivered" };
-    }
-    circuit.classify(exact.provider, response.appError ?? "", record.evidence?.diagnostics ?? []);
-    // The annotations API returns warnings/errors — the harness's established
-    // informational-warning convention carries every verdict to the run log.
-    annotate(
-      verdict.headline === "FAIL" ? "error" : "warning",
-      `${label} ${verdict.headline}`,
-      `${exact.provider} · ${exact.providerInstrumentId} · observedAt=${record.observedAt ?? "none"} · ${record.reason ?? ""}${
-        record.failingLegs?.length ? ` · failing legs: ${record.failingLegs.join(" | ")}` : ""
-      } · eligibility=${eligibility.tier}`,
-    );
-    domains.push(record);
-  }
-
   const report = {
     schema: "xstarz.development-runtime-smoke/1",
     generatedAt: new Date().toISOString(),
@@ -3077,6 +3205,11 @@ async function run() {
     // reported it (verdict, per-catalog completeness/pages/kept, totals).
     discovery: discoveryReport,
     energyGateProbeScanLimit: probeLimit,
+    // Phase 303 — the deterministic provider budget plan (computed before any
+    // request: exact buckets, then discovery, then domain worst cases) and the
+    // macro-measurement gaps this run observed and learned from.
+    providerBudgetPlan,
+    learnedMacroGaps: [...observedMacroGaps],
     domains,
     exactInstruments: exactParsed.ok
       ? exactParsed.specs.map((spec) => ({ provider: spec.provider, assetClass: spec.assetClass, providerInstrumentId: spec.providerInstrumentId }))
@@ -3114,7 +3247,9 @@ async function run() {
         : ""
     },phase288CodePaths:${phase288CodePathsObserved ? "observed" : "not-observed"},eiaLeg:${
       energyGateProbe?.eiaLegState ?? "not-observed"
-    } · pacing=${pacingSummary(pacer.snapshot())}`,
+    } · pacing=${pacingSummary(pacer.snapshot())} · budget=windows~${
+      providerBudgetPlan.estimatedWindows
+    },order:${providerBudgetPlan.order.join(">")}`,
   );
 
   if (report.transport.calls === 0) {

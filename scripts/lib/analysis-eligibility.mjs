@@ -71,16 +71,25 @@ export const CALENDAR_MAPPED_CURRENCIES = new Set([
 ]);
 
 /**
- * Twelve Data plan restriction, observed live (run 36951359320) on the
- * tokenized-gold family: `[404] This symbol is available starting with the
- * Grow or Venture plan.` The provider's own catalog ADVERTISES these rows, but
- * the deployment's plan cannot read their candles — the primary market leg is
- * impossible, so the family is RESTRICTED for analysis. Prefix match keeps the
- * rule universal across every quote currency (GAU/EUR, GAU/GBP, GAU/IDR, ...).
+ * Twelve Data plan restriction, observed live on the metals the deployment's
+ * plan cannot read candles for:
+ *
+ *   run 36951359320, GAU/EUR: `[404] This symbol is available starting with the
+ *   Grow or Venture plan.`
+ *   run 36954328849, XAG/AUD: the SAME provider sentence — the plan-restricted
+ *   family is NOT the tokenized-gold prefix alone; silver spot (XAG/*) and its
+ *   micro-lot variants (XAGg/*) are equally beyond the deployment's plan tier.
+ *
+ * The provider's own catalog ADVERTISES these rows, but the primary market leg
+ * is impossible on the current plan, so the families are RESTRICTED for
+ * analysis. Prefix match keeps the rule universal across every quote currency
+ * (GAU/EUR, GAU/GBP, XAG/AUD, XAGg/TRY, ...) — this is provider-capability
+ * knowledge from the provider's own sentences, NOT a whitelist: every other
+ * row stays discoverable, rankable and requestable exactly as before.
  */
-export const TWELVE_DATA_PLAN_RESTRICTED_PREFIXES = ["GAU/"];
+export const TWELVE_DATA_PLAN_RESTRICTED_PREFIXES = ["GAU/", "XAG/", "XAGg/"];
 export const TWELVE_DATA_PLAN_RESTRICTION_REASON =
-  "Twelve Data plan restriction (observed live, run 36951359320): [404] This symbol is available starting with the Grow or Venture plan — the OHLCV leg cannot be produced on the deployment's current plan, so no technical or unified claim is possible.";
+  "Twelve Data plan restriction (observed live, runs 36951359320 and 36954328849: GAU/EUR and XAG/AUD): [404] This symbol is available starting with the Grow or Venture plan — the OHLCV leg cannot be produced on the deployment's current plan, so no technical or unified claim is possible.";
 
 /**
  * Alpha Vantage ticker grammar, verbatim from the provider's own rejection
@@ -204,7 +213,7 @@ export function classifyInstrumentEligibility({ provider, providerInstrumentId, 
  * and requestable within the caller's bounded attempt budget — it just cannot
  * silently outrank an instrument the provider can actually analyse.
  */
-export function rankByAnalysisEligibility(candidates, { provider, assetClass }) {
+export function rankByAnalysisEligibility(candidates, { provider, assetClass }, observations = {}) {
   const nativeIdOf = (candidate) =>
     typeof candidate?.providerInstrumentId === "string" && candidate.providerInstrumentId.length > 0
       ? candidate.providerInstrumentId
@@ -219,6 +228,34 @@ export function rankByAnalysisEligibility(candidates, { provider, assetClass }) 
   });
   // Array.prototype.sort is stable (ES2019+) — equal tiers keep provider order.
   classified.sort((a, b) => TIER_RANK[a.eligibility.tier] - TIER_RANK[b.eligibility.tier]);
+  // Phase 303 — WITHIN-RUN MACRO MEASUREMENT LEARNING (workstream C). A
+  // calendar-MAPPED pair can still have no RELEASED measurement this run (live
+  // evidence, run 36954328849: AUD/CAD is mapped on both sides yet the macro
+  // leg reported `No released macroeconomic measurement was supplied for AUD or
+  // CAD`). Mapping is provider capability; released measurement is provider
+  // DATA, observable only by attempting. Once a run OBSERVES a side currency
+  // without measurements, later picks within the SAME tier prefer pairs whose
+  // sides have no such observation — deterministic, dynamic (any discovered
+  // pair can still be first if nothing was observed), and NOT a whitelist: the
+  // observed pair stays eligible and listed, and the observation lives only for
+  // this run.
+  const gaps = observations?.macroGapCurrencies instanceof Set
+    ? observations.macroGapCurrencies
+    : new Set(observations?.macroGapCurrencies ?? []);
+  if (gaps.size > 0) {
+    const gapFree = (entry) => {
+      const id = nativeIdOf(entry.candidate);
+      return pairSides(id).every((side) => !gaps.has(side));
+    };
+    const withIndex = classified.map((entry, i) => ({ entry, i }));
+    withIndex.sort(
+      (a, b) =>
+        TIER_RANK[a.entry.eligibility.tier] - TIER_RANK[b.entry.eligibility.tier] ||
+        Number(gapFree(b.entry)) - Number(gapFree(a.entry)) ||
+        a.i - b.i,
+    );
+    return withIndex.map(({ entry }) => ({ ...entry.candidate, eligibility: entry.eligibility }));
+  }
   return classified.map(({ candidate, eligibility }) => ({ ...candidate, eligibility }));
 }
 

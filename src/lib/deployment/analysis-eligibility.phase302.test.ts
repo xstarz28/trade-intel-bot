@@ -113,12 +113,14 @@ describe("phase302 · discovery order survives; tiers reorder it", () => {
 
   it("the bounded attempt window spends itself on candidates the provider can analyse", () => {
     const ranked = rankByAnalysisEligibility(commodityRows, { provider: "twelve-data", assetClass: "commodity" });
-    // provider order preserved WITHIN tiers: URALS before WTI before XAG (all eligible)
-    expect(ranked.map((r) => r.providerInstrumentId).slice(0, 3)).toEqual(["URALS/USD", "WTI/USD", "XAG/AUD"]);
-    // the restricted family sinks, still present (never dropped from discovery);
+    // provider order preserved WITHIN tiers: URALS before WTI (all eligible).
+    // Phase 303: XAG/AUD joined the RESTRICTED families — live evidence run
+    // 36954328849 gave silver the SAME plan sentence as the tokenized gold.
+    expect(ranked.map((r) => r.providerInstrumentId).slice(0, 3)).toEqual(["URALS/USD", "WTI/USD", "GAU/EUR"]);
+    // the restricted families sink, still present (never dropped from discovery);
     // within the restricted tier the provider's own order is preserved
     const last = ranked[ranked.length - 1];
-    expect(last.providerInstrumentId).toBe("GAU/IDR");
+    expect(last.providerInstrumentId).toBe("XAG/AUD");
     expect(last.eligibility.tier).toBe(ELIGIBILITY_TIERS.RESTRICTED);
     expect(ranked).toHaveLength(commodityRows.length);
   });
@@ -128,7 +130,7 @@ describe("phase302 · discovery order survives; tiers reorder it", () => {
     expect(candidates.map((c: { providerInstrumentId?: string }) => c.providerInstrumentId)).toEqual([
       "URALS/USD",
       "WTI/USD",
-      "XAG/AUD",
+      "GAU/EUR",
     ]);
     expect(candidates[0]).toHaveProperty("eligibility");
   });
@@ -186,8 +188,9 @@ describe("phase302 · the smoke's attempt loop and exact mode are contract-locke
   });
 
   it("selection runs the eligibility ranking BEFORE the attempt budget is bounded", () => {
-    expect(smoke).toContain("rankByAnalysisEligibility(ordered, {");
-    const rankAt = smoke.indexOf("rankByAnalysisEligibility(ordered, {");
+    // Phase 303: the ranker call gained the learning-observations argument.
+    expect(smoke).toContain("const ranked = rankByAnalysisEligibility(");
+    const rankAt = smoke.indexOf("const ranked = rankByAnalysisEligibility(");
     const sliceAt = smoke.indexOf("return ranked.slice(0, Math.max(1, Math.min(maxAttempts, ceiling)));");
     expect(rankAt).toBeGreaterThan(-1);
     expect(sliceAt).toBeGreaterThan(rankAt);
