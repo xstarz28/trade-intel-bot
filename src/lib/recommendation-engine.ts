@@ -17,6 +17,18 @@
 import type { AssetClass } from "./data/universal/types";
 import { getAllInstruments } from "./data/universal/instruments";
 import { assessEvidenceConfidence } from "./market-radar/evidence-confidence";
+import {
+  buildRecommendationExplanation,
+  availabilityClassOf,
+  describeProviderState,
+  forexAcquisitionLines,
+  MIN_TECHNICAL_OBSERVATIONS,
+  type AvailabilityClass,
+  type ForexPipelineFact,
+  type ProviderAvailabilityState,
+  type ProviderLegFact,
+  type TechnicalEvidenceState,
+} from "./dashboard-evidence";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -75,6 +87,22 @@ export interface CandidateInput {
   freshness: "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE";
   /** Provider coverage level from Phase 48. */
   providerCoverage: "FULL" | "PARTIAL" | "MINIMAL" | "NONE";
+
+  // ── Phase 310 — the evidence facts the Dashboard renders (read-only) ──
+  /** The provider's own observation instant (price snapshot), verbatim. */
+  observedAt?: number;
+  /** Technical evidence state from the candle depth (see dashboard-evidence). */
+  technicalState?: TechnicalEvidenceState;
+  /** The provider's own discovery trading state ("live", "TRADING", ...). */
+  tradingState?: string;
+  /** Fundamental assessment verdict (phase-276 authoritative, not legacy fields). */
+  fundamentalAvailable?: boolean;
+  fundamentalDomain?: string;
+  fundamentalProvider?: string;
+  /** Forex measurement pipeline verbatim (phase-307/308; read-only here). */
+  fundamentalPipeline?: ForexPipelineFact;
+  /** The runtime's own provider diagnostics (failing legs classified once). */
+  providerDiagnostics?: ProviderLegFact[];
 
   // ── Market structure ──
   /** Higher-timeframe bias: "long", "short", "neutral", "unknown". */
@@ -301,6 +329,30 @@ export interface RankedInstrument {
   recommendedAnalysisType: string;
   /** Provider coverage level. */
   providerCoverage: string;
+  /**
+   * Phase 310 — the evidence THIS ranking stands on, derived ONCE here from
+   * the same candidate facts that were scored (never recomputed in React).
+   * Absent for callers that do not supply the phase-310 candidate fields.
+   */
+  evidence?: RankedEvidence;
+}
+
+export interface RankedEvidence {
+  provider?: string;
+  providerInstrumentId?: string;
+  /** Provider observation instant, verbatim (never re-timed). */
+  observedAt?: number;
+  /** Candle observations the engine actually had. */
+  technicalDepth?: number;
+  technicalState: TechnicalEvidenceState;
+  fundamental: { available?: boolean; state?: string; provider?: string; domain?: string; pipeline?: ForexPipelineFact };
+  providerState: ProviderAvailabilityState;
+  providerStateReason?: string;
+  availabilityClass: AvailabilityClass;
+  /** User-facing limitations (provider facts, capped). */
+  limitations: string[];
+  /** The ONE deterministic explanation sentence (workstream E). */
+  explanation: string;
 }
 
 export interface HorizonWeights {
@@ -1040,6 +1092,16 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
   // Provider coverage gate
   if (c.providerCoverage === "NONE") return { eligible: false, reason: "no provider coverage" };
 
+  // Phase 310 — the PROVIDER's own discovery state is a hard gate: an
+  // instrument the provider delisted or disabled is not a usable opportunity,
+  // no matter what else scored. Only the provider's own word counts.
+  if (c.tradingState !== undefined) {
+    const ts = String(c.tradingState).toLowerCase();
+    if (ts !== "live" && ts !== "trading" && ts !== "active") {
+      return { eligible: false, reason: `provider lists this instrument as ${c.tradingState}` };
+    }
+  }
+
   return { eligible: true };
 }
 
@@ -1051,9 +1113,25 @@ function classifySuitability(
   analyticalScore: number,
   confidence: number,
   dataCompleteness: DataCompletenessLevel,
+  // Phase 310 — the technical-evidence state CAPS what the ranking may claim:
+  // a THIN series (real but below the engine's own per-read minimum) can never
+  // carry a TOP_OPPORTUNITY, and no technical series at all cannot claim
+  // WATCHLIST either. Undefined keeps the legacy behaviour for callers that do
+  // not supply the phase-310 field (the radar path).
+  technicalState?: TechnicalEvidenceState,
 ): RecommendationSuitability {
   if (dataCompleteness === "NONE") return "INSUFFICIENT_DATA";
   if (dataCompleteness === "MINIMAL" && analyticalScore < 50) return "INSUFFICIENT_DATA";
+
+  if (technicalState === "unavailable") {
+    if (analyticalScore >= 50 && confidence >= 35) return "NEUTRAL";
+    return "NEUTRAL";
+  }
+  if (technicalState === "thin") {
+    if (analyticalScore >= 50 && confidence >= 35) return "WATCHLIST";
+    if (analyticalScore >= 30) return "NEUTRAL";
+    return "NEUTRAL";
+  }
 
   if (analyticalScore >= 70 && confidence >= 50) return "TOP_OPPORTUNITY";
   if (analyticalScore >= 50 && confidence >= 35) return "WATCHLIST";
@@ -1127,7 +1205,55 @@ export function generateRecommendation(
   // Take top N and format
   for (let i = 0; i < Math.min(scored.length, maxResults); i++) {
     const { input: c, result, setupEvidence } = scored[i];
-    const suitability = classifySuitability(result.analyticalScore, result.confidence, c.dataCompleteness);
+    const suitability = classifySuitability(result.analyticalScore, result.confidence, c.dataCompleteness, c.technicalState);
+    // Phase 310 — the evidence block is derived ONCE from the SAME candidate
+    // facts that were scored; the Dashboard renders it verbatim.
+    const providerStateInfo = describeProviderState(c.providerDiagnostics);
+    const technicalState: TechnicalEvidenceState = c.technicalState ?? "available";
+    const evidence: RankedEvidence = {
+      ...(c.providerNative ? { provider: c.providerNative.provider, providerInstrumentId: c.providerNative.providerInstrumentId } : {}),
+      ...(c.observedAt !== undefined ? { observedAt: c.observedAt } : {}),
+      ...(c.dataPoints > 0 ? { technicalDepth: c.dataPoints } : {}),
+      technicalState,
+      fundamental: {
+        ...(c.fundamentalAvailable !== undefined ? { available: c.fundamentalAvailable } : {}),
+        ...(c.fundamentalDomain ? { domain: c.fundamentalDomain } : {}),
+        ...(c.fundamentalProvider ? { provider: c.fundamentalProvider } : {}),
+        ...(c.fundamentalPipeline ? { pipeline: c.fundamentalPipeline } : {}),
+      },
+      providerState: providerStateInfo.state,
+      ...(providerStateInfo.reason ? { providerStateReason: providerStateInfo.reason } : {}),
+      availabilityClass: availabilityClassOf({
+        suitability,
+        hasLiveData: c.hasLiveData,
+        technicalState,
+        fundamentalAvailable: c.fundamentalAvailable,
+        fundamentalDomain: c.fundamentalDomain,
+        hasFundamentalPipeline: c.fundamentalPipeline !== undefined,
+        providerState: providerStateInfo.state,
+      }),
+      limitations: [
+        ...(technicalState === "thin"
+          ? [`Limited technical evidence: only ${c.dataPoints} observations arrived (an independent read needs ${MIN_TECHNICAL_OBSERVATIONS}).`]
+          : []),
+        ...(technicalState === "unavailable" ? ["No technical evidence arrived for this instrument."] : []),
+        ...(c.fundamentalAvailable === false
+          ? forexAcquisitionLines(c.fundamentalPipeline)
+          : []),
+        ...providerStateInfo.failingLegs.map((leg) => `Provider leg did not deliver — ${leg}`),
+      ].slice(0, 5),
+      explanation: buildRecommendationExplanation({
+        instrument: c.instrument,
+        hasLiveData: c.hasLiveData,
+        freshness: c.freshness,
+        dataPoints: c.dataPoints,
+        technicalState,
+        fundamentalAvailable: c.fundamentalAvailable,
+        fundamentalDomain: c.fundamentalDomain,
+        ...(c.providerNative ? { provider: c.providerNative.provider, providerInstrumentId: c.providerNative.providerInstrumentId } : {}),
+        providerState: providerStateInfo.state,
+      }),
+    };
 
     const recommendedType = isTradingMode
       ? horizon === "SCALPING" ? "M5/M15 analysis" : horizon === "INTRADAY" ? "H1/H4 analysis" : "D1/W1 analysis"
@@ -1174,6 +1300,7 @@ export function generateRecommendation(
       executionQuality: c.spreadBps,
       recommendedAnalysisType: recommendedType,
       providerCoverage: c.providerCoverage,
+      evidence,
     });
   }
 

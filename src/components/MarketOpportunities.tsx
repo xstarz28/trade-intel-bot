@@ -27,6 +27,7 @@ import type { AssetClass } from "@/lib/data/universal/types";
 import { matchesRegionFilter } from "@/lib/market-region";
 import type { RadarScanResult, RadarOpportunity, QualityTier } from "@/lib/market-radar/types";
 import { useI18n } from "@/lib/i18n";
+import type { Translations } from "@/lib/i18n/types";
 import {
   mapHorizon,
   mapFreshness,
@@ -72,6 +73,40 @@ const FRESHNESS_COLORS: Record<string, string> = {
   STALE: "bg-orange-500/15 text-orange-400 border-orange-500/30",
   UNAVAILABLE: "bg-red-500/10 text-red-400/50 border-red-500/15",
 };
+
+// Phase 310 — availability-class colors: the four honest states are visually
+// distinct (delivered / cannot-claim / provider-plan / external gap).
+const AVAILABILITY_COLORS: Record<string, string> = {
+  PASS: "text-emerald-400 border-emerald-400/30",
+  UNAVAILABLE: "text-amber-400 border-amber-400/30",
+  RESTRICTED: "text-violet-400 border-violet-400/30",
+  EXTERNAL_DATA_GAP: "text-orange-400 border-orange-400/30",
+};
+
+function mapAvailability(value: string, t: Translations): string {
+  switch (value) {
+    case "PASS": return t.marketPanel.availability.pass;
+    case "UNAVAILABLE": return t.marketPanel.availability.unavailable;
+    case "RESTRICTED": return t.marketPanel.availability.restricted;
+    case "EXTERNAL_DATA_GAP": return t.marketPanel.availability.externalDataGap;
+    default: return value;
+  }
+}
+
+function mapTechnicalState(
+  state: string,
+  count: number | undefined,
+  txi: (key: string, vars?: Record<string, string | number>) => string,
+  t: Translations,
+): string {
+  switch (state) {
+    case "available":
+      return count !== undefined ? txi("marketPanel.technical.observations", { count }) : t.marketPanel.technical.available;
+    case "thin": return txi("marketPanel.technical.thin", { count: count ?? 0 });
+    case "unavailable": return t.marketPanel.technical.unavailable;
+    default: return state;
+  }
+}
 
 const DATA_COMPLETENESS_COLORS: Record<string, string> = {
   FULL: "text-emerald-400",
@@ -195,6 +230,10 @@ function RankedCard({ item }: { item: RankedInstrument }) {
         {item.providerNative && (
           <Badge variant="outline" className="text-[8px] font-mono border-border/50 text-muted-foreground/70">
             {item.providerNative.provider}
+            {/* Phase 310 — the provider's OWN identity for this instrument,
+                verbatim from the authoritative analysis. */}
+            {item.providerNative.providerInstrumentId !== item.instrument &&
+              ` · ${item.providerNative.providerInstrumentId}`}
           </Badge>
         )}
         <Badge variant="outline" className={cn("text-[9px] font-mono", ASSET_COLORS[item.assetClass] ?? "border-border/50")}>
@@ -203,6 +242,14 @@ function RankedCard({ item }: { item: RankedInstrument }) {
         <Badge variant="outline" className={cn("text-[9px] font-mono", SUITABILITY_COLORS[item.suitability])}>
           {mapSuitability(item.suitability, t)}
         </Badge>
+        {item.evidence && (
+          <Badge
+            variant="outline"
+            className={cn("text-[9px] font-mono", AVAILABILITY_COLORS[item.evidence.availabilityClass] ?? "border-border/50")}
+          >
+            {mapAvailability(item.evidence.availabilityClass, t)}
+          </Badge>
+        )}
         <span className="ml-auto text-[10px] font-mono text-muted-foreground">
           #{item.rank}
         </span>
@@ -231,6 +278,21 @@ function RankedCard({ item }: { item: RankedInstrument }) {
         )}
         {/* Data quality badges */}
         <div className="flex items-center gap-1 ml-auto">
+          {item.evidence && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "text-[8px] font-mono",
+                item.evidence.technicalState === "available" ? "text-emerald-400/80 border-border/50"
+                  : item.evidence.technicalState === "thin" ? "text-amber-400/80 border-amber-400/30"
+                    : "text-red-400/80 border-red-400/30",
+              )}
+              title={tx("marketPanel.evidenceLabel")}
+            >
+              {tx("marketPanel.technicalLabel")}{" "}
+              {mapTechnicalState(item.evidence.technicalState, item.evidence.technicalDepth, txi, t)}
+            </Badge>
+          )}
           <Badge variant="outline" className={cn("text-[8px] font-mono", FRESHNESS_COLORS[item.freshness] ?? "border-border/50")}>
             {mapFreshness(item.freshness, t)}
           </Badge>
@@ -274,6 +336,40 @@ function RankedCard({ item }: { item: RankedInstrument }) {
               {item.invalidationConditions.map((m: string, i: number) => (
                 <p key={i} className="text-[9px] font-mono text-muted-foreground/50">○ {m}</p>
               ))}
+            </div>
+          )}
+          {/* Phase 310 — the engine's OWN evidence, rendered verbatim. */}
+          {item.evidence && (
+            <div className="space-y-1">
+              <div className="text-[9px] font-mono font-semibold text-muted-foreground/70">
+                {tx("marketPanel.evidenceLabel")}
+              </div>
+              <p className="text-[9px] font-mono text-foreground/80">{item.evidence.explanation}</p>
+              <div className="text-[9px] font-mono text-muted-foreground/60 space-y-0.5">
+                {item.evidence.provider && item.evidence.providerInstrumentId && (
+                  <p>{txi("marketPanel.providerIdLabel", { value: `${item.evidence.provider}/${item.evidence.providerInstrumentId}` })}</p>
+                )}
+                {item.evidence.observedAt !== undefined && (
+                  <p>{txi("marketPanel.observedAtLabel", { time: new Date(item.evidence.observedAt).toISOString() })}</p>
+                )}
+                {item.evidence.fundamental.available !== undefined && (
+                  <p>
+                    {tx("marketPanel.fundamentalLabel")}{" "}
+                    {item.evidence.fundamental.available
+                      ? t.marketPanel.fundamentalState.available
+                      : t.marketPanel.fundamentalState.unavailable}
+                    {item.evidence.fundamental.domain ? ` (${item.evidence.fundamental.domain})` : ""}
+                  </p>
+                )}
+              </div>
+              {item.evidence.limitations.length > 0 && (
+                <div>
+                  <p className="text-[9px] font-mono font-semibold text-amber-400/80 mb-0.5">{tx("marketPanel.limitationsLabel")}</p>
+                  {item.evidence.limitations.map((l, i) => (
+                    <p key={i} className="text-[9px] font-mono text-amber-300/60">• {l}</p>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div className="text-[9px] font-mono text-muted-foreground/60">

@@ -12,6 +12,11 @@
  */
 
 import type { CandidateInput, DataCompletenessLevel } from "./recommendation-engine";
+import {
+  technicalEvidenceState,
+  type ProviderLegFact,
+} from "./dashboard-evidence";
+import { evaluateUnifiedConfluence } from "./market-radar/unified-confluence";
 import type { AssetClass } from "./data/universal/types";
 import type { MarketData, TechnicalData } from "./data/market-types";
 import type { AnalysisResult } from "@/types/analysis";
@@ -71,6 +76,11 @@ export interface LiveCandidateSource {
   cotData?: CotData;
   /** EIA data (if available). */
   eiaData?: EiaData;
+  /**
+   * Phase 310 — the provider's own discovery trading state ("live", "TRADING",
+   * "DELISTED", ...). Verbatim; the recommendation engine gates on it.
+   */
+  tradingState?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -474,6 +484,60 @@ export function buildCandidateFromSource(
 
     // Asset-specific
     ...assetSpecific,
+
+    // ── Phase 310 — the evidence facts the Dashboard renders ──
+    // The provider's observation instant, verbatim (never re-timed here).
+    ...(freshness !== "UNAVAILABLE"
+      ? { observedAt: source.marketData?.price?.timestamp ?? ar?.priceSnapshot?.timestamp }
+      : {}),
+    // Technical evidence state from the candle depth actually delivered.
+    technicalState: technicalEvidenceState(dataPoints),
+    // The provider's own trading state, verbatim.
+    ...(source.tradingState !== undefined ? { tradingState: source.tradingState } : {}),
+    // The authoritative fundamental verdict is the phase-276 ASSESSMENT;
+    // the legacy payload flag is only a fallback for old persisted rows.
+    ...(ar?.fundamentalAssessment
+      ? {
+          fundamentalAvailable: ar.fundamentalAssessment.available === true,
+          fundamentalDomain: ar.fundamentalAssessment.domain,
+          fundamentalProvider: ar.fundamentalAssessment.provider,
+          ...(ar.fundamentalAssessment.measurementPipeline
+            ? { fundamentalPipeline: ar.fundamentalAssessment.measurementPipeline }
+            : {}),
+        }
+      : ar?.fundamentalData
+        ? { fundamentalAvailable: ar.fundamentalData.available === true }
+        : {}),
+    // Phase 277 — unified confluence as EVALUATED policy (same helper the
+    // radar builder uses; one evaluation, not two).
+    ...(() => {
+      const confluence = evaluateUnifiedConfluence(ar?.unifiedIntelligence);
+      return confluence.present
+        ? {
+            hasUnifiedIntelligence: true,
+            unifiedState: confluence.state,
+            unifiedActionable: confluence.actionable,
+            unifiedScoreDelta: confluence.policy.scoreDelta,
+            ...(confluence.policy.confidenceCap !== undefined
+              ? { unifiedConfidenceCap: confluence.policy.confidenceCap }
+              : {}),
+          }
+        : {};
+    })(),
+    // The runtime's own provider diagnostics (failing legs), for the
+    // provider-state classification the Dashboard renders.
+    ...(ar?.providerDiagnostics
+      ? {
+          providerDiagnostics: (ar.providerDiagnostics as ProviderLegFact[]).map((d) => ({
+            provider: String(d?.provider ?? ""),
+            dataset: String(d?.dataset ?? ""),
+            acquired: d?.acquired === true,
+            ...(typeof d?.reason === "string" && d.reason.length > 0 ? { reason: d.reason } : {}),
+            ...(typeof d?.instrument === "string" && d.instrument.length > 0 ? { instrument: d.instrument } : {}),
+            ...(typeof d?.observedAt === "number" ? { observedAt: d.observedAt } : {}),
+          })).filter((d) => d.provider.length > 0),
+        }
+      : {}),
   };
 }
 

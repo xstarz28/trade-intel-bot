@@ -784,6 +784,28 @@ export interface Translations {
     analysisLabel: string;
     lessLabel: string;
     moreLabel: string;
+    evidenceLabel: string;
+    technicalLabel: string;
+    providerIdLabel: string;
+    observedAtLabel: string;
+    fundamentalLabel: string;
+    limitationsLabel: string;
+    availability: {
+      pass: string;
+      unavailable: string;
+      restricted: string;
+      externalDataGap: string;
+    };
+    technical: {
+      available: string;
+      observations: string;
+      thin: string;
+      unavailable: string;
+    };
+    fundamentalState: {
+      available: string;
+      unavailable: string;
+    };
     whyThisAsset: string;
     showExcluded: string;
     hideExcluded: string;

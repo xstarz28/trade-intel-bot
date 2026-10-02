@@ -461,6 +461,11 @@ export interface AnalysisResult {
   // section that sits ALONGSIDE technical evidence: it never overwrites
   // technical values, and technical values never masquerade as it.
   fundamentalAssessment?: import("@/lib/fundamental-engine").FundamentalAssessment;
+  // Phase 310 — the runtime's own per-provider acquisition provenance
+  // (protectedAnalysis attaches these legs to every result since phase 288;
+  // see LegDiagnostic). The type previously omitted the field the runtime
+  // sets, which made the Dashboard unable to read provider state type-safely.
+  providerDiagnostics?: import("@/lib/data/provenance-diagnostics").LegDiagnostic[];
   macroData?: MacroData;
   // Crypto derivatives metadata
   derivativesData?: CryptoDerivativesData;
