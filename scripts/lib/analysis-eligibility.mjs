@@ -346,6 +346,22 @@ export function rankByAnalysisEligibility(candidates, { provider, assetClass }, 
   const strikes = observations?.technicalStrikes instanceof Map
     ? observations.technicalStrikes
     : null;
+  // Phase 307 — WINDOW strikes for staged-catalog pools: how many provider-
+  // proven plan refusals each scan window accumulated THIS run. A candidate
+  // whose window was proven plan-restricted ranks behind candidates from
+  // windows with fewer refusals, so the next attempt comes from the next
+  // provider-order block — inside the same attempt budget, with no ticker
+  // whitelist and no invented plan matrix: every entry is a provider refusal.
+  const windowStrikes =
+    observations?.planRestrictedWindows instanceof Map
+      ? observations.planRestrictedWindows
+      : null;
+  const windowStrikeOf = (candidate) => {
+    if (!windowStrikes || windowStrikes.size === 0) return 0;
+    const w = candidate?.windowIndex;
+    if (!Number.isFinite(w) || w < 0) return 0;
+    return windowStrikes.get(w) ?? 0;
+  };
   const strikeOf = (key, set) => {
     if (strikes && strikes.has(key)) return strikes.get(key);
     if (set && set.has && set.has(key.slice(key.indexOf(":") + 1))) return 1;
@@ -359,6 +375,7 @@ export function rankByAnalysisEligibility(candidates, { provider, assetClass }, 
   const hasLearning =
     gaps.size > 0 || planFamilies.size > 0 || techFamilies.size > 0 ||
     (strikes !== null && strikes.size > 0) ||
+    (windowStrikes !== null && windowStrikes.size > 0) ||
     (routeIds.size > 0 && assetClass === "commodity");
   if (hasLearning) {
     const learning = (entry) => {
@@ -385,13 +402,15 @@ export function rankByAnalysisEligibility(candidates, { provider, assetClass }, 
       const strikeCount =
         strikeOf(`base:${family}`, techFamilies) +
         (quote ? strikeOf(`quote:${quote}`, techQuotes) : 0);
-      return { routePreferred, familyDemoted, gapFree, strikeCount };
+      const windowStrike = windowStrikeOf(entry.candidate);
+      return { routePreferred, familyDemoted, gapFree, strikeCount, windowStrike };
     };
     const withIndex = classified.map((entry, i) => ({ entry, i, learning: learning(entry) }));
     withIndex.sort(
       (a, b) =>
         TIER_RANK[a.entry.eligibility.tier] - TIER_RANK[b.entry.eligibility.tier] ||
         b.learning.routePreferred - a.learning.routePreferred ||
+        a.learning.windowStrike - b.learning.windowStrike ||
         a.learning.strikeCount - b.learning.strikeCount ||
         a.learning.familyDemoted - b.learning.familyDemoted ||
         b.learning.gapFree - a.learning.gapFree ||

@@ -1,23 +1,21 @@
 /**
- * Phase 306 — the readiness fixes, executed end to end against a STUBBED
- * deployment (test double, never evidence). One full CLI run pins:
+ * Phase 307 — the three concrete runtime bottlenecks, executed end to end
+ * against a STUBBED deployment (test double, never evidence). One full CLI
+ * run pins:
  *
- *  B. STOCK  — the provider-order HEAD of the staged equity catalog is a
- *              contiguous plan-restricted block (run 36962601231: `selected=
- *              000,0000,000001`, all `[404] ... Grow or Venture plan`). The
- *              bounded selector must ADVANCE its scan window on that provider
- *              evidence (window0 → window1 → window2) and reach the analysable
- *              candidates further down the SAME provider order — provenance
- *              complete at every window.
- *  C. CRYPTO — the thin-quote head block (PLN/SGD) cannot absorb the budget:
- *              strike learning must steer picks to the zero-strike deep-quote
- *              row BEYOND the old 12-candidate pool window, and every attempt
- *              must carry the candle depth the engine consumed.
- *  D. VERDICT/PROSE — the reported verdict's OWN evidence is what the record
- *              prints, in both directions: a FAIL-first domain must not dress
- *              itself in a later attempt's evidence (FOREX), and a later PASS
- *              must not overwrite an earlier UNAVAILABLE's record (COMMODITY —
- *              the run-36960231581 GBP/JPY contradiction class).
+ *  C. CRYPTO — the OKX catalog's thin-quote head is 150 rows long (run
+ *             36967115649 live shape, longer): no head slice can escape it.
+ *             The stride pool must reach the deep rows: BTC-PLN → another
+ *             thin quote → the deep candidate, within maxAttempts=3, with
+ *             technicalDepth distinguishing a thin series (3 candles) from a
+ *             real one (210).
+ *  B. STOCK  — window0 plan-restricted → next attempt from window1;
+ *              window1 plan-restricted → next attempt from window2; total
+ *              analysis attempts stay at maxAttempts.
+ *  A. FOREX  — the projection delivers the measurement pipeline: the record's
+ *              evidence.fundamental carries the pipeline (acquisition with the
+ *              classified past-leg failure) and the ANNOTATION names the
+ *              stopping point (stoppedAt=released+actual, leg=failed:timeout).
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
@@ -25,7 +23,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-const HOST = "stub-dev-306.convex.cloud";
+const HOST = "stub-dev-307.convex.cloud";
 
 const STUB = `
 const json = (body, status = 200) =>
@@ -50,17 +48,16 @@ const fullUI = () => ({
 
 const PLAN_404 = "No live data: [404] [404] This symbol is available starting with the Grow or Venture plan. Consider upgrading now at https://twelvedata.com/pricing";
 
-// The OKX catalog's live-shaped head: a contiguous thin-quote block, with the
-// deep-quote instruments sitting BEYOND the old 12-candidate learning window.
-const OKX_POOL = [
-  "BTC-PLN", "ETH-PLN", "USDC-PLN", "USDT-SGD", "USDC-SGD", "USDG-SGD",
-  "XRP-PLN", "ADA-PLN", "DOGE-PLN", "SOL-SGD", "AVAX-SGD", "LINK-SGD",
-  "DOT-PLN", "LTC-PLN", "BCH-SGD",
-  "ETH-USD", "SOL-USDT", "XRP-USDT",
-];
+// The OKX catalog: a 150-row contiguous thin-quote head (quotes alternate
+// PLN/SGD by i%3 so both thin quotes appear inside any stride), with deep
+// instruments ONLY at positions 150+. No head slice of <=96 rows can reach
+// them; a stride across the full 153-row order does.
+const OKX_POOL = ["BTC-PLN"];
+for (let i = 1; i < 150; i++) OKX_POOL.push("T" + i + "-" + (i % 3 < 2 ? "PLN" : "SGD"));
+OKX_POOL.push("ETH-USD", "SOL-USDT", "XRP-USDT");
 
-// The staged equity catalog: 1920 plan-restricted numeric rows (the provider
-// order's head block), then analysable alpha rows.
+// The staged equity catalog: 1920 plan-restricted numeric rows (windows 0 and
+// 1), analysable alpha rows at the start of window 2.
 const STAGE_ROWS = [];
 for (let i = 0; i < 1920; i++) {
   const sym = "0" + String(i).padStart(4, "0");
@@ -103,14 +100,14 @@ const respond = (path, args) => {
           pagesFetched: 1,
           totalDiscovered: 1925,
           failedPage: null,
-          transport: { mode: "staged", state: "complete", stageId: "/stocks|306|e2e", stagedRows: 1925, inlineRows: 0 },
+          transport: { mode: "staged", state: "complete", stageId: "/stocks|307|e2e", stagedRows: 1925, inlineRows: 0 },
         },
         { path: "/commodities", assetClass: "commodity", completeness: "COMPLETE", pagesFetched: 1, totalDiscovered: 2, failedPage: null },
       ],
       warnings: [],
     };
   if (path === "marketData:readTwelveDataCatalogStage") {
-    if (args.stageId === "/stocks|306|e2e") {
+    if (args.stageId === "/stocks|307|e2e") {
       const start = (args.afterSeq ?? -1) + 1;
       const batch = STAGE_ROWS.slice(start, start + (args.limit ?? 480));
       return { rows: batch, hasMore: start + batch.length < STAGE_ROWS.length, nextAfterSeq: start + batch.length - 1, stagedRows: STAGE_ROWS.length, completeness: "COMPLETE", totalDiscovered: STAGE_ROWS.length, transportState: "complete" };
@@ -122,37 +119,34 @@ const respond = (path, args) => {
     const okxSet = OKX_POOL.includes(native);
     const provider = okxSet ? "okx" : "twelve-data";
     if (okxSet && native !== "ETH-USD" && native !== "SOL-USDT" && native !== "XRP-USDT") {
-      // Live shape: real market bytes, no usable technical series.
+      // The thin-quote head: real market bytes, a THIN candle series (3
+      // points), no usable technical/unified evidence.
       return { status: "DELIVERED", entitlement: { charged: false }, result: {
         ...base(native, provider),
+        technicalData: { dataPoints: 3 },
         fundamentalSummary: "No crypto-native fundamental evidence was supplied for this instrument.",
         unifiedIntelligence: { available: false, state: "unavailable", technical: { available: false, bias: null, confidence: null }, limitations: ["Technical evidence unavailable"] },
         technicalSummary: "Technical evidence unavailable — the analysis is a fundamental-only read and makes no combined claim.",
         providerDiagnostics: [],
       } };
     }
-    if (native === "EUR/USD" && !globalThis.__eurFailed) {
-      // Workstream D — the forex domain's FIRST attempt fails at the transport
-      // level: a FAIL verdict with NO evidence structure at all.
-      globalThis.__eurFailed = true;
-      return { __httpStatus: 500 };
-    }
     if (native === "EUR/USD" || native === "GBP/JPY" || native === "AUD/CAD") {
       // Live shape: real market+technical+unified; the fundamental assessment
-      // is PRESENT but available:false, naming ITS OWN pair's sides.
+      // is PRESENT but available:false, carrying the 307 pipeline — here the
+      // past leg TIMED OUT (classified), so pastFetched=0.
       const sides = native.split("/");
       return { status: "DELIVERED", entitlement: { charged: false }, result: {
         ...base(native, provider),
-        fundamentalAssessment: { available: false, domain: "forex", provider: "tickatlas", state: "unavailable", measurementPipeline: { eventsReceived: 5, releasedWithActual: 0, baseReleasedMatched: 0, quoteReleasedMatched: 0, policyRatesBase: false, policyRatesQuote: false, inflationBase: false, inflationQuote: false, acquisition: { lookbackDays: 40, pastLeg: "ok", pastFetched: 64, pastWithActual: 0, merged: 0, upcomingFetched: 5 }, availability: false } },
+        fundamentalAssessment: { available: false, domain: "forex", provider: "tickatlas", state: "unavailable", measurementPipeline: { eventsReceived: 5, releasedWithActual: 0, baseReleasedMatched: 0, quoteReleasedMatched: 0, policyRatesBase: false, policyRatesQuote: false, inflationBase: false, inflationQuote: false, acquisition: { lookbackDays: 40, upcomingFetched: 5, pastFetched: 0, pastWithActual: 0, merged: 0, pastLeg: "failed:timeout" }, availability: false } },
         fundamentalSummary: "No released macroeconomic measurement was supplied for " + sides[0] + " or " + sides[1] + " — no two-sided fundamental assessment is produced, and none is invented.",
         unifiedIntelligence: fullUI(),
         providerDiagnostics: [],
       } };
     }
     if (native.startsWith("0") && Number.isFinite(Number(native))) {
-      // The staged equity catalog's live head (zero-padded numeric tickers):
-      // the plan-restricted OHLCV leg produced nothing — no price snapshot,
-      // and the leg's own 404 sentence.
+      // The staged equity catalog's head (zero-padded numeric tickers): the
+      // plan-restricted OHLCV leg produced nothing — no price snapshot, and
+      // the leg's own 404 sentence.
       return { status: "DELIVERED", entitlement: { charged: false }, result: {
         provider,
         providerInstrumentId: native,
@@ -166,9 +160,8 @@ const respond = (path, args) => {
       } };
     }
     if (native === "XAU/USD") {
-      // Live shape, run 36957205385: the plan-restricted OHLCV leg produced
-      // nothing — no price snapshot, and the leg's own 404 sentence. The
-      // domain's later WTI/USD PASS must NOT bleed into this record.
+      // The live 36957205385 shape: the plan-restricted OHLCV leg produced
+      // nothing — the record keeps its OWN evidence (workstream D).
       return { status: "DELIVERED", entitlement: { charged: false }, result: {
         provider,
         providerInstrumentId: native,
@@ -182,10 +175,8 @@ const respond = (path, args) => {
       } };
     }
     if (native === "WTI/USD") {
-      // The domain's SECOND attempt also lands UNAVAILABLE (market bytes but
-      // no usable technical series) — so the REPORTED verdict is the FIRST
-      // attempt's (XAU/USD) under most-severe ranking, and the record must
-      // describe XAU/USD, not this attempt.
+      // Second commodity attempt also UNAVAILABLE, so the reported verdict is
+      // the FIRST attempt's (XAU/USD) and the record must describe XAU/USD.
       return { status: "DELIVERED", entitlement: { charged: false }, result: {
         ...base(native, provider),
         fundamentalAssessment: { available: true, domain: "commodity", provider: "twelve-data", state: "improving" },
@@ -195,10 +186,14 @@ const respond = (path, args) => {
         providerDiagnostics: [],
       } };
     }
-    // The analysable equities beyond the advanced windows deliver full shape.
+    // The analysable equities and deep crypto rows deliver the full shape.
+    const fa =
+      okxSet
+        ? { available: true, domain: "crypto", provider: "okx", state: "stable" }
+        : { available: true, domain: "stock", provider: "filings", state: "stable" };
     return { status: "DELIVERED", entitlement: { charged: false }, result: {
       ...base(native, provider),
-      fundamentalAssessment: { available: true, domain: "stock", provider: "filings", state: "stable" },
+      fundamentalAssessment: fa,
       fundamentalSummary: "domain fundamental read.",
       unifiedIntelligence: fullUI(),
       providerDiagnostics: [],
@@ -209,11 +204,10 @@ const respond = (path, args) => {
 
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(String(url));
-  if (u.pathname === "/version") return new Response("stub-version-306", { status: 200 });
+  if (u.pathname === "/version") return new Response("stub-version-307", { status: 200 });
   if (u.pathname === "/api/query" || u.pathname === "/api/action") {
     const body = JSON.parse(String(init.body ?? "{}"));
     const value = respond(body.path, body.args);
-    if (value && value.__httpStatus) return new Response("server error", { status: value.__httpStatus });
     return json({ status: "success", value });
   }
   return new Response("not found", { status: 404 });
@@ -226,9 +220,9 @@ let stdout = "";
 let status = 0;
 
 beforeAll(() => {
-  dir = mkdtempSync(join(tmpdir(), "smoke-cli-306-"));
-  outPath = join(dir, "smoke-306.json");
-  const stubPath = join(dir, "stub-fetch-306.mjs");
+  dir = mkdtempSync(join(tmpdir(), "smoke-cli-307-"));
+  outPath = join(dir, "smoke-307.json");
+  const stubPath = join(dir, "stub-fetch-307.mjs");
   writeFileSync(stubPath, STUB);
   const root = resolve(__dirname, "../../..");
   try {
@@ -256,7 +250,7 @@ beforeAll(() => {
         env: {
           ...process.env,
           GITHUB_ACTIONS: "true",
-          XSTARZ_SMOKE_SOURCE_COMMIT: "d".repeat(40),
+          XSTARZ_SMOKE_SOURCE_COMMIT: "e".repeat(40),
           XSTARZ_SMOKE_PACING_WINDOW_MS: "0",
         },
         timeout: 120_000,
@@ -278,76 +272,78 @@ type AttemptRecord = { step: string; [key: string]: unknown };
 const domainOf = (label: string) => reportOf().domains.find((d: { label: string }) => d.label === label);
 const analysisOf = (d: { attempts: AttemptRecord[] }) => d.attempts.filter((a: AttemptRecord) => a.step === "analysis");
 
-describe("phase 306 e2e — B: the staged selector steers past a plan-restricted head block", () => {
-  it("phase 307 design: window strikes move the ACTUAL attempts across windows 0 → 1 → 2", () => {
-    const stock = domainOf("STOCK");
-    const analysis = analysisOf(stock);
-    // attempt 1: window 0's head row (plan-404) — proves the window's block
-    expect(analysis[0].instrument).toBe("00000");
-    expect(analysis[0].reason).toContain("Grow or Venture plan");
-    // attempt 2: window 1's first row — the refused window is demoted WHOLE
-    expect(analysis[1].instrument).toBe("00960");
-    expect(analysis[1].reason).toContain("Grow or Venture plan");
-    // attempt 3: window 2's first row — analysable, inside the SAME budget
-    expect(analysis[2].instrument).toBe("AAC");
-    expect(analysis[2].verdict).toBe("PASS");
-    expect(analysis.length).toBe(3); // maxAttempts respected
-    expect(stock.headline).toBe("PASS");
-    // provenance: all bounded windows were pre-assembled server-side
-    expect(stock.discovery.stagedSelection.windowsRead).toBe(3);
-    expect(stock.discovery.stagedSelection.stageId).toBe("/stocks|306|e2e");
-    // `selected` is the INITIAL provider-order head pick; the attempt trail
-    // above is what proves the steering into the deeper windows.
-    expect(stock.discovery.stagedSelection.selected).toEqual(["00000", "00001", "00002"]);
-    expect(stock.discovery.stagedSelection.rowsRead).toBe(1925);
-  });
-});
-
-describe("phase 306 e2e — C: strike steering reaches past the old pool window, with depth", () => {
-  it("burns the thin-quote head, then lands on the deep-quote row at pool position 15", () => {
+describe("phase 307 e2e — C: the stride pool reaches the deep candidate inside the fixed budget", () => {
+  it("BTC-PLN -> another thin quote -> the deep candidate, in exactly 3 attempts", () => {
     const crypto = domainOf("CRYPTO");
-    const instruments = analysisOf(crypto).map((a) => String(a.instrument));
-    expect(instruments[0]).toBe("BTC-PLN");
-    // after the PLN strike, the zero-strike SGD rows outrank the struck PLN family;
-    // after the SGD strike, the pick reaches ETH-USD — pool position 15 (>12)
-    expect(instruments).toEqual(["BTC-PLN", "USDT-SGD", "ETH-USD"]);
+    const analysis = analysisOf(crypto);
+    const instruments = analysis.map((a) => String(a.instrument));
+    // attempt 1: the thin head's first row; attempt 2: ANOTHER thin quote
+    // (the first zero-strike row inside the stride); attempt 3: the deep
+    // candidate at provider position 150 — outside any head slice.
+    expect(instruments).toEqual(["BTC-PLN", "T2-SGD", "ETH-USD"]);
+    expect(analysis.length).toBe(3); // maxAttempts respected
     expect(crypto.headline).toBe("PASS");
+    // both thin quotes were learned as strikes during the run
     expect(reportOf().learnedObservations.technicalStrikes["quote:PLN"]).toBeGreaterThanOrEqual(1);
     expect(reportOf().learnedObservations.technicalStrikes["quote:SGD"]).toBeGreaterThanOrEqual(1);
-    // technical depth is first-class on every attempt that delivered market bytes
-    for (const a of analysisOf(crypto)) expect(a.technicalDepth).toBe(210);
+    // technicalDepth is first-class AND discriminating: thin series vs real
+    expect(analysis[0].technicalDepth).toBe(3);
+    expect(analysis[1].technicalDepth).toBe(3);
+    expect(analysis[2].technicalDepth).toBe(210);
+    // workstream D binding: the record describes its OWN (reporting) attempt
+    expect(crypto.providerInstrumentId).toBe("ETH-USD");
+    expect(crypto.evidence.technical.available).toBe(true);
   });
 });
 
-describe("phase 306 e2e — D: the record prints the REPORTED verdict's own evidence", () => {
-  it("forex FAIL-first: a later attempt's evidence cannot dress a FAIL verdict", () => {
+describe("phase 307 e2e — B: window strikes move the ACTUAL attempts across windows", () => {
+  it("window0 plan-restricted -> window1 candidate -> window2 candidate, <= maxAttempts", () => {
+    const stock = domainOf("STOCK");
+    const analysis = analysisOf(stock);
+    expect(analysis.map((a) => String(a.instrument))).toEqual(["00000", "00960", "AAC"]);
+    expect(analysis.length).toBe(3);
+    expect(analysis[0].reason).toContain("Grow or Venture plan");
+    expect(analysis[1].reason).toContain("Grow or Venture plan");
+    expect(analysis[2].verdict).toBe("PASS");
+    expect(stock.headline).toBe("PASS");
+    // provenance: the windows were pre-assembled before any attempt
+    expect(stock.discovery.stagedSelection.windowsRead).toBe(3);
+    expect(stock.discovery.stagedSelection.stageId).toBe("/stocks|307|e2e");
+    expect(stock.discovery.stagedSelection.window).toContain("scan windows 1..3");
+  });
+});
+
+describe("phase 307 e2e — A: the projection delivers the pipeline; the annotation names the stop", () => {
+  it("the forex record carries the pipeline with the classified past-leg failure", () => {
     const forex = domainOf("FOREX");
-    // attempt 1 was a transport-level FAIL with no evidence structure; FAIL is
-    // the most severe verdict, so the record must describe THAT attempt.
-    expect(forex.headline).toBe("FAIL");
+    expect(forex.headline).toBe("UNAVAILABLE");
+    // reported attempt = the first (equal-severity) — the record describes IT
     expect(forex.providerInstrumentId).toBe("EUR/USD");
-    expect(forex.legs.market).toBe("not delivered");
-    expect(forex.legs.technical).toBe("not delivered");
-    expect(forex.evidence).toBeUndefined();
-    // no borrowed detail from the later gap attempts
-    expect(forex.reason).not.toContain("macroeconomic measurement");
+    expect(forex.reason).toContain("EUR");
+    expect(forex.reason).toContain("USD");
+    // THE projection: the pipeline travels into the record's evidence
+    const pipeline = forex.evidence.fundamental.measurementPipeline;
+    expect(pipeline).not.toBeNull();
+    expect(pipeline.eventsReceived).toBe(5);
+    expect(pipeline.releasedWithActual).toBe(0);
+    expect(pipeline.acquisition.lookbackDays).toBe(40);
+    expect(pipeline.acquisition.pastFetched).toBe(0);
+    expect(pipeline.acquisition.pastLeg).toBe("failed:timeout");
+    expect(pipeline.availability).toBe(false);
   });
 
-  it("commodity: the reported UNAVAILABLE's record is its OWN, not another attempt's", () => {
+  it("the annotation names the stopping point (rows -> released+actual -> ...)", () => {
+    // the FOREX annotation's informational digest shows the pipeline with the
+    // classified past leg and the named stopping stage
+    expect(stdout).toMatch(/FOREX UNAVAILABLE[\s\S]*?pipeline\[events=5 releasedWithActual=0[\s\S]*?leg=failed:timeout[\s\S]*?stoppedAt=released\+actual/);
+  });
+});
+
+describe("phase 307 e2e — XAU/USD + EIA remain intact", () => {
+  it("the commodity domain still runs the exact gold route and its own record", () => {
     const commodity = domainOf("COMMODITY");
-    const analysis = analysisOf(commodity);
-    expect(analysis[0].instrument).toBe("XAU/USD");
-    expect(analysis[0].verdict).toBe("UNAVAILABLE");
-    // the reported verdict is the FIRST (most severe) UNAVAILABLE — XAU/USD —
-    // and the record's identity, reason and legs are XAU/USD's OWN (the exact
-    // class of the run-36960231581 GBP/JPY contradiction: the reason quoted
-    // AUD/CAD while the printed legs belonged to GBP/JPY).
-    expect(commodity.headline).toBe("UNAVAILABLE");
-    expect(commodity.providerInstrumentId).toBe("XAU/USD");
-    expect(commodity.reason).toContain("Grow or Venture plan");
-    expect(commodity.legs.market).toBe("none returned");
+    expect(analysisOf(commodity)[0].instrument).toBe("XAU/USD");
+    expect(commodity.reason).toContain("Grow or Venture plan"); // its OWN failing leg
     expect(commodity.evidence.market.providerInstrumentId).toBe("XAU/USD");
-    expect(commodity.failingLegs.join(" ")).toContain("Grow or Venture plan");
-    expect(commodity.failingLegs.join(" ")).not.toContain("WTI");
   });
 });

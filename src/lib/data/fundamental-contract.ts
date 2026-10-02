@@ -214,7 +214,7 @@ export interface ForexMeasurementPipeline {
     pastFetched?: number;
     pastWithActual?: number;
     merged?: number;
-    pastLeg?: "ok" | "failed";
+    pastLeg?: "ok" | "failed" | `failed:${string}`;
   };
   /** The pipeline's conclusion — the same value the assessment reports. */
   availability: boolean;

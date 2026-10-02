@@ -33,6 +33,7 @@ import {
   STAGED_MAX_WINDOWS,
   STAGED_SELECTION_MAX_ROWS,
 } from "../../../scripts/development-runtime-smoke.mjs";
+import { rankByAnalysisEligibility } from "../../../scripts/lib/analysis-eligibility.mjs";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(resolve(root, path), "utf8");
@@ -240,55 +241,69 @@ describe("phase306 · B — bounded provider-order scan windows on plan-restrict
     ],
   });
 
-  const stageTransport = (rows: unknown[]) => {
-    const pages: Array<{ windowStart: number }> = [];
-    return {
-      pages,
-      action: async (_p: string, args: { stageId: string; afterSeq?: number; limit?: number }) => {
-        const afterSeq = args.afterSeq ?? -1;
-        pages.push({ windowStart: afterSeq + 1 });
-        const start = afterSeq + 1;
-        const batch = rows.slice(start, start + (args.limit ?? 480));
-        return {
-          ok: true,
-          value: {
-            rows: batch,
-            hasMore: start + batch.length < rows.length,
-            nextAfterSeq: start + batch.length - 1,
-            stagedRows: rows.length,
-          },
-        };
-      },
-    };
-  };
-
-  it("window 0 reads the head; window 1 reads the NEXT provider-order block — same order, bounded", async () => {
-    const rows = Array.from({ length: STAGED_SELECTION_MAX_ROWS + 5 }, (_, i) => equityRow(`S${i}`, i));
-    const transport = stageTransport(rows);
-    const discovery = stagedDiscovery(rows.length);
-    const w0 = await selectCandidatesFromStagedCatalog(STOCK_SPEC as never, discovery as never, transport as never, "t", { maxAttempts: 3 });
-    expect(w0.ok).toBe(true);
-    expect(w0.provenance!.windowIndex).toBe(0);
-    expect(w0.provenance!.rowsRead).toBe(STAGED_SELECTION_MAX_ROWS);
-    expect(w0.provenance!.selected).toEqual(["S0", "S1", "S2"]);
-
-    const w1 = await selectCandidatesFromStagedCatalog(STOCK_SPEC as never, discovery as never, transport as never, "t", { maxAttempts: 3, windowIndex: 1 });
-    expect(w1.ok).toBe(true);
-    expect(w1.provenance!.windowIndex).toBe(1);
-    // provider order preserved INSIDE the window; the window starts where 0 ended
-    expect(w1.provenance!.rowsRead).toBe(5);
-    expect(w1.provenance!.selected).toEqual([`S${STAGED_SELECTION_MAX_ROWS}`, `S${STAGED_SELECTION_MAX_ROWS + 1}`, `S${STAGED_SELECTION_MAX_ROWS + 2}`]);
-    expect(w1.provenance!.window).toContain("scan window 2");
+  const stageTransport = (rows: unknown[]) => ({
+    action: async (_p: string, args: { stageId: string; afterSeq?: number; limit?: number }) => {
+      const start = (args.afterSeq ?? -1) + 1;
+      const batch = rows.slice(start, start + (args.limit ?? 480));
+      return {
+        ok: true,
+        value: {
+          rows: batch,
+          hasMore: start + batch.length < rows.length,
+          nextAfterSeq: start + batch.length - 1,
+          stagedRows: rows.length,
+        },
+      };
+    },
   });
 
-  it("the advance is bounded and driven only by plan-restriction evidence", () => {
+  it("STAGED_MAX_WINDOWS is the bounded window count (3)", () => {
     expect(STAGED_MAX_WINDOWS).toBe(3);
+  });
+
+  it("phase 307 design: windows are PRE-ASSEMBLED in provider order, rows tagged with their window", async () => {
+    const rows = Array.from({ length: STAGED_SELECTION_MAX_ROWS + 5 }, (_, i) => equityRow(`S${i}`, i));
+    const res = await selectCandidatesFromStagedCatalog(
+      STOCK_SPEC as never,
+      stagedDiscovery(rows.length) as never,
+      stageTransport(rows) as never,
+      "t",
+      { maxAttempts: 3, windows: 2 },
+    );
+    expect(res.ok).toBe(true);
+    expect(res.provenance!.windowsRead).toBe(2);
+    expect(res.provenance!.rowsRead).toBe(rows.length); // 960 + 5, bounded
+    expect(res.provenance!.window).toContain("scan windows 1..2");
+    // every ranked row carries its provider-order window tag
+    const firstWindowRow = res.ranked!.find((r) => r.providerInstrumentId === "S0") as unknown as { windowIndex: number };
+    const secondWindowRow = res.ranked!.find((r) => r.providerInstrumentId === `S${STAGED_SELECTION_MAX_ROWS}`) as unknown as { windowIndex: number };
+    expect(firstWindowRow.windowIndex).toBe(0);
+    expect(secondWindowRow.windowIndex).toBe(1);
+  });
+
+  it("phase 307 design: a plan-refused window is demoted WHOLE — the next pick comes from the next window", () => {
+    const w0 = Array.from({ length: 4 }, (_, i) => ({ ...equityRow(`BAD${i}`, i), windowIndex: 0 }));
+    const w1 = Array.from({ length: 4 }, (_, i) => ({ ...equityRow(`GOOD${i}`, 10 + i), windowIndex: 1 }));
+    const refusals = new Map([[0, 1]]);
+    const ranked = rankByAnalysisEligibility(
+      [...w0, ...w1],
+      { provider: "twelve-data", assetClass: "equity" },
+      { planRestrictedWindows: refusals },
+    );
+    expect(ranked[0].providerInstrumentId).toBe("GOOD0");
+    expect(ranked.filter((r: { windowIndex: number }) => r.windowIndex === 0).length).toBe(4);
+    // and with no refusals the provider order stands
+    const neutral = rankByAnalysisEligibility([...w0, ...w1], { provider: "twelve-data", assetClass: "equity" }, {});
+    expect(neutral[0].providerInstrumentId).toBe("BAD0");
+  });
+
+  it("the smoke loop steers via window strikes, not post-attempt telemetry", () => {
     const smoke = read("scripts/development-runtime-smoke.mjs");
-    expect(smoke).toContain("attemptedPlanRestricted >= triedInstruments.size");
-    expect(smoke).toContain("stagedWindowIndex + 1 < STAGED_MAX_WINDOWS");
-    expect(smoke).toContain('outcome: "window-advanced"');
-    // the trigger is the provider's own plan sentence, already observed live
-    expect(smoke).toContain("attemptedPlanRestricted += 1");
+    expect(smoke).toContain("windowPlanRefusals.set(w, (windowPlanRefusals.get(w) ?? 0) + 1);");
+    expect(smoke).toContain("planRestrictedWindows: windowPlanRefusals,");
+    expect(smoke).toContain("windows: STAGED_MAX_WINDOWS,");
+    // the phase-306 post-attempt advance is GONE — it could not steer attempts
+    expect(smoke).not.toContain('outcome: "window-advanced"');
   });
 });
 

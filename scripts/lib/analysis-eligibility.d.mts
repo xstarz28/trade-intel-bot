@@ -54,6 +54,8 @@ export interface RankObservations {
   technicallyInsufficientQuotes?: Set<string> | Iterable<string>;
   /** Counted strikes, keys `base:<family>` / `quote:<currency>`. */
   technicalStrikes?: Map<string, number>;
+  /** Phase 307 — provider-proven plan refusals per staged scan window (windowIndex -> count). */
+  planRestrictedWindows?: Map<number, number>;
 }
 
 export interface AttemptObservation {

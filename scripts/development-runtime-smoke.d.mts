@@ -1,3 +1,4 @@
+import type { RankObservations } from "./lib/analysis-eligibility";
 /**
  * Types for `development-runtime-smoke.mjs`.
  *
@@ -118,6 +119,9 @@ export function selectCandidates(
   discovery: unknown,
   maxAttempts: number,
   ceiling?: number,
+  observations?: RankObservations,
+  /** Phase 307 — "head" (default) or "stride" (bounded sample across the whole provider order). */
+  poolStrategy?: "head" | "stride",
 ): Candidate[];
 
 /** One catalog's own fetch report, exactly as the provider adapter published it. */
@@ -199,6 +203,11 @@ export type Evidence = {
     commodityProfile: { group: string | null; classificationSource: string | null } | null;
     commodityMetrics: { inventoryLatest: number | null; keys: string[] } | null;
     limitations: string[];
+    /**
+     * Phase 307 — the forex released-measurement pipeline, verbatim from the
+     * assessment (null when the assessment did not carry one).
+     */
+    measurementPipeline: Record<string, unknown> | null;
     /** Phase 289 — the delivered domain dimensions with their OWN status. */
     dimensions: { name: string | null; status: string | null; role: string | null }[];
     evidenceProviders: string[];
@@ -708,7 +717,8 @@ export type StagedSelectionProvenance = {
   usableRows: number;
   selected: string[];
   window: string;
-  windowIndex: number;
+  /** Phase 307 — how many provider-order windows the selection pre-assembled. */
+  windowsRead: number;
   readError?: string;
 };
 
@@ -734,8 +744,8 @@ export function selectCandidatesFromStagedCatalog(
     };
     pageRows?: number;
     maxRows?: number;
-    /** Phase 306 — 0-based provider-order scan window (advanced on plan-restriction evidence). */
-    windowIndex?: number;
+    /** Phase 307 — how many bounded provider-order windows to pre-assemble (server-side reads). */
+    windows?: number;
   },
 ): Promise<StagedSelectionResult>;
 

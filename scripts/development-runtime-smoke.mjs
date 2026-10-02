@@ -425,11 +425,15 @@ export async function selectCandidatesFromStagedCatalog(
     observations = undefined,
     pageRows = STAGED_SELECTION_PAGE_ROWS,
     maxRows = STAGED_SELECTION_MAX_ROWS,
-    // Phase 306 — 0-based scan window over the SAME provider order: window 1
-    // starts after the first `maxRows` rows. Advancing is driven only by the
-    // provider's own plan-restriction refusals (see the domain loop) and is
-    // bounded by STAGED_MAX_WINDOWS.
-    windowIndex = 0,
+    // Phase 307 — how many bounded provider-order windows to PRE-ASSEMBLE
+    // (server-side stage reads; no provider analysis credits). Live evidence
+    // (run 36967115649): a window advance that happens AFTER attempts cannot
+    // steer them — window 0's head block absorbed the whole budget first.
+    // Assembling windows 1..N up front, tagging every row with its window
+    // index, and letting the ranker's window strikes demote refused windows
+    // makes the NEXT candidate reachable from the next block INSIDE the same
+    // attempt budget.
+    windows = 1,
   } = {},
 ) {
   const catalog = stagedCatalogFor(discovery, domainSpec.assetClass);
@@ -447,12 +451,12 @@ export async function selectCandidatesFromStagedCatalog(
     lastAfterSeq: -1,
     usableRows: 0,
     selected: [],
-    windowIndex,
-    window: `provider-order scan window ${windowIndex + 1} (rows ${windowIndex * maxRows + 1}..${(windowIndex + 1) * maxRows}, ${Math.ceil(maxRows / pageRows)} pages of ${pageRows})`,
+    windowsRead: windows,
+    window: `provider-order scan windows 1..${windows} (rows 1..${windows * maxRows}, ${windows * Math.ceil(maxRows / pageRows)} pages of ${pageRows})`,
   };
   const rows = [];
-  let afterSeq = windowIndex * maxRows - 1;
-  while (provenance.rowsRead < maxRows) {
+  let afterSeq = -1;
+  while (provenance.rowsRead < windows * maxRows) {
     const page = await transport.action(
       "marketData:readTwelveDataCatalogStage",
       { stageId: stageRef.stageId, afterSeq, limit: pageRows },
@@ -470,6 +474,11 @@ export async function selectCandidatesFromStagedCatalog(
     afterSeq = isNumber(value.nextAfterSeq) ? value.nextAfterSeq : afterSeq;
     provenance.lastAfterSeq = afterSeq;
     if (value.hasMore !== true || batch.length === 0) break;
+  }
+  // Phase 307 — each row carries the 0-based provider-order window it came
+  // from; the ranker's window strikes use it to steer later picks.
+  for (let i = 0; i < rows.length; i += 1) {
+    rows[i] = { ...rows[i], windowIndex: Math.floor(i / maxRows) };
   }
   const usable = rows
     .filter((row) => row.assetClass === domainSpec.assetClass)
@@ -517,7 +526,24 @@ export function okxDiscoveryDigest(discovery) {
     .join(" · ");
 }
 
-export function selectCandidates(domainSpec, discovery, maxAttempts, ceiling = MAX_CANDIDATE_ATTEMPTS, observations = undefined) {
+export function selectCandidates(
+  domainSpec,
+  discovery,
+  maxAttempts,
+  ceiling = MAX_CANDIDATE_ATTEMPTS,
+  observations = undefined,
+  // Phase 307 — "head" (default, every legacy caller) keeps the exact
+  // historical slice. "stride" builds the LEARNING pool as a bounded,
+  // deterministic, provider-order-preserving STRIDE SAMPLE across the WHOLE
+  // discovered list (<= ceiling rows, step = ceil(len/target)). Live evidence
+  // (run 36967115649): the OKX catalog's contiguous thin-quote head is longer
+  // than any head slice, so a head-slice pool — however wide — can sit ENTIRELY
+  // inside the thin block and a zero-strike deep candidate is unreachable no
+  // matter what the ranker does. A stride guarantees the pool spans the full
+  // provider order (deep-quote rows included) within the SAME bound; nothing
+  // is added, whitelisted or substituted, and the attempt budget is untouched.
+  poolStrategy = "head",
+) {
   if (!discovery || discovery.success !== true) return [];
   const rows = Array.isArray(discovery.instruments) ? discovery.instruments : [];
   const forClass =
@@ -565,6 +591,12 @@ export function selectCandidates(domainSpec, discovery, maxAttempts, ceiling = M
     // Phase 303 — within-run macro-measurement learning (see the ranker).
     observations,
   );
+  if (poolStrategy === "stride") {
+    const target = Math.max(1, Math.min(ceiling, ranked.length));
+    if (ranked.length <= target) return ranked;
+    const step = Math.ceil(ranked.length / target);
+    return ranked.filter((_, i) => i % step === 0).slice(0, target);
+  }
   return ranked.slice(0, Math.max(1, Math.min(maxAttempts, ceiling)));
 }
 
@@ -1074,6 +1106,15 @@ export function readResultEvidence(result) {
         }
       : null,
     limitations: Array.isArray(fa?.limitations) ? fa.limitations.slice(0, 12).map(sanitize) : [],
+    // Phase 307 — the forex released-measurement pipeline, VERBATIM from the
+    // assessment. Phase 306 built this provenance but the projection dropped
+    // it, so live runs (36967115649) could not show WHERE the released chain
+    // stopped. Without this copy the operator sees a bare EXTERNAL_DATA_GAP
+    // instead of rows -> released+actual -> currency match -> reads.
+    measurementPipeline:
+      fa?.measurementPipeline && typeof fa.measurementPipeline === "object"
+        ? fa.measurementPipeline
+        : null,
     // Phase 289 — the delivered domain dimensions with their OWN status. This is
     // the surface that answers "did this instrument receive evidence that belongs
     // to its market?" (e.g. petroleum inventories on a bullion instrument), and
@@ -1287,6 +1328,21 @@ export function evidenceDigest(record) {
     fundamental && fundamental.available !== true ? fundamental.measurementPipeline : null;
   if (pipeline && typeof pipeline === "object") {
     const a = pipeline.acquisition ?? {};
+    // Phase 307 — the FIRST empty stage is the chain's stopping point, named
+    // so the annotation is unambiguous:
+    //   provider rows -> released+actual -> currency match -> category read -> availability
+    const stoppedAt =
+      pipeline.eventsReceived === 0
+        ? "provider-rows"
+        : pipeline.releasedWithActual === 0
+          ? "released+actual"
+          : pipeline.baseReleasedMatched + pipeline.quoteReleasedMatched === 0
+            ? "currency-match"
+            : pipeline.policyRatesBase || pipeline.policyRatesQuote || pipeline.inflationBase || pipeline.inflationQuote
+              ? pipeline.availability
+                ? "none"
+                : "availability"
+              : "category-read";
     parts.push(
       clip(
         `pipeline[events=${pipeline.eventsReceived} releasedWithActual=${pipeline.releasedWithActual} ` +
@@ -1294,7 +1350,7 @@ export function evidenceDigest(record) {
           `policy=${pipeline.policyRatesBase ? "base" : "-"}/${pipeline.policyRatesQuote ? "quote" : "-"} ` +
           `inflation=${pipeline.inflationBase ? "base" : "-"}/${pipeline.inflationQuote ? "quote" : "-"} ` +
           `acq=[lookback=${a.lookbackDays ?? "?"}d upcoming=${a.upcomingFetched ?? "?"} past=${a.pastFetched ?? "?"} withActual=${a.pastWithActual ?? "?"} merged=${a.merged ?? "?"} leg=${a.pastLeg ?? "?"}] ` +
-          `-> available=${pipeline.availability}]`,
+          `stoppedAt=${stoppedAt} -> available=${pipeline.availability}]`,
         320,
       ),
     );
@@ -3039,6 +3095,10 @@ async function run() {
     if (candidates.length === 0 && spec.discovery === "twelve-data") {
       const staged = await selectCandidatesFromStagedCatalog(spec, discovery, transport, session.token, {
         maxAttempts,
+        // Phase 307 — pre-assemble ALL bounded windows up front (server-side
+        // stage reads cost no provider analysis credits) so the ranker can
+        // steer past a plan-restricted head block INSIDE the attempt budget.
+        windows: STAGED_MAX_WINDOWS,
         observations: {
           macroGapCurrencies: observedMacroGaps,
           planRestrictedFamilies: observedPlanRestrictedFamilies,
@@ -3061,7 +3121,7 @@ async function run() {
         annotate(
           "notice",
           `${spec.label} staged-catalog selection`,
-          `informational — candidates read from the staged catalog: stageId=${staged.provenance.stageId} · stagedRows=${staged.provenance.stagedRows} · pagesRead=${staged.provenance.pagesRead} · rowsRead=${staged.provenance.rowsRead} (bounded window) · usable=${staged.provenance.usableRows} · selected=${staged.provenance.selected.join(",") || "none"}`,
+          `informational — candidates read from the staged catalog: stageId=${staged.provenance.stageId} · stagedRows=${staged.provenance.stagedRows} · windowsRead=${staged.provenance.windowsRead} · pagesRead=${staged.provenance.pagesRead} · rowsRead=${staged.provenance.rowsRead} (bounded provider-order windows) · usable=${staged.provenance.usableRows} · selected=${staged.provenance.selected.join(",") || "none"}`,
         );
       }
     }
@@ -3110,6 +3170,7 @@ async function run() {
     const learningObservations = () => ({
       macroGapCurrencies: observedMacroGaps,
       planRestrictedFamilies: observedPlanRestrictedFamilies,
+      planRestrictedWindows: windowPlanRefusals,
       technicallyInsufficientFamilies: observedTechnicallyInsufficientFamilies,
       technicallyInsufficientQuotes: observedTechnicallyInsufficientQuotes,
       technicalStrikes: observedTechnicalStrikes,
@@ -3122,67 +3183,35 @@ async function run() {
     // quoted AUD/CAD's measurement gap, because the worst verdict's reason met
     // the last attempt's evidence).
     const attemptMeta = [];
-    // Phase 306 — plan-restriction strikes across THIS domain's attempts: the
-    // trigger for the bounded window advance (workstream B).
-    let attemptedPlanRestricted = 0;
-    let stagedWindowIndex = 0;
+    // Phase 307 — provider-proven plan refusals PER staged scan window. Each
+    // refusal demotes that whole window in the next pick's ranking, so the
+    // next attempt comes from the next provider-order block — inside the same
+    // attempt budget, learned only from the provider's own refusals.
+    const windowPlanRefusals = new Map();
     for (let index = 0; triedInstruments.size < maxAttempts; index += 1) {
-      // Phase 306 — when EVERY attempt so far proved plan-restricted, the
-      // current scan window is exhausted AS EVIDENCE: the bounded selector
-      // continues the SAME provider-order scan in the NEXT window (≤
-      // STAGED_MAX_WINDOWS) instead of re-hitting the same block. Driven only
-      // by the provider's own 404-that-names-a-plan observations; window
-      // reads are server-side stage queries (no provider credits).
-      if (
-        candidateSource === "staged-catalog" &&
-        stagedWindowIndex + 1 < STAGED_MAX_WINDOWS &&
-        attemptedPlanRestricted >= triedInstruments.size &&
-        triedInstruments.size > 0
-      ) {
-        stagedWindowIndex += 1;
-        const deeper = await selectCandidatesFromStagedCatalog(spec, discovery, transport, session.token, {
-          maxAttempts,
-          observations: learningObservations(),
-          windowIndex: stagedWindowIndex,
-        });
-        if (deeper.ok) {
-          stagedPool = deeper.ranked;
-          stagedProvenance = deeper.provenance;
-          record.discovery = {
-            ...(record.discovery ?? {}),
-            stagedSelection: stagedProvenance,
-          };
-          record.attempts.push({
-            step: "selection",
-            outcome: "window-advanced",
-            reason: `every attempt in scan window ${stagedWindowIndex} proved plan-restricted; continuing the provider-order scan: ${stagedProvenance.window}`,
-          });
-          annotate(
-            "notice",
-            `${spec.label} scan window advanced`,
-            `informational — ${stagedProvenance.window} · stageId=${stagedProvenance.stageId} · rowsRead=${stagedProvenance.rowsRead} · usable=${stagedProvenance.usableRows} · selected=${stagedProvenance.selected.join(",") || "none"}`,
-          );
-        } else {
-          record.attempts.push({
-            step: "selection",
-            outcome: "window-exhausted",
-            reason: sanitize(deeper.reason ?? "deeper scan window unusable"),
-          });
-          stagedWindowIndex = STAGED_MAX_WINDOWS; // no further advance attempts
-        }
-      }
       // Phase 304 — the pick is re-derived before EVERY attempt: inline pools
       // via selectCandidates, staged-catalog pools by re-ranking the SAME
-      // bounded window with the run's learning sets. Either way the source of
-      // truth is the provider's own discovery, the budget stays maxAttempts,
-      // and a demoted candidate sinks without ever being dropped.
+      // pre-assembled bounded windows with the run's learning sets. Either
+      // way the source of truth is the provider's own discovery, the budget
+      // stays maxAttempts, and a demoted candidate sinks without ever being
+      // dropped. Phase 307 — the crypto learning pool is a bounded stride
+      // sample across the WHOLE provider order (see selectCandidates), so a
+      // zero-strike deep candidate is reachable even when the thin-quote head
+      // is longer than the pool.
       const queue =
         candidateSource === "staged-catalog"
           ? rankByAnalysisEligibility(stagedPool, {
               provider: spec.discovery,
               assetClass: spec.assetClass,
             }, learningObservations())
-          : selectCandidates(spec, discovery, learningQueueCeiling, learningQueueCeiling, learningObservations());
+          : selectCandidates(
+              spec,
+              discovery,
+              learningQueueCeiling,
+              learningQueueCeiling,
+              learningObservations(),
+              spec.assetClass === "crypto" ? "stride" : "head",
+            );
       const candidate = queue.find((row) => !triedInstruments.has(candidateKey(spec, row)));
       if (!candidate) break;
       triedInstruments.add(candidateKey(spec, candidate));
@@ -3242,7 +3271,10 @@ async function run() {
       for (const side of observed.macroGapSides) observedMacroGaps.add(side);
       if (observed.planRestrictedFamily) {
         observedPlanRestrictedFamilies.add(observed.planRestrictedFamily);
-        attemptedPlanRestricted += 1;
+        // Phase 307 — the refusal strikes the CANDIDATE'S OWN scan window;
+        // the ranker demotes that window for the next pick.
+        const w = Number.isFinite(candidate.windowIndex) ? candidate.windowIndex : 0;
+        windowPlanRefusals.set(w, (windowPlanRefusals.get(w) ?? 0) + 1);
       }
       if (observed.technicallyInsufficientFamily) {
         observedTechnicallyInsufficientFamilies.add(observed.technicallyInsufficientFamily);
@@ -3276,7 +3308,12 @@ async function run() {
           : {}),
         ...(macroGapSides.length > 0 ? { macroGapObserved: macroGapSides } : {}),
       });
-      attemptMeta.push({ verdict, provider, nativeId });
+      attemptMeta.push({
+        verdict,
+        provider,
+        nativeId,
+        windowIndex: Number.isFinite(candidate.windowIndex) ? candidate.windowIndex : null,
+      });
 
       if (spec.discovery !== "okx") {
         record.discovery = {
@@ -3340,10 +3377,18 @@ async function run() {
       record.headline = domainVerdict.headline;
       record.reason = domainVerdict.reason;
     }
-    // Phase 306 — the record's printed evidence is re-bound to the attempt
-    // that EARNED the reported verdict, so headline/reason/legs/detail always
-    // describe the same candidate (workstream D).
-    if (domainVerdict) {
+    // Phase 306/307 — the record's printed evidence is re-bound to the
+    // attempt that EARNED the REPORTED headline, so headline/reason/legs/
+    // evidence/identity always describe the SAME candidate (workstream D).
+    // When the final headline is PASS (the smoke's long-standing policy: a
+    // later PASS wins), that attempt is the last one; otherwise the headline
+    // is the most-severe verdict and its own attempt is bound. Re-binding the
+    // worst attempt's evidence under a PASS headline would recreate the exact
+    // earlier-identity/later-evidence contradiction this workstream removes.
+    if (record.headline === "PASS") {
+      const reported = attemptMeta[attemptMeta.length - 1];
+      if (reported) applyVerdictEvidence(record, reported.verdict, reported.provider, reported.nativeId);
+    } else if (domainVerdict) {
       const reported = attemptMeta.find((m) => m.verdict === domainVerdict);
       if (reported) applyVerdictEvidence(record, reported.verdict, reported.provider, reported.nativeId);
     }

@@ -10,7 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetProviderCache, getProviderCache } from "../lib/data/provider-cache-registry";
-import { fetchCalendar } from "./tradingEconomics";
+import { fetchCalendar, CALENDAR_CACHE_CONTRACT } from "./tradingEconomics";
 import type { CalendarResult } from "../lib/data/calendar-types";
 
 type Args = { instrument: string; instrumentType: string };
@@ -18,7 +18,8 @@ type Handler = (ctx: unknown, args: Args) => Promise<CalendarResult>;
 const te = (fetchCalendar as unknown as { _handler: Handler })._handler;
 const ctx = { auth: { getUserIdentity: async () => ({ subject: "user_A|sess", issuer: "t" }) } };
 const EURUSD: Args = { instrument: "EUR/USD", instrumentType: "forex" };
-const KEY = { provider: "tickatlas", dataset: "calendar", instrument: "EUR/USD", instrumentType: "forex" } as const;
+// Phase 307 — the cache identity carries the released-window contract token.
+const KEY = { provider: "tickatlas", dataset: "calendar", instrument: "EUR/USD", instrumentType: "forex", qualifier: CALENDAR_CACHE_CONTRACT } as const;
 
 type Route = { status?: number; body?: unknown; throws?: unknown; badJson?: boolean };
 /** The first request is the upcoming window (from=today); the second is the past window (to=today). */
@@ -70,6 +71,8 @@ describe("229 TA — valid", () => {
     expect(r.data!.error).toBeUndefined();
     expect(r.acquisition).toBe("observed-now");
     expect(getProviderCache().peek(KEY)).not.toBeNull();
+    // Phase 307 — the released leg's own provenance travels on the data.
+    expect(r.data!.releasedAcquisition!.pastLeg).toBe("ok");
   });
 });
 

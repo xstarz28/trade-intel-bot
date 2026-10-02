@@ -84,7 +84,14 @@ export interface ReleasedAcquisitionProvenance {
   /** Recent-leg events merged into the delivered list (dedup + eligibility). */
   merged: number;
   /** Whether the recent leg answered at all (`failed` = no released read happened). */
-  pastLeg: "ok" | "failed";
+  /**
+   * Phase 307 — "ok", or the bounded failure CLASS the leg ended with
+   * (`failed:timeout` | `failed:network` | `failed:provider_error` |
+   * `failed:malformed` | `failed:unavailable`). A classified failure is the
+   * provenance that a timed-out 40-day request is NOT "the provider holds no
+   * released events".
+   */
+  pastLeg: "ok" | "failed" | `failed:${string}`;
 }
 
 /** Combined economic calendar intelligence. */

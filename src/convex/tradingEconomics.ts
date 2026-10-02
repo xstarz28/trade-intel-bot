@@ -43,11 +43,33 @@ import {
 
 const TA_BASE = "https://tickatlas.com/v1";
 
-async function taFetch(path: string, apiKey: string): Promise<unknown> {
+/**
+ * Phase 307 — the per-request transport deadline for the 7-day UPCOMING
+ * calendar request (phase 177's number, unchanged). The PAST released leg is
+ * a materially larger request and gets its own deadline below — a path-
+ * specific bound, never an unbounded fetch.
+ */
+const TA_UPCOMING_FETCH_TIMEOUT_MS = 7_000;
+
+/**
+ * Phase 307 — live evidence (runs 36962601231 and 36967115649): EUR/USD kept
+ * reporting EXTERNAL_DATA_GAP while the upcoming leg delivered, so the
+ * unresolved stage is exactly the historical/released request. That leg now
+ * asks the provider for 40 days of events (~6x the rows of the 7-day window)
+ * but still carried the 7-day deadline — a self-inflicted ceiling. It gets a
+ * proportional, still-bounded deadline (20s), which the calendar leg's outer
+ * budget (CALENDAR_LEG_BUDGET_MS = 25s, set where the leg is run) is sized to
+ * contain. A past leg that exceeds this bound fails as `failed:timeout` —
+ * provenance, never synthetic availability.
+ */
+const TA_PAST_FETCH_TIMEOUT_MS = 20_000;
+
+async function taFetch(path: string, apiKey: string, timeoutMs: number = TA_UPCOMING_FETCH_TIMEOUT_MS): Promise<unknown> {
   const url = `${TA_BASE}${path}`;
   const res = await fetch(url, {
-    // Phase 177 — HTTP deadline below the 8s tickatlas leg budget.
-    signal: AbortSignal.timeout(7_000),
+    // Bounded per-request deadline (phase 177/307): callers pass the budget
+    // that matches THEIR window; nothing here fetches unbounded.
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       "X-API-Key": apiKey,
       accept: "application/json",
@@ -199,6 +221,25 @@ function normalizeEvent(raw: unknown): EconomicEvent | null {
  */
 export const CALENDAR_RELEASED_LOOKBACK_DAYS = 40;
 
+/**
+ * Phase 307 — cache-identity token for the released-window contract (see the
+ * qualifier on the cache descriptor below). Version-bumped whenever the
+ * released acquisition's contract changes; the current token already
+ * distinguishes the 40-day released acquisition from any pre-306 7-day
+ * cached entry.
+ */
+export const CALENDAR_CACHE_CONTRACT = "released-lookback-40d-v2";
+
+/**
+ * Phase 307 — the outer budget for the calendar provider leg where it is RUN
+ * (protectedAnalysis). Both inner deadlines (7s upcoming, 20s past) must fit
+ * inside it with headroom; it replaces the default 8s tickatlas budget that
+ * pre-306 runs effectively imposed on the whole calendar acquisition and
+ * which capped the past leg below its own window's needs. Bounded, and below
+ * the harness transport's 60s action deadline.
+ */
+export const CALENDAR_LEG_BUDGET_MS = 25_000;
+
 /** Minimum importance of a RELEASED event merged into the calendar (>= 2). */
 export const RELEASED_MERGE_MIN_IMPORTANCE = 2;
 
@@ -233,6 +274,13 @@ export const fetchCalendar = action({
           dataset: "calendar",
           instrument: args.instrument.toUpperCase().trim(),
           instrumentType: args.instrumentType,
+          // Phase 307 — the released-window CONTRACT is part of the cache
+          // identity. The 40-day acquisition changed what a cached calendar
+          // entry must contain (a past leg with released actuals); bumping
+          // this token guarantees a stale pre-40-day cached 7-day result can
+          // never be served as the 40-day acquisition. Bump on every change
+          // to the released-window contract (window, merge rule, deadlines).
+          qualifier: CALENDAR_CACHE_CONTRACT,
         },
         async () => {
       // Determine relevant currencies for this instrument
@@ -277,7 +325,16 @@ export const fetchCalendar = action({
           extractEvents(await taFetch(`/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`, apiKey)),
         ),
         runLeg(async () =>
-          extractEvents(await taFetch(`/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`, apiKey)),
+          // Phase 307 — the released-measurement leg fetches 40 days of
+          // provider events and carries ITS OWN bounded deadline (see
+          // TA_PAST_FETCH_TIMEOUT_MS); the upcoming leg keeps the 7s bound.
+          extractEvents(
+            await taFetch(
+              `/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`,
+              apiKey,
+              TA_PAST_FETCH_TIMEOUT_MS,
+            ),
+          ),
         ),
       ]);
       const legs = { upcoming: upcomingLeg, recentReleased: pastLeg };
@@ -383,7 +440,12 @@ export const fetchCalendar = action({
           pastFetched,
           pastWithActual,
           merged,
-          pastLeg: pastLeg.status === "ok" ? "ok" : "failed",
+          // Phase 307 — the failure CLASS travels (timeout / network /
+          // provider_error / malformed / unavailable), not a bare "failed":
+          // the annotation can then show exactly which bound the past leg
+          // hit, and a timed-out 40-day request can never masquerade as
+          // "the provider holds no released events".
+          pastLeg: pastLeg.status === "ok" ? "ok" : `failed:${pastLeg.status}`,
         },
         // Phase 229 — partial: the past-events leg failed (class + reason).
         ...(legFailures ? { error: legFailures } : {}),

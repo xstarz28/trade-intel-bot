@@ -83,6 +83,7 @@ import { acquireCryptoFundamentals } from "@/lib/data/crypto/fundamentals-acquis
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { isRecord } from "@/lib/data/json/narrow";
+import { CALENDAR_LEG_BUDGET_MS } from "./tradingEconomics";
 import {
   type ProviderOutcome,
   optionalSlowEnvelope,
@@ -671,6 +672,13 @@ export const runProtectedAnalysis = action({
 
     const calendarLeg = runProviderLeg<unknown>({
       provider: "tickatlas",
+      // Phase 307 — the calendar acquisition reaches 40 days back now; its
+      // past leg carries a 20s request deadline (TA_PAST_FETCH_TIMEOUT_MS),
+      // which the default 8s tickatlas leg budget would cut off mid-flight.
+      // The leg gets its own PROPORTIONAL, still-bounded outer budget instead
+      // of silently timing out against a budget sized for the old 7-day
+      // window. All other tickatlas legs keep the default budget.
+      budgetMs: CALENDAR_LEG_BUDGET_MS,
       run: async () => {
         const r = (await ctx.runAction(api.tradingEconomics.fetchCalendar, {
           instrument,

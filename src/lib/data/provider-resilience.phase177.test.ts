@@ -974,7 +974,6 @@ describe("every provider action sets a real HTTP deadline", () => {
     const cases: Array<[string, string, number]> = [
       ["alphaVantage", "alpha-vantage", 7_000],
       ["coinglass", "coinglass", 7_000],
-      ["tradingEconomics", "tickatlas", 7_000],
       ["cot", "cftc", 7_000],
       ["treasury", "treasury", 8_000],
       ["eia", "eia", 8_000],
@@ -985,5 +984,22 @@ describe("every provider action sets a real HTTP deadline", () => {
       expect(src).toContain(`AbortSignal.timeout(${httpMs.toLocaleString("en-US").replace(",", "_")})`);
       expect(httpMs).toBeLessThan(PROVIDER_BUDGET_MS[provider]);
     }
+  });
+
+  it("tradingEconomics: both calendar deadlines are bounded and inside their budgets (phase 307)", () => {
+    // Phase 307 — the 40-day released leg got a PROPORTIONAL deadline; the
+    // deadline is a parameter now, so the pin asserts the constants and their
+    // budget relations instead of a single literal call.
+    const src = readFileSync("src/convex/tradingEconomics.ts", "utf8");
+    expect(src).toContain("AbortSignal.timeout(timeoutMs)");
+    expect(src).toContain("const TA_UPCOMING_FETCH_TIMEOUT_MS = 7_000;");
+    expect(src).toContain("const TA_PAST_FETCH_TIMEOUT_MS = 20_000;");
+    // 7s upcoming < the default tickatlas leg budget; 20s past < the calendar
+    // leg's own 25s outer budget, passed at the run site.
+    expect(7_000).toBeLessThan(PROVIDER_BUDGET_MS["tickatlas"]);
+    expect(src).toContain("export const CALENDAR_LEG_BUDGET_MS = 25_000;");
+    expect(20_000).toBeLessThan(25_000);
+    const pa = readFileSync("src/convex/protectedAnalysis.ts", "utf8");
+    expect(pa).toContain("budgetMs: CALENDAR_LEG_BUDGET_MS,");
   });
 });
