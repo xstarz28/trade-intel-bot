@@ -208,7 +208,7 @@ describe("286 — the guard CLI never prints a credential", () => {
 describe("286 — the development workflow is manual, development-scoped and fail-closed", () => {
   const workflow = read(WORKFLOW);
 
-  it("exists and is wired to workflow_dispatch only", () => {
+  it("exists and is wired to explicit dispatch only", () => {
     expect(existsSync(resolve(root, WORKFLOW))).toBe(true);
     const triggers = workflow.slice(workflow.indexOf("\non:"), workflow.indexOf("\njobs:"));
     expect(triggers).toMatch(/workflow_dispatch:/);
@@ -216,6 +216,14 @@ describe("286 — the development workflow is manual, development-scoped and fai
     expect(triggers).not.toMatch(/^ {2}pull_request:/m);
     expect(triggers).not.toMatch(/^ {2}schedule:/m);
     expect(triggers).not.toMatch(/^ {2}tags:/m);
+    // Phase 309 — the sandbox identity may call `repository dispatch` but is
+    // refused `workflow dispatch`, so the RELAY workflow re-issues the
+    // decision as a real workflow_dispatch. The trigger is accepted ONLY to
+    // receive that relay; the jobs below stay gated to workflow_dispatch, so
+    // a repository dispatch event alone can never run a deploy.
+    expect(triggers).toMatch(/repository_dispatch:\n    types: \[development-deploy-relay\]/);
+    const jobGates = [...workflow.matchAll(/^ {4}if: github\.event_name == 'workflow_dispatch'$/gm)].length;
+    expect(jobGates).toBeGreaterThanOrEqual(2);
   });
 
   it("runs in the development GitHub environment and never in production", () => {

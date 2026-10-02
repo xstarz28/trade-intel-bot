@@ -62,13 +62,17 @@ const SCRIPT = "scripts/development-runtime-smoke.mjs";
 describe("287 — the runtime smoke workflow is manual, development-scoped and fail-closed", () => {
   const workflow = read(WORKFLOW);
 
-  it("exists and is wired to workflow_dispatch only", () => {
+  it("exists and is wired to explicit dispatch only", () => {
     expect(existsSync(resolve(root, WORKFLOW))).toBe(true);
     const triggers = workflow.slice(workflow.indexOf("\non:"), workflow.indexOf("\njobs:"));
     expect(triggers).toMatch(/workflow_dispatch:/);
     expect(triggers).not.toMatch(/^ {2}push:/m);
     expect(triggers).not.toMatch(/^ {2}pull_request:/m);
     expect(triggers).not.toMatch(/^ {2}schedule:/m);
+    // Phase 309 — repository dispatch is accepted ONLY as the relay's
+    // carrier; the smoke job stays gated to workflow_dispatch.
+    expect(triggers).toMatch(/repository_dispatch:\n    types: \[development-runtime-smoke-relay\]/);
+    expect(workflow).toMatch(/if: github\.event_name == 'workflow_dispatch'/);
   });
 
   it("runs in the development environment and never in production", () => {

@@ -82,6 +82,15 @@ on:
         description: "Type DEPLOY_DEV to confirm this targets the development deployment"
         required: true
         type: string
+  # Phase 309 — the sandbox's GitHub identity may call `repository dispatch`
+  # but is refused `workflow dispatch`. The RELAY workflow
+  # (development-dispatch-relay.yml) receives the dispatch and re-issues it as
+  # a real workflow_dispatch from the default branch, so THIS workflow's body
+  # still only ever runs as an explicit workflow_dispatch with all guards.
+  # The jobs below are gated to workflow_dispatch for that reason: a repository
+  # dispatch event alone can NEVER run a deploy — it can only carry the relay.
+  repository_dispatch:
+    types: [development-deploy-relay]
 
 permissions:
   contents: read
@@ -99,6 +108,7 @@ env:
 jobs:
   guard:
     name: Refuse unless the target is a development deployment
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: development
@@ -136,6 +146,7 @@ jobs:
 
   deploy:
     name: Convex development deploy
+    if: github.event_name == 'workflow_dispatch'
     needs: guard
     runs-on: ubuntu-latest
     timeout-minutes: 20
