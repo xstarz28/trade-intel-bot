@@ -21,7 +21,11 @@ export function LogoDropdown() {
   const handleSignOut = async () => {
     try {
       await signOut();
-      navigate("/");
+      // Phase 311 — sign-out lands on /auth (the single auth surface) rather
+      // than the marketing landing page: the user asked to end the session,
+      // so the next step is signing in again, and the auth page's own
+      // safe-redirect keeps the destination attack-proof.
+      navigate("/auth");
     } catch {
       // Phase 218 — never pass the rejection to the console. A failed
       // sign-out can echo session or token material, and the browser console
@@ -30,7 +34,7 @@ export function LogoDropdown() {
       // Leave the authenticated area regardless. Staying put after a failed
       // sign-out presents the user as still signed in on a session they asked
       // to end, which is the more dangerous outcome than an extra redirect.
-      navigate("/");
+      navigate("/auth");
     }
   };
 

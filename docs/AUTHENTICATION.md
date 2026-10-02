@@ -9,9 +9,29 @@
 > it describes an active sign-in method, and no `XSTARZ_EMAIL_*` variable is
 > required or read by any code path anymore. The active model is below.
 >
-> **Active sign-in methods (Phase 269+):** Google OAuth (OIDC, PKCE + state,
-> `email_verified` enforced, `allowDangerousEmailAccountLinking: false`) and
-> anonymous guest sessions. Account identity and sessions persist regardless
+> **Active sign-in methods (Phase 269+, hardened Phase 311):** Google OAuth
+> (OIDC, PKCE + state, `email_verified` enforced,
+> `allowDangerousEmailAccountLinking: false`) and anonymous guest sessions.
+> Sign-out lands on `/auth` (the single auth surface), not the landing page.
+>
+> **Google runtime contract (Phase 311, derived from `@convex-dev/auth`
+> code, not guessed):**
+>
+> | Concern | Value |
+> | --- | --- |
+> | OAuth callback URL (register in Google Cloud) | `${CONVEX_SITE_URL}/api/auth/callback/google` |
+> | Post-auth redirect base | `SITE_URL` — the origin serving the app UI; the library resolves the app's safe path against it (`requireEnv("SITE_URL")`). Unset, the callback throws **after** Google consent. |
+> | Post-auth landing | `${SITE_URL}<safe path>` — default `/dashboard`, attacker-controlled `returnTo` is refused by `src/lib/routing/safe-redirect.ts` |
+> | Provider credentials | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`, set on the Convex deployment, presence-only checked |
+>
+> Operator check (three-state, never prints values):
+> `npm run auth:verify` → `GOOGLE_AUTH_CONFIGURED` (0) /
+> `GOOGLE_AUTH_NOT_CONFIGURED` (1, lists exactly what to set) /
+> `GOOGLE_AUTH_INVALID` (2, a present value is implausible). A missing or
+> invalid configuration must never blank the app: the frontend reads no auth
+> secret, and a failed Google attempt shows a fixed-category error with the
+> guest path still available. Real credential validity is proven only by one
+> live acceptance sign-in — no static check can substitute for it. Account identity and sessions persist regardless
 > of the provider set, which is a runtime configuration — a former email-OTP
 > account's records remain intact and an existing session never depended on
 > the provider. The durable OTP anti-abuse limiter (`otpLimiter.ts`, the

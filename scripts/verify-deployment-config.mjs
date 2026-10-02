@@ -155,6 +155,19 @@ const CLASSES = [
        */
       { name: "AUTH_GOOGLE_ID", secret: true, requiredInProduction: true },
       { name: "AUTH_GOOGLE_SECRET", secret: true, requiredInProduction: true },
+      /*
+       * Phase 311 — the post-auth redirect base. `@convex-dev/auth` resolves
+       * the destination after a successful OAuth callback against
+       * `requireEnv("SITE_URL")` (implementation/redirects.js:
+       * `defaultRedirectCallback` turns a relative `redirectTo` into
+       * `${SITE_URL}${redirectTo}`). Unset, the callback THROWS — after the
+       * user has already consented on Google. It must be the origin that
+       * serves the app UI (the frontend), NOT the Convex deployment URL
+       * (that is `CONVEX_SITE_URL`, the issuer/callback base). Shape is
+       * validated by the production-endpoints check below, which already
+       * listed SITE_URL.
+       */
+      { name: "SITE_URL", secret: false, requiredInProduction: true },
     ],
   },
   {

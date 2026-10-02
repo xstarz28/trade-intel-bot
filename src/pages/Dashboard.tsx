@@ -6,6 +6,7 @@ import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { FirstRunGuide } from "@/components/FirstRunGuide";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
+import { reportAuthDiagnostic } from "@/lib/auth/safe-diagnostics";
 // Phase 174 — runAnalysis is deliberately NOT imported here. The directional
 // decision is produced server-side behind the entitlement boundary
 // (api.protectedAnalysis.runProtectedAnalysis), so an unentitled client never
@@ -439,8 +440,16 @@ export default function Dashboard() {
   const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
 
   const handleSignOut = async () => {
-    await signOut();
-    navigate("/");
+    // Phase 311 — sign-out lands on /auth: the single auth surface the next
+    // sign-in starts from, with the safe-redirect defaulting back to /dashboard.
+    try {
+      await signOut();
+      navigate("/auth");
+    } catch {
+      // Never surface the rejection (session/token material); fixed category.
+      reportAuthDiagnostic("sign-out-failed");
+      navigate("/auth");
+    }
   };
 
   const updateStep = useCallback((index: number, status: LoadingStep["status"]) => {

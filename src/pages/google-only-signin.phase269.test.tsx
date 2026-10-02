@@ -18,7 +18,7 @@
  * the same harness pattern as `first-run.phase189.test.tsx`.
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
@@ -230,10 +230,11 @@ describe("269.5 — only one authentication surface is mounted", () => {
 
   it("no page or component still mounts the OTP input", () => {
     for (const file of walkSources("src")) {
-      // The OTP input component stays in the ui kit; nothing mounts it.
-      if (file.includes(join("components", "ui"))) continue;
       expect(read(file), `${file} still mounts InputOTP`).not.toContain("InputOTP");
     }
+    // Phase 311 — the OTP input component itself is deleted (it used to sit
+    // unmounted in the ui kit); the resurrection surface is gone entirely.
+    expect(existsSync(join(process.cwd(), "src", "components", "ui", "input-otp.tsx"))).toBe(false);
   });
 });
 

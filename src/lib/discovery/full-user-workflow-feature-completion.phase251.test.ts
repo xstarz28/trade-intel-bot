@@ -363,10 +363,12 @@ describe("Phase251 39 — auth session workflow", () => {
 });
 
 describe("Phase251 40 — logout/relogin", () => {
-  it("handleSignOut navigates to /", () => {
+  it("handleSignOut navigates to /auth", () => {
+    // Phase 311 — sign-out lands on the single auth surface (/auth); the
+    // relogin half of this contract is unchanged (Convex queries restore).
     const dash = read("src/pages/Dashboard.tsx");
     expect(dash).toContain("handleSignOut");
-    expect(dash).toContain('navigate("/")');
+    expect(dash).toContain('navigate("/auth")');
   });
 });
 

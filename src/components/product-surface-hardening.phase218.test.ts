@@ -114,7 +114,10 @@ describe("Phase 218 — sign-out failures disclose nothing", () => {
       logoDropdown.indexOf("const handleGoHome"),
     );
     // Two navigations: the success path and the failure path.
-    expect(handler.match(/navigate\("\/"\)/g)?.length).toBe(2);
+    // Phase 311 — the destination is /auth (the single auth surface), not the
+    // marketing landing page; the guarantee "leave the authenticated area on
+    // both paths" is unchanged.
+    expect(handler.match(/navigate\("\/auth"\)/g)?.length).toBe(2);
   });
 });
 

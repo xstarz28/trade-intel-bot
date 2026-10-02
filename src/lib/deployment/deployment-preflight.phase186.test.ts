@@ -106,6 +106,9 @@ const VALID_PRODUCTION = {
   // carry them.
   AUTH_GOOGLE_ID: GOOGLE_CLIENT_ID_FIXTURE,
   AUTH_GOOGLE_SECRET: PLAUSIBLE_KEY,
+  // Phase 311 — the post-auth redirect base (`requireEnv("SITE_URL")` in
+  // @convex-dev/auth redirects.js). The app-UI origin, not the deployment.
+  SITE_URL: "https://app.xstarz-trading.com",
 };
 
 describe("Phase 186 — deployment preflight exists and is wired up", () => {
@@ -426,7 +429,9 @@ describe("Phase 200 — production endpoints must be real production endpoints",
 
   it("stays silent rather than failing when no endpoint is configured yet", () => {
     // Today's reality. A check that failed here would be noise, not signal.
-    const run = runPreflight(without(VALID_PRODUCTION, "CONVEX_SITE_URL"));
+    // Phase 311: SITE_URL joined the endpoint list, so a truly endpoint-less
+    // configuration strips it too.
+    const run = runPreflight(without(without(VALID_PRODUCTION, "CONVEX_SITE_URL"), "SITE_URL"));
     expect(statusOf(run, "production-endpoints")).toBe("PASS");
     expect(detailOf(run, "production-endpoints")).toMatch(/nothing to validate/i);
   });
