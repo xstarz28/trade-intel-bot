@@ -146,7 +146,12 @@ export function familyOf(providerInstrumentId) {
  */
 export function observeAttemptOutcome({ providerInstrumentId, assetClass, verdictReason }) {
   const reason = String(verdictReason ?? "");
-  const out = { macroGapSides: [], planRestrictedFamily: null, technicallyInsufficientFamily: null };
+  const out = {
+    macroGapSides: [],
+    planRestrictedFamily: null,
+    technicallyInsufficientFamily: null,
+    technicallyInsufficientQuote: null,
+  };
   if (reason.length === 0) return out;
   if (
     assetClass === "forex" &&
@@ -161,6 +166,18 @@ export function observeAttemptOutcome({ providerInstrumentId, assetClass, verdic
   }
   if (/market evidence is real but technical\/unified evidence is not available/i.test(reason)) {
     out.technicallyInsufficientFamily = familyOf(providerInstrumentId);
+    // Phase 305 — the QUOTE strike. For dash-form identities (okx crypto) the
+    // thin-candle pattern repeats across the QUOTE currency, not the base:
+    // live evidence (run 36960231581) burned the crypto window on BTC-PLN,
+    // ETH-PLN and USDC-PLN — three DIFFERENT base families sharing one thin
+    // quote. The quote strike is what makes the learning accumulate across
+    // base families and steer toward deeper-quote instruments.
+    const id = String(providerInstrumentId ?? "");
+    const dash = id.indexOf("-");
+    if (dash > 0) {
+      const quote = id.slice(dash + 1);
+      if (quote.length > 0 && quote !== id.slice(0, dash)) out.technicallyInsufficientQuote = quote;
+    }
   }
   return out;
 }
@@ -317,6 +334,23 @@ export function rankByAnalysisEligibility(candidates, { provider, assetClass }, 
   const techFamilies = observations?.technicallyInsufficientFamilies instanceof Set
     ? observations.technicallyInsufficientFamilies
     : new Set(observations?.technicallyInsufficientFamilies ?? []);
+  const techQuotes = observations?.technicallyInsufficientQuotes instanceof Set
+    ? observations.technicallyInsufficientQuotes
+    : new Set(observations?.technicallyInsufficientQuotes ?? []);
+  // Phase 305 — COUNTED strikes (`base:X` / `quote:Y`), accumulated across the
+  // run's attempts. A set answers "was this pattern observed"; a count answers
+  // "how often", which is what the /stocks-style thin-quote pattern needs
+  // (several base families failing through ONE thin quote). A strike on a
+  // base family or a quote currency makes candidates carrying it rank behind
+  // candidates with fewer strikes — dynamically, without any whitelist.
+  const strikes = observations?.technicalStrikes instanceof Map
+    ? observations.technicalStrikes
+    : null;
+  const strikeOf = (key, set) => {
+    if (strikes && strikes.has(key)) return strikes.get(key);
+    if (set && set.has && set.has(key.slice(key.indexOf(":") + 1))) return 1;
+    return 0;
+  };
   const routeIds = new Set(
     Object.values(COMMODITY_NATIVE_ROUTES)
       .filter((route) => route.provider === provider)
@@ -324,6 +358,7 @@ export function rankByAnalysisEligibility(candidates, { provider, assetClass }, 
   );
   const hasLearning =
     gaps.size > 0 || planFamilies.size > 0 || techFamilies.size > 0 ||
+    (strikes !== null && strikes.size > 0) ||
     (routeIds.size > 0 && assetClass === "commodity");
   if (hasLearning) {
     const learning = (entry) => {
@@ -342,13 +377,22 @@ export function rankByAnalysisEligibility(candidates, { provider, assetClass }, 
             ? 1
             : 0
           : 1;
-      return { routePreferred, familyDemoted, gapFree };
+      // Phase 305 — the candidate's own strike burden: its base family's
+      // strikes plus its quote currency's strikes. Ascending order prefers
+      // candidates the run has never seen fail through either pattern.
+      const dash = String(id).indexOf("-");
+      const quote = dash > 0 ? String(id).slice(dash + 1) : null;
+      const strikeCount =
+        strikeOf(`base:${family}`, techFamilies) +
+        (quote ? strikeOf(`quote:${quote}`, techQuotes) : 0);
+      return { routePreferred, familyDemoted, gapFree, strikeCount };
     };
     const withIndex = classified.map((entry, i) => ({ entry, i, learning: learning(entry) }));
     withIndex.sort(
       (a, b) =>
         TIER_RANK[a.entry.eligibility.tier] - TIER_RANK[b.entry.eligibility.tier] ||
         b.learning.routePreferred - a.learning.routePreferred ||
+        a.learning.strikeCount - b.learning.strikeCount ||
         a.learning.familyDemoted - b.learning.familyDemoted ||
         b.learning.gapFree - a.learning.gapFree ||
         a.i - b.i,

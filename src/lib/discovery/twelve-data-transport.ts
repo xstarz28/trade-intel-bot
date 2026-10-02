@@ -67,6 +67,23 @@ const ERROR_BODY_MAX_CHARS = 2048;
  * PARTIAL/FAILED catalog — never as a short catalog presented as complete.
  */
 export const CATALOG_HEADERS_TIMEOUT_MS = 20_000;
+
+/**
+ * Phase 305 — the /stocks catalog's own time-to-first-byte budget.
+ *
+ * LIVE EVIDENCE: `/stocks` is by far the largest catalog (raw 202,321 rows in
+ * run 36957205385 — several MB of JSON the provider generates per request).
+ * Run 36957205385 answered within the default 20 s and kept 143,212 rows;
+ * run 36960231581 tripped the 20 s header guard TWICE (the phase-302 retry
+ * included: `no response headers within 20000 ms (transient-guard retry after:
+ * no response headers within 20000 ms)`) while every other catalog answered.
+ * The provider's own behavior — a slow origin on the biggest endpoint —
+ * justifies a more patient FIRST-BYTE window for this one path, while the
+ * stall/total guards and the one-retry discipline stay exactly as they are.
+ * The chosen budget still names itself in the guard message, so a failure
+ * carries its own provenance.
+ */
+export const CATALOG_STOCK_HEADERS_TIMEOUT_MS = 45_000;
 export const CATALOG_STALL_TIMEOUT_MS = 30_000;
 export const CATALOG_TOTAL_TIMEOUT_MS = 180_000;
 
@@ -90,6 +107,13 @@ export function createTwelveDataCatalogTransport(options: {
   stallMs?: number;
   /** Override the time-to-first-byte guard. */
   headersMs?: number;
+  /**
+   * Phase 305 — per-path time-to-first-byte overrides, keyed by URL pathname
+   * (e.g. `{ "/stocks": 45000 }`). Bounded and disclosed: the path's guard
+   * message names the budget it actually used. Every path without an entry
+   * keeps the shared `headersMs` budget.
+   */
+  headersMsByPath?: Record<string, number>;
   fetchImpl?: typeof fetch;
 }): CatalogTransport {
   const doFetch = options.fetchImpl ?? fetch;
@@ -159,7 +183,19 @@ export function createTwelveDataCatalogTransport(options: {
     };
 
     // ── HEADERS: until the provider answers at all. ──────────────────────────
-    headerTimer = timer(headersMs, `no response headers within ${headersMs} ms`);
+    // Phase 305 — the budget is per PATH: the /stocks catalog (the largest by
+    // an order of magnitude) earns a more patient first-byte window; the guard
+    // message carries whichever budget applied, so provenance survives.
+    let headerBudget = headersMs;
+    try {
+      const path = new URL(finalUrl).pathname;
+      const override = options.headersMsByPath?.[path];
+      if (typeof override === "number" && override > 0) headerBudget = override;
+    } catch {
+      // an unparseable URL keeps the shared budget — the fetch itself will fail
+      // with its own reason.
+    }
+    headerTimer = timer(headerBudget, `no response headers within ${headerBudget} ms`);
     let response: Response;
     try {
       response = await doFetch(finalUrl, {

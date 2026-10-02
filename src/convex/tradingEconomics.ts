@@ -192,6 +192,16 @@ function normalizeEvent(raw: unknown): EconomicEvent | null {
 
 // ── Main Action ─────────────────────────────────────────────────
 
+/**
+ * Phase 305 — how far back the released-measurement leg reaches (days). 40
+ * spans at least one central-bank decision cycle; bounded and disclosed. The
+ * events stay provider-verbatim with their own provenance.
+ */
+export const CALENDAR_RELEASED_LOOKBACK_DAYS = 40;
+
+/** Minimum importance of a RELEASED event merged into the calendar (>= 2). */
+export const RELEASED_MERGE_MIN_IMPORTANCE = 2;
+
 export const fetchCalendar = action({
   args: {
     instrument: v.string(),
@@ -250,8 +260,18 @@ export const fetchCalendar = action({
       // phase the past leg's `catch {}` discarded a 429 outright, and a
       // timeout / 5xx on the UPCOMING leg was swallowed into an empty event
       // list that was then cached as a success with macroRisk LOW.
-      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const datePast = sevenDaysAgo.toISOString().split("T")[0];
+      // Phase 305 — the RELEASED-measurement lookback. The previous 7-day
+      // window made released policy-rate and inflation measurements a coin
+      // flip per run: rate decisions come ~every 6 weeks and CPI monthly, so
+      // a specific pair's sides often had NO released event inside 7 days and
+      // the forex fundamental honestly reported EXTERNAL_DATA_GAP (live:
+      // runs 36957205385 and 36960231581 — EUR/USD, AUD/CAD, GBP/JPY all
+      // "No released macroeconomic measurement ..." while the provider holds
+      // those prints). 40 days spans at least one decision cycle; the events
+      // are still the provider's own released values verbatim (actual,
+      // reference period, release instant, source) — nothing is invented.
+      const lookbackMs = CALENDAR_RELEASED_LOOKBACK_DAYS * 24 * 60 * 60 * 1000;
+      const datePast = new Date(now.getTime() - lookbackMs).toISOString().split("T")[0];
       const [upcomingLeg, pastLeg] = await Promise.all([
         runLeg(async () =>
           extractEvents(await taFetch(`/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`, apiKey)),
@@ -280,7 +300,13 @@ export const fetchCalendar = action({
         for (const evt of pastLeg.value) {
           if (evt.id && !existingIds.has(evt.id)) {
             const norm = normalizeEvent(evt);
-            if (norm && norm.importance === 3 && norm.actual !== undefined) {
+            // Phase 305 — importance >= 2: released prints that the extractor
+            // reads (CPI for several currency areas carries importance 2) are
+            // merged too, still only with the provider's OWN actual value.
+            // Importance gates nothing else: macroRisk stays computed from
+            // UPCOMING events only, and the forex extractor classifies by the
+            // event's own category/currency, never by importance.
+            if (norm && norm.importance >= RELEASED_MERGE_MIN_IMPORTANCE && norm.actual !== undefined) {
               rawEvents.push(evt);
             }
           }

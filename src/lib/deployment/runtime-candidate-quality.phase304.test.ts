@@ -253,26 +253,32 @@ describe("phase304 · B — capability routing within the provider's own pool", 
   });
 
   it("the observer learns ONLY from the provider's/runtime's own sentences", () => {
+    // Phase 305: the observer also names the QUOTE strike for dash-form
+    // identities (the thin-quote pattern accumulates across base families).
     expect(observeAttemptOutcome({ providerInstrumentId: "XAU/CHF", assetClass: "commodity", verdictReason: VERBATIM_XAUCHF_404 })).toEqual({
       macroGapSides: [],
       planRestrictedFamily: "XAU",
       technicallyInsufficientFamily: null,
+      technicallyInsufficientQuote: null,
     });
     expect(observeAttemptOutcome({ providerInstrumentId: "USDC-PLN", assetClass: "crypto", verdictReason: VERBATIM_USDCPLN_TECH })).toEqual({
       macroGapSides: [],
       planRestrictedFamily: null,
       technicallyInsufficientFamily: "USDC",
+      technicallyInsufficientQuote: "PLN",
     });
     expect(observeAttemptOutcome({ providerInstrumentId: "EUR/USD", assetClass: "forex", verdictReason: VERBATIM_EURUSD_MACRO })).toEqual({
       macroGapSides: ["EUR", "USD"],
       planRestrictedFamily: null,
       technicallyInsufficientFamily: null,
+      technicallyInsufficientQuote: null,
     });
     // a clean verdict observes nothing
     expect(observeAttemptOutcome({ providerInstrumentId: "WTI/USD", assetClass: "commodity", verdictReason: "all evidence present" })).toEqual({
       macroGapSides: [],
       planRestrictedFamily: null,
       technicallyInsufficientFamily: null,
+      technicallyInsufficientQuote: null,
     });
   });
 });

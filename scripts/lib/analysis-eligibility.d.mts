@@ -51,12 +51,16 @@ export interface RankObservations {
   macroGapCurrencies?: Set<string> | Iterable<string>;
   planRestrictedFamilies?: Set<string> | Iterable<string>;
   technicallyInsufficientFamilies?: Set<string> | Iterable<string>;
+  technicallyInsufficientQuotes?: Set<string> | Iterable<string>;
+  /** Counted strikes, keys `base:<family>` / `quote:<currency>`. */
+  technicalStrikes?: Map<string, number>;
 }
 
 export interface AttemptObservation {
   macroGapSides: string[];
   planRestrictedFamily: string | null;
   technicallyInsufficientFamily: string | null;
+  technicallyInsufficientQuote: string | null;
 }
 
 export function rankByAnalysisEligibility<T extends Record<string, unknown>>(

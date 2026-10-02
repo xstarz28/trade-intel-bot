@@ -45,7 +45,10 @@ import {
   twelveDataCatalogFailure,
   twelveDataCredentialGate,
 } from "../lib/discovery/twelve-data-adapter";
-import { createTwelveDataCatalogTransport } from "../lib/discovery/twelve-data-transport";
+import {
+  CATALOG_STOCK_HEADERS_TIMEOUT_MS,
+  createTwelveDataCatalogTransport,
+} from "../lib/discovery/twelve-data-transport";
 import { createConvexStagingSink } from "./discoveryStage";
 import { fromDiscoveryStageRow } from "../lib/discovery/staged-catalog";
 import {
@@ -1262,7 +1265,13 @@ export const discoverTwelveDataCatalog = action({
     await requireIdentity(ctx);
     const apiKey = process.env.TWELVE_DATA_API_KEY ?? "";
     const adapter = createTwelveDataDiscoveryAdapter(
-      createTwelveDataCatalogTransport({ apiKey }),
+      createTwelveDataCatalogTransport({
+        apiKey,
+        // Phase 305 — the /stocks catalog earns its own first-byte budget (live
+        // evidence: run 36960231581 tripped the 20 s guard twice on /stocks
+        // alone). Bounded, disclosed, and reported by the guard message itself.
+        headersMsByPath: { "/stocks": CATALOG_STOCK_HEADERS_TIMEOUT_MS },
+      }),
       readServerEnv,
       {
         catalogPaths: [args.path],

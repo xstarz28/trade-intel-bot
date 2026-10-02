@@ -97,7 +97,10 @@ const TIMEOUT_MS = 60_000;
  * That work is the fix, not a fault: aborting the call at the ordinary 60 s
  * would fail the run for succeeding. Every other call keeps the normal budget.
  */
-const DISCOVERY_CALL_TIMEOUT_MS = 240_000;
+// Phase 305 — 300 s: the /stocks read may now spend up to 45 s to first byte
+// (its own larger header budget) plus the 180 s body/staging ceiling, and the
+// action must not abort a walk the runtime is still making progress on.
+const DISCOVERY_CALL_TIMEOUT_MS = 300_000;
 
 /**
  * Refuse anything that is not the development deployment.
@@ -2623,6 +2626,14 @@ async function run() {
   const observedMacroGaps = new Set();
   const observedPlanRestrictedFamilies = new Set();
   const observedTechnicallyInsufficientFamilies = new Set();
+  const observedTechnicallyInsufficientQuotes = new Set();
+  // Phase 305 — COUNTED technical strikes (`base:<family>` / `quote:<currency>`):
+  // the run-36960231581 crypto window burned all three attempts on three
+  // DIFFERENT base families sharing one thin quote (BTC-PLN, ETH-PLN,
+  // USDC-PLN), so a set keyed by family alone cannot accumulate the pattern.
+  // Counts let the ranker prefer candidates with no strikes on either side.
+  const observedTechnicalStrikes = new Map();
+  const addStrike = (key) => observedTechnicalStrikes.set(key, (observedTechnicalStrikes.get(key) ?? 0) + 1);
 
   // One discovery per provider per run: the reference catalogs are shared by
   // three domains and re-asking would be a repeated request for nothing.
@@ -2991,6 +3002,8 @@ async function run() {
       macroGapCurrencies: observedMacroGaps,
       planRestrictedFamilies: observedPlanRestrictedFamilies,
       technicallyInsufficientFamilies: observedTechnicallyInsufficientFamilies,
+      technicallyInsufficientQuotes: observedTechnicallyInsufficientQuotes,
+      technicalStrikes: observedTechnicalStrikes,
     });
     const triedInstruments = new Set();
     for (let index = 0; triedInstruments.size < maxAttempts; index += 1) {
@@ -3066,6 +3079,11 @@ async function run() {
       if (observed.planRestrictedFamily) observedPlanRestrictedFamilies.add(observed.planRestrictedFamily);
       if (observed.technicallyInsufficientFamily) {
         observedTechnicallyInsufficientFamilies.add(observed.technicallyInsufficientFamily);
+        addStrike(`base:${observed.technicallyInsufficientFamily}`);
+      }
+      if (observed.technicallyInsufficientQuote) {
+        observedTechnicallyInsufficientQuotes.add(observed.technicallyInsufficientQuote);
+        addStrike(`quote:${observed.technicallyInsufficientQuote}`);
       }
       const macroGapSides = observed.macroGapSides;
 
@@ -3464,6 +3482,8 @@ async function run() {
       macroGapCurrencies: [...observedMacroGaps],
       planRestrictedFamilies: [...observedPlanRestrictedFamilies],
       technicallyInsufficientFamilies: [...observedTechnicallyInsufficientFamilies],
+      technicallyInsufficientQuotes: [...observedTechnicallyInsufficientQuotes],
+      technicalStrikes: Object.fromEntries(observedTechnicalStrikes),
     },
     domains,
     exactInstruments: exactParsed.ok

@@ -153,6 +153,14 @@ describe("274 — real provider-native fundamental request path", () => {
   });
 
   it("stamps the observation instant from the acquisition, not a second clock read", async () => {
+    // Deterministic single-leg run: with the news leg ALSO observed, the
+    // envelope's `observedAt` is the OLDEST leg instant (by design — evidence
+    // age), which on a loaded runner can sit 1 ms from the fundamentals leg's
+    // own instant (observed live: expected …4889, received …4890). The pin is
+    // about the fundamentals STAMP coming from ITS acquisition's single clock
+    // read, so the news route is made unavailable here — the envelope and the
+    // payload then share exactly one instant, every time.
+    routes = { ...ALL_OK, NEWS_SENTIMENT: { status: 503, body: "unavailable" } };
     const r = await av(ctx, AAPL);
     expect(r.observedAt).toBeGreaterThan(0);
     expect(r.fundamentals!.timestamp).toBe(r.observedAt);
