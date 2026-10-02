@@ -312,7 +312,12 @@ export function assessForexFundamentals(ctx: ForexFundamentalContext): Fundament
     (e) => e.currency?.toUpperCase() === quote,
   ).length;
   const acquisition = calendar?.releasedAcquisition;
+  // Phase 308 — was the calendar provider leg delivered AT ALL? A failed leg
+  // (timeout, rate limit, outage) must never read as "the provider supplied
+  // no released events": those are different facts at different layers.
+  const calendarDelivered = calendar != null;
   const measurementPipeline = (available: boolean): ForexMeasurementPipeline => ({
+    calendarDelivered,
     eventsReceived: events.length,
     releasedWithActual: releasedWithActual.length,
     baseReleasedMatched,

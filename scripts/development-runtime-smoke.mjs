@@ -1332,9 +1332,11 @@ export function evidenceDigest(record) {
     // so the annotation is unambiguous:
     //   provider rows -> released+actual -> currency match -> category read -> availability
     const stoppedAt =
-      pipeline.eventsReceived === 0
-        ? "provider-rows"
-        : pipeline.releasedWithActual === 0
+      pipeline.calendarDelivered === false
+        ? "calendar-leg"
+        : pipeline.eventsReceived === 0
+          ? "provider-rows"
+          : pipeline.releasedWithActual === 0
           ? "released+actual"
           : pipeline.baseReleasedMatched + pipeline.quoteReleasedMatched === 0
             ? "currency-match"
@@ -1352,6 +1354,21 @@ export function evidenceDigest(record) {
           `acq=[lookback=${a.lookbackDays ?? "?"}d upcoming=${a.upcomingFetched ?? "?"} past=${a.pastFetched ?? "?"} withActual=${a.pastWithActual ?? "?"} merged=${a.merged ?? "?"} leg=${a.pastLeg ?? "?"}] ` +
           `stoppedAt=${stoppedAt} -> available=${pipeline.availability}]`,
         320,
+      ),
+    );
+  }
+  // Phase 308 — market + technical readiness at a glance: the observed
+  // instant is already on the record header; the digest adds the candle DEPTH
+  // the engine consumed and the technical verdict, so a thin series is
+  // visible in the annotation without opening the artifact.
+  const market = record.evidence?.market;
+  const technical = record.evidence?.technical;
+  if (market && typeof market === "object") {
+    const depth = Number.isFinite(market.dataPoints) ? market.dataPoints : null;
+    parts.push(
+      clip(
+        `market[provider=${market.provider ?? "?"} observedAt=${market.observedAt ?? "none"} depth=${depth ?? "none"}] technical[available=${technical ? technical.available : "?"}${technical && technical.bias ? ` bias=${technical.bias}` : ""}]`,
+        200,
       ),
     );
   }
@@ -3306,6 +3323,12 @@ async function run() {
         ...(Number.isFinite(verdict.evidence?.market?.dataPoints)
           ? { technicalDepth: verdict.evidence.market.dataPoints }
           : {}),
+        // Phase 308 — WHICH provider-order scan window the candidate came
+        // from (staged catalogs): the attempt trail itself proves the
+        // window-crossing steering, not a selection notice beside it.
+        ...(Number.isFinite(candidate.windowIndex)
+          ? { windowIndex: candidate.windowIndex }
+          : {}),
         ...(macroGapSides.length > 0 ? { macroGapObserved: macroGapSides } : {}),
       });
       attemptMeta.push({
@@ -3391,6 +3414,16 @@ async function run() {
     } else if (domainVerdict) {
       const reported = attemptMeta.find((m) => m.verdict === domainVerdict);
       if (reported) applyVerdictEvidence(record, reported.verdict, reported.provider, reported.nativeId);
+    }
+    // Phase 308 — the reported attempt's own provider-order window (staged
+    // catalogs) is record-level provenance: identity, evidence AND window all
+    // describe the SAME attempt.
+    {
+      const reported =
+        record.headline === "PASS"
+          ? attemptMeta[attemptMeta.length - 1]
+          : attemptMeta.find((m) => m.verdict === domainVerdict);
+      record.windowIndex = reported && Number.isFinite(reported.windowIndex) ? reported.windowIndex : null;
     }
 
     // Phase 304 — every generic verdict names its provider-block class from

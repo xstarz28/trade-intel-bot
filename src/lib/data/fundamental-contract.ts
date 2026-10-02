@@ -193,6 +193,14 @@ export interface FundamentalEvidenceCoverage {
  * final availability, in one bounded structure.
  */
 export interface ForexMeasurementPipeline {
+  /**
+   * Phase 308 — false when the CALENDAR PROVIDER LEG itself delivered nothing
+   * (timeout / rate-limit / outage): distinguishes "the provider answered and
+   * supplied zero released rows" from "the acquisition never completed".
+   * An acquisition failure is evidence about transport, never about the
+   * provider's catalog.
+   */
+  calendarDelivered: boolean;
   /** Events the delivered calendar carried (all statuses). */
   eventsReceived: number;
   /** Of those, events with status "released" AND a parseable actual value. */
