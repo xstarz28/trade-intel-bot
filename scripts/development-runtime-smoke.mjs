@@ -2998,16 +2998,18 @@ async function run() {
     const tfCheck = enforceTimeframeExactness(verdict, requestedTf);
     verdict = tfCheck.verdict;
     record.timeframeExact = tfCheck.exact;
-    if (verdict.headline !== "UNAVAILABLE") {
-      // Phase 315 — a PASS (and any FAIL) is announced on the notice channel so
-      // the per-instrument evidence survives where logs/artifacts cannot be
-      // fetched. One bounded line: identity, verbatim timeframes, observation,
-      // plan structure and the candle window the chart must agree with.
+    {
+      // Phase 315 — EVERY exact verdict is announced on the annotation channel
+      // so the per-instrument evidence survives where logs/artifacts cannot be
+      // fetched (an UNAVAILABLE carries its evidence line too: a named gap with
+      // real market bytes is still acceptance evidence). One bounded line:
+      // identity, verbatim timeframes, observation, plan structure and the
+      // candle window the chart must agree with.
       const e = verdict.evidence ?? null;
       const p = e?.tradePlan ?? null;
       const cp = e?.chartProvenance ?? null;
       annotate(
-        verdict.headline === "FAIL" ? "error" : "notice",
+        verdict.headline === "FAIL" ? "error" : verdict.headline === "PASS" ? "notice" : "warning",
         `${label} ${verdict.headline}`,
         `${exact.provider} · ${exact.providerInstrumentId} · tf=${requestedTf}/${e?.timeframe ?? "none"} · price=${
           e?.market?.price ?? "none"
