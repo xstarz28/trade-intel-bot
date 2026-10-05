@@ -106,6 +106,24 @@ export function buildSignalChart(
       unavailableReason: `Chart unavailable — insufficient OHLCV (${candles?.length ?? 0} candles received; the engine never draws synthetic candles)`,
     };
   }
+  // Phase 314 — provenance guard: when the result carries the strategy
+  // context's candle provenance, the chart refuses to render a DIFFERENT
+  // candle series (explicit unavailable, never a silently mismatched chart).
+  const contextProvenance = result.technicalData?.strategy?.provenance;
+  if (contextProvenance) {
+    const actualFirst = candles[0]?.timestamp;
+    const actualLast = candles[candles.length - 1]?.timestamp;
+    const mismatched =
+      contextProvenance.candleCount !== candles.length ||
+      contextProvenance.firstTimestamp !== actualFirst ||
+      contextProvenance.lastTimestamp !== actualLast;
+    if (mismatched) {
+      return {
+        available: false,
+        unavailableReason: `Chart unavailable — candle provenance mismatch: the analysis context was built from ${contextProvenance.candleCount} candles (${contextProvenance.firstTimestamp}…${contextProvenance.lastTimestamp}) but ${candles.length} candles (${String(actualFirst)}…${String(actualLast)}) were supplied for rendering; no chart is drawn from mismatched evidence`,
+      };
+    }
+  }
   const td = result.technicalData;
   const overlays: ChartOverlay[] = [];
   const lastTime = candles[candles.length - 1].timestamp;

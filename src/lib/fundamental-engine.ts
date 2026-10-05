@@ -437,8 +437,34 @@ function assessEquityFundamentals(
   // its statuses and its confidence counts are unchanged.
   // ═══════════════════════════════════════════════════════════════
   const extraEvidence: FundamentalEvidenceItem[] = [];
+
   const contradictions: string[] = [];
   const nativeEquityId = data.providerInstrumentId ?? data.symbol;
+
+  // Phase 314 — provider-reported company classification surfaced
+  // descriptively in the reasoning evidence. The labels NEVER become
+  // benchmarks: sector-relative valuation stays explicitly unavailable
+  // (see the valuation limitations below), and no dimension status is
+  // derived from a name/label.
+  {
+    const classification: string[] = [];
+    if (typeof data.name === "string" && data.name.length > 0) classification.push(data.name);
+    if (typeof data.sector === "string" && data.sector.length > 0) classification.push(`sector ${data.sector}`);
+    if (typeof data.industry === "string" && data.industry.length > 0) classification.push(`industry ${data.industry}`);
+    if (classification.length > 0) {
+      extraEvidence.push({
+        metric: "company_classification",
+        label: "Provider-reported company classification",
+        value: classification.join(" — "),
+        unit: "label",
+        provider: data.provider,
+        providerInstrumentId: nativeEquityId,
+        source: "OVERVIEW (Name/Sector/Industry)",
+        observedAt: data.timestamp,
+        period: "as reported at the provider observation",
+      });
+    }
+  }
 
   const appendTo = (name: FundamentalDimension["name"], suffix: string) => {
     const target = dimensions.find((d) => d.name === name);

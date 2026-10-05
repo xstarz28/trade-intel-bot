@@ -83,6 +83,34 @@ export const EVIDENCE_DEPENDENCY_FAMILIES: EvidenceDependencyFamily[] = [
     cap: null,
     note: "One provider, one release, one layer (EIA Inventory) — oil-only by design; non-oil commodities state the layer as not applicable instead of borrowing it.",
   },
+  {
+    id: "stock_quality",
+    underlyingState: "reported company quality",
+    members: ["valuation multiple (P/E)", "profit margin", "reported EPS"],
+    cap: 2,
+    note: "P/E, margin and EPS all come from ONE Alpha Vantage OVERVIEW/EARNINGS payload and describe one underlying state (reported company quality); they are read inside the single fundamental factor whose total clamp is ±2, so three agreeing fields can never count as three independent confirmations.",
+  },
+  {
+    id: "crypto_onchain",
+    underlyingState: "on-chain protocol activity/utilization",
+    members: ["DeFiLlama chain TVL", "DeFiLlama protocol fees", "Tokenomist supply/tokenomics context"],
+    cap: null,
+    note: "TVL, fees and tokenomics are consumed as CONTEXT inside the crypto fundamental assessment (never additively scored, never a trade signal), so correlated on-chain readings cannot multiply conviction anywhere in the engine.",
+  },
+  {
+    id: "rates_yields",
+    underlyingState: "monetary-policy / rates state",
+    members: ["Treasury yield curve context", "calendar rate-decision surprises", "news-derived USD/DXY regime"],
+    cap: null,
+    note: "Rates evidence describes one monetary-policy state: the calendar's rate surprises contribute at most ±1 inside the fundamental factor (factor clamp ±2), the Treasury curve is assessment/layer context bounded by its own style cap, and the DXY news proxy yields to actual DXY price data when present — no layer adds a second unbounded directional vote on the same state.",
+  },
+  {
+    id: "smc_location",
+    underlyingState: "structural location",
+    members: ["supply/demand zone location", "order-block location", "FVG location", "setup context state"],
+    cap: null,
+    note: "Zone, OB and FVG co-locating at one price describe ONE location state; they are consumed by the single Location layer (capped) and are descriptive-only in the strategy context — never summed as independent confirmations.",
+  },
 ];
 
 /** Clamp a family's additive delta to the family cap. */
