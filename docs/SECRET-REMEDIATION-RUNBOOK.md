@@ -1,12 +1,12 @@
 # Secret Remediation Runbook — leaked OTP credential
 
-**Status: Path C recorded (A1 VERIFIED without revocation). Path R unrecorded. Writable nine-ref rewrite executed on github.com. A2 UNVERIFIED — `refs/pull/1/head` still reaches the credential. GitHub Support ticket #4773405 pending. Issue #5 OPEN. Do not run another history rewrite or force-push.**
+**Status: Path C recorded (A1 VERIFIED without revocation). Path R unrecorded. Writable ten-ref rewrite executed on github.com. A2 UNVERIFIED — `refs/pull/1/head` still reaches the credential. GitHub Support ticket #4773405 pending. Issue #5 OPEN. Do not run another history rewrite or force-push.**
 
 This document is the rehearsal-verified procedure for removing the leaked
 third-party OTP credential from Git history. Every command below was executed
 against a disposable mirror in Phase 198 and produced the recorded results.
 
-The writable nine-ref rewrite (`refs/heads/*` and `refs/tags/*`) **has been
+The writable ten-ref rewrite (`refs/heads/*` and `refs/tags/*`) **has been
 executed** against github.com, with a heads/tags force-push. A2 remains
 **UNVERIFIED** because GitHub-managed `refs/pull/1/head` still reaches the
 credential. Do **not** run another `git filter-repo`, do **not** force-push
@@ -61,6 +61,7 @@ Two facts per ref, and they are **not** interchangeable:
 | `refs/heads/arena/01a0d195-trade-intel-bot` | **clean** | 0 |
 | `refs/heads/main` | **clean** | 0 |
 | `refs/heads/phase-157-live-discovery-lifecycle` | **clean** | 0 |
+| `refs/heads/hotfix/convex-resource-efficiency` | **clean** | 0 |
 | `refs/tags/rc-181` | **clean** | 0 |
 
 ### Current remote measurement (writable rewrite landed)
@@ -116,7 +117,7 @@ does not touch that path. Re-run the generator in a full clone before executing
 Phase 249 note: the ninth ref (`01a0b293`) became live when PR #4 pushed that
 session branch, and it is added here on a **full end-to-end measurement**, not a
 derived one. The working clone was unshallowed (`git fetch --unshallow`, a
-read-only fetch that writes no remote ref), all nine remote tips were confirmed
+read-only fetch that writes no remote ref), all ten remote tips were confirmed
 present locally, and `scripts/secret-ref-inventory.mjs` was run twice with
 byte-identical output: `01a0b293` is `affected: true` with **269 carrier
 commits** and **`exposedAtTip: false`** — the same figures the other session
@@ -144,7 +145,7 @@ branches appeared in **neither** table and would have survived the rewrite.
 Three consequences follow from the **current** measurement (the Phase 249
 note above is the pre-rewrite record of that phase):
 
-1. **`main` no longer serves the credential from its tip.** The nine writable
+1. **`main` no longer serves the credential from its tip.** The ten writable
    refs measure **0** carriers and **clean** tips. That is not A2 verification.
    `main` is still never the rewrite working context
    (`forbiddenBranches: ["main"]`).
@@ -219,7 +220,7 @@ Path C is not a
 401/403, not an exemption, and not self-certification by this tooling.
 
 Path C is **recorded**. Path R is **unrecorded**. A1 is **VERIFIED** via
-`owner-risk-acceptance`. The writable nine-ref rewrite **has been executed**
+`owner-risk-acceptance`. The writable ten-ref rewrite **has been executed**
 on github.com. A2 remains **UNVERIFIED** because `refs/pull/1/head` still
 reaches the credential.
 
@@ -312,7 +313,7 @@ that the leaked key is **not** revoked at the issuer. The reader observes
 required control is missing, the file cannot satisfy A1.
 
 The owner has filed Path C and the A1 gate reads it as VERIFIED. §2 was
-satisfied **without claiming revocation**, and the writable nine-ref rewrite
+satisfied **without claiming revocation**, and the writable ten-ref rewrite
 then landed on github.com. This tooling still does not start another §3.
 A2 remains **UNVERIFIED**. `refs/pull/1/head` still requires GitHub Support
 (ticket **#4773405**; do not duplicate). Residual risk in §5 still applies:
@@ -360,7 +361,7 @@ git push --force --mirror https://github.com/xstarz28/trade-intel-bot.git
 
 ### Refs the force-push will rewrite
 
-**All nine** — every ref the remote advertises, per
+**All ten** — every ref the remote advertises, per
 `docs/secret-remediation-refs.json`. Phase 233 corrected this table twice
 over: Phase 198 listed four refs, Phase 221 added a fifth, and three branches
 created since then (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were never added at
@@ -377,13 +378,22 @@ ref after the Sep-21 writable rewrite recorded it at 0. The branch was a
 superseded Phase-248-era session branch (tip `c4fe1cf5`, no open PR, not an
 ancestor of any active branch), so it was **removed from the remote** — the
 rewrite's outcome (the blob unreachable from every advertised ref) achieved
-by removal rather than rewrite. All nine surviving refs were re-measured
+by removal rather than rewrite. All ten surviving refs were re-measured
 end-to-end: 0 carriers, every tip clean, and the reachable-history scanner
 exits 0 (CLEAN) over a fresh full clone. `refs/pull/1/head` remains
 GitHub-managed server-side, outside repository control — rotation stays the
 external gate and A2 stays UNVERIFIED until it is observed revoked. None of
 the nine may be skipped — a single surviving ref keeps the blob reachable
 and undoes the entire exercise.
+
+**Phase 319 (2026-10-05): the scope is ten.** The operator pushed
+`refs/heads/hotfix/convex-resource-efficiency` pointing at the accepted arena
+tip `ce7d5e4` — a clean alias of the reconciled set carrying no new commits.
+It was measured like every ref: **0 carrier commits**, tip clean, and the
+fresh-full-clone fingerprint scanner returned **exit 0 (PASS)** over the full
+ten-ref remote including `refs/pull/*`. Scope growth, not exposure growth:
+every ref in this table is clean; the rewrite section covers every advertised
+ref; rotation remains the external gate and A2 stays UNVERIFIED.
 
 Re-run `node scripts/secret-ref-inventory.mjs` before executing. That
 inventory is derived from `git ls-remote`, so unlike the previous
@@ -400,6 +410,7 @@ any ref it reports that is absent from this table must be added first.
 | `heads/arena/01a0d195-trade-intel-bot` | *added Phase 272* | *not rehearsed* |
 | `heads/main` | `51c9ddeb` | `b1a9e91` |
 | `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f58` |
+| `heads/hotfix/convex-resource-efficiency` | *added Phase 319* | *not rehearsed — clean alias of the accepted tip* |
 | `tags/rc-181` | `66323a38` | `23d25ff` |
 
 Phase 221 re-rehearsal on a fresh mirror: 365/365 commits preserved,
@@ -436,7 +447,7 @@ UNVERIFIED for as long as they still reach the credential.
 ### 3.1 The nine-ref re-rehearsal — run on a disposable mirror, and the gap it found
 
 §3 required a re-rehearsal covering every affected ref before it may run. It has
-been run. All nine refs were rehearsed, and nothing outside the disposable mirror
+been run. All ten refs were rehearsed, and nothing outside the disposable mirror
 was modified: no push, no force-push, no remote ref written, `main` untouched at
 `51c9ddeb`, the project checkout untouched, no credential value printed, and A2
 still UNVERIFIED.
@@ -517,7 +528,7 @@ strength of this evidence.
 
 **What this does not change.** The rehearsal is evidence about a procedure, not
 a remediation. Path C is **recorded** and A1 is VERIFIED without claiming
-revocation. Path R is **unrecorded**. The writable nine-ref rewrite later
+revocation. Path R is **unrecorded**. The writable ten-ref rewrite later
 landed on github.com; A2 remains **UNVERIFIED** while `refs/pull/1/head` still
 reaches the credential. The release verdict is unchanged: **NOT READY**.
 
@@ -701,3 +712,14 @@ The old credential must be **dead at the issuer** for any of this to be
 resolved. Path C does not make it dead. A rewrite under Path C removes the blob
 from rewriteable refs; it does not retract the key from clones, forks, CI
 caches, GitHub `refs/pull/*`, or the issuer.
+
+
+### Phase 319 — the operator added a tenth advertised ref (2026-10-05)
+
+After the nine-ref reconciliation, the operator pushed `refs/heads/hotfix/convex-resource-efficiency`
+pointing at the accepted arena tip `ce7d5e4` (the Phase-318 final commit) — a clean alias of the
+reconciled set, carrying NO new commits. It was measured like every ref: **0 carrier commits**, and
+the fresh-full-clone fingerprint scanner returned **exit 0 (PASS)** over the full ten-ref remote
+(including `refs/pull/*`). The writable scope is therefore **ten refs**, all clean; the count change
+is scope growth, not exposure growth. Rotation remains the external gate; `refs/pull/1/head` remains
+GitHub-managed.

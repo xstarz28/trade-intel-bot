@@ -87,6 +87,7 @@ const ROLLED_OVER_REF = "heads/arena/01a0b293-trade-intel-bot";
  * rollover ref: that record stays.
  */
 const RECOVERY_REF = "heads/arena/01a0d195-trade-intel-bot";
+const HOTFIX_REF = "heads/hotfix/convex-resource-efficiency";
 /** The eight refs the inventory carried before this phase. */
 const PRIOR_REFS = [
   "heads/arena/01a08e67-trade-intel-bot",
@@ -256,7 +257,9 @@ describe("249 — the rollover is detected and reconciled against the real repos
     // removal is a fact the remote must keep answering for.
     expect(live).not.toContain(ROLLED_OVER_REF);
     expect(live).toContain(RECOVERY_REF);
-    expect(live).toHaveLength(9);
+    // Phase 319 — the operator's clean hotfix alias joined the advertised set.
+    expect(live).toContain(HOTFIX_REF);
+    expect(live).toHaveLength(10);
   });
 
   it("2. measures it from full history, not from ancestry or tip-cleanliness", () => {
@@ -271,7 +274,7 @@ describe("249 — the rollover is detected and reconciled against the real repos
     // in the artifact method note and the manifest's reconciliation.
     const measured = artifact.refs.find((entry) => entry.ref === ROLLED_OVER_REF);
     expect(measured, "the removed ref must have no measured row").toBeUndefined();
-    expect(artifact.refs).toHaveLength(9);
+    expect(artifact.refs).toHaveLength(10);
     expect(artifact.historyCommits).toBe(568);
 
     // Depth-branched, following the Phase 233 guard. In a FULL clone there is no
@@ -418,8 +421,9 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(assessment.affectedRefCount).toBe(0);
     expect(assessment.affectedRefs).toEqual([]);
     // Phase 272 added the recovery row; Phase 316 removed the compromised
-    // row — nine measured facts, all intact (0 carriers, tips clean).
-    expect(AFFECTED_REF_EXPECTATIONS).toHaveLength(9);
+    // row; Phase 319 added the operator's clean hotfix alias — ten measured
+    // facts, all intact (0 carriers, tips clean).
+    expect(AFFECTED_REF_EXPECTATIONS).toHaveLength(10);
     expect(
       AFFECTED_REF_EXPECTATIONS.find((entry) => entry.ref === RECOVERY_REF),
     ).toEqual({ ref: RECOVERY_REF, carrierCommits: 0, exposedAtTip: false });
@@ -429,7 +433,7 @@ describe("249 — the rollover is detected and reconciled against the real repos
     const live = liveRefsOrFail();
     const assessment = evaluateRefRollover(realInput(live));
     expect(live).toHaveLength(artifact.refs.length);
-    expect(assessment.liveRefCount).toBe(9);
+    expect(assessment.liveRefCount).toBe(10);
     expect(assessment.affectedRefCount).toBe(0);
     expect(parseDeclaredRefCount(RUNBOOK)).toBe(live.length);
     // Every live ref is accounted for by all three layers.
@@ -512,9 +516,9 @@ describe("249 — the rollover is detected and reconciled against the real repos
       expect(report.ready, label).toBe(false);
       expect(report.verified, label).toBe(false);
       expect(report.remediationPerformed, label).toBe(false);
-      // The scope it would rewrite is the nine measured refs — complete, not partial.
-      expect(report.scope.expectedRefs, label).toHaveLength(9);
-      expect(report.scope.measuredRefs, label).toHaveLength(9);
+      // The scope it would rewrite is the ten measured refs — complete, not partial.
+      expect(report.scope.expectedRefs, label).toHaveLength(10);
+      expect(report.scope.measuredRefs, label).toHaveLength(10);
       expect(report.scope.missingRefs, label).toEqual([]);
       expect(report.problems.length, label).toBeGreaterThan(0);
     }
@@ -602,15 +606,19 @@ describe("249 — the rollover is detected and reconciled against the real repos
     }
     // The rollover arithmetic can name what grew and what shrank, and nothing shrank.
     // Since Phase 272 the baseline ALSO covers the intentional recovery
-    // branch: against the pre-Phase-272 set the added refs are exactly the
-    // two arena branches each phase pushed on purpose.
+    // branch; Phase 319 added the operator's own hotfix branch. Against the
+    // pre-Phase-272 set the added refs are exactly those three, each pushed
+    // on purpose and each measured.
     expect(rolloverAddedRefs(liveRefsOrFail(), PRIOR_REFS)).toEqual([
       RECOVERY_REF,
+      HOTFIX_REF,
     ]);
-    // Phase 316 — against the pre-recovery baseline the added set is still the
-    // recovery branch alone, and the compromised ref now registers as DROPPED.
+    // Phase 316/319 — against the pre-recovery baseline the added set is the
+    // recovery branch plus the operator's hotfix alias, and the compromised
+    // ref now registers as DROPPED.
     expect(rolloverAddedRefs(liveRefsOrFail(), PRE_RECOVERY_LIVE_REFS)).toEqual([
       RECOVERY_REF,
+      HOTFIX_REF,
     ]);
     expect(rolloverDroppedRefs(liveRefsOrFail(), PRIOR_REFS)).toEqual([]);
     expect(rolloverDroppedRefs(liveRefsOrFail(), PRE_RECOVERY_LIVE_REFS)).toEqual([
@@ -645,10 +653,13 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(live.filter((ref) => ref.startsWith("heads/arena/"))).toHaveLength(6);
     expect(live).not.toContain(ROLLED_OVER_REF);
     expect(live).toContain(RECOVERY_REF);
-    // The added set against the pre-recovery baseline is still exactly the
-    // recovery branch — not a new scratch branch — and the compromised ref
-    // registers as dropped. Nothing new may appear.
-    expect(rolloverAddedRefs(live, PRE_RECOVERY_LIVE_REFS)).toHaveLength(1);
+    // The added set against the pre-recovery baseline is exactly the
+    // recovery branch plus the operator's own Phase-319 hotfix alias —
+    // no scratch branch — and the compromised ref registers as dropped.
+    expect(rolloverAddedRefs(live, PRE_RECOVERY_LIVE_REFS)).toEqual([
+      RECOVERY_REF,
+      HOTFIX_REF,
+    ]);
     expect(GENERATOR).not.toMatch(/checkout|switch/);
   });
 
@@ -658,7 +669,7 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(RUNBOOK).toMatch(/Rotation gate — Path C recorded; Path R \*\*BLOCKED\*\*/);
     expect(RUNBOOK).toMatch(/Removal from HEAD was never remediation/i);
     expect(RUNBOOK).toMatch(/A2 stays UNVERIFIED/);
-    expect(RUNBOOK).toMatch(/\*\*All nine\*\*/);
+    expect(RUNBOOK).toMatch(/\*\*All ten\*\*/);
     expect(RUNBOOK).toMatch(/Phase 249 note/);
     expect(RUNBOOK).toMatch(/Phase 316 \(2026-10-05\): the scope is nine again/);
     // Growth is recorded as growth, with the carrier count unchanged as the proof
@@ -936,12 +947,13 @@ describe("249 — every layer that can drift is refused by name", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("249 — the three artefacts agree; Phase 272 adds the recovery row", () => {
-  it("the inventory artifact is the measured nine-ref set", () => {
+  it("the inventory artifact is the measured ten-ref set", () => {
     // Phase 272 — the recovery branch's row is measured with the same
     // fingerprint-reachability facts as every other entry. Phase 316 — the
-    // compromised superseded ref was removed, so the measured set is nine,
-    // every row clean, and the reachable carrier count is 0.
-    expect(artifact.refs).toHaveLength(9);
+    // compromised superseded ref was removed. Phase 319 — the operator's
+    // clean hotfix alias joined, so the measured set is ten, every row
+    // clean, and the reachable carrier count is 0.
+    expect(artifact.refs).toHaveLength(10);
     expect(
       artifact.refs.find((entry) => entry.ref === RECOVERY_REF),
     ).toMatchObject({
@@ -982,10 +994,11 @@ describe("249 — the three artefacts agree; Phase 272 adds the recovery row", (
     expect(recoveryExposure?.occurrences).toBe(0);
     expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).toContain(RECOVERY_REF);
     // Phase 316: the removed ref is in neither table, and the rewrite section
-    // says what it covers — the reconciled nine.
+    // says what it covers — the reconciled ten (Phase 319 added the operator's
+    // clean hotfix alias).
     expect(parseExposureFacts(RUNBOOK).find((row) => row.ref === ROLLED_OVER_REF)).toBeUndefined();
     expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).not.toContain(ROLLED_OVER_REF);
-    expect(parseDeclaredRefCount(RUNBOOK)).toBe(9);
+    expect(parseDeclaredRefCount(RUNBOOK)).toBe(10);
   });
 
   it("records the rollover as measured end-to-end, superseding the derived eighth row", () => {

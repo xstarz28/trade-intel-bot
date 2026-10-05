@@ -125,6 +125,15 @@ function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
   ];
 }
 
+// Phase 319 — session-scoped discovery-cycle request planning (module level:
+// shared across Dashboard remounts within one page session, reset on reload).
+// A single in-flight promise plus a minimum interval between completed walks —
+// the SPA remounts this component on every route change and each remount used
+// to re-issue the full provider-catalog walk for an identical universe.
+const DISCOVERY_CYCLE_MIN_INTERVAL_MS = 10 * 60_000;
+let discoveryCycleInFlight: Promise<void> | null = null;
+let lastDiscoveryCycleAt = 0;
+
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -200,7 +209,36 @@ export default function Dashboard() {
    * Provider expansion: CCXT (dynamic exchanges), DEX, IDX, etc.
    * Completeness semantics Phase 234 preserved.
    */
-  const runDiscoveryCycle = useCallback(async () => {
+  const runDiscoveryCycle = useCallback(async (opts?: { force?: boolean }) => {
+    // Phase 319 — resource guard. The cycle is single-flight (a remount or a
+    // double effect can never run two walks concurrently) and, unless forced,
+    // it does not re-issue inside DISCOVERY_CYCLE_MIN_INTERVAL_MS of the last
+    // completed walk: in an SPA session the Dashboard remounts on every route
+    // change, and each remount used to re-walk every provider catalog (Twelve
+    // Data credits, action compute, staging writes) for an identical universe.
+    // This is session-scoped state (module level, resets on reload) — it is a
+    // request-planning window, not a data cache: the cycle itself still reads
+    // live providers, and `force` preserves an explicit operator refresh.
+    if (discoveryCycleInFlight) return discoveryCycleInFlight;
+    if (!opts?.force && Date.now() - lastDiscoveryCycleAt < DISCOVERY_CYCLE_MIN_INTERVAL_MS) {
+      return;
+    }
+    const cycle = (async () => {
+      await runDiscoveryCycleInner();
+      lastDiscoveryCycleAt = Date.now();
+    })()
+      .catch(() => {
+        // The walk already reports its own provider errors; a thrown cycle
+        // must not mark the window open (the next mount may retry).
+      })
+      .finally(() => {
+        discoveryCycleInFlight = null;
+      });
+    discoveryCycleInFlight = cycle;
+    return cycle;
+  }, []);
+
+  const runDiscoveryCycleInner = useCallback(async () => {
     const now = Date.now();
 
     // Try universal discovery first (includes okx, twelve-data, ccxt, dex, idx, stockbit, ajaib)

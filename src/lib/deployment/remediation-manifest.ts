@@ -163,6 +163,10 @@ export const AFFECTED_REF_EXPECTATIONS: readonly RefExpectation[] = [
   { ref: "heads/arena/01a0d195-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
   { ref: "heads/main", carrierCommits: 0, exposedAtTip: false },
   { ref: "heads/phase-157-live-discovery-lifecycle", carrierCommits: 0, exposedAtTip: false },
+  // Phase 319 — operator-created branch pointing at the accepted arena tip
+  // ce7d5e4 (a clean alias of the reconciled set); measured 0 carriers, and
+  // the ten-ref remote passed the fresh-clone fingerprint scan (exit 0).
+  { ref: "heads/hotfix/convex-resource-efficiency", carrierCommits: 0, exposedAtTip: false },
   { ref: "tags/rc-181", carrierCommits: 0, exposedAtTip: false },
 ];
 

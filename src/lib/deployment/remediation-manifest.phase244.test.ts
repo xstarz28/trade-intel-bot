@@ -101,9 +101,10 @@ describe("244 — the manifest is a measurement, not a memory", () => {
     // measurement moves it. Phase 249 measured the ninth live ref (01a0b293);
     // Phase 272 measured the tenth — 01a0d195, the intentionally persisted
     // Arena recovery branch. Phase 316 removed 01a0b293 from the remote (it
-    // carried the pre-rewrite lineage again) — the measured set is nine.
-    expect(artifact.refs.length).toBe(9);
-    expect(AFFECTED_REF_EXPECTATIONS.length).toBe(9);
+    // carried the pre-rewrite lineage again); Phase 319 added the operator's
+    // clean hotfix alias — the measured set is ten.
+    expect(artifact.refs.length).toBe(10);
+    expect(AFFECTED_REF_EXPECTATIONS.length).toBe(10);
 
     for (const expectation of AFFECTED_REF_EXPECTATIONS) {
       const measured = artifact.refs.find((entry) => entry.ref === expectation.ref);

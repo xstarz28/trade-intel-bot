@@ -61,7 +61,7 @@ describe("A2 authorization — §2 paths", () => {
     expect(runbook).toMatch(/Path C is \*\*recorded\*\*/);
     expect(runbook).toMatch(/Path R is \*\*unrecorded\*\*/);
     expect(runbook).toMatch(/A2 remains \*\*UNVERIFIED\*\*/);
-    expect(runbook).toMatch(/writable nine-ref rewrite \*\*has been executed\*\*/);
+    expect(runbook).toMatch(/writable ten-ref rewrite \*\*has been executed\*\*/);
     expect(existsSync(resolve(root, A1_COMPENSATING_PROOF_PATH))).toBe(true);
     expect(existsSync(resolve(root, PROOF_PATHS.a1Revocation))).toBe(false);
     expect(existsSync(resolve(root, "docs/remediation"))).toBe(true);
@@ -77,13 +77,14 @@ describe("A2 authorization — §2 paths", () => {
 });
 
 describe("A2 authorization — rewriteable vs GitHub-managed refs", () => {
-  it("keeps the nine rewriteable refs; writable carriers are 0; advertised-reachable is 0", () => {
+  it("keeps the ten rewriteable refs; writable carriers are 0; advertised-reachable is 0", () => {
     // Phase 272 — the intentionally persisted Arena recovery branch joined the
     // rewriteable set. Phase 316 — the compromised ref (01a0b293, which carried
-    // the pre-rewrite lineage again) was REMOVED from the remote, so the set is
-    // nine; identity, measurement and runbook rows still line up exactly
-    // (no weakening of the invariant).
-    expect(REWRITEABLE_REFS).toHaveLength(9);
+    // the pre-rewrite lineage again) was REMOVED from the remote. Phase 319 —
+    // the operator added heads/hotfix/convex-resource-efficiency (a clean alias
+    // of the accepted tip ce7d5e4), so the set is ten; identity, measurement
+    // and runbook rows still line up exactly (no weakening of the invariant).
+    expect(REWRITEABLE_REFS).toHaveLength(10);
     expect(inventory.refs.map((entry) => entry.ref)).toEqual(REWRITEABLE_REFS);
     expect(inventory.refs.every((entry) => entry.affected)).toBe(false);
     expect(inventory.refs.every((entry) => entry.carrierCommits === 0)).toBe(true);

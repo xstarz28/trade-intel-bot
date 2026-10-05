@@ -223,8 +223,9 @@ describe("244 — the pre-remediation evidence package (Phase D)", () => {
     expect(pkg.repository.branch).toBe(BRANCH);
     expect(pkg.credential.fingerprint).toBe(FINGERPRINT);
     // Phase 272 added the recovery row; Phase 316 removed the compromised
-    // ref — the exposure set is the nine measured refs, 0 carriers.
-    expect(pkg.exposure.refs.length).toBe(9);
+    // ref; Phase 319 added the operator's clean hotfix alias — the exposure
+    // set is the ten measured refs, 0 carriers.
+    expect(pkg.exposure.refs.length).toBe(10);
     expect(pkg.exposure.carrierCommits).toBe(0);
     expect(pkg.worktreeClean).toBe(true);
     expect(pkg.releaseVerdict).toBe(currentReleaseVerdict().verdict);

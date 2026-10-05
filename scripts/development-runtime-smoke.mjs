@@ -2809,13 +2809,31 @@ async function run() {
   }
   const origin = target.origin;
 
-  const specs = domainsArg
+  // Phase 319 — RESOURCE MODE. `--domains none` (alias `exact`) selects NO
+  // generic domains: the run's evidence is exactly the EXACT-mode specs, so
+  // the Twelve Data catalog walk, the OKX discovery and the discovery-ranked
+  // domain analyses are ALL skipped. Every earlier acceptance run walked the
+  // full catalogs even when only exact identities were being verified — a
+  // pure resource burn (provider credits + Convex action compute + staging
+  // writes) that contributed zero annotations. Exact-only is the resource-
+  // frugal default for identity acceptance; generic domains remain available
+  // for discovery-side acceptance.
+  // Phase 319 — RESOURCE MODE. `--domains none` (alias `exact`) selects NO
+  // generic domains: the run's evidence is exactly the EXACT-mode specs, so
+  // the Twelve Data catalog walk, the OKX discovery and the discovery-ranked
+  // domain analyses are ALL skipped. Every earlier acceptance run walked the
+  // full catalogs even when only exact identities were being verified — a
+  // pure resource burn (provider credits + Convex action compute + staging
+  // writes) that contributed zero annotations. Exact-only is the resource-
+  // frugal default for identity acceptance; generic domains remain available
+  // for discovery-side acceptance. (The exact specs are parsed below; the
+  // emptiness refusal lives right after them.)
+  const EXACT_ONLY = domainsArg === "none" || domainsArg === "exact";
+  const specs = domainsArg && !EXACT_ONLY
     ? DOMAIN_SPECS.filter((s) => domainsArg.split(",").map((d) => d.trim()).includes(s.domain))
-    : DOMAIN_SPECS;
-  if (specs.length === 0) {
-    console.error("REFUSED: no known domain selected (crypto|forex|stock|commodity)");
-    process.exit(2);
-  }
+    : EXACT_ONLY
+      ? []
+      : DOMAIN_SPECS;
 
   // Phase 302 — the EXACT live-verification mode (opt-in). Identities come from
   // the operator/workflow as provider:assetClass:nativeId — the repository's
@@ -2826,6 +2844,14 @@ async function run() {
   const exactParsed = parseExactInstrumentSpecs(exactArg);
   if (!exactParsed.ok && exactArg.trim() !== "") {
     console.error(`REFUSED: ${exactParsed.problem}`);
+    process.exit(2);
+  }
+  if (specs.length === 0 && !exactParsed.ok) {
+    console.error(
+      EXACT_ONLY
+        ? "REFUSED: --domains none/exact is exact-only and no exact instruments were given"
+        : "REFUSED: no known domain selected (crypto|forex|stock|commodity|none)",
+    );
     process.exit(2);
   }
 
@@ -2870,6 +2896,14 @@ async function run() {
   }
 
   const domains = [];
+
+  if (EXACT_ONLY) {
+    annotate(
+      "notice",
+      "EXACT-ONLY RUN (Phase 319 resource mode)",
+      "no generic domains requested — the Twelve Data catalog walk, OKX discovery and domain analyses are skipped; the run's evidence is the EXACT specs only",
+    );
+  }
 
   // Phase 303 — deterministic provider budget plan: computed BEFORE anything is
   // issued, reported verbatim in the run, and driven by the reservations below
