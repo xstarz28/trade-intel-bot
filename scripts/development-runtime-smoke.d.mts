@@ -173,6 +173,29 @@ export type Evidence = {
   /** Phase 315 — the timeframe the runtime analysed, verbatim (null when absent). */
   timeframe: string | null;
   requestedTimeframe: string | null;
+  /** Phase 315 — the engine's structural trade plan, verbatim (present:false when absent). */
+  tradePlan: {
+    present: boolean;
+    direction: string | null;
+    entry: string | null;
+    stopLoss: string | null;
+    takeProfit: string | null;
+    riskReward: number | null;
+    entryBasis: string | null;
+    slBasis: string | null;
+    tpBasis: string | null;
+    stopProvenanceSource: string | null;
+    targetProvenanceSource: string | null;
+    invalidationLevel: number | null;
+  };
+  /** Phase 315 — the candle window the chart layer must agree with. */
+  chartProvenance: {
+    present: boolean;
+    candleCount: number | null;
+    firstTimestamp: number | null;
+    lastTimestamp: number | null;
+    strategyTimeframe: string | null;
+  };
   technical: {
     present: boolean;
     available: boolean;

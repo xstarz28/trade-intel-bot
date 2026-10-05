@@ -1267,10 +1267,50 @@ export function readResultEvidence(result) {
         .filter((d) => d.provider !== null)
     : [];
 
+  // Phase 315 — the engine's OWN trade plan (structural, server truth) and the
+  // candle provenance of the strategy context the chart layer must agree with.
+  // Both are captured verbatim so a live run can prove plan and chart integrity
+  // instead of implying them. Absent fields stay null — never invented here.
+  const plan = r.tradePlan ?? null;
+  const strategyProvenance = r.technicalData?.strategy?.provenance ?? null;
+  const tradePlan = plan
+    ? {
+        present: true,
+        direction: typeof plan.direction === "string" ? plan.direction : null,
+        entry: typeof plan.entry === "string" ? plan.entry : null,
+        stopLoss: typeof plan.stopLoss === "string" ? plan.stopLoss : null,
+        takeProfit: typeof plan.takeProfit === "string" ? plan.takeProfit : null,
+        riskReward: isNumber(plan.riskReward) ? plan.riskReward : null,
+        entryBasis: typeof plan.entryBasis === "string" ? sanitize(plan.entryBasis) : null,
+        slBasis: typeof plan.slBasis === "string" ? sanitize(plan.slBasis) : null,
+        tpBasis: typeof plan.tpBasis === "string" ? sanitize(plan.tpBasis) : null,
+        stopProvenanceSource: plan.stopProvenance?.source ?? null,
+        targetProvenanceSource: plan.targetProvenance?.source ?? null,
+        invalidationLevel:
+          isNumber(plan.structuralInvalidation?.level) ? plan.structuralInvalidation.level : null,
+      }
+    : { present: false };
+  const chartProvenance = strategyProvenance
+    ? {
+        present: true,
+        candleCount: isNumber(strategyProvenance.candleCount) ? strategyProvenance.candleCount : null,
+        firstTimestamp:
+          isNumber(strategyProvenance.firstTimestamp) ? strategyProvenance.firstTimestamp : null,
+        lastTimestamp:
+          isNumber(strategyProvenance.lastTimestamp) ? strategyProvenance.lastTimestamp : null,
+        strategyTimeframe:
+          typeof r.technicalData?.strategy?.timeframe === "string"
+            ? r.technicalData.strategy.timeframe
+            : null,
+      }
+    : { present: false };
+
   return {
     // Phase 315 — requested vs delivered timeframe, verbatim from the result.
     timeframe,
     requestedTimeframe,
+    tradePlan,
+    chartProvenance,
     market,
     technical,
     fundamental,
@@ -2958,6 +2998,26 @@ async function run() {
     const tfCheck = enforceTimeframeExactness(verdict, requestedTf);
     verdict = tfCheck.verdict;
     record.timeframeExact = tfCheck.exact;
+    if (verdict.headline !== "UNAVAILABLE") {
+      // Phase 315 — a PASS (and any FAIL) is announced on the notice channel so
+      // the per-instrument evidence survives where logs/artifacts cannot be
+      // fetched. One bounded line: identity, verbatim timeframes, observation,
+      // plan structure and the candle window the chart must agree with.
+      const e = verdict.evidence ?? null;
+      const p = e?.tradePlan ?? null;
+      const cp = e?.chartProvenance ?? null;
+      annotate(
+        verdict.headline === "FAIL" ? "error" : "notice",
+        `${label} ${verdict.headline}`,
+        `${exact.provider} · ${exact.providerInstrumentId} · tf=${requestedTf}/${e?.timeframe ?? "none"} · price=${
+          e?.market?.price ?? "none"
+        } · observedAt=${e?.market?.observedAt ?? "none"} · plan=${
+          p?.present ? `${p.direction} E=${p.entry} SL=${p.stopLoss} TP=${p.takeProfit} RR=${p.riskReward ?? "?"} (stop=${p.stopProvenanceSource ?? "?"}, target=${p.targetProvenanceSource ?? "?"}, invalidation=${p.invalidationLevel ?? "?"})` : "none"
+        } · chartWindow=${
+          cp?.present ? `${cp.candleCount}c ${cp.firstTimestamp}..${cp.lastTimestamp} tf=${cp.strategyTimeframe ?? "?"}` : "none"
+        } · fundamental=${e?.fundamental?.available ? `${e.fundamental.domain}/${e.fundamental.state} via ${e.fundamental.provider}` : `unavailable (${e?.fundamental?.state ?? "none"})`} · unified=${e?.unified?.present ? `${e.unified.state}/actionable=${e.unified.actionable}` : "none"} · ${verdict.reason ?? ""}`,
+      );
+    }
     record.headline = verdict.headline;
     record.reason = verdict.reason;
     record.attempts.push({
