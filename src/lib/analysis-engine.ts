@@ -78,6 +78,10 @@ import { structureDigest } from "@/lib/data/structure";
 import { buildUnifiedIntelligence } from "@/lib/unified-intelligence";
 import { attachAdvancedTechnical, assessAdvancedEvidence } from "@/lib/data/advanced-technical";
 import { buildStrategyContext } from "@/lib/strategy/context";
+import {
+  clampFamilyDelta,
+  DERIVATIVES_STATE_FAMILY_CAP,
+} from "@/lib/strategy/evidence-groups";
 import { buildReasoningChain } from "@/lib/strategy/explanation";
 import { buildSignalResponse } from "@/lib/strategy/signal";
 // Phase 276 — deterministic fundamental assessment (pure function of the
@@ -580,32 +584,41 @@ function scoreSentiment(input: AnalysisInput): FactorScore {
   const structure = tech?.structure;
 
   if (deriv && deriv.confidence !== "unavailable" && input.instrumentType === "crypto") {
+    // Phase 313 — DERIVATIVES-STATE DEPENDENCY FAMILY. Funding, OI change,
+    // long/short ratio and liquidation dominance are correlated observations
+    // of ONE positioning state: they are read individually (each keeps its
+    // own direction) but their SUM is capped at ±DERIVATIVES_STATE_FAMILY_CAP
+    // so four agreeing readings can never masquerade as four independent
+    // confirmations. See strategy/evidence-groups.ts.
+    let derivativesStateDelta = 0;
     if (deriv.fundingRate) {
       const fr = deriv.fundingRate.currentRate;
-      if (fr > 0.001) score -= 1;
-      if (fr < -0.001) score += 1;
-      if (fr > 0.0005 && structure === "HH/HL") score += 1;
-      if (fr > 0.0005 && structure === "LH/LL") score -= 1;
+      if (fr > 0.001) derivativesStateDelta -= 1;
+      if (fr < -0.001) derivativesStateDelta += 1;
+      if (fr > 0.0005 && structure === "HH/HL") derivativesStateDelta += 1;
+      if (fr > 0.0005 && structure === "LH/LL") derivativesStateDelta -= 1;
     }
 
     if (deriv.openInterest && deriv.openInterest.change1h !== undefined) {
       const oiChange = deriv.openInterest.change1h;
-      if (oiChange > 2 && structure === "HH/HL") score += 1;
-      if (oiChange > 2 && structure === "LH/LL") score -= 1;
-      if (oiChange < -2 && structure === "LH/LL") score += 1;
+      if (oiChange > 2 && structure === "HH/HL") derivativesStateDelta += 1;
+      if (oiChange > 2 && structure === "LH/LL") derivativesStateDelta -= 1;
+      if (oiChange < -2 && structure === "LH/LL") derivativesStateDelta += 1;
     }
 
     if (deriv.longShort?.accountRatio !== undefined) {
       const ratio = deriv.longShort.accountRatio;
-      if (ratio > 2.0) score -= 1;
-      if (ratio < 0.5) score += 1;
+      if (ratio > 2.0) derivativesStateDelta -= 1;
+      if (ratio < 0.5) derivativesStateDelta += 1;
     }
 
     if (deriv.liquidations?.dominantSide === "longs") {
-      score += 1;
+      derivativesStateDelta += 1;
     } else if (deriv.liquidations?.dominantSide === "shorts") {
-      score -= 1;
+      derivativesStateDelta -= 1;
     }
+
+    score += clampFamilyDelta(derivativesStateDelta, DERIVATIVES_STATE_FAMILY_CAP);
   } else {
     // ── Alpha Vantage news sentiment ──
     const sentiment = input.sentimentData;

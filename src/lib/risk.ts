@@ -192,6 +192,17 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
     };
   }
 
+  // Phase 313 — a risk budget that cannot buy even ONE quantity step sizes
+  // nothing: report it honestly instead of an available-but-zero position.
+  if (quantity <= 0) {
+    return {
+      available: false,
+      unavailableReason: `the risk budget yields ${rawQuantity.toFixed(6)} units — below one quantity step of ${step}; size nothing rather than rounding up beyond the budget`,
+      riskAmount,
+      riskPerUnit,
+    };
+  }
+
   return {
     available: true,
     riskAmount,
