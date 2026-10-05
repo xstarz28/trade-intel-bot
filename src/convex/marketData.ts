@@ -66,6 +66,14 @@ import {
   mapCcxtTimeframe,
 } from "../lib/discovery/ccxt-live";
 import type { AssetClass } from "../lib/data/universal/types";
+import {
+  createFxFailoverController,
+  buildAlphaVantageFxUrl,
+  mapAlphaVantageFxRequest,
+  parseAlphaVantageFxSeries,
+  type FxFailoverController,
+} from "../lib/data/universal/fx-failover";
+import { getProviderSymbol } from "../lib/data/universal/instruments";
 import type { Transport } from "../lib/data/universal/live/client";
 import {
   mapTwelveDataInterval,
@@ -298,6 +306,80 @@ async function fetchCandlesUncached(
     throw new Error(`${statusPrefix}${parsedSeries.reason}`);
   }
   return parsedSeries.candles;
+}
+
+/**
+ * Phase 317 — the FX failover acquisition leg (alpha-vantage).
+ *
+ * Mirrors `fetchCandles` exactly: same provider-cache identity discipline
+ * (the key carries the provider, the canonical instrument, the timeframe AND
+ * the bar count), same per-request acquisition trace, same "the observation
+ * time is the PROVIDER's own newest bar open" rule. The response is parsed
+ * strictly by the pure Phase-317 module and then validated with the SAME
+ * per-candle acceptance contract the ccxt leg uses — a rejected record is
+ * removed, never repaired.
+ */
+async function fetchAlphaVantageFailoverCandles(
+  canonicalInstrument: string,
+  tf: string,
+  outputsize: number,
+  catalogAvSymbol: string,
+  avApiKey: string,
+): Promise<OhlcvCandle[]> {
+  const mapped = mapAlphaVantageFxRequest(tf, catalogAvSymbol);
+  if (!mapped.ok) {
+    throw new Error(`alpha-vantage FX failover is not available for ${tf}: ${mapped.reason}`);
+  }
+  const evidence = await getProviderCache().fetch<OhlcvCandle[]>(
+    {
+      provider: "alpha-vantage",
+      dataset: "ohlcv",
+      instrument: canonicalInstrument,
+      timeframe: tf,
+      qualifier: `bars=${outputsize}`,
+    },
+    async () => {
+      const res = await fetch(
+        `${buildAlphaVantageFxUrl(mapped)}&outputsize=${outputsize}&apikey=${encodeURIComponent(avApiKey)}`,
+        // Phase 177 — same deadline discipline as the other candle legs.
+        { signal: AbortSignal.timeout(7_000) },
+      );
+      const json = await res.json().catch(() => null);
+      if (json === null) {
+        throw new Error(`alpha-vantage response was not JSON (HTTP ${res.status})`);
+      }
+      const parsed = parseAlphaVantageFxSeries(json);
+      if (!parsed.ok) {
+        throw new Error(`${parsed.failureClass}: ${parsed.reason}`);
+      }
+      const validation = validateOhlcvSeries(parsed.candles, { now: Date.now() });
+      const accepted = parsed.candles.filter(
+        (_, i) => !validation.rejectedIndices.includes(i),
+      );
+      if (accepted.length === 0) {
+        const reasons = [...new Set(validation.issues.map((s) => s.reason))].join(", ");
+        throw new Error(
+          `alpha-vantage returned no usable candles (all ${parsed.candles.length} rejected: ${reasons})`,
+        );
+      }
+      return { data: accepted, observedAt: Date.now() };
+    },
+  );
+  const candles = evidence?.data ?? [];
+  if (evidence) {
+    candleAcquisitions.push(evidence.acquisition);
+    if (primarySeriesObservation === null) {
+      const newest = candles[candles.length - 1]?.timestamp;
+      if (newest !== undefined && Number.isFinite(newest) && newest > 0) {
+        primarySeriesObservation = newest;
+        primarySeriesBarSpacingMs = medianBarSpacingMs(candles) ?? null;
+        candleObservations.push(newest);
+      }
+    } else {
+      candleObservations.push(evidence.observedAt);
+    }
+  }
+  return candles;
 }
 
 /**
@@ -610,10 +692,35 @@ export const fetchMarketData = action({
       instrumentTypeToAssetClass(args.instrumentType) ?? "crypto";
     resetCandleTrace();
 
+    // Phase 317 — catalog-driven FX failover for the non-provider-native leg.
+    // The controller is created PER ANALYSIS (fresh routing state every run:
+    // the primary is always the first probe — §6G no cross-run memory). The
+    // catalog is the ONLY source of the fallback native id; an instrument the
+    // catalog does not map to alpha-vantage (e.g. XAU/USD) never fails over.
+    let fxController: FxFailoverController | null = null;
+    const avApiKey = process.env.ALPHA_VANTAGE_API_KEY;
+    if (!useProviderNative) {
+      fxController = createFxFailoverController({
+        config: {
+          catalogAvSymbol: getProviderSymbol(symbol, "alpha-vantage"),
+          fallbackConfigured: typeof avApiKey === "string" && avApiKey.length > 0,
+          classifyPrimary: classifyPrimaryFetchFailure,
+        },
+        primary: (tf, n) => fetchCandles(requestSymbol, tf, n, apiKey as string),
+        fallback: (tf, n, catalogAvSymbol) =>
+          fetchAlphaVantageFailoverCandles(
+            symbol,
+            tf,
+            n,
+            catalogAvSymbol,
+            avApiKey as string,
+          ),
+      });
+    }
     const loadCandles = (sym: string, tf: string, n: number): Promise<OhlcvCandle[]> =>
       useProviderNative
         ? fetchProviderNativeCandles(providerArg ?? "okx", sym, nativeAssetClass, tf, n)
-        : fetchCandles(sym, tf, n, apiKey as string);
+        : (fxController as FxFailoverController).load(tf, n);
 
     try {
       // Primary (setup) timeframe — errors classified precisely (429, auth…)
@@ -649,7 +756,10 @@ export const fetchMarketData = action({
       // independently rejects prices older than its style budget, and the
       // cached payload carries its original observation time, so a reused
       // quote ages honestly rather than appearing newly observed.
-      const quoteEvidence = useProviderNative
+      // Phase 317 — when the failover serves the candles, the Twelve Data
+      // quote is not consulted at all: the price comes from the SAME
+      // fallback series (last close), so snapshot identity is preserved.
+      const quoteEvidence = useProviderNative || (fxController?.state() ?? null) !== null
         ? null
         : await getProviderCache()
         .fetch<Record<string, unknown>>(
@@ -966,9 +1076,14 @@ export const fetchMarketData = action({
         });
       }
 
+      // Phase 317 — the envelope names the provider that ACTUALLY served the
+      // candles. A failover result never pretends to be twelve-data: the
+      // provider, the provider-native id and the primary failure are all
+      // explicit (§317 no-silent-failover).
+      const fxState = useProviderNative ? null : (fxController?.state() ?? null);
       const resultProvider = useProviderNative
         ? (providerArg as string)
-        : "twelve-data";
+        : (fxState?.fallbackProvider ?? "twelve-data");
       /*
         Phase 298 — freshness as EVIDENCE, not as a constant.
 
@@ -1005,9 +1120,24 @@ export const fetchMarketData = action({
           instrument: symbol,
           instrumentType: args.instrumentType,
           provider: resultProvider,
-          providerInstrumentId: requestSymbol,
+          // The provider-native id is the one the SERVING provider declares:
+          // on failover that is the catalog's alpha-vantage id (e.g. EURUSD),
+          // never the primary's id dressed up as the fallback's.
+          providerInstrumentId: fxState?.fallbackNativeId ?? requestSymbol,
           fetchTimestamp: envelopeNow,
           price: { price, timestamp: priceTimestamp, source: resultProvider },
+          // §317 13 — the switch is never hidden. Consumers render this as a
+          // limitation; absence of the field means the primary served.
+          ...(fxState
+            ? {
+                primaryProviderFailure: {
+                  provider: fxState.primaryProvider,
+                  errorCode: fxState.primaryErrorCode,
+                  reason: fxState.primaryReason,
+                  engagedTimeframe: fxState.engagedTimeframe,
+                },
+              }
+            : {}),
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
