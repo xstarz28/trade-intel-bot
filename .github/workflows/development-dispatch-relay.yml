@@ -34,6 +34,7 @@ on:
     types:
       - development-deploy-relay
       - development-auth-verify-relay
+      - development-publish-frontend-relay
       - development-runtime-smoke-relay
 
 permissions:
@@ -104,6 +105,23 @@ jobs:
               [ -n "${REF}" ] && ARGS+=(-f "ref=${REF}")
               gh workflow run development-auth-verify.yml "${ARGS[@]}"
               echo "relayed: development-auth-verify.yml ${ARGS[*]}"
+              ;;
+            development-publish-frontend-relay)
+              REF="$(field ref)"
+              CONFIRM="$(field confirm)"
+              MODE="$(field mode)"
+              if [ -z "${REF}" ] || [ -z "${CONFIRM}" ]; then
+                echo "::error::relay refused: both ref and confirm are required"
+                exit 1
+              fi
+              if [ "${CONFIRM}" != "PUBLISH_FRONTEND" ]; then
+                echo "::error::relay refused: confirm must be exactly PUBLISH_FRONTEND"
+                exit 1
+              fi
+              ARGS=(--ref main -f "ref=${REF}" -f "confirm=${CONFIRM}")
+              [ -n "${MODE}" ] && ARGS+=(-f "mode=${MODE}")
+              gh workflow run publish-development-frontend.yml "${ARGS[@]}"
+              echo "relayed: publish-development-frontend.yml ${ARGS[*]}"
               ;;
             *)
               echo "::error::unknown relay event type: ${EVENT_TYPE}"
