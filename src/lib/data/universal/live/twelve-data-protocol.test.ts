@@ -81,6 +81,10 @@ describe("OKX bar mapping", () => {
   it("does not default an unmapped timeframe", () => {
     expect(mapOkxBar("1h")).toBe("1H");
     expect(mapOkxBar("H1")).toBe("1H");
+    // Phase 316 — OKX natively serves the "30m" bar; the map must not report
+    // a provider-supported timeframe as unsupported.
+    expect(mapOkxBar("M30")).toBe("30m");
+    expect(mapOkxBar("30m")).toBe("30m");
     expect(mapOkxBar("13min")).toBeUndefined();
     expect(buildOkxCandlesUrl("BTC-USDT", "13min", 100)).toBeUndefined();
     expect(buildOkxCandlesUrl("BTC-USDT-SWAP", "1h", 100)).toContain(

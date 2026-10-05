@@ -243,6 +243,10 @@ export function parseTwelveDataQuote(json: unknown): ParsedQuoteResult {
 const OKX_BAR: Record<string, string> = {
   M1: "1m",
   M5: "5m",
+  // Phase 316 — OKX's own bar matrix natively includes "30m"; the map simply
+  // lacked the entry, which made an natively-supported timeframe report as
+  // unsupported. Provider-native, verbatim — never resampled or relabelled.
+  M30: "30m",
   M15: "15m",
   H1: "1H",
   H4: "4H",
@@ -251,6 +255,7 @@ const OKX_BAR: Record<string, string> = {
   "1m": "1m",
   "5m": "5m",
   "15m": "15m",
+  "30m": "30m",
   "1H": "1H",
   "4H": "4H",
   "1D": "1D",
