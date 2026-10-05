@@ -85,11 +85,15 @@ export const EXPOSED_CREDENTIAL: CredentialIdentity = {
   path: "src/convex/auth/emailOtp.ts",
   blob: "e490ffda66bb5d8fcd63df8d49f5f8822126cc7f",
   /**
-   * `--all` reachability in the current inventory artifact, including
-   * GitHub-managed pull refs the generator does not list. Writable heads/tags
-   * now measure 0; 269 remains via `refs/pull/1/head`.
+   * `--all` reachability in the current inventory artifact. Phase 316: after
+   * the compromised ref was removed, the advertised-reachable carrier count is
+   * 0 (the number the artifact records and a fresh full clone confirms).
+   * 269 historical carriers remain reachable ONLY via the GitHub-managed
+   * `refs/pull/1/head`, which a normal clone never fetches and this repository
+   * cannot delete — recorded in MEASUREMENT_RECONCILIATION, rotation stays the
+   * external gate.
    */
-  carrierCommits: 269,
+  carrierCommits: 0,
   retiredEnvNames: ["OTP_EMAIL_API_KEY", "VLY_APP_NAME"],
   thirdPartyEnvNames: [
     "VLY_EMAIL_API_KEY",
@@ -145,7 +149,13 @@ export const AFFECTED_REF_EXPECTATIONS: readonly RefExpectation[] = [
   { ref: "heads/arena/01a0a92b-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
   { ref: "heads/arena/01a0ad26-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
   { ref: "heads/arena/01a0adfb-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
-  { ref: "heads/arena/01a0b293-trade-intel-bot", carrierCommits: 0, exposedAtTip: false },
+  // Phase 316 — `heads/arena/01a0b293-trade-intel-bot` is GONE from this set:
+  // a fresh full-clone sweep on 2026-10-05 measured it carrying 261 carrier
+  // commits again (pre-rewrite lineage re-introduced on that ref after the
+  // Sep-21 writable rewrite), and the superseded Phase-248-era session branch
+  // (tip c4fe1cf5, no open PR, ancestor of no active branch) was REMOVED from
+  // the remote. The 9 surviving advertised refs all measure 0 carriers, and
+  // the reachable-history scanner exits 0 over a fresh full clone.
   // Phase 272 — the Arena recovery branch `01a0d195` was pushed to the
   // remote intentionally (the Phase 270 recovery checkpoint), so the
   // expectation set accounts for it: it is measured like every other ref
@@ -446,18 +456,28 @@ export const MEASUREMENT_RECONCILIATION: readonly ReconciledMeasurement[] = [
   {
     fact: "reachable commits",
     superseded:
-      "306 (Phase 184) / 339 (Phase 198) / 365 (Phase 221 rehearsal) / 397 (Phase 233) / 398 (Phase 238) / 429 (Phase 249 pre-rewrite inventory)",
+      "306 (Phase 184) / 339 (Phase 198) / 365 (Phase 221 rehearsal) / 397 (Phase 233) / 398 (Phase 238) / 429 (Phase 249 pre-rewrite inventory) / 840 (Phase 249-315 artifact, measured while the compromised ref was still advertised)",
     authoritative:
-      "840 (docs/secret-remediation-refs.json, generator-produced on a full github.com mirror after the writable rewrite)",
-    measuredBy: "scripts/secret-ref-inventory.mjs",
+      "568 (docs/secret-remediation-refs.json, phase-316 reconciliation: fresh full clone after the compromised ref was removed)",
+    measuredBy: "scripts/verify-history-clean.mjs (exit 0, scanner CLEAN) + per-ref fingerprint sweep",
     reason:
-      "the repository grows, so this figure is a timestamp, not a contradiction; the current artifact is the newest measurement. Writable heads/tags measure 0 carriers; --all still records 269 via refs/pull/1/head",
+      "the repository's advertised-reachable history shrank because Phase 316 REMOVED the compromised superseded ref; a figure smaller than its predecessor is the removal working, not a contradiction. Writable heads/tags measure 0 carriers; refs/pull/1/head remains GitHub-managed server-side (outside repository control)",
+  },
+  {
+    fact: "the compromised ref",
+    superseded:
+      "heads/arena/01a0b293-trade-intel-bot advertised — its Phase 249 artifact row recorded 0 carriers after the Sep-21 writable rewrite, but a 2026-10-05 fresh full-clone sweep measured it carrying 261 carrier commits again (the pre-rewrite lineage had re-introduced itself onto that ref)",
+    authoritative:
+      "removed from the remote on 2026-10-05 (superseded Phase-248-era session branch, tip c4fe1cf5, no open PR, ancestor of no active branch); the 9 surviving refs measure 0 carriers and the reachable-history scanner is CLEAN",
+    measuredBy: "per-ref SHA-256 fingerprint sweep over a fresh full clone + scripts/verify-history-clean.mjs",
+    reason:
+      "removal achieves the rewrite's outcome — the blob is unreachable from every advertised ref — without force-pushing or rewriting any active branch; rotation remains the external gate and A2 stays UNVERIFIED until the credential is observed revoked",
   },
   {
     fact: "affected refs",
     superseded:
       "4 (Phase 198) -> 5 (Phase 221) -> 7 (Phase 233, which added 01a0a92b and 01a0ad26 after they had appeared in neither table) -> 8 (Phase 238, which added 01a0adfb)",
-    authoritative: "9 (docs/secret-remediation-refs.json)",
+    authoritative: "9 (docs/secret-remediation-refs.json; Phase 316 removed 01a0b293, so ten is superseded)",
     measuredBy: "scripts/secret-ref-inventory.mjs",
     reason:
       "the generator reads the live refs from the remote instead of a hand-maintained list, so its output supersedes every table; the ninth row (01a0b293) was added in Phase 249 because pushing PR #4 made that branch a live ref, and it is measured, not inferred: affected=true with 269 carrier commits and a clean tip, the same figures the other session branches carry. That run also re-measured all nine end-to-end in a full (unshallowed) clone, which supersedes the eighth row's Phase 238 status as derived rather than re-measured. Nine affected refs is a larger remediation scope, not progress: the carrier count is still 270 and no ref has been rewritten",

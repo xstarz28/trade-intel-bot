@@ -195,7 +195,8 @@ describe("244 — the pre-remediation evidence package (Phase D)", () => {
     fingerprint: FINGERPRINT,
     blobPaths: [...REMEDIATION_MANIFEST.inventory.requiredBlobPaths],
     historyCommits: 398,
-    carrierCommits: 270,
+    // Phase 316: 0 advertised-reachable carriers after the ref removal.
+    carrierCommits: 0,
     refs: REMEDIATION_MANIFEST.affectedRefs.map((entry) => ({
       ref: entry.ref,
       affected: true,
@@ -221,10 +222,10 @@ describe("244 — the pre-remediation evidence package (Phase D)", () => {
     expect(pkg.repository.head).toBe("cafe1234");
     expect(pkg.repository.branch).toBe(BRANCH);
     expect(pkg.credential.fingerprint).toBe(FINGERPRINT);
-    // Phase 272 — the pre-remediation exposure set is the ten measured
-    // refs: nine plus the intentionally persisted Arena recovery branch.
-    expect(pkg.exposure.refs.length).toBe(10);
-    expect(pkg.exposure.carrierCommits).toBe(270);
+    // Phase 272 added the recovery row; Phase 316 removed the compromised
+    // ref — the exposure set is the nine measured refs, 0 carriers.
+    expect(pkg.exposure.refs.length).toBe(9);
+    expect(pkg.exposure.carrierCommits).toBe(0);
     expect(pkg.worktreeClean).toBe(true);
     expect(pkg.releaseVerdict).toBe(currentReleaseVerdict().verdict);
     expect(pkg.capturedAt).toBe(NOW);

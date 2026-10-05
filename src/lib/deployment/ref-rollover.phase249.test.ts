@@ -248,14 +248,15 @@ function stripComments(source: string): string {
 // ═══════════════════════════════════════════════════════════════
 
 describe("249 — the rollover is detected and reconciled against the real repository", () => {
-  it("1. detects the new live branch the remote now advertises", () => {
+  it("1. the live set is the reconciled nine — the compromised ref stays gone", () => {
     const live = liveRefsOrFail();
-    expect(live).toContain(ROLLED_OVER_REF);
-    // Detection is a count the remote answers, not a list written down here.
-    // Phase 272: the recovery branch made it ten — the arena recovery ref is
-    // an intentional live ref that every layer now accounts for.
+    // Phase 316: the compromised superseded session branch was REMOVED from
+    // the remote (it carried the pre-rewrite lineage again). Detection is a
+    // count the remote answers, not a list written down here — and the
+    // removal is a fact the remote must keep answering for.
+    expect(live).not.toContain(ROLLED_OVER_REF);
     expect(live).toContain(RECOVERY_REF);
-    expect(live).toHaveLength(10);
+    expect(live).toHaveLength(9);
   });
 
   it("2. measures it from full history, not from ancestry or tip-cleanliness", () => {
@@ -265,14 +266,13 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(artifact.method).toMatch(/not lineage inference/i);
     expect(artifact.generatedBy).toBe(REMEDIATION_MANIFEST.inventory.generator);
 
+    // Phase 316: the ref itself was removed, so the artifact no longer
+    // carries its row — its absence IS the reconciled measurement, recorded
+    // in the artifact method note and the manifest's reconciliation.
     const measured = artifact.refs.find((entry) => entry.ref === ROLLED_OVER_REF);
-    expect(measured, "the ninth ref must have its own measured row").toBeDefined();
-    expect(measured?.affected).toBe(false);
-    expect(measured?.carrierCommits).toBe(0);
-    // Clean at the tip AND no longer a writable carrier: the rewrite landed.
-    // That is not A2 verification — pull/1 still reaches the blob.
-    expect(measured?.exposedAtTip).toBe(false);
-    expect(artifact.historyCommits).toBe(840);
+    expect(measured, "the removed ref must have no measured row").toBeUndefined();
+    expect(artifact.refs).toHaveLength(9);
+    expect(artifact.historyCommits).toBe(568);
 
     // Depth-branched, following the Phase 233 guard. In a FULL clone there is no
     // excuse: the ninth ref's advertised tip must be present locally and its
@@ -281,8 +281,8 @@ describe("249 — the rollover is detected and reconciled against the real repos
     // MERGE commit rather than a branch tip, so the tip is absent there — and that
     // limitation is REPORTED, never silently passed.
     if (!cloneIsShallow()) {
-      // The tip comes from the remote and is normalised with the same rule the
-      // guards use, so this works for a head or a tag without mapping ref names.
+      // The remote must keep answering for the removal: the compromised ref
+      // must never be advertised again.
       const listing = execFileSync("git", ["ls-remote", "--heads", "--tags", "origin"], {
         encoding: "utf8",
         maxBuffer: 1 << 24,
@@ -297,33 +297,13 @@ describe("249 — the rollover is detected and reconciled against the real repos
             !ref.endsWith("^{}") &&
             normalizeRunbookRef(ref) === ROLLED_OVER_REF,
         );
-      expect(row, "the ninth ref must be advertised by the remote").toBeDefined();
-      const tip = row?.[0] ?? "";
-      expect(tip, "the ninth ref's tip must be a full SHA").toMatch(/^[0-9a-f]{40}$/);
-      expect(spawnSync("git", ["cat-file", "-e", tip]).status).toBe(0);
-
-      const blobPath = artifact.blobPaths[0];
-      const atTip = execFileSync("git", ["rev-parse", `${tip}:${blobPath}`], {
-        encoding: "utf8",
-      }).trim();
-      // Re-verified from git: the tip's own copy of the leaked path is NOT the
-      // leaked blob, which is exactly what exposedAtTip=false claims.
-      expect(atTip === REMEDIATION_MANIFEST.credential.blob).toBe(false);
-      expect(atTip === REMEDIATION_MANIFEST.credential.blob).toBe(measured?.exposedAtTip);
-      // And the exposure is still in the history behind that tip, not only in the
-      // artefact's say-so: the leaked blob is reachable from it.
-      const reachable = execFileSync(
-        "git",
-        ["rev-list", "--count", tip],
-        { encoding: "utf8" },
-      ).trim();
-      expect(Number(reachable)).toBeGreaterThan(0);
+      expect(row, "the compromised ref must never be advertised again").toBeUndefined();
     } else {
       console.log(
-        `Phase 249: full-history re-verification of ${ROLLED_OVER_REF} DEFERRED — this checkout ` +
-          `is shallow (CI's verify job uses fetch-depth: 1), so the advertised tip is not ` +
-          `present locally. The recorded measurement stands on the generator's own full-history ` +
-          `run, which refuses a shallow clone with exit 2 (see case 3). Not a silent pass.`,
+        `Phase 316: removal re-verification of ${ROLLED_OVER_REF} DEFERRED — this checkout ` +
+          `is shallow (CI's verify job uses fetch-depth: 1), so ls-remote against origin is ` +
+          `still valid but the full-history scan is not; the CI history-secret-scan job owns ` +
+          `that check on a full clone. Not a silent pass.`,
       );
     }
   });
@@ -367,15 +347,19 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(evaluateRefRollover(real).reconciled).toBe(true);
   });
 
-  it("4. adds the ref only because fingerprint reachability was proven", () => {
+  it("4. the artifact and the manifest agree the compromised ref is gone", () => {
     // The rule is reachability of the recorded blob, so an affected ref must have
     // carriers, and the recorded blob path must be the one the manifest requires.
     expect(artifact.blobPaths).toEqual([...REMEDIATION_MANIFEST.inventory.requiredBlobPaths]);
     expect(artifact.fingerprint).toBe(REMEDIATION_MANIFEST.credential.fingerprint);
     expect(artifact.refs.every((entry) => !entry.affected || entry.carrierCommits > 0)).toBe(true);
-    const ninth = artifact.refs.find((entry) => entry.ref === ROLLED_OVER_REF);
-    expect(ninth?.affected).toBe(false);
-    expect(ninth?.carrierCommits).toBe(0);
+    // Phase 316: neither layer records the removed ref any more.
+    expect(artifact.refs.find((entry) => entry.ref === ROLLED_OVER_REF)).toBeUndefined();
+    expect(
+      AFFECTED_REF_EXPECTATIONS.find((entry) => entry.ref === ROLLED_OVER_REF),
+    ).toBeUndefined();
+    // Every surviving row is measured clean, and the scanner says so too.
+    expect(artifact.refs.every((entry) => entry.affected === false && entry.carrierCommits === 0)).toBe(true);
   });
 
   it("5. never classifies an unaffected ref as affected", () => {
@@ -400,7 +384,10 @@ describe("249 — the rollover is detected and reconciled against the real repos
     const main = artifact.refs.find((e) => e.ref === "heads/main");
     expect(main?.carrierCommits).toBe(0);
     expect(main?.exposedAtTip).toBe(false);
-    expect(artifact.carrierCommits).toBe(269);
+    // Phase 316: with the compromised ref removed, the advertised-reachable
+    // carrier count is 0 (269 remain server-side via GitHub-managed refs/pull/1/head,
+    // outside repository control — recorded in the reconciliation, not here).
+    expect(artifact.carrierCommits).toBe(0);
   });
 
   it("7. refuses to let an affected ref disappear from the canonical scope", () => {
@@ -430,9 +417,9 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(assessment.reconciled, assessment.problems.join("\n")).toBe(true);
     expect(assessment.affectedRefCount).toBe(0);
     expect(assessment.affectedRefs).toEqual([]);
-    // Phase 272 — the manifest carries the recovery ref as its tenth row,
-    // measured facts intact (0 carriers, tip clean).
-    expect(AFFECTED_REF_EXPECTATIONS).toHaveLength(10);
+    // Phase 272 added the recovery row; Phase 316 removed the compromised
+    // row — nine measured facts, all intact (0 carriers, tips clean).
+    expect(AFFECTED_REF_EXPECTATIONS).toHaveLength(9);
     expect(
       AFFECTED_REF_EXPECTATIONS.find((entry) => entry.ref === RECOVERY_REF),
     ).toEqual({ ref: RECOVERY_REF, carrierCommits: 0, exposedAtTip: false });
@@ -442,7 +429,7 @@ describe("249 — the rollover is detected and reconciled against the real repos
     const live = liveRefsOrFail();
     const assessment = evaluateRefRollover(realInput(live));
     expect(live).toHaveLength(artifact.refs.length);
-    expect(assessment.liveRefCount).toBe(10);
+    expect(assessment.liveRefCount).toBe(9);
     expect(assessment.affectedRefCount).toBe(0);
     expect(parseDeclaredRefCount(RUNBOOK)).toBe(live.length);
     // Every live ref is accounted for by all three layers.
@@ -454,9 +441,11 @@ describe("249 — the rollover is detected and reconciled against the real repos
     // the runbook's exposure table says `refs/heads/x`. All three must mean one ref.
     expect(parseLsRemote(`abc\trefs/${ROLLED_OVER_REF}\n`)).toEqual([ROLLED_OVER_REF]);
     expect(normalizeRunbookRef(`refs/${ROLLED_OVER_REF}`)).toBe(ROLLED_OVER_REF);
+    // Phase 316 — the removed ref is in neither table; its name survives only
+    // in the historical narrative and the reconciliation records.
     const exposure = parseExposureFacts(RUNBOOK).map((row) => row.ref);
-    expect(exposure).toContain(ROLLED_OVER_REF);
-    expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).toContain(ROLLED_OVER_REF);
+    expect(exposure).not.toContain(ROLLED_OVER_REF);
+    expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).not.toContain(ROLLED_OVER_REF);
     // A peeled tag object is not a second ref, so the count stays honest.
     expect(parseLsRemote("ccc\trefs/tags/rc-181\nddd\trefs/tags/rc-181^{}\n")).toEqual([
       "tags/rc-181",
@@ -524,8 +513,8 @@ describe("249 — the rollover is detected and reconciled against the real repos
       expect(report.verified, label).toBe(false);
       expect(report.remediationPerformed, label).toBe(false);
       // The scope it would rewrite is the nine measured refs — complete, not partial.
-      expect(report.scope.expectedRefs, label).toHaveLength(10);
-      expect(report.scope.measuredRefs, label).toHaveLength(10);
+      expect(report.scope.expectedRefs, label).toHaveLength(9);
+      expect(report.scope.measuredRefs, label).toHaveLength(9);
       expect(report.scope.missingRefs, label).toEqual([]);
       expect(report.problems.length, label).toBeGreaterThan(0);
     }
@@ -616,11 +605,17 @@ describe("249 — the rollover is detected and reconciled against the real repos
     // branch: against the pre-Phase-272 set the added refs are exactly the
     // two arena branches each phase pushed on purpose.
     expect(rolloverAddedRefs(liveRefsOrFail(), PRIOR_REFS)).toEqual([
-      ROLLED_OVER_REF,
       RECOVERY_REF,
     ]);
-    expect(rolloverAddedRefs(liveRefsOrFail(), PRE_RECOVERY_LIVE_REFS)).toEqual([RECOVERY_REF]);
+    // Phase 316 — against the pre-recovery baseline the added set is still the
+    // recovery branch alone, and the compromised ref now registers as DROPPED.
+    expect(rolloverAddedRefs(liveRefsOrFail(), PRE_RECOVERY_LIVE_REFS)).toEqual([
+      RECOVERY_REF,
+    ]);
     expect(rolloverDroppedRefs(liveRefsOrFail(), PRIOR_REFS)).toEqual([]);
+    expect(rolloverDroppedRefs(liveRefsOrFail(), PRE_RECOVERY_LIVE_REFS)).toEqual([
+      ROLLED_OVER_REF,
+    ]);
   });
 
   it("21. is deterministic for identical repository state", () => {
@@ -644,13 +639,15 @@ describe("249 — the rollover is detected and reconciled against the real repos
       "ROLLOVER_RECONCILED",
     );
     const live = liveRefsOrFail();
-    // Phase 272 — seven arena branches: the six from Phase 249's inventory
-    // plus the intentionally persisted recovery branch.
-    expect(live.filter((ref) => ref.startsWith("heads/arena/"))).toHaveLength(7);
-    expect(live).toContain(ROLLED_OVER_REF);
+    // Phase 316 — six arena branches: the five survivors from Phase 249's
+    // inventory plus the intentionally persisted recovery branch; the
+    // compromised seventh was removed, and must stay removed.
+    expect(live.filter((ref) => ref.startsWith("heads/arena/"))).toHaveLength(6);
+    expect(live).not.toContain(ROLLED_OVER_REF);
     expect(live).toContain(RECOVERY_REF);
-    // The added set against the pre-recovery baseline is exactly the recovery
-    // branch — not a new scratch branch.
+    // The added set against the pre-recovery baseline is still exactly the
+    // recovery branch — not a new scratch branch — and the compromised ref
+    // registers as dropped. Nothing new may appear.
     expect(rolloverAddedRefs(live, PRE_RECOVERY_LIVE_REFS)).toHaveLength(1);
     expect(GENERATOR).not.toMatch(/checkout|switch/);
   });
@@ -661,12 +658,14 @@ describe("249 — the rollover is detected and reconciled against the real repos
     expect(RUNBOOK).toMatch(/Rotation gate — Path C recorded; Path R \*\*BLOCKED\*\*/);
     expect(RUNBOOK).toMatch(/Removal from HEAD was never remediation/i);
     expect(RUNBOOK).toMatch(/A2 stays UNVERIFIED/);
-    expect(RUNBOOK).toMatch(/\*\*All ten\*\*/);
+    expect(RUNBOOK).toMatch(/\*\*All nine\*\*/);
     expect(RUNBOOK).toMatch(/Phase 249 note/);
+    expect(RUNBOOK).toMatch(/Phase 316 \(2026-10-05\): the scope is nine again/);
     // Growth is recorded as growth, with the carrier count unchanged as the proof
     // that the exposure itself did not move.
     expect(RUNBOOK).toMatch(/A nine-ref inventory is a\s+larger remediation scope, not progress/);
-    expect(RUNBOOK).toMatch(/carrier commits remain \*\*270\*\*/);
+    expect(RUNBOOK).toMatch(/remained 270/);
+    expect(RUNBOOK).toMatch(/carrier count to \*\*0\*\*/);
   });
 });
 
@@ -937,10 +936,12 @@ describe("249 — every layer that can drift is refused by name", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("249 — the three artefacts agree; Phase 272 adds the recovery row", () => {
-  it("the inventory artifact is the measured ten-ref set", () => {
+  it("the inventory artifact is the measured nine-ref set", () => {
     // Phase 272 — the recovery branch's row is measured with the same
-    // fingerprint-reachability facts as every other entry.
-    expect(artifact.refs).toHaveLength(10);
+    // fingerprint-reachability facts as every other entry. Phase 316 — the
+    // compromised superseded ref was removed, so the measured set is nine,
+    // every row clean, and the reachable carrier count is 0.
+    expect(artifact.refs).toHaveLength(9);
     expect(
       artifact.refs.find((entry) => entry.ref === RECOVERY_REF),
     ).toMatchObject({
@@ -950,8 +951,8 @@ describe("249 — the three artefacts agree; Phase 272 adds the recovery row", (
       exposedAtTip: false,
     });
     expect(artifact.refs.every((entry) => entry.affected === false)).toBe(true);
-    expect(artifact.historyCommits).toBe(840);
-    expect(artifact.carrierCommits).toBe(269);
+    expect(artifact.historyCommits).toBe(568);
+    expect(artifact.carrierCommits).toBe(0);
     expect(artifact.generatedBy).toBe(REMEDIATION_MANIFEST.inventory.generator);
   });
 
@@ -962,10 +963,9 @@ describe("249 — the three artefacts agree; Phase 272 adds the recovery row", (
     expect(recovery).toBeDefined();
     expect(recovery?.carrierCommits).toBe(0);
     expect(recovery?.exposedAtTip).toBe(false);
+    // Phase 316 — the removed ref is in neither layer.
     const ninth = AFFECTED_REF_EXPECTATIONS.find((entry) => entry.ref === ROLLED_OVER_REF);
-    expect(ninth).toBeDefined();
-    expect(ninth?.carrierCommits).toBe(0);
-    expect(ninth?.exposedAtTip).toBe(false);
+    expect(ninth).toBeUndefined();
     // The manifest is still a copy of the measurement, ref by ref.
     for (const expectation of AFFECTED_REF_EXPECTATIONS) {
       const measured = artifact.refs.find((entry) => entry.ref === expectation.ref);
@@ -974,19 +974,18 @@ describe("249 — the three artefacts agree; Phase 272 adds the recovery row", (
     }
   });
 
-  it("the runbook records the ninth and recovery refs in both of its tables", () => {
+  it("the runbook records the recovery ref in both tables and the removal in neither", () => {
     const recoveryExposure = parseExposureFacts(RUNBOOK).find(
       (row) => row.ref === RECOVERY_REF,
     );
     expect(recoveryExposure?.tipStatus).toMatch(/clean/);
     expect(recoveryExposure?.occurrences).toBe(0);
     expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).toContain(RECOVERY_REF);
-    const exposure = parseExposureFacts(RUNBOOK).find((row) => row.ref === ROLLED_OVER_REF);
-    expect(exposure?.tipStatus).toMatch(/clean/);
-    expect(exposure?.occurrences).toBe(0);
-    expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).toContain(ROLLED_OVER_REF);
-    // The rewrite section still says what it covers, and the number is ten.
-    expect(parseDeclaredRefCount(RUNBOOK)).toBe(10);
+    // Phase 316: the removed ref is in neither table, and the rewrite section
+    // says what it covers — the reconciled nine.
+    expect(parseExposureFacts(RUNBOOK).find((row) => row.ref === ROLLED_OVER_REF)).toBeUndefined();
+    expect(parseRewriteCoverage(RUNBOOK).map((row) => row.ref)).not.toContain(ROLLED_OVER_REF);
+    expect(parseDeclaredRefCount(RUNBOOK)).toBe(9);
   });
 
   it("records the rollover as measured end-to-end, superseding the derived eighth row", () => {
@@ -1000,7 +999,12 @@ describe("249 — the three artefacts agree; Phase 272 adds the recovery row", (
     expect(entry?.superseded).toContain("01a0adfb");
     expect(entry?.reason).toContain("01a0b293");
     const reachable = MEASUREMENT_RECONCILIATION.find((row) => row.fact === "reachable commits");
-    expect(reachable?.authoritative).toContain("840");
+    expect(reachable?.authoritative).toContain("568");
     expect(reachable?.superseded).toContain("429");
+    // Phase 316: the removal itself is a reconciled, named measurement.
+    const removed = MEASUREMENT_RECONCILIATION.find((row) => row.fact === "the compromised ref");
+    expect(removed?.authoritative).toContain("removed from the remote on 2026-10-05");
+    expect(removed?.superseded).toContain("261 carrier commits");
+    expect(removed?.reason).toContain("A2 stays UNVERIFIED");
   });
 });

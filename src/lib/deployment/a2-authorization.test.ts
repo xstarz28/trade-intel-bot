@@ -77,17 +77,19 @@ describe("A2 authorization — §2 paths", () => {
 });
 
 describe("A2 authorization — rewriteable vs GitHub-managed refs", () => {
-  it("keeps the ten rewriteable refs; writable carriers are 0; --all still 269", () => {
-    // Phase 272 — the intentionally persisted Arena recovery branch is the
-    // tenth rewriteable ref; its identity, measurement and runbook rows must
-    // still line up exactly (no weakening of the invariant).
-    expect(REWRITEABLE_REFS).toHaveLength(10);
+  it("keeps the nine rewriteable refs; writable carriers are 0; advertised-reachable is 0", () => {
+    // Phase 272 — the intentionally persisted Arena recovery branch joined the
+    // rewriteable set. Phase 316 — the compromised ref (01a0b293, which carried
+    // the pre-rewrite lineage again) was REMOVED from the remote, so the set is
+    // nine; identity, measurement and runbook rows still line up exactly
+    // (no weakening of the invariant).
+    expect(REWRITEABLE_REFS).toHaveLength(9);
     expect(inventory.refs.map((entry) => entry.ref)).toEqual(REWRITEABLE_REFS);
     expect(inventory.refs.every((entry) => entry.affected)).toBe(false);
     expect(inventory.refs.every((entry) => entry.carrierCommits === 0)).toBe(true);
     expect(inventory.refs.every((entry) => entry.exposedAtTip === false)).toBe(true);
-    expect(inventory.carrierCommits).toBe(269);
-    expect(EXPOSED_CREDENTIAL.carrierCommits).toBe(269);
+    expect(inventory.carrierCommits).toBe(0);
+    expect(EXPOSED_CREDENTIAL.carrierCommits).toBe(0);
     expect(parseRewriteCoverage(runbook).map((row) => row.ref)).toEqual(REWRITEABLE_REFS);
   });
 

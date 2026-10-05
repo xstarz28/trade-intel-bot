@@ -58,7 +58,6 @@ Two facts per ref, and they are **not** interchangeable:
 | `refs/heads/arena/01a0a92b-trade-intel-bot` | **clean** | 0 |
 | `refs/heads/arena/01a0ad26-trade-intel-bot` | **clean** | 0 |
 | `refs/heads/arena/01a0adfb-trade-intel-bot` | **clean** | 0 |
-| `refs/heads/arena/01a0b293-trade-intel-bot` | **clean** | 0 |
 | `refs/heads/arena/01a0d195-trade-intel-bot` | **clean** | 0 |
 | `refs/heads/main` | **clean** | 0 |
 | `refs/heads/phase-157-live-discovery-lifecycle` | **clean** | 0 |
@@ -125,8 +124,11 @@ branches carry, because the branch descends from the same exposed history and
 its own commits do not touch `src/convex/auth/emailOtp.ts`. That run also
 re-measured the other eight refs, so the Phase 238 row above is no longer the
 one derived row: every row in this table now rests on the same measurement.
-Total carrier commits remain **270** and reachable commits rose 398 → **429**
-(the repository grows; the exposure does not). **A nine-ref inventory is a
+Total carrier commits **remained 270** at that measurement and reachable commits
+rose 398 → **429** (the repository grows; the exposure does not). Phase 316's
+ref removal brought the advertised-reachable carrier count to **0** (269 remain
+server-side via GitHub-managed `refs/pull/1/head`, outside repository control).
+**A nine-ref inventory is a
 larger remediation scope, not progress** — nothing had been rewritten at that
 measurement. That Phase 249 record is historical. Current heads/tags are in
 **Current remote measurement** above.
@@ -358,7 +360,7 @@ git push --force --mirror https://github.com/xstarz28/trade-intel-bot.git
 
 ### Refs the force-push will rewrite
 
-**All ten** — every ref the remote advertises, per
+**All nine** — every ref the remote advertises, per
 `docs/secret-remediation-refs.json`. Phase 233 corrected this table twice
 over: Phase 198 listed four refs, Phase 221 added a fifth, and three branches
 created since then (`01a0a5f5`, `01a0a92b`, `01a0ad26`) were never added at
@@ -366,9 +368,22 @@ all despite each carrying 269 carrier commits. Phase 238 added the eighth
 (`01a0adfb`) in the phase that pushed it, Phase 249 added the ninth
 (`01a0b293`) in the phase that pushed it, and Phase 272 added the tenth
 (`01a0d195`, the intentionally persisted Arena recovery branch) when the
-Phase 270 recovery push made it live — each measured, not assumed. None may
-be skipped — a single surviving ref keeps the blob reachable and undoes the
-entire exercise.
+Phase 270 recovery push made it live — each measured, not assumed.
+
+**Phase 316 (2026-10-05): the scope is nine again.** A fresh full-clone
+fingerprint sweep measured `heads/arena/01a0b293-trade-intel-bot` carrying
+**261 carrier commits** — the pre-rewrite lineage had re-appeared on that
+ref after the Sep-21 writable rewrite recorded it at 0. The branch was a
+superseded Phase-248-era session branch (tip `c4fe1cf5`, no open PR, not an
+ancestor of any active branch), so it was **removed from the remote** — the
+rewrite's outcome (the blob unreachable from every advertised ref) achieved
+by removal rather than rewrite. All nine surviving refs were re-measured
+end-to-end: 0 carriers, every tip clean, and the reachable-history scanner
+exits 0 (CLEAN) over a fresh full clone. `refs/pull/1/head` remains
+GitHub-managed server-side, outside repository control — rotation stays the
+external gate and A2 stays UNVERIFIED until it is observed revoked. None of
+the nine may be skipped — a single surviving ref keeps the blob reachable
+and undoes the entire exercise.
 
 Re-run `node scripts/secret-ref-inventory.mjs` before executing. That
 inventory is derived from `git ls-remote`, so unlike the previous
@@ -382,7 +397,6 @@ any ref it reports that is absent from this table must be added first.
 | `heads/arena/01a0a92b-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
 | `heads/arena/01a0ad26-trade-intel-bot` | *added Phase 233* | *not rehearsed* |
 | `heads/arena/01a0adfb-trade-intel-bot` | *added Phase 238* | *not rehearsed* |
-| `heads/arena/01a0b293-trade-intel-bot` | *added Phase 249* | *not rehearsed* |
 | `heads/arena/01a0d195-trade-intel-bot` | *added Phase 272* | *not rehearsed* |
 | `heads/main` | `51c9ddeb` | `b1a9e91` |
 | `heads/phase-157-live-discovery-lifecycle` | `244e9cc7` | `6bf6f58` |

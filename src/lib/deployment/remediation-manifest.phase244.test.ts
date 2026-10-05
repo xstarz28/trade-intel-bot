@@ -100,9 +100,10 @@ describe("244 — the manifest is a measurement, not a memory", () => {
     // A deliberate literal pin, not a derivation: the count may only move when a
     // measurement moves it. Phase 249 measured the ninth live ref (01a0b293);
     // Phase 272 measured the tenth — 01a0d195, the intentionally persisted
-    // Arena recovery branch.
-    expect(artifact.refs.length).toBe(10);
-    expect(AFFECTED_REF_EXPECTATIONS.length).toBe(10);
+    // Arena recovery branch. Phase 316 removed 01a0b293 from the remote (it
+    // carried the pre-rewrite lineage again) — the measured set is nine.
+    expect(artifact.refs.length).toBe(9);
+    expect(AFFECTED_REF_EXPECTATIONS.length).toBe(9);
 
     for (const expectation of AFFECTED_REF_EXPECTATIONS) {
       const measured = artifact.refs.find((entry) => entry.ref === expectation.ref);
@@ -121,7 +122,8 @@ describe("244 — the manifest is a measurement, not a memory", () => {
     expect(artifact.refs.every((entry) => entry.affected === false)).toBe(true);
     expect(artifact.refs.every((entry) => entry.exposedAtTip === false)).toBe(true);
     expect([...REFS_EXPOSED_AT_TIP]).toEqual([]);
-    expect(artifact.carrierCommits).toBe(269);
+    // Phase 316: advertised-reachable carriers are 0 after the ref removal.
+    expect(artifact.carrierCommits).toBe(0);
   });
 
   it("points at tooling that exists, and at an artifact that exists", () => {
@@ -145,7 +147,9 @@ describe("244 — the manifest is a measurement, not a memory", () => {
       }
     }
     // ...which is precisely why the manifest records the refs, not the tree.
-    expect(REMEDIATION_MANIFEST.credential.carrierCommits).toBe(269);
+    // Phase 316: 0 after the ref removal (269 remains via refs/pull/1/head, recorded
+    // in MEASUREMENT_RECONCILIATION).
+    expect(REMEDIATION_MANIFEST.credential.carrierCommits).toBe(0);
   });
 });
 
@@ -168,9 +172,12 @@ describe("244 — superseded measurements stay visible, with their ruling", () =
     // Each superseded figure stays visible: the audit trail is the point.
     expect(reachable?.superseded).toContain("398");
     expect(reachable?.superseded).toContain("429");
-    expect(reachable?.authoritative).toContain("840");
-    expect(reachable?.reason).toMatch(/grows|newest/);
-    expect(reachable?.reason).toContain("269");
+    // Phase 316: the count shrank because the compromised ref was removed —
+    // a smaller figure is the remediation working, recorded with its reason.
+    expect(reachable?.superseded).toContain("840");
+    expect(reachable?.authoritative).toContain("568");
+    expect(reachable?.reason).toMatch(/grows|newest|shrank/);
+    expect(reachable?.reason).toContain("refs/pull/1/head");
   });
 
   it("reconciles the ref set, naming the branches that were missed", () => {

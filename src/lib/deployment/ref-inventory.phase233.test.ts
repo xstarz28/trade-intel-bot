@@ -316,7 +316,9 @@ describe("the real runbook agrees with the real remote", () => {
     expect(inventory.fingerprint).toBe("b1ce18a1e85ba121");
     expect(inventory.refs.length).toBeGreaterThan(0);
     expect(inventory.refs.every((r) => r.affected === false)).toBe(true);
-    expect(inventory.carrierCommits).toBe(269);
+    // Phase 316: with the compromised ref removed, the advertised-reachable
+    // carrier count is 0.
+    expect(inventory.carrierCommits).toBe(0);
   });
 
   it("has no inconsistency between live refs, measurement and runbook", () => {
