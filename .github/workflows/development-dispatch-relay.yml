@@ -120,6 +120,12 @@ jobs:
               fi
               ARGS=(--ref main -f "ref=${REF}" -f "confirm=${CONFIRM}")
               [ -n "${MODE}" ] && ARGS+=(-f "mode=${MODE}")
+              for KEY in artifact_commit host_url; do
+                VALUE="$(field "${KEY}")"
+                if [ -n "${VALUE}" ]; then
+                  ARGS+=(-f "${KEY}=${VALUE}")
+                fi
+              done
               gh workflow run publish-development-frontend.yml "${ARGS[@]}"
               echo "relayed: publish-development-frontend.yml ${ARGS[*]}"
               ;;
