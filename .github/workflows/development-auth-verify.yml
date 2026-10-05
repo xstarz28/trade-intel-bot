@@ -1,0 +1,115 @@
+# Phase 315 — Google authentication configuration acceptance.
+#
+# WHY THIS EXISTS
+# ---------------
+# Phase 311 shipped the auth surface and its operator verifier
+# (`scripts/verify-google-auth-config.mjs`, npm script `auth:verify`). The
+# verifier classifies THIS environment's variables into exactly three honest
+# states — CONFIGURED / NOT_CONFIGURED / INVALID — and never prints a value.
+# Until now it had no runtime wiring: this workflow runs it against the
+# deployed development deployment's own environment from a networked runner,
+# through the same `development` environment the deploy uses.
+#
+# WHAT MAKES THE RESULT TRUSTWORTHY
+# ---------------------------------
+# · It reads the deployment's REAL variables (`npx convex env list` under the
+#   dev-scoped `CONVEX_DEPLOY_KEY`), filters to the four auth-relevant names,
+#   and exports them into the verifier's process — values are never echoed,
+#   logged, or uploaded. The JSON report carries state + missing NAMES only.
+# · Fail-closed: exit 1 (NOT_CONFIGURED) and exit 2 (INVALID) both fail the
+#   job with the exact missing/invalid variable names as the message. A missing
+#   credential is a named external dependency, never a simulated PASS.
+# · The verifier itself restates: configuration validity is not sign-in
+#   acceptance — a real browser sign-in remains a separate act (phase 311).
+#
+# CREDENTIALS: only `CONVEX_DEPLOY_KEY` (dev-scoped, the deploy key the deploy
+# workflow already uses). No Google secret is stored, read as a value, or
+# printed anywhere.
+
+name: Development auth verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to verify (defaults to the dispatched ref)"
+        required: false
+        type: string
+  repository_dispatch:
+    types: [development-auth-verify-relay]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: development-auth-verify
+  cancel-in-progress: false
+
+jobs:
+  auth-verify:
+    name: Classify the deployment's Google auth configuration
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: development
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+    steps:
+      - name: Check out the selected ref
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install (the repository's own install mode)
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Read the deployment's auth variables and classify (values never printed)
+        env:
+          AUTH_VERIFY_REF: ${{ inputs.ref || github.ref }}
+        run: |
+          set -euo pipefail
+          echo "verifying ref: ${AUTH_VERIFY_REF}"
+          # Pull the deployment's OWN variable list, keep only the four
+          # auth-relevant names, export them into the verifier's process.
+          # Values stay in the process environment — never echoed, never
+          # redirected to disk, never uploaded.
+          AUTH_VARS="$(npx convex env list 2>/dev/null | grep -E '^(AUTH_GOOGLE_ID|AUTH_GOOGLE_SECRET|CONVEX_SITE_URL|SITE_URL)=' || true)"
+          while IFS= read -r line; do
+            [ -z "${line}" ] && continue
+            export "${line%%=*}=${line#*=}"
+          done <<< "${AUTH_VARS}"
+          set +e
+          node scripts/verify-google-auth-config.mjs --json | tee auth-verify.json
+          STATUS="${PIPESTATUS[0]}"
+          set -e
+          STATE="$(jq -r '.state' auth-verify.json)"
+          MISSING="$(jq -r 'if (.missing | length) > 0 then (.missing | join(",")) else "none" end' auth-verify.json)"
+          INVALID="$(jq -r 'if (.invalid | length) > 0 then (.invalid | join("; ")) else "none" end' auth-verify.json)"
+          CALLBACK="$(jq -r '.callbackUrl // "none"' auth-verify.json)"
+          LEVEL="notice"
+          [ "${STATE}" = "GOOGLE_AUTH_NOT_CONFIGURED" ] && LEVEL="warning"
+          [ "${STATE}" = "GOOGLE_AUTH_INVALID" ] && LEVEL="error"
+          echo "::${LEVEL} title=Google auth ${STATE}::state=${STATE} · missing=${MISSING} · invalid=${INVALID} · callback=${CALLBACK} · config-validity only, a real browser sign-in is a separate acceptance act"
+          echo "auth state: ${STATE} (missing: ${MISSING})"
+          exit "${STATUS}"
+
+      - name: Upload the (non-secret) verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auth-verify-${{ github.run_id }}
+          path: auth-verify.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: This job does not admit a release
+        if: always()
+        run: |
+          echo "A CONFIGURED state proves the deployment's variables are present and plausible."
+          echo "It does not prove a sign-in worked, and it is not release admission."

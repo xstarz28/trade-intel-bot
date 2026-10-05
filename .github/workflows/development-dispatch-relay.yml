@@ -33,6 +33,7 @@ on:
   repository_dispatch:
     types:
       - development-deploy-relay
+      - development-auth-verify-relay
       - development-runtime-smoke-relay
 
 permissions:
@@ -96,6 +97,13 @@ jobs:
               done
               gh workflow run development-runtime-smoke.yml "${ARGS[@]}"
               echo "relayed: development-runtime-smoke.yml ${ARGS[*]}"
+              ;;
+            development-auth-verify-relay)
+              REF="$(field ref)"
+              ARGS=(--ref main)
+              [ -n "${REF}" ] && ARGS+=(-f "ref=${REF}")
+              gh workflow run development-auth-verify.yml "${ARGS[@]}"
+              echo "relayed: development-auth-verify.yml ${ARGS[*]}"
               ;;
             *)
               echo "::error::unknown relay event type: ${EVENT_TYPE}"
