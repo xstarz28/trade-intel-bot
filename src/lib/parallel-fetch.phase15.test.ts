@@ -258,6 +258,10 @@ describe("decision determinism parity", () => {
 
     const inputA = { ...assemble({ ...BULL, treasuryData: par.treasuryData as never, cotData: par.cotData as never }) };
     const inputB = { ...assemble(BULL), ...seq, events: BULL.events } as never;
+    // The market-data fixture stamps Date.now() per construction; parity
+    // requires the SAME market observation on both paths, so inputB adopts
+    // inputA's marketData verbatim (same responses → same decision).
+    inputB.marketData = inputA.marketData;
 
     const ra = runAnalysis(inputA as never);
     const rb = runAnalysis(inputB);
