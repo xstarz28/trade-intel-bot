@@ -42,11 +42,24 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
+      # Phase 315 — the build runs BEFORE the suite, because a whole family of
+      # committed gates (phase 256/257/258/259/266) assert "dist exists AFTER
+      # the build, so bundle tests run deterministically" — with the previous
+      # order (test first) those gates could only ever be red in CI, which is
+      # exactly how a long-standing red pipeline stopped being a signal.
+      # The bundle assertions (phase 191/299) also run non-vacuously against a
+      # real artifact this way. The build uses the repository's own PUBLIC
+      # development deployment URL (committed in development-runtime-smoke.yml;
+      # it is a browser-facing origin, not a secret) so the artifact is the real
+      # application, not the fail-closed "not configured" stub. Deploys use the
+      # environment's own VITE_CONVEX_URL variable and are unaffected.
+      - name: Typecheck and production build
+        env:
+          VITE_CONVEX_URL: https://tough-goose-455.convex.cloud
+        run: npm run build
+
       - name: Test suite
         run: npm test
-
-      - name: Typecheck and production build
-        run: npm run build
 
       - name: Verify the built frontend artifact (identity, theme, no legacy branding)
         # Phase 299 — a green build is not evidence about WHICH product the
