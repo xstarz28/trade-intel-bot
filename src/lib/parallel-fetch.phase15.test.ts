@@ -233,17 +233,22 @@ describe("decision determinism parity", () => {
   };
 
   it("identical provider responses collected concurrently vs sequentially → byte-identical decision", async () => {
-    const makeTreasury = () => treasuryFixture(20);
+    // ONE shared response object: the parity contract is "same responses →
+    // byte-identical decision". treasuryFixture() stamps fetchedAt with
+    // Date.now(), so two separate constructions are NOT the same response —
+    // a millisecond boundary between the calls changed the fingerprint and
+    // broke the comparison by construction (observed on slow CI runners).
+    const sharedTreasury = treasuryFixture(20);
 
     // Concurrent path (new orchestrator).
     const par = await fetchOptionalSlowData(BASE_FACTS, {
-      treasury: async () => ok(makeTreasury()),
+      treasury: async () => ok(sharedTreasury),
       cot: async () => ok({ reportDate: "2026-08-18" }),
     });
 
     // Sequential path (old semantics, same responses).
     const seq = {
-      treasuryData: makeTreasury(),
+      treasuryData: sharedTreasury,
       cotData: { reportDate: "2026-08-18" },
       executionData: undefined,
       eiaData: undefined,
