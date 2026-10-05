@@ -282,7 +282,17 @@ describe("Phase 200 — the Evidence D harness cannot be satisfied by a substitu
       "a non-Convex host",
       { VITE_CONVEX_URL: "https://evil.example.com", EVIDENCE_D_EMAIL: "a@b.co" },
     ],
-    ["no mailbox", { VITE_CONVEX_URL: "https://demo.convex.cloud" }],
+    // Phase 315 — this case was "no mailbox": the email-OTP mailbox machinery
+    // was retired in Phase 270, so the harness has no mailbox variable to miss,
+    // and a bare reachable *.convex.cloud URL would make the harness actually
+    // RUN (networked CI got exit 1 from real failed checks where the
+    // egress-less sandbox happened to exit 2). The refusal property is now
+    // expressed deterministically: a recorded deployment name that does not
+    // match the URL's host is refused before any network contact.
+    [
+      "deployment identity mismatch",
+      { VITE_CONVEX_URL: "https://demo.convex.cloud", CONVEX_DEPLOYMENT: "dev:other-deployment" },
+    ],
   ];
 
   for (const [name, env] of cases) {
