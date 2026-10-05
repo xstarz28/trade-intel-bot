@@ -170,6 +170,9 @@ export type Evidence = {
     providerInstrumentId: string | null;
     dataPoints: number | null;
   };
+  /** Phase 315 — the timeframe the runtime analysed, verbatim (null when absent). */
+  timeframe: string | null;
+  requestedTimeframe: string | null;
   technical: {
     present: boolean;
     available: boolean;
@@ -269,6 +272,16 @@ export type ContextProvenance = {
 
 /** Verbatim read of the deployed runtime's own result. Absent stays null. */
 export function readResultEvidence(result: unknown): Evidence;
+
+/**
+ * Phase 315 — downgrade a verdict whose delivered timeframe differs from the
+ * requested one (a silent substitution is a FAIL, never a fallback). Exact
+ * when the delivered timeframe is absent or equal.
+ */
+export function enforceTimeframeExactness(
+  verdict: { headline: string; reason: string; evidence?: Evidence | null } | null,
+  requestedTimeframe: string,
+): { exact: boolean; verdict: { headline: string; reason: string; evidence?: Evidence | null } };
 
 /**
  * Only the diagnostics are read, so a caller that has just those (a test, or a

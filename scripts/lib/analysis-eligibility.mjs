@@ -436,7 +436,16 @@ export const EXACT_LIVE_VERIFICATION_SET = [
   { label: "EUR/USD", provider: "twelve-data", assetClass: "forex", providerInstrumentId: "EUR/USD" },
 ];
 
-/** Parse an exact-mode spec: `provider:assetClass:nativeId` (CSV or array). */
+/**
+ * The requestable timeframe matrix (phase 315). An exact spec may carry
+ * `@TF` on the native id — `provider:assetClass:nativeId@TF` — to request
+ * that timeframe verbatim. A spec without `@TF` keeps the harness default
+ * (D1). The requested timeframe must come back EXACT: the smoke treats a
+ * silently substituted timeframe as a FAIL, never an acceptable fallback.
+ */
+export const REQUESTABLE_TIMEFRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"];
+
+/** Parse an exact-mode spec: `provider:assetClass:nativeId[@TF]` (CSV or array). */
 export function parseExactInstrumentSpecs(raw) {
   const items = Array.isArray(raw) ? raw : String(raw ?? "").split(",");
   const specs = [];
@@ -445,9 +454,22 @@ export function parseExactInstrumentSpecs(raw) {
     if (trimmed === "") continue;
     const parts = trimmed.split(":");
     if (parts.length !== 3) {
-      return { ok: false, problem: `exact instrument spec must be provider:assetClass:nativeId — got ${JSON.stringify(trimmed)}` };
+      return { ok: false, problem: `exact instrument spec must be provider:assetClass:nativeId[@TF] — got ${JSON.stringify(trimmed)}` };
     }
-    const [provider, assetClass, nativeId] = parts.map((part) => part.trim());
+    const [provider, assetClass, nativeField] = parts.map((part) => part.trim());
+    let nativeId = nativeField;
+    let timeframe = null;
+    const at = nativeField.lastIndexOf("@");
+    if (at >= 0) {
+      nativeId = nativeField.slice(0, at).trim();
+      timeframe = nativeField.slice(at + 1).trim().toUpperCase();
+      if (nativeId === "") {
+        return { ok: false, problem: `exact instrument spec has an empty native id — got ${JSON.stringify(trimmed)}` };
+      }
+      if (!REQUESTABLE_TIMEFRAMES.includes(timeframe)) {
+        return { ok: false, problem: `exact instrument spec timeframe must be one of ${REQUESTABLE_TIMEFRAMES.join("/")} — got ${JSON.stringify(timeframe || "@")}` };
+      }
+    }
     if (provider === "" || assetClass === "" || nativeId === "") {
       return { ok: false, problem: `exact instrument spec has an empty field — got ${JSON.stringify(trimmed)}` };
     }
@@ -457,6 +479,7 @@ export function parseExactInstrumentSpecs(raw) {
       assetClass,
       discovery: provider,
       providerInstrumentId: nativeId,
+      ...(timeframe !== null ? { timeframe } : {}),
     });
   }
   return { ok: specs.length > 0, specs, problem: specs.length > 0 ? null : "no exact instrument specs given" };

@@ -37,6 +37,7 @@ import {
   TWELVE_DATA_PLAN_RESTRICTION_REASON,
   classifyInstrumentEligibility,
   parseExactInstrumentSpecs,
+  REQUESTABLE_TIMEFRAMES,
   rankByAnalysisEligibility,
 } from "../../../scripts/lib/analysis-eligibility.mjs";
 import { selectCandidates } from "../../../scripts/development-runtime-smoke.mjs";
@@ -292,4 +293,61 @@ describe("phase302 · /stocks transient guard failure earns exactly ONE bounded 
       /no response headers within 20 ms \(transient-guard retry after: no response headers within 20 ms\)/,
     );
   }, 5_000);
+});
+
+
+/**
+ * Phase 315 — exact specs may request a timeframe verbatim
+ * (`provider:assetClass:nativeId@TF`). The requested timeframe is a contract:
+ * the smoke FAILS any run whose delivered timeframe differs, so the parser
+ * must accept exactly the requestable matrix and refuse everything else.
+ */
+describe("315 — exact-spec timeframe suffix", () => {
+  it("parses provider:assetClass:nativeId@TF and records the verbatim timeframe", () => {
+    const parsed = parseExactInstrumentSpecs(
+      "okx:crypto:BTC-USDT@M5,twelve-data:commodity:XAU/USD@H1,twelve-data:forex:EUR/USD@M15",
+    );
+    expect(parsed.ok).toBe(true);
+    expect(parsed.specs.map((spec) => spec.timeframe)).toEqual(["M5", "H1", "M15"]);
+    expect(parsed.specs.map((spec) => spec.providerInstrumentId)).toEqual([
+      "BTC-USDT",
+      "XAU/USD",
+      "EUR/USD",
+    ]);
+  });
+
+  it("a spec without @TF stays timeframe-free (harness default applies)", () => {
+    const parsed = parseExactInstrumentSpecs("twelve-data:stock:AAPL");
+    expect(parsed.ok).toBe(true);
+    expect(parsed.specs[0].timeframe).toBeUndefined();
+    expect(parsed.specs[0].providerInstrumentId).toBe("AAPL");
+  });
+
+  it("normalises the casing of the timeframe but never of the identity", () => {
+    const parsed = parseExactInstrumentSpecs("okx:crypto:BTC-USDT@h1");
+    expect(parsed.ok).toBe(true);
+    expect(parsed.specs[0].timeframe).toBe("H1");
+    expect(parsed.specs[0].providerInstrumentId).toBe("BTC-USDT");
+  });
+
+  it("refuses an unknown or empty timeframe instead of guessing", () => {
+    for (const bad of ["okx:crypto:BTC-USDT@M2", "okx:crypto:BTC-USDT@", "okx:crypto:BTC-USDT@DAILY"]) {
+      const parsed = parseExactInstrumentSpecs(bad);
+      expect(parsed.ok, bad).toBe(false);
+      expect(parsed.problem, bad).toContain("timeframe");
+    }
+    // An empty native id is refused too — with its own named reason.
+    const emptyId = parseExactInstrumentSpecs("okx:crypto:@H1");
+    expect(emptyId.ok).toBe(false);
+    expect(emptyId.problem).toContain("empty native id");
+  });
+
+  it("covers the full requestable matrix", () => {
+    expect(REQUESTABLE_TIMEFRAMES).toEqual(["M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1"]);
+    const parsed = parseExactInstrumentSpecs(
+      REQUESTABLE_TIMEFRAMES.map((tf) => `okx:crypto:BTC-USDT@${tf}`).join(","),
+    );
+    expect(parsed.ok).toBe(true);
+    expect(parsed.specs).toHaveLength(8);
+  });
 });

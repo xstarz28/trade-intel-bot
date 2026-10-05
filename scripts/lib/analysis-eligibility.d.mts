@@ -85,7 +85,11 @@ export type ExactInstrumentSpec = {
   assetClass: string;
   discovery: string;
   providerInstrumentId: string;
+  /** Present only when the spec carried `@TF` (phase 315). */
+  timeframe?: string;
 };
+
+export const REQUESTABLE_TIMEFRAMES: string[];
 
 export const EXACT_LIVE_VERIFICATION_SET: Array<{
   label: string;

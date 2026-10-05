@@ -59,15 +59,37 @@ const REAL_BUILD = bundle.reason === undefined;
 const NEGATORS =
   /\b(not|never|no|without|cannot|isn't|aren't|doesn't|bukan|tidak|nicht|keine?|non|nunca|não)\b|않|없|아닙|不|无|非|ません|ありません/i;
 
-function affirmativeHits(text: string, pattern: RegExp): string[] {
+function affirmativeHits(
+  text: string,
+  pattern: RegExp,
+  honestContext?: RegExp,
+): string[] {
   const global = new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`);
   const hits: string[] = [];
   for (const m of text.matchAll(global)) {
     const before = text.slice(Math.max(0, (m.index ?? 0) - 40), m.index);
-    if (!NEGATORS.test(before)) hits.push(text.slice(Math.max(0, (m.index ?? 0) - 60), (m.index ?? 0) + 40));
+    if (!NEGATORS.test(before)) {
+      // Phase 315 — the phase-312 probability surface reports the journal
+      // statistic WITH its epistemic qualifiers (status "historically_estimated",
+      // explicit sample size, Wilson 95% interval). An estimate that carries its
+      // own qualification is not an overclaiming claim; an UNQUALIFIED one still
+      // is. The exemption is contextual and narrow — the qualifier must sit in
+      // the same rendered/code context as the match.
+      const context = text.slice(Math.max(0, (m.index ?? 0) - 120), (m.index ?? 0) + 120);
+      if (honestContext && honestContext.test(context)) continue;
+      hits.push(text.slice(Math.max(0, (m.index ?? 0) - 60), (m.index ?? 0) + 40));
+    }
   }
   return hits;
 }
+
+/**
+ * A probability/win-rate mention that ships together with its honesty
+ * markers — the phase-312 status field, the sample-size field, or the
+ * Wilson interval — is the qualified statistic, not marketing.
+ */
+const HONEST_PROBABILITY_CONTEXT =
+  /historically[_ ]?estimated|insufficient[_ ]?history|limited[_ ]?sample|sampleSize|sample size|95%/i;
 
 describe("191 — shipped bundle carries no overclaiming copy", () => {
   it("the artifact is a real production build (anti-vacuity gate)", () => {
@@ -89,15 +111,16 @@ describe("191 — shipped bundle carries no overclaiming copy", () => {
 
   it.runIf(REAL_BUILD)("ships no affirmative probability or win-rate claim", () => {
     const PATTERNS = [
-      /probability of (profit|success|winning)/i,
-      /\bwin[\s-]?rate\b/i,
-      /\bguaranteed (profit|accuracy|stop|fill)\b/i,
-      /\border (submitted|placed|filled)\b/i,
-      /\btrade executed\b/i,
+      { pattern: /probability of (profit|success|winning)/i, honest: HONEST_PROBABILITY_CONTEXT },
+      { pattern: /\bwin[\s-]?rate\b/i, honest: HONEST_PROBABILITY_CONTEXT },
+      // Execution/guarantee language stays an ABSOLUTE ban — no context exempts it.
+      { pattern: /\bguaranteed (profit|accuracy|stop|fill)\b/i },
+      { pattern: /\border (submitted|placed|filled)\b/i },
+      { pattern: /\btrade executed\b/i },
     ];
-    for (const pattern of PATTERNS) {
+    for (const { pattern, honest } of PATTERNS) {
       expect(
-        affirmativeHits(bundle.js, pattern),
+        affirmativeHits(bundle.js, pattern, honest),
         `bundle ships an affirmative claim for ${pattern}`,
       ).toEqual([]);
     }

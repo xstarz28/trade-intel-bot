@@ -40,7 +40,8 @@
  *     [--out development-runtime-smoke.json] \
  *     [--domains crypto,forex,stock,commodity] \
  *     [--max-attempts 2] [--allow-host <host>] [--quiet] \
- *     [--exact provider:assetClass:nativeId,...]   (phase 302 exact live-verification)
+ *     [--exact provider:assetClass:nativeId[@TF],...]  (phase 302 exact live-verification;
+ *                                                  phase 315: optional verbatim timeframe)
  *
  * Phase 303 — deterministic provider budget orchestration: exact verification
  * runs FIRST on its own fresh Twelve Data minute-windows; the catalog walk and
@@ -1040,6 +1041,11 @@ function firstReason(...candidates) {
 export function readResultEvidence(result) {
   const r = result ?? {};
   const price = r.priceSnapshot ?? null;
+  // Phase 315 — the timeframe the runtime says it analysed, copied verbatim
+  // so the harness can prove the requested timeframe was not substituted.
+  const timeframe = typeof r.timeframe === "string" ? r.timeframe : null;
+  const requestedTimeframe =
+    typeof r.requestedTimeframe === "string" ? r.requestedTimeframe : null;
   const fa = r.fundamentalAssessment ?? null;
   const ui = r.unifiedIntelligence ?? null;
   const at = r.advancedTechnicalEvidence ?? null;
@@ -1262,6 +1268,9 @@ export function readResultEvidence(result) {
     : [];
 
   return {
+    // Phase 315 — requested vs delivered timeframe, verbatim from the result.
+    timeframe,
+    requestedTimeframe,
     market,
     technical,
     fundamental,
@@ -1970,6 +1979,37 @@ export function classifyDomain({ response, transportError = null }) {
     status,
     evidence,
   };
+}
+
+/**
+ * Phase 315 — timeframe integrity for exact verification.
+ *
+ * The requested timeframe is a CONTRACT, not a preference: the runtime must
+ * either analyse exactly what was requested or report the gap explicitly.
+ * When the delivered result names a DIFFERENT timeframe than requested, the
+ * verdict is downgraded to FAIL with the substitution named — a silent
+ * lower-for-higher or aggregated-for-native substitution is the one fallback
+ * this harness must never accept as PASS. Absent timeframe text (no evidence,
+ * or an older field shape) leaves the verdict untouched; absence is reported,
+ * not invented.
+ */
+export function enforceTimeframeExactness(verdict, requestedTimeframe) {
+  const delivered = verdict?.evidence?.timeframe ?? null;
+  if (
+    verdict?.evidence?.market?.present === true &&
+    typeof delivered === "string" &&
+    delivered !== requestedTimeframe
+  ) {
+    return {
+      exact: false,
+      verdict: {
+        ...verdict,
+        headline: "FAIL",
+        reason: `timeframe substitution: requested ${requestedTimeframe} but the runtime analysed ${delivered} — a silent substitution is never an acceptable fallback`,
+      },
+    };
+  }
+  return { exact: true, verdict };
 }
 
 /**
@@ -2903,12 +2943,21 @@ async function run() {
         continue;
       }
     }
-    const request = buildAnalysisInput(domainSpec, candidate);
+    // Phase 315 — the exact spec's own timeframe (default D1), requested
+    // verbatim. The delivered timeframe is checked below: a silent
+    // substitution is the one fallback this harness must never accept.
+    const requestedTf = exact.timeframe ?? "D1";
+    const request = buildAnalysisInput(domainSpec, candidate, { timeframe: requestedTf });
     const response = await transport.action("protectedAnalysis:runProtectedAnalysis", request, session.token);
-    const verdict = classifyDomain({
+    let verdict = classifyDomain({
       response: response.ok ? response.value : null,
       transportError: response.ok ? null : (response.appError ?? response.transportError ?? "request failed"),
     });
+    record.requestedTimeframe = requestedTf;
+    record.deliveredTimeframe = verdict.evidence?.timeframe ?? null;
+    const tfCheck = enforceTimeframeExactness(verdict, requestedTf);
+    verdict = tfCheck.verdict;
+    record.timeframeExact = tfCheck.exact;
     record.headline = verdict.headline;
     record.reason = verdict.reason;
     record.attempts.push({

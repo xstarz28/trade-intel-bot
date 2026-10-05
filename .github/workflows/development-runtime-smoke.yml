@@ -53,7 +53,7 @@ on:
         required: false
         type: string
       exact_instruments:
-        description: "Optional exact live-verification specs (provider:assetClass:nativeId CSV), e.g. okx:crypto:BTC-USDT,twelve-data:commodity:XAU/USD,twelve-data:forex:EUR/USD — requested verbatim through the same protected analysis; never a substitute for discovery"
+        description: "Optional exact live-verification specs (provider:assetClass:nativeId[@TF] CSV), e.g. okx:crypto:BTC-USDT,twelve-data:commodity:XAU/USD@H1,twelve-data:forex:EUR/USD@M15 — requested verbatim through the same protected analysis (timeframe default D1; a silently substituted timeframe FAILS); never a substitute for discovery"
         required: false
         type: string
       probe_limit:

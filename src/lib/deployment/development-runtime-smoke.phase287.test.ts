@@ -27,6 +27,7 @@ import {
   selectCandidates,
   classifyDomain,
   readResultEvidence,
+  enforceTimeframeExactness,
   createProviderCircuit,
   escapeAnnotation,
   DOMAIN_SPECS,
@@ -513,5 +514,47 @@ describe("287 — the smoke never publishes a credential", () => {
     expect(reportLiteral).not.toMatch(/token/i);
     expect(reportLiteral).not.toMatch(/bearer/i);
     expect(reportLiteral).not.toMatch(/apikey|api_key|secret/i);
+  });
+});
+
+
+/**
+ * Phase 315 — a delivered timeframe that differs from the requested one is a
+ * FAIL, never a fallback. The helper is the exact-mode integrity gate.
+ */
+describe("315 — exact-mode timeframe integrity", () => {
+  const baseVerdict = (timeframe: string | null) => ({
+    headline: "PASS",
+    reason: "provider market evidence with a provider observation instant",
+    evidence: {
+      timeframe,
+      requestedTimeframe: null,
+      market: { present: true, price: 1, observedAt: 1, source: "p", provider: "p", providerInstrumentId: "i", dataPoints: 40 },
+      technical: { present: true, available: true, bias: "Bullish", confidence: "medium", summary: "s", advanced: null },
+      fundamental: { present: true, available: true, domain: "d", provider: "p", instrumentId: "i", observedAt: 1, reportingPeriod: null, evidenceProviders: [], evidenceItems: [], summary: "s" },
+      unified: { present: true, available: true, state: "s", agreement: "a", confluenceReason: null, confidence: null, actionable: false, actionabilityReason: null, limitations: [] },
+      diagnostics: [],
+    },
+  });
+
+  it("downgrades a substitution to FAIL and names both timeframes", () => {
+    const { exact, verdict } = enforceTimeframeExactness(baseVerdict("M15") as never, "H1");
+    expect(exact).toBe(false);
+    expect(verdict.headline).toBe("FAIL");
+    expect(verdict.reason).toContain("requested H1");
+    expect(verdict.reason).toContain("analysed M15");
+  });
+
+  it("keeps a verdict whose delivered timeframe matches the request", () => {
+    const { exact, verdict } = enforceTimeframeExactness(baseVerdict("H1") as never, "H1");
+    expect(exact).toBe(true);
+    expect(verdict.headline).toBe("PASS");
+  });
+
+  it("an absent delivered timeframe is reported, not invented, and not failed", () => {
+    const v = baseVerdict(null);
+    const { exact, verdict } = enforceTimeframeExactness(v as never, "M1");
+    expect(exact).toBe(true);
+    expect(verdict.headline).toBe("PASS");
   });
 });
