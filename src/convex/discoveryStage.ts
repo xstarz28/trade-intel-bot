@@ -43,7 +43,7 @@ import {
 import type { CatalogStagingSink } from "../lib/discovery/twelve-data-adapter";
 
 /** How many superseded rows one prune mutation removes. */
-const PRUNE_BATCH_ROWS = 512;
+export const PRUNE_BATCH_ROWS = 512;
 
 export const STAGE_ROW_VALIDATOR = v.object({
   seq: v.number(),

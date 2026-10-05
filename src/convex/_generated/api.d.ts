@@ -15,6 +15,8 @@ import type * as auth from "../auth.js";
 import type * as auth_emailOtp from "../auth/emailOtp.js";
 import type * as coinglass from "../coinglass.js";
 import type * as cot from "../cot.js";
+import type * as crons from "../crons.js";
+import type * as discoveryRetention from "../discoveryRetention.js";
 import type * as discoveryStage from "../discoveryStage.js";
 import type * as eia from "../eia.js";
 import type * as entitlements from "../entitlements.js";
@@ -49,6 +51,8 @@ declare const fullApi: ApiFromModules<{
   "auth/emailOtp": typeof auth_emailOtp;
   coinglass: typeof coinglass;
   cot: typeof cot;
+  crons: typeof crons;
+  discoveryRetention: typeof discoveryRetention;
   discoveryStage: typeof discoveryStage;
   eia: typeof eia;
   entitlements: typeof entitlements;
