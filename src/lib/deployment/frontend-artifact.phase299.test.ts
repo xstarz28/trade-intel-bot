@@ -244,6 +244,26 @@ describe("299 — the contract is wired where it can actually refuse a deploy", 
       .filter((name) => /\.(js|css)$/.test(name))
       .map((name) => ({ name, text: readFileSync(resolve(assetsDir, name), "utf8") }));
 
+    // Phase 317 — there are TWO legitimate artifact kinds, and each has its
+    // own contract. A build WITHOUT VITE_CONVEX_URL is a deliberate fail-
+    // closed operator shell (main.tsx renders an explicit "set the variable
+    // and rebuild" page and the app graph is dead-code-eliminated); it must
+    // NOT fake the sign-in UI. A build WITH the variable is the real app and
+    // must satisfy the full artifact contract below.
+    const bundle = assets.map((a) => a.text).join("\n");
+    const isNoConvexUrlShell = bundle.includes(
+      "VITE_CONVEX_URL is not set. It is inlined at build time",
+    );
+    if (isNoConvexUrlShell) {
+      expect(bundle).toContain("VITE_CONVEX_URL");
+      expect(bundle).toContain("must be rebuilt with the variable present");
+      // The shell never pretends to be the product: no sign-in copy.
+      for (const marker of CURRENT_AUTH_MARKERS) {
+        expect(bundle.includes(marker)).toBe(false);
+      }
+      return;
+    }
+
     const result = evaluateFrontendArtifact({
       indexHtml: read(resolve(dist, "index.html")),
       buildInfoText: existsSync(resolve(dist, "build-info.json"))

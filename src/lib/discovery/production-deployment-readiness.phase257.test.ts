@@ -325,7 +325,18 @@ describe("Phase257 L — Credential failure test", () => {
   it("L1 CREDENTIAL_REQUIRED surfaced, never fake data fallback", () => {
     const src = read("src/convex/marketData.ts");
     expect(src).toMatch(/CREDENTIAL_REQUIRED|not configured|is missing/);
-    expect(src).not.toMatch(/fake.*data|fallback.*provider/i);
+    // Phase 317 — the guard names what it forbids: FABRICATED market data,
+    // judged on CODE (line comments are prose — the DXY probe's own
+    // "never a fabricated series" warning must not trip the guard). A
+    // provider failover is the OPPOSITE of a fake-data fallback (a real,
+    // provenance-stamped acquisition from a catalog-declared provider), so
+    // the over-broad word pattern is replaced with fabrication patterns —
+    // and the no-silent-failover provenance field is REQUIRED to exist.
+    const code = src.replace(/\/\/[^\n]*/g, "");
+    expect(code).not.toMatch(
+      /fake.*data|synthetic.*(candle|bar|series)|fabricated.*(candle|bar|series)|randomiz/i,
+    );
+    expect(src).toMatch(/primaryProviderFailure/);
   });
 });
 
