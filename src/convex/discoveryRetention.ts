@@ -114,11 +114,9 @@ export const runBoundedCleanupSweep = internalMutation({
       await ctx.db.delete(row._id);
     }
 
-    // ── 2. Stage reconciliation (bounded to MAX_STAGES_PER_SWEEP stages) ──
-    const reconciled: CleanupReport["reconciled"] = [];
-    let stagesReconciled = 0;
-    let supersededPending = 0;
-    let abandonedPending = 0;
+    // Stage-candidate inventory is taken BEFORE any patch below: it is a READ
+    // (stage docs are metadata-sized), and it is what lets the legacy drain
+    // return a transaction that contains NO update — see the isolation note.
     const stages = await ctx.db.query("discoveryStages").collect();
     // Newest-first by createdAt: the ACTIVE stage of each catalog is the most
     // recent non-superseded one — it is NEVER a prune candidate. Collecting
@@ -132,11 +130,65 @@ export const runBoundedCleanupSweep = internalMutation({
         return s.closedAt === undefined && now - s.createdAt > ABANDONED_STAGE_RETENTION_MS;
       })
       .sort((a, b) => b.createdAt - a.createdAt);
+
+    // ── 2. Orphan chunks (bounded scan; append-always-after-open ⇒ no doc ⇒ orphan) ──
+    // Delete-only, so it is safe to run in the legacy-drain invocation too.
+    let orphanChunksDeleted = 0;
+    const sampled = await ctx.db
+      .query("discoveryStageChunks")
+      .take(ORPHAN_SCAN_BATCH);
+    const stagePresence = new Map<string, boolean>();
+    for (const chunk of sampled) {
+      let present = stagePresence.get(chunk.stageId);
+      if (present === undefined) {
+        const stageDoc = await ctx.db
+          .query("discoveryStages")
+          .withIndex("by_stage", (q) => q.eq("stageId", chunk.stageId))
+          .first();
+        present = stageDoc !== null;
+        stagePresence.set(chunk.stageId, present);
+      }
+      if (!present) {
+        await ctx.db.delete(chunk._id);
+        orphanChunksDeleted++;
+      }
+    }
+
+    // ── 3. TRANSACTION ISOLATION — legacy drain never shares a commit with a patch ──
+    // A sweep invocation is ONE Convex transaction. The abandoned-stage leg
+    // PATCHes `supersededAt` (an update); the legacy drain is pure DELETE.
+    // Convex's own limits documentation (docs.convex.dev/production/state/limits)
+    // states that after the Free plan's resource limits are hit, "new mutations
+    // that attempt to commit more insertions or updates may fail". Coupling the
+    // drain to that patch would let one refused update roll back the deletes
+    // and deadlock the recovery this module exists to perform. So: while any
+    // legacy row was drained, this invocation commits deletes (+ the orphan
+    // deletes) and returns; staging reconciliation waits for the next sweep.
+    if (legacy.length > 0) {
+      const moreWorkRemaining =
+        legacy.length === LEGACY_ROWS_BATCH ||
+        candidates.length > 0 ||
+        orphanChunksDeleted > 0;
+      if (legacy.length === LEGACY_ROWS_BATCH || candidates.length > 0) {
+        // The cleanup continues across scheduled invocations — bounded,
+        // resumable, never one huge transaction.
+        await ctx.scheduler.runAfter(0, continuationSweep, {});
+      }
+      return {
+        legacyRowsDeleted: legacy.length,
+        stagesReconciled: 0,
+        orphanChunksDeleted,
+        reconciled: [],
+        moreWorkRemaining,
+      };
+    }
+
+    // ── 4. Stage reconciliation (bounded to MAX_STAGES_PER_SWEEP stages) ──
+    const reconciled: CleanupReport["reconciled"] = [];
+    let stagesReconciled = 0;
     for (const stage of candidates) {
       const reason: "superseded" | "abandoned" =
         stage.supersededAt !== undefined ? "superseded" : "abandoned";
-      if (reason === "superseded") supersededPending++;
-      else abandonedPending++;
       if (stagesReconciled >= MAX_STAGES_PER_SWEEP) continue;
       if (reason === "abandoned") {
         // Record the lifecycle fact before pruning (bounded patch).
@@ -174,29 +226,7 @@ export const runBoundedCleanupSweep = internalMutation({
       stagesReconciled++;
     }
 
-    // ── 3. Orphan chunks (bounded scan; append-always-after-open ⇒ no doc ⇒ orphan) ──
-    let orphanChunksDeleted = 0;
-    const sampled = await ctx.db
-      .query("discoveryStageChunks")
-      .take(ORPHAN_SCAN_BATCH);
-    const stagePresence = new Map<string, boolean>();
-    for (const chunk of sampled) {
-      let present = stagePresence.get(chunk.stageId);
-      if (present === undefined) {
-        const stageDoc = await ctx.db
-          .query("discoveryStages")
-          .withIndex("by_stage", (q) => q.eq("stageId", chunk.stageId))
-          .first();
-        present = stageDoc !== null;
-        stagePresence.set(chunk.stageId, present);
-      }
-      if (!present) {
-        await ctx.db.delete(chunk._id);
-        orphanChunksDeleted++;
-      }
-    }
-
-    // ── 4. Report + continuation signal ──
+    // ── 5. Report + continuation signal ──
     const moreWorkRemaining =
       legacy.length === LEGACY_ROWS_BATCH ||
       candidates.length > stagesReconciled ||
