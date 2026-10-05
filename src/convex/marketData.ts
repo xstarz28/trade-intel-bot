@@ -348,7 +348,10 @@ async function fetchAlphaVantageFailoverCandles(
       if (json === null) {
         throw new Error(`alpha-vantage response was not JSON (HTTP ${res.status})`);
       }
-      const parsed = parseAlphaVantageFxSeries(json);
+      const parsed = parseAlphaVantageFxSeries(json, {
+        fromSymbol: mapped.fromSymbol,
+        toSymbol: mapped.toSymbol,
+      });
       if (!parsed.ok) {
         throw new Error(`${parsed.failureClass}: ${parsed.reason}`);
       }
@@ -453,6 +456,7 @@ function classifyPrimaryFetchFailure(err: unknown): {
     | "NO_LIVE_DATA"
     | "MALFORMED_RESPONSE"
     | "NETWORK_ERROR"
+    | "TIMEOUT"
     | "TIMEFRAME_UNAVAILABLE";
 } {
   const msg = err instanceof Error ? err.message : "unknown error";
@@ -465,6 +469,12 @@ function classifyPrimaryFetchFailure(err: unknown): {
   const cls = classifyLiveFailure({ message: msg });
   if (cls === "SYMBOL_UNSUPPORTED") {
     return { error: `Unsupported symbol: ${msg}`, errorCode: "SYMBOL_UNSUPPORTED" };
+  }
+  // Phase 318 — a provider deadline is its own class (a slow provider is a
+  // different operational state from an unreachable one); routing may treat
+  // them differently but neither may masquerade as the other.
+  if (cls === "TIMEOUT") {
+    return { error: `Timed out: ${msg}`, errorCode: "TIMEOUT" };
   }
   if (cls === "TIMEFRAME_UNAVAILABLE") {
     return { error: `Timeframe unavailable: ${msg}`, errorCode: "TIMEFRAME_UNAVAILABLE" };

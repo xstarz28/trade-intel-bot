@@ -53,6 +53,7 @@ export const FX_FAILOVER_TRIGGER_CLASSES: readonly string[] = [
   "SYMBOL_UNSUPPORTED",
   "API_UNAVAILABLE",
   "NETWORK_ERROR",
+  "TIMEOUT",
   "MALFORMED_RESPONSE",
   "TIMEFRAME_UNAVAILABLE",
 ];
@@ -76,6 +77,16 @@ export type AlphaVantageFxRequest =
       expectedCadenceMs: number;
     }
   | { ok: false; reason: string };
+
+/**
+ * Phase 318 — identity expectation carried with a mapped request: the parser
+ * verifies the served series' Meta Data names exactly this pair (§14G).
+ */
+export function fxPairOf(
+  req: Extract<AlphaVantageFxRequest, { ok: true }>,
+): { fromSymbol: string; toSymbol: string } {
+  return { fromSymbol: req.fromSymbol, toSymbol: req.toSymbol };
+}
 
 const INTRADAY_INTERVAL: Record<string, "1min" | "5min" | "15min" | "30min" | "60min"> = {
   M1: "1min",
@@ -163,6 +174,7 @@ export type AlphaVantageFxParseResult =
         | "PLAN_RESTRICTED"
         | "NO_DATA"
         | "MALFORMED_RESPONSE"
+        | "IDENTITY_MISMATCH"
         | "PROVIDER_FAILURE";
       reason: string;
     };
@@ -178,11 +190,36 @@ function avTimestampMs(datetime: string): number {
   return Date.parse(`${d.replace(" ", "T")}Z`);
 }
 
-export function parseAlphaVantageFxSeries(json: unknown): AlphaVantageFxParseResult {
+export function parseAlphaVantageFxSeries(
+  json: unknown,
+  expected?: { fromSymbol: string; toSymbol: string },
+): AlphaVantageFxParseResult {
   if (!json || typeof json !== "object" || Array.isArray(json)) {
     return { ok: false, failureClass: "MALFORMED_RESPONSE", reason: "response is not a JSON object" };
   }
   const j = json as Record<string, unknown>;
+  // Phase 318 — provider-identity verification (§14G): the series meta must
+  // name the pair that was REQUESTED. A response for any other pair is
+  // rejected outright — a mismatched native instrument can never enter the
+  // analysis snapshot, no matter how well-formed its bars look.
+  if (expected) {
+    const meta = j["Meta Data"];
+    if (meta && typeof meta === "object" && !Array.isArray(meta)) {
+      const m = meta as Record<string, unknown>;
+      const from = Object.entries(m).find(([k]) => k.includes("From Symbol"))?.[1];
+      const to = Object.entries(m).find(([k]) => k.includes("To Symbol"))?.[1];
+      if (
+        (typeof from === "string" && from.toUpperCase() !== expected.fromSymbol.toUpperCase()) ||
+        (typeof to === "string" && to.toUpperCase() !== expected.toSymbol.toUpperCase())
+      ) {
+        return {
+          ok: false,
+          failureClass: "IDENTITY_MISMATCH",
+          reason: `alpha-vantage served ${typeof from === "string" ? from : "?"}/${typeof to === "string" ? to : "?"} but ${expected.fromSymbol}/${expected.toSymbol} was requested — rejected`,
+        };
+      }
+    }
+  }
   const note = typeof j.Note === "string" ? j.Note : undefined;
   if (note !== undefined) {
     return { ok: false, failureClass: "QUOTA_EXHAUSTED", reason: `alpha-vantage note: ${note}` };

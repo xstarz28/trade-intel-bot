@@ -76,10 +76,14 @@ function controller(overrides: {
 
 describe("317 — FX failover trigger classes", () => {
   it("trigger classes are exactly the provider-side failure set", () => {
+    // Phase 318 — TIMEOUT joined the provider-side trigger set (a slow
+    // provider is an operational state distinct from an unreachable one, but
+    // both are provider-side; RATE_LIMIT/AUTH_ERROR stay non-triggers).
     expect(FX_FAILOVER_TRIGGER_CLASSES).toEqual([
       "SYMBOL_UNSUPPORTED",
       "API_UNAVAILABLE",
       "NETWORK_ERROR",
+      "TIMEOUT",
       "MALFORMED_RESPONSE",
       "TIMEFRAME_UNAVAILABLE",
     ]);

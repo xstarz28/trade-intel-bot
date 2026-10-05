@@ -11,6 +11,7 @@
 export type LiveAcquisitionFailureClass =
   | "PROVIDER_AUTH"
   | "RATE_LIMIT"
+  | "TIMEOUT"
   | "SYMBOL_UNSUPPORTED"
   | "NO_LIVE_DATA"
   | "MALFORMED_RESPONSE"
@@ -20,6 +21,7 @@ export type LiveAcquisitionFailureClass =
 const ALL: readonly LiveAcquisitionFailureClass[] = [
   "PROVIDER_AUTH",
   "RATE_LIMIT",
+  "TIMEOUT",
   "SYMBOL_UNSUPPORTED",
   "NO_LIVE_DATA",
   "MALFORMED_RESPONSE",
@@ -97,6 +99,20 @@ export function classifyLiveFailure(input: {
     return "RATE_LIMIT";
   }
 
+  // Phase 318 — TIMEOUT is its own class, distinct from a hard network
+  // failure: a provider that answers slowly is a different operational state
+  // from one that cannot be reached, and routing policy may treat them
+  // differently. Deadline exceeded (AbortSignal.timeout → TimeoutError) and
+  // explicit "timed out" messages map here; a bare abort/transport error
+  // stays NETWORK_ERROR.
+  if (
+    msg.includes("timeout") ||
+    msg.includes("timed out") ||
+    msg.includes("deadline exceeded")
+  ) {
+    return "TIMEOUT";
+  }
+
   if (
     live === "NETWORK_UNAVAILABLE" ||
     msg.includes("network failure") ||
@@ -105,7 +121,6 @@ export function classifyLiveFailure(input: {
     msg.includes("enotfound") ||
     msg.includes("socket hang up") ||
     msg.includes("aborted") ||
-    msg.includes("timeout") ||
     msg.includes("aborterror")
   ) {
     return "NETWORK_ERROR";

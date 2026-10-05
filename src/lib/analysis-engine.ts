@@ -752,6 +752,17 @@ function assessDataCompleteness(input: AnalysisInput): {
       `Timeframe chain unavailable: ${input.technicalData.chainUnavailable.join(", ")} — context not synthesized`,
     );
   }
+  // Phase 317/318 — a provider failover is NEVER silent: the snapshot's own
+  // provenance names the primary failure. Informational only — it can change
+  // no score, no verdict and no plan (the same read-only rule as every flag
+  // above); the UI renders it inside the existing limitations section.
+  const failover = input.marketData?.primaryProviderFailure;
+  if (failover) {
+    const serving = input.marketData?.provider ?? "unknown provider";
+    flags.push(
+      `Market data served by "${serving}" after the primary provider "${failover.provider}" failed (${failover.errorCode}) — primary failure preserved, provider identity exact`,
+    );
+  }
   const smcFlag = input.technicalData?.smc;
   // Phase 10 — malformed SMC contexts are treated as absent, never dereferenced.
   const vpFlag = isUsableSmc(smcFlag) ? smcFlag!.volumeProfile : undefined;

@@ -24,10 +24,28 @@ export interface PriceSnapshot {
   ask?: number;
 }
 
+/** Phase 317/318 — provenance for a provider failover that served this snapshot. */
+export interface PrimaryProviderFailure {
+  /** The provider that failed (never the one that served). */
+  provider: string;
+  /** Normalized failure class (RATE_LIMIT, SYMBOL_UNSUPPORTED, TIMEOUT, ...). */
+  errorCode: string;
+  /** The provider's own refusal reason, sanitized. */
+  reason: string;
+  /** The internal timeframe that first engaged the failover. */
+  engagedTimeframe: string;
+}
+
 /** Normalized market data returned by any provider. */
 export interface MarketData {
   instrument: string; // Normalized symbol, e.g. "EUR/USD"
   instrumentType: "forex" | "crypto" | "stock" | "commodity" | "indices";
+  /**
+   * Phase 317/318 — present ONLY when a fallback provider served this
+   * snapshot after the primary failed. The engine surfaces it as a data flag
+   * and the signal carries it in its limitations: the switch is never hidden.
+   */
+  primaryProviderFailure?: PrimaryProviderFailure;
   provider: string;
   /** Exact provider-native id when acquisition used one. Never a substitute. */
   providerInstrumentId?: string;
