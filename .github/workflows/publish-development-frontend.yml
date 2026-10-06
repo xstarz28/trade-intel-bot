@@ -495,11 +495,16 @@ jobs:
         # This is the step that decides. Everything above is preparation; a
         # browser gets what this fetch returns.
         #
-        # Launch-activation plumbing: the verifier's verdict must be readable
-        # from the API (sandbox identities cannot fetch Actions logs), so on
-        # failure the verifier's own failure lines are re-emitted as ::error
-        # annotations. Semantics are UNCHANGED — same single verifier run
-        # decides pass/fail; the second invocation below is print-only.
+        # Launch-activation plumbing: (1) in verify-only mode the host was
+        # previously only resolvable by publish-only steps, so the step now
+        # takes inputs.host_url directly (vars.FRONTEND_HOST_URL remains the
+        # default); (2) the verifier's verdict must be readable from the API
+        # (sandbox identities cannot fetch Actions logs), so on failure the
+        # verifier's own failure lines are re-emitted as ::error annotations.
+        # Verdict semantics are UNCHANGED: the first verifier run alone
+        # decides pass/fail; the second invocation is print-only.
+        env:
+          XSTARZ_FRONTEND_HOST_URL: ${{ inputs.host_url || vars.FRONTEND_HOST_URL }}
         run: |
           ARGS=(--url "$XSTARZ_FRONTEND_HOST_URL" --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" --expect-commit "$XSTARZ_ARTIFACT_COMMIT")
           ${{ inputs.mode == 'publish' && format('ARGS+=(--expect-build-info-sha256 {0} --expect-asset-names {1})', steps.artifact.outputs.sha256, steps.artifact.outputs.entry) || '' }}
