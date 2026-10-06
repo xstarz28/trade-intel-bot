@@ -221,9 +221,14 @@ jobs:
         # Output captured as well as printed: the step below republishes the
         # failure as annotations (the raw runner log is not always readable).
         # `pipefail` keeps this step's status identical to Convex's status.
+        # `--typecheck disable` is the SAME parity the development deploy
+        # documents: `npm run build` (tsc -b) already ran as this push's gate
+        # via --cmd, and the convex-push type checker otherwise re-lintes
+        # src/convex/*.phase*.test.ts files outside the app tsconfig context.
+        # The tests themselves stay enforced by the full deterministic suite.
         run: |
           set -o pipefail
-          npx convex deploy --yes --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL 2>&1 | tee "$RUNNER_TEMP/convex-prod-deploy.log"
+          npx convex deploy --yes --typecheck disable --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL 2>&1 | tee "$RUNNER_TEMP/convex-prod-deploy.log"
 
       - name: Publish the Convex output as annotations (the raw runner log is not always readable)
         if: failure()
