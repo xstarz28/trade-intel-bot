@@ -10,11 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     environment: development
     steps:
-      - name: Rename Vercel project
+      - name: Rename Vercel project to xstarzanalysis
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
-          curl -fsS -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}" -H "Authorization: Bearer ${VERCEL_TOKEN}" -H "Content-Type: application/json" -d '{"name":"xstarzanalysis"}'
-          echo "Free public hostname target: https://xstarzanalysis.vercel.app"
+          echo "Current project:"
+          curl -fsS "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}" -H "Authorization: Bearer ${VERCEL_TOKEN}" | python -c "import json,sys; d=json.load(sys.stdin); print({'id':d.get('id'),'name':d.get('name'),'accountId':d.get('accountId'),'link':d.get('link')})"
+          echo "Rename response:"
+          curl -sS -w "\nHTTP %{http_code}\n" -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}" -H "Authorization: Bearer ${VERCEL_TOKEN}" -H "Content-Type: application/json" -d '{"name":"xstarzanalysis"}'
