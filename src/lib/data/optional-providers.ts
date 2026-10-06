@@ -63,13 +63,18 @@ export interface SlowProviderContexts {
 }
 
 /** Non-fatal leg resolution: failure / non-success / absence → undefined. */
+const OPTIONAL_PROVIDER_TIMEOUT_MS = 10_000;
+
 async function settleData<T>(thunk?: ProviderThunk<T>): Promise<T | undefined> {
   if (!thunk) return undefined;
   try {
-    const r = await thunk();
+    const r = await Promise.race([
+      thunk(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), OPTIONAL_PROVIDER_TIMEOUT_MS)),
+    ]);
     return r && r.success ? ((r.data as T) ?? undefined) : undefined;
   } catch {
-    return undefined; // provider unavailable — disclosed by the engine, never synthesized
+    return undefined; // provider unavailable/slow — disclosed by the engine, never synthesized
   }
 }
 
@@ -126,7 +131,10 @@ async function settleFx(
 ): Promise<SlowProviderContexts["fxRates"]> {
   if (!thunk) return undefined;
   try {
-    const r = await thunk();
+    const r = await Promise.race([
+      thunk(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), OPTIONAL_PROVIDER_TIMEOUT_MS)),
+    ]);
     return r && r.success
       ? {
           direct: (r.direct ?? undefined) as import("@/lib/risk").FxRateSnapshot | undefined,
