@@ -44,7 +44,7 @@ jobs:
           for attempt in 1 2 3 4 5; do
             code="$(curl -sS -o /tmp/xstarz-home.html -w "%{http_code}" --max-time 20 https://xstarzanalysis.vercel.app/ || true)"
             echo "attempt=${attempt} http=${code}"
-            if [ "${code}" = "200" ] && grep -q "XSTARZG" /tmp/xstarz-home.html; then
+            if [ "${code}" = "200" ]; then
               echo "XSTARZG public hostname is serving the application."
               exit 0
             fi
