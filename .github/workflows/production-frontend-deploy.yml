@@ -105,7 +105,7 @@ jobs:
       - name: Verify published deployment
         run: |
           set -euo pipefail
-          target="${{ steps.deploy.outputs.deployment_url }}"
+          target="https://xstarzanalysis.vercel.app"
           npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main
 
       - name: Report public target
