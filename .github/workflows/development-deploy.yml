@@ -245,16 +245,19 @@ jobs:
             exit 0
           fi
           redact() {
-            sed -E -e 's/(dev|prod|preview|local|anonymous):[A-Za-z0-9|_.:-]+/<redacted-identity>/g' \
+            # Strip ANSI escape sequences first: progress redraws otherwise eat
+            # the annotation byte budget and hide the actual error line.
+            sed -E "s/$(printf '\033')\[[0-9;]*[a-zA-Z]//g" \
+              | sed -E -e 's/(dev|prod|preview|local|anonymous):[A-Za-z0-9|_.:-]+/<redacted-identity>/g' \
                    -e 's/[A-Za-z0-9+=_-]{40,}/<redacted>/g' \
                    -e '/[Kk]ey|[Tt]oken|[Ss]ecret/ s/[A-Za-z0-9+\/=_-]{24,}/<redacted>/g' \
               | grep -v CONVEX_DEPLOY_KEY || true
           }
           escape() {
-            tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | cut -c1-700
+            tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | cut -c1-2500
           }
-          errors="$(head -c 4000 "$log" | redact | grep -iE 'error|failed' | head -3 | escape)"
-          tail_text="$(tail -c 1500 "$log" | redact | escape)"
+          errors="$(tail -c 8000 "$log" | redact | grep -iE 'error|failed|✖|permission|denied|not have access' | head -5 | escape)"
+          tail_text="$(tail -c 3000 "$log" | redact | escape)"
           if [ -n "$errors" ]; then
             echo "::error title=Convex error::${errors}"
           fi
