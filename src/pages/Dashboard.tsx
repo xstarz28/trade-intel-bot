@@ -114,6 +114,24 @@ function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   ]);
 }
 
+function findLiveSnapshotForInstrument(
+  liveSources: Map<string, LiveCandidateSource>,
+  instrument: string,
+): LiveCandidateSource | undefined {
+  const exact = liveSources.get(instrument);
+  if (exact) return exact;
+  const base = instrument.split("/")[0]?.toUpperCase();
+  if (!base) return undefined;
+  return Array.from(liveSources.values()).find((source) => {
+    if (source.assetClass !== "crypto" || !source.marketData) return false;
+    const sourceBase = source.instrument
+      .replace(/[-_](?:USDT|USDC|USD|USDE|USDS|BTC|ETH|EUR|AUD|SGD|PLN)(?:[-_].*)?$/i, "")
+      .split(/[/:_-]/)[0]
+      ?.toUpperCase();
+    return sourceBase === base;
+  });
+}
+
 function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
   return [
     { label: t.dashboard.detectingInstrument, status: "pending" },
@@ -346,7 +364,7 @@ export default function Dashboard() {
           // This keeps the actual analysis aligned with the same live evidence
           // used by the opportunity scanner.
           if (input.instrumentType === "crypto") {
-            const nativeLive = liveSourceRef.current.get(input.instrument);
+            const nativeLive = findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument);
             if (
               nativeLive?.marketData &&
               (nativeLive.marketData.dataFreshness === "realtime" ||
@@ -370,7 +388,7 @@ export default function Dashboard() {
           if (marketResult.status === "fulfilled") {
             marketDataResult = marketResult.value as MarketDataResult;
           } else {
-            const liveFallback = liveSourceRef.current.get(input.instrument);
+            const liveFallback = findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument);
             if (liveFallback?.marketData) {
               marketDataResult = {
                 success: true,
