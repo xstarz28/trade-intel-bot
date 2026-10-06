@@ -93,3 +93,8 @@ Nothing else — after this, dispatch one `development-deploy-relay` and the cha
 - Records: /home/user/phase300/RUN-DEV-PASS-GATE.md
 - Next: owner creates NEW production deployment (US East) + prod deploy key + env vars; then
   production chain → frontend repoint → rebuild 2633125 → republish → FINAL GATE.
+
+## 2026-10-06 (6) — production activation path shipped; pre-flight stopped deploy on stale GitHub Production env + empty deployment env
+- prod key fingerprint prod:hushed-seal-237 ✓; GitHub Production env still stale (old deployment
+  identity/URL); hushed-seal-237 env empty (10 names to copy from pleasant-curlew-264).
+- Nothing deployed. Full record: /home/user/phase300/RUN-PROD-PREFLIGHT.md
