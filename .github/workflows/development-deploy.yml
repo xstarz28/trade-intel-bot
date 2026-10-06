@@ -231,11 +231,26 @@ jobs:
         # carry NO secret values. The resulting variable NAMES (never values)
         # are echoed for the audit trail.
         run: |
-          set -euo pipefail
+          set -o pipefail
           SITE_URL="${VITE_CONVEX_URL%.convex.cloud}.convex.site"
           echo "seeding: XSTARZ_DEPLOYMENT_ENV=development, CONVEX_SITE_URL=${SITE_URL}"
-          npx convex env set XSTARZ_DEPLOYMENT_ENV development
-          npx convex env set CONVEX_SITE_URL "${SITE_URL}"
+          annotate() {
+            # One capped, redacted, single-line annotation of the CLI output.
+            printf '%s' "$1" | sed -E "s/$(printf '\033')\[[0-9;]*[a-zA-Z]//g" \
+              | sed -E -e 's/[A-Za-z0-9+=_-]{40,}/<redacted>/g' \
+                       -e '/[Kk]ey|[Tt]oken|[Ss]ecret/ s/[A-Za-z0-9+\/=_-]{24,}/<redacted>/g' \
+              | grep -v CONVEX_DEPLOY_KEY || true \
+              | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | cut -c1-700
+          }
+          set +e
+          OUT1="$(npx convex env set XSTARZ_DEPLOYMENT_ENV development 2>&1)"; RC1=$?
+          OUT2="$(npx convex env set CONVEX_SITE_URL "${SITE_URL}" 2>&1)"; RC2=$?
+          set -e
+          echo "::${RC1:+error}${RC1:-notice} title=seed XSTARZ_DEPLOYMENT_ENV (rc=${RC1})::$(annotate "$OUT1")"
+          echo "::${RC2:+error}${RC2:-notice} title=seed CONVEX_SITE_URL (rc=${RC2})::$(annotate "$OUT2")"
+          if [ "$RC1" -ne 0 ] || [ "$RC2" -ne 0 ]; then
+            exit 1
+          fi
           echo "::notice title=deployment env names (values never printed)::$(npx convex env list | cut -d= -f1 | sort | tr '\n' ' ')"
 
       - name: Deploy the Convex backend to the development deployment
