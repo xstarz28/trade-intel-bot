@@ -75,7 +75,7 @@ async function runAnalysis(targetPage, instrument, type, evidenceKey) {
   if (!(await run.count())) throw new Error(`Run Analysis control is missing for ${instrument}`);
   await run.click();
 
-  await targetPage.waitForFunction(() => {
+  await targetPage.waitForFunction((targetInstrument) => {
     const visibleText = Array.from(document.querySelectorAll("*"))
       .filter((el) => {
         const s = getComputedStyle(el);
@@ -85,12 +85,12 @@ async function runAnalysis(targetPage, instrument, type, evidenceKey) {
       .map((el) => el.textContent || "")
       .join("\n");
     return (
-      visibleText.includes(`${instrument} |`) &&
+      visibleText.includes(`${targetInstrument} |`) &&
       visibleText.includes("BIAS:") &&
       visibleText.includes("Price:") &&
       !visibleText.includes("analyzing...")
     );
-  }, null, { timeout });
+  }, instrument, { timeout });
 
   const body = await targetPage.locator("body").innerText();
   const priceLabel = targetPage.getByText("Price:", { exact: true });
