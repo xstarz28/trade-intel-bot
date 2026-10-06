@@ -185,7 +185,32 @@ jobs:
           exit "${FAIL}"
 
       - name: Deploy the Convex backend and build the frontend with the URL Convex injects
-        run: npx convex deploy --yes --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
+        # Output captured as well as printed: the step below republishes the
+        # failure as annotations (the raw runner log is not always readable).
+        # `pipefail` keeps this step's status identical to Convex's status.
+        run: |
+          set -o pipefail
+          npx convex deploy --yes --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL 2>&1 | tee "$RUNNER_TEMP/convex-prod-deploy.log"
+
+      - name: Publish the Convex output as annotations (the raw runner log is not always readable)
+        if: failure()
+        run: |
+          log="$RUNNER_TEMP/convex-prod-deploy.log"
+          if [ ! -f "$log" ]; then
+            echo "::error title=Production deploy failed::Failed before Convex produced any output — read the failing step above."
+            exit 0
+          fi
+          redact() {
+            sed -E "s/$(printf '\033')\[[0-9;]*[a-zA-Z]//g" \
+              | sed -E -e 's/[A-Za-z0-9+=_-]{40,}/<redacted>/g' \
+              | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | cut -c1-2500
+          }
+          errors="$(tail -c 8000 "$log" | redact | grep -iE 'error|failed|✖|permission|denied|not have access' | head -5)"
+          tail_text="$(tail -c 3000 "$log" | redact)"
+          if [ -n "$errors" ]; then
+            echo "::error title=Convex error (production)::${errors}"
+          fi
+          echo "::error title=Convex output (production tail)::${tail_text}"
 
       - name: Scan the built artifact for embedded credentials
         run: npm run mobile:verify
