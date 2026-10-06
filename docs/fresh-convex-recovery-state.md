@@ -67,3 +67,9 @@ Nothing else — after this, dispatch one `development-deploy-relay` and the cha
   copy provider keys (TWELVE_DATA/ALPHA_VANTAGE/TICKATLAS/TOKENOMIST/EIA [+XSTARZ_OWNER_PRINCIPALS if present])
   from tough-goose-455's env page — read-only copy; old deployment untouched.
 - Record: /home/user/phase300/RUN-RECOVERY-STEP0-PUSHPERM-ENVWRITE.md
+
+## 2026-10-06 (3) — last auth-config env var: VLY_CONVEX_AUTH_ISSUER must EXIST (empty = federation off)
+- Run 37421087452: XSTARZ_DEPLOYMENT_ENV passed; push flagged VLY_CONVEX_AUTH_ISSUER missing.
+- Platform push check: every var READ by auth.config.ts must exist on the deployment.
+- Owner action: add VLY_CONVEX_AUTH_ISSUER with EMPTY value (federation off; the production-
+  compatible state); fallback = copy the old deployment's exact value (development allows it).
