@@ -701,8 +701,10 @@ function classifySuitability(
   if (dataCompleteness === "NONE") return "INSUFFICIENT_DATA";
   if (dataCompleteness === "MINIMAL" && analyticalScore < 50) return "INSUFFICIENT_DATA";
 
-  if (analyticalScore >= 70 && confidence >= 50) return "TOP_OPPORTUNITY";
-  if (analyticalScore >= 50 && confidence >= 35) return "WATCHLIST";
+  // Default recommendations are intentionally selective: a strong data snapshot
+  // without a strong directional setup is not promoted to an opportunity.
+  if (analyticalScore >= 75 && confidence >= 65) return "TOP_OPPORTUNITY";
+  if (analyticalScore >= 60 && confidence >= 50) return "WATCHLIST";
   if (analyticalScore >= 30) return "NEUTRAL";
   return "NEUTRAL";
 }
