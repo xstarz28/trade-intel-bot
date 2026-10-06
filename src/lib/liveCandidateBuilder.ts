@@ -208,7 +208,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
 
   // Data freshness from market data timestamp
-  const freshness = assessFreshness(source.marketData?.price?.timestamp ?? ar?.priceSnapshot?.timestamp, now);
+  const freshness = assessFreshness(source.marketData?.fetchTimestamp ?? source.marketData?.price?.timestamp ?? ar?.priceSnapshot?.timestamp, now);
 
   // Data completeness
   const dataCompleteness = assessDataCompleteness(source);
