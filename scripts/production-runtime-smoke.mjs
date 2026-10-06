@@ -45,63 +45,16 @@ try {
   if (!(await start.count())) throw new Error("Landing page did not expose Start analysis");
   await start.click();
   await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+
   const guest = page.getByRole("button", { name: /continue without an account/i });
-  const guestCount = await guest.count();
-  console.log("GUEST_BUTTON_COUNT=" + guestCount);
-  if (!guestCount) throw new Error("Auth page did not expose guest sign-in");
+  if (!(await guest.count())) throw new Error("Auth page did not expose guest sign-in");
   await guest.click();
 
   const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
   await btc.waitFor({ state: "visible", timeout: 30000 });
   evidence.authenticated = true;
 
-  const googleCheck = page.getByRole("button", { name: /continue with google/i });
-  if (!(await googleCheck.count())) throw new Error("Google sign-in control missing from production auth surface");
-
-  const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
-    await btc.waitFor({ state: "visible", timeout: 30000 });
-    evidence.authenticated = true;
-  
-  // Verify the Google OAuth handoff itself reaches Google without an immediate
-  // redirect_uri_mismatch/invalid-request rejection. No account credentials
-  // are entered by this smoke.
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
-  const startAgain = page.getByRole("button", { name: /start analysis/i });
-  if (await startAgain.count()) await startAgain.click();
-  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
-  const google = page.getByRole("button", { name: /continue with google/i });
-  if (!(await google.count())) throw new Error("Google sign-in control missing from production auth surface");
-  await google.click();
-  await page.waitForLoadState("domcontentloaded", { timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(1500);
-  const googleText = (await page.locator("body").innerText()).slice(0, 4000);
-  if (/redirect_uri_mismatch|invalid_request|Error 400/i.test(googleText)) {
-    throw new Error("Google OAuth handoff is rejected by Google: redirect_uri_mismatch/invalid request");
-  }
-  evidence.googleOAuthHandoff = {
-    url: page.url(),
-    googleHost: /(^|\.)google\.com$/i.test(new URL(page.url()).hostname) || /googleusercontent/i.test(page.url()),
-    rejected: false,
-  };
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
-  const restart = page.getByRole("button", { name: /start analysis/i });
-  if (await restart.count()) await restart.click();
-  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
-  const guestAgain = page.getByRole("button", { name: /continue without an account/i });
-  if (await guestAgain.count()) await guestAgain.click();
-  await page.getByRole("button", { name: "BTC/USD", exact: true }).waitFor({ state: "visible", timeout: 10000 });
-  } catch {
-    const authError = await page.locator("text=/Sign in failed|failed|error/i").allTextContents().catch(() => []);
-    throw new Error(`Guest authentication did not expose the dashboard. Visible auth errors: ${authError.join(" | ") || "none"}; URL: ${page.url()}`);
-  }
-
-  const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
-  if (!(await btc.count())) {
-    const text = (await page.locator("body").innerText()).slice(0, 4000).replace(/\s+/g, " ");
-    throw new Error(`BTC/USD quick-pick is missing from the running production UI. Body: ${text}`);
-  }
   await btc.click();
-
   const run = page.getByRole("button", { name: /run analysis/i });
   if (!(await run.count())) throw new Error("Run Analysis control is missing from the running production UI");
   await run.click();
@@ -117,6 +70,23 @@ try {
       .join("\n");
     return visibleText.includes("BIAS:") && visibleText.includes("Price:");
   }, null, { timeout });
+
+  // Google handoff is checked independently so a Google OAuth failure is
+  // reported as Google failure, never misclassified as Guest failure.
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+  const startGoogle = page.getByRole("button", { name: /start analysis/i });
+  if (await startGoogle.count()) await startGoogle.click();
+  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+  const google = page.getByRole("button", { name: /continue with google/i });
+  if (!(await google.count())) throw new Error("Google sign-in control missing from production auth surface");
+  await google.click();
+  await page.waitForLoadState("domcontentloaded", { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const googleText = (await page.locator("body").innerText()).slice(0, 4000);
+  if (/redirect_uri_mismatch|invalid_request|Error 400/i.test(googleText)) {
+    throw new Error("Google OAuth handoff rejected: redirect_uri_mismatch/invalid request");
+  }
+  evidence.googleOAuthHandoff = { url: page.url(), rejected: false };
 
   const body = await page.locator("body").innerText();
   const priceLabel = page.getByText("Price:", { exact: true });
