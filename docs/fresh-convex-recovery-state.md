@@ -85,3 +85,11 @@ Nothing else — after this, dispatch one `development-deploy-relay` and the cha
   env JWKS (index.ts:224 requireEnv("JWKS")). Missing → "Missing environment variable
   `JWT_PRIVATE_KEY`" at sign-in. Owner action: copy JWT_PRIVATE_KEY + JWKS verbatim from
   tough-goose-455's env page into calculating-eagle-241 (values owner-only; never printed).
+
+## 2026-10-06 (5) — DEVELOPMENT PASS GATE MET on calculating-eagle-241
+- Deploy live (/version 20261005T183604Z-59e875d3e952); real anonymous sessions ×2; data-plane
+  mutations bounded ✓; 4 exact serial smokes SUCCESS (XAU/USD + BTC full-chain PASS; EUR/USD +
+  AAPL technical_only with honest insufficient fundamentals, matching accepted baselines).
+- Records: /home/user/phase300/RUN-DEV-PASS-GATE.md
+- Next: owner creates NEW production deployment (US East) + prod deploy key + env vars; then
+  production chain → frontend repoint → rebuild 2633125 → republish → FINAL GATE.
