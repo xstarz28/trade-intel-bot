@@ -117,6 +117,26 @@ function extractMtfAlignment(ar: AnalysisResult | undefined): string | undefined
 function extractAtr(tech: TechnicalData | undefined): number | undefined {
   return tech?.atr14;
 }
+function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
+  if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
+  const direction =
+    tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
+      ? tech.mtf.htfBias
+      : tech.structure === "HH/HL" ? "long" : tech.structure === "LH/LL" ? "short" : "neutral";
+  if (direction === "neutral") return { setupDirection: "neutral", setupStrength: 20, confluenceCount: 0 };
+
+  let score = 35, confirmations = 1;
+  const bullish = direction === "long";
+  if (tech.mtf?.alignment === (bullish ? "ALIGNED_BULLISH" : "ALIGNED_BEARISH")) { score += 18; confirmations++; }
+  if (tech.bosDirection === (bullish ? "bullish" : "bearish")) { score += 15; confirmations++; }
+  if (tech.chochDirection === (bullish ? "bullish" : "bearish")) { score += 8; confirmations++; }
+  if (tech.smc?.recentSweep && tech.smc.recentSweep.side === (bullish ? "sell_side" : "buy_side")) { score += 10; confirmations++; }
+  if (tech.smc?.displacement?.direction === (bullish ? "bullish" : "bearish")) { score += 8; confirmations++; }
+  if (tech.smc?.orderBlocks?.some(ob => ob.status === "fresh" && ob.direction === (bullish ? "bullish" : "bearish"))) { score += 7; confirmations++; }
+  if (tech.smc?.fvgs?.some(f => f.status === "fresh" && f.direction === (bullish ? "bullish" : "bearish"))) { score += 5; confirmations++; }
+  return { setupDirection: direction, setupStrength: Math.min(100, score), confluenceCount: confirmations };
+}
+
 
 function extractSpreadBps(source: LiveCandidateSource): number | undefined {
   if (source.marketData?.price?.bid && source.marketData?.price?.ask) {
@@ -222,11 +242,11 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     providerCoverage,
 
     // Structure
-    htfBias: extractHtfBias(tech),
+    htfBias: tech?.mtf?.htfBias === "long" || tech?.mtf?.htfBias === "short" ? tech.mtf.htfBias : extractHtfBias(tech),
     marketRegime: extractMarketRegime(tech),
-    mtfAlignment: extractMtfAlignment(ar),
-    keySupport: undefined,
-    keyResistance: undefined,
+    mtfAlignment: tech?.mtf?.alignment ?? extractMtfAlignment(ar),
+    keySupport: tech?.supportLevels?.[0],
+    keyResistance: tech?.resistanceLevels?.[0],
     riskReward: ar?.tradePlan?.riskReward,
     spreadBps: extractSpreadBps(source),
     atr: extractAtr(tech),
@@ -243,7 +263,9 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     hasAnalysis: !!ar,
     hasLongHorizonThesis: !!ar?.longHorizonThesis,
     hasMacro: !!source.treasuryData?.available || !!source.calendarData,
-    hasExecutionQuality: false,
+    hasExecutionQuality: extractSpreadBps(source) !== undefined,
+
+    ...extractSetupEvidence(tech),
 
     // Asset-specific
     ...assetSpecific,
