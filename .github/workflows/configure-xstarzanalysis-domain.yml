@@ -13,7 +13,7 @@ jobs:
       - name: Rename project
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
           curl -fsS -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}"             -H "Authorization: Bearer ${VERCEL_TOKEN}"             -H "Content-Type: application/json"             -d '{"name":"xstarzanalysis"}'
@@ -21,7 +21,7 @@ jobs:
       - name: Attach free branded hostname
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
           curl -fsS -X POST "https://api.vercel.com/v10/projects/${VERCEL_PROJECT_ID}/domains"             -H "Authorization: Bearer ${VERCEL_TOKEN}"             -H "Content-Type: application/json"             -d '{"name":"xstarzanalysis.vercel.app"}'
@@ -29,7 +29,7 @@ jobs:
       - name: Verify hostname is attached
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
           curl -fsS "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains"             -H "Authorization: Bearer ${VERCEL_TOKEN}" |
