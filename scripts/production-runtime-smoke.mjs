@@ -74,11 +74,16 @@ try {
   await page.getByText(/BIAS:/i).first().waitFor({ state: "visible", timeout });
 
   const body = await page.locator("body").innerText();
-  const sourceMatch = body.match(/Source:\s*([^\n]+)/i);
-  const priceMatch = body.match(/Price:\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  const priceLabel = page.getByText("Price:", { exact: true });
+  const sourceLabel = page.getByText("Source:", { exact: true });
+  const priceRow = await priceLabel.count() ? priceLabel.first().locator("..").innerText() : "";
+  const sourceRow = await sourceLabel.count() ? sourceLabel.first().locator("..").innerText() : "";
+  const priceMatch = priceRow.match(/Price:\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  const sourceMatch = sourceRow.match(/Source:\s*(.+)$/i);
 
   evidence.price = priceMatch?.[1] ?? null;
   evidence.source = sourceMatch?.[1]?.trim() ?? null;
+  evidence.resultText = body.slice(0, 7000);
   evidence.resultVisible = true;
 
   if (!evidence.price) throw new Error("Analysis rendered without a live price snapshot");
