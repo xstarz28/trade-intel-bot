@@ -77,6 +77,13 @@ try {
     googleHost: /(^|\.)google\.com$/i.test(new URL(page.url()).hostname) || /googleusercontent/i.test(page.url()),
     rejected: false,
   };
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+  const restart = page.getByRole("button", { name: /start analysis/i });
+  if (await restart.count()) await restart.click();
+  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+  const guestAgain = page.getByRole("button", { name: /continue without an account/i });
+  if (await guestAgain.count()) await guestAgain.click();
+  await page.getByRole("button", { name: "BTC/USD", exact: true }).waitFor({ state: "visible", timeout: 10000 });
   } catch {
     const authError = await page.locator("text=/Sign in failed|failed|error/i").allTextContents().catch(() => []);
     throw new Error(`Guest authentication did not expose the dashboard. Visible auth errors: ${authError.join(" | ") || "none"}; URL: ${page.url()}`);
