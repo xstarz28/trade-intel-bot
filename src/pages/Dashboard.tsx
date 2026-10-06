@@ -427,6 +427,18 @@ export default function Dashboard() {
           okxSpecData,
         };
 
+        if (input.instrumentType === "crypto") {
+          const derivativesContext = derivativesResult?.data
+            ? parseCoinGlassResult(derivativesResult.data, input.instrument, derivativesResult.data.timestamp ?? Date.now())
+            : undefined;
+          enrichedInput.cryptoIntelligenceContext = buildCryptoIntelligenceContext(
+            input.instrument,
+            derivativesContext,
+            undefined,
+            derivativesResult?.tokenomics,
+          ) ?? undefined;
+        }
+
         // Phase 44-45 — Build universal intelligence context for non-crypto instruments.
         // Crypto uses its own CryptoIntelligenceContext (Phase 41-43).
         if (input.instrumentType !== "crypto") {
