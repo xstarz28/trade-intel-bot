@@ -73,3 +73,15 @@ Nothing else — after this, dispatch one `development-deploy-relay` and the cha
 - Platform push check: every var READ by auth.config.ts must exist on the deployment.
 - Owner action: add VLY_CONVEX_AUTH_ISSUER with EMPTY value (federation off; the production-
   compatible state); fallback = copy the old deployment's exact value (development allows it).
+
+## 2026-10-06 (4) — BACKEND LIVE on calculating-eagle-241; sign-in blocked only by JWT_PRIVATE_KEY/JWKS
+- DEPLOY SUCCESS (run 37421968131, both jobs green): functions+schema+auth config ACCEPTED;
+  /version answers 20261005T183604Z-59e875d3e952 (no longer "Never deployed").
+- auth-verify 37422157395: retention sweep (mutation) ran 6/6 with "stagesReconciled": 0 →
+  data-plane WRITE works; no permission errors; no free-plan error; env list works.
+- auth:signIn fails INSIDE @convex-dev/auth 0.0.90: generateToken() =
+  importPKCS8(requireEnv("JWT_PRIVATE_KEY"), "RS256") — the deployment signs its own session
+  JWTs with env JWT_PRIVATE_KEY (PKCS8). Verification route /.well-known/jwks.json serves
+  env JWKS (index.ts:224 requireEnv("JWKS")). Missing → "Missing environment variable
+  `JWT_PRIVATE_KEY`" at sign-in. Owner action: copy JWT_PRIVATE_KEY + JWKS verbatim from
+  tough-goose-455's env page into calculating-eagle-241 (values owner-only; never printed).
