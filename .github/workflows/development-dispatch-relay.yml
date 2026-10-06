@@ -36,6 +36,7 @@ on:
       - development-auth-verify-relay
       - development-publish-frontend-relay
       - development-runtime-smoke-relay
+      - production-deploy-relay
 
 permissions:
   contents: read
@@ -90,7 +91,7 @@ jobs:
               REF="$(field ref)"
               ARGS=(--ref main)
               [ -n "${REF}" ] && ARGS+=(-f "ref=${REF}")
-              for KEY in domains max_attempts exact_instruments probe_limit pacing_window_ms pacing_limit pacing_max_wait_ms; do
+              for KEY in domains max_attempts exact_instruments probe_limit pacing_window_ms pacing_limit pacing_max_wait_ms target_url; do
                 VALUE="$(field "${KEY}")"
                 if [ -n "${VALUE}" ]; then
                   ARGS+=(-f "${KEY}=${VALUE}")
@@ -106,6 +107,24 @@ jobs:
               gh workflow run development-auth-verify.yml "${ARGS[@]}"
               echo "relayed: development-auth-verify.yml ${ARGS[*]}"
               ;;
+            production-deploy-relay)
+              # Production re-issue, added for the owner-directed production
+              # activation. Still a DECISION: the payload must carry the exact
+              # confirm token and the source ref; the production workflow's own
+              # guard remains the authority on what may be deployed.
+              REF="$(field ref)"
+              CONFIRM="$(field confirm)"
+              if [ -z "${REF}" ] || [ -z "${CONFIRM}" ]; then
+                echo "::error::relay refused: both ref and confirm are required"
+                exit 1
+              fi
+              if [ "${CONFIRM}" != "DEPLOY_PROD" ]; then
+                echo "::error::relay refused: confirm must be exactly DEPLOY_PROD"
+                exit 1
+              fi
+              gh workflow run production-deploy.yml --ref main -f "ref=${REF}" -f "confirm=${CONFIRM}"
+              echo "relayed: production-deploy.yml (ref=${REF})"
+              ;;
             development-publish-frontend-relay)
               REF="$(field ref)"
               CONFIRM="$(field confirm)"
@@ -120,7 +139,7 @@ jobs:
               fi
               ARGS=(--ref main -f "ref=${REF}" -f "confirm=${CONFIRM}")
               [ -n "${MODE}" ] && ARGS+=(-f "mode=${MODE}")
-              for KEY in artifact_commit host_url; do
+              for KEY in artifact_commit host_url build_convex_url; do
                 VALUE="$(field "${KEY}")"
                 if [ -n "${VALUE}" ]; then
                   ARGS+=(-f "${KEY}=${VALUE}")

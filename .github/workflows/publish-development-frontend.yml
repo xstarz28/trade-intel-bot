@@ -99,6 +99,11 @@ on:
         required: false
         default: ""
         type: string
+      build_convex_url:
+        description: "Optional: bake THIS Convex deployment URL into the build instead of the environment's VITE_CONVEX_URL (https on *.convex.cloud; public value, never a secret)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
@@ -193,7 +198,10 @@ jobs:
     env:
       SOURCE_REF: ${{ inputs.ref || github.ref }}
       XSTARZ_FRONTEND_MODE: ${{ inputs.mode }}
-      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      # An explicit build_convex_url input (validated below) overrides the
+      # environment's VITE_CONVEX_URL for THIS build only — the production
+      # repoint. It is a public deployment URL, never a secret.
+      VITE_CONVEX_URL: ${{ inputs.build_convex_url || vars.VITE_CONVEX_URL }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       # Pinned identifiers, when the operator has them. Empty means "read them
       # from the credential", which the resolve step below does out loud.
@@ -239,6 +247,20 @@ jobs:
           fi
         env:
           ARTIFACT_COMMIT_INPUT: ${{ inputs.artifact_commit }}
+
+      - name: Validate the build-time Convex URL (public value, never a secret)
+        run: |
+          if [ -n "${BUILD_CONVEX_URL}" ]; then
+            if ! printf '%s' "${BUILD_CONVEX_URL}" | grep -qE '^https://[a-z0-9-]+\.convex\.cloud$'; then
+              echo "::error title=build_convex_url refused::must be an https *.convex.cloud deployment URL"
+              exit 1
+            fi
+            echo "::notice title=build-time Convex URL (production repoint)::${BUILD_CONVEX_URL}"
+          else
+            echo "::notice title=build-time Convex URL::the environment's VITE_CONVEX_URL (no build_convex_url input)"
+          fi
+        env:
+          BUILD_CONVEX_URL: ${{ inputs.build_convex_url }}
 
       - name: Detect the host credential (presence only — never a value)
         id: credential

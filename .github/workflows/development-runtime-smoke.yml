@@ -72,6 +72,10 @@ on:
         description: "Twelve Data minute-window pacing: total wait budget for the run (default 900000, cap 1500000; 0 DISABLES pacing)"
         required: false
         type: string
+      target_url:
+        description: "Optional deployment URL to smoke (https on *.convex.cloud). Default: the development deployment. tough-goose-455 is always refused."
+        required: false
+        type: string
   # Phase 309 — see development-deploy.yml: the RELAY workflow
   # (development-dispatch-relay.yml) converts a repository dispatch into an
   # explicit workflow_dispatch from the default branch. This workflow's body
@@ -98,12 +102,13 @@ jobs:
       # The REAL development deployment. Fixed here on purpose: a smoke whose
       # target could drift is a smoke that can silently measure the wrong thing.
       # The script refuses any target that is not this host (or an explicitly
-      # allowed one), and refuses the production deployment by name.
-      # Fresh-deployment recovery: the dev target moved to the NEW Xstarz
-      # Analysis project deployment (the old one is free-plan disabled for
-      # data-plane execution). The harness's explicit --allow-host below keeps
-      # the script's own host validation exact.
-      XSTARZ_SMOKE_URL: https://calculating-eagle-241.convex.cloud
+      # allowed one), and refuses the retired deployments by name.
+      # Default target: the NEW Xstarz Analysis development deployment. An
+      # explicit `target_url` input may point the SAME fail-closed harness at
+      # another deployment (the production-activation verification); the
+      # retired tough-goose-455 is always refused, and pleasant-curlew-264 (the
+      # retired free-plan-disabled deployment) is refused by name.
+      XSTARZ_SMOKE_URL: ${{ inputs.target_url || 'https://calculating-eagle-241.convex.cloud' }}
       XSTARZ_SMOKE_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
       XSTARZ_SMOKE_DOMAINS: ${{ inputs.domains }}
       XSTARZ_SMOKE_MAX_ATTEMPTS: ${{ inputs.max_attempts }}
@@ -137,7 +142,10 @@ jobs:
             *) echo "::error title=Refused::XSTARZ_SMOKE_URL is not an https *.convex.cloud deployment"; exit 1 ;;
           esac
           case "${XSTARZ_SMOKE_URL}" in
-            *pleasant-curlew-264.convex.cloud*) echo "::error title=Refused::XSTARZ_SMOKE_URL is the PRODUCTION deployment (pleasant-curlew-264.convex.cloud)"; exit 1 ;;
+            *tough-goose-455.convex.cloud*) echo "::error title=Refused::tough-goose-455 is the RETIRED deployment and must never be targeted"; exit 1 ;;
+          esac
+          case "${XSTARZ_SMOKE_URL}" in
+            *pleasant-curlew-264.convex.cloud*) echo "::error title=Refused::XSTARZ_SMOKE_URL is the retired free-plan-disabled deployment (pleasant-curlew-264.convex.cloud)"; exit 1 ;;
           esac
           echo "target: ${XSTARZ_SMOKE_URL}"
           echo "deployment (provenance only): ${XSTARZ_SMOKE_DEPLOYMENT:-<not set>}"
@@ -157,7 +165,7 @@ jobs:
         # the runtime may be concluded — "could not look" is not a clean result.
         run: |
           set -o pipefail
-          args=(--url "${XSTARZ_SMOKE_URL}" --allow-host calculating-eagle-241.convex.cloud --out development-runtime-smoke.json)
+          args=(--url "${XSTARZ_SMOKE_URL}" --allow-host "$(printf '%s' "${XSTARZ_SMOKE_URL}" | sed -E 's#^https://([a-z0-9.-]+\.convex\.cloud).*#\1#')" --out development-runtime-smoke.json)
           if [ -n "${XSTARZ_SMOKE_DOMAINS:-}" ]; then args+=(--domains "${XSTARZ_SMOKE_DOMAINS}"); fi
           if [ -n "${XSTARZ_SMOKE_MAX_ATTEMPTS:-}" ]; then args+=(--max-attempts "${XSTARZ_SMOKE_MAX_ATTEMPTS}"); fi
           node scripts/development-runtime-smoke.mjs "${args[@]}" 2>&1 | tee smoke-console.log
