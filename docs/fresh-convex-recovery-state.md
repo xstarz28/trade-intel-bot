@@ -98,3 +98,9 @@ Nothing else — after this, dispatch one `development-deploy-relay` and the cha
 - prod key fingerprint prod:hushed-seal-237 ✓; GitHub Production env still stale (old deployment
   identity/URL); hushed-seal-237 env empty (10 names to copy from pleasant-curlew-264).
 - Nothing deployed. Full record: /home/user/phase300/RUN-PROD-PREFLIGHT.md
+
+## 2026-10-06 (7) — PRODUCTION ACTIVATED — FINAL DECISION: A (RELEASE READY)
+- hushed-seal-237 LIVE (deploy 37431708707); 4 exact production smokes SUCCESS; public frontend
+  repointed (build_convex_url) + LIVE-verified twice (37437130758, 37437294167); provenance
+  2633125/5681fdec byte-identical; embedded backend = hushed-seal-237; retired hosts absent.
+- Full record: /home/user/phase300/RUN-PROD-ACTIVATION-FINAL.md
