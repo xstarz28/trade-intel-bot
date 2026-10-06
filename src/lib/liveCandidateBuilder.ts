@@ -242,7 +242,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     providerCoverage,
 
     // Structure
-    htfBias: tech?.mtf?.htfBias === "long" || tech?.mtf?.htfBias === "short" ? tech.mtf.htfBias : extractHtfBias(tech),
+    htfBias: tech?.mtf?.htfBias === "long" || tech?.mtf?.htfBias === "short" ? tech.mtf?.htfBias : extractHtfBias(tech),
     marketRegime: extractMarketRegime(tech),
     mtfAlignment: tech?.mtf?.alignment ?? extractMtfAlignment(ar),
     keySupport: tech?.supportLevels?.[0],
