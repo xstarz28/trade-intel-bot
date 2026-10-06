@@ -60,6 +60,50 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
+      - name: Recovery STEP 1 — effective configuration check (fingerprint + effective variables)
+        # Fresh-recovery gate: before ANY deploy, prove the three configuration
+        # surfaces are NEW and coherent. All three shown values are non-secret
+        # (the deploy URL is embedded in the public frontend build; the
+        # deployment name appears in every CLI banner). The key's secret half
+        # (after '|') is never printed. A stale value FAILS this step, so a
+        # deploy can never follow a stale configuration silently.
+        env:
+          EXPECTED_DEPLOYMENT: dev:xstarz-production:xstarz-analysis
+          EXPECTED_URL: https://calculating-eagle-241.convex.cloud
+          EXPECTED_FINGERPRINT: dev:calculating-eagle-241
+          EFFECTIVE_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+          EFFECTIVE_URL: ${{ vars.VITE_CONVEX_URL }}
+        run: |
+          set -euo pipefail
+          FAIL=0
+          if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
+            echo "::notice title=deploy key fingerprint::${CONVEX_DEPLOY_KEY%%|*} (prefix only — secret after '|' never printed)"
+            if [ "${CONVEX_DEPLOY_KEY%%|*}" = "${EXPECTED_FINGERPRINT}" ]; then
+              echo "::notice title=fingerprint verdict::NEW — key targets calculating-eagle-241"
+            else
+              echo "::error title=fingerprint verdict::key targets '${CONVEX_DEPLOY_KEY%%|*}' — expected ${EXPECTED_FINGERPRINT}"
+              FAIL=1
+            fi
+          else
+            echo "::error title=fingerprint verdict::CONVEX_DEPLOY_KEY not present in this job"
+            FAIL=1
+          fi
+          echo "::notice title=effective CONVEX_DEPLOYMENT::'${EFFECTIVE_DEPLOYMENT:-<empty>}' (expected '${EXPECTED_DEPLOYMENT}')"
+          if [ "${EFFECTIVE_DEPLOYMENT:-}" = "${EXPECTED_DEPLOYMENT}" ]; then
+            echo "::notice title=CONVEX_DEPLOYMENT verdict::NEW"
+          else
+            echo "::error title=CONVEX_DEPLOYMENT verdict::stale or absent — set it to ${EXPECTED_DEPLOYMENT} in Environment development"
+            FAIL=1
+          fi
+          echo "::notice title=effective VITE_CONVEX_URL::'${EFFECTIVE_URL:-<empty>}' (expected '${EXPECTED_URL}')"
+          if [ "${EFFECTIVE_URL:-}" = "${EXPECTED_URL}" ]; then
+            echo "::notice title=VITE_CONVEX_URL verdict::NEW"
+          else
+            echo "::error title=VITE_CONVEX_URL verdict::stale or absent — set it to ${EXPECTED_URL} in Environment development"
+            FAIL=1
+          fi
+          exit "$FAIL"
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
