@@ -193,10 +193,26 @@ jobs:
               echo "::notice title=XSTARZ_DEPLOYMENT_ENV on the deployment::production"
             fi
             if printf '%s\n' "${ENV_LIST}" | grep -qE '^VLY_CONVEX_AUTH_ISSUER=.+'; then
-              echo "::error title=VLY_CONVEX_AUTH_ISSUER on the deployment::a value is set — production must keep the retired federation OFF (absent or EMPTY); a non-empty issuer is a hard error by policy"
+              echo "::error title=VLY_CONVEX_AUTH_ISSUER on the deployment::a value is set — production must keep the retired federation OFF (EMPTY); a non-empty issuer is a hard error by policy"
               FAIL=1
+            elif ! printf '%s\n' "${ENV_LIST}" | grep -qE '^VLY_CONVEX_AUTH_ISSUER='; then
+              # The auth config READS this variable too, so the platform's
+              # push-time check requires its PRESENCE. An EMPTY value is the
+              # supported production configuration (retired federation OFF —
+              # resolveFederatedIssuer treats empty as not_configured), and an
+              # empty string is not a secret, so the workflow sets it.
+              set +e
+              VLY_OUT="$(npx convex env set VLY_CONVEX_AUTH_ISSUER "" 2>&1)"; VLY_RC=$?
+              set -e
+              if [ "${VLY_RC}" -ne 0 ]; then
+                echo "::error title=VLY_CONVEX_AUTH_ISSUER could not be set::$(printf '%s' "${VLY_OUT}" | sed -E "s/$(printf '\033')\[[0-9;]*[a-zA-Z]//g" | tr '\n' ' ' | cut -c1-500)"
+                echo "::error title=owner action::add VLY_CONVEX_AUTH_ISSUER with an EMPTY value on the deployment's Environment Variables (Dashboard), then re-run"
+                FAIL=1
+              else
+                echo "::notice title=VLY_CONVEX_AUTH_ISSUER::set to EMPTY on the deployment (retired federation OFF — the supported production configuration)"
+              fi
             else
-              echo "::notice title=VLY_CONVEX_AUTH_ISSUER on the deployment::absent or empty — retired federation OFF (supported production configuration)"
+              echo "::notice title=VLY_CONVEX_AUTH_ISSUER on the deployment::empty — retired federation OFF (supported production configuration)"
             fi
           fi
           exit "${FAIL}"
