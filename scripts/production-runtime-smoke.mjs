@@ -9,7 +9,16 @@ if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(url)) {
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+page.on("console", (msg) => { if (msg.type() === "error") consoleErrors.push(msg.text()); });
+page.on("request", (req) => {
+  if (/\/api\/auth\//i.test(req.url())) authTraffic.push({ type: "request", method: req.method(), url: req.url() });
+});
+page.on("response", (res) => {
+  if (/\/api\/auth\//i.test(res.url())) authTraffic.push({ type: "response", status: res.status(), url: res.url(), location: res.headers()["location"] ?? null });
+});
 
+const authTraffic = [];
+const consoleErrors = [];
 const evidence = {
   target: url,
   startedAt: new Date().toISOString(),
@@ -68,9 +77,13 @@ try {
 
   evidence.primaryDataQuality = quality;
   evidence.completedAt = new Date().toISOString();
+  evidence.authTraffic = authTraffic;
+  evidence.consoleErrors = consoleErrors.slice(-20);
   console.log(JSON.stringify(evidence, null, 2));
 } catch (error) {
   evidence.completedAt = new Date().toISOString();
+  evidence.authTraffic = authTraffic;
+  evidence.consoleErrors = consoleErrors.slice(-20);
   console.error(JSON.stringify(evidence, null, 2));
   throw error;
 } finally {
