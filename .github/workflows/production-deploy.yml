@@ -172,8 +172,25 @@ jobs:
             if [ -n "${DENV}" ] && [ "${DENV}" != "production" ]; then
               echo "::error title=XSTARZ_DEPLOYMENT_ENV on the deployment::'${DENV}' — production requires 'production' (or absent = production)"
               FAIL=1
+            elif [ -z "${DENV}" ]; then
+              # The auth config READS this variable, so the platform's push-time
+              # check requires it to EXIST even though absent also resolves to
+              # production at runtime. The value is NOT a secret, so setting it
+              # here with the deploy key is configuration, not credential
+              # handling. If the key lacks deployment:env:write, the exact
+              # server permission error is published as an annotation.
+              set +e
+              SET_OUT="$(npx convex env set XSTARZ_DEPLOYMENT_ENV production 2>&1)"; SET_RC=$?
+              set -e
+              if [ "${SET_RC}" -ne 0 ]; then
+                echo "::error title=XSTARZ_DEPLOYMENT_ENV could not be set::$(printf '%s' "${SET_OUT}" | sed -E "s/$(printf '\033')\[[0-9;]*[a-zA-Z]//g" | tr '\n' ' ' | cut -c1-500)"
+                echo "::error title=owner action::set XSTARZ_DEPLOYMENT_ENV=production on the deployment's own Environment Variables (Dashboard), then re-run"
+                FAIL=1
+              else
+                echo "::notice title=XSTARZ_DEPLOYMENT_ENV::set to production on the deployment (the auth config requires its presence at push)"
+              fi
             else
-              echo "::notice title=XSTARZ_DEPLOYMENT_ENV on the deployment::${DENV:-<absent — defaults to production>}"
+              echo "::notice title=XSTARZ_DEPLOYMENT_ENV on the deployment::production"
             fi
             if printf '%s\n' "${ENV_LIST}" | grep -qE '^VLY_CONVEX_AUTH_ISSUER=.+'; then
               echo "::error title=VLY_CONVEX_AUTH_ISSUER on the deployment::a value is set — production must keep the retired federation OFF (absent or EMPTY); a non-empty issuer is a hard error by policy"
