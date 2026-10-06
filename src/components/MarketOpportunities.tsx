@@ -64,12 +64,12 @@ const SUITABILITY_COLORS: Record<string, string> = {
 };
 
 const ASSET_COLORS: Record<string, string> = {
-  crypto: "bg-violet-500/10 text-violet-400 border-violet-500/20",
-  forex: "bg-sky-500/10 text-sky-400 border-sky-500/20",
-  equity: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  crypto: "bg-muted/30 text-foreground border-border/50",
+  forex: "bg-muted/30 text-foreground border-border/50",
+  equity: "bg-muted/30 text-foreground border-border/50",
   commodity: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  indices: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-  macro: "bg-pink-500/10 text-pink-400 border-pink-500/20",
+  indices: "bg-muted/30 text-foreground border-border/50",
+  macro: "bg-muted/30 text-foreground border-border/50",
 };
 
 const FRESHNESS_COLORS: Record<string, string> = {
@@ -165,23 +165,23 @@ function RankedCard({ item }: { item: RankedInstrument }) {
   return (
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-mono font-bold">{item.instrument}</span>
-        <Badge variant="outline" className={cn("text-[9px] font-mono", ASSET_COLORS[item.assetClass] ?? "border-border/50")}>
+        <span className="text-xs font-sans font-bold">{item.instrument}</span>
+        <Badge variant="outline" className={cn("text-[9px] font-sans", ASSET_COLORS[item.assetClass] ?? "border-border/50")}>
           {item.assetClass}
         </Badge>
-        <Badge variant="outline" className={cn("text-[9px] font-mono", SUITABILITY_COLORS[item.suitability])}>
+        <Badge variant="outline" className={cn("text-[9px] font-sans", SUITABILITY_COLORS[item.suitability])}>
           {mapSuitability(item.suitability, t)}
         </Badge>
-        <span className="ml-auto text-[10px] font-mono text-muted-foreground">
+        <span className="ml-auto text-[10px] font-sans text-muted-foreground">
           #{item.rank}
         </span>
       </div>
 
       <div className="flex items-center gap-3 mt-2">
         <div className="text-center">
-          <p className="text-[9px] font-mono text-muted-foreground">{tx("marketPanel.scoreLabel")}</p>
+          <p className="text-[9px] font-sans text-muted-foreground">{tx("marketPanel.scoreLabel")}</p>
           <p className={cn(
-            "text-sm font-bold font-mono tabular-nums",
+            "text-sm font-bold font-sans tabular-nums",
             item.analyticalScore >= 70 ? "text-emerald-400" :
             item.analyticalScore >= 50 ? "text-amber-400" : "text-muted-foreground"
           )}>
@@ -189,21 +189,21 @@ function RankedCard({ item }: { item: RankedInstrument }) {
           </p>
         </div>
         <div className="text-center">
-          <p className="text-[9px] font-mono text-muted-foreground">{tx("marketPanel.confidenceLabel")}</p>
-          <p className="text-sm font-bold font-mono tabular-nums text-foreground">{item.confidence}</p>
+          <p className="text-[9px] font-sans text-muted-foreground">{tx("marketPanel.confidenceLabel")}</p>
+          <p className="text-sm font-bold font-sans tabular-nums text-foreground">{item.confidence}</p>
         </div>
         {item.executionQuality !== undefined && (
           <div className="text-center">
-            <p className="text-[9px] font-mono text-muted-foreground">{tx("marketPanel.spreadLabel")}</p>
-            <p className="text-sm font-bold font-mono tabular-nums text-foreground">{item.executionQuality}bps</p>
+            <p className="text-[9px] font-sans text-muted-foreground">{tx("marketPanel.spreadLabel")}</p>
+            <p className="text-sm font-bold font-sans tabular-nums text-foreground">{item.executionQuality}bps</p>
           </div>
         )}
         {/* Data quality badges */}
         <div className="flex items-center gap-1 ml-auto">
-          <Badge variant="outline" className={cn("text-[8px] font-mono", FRESHNESS_COLORS[item.freshness] ?? "border-border/50")}>
+          <Badge variant="outline" className={cn("text-[8px] font-sans", FRESHNESS_COLORS[item.freshness] ?? "border-border/50")}>
             {mapFreshness(item.freshness, t)}
           </Badge>
-          <Badge variant="outline" className="text-[8px] font-mono border-border/50">
+          <Badge variant="outline" className="text-[8px] font-sans border-border/50">
             <span className={cn(DATA_COMPLETENESS_COLORS[item.dataCompleteness])}>
               {mapCompleteness(item.dataCompleteness, t)}
             </span>
@@ -214,7 +214,7 @@ function RankedCard({ item }: { item: RankedInstrument }) {
       {item.primaryReasons.length > 0 && (
         <div className="mt-2 space-y-0.5">
           {item.primaryReasons.slice(0, 3).map((r, i) => (
-            <p key={i} className="text-[9px] font-mono text-muted-foreground/70">• {r}</p>
+            <p key={i} className="text-[9px] font-sans text-muted-foreground/70">{r}</p>
           ))}
         </div>
       )}
@@ -223,29 +223,29 @@ function RankedCard({ item }: { item: RankedInstrument }) {
         <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
           {item.conflictingEvidence.length > 0 && (
             <div>
-              <p className="text-[9px] font-mono font-semibold text-amber-400/80 mb-0.5">{tx("marketPanel.conflictsLabel")}</p>
+              <p className="text-[9px] font-sans font-semibold text-amber-400/80 mb-0.5">{tx("marketPanel.conflictsLabel")}</p>
               {item.conflictingEvidence.map((c, i) => (
-                <p key={i} className="text-[9px] font-mono text-amber-300/60">⚠ {c}</p>
+                <p key={i} className="text-[9px] font-sans text-amber-300/60">{c}</p>
               ))}
             </div>
           )}
           {item.risks.length > 0 && (
             <div>
-              <p className="text-[9px] font-mono font-semibold text-red-400/80 mb-0.5">{tx("marketPanel.risksLabel")}</p>
+              <p className="text-[9px] font-sans font-semibold text-red-400/80 mb-0.5">{tx("marketPanel.risksLabel")}</p>
               {item.risks.map((r, i) => (
-                <p key={i} className="text-[9px] font-mono text-red-300/60">• {r}</p>
+                <p key={i} className="text-[9px] font-sans text-red-300/60">{r}</p>
               ))}
             </div>
           )}
           {item.invalidationConditions.length > 0 && (
             <div>
-              <p className="text-[9px] font-mono font-semibold text-muted-foreground/60 mb-0.5">{tx("marketPanel.invalidationLabel")}</p>
+              <p className="text-[9px] font-sans font-semibold text-muted-foreground/60 mb-0.5">{tx("marketPanel.invalidationLabel")}</p>
               {item.invalidationConditions.map((m: string, i: number) => (
-                <p key={i} className="text-[9px] font-mono text-muted-foreground/50">○ {m}</p>
+                <p key={i} className="text-[9px] font-sans text-muted-foreground/50">{m}</p>
               ))}
             </div>
           )}
-          <div className="text-[9px] font-mono text-muted-foreground/60">
+          <div className="text-[9px] font-sans text-muted-foreground/60">
             <span>{txi("marketPanel.analysisLabel", { value: item.recommendedAnalysisType })}</span>
             <span className="mx-1">·</span>
             <span>{txi("marketPanel.coverageLabel", { value: item.providerCoverage })}</span>
@@ -254,7 +254,7 @@ function RankedCard({ item }: { item: RankedInstrument }) {
       )}
 
       <button
-        className="mt-1.5 text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground"
+        className="mt-1.5 text-[9px] font-sans text-muted-foreground/50 hover:text-muted-foreground"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown className="size-3 inline" /> : <ChevronRight className="size-3 inline" />}
@@ -275,26 +275,26 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
   return (
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-mono font-bold">{opp.instrument}</span>
-        <Badge variant="outline" className={cn("text-[9px] font-mono", ASSET_COLORS[opp.assetClass] ?? "border-border/50")}>
+        <span className="text-xs font-sans font-bold">{opp.instrument}</span>
+        <Badge variant="outline" className={cn("text-[9px] font-sans", ASSET_COLORS[opp.assetClass] ?? "border-border/50")}>
           {opp.assetClass}{opp.region ? ` · ${opp.region}` : ""}
         </Badge>
-        <Badge variant="outline" className={cn("text-[9px] font-mono", LIFECYCLE_COLORS[opp.lifecycle] ?? "border-border/50")}>
+        <Badge variant="outline" className={cn("text-[9px] font-sans", LIFECYCLE_COLORS[opp.lifecycle] ?? "border-border/50")}>
           {opp.lifecycle}
         </Badge>
-        <Badge variant="outline" className={cn("text-[9px] font-mono font-bold", QUALITY_TIER_COLORS[opp.qualityTier])}>
+        <Badge variant="outline" className={cn("text-[9px] font-sans font-bold", QUALITY_TIER_COLORS[opp.qualityTier])}>
           {opp.qualityTier}
         </Badge>
-        <span className="ml-auto text-[10px] font-mono text-muted-foreground">
+        <span className="ml-auto text-[10px] font-sans text-muted-foreground">
           score {opp.score}
         </span>
       </div>
 
       <div className="flex items-center gap-3 mt-2">
         <div className="text-center">
-          <p className="text-[9px] font-mono text-muted-foreground">{tx("marketPanel.scoreLabel")}</p>
+          <p className="text-[9px] font-sans text-muted-foreground">{tx("marketPanel.scoreLabel")}</p>
           <p className={cn(
-            "text-sm font-bold font-mono tabular-nums",
+            "text-sm font-bold font-sans tabular-nums",
             opp.score >= 70 ? "text-emerald-400" :
             opp.score >= 50 ? "text-amber-400" : "text-muted-foreground"
           )}>
@@ -302,14 +302,14 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
           </p>
         </div>
         <div className="text-center">
-          <p className="text-[9px] font-mono text-muted-foreground">{tx("marketPanel.confidenceLabel")}</p>
-          <p className="text-sm font-bold font-mono tabular-nums text-foreground">{opp.confidence}</p>
+          <p className="text-[9px] font-sans text-muted-foreground">{tx("marketPanel.confidenceLabel")}</p>
+          <p className="text-sm font-bold font-sans tabular-nums text-foreground">{opp.confidence}</p>
         </div>
         <div className="flex items-center gap-1 ml-auto">
-          <Badge variant="outline" className={cn("text-[8px] font-mono", FRESHNESS_COLORS[opp.freshness] ?? "border-border/50")}>
+          <Badge variant="outline" className={cn("text-[8px] font-sans", FRESHNESS_COLORS[opp.freshness] ?? "border-border/50")}>
             {mapFreshness(opp.freshness, t)}
           </Badge>
-          <Badge variant="outline" className="text-[8px] font-mono border-border/50">
+          <Badge variant="outline" className="text-[8px] font-sans border-border/50">
             <span className={cn(DATA_COMPLETENESS_COLORS[opp.dataCompleteness])}>
               {mapCompleteness(opp.dataCompleteness, t)}
             </span>
@@ -320,7 +320,7 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
       {opp.primaryReasons.length > 0 && (
         <div className="mt-2 space-y-0.5">
           {opp.primaryReasons.slice(0, 3).map((r, i) => (
-            <p key={i} className="text-[9px] font-mono text-muted-foreground/70">• {r}</p>
+            <p key={i} className="text-[9px] font-sans text-muted-foreground/70">{r}</p>
           ))}
         </div>
       )}
@@ -329,37 +329,37 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
         <div className="mt-2 pt-2 border-t border-border/30 space-y-1.5">
           {opp.supportingEvidence.length > 0 && (
             <div>
-              <p className="text-[9px] font-mono font-semibold text-emerald-400/80 mb-0.5">{tx("marketPanel.supportingLabel")}</p>
+              <p className="text-[9px] font-sans font-semibold text-emerald-400/80 mb-0.5">{tx("marketPanel.supportingLabel")}</p>
               {opp.supportingEvidence.map((e, i) => (
-                <p key={i} className="text-[9px] font-mono text-emerald-300/60">✓ {e}</p>
+                <p key={i} className="text-[9px] font-sans text-emerald-300/60">✓ {e}</p>
               ))}
             </div>
           )}
           {opp.conflictingEvidence.length > 0 && (
             <div>
-              <p className="text-[9px] font-mono font-semibold text-amber-400/80 mb-0.5">{tx("marketPanel.conflictsLabel")}</p>
+              <p className="text-[9px] font-sans font-semibold text-amber-400/80 mb-0.5">{tx("marketPanel.conflictsLabel")}</p>
               {opp.conflictingEvidence.map((c, i) => (
-                <p key={i} className="text-[9px] font-mono text-amber-300/60">⚠ {c}</p>
+                <p key={i} className="text-[9px] font-sans text-amber-300/60">{c}</p>
               ))}
             </div>
           )}
           {opp.missingInformation.length > 0 && (
             <div>
-              <p className="text-[9px] font-mono font-semibold text-muted-foreground/60 mb-0.5">{tx("marketPanel.missingLabel")}</p>
+              <p className="text-[9px] font-sans font-semibold text-muted-foreground/60 mb-0.5">{tx("marketPanel.missingLabel")}</p>
               {opp.missingInformation.map((m, i) => (
-                <p key={i} className="text-[9px] font-mono text-muted-foreground/50">○ {m}</p>
+                <p key={i} className="text-[9px] font-sans text-muted-foreground/50">{m}</p>
               ))}
             </div>
           )}
           {opp.invalidationConditions.length > 0 && (
             <div>
-              <p className="text-[9px] font-mono font-semibold text-red-400/80 mb-0.5">{tx("marketPanel.invalidationLabel")}</p>
+              <p className="text-[9px] font-sans font-semibold text-red-400/80 mb-0.5">{tx("marketPanel.invalidationLabel")}</p>
               {opp.invalidationConditions.map((c, i) => (
-                <p key={i} className="text-[9px] font-mono text-red-300/60">• {c}</p>
+                <p key={i} className="text-[9px] font-sans text-red-300/60">{c}</p>
               ))}
             </div>
           )}
-          <div className="text-[9px] font-mono text-muted-foreground/60">
+          <div className="text-[9px] font-sans text-muted-foreground/60">
             <span>{txi("marketPanel.coverageLabel", { value: opp.providerCoverage })}</span>
             <span className="mx-1">·</span>
             <span>{txi("marketPanel.updatedLabel", { time: new Date(opp.lastUpdated).toLocaleTimeString() })}</span>
@@ -368,7 +368,7 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
       )}
 
       <button
-        className="mt-1.5 text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground"
+        className="mt-1.5 text-[9px] font-sans text-muted-foreground/50 hover:text-muted-foreground"
         onClick={() => setExpanded(!expanded)}
       >
         {expanded ? <ChevronDown className="size-3 inline" /> : <ChevronRight className="size-3 inline" />}
@@ -482,7 +482,7 @@ export function MarketOpportunities({
     <Card className="border border-border/50">
       <CardHeader className="pb-2">
         <div className="flex items-center gap-2">
-          <h4 className="text-xs font-mono font-semibold text-muted-foreground">
+          <h4 className="text-xs font-sans font-semibold text-muted-foreground">
             <span className="text-primary/60">$</span> {tx("marketPanel.title")}
           </h4>
 
@@ -490,7 +490,7 @@ export function MarketOpportunities({
           <Badge
             variant="outline"
             className={cn(
-              "text-[9px] font-mono",
+              "text-[9px] font-sans",
               isLive
                 ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                 : "bg-muted/20 text-muted-foreground border-border/50"
@@ -503,11 +503,11 @@ export function MarketOpportunities({
             )}
           </Badge>
 
-          <Badge variant="outline" className="text-[9px] font-mono border-border/50">
+          <Badge variant="outline" className="text-[9px] font-sans border-border/50">
             {txi("marketPanel.rankedCount", { count: filteredRanked.length })}
           </Badge>
           {result.excludedInstruments.length > 0 && (
-            <Badge variant="outline" className="text-[9px] font-mono border-border/50 text-muted-foreground/60">
+            <Badge variant="outline" className="text-[9px] font-sans border-border/50 text-muted-foreground/60">
               {txi("marketPanel.excludedCount", { count: result.excludedInstruments.length })}
             </Badge>
           )}
@@ -528,7 +528,7 @@ export function MarketOpportunities({
 
         {/* Timestamp */}
         {scanTimestamp && (
-          <p className="text-[8px] font-mono text-muted-foreground/40 mt-0.5">
+          <p className="text-[8px] font-sans text-muted-foreground/40 mt-0.5">
             {txi("marketPanel.lastScan", { time: new Date(scanTimestamp).toLocaleTimeString() })}
             {scanResult && (
               <span className="ml-1">
@@ -559,7 +559,7 @@ export function MarketOpportunities({
           <Button
             variant={tab === "trading" ? "default" : "ghost"}
             size="sm"
-            className="text-[10px] font-mono h-7"
+            className="text-[10px] font-sans h-7"
             onClick={() => { setTab("trading"); setHorizonIdx(1); }}
           >
             <TrendingUp className="size-3 mr-1" /> {tx("workspace.trading")}
@@ -567,7 +567,7 @@ export function MarketOpportunities({
           <Button
             variant={tab === "investing" ? "default" : "ghost"}
             size="sm"
-            className="text-[10px] font-mono h-7"
+            className="text-[10px] font-sans h-7"
             onClick={() => { setTab("investing"); setHorizonIdx(1); }}
           >
             <ShieldCheck className="size-3 mr-1" /> {tx("workspace.investing")}
@@ -576,7 +576,7 @@ export function MarketOpportunities({
           <Button
             variant="ghost"
             size="sm"
-            className="text-[10px] font-mono h-7 ml-auto"
+            className="text-[10px] font-sans h-7 ml-auto"
             onClick={() => setShowFilters(!showFilters)}
           >
             <Filter className="size-3 mr-1" /> {tx("marketPanel.filters")}
@@ -588,13 +588,13 @@ export function MarketOpportunities({
           <div className="space-y-2 rounded-md bg-muted/20 border border-border/30 p-2">
             {/* Asset class filter */}
             <div>
-              <p className="text-[8px] font-mono text-muted-foreground/50 mb-1">{tx("marketPanel.filterAssetClass")}</p>
+              <p className="text-[8px] font-sans text-muted-foreground/50 mb-1">{tx("marketPanel.filterAssetClass")}</p>
               <div className="flex flex-wrap gap-1">
                 {ASSET_CLASS_OPTIONS.map((opt) => (
                   <button
                     key={opt.key}
                     className={cn(
-                      "rounded-md border px-1.5 py-0.5 text-[8px] font-mono transition-colors",
+                      "rounded-md border px-1.5 py-0.5 text-[8px] font-sans transition-colors",
                       assetFilter === opt.key
                         ? "bg-primary/15 text-primary border-primary/30"
                         : "bg-muted/20 text-muted-foreground border-border/50 hover:bg-muted/40"
@@ -608,13 +608,13 @@ export function MarketOpportunities({
             </div>
             {/* Region filter */}
             <div>
-              <p className="text-[8px] font-mono text-muted-foreground/50 mb-1">{tx("marketPanel.filterRegion")}</p>
+              <p className="text-[8px] font-sans text-muted-foreground/50 mb-1">{tx("marketPanel.filterRegion")}</p>
               <div className="flex flex-wrap gap-1">
                 {REGION_OPTIONS.map((opt) => (
                   <button
                     key={opt.key}
                     className={cn(
-                      "rounded-md border px-1.5 py-0.5 text-[8px] font-mono transition-colors",
+                      "rounded-md border px-1.5 py-0.5 text-[8px] font-sans transition-colors",
                       regionFilter === opt.key
                         ? "bg-primary/15 text-primary border-primary/30"
                         : "bg-muted/20 text-muted-foreground border-border/50 hover:bg-muted/40"
@@ -639,7 +639,7 @@ export function MarketOpportunities({
             <button
               key={h.key}
               className={cn(
-                "rounded-md border px-2 py-0.5 text-[9px] font-mono transition-colors",
+                "rounded-md border px-2 py-0.5 text-[9px] font-sans transition-colors",
                 i === horizonIdx
                   ? "bg-primary/15 text-primary border-primary/30"
                   : "bg-muted/20 text-muted-foreground border-border/50 hover:bg-muted/40"
@@ -652,13 +652,13 @@ export function MarketOpportunities({
         </div>
 
         {/* Market overview */}
-        <p className="text-[10px] font-mono text-muted-foreground/70">{result.marketOverview}</p>
+        <p className="text-[10px] font-sans text-muted-foreground/70">{result.marketOverview}</p>
 
         {/* Scanning indicator */}
         {isScanning && (
           <div className="flex items-center gap-2 py-2">
             <RefreshCw className="size-3 text-primary animate-spin" />
-            <p className="text-[10px] font-mono text-muted-foreground">{tx("marketPanel.scanning")}</p>
+            <p className="text-[10px] font-sans text-muted-foreground">{tx("marketPanel.scanning")}</p>
           </div>
         )}
 
@@ -674,17 +674,17 @@ export function MarketOpportunities({
             ) : (
               <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
                 <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />
-                <p className="text-xs font-mono text-muted-foreground font-semibold">
+                <p className="text-xs font-sans text-muted-foreground font-semibold">
                   {tx("marketPanel.noOpportunity")}
                 </p>
-                <p className="text-[10px] font-mono text-muted-foreground/50 mt-1">
+                <p className="text-[10px] font-sans text-muted-foreground/50 mt-1">
                   {tx("marketPanel.noOpportunityHint")}
                 </p>
               </div>
             )}
             {/* Expired/Invalidated */}
             {radarOpps.some(o => o.lifecycle === "EXPIRED" || o.lifecycle === "INVALIDATED") && (
-              <p className="text-[9px] font-mono text-muted-foreground/40">
+              <p className="text-[9px] font-sans text-muted-foreground/40">
                 {txi("marketPanel.expiredInvalidated", {
                   expired: radarOpps.filter(o => o.lifecycle === "EXPIRED").length,
                   invalidated: radarOpps.filter(o => o.lifecycle === "INVALIDATED").length,
@@ -704,10 +704,10 @@ export function MarketOpportunities({
             </div>
           ) : (
             <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
-              <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />                <p className="text-xs font-mono text-muted-foreground font-semibold">
+              <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />                <p className="text-xs font-sans text-muted-foreground font-semibold">
                   {tx("marketPanel.noOpportunity")}
                 </p>
-                <p className="text-[10px] font-mono text-muted-foreground/50 mt-1">
+                <p className="text-[10px] font-sans text-muted-foreground/50 mt-1">
                   {isLive
                   ? tx("marketPanel.noOpportunityHint")
                   : tx("marketPanel.noSuitableHint")}
@@ -719,10 +719,10 @@ export function MarketOpportunities({
         {/* Phase 51 Radar Diffs */}
         {radarResult && radarResult.diffs.length > 0 && (
           <div>
-            <p className="text-[8px] font-mono text-muted-foreground/40 mb-1">{tx("marketPanel.changesSinceScan")}</p>
+            <p className="text-[8px] font-sans text-muted-foreground/40 mb-1">{tx("marketPanel.changesSinceScan")}</p>
             <div className="space-y-0.5">
               {radarResult.diffs.slice(0, 5).map((d, i) => (
-                <p key={i} className="text-[8px] font-mono text-muted-foreground/50">
+                <p key={i} className="text-[8px] font-sans text-muted-foreground/50">
                   <span className="font-semibold">{d.instrument}</span>: {d.changes.join(", ")}
                 </p>
               ))}
@@ -734,7 +734,7 @@ export function MarketOpportunities({
         {result.excludedInstruments.length > 0 && (
           <div>
             <button
-              className="text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1"
+              className="text-[9px] font-sans text-muted-foreground/50 hover:text-muted-foreground flex items-center gap-1"
               onClick={() => setShowExcluded(!showExcluded)}
             >
               <AlertTriangle className="size-3" />
@@ -745,7 +745,7 @@ export function MarketOpportunities({
             {showExcluded && (
               <div className="mt-1 space-y-0.5">
                 {result.excludedInstruments.map((e, i) => (
-                  <p key={i} className="text-[9px] font-mono text-red-400/60">
+                  <p key={i} className="text-[9px] font-sans text-red-400/60">
                     {e.instrument}: {e.reason}
                   </p>
                 ))}
@@ -755,7 +755,7 @@ export function MarketOpportunities({
         )}
 
         {/* Disclaimer */}
-        <p className="text-[9px] font-mono text-muted-foreground/40 italic border-t border-border/30 pt-2">
+        <p className="text-[9px] font-sans text-muted-foreground/40 italic border-t border-border/30 pt-2">
           {tx("marketPanel.rankingDisclaimer")}{" "}
           {tx("marketPanel.rankingConfidenceNote")}
           {isLive && ` ${tx("marketPanel.liveScanNote")}`}
