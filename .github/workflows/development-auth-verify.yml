@@ -176,6 +176,14 @@ jobs:
           probe() { curl -s --max-time 20 "$1" | head -c 120; }
           echo "::notice title=old deployment instance::$(probe https://tough-goose-455.convex.cloud/instance_name)"
           echo "::notice title=new deployment instance::$(probe https://calculating-eagle-241.convex.cloud/instance_name)"
+          # Non-secret fingerprint: a deploy key is "<type>:<deploymentName>|<secret>".
+          # Printing ONLY the part before "|" names the deployment the saved key
+          # targets and never exposes the secret itself.
+          if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
+            echo "::notice title=installed deploy key identifies::${CONVEX_DEPLOY_KEY%%|*} (prefix only — the secret after '|' is never printed)"
+          else
+            echo "::error title=deploy key::CONVEX_DEPLOY_KEY is not readable in this job"
+          fi
           set +e
           npx convex run auth:signIn '{"provider":"anonymous"}' > /tmp/keytarget.txt 2>&1
           RC=$?
