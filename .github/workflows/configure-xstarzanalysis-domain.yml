@@ -16,7 +16,9 @@ jobs:
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
-          curl -fsS -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}"             -H "Authorization: Bearer ${VERCEL_TOKEN}"             -H "Content-Type: application/json"             -d '{"name":"xstarzanalysis"}'
+          code="$(curl -sS -o /tmp/rename.json -w "%{http_code}" -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}"             -H "Authorization: Bearer ${VERCEL_TOKEN}"             -H "Content-Type: application/json"             -d '{"name":"xstarzanalysis"}')"
+          cat /tmp/rename.json
+          test "${code}" = "200" || test "${code}" = "409"
 
       - name: Attach free branded hostname
         env:
