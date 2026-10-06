@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScoreBreakdown } from "@/components/ScoreBreakdown";
+import { PriceStructureChart } from "@/components/PriceStructureChart";
 import type { AnalysisResult as AnalysisResultType } from "@/types/analysis";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
@@ -195,6 +196,14 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </div>
         </div>
       </Card>
+
+      {result.candles && result.candles.length >= 5 && (
+        <PriceStructureChart
+          candles={result.candles}
+          keyLevels={result.keyLevels}
+          tradePlan={result.tradePlan}
+        />
+      )}
 
       {/* Technical Indicators Quick View */}
       {/* Phase 25 — Data Quality transparency panel. Informational only — never directional. */}
