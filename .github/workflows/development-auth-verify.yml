@@ -179,10 +179,13 @@ jobs:
           # Non-secret fingerprint: a deploy key is "<type>:<deploymentName>|<secret>".
           # Printing ONLY the part before "|" names the deployment the saved key
           # targets and never exposes the secret itself.
+          echo "::notice title=diagnostic ref::dispatch-ref=${{ inputs.ref || github.ref }} head-sha=${GITHUB_SHA::12}"
+          echo "::notice title=diagnostic workflow file sha::$(git hash-object .github/workflows/development-auth-verify.yml)"
+          echo "::notice title=diagnostic job environment::${GITHUB_ENVIRONMENT:-<none attached>}"
           if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
             echo "::notice title=installed deploy key identifies::${CONVEX_DEPLOY_KEY%%|*} (prefix only — the secret after '|' is never printed)"
           else
-            echo "::error title=deploy key::CONVEX_DEPLOY_KEY is not readable in this job"
+            echo "::error title=deploy key::CONVEX_DEPLOY_KEY is NOT PRESENT in this job (empty secret)"
           fi
           set +e
           npx convex run auth:signIn '{"provider":"anonymous"}' > /tmp/keytarget.txt 2>&1
