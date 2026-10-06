@@ -30,8 +30,10 @@ export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectA
   return <div className="min-h-screen bg-background panel-grid flex items-center justify-center px-5">
     <Card className="metal-panel w-full max-w-md">
       <CardHeader className="text-center">
-        <button onClick={() => navigate("/")} className="chrome-text mx-auto text-2xl font-semibold tracking-[0.18em]">XSTARZG</button>
-        <CardTitle className="mt-3">Access Market Analysis</CardTitle>
+        <button onClick={() => navigate("/")} className="mx-auto mb-3 rounded-lg p-1 ring-1 ring-border/60" aria-label="XSTARZG home">
+          <img src="/logo.svg" alt="XSTARZG" className="h-14 w-14" />
+        </button>
+        <CardTitle>XSTARZG Access</CardTitle>
         <CardDescription>Sign in with Google or continue without an account.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
