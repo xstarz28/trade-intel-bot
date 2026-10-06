@@ -160,6 +160,51 @@ jobs:
             done
           fi
 
+      - name: Fresh deployment access check (calculating-eagle-241)
+        # Owner created a fresh project/deployment for the recovery. This step
+        # proves, without printing any secret: (a) whether both deployment
+        # hosts answer their public instance endpoint, (b) WHICH deployment
+        # the workflow's deploy key targets — discriminated by the runtime
+        # error text alone (old deployment says "free plan limits"; a fresh
+        # undeployed one says the function does not exist) — and (c) whether
+        # the fresh host accepts a PUBLIC anonymous sign-in (exactly the API
+        # the app uses). Session tokens are never printed.
+        if: always()
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          probe() { curl -s --max-time 20 "$1" | head -c 120; }
+          echo "::notice title=old deployment instance::$(probe https://tough-goose-455.convex.cloud/instance_name)"
+          echo "::notice title=new deployment instance::$(probe https://calculating-eagle-241.convex.cloud/instance_name)"
+          set +e
+          npx convex run auth:signIn '{"provider":"anonymous"}' > /tmp/keytarget.txt 2>&1
+          RC=$?
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "::notice title=key-targeted sign-in::PASS (the deploy key's deployment executes data-plane functions)"
+          elif grep -qi "free plan limits" /tmp/keytarget.txt; then
+            echo "::error title=key targets the OLD deployment::deploy key still resolves to tough-goose-455 (free-plan refused) — update the CONVEX_DEPLOY_KEY secret to the new deployment's dev key"
+          elif grep -qiE "function (not found|does not exist)|Could not find public function|no function" /tmp/keytarget.txt; then
+            echo "::notice title=key targets the NEW deployment::function set not deployed yet — push the backend, then re-run this check"
+          else
+            tail -3 /tmp/keytarget.txt | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=key-targeted sign-in (unexpected)::${line:0:600}"
+            done
+          fi
+          set +e
+          RESP="$(curl -s --max-time 25 -X POST https://calculating-eagle-241.convex.cloud/api/mutation -H 'Content-Type: application/json' -d '{"path":"auth:signIn","args":{"provider":"anonymous"},"format":"json"}')"
+          RC=$?
+          set -e
+          if [ "$RC" -ne 0 ]; then
+            echo "::error title=new-host public sign-in::curl transport error"
+          elif printf '%s' "$RESP" | grep -q '"status":"success"'; then
+            echo "::notice title=new-host public sign-in::SUCCESS — a real anonymous session was created via the public API (token not printed)"
+          else
+            printf '%s' "$RESP" | head -c 400 | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=new-host public sign-in failed::${line:0:600}"
+            done
+          fi
+
       - name: Upload the (non-secret) verdict
         if: always()
         uses: actions/upload-artifact@v4
