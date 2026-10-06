@@ -91,6 +91,7 @@ export interface CryptoDerivativesData {
 export interface DerivativesResult {
   success: boolean;
   data?: CryptoDerivativesData;
+  tokenomics?: import("./crypto/types").TokenomicsIntelligence;
   error?: string;
   errorCode?: "API_UNAVAILABLE" | "RATE_LIMIT" | "AUTH_ERROR" | "UNSUPPORTED_ASSET" | "NO_DATA";
 }

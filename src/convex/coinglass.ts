@@ -76,21 +76,24 @@ export const fetchDerivatives = action({
   },
   handler: async (_ctx, args): Promise<DerivativesResult> => {
     const apiKey = process.env.COINGLASS_API_KEY;
-    if (!apiKey) {
-      return {
-        success: false,
-        error: "CoinGlass not configured: COINGLASS_API_KEY is missing. Add it via: bunx convex env set COINGLASS_API_KEY <your-key>",
-        errorCode: "AUTH_ERROR",
-      };
-    }
-
-    const symbol = mapSymbolForCG(args.instrument);
+  const symbol = mapSymbolForCG(args.instrument);
+  const tokenomics = await fetchTokenomics(symbol);
 
     try {
       const cacheKey = `deriv:${symbol}`;
       const cached = getCached<CryptoDerivativesData>(cacheKey);
       if (cached) {
-        return { success: true, data: cached };
+        return { success: true, data: cached, tokenomics };
+      }
+
+      if (!apiKey) {
+        return tokenomics
+          ? { success: true, tokenomics }
+          : {
+              success: false,
+              error: "Crypto derivatives provider is not configured.",
+              errorCode: "AUTH_ERROR",
+            };
       }
 
       // Fetch all datasets in parallel
@@ -111,6 +114,7 @@ export const fetchDerivatives = action({
         if (result.status === "rejected" && String(result.reason?.message).startsWith("RATE_LIMIT")) {
           return {
             success: false,
+            tokenomics,
             error: "CoinGlass rate limit exceeded.",
             errorCode: "RATE_LIMIT",
           };
@@ -118,6 +122,7 @@ export const fetchDerivatives = action({
         if (result.status === "rejected" && String(result.reason?.message).startsWith("AUTH_ERROR")) {
           return {
             success: false,
+            tokenomics,
             error: "CoinGlass authentication failed.",
             errorCode: "AUTH_ERROR",
           };
@@ -156,16 +161,84 @@ export const fetchDerivatives = action({
       };
 
       setCache(cacheKey, data);
-      return { success: true, data };
+      return { success: true, data, tokenomics };
     } catch (err: any) {
       return {
         success: false,
+        tokenomics,
         error: `Derivatives fetch failed: ${err?.message ?? "unknown error"}`,
         errorCode: "API_UNAVAILABLE",
       };
     }
   },
 });
+
+// ── Tokenomics (public basic data; cached to control provider/Convex usage) ──
+const tokenomicsCache = new Map<string, { data: import("../lib/data/crypto/types").TokenomicsIntelligence; expiresAt: number }>();
+const TOKENOMICS_TTL = 30 * 60 * 1000;
+
+async function fetchTokenomics(symbol: string): Promise<import("../lib/data/crypto/types").TokenomicsIntelligence | undefined> {
+  if (!symbol) return undefined;
+  const cached = tokenomicsCache.get(symbol);
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
+
+  try {
+    const headers = { Accept: "application/json" };
+    const [unlockRes, supplyRes] = await Promise.all([
+      fetch(`https://api.tokenomist.xyz/unlocks?token=${encodeURIComponent(symbol)}&limit=10`, { headers }),
+      fetch(`https://api.tokenomist.xyz/token/${encodeURIComponent(symbol)}/supply`, { headers }),
+    ]);
+
+    const data: Record<string, any> = {};
+    if (unlockRes.ok) {
+      const json = await unlockRes.json();
+      const events = Array.isArray(json?.data) ? json.data : [];
+      const now = Date.now();
+      const horizon = now + 30 * 24 * 60 * 60 * 1000;
+      const upcoming = events.filter((e: any) => {
+        const t = new Date(e.unlock_date ?? e.date ?? 0).getTime();
+        return Number.isFinite(t) && t > now && t < horizon;
+      });
+      const total = upcoming.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
+      data.unlocks = {
+        upcomingCount30d: upcoming.length,
+        upcomingValue30d: total > 0 ? total : undefined,
+        summary: upcoming.length > 0
+          ? `${upcoming.length} unlock event(s) in next 30 days`
+          : "No upcoming unlock events in next 30 days",
+      };
+    }
+    if (supplyRes.ok) {
+      const json = await supplyRes.json();
+      const circulating = Number(json?.circulating_supply ?? 0);
+      const total = Number(json?.total_supply ?? 0);
+      data.supply = {
+        circulatingSupply: circulating > 0 ? circulating : undefined,
+        totalSupply: total > 0 ? total : undefined,
+        circulatingPercent: circulating > 0 && total > 0 ? (circulating / total) * 100 : undefined,
+      };
+    }
+
+    const availableDatasets = [data.unlocks, data.supply].filter(Boolean).length;
+    if (!availableDatasets) return undefined;
+
+    const result: import("../lib/data/crypto/types").TokenomicsIntelligence = {
+      provider: "Tokenomist",
+      observedAt: Date.now(),
+      freshness: "FRESH",
+      quality: availableDatasets === 2 ? "VERIFIED" : "DEGRADED",
+      available: true,
+      supply: data.supply ? { ...data.supply, reliable: data.supply.circulatingSupply > 0 } : undefined,
+      unlocks: data.unlocks ? { ...data.unlocks, reliable: true } : undefined,
+      availableDatasets,
+      totalDatasets: 2,
+    };
+    tokenomicsCache.set(symbol, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
+    return result;
+  } catch {
+    return undefined;
+  }
+}
 
 // ── Individual Fetchers ─────────────────────────────────────────
 

@@ -1,59 +1,5 @@
-// ─── Iframe error interception ─────────────────────────────────────────────
-// The @vly-ai/integrations Vite plugin injects window-level `error` and
-// `unhandledrejection` handlers (bubble phase) that post vly-vite-hmr-error
-// to the parent, which Freebuff interprets as a fatal crash and closes the
-// preview iframe.  Our capture-phase handlers run BEFORE the injected ones
-// and call stopImmediatePropagation() + preventDefault() to swallow the
-// event, preventing it from reaching the injected handlers.
-if (typeof window !== "undefined") {
-  window.addEventListener(
-    "error",
-    (e) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      // eslint-disable-next-line no-console
-      console.error("[iframe-guard] error:", e.message, e.filename, e.lineno);
-    },
-    true, // capture phase — fires before injected bubble-phase handlers
-  );
-  window.addEventListener(
-    "unhandledrejection",
-    (e) => {
-      e.stopImmediatePropagation();
-      e.preventDefault();
-      // eslint-disable-next-line no-console
-      console.error("[iframe-guard] unhandledrejection:", e.reason);
-    },
-    true,
-  );
-
-  // @convex-dev/auth does `window.location.href = url` when the backend
-  // returns a redirect. Inside the Freebuff preview iframe, any hard
-  // navigation escapes the iframe and dumps the user back in the editor.
-  // We intercept the Location.prototype.href setter so attempted navigations
-  // are silently swallowed — the React tree handles routing instead.
-  if (window.self !== window.top) {
-    const origHrefDesc = Object.getOwnPropertyDescriptor(
-      Location.prototype,
-      "href",
-    );
-    if (origHrefDesc?.set) {
-      Object.defineProperty(Location.prototype, "href", {
-        configurable: true,
-        enumerable: true,
-        get: origHrefDesc.get,
-        set(_value: string) {
-          // Silently swallow — do not navigate.
-        },
-      });
-    }
-  }
-}
-
-import "@vly-ai/integrations";
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
-import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
 import React, { StrictMode } from "react";
@@ -62,8 +8,6 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { I18nProvider } from "@/lib/i18n";
 import "./index.css";
 
-// Static imports — React.lazy chunks fail to load in the Freebuff
-// preview iframe, causing a blank-screen crash.
 import Landing from "./pages/Landing.tsx";
 import AuthPage from "./pages/Auth.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
@@ -71,25 +15,6 @@ import { Journal } from "@/components/Journal";
 import NotFound from "./pages/NotFound.tsx";
 import Pricing from "./pages/Pricing.tsx";
 
-/** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
- *  crashing the whole app (e.g. hook errors in WebContainer environment). */
-class ToolbarErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(err: Error) {
-    console.warn("[VlyToolbar] Caught error, toolbar disabled:", err.message);
-  }
-  render() {
-    return this.state.hasError ? null : this.props.children;
-  }
-}
-
-/** Hard guard so runtime errors never leave the preview as a blank page. */
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { hasError: boolean; message: string; stack: string }
@@ -103,27 +28,23 @@ class RootErrorBoundary extends React.Component<
     };
   }
   componentDidCatch(err: Error) {
-    console.error("[WebContainer preview] Root crash:", err);
+    console.error("[XSTARZG] Root crash:", err);
   }
   render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
-          <div className="max-w-lg text-center">
-            <p className="text-sm font-semibold">Preview runtime error</p>
-            <p className="mt-2 text-xs text-muted-foreground break-words">
-              {this.state.message}
-            </p>
-            {this.state.stack && (
-              <pre className="mt-3 text-left text-[10px] leading-4 text-muted-foreground/80 max-h-40 overflow-auto rounded border border-border/60 p-2">
-                {this.state.stack}
-              </pre>
-            )}
-          </div>
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
+        <div className="max-w-lg text-center">
+          <p className="text-sm font-semibold">XSTARZG could not load this view.</p>
+          <p className="mt-2 text-xs text-muted-foreground break-words">{this.state.message}</p>
+          {this.state.stack && (
+            <pre className="mt-3 text-left text-[10px] leading-4 text-muted-foreground/80 max-h-40 overflow-auto rounded border border-border/60 p-2">
+              {this.state.stack}
+            </pre>
+          )}
         </div>
-      );
-    }
-    return this.props.children;
+      </div>
+    );
   }
 }
 
@@ -132,39 +53,20 @@ const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
-      <ToolbarErrorBoundary>
-        <VlyToolbar />
-      </ToolbarErrorBoundary>
       <I18nProvider>
-      <ConvexAuthProvider client={convex}>
-        <MemoryRouter initialEntries={["/"]}>
-          <Routes>
-            <Route path="/" element={<Landing />} />
-            <Route
-              path="/auth"
-              element={<AuthPage redirectAfterAuth="/dashboard" />}
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <RequireAuth>
-                  <Dashboard />
-                </RequireAuth>
-              }
-            />
-            <Route
-              path="/journal"
-              element={
-                <RequireAuth>
-                  <Journal />
-                </RequireAuth>
-              }
-            />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </MemoryRouter>
-        <Toaster />
-      </ConvexAuthProvider>
+        <ConvexAuthProvider client={convex}>
+          <MemoryRouter initialEntries={["/"]}>
+            <Routes>
+              <Route path="/" element={<Landing />} />
+              <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
+              <Route path="/pricing" element={<Pricing />} />
+              <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+              <Route path="/journal" element={<RequireAuth><Journal /></RequireAuth>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </MemoryRouter>
+          <Toaster />
+        </ConvexAuthProvider>
       </I18nProvider>
     </RootErrorBoundary>
   </StrictMode>,

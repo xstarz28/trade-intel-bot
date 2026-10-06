@@ -74,6 +74,27 @@ type DashboardTab = "analysis" | "protection";
 type InvestorTab = "portfolio" | "intelligence" | "analysis";
 type WorkspaceMode = "trader" | "investor";
 
+const DEFAULT_CRYPTO_PRIORITY = [
+  "BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "XRP-USDT-SWAP",
+  "BNB-USDT-SWAP", "DOGE-USDT-SWAP", "ADA-USDT-SWAP", "AVAX-USDT-SWAP",
+  "LINK-USDT-SWAP", "SUI-USDT-SWAP", "AAVE-USDT-SWAP", "LTC-USDT-SWAP",
+  "DOT-USDT-SWAP", "UNI-USDT-SWAP", "NEAR-USDT-SWAP", "APT-USDT-SWAP",
+];
+
+function prioritizeCryptoDiscovery<T extends { instId: string }>(instruments: readonly T[]): T[] {
+  const priority = new Map(DEFAULT_CRYPTO_PRIORITY.map((id, index) => [id, index]));
+  return [...instruments]
+    .filter((item) => /-USDT-SWAP$/i.test(item.instId))
+    .filter((item) => !/^1000/i.test(item.instId))
+    .filter((item) => !/(?:-3L|-3S|-5L|-5S)-/i.test(item.instId))
+    .sort((a, b) => {
+      const pa = priority.get(a.instId) ?? 1000;
+      const pb = priority.get(b.instId) ?? 1000;
+      if (pa !== pb) return pa - pb;
+      return a.instId.localeCompare(b.instId);
+    });
+}
+
 function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
   return [
     { label: t.dashboard.detectingInstrument, status: "pending" },
@@ -131,8 +152,9 @@ export default function Dashboard() {
         const discovery = await discoverOkxInstruments();
         if (cancelled || !discovery.success || discovery.instruments.length === 0) return;
 
+        const prioritized = prioritizeCryptoDiscovery(discovery.instruments);
         const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-          discovery.instruments,
+          prioritized.length > 0 ? prioritized : discovery.instruments,
           discoveryCursorRef.current,
           20,
         );
