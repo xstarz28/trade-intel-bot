@@ -38,23 +38,26 @@ const evidence = {
 };
 
 try {
-  await page.goto(`${url}/auth`, { waitUntil: "domcontentloaded", timeout });
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
   await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
 
-  const authBody = (await page.locator("body").innerText()).slice(0, 5000);
-  console.log("AUTH_PAGE_BODY=" + authBody.replace(/\s+/g, " "));
+  const start = page.getByRole("button", { name: /start analysis/i });
+  if (!(await start.count())) throw new Error("Landing page did not expose Start analysis");
+  await start.click();
   const guest = page.getByRole("button", { name: /continue without an account/i });
   const guestCount = await guest.count();
   console.log("GUEST_BUTTON_COUNT=" + guestCount);
-  if (guestCount) await guest.click();
+  if (!guestCount) throw new Error("Auth page did not expose guest sign-in");
+  await guest.click();
 
   try {
-    await page.waitForURL(/\/dashboard(?:\?|$)/, { timeout: 30000 });
+    const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
+    await btc.waitFor({ state: "visible", timeout: 30000 });
+    evidence.authenticated = true;
   } catch {
     const authError = await page.locator("text=/Sign in failed|failed|error/i").allTextContents().catch(() => []);
-    throw new Error(`Guest authentication did not reach /dashboard. Visible auth errors: ${authError.join(" | ") || "none"}; URL: ${page.url()}`);
+    throw new Error(`Guest authentication did not expose the dashboard. Visible auth errors: ${authError.join(" | ") || "none"}; URL: ${page.url()}`);
   }
-  evidence.authenticated = true;
 
   const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
   if (!(await btc.count())) {
