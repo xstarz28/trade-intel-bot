@@ -71,7 +71,17 @@ try {
   if (!(await run.count())) throw new Error("Run Analysis control is missing from the running production UI");
   await run.click();
 
-  await page.getByText(/BIAS:/i).first().waitFor({ state: "visible", timeout });
+  await page.waitForFunction(() => {
+    const visibleText = Array.from(document.querySelectorAll("*"))
+      .filter((el) => {
+        const s = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
+      })
+      .map((el) => el.textContent || "")
+      .join("\n");
+    return visibleText.includes("BIAS:") && visibleText.includes("Price:");
+  }, null, { timeout });
 
   const body = await page.locator("body").innerText();
   const priceLabel = page.getByText("Price:", { exact: true });
