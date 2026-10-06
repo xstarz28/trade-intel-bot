@@ -6,6 +6,7 @@ import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
+import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
@@ -339,6 +340,28 @@ export default function Dashboard() {
           const intelResult = results[1];
           calendarResult = results[2];
           const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
+
+          // For crypto, a verified provider-native FRESH snapshot already
+          // acquired by the dashboard is preferred over a delayed secondary feed.
+          // This keeps the actual analysis aligned with the same live evidence
+          // used by the opportunity scanner.
+          if (input.instrumentType === "crypto") {
+            const nativeLive = liveSourceRef.current.get(input.instrument);
+            if (
+              nativeLive?.marketData &&
+              (nativeLive.marketData.dataFreshness === "realtime" ||
+                nativeLive.marketData.dataFreshness === "delayed" ||
+                nativeLive.marketData.provider.toLowerCase() === "okx")
+            ) {
+              marketDataResult = {
+                success: true,
+                data: nativeLive.marketData,
+                technical:
+                  nativeLive.technicalData ??
+                  calculateTechnical(nativeLive.marketData.candles),
+              };
+            }
+          }
 
           // Primary market provider is preferred, but a verified provider-native
           // live snapshot already acquired by the dashboard is a valid runtime
