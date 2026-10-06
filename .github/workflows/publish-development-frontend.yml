@@ -538,6 +538,35 @@ jobs:
             exit 1
           fi
 
+      - name: Verify the published build's embedded backend URL (repoint evidence)
+        # The release must talk to exactly ONE backend: the expected one
+        # (build_convex_url input, else the environment's VITE_CONVEX_URL).
+        # The LIVE site's HTML and its same-origin assets are fetched and
+        # grepped: the expected deployment host must be PRESENT and every
+        # retired deployment host must be ABSENT. Deployment names are public
+        # values, never secrets.
+        if: always()
+        env:
+          XSTARZ_FRONTEND_HOST_URL: ${{ inputs.host_url || vars.FRONTEND_HOST_URL }}
+          EXPECTED_BACKEND: ${{ inputs.build_convex_url || vars.VITE_CONVEX_URL }}
+        run: |
+          node --input-type=module -e "
+          const host = process.env.XSTARZ_FRONTEND_HOST_URL;
+          const expected = new URL(process.env.EXPECTED_BACKEND).host;
+          const retired = ['tough-goose-455.convex.cloud','pleasant-curlew-264.convex.cloud','calculating-eagle-241.convex.cloud'];
+          const html = await (await fetch(host, { redirect: 'follow' })).text();
+          const srcs = [...html.matchAll(/(?:src|href)=\"(\/assets\/[^\"]+)\"/g)].map(m => new URL(m[1], host).href).slice(0, 24);
+          const texts = [html];
+          for (const s of srcs) { try { texts.push(await (await fetch(s)).text()); } catch {} }
+          const all = texts.join(String.fromCharCode(10));
+          const expectedPresent = all.includes(expected);
+          const retiredFound = retired.filter(h => all.includes(h));
+          console.log('assets fetched: ' + srcs.length);
+          console.log('embedded backend ' + expected + ': ' + (expectedPresent ? 'PRESENT' : 'ABSENT'));
+          console.log('retired hosts present: ' + (retiredFound.length ? retiredFound.join(', ') : 'none'));
+          if (!expectedPresent || retiredFound.length) { console.error('::error title=embedded backend url::expected=' + expected + ' present=' + expectedPresent + ' retired=' + (retiredFound.join(',') || 'none')); process.exit(1); }
+          " 
+
       - name: Fail closed when the verified artifact could not be published
         if: inputs.mode == 'publish' && steps.credential.outputs.state == 'absent'
         run: |
