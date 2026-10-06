@@ -1,8 +1,9 @@
 name: Production runtime smoke
 
 on:
-  push:
-    branches: ["main"]
+  workflow_run:
+    workflows: ["Production frontend deploy"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -15,6 +16,7 @@ concurrency:
 jobs:
   smoke:
     name: Real production BTC analysis smoke
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -22,7 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 1
 
       - uses: actions/setup-node@v4
