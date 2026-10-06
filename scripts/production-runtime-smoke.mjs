@@ -30,7 +30,7 @@ const evidence = {
 };
 
 try {
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+  await page.goto(`${url}/auth`, { waitUntil: "domcontentloaded", timeout });
   await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
 
   const guest = page.getByRole("button", { name: /continue without an account/i });
