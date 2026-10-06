@@ -2427,6 +2427,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     timestamp: Date.now(),
     priceSnapshot: input.marketData?.price,
     technicalData: input.technicalData,
+    candles: input.marketData?.candles?.slice(-120),
     dataSource: input.marketData?.provider,
     sentimentData: input.sentimentData,
     fundamentalData: input.fundamentalData,
