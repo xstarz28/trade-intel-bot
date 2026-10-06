@@ -532,7 +532,7 @@ jobs:
           ${{ inputs.mode == 'publish' && format('ARGS+=(--expect-build-info-sha256 {0} --expect-asset-names {1})', steps.artifact.outputs.sha256, steps.artifact.outputs.entry) || '' }}
           if ! npm run verify:published -- "${ARGS[@]}"; then
             echo "::error title=Published-verify FAILED::failure lines follow as annotations"
-            npm run verify:published -- "${ARGS[@]}" 2>&1 | grep -av "npm error" | tail -10 | while IFS= read -r line; do
+            npm run verify:published -- "${ARGS[@]}" 2>&1 | grep -av "npm error" | grep -av "  ok  " | head -20 | while IFS= read -r line; do
               [ -n "$line" ] && echo "::error title=verify-published::${line:0:600}"
             done
             exit 1
