@@ -76,8 +76,8 @@ try {
   const body = await page.locator("body").innerText();
   const priceLabel = page.getByText("Price:", { exact: true });
   const sourceLabel = page.getByText("Source:", { exact: true });
-  const priceRow = await priceLabel.count() ? priceLabel.first().locator("..").innerText() : "";
-  const sourceRow = await sourceLabel.count() ? sourceLabel.first().locator("..").innerText() : "";
+  const priceRow = await priceLabel.count() ? await priceLabel.first().locator("..").innerText() : "";
+  const sourceRow = await sourceLabel.count() ? await sourceLabel.first().locator("..").innerText() : "";
   const priceMatch = priceRow.match(/Price:\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
   const sourceMatch = sourceRow.match(/Source:\s*(.+)$/i);
 
