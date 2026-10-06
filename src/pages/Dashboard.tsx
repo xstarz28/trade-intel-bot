@@ -359,45 +359,37 @@ export default function Dashboard() {
           calendarResult = results[2];
           const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
 
-          // For crypto, a verified provider-native FRESH snapshot already
-          // acquired by the dashboard is preferred over a delayed secondary feed.
-          // This keeps the actual analysis aligned with the same live evidence
-          // used by the opportunity scanner.
-          if (input.instrumentType === "crypto") {
-            const nativeLive = findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument);
-            if (
-              nativeLive?.marketData &&
-              (nativeLive.marketData.dataFreshness === "realtime" ||
-                nativeLive.marketData.dataFreshness === "delayed" ||
-                nativeLive.marketData.provider.toLowerCase() === "okx")
-            ) {
-              marketDataResult = {
-                success: true,
-                data: nativeLive.marketData,
-                technical:
-                  nativeLive.technicalData ??
-                  calculateTechnical(nativeLive.marketData.candles),
-              };
-            }
-          }
+          // A verified provider-native snapshot is authoritative when it is
+          // genuinely realtime. Do NOT let a fulfilled secondary provider
+          // overwrite it afterward. Delayed/stale native data is never promoted
+          // merely because its provider is preferred.
+          const nativeLive =
+            input.instrumentType === "crypto"
+              ? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
+              : undefined;
+          const nativeIsRealtime =
+            nativeLive?.marketData?.dataFreshness === "realtime";
 
-          // Primary market provider is preferred, but a verified provider-native
-          // live snapshot already acquired by the dashboard is a valid runtime
-          // fallback. This prevents a slow/unavailable primary provider from
-          // blocking an otherwise live analysis.
-          if (marketResult.status === "fulfilled") {
+          if (nativeIsRealtime && nativeLive?.marketData) {
+            marketDataResult = {
+              success: true,
+              data: nativeLive.marketData,
+              technical:
+                nativeLive.technicalData ??
+                calculateTechnical(nativeLive.marketData.candles),
+            };
+          } else if (marketResult.status === "fulfilled") {
             marketDataResult = marketResult.value as MarketDataResult;
+          } else if (nativeLive?.marketData) {
+            // Primary market data failed: a verified native snapshot is still a
+            // valid fallback, even when its freshness is explicitly disclosed.
+            marketDataResult = {
+              success: true,
+              data: nativeLive.marketData,
+              technical: nativeLive.technicalData,
+            };
           } else {
-            const liveFallback = findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument);
-            if (liveFallback?.marketData) {
-              marketDataResult = {
-                success: true,
-                data: liveFallback.marketData,
-                technical: liveFallback.technicalData,
-              };
-            } else {
-              throw new Error(marketResult.reason?.message || "Market data fetch failed");
-            }
+            throw new Error(marketResult.reason?.message || "Market data fetch failed");
           }
 
           if (!marketDataResult.success || !marketDataResult.data) {
