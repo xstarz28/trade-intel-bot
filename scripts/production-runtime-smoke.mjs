@@ -55,6 +55,28 @@ try {
     const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
     await btc.waitFor({ state: "visible", timeout: 30000 });
     evidence.authenticated = true;
+  
+  // Verify the Google OAuth handoff itself reaches Google without an immediate
+  // redirect_uri_mismatch/invalid-request rejection. No account credentials
+  // are entered by this smoke.
+  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+  const startAgain = page.getByRole("button", { name: /start analysis/i });
+  if (await startAgain.count()) await startAgain.click();
+  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+  const google = page.getByRole("button", { name: /continue with google/i });
+  if (!(await google.count())) throw new Error("Google sign-in control missing from production auth surface");
+  await google.click();
+  await page.waitForLoadState("domcontentloaded", { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(1500);
+  const googleText = (await page.locator("body").innerText()).slice(0, 4000);
+  if (/redirect_uri_mismatch|invalid_request|Error 400/i.test(googleText)) {
+    throw new Error("Google OAuth handoff is rejected by Google: redirect_uri_mismatch/invalid request");
+  }
+  evidence.googleOAuthHandoff = {
+    url: page.url(),
+    googleHost: /(^|\.)google\.com$/i.test(new URL(page.url()).hostname) || /googleusercontent/i.test(page.url()),
+    rejected: false,
+  };
   } catch {
     const authError = await page.locator("text=/Sign in failed|failed|error/i").allTextContents().catch(() => []);
     throw new Error(`Guest authentication did not expose the dashboard. Visible auth errors: ${authError.join(" | ") || "none"}; URL: ${page.url()}`);
