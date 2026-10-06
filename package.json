@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "frontend:prebuilt": "node scripts/prepare-vercel-output.mjs",
+    "frontend:publish:rest": "node scripts/deploy-frontend-rest.mjs",
+    "verify:frontend:release": "node scripts/verify-frontend-release.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",

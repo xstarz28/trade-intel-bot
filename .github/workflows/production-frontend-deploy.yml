@@ -1,0 +1,89 @@
+name: Production frontend deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-frontend
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, publish and verify XSTARZG frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    env:
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      VERCEL_PROJECT_NAME: ${{ vars.VERCEL_PROJECT_NAME }}
+      FRONTEND_HOST_URL: ${{ vars.FRONTEND_HOST_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Validate release configuration
+        run: |
+          set -euo pipefail
+          test -n "${VITE_CONVEX_URL}" || { echo "::error::VITE_CONVEX_URL is missing from the production environment"; exit 1; }
+          printf '%s' "${VITE_CONVEX_URL}" | grep -Eq '^https://[a-z0-9][a-z0-9-]*\.convex\.cloud$' || { echo "::error::VITE_CONVEX_URL must be an https *.convex.cloud URL"; exit 1; }
+          test -n "${VERCEL_TOKEN}" || { echo "::error::VERCEL_TOKEN is missing from the production environment"; exit 1; }
+          test -n "${VERCEL_ORG_ID}" || { echo "::error::VERCEL_ORG_ID is missing from the production environment"; exit 1; }
+          test -n "${VERCEL_PROJECT_ID}" || { echo "::error::VERCEL_PROJECT_ID is missing from the production environment"; exit 1; }
+
+      - name: Build exact main revision
+        env:
+          XSTARZ_BUILD_COMMIT: ${{ github.sha }}
+          XSTARZ_BUILD_REF: main
+        run: npm run build
+
+      - name: Verify release artifact
+        run: npm run verify:frontend:release -- --expect-commit "${{ github.sha }}" --expect-branch main
+
+      - name: Assemble Vercel Build Output API payload
+        run: npm run frontend:prebuilt -- --dist dist --expect-commit "${{ github.sha }}" --expect-branch main
+
+      - name: Publish prebuilt artifact to Vercel production
+        id: deploy
+        run: |
+          set -euo pipefail
+          args=(--org-id "${VERCEL_ORG_ID}" --project-id "${VERCEL_PROJECT_ID}" --project-name "${VERCEL_PROJECT_NAME:-trade-intel-bot}" --target production --expect-commit "${{ github.sha }}")
+          out="${RUNNER_TEMP}/vercel-deploy.out"
+          err="${RUNNER_TEMP}/vercel-deploy.err"
+          set +e
+          npm run frontend:publish:rest -- "${args[@]}" >"${out}" 2>"${err}"
+          status=$?
+          set -e
+          cat "${out}"
+          cat "${err}" >&2
+          test "${status}" -eq 0
+          url="$(grep -oE 'https://[A-Za-z0-9.-]+' "${out}" | tail -n 1)"
+          test -n "${url}"
+          echo "deployment_url=${url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify published deployment
+        run: |
+          set -euo pipefail
+          target="${FRONTEND_HOST_URL:-${{ steps.deploy.outputs.deployment_url }}}"
+          npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main
+
+      - name: Report public target
+        run: |
+          if [ -n "${FRONTEND_HOST_URL:-}" ]; then echo "PUBLIC FRONTEND: ${FRONTEND_HOST_URL}"; else echo "PUBLIC FRONTEND DEPLOYMENT: ${{ steps.deploy.outputs.deployment_url }}"; fi
