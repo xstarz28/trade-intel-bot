@@ -76,7 +76,8 @@ jobs:
           test "${status}" -eq 0
           url="$(grep -oE 'https://[A-Za-z0-9.-]+' "${out}" | tail -n 1)"
           test -n "${url}"
-          deployment_id="$(grep -oE "deployment dpl_[A-Za-z0-9]+" "${out}" | tail -n 1 | awk "{print \\$2}")"
+          deployment_line="$(grep -oE "deployment dpl_[A-Za-z0-9]+" "${out}" | tail -n 1)"
+          deployment_id="${deployment_line#deployment }"
           test -n "${deployment_id}"
           echo "deployment_url=${url}" >> "${GITHUB_OUTPUT}"
           echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
