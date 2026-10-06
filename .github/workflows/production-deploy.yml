@@ -1,0 +1,211 @@
+# Phase 255 — fail-closed Convex production deploy.
+#
+# Manual only. This workflow does not run on push, pull_request, or tags.
+# It does not admit a release. It does not run Evidence D. It does not
+# configure email. It does not invent a Convex project.
+#
+# Required GitHub Environment: production
+# Required secret (environment or repository): CONVEX_DEPLOY_KEY
+# Required variable: CONVEX_DEPLOYMENT must be prod:<team>:<project>
+#
+# Optional variables, checked only when set:
+#   VITE_CONVEX_URL   https on *.convex.cloud
+#   CONVEX_SITE_URL   https on *.convex.site
+#   XSTARZ_DEPLOYMENT_ENV  must be production if set (absent means production)
+#
+# The frontend build URL is injected by `npx convex deploy --cmd`, not
+# hardcoded. Email (resend / smtp2go) stays in Convex production env:
+#   XSTARZ_EMAIL_TRANSPORT, XSTARZ_EMAIL_API_KEY,
+#   XSTARZ_EMAIL_SENDER_ADDRESS, XSTARZ_EMAIL_SENDER_NAME
+#
+# A missing secret fails the guard. A checkout of main is refused (the tip
+# still serves the leaked OTP credential). An empty dispatch is not a
+# production deployment. This workflow does not write release-gate evidence.
+
+name: Production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch, tag or SHA to deploy (defaults to the dispatched ref)"
+        required: false
+        type: string
+      confirm:
+        description: "Type DEPLOY_PROD to confirm a production deploy"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Refuse unless production identity and deploy key exist
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+      XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+      SOURCE_REF: ${{ inputs.ref || github.ref }}
+    steps:
+      - name: Require the confirmation phrase
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY_PROD" ]; then
+            echo "::error::Refused: a production deploy must be confirmed with DEPLOY_PROD."
+            exit 1
+          fi
+
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Fail closed when production deploy inputs are absent or non-prod
+        run: npm run production:deploy:guard -- --json
+
+  deploy:
+    name: Convex production deploy
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+      XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+      SOURCE_REF: ${{ inputs.ref || github.ref }}
+    steps:
+      - name: Require the confirmation phrase
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY_PROD" ]; then
+            echo "::error::Refused: a production deploy must be confirmed with DEPLOY_PROD."
+            exit 1
+          fi
+
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Re-check production identity before invoking Convex
+        run: npm run production:deploy:guard -- --json
+
+      - name: Verify the production configuration before deploying (values never printed)
+        # Fail-closed pre-flight, run against the PRODUCTION deployment itself:
+        # · the deploy key's non-secret fingerprint (prefix before '|');
+        # · the effective GitHub Environment variables vs the expected
+        #   production identity and URL;
+        # · the deployment's OWN environment: every required NAME present
+        #   (secrets are never printed), XSTARZ_DEPLOYMENT_ENV = production
+        #   when set (absent also means production), and the retired federated
+        #   issuer ABSENT or EMPTY (a non-empty issuer is a hard error on
+        #   production by the repository's own issuer policy).
+        env:
+          EXPECTED_DEPLOYMENT: prod:xstarz-production:xstarz-analysis
+          EXPECTED_URL: https://hushed-seal-237.convex.cloud
+          EFFECTIVE_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+          EFFECTIVE_URL: ${{ vars.VITE_CONVEX_URL }}
+        run: |
+          set -euo pipefail
+          FAIL=0
+          if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
+            echo "::notice title=production deploy key fingerprint::${CONVEX_DEPLOY_KEY%%|*} (prefix only — secret after '|' never printed)"
+          else
+            echo "::error title=deploy key::CONVEX_DEPLOY_KEY is NOT present in this job"
+            FAIL=1
+          fi
+          echo "::notice title=effective CONVEX_DEPLOYMENT::'${EFFECTIVE_DEPLOYMENT:-<empty>}' (expected '${EXPECTED_DEPLOYMENT}')"
+          if [ "${EFFECTIVE_DEPLOYMENT:-}" != "${EXPECTED_DEPLOYMENT}" ]; then
+            echo "::error title=CONVEX_DEPLOYMENT verdict::stale or absent — expected ${EXPECTED_DEPLOYMENT}"
+            FAIL=1
+          fi
+          echo "::notice title=effective VITE_CONVEX_URL::'${EFFECTIVE_URL:-<empty>}' (expected '${EXPECTED_URL}')"
+          if [ "${EFFECTIVE_URL:-}" != "${EXPECTED_URL}" ]; then
+            echo "::error title=VITE_CONVEX_URL verdict::stale or absent — expected ${EXPECTED_URL}"
+            FAIL=1
+          fi
+          ENV_LIST="$(npx convex env list 2>&1 || true)"
+          if printf '%s' "${ENV_LIST}" | grep -qi "permission to perform this operation"; then
+            echo "::error title=deployment environment unreadable::the deploy key lacks the env-read permission"
+            FAIL=1
+          else
+            MISSING=""
+            for NAME in JWT_PRIVATE_KEY JWKS TWELVE_DATA_API_KEY ALPHA_VANTAGE_API_KEY EIA_API_KEY TICKATLAS_API_KEY XSTARZ_OWNER_PRINCIPALS AUTH_GOOGLE_ID AUTH_GOOGLE_SECRET SITE_URL; do
+              printf '%s\n' "${ENV_LIST}" | grep -qE "^${NAME}=" || MISSING="${MISSING}${NAME} "
+            done
+            if [ -n "${MISSING}" ]; then
+              echo "::error title=deployment env missing variables::${MISSING}— set them on the production deployment's own Environment Variables before deploying; values are owner secrets and are never printed here"
+              FAIL=1
+            else
+              echo "::notice title=deployment env required names::all present (names only — values never printed)"
+            fi
+            DENV="$(printf '%s\n' "${ENV_LIST}" | grep -E '^XSTARZ_DEPLOYMENT_ENV=' | head -1 | cut -d= -f2- || true)"
+            if [ -n "${DENV}" ] && [ "${DENV}" != "production" ]; then
+              echo "::error title=XSTARZ_DEPLOYMENT_ENV on the deployment::'${DENV}' — production requires 'production' (or absent = production)"
+              FAIL=1
+            else
+              echo "::notice title=XSTARZ_DEPLOYMENT_ENV on the deployment::${DENV:-<absent — defaults to production>}"
+            fi
+            if printf '%s\n' "${ENV_LIST}" | grep -qE '^VLY_CONVEX_AUTH_ISSUER=.+'; then
+              echo "::error title=VLY_CONVEX_AUTH_ISSUER on the deployment::a value is set — production must keep the retired federation OFF (absent or EMPTY); a non-empty issuer is a hard error by policy"
+              FAIL=1
+            else
+              echo "::notice title=VLY_CONVEX_AUTH_ISSUER on the deployment::absent or empty — retired federation OFF (supported production configuration)"
+            fi
+          fi
+          exit "${FAIL}"
+
+      - name: Deploy the Convex backend and build the frontend with the URL Convex injects
+        run: npx convex deploy --yes --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
+
+      - name: Scan the built artifact for embedded credentials
+        run: npm run mobile:verify
+
+      - name: Verify the built frontend artifact (identity, theme, no legacy branding)
+        # Phase 299 — the same artifact contract the development deploy
+        # enforces. A production build that shipped the retired scaffold's
+        # green palette or its platform branding is not production software.
+        run: npm run verify:frontend -- --require-clean
+
+      - name: Keep the frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-frontend
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: This job does not admit a release
+        run: |
+          echo "Convex deploy and frontend build ran."
+          echo "This is not release admission, Evidence D, email verification, or A1/A2."
+          echo "A green deploy job is not a READY_TO_SHIP verdict."
