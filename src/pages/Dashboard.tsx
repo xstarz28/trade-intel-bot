@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstrumentInput } from "@/components/InstrumentInput";
+import { RiskSizingControl, type RiskSizingInputs } from "@/components/RiskSizingControl";
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
@@ -166,6 +167,7 @@ export default function Dashboard() {
   const [currentResult, setCurrentResult] = useState<AnalysisResult | null>(null);
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(getInitialSteps(t));
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [riskSizingInputs, setRiskSizingInputs] = useState<RiskSizingInputs>({});
   // Phase 14 P3 — run identity: a slow/abandoned analysis run must NEVER
   // overwrite the result of a newer run (stale-result mixing guard).
   const runTokenRef = useRef(0);
@@ -280,6 +282,9 @@ export default function Dashboard() {
   const handleAnalyze = useCallback(
     async (input: AnalysisInput) => {
       const myRun = ++runTokenRef.current;
+      input.accountEquity = riskSizingInputs.accountEquity;
+      input.riskPercent = riskSizingInputs.riskPercent;
+      input.accountCurrency = riskSizingInputs.accountCurrency;
       const isStaleRun = () => runTokenRef.current !== myRun;
       setIsAnalyzing(true);
       setCurrentResult(null);
@@ -1084,6 +1089,7 @@ export default function Dashboard() {
           {/* Left — Input + History */}
           <div className="lg:col-span-4 space-y-4">
             <InstrumentInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} />
+            <RiskSizingControl value={riskSizingInputs} onChange={setRiskSizingInputs} />
 
             <div className="hidden lg:block">
               <AnalysisHistory
