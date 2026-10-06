@@ -219,6 +219,25 @@ jobs:
           echo "frontend build provenance:"; cat dist/build-info.json
           echo "::notice title=Development deploy source::ref=${SOURCE_REF} commit=$(git rev-parse HEAD) frontend=$(node -p "const b=require('./dist/build-info.json'); b.shortCommit + ' (' + b.branch + ') built ' + b.builtAt")"
 
+      - name: Seed the deployment's own auth-config environment (fresh deployments are empty)
+        # The auth config (src/convex/auth.config.ts) is validated AT PUSH TIME
+        # against the DEPLOYMENT's own environment variables:
+        # · XSTARZ_DEPLOYMENT_ENV — the deployment class read by
+        #   resolveFederatedIssuer (absent means PRODUCTION, so a fresh
+        #   deployment must be told explicitly that it is `development`);
+        # · CONVEX_SITE_URL — the self-issuer domain (iss) served by the
+        #   deployment's own HTTP actions at `${domain}/.well-known/...`.
+        # Both are idempotent `convex env set` calls (create or overwrite) and
+        # carry NO secret values. The resulting variable NAMES (never values)
+        # are echoed for the audit trail.
+        run: |
+          set -euo pipefail
+          SITE_URL="${VITE_CONVEX_URL%.convex.cloud}.convex.site"
+          echo "seeding: XSTARZ_DEPLOYMENT_ENV=development, CONVEX_SITE_URL=${SITE_URL}"
+          npx convex env set XSTARZ_DEPLOYMENT_ENV development
+          npx convex env set CONVEX_SITE_URL "${SITE_URL}"
+          echo "::notice title=deployment env names (values never printed)::$(npx convex env list | cut -d= -f1 | sort | tr '\n' ' ')"
+
       - name: Deploy the Convex backend to the development deployment
         # `convex dev --once` is the repository's own development deploy command
         # (docs/DEPLOYMENT-HANDOFF.md §A). Type checking is disabled here only
