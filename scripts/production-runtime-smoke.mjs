@@ -15,9 +15,17 @@ page.on("request", (req) => {
 });
 page.on("response", (res) => {
   if (/\/api\/auth\//i.test(res.url())) authTraffic.push({ type: "response", status: res.status(), url: res.url(), location: res.headers()["location"] ?? null });
+  if (/convex\.(cloud|site)/i.test(res.url())) convexTraffic.push({ status: res.status(), url: res.url() });
+});
+page.on("websocket", (ws) => {
+  socketTraffic.push({ url: ws.url() });
+  ws.on("close", () => socketTraffic.push({ closed: ws.url() }));
+  ws.on("socketerror", (error) => socketTraffic.push({ error: String(error) }));
 });
 
 const authTraffic = [];
+const convexTraffic = [];
+const socketTraffic = [];
 const consoleErrors = [];
 const evidence = {
   target: url,
@@ -78,11 +86,19 @@ try {
   evidence.primaryDataQuality = quality;
   evidence.completedAt = new Date().toISOString();
   evidence.authTraffic = authTraffic;
+  evidence.convexTraffic = convexTraffic.slice(-30);
+  evidence.socketTraffic = socketTraffic.slice(-20);
+  evidence.cookies = (await page.context().cookies()).map(({name,domain,path}) => ({name,domain,path}));
+  evidence.localStorageKeys = await page.evaluate(() => Object.keys(localStorage));
   evidence.consoleErrors = consoleErrors.slice(-20);
   console.log(JSON.stringify(evidence, null, 2));
 } catch (error) {
   evidence.completedAt = new Date().toISOString();
   evidence.authTraffic = authTraffic;
+  evidence.convexTraffic = convexTraffic.slice(-30);
+  evidence.socketTraffic = socketTraffic.slice(-20);
+  evidence.cookies = (await page.context().cookies()).map(({name,domain,path}) => ({name,domain,path}));
+  evidence.localStorageKeys = await page.evaluate(() => Object.keys(localStorage));
   evidence.consoleErrors = consoleErrors.slice(-20);
   console.error(JSON.stringify(evidence, null, 2));
   throw error;
