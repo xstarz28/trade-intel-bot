@@ -44,10 +44,8 @@
 #
 # Required GitHub Environment: `development`
 #   secret    CONVEX_DEPLOY_KEY     a dev-scoped key
-#   (CONVEX_DEPLOYMENT is deliberately NOT injected: with CONVEX_DEPLOY_KEY
-#   present the CLI ignores it, and if the key were ever absent the CLI would
-#   silently fall back to this variable — a stale value would then select the
-#   retired deployment. The deploy key alone names the target deployment.)
+#   CONVEX_DEPLOYMENT (dev:<team>:<project>) is the guard's fail-closed
+#   development identity; the deploy key alone selects the actual target.
 # Optional variables, used only when set:
 #   VITE_CONVEX_URL   https on *.convex.cloud (also the post-deploy version probe)
 #   CONVEX_SITE_URL   https on *.convex.site
@@ -119,6 +117,11 @@ jobs:
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
       CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+      # Development identity in the guard's documented `dev:<team>:<project>`
+      # shape (team/project per the deployment's own CLI banner). With
+      # CONVEX_DEPLOY_KEY present the CLI ignores this variable and follows the
+      # key; the guard uses it only as the fail-closed development identity.
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
       XSTARZ_DEPLOYMENT_ENV: development
       SOURCE_REF: ${{ inputs.ref || github.ref }}
     steps:
@@ -157,6 +160,11 @@ jobs:
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
       CONVEX_SITE_URL: ${{ vars.CONVEX_SITE_URL }}
+      # Development identity in the guard's documented `dev:<team>:<project>`
+      # shape (team/project per the deployment's own CLI banner). With
+      # CONVEX_DEPLOY_KEY present the CLI ignores this variable and follows the
+      # key; the guard uses it only as the fail-closed development identity.
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
       XSTARZ_DEPLOYMENT_ENV: development
       SOURCE_REF: ${{ inputs.ref || github.ref }}
     steps:
