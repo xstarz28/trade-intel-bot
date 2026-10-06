@@ -29,11 +29,19 @@ try {
     await guest.click();
   }
 
-  await page.waitForURL(/\/dashboard(?:\?|$)/, { timeout }).catch(() => {});
+  try {
+    await page.waitForURL(/\/dashboard(?:\?|$)/, { timeout: 30000 });
+  } catch {
+    const authError = await page.locator("text=/Sign in failed|failed|error/i").allTextContents().catch(() => []);
+    throw new Error(`Guest authentication did not reach /dashboard. Visible auth errors: ${authError.join(" | ") || "none"}; URL: ${page.url()}`);
+  }
   evidence.authenticated = true;
 
   const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
-  if (!(await btc.count())) throw new Error("BTC/USD quick-pick is missing from the running production UI");
+  if (!(await btc.count())) {
+    const text = (await page.locator("body").innerText()).slice(0, 4000).replace(/\s+/g, " ");
+    throw new Error(`BTC/USD quick-pick is missing from the running production UI. Body: ${text}`);
+  }
   await btc.click();
 
   const run = page.getByRole("button", { name: /run analysis/i });
