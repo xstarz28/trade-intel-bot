@@ -234,24 +234,36 @@ jobs:
           set -o pipefail
           SITE_URL="${VITE_CONVEX_URL%.convex.cloud}.convex.site"
           echo "seeding: XSTARZ_DEPLOYMENT_ENV=development, CONVEX_SITE_URL=${SITE_URL}"
-          annotate() {
-            # One capped, redacted, single-line annotation of the CLI output.
-            printf '%s' "$1" | sed -E "s/$(printf '\033')\[[0-9;]*[a-zA-Z]//g" \
-              | sed -E -e 's/[A-Za-z0-9+=_-]{40,}/<redacted>/g' \
-                       -e '/[Kk]ey|[Tt]oken|[Ss]ecret/ s/[A-Za-z0-9+\/=_-]{24,}/<redacted>/g' \
-              | grep -v CONVEX_DEPLOY_KEY || true \
-              | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | cut -c1-700
-          }
           set +e
-          OUT1="$(npx convex env set XSTARZ_DEPLOYMENT_ENV development 2>&1)"; RC1=$?
-          OUT2="$(npx convex env set CONVEX_SITE_URL "${SITE_URL}" 2>&1)"; RC2=$?
+          npx convex env set XSTARZ_DEPLOYMENT_ENV development > "$RUNNER_TEMP/seed1.log" 2>&1; RC1=$?
+          npx convex env set CONVEX_SITE_URL "${SITE_URL}" > "$RUNNER_TEMP/seed2.log" 2>&1; RC2=$?
           set -e
-          echo "::${RC1:+error}${RC1:-notice} title=seed XSTARZ_DEPLOYMENT_ENV (rc=${RC1})::$(annotate "$OUT1")"
-          echo "::${RC2:+error}${RC2:-notice} title=seed CONVEX_SITE_URL (rc=${RC2})::$(annotate "$OUT2")"
+          echo "seed rc: env-set-1=${RC1} env-set-2=${RC2}"
           if [ "$RC1" -ne 0 ] || [ "$RC2" -ne 0 ]; then
             exit 1
           fi
-          echo "::notice title=deployment env names (values never printed)::$(npx convex env list | cut -d= -f1 | sort | tr '\n' ' ')"
+          npx convex env list | cut -d= -f1 | sort | tr '\n' ' ' > "$RUNNER_TEMP/seed-names.txt"
+          echo "deployment env names (values never printed): $(cat "$RUNNER_TEMP/seed-names.txt")"
+
+      - name: Publish the seed step outcome as annotations
+        # The raw runner log is not reliably fetchable after the run, so the
+        # seed step's captured CLI output is republished here — redacted and
+        # single-line, exactly like the Convex output step below.
+        if: always()
+        run: |
+          redact() {
+            sed -E "s/$(printf '\033')\[[0-9;]*[a-zA-Z]//g" \
+              | sed -E -e 's/[A-Za-z0-9+=_-]{40,}/<redacted>/g' \
+              | tr '\n' ' ' | sed -e 's/%/%25/g' -e 's/\r/%0D/g' | cut -c1-700
+          }
+          for i in 1 2; do
+            f="$RUNNER_TEMP/seed${i}.log"
+            if [ -f "$f" ]; then
+              echo "::notice title=seed env set ${i} output::<$(redact < "$f")>"
+            else
+              echo "::error title=seed env set ${i}::no output captured — the step never reached this command"
+            fi
+          done
 
       - name: Deploy the Convex backend to the development deployment
         # `convex dev --once` is the repository's own development deploy command
