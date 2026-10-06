@@ -236,21 +236,25 @@ jobs:
           echo "required: XSTARZ_DEPLOYMENT_ENV=development, CONVEX_SITE_URL=${SITE_URL}"
           current() { npx convex env list 2>/dev/null | grep -E "^$1=" | head -1 | cut -d= -f2- || true; }
           NEED1=0; [ "$(current XSTARZ_DEPLOYMENT_ENV)" = "development" ] || NEED1=1
-          NEED2=0; [ "$(current CONVEX_SITE_URL)" = "${SITE_URL}" ] || NEED2=1
-          echo "needs-set: XSTARZ_DEPLOYMENT_ENV=${NEED1} CONVEX_SITE_URL=${NEED2}"
-          if [ "$NEED1" -eq 0 ] && [ "$NEED2" -eq 0 ]; then
-            echo "both auth-config variables are already correct on the deployment — nothing to write"
+          echo "needs-set: XSTARZ_DEPLOYMENT_ENV=${NEED1}"
+          # CONVEX_SITE_URL is a Convex BUILT-IN system variable (owner
+          # instruction): it is never created or overridden here. If it is not
+          # in `env list`, it is system-provided to the auth config at push
+          # time; if it is listed, its NAME is echoed only — values never print.
+          if [ -n "$(current CONVEX_SITE_URL)" ]; then
+            echo "CONVEX_SITE_URL: listed on the deployment (system variable — name only, value not printed)"
+          else
+            echo "CONVEX_SITE_URL: not in env list — treated as system-provided (never written by this workflow)"
+          fi
+          if [ "$NEED1" -eq 0 ]; then
+            echo "XSTARZ_DEPLOYMENT_ENV is already correct on the deployment — nothing to write"
           else
             set +e
-            if [ "$NEED1" -eq 1 ]; then
-              npx convex env set XSTARZ_DEPLOYMENT_ENV development > "$RUNNER_TEMP/seed1.log" 2>&1; RC1=$?
-            else RC1=0; fi
-            if [ "$NEED2" -eq 1 ]; then
-              npx convex env set CONVEX_SITE_URL "${SITE_URL}" > "$RUNNER_TEMP/seed2.log" 2>&1; RC2=$?
-            else RC2=0; fi
+            npx convex env set XSTARZ_DEPLOYMENT_ENV development > "$RUNNER_TEMP/seed1.log" 2>&1; RC1=$?
+            RC2=0
             set -e
-            echo "seed rc: env-set-1=${RC1} env-set-2=${RC2}"
-            if [ "$RC1" -ne 0 ] || [ "$RC2" -ne 0 ]; then
+            echo "seed rc: env-set-1=${RC1}"
+            if [ "$RC1" -ne 0 ]; then
               exit 1
             fi
           fi
