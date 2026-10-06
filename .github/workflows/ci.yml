@@ -55,7 +55,7 @@ jobs:
       # environment's own VITE_CONVEX_URL variable and are unaffected.
       - name: Typecheck and production build
         env:
-          VITE_CONVEX_URL: https://tough-goose-455.convex.cloud
+          VITE_CONVEX_URL: https://calculating-eagle-241.convex.cloud
         run: npm run build
 
       - name: Test suite
