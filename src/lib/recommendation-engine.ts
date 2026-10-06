@@ -615,12 +615,17 @@ export function scoreCandidate(
   const dq = evaluateDataQuality(c);
   const reasons: string[] = [];
   const conflicts: string[] = [];
-  const directional = c.setupDirection === "long" || c.setupDirection === "short";
-  const strength = c.setupStrength ?? 0;
+  const fallbackDirection =
+    c.htfBias === "long" || c.htfBias === "short" ? c.htfBias : "neutral";
+  const effectiveDirection = c.setupDirection ?? fallbackDirection;
+  const directional = effectiveDirection === "long" || effectiveDirection === "short";
+  // Direct callers may only provide HTF structure. Treat that as weaker
+  // directional evidence than the richer setupStrength from the live builder.
+  const strength = c.setupStrength ?? (directional ? 55 : 0);
   const confirmations = c.confluenceCount ?? 0;
 
   if (directional && strength > 0) {
-    reasons.push(`${c.setupDirection === "long" ? "Bullish" : "Bearish"} structure/setup evidence ${Math.round(strength)}/100`);
+    reasons.push(`${effectiveDirection === "long" ? "Bullish" : "Bearish"} structure/setup evidence ${Math.round(strength)}/100`);
     if (confirmations >= 3) reasons.push(`${confirmations} independent confirmations`);
   } else {
     conflicts.push("no confirmed directional setup");
@@ -635,6 +640,13 @@ export function scoreCandidate(
   if (c.spreadBps !== undefined) {
     if (c.spreadBps <= 5) score += 5;
     else if (c.spreadBps > 25) { score -= 8; conflicts.push(`wide spread ${c.spreadBps.toFixed(1)}bps`); }
+  }
+
+  // A derivatives flag without concrete positioning metrics is lower-quality
+  // evidence. Do not reward provider availability itself.
+  if (c.hasDerivatives && c.fundingRate === undefined && c.openInterest === undefined) {
+    score -= 5;
+    conflicts.push("derivatives data lacks usable positioning metrics");
   }
   score *= 0.65 + dq.score * 0.0035;
   if (!directional) score = Math.min(score, 45);

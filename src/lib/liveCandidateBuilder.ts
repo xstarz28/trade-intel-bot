@@ -207,8 +207,19 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   const ar = source.analysisResult;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
 
-  // Data freshness from market data timestamp
-  const freshness = assessFreshness(source.marketData?.fetchTimestamp ?? source.marketData?.price?.timestamp ?? ar?.priceSnapshot?.timestamp, now);
+  // Freshness must describe when the market observation occurred, not when we fetched it.
+  // Provider fetchTimestamp can be "now" even when the quoted price itself is old.
+  const latestCandleTimestamp = source.marketData?.candles?.reduce<number | undefined>(
+    (latest, candle) =>
+      latest === undefined || candle.timestamp > latest ? candle.timestamp : latest,
+    undefined,
+  );
+  const observationTimestamp =
+    source.marketData?.price?.timestamp ??
+    latestCandleTimestamp ??
+    ar?.priceSnapshot?.timestamp ??
+    source.marketData?.fetchTimestamp;
+  const freshness = assessFreshness(observationTimestamp, now);
 
   // Data completeness
   const dataCompleteness = assessDataCompleteness(source);
