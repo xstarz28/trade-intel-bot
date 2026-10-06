@@ -205,6 +205,23 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         />
       )}
 
+      {result.positionSizing?.available && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
+              <span className="text-primary/60">$</span> position-sizing
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
+              <div><span className="text-muted-foreground block">Risk budget</span><span className="font-semibold">{result.positionSizing.riskAmount?.toFixed(2)} {result.positionSizing.denominationCurrency}</span></div>
+              <div><span className="text-muted-foreground block">Quantity</span><span className="font-semibold">{result.positionSizing.quantity} {result.positionSizing.quantityUnit}</span></div>
+              <div><span className="text-muted-foreground block">Risk / unit</span><span className="font-semibold">{result.positionSizing.riskPerUnit?.toFixed(6)}</span></div>
+              <div><span className="text-muted-foreground block">Applied risk</span><span className="font-semibold">{((result.positionSizing.appliedRiskPercent ?? 0) * 100).toFixed(2)}%</span></div>
+            </div>
+            <p className="text-[9px] font-mono text-muted-foreground mt-2">Source: {result.positionSizing.specificationSource ?? "provider/user specification"}. This is your chosen risk budget, not a recommended risk level.</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Technical Indicators Quick View */}
       {/* Phase 25 — Data Quality transparency panel. Informational only — never directional. */}
       {result.dataQualityContext && (() => {
