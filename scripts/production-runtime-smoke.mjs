@@ -84,7 +84,12 @@ async function runAnalysis(targetPage, instrument, type, evidenceKey) {
       })
       .map((el) => el.textContent || "")
       .join("\n");
-    return visibleText.includes("BIAS:") && visibleText.includes("Price:");
+    return (
+      visibleText.includes(`${instrument} |`) &&
+      visibleText.includes("BIAS:") &&
+      visibleText.includes("Price:") &&
+      !visibleText.includes("analyzing...")
+    );
   }, null, { timeout });
 
   const body = await targetPage.locator("body").innerText();
@@ -111,6 +116,9 @@ async function runAnalysis(targetPage, instrument, type, evidenceKey) {
   }
   if (!result.primaryDataQuality) {
     throw new Error(`${instrument} rendered without its primary data-quality status`);
+  }
+  if (!body.includes(`${instrument} |`)) {
+    throw new Error(`${instrument} smoke captured a stale result from another instrument`);
   }
 
   evidence.analyses.push(result);
