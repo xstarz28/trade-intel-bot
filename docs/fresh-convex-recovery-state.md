@@ -45,3 +45,14 @@ AFTER dev auth + runtime health are proven.
    **Repository secrets** → edit **CONVEX_DEPLOY_KEY** → paste the new key → save.
    (The old key stays in the old deployment's page and the old deployment is not deleted.)
 Nothing else — after this, dispatch one `development-deploy-relay` and the chain runs.
+
+## 2026-10-06 — owner vars updated; chain re-run; STILL stopped at deploy-key permissions
+- STEP 1 PASS (run 37416511568): fingerprint dev:calculating-eagle-241 + CONVEX_DEPLOYMENT
+  dev:xstarz-production:xstarz-analysis + VITE_CONVEX_URL calculating-eagle-241 — all NEW.
+- STEP 2 (run 37416828035): guard SUCCESS; CLI target verbatim calculating-eagle-241;
+  push refused at "Preparing Convex functions…" — deployment:data:view permission error.
+- Key is permission-restricted (server require_operation named deployment:data:view);
+  fingerprint cannot distinguish re-issued keys (same prefix). ONE owner correction:
+  full default permission set on the key + SAME value in repo secret AND Environment
+  development secret (environment scope overrides repo scope). Full record:
+  /home/user/phase300/RUN-RECOVERY-STEP1-2-KEYPERM.md
