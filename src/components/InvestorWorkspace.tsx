@@ -42,7 +42,7 @@ import {
   BarChart3,
   Activity,
   Layers,
-  Brain,
+  Scale,
   Globe,
   TrendingUp,
   TrendingDown,
@@ -1043,7 +1043,7 @@ export function InvestorWorkspace() {
 
       {/* Per-Position Thesis Intelligence — only when positions exist */}
       {thesisRows.length > 0 && (
-        <Section title={t.investor.positionThesis} icon={<Brain className="size-3" />}>
+        <Section title={t.investor.positionThesis} icon={<Scale className="size-3" />}>
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
             {thesisRows.map((row) => (
               <PositionThesisCard key={row.positionId} row={row} />

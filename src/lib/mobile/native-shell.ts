@@ -67,7 +67,7 @@ export async function initNativeShell(): Promise<() => void> {
     await StatusBar.setStyle({ style: Style.Dark });
     await StatusBar.setOverlaysWebView({ overlay: false });
     if (nativePlatform() === "android") {
-      await StatusBar.setBackgroundColor({ color: "#0b1220" });
+      await StatusBar.setBackgroundColor({ color: "#131519" });
     }
   } catch {
     // A missing plugin must never break app start.

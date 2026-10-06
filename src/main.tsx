@@ -98,15 +98,15 @@ if (!convexUrl) {
   const root = document.getElementById("root");
   if (root) {
     root.innerHTML = `
-      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,sans-serif;background:#0b0f19;color:#e5e7eb">
+      <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,sans-serif;background:#131519;color:#c8cdd5">
         <div style="max-width:32rem">
           <h1 style="font-size:1.125rem;font-weight:600;margin:0 0 8px">Xstarz Analysis is not configured</h1>
-          <p style="margin:0 0 8px;color:#9ca3af;line-height:1.5">
+          <p style="margin:0 0 8px;color:#8a93a0;line-height:1.5">
             This build was produced without a backend URL, so it cannot reach the
             analysis service. No market data can be shown.
           </p>
-          <p style="margin:0;color:#9ca3af;line-height:1.5">
-            Set <code style="color:#93c5fd">VITE_CONVEX_URL</code> in the hosting
+          <p style="margin:0;color:#8a93a0;line-height:1.5">
+            Set <code style="color:#9fc4e8">VITE_CONVEX_URL</code> in the hosting
             environment and rebuild. It is read at build time, not at run time.
           </p>
         </div>

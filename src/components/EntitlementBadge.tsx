@@ -15,7 +15,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
-import { Lock, Sparkles } from "lucide-react";
+import { ArrowUpRight, BadgeCheck, Lock } from "lucide-react";
 
 /** Exactly the server's `getMyEntitlement` shape. */
 export interface ServerEntitlement {
@@ -43,7 +43,7 @@ export function EntitlementBadge({
         variant="outline"
         className="gap-1 font-mono text-[10px] border-primary/50 text-primary"
       >
-        <Sparkles className="size-3" />
+        <BadgeCheck className="size-3" />
         {entitlement.plan === "OWNER"
           ? t.entitlement.ownerLabel
           : t.entitlement.premiumLabel}
@@ -139,7 +139,7 @@ export function LockedSignalNotice({
           onClick={onUpgrade}
           disabled={!onUpgrade}
         >
-          <Sparkles className="size-3" />
+          <ArrowUpRight className="size-3" />
           {t.entitlement.upgradeCta}
         </Button>
         {/* No price, no currency, no plan tier — deferred by design. */}

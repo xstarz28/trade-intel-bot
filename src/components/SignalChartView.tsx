@@ -75,7 +75,7 @@ export function SignalChartView({ spec }: { spec: SignalChartSpec }) {
   const m = spec.meta;
 
   return (
-    <figure data-testid="signal-chart" className="space-y-1">
+    <figure data-testid="signal-chart" className="chart-shell space-y-1 p-3">
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full rounded-lg border border-border/60 bg-background"

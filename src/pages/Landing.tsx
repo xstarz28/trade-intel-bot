@@ -3,10 +3,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Zap,
+  Activity,
   Shield,
   Target,
-  Brain,
+  Gauge,
   AlertTriangle,
   ChevronRight,
   Terminal,
@@ -113,7 +113,7 @@ export default function Landing() {
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         {/* Grid background — terminal feel */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:48px_48px]" />
+        <div className="panel-grid absolute inset-0" />
         {/* Radial fade from center */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,var(--background)_70%)]" />
 
@@ -123,12 +123,12 @@ export default function Landing() {
               variant="outline"
               className="text-[11px] font-mono mb-6 gap-1.5 border-primary/30 text-primary max-w-full whitespace-normal text-center h-auto py-1"
             >
-              <Zap className="size-3 shrink-0" />
+              <Activity className="size-3 shrink-0" />
               {t.landing.heroBadge}
             </Badge>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1] font-mono">
-              <span className="text-primary">Xstarz Analysis</span>
+              <span className="chrome-text">Xstarz Analysis</span>
               <br />
               <span className="text-lg sm:text-xl lg:text-2xl font-semibold text-muted-foreground break-words">
                 {t.landing.heroRole}
@@ -223,7 +223,7 @@ export default function Landing() {
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.1 }}
               >
-                <Card className="h-full border-border/50 bg-card hover:bg-card/80 transition-colors">
+                <Card className="metal-panel h-full transition-colors">
                   <CardContent className="p-5">
                     <div className={`flex size-9 items-center justify-center rounded-lg ${f.bg} mb-3`}>
                       <f.icon className={`size-4.5 ${f.color}`} />
@@ -250,7 +250,7 @@ export default function Landing() {
               viewport={{ once: true }}
             >
               <Badge variant="outline" className="text-[11px] font-mono mb-4 gap-1.5 border-primary/30 text-primary">
-                <Brain className="size-3 shrink-0" /> {t.landing.convictionBadge}
+                <Gauge className="size-3 shrink-0" /> {t.landing.convictionBadge}
               </Badge>
               <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono break-words">
                 {t.landing.convictionTitle}
@@ -391,7 +391,7 @@ export default function Landing() {
       </section>
 
       {/* CTA */}
-      <section className="border-t border-border/40">
+      <section className="metal-panel border-t border-border/40">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-16 sm:py-20 text-center">
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight font-mono break-words">
             {t.landing.ctaTitle}
