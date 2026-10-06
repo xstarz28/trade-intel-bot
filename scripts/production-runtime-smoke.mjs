@@ -51,8 +51,14 @@ try {
   if (!guestCount) throw new Error("Auth page did not expose guest sign-in");
   await guest.click();
 
-  try {
-    const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
+  const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
+  await btc.waitFor({ state: "visible", timeout: 30000 });
+  evidence.authenticated = true;
+
+  const googleCheck = page.getByRole("button", { name: /continue with google/i });
+  if (!(await googleCheck.count())) throw new Error("Google sign-in control missing from production auth surface");
+
+  const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
     await btc.waitFor({ state: "visible", timeout: 30000 });
     evidence.authenticated = true;
   
