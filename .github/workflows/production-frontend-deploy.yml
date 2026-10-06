@@ -76,7 +76,22 @@ jobs:
           test "${status}" -eq 0
           url="$(grep -oE 'https://[A-Za-z0-9.-]+' "${out}" | tail -n 1)"
           test -n "${url}"
+          deployment_id="$(grep -oE "deployment dpl_[A-Za-z0-9]+" "${out}" | tail -n 1 | awk "{print \\$2}")"
+          test -n "${deployment_id}"
           echo "deployment_url=${url}" >> "${GITHUB_OUTPUT}"
+          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Promote exact deployment to production domains
+        run: |
+          set -euo pipefail
+          deployment_id="${{ steps.deploy.outputs.deployment_id }}"
+          response="${RUNNER_TEMP}/vercel-promote.json"
+          code="$(curl -sS -o "${response}" -w "%{http_code}" -X POST \
+            "https://api.vercel.com/v10/projects/${VERCEL_PROJECT_ID}/promote/${deployment_id}?teamId=${VERCEL_ORG_ID}" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json")"
+          cat "${response}"
+          test "${code}" = "200"
 
       - name: Verify published deployment
         run: |
