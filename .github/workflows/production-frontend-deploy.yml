@@ -17,9 +17,9 @@ jobs:
     name: Build, publish and verify XSTARZG frontend
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: production
+    environment: development
     env:
-      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
+      VITE_CONVEX_URL: https://hushed-seal-237.convex.cloud
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
