@@ -41,10 +41,12 @@ try {
   await page.goto(`${url}/auth`, { waitUntil: "domcontentloaded", timeout });
   await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
 
+  const authBody = (await page.locator("body").innerText()).slice(0, 5000);
+  console.log("AUTH_PAGE_BODY=" + authBody.replace(/\s+/g, " "));
   const guest = page.getByRole("button", { name: /continue without an account/i });
-  if (await guest.count()) {
-    await guest.click();
-  }
+  const guestCount = await guest.count();
+  console.log("GUEST_BUTTON_COUNT=" + guestCount);
+  if (guestCount) await guest.click();
 
   try {
     await page.waitForURL(/\/dashboard(?:\?|$)/, { timeout: 30000 });
