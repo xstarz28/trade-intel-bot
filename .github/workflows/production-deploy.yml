@@ -31,7 +31,7 @@ jobs:
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
       CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
       VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
-      CONVEX_SITE_URL: https://xstarzanalysis.vercel.app
+      CONVEX_SITE_URL: https://hushed-seal-237.convex.site
       XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
     steps:
       - name: Require confirmation for manual deploys
@@ -58,16 +58,11 @@ jobs:
         env:
           EXPECTED_DEPLOYMENT: prod:xstarz-production:xstarz-analysis
           EXPECTED_URL: https://hushed-seal-237.convex.cloud
-          EXPECTED_SITE_URL: https://xstarzanalysis.vercel.app
         run: |
           set -euo pipefail
           test -n "${CONVEX_DEPLOY_KEY:-}" || { echo "::error::CONVEX_DEPLOY_KEY missing"; exit 1; }
           test "${CONVEX_DEPLOYMENT:-}" = "${EXPECTED_DEPLOYMENT}" || { echo "::error::Wrong CONVEX_DEPLOYMENT"; exit 1; }
           test "${VITE_CONVEX_URL:-}" = "${EXPECTED_URL}" || { echo "::error::Wrong VITE_CONVEX_URL"; exit 1; }
-          test "${CONVEX_SITE_URL}" = "${EXPECTED_SITE_URL}" || { echo "::error::Wrong CONVEX_SITE_URL"; exit 1; }
-
-      - name: Set branded Convex Auth site URL
-        run: npx convex env set CONVEX_SITE_URL "${CONVEX_SITE_URL}"
 
       - name: Build and deploy backend
         run: npx convex deploy --yes --typecheck disable --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
