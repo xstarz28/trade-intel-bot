@@ -97,6 +97,22 @@ function prioritizeCryptoDiscovery<T extends { instId: string }>(instruments: re
     });
 }
 
+const ACTION_TIMEOUTS_MS = {
+  market: 20_000,
+  intelligence: 10_000,
+  calendar: 8_000,
+  derivatives: 8_000,
+} as const;
+
+function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs),
+    ),
+  ]);
+}
+
 function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
   return [
     { label: t.dashboard.detectingInstrument, status: "pending" },
@@ -282,23 +298,39 @@ export default function Dashboard() {
         try {
           // Build fetch promises
           const fetchPromises: Promise<any>[] = [
-            fetchMarketData({
-              instrument: input.instrument,
-              instrumentType: input.instrumentType,
-              timeframe: input.timeframe,
-            }),
-            fetchIntelligence({
-              instrument: input.instrument,
-              instrumentType: input.instrumentType,
-            }),
-            fetchCalendar({
-              instrument: input.instrument,
-              instrumentType: input.instrumentType,
-            }),
+            withActionTimeout(
+              fetchMarketData({
+                instrument: input.instrument,
+                instrumentType: input.instrumentType,
+                timeframe: input.timeframe,
+              }),
+              ACTION_TIMEOUTS_MS.market,
+              "Primary market data",
+            ),
+            withActionTimeout(
+              fetchIntelligence({
+                instrument: input.instrument,
+                instrumentType: input.instrumentType,
+              }),
+              ACTION_TIMEOUTS_MS.intelligence,
+              "Intelligence",
+            ),
+            withActionTimeout(
+              fetchCalendar({
+                instrument: input.instrument,
+                instrumentType: input.instrumentType,
+              }),
+              ACTION_TIMEOUTS_MS.calendar,
+              "Calendar",
+            ),
           ];
           if (input.instrumentType === "crypto") {
             fetchPromises.push(
-              fetchDerivatives({ instrument: input.instrument }),
+              withActionTimeout(
+                fetchDerivatives({ instrument: input.instrument }),
+                ACTION_TIMEOUTS_MS.derivatives,
+                "Derivatives",
+              ),
             );
           }
 
@@ -308,15 +340,36 @@ export default function Dashboard() {
           calendarResult = results[2];
           const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
 
-          // Market data is critical
+          // Primary market provider is preferred, but a verified provider-native
+          // live snapshot already acquired by the dashboard is a valid runtime
+          // fallback. This prevents a slow/unavailable primary provider from
+          // blocking an otherwise live analysis.
           if (marketResult.status === "fulfilled") {
             marketDataResult = marketResult.value as MarketDataResult;
           } else {
-            throw new Error(marketResult.reason?.message || "Market data fetch failed");
+            const liveFallback = liveSourceRef.current.get(input.instrument);
+            if (liveFallback?.marketData) {
+              marketDataResult = {
+                success: true,
+                data: liveFallback.marketData,
+                technical: liveFallback.technicalData,
+              };
+            } else {
+              throw new Error(marketResult.reason?.message || "Market data fetch failed");
+            }
           }
 
           if (!marketDataResult.success || !marketDataResult.data) {
-            throw new Error(marketDataResult.error || "Market data unavailable");
+            const liveFallback = liveSourceRef.current.get(input.instrument);
+            if (liveFallback?.marketData) {
+              marketDataResult = {
+                success: true,
+                data: liveFallback.marketData,
+                technical: liveFallback.technicalData,
+              };
+            } else {
+              throw new Error(marketDataResult.error || "Market data unavailable");
+            }
           }
           updateStep(1, "done");
 
