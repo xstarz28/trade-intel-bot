@@ -92,7 +92,15 @@ jobs:
             -H "Authorization: Bearer ${VERCEL_TOKEN}" \
             -H "Content-Type: application/json")"
           cat "${response}"
-          test "${code}" = "200"
+          if [ "${code}" = "200" ]; then
+            exit 0
+          fi
+          if [ "${code}" = "409" ] && grep -q '"code":"conflict"' "${response}" && grep -q "already the current production deployment" "${response}"; then
+            echo "Deployment is already the current production deployment; production domains are already pointed at this exact build."
+            exit 0
+          fi
+          echo "::error::Vercel promotion failed with HTTP ${code}"
+          exit 1
 
       - name: Verify published deployment
         run: |
