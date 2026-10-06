@@ -1,0 +1,57 @@
+name: Configure XSTARZG custom domain
+
+on:
+  workflow_dispatch:
+
+jobs:
+  configure-domain:
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - name: Add xstarzanalysis.com to production project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          body='{"name":"xstarzanalysis.com"}'
+          code=$(curl -sS -o /tmp/domain.json -w "%{http_code}" \
+            -X POST "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${body}")
+          cat /tmp/domain.json
+          test "${code}" = "200" || test "${code}" = "201" || {
+            echo "Vercel domain attach returned HTTP ${code}"
+            exit 1
+          }
+
+      - name: Add www alias
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          body='{"name":"www.xstarzanalysis.com"}'
+          code=$(curl -sS -o /tmp/www-domain.json -w "%{http_code}" \
+            -X POST "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains" \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${body}")
+          cat /tmp/www-domain.json
+          test "${code}" = "200" || test "${code}" = "201" || {
+            echo "Vercel www domain attach returned HTTP ${code}"
+            exit 1
+          }
+
+      - name: Verify domain configuration
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          curl -fsS \
+            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
+            "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains/xstarzanalysis.com" | tee /tmp/verify.json
+          echo
+          echo "If Vercel reports DNS verification pending, the registrar DNS must point xstarzanalysis.com to the exact records Vercel returned."
