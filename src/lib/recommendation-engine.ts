@@ -644,7 +644,7 @@ export function scoreCandidate(
 
   // A derivatives flag without concrete positioning metrics is lower-quality
   // evidence. Do not reward provider availability itself.
-  if (c.hasDerivatives && c.fundingRate === undefined && c.openInterest === undefined) {
+  if (c.hasDerivatives && !c.hasAnalysis && c.fundingRate === undefined && c.openInterest === undefined) {
     score -= 5;
     conflicts.push("derivatives data lacks usable positioning metrics");
   }
