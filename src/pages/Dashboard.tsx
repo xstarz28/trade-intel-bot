@@ -17,6 +17,8 @@ import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-en
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
+import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
