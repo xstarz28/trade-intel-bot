@@ -99,6 +99,67 @@ jobs:
           echo "auth state: ${STATE} (missing: ${MISSING})"
           exit "${STATUS}"
 
+      - name: Anonymous runtime sign-in — capture the exact underlying error
+        # Launch-activation diagnostic: the smoke harness sanitizes the sign-in
+        # error, so the exact runtime failure was unreadable. This runs ONE
+        # real anonymous sign-in against the deployment (exactly what every
+        # smoke run does) and re-emits the verifier's own output as
+        # annotations. Does not change the job's conclusion.
+        if: always()
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          set +e
+          npx convex run auth:signIn '{"provider":"anonymous"}' > /tmp/signin-before.txt 2>&1
+          RC=$?
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "::notice title=anonymous sign-in::PASS before any remediation (a real session was created)"
+          else
+            tail -4 /tmp/signin-before.txt | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=auth:signIn failed::${line:0:600}"
+            done
+          fi
+
+      - name: Bounded retention sweep (the Phase-320 documented CLI lifecycle)
+        # The retention sweep is the deployment's designed, delete-only,
+        # idempotent storage-recovery lifecycle ("2026-10-12 cron or owner
+        # CLI"). If the deployment is over its plan's storage limit, data-plane
+        # writes (which anonymous sign-in performs) can be refused while
+        # control-plane pushes still succeed — exactly the observed split.
+        # Draining the legacy staging rows IS the documented remedy. Bounded
+        # to 6 invocations; stops immediately on the first error.
+        if: always()
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          for i in 1 2 3 4 5 6; do
+            OUT="$(npx convex run discoveryRetention:runBoundedCleanupSweep '{}' 2>&1 | tail -2)"
+            echo "::notice title=retention sweep ${i}/6::$(printf '%s' "$OUT" | tr '\r\n' '  ' | head -c 500)"
+            RC=$?
+            if [ "$RC" -ne 0 ] || printf '%s' "$OUT" | grep -qi "error"; then
+              echo "::error title=retention sweep stopped at iteration ${i}::$(printf '%s' "$OUT" | tr '\r\n' '  ' | head -c 500)"
+              break
+            fi
+          done
+
+      - name: Anonymous runtime sign-in — recheck after the sweep
+        if: always()
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          set +e
+          npx convex run auth:signIn '{"provider":"anonymous"}' > /tmp/signin-after.txt 2>&1
+          RC=$?
+          set -e
+          if [ "$RC" -eq 0 ]; then
+            echo "::notice title=anonymous sign-in AFTER sweep::PASS (guest sessions are writable again — full smoke matrix may proceed)"
+          else
+            tail -4 /tmp/signin-after.txt | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=auth:signIn still failing::${line:0:600}"
+            done
+          fi
+
       - name: Upload the (non-secret) verdict
         if: always()
         uses: actions/upload-artifact@v4
