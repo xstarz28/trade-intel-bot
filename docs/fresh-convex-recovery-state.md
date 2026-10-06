@@ -56,3 +56,14 @@ Nothing else — after this, dispatch one `development-deploy-relay` and the cha
   full default permission set on the key + SAME value in repo secret AND Environment
   development secret (environment scope overrides repo scope). Full record:
   /home/user/phase300/RUN-RECOVERY-STEP1-2-KEYPERM.md
+
+## 2026-10-06 (2) — new key: data+push+env-read PASS; missing deployment:env:write (verbatim); route = Dashboard env vars
+- auth-verify 37417816495: no permission errors; "No functions found" (never deployed).
+- deploy 37418684454: seed step captured "✖ ... (deployment:env:write)" verbatim ×2.
+- auth.config.ts is validated at push against the DEPLOYMENT's own env:
+  XSTARZ_DEPLOYMENT_ENV + CONVEX_SITE_URL required. Fresh deployment has none.
+- Seed step (verify-first) added; owner sets values in Dashboard → deploy needs no env:write.
+- Owner action: set XSTARZ_DEPLOYMENT_ENV=development, CONVEX_SITE_URL=https://calculating-eagle-241.convex.site,
+  copy provider keys (TWELVE_DATA/ALPHA_VANTAGE/TICKATLAS/TOKENOMIST/EIA [+XSTARZ_OWNER_PRINCIPALS if present])
+  from tough-goose-455's env page — read-only copy; old deployment untouched.
+- Record: /home/user/phase300/RUN-RECOVERY-STEP0-PUSHPERM-ENVWRITE.md
