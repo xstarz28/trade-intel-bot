@@ -1443,6 +1443,29 @@ const en: Translations = {
     freeAlways: "Wait and No-Trade results are always free.",
   },
 
+  pricing: {
+    title: "Pricing",
+    subtitle: "Two plans. Access is enforced on the server — no trial gimmicks.",
+    freeName: "Free",
+    freeDescription: "The full analysis workspace, with a one-time allowance of actionable signals.",
+    freeActionStart: "Start free",
+    freeActionCurrent: "Your current plan",
+    proName: "Professional",
+    proDescription: "Unlimited actionable profit signals for daily market work.",
+    proBadge: "Planned",
+    proAction: "Checkout coming soon",
+    included: "Included in every plan",
+    marketAnalysis: "Market analysis — bias, structure, key levels, trade plan",
+    waitFree: "Wait and No-Trade verdicts are always free",
+    history: "Analysis history",
+    protection: "Position protection workspace",
+    actionableSignals: "Actionable profit signals",
+    freeAllowance: "{count} in total — enforced on the server",
+    unlimitedSignals: "Unlimited",
+    enforcedNote: "Your allowance lives in your account and cannot be reset from this device.",
+    checkoutNote: "Checkout is not available yet. Nothing is charged and no plan is granted from this page.",
+  },
+
   legal: {
     downloadTitle: "Get Xstarz Analysis",
     downloadIntro:

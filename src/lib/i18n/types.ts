@@ -1667,6 +1667,29 @@ export interface Translations {
     upgradeComingSoon: string;
     freeAlways: string;
   };
+  /** Phase 324 — pricing presentation (server-enforced capability split). */
+  pricing: {
+    title: string;
+    subtitle: string;
+    freeName: string;
+    freeDescription: string;
+    freeActionStart: string;
+    freeActionCurrent: string;
+    proName: string;
+    proDescription: string;
+    proBadge: string;
+    proAction: string;
+    included: string;
+    marketAnalysis: string;
+    waitFree: string;
+    history: string;
+    protection: string;
+    actionableSignals: string;
+    freeAllowance: string;
+    unlimitedSignals: string;
+    enforcedNote: string;
+    checkoutNote: string;
+  };
 
   /**
    * Phase 182 — public website pages (/download, /privacy, /terms).

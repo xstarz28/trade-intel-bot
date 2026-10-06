@@ -99,6 +99,9 @@ export default function Landing() {
             </span>
           </Link>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <Button variant="ghost" size="sm" asChild className="text-sm">
+              <Link to="/pricing">{t.pricing.title}</Link>
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate("/auth")} className="text-sm">
               {t.landing.signIn}
             </Button>

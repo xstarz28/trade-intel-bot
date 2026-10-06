@@ -121,7 +121,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
   const enLeaves = collectLeaves(en).map(([k]) => k).sort();
   const enCount = enLeaves.length;
 
-  it("EN is the canonical structural reference with 1393 leaves", () => {
+  it("EN is the canonical structural reference with 1413 leaves", () => {
     // 1219 -> 1222: Phase 255-261 final polish added 3 keys (journal provider identity, etc).
     // 1214 -> 1219: Phase 234 pagination completeness copy (complete/partial/
     // failed/discoveredCount/partialPageFailed).
@@ -173,7 +173,7 @@ describe("exact leaf-key parity across all 9 locales", () => {
     // deployed artifact names its own commit/branch/instant. The VALUES on that
     // page (a commit id, a branch, an ISO instant) stay untranslated; only its
     // labels and its explanatory sentences are translated.
-    expect(enCount).toBe(1393);
+    expect(enCount).toBe(1413);
   });
 
   for (const code of NINE) {
@@ -561,9 +561,9 @@ describe("ZH (Simplified Chinese) — explicit verification", () => {
     expect(meta?.available).toBe(true);
   });
 
-  it("zh has all 1393 canonical keys with non-empty values", () => {
+  it("zh has all 1413 canonical keys with non-empty values", () => {
     const zhLeaves = collectLeaves(zh);
-    expect(zhLeaves.length).toBe(1393);
+    expect(zhLeaves.length).toBe(1413);
     for (const [key, value] of zhLeaves) {
       expect(value.trim().length, key).toBeGreaterThan(0);
     }

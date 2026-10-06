@@ -1571,7 +1571,10 @@ export default function Dashboard() {
                   transition={{ duration: 0.3 }}
                 >
                   {/* Server withheld an actionable signal. Never rendered as WAIT. */}
-                  <LockedSignalNotice instrument={entitlementNotice.instrument} />
+                  <LockedSignalNotice
+                    instrument={entitlementNotice.instrument}
+                    onUpgrade={() => navigate("/pricing")}
+                  />
                 </motion.div>
               ) : currentResult ? (
                 <motion.div
