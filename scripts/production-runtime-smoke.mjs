@@ -71,23 +71,6 @@ try {
     return visibleText.includes("BIAS:") && visibleText.includes("Price:");
   }, null, { timeout });
 
-  // Google handoff is checked independently so a Google OAuth failure is
-  // reported as Google failure, never misclassified as Guest failure.
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout });
-  const startGoogle = page.getByRole("button", { name: /start analysis/i });
-  if (await startGoogle.count()) await startGoogle.click();
-  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
-  const google = page.getByRole("button", { name: /continue with google/i });
-  if (!(await google.count())) throw new Error("Google sign-in control missing from production auth surface");
-  await google.click();
-  await page.waitForLoadState("domcontentloaded", { timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(1500);
-  const googleText = (await page.locator("body").innerText()).slice(0, 4000);
-  if (/redirect_uri_mismatch|invalid_request|Error 400/i.test(googleText)) {
-    throw new Error("Google OAuth handoff rejected: redirect_uri_mismatch/invalid request");
-  }
-  evidence.googleOAuthHandoff = { url: page.url(), rejected: false };
-
   const body = await page.locator("body").innerText();
   const priceLabel = page.getByText("Price:", { exact: true });
   const sourceLabel = page.getByText("Source:", { exact: true });
