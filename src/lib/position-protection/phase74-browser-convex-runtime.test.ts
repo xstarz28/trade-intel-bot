@@ -33,8 +33,9 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import React from "react";
-import { render, act } from "@testing-library/react";
-import { screen } from "@testing-library/dom";
+import * as RTL from "@testing-library/react";
+const { render, act } = RTL;
+const screen = (RTL as any).screen;
 
 import type { PositionContext, ProtectionAlert } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
