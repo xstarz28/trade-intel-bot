@@ -60,3 +60,7 @@ phase283-live-evidence.json
 # it writes from the RESOLVED identifiers. Both are local and regenerable, and
 # ignoring them keeps `--require-clean` meaningful. NEVER commit them.
 .vercel/
+
+# Phase 321 — local Convex development deployment (local-only, never cloud)
+.env.local-backend
+.convex-local/

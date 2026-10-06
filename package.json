@@ -38,7 +38,11 @@
     "evidence:d:verify": "node --experimental-strip-types --no-warnings scripts/evidence-d-verify.mjs",
     "deployment:verify": "node --experimental-strip-types --no-warnings scripts/convex-deployment-verify.mjs",
     "production:deploy:guard": "node --experimental-strip-types --no-warnings scripts/production-deploy-guard.mjs",
-    "test:release": "node scripts/release-regression.mjs"
+    "test:release": "node scripts/release-regression.mjs",
+    "convex:backend:local": "node scripts/dev/local-backend.mjs start",
+    "convex:backend:local:status": "node scripts/dev/local-backend.mjs status",
+    "convex:backend:local:stop": "node scripts/dev/local-backend.mjs stop",
+    "convex:push:local": "convex dev --env-file .env.local-backend --once --typecheck=disable"
   },
   "dependencies": {
     "@auth/core": "^0.37.4",
