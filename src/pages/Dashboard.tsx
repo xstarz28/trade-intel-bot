@@ -152,8 +152,9 @@ export default function Dashboard() {
         const discovery = await discoverOkxInstruments();
         if (cancelled || !discovery.success || discovery.instruments.length === 0) return;
 
+        const prioritized = prioritizeCryptoDiscovery(discovery.instruments);
         const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-          discovery.instruments,
+          prioritized.length > 0 ? prioritized : discovery.instruments,
           discoveryCursorRef.current,
           20,
         );
