@@ -69,6 +69,7 @@ import AuthPage from "./pages/Auth.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import { Journal } from "@/components/Journal";
 import NotFound from "./pages/NotFound.tsx";
+import Pricing from "./pages/Pricing.tsx";
 
 /** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
  *  crashing the whole app (e.g. hook errors in WebContainer environment). */
