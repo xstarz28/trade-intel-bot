@@ -34,3 +34,17 @@ jobs:
           set -euo pipefail
           curl -fsS "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains"             -H "Authorization: Bearer ${VERCEL_TOKEN}" |
             python -c "import json,sys; d=json.load(sys.stdin); names=[x.get('name') for x in d.get('domains',[])]; print(names); assert 'xstarzanalysis.vercel.app' in names"
+      - name: Verify public HTTP endpoint
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            code="$(curl -sS -o /tmp/xstarz-home.html -w "%{http_code}" --max-time 20 https://xstarzanalysis.vercel.app/ || true)"
+            echo "attempt=${attempt} http=${code}"
+            if [ "${code}" = "200" ] && grep -q "XSTARZG" /tmp/xstarz-home.html; then
+              echo "XSTARZG public hostname is serving the application."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::xstarzanalysis.vercel.app is not serving the XSTARZG application"
+          exit 1
