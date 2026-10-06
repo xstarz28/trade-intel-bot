@@ -77,7 +77,8 @@ function published(overrides: Partial<Parameters<typeof evaluatePublishedFronten
         path: "/assets/index-FBL2Fnsb.css",
         name: "/assets/index-FBL2Fnsb.css",
         status: 200,
-        text: ":root{--primary:oklch(52% .18 255)}",
+        text:
+          ":root{--primary:oklch(50% .095 240)}@media (prefers-color-scheme: dark){:root{--primary:oklch(78% .065 235)}}",
       },
     ],
     expected: { commit: COMMIT, branch: BRANCH, buildInfoSha256: SHA, assetNames: ENTRY },
@@ -135,7 +136,8 @@ describe("300 — a published site that is not the current branch is refused, by
             path: "/assets/index-legacy.css",
             name: "/assets/index-legacy.css",
             status: 200,
-            text: ":root{--primary: oklch(0.6 0.16 170)}",
+            text:
+              ":root{--primary: oklch(0.6 0.16 170)}",
           },
         ],
       }),
@@ -148,7 +150,8 @@ describe("300 — a published site that is not the current branch is refused, by
     expect(failed).toContain('no retired platform marker "freebuff.com"');
     expect(failed).toContain('no retired platform marker "secured by"');
     expect(failed).toContain('no retired OTP marker "Sign in with email"');
-    expect(failed).toContain("Xstarz blue primary token present in built CSS");
+    expect(failed).toContain("XSTARZG steel-blue primary present in built CSS (light scheme, hue 240)");
+    expect(failed).toContain("XSTARZG steel-blue primary present in built CSS (dark scheme, hue 235)");
     expect(failed).toContain("retired teal-green primary absent from built CSS");
     expect(failed).toContain("current sign-in copy (Google + guest) is shipped");
     expect(failed).toContain("published /build route answers");

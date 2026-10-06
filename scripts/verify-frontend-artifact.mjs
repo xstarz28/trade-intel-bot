@@ -90,11 +90,18 @@ export const RETIRED_OTP_MARKERS = [
   "One-time code",
 ];
 
-/** The brand primary the current source defines (Xstarz blue, hue 255). */
-export const BRAND_PRIMARY_OKLCH = { l: 0.52, c: 0.18, h: 255 };
+/** The brand primary the current source defines.
+ *  Phase 322 (XSTARZG visual identity): a restrained steel-blue pair —
+ *  hue 240 in the light scheme, hue 235 (illumination) in the dark scheme.
+ *  The pre-322 Xstarz blue (hue 255) is retired by the same identity phase. */
+export const BRAND_PRIMARY_OKLCH = { l: 0.5, c: 0.095, h: 240 };
+export const BRAND_PRIMARY_OKLCH_DARK = { l: 0.78, c: 0.065, h: 235 };
 
 /** The retired teal-green primary the legacy scaffold shipped (hue 170). */
 export const RETIRED_PRIMARY_OKLCH = { l: 0.6, c: 0.16, h: 170 };
+
+/** The retired pre-322 Xstarz blue primary (hue 255). */
+export const RETIRED_XSTARZ_BLUE_PRIMARY_OKLCH = { l: 0.52, c: 0.18, h: 255 };
 
 /**
  * The `--primary` custom-property declarations in a CSS asset.
@@ -294,14 +301,28 @@ export function evaluateFrontendArtifact(input) {
   }
 
   // 4. THEME ---------------------------------------------------------
+  // Phase 322 — the brand is XSTARZG steel-blue, pinned PER SCHEME: hue 240
+  // (light) and hue 235 illumination (dark) must BOTH ship, the retired
+  // teal-green (170) must NOT, and the pre-322 Xstarz blue (255) must NOT.
   const primaries = primaryTokens(cssText);
-  const blue = primaries.filter((t) => colorMatches(t, BRAND_PRIMARY_OKLCH));
+  const blueLight = primaries.filter((t) => colorMatches(t, BRAND_PRIMARY_OKLCH));
+  const blueDark = primaries.filter((t) => colorMatches(t, BRAND_PRIMARY_OKLCH_DARK));
   const tealGreen = primaries.filter((t) => colorMatches(t, RETIRED_PRIMARY_OKLCH));
+  const retiredBlue = primaries.filter((t) => colorMatches(t, RETIRED_XSTARZ_BLUE_PRIMARY_OKLCH));
   add(
-    "Xstarz blue primary token present in built CSS",
-    blue.length > 0,
-    blue.length > 0
-      ? `${blue.length} --primary declaration(s) at hue ${BRAND_PRIMARY_OKLCH.h}`
+    "XSTARZG steel-blue primary present in built CSS (light scheme, hue 240)",
+    blueLight.length > 0,
+    blueLight.length > 0
+      ? `${blueLight.length} --primary declaration(s) at hue ${BRAND_PRIMARY_OKLCH.h}`
+      : primaries.length === 0
+        ? "no --primary oklch declaration found in the built CSS"
+        : `--primary hues found: ${[...new Set(primaries.map((t) => t.h))].join(", ")}`,
+  );
+  add(
+    "XSTARZG steel-blue primary present in built CSS (dark scheme, hue 235)",
+    blueDark.length > 0,
+    blueDark.length > 0
+      ? `${blueDark.length} --primary declaration(s) at hue ${BRAND_PRIMARY_OKLCH_DARK.h}`
       : primaries.length === 0
         ? "no --primary oklch declaration found in the built CSS"
         : `--primary hues found: ${[...new Set(primaries.map((t) => t.h))].join(", ")}`,
@@ -312,6 +333,13 @@ export function evaluateFrontendArtifact(input) {
     tealGreen.length === 0
       ? "absent"
       : "the retired oklch(0.6 0.16 170) primary is still shipped",
+  );
+  add(
+    "retired pre-322 Xstarz blue primary absent from built CSS",
+    retiredBlue.length === 0,
+    retiredBlue.length === 0
+      ? "absent"
+      : "the retired oklch(0.52 0.18 255) primary is still shipped",
   );
 
 

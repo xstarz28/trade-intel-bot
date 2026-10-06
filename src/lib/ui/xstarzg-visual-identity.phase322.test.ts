@@ -94,6 +94,22 @@ describe("322 — XSTARZG visual system tokens", () => {
     expect(read("src/main.tsx")).toContain("background:#131519");
   });
 
+  it("the dist artifact guard is re-pinned to the SAME brand tokens as index.css (no drift)", () => {
+    const guard = read("scripts/verify-frontend-artifact.mjs");
+    expect(guard).toContain(
+      "export const BRAND_PRIMARY_OKLCH = { l: 0.5, c: 0.095, h: 240 };",
+    );
+    expect(guard).toContain(
+      "export const BRAND_PRIMARY_OKLCH_DARK = { l: 0.78, c: 0.065, h: 235 };",
+    );
+    // the tokens the guard pins must be the tokens the stylesheet ships
+    expect(indexCss).toContain("--primary: oklch(0.5 0.095 240);");
+    expect(indexCss).toContain("--primary: oklch(0.78 0.065 235);");
+    // the guard must actively REFUSE both retired primaries
+    expect(guard).toContain("RETIRED_XSTARZ_BLUE_PRIMARY_OKLCH = { l: 0.52, c: 0.18, h: 255 }");
+    expect(guard).toContain("RETIRED_PRIMARY_OKLCH = { l: 0.6, c: 0.16, h: 170 }");
+  });
+
   it("the application logo is chrome-on-graphite with the steel-blue illumination accent", () => {
     const logo = read("public/logo.svg");
     expect(logo).toContain('id="xstarzg-chrome"');

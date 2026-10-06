@@ -23,9 +23,11 @@ export type OklchToken = { l: number; c: number; h: number };
 
 /** The brand primary the current source defines (Xstarz blue, hue 255). */
 export const BRAND_PRIMARY_OKLCH: OklchToken;
+export const BRAND_PRIMARY_OKLCH_DARK: OklchToken;
 
 /** The retired teal-green primary the legacy scaffold shipped (hue 170). */
 export const RETIRED_PRIMARY_OKLCH: OklchToken;
+export const RETIRED_XSTARZ_BLUE_PRIMARY_OKLCH: OklchToken;
 
 /** `--primary` declarations parsed from a CSS asset, minified or not. */
 export function primaryTokens(css: string): OklchToken[];

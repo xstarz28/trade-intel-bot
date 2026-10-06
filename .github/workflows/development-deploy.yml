@@ -192,7 +192,7 @@ jobs:
       - name: Refuse to proceed with a legacy, off-theme or wrong-commit frontend artifact
         # The artifact, not the pipeline, decides what a person would open:
         # provenance present and matching this checkout, no retired platform
-        # branding, no retired OTP surface, Xstarz blue primary, current
+        # branding, no retired OTP surface, XSTARZG steel-blue primary, current
         # sign-in copy. Exit 2 (nothing to inspect) is a failure too, not a
         # licence to continue.
         run: |

@@ -18,7 +18,7 @@
  *                            that AGREE with that JSON
  *   3. `/build`            — the provenance route answers (no silent 404)
  *   4. the assets the page actually loads — no retired platform branding, no
- *                            retired email-OTP surface, Xstarz blue primary
+ *                            retired email-OTP surface, XSTARZG steel-blue primary
  *                            present and the retired teal-green absent, current
  *                            sign-in copy shipped
  *

@@ -22,6 +22,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   BRAND_PRIMARY_OKLCH,
+  BRAND_PRIMARY_OKLCH_DARK,
+  RETIRED_XSTARZ_BLUE_PRIMARY_OKLCH,
   CURRENT_AUTH_MARKERS,
   RETIRED_PRIMARY_OKLCH,
   evaluateFrontendArtifact,
@@ -64,7 +66,8 @@ function goodArtifact() {
       { name: "build-info.json", text: JSON.stringify(info) },
     ],
     // As minified: percentages and a leading-dot chroma.
-    cssText: ":root{--primary:oklch(52% .18 255)}",
+    cssText:
+      ":root{--primary:oklch(50% .095 240)}@media (prefers-color-scheme: dark){:root{--primary:oklch(78% .065 235)}}",
   };
 }
 
@@ -102,13 +105,17 @@ describe("299 — a correct artifact passes", () => {
   });
 
   it("parses the primary token in both source and minified spellings", () => {
-    const source = ":root{--primary: oklch(0.52 0.18 255);}";
-    const minified = ":root{--primary:oklch(52% .18 255)}";
+    // Phase 322 — brand primaries are the XSTARZG steel-blue pair: hue 240
+    // (light) and hue 235 (dark), pinned in verify-frontend-artifact.mjs.
+    const source = ":root{--primary: oklch(0.5 0.095 240);}";
+    const minified = ":root{--primary:oklch(50% .095 240)}";
     for (const css of [source, minified]) {
       const tokens = primaryTokens(css);
       expect(tokens.length).toBe(1);
       expect(colorMatches(tokens[0], BRAND_PRIMARY_OKLCH)).toBe(true);
     }
+    const darkSource = "@media (prefers-color-scheme: dark){:root{--primary: oklch(0.78 0.065 235);}}";
+    expect(colorMatches(primaryTokens(darkSource)[0], BRAND_PRIMARY_OKLCH_DARK)).toBe(true);
     // A different hue is a different brand, however it is written.
     expect(colorMatches(primaryTokens("--primary: oklch(0.6 0.16 170)")[0], BRAND_PRIMARY_OKLCH)).toBe(
       false,
@@ -166,9 +173,19 @@ describe("299 — a wrong or stale artifact fails, by name", () => {
   it("fails on the retired teal-green primary", () => {
     const result = run({ cssText: "--primary:oklch(60% .16 170)" });
     const failed = failures(result);
-    expect(failed).toContain("Xstarz blue primary token present in built CSS");
+    expect(failed).toContain("XSTARZG steel-blue primary present in built CSS (light scheme, hue 240)");
+    expect(failed).toContain("XSTARZG steel-blue primary present in built CSS (dark scheme, hue 235)");
     expect(failed).toContain("retired teal-green primary absent from built CSS");
     expect(RETIRED_PRIMARY_OKLCH.h).toBe(170);
+  });
+
+  it("fails on the retired pre-322 Xstarz blue primary (Phase 322 retired hue 255)", () => {
+    const result = run({ cssText: "--primary:oklch(52% .18 255)" });
+    const failed = failures(result);
+    expect(failed).toContain("retired pre-322 Xstarz blue primary absent from built CSS");
+    expect(failed).toContain("XSTARZG steel-blue primary present in built CSS (light scheme, hue 240)");
+    expect(failed).toContain("XSTARZG steel-blue primary present in built CSS (dark scheme, hue 235)");
+    expect(RETIRED_XSTARZ_BLUE_PRIMARY_OKLCH.h).toBe(255);
   });
 
   it("fails when the current sign-in copy is missing", () => {
