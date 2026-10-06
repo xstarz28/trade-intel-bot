@@ -133,6 +133,9 @@ export interface CandidateInput {
   hasCOT?: boolean;
   /** Whether execution quality data is available. */
   hasExecutionQuality?: boolean;
+  setupDirection?: "long" | "short" | "neutral" | "unknown";
+  setupStrength?: number;
+  confluenceCount?: number;
 }
 
 export interface RankedInstrument {
@@ -609,140 +612,46 @@ export function scoreCandidate(
   c: CandidateInput,
   horizon: TradingMode | InvestorHorizon,
 ): { analyticalScore: number; confidence: number; reasons: string[]; conflicts: string[] } {
-  const weights = HORIZON_PROFILES[horizon];
-  const assetComponents = getAssetClassScore(c);
-
-  // Compute data quality component
   const dq = evaluateDataQuality(c);
-
   const reasons: string[] = [];
   const conflicts: string[] = [];
+  const directional = c.setupDirection === "long" || c.setupDirection === "short";
+  const strength = c.setupStrength ?? 0;
+  const confirmations = c.confluenceCount ?? 0;
 
-  for (const comp of assetComponents) {
-    if (comp.score >= 60) reasons.push(comp.reason);
-    else if (comp.score < 40) conflicts.push(comp.reason);
+  if (directional && strength > 0) {
+    reasons.push(`${c.setupDirection === "long" ? "Bullish" : "Bearish"} structure/setup evidence ${Math.round(strength)}/100`);
+    if (confirmations >= 3) reasons.push(`${confirmations} independent confirmations`);
+  } else {
+    conflicts.push("no confirmed directional setup");
   }
 
-  // Apply horizon weights to asset-class evidence.
-  // Every matching evidence item contributes independently according to
-  // its declared component weight and the horizon weight for its category.
-  let horizonAdjusted = 0;
-  let horizonWeightSum = 0;
-
-  // Data quality component
-  horizonAdjusted += dq.score * weights.dataQuality;
-  horizonWeightSum += weights.dataQuality;
-
-  const addEvidence = (
-    components: ScoreComponent[],
-    categoryWeight: number,
-    matcher: (reason: string) => boolean,
-  ) => {
-    if (categoryWeight <= 0) return;
-
-    for (const comp of components) {
-      if (!matcher(comp.reason)) continue;
-
-      const effectiveWeight = (comp.weight / 10) * categoryWeight;
-      horizonAdjusted += comp.score * effectiveWeight;
-      horizonWeightSum += effectiveWeight;
-    }
-  };
-
-  // HTF structure
-  addEvidence(assetComponents, weights.htfStructure, (reason) =>
-    reason.includes("HTF"),
-  );
-
-  // MTF alignment
-  addEvidence(assetComponents, weights.mtfAlignment, (reason) =>
-    reason.includes("MTF"),
-  );
-
-  // Market regime
-  addEvidence(assetComponents, weights.marketRegime, (reason) =>
-    reason.includes("regime"),
-  );
-
-  // Volatility
-  if (c.atr && c.atr > 0) {
-    horizonAdjusted += 60 * weights.volatility;
-    horizonWeightSum += weights.volatility;
-  }
-
-  // Liquidity
-  if (c.hasExecutionQuality || c.spreadBps !== undefined) {
-    const liqScore = c.spreadBps !== undefined && c.spreadBps < 5 ? 85 : c.spreadBps !== undefined && c.spreadBps < 15 ? 65 : 50;
-    horizonAdjusted += liqScore * weights.liquidity;
-    horizonWeightSum += weights.liquidity;
-  }
-
-  // Fundamentals
-  addEvidence(
-    assetComponents,
-    weights.fundamentals,
-    (reason) =>
-      reason.includes("fundamental") ||
-      reason.includes("P/E") ||
-      reason.includes("revenue") ||
-      reason.includes("margin"),
-  );
-
-  // Macro
-  addEvidence(
-    assetComponents,
-    weights.macro,
-    (reason) =>
-      reason.includes("macro") ||
-      reason.includes("DXY") ||
-      reason.includes("risk") ||
-      reason.includes("rate diff") ||
-      reason.includes("yield diff"),
-  );
-
-  // Derivatives
-  addEvidence(
-    assetComponents,
-    weights.derivatives,
-    (reason) =>
-      reason.includes("derivatives") ||
-      reason.includes("funding") ||
-      reason.includes("COT"),
-  );
-
-  // R:R
+  // Data quality is a confidence constraint, never directional alpha.
+  let score = directional ? strength : 20;
   if (c.riskReward && c.riskReward > 0) {
-    const rrScore = Math.min(90, 30 + c.riskReward * 20);
-    horizonAdjusted += rrScore * weights.riskReward;
-    horizonWeightSum += weights.riskReward;
+    score += Math.max(-5, Math.min(10, (c.riskReward - 1.5) * 5));
+    reasons.push(`R:R ${c.riskReward.toFixed(1)}`);
   }
-
-  // Analysis confidence
-  if (c.hasAnalysis && c.analysisConfidence) {
-    horizonAdjusted += c.analysisConfidence * 5;
-    horizonWeightSum += 5;
+  if (c.spreadBps !== undefined) {
+    if (c.spreadBps <= 5) score += 5;
+    else if (c.spreadBps > 25) { score -= 8; conflicts.push(`wide spread ${c.spreadBps.toFixed(1)}bps`); }
   }
+  score *= 0.65 + dq.score * 0.0035;
+  if (!directional) score = Math.min(score, 45);
+  if (dq.score < 55) score = Math.min(score, 59);
 
-  const analyticalScore = horizonWeightSum > 0
-    ? Math.round(Math.min(100, horizonAdjusted / horizonWeightSum))
-    : 0;
-
-  // Confidence: based on data quality + evidence coherence
-  const dqConfidence = dq.score;
-  const evidenceCoherence = assetComponents.length > 0
-    ? Math.min(100, (reasons.length / Math.max(1, assetComponents.length)) * 100)
-    : 0;
-  const confidence = Math.round((dqConfidence * 0.5 + evidenceCoherence * 0.3 + (analyticalScore > 0 ? 20 : 0)));
-
-  if (dq.issues.length > 0) {
-    conflicts.push(...dq.issues);
-  }
+  const analyticalScore = Math.max(0, Math.min(100, Math.round(score)));
+  const evidenceCoherence = directional
+    ? Math.min(100, 35 + strength * 0.4 + confirmations * 8)
+    : 10;
+  const confidence = Math.round(Math.min(100, dq.score * 0.45 + evidenceCoherence * 0.55));
+  conflicts.push(...dq.issues);
 
   return {
     analyticalScore,
-    confidence: Math.min(100, confidence),
-    reasons,
-    conflicts,
+    confidence,
+    reasons: [...new Set(reasons)].slice(0, 8),
+    conflicts: [...new Set(conflicts)].slice(0, 8),
   };
 }
 
