@@ -494,12 +494,22 @@ jobs:
       - name: Verify the PUBLISHED frontend — the acceptance evidence
         # This is the step that decides. Everything above is preparation; a
         # browser gets what this fetch returns.
+        #
+        # Launch-activation plumbing: the verifier's verdict must be readable
+        # from the API (sandbox identities cannot fetch Actions logs), so on
+        # failure the verifier's own failure lines are re-emitted as ::error
+        # annotations. Semantics are UNCHANGED — same single verifier run
+        # decides pass/fail; the second invocation below is print-only.
         run: |
-          npm run verify:published -- \
-            --url "$XSTARZ_FRONTEND_HOST_URL" \
-            --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" \
-            --expect-commit "$XSTARZ_ARTIFACT_COMMIT" \
-            ${{ inputs.mode == 'publish' && format('--expect-build-info-sha256 {0} --expect-asset-names {1}', steps.artifact.outputs.sha256, steps.artifact.outputs.entry) || '' }}
+          ARGS=(--url "$XSTARZ_FRONTEND_HOST_URL" --expect-branch "$XSTARZ_REQUIRED_SOURCE_BRANCH" --expect-commit "$XSTARZ_ARTIFACT_COMMIT")
+          ${{ inputs.mode == 'publish' && format('ARGS+=(--expect-build-info-sha256 {0} --expect-asset-names {1})', steps.artifact.outputs.sha256, steps.artifact.outputs.entry) || '' }}
+          if ! npm run verify:published -- "${ARGS[@]}"; then
+            echo "::error title=Published-verify FAILED::failure lines follow as annotations"
+            npm run verify:published -- "${ARGS[@]}" 2>&1 | grep -aiE "fail|✗|mismatch|expected|observed|state=" | head -8 | while IFS= read -r line; do
+              echo "::error title=verify-published::${line:0:600}"
+            done
+            exit 1
+          fi
 
       - name: Fail closed when the verified artifact could not be published
         if: inputs.mode == 'publish' && steps.credential.outputs.state == 'absent'
