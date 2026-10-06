@@ -64,8 +64,5 @@ jobs:
           test "${CONVEX_DEPLOYMENT:-}" = "${EXPECTED_DEPLOYMENT}" || { echo "::error::Wrong CONVEX_DEPLOYMENT"; exit 1; }
           test "${VITE_CONVEX_URL:-}" = "${EXPECTED_URL}" || { echo "::error::Wrong VITE_CONVEX_URL"; exit 1; }
 
-      - name: Apply production Convex Auth site URL
-        run: npx convex env set CONVEX_SITE_URL "$CONVEX_SITE_URL"
-
       - name: Build and deploy backend
         run: npx convex deploy --yes --typecheck disable --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
