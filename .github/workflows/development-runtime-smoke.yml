@@ -99,7 +99,11 @@ jobs:
       # target could drift is a smoke that can silently measure the wrong thing.
       # The script refuses any target that is not this host (or an explicitly
       # allowed one), and refuses the production deployment by name.
-      XSTARZ_SMOKE_URL: https://tough-goose-455.convex.cloud
+      # Fresh-deployment recovery: the dev target moved to the NEW Xstarz
+      # Analysis project deployment (the old one is free-plan disabled for
+      # data-plane execution). The harness's explicit --allow-host below keeps
+      # the script's own host validation exact.
+      XSTARZ_SMOKE_URL: https://calculating-eagle-241.convex.cloud
       XSTARZ_SMOKE_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
       XSTARZ_SMOKE_DOMAINS: ${{ inputs.domains }}
       XSTARZ_SMOKE_MAX_ATTEMPTS: ${{ inputs.max_attempts }}
@@ -153,7 +157,7 @@ jobs:
         # the runtime may be concluded — "could not look" is not a clean result.
         run: |
           set -o pipefail
-          args=(--url "${XSTARZ_SMOKE_URL}" --out development-runtime-smoke.json)
+          args=(--url "${XSTARZ_SMOKE_URL}" --allow-host calculating-eagle-241.convex.cloud --out development-runtime-smoke.json)
           if [ -n "${XSTARZ_SMOKE_DOMAINS:-}" ]; then args+=(--domains "${XSTARZ_SMOKE_DOMAINS}"); fi
           if [ -n "${XSTARZ_SMOKE_MAX_ATTEMPTS:-}" ]; then args+=(--max-attempts "${XSTARZ_SMOKE_MAX_ATTEMPTS}"); fi
           node scripts/development-runtime-smoke.mjs "${args[@]}" 2>&1 | tee smoke-console.log
