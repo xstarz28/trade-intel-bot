@@ -89,7 +89,7 @@ describe("shouldDispatch", () => {
 
   it("blocks duplicate within same fingerprint bucket", () => {
     let state = createDispatcherState();
-    const now = Date.now();
+    const now = 60_000;
     state = dispatch(state, makeEvent({ severity: "WATCH", timestamp: now }));
     const result = shouldDispatch(state, "pos-1", "WATCH", now + 1000);
     expect(result.shouldDispatch).toBe(false);
