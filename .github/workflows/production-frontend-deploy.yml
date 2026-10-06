@@ -105,7 +105,7 @@ jobs:
       - name: Verify published deployment
         run: |
           set -euo pipefail
-          target="${FRONTEND_HOST_URL:-${{ steps.deploy.outputs.deployment_url }}}"
+          target="${{ steps.deploy.outputs.deployment_url }}"
           npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main
 
       - name: Report public target
