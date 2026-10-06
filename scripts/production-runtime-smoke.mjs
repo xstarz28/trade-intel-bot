@@ -44,6 +44,7 @@ try {
   const start = page.getByRole("button", { name: /start analysis/i });
   if (!(await start.count())) throw new Error("Landing page did not expose Start analysis");
   await start.click();
+  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
   const guest = page.getByRole("button", { name: /continue without an account/i });
   const guestCount = await guest.count();
   console.log("GUEST_BUTTON_COUNT=" + guestCount);
