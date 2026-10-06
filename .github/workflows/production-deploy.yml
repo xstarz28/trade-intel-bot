@@ -66,3 +66,22 @@ jobs:
 
       - name: Build and deploy backend
         run: npx convex deploy --yes --typecheck disable --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
+
+      - name: Verify browser-facing production frontend
+        env:
+          FRONTEND_URL: https://hushed-seal-237.convex.site
+          EXPECTED_BACKEND: ${{ vars.VITE_CONVEX_URL }}
+        run: |
+          set -euo pipefail
+          test -n "${EXPECTED_BACKEND}" || { echo "::error::VITE_CONVEX_URL is missing"; exit 1; }
+          html="$(curl -fsSL --max-time 30 "${FRONTEND_URL}")"
+          printf '%s' "${html}" | grep -qi "XSTARZG" || { echo "::error::Production frontend does not contain XSTARZG branding"; exit 1; }
+          if printf '%s' "${html}" | grep -Eiq "freebuff|vly-ai|secured by freebuff|email otp|verify code"; then
+            echo "::error::Retired Freebuff/VLY/OTP surface detected in production frontend"
+            exit 1
+          fi
+          printf '%s' "${html}" | grep -q "${EXPECTED_BACKEND}" || {
+            echo "::error::Production frontend does not embed the expected production Convex URL"
+            exit 1
+          }
+          echo "::notice title=Production frontend verified::${FRONTEND_URL} serves the current XSTARZG build against the expected production backend"
