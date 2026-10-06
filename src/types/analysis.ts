@@ -206,6 +206,8 @@ export interface AnalysisResult {
   // Market data metadata
   priceSnapshot?: import("@/lib/data/market-types").PriceSnapshot;
   technicalData?: import("@/lib/data/market-types").TechnicalData;
+  /** Recent provider OHLCV candles used for the visible price chart. */
+  candles?: import("@/lib/data/market-types").OhlcvCandle[];
   dataSource?: string;
   // Intelligence layer metadata
   sentimentData?: SentimentData;
