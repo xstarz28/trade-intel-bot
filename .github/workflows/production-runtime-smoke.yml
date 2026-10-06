@@ -1,0 +1,49 @@
+name: Production runtime smoke
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-runtime-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Real production BTC analysis smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      XSTARZ_SMOKE_URL: https://xstarzanalysis.vercel.app
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install repository dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+
+      - name: Install browser harness
+        run: |
+          npm install --no-save --legacy-peer-deps playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Run real production analysis
+        run: node scripts/production-runtime-smoke.mjs
+
+      - name: Publish smoke summary
+        if: always()
+        run: |
+          echo "Target: ${XSTARZ_SMOKE_URL}"
+          echo "Commit: ${GITHUB_SHA}"
+          echo "The smoke is green only when the public UI signs in as guest, runs BTC/USD analysis, renders a price snapshot, provider source and primary data-quality state."
