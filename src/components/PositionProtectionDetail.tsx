@@ -465,7 +465,7 @@ export function PositionProtectionDetail({
                     {alert.urgency && alert.urgency !== "NONE" && (
                       <Badge
                         variant="outline"
-                        className="text-[10px] bg-purple-900/30 text-purple-300"
+                        className="text-[10px] bg-primary/10 text-primary/90"
                       >
                         {alert.urgency}
                       </Badge>

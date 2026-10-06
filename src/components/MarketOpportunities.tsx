@@ -59,7 +59,7 @@ const SUITABILITY_COLORS: Record<string, string> = {
 };
 
 const ASSET_COLORS: Record<string, string> = {
-  crypto: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  crypto: "bg-primary/10 text-primary/90 border-primary/25",
   forex: "bg-sky-500/10 text-sky-400 border-sky-500/20",
   equity: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   commodity: "bg-amber-500/10 text-amber-400 border-amber-500/20",
@@ -79,7 +79,7 @@ const FRESHNESS_COLORS: Record<string, string> = {
 const AVAILABILITY_COLORS: Record<string, string> = {
   PASS: "text-emerald-400 border-emerald-400/30",
   UNAVAILABLE: "text-amber-400 border-amber-400/30",
-  RESTRICTED: "text-violet-400 border-violet-400/30",
+  RESTRICTED: "text-primary/90 border-primary/30",
   EXTERNAL_DATA_GAP: "text-orange-400 border-orange-400/30",
 };
 

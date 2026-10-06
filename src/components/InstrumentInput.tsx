@@ -20,7 +20,7 @@ import {
   type Timeframe,
 } from "@/lib/analysis-engine";
 import { cn } from "@/lib/utils";
-import { Terminal, Zap, AlertCircle } from "lucide-react";
+import { Terminal, Play, AlertCircle } from "lucide-react";
 import type { AssetClass } from "@/lib/data/universal/types";
 import { assetClassToInstrumentType } from "@/lib/discovery/live-identity";
 import {
@@ -510,7 +510,7 @@ export function InstrumentInput({
                 </>
               ) : (
                 <>
-                  <Zap className="size-4" />
+                  <Play className="size-4" />
                   {t.entryForm.runLabel}
                 </>
               )}

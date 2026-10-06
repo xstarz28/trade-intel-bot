@@ -46,8 +46,8 @@ const buildFeatures = (t: Translations) => [
     icon: Scale,
     title: t.landing.featureFlowTitle,
     description: t.landing.featureFlowBody,
-    color: "text-violet-400",
-    bg: "bg-violet-400/10",
+    color: "text-primary/90",
+    bg: "bg-primary/10",
   },
 ];
 
@@ -80,7 +80,7 @@ export default function Landing() {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Navigation */}
-      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/70 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border/40 bg-background/70 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4 sm:px-6">
           {/* Phase 190 — the brand block shrinks before the auth controls do.
               "Sign in" doubles in length in Spanish ("Iniciar sesión"), so at
@@ -266,7 +266,7 @@ export default function Landing() {
                   { label: t.landing.weightStructure, weight: "35%", color: "bg-primary" },
                   { label: t.landing.weightLiquidity, weight: "30%", color: "bg-blue-400" },
                   { label: t.landing.weightFundamental, weight: "20%", color: "bg-emerald-400" },
-                  { label: t.landing.weightSentiment, weight: "15%", color: "bg-violet-400" },
+                  { label: t.landing.weightSentiment, weight: "15%", color: "bg-primary/90" },
                 ].map((f) => (
                   <div key={f.label} className="flex items-center gap-3">
                     <div

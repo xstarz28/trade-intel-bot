@@ -31,7 +31,7 @@ const ASSET_CLASS_COLORS: Record<string, string> = {
   crypto: "text-orange-400",
   forex: "text-blue-400",
   commodity: "text-yellow-400",
-  macro: "text-purple-400",
+  macro: "text-primary/90",
 };
 
 // ═══════════════════════════════════════════════════════════════

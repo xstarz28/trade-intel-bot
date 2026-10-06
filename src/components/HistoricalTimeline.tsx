@@ -419,7 +419,7 @@ function getEventColor(type: string): string {
     case "TIMEFRAME_CHANGE": return "text-primary";
     case "STRUCTURE_CHANGE": return "text-orange-400";
     case "MOMENTUM_CHANGE": return "text-cyan-400";
-    case "VOLATILITY_CHANGE": return "text-purple-400";
+    case "VOLATILITY_CHANGE": return "text-primary/90";
     default: return "text-muted-foreground";
   }
 }

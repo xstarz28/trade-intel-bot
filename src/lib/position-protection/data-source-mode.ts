@@ -128,7 +128,7 @@ export function dataSourceModeColor(mode: DataSourceMode): string {
   switch (mode) {
     case "LIVE": return "text-emerald-400";
     case "POLLING": return "text-blue-400";
-    case "SIMULATED": return "text-violet-400";
+    case "SIMULATED": return "text-muted-foreground";
     case "STALE": return "text-amber-400";
     case "UNAVAILABLE": return "text-zinc-400";
   }

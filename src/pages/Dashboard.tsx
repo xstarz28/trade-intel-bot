@@ -44,8 +44,8 @@ import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder"
 import { derivativesForRadar } from "@/lib/market-radar/derivatives-bridge";
 import { buildUnifiedIntelligence } from "@/lib/unified-intelligence";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
-import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
-import { useNavigate } from "react-router";
+import { LogOut, Terminal, Loader2, CheckCircle2, X, Shield, Globe } from "lucide-react";
+import { Link, useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
@@ -1328,12 +1328,17 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Top bar */}
-      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
+            <Link
+              to="/dashboard"
+              aria-label={t.nav.analysis}
+              title={t.nav.analysis}
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 transition-colors hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
               <Terminal className="size-4 text-primary" />
-            </div>
+            </Link>
             <div>
               <h1 className="text-sm font-bold tracking-tight font-mono">
                 Xstarz Analysis<span className="text-muted-foreground"> · </span>
@@ -1512,11 +1517,8 @@ export default function Dashboard() {
                   exit={{ opacity: 0, y: -10 }}
                   className="flex flex-col items-center justify-center py-16 text-center"
                 >
-                  <div className="relative mb-6">
+                  <div className="mb-6">
                     <div className="size-16 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Zap className="size-6 text-primary" />
-                    </div>
                   </div>
 
                   {/* Multi-step loading sequence */}
@@ -1524,9 +1526,9 @@ export default function Dashboard() {
                     {loadingSteps.map((step, i) => (
                       <div key={i} className="flex items-center gap-2.5">
                         {step.status === "done" ? (
-                          <CheckCircle2 className="size-4 text-emerald-400 shrink-0" />
+                          <CheckCircle2 className="size-4 text-muted-foreground shrink-0" />
                         ) : step.status === "error" ? (
-                          <span className="size-4 flex items-center justify-center text-red-400 shrink-0">✗</span>
+                          <X className="size-4 text-destructive shrink-0" />
                         ) : step.status === "active" ? (
                           <Loader2 className="size-4 animate-spin text-primary shrink-0" />
                         ) : (
@@ -1537,9 +1539,9 @@ export default function Dashboard() {
                             step.status === "active"
                               ? "text-foreground"
                               : step.status === "done"
-                                ? "text-emerald-400"
+                                ? "text-foreground/70"
                                 : step.status === "error"
-                                  ? "text-red-400"
+                                  ? "text-destructive"
                                   : "text-muted-foreground/50"
                           }`}
                         >
@@ -1550,11 +1552,11 @@ export default function Dashboard() {
                   </div>
 
                   {fetchError && (
-                    <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
-                      <p className="text-xs font-mono text-red-400">{fetchError}</p>
+                    <div className="mt-4 max-w-sm rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3">
+                      <p className="text-xs font-mono text-destructive">{fetchError}</p>
                       {/* Phase 189 — never name an internal env var or
                           provider in user-facing copy. */}
-                      <p className="text-[10px] font-mono text-red-400/60 mt-1">
+                      <p className="text-[10px] font-mono text-destructive/70 mt-1">
                         {t.onboarding.dataUnavailableHint}
                       </p>
                     </div>
@@ -1598,9 +1600,9 @@ export default function Dashboard() {
                     {t.dashboard.terminalDescription}
                   </p>
                   {fetchError && (
-                    <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
-                      <p className="text-xs font-mono text-red-400">{fetchError}</p>
-                      <p className="text-[10px] font-mono text-red-400/60 mt-1">
+                    <div className="mt-4 max-w-sm rounded-lg border border-destructive/25 bg-destructive/5 px-4 py-3">
+                      <p className="text-xs font-mono text-destructive">{fetchError}</p>
+                      <p className="text-[10px] font-mono text-destructive/70 mt-1">
                         {t.onboarding.dataUnavailableHint}
                       </p>
                     </div>
@@ -1615,7 +1617,9 @@ export default function Dashboard() {
                       <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{t.dashboard.timeframes}</p>
                     </div>
                     <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
-                      <p className="text-lg font-bold text-primary font-mono">∞</p>
+                      <p className="text-lg font-bold text-primary font-mono">
+                        {discoveredInstruments.length > 0 ? discoveredInstruments.length : "—"}
+                      </p>
                       <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{t.dashboard.instruments}</p>
                     </div>
                   </div>

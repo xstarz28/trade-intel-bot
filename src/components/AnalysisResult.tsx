@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Info,
   Activity,
+  Ban,
 } from "lucide-react";
 
 const BIAS_CONFIG = {
@@ -95,7 +96,7 @@ const UI_STATE_STYLE = {
   conflicting: "bg-red-500/15 text-red-300 border-red-500/25",
   mixed: "bg-amber-500/15 text-amber-400 border-amber-500/25",
   technical_only: "bg-sky-500/15 text-sky-400 border-sky-500/25",
-  fundamental_only: "bg-violet-500/15 text-violet-400 border-violet-500/25",
+  fundamental_only: "bg-primary/10 text-primary/90 border-primary/25",
   insufficient: "bg-muted/30 text-muted-foreground border-border/50",
 } as const;
 
@@ -190,7 +191,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   </span>
                   {result.recommendation === "NO_TRADE" ? (
                     <Badge className="text-[10px] font-mono bg-red-500/15 text-red-400 border border-red-500/30">
-                      ⛔ {tx("analysis.noTrade")}
+                      <Ban className="mr-1 size-3 shrink-0" />
+                      {tx("analysis.noTrade")}
                     </Badge>
                   ) : (
                     <Badge
@@ -496,7 +498,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
                         : result.marketRegime.regime === "UNKNOWN"
                           ? "bg-muted/30 text-muted-foreground border-border/50"
-                          : "bg-violet-500/10 text-violet-400 border-violet-500/30"
+                          : "bg-primary/10 text-primary/90 border-primary/25"
                   }`}
                 >
                   regime: {result.marketRegime.regime}
@@ -896,7 +898,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-red-500/25 bg-red-500/5">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
-              <h4 className="text-xs font-mono font-semibold text-red-400">⛔ {tx("analysisResult.noTradeRejected")}</h4>
+              <h4 className="text-xs font-mono font-semibold text-red-400"><Ban className="mr-1 size-3.5 inline" /> {tx("analysisResult.noTradeRejected")}</h4>
             </div>
           </CardHeader>
           <CardContent className="pt-0">
@@ -2906,7 +2908,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     </div>
                   ))}
                   {obs.slice(0, 2).map((o, i) => (
-                    <div key={`ob-${i}`} className="rounded border bg-violet-500/5 border-violet-500/15 px-2.5 py-1.5 text-[10px] font-mono text-violet-400/80">
+                    <div key={`ob-${i}`} className="rounded border bg-muted/30 border-border/50 px-2.5 py-1.5 text-[10px] font-mono text-muted-foreground">
                       <span className="font-medium">{t.analysisResult.labels.orderBlock}</span>
                       {' '}{o.direction} {formatPrice(o.lower)}–{formatPrice(o.upper)}
                       <span className="text-muted-foreground/50"> · {o.status}</span>
@@ -3205,7 +3207,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {ci.defi && (
                 <div className="border-t border-border/30 pt-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                    <span className="text-purple-400/80">{"●"}</span> defi fundamentals {"·"} {ci.defi.provider}
+                    <span className="text-primary/80">{"●"}</span> defi fundamentals {"·"} {ci.defi.provider}
                     <span className={cn("ml-2", FRESH_COLORS[ci.defi.freshness])}> {ci.defi.freshness}</span>
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
@@ -3459,7 +3461,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {ui.equity && (
                 <div className="border-t border-border/30 pt-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                    <span className="text-purple-400/80">{"●"}</span> {t.analysisResult.labels.equityIntelligence}
+                    <span className="text-primary/80">{"●"}</span> {t.analysisResult.labels.equityIntelligence}
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">
                     {ui.equity.fundamentals?.peRatio !== undefined && (
