@@ -4,6 +4,8 @@ import { Separator } from "@/components/ui/separator";
 import { ScoreBreakdown } from "@/components/ScoreBreakdown";
 import { PriceStructureChart } from "@/components/PriceStructureChart";
 import type { AnalysisResult as AnalysisResultType } from "@/types/analysis";
+import type { ClassicPriceActionContext } from "@/lib/data/classic-price-action";
+import type { TechnicalData } from "@/lib/data/market-types";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { mapTrendLabel, mapConfidence, mapFreshness } from "@/lib/i18n/enum-mapping";
@@ -100,6 +102,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
   const tech = result.technicalData;
   const priceSnap = result.priceSnapshot;
+  const classicContext = (tech as TechnicalData & { classicContext?: ClassicPriceActionContext }).classicContext;
 
   return (
     <div className="space-y-4">
@@ -241,7 +244,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
-      {tech?.classicContext && (
+      {classicContext && (
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-3">
@@ -251,17 +254,17 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9px] font-mono">
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Candlestick</span>
-                <span className="font-semibold">{tech.classicContext.patterns.slice(-4).map((p) => p.name.replaceAll("_", " ")).join(" · ") || "No qualified pattern"}</span>
+                <span className="font-semibold">{classicContext.patterns.slice(-4).map((p) => p.name.replaceAll("_", " ")).join(" · ") || "No qualified pattern"}</span>
               </div>
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Supply / Demand</span>
-                <span className="font-semibold">{tech.classicContext.supplyDemand.slice(-4).map((z) => z.type).join(" · ") || "No qualified formation"}</span>
-                <span className="text-muted-foreground block mt-1">fresh zones: {tech.classicContext.supplyDemand.filter((z) => z.fresh).length}</span>
+                <span className="font-semibold">{classicContext.supplyDemand.slice(-4).map((z) => z.type).join(" · ") || "No qualified formation"}</span>
+                <span className="text-muted-foreground block mt-1">fresh zones: {classicContext.supplyDemand.filter((z) => z.fresh).length}</span>
               </div>
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Classic structure</span>
-                <span className="font-semibold">Highs {tech.classicContext.trendlines.highs} · Lows {tech.classicContext.trendlines.lows}</span>
-                <span className="text-muted-foreground block mt-1">{tech.classicContext.chartPattern?.name?.replaceAll("_", " ") ?? "No chart pattern"}{tech.classicContext.ictUnicorn ? ` · ICT Unicorn ${tech.classicContext.ictUnicorn.direction}` : ""}</span>
+                <span className="font-semibold">Highs {classicContext.trendlines.highs} · Lows {classicContext.trendlines.lows}</span>
+                <span className="text-muted-foreground block mt-1">{classicContext.chartPattern?.name?.replaceAll("_", " ") ?? "No chart pattern"}{classicContext.ictUnicorn ? ` · ICT Unicorn ${classicContext.ictUnicorn.direction}` : ""}</span>
               </div>
             </div>
           </CardContent>
