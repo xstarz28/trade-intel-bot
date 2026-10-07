@@ -153,7 +153,7 @@ try {
   await runAnalysis(page, "XAU/USD", "commodity");
 
   await page.waitForFunction(() => {
-    const match = document.body.innerText.match(/(\\d{1,3}(?:,\\d{3})*) instruments available/);
+    const match = document.body.innerText.match(/(\d{1,3}(?:,\d{3})*) instruments available/);
     return match ? Number(match[1].replace(/,/g, "")) >= 1000 : false;
   }, undefined, { timeout: 30000 });
   const desktopUniverse = await page.locator("text=/\\d{1,3}(?:,\\d{3})* instruments available/").first().textContent();
