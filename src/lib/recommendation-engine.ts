@@ -811,13 +811,15 @@ function classifySuitability(
   analyticalScore: number,
   confidence: number,
   dataCompleteness: DataCompletenessLevel,
+  nonTechnicalEvidenceCount = 0,
 ): RecommendationSuitability {
   if (dataCompleteness === "NONE") return "INSUFFICIENT_DATA";
   if (dataCompleteness === "MINIMAL" && analyticalScore < 50) return "INSUFFICIENT_DATA";
 
-  // Default recommendations are intentionally selective: a strong data snapshot
-  // without a strong directional setup is not promoted to an opportunity.
-  if (analyticalScore >= 75 && confidence >= 65) return "TOP_OPPORTUNITY";
+  // A TOP_OPPORTUNITY requires at least one independent non-technical evidence
+  // layer. Technical-only setups remain useful watch candidates, never the
+  // product's primary trade opportunity.
+  if (analyticalScore >= 75 && confidence >= 65 && nonTechnicalEvidenceCount > 0) return "TOP_OPPORTUNITY";
   if (analyticalScore >= 60 && confidence >= 50) return "WATCHLIST";
   if (analyticalScore >= 30) return "NEUTRAL";
   return "NEUTRAL";
@@ -886,7 +888,14 @@ export function generateRecommendation(
   // Take top N and format
   for (let i = 0; i < Math.min(scored.length, maxResults); i++) {
     const { input: c, result } = scored[i];
-    const suitability = classifySuitability(result.analyticalScore, result.confidence, c.dataCompleteness);
+    const nonTechnicalEvidenceCount = [c.fundamentalScore, c.macroScore, c.positioningScore]
+      .filter((v) => v !== undefined && Number.isFinite(v) && v !== 0).length;
+    const suitability = classifySuitability(
+      result.analyticalScore,
+      result.confidence,
+      c.dataCompleteness,
+      nonTechnicalEvidenceCount,
+    );
 
     const recommendedType = isTradingMode
       ? horizon === "SCALPING" ? "M5/M15 analysis" : horizon === "INTRADAY" ? "H1/H4 analysis" : "D1/W1 analysis"
