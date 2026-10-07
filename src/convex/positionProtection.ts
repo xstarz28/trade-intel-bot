@@ -203,6 +203,17 @@ export const saveAlert = mutation({
       timestamp: args.timestamp,
       acknowledged: args.acknowledged,
     });
+
+    const alerts = await ctx.db
+      .query("alertHistory")
+      .withIndex("by_user_alerts", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .take(MAX_ALERT_HISTORY + 1);
+    for (const old of alerts.slice(MAX_ALERT_HISTORY)) {
+      await ctx.db.delete(old._id);
+    }
+
+    return id;
   },
 });
 
@@ -270,8 +281,8 @@ export const saveCursor = mutation({
     // Upsert: find existing cursor for this provider/instrument
     const existing = await ctx.db
       .query("streamCursors")
-      .withIndex("by_provider_instrument", (q: any) =>
-        q.eq("provider", args.provider).eq("instrument", args.instrument)
+      .withIndex("by_user_provider_instrument", (q: any) =>
+        q.eq("userId", user._id).eq("provider", args.provider).eq("instrument", args.instrument)
       )
       .unique();
 
@@ -302,6 +313,9 @@ export const getCursor = query({
     instrument: v.string(),
   },
   handler: async (ctx, args) => {
+    const user = await resolveUser(ctx);
+    if (!user) return null;
+
     return await ctx.db
       .query("streamCursors")
       .withIndex("by_provider_instrument", (q: any) =>
