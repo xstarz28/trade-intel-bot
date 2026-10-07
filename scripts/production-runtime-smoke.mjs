@@ -91,13 +91,16 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     throw new Error("".concat(instrument, " was not selected before analysis. Picker text: ").concat(selectedText));
   }
 
-  const run = targetPage.locator("button").filter({ hasText: /run analysis/i }).first();
+  // Submit the authoritative instrument form directly. The visible label is localized,
+  // so text-matching a translated button is not a reliable production smoke control.
+  const form = targetPage.locator("form").filter({ has: targetPage.getByRole("combobox").first() }).first();
+  const run = form.locator("button[type=\"submit\"]").first();
   if (!(await run.count())) {
-    const buttons = await targetPage.locator("button").allTextContents();
-    throw new Error(`Run Analysis control is missing for ${instrument}. Rendered buttons: ${buttons.join(" | ")}`);
+    const buttons = await form.locator("button").allTextContents();
+    throw new Error(`Run Analysis submit control is missing for ${instrument}. Form buttons: ${buttons.join(" | ")}`);
   }
   if (!(await run.isEnabled())) {
-    throw new Error("".concat("Run Analysis control is disabled for ", instrument, ". Picker text: ", selectedText));
+    throw new Error("".concat("Run Analysis submit control is disabled for ", instrument, ". Picker text: ", selectedText));
   }
   await run.click();
 
