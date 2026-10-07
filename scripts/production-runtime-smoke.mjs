@@ -58,16 +58,12 @@ async function runAnalysis(targetPage, instrument, type) {
     const btc = targetPage.getByRole("button", { name: "BTC/USD", exact: true });
     if (await btc.count()) await btc.click();
   } else if (instrument === "XAU/USD") {
-    const quick = targetPage.getByRole("button", { name: "XAU/USD", exact: true });
-    if (await quick.count()) {
-      await quick.click();
-    } else {
-      const input = targetPage.locator('input[placeholder="EUR/USD"]').first();
-      await input.fill(instrument);
-      const combos = targetPage.getByRole("combobox");
-      await combos.nth(1).click();
-      await targetPage.getByRole("option", { name: type, exact: true }).click();
-    }
+    const category = type === "crypto" ? "CRYPTO" : type === "commodity" ? "COMMODITIES" : type === "stock" ? "STOCKS" : "FOREX";
+    await targetPage.getByRole("button", { name: category, exact: true }).click();
+    const picker = targetPage.getByRole("combobox").first();
+    await picker.click();
+    const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
+    await option.click();
   }
 
   const run = targetPage.getByRole("button", { name: /run analysis/i });
@@ -145,8 +141,12 @@ try {
   if (!(await guest.count())) throw new Error("Auth page did not expose guest sign-in");
   await guest.click();
 
-  const btc = page.getByRole("button", { name: "BTC/USD", exact: true });
-  await btc.waitFor({ state: "visible", timeout: 30000 });
+  const cryptoCategory = page.getByRole("button", { name: "CRYPTO", exact: true });
+  await cryptoCategory.waitFor({ state: "visible", timeout: 30000 });
+  await cryptoCategory.click();
+  const instrumentPicker = page.getByRole("combobox").first();
+  await instrumentPicker.click();
+  await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
   evidence.authenticated = true;
 
   await runAnalysis(page, "BTC/USD", "crypto");
