@@ -18,7 +18,7 @@ import type { AnalysisResult } from "@/types/analysis";
 import type { UniversalIntelligenceContext } from "./data/universal/types";
 import type { CryptoDerivativesData } from "./data/derivatives-types";
 import type { EconomicCalendarData } from "./data/calendar-types";
-import type { TreasuryData } from "./data/treasury";
+import { deriveMacroYieldEvidence, type TreasuryData } from "./data/treasury";
 import type { CotData } from "./data/cot";
 import type { EiaData } from "./data/eia";
 
@@ -277,6 +277,25 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     hasExecutionQuality: extractSpreadBps(source) !== undefined,
 
     ...extractSetupEvidence(tech),
+
+    // Directional evidence bridge: use the analysis engine's signed
+    // fundamental/positioning factors instead of reconstructing them in UI.
+    fundamentalScore: ar?.breakdown?.fundamental,
+    positioningScore: ar?.breakdown?.sentiment,
+    fundamentalEvidenceAvailable:
+      ar?.fundamentalData?.available === true ||
+      ar?.macroData?.confidence === "high" ||
+      ar?.macroData?.confidence === "medium" ||
+      !!ar?.calendarData?.events?.some(
+        (event) => event.status === "released" && event.actual !== undefined && event.forecast !== undefined,
+      ),
+    macroScore: (() => {
+      if (source.treasuryData?.available && source.assetClass === "commodity") {
+        const evidence = deriveMacroYieldEvidence(source.treasuryData);
+        if (/XAU|GOLD/i.test(source.instrument)) return evidence.goldLongEffect * 2;
+      }
+      return undefined;
+    })(),
 
     // Asset-specific
     ...assetSpecific,
