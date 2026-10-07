@@ -1162,20 +1162,23 @@ function decideTrade(
     entry !== undefined && entry > 0 &&
     stopLevel !== undefined && tpLevel !== undefined
   ) {
-    const risk = Math.abs(entry - stopLevel);
+    // The displayed stop includes the disclosed ATR safety buffer. R:R must
+    // use the exact displayed entry/SL/TP levels; otherwise the chart can show
+    // an arithmetically impossible ratio.
+    const buffer =
+      tech?.atr14 !== undefined && Number.isFinite(tech.atr14) && tech.atr14 > 0
+        ? tech.atr14 * 0.2
+        : 0;
+    const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
+    const risk = Math.abs(entry - sl);
     const reward = Math.abs(tpLevel - entry);
     if (risk <= 0) {
-      reasons.push("Structural stop level equals entry price — invalid risk distance.");
+      reasons.push("Displayed structural stop level equals entry price — invalid risk distance.");
     } else {
       const rr = Math.round((reward / risk) * 100) / 100;
       // Preserve the exact market-derived levels for visual context even when
       // the setup is rejected. This is explicitly NON-EXECUTABLE and never
       // changes recommendation, gates, conviction or risk sizing.
-      const buffer =
-        tech?.atr14 !== undefined && Number.isFinite(tech.atr14) && tech.atr14 > 0
-          ? tech.atr14 * 0.2
-          : 0;
-      const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
       const decimals = entry < 10 ? 5 : 2;
       const bufferNote =
         buffer > 0
