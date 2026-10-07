@@ -26,9 +26,16 @@ import {
   AlertCircle,
 } from "lucide-react";
 
+interface AvailableInstrument {
+  symbol: string;
+  type: InstrumentType;
+  label: string;
+}
+
 interface InstrumentInputProps {
   onAnalyze: (input: AnalysisInput) => void;
   isAnalyzing: boolean;
+  availableInstruments?: AvailableInstrument[];
 }
 
 const STORAGE_KEY = "xstarzg-analysis-form";
@@ -58,9 +65,13 @@ function loadPersistedForm(): PersistedForm {
   }
 }
 
-export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps) {
+export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments = [] }: InstrumentInputProps) {
   const { t } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
+  const quickPicks = availableInstruments.length > 0
+    ? availableInstruments.filter((item) => POPULAR_INSTRUMENTS.some((popular) => popular.symbol === item.symbol)).slice(0, 8)
+    : POPULAR_INSTRUMENTS;
+  const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
 
   useEffect(() => {
     try {
@@ -119,7 +130,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
               $ instruments
             </Label>
             <div className="flex flex-wrap gap-1.5">
-              {POPULAR_INSTRUMENTS.map((item) => (
+              {quickPicks.map((item) => (
                 <button
                   key={item.symbol}
                   type="button"
@@ -135,6 +146,9 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-[10px] font-mono text-muted-foreground">
+              {universeOptions.length.toLocaleString()} instruments available · search the full provider-backed universe below
+            </p>
           </div>
 
           {/* Instrument + Type + Timeframe */}
@@ -146,12 +160,24 @@ export function InstrumentInput({ onAnalyze, isAnalyzing }: InstrumentInputProps
               <div className="relative">
                 <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-primary/60 font-mono">$</span>
                 <Input
-                  placeholder="EUR/USD"
+                  list="xstarzg-instrument-universe"
+                  placeholder="Search symbol, e.g. BTC/USD or BTC-USDT-SWAP"
                   value={form.instrument}
-                  onChange={(e) => update("instrument", e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    const match = universeOptions.find((item) => item.symbol.toUpperCase() === value.toUpperCase());
+                    update("instrument", value);
+                    if (match) update("instrumentType", match.type);
+                  }}
                   className="pl-7 h-9 text-sm font-mono"
                   required
+                  autoComplete="off"
                 />
+                <datalist id="xstarzg-instrument-universe">
+                  {universeOptions.map((item) => (
+                    <option key={item.symbol} value={item.symbol}>{item.label}</option>
+                  ))}
+                </datalist>
               </div>
             </div>
             <div>
