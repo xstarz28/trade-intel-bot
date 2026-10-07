@@ -86,16 +86,31 @@ const DEFAULT_CRYPTO_PRIORITY = [
   "DOT-USDT-SWAP", "UNI-USDT-SWAP", "NEAR-USDT-SWAP", "APT-USDT-SWAP",
 ];
 
-function prioritizeCryptoDiscovery<T extends { instId: string }>(instruments: readonly T[]): T[] {
+function prioritizeCryptoDiscovery<T extends { instId: string; instType?: string }>(instruments: readonly T[]): T[] {
   const priority = new Map(DEFAULT_CRYPTO_PRIORITY.map((id, index) => [id, index]));
+  const quoteRank = (id: string) =>
+    /-USDT-SWAP$/i.test(id) ? 0 :
+    /-USDC-SWAP$/i.test(id) ? 1 :
+    /-USDT$/i.test(id) ? 2 :
+    /-USDC$/i.test(id) ? 3 : 9;
+  const typeRank = (type?: string) =>
+    type?.toUpperCase() === "SWAP" ? 0 :
+    type?.toUpperCase() === "FUTURES" ? 1 : 2;
+
   return [...instruments]
-    .filter((item) => /-USDT-SWAP$/i.test(item.instId))
     .filter((item) => !/^1000/i.test(item.instId))
     .filter((item) => !/(?:-3L|-3S|-5L|-5S)-/i.test(item.instId))
+    .filter((item) => quoteRank(item.instId) < 9)
     .sort((a, b) => {
       const pa = priority.get(a.instId) ?? 1000;
       const pb = priority.get(b.instId) ?? 1000;
       if (pa !== pb) return pa - pb;
+      const qa = quoteRank(a.instId);
+      const qb = quoteRank(b.instId);
+      if (qa !== qb) return qa - qb;
+      const ta = typeRank(a.instType);
+      const tb = typeRank(b.instType);
+      if (ta !== tb) return ta - tb;
       return a.instId.localeCompare(b.instId);
     });
 }
