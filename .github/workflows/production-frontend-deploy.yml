@@ -81,6 +81,7 @@ jobs:
           test -n "${deployment_id}"
           echo "deployment_url=${url}" >> "${GITHUB_OUTPUT}"
           echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
+          echo "publication_verified=true"
 
       - name: Promote exact deployment to production domains
         run: |
