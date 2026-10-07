@@ -121,9 +121,8 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
     setForm((prev) => ({ ...prev, instrument: symbol, instrumentType: type }));
   }, []);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.instrument.trim()) return;
+  const submitAnalysis = useCallback(() => {
+    if (!form.instrument.trim() || isAnalyzing) return;
 
     onAnalyze({
       instrument: form.instrument.trim(),
@@ -132,6 +131,11 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
       tradingStyle: form.tradingStyle,
       requestedTimeframe: form.timeframe,
     });
+  }, [form, isAnalyzing, onAnalyze]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitAnalysis();
   };
 
   return (
@@ -280,18 +284,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
               disabled={!form.instrument.trim() || isAnalyzing}
               onClick={(event) => {
                 event.preventDefault();
-                // Keep the analysis action explicit on the submit control. This
-                // preserves native form semantics while making the primary action
-                // resilient to browser/React synthetic-submit edge cases.
-                if (form.instrument.trim() && !isAnalyzing) {
-                  onAnalyze({
-                    instrument: form.instrument.trim(),
-                    instrumentType: form.instrumentType,
-                    timeframe: form.timeframe,
-                    tradingStyle: form.tradingStyle,
-                    requestedTimeframe: form.timeframe,
-                  });
-                }
+                submitAnalysis();
               }}
               className="gap-2 px-5 font-mono text-sm"
             >
