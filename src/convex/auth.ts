@@ -5,7 +5,7 @@ import Google from "@auth/core/providers/google";
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
     Google({
-      redirectProxyUrl: process.env.AUTH_REDIRECT_PROXY_URL,
+      redirectProxyUrl: "https://xstarzanalysis.vercel.app/api/auth",
     }),
     Anonymous,
   ],
