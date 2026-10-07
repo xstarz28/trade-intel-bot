@@ -617,6 +617,11 @@ const zh: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    available: "可用",
+    forex: "外汇",
+    crypto: "加密资产",
+    stocks: "股票",
+    commodities: "大宗商品",
     newAnalysis: "新建分析",
     marketLabel: "市场",
     searchSpecificInstrument: "搜索特定交易品种",
