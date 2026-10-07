@@ -161,7 +161,7 @@ export function PriceStructureChart({
             viewBox={`0 0 ${width} ${height}`}
             className="w-full h-auto min-h-[300px]"
             role="img"
-            aria-label="Provider OHLCV candlestick chart with key market levels"
+            aria-label="Provider OHLCV market structure chart"
           >
             {/* TradingView-like grid: deliberately subtle. */}
             {[0, 1, 2, 3, 4].map((i) => {
