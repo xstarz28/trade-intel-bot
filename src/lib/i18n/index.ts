@@ -1,5 +1,5 @@
 /**
- * i18n — Lightweight internationalization for Freebuff Trading Intelligence.
+ * i18n — Lightweight internationalization for XSTARZG Analysis.
  *
  * Architecture:
  * - React Context for language state
@@ -65,7 +65,7 @@ function getResource(locale: Locale): Translations {
 
 // ─── localStorage helpers ──────────────────────────────────────
 
-const STORAGE_KEY = "freebuff:locale";
+const STORAGE_KEY = "xstarzg:locale";
 
 function readPersistedLocale(): Locale | null {
   try {
