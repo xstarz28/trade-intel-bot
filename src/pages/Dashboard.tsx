@@ -25,6 +25,7 @@ import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } fro
 import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
+import { getAllInstruments } from "@/lib/data/universal/instruments";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
@@ -177,6 +178,7 @@ export default function Dashboard() {
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
   const discoveryCursorRef = useRef(0);
   const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
+  const [discoveredCryptoInstruments, setDiscoveredCryptoInstruments] = useState<string[]>([]);
 
   // Phase 156 — provider-native universal discovery.
   // Discovery metadata alone is NEVER considered live evidence.
@@ -190,6 +192,8 @@ export default function Dashboard() {
       try {
         const discovery = await discoverOkxInstruments();
         if (cancelled || !discovery.success || discovery.instruments.length === 0) return;
+
+        setDiscoveredCryptoInstruments(discovery.instruments.map((item) => item.instId));
 
         const prioritized = prioritizeCryptoDiscovery(discovery.instruments);
         const { batch, nextCursor } = selectRotatingDiscoveryBatch(
@@ -806,6 +810,22 @@ export default function Dashboard() {
 
   // Phase 153 — live candidate sources come ONLY from verified runtime
   // provider-backed snapshots. Persisted history is never treated as LIVE.
+  const availableInstruments = useMemo(() => {
+    const registry = getAllInstruments().map((item) => ({
+      symbol: item.canonical,
+      type: (item.assetClass === "equity" ? "stock" : item.assetClass) as "forex" | "crypto" | "stock" | "commodity" | "indices",
+      label: item.name,
+    }));
+    const discovered = discoveredCryptoInstruments.map((symbol) => ({
+      symbol,
+      type: "crypto" as const,
+      label: "OKX discovered instrument",
+    }));
+    const bySymbol = new Map<string, typeof registry[number]>();
+    for (const item of [...registry, ...discovered]) bySymbol.set(item.symbol, item);
+    return Array.from(bySymbol.values()).sort((a, b) => a.symbol.localeCompare(b.symbol));
+  }, [discoveredCryptoInstruments]);
+
   const liveSources: LiveCandidateSource[] = useMemo(
     () => Array.from(liveSourceRef.current.values()),
     [currentResult, liveSourcesVersion],
@@ -954,8 +974,8 @@ export default function Dashboard() {
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
-              <Terminal className="size-4 text-primary" />
+            <div className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-background border border-border/60">
+              <img src="/logo.svg" alt="XSTARZG" className="size-8 object-cover" />
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-tight font-mono">
@@ -1088,7 +1108,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left — Input + History */}
           <div className="lg:col-span-4 space-y-4">
-            <InstrumentInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} />
+            <InstrumentInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} availableInstruments={availableInstruments} />
             <RiskSizingControl value={riskSizingInputs} onChange={setRiskSizingInputs} />
 
             <div className="hidden lg:block">
