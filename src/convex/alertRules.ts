@@ -7,6 +7,8 @@
 import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 
+const MAX_ALERT_HISTORY = 200;
+
 // ═══════════════════════════════════════════════════════════════
 // RULES CRUD
 // ═══════════════════════════════════════════════════════════════
@@ -184,6 +186,15 @@ export const saveAlert = mutation({
       currentState: args.currentState,
       timestamp: args.timestamp,
     });
+
+    const history = await ctx.db
+      .query("ruleAlertHistory")
+      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .order("desc")
+      .take(MAX_ALERT_HISTORY + 1);
+    for (const old of history.slice(MAX_ALERT_HISTORY)) {
+      await ctx.db.delete(old._id);
+    }
   },
 });
 
