@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
 import { TRADING_STYLES, type TradingStyle } from "@/lib/trading-style";
 import { Button } from "@/components/ui/button";
@@ -69,6 +69,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   const { t } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
   const [manualSearch, setManualSearch] = useState(false);
+  const instrumentRef = useRef(form.instrument);
   const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
 
   const categoryOptions: { value: InstrumentType; label: string }[] = [
@@ -85,15 +86,18 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
     setForm((prev) => {
       const nextOptions = universeOptions.filter((item) => item.type === type);
       const currentStillValid = nextOptions.some((item) => item.symbol === prev.instrument);
+      const nextInstrument = currentStillValid ? prev.instrument : (nextOptions[0]?.symbol ?? "");
+      instrumentRef.current = nextInstrument;
       return {
         ...prev,
         instrumentType: type,
-        instrument: currentStillValid ? prev.instrument : (nextOptions[0]?.symbol ?? ""),
+        instrument: nextInstrument,
       };
     });
   }, [universeOptions]);
 
   const selectInstrument = useCallback((symbol: string) => {
+    instrumentRef.current = symbol;
     const match = universeOptions.find((item) => item.symbol === symbol);
     setForm((prev) => ({
       ...prev,
@@ -114,18 +118,21 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
     key: K,
     value: PersistedForm[K],
   ) => {
+    if (key === "instrument") instrumentRef.current = String(value);
     setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
   const handleQuickSelect = useCallback((symbol: string, type: InstrumentType) => {
+    instrumentRef.current = symbol;
     setForm((prev) => ({ ...prev, instrument: symbol, instrumentType: type }));
   }, []);
 
   const submitAnalysis = useCallback(() => {
-    if (!form.instrument.trim() || isAnalyzing) return;
+    const instrument = instrumentRef.current.trim();
+    if (!instrument || isAnalyzing) return;
 
     onAnalyze({
-      instrument: form.instrument.trim(),
+      instrument,
       instrumentType: form.instrumentType,
       timeframe: form.timeframe,
       tradingStyle: form.tradingStyle,
