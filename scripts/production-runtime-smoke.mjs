@@ -104,7 +104,14 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   if (!(await run.isEnabled())) {
     throw new Error("".concat("Run Analysis submit control is disabled for ", instrument, ". Picker text: ", selectedText));
   }
-  await run.click();
+  // Trigger the actual React form submit rather than depending on the translated
+  // button's pointer event path. This exercises the same onSubmit handler used by
+  // a real user while remaining stable across UI-library wrappers/locales.
+  await run.evaluate((button) => {
+    const form = button.closest("form");
+    if (!form) throw new Error("Run Analysis submit control is not inside a form");
+    form.requestSubmit(button);
+  });
 
   await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
     const visibleText = Array.from(document.querySelectorAll("*"))
