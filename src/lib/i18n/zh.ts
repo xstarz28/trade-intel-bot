@@ -617,6 +617,12 @@ const zh: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysis: "新建分析",
+    marketLabel: "市场",
+    searchSpecificInstrument: "搜索特定交易品种",
+    hideManualSearch: "隐藏手动搜索",
+    manualSearchPlaceholder: "手动搜索品种，例如 BTC-USDT-SWAP",
+    manualSearchNote: "手动搜索为可选项。按类别选择仍是主要的品种选择方式。",
     instrumentLabel: "标的",
     typeLabel: "类型",
     timeframeLabel: "周期",
