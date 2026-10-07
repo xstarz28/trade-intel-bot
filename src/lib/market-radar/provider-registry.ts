@@ -692,69 +692,53 @@ export async function acquireProviderNativeLiveData(
 ): Promise<LiveAcquisitionResult> {
   const startTime = Date.now();
 
-  const nativeIdentity = {
-    provider: input.provider,
-    providerInstrumentId: input.providerInstrumentId,
-    assetClass: input.assetClass,
-  };
+  const result = await executeLiveRequest({
+    instrument: input.instrument,
+    capability: "ohlcv",
+    timeframe: "1h",
+    count: 100,
+    transport,
+    readEnv,
+    providerNative: {
+      provider: input.provider,
+      providerInstrumentId: input.providerInstrumentId,
+      assetClass: input.assetClass,
+    },
+  });
 
-  // OHLCV candle timestamps describe the candle's opening bucket (e.g. the
-  // current 1h candle can be 20-50 minutes old). They are valid analytical
-  // observations but must NOT be used as the live quote timestamp. Acquire a
-  // verified quote separately so the scanner can distinguish a current market
-  // price from the age of the latest completed/open candle.
-  const [quoteResult, candleResult] = await Promise.all([
-    executeLiveRequest({
-      instrument: input.instrument,
-      capability: "quote",
-      transport,
-      readEnv,
-      providerNative: nativeIdentity,
-    }),
-    executeLiveRequest({
-      instrument: input.instrument,
-      capability: "ohlcv",
-      timeframe: "1h",
-      count: 100,
-      transport,
-      readEnv,
-      providerNative: nativeIdentity,
-    }),
-  ]);
-
-  const candles = candleResult.candles ?? [];
+  const candles = result.candles ?? [];
   const latest = candles[candles.length - 1];
-  const quote = quoteResult.quote;
-  const quoteFresh = quoteResult.status === "LIVE_VERIFIED" && !!quote &&
-    Number.isFinite(quote.price) && quote.price > 0;
-  const candleUsable =
-    (candleResult.status === "LIVE_VERIFIED" || candleResult.status === "LIVE_PARTIAL") &&
-    !!latest && Number.isFinite(latest.close) && latest.close > 0;
 
-  if (!quoteFresh && !candleUsable) {
+  if (
+    (result.status !== "LIVE_VERIFIED" &&
+      result.status !== "LIVE_PARTIAL") ||
+    !latest ||
+    !Number.isFinite(latest.close) ||
+    latest.close <= 0
+  ) {
     return {
       instrument: input.instrument,
       assetClass: input.assetClass,
       providerInstrumentId: input.providerInstrumentId,
       snapshot: null,
-      provider: quoteResult.provider ?? candleResult.provider ?? input.provider,
-      fetchedAt: quoteResult.receivedAt ?? candleResult.receivedAt ?? Date.now(),
+      provider: result.provider ?? input.provider,
+      fetchedAt: result.receivedAt ?? Date.now(),
       success: false,
-      error: quoteResult.failureReason ?? candleResult.failureReason ?? "No verified market quote or OHLCV data.",
-      latencyMs: Math.max(
-        quoteResult.latencyMs ?? 0,
-        candleResult.latencyMs ?? 0,
-        Date.now() - startTime,
-      ),
+      error: result.failureReason ?? `Live request status: ${result.status}`,
+      latencyMs: result.latencyMs ?? Date.now() - startTime,
     };
   }
 
-  const fetchedAt = Date.now();
-  const observedAt = quoteFresh
-    ? (quoteResult.receivedAt ?? fetchedAt)
-    : latest!.timestamp;
+  const fetchedAt = result.receivedAt ?? Date.now();
+  const candleBucketStart = Math.floor(fetchedAt / (60 * 60_000)) * (60 * 60_000);
+  // OKX's current 1h candle carries the live in-progress close. Its timestamp
+  // is the candle opening bucket, not the moment that close was observed.
+  // For that current bucket only, fetchedAt is the honest observation time.
+  // Older buckets retain their provider timestamp and remain DELAYED/STALE.
+  const observedAt = latest.timestamp >= candleBucketStart
+    ? fetchedAt
+    : latest.timestamp;
   const freshness = assessFreshness(observedAt, fetchedAt);
-  const price = quoteFresh ? quote!.price : latest!.close;
 
   return {
     instrument: input.instrument,
@@ -763,31 +747,25 @@ export async function acquireProviderNativeLiveData(
     snapshot: {
       instrument: input.instrument,
       assetClass: input.assetClass,
-      price,
-      ohlcvAvailable: candleUsable,
-      availableTimeframes: candleUsable ? ["H1"] : [],
-      provider: quoteResult.provider ?? candleResult.provider ?? input.provider,
+      price: latest.close,
+      ohlcvAvailable: true,
+      availableTimeframes: ["H1"],
+      provider: result.provider ?? input.provider,
       observedAt,
       freshness,
-      quality: quoteFresh && candleResult.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
+      quality: result.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
     },
     candles: candles.map((candle) => ({
       ...candle,
       volume: candle.volume ?? 0,
     })),
-    provider: quoteResult.provider ?? candleResult.provider ?? input.provider,
+    provider: result.provider ?? input.provider,
     fetchedAt,
     success: true,
-    ...((quoteResult.failureReason ?? candleResult.failureReason)
-      ? { error: [quoteResult.failureReason, candleResult.failureReason].filter(Boolean).join(" | ") }
-      : {}),
-    latencyMs: Math.max(
-      quoteResult.latencyMs ?? 0,
-      candleResult.latencyMs ?? 0,
-      fetchedAt - startTime,
-    ),
+    ...(result.failureReason ? { error: result.failureReason } : {}),
+    latencyMs: result.latencyMs ?? Date.now() - startTime,
   };
-}
+
 
 /**
  * Phase 156 — Convert verified provider-native OHLCV into the normalized
