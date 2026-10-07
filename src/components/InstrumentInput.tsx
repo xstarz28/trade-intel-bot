@@ -20,8 +20,8 @@ import {
   type Timeframe,
 } from "@/lib/analysis-engine";
 import { cn } from "@/lib/utils";
+import logo from "@/assets/logo.svg";
 import {
-  Terminal,
   Zap,
   AlertCircle,
 } from "lucide-react";
@@ -138,12 +138,10 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
     <Card className="border-border/50 shadow-sm">
       <CardHeader className="pb-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-primary/15">
-            <Terminal className="size-4 text-primary" />
-          </div>
+          <img src={logo} alt="XSTARZG" width={32} height={32} className="size-8 rounded-lg" />
           <div>
             <CardTitle className="text-sm font-semibold font-mono">
-              $ new-analysis
+              {t.entryForm.newAnalysis}
             </CardTitle>
             <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">
               {t.dashboard.terminalDescription}
@@ -156,7 +154,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
           {/* Instrument category */}
           <div>
             <Label className="text-xs font-mono font-semibold text-foreground mb-2 block">
-              $ market
+              {t.entryForm.marketLabel}
             </Label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {categoryOptions.map((category) => (
@@ -181,7 +179,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
           <div>
             <div className="flex items-center justify-between mb-2">
               <Label className="text-xs font-mono font-semibold text-foreground">
-                $ instrument
+                {t.entryForm.instrumentLabel}
               </Label>
               <span className="text-[10px] font-mono text-muted-foreground">
                 {filteredInstruments.length.toLocaleString()} available
@@ -189,7 +187,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
             </div>
             <Select value={form.instrument} onValueChange={selectInstrument}>
               <SelectTrigger className="h-11 text-sm font-mono">
-                <SelectValue placeholder={filteredInstruments.length ? "Select instrument" : "No instruments available"} />
+                <SelectValue placeholder={filteredInstruments.length ? t.market.selectInstrument : t.market.noData} />
               </SelectTrigger>
               <SelectContent className="max-h-80">
                 {filteredInstruments.map((item) => (
@@ -205,20 +203,20 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
               onClick={() => setManualSearch((value) => !value)}
               className="mt-2 text-[11px] font-mono text-muted-foreground hover:text-foreground underline underline-offset-4"
             >
-              {manualSearch ? "Hide manual search" : "Search a specific instrument instead"}
+              {manualSearch ? t.entryForm.hideManualSearch : t.entryForm.searchSpecificInstrument}
             </button>
 
             {manualSearch && (
               <div className="mt-2">
                 <Input
-                  placeholder="Search symbol manually, e.g. BTC-USDT-SWAP"
+                  placeholder={t.entryForm.manualSearchPlaceholder}
                   value={form.instrument}
                   onChange={(e) => update("instrument", e.target.value)}
                   className="h-10 text-sm font-mono"
                   autoComplete="off"
                 />
                 <p className="mt-1.5 text-[10px] font-mono text-muted-foreground">
-                  Manual search is optional. Category selection remains the primary instrument picker.
+                  {t.entryForm.manualSearchNote}
                 </p>
               </div>
             )}
@@ -227,7 +225,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
           {/* Timeframe — all supported choices visible */}
           <div>
             <Label className="text-xs font-mono font-semibold text-foreground mb-2 block">
-              $ timeframe
+              {t.entryForm.timeframeLabel}
             </Label>
             <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
               {TIMEFRAMES.map((tf) => (
