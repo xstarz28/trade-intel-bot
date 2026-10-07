@@ -212,7 +212,11 @@ try {
   if (!(await brandLogo.count()) || !(await brandLogo.first().isVisible())) {
     throw new Error("Mobile production surface did not render the XSTARZG brand logo");
   }
-  const instrumentCountText = await mobilePage.locator("text=/\\d{1,3}(?:,\\d{3})* instruments available/").first().textContent().catch(() => null);
+  await mobilePage.waitForFunction(() => {
+    const match = document.body.innerText.match(/(\\d{1,3}(?:,\\d{3})*) instruments available/);
+    return match ? Number(match[1].replace(/,/g, "")) >= 1000 : false;
+  }, undefined, { timeout: 30000 });
+  const instrumentCountText = await mobilePage.locator("text=/\\d{1,3}(?:,\\d{3})* instruments available/").first().textContent();
   const instrumentCount = Number((instrumentCountText ?? "").replace(/[^0-9]/g, ""));
   if (!Number.isFinite(instrumentCount) || instrumentCount < 1000) {
     throw new Error(`Mobile production universe unexpectedly small: ${instrumentCountText ?? "missing"}`);
