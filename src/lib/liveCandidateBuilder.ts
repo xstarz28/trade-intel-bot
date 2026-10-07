@@ -73,11 +73,11 @@ function assessFreshness(
   return "UNAVAILABLE";
 }
 
-function assessDataCompleteness(source: LiveCandidateSource): DataCompletenessLevel {
+function assessDataCompleteness(source: LiveCandidateSource, technicalData?: TechnicalData): DataCompletenessLevel {
   let count = 0;
   if (source.marketData?.price?.price) count++;
   if (source.marketData?.candles?.length) count++;
-  if (source.technicalData) count++;
+  if (technicalData ?? source.technicalData) count++;
   if (source.analysisResult) count++;
   if (source.universalIntelligence) count++;
   if (source.derivativesData) count++;
@@ -232,7 +232,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   const freshness = assessFreshness(observationTimestamp, now);
 
   // Data completeness
-  const dataCompleteness = assessDataCompleteness(source);
+  const dataCompleteness = assessDataCompleteness(source, tech);
 
   // Data points from candles
   const dataPoints = source.marketData?.candles?.length ?? tech?.dataPoints ?? 0;
