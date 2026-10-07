@@ -278,7 +278,8 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
             <Button
               type="submit"
               disabled={!form.instrument.trim() || isAnalyzing}
-              onClick={() => {
+              onClick={(event) => {
+                event.preventDefault();
                 // Keep the analysis action explicit on the submit control. This
                 // preserves native form semantics while making the primary action
                 // resilient to browser/React synthetic-submit edge cases.
