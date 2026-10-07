@@ -119,11 +119,11 @@ const ENDPOINTS: Record<string, EndpointSpec> = {
         ? `https://www.okx.com/api/v5/market/ticker?instId=${encodeURIComponent(sym)}`
         : `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=100`,
     extract: (json, p) => {
-      const j = json as {
-        data?: Array<{ last?: string; bidPx?: string; askPx?: string; ts?: string }>;
-      };
+      const j = json as { data?: unknown[] };
       if (p.capability === "quote") {
-        const row = j.data?.[0];
+        const row = j.data?.[0] as
+          | { last?: string; bidPx?: string; askPx?: string; ts?: string }
+          | undefined;
         const price = row ? num(row.last) : NaN;
         const bid = row ? num(row.bidPx) : undefined;
         const ask = row ? num(row.askPx) : undefined;
@@ -133,7 +133,7 @@ const ENDPOINTS: Record<string, EndpointSpec> = {
           fields: Number.isFinite(price) && price > 0 ? ["data", "last", "bidPx", "askPx"] : [],
         };
       }
-      const rows = j.data ?? [];
+      const rows = (j.data ?? []) as string[][];
       // OKX returns newest-first
       const candles = [...rows]
         .reverse()
