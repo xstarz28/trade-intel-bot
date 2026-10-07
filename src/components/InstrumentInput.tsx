@@ -278,6 +278,20 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
             <Button
               type="submit"
               disabled={!form.instrument.trim() || isAnalyzing}
+              onClick={() => {
+                // Keep the analysis action explicit on the submit control. This
+                // preserves native form semantics while making the primary action
+                // resilient to browser/React synthetic-submit edge cases.
+                if (form.instrument.trim() && !isAnalyzing) {
+                  onAnalyze({
+                    instrument: form.instrument.trim(),
+                    instrumentType: form.instrumentType,
+                    timeframe: form.timeframe,
+                    tradingStyle: form.tradingStyle,
+                    requestedTimeframe: form.timeframe,
+                  });
+                }
+              }}
               className="gap-2 px-5 font-mono text-sm"
             >
               {isAnalyzing ? (
