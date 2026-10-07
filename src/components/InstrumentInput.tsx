@@ -21,6 +21,7 @@ import {
 } from "@/lib/analysis-engine";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.svg";
+import logo from "@/assets/logo.svg";
 import {
   Zap,
   AlertCircle,
@@ -72,10 +73,10 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
 
   const categoryOptions: { value: InstrumentType; label: string }[] = [
-    { value: "forex", label: "FOREX" },
-    { value: "crypto", label: "CRYPTO" },
-    { value: "stock", label: "STOCKS" },
-    { value: "commodity", label: "COMMODITIES" },
+    { value: "forex", label: t.entryForm.forex },
+    { value: "crypto", label: t.entryForm.crypto },
+    { value: "stock", label: t.entryForm.stocks },
+    { value: "commodity", label: t.entryForm.commodities },
   ];
 
   const categoryInstruments = universeOptions.filter((item) => item.type === form.instrumentType);
@@ -182,7 +183,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
                 {t.entryForm.instrumentLabel}
               </Label>
               <span className="text-[10px] font-mono text-muted-foreground">
-                {filteredInstruments.length.toLocaleString()} available
+                {filteredInstruments.length.toLocaleString()} {t.entryForm.available}
               </span>
             </div>
             <Select value={form.instrument} onValueChange={selectInstrument}>
