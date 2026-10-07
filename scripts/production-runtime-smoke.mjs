@@ -205,10 +205,13 @@ try {
   if (!Number.isFinite(instrumentCount) || instrumentCount < 1000) {
     throw new Error(`Mobile production universe unexpectedly small: ${instrumentCountText ?? "missing"}`);
   }
+  const timeframeSelect = mobilePage.getByRole("combobox").nth(2);
+  await timeframeSelect.click();
   for (const timeframe of ["M1", "M5", "M15", "H1", "H4", "D1", "W1"]) {
-    const option = mobilePage.locator(`option[value="${timeframe}"], [role="option"]:has-text("${timeframe}")`).first();
+    const option = mobilePage.getByRole("option", { name: timeframe, exact: true }).first();
     if (!(await option.count())) throw new Error(`Mobile production timeframe missing: ${timeframe}`);
   }
+  await mobilePage.keyboard.press("Escape");
 
   const mobileStart = mobilePage.getByRole("button", { name: /start analysis/i });
   if (!(await mobileStart.count()) || !(await mobileStart.first().isVisible())) {
