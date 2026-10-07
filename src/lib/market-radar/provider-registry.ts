@@ -765,7 +765,7 @@ export async function acquireProviderNativeLiveData(
     ...(result.failureReason ? { error: result.failureReason } : {}),
     latencyMs: result.latencyMs ?? Date.now() - startTime,
   };
-
+}
 
 /**
  * Phase 156 — Convert verified provider-native OHLCV into the normalized
