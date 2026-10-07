@@ -633,6 +633,12 @@ export interface Translations {
 
   // ─── Instrument Entry Form (Phase 145) ──────────────────────
   entryForm: {
+    newAnalysis: string;
+    marketLabel: string;
+    searchSpecificInstrument: string;
+    hideManualSearch: string;
+    manualSearchPlaceholder: string;
+    manualSearchNote: string;
     instrumentLabel: string;
     typeLabel: string;
     timeframeLabel: string;
