@@ -168,6 +168,8 @@ export interface AnalysisResult {
   noTradeReasons: string[];
   /** Market-derived trade plan; ALWAYS undefined for NO_TRADE (state integrity). */
   tradePlan?: TradePlan;
+  /** Market-derived candidate plan used for chart context even when NO_TRADE. Never executable. */
+  projectedTradePlan?: TradePlan;
   /** HTF vs LTF relationship used in the decision. */
   htfAlignment?: HtfAlignment;
   /** Adaptive multi-timeframe summary (Phase 3A) when MTF data exists. */
