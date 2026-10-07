@@ -1,3 +1,4 @@
+/* Release verification: trader-facing opportunity ranking remains evidence-weighted. */
 /**
  * Phase 50 — Market Opportunities Panel
  *
