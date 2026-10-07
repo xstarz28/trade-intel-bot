@@ -66,11 +66,80 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     await option.click();
   }
 
-  const timeframeButton = targetPage.getByRole("button", { name: expectedTimeframe, exact: true });
-  if (!(await timeframeButton.count()) || !(await timeframeButton.first().isVisible())) {
-    throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}`);
+  const timeframeButton = targetPage.locator("button").filter({ hasText: new RegExp(`^\\s*${expectedTimeframe}\\s*import { chromium, devices } from "playwright";
+
+const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzanalysis.vercel.app";
+const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
+
+if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(url)) {
+  throw new Error(`Refusing non-production Vercel target: ${url}`);
+}
+
+const browser = await chromium.launch({ headless: true });
+const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const page = await context.newPage();
+
+const authTraffic = [];
+const convexTraffic = [];
+const socketTraffic = [];
+const consoleErrors = [];
+const evidence = {
+  target: url,
+  startedAt: new Date().toISOString(),
+  authenticated: false,
+  analyses: [],
+  productSurfaces: { chart: false, riskSizing: false },
+  googleOAuth: { checked: false, reachedAuthorizationEndpoint: false, redirectUriMismatch: false },
+};
+
+function wirePage(targetPage) {
+  targetPage.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  targetPage.on("request", (req) => {
+    if (/\/api\/auth\//i.test(req.url())) {
+      authTraffic.push({ type: "request", method: req.method(), url: req.url() });
+    }
+  });
+  targetPage.on("response", (res) => {
+    if (/\/api\/auth\//i.test(res.url())) {
+      authTraffic.push({
+        type: "response",
+        status: res.status(),
+        url: res.url(),
+        location: res.headers()["location"] ?? null,
+      });
+    }
+    if (/convex\.(cloud|site)/i.test(res.url())) {
+      convexTraffic.push({ status: res.status(), url: res.url() });
+    }
+  });
+  targetPage.on("websocket", (ws) => {
+    socketTraffic.push({ url: ws.url() });
+    ws.on("close", () => socketTraffic.push({ closed: ws.url() }));
+    ws.on("socketerror", (error) => socketTraffic.push({ error: String(error) }));
+  });
+}
+
+async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5") {
+  if (instrument === "BTC/USD") {
+    const btc = targetPage.getByRole("button", { name: "BTC/USD", exact: true });
+    if (await btc.count()) await btc.click();
+  } else if (instrument === "XAU/USD") {
+    const category = type === "crypto" ? "CRYPTO" : type === "commodity" ? "COMMODITIES" : type === "stock" ? "STOCKS" : "FOREX";
+    await targetPage.getByRole("button", { name: category, exact: true }).click();
+    const picker = targetPage.getByRole("combobox").first();
+    await picker.click();
+    const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
+    await option.click();
   }
-  await timeframeButton.first().click();
+
+) }).first();
+  if (!(await timeframeButton.count()) || !(await timeframeButton.isVisible())) {
+    const controls = await targetPage.locator("button").allTextContents();
+    throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}. Buttons: ${controls.join(" | ")}`);
+  }
+  await timeframeButton.click();
 
   const run = targetPage.locator("button").filter({ hasText: /run analysis/i }).first();
   if (!(await run.count())) {
