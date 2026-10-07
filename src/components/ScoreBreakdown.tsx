@@ -3,15 +3,15 @@ import { cn } from "@/lib/utils";
 
 /**
  * Phase 19 — labels match the CURRENT engine weights (Phase 8 P6):
- *   trend (structure): 45%  ·  fundamental: 30%  ·  sentiment: 25%
+ *   trend (structure): 40%  ·  fundamental: 40%  ·  sentiment: 20%
  * Indicators (RSI/MACD) are NOT part of the bias calculation — they only
  * contribute a ±3 conviction modifier. Displayed for context only.
  */
 const FACTORS = [
-  { key: "trend" as const, label: "structure", weight: "45%", core: true },
+  { key: "trend" as const, label: "structure", weight: "40%", core: true },
   { key: "indicator" as const, label: "indicators", weight: "display only", core: false },
-  { key: "fundamental" as const, label: "fundamentals", weight: "30%", core: true },
-  { key: "sentiment" as const, label: "sentiment", weight: "25%", core: true },
+  { key: "fundamental" as const, label: "fundamentals", weight: "40%", core: true },
+  { key: "sentiment" as const, label: "sentiment", weight: "20%", core: true },
 ] as const;
 
 const SCORE_LABELS: Record<FactorScore, string> = {
