@@ -19,14 +19,12 @@ describe("adaptSetupTimeframe", () => {
     expect(adaptSetupTimeframe("intraday", "H4")).toEqual({ timeframe: "H4", fallbackApplied: false });
   });
 
-  it("falls back to the nearest supported horizon TF and discloses it", () => {
-    const r1 = adaptSetupTimeframe("scalping", "D1");
-    expect(r1.timeframe).toBe("H1");
-    expect(r1.fallbackApplied).toBe(true);
-    expect(r1.reason).toMatch(/fell back to H1/);
-
-    expect(adaptSetupTimeframe("swing", "M15").timeframe).toBe("H4");
-    expect(adaptSetupTimeframe("intraday", "W1").timeframe).toBe("H4");
+  it("preserves every user-selected timeframe across styles", () => {
+    for (const style of ["scalping", "intraday", "swing"] as const) {
+      for (const tf of ["M1", "M5", "M15", "H1", "H4", "D1", "W1"]) {
+        expect(adaptSetupTimeframe(style, tf)).toEqual({ timeframe: tf, fallbackApplied: false });
+      }
+    }
   });
 });
 
