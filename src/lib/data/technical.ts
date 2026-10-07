@@ -7,6 +7,7 @@
  */
 
 import type { OhlcvCandle, TechnicalData } from "./market-types";
+import { analyzeClassicPriceAction } from "./classic-price-action";
 
 // ── Moving Averages ───────────────────────────────────────────────
 
