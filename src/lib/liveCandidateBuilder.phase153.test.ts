@@ -41,6 +41,43 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.providerCoverage).toBe("PARTIAL");
   });
 
+  it("derives technical evidence from provider OHLCV when no precomputed technical payload exists", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 210 }, (_, i) => {
+      const close = 100 + (210 - i) * 0.5;
+      return {
+        time: now - i * 60_000,
+        timestamp: now - i * 60_000,
+        open: close - 0.2,
+        high: close + 0.5,
+        low: close - 0.5,
+        close,
+        volume: 1000,
+      };
+    });
+
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "okx",
+        fetchTimestamp: now,
+        price: { price: candles[0].close, timestamp: now, source: "okx" },
+        candles,
+        timeframe: "H1",
+        higherTimeframe: "H4",
+        dataFreshness: "realtime",
+      },
+    });
+
+    expect(candidate.dataCompleteness).toBe("PARTIAL");
+    expect(candidate.dataPoints).toBe(210);
+    expect(candidate.setupDirection).not.toBe("unknown");
+    expect(candidate.setupStrength).toBeGreaterThan(0);
+  });
+
   it("does not treat historical analysis alone as live market data", () => {
     const candidate = buildCandidateFromSource({
       instrument: "BTC/USD",
