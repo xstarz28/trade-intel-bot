@@ -690,24 +690,34 @@ export function scoreCandidate(
   const liquidityWeight = profile.liquidity;
   const positioningWeight = profile.derivatives;
 
-  // Only evidence that actually arrived participates. Missing fundamentals
-  // reduce the opportunity score instead of being silently normalized away.
-  const weighted =
+  // Only evidence that actually arrived participates. An unavailable
+  // fundamental/macro/positioning layer is NOT a bearish signal and must not
+  // mathematically collapse every crypto opportunity to the same low score.
+  // Missing layers remain explicit conflicts and are handled by suitability
+  // gates; available evidence receives its full intended weight.
+  let weighted =
     technical * technicalWeight +
-    fundamental * profile.fundamentals +
-    macro * profile.macro +
-    positioning * positioningWeight +
     execution * liquidityWeight +
     dq.score * profile.dataQuality +
     rr * profile.riskReward;
-  const totalWeight =
+  let totalWeight =
     technicalWeight +
-    profile.fundamentals +
-    profile.macro +
-    positioningWeight +
     liquidityWeight +
     profile.dataQuality +
     profile.riskReward;
+
+  if (c.fundamentalEvidenceAvailable || c.fundamentalScore !== undefined) {
+    weighted += fundamental * profile.fundamentals;
+    totalWeight += profile.fundamentals;
+  }
+  if (c.macroScore !== undefined) {
+    weighted += macro * profile.macro;
+    totalWeight += profile.macro;
+  }
+  if (c.positioningScore !== undefined) {
+    weighted += positioning * positioningWeight;
+    totalWeight += positioningWeight;
+  }
 
   let score = totalWeight > 0 ? weighted / totalWeight : 0;
 
