@@ -3,5 +3,10 @@ import { Anonymous } from "@convex-dev/auth/providers/Anonymous";
 import Google from "@auth/core/providers/google";
 
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
-  providers: [Google, Anonymous],
+  providers: [
+    Google({
+      redirectProxyUrl: process.env.AUTH_REDIRECT_PROXY_URL,
+    }),
+    Anonymous,
+  ],
 });
