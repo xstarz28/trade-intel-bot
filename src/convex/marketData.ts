@@ -128,8 +128,8 @@ export const fetchMarketData = action({
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
       technical.smc = computeSmcContext(candles, args.timeframe);
-      if (technical.classicPriceAction) {
-        technical.classicPriceAction.ictUnicorn = detectIctUnicorn(
+      if (technical.classicContext) {
+        technical.classicContext.ictUnicorn = detectIctUnicorn(
           technical.smc.orderBlocks,
           technical.smc.fvgs,
           args.timeframe,
