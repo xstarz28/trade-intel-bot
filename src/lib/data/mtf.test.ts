@@ -97,8 +97,19 @@ describe("buildChain — adaptive timeframe architecture", () => {
     expect(buildChain("W1")).toEqual([{ timeframe: "D1", role: "trigger" }]);
   });
 
-  it("requested timeframes outside the ladder are analyzed standalone", () => {
-    expect(buildChain("M5")).toEqual([]);
+  it("M5 is a first-class setup with H4/H1/M1 context", () => {
+    expect(buildChain("M5")).toEqual([
+      { timeframe: "H1", role: "macro" },
+      { timeframe: "M15", role: "structure" },
+      { timeframe: "M1", role: "trigger" },
+    ]);
+  });
+
+  it("M1 is a first-class setup with M15/M5 context", () => {
+    expect(buildChain("M1")).toEqual([
+      { timeframe: "M15", role: "macro" },
+      { timeframe: "M5", role: "structure" },
+    ]);
   });
 });
 
