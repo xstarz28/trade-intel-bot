@@ -191,7 +191,7 @@ export const saveAlert = mutation({
     const user = await resolveUser(ctx);
     if (!user) throw new Error("User not authenticated");
 
-    return ctx.db.insert("alertHistory", {
+    const id = await ctx.db.insert("alertHistory", {
       userId: user._id,
       alertId: args.alertId,
       positionId: args.positionId,
