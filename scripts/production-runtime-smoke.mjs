@@ -196,7 +196,7 @@ try {
   wirePage(mobilePage);
   await mobilePage.goto(url, { waitUntil: "domcontentloaded", timeout });
   await mobilePage.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
-  const brandLogo = mobilePage.locator('img[alt="XSTARZG"]');
+  const brandLogo = mobilePage.locator("[data-brand-logo][aria-label=\"XSTARZG\"]");
   if (!(await brandLogo.count()) || !(await brandLogo.first().isVisible())) {
     throw new Error("Mobile production surface did not render the XSTARZG brand logo");
   }
