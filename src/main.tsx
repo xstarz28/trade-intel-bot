@@ -2,18 +2,18 @@ import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexReactClient } from "convex/react";
-import React, { StrictMode } from "react";
+import React, { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { I18nProvider } from "@/lib/i18n";
 import "./index.css";
 
 import Landing from "./pages/Landing.tsx";
-import AuthPage from "./pages/Auth.tsx";
-import Dashboard from "./pages/Dashboard.tsx";
-import { Journal } from "@/components/Journal";
-import NotFound from "./pages/NotFound.tsx";
-import Pricing from "./pages/Pricing.tsx";
+const AuthPage = lazy(() => import("./pages/Auth.tsx"));
+const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
+const Journal = lazy(() => import("@/components/Journal").then((m) => ({ default: m.Journal })));
+const NotFound = lazy(() => import("./pages/NotFound.tsx"));
+const Pricing = lazy(() => import("./pages/Pricing.tsx"));
 
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -56,14 +56,23 @@ createRoot(document.getElementById("root")!).render(
       <I18nProvider>
         <ConvexAuthProvider client={convex}>
           <MemoryRouter initialEntries={["/"]}>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
-              <Route path="/pricing" element={<Pricing />} />
-              <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-              <Route path="/journal" element={<RequireAuth><Journal /></RequireAuth>} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <Suspense fallback={
+              <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
+                <div className="text-center">
+                  <p className="text-sm font-semibold">XSTARZG</p>
+                  <p className="mt-2 text-xs text-muted-foreground">Loading analysis surface…</p>
+                </div>
+              </div>
+            }>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
+                <Route path="/pricing" element={<Pricing />} />
+                <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
+                <Route path="/journal" element={<RequireAuth><Journal /></RequireAuth>} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </MemoryRouter>
           <Toaster />
         </ConvexAuthProvider>
