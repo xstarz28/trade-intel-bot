@@ -727,6 +727,7 @@ interface TradeDecision {
    */
   decisiveGateDomains: string[];
   tradePlan?: TradePlan;
+  projectedTradePlan?: TradePlan;
   conviction?: ConvictionLevel;
   confidence: number;
   keyLevels: KeyLevels;
@@ -1635,6 +1636,7 @@ function decideTrade(
     decisiveGateDomains:
       recommendation === "NO_TRADE" ? decisiveGateDomains : [],
     tradePlan: finalPlan,
+    projectedTradePlan,
     conviction,
     confidence,
     keyLevels,
@@ -2415,7 +2417,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     conviction: decision.conviction,
     noTradeReasons: decision.noTradeReasons,
     tradePlan: decision.tradePlan,
-    projectedTradePlan,
+    projectedTradePlan: decision.projectedTradePlan,
     htfAlignment: alignment,
     mtfSummary,
     marketRegime,
