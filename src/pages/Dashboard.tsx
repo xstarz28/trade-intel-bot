@@ -26,7 +26,6 @@ import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder"
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { getAllInstruments } from "@/lib/data/universal/instruments";
-import xstarzLogo from "@/assets/logo.svg";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
@@ -975,8 +974,13 @@ export default function Dashboard() {
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-background border border-border/60">
-              <img src={xstarzLogo} alt="XSTARZG" className="size-8 object-cover" />
+            <div data-brand-logo aria-label="XSTARZG" className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-[#0b0b0d] border border-border/60">
+              <svg viewBox="0 0 512 512" role="img" aria-label="XSTARZG" className="size-8" xmlns="http://www.w3.org/2000/svg">
+                <rect width="512" height="512" rx="112" fill="#0b0b0d"/>
+                <path d="M256 72 301 178 414 98 334 211 440 256 334 301 414 414 301 334 256 440 211 334 98 414 178 301 72 256 178 211 98 98 211 178Z" fill="#f5f5f5"/>
+                <circle cx="256" cy="256" r="54" fill="#0b0b0d"/>
+                <circle cx="256" cy="256" r="20" fill="#f5f5f5"/>
+              </svg>
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-tight font-mono">
