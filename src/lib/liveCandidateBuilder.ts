@@ -128,14 +128,39 @@ function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateIn
 
   let score = 35, confirmations = 1;
   const bullish = direction === "long";
-  if (tech.mtf?.alignment === (bullish ? "ALIGNED_BULLISH" : "ALIGNED_BEARISH")) { score += 18; confirmations++; }
-  if (tech.bosDirection === (bullish ? "bullish" : "bearish")) { score += 15; confirmations++; }
-  if (tech.chochDirection === (bullish ? "bullish" : "bearish")) { score += 8; confirmations++; }
+  const aligned = (bullish ? "ALIGNED_BULLISH" : "ALIGNED_BEARISH");
+  const alignedStructure = bullish ? "bullish" : "bearish";
+  if (tech.mtf?.alignment === aligned) { score += 18; confirmations++; }
+  if (tech.bosDirection === alignedStructure) { score += 15; confirmations++; }
+  if (tech.chochDirection === alignedStructure) { score += 8; confirmations++; }
   if (tech.smc?.recentSweep && tech.smc.recentSweep.side === (bullish ? "sell_side" : "buy_side")) { score += 10; confirmations++; }
-  if (tech.smc?.displacement?.direction === (bullish ? "bullish" : "bearish")) { score += 8; confirmations++; }
-  if (tech.smc?.orderBlocks?.some(ob => ob.status === "fresh" && ob.direction === (bullish ? "bullish" : "bearish"))) { score += 7; confirmations++; }
-  if (tech.smc?.fvgs?.some(f => f.status === "fresh" && f.direction === (bullish ? "bullish" : "bearish"))) { score += 5; confirmations++; }
-  return { setupDirection: direction, setupStrength: Math.min(100, score), confluenceCount: confirmations };
+  if (tech.smc?.displacement?.direction === alignedStructure) { score += 8; confirmations++; }
+  if (tech.smc?.orderBlocks?.some(ob => ob.status === "fresh" && ob.direction === alignedStructure)) { score += 7; confirmations++; }
+  if (tech.smc?.fvgs?.some(f => f.status === "fresh" && f.direction === alignedStructure)) { score += 5; confirmations++; }
+
+  // Provider OHLCV must produce differentiated opportunity quality, not a
+  // flat score for every instrument with merely "some" structure. These are
+  // confirmations from the actual candles, not invented probabilities.
+  if (tech.rsi14 !== undefined) {
+    const rsi = tech.rsi14;
+    if (bullish) {
+      if (rsi >= 52 && rsi <= 68) score += 8;
+      else if (rsi > 72) score -= 4;
+      else if (rsi < 42) score -= 6;
+    } else {
+      if (rsi >= 32 && rsi <= 48) score += 8;
+      else if (rsi < 28) score -= 4;
+      else if (rsi > 58) score -= 6;
+    }
+  }
+  if (tech.macdHistogram !== undefined && Number.isFinite(tech.macdHistogram)) {
+    if ((bullish && tech.macdHistogram > 0) || (!bullish && tech.macdHistogram < 0)) score += 6;
+    else if (tech.macdHistogram !== 0) score -= 4;
+  }
+  if (tech.volumeTrend === "increasing") { score += 5; confirmations++; }
+  if (tech.volumeTrend === "decreasing") score -= 2;
+
+  return { setupDirection: direction, setupStrength: Math.min(100, Math.max(0, score)), confluenceCount: confirmations };
 }
 
 
