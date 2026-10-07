@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { chromium, devices } from "playwright";
 
 const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzanalysis.vercel.app";
 const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
@@ -188,6 +188,28 @@ try {
     throw new Error(`Google OAuth did not reach accounts.google.com (final URL: ${googleUrl})`);
   }
   await googleContext.close();
+
+  // Android-sized smoke: the public app must render on the mobile surface too.
+  const mobileContext = await browser.newContext({ ...devices["Pixel 5"] });
+  const mobilePage = await mobileContext.newPage();
+  wirePage(mobilePage);
+  await mobilePage.goto(url, { waitUntil: "domcontentloaded", timeout });
+  await mobilePage.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+  const mobileStart = mobilePage.getByRole("button", { name: /start analysis/i });
+  if (!(await mobileStart.count()) || !(await mobileStart.first().isVisible())) {
+    throw new Error("Mobile production surface did not render Start analysis");
+  }
+  await mobileStart.click();
+  await mobilePage.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+  const mobileGuest = mobilePage.getByRole("button", { name: /continue without an account/i });
+  if (!(await mobileGuest.count()) || !(await mobileGuest.first().isVisible())) {
+    throw new Error("Mobile auth surface did not render guest sign-in");
+  }
+  await mobileGuest.click();
+  await mobilePage.getByRole("button", { name: "BTC/USD", exact: true }).waitFor({ state: "visible", timeout: 30000 });
+  await runAnalysis(mobilePage, "BTC/USD", "crypto");
+  await runAnalysis(mobilePage, "XAU/USD", "commodity");
+  await mobileContext.close();
 
   evidence.completedAt = new Date().toISOString();
   evidence.authTraffic = authTraffic;
