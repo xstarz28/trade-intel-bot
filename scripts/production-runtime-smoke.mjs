@@ -149,6 +149,9 @@ try {
   await btc.waitFor({ state: "visible", timeout: 30000 });
   evidence.authenticated = true;
 
+  await runAnalysis(page, "BTC/USD", "crypto");
+  await runAnalysis(page, "XAU/USD", "commodity");
+
   await page.waitForFunction(() => {
     const match = document.body.innerText.match(/(\\d{1,3}(?:,\\d{3})*) instruments available/);
     return match ? Number(match[1].replace(/,/g, "")) >= 1000 : false;
@@ -173,8 +176,7 @@ try {
   await accountCcy.fill("USD");
   evidence.productSurfaces.riskSizing = true;
 
-  await runAnalysis(page, "BTC/USD", "crypto");
-  await runAnalysis(page, "XAU/USD", "commodity");
+
 
   const googleContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const googlePage = await googleContext.newPage();
