@@ -220,22 +220,35 @@ try {
     throw new Error("Mobile auth surface did not render guest sign-in");
   }
   await mobileGuest.click();
-  await mobilePage.getByRole("button", { name: "BTC/USD", exact: true }).waitFor({ state: "visible", timeout: 30000 });
+  await mobilePage.getByRole("button", { name: "CRYPTO", exact: true }).waitFor({ state: "visible", timeout: 30000 });
   const brandLogo = mobilePage.locator("[data-brand-logo][aria-label=\"XSTARZG\"]");
   if (!(await brandLogo.count()) || !(await brandLogo.first().isVisible())) {
     throw new Error("Mobile production surface did not render the XSTARZG brand logo");
   }
-  const mobileUniverseInput = mobilePage.locator('input[list="xstarzg-instrument-universe"]');
-  if (!(await mobileUniverseInput.count()) || !(await mobileUniverseInput.first().isVisible())) {
-    throw new Error("Mobile production surface did not expose searchable instrument universe");
+
+  const categoryButtons = ["FOREX", "CRYPTO", "STOCKS", "COMMODITIES"];
+  for (const category of categoryButtons) {
+    const button = mobilePage.getByRole("button", { name: category, exact: true });
+    if (!(await button.count()) || !(await button.first().isVisible())) {
+      throw new Error(`Mobile production category missing: ${category}`);
+    }
   }
-  const timeframeSelect = mobilePage.getByRole("combobox").nth(2);
-  await timeframeSelect.click();
+
+  await mobilePage.getByRole("button", { name: "CRYPTO", exact: true }).click();
+  const instrumentSelect = mobilePage.getByRole("combobox").first();
+  await instrumentSelect.click();
+  const btcOption = mobilePage.getByRole("option", { name: /BTC\/USD/i }).first();
+  if (!(await btcOption.count())) {
+    throw new Error("Mobile production crypto instrument picker did not expose BTC/USD");
+  }
+  await btcOption.click();
+
   for (const timeframe of ["M1", "M5", "M15", "H1", "H4", "D1", "W1"]) {
-    const option = mobilePage.getByRole("option", { name: timeframe, exact: true }).first();
-    if (!(await option.count())) throw new Error(`Mobile production timeframe missing: ${timeframe}`);
+    const button = mobilePage.getByRole("button", { name: timeframe, exact: true });
+    if (!(await button.count()) || !(await button.first().isVisible())) {
+      throw new Error(`Mobile production timeframe missing: ${timeframe}`);
+    }
   }
-  await mobilePage.keyboard.press("Escape");
 
 
   await mobileContext.close();
