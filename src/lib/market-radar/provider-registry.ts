@@ -692,45 +692,69 @@ export async function acquireProviderNativeLiveData(
 ): Promise<LiveAcquisitionResult> {
   const startTime = Date.now();
 
-  const result = await executeLiveRequest({
-    instrument: input.instrument,
-    capability: "ohlcv",
-    timeframe: "1h",
-    count: 100,
-    transport,
-    readEnv,
-    providerNative: {
-      provider: input.provider,
-      providerInstrumentId: input.providerInstrumentId,
-      assetClass: input.assetClass,
-    },
-  });
+  const nativeIdentity = {
+    provider: input.provider,
+    providerInstrumentId: input.providerInstrumentId,
+    assetClass: input.assetClass,
+  };
 
-  const candles = result.candles ?? [];
+  // OHLCV candle timestamps describe the candle's opening bucket (e.g. the
+  // current 1h candle can be 20-50 minutes old). They are valid analytical
+  // observations but must NOT be used as the live quote timestamp. Acquire a
+  // verified quote separately so the scanner can distinguish a current market
+  // price from the age of the latest completed/open candle.
+  const [quoteResult, candleResult] = await Promise.all([
+    executeLiveRequest({
+      instrument: input.instrument,
+      capability: "quote",
+      transport,
+      readEnv,
+      providerNative: nativeIdentity,
+    }),
+    executeLiveRequest({
+      instrument: input.instrument,
+      capability: "ohlcv",
+      timeframe: "1h",
+      count: 100,
+      transport,
+      readEnv,
+      providerNative: nativeIdentity,
+    }),
+  ]);
+
+  const candles = candleResult.candles ?? [];
   const latest = candles[candles.length - 1];
+  const quote = quoteResult.quote;
+  const quoteFresh = quoteResult.status === "LIVE_VERIFIED" && !!quote &&
+    Number.isFinite(quote.price) && quote.price > 0;
+  const candleUsable =
+    (candleResult.status === "LIVE_VERIFIED" || candleResult.status === "LIVE_PARTIAL") &&
+    !!latest && Number.isFinite(latest.close) && latest.close > 0;
 
-  if (
-    (result.status !== "LIVE_VERIFIED" &&
-      result.status !== "LIVE_PARTIAL") ||
-    !latest ||
-    !Number.isFinite(latest.close) ||
-    latest.close <= 0
-  ) {
+  if (!quoteFresh && !candleUsable) {
     return {
       instrument: input.instrument,
       assetClass: input.assetClass,
       providerInstrumentId: input.providerInstrumentId,
       snapshot: null,
-      provider: result.provider ?? input.provider,
-      fetchedAt: result.receivedAt ?? Date.now(),
+      provider: quoteResult.provider ?? candleResult.provider ?? input.provider,
+      fetchedAt: quoteResult.receivedAt ?? candleResult.receivedAt ?? Date.now(),
       success: false,
-      error: result.failureReason ?? `Live request status: ${result.status}`,
-      latencyMs: result.latencyMs ?? Date.now() - startTime,
+      error: quoteResult.failureReason ?? candleResult.failureReason ?? "No verified market quote or OHLCV data.",
+      latencyMs: Math.max(
+        quoteResult.latencyMs ?? 0,
+        candleResult.latencyMs ?? 0,
+        Date.now() - startTime,
+      ),
     };
   }
 
-  const observedAt = latest.timestamp;
-  const freshness = assessFreshness(observedAt, Date.now());
+  const fetchedAt = Date.now();
+  const observedAt = quoteFresh
+    ? (quoteResult.receivedAt ?? fetchedAt)
+    : latest!.timestamp;
+  const freshness = assessFreshness(observedAt, fetchedAt);
+  const price = quoteFresh ? quote!.price : latest!.close;
 
   return {
     instrument: input.instrument,
@@ -739,23 +763,29 @@ export async function acquireProviderNativeLiveData(
     snapshot: {
       instrument: input.instrument,
       assetClass: input.assetClass,
-      price: latest.close,
-      ohlcvAvailable: true,
-      availableTimeframes: ["H1"],
-      provider: result.provider ?? input.provider,
+      price,
+      ohlcvAvailable: candleUsable,
+      availableTimeframes: candleUsable ? ["H1"] : [],
+      provider: quoteResult.provider ?? candleResult.provider ?? input.provider,
       observedAt,
       freshness,
-      quality: result.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
+      quality: quoteFresh && candleResult.status === "LIVE_VERIFIED" ? "VERIFIED" : "DEGRADED",
     },
     candles: candles.map((candle) => ({
       ...candle,
       volume: candle.volume ?? 0,
     })),
-    provider: result.provider ?? input.provider,
-    fetchedAt: result.receivedAt ?? Date.now(),
+    provider: quoteResult.provider ?? candleResult.provider ?? input.provider,
+    fetchedAt,
     success: true,
-    ...(result.failureReason ? { error: result.failureReason } : {}),
-    latencyMs: result.latencyMs ?? Date.now() - startTime,
+    ...((quoteResult.failureReason ?? candleResult.failureReason)
+      ? { error: [quoteResult.failureReason, candleResult.failureReason].filter(Boolean).join(" | ") }
+      : {}),
+    latencyMs: Math.max(
+      quoteResult.latencyMs ?? 0,
+      candleResult.latencyMs ?? 0,
+      fetchedAt - startTime,
+    ),
   };
 }
 
