@@ -282,10 +282,6 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
             <Button
               type="submit"
               disabled={!form.instrument.trim() || isAnalyzing}
-              onClick={(event) => {
-                event.preventDefault();
-                submitAnalysis();
-              }}
               className="gap-2 px-5 font-mono text-sm"
             >
               {isAnalyzing ? (
