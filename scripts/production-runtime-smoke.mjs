@@ -53,7 +53,7 @@ function wirePage(targetPage) {
   });
 }
 
-async function runAnalysis(targetPage, instrument, type) {
+async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5") {
   if (instrument === "BTC/USD") {
     const btc = targetPage.getByRole("button", { name: "BTC/USD", exact: true });
     if (await btc.count()) await btc.click();
@@ -65,6 +65,12 @@ async function runAnalysis(targetPage, instrument, type) {
     const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
     await option.click();
   }
+
+  const timeframeButton = targetPage.getByRole("button", { name: expectedTimeframe, exact: true });
+  if (!(await timeframeButton.count()) || !(await timeframeButton.first().isVisible())) {
+    throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}`);
+  }
+  await timeframeButton.first().click();
 
   const run = targetPage.locator("button").filter({ hasText: /run analysis/i }).first();
   if (!(await run.count())) {
@@ -84,11 +90,13 @@ async function runAnalysis(targetPage, instrument, type) {
       .join("\n");
     return (
       visibleText.includes(`${targetInstrument} |`) &&
+      visibleText.includes(`${targetInstrument} |`) &&
+      visibleText.includes(`| ${targetTimeframe}`) &&
       visibleText.includes("BIAS:") &&
       visibleText.includes("Price:") &&
       !visibleText.includes("analyzing...")
     );
-  }, instrument, { timeout });
+  }, { targetInstrument: instrument, targetTimeframe: expectedTimeframe }, { timeout });
 
   const body = await targetPage.locator("body").innerText();
   const priceLabel = targetPage.getByText("Price:", { exact: true });
@@ -152,8 +160,8 @@ try {
   await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
   evidence.authenticated = true;
 
-  await runAnalysis(page, "BTC/USD", "crypto");
-  await runAnalysis(page, "XAU/USD", "commodity");
+  await runAnalysis(page, "BTC/USD", "crypto", "M5");
+  await runAnalysis(page, "XAU/USD", "commodity", "M5");
 
   evidence.completedAt = new Date().toISOString();
   evidence.authTraffic = authTraffic;
