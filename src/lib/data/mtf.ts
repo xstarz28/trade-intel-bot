@@ -23,7 +23,7 @@ import { computeSmcContext } from "./smc";
 import type { OhlcvCandle } from "./market-types";
 
 /** Standard ladder from execution to macro timeframes. */
-export const TF_LADDER = ["M15", "H1", "H4", "D1", "W1"] as const;
+export const TF_LADDER = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"] as const;
 
 export interface ChainSlot {
   timeframe: string;
