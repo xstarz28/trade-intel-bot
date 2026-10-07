@@ -26,6 +26,7 @@ import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder"
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { getAllInstruments } from "@/lib/data/universal/instruments";
+import xstarzLogo from "@/assets/logo.svg";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
@@ -975,7 +976,7 @@ export default function Dashboard() {
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-background border border-border/60">
-              <img src="/logo.svg" alt="XSTARZG" className="size-8 object-cover" />
+              <img src={xstarzLogo} alt="XSTARZG" className="size-8 object-cover" />
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-tight font-mono">
