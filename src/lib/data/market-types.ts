@@ -183,6 +183,7 @@ export interface MtfTimeframeData {
   unavailableReason?: string;
   /** Full Phase-2 SMC context for THIS timeframe (never copied from another). */
   smc?: SmcContext;
+  classicPriceAction?: ClassicPriceActionContext;
   /** Classic price-action layer: secondary confirmation, never core bias. */
   classicPriceAction?: ClassicPriceActionContext;
 }
