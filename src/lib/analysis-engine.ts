@@ -679,12 +679,18 @@ function assessDataCompleteness(input: AnalysisInput): {
   if (input.eiaData && !input.eiaData.available) {
     flags.push(`EIA inventory context unavailable (${input.eiaData.reason})`);
   }
-  // Phase 7E — execution quality is crypto-only by design: non-crypto assets
-  // have NO validated bid/ask provider. Purely informational — never a
-  // conviction penalty and never directional.
-  if (input.instrumentType !== "crypto") {
-    flags.push("Bid/ask data unavailable (no validated order-book provider for this asset class)");
-  } else if (input.executionData && !input.executionData.available) {
+  // Provider quote bid/ask is useful execution context, but it is NOT
+  // the prop-firm's executable feed. Keep that distinction explicit.
+  const hasProviderQuote =
+    Number.isFinite(input.marketData?.price.bid) &&
+    Number.isFinite(input.marketData?.price.ask) &&
+    (input.marketData?.price.ask ?? 0) >= (input.marketData?.price.bid ?? 0);
+  if (hasProviderQuote) {
+    flags.push("Provider bid/ask quote available — indicative only; verify executable bid/ask on the prop-firm platform");
+  } else {
+    flags.push("Bid/ask data unavailable — analysis uses provider close/last price");
+  }
+  if (input.executionData && !input.executionData.available) {
     flags.push(`Execution-quality data unavailable (${input.executionData.reason})`);
   }
   if (!input.technicalData?.htfContext) {
@@ -720,6 +726,7 @@ const INFORMATIONAL_FLAG_PREFIXES = [
   "COT positioning context unavailable",
   "EIA inventory context unavailable",
   "Bid/ask data unavailable",
+  "Provider bid/ask quote available",
   "Execution-quality data unavailable",
   "Timeframe chain unavailable:",
   "No higher-timeframe structural data",
@@ -786,8 +793,17 @@ function decideTrade(
   // ── Phase 8 P1 — the structural-agreement veto is a first-class gate reason.
   if (structuralVeto) reasons.push(structuralVeto);
 
-  const entry =
+  const marketPrice =
     md?.price.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : undefined);
+  // Use the provider's executable-side quote when it exists:
+  // ask for long, bid for short. This improves analytical Entry realism,
+  // while the UI still labels it as indicative rather than prop-firm executable.
+  const entry =
+    bias === "Bullish"
+      ? md?.price.ask ?? marketPrice
+      : bias === "Bearish"
+        ? md?.price.bid ?? marketPrice
+        : marketPrice;
 
   // Structural levels — ONLY from real market swings or user-supplied
   // observed levels. No synthetic price×% fallbacks, ever.
