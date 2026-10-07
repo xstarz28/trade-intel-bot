@@ -735,6 +735,9 @@ export function scoreCandidate(
   if (c.riskReward && c.riskReward > 0) reasons.push(`R:R ${c.riskReward.toFixed(1)}`);
   if (c.spreadBps !== undefined && c.spreadBps > 25) conflicts.push(`wide spread ${c.spreadBps.toFixed(1)}bps`);
   if (c.hasDerivatives && c.fundingRate === undefined && c.openInterest === undefined) {
+    // Provider presence is not alpha: unusable derivatives payloads reduce
+    // analytical quality instead of receiving a neutral/positive score.
+    score -= 5;
     conflicts.push("derivatives data lacks usable positioning metrics");
   }
 
