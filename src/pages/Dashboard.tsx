@@ -429,7 +429,7 @@ export default function Dashboard() {
           }
         } catch (err: any) {
           updateStep(1, "error");
-          setFetchError(`Data fetch failed: ${err?.message || "provider not configured"}`);
+          setFetchError(`${t.dashboard.dataFetchFailed}: ${err?.message || t.dashboard.providerNotConfigured}`);
           setIsAnalyzing(false);
           return;
         }
@@ -1198,7 +1198,7 @@ export default function Dashboard() {
                     <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
                       <p className="text-xs font-mono text-red-400">{fetchError}</p>
                       <p className="text-[10px] font-mono text-red-400/60 mt-1">
-                        Check that TWELVE_DATA_API_KEY is configured in the Keys tab.
+                        {t.dashboard.checkApiKey}
                       </p>
                     </div>
                   )}
