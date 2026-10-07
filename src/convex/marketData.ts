@@ -14,7 +14,7 @@ import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext } from "../lib/data/mtf";
-import { detectIctUnicorn } from "../lib/data/classic-price-action";
+import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/classic-price-action";
 import {
   crossAssetComparator,
   DXY_CANDIDATE_SYMBOLS,
@@ -128,8 +128,9 @@ export const fetchMarketData = action({
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
       technical.smc = computeSmcContext(candles, args.timeframe);
-      if (technical.classicContext) {
-        technical.classicContext.ictUnicorn = detectIctUnicorn(
+      const classicContext = (technical as TechnicalData & { classicContext?: ClassicPriceActionContext }).classicContext;
+      if (classicContext) {
+        classicContext.ictUnicorn = detectIctUnicorn(
           technical.smc.orderBlocks,
           technical.smc.fvgs,
           args.timeframe,
