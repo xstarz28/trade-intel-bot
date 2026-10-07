@@ -619,6 +619,12 @@ const ja: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysis: "新しい分析",
+    marketLabel: "市場",
+    searchSpecificInstrument: "特定の銘柄を検索",
+    hideManualSearch: "手動検索を隠す",
+    manualSearchPlaceholder: "銘柄を手動で検索（例：BTC-USDT-SWAP）",
+    manualSearchNote: "手動検索は任意です。カテゴリー選択が銘柄選択の基本です。",
     instrumentLabel: "銘柄",
     typeLabel: "種類",
     timeframeLabel: "時間足",
