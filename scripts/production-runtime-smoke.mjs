@@ -55,8 +55,13 @@ function wirePage(targetPage) {
 
 async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5") {
   if (instrument === "BTC/USD") {
-    const btc = targetPage.getByRole("button", { name: "BTC/USD", exact: true });
-    if (await btc.count()) await btc.click();
+    // The production input uses the category + combobox instrument browser;
+    // the old direct BTC/USD quick-select button no longer exists.
+    await targetPage.getByRole("button", { name: "CRYPTO", exact: true }).click();
+    const picker = targetPage.getByRole("combobox").first();
+    await picker.click();
+    const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
+    await option.click();
   } else if (instrument === "XAU/USD") {
     const category = type === "crypto" ? "CRYPTO" : type === "commodity" ? "COMMODITIES" : type === "stock" ? "STOCKS" : "FOREX";
     await targetPage.getByRole("button", { name: category, exact: true }).click();
