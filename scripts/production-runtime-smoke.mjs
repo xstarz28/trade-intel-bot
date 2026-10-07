@@ -120,7 +120,7 @@ async function runAnalysis(targetPage, instrument, type) {
   }
 
   if (!evidence.productSurfaces.chart) {
-    const chart = targetPage.getByRole("img", { name: /provider OHLCV price structure chart/i });
+    const chart = targetPage.getByRole("img", { name: /provider OHLCV market structure chart/i });
     if (!(await chart.count())) {
       throw new Error(`${instrument} rendered without the provider OHLCV price-structure chart`);
     }
