@@ -185,7 +185,8 @@ const schema = defineSchema(
       lastTimestamp: v.number(),
       lastSequence: v.optional(v.number()),
     })
-      .index("by_provider_instrument", ["provider", "instrument"])\n      .index("by_user_provider_instrument", ["userId", "provider", "instrument"]),
+      .index("by_provider_instrument", ["provider", "instrument"])
+      .index("by_user_provider_instrument", ["userId", "provider", "instrument"]),
 
     // Phase 90 — Historical intelligence snapshots
     historicalSnapshots: defineTable({
