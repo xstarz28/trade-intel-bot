@@ -207,6 +207,40 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         />
       )}
 
+      {tech?.smc && (
+        <Card className="border-border/50">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-3">
+              <span className="text-primary/60">$</span> structural-evidence
+              <span className="text-muted-foreground/50"> · price-action hierarchy</span>
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[9px] font-mono">
+              <div className="rounded border border-border/30 p-2">
+                <span className="text-muted-foreground block">External</span>
+                <span className="font-semibold">{tech.smc.internalExternal.external.structure}</span>
+                <span className="text-muted-foreground block mt-1">BOS {tech.smc.internalExternal.external.bosDirection}</span>
+                <span className="text-muted-foreground block">CHoCH {tech.smc.internalExternal.external.chochDirection}</span>
+              </div>
+              <div className="rounded border border-border/30 p-2">
+                <span className="text-muted-foreground block">Liquidity</span>
+                <span className="font-semibold">{tech.smc.liquidityPools.filter((p) => !p.broken).length} active pools</span>
+                <span className="text-muted-foreground block mt-1">{tech.smc.recentSweep ? `Sweep: ${tech.smc.recentSweep.side.replace("_", "-")}` : "No recent sweep"}</span>
+              </div>
+              <div className="rounded border border-border/30 p-2">
+                <span className="text-muted-foreground block">Zones</span>
+                <span className="font-semibold">{tech.smc.fvgs.filter((f) => f.status === "fresh").length} fresh FVG · {tech.smc.orderBlocks.filter((o) => o.status !== "invalidated").length} OB</span>
+                <span className="text-muted-foreground block mt-1">Displacement {tech.smc.displacement?.direction ?? "none"}</span>
+              </div>
+              <div className="rounded border border-border/30 p-2">
+                <span className="text-muted-foreground block">Location</span>
+                <span className="font-semibold">{tech.smc.vwap.available ? `VWAP ${tech.smc.vwap.priceLocation.replace("_", " ")}` : "VWAP unavailable"}</span>
+                <span className="text-muted-foreground block mt-1">{tech.smc.volumeProfile.available ? `POC ${tech.smc.volumeProfile.poc?.toFixed(2) ?? "—"} · VA` : "Volume Profile unavailable"}</span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {result.positionSizing?.available && (
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
