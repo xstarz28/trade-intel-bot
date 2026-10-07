@@ -187,7 +187,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
             </div>
             <Select value={form.instrument} onValueChange={selectInstrument}>
               <SelectTrigger className="h-11 text-sm font-mono">
-                <SelectValue placeholder={filteredInstruments.length ? t.market.selectInstrument : t.market.noData} />
+                <SelectValue placeholder={filteredInstruments.length ? t.dashboard.selectInstrument : t.market.noData} />
               </SelectTrigger>
               <SelectContent className="max-h-80">
                 {filteredInstruments.map((item) => (
