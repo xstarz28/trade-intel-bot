@@ -468,7 +468,10 @@ export function MarketOpportunities({
     });
   }, [radarResult, currentHorizon, regionFilter, assetFilter]);
 
-  const useRadar = radarOpps.length > 0;
+  // The universal recommendation engine is the authoritative trader-facing
+  // ranking. Radar is retained for change/lifecycle diagnostics, but must not
+  // bypass the evidence-weighted opportunity score with a technical-only card.
+  const useRadar = false;
   // LIVE means the current scan contains verified live/delayed market data.
   // Radar presence or merely having cached liveSources must never promote the badge.
   const isLive = (scanResult?.totalWithLiveData ?? 0) > 0;
