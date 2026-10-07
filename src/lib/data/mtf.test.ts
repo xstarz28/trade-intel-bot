@@ -318,6 +318,6 @@ describe("MTF SMC context carries timeframe labels", () => {
 
 describe("TF_LADDER sanity", () => {
   it("is ordered execution → macro", () => {
-    expect(TF_LADDER).toEqual(["M15", "H1", "H4", "D1", "W1"]);
+    expect(TF_LADDER).toEqual(["M1", "M5", "M15", "H1", "H4", "D1", "W1"]);
   });
 });
