@@ -149,6 +149,16 @@ try {
   await btc.waitFor({ state: "visible", timeout: 30000 });
   evidence.authenticated = true;
 
+  await page.waitForFunction(() => {
+    const match = document.body.innerText.match(/(\\d{1,3}(?:,\\d{3})*) instruments available/);
+    return match ? Number(match[1].replace(/,/g, "")) >= 1000 : false;
+  }, undefined, { timeout: 30000 });
+  const desktopUniverse = await page.locator("text=/\\d{1,3}(?:,\\d{3})* instruments available/").first().textContent();
+  const desktopUniverseCount = Number((desktopUniverse ?? "").replace(/[^0-9]/g, ""));
+  if (!Number.isFinite(desktopUniverseCount) || desktopUniverseCount < 1000) {
+    throw new Error(`Desktop production universe unexpectedly small: ${desktopUniverse ?? "missing"}`);
+  }
+
   const riskSizing = page.getByText("$ risk-sizing", { exact: true });
   if (!(await riskSizing.count())) throw new Error("Dashboard does not expose the risk-sizing control");
   await riskSizing.click();
@@ -212,14 +222,9 @@ try {
   if (!(await brandLogo.count()) || !(await brandLogo.first().isVisible())) {
     throw new Error("Mobile production surface did not render the XSTARZG brand logo");
   }
-  await mobilePage.waitForFunction(() => {
-    const match = document.body.innerText.match(/(\\d{1,3}(?:,\\d{3})*) instruments available/);
-    return match ? Number(match[1].replace(/,/g, "")) >= 1000 : false;
-  }, undefined, { timeout: 30000 });
-  const instrumentCountText = await mobilePage.locator("text=/\\d{1,3}(?:,\\d{3})* instruments available/").first().textContent();
-  const instrumentCount = Number((instrumentCountText ?? "").replace(/[^0-9]/g, ""));
-  if (!Number.isFinite(instrumentCount) || instrumentCount < 1000) {
-    throw new Error(`Mobile production universe unexpectedly small: ${instrumentCountText ?? "missing"}`);
+  const mobileUniverseInput = mobilePage.locator('input[list="xstarzg-instrument-universe"]');
+  if (!(await mobileUniverseInput.count()) || !(await mobileUniverseInput.first().isVisible())) {
+    throw new Error("Mobile production surface did not expose searchable instrument universe");
   }
   const timeframeSelect = mobilePage.getByRole("combobox").nth(2);
   await timeframeSelect.click();
