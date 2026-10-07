@@ -318,8 +318,8 @@ export const getCursor = query({
 
     return await ctx.db
       .query("streamCursors")
-      .withIndex("by_provider_instrument", (q: any) =>
-        q.eq("provider", args.provider).eq("instrument", args.instrument)
+      .withIndex("by_user_provider_instrument", (q: any) =>
+        q.eq("userId", user._id).eq("provider", args.provider).eq("instrument", args.instrument)
       )
       .unique();
   },
