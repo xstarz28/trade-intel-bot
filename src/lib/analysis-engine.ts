@@ -68,9 +68,12 @@ export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradeP
 // they exist only as a small secondary modifier that can never flip
 // the bias on its own.
 const CORE_WEIGHTS = {
-  trend: 0.45,
-  fundamental: 0.3,
-  sentiment: 0.25,
+  // Opportunity quality is intentionally not indicator-driven. Structure
+  // establishes the price-action context, while fundamentals carry equal
+  // authority so technical setups are judged against their real drivers.
+  trend: 0.4,
+  fundamental: 0.4,
+  sentiment: 0.2,
 } as const;
 
 /**
@@ -1656,7 +1659,14 @@ function decideTrade(
   } else {
     // Informational evidence strength for NO_TRADE — NOT a trade conviction.
     const absAvg = Math.abs(coreWeightedAvg);
-    confidence = Math.round(Math.max(20, Math.min(55, 30 + absAvg * 20)));
+    const fundamentalStrength = Math.abs(breakdown.fundamental) * 0.4;
+    const positioningStrength = Math.abs(breakdown.sentiment) * 0.2;
+    confidence = Math.round(
+      Math.max(
+        20,
+        Math.min(60, 25 + absAvg * 25 + fundamentalStrength * 4 + positioningStrength * 3),
+      ),
+    );
   }
 
   // ── Key levels output — real levels only, empty when unavailable ──
