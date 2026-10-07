@@ -136,6 +136,14 @@ export interface CandidateInput {
   setupDirection?: "long" | "short" | "neutral" | "unknown";
   setupStrength?: number;
   confluenceCount?: number;
+  /** Signed fundamental evidence from the authoritative analysis (-2..2). */
+  fundamentalScore?: number;
+  /** Signed positioning/sentiment evidence from the authoritative analysis (-2..2). */
+  positioningScore?: number;
+  /** Signed macro evidence from actual macro measurements (-2..2). */
+  macroScore?: number;
+  /** True when the fundamental bucket has real directional evidence. */
+  fundamentalEvidenceAvailable?: boolean;
 }
 
 export interface RankedInstrument {
@@ -234,20 +242,23 @@ function normalizeWeights(w: HorizonWeights): HorizonWeights {
 
 export const HORIZON_PROFILES: Record<TradingMode | InvestorHorizon, HorizonWeights> = {
   // ── Trading modes ──
+  // Trading opportunity ranking is deliberately multi-layered. Fundamentals
+  // cannot disappear at short horizons: they provide the backdrop that tells
+  // us whether a technical setup is aligned with the market's real drivers.
   SCALPING: normalizeWeights({
-    htfStructure: 5, mtfAlignment: 8, marketRegime: 4, volatility: 7,
-    liquidity: 10, fundamentals: 0, macro: 2, derivatives: 3,
-    dataQuality: 8, riskReward: 3,
+    htfStructure: 6, mtfAlignment: 8, marketRegime: 4, volatility: 5,
+    liquidity: 8, fundamentals: 6, macro: 3, derivatives: 5,
+    dataQuality: 6, riskReward: 3,
   }),
   INTRADAY: normalizeWeights({
-    htfStructure: 8, mtfAlignment: 9, marketRegime: 6, volatility: 5,
-    liquidity: 7, fundamentals: 1, macro: 3, derivatives: 3,
-    dataQuality: 6, riskReward: 5,
+    htfStructure: 7, mtfAlignment: 8, marketRegime: 5, volatility: 3,
+    liquidity: 5, fundamentals: 9, macro: 5, derivatives: 4,
+    dataQuality: 6, riskReward: 4,
   }),
   SWING: normalizeWeights({
-    htfStructure: 10, mtfAlignment: 7, marketRegime: 8, volatility: 4,
-    liquidity: 5, fundamentals: 5, macro: 6, derivatives: 5,
-    dataQuality: 5, riskReward: 7,
+    htfStructure: 6, mtfAlignment: 5, marketRegime: 4, volatility: 2,
+    liquidity: 3, fundamentals: 10, macro: 7, derivatives: 4,
+    dataQuality: 5, riskReward: 4,
   }),
 
   // ── Investment horizons ──
@@ -615,48 +626,139 @@ export function scoreCandidate(
   const dq = evaluateDataQuality(c);
   const reasons: string[] = [];
   const conflicts: string[] = [];
-  const fallbackDirection =
-    c.htfBias === "long" || c.htfBias === "short" ? c.htfBias : "neutral";
-  const effectiveDirection = c.setupDirection ?? fallbackDirection;
-  const directional = effectiveDirection === "long" || effectiveDirection === "short";
-  // Direct callers may only provide HTF structure. Treat that as weaker
-  // directional evidence than the richer setupStrength from the live builder.
-  const strength = c.setupStrength ?? (directional ? 55 : 0);
-  const confirmations = c.confluenceCount ?? 0;
+  const profile = HORIZON_PROFILES[horizon];
 
-  if (directional && strength > 0) {
-    reasons.push(`${effectiveDirection === "long" ? "Bullish" : "Bearish"} structure/setup evidence ${Math.round(strength)}/100`);
-    if (confirmations >= 3) reasons.push(`${confirmations} independent confirmations`);
+  const direction =
+    c.setupDirection === "long" || c.setupDirection === "short"
+      ? c.setupDirection
+      : c.htfBias === "long" || c.htfBias === "short"
+        ? c.htfBias
+        : "neutral";
+  const directional = direction === "long" || direction === "short";
+  const sign = direction === "long" ? 1 : direction === "short" ? -1 : 0;
+
+  // Technical structure is one bucket. Individual indicators are deliberately
+  // NOT separate alpha votes here, preventing RSI/MACD-style evidence from
+  // dominating the opportunity ranking.
+  let technical = directional ? Math.max(0, Math.min(100, c.setupStrength ?? 45)) : 35;
+  if (c.mtfAlignment === "ALIGNED_BULLISH" || c.mtfAlignment === "ALIGNED_BEARISH") {
+    technical += 10;
+  } else if (c.mtfAlignment === "MIXED" || c.mtfAlignment === "COUNTER_TREND") {
+    technical -= 10;
+    conflicts.push("mixed/counter-trend timeframe structure");
+  }
+  if (c.marketRegime === "TRENDING") technical += 5;
+  if (c.marketRegime === "RANGING") technical -= 5;
+  technical = Math.max(0, Math.min(100, technical));
+
+  // Signed evidence is converted relative to the candidate direction. A
+  // missing fundamental bucket is ZERO evidence, never an automatic 50/100.
+  const signedToDirectional = (value: number | undefined): number | undefined => {
+    if (!directional || value === undefined || !Number.isFinite(value)) return undefined;
+    const normalized = Math.max(-2, Math.min(2, value));
+    return Math.max(0, Math.min(100, 50 + normalized * 25 * sign));
+  };
+
+  const fundamental = signedToDirectional(c.fundamentalScore) ?? (c.fundamentalEvidenceAvailable ? 50 : 0);
+  const macro = signedToDirectional(c.macroScore) ?? 0;
+  const positioning = signedToDirectional(c.positioningScore) ?? 0;
+
+  if (!c.fundamentalEvidenceAvailable) {
+    conflicts.push("directional fundamental evidence unavailable");
+  } else if (c.fundamentalScore !== undefined && directional && Math.sign(c.fundamentalScore) === -sign) {
+    conflicts.push("fundamental evidence opposes the technical direction");
+  }
+  if (c.macroScore !== undefined && directional && Math.sign(c.macroScore) === -sign) {
+    conflicts.push("macro evidence opposes the technical direction");
+  }
+  if (c.positioningScore !== undefined && directional && Math.sign(c.positioningScore) === -sign) {
+    conflicts.push("positioning evidence opposes the technical direction");
+  }
+
+  const execution =
+    c.spreadBps === undefined ? 55 :
+    c.spreadBps <= 5 ? 95 :
+    c.spreadBps <= 15 ? 80 :
+    c.spreadBps <= 25 ? 60 : 35;
+
+  const rr = c.riskReward && c.riskReward > 0
+    ? Math.max(20, Math.min(100, 35 + c.riskReward * 25))
+    : 35;
+
+  const structureWeight = profile.htfStructure + profile.mtfAlignment + profile.marketRegime + profile.volatility;
+  const technicalWeight = structureWeight;
+  const liquidityWeight = profile.liquidity;
+  const positioningWeight = profile.derivatives;
+
+  // Only evidence that actually arrived participates. Missing fundamentals
+  // reduce the opportunity score instead of being silently normalized away.
+  const weighted =
+    technical * technicalWeight +
+    fundamental * profile.fundamentals +
+    macro * profile.macro +
+    positioning * positioningWeight +
+    execution * liquidityWeight +
+    dq.score * profile.dataQuality +
+    rr * profile.riskReward;
+  const totalWeight =
+    technicalWeight +
+    profile.fundamentals +
+    profile.macro +
+    positioningWeight +
+    liquidityWeight +
+    profile.dataQuality +
+    profile.riskReward;
+
+  let score = totalWeight > 0 ? weighted / totalWeight : 0;
+
+  // A trading opportunity needs multi-layer agreement. A technical-only setup
+  // is useful as a watch candidate, but must never become TOP_OPPORTUNITY.
+  const agreeingNonTechnical = [c.fundamentalScore, c.macroScore, c.positioningScore]
+    .filter((v) => v !== undefined && Number.isFinite(v) && sign !== 0 && Math.sign(v as number) === sign).length;
+  const opposingNonTechnical = [c.fundamentalScore, c.macroScore, c.positioningScore]
+    .filter((v) => v !== undefined && Number.isFinite(v) && sign !== 0 && Math.sign(v as number) === -sign).length;
+
+  if (directional) {
+    reasons.push(`${direction === "long" ? "Bullish" : "Bearish"} structure/setup ${Math.round(technical)}/100`);
+    reasons.push(
+      c.fundamentalScore !== undefined
+        ? `fundamental evidence ${c.fundamentalScore > 0 ? "+" : ""}${c.fundamentalScore}`
+        : "fundamental evidence unavailable",
+    );
+    if (agreeingNonTechnical > 0) reasons.push(`${agreeingNonTechnical} non-technical evidence layer(s) agree`);
+    if (opposingNonTechnical > 0) reasons.push(`${opposingNonTechnical} non-technical evidence layer(s) oppose`);
   } else {
     conflicts.push("no confirmed directional setup");
+    score = Math.min(score, 45);
   }
 
-  // Data quality is a confidence constraint, never directional alpha.
-  let score = directional ? strength : 20;
-  if (c.riskReward && c.riskReward > 0) {
-    score += Math.max(-5, Math.min(10, (c.riskReward - 1.5) * 5));
-    reasons.push(`R:R ${c.riskReward.toFixed(1)}`);
-  }
-  if (c.spreadBps !== undefined) {
-    if (c.spreadBps <= 5) score += 5;
-    else if (c.spreadBps > 25) { score -= 8; conflicts.push(`wide spread ${c.spreadBps.toFixed(1)}bps`); }
-  }
-
-  // A derivatives flag without concrete positioning metrics is lower-quality
-  // evidence. Do not reward provider availability itself.
-  if (c.hasDerivatives && !c.hasAnalysis && c.fundingRate === undefined && c.openInterest === undefined) {
-    score -= 5;
+  if (c.riskReward && c.riskReward > 0) reasons.push(`R:R ${c.riskReward.toFixed(1)}`);
+  if (c.spreadBps !== undefined && c.spreadBps > 25) conflicts.push(`wide spread ${c.spreadBps.toFixed(1)}bps`);
+  if (c.hasDerivatives && c.fundingRate === undefined && c.openInterest === undefined) {
     conflicts.push("derivatives data lacks usable positioning metrics");
   }
-  score *= 0.65 + dq.score * 0.0035;
-  if (!directional) score = Math.min(score, 45);
+
+  // No non-technical evidence means the engine can rank the setup, but caps it
+  // below TOP_OPPORTUNITY. This is the key guard against indicator-only setups.
+  if (directional && agreeingNonTechnical === 0) {
+    score = Math.min(score, 64);
+  }
+  if (directional && opposingNonTechnical >= 2) {
+    score = Math.min(score, 59);
+  }
   if (dq.score < 55) score = Math.min(score, 59);
 
   const analyticalScore = Math.max(0, Math.min(100, Math.round(score)));
-  const evidenceCoherence = directional
-    ? Math.min(100, 35 + strength * 0.4 + confirmations * 8)
+  const breadth = directional
+    ? Math.min(100, 35 + agreeingNonTechnical * 20 + (c.confluenceCount ?? 0) * 5)
     : 10;
-  const confidence = Math.round(Math.min(100, dq.score * 0.45 + evidenceCoherence * 0.55));
+  const coherence = directional
+    ? Math.min(100, Math.max(0, 50 + (fundamental - 50) * 0.4 + (macro - 50) * 0.2 + (positioning - 50) * 0.2))
+    : 10;
+  const confidence = Math.round(
+    Math.min(100, dq.score * 0.25 + breadth * 0.25 + coherence * 0.5),
+  );
+
   conflicts.push(...dq.issues);
 
   return {
