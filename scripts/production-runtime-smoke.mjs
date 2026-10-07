@@ -66,7 +66,7 @@ async function runAnalysis(targetPage, instrument, type) {
     await option.click();
   }
 
-  const run = targetPage.getByRole("button", { name: /run analysis/i });
+  const run = targetPage.locator("button").filter({ hasText: /run analysis/i }).first();
   if (!(await run.count())) {
     const buttons = await targetPage.locator("button").allTextContents();
     throw new Error(`Run Analysis control is missing for ${instrument}. Rendered buttons: ${buttons.join(" | ")}`);
