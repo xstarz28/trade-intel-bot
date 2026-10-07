@@ -813,7 +813,7 @@ export default function Dashboard() {
   const availableInstruments = useMemo(() => {
     const registry = getAllInstruments().map((item) => ({
       symbol: item.canonical,
-      type: (item.assetClass === "equity" ? "stock" : item.assetClass) as "forex" | "crypto" | "stock" | "commodity" | "indices",
+      type: (item.assetClass === "equity" ? "stock" : item.assetClass === "macro" ? "indices" : item.assetClass) as "forex" | "crypto" | "stock" | "commodity" | "indices",
       label: item.name,
     }));
     const discovered = discoveredCryptoInstruments.map((symbol) => ({
