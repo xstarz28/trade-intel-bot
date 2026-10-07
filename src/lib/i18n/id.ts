@@ -614,6 +614,11 @@ const id: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    available: "tersedia",
+    forex: "FOREX",
+    crypto: "KRIPTO",
+    stocks: "SAHAM",
+    commodities: "KOMODITAS",
     newAnalysis: "Analisis Baru",
     marketLabel: "Pasar",
     searchSpecificInstrument: "Cari instrumen tertentu",
