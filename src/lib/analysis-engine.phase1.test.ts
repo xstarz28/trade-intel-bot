@@ -155,6 +155,28 @@ describe("NO_TRADE gate", () => {
     ).toBe(true);
   });
 
+  it("retains a market-derived projected plan for rejected directional setups", () => {
+    const result = runAnalysis(
+      bullishAligned({
+        marketData: makeMarket(100),
+        technicalData: makeTech({
+          structure: "HH/HL",
+          bosDirection: "bullish",
+          supportLevels: [99],
+          resistanceLevels: [101],
+          swingLows: [99],
+          swingHighs: [101],
+        }),
+        economicEvents: "Fed signals hawkish stance, rate hike",
+      }),
+    );
+    expect(result.recommendation).toBe("NO_TRADE");
+    expect(result.tradePlan).toBeUndefined();
+    expect(result.projectedTradePlan).toBeDefined();
+    expect(result.projectedTradePlan?.riskReward).toBe(1);
+    expect(Number(result.projectedTradePlan?.entry)).toBe(100);
+  });
+
   it("emits NO_TRADE when projected R:R is below the minimum threshold", () => {
     // Risk 1 (stop 99), reward 1 (target 101) → R:R 1.0 < 1.5
     const result = runAnalysis(
