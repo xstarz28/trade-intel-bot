@@ -619,6 +619,12 @@ const fr: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysis: "Nouvelle analyse",
+    marketLabel: "Marché",
+    searchSpecificInstrument: "Rechercher un instrument précis",
+    hideManualSearch: "Masquer la recherche manuelle",
+    manualSearchPlaceholder: "Rechercher un symbole manuellement, ex. BTC-USDT-SWAP",
+    manualSearchNote: "La recherche manuelle est facultative. La sélection par catégorie reste le moyen principal de choisir un instrument.",
     instrumentLabel: "instrument",
     typeLabel: "type",
     timeframeLabel: "unité de temps",
