@@ -13,20 +13,25 @@ interface PriceChartProps {
 function fmt(value: number): string {
   if (!Number.isFinite(value)) return "—";
   if (Math.abs(value) >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (Math.abs(value) >= 1) return value.toFixed(4);
-  return value.toFixed(6);
+  if (Math.abs(value) >= 1) return value.toFixed(2);
+  return value.toFixed(5);
 }
 
-function clamp01(n: number) {
-  return Math.max(0, Math.min(1, n));
+function timeLabel(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
 }
 
 /**
- * Trading-terminal style structural chart.
+ * Price-first market chart.
  *
- * Everything drawn here comes from provider OHLCV / the shared SMC engine:
- * candles, liquidity, FVG, OB, VWAP and profile levels. No visual object is
- * synthesized from arbitrary percentages.
+ * The chart intentionally follows a TradingView-like hierarchy:
+ * candles and axes first, trade plan second, only the most relevant structural
+ * levels as overlays. SMC/VWAP/profile data remains available as compact context
+ * instead of painting every available object over the price action.
  */
 export function PriceStructureChart({
   candles,
@@ -36,8 +41,9 @@ export function PriceStructureChart({
   technicalData,
 }: PriceChartProps) {
   const data = candles
-    .filter((c) => [c.open, c.high, c.low, c.close].every(Number.isFinite))
-    .slice(-120);
+    .filter((c) => [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite))
+    .slice(-90);
+
   if (data.length < 5) return null;
 
   const smc = technicalData?.smc;
@@ -45,216 +51,273 @@ export function PriceStructureChart({
   const lows = data.map((c) => c.low);
   const max = Math.max(...highs);
   const min = Math.min(...lows);
-  const rawSpan = Math.max(max - min, Number.EPSILON);
-  const padRange = rawSpan * 0.08;
-  const topPrice = max + padRange;
-  const bottomPrice = Math.max(0, min - padRange);
-  const span = Math.max(topPrice - bottomPrice, Number.EPSILON);
+  const spanRaw = Math.max(max - min, Number.EPSILON);
+  const pad = spanRaw * 0.07;
+  const topPrice = max + pad;
+  const bottomPrice = Math.max(0, min - pad);
+  const priceSpan = Math.max(topPrice - bottomPrice, Number.EPSILON);
 
-  const width = 1120;
-  const height = 430;
-  const padX = 48;
-  const padTop = 24;
-  const padBottom = 46;
-  const mainH = 330;
-  const volumeTop = padTop + mainH + 12;
-  const volumeH = height - volumeTop - padBottom;
-  const plotW = width - padX * 2;
-  const candleW = Math.max(2.5, Math.min(8, (plotW / data.length) * 0.64));
-  const x = (i: number) => padX + (i / Math.max(data.length - 1, 1)) * plotW;
-  const y = (price: number) => padTop + ((topPrice - price) / span) * mainH;
-  const inView = (price: number) => price >= bottomPrice && price <= topPrice;
+  const width = 1000;
+  const height = 480;
+  const left = 18;
+  const right = 82;
+  const top = 18;
+  const bottom = 58;
+  const volumeHeight = 72;
+  const gap = 12;
+  const priceHeight = height - top - bottom - volumeHeight - gap;
+  const plotWidth = width - left - right;
+  const volumeTop = top + priceHeight + gap;
+  const x = (i: number) => left + (i / Math.max(data.length - 1, 1)) * plotWidth;
+  const y = (price: number) => top + ((topPrice - price) / priceSpan) * priceHeight;
+  const visible = (price: number) => price >= bottomPrice && price <= topPrice;
 
   const volumes = data.map((c) => Number.isFinite(c.volume) && c.volume > 0 ? c.volume : 0);
   const maxVolume = Math.max(...volumes, 0);
   const hasVolume = maxVolume > 0;
-  const volumeY = (v: number) => volumeTop + volumeH - (v / Math.max(maxVolume, 1)) * volumeH;
+  const candleWidth = Math.max(3, Math.min(10, (plotWidth / data.length) * 0.62));
+  const volumeY = (v: number) =>
+    volumeTop + volumeHeight - (v / Math.max(maxVolume, 1)) * volumeHeight;
 
-  const lineLevel = (value?: number) =>
-    value !== undefined && Number.isFinite(value) && inView(value) ? y(value) : null;
+  const levelY = (value: number | undefined): number | null =>
+    value !== undefined && Number.isFinite(value) && visible(value) ? y(value) : null;
 
-  const zones = [
-    ...(smc?.fvgs.slice(0, 6).map((f, i) => ({
-      key: `fvg-${i}`,
-      lower: f.lower,
-      upper: f.upper,
-      label: `FVG ${f.direction.toUpperCase()}`,
-      className: f.direction === "bullish" ? "fill-emerald-400/10 stroke-emerald-400/35" : "fill-red-400/10 stroke-red-400/35",
-    })) ?? []),
-    ...(smc?.orderBlocks.slice(0, 5).map((o, i) => ({
-      key: `ob-${i}`,
-      lower: o.lower,
-      upper: o.upper,
-      label: `OB ${o.direction.toUpperCase()}`,
-      className: o.direction === "bullish" ? "fill-sky-400/10 stroke-sky-400/35" : "fill-orange-400/10 stroke-orange-400/35",
-    })) ?? []),
+  const support = Number(keyLevels.support);
+  const resistance = Number(keyLevels.resistance);
+  const invalidation = Number(keyLevels.invalidation);
+  const plan = tradePlan ?? projectedTradePlan;
+  const projected = !tradePlan && !!projectedTradePlan;
+
+  const planLevels = plan
+    ? [
+        { key: "entry", label: projected ? "P-ENTRY" : "ENTRY", value: Number(plan.entry), cls: "text-sky-300", dash: "7 4" },
+        { key: "sl", label: projected ? "P-SL" : "SL", value: Number(plan.stopLoss), cls: "text-red-300", dash: "5 4" },
+        { key: "tp", label: projected ? "P-TP" : "TP", value: Number(plan.takeProfit), cls: "text-emerald-300", dash: "5 4" },
+      ]
+    : [];
+
+  const last = data[data.length - 1];
+  const currentY = y(last.close);
+  const risk = plan ? Math.abs(Number(plan.entry) - Number(plan.stopLoss)) : NaN;
+  const reward = plan ? Math.abs(Number(plan.takeProfit) - Number(plan.entry)) : NaN;
+  const rr = risk > 0 && Number.isFinite(reward) ? reward / risk : undefined;
+
+  // Only the nearest fresh zones are shown. The full SMC payload remains in
+  // the analysis data; the chart should not become an indicator dump.
+  const relevantZones = [
+    ...(smc?.fvgs ?? [])
+      .filter((f) => f.status === "fresh" && visible((f.lower + f.upper) / 2))
+      .slice(0, 1)
+      .map((f) => ({ lower: f.lower, upper: f.upper, label: "FVG", positive: f.direction === "bullish" })),
+    ...(smc?.orderBlocks ?? [])
+      .filter((o) => o.status === "fresh" && visible((o.lower + o.upper) / 2))
+      .slice(0, 1)
+      .map((o) => ({ lower: o.lower, upper: o.upper, label: "OB", positive: o.direction === "bullish" })),
   ];
 
-  const liquidity = smc?.liquidityPools
-    .filter((p) => !p.broken && inView(p.level))
-    .slice(0, 8) ?? [];
-
-  const levels = [
-    { label: "R", value: Number(keyLevels.resistance), cls: "text-red-400" },
-    { label: "S", value: Number(keyLevels.support), cls: "text-emerald-400" },
-    { label: "INV", value: Number(keyLevels.invalidation), cls: "text-amber-400" },
-  ];
-
-  const displayPlan = tradePlan ?? projectedTradePlan;
-  const planIsProjected = !tradePlan && !!projectedTradePlan;
-  const tradeLevels = displayPlan
-    ? [
-        { label: planIsProjected ? "P-ENTRY" : "ENTRY", value: Number(displayPlan.entry), cls: "text-sky-400" },
-        { label: planIsProjected ? "P-SL" : "SL", value: Number(displayPlan.stopLoss), cls: "text-red-400" },
-        { label: planIsProjected ? "P-TP" : "TP", value: Number(displayPlan.takeProfit), cls: "text-emerald-400" },
-      ]
-    : [];
-
-  const vwapLevels = smc?.vwap.available
-    ? [
-        { label: "VWAP", value: smc.vwap.sessionVwap, cls: "text-violet-300" },
-        { label: "VWAP +1σ", value: smc.vwap.bands?.plus1, cls: "text-violet-300" },
-        { label: "VWAP -1σ", value: smc.vwap.bands?.minus1, cls: "text-violet-300" },
-      ]
-    : [];
-
-  const profileLevels = smc?.volumeProfile.available
-    ? [
-        { label: "POC", value: smc.volumeProfile.poc, cls: "text-cyan-300" },
-        { label: "VAH", value: smc.volumeProfile.vah, cls: "text-cyan-300" },
-        { label: "VAL", value: smc.volumeProfile.val, cls: "text-cyan-300" },
-      ]
-    : [];
-
-  const lastClose = data[data.length - 1]?.close;
-  const currentY = lineLevel(lastClose);
-  const ext = smc?.internalExternal.external;
-  const int = smc?.internalExternal.internal;
-  const displayedEntry = displayPlan ? Number(displayPlan.entry) : NaN;
-  const displayedSl = displayPlan ? Number(displayPlan.stopLoss) : NaN;
-  const displayedTp = displayPlan ? Number(displayPlan.takeProfit) : NaN;
-  // Never trust a stale/legacy serialized R:R when rendering. Recompute it
-  // from the exact Entry/SL/TP values visible on this chart.
-  const displayedRisk = Number.isFinite(displayedEntry) && Number.isFinite(displayedSl)
-    ? Math.abs(displayedEntry - displayedSl) : NaN;
-  const displayedReward = Number.isFinite(displayedEntry) && Number.isFinite(displayedTp)
-    ? Math.abs(displayedTp - displayedEntry) : NaN;
-  const rr = displayedRisk > 0 && Number.isFinite(displayedReward)
-    ? displayedReward / displayedRisk : undefined;
-  const rrMismatch = displayPlan?.riskReward !== undefined && rr !== undefined
-    ? Math.abs(displayPlan.riskReward - rr) > 0.05 : false;
-  const structureLabel = ext?.structure ?? technicalData?.structure ?? "unknown";
+  const compactContext = [
+    smc?.vwap.available ? `VWAP ${fmt(smc.vwap.sessionVwap ?? NaN)}` : null,
+    smc?.volumeProfile.available ? `POC ${fmt(smc.volumeProfile.poc ?? NaN)}` : null,
+    smc?.recentSweep ? `SWEEP ${smc.recentSweep.side.replace("_", "-")}` : null,
+  ].filter(Boolean);
 
   return (
     <Card className="border-border/50 overflow-hidden">
       <CardHeader className="px-4 py-3 border-b border-border/30">
         <div className="flex items-center justify-between gap-3">
           <CardTitle className="text-xs font-mono">$ market-structure · provider OHLCV</CardTitle>
-          <div className="flex flex-wrap items-center justify-end gap-2 text-[9px] font-mono">
-            <span className="text-muted-foreground">STRUCTURE <b className="text-foreground">{structureLabel}</b></span>
-            {ext?.bosDirection && ext.bosDirection !== "none" && <span className="text-amber-300">BOS {ext.bosDirection}</span>}
-            {ext?.chochDirection && ext.chochDirection !== "none" && <span className="text-violet-300">CHoCH {ext.chochDirection}</span>}
-            {smc?.recentSweep && <span className="text-sky-300">SWEEP {smc.recentSweep.side.replace("_", "-")}</span>}
-            {smc?.vwap.available && <span className="text-violet-300">VWAP {smc.vwap.priceLocation.replace("_", " ")}</span>}
-            {smc?.volumeProfile.available && <span className="text-cyan-300">VP POC {fmt(smc.volumeProfile.poc ?? NaN)}</span>}
+          <div className="flex items-center gap-2 text-[9px] font-mono text-muted-foreground">
+            <span>{data.length} candles</span>
+            <span>·</span>
+            <span className="text-foreground">LIVE {fmt(last.close)}</span>
           </div>
         </div>
-        {displayPlan && (
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] font-mono">
-            <span className={planIsProjected ? "text-amber-300" : "text-sky-300"}>
-              {planIsProjected ? "PROJECTED SETUP · NOT EXECUTABLE" : "ANALYTICAL PLAN · VERIFY EXECUTABLE PRICE"}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
+          <span>STRUCTURE <b className="text-foreground">{smc?.internalExternal.external.structure ?? technicalData?.structure ?? "unknown"}</b></span>
+          {smc?.internalExternal.external.bosDirection && smc.internalExternal.external.bosDirection !== "none" && (
+            <span>BOS {smc.internalExternal.external.bosDirection}</span>
+          )}
+          {smc?.internalExternal.external.chochDirection && smc.internalExternal.external.chochDirection !== "none" && (
+            <span>CHoCH {smc.internalExternal.external.chochDirection}</span>
+          )}
+          {compactContext.map((item) => <span key={item}>{item}</span>)}
+        </div>
+        {plan && (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
+            <span className={projected ? "text-amber-300" : "text-sky-300"}>
+              {projected ? "PROJECTED SETUP · NOT EXECUTABLE" : "ANALYTICAL PLAN · VERIFY EXECUTABLE PRICE"}
             </span>
-            <span>ENTRY {fmt(Number(displayPlan.entry))}</span>
-            <span>SL {fmt(Number(displayPlan.stopLoss))}</span>
-            <span>TP {fmt(Number(displayPlan.takeProfit))}</span>
-            <span className={rr !== undefined && rr >= 1.5 ? "text-emerald-300" : "text-red-300"}>R:R {rr?.toFixed(2) ?? "—"}R</span>
-            {rrMismatch && <span className="text-amber-300">R:R corrected from stale plan data</span>}
+            <span>ENTRY {fmt(Number(plan.entry))}</span>
+            <span>SL {fmt(Number(plan.stopLoss))}</span>
+            <span>TP {fmt(Number(plan.takeProfit))}</span>
+            {rr !== undefined && <span className={rr >= 1.5 ? "text-emerald-300" : "text-red-300"}>R:R {rr.toFixed(2)}R</span>}
           </div>
         )}
       </CardHeader>
-      <CardContent className="px-2 sm:px-3 pb-3">
-        <div className="overflow-x-auto">
-          <svg viewBox={`0 0 ${width} ${height}`} className="w-full min-w-[760px] h-[390px]" role="img" aria-label="Provider OHLCV market structure chart with liquidity and trade levels">
-            {[0,1,2,3,4].map((g) => {
-              const gy = padTop + (g / 4) * mainH;
-              return <line key={`hg-${g}`} x1={padX} x2={width - padX} y1={gy} y2={gy} className="stroke-border/40" strokeWidth="1" />;
-            })}
-            {[0,1,2,3,4,5].map((g) => {
-              const gx = padX + (g / 5) * plotW;
-              return <line key={`vg-${g}`} x1={gx} x2={gx} y1={padTop} y2={volumeTop + volumeH} className="stroke-border/25" strokeWidth="1" />;
-            })}
 
-            {zones.map((z) => {
-              const upper = lineLevel(z.upper);
-              const lower = lineLevel(z.lower);
-              if (upper === null && lower === null) return null;
-              const y1 = upper ?? padTop;
-              const y2 = lower ?? padTop + mainH;
+      <CardContent className="px-2 sm:px-3 pb-3">
+        <div className="w-full">
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            className="w-full h-auto min-h-[300px]"
+            role="img"
+            aria-label="Provider OHLCV candlestick chart with key market levels"
+          >
+            {/* TradingView-like grid: deliberately subtle. */}
+            {[0, 1, 2, 3, 4].map((i) => {
+              const gy = top + (i / 4) * priceHeight;
+              const value = topPrice - (i / 4) * priceSpan;
               return (
-                <g key={z.key}>
-                  <rect x={padX} y={Math.min(y1, y2)} width={plotW} height={Math.max(3, Math.abs(y2 - y1))} className={`${z.className} stroke-dasharray-[4_4]`} />
-                  <text x={padX + 5} y={Math.min(y1, y2) + 11} className="fill-current text-[8px] font-mono text-muted-foreground">{z.label}</text>
+                <g key={`h-${i}`}>
+                  <line x1={left} x2={width - right} y1={gy} y2={gy} className="stroke-border/30" />
+                  <text x={width - right + 7} y={gy + 3} className="fill-muted-foreground text-[10px] font-mono">{fmt(value)}</text>
+                </g>
+              );
+            })}
+            {[0, 1, 2, 3, 4, 5].map((i) => {
+              const gx = left + (i / 5) * plotWidth;
+              const candle = data[Math.min(data.length - 1, Math.round((i / 5) * (data.length - 1)))];
+              return (
+                <g key={`v-${i}`}>
+                  <line x1={gx} x2={gx} y1={top} y2={volumeTop + volumeHeight} className="stroke-border/15" />
+                  <text x={gx} y={height - 16} textAnchor="middle" className="fill-muted-foreground text-[10px] font-mono">
+                    {timeLabel(candle.timestamp)}
+                  </text>
                 </g>
               );
             })}
 
+            {/* One or two nearest fresh structural zones, not the entire SMC set. */}
+            {relevantZones.map((z, i) => {
+              const y1 = y(z.upper);
+              const y2 = y(z.lower);
+              return (
+                <g key={`${z.label}-${i}`} opacity="0.35">
+                  <rect
+                    x={left}
+                    y={Math.min(y1, y2)}
+                    width={plotWidth}
+                    height={Math.max(2, Math.abs(y2 - y1))}
+                    className={z.positive ? "fill-emerald-400" : "fill-red-400"}
+                  />
+                  <text x={left + 6} y={Math.min(y1, y2) + 12} className="fill-foreground text-[9px] font-mono">
+                    {z.label}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* Candles are the dominant visual layer. */}
             {data.map((c, i) => {
               const cx = x(i);
               const bullish = c.close >= c.open;
-              const top = y(Math.max(c.open, c.close));
-              const bottom = y(Math.min(c.open, c.close));
+              const bodyTop = y(Math.max(c.open, c.close));
+              const bodyBottom = y(Math.min(c.open, c.close));
               return (
                 <g key={`${c.timestamp}-${i}`}>
-                  <line x1={cx} x2={cx} y1={y(c.high)} y2={y(c.low)} className={bullish ? "stroke-emerald-400" : "stroke-red-400"} strokeWidth="1" />
-                  <rect x={cx - candleW / 2} y={Math.min(top, bottom)} width={candleW} height={Math.max(1.2, Math.abs(bottom - top))} className={bullish ? "fill-emerald-400/75" : "fill-red-400/75"} rx="0.8" />
-                  {hasVolume && <rect x={cx - candleW / 2} y={volumeY(c.volume)} width={candleW} height={Math.max(1, volumeTop + volumeH - volumeY(c.volume))} className={bullish ? "fill-emerald-400/25" : "fill-red-400/25"} />}
+                  <line
+                    x1={cx}
+                    x2={cx}
+                    y1={y(c.high)}
+                    y2={y(c.low)}
+                    className={bullish ? "stroke-emerald-400" : "stroke-red-400"}
+                    strokeWidth="1.2"
+                  />
+                  <rect
+                    x={cx - candleWidth / 2}
+                    y={bodyTop}
+                    width={candleWidth}
+                    height={Math.max(1.5, bodyBottom - bodyTop)}
+                    className={bullish ? "fill-emerald-400/80" : "fill-red-400/80"}
+                    rx="0.5"
+                  />
                 </g>
               );
             })}
 
-            {liquidity.map((p, i) => {
-              const ly = lineLevel(p.level);
+            {/* Key levels: only the levels a trader actually needs immediately. */}
+            {[
+              { label: "RES", value: resistance, cls: "text-red-300", dash: "6 4" },
+              { label: "SUP", value: support, cls: "text-emerald-300", dash: "6 4" },
+              { label: "INV", value: invalidation, cls: "text-amber-300", dash: "2 5" },
+            ].map((l) => {
+              const ly = levelY(l.value);
               if (ly === null) return null;
-              return <g key={`liq-${i}`}><line x1={padX} x2={width - padX} y1={ly} y2={ly} className={p.side === "buy_side" ? "stroke-red-300/60" : "stroke-emerald-300/60"} strokeDasharray="2 5" /><text x={padX + 6} y={ly - 3} className="fill-current text-[7px] font-mono text-muted-foreground">{p.source.replace("_", " ")} · {p.touches}T</text></g>;
+              return (
+                <g key={l.label}>
+                  <line x1={left} x2={width - right} y1={ly} y2={ly} className={`stroke-current ${l.cls}`} strokeOpacity="0.5" strokeDasharray={l.dash} />
+                  <rect x={width - right - 67} y={ly - 10} width="63" height="18" rx="3" className="fill-background/85" />
+                  <text x={width - right - 6} y={ly + 3} textAnchor="end" className={`fill-current ${l.cls} text-[9px] font-mono`}>{l.label} {fmt(l.value)}</text>
+                </g>
+              );
             })}
 
-            {[...vwapLevels, ...profileLevels, ...levels, ...tradeLevels].map((l, i) => {
-              const ly = lineLevel(l.value);
+            {/* Trade plan is a single coherent visual block. */}
+            {planLevels.map((l) => {
+              const ly = levelY(l.value);
               if (ly === null) return null;
-              return <g key={`${l.label}-${i}`}><line x1={padX} x2={width - padX} y1={ly} y2={ly} className={`stroke-current ${l.cls} opacity-60`} strokeDasharray={l.label.includes("ENTRY") || l.label.includes("P-") ? "7 4" : "5 4"} /><text x={width - padX - 4} y={ly - 4} textAnchor="end" className={`fill-current ${l.cls} text-[8px] font-mono`}>{l.label} {fmt(l.value ?? NaN)}</text></g>;
+              return (
+                <g key={l.key}>
+                  <line x1={left} x2={width - right} y1={ly} y2={ly} className={`stroke-current ${l.cls}`} strokeOpacity="0.75" strokeDasharray={l.dash} />
+                  <rect x={left + 6} y={ly - 10} width={l.label.length > 5 ? 76 : 50} height="18" rx="3" className="fill-background/90" />
+                  <text x={left + 11} y={ly + 3} className={`fill-current ${l.cls} text-[9px] font-mono`}>{l.label}</text>
+                </g>
+              );
             })}
 
-
-            {displayPlan && rr !== undefined && displayedRisk > 0 && displayedReward > 0 && (() => {
-              const entryY = lineLevel(displayedEntry);
-              const slY = lineLevel(displayedSl);
-              const tpY = lineLevel(displayedTp);
+            {plan && rr !== undefined && (() => {
+              const entryY = levelY(Number(plan.entry));
+              const slY = levelY(Number(plan.stopLoss));
+              const tpY = levelY(Number(plan.takeProfit));
               if (entryY === null || slY === null || tpY === null) return null;
-              const riskTop = Math.min(entryY, slY), riskBottom = Math.max(entryY, slY);
-              const rewardTop = Math.min(entryY, tpY), rewardBottom = Math.max(entryY, tpY);
-              return <g opacity="0.28">
-                <rect x={padX + plotW * 0.62} y={riskTop} width={plotW * 0.33} height={Math.max(2, riskBottom-riskTop)} className="fill-red-500" />
-                <rect x={padX + plotW * 0.62} y={rewardTop} width={plotW * 0.33} height={Math.max(2, rewardBottom-rewardTop)} className="fill-emerald-500" />
-                <text x={padX + plotW * 0.63} y={riskTop + 11} className="fill-red-300 text-[8px] font-mono">RISK</text>
-                <text x={padX + plotW * 0.63} y={rewardTop + 11} className="fill-emerald-300 text-[8px] font-mono">REWARD · {rr.toFixed(2)}R</text>
-              </g>;
+              const boxX = left + plotWidth * 0.72;
+              const boxW = plotWidth * 0.22;
+              const riskTop = Math.min(entryY, slY);
+              const riskBottom = Math.max(entryY, slY);
+              const rewardTop = Math.min(entryY, tpY);
+              const rewardBottom = Math.max(entryY, tpY);
+              return (
+                <g opacity="0.18">
+                  <rect x={boxX} y={riskTop} width={boxW} height={Math.max(2, riskBottom - riskTop)} className="fill-red-500" />
+                  <rect x={boxX} y={rewardTop} width={boxW} height={Math.max(2, rewardBottom - rewardTop)} className="fill-emerald-500" />
+                </g>
+              );
             })()}
-            {currentY !== null && <line x1={padX} x2={width - padX} y1={currentY} y2={currentY} className="stroke-foreground/50" strokeDasharray="1 4" />}
 
-            <line x1={padX} x2={width - padX} y1={volumeTop - 6} y2={volumeTop - 6} className="stroke-border/50" />
-            <text x={padX} y={volumeTop + 12} className="fill-current text-[8px] font-mono text-muted-foreground">
-              {hasVolume ? "VOLUME · provider" : "VOLUME · unavailable / zero-representative"}
+            {/* Current-price line. */}
+            <line x1={left} x2={width - right} y1={currentY} y2={currentY} className="stroke-foreground/50" strokeDasharray="2 5" />
+            <rect x={width - right - 70} y={currentY - 10} width="66" height="18" rx="3" className="fill-foreground" />
+            <text x={width - right - 6} y={currentY + 3} textAnchor="end" className="fill-background text-[9px] font-mono">{fmt(last.close)}</text>
+
+            {/* Volume is a separate lower pane, never painted through candles. */}
+            <line x1={left} x2={width - right} y1={volumeTop - 6} y2={volumeTop - 6} className="stroke-border/30" />
+            {hasVolume && data.map((c, i) => {
+              const cx = x(i);
+              const bullish = c.close >= c.open;
+              const vy = volumeY(c.volume);
+              return (
+                <rect
+                  key={`vol-${c.timestamp}-${i}`}
+                  x={cx - candleWidth / 2}
+                  y={vy}
+                  width={candleWidth}
+                  height={Math.max(1, volumeTop + volumeHeight - vy)}
+                  className={bullish ? "fill-emerald-400/25" : "fill-red-400/25"}
+                />
+              );
+            })}
+            <text x={left} y={volumeTop + 12} className="fill-muted-foreground text-[9px] font-mono">
+              {hasVolume ? "VOLUME · provider" : "VOLUME · unavailable"}
             </text>
           </svg>
         </div>
+
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-mono text-muted-foreground">
-          <span>● {data.length} candles</span>
-          <span>LIVE {fmt(Number(lastClose))}</span>
-          {smc?.vwap.available ? <span className="text-violet-300">VWAP {fmt(smc.vwap.sessionVwap ?? NaN)}</span> : <span>VWAP unavailable</span>}
-          {smc?.volumeProfile.available ? <span className="text-cyan-300">POC {fmt(smc.volumeProfile.poc ?? NaN)} · VAH {fmt(smc.volumeProfile.vah ?? NaN)} · VAL {fmt(smc.volumeProfile.val ?? NaN)}</span> : <span>Volume Profile unavailable</span>}
-          {int && <span>INT {int.structure}</span>}
-          {ext && <span>EXT {ext.structure}</span>}
-          {rr !== undefined ? <span className={rr >= 1.5 ? "text-emerald-300" : "text-red-300"}>R:R {rr.toFixed(2)}R</span> : <span>R:R unavailable — no directional thesis</span>}
+          <span>Price action first</span>
+          {smc?.vwap.available ? <span>VWAP {fmt(smc.vwap.sessionVwap ?? NaN)}</span> : <span>VWAP unavailable</span>}
+          {smc?.volumeProfile.available ? <span>POC {fmt(smc.volumeProfile.poc ?? NaN)}</span> : <span>Volume Profile unavailable</span>}
+          {smc?.recentSweep && <span>SWEEP {smc.recentSweep.side.replace("_", "-")}</span>}
+          {rr !== undefined ? <span className={rr >= 1.5 ? "text-emerald-300" : "text-red-300"}>R:R {rr.toFixed(2)}R</span> : <span>R:R unavailable</span>}
         </div>
       </CardContent>
     </Card>
