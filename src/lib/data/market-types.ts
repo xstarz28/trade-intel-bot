@@ -1,3 +1,4 @@
+import type { ClassicPriceActionContext } from "./classic-price-action";
 /**
  * Normalized market data types shared between Convex backend and frontend.
  * Every provider response is mapped into these types before reaching the
@@ -182,6 +183,8 @@ export interface MtfTimeframeData {
   unavailableReason?: string;
   /** Full Phase-2 SMC context for THIS timeframe (never copied from another). */
   smc?: SmcContext;
+  /** Classic price-action layer: secondary confirmation, never core bias. */
+  classicPriceAction?: ClassicPriceActionContext;
 }
 
 export type MtfAlignmentState =
