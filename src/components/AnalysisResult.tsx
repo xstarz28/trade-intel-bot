@@ -241,7 +241,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
-      {tech?.classicPriceAction && (
+      {tech?.classicContext && (
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-3">
@@ -251,17 +251,17 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9px] font-mono">
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Candlestick</span>
-                <span className="font-semibold">{tech.classicPriceAction.patterns.slice(-4).map((p) => p.name.replaceAll("_", " ")).join(" · ") || "No qualified pattern"}</span>
+                <span className="font-semibold">{tech.classicContext.patterns.slice(-4).map((p) => p.name.replaceAll("_", " ")).join(" · ") || "No qualified pattern"}</span>
               </div>
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Supply / Demand</span>
-                <span className="font-semibold">{tech.classicPriceAction.supplyDemand.slice(-4).map((z) => z.type).join(" · ") || "No qualified formation"}</span>
-                <span className="text-muted-foreground block mt-1">fresh zones: {tech.classicPriceAction.supplyDemand.filter((z) => z.fresh).length}</span>
+                <span className="font-semibold">{tech.classicContext.supplyDemand.slice(-4).map((z) => z.type).join(" · ") || "No qualified formation"}</span>
+                <span className="text-muted-foreground block mt-1">fresh zones: {tech.classicContext.supplyDemand.filter((z) => z.fresh).length}</span>
               </div>
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Classic structure</span>
-                <span className="font-semibold">Highs {tech.classicPriceAction.trendlines.highs} · Lows {tech.classicPriceAction.trendlines.lows}</span>
-                <span className="text-muted-foreground block mt-1">{tech.classicPriceAction.chartPattern?.name?.replaceAll("_", " ") ?? "No chart pattern"}{tech.classicPriceAction.ictUnicorn ? ` · ICT Unicorn ${tech.classicPriceAction.ictUnicorn.direction}` : ""}</span>
+                <span className="font-semibold">Highs {tech.classicContext.trendlines.highs} · Lows {tech.classicContext.trendlines.lows}</span>
+                <span className="text-muted-foreground block mt-1">{tech.classicContext.chartPattern?.name?.replaceAll("_", " ") ?? "No chart pattern"}{tech.classicContext.ictUnicorn ? ` · ICT Unicorn ${tech.classicContext.ictUnicorn.direction}` : ""}</span>
               </div>
             </div>
           </CardContent>
