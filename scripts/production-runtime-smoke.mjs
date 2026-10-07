@@ -196,6 +196,20 @@ try {
   wirePage(mobilePage);
   await mobilePage.goto(url, { waitUntil: "domcontentloaded", timeout });
   await mobilePage.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+  const brandLogo = mobilePage.locator('img[alt="XSTARZG"]');
+  if (!(await brandLogo.count()) || !(await brandLogo.first().isVisible())) {
+    throw new Error("Mobile production surface did not render the XSTARZG brand logo");
+  }
+  const instrumentCountText = await mobilePage.locator("text=/\\d{1,3}(?:,\\d{3})* instruments available/").first().textContent().catch(() => null);
+  const instrumentCount = Number((instrumentCountText ?? "").replace(/[^0-9]/g, ""));
+  if (!Number.isFinite(instrumentCount) || instrumentCount < 1000) {
+    throw new Error(`Mobile production universe unexpectedly small: ${instrumentCountText ?? "missing"}`);
+  }
+  for (const timeframe of ["M1", "M5", "M15", "H1", "H4", "D1", "W1"]) {
+    const option = mobilePage.locator(`option[value="${timeframe}"], [role="option"]:has-text("${timeframe}")`).first();
+    if (!(await option.count())) throw new Error(`Mobile production timeframe missing: ${timeframe}`);
+  }
+
   const mobileStart = mobilePage.getByRole("button", { name: /start analysis/i });
   if (!(await mobileStart.count()) || !(await mobileStart.first().isVisible())) {
     throw new Error("Mobile production surface did not render Start analysis");
