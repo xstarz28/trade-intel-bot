@@ -14,6 +14,7 @@ import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext } from "../lib/data/mtf";
+import { detectIctUnicorn } from "../lib/data/classic-price-action";
 import {
   crossAssetComparator,
   DXY_CANDIDATE_SYMBOLS,
@@ -127,6 +128,13 @@ export const fetchMarketData = action({
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
       technical.smc = computeSmcContext(candles, args.timeframe);
+      if (technical.classicPriceAction) {
+        technical.classicPriceAction.ictUnicorn = detectIctUnicorn(
+          technical.smc.orderBlocks,
+          technical.smc.fvgs,
+          args.timeframe,
+        );
+      }
 
       // ── Adaptive MTF chain ─────────────────────────────────────
       // Only timeframes that actually fetch successfully enter the chain.
