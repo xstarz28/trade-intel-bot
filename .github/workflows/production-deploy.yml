@@ -63,10 +63,9 @@ jobs:
           test "${CONVEX_DEPLOYMENT:-}" = "${EXPECTED_DEPLOYMENT}" || { echo "::error::Wrong CONVEX_DEPLOYMENT"; exit 1; }
           test "${VITE_CONVEX_URL:-}" = "${EXPECTED_URL}" || { echo "::error::Wrong VITE_CONVEX_URL"; exit 1; }
 
-      - name: Configure Convex Auth redirect proxy
+      - name: Set production site URL
         run: |
           set -euo pipefail
-          npx convex env set AUTH_REDIRECT_PROXY_URL 'https://xstarzanalysis.vercel.app/api/auth'
           npx convex env set SITE_URL 'https://xstarzanalysis.vercel.app'
 
       - name: Build and deploy backend
