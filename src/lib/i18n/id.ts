@@ -614,6 +614,12 @@ const id: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysis: "Analisis Baru",
+    marketLabel: "Pasar",
+    searchSpecificInstrument: "Cari instrumen tertentu",
+    hideManualSearch: "Sembunyikan pencarian manual",
+    manualSearchPlaceholder: "Cari simbol secara manual, misalnya BTC-USDT-SWAP",
+    manualSearchNote: "Pencarian manual bersifat opsional. Pemilihan kategori tetap menjadi cara utama memilih instrumen.",
     instrumentLabel: "instrumen",
     typeLabel: "jenis",
     timeframeLabel: "timeframe",
