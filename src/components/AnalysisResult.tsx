@@ -202,6 +202,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           candles={result.candles}
           keyLevels={result.keyLevels}
           tradePlan={result.tradePlan}
+          projectedTradePlan={result.projectedTradePlan}
+          technicalData={result.technicalData}
         />
       )}
 
@@ -301,7 +303,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
             <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> indicators
+              <span className="text-primary/60">$</span> secondary-momentum
+              <span className="text-muted-foreground/50"> · RSI/MACD are context only</span>
             </p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {tech.rsi14 !== undefined && (
