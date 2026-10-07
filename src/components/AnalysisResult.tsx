@@ -254,7 +254,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[9px] font-mono">
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Candlestick</span>
-                <span className="font-semibold">{classicContext.patterns.slice(-4).map((p) => p.name.replaceAll("_", " ")).join(" · ") || "No qualified pattern"}</span>
+                <span className="font-semibold">{classicContext.patterns.slice(-4).map((p) => p.name.replace(/_/g, " ")).join(" · ") || "No qualified pattern"}</span>
               </div>
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Supply / Demand</span>
@@ -264,7 +264,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Classic structure</span>
                 <span className="font-semibold">Highs {classicContext.trendlines.highs} · Lows {classicContext.trendlines.lows}</span>
-                <span className="text-muted-foreground block mt-1">{classicContext.chartPattern?.name?.replaceAll("_", " ") ?? "No chart pattern"}{classicContext.ictUnicorn ? ` · ICT Unicorn ${classicContext.ictUnicorn.direction}` : ""}</span>
+                <span className="text-muted-foreground block mt-1">{classicContext.chartPattern?.name?.replace(/_/g, " ") ?? "No chart pattern"}{classicContext.ictUnicorn ? ` · ICT Unicorn ${classicContext.ictUnicorn.direction}` : ""}</span>
               </div>
             </div>
           </CardContent>
