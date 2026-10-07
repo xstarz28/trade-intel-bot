@@ -78,10 +78,19 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
   await timeframeButton.click();
 
+  const selectedInstrument = targetPage.getByRole("combobox").first();
+  const selectedText = await selectedInstrument.innerText().catch(() => "");
+  if (!selectedText.includes(instrument)) {
+    throw new Error("".concat(instrument, " was not selected before analysis. Picker text: ").concat(selectedText));
+  }
+
   const run = targetPage.locator("button").filter({ hasText: /run analysis/i }).first();
   if (!(await run.count())) {
     const buttons = await targetPage.locator("button").allTextContents();
     throw new Error(`Run Analysis control is missing for ${instrument}. Rendered buttons: ${buttons.join(" | ")}`);
+  }
+  if (!(await run.isEnabled())) {
+    throw new Error("".concat("Run Analysis control is disabled for ", instrument, ". Picker text: ", selectedText));
   }
   await run.click();
 
