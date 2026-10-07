@@ -57,7 +57,14 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   if (instrument === "BTC/USD") {
     // The production input uses the category + combobox instrument browser;
     // the old direct BTC/USD quick-select button no longer exists.
-    await targetPage.getByRole("button", { name: "CRYPTO", exact: true }).click();
+    // Category labels are localized; select the category button by its
+    // position in the four-market category grid instead of a translated name.
+    const categoryButtons = targetPage.locator("form button").filter({ hasText: /crypto/i });
+    if (await categoryButtons.count()) {
+      await categoryButtons.first().click();
+    } else {
+      await targetPage.locator("form button").nth(1).click();
+    }
     const picker = targetPage.getByRole("combobox").first();
     await picker.click();
     const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
