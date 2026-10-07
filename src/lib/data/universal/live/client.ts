@@ -114,9 +114,23 @@ const ENDPOINTS: Record<string, EndpointSpec> = {
     },
   },
   okx: {
-    buildUrl: (sym) => `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=100`,
-    extract: (json) => {
+    buildUrl: (sym, p) =>
+      p.capability === "quote"
+        ? `https://www.okx.com/api/v5/market/ticker?instId=${encodeURIComponent(sym)}`
+        : `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=100`,
+    extract: (json, p) => {
       const j = json as { data?: string[][] };
+      if (p.capability === "quote") {
+        const row = j.data?.[0];
+        const price = row ? num(row[2]) : NaN;
+        const bid = row ? num(row[4]) : undefined;
+        const ask = row ? num(row[5]) : undefined;
+        return {
+          symbol: null,
+          quote: Number.isFinite(price) && price > 0 ? { price, bid, ask } : undefined,
+          fields: Number.isFinite(price) && price > 0 ? ["data", "last", "bidPx", "askPx"] : [],
+        };
+      }
       const rows = j.data ?? [];
       // OKX returns newest-first
       const candles = [...rows]
