@@ -21,6 +21,7 @@ import type { EconomicCalendarData } from "./data/calendar-types";
 import { deriveMacroYieldEvidence, type TreasuryData } from "./data/treasury";
 import type { CotData } from "./data/cot";
 import type { EiaData } from "./data/eia";
+import { calculateTechnical } from "./data/technical";
 
 // ═══════════════════════════════════════════════════════════════
 // LIVE CANDIDATE INPUT
@@ -203,7 +204,16 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
 
 export function buildCandidateFromSource(source: LiveCandidateSource): CandidateInput {
   const now = Date.now();
-  const tech = source.technicalData;
+  // Derive technical evidence from verified provider OHLCV when the source
+  // did not already carry a richer technical analysis. Without this bridge,
+  // provider-native discovery supplied price/candles but every candidate
+  // remained MINIMAL with no direction, collapsing the ranking to identical
+  // scores. Explicit upstream technicalData remains authoritative.
+  const tech = source.technicalData ?? (
+    source.marketData?.candles && source.marketData.candles.length > 0
+      ? calculateTechnical(source.marketData.candles)
+      : undefined
+  );
   const ar = source.analysisResult;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
 
