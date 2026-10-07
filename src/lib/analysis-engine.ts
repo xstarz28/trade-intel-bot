@@ -12,6 +12,7 @@ import type {
   TradePlan,
 } from "@/types/analysis";
 import type { MarketData, MtfContext, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
+import type { ClassicPriceActionContext } from "@/lib/data/classic-price-action";
 import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 import { resolveStyle } from "@/lib/trading-style";
@@ -1374,7 +1375,7 @@ function decideTrade(
     // Candlestick/pattern/S&D evidence is derived from the same OHLCV stream,
     // so it is deliberately capped and can never create or flip core bias.
     {
-      const classic = tech?.classicContext;
+      const classic = (tech as (TechnicalData & { classicContext?: ClassicPriceActionContext }) | undefined)?.classicContext;
       if (classic) {
         const supports = classic.patterns.filter((p) => p.direction === (biasSign === 1 ? "bullish" : "bearish")).length;
         const conflicts = classic.patterns.filter((p) => p.direction === (biasSign === 1 ? "bearish" : "bullish")).length;
