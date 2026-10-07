@@ -104,14 +104,18 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   if (!(await run.isEnabled())) {
     throw new Error("".concat("Run Analysis submit control is disabled for ", instrument, ". Picker text: ", selectedText));
   }
-  // Dispatch the form submit event at the form boundary. React's delegated
-  // onSubmit handler receives this exactly at the same boundary as a native
-  // browser submit, while avoiding pointer/focus quirks from Radix controls.
-  await run.evaluate((button) => {
-    const form = button.closest("form");
-    if (!form) throw new Error("Run Analysis submit control is not inside a form");
-    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-  });
+  // Prefer the real browser click. If React did not consume the click (for
+  // example while a Radix state transition is settling), fall back to the form
+  // submit boundary without issuing a second analysis once the button disables.
+  await run.click();
+  await targetPage.waitForTimeout(750);
+  if (await run.isEnabled()) {
+    await run.evaluate((button) => {
+      const form = button.closest("form");
+      if (!form) throw new Error("Run Analysis submit control is not inside a form");
+      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+  }
 
   await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
     const visibleText = Array.from(document.querySelectorAll("*"))
