@@ -208,7 +208,7 @@ export function PriceStructureChart({
             {[...vwapLevels, ...profileLevels, ...levels, ...tradeLevels].map((l, i) => {
               const ly = lineLevel(l.value);
               if (ly === null) return null;
-              return <g key={`${l.label}-${i}`}><line x1={padX} x2={width - padX} y1={ly} y2={ly} className={`stroke-current ${l.cls} opacity-60`} strokeDasharray={l.label.includes("ENTRY") || l.label.includes("P-") ? "7 4" : "5 4"} /><text x={width - padX - 4} y={ly - 4} textAnchor="end" className={`fill-current ${l.cls} text-[8px] font-mono`}>{l.label} {fmt(l.value)}</text></g>;
+              return <g key={`${l.label}-${i}`}><line x1={padX} x2={width - padX} y1={ly} y2={ly} className={`stroke-current ${l.cls} opacity-60`} strokeDasharray={l.label.includes("ENTRY") || l.label.includes("P-") ? "7 4" : "5 4"} /><text x={width - padX - 4} y={ly - 4} textAnchor="end" className={`fill-current ${l.cls} text-[8px] font-mono`}>{l.label} {fmt(l.value ?? NaN)}</text></g>;
             })}
 
             {currentY !== null && <line x1={padX} x2={width - padX} y1={currentY} y2={currentY} className="stroke-foreground/50" strokeDasharray="1 4" />}
