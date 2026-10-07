@@ -618,6 +618,11 @@ const ko: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    available: "개",
+    forex: "외환",
+    crypto: "암호화폐",
+    stocks: "주식",
+    commodities: "원자재",
     newAnalysis: "새 분석",
     marketLabel: "시장",
     searchSpecificInstrument: "특정 종목 검색",
