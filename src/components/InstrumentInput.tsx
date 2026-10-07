@@ -68,10 +68,37 @@ function loadPersistedForm(): PersistedForm {
 export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments = [] }: InstrumentInputProps) {
   const { t } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
-  const quickPicks = availableInstruments.length > 0
-    ? availableInstruments.filter((item) => POPULAR_INSTRUMENTS.some((popular) => popular.symbol === item.symbol)).slice(0, 8)
-    : POPULAR_INSTRUMENTS;
-  const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
+  const [manualSearch, setManualSearch] = useState(false);
+  const categoryOptions: { value: InstrumentType; label: string }[] = [
+    { value: "forex", label: "FOREX" },
+    { value: "crypto", label: "CRYPTO" },
+    { value: "stock", label: "STOCKS" },
+    { value: "commodity", label: "COMMODITIES" },
+  ];
+
+  const categoryInstruments = universeOptions.filter((item) => item.type === form.instrumentType);
+  const filteredInstruments = categoryInstruments.length > 0 ? categoryInstruments : universeOptions;
+
+  const selectCategory = useCallback((type: InstrumentType) => {
+    setForm((prev) => {
+      const nextOptions = universeOptions.filter((item) => item.type === type);
+      const currentStillValid = nextOptions.some((item) => item.symbol === prev.instrument);
+      return {
+        ...prev,
+        instrumentType: type,
+        instrument: currentStillValid ? prev.instrument : (nextOptions[0]?.symbol ?? ""),
+      };
+    });
+  }, [universeOptions]);
+
+  const selectInstrument = useCallback((symbol: string) => {
+    const match = universeOptions.find((item) => item.symbol === symbol);
+    setForm((prev) => ({
+      ...prev,
+      instrument: symbol,
+      instrumentType: match?.type ?? prev.instrumentType,
+    }));
+  }, [universeOptions]);
 
   useEffect(() => {
     try {
@@ -124,102 +151,103 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Quick Picks */}
+          {/* Instrument category */}
           <div>
-            <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-2 block">
-              $ instruments
+            <Label className="text-xs font-mono font-semibold text-foreground mb-2 block">
+              $ market
             </Label>
-            <div className="flex flex-wrap gap-1.5">
-              {quickPicks.map((item) => (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {categoryOptions.map((category) => (
                 <button
-                  key={item.symbol}
+                  key={category.value}
                   type="button"
-                  onClick={() => handleQuickSelect(item.symbol, item.type)}
+                  onClick={() => selectCategory(category.value)}
                   className={cn(
-                    "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-mono font-medium transition-all",
-                    form.instrument === item.symbol
+                    "h-10 rounded-md border text-xs font-mono font-semibold transition-all",
+                    form.instrumentType === category.value
                       ? "border-primary bg-primary/15 text-primary"
-                      : "border-border/50 bg-muted/20 text-muted-foreground hover:border-border hover:text-foreground"
+                      : "border-border/60 bg-background/60 text-muted-foreground hover:border-border hover:text-foreground",
                   )}
                 >
-                  <span>{item.symbol}</span>
+                  {category.label}
                 </button>
               ))}
             </div>
-            <p className="mt-2 text-[10px] font-mono text-muted-foreground">
-              {universeOptions.length.toLocaleString()} instruments available · search the full provider-backed universe below
-            </p>
           </div>
 
-          {/* Instrument + Type + Timeframe */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="col-span-1">
-              <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                {t.entryForm.instrumentLabel}
+          {/* Instrument browser — category drives this list */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Label className="text-xs font-mono font-semibold text-foreground">
+                $ instrument
               </Label>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] text-primary/60 font-mono">$</span>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {filteredInstruments.length.toLocaleString()} available
+              </span>
+            </div>
+            <Select value={form.instrument} onValueChange={selectInstrument}>
+              <SelectTrigger className="h-11 text-sm font-mono">
+                <SelectValue placeholder={filteredInstruments.length ? "Select instrument" : "No instruments available"} />
+              </SelectTrigger>
+              <SelectContent className="max-h-80">
+                {filteredInstruments.map((item) => (
+                  <SelectItem key={item.symbol} value={item.symbol} className="font-mono">
+                    {item.symbol}{item.label && item.label !== item.symbol ? ` — ${item.label}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <button
+              type="button"
+              onClick={() => setManualSearch((value) => !value)}
+              className="mt-2 text-[11px] font-mono text-muted-foreground hover:text-foreground underline underline-offset-4"
+            >
+              {manualSearch ? "Hide manual search" : "Search a specific instrument instead"}
+            </button>
+
+            {manualSearch && (
+              <div className="mt-2">
                 <Input
-                  list="xstarzg-instrument-universe"
-                  placeholder="Search symbol, e.g. BTC/USD or BTC-USDT-SWAP"
+                  placeholder="Search symbol manually, e.g. BTC-USDT-SWAP"
                   value={form.instrument}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    const match = universeOptions.find((item) => item.symbol.toUpperCase() === value.toUpperCase());
-                    update("instrument", value);
-                    if (match) update("instrumentType", match.type);
-                  }}
-                  className="pl-7 h-9 text-sm font-mono"
-                  required
+                  onChange={(e) => update("instrument", e.target.value)}
+                  className="h-10 text-sm font-mono"
                   autoComplete="off"
                 />
-                <datalist id="xstarzg-instrument-universe">
-                  {universeOptions.map((item) => (
-                    <option key={item.symbol} value={item.symbol}>{item.label}</option>
-                  ))}
-                </datalist>
+                <p className="mt-1.5 text-[10px] font-mono text-muted-foreground">
+                  Manual search is optional. Category selection remains the primary instrument picker.
+                </p>
               </div>
-            </div>
-            <div>
-              <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                {t.entryForm.typeLabel}
-              </Label>
-              <Select
-                value={form.instrumentType}
-                onValueChange={(v) => update("instrumentType", v as InstrumentType)}
-              >
-                <SelectTrigger className="h-9 text-sm font-mono">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="forex">forex</SelectItem>
-                  <SelectItem value="crypto">crypto</SelectItem>
-                  <SelectItem value="stock">stock</SelectItem>
-                  <SelectItem value="commodity">commodity</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-                {t.entryForm.timeframeLabel}
-              </Label>
-              <Select
-                value={form.timeframe}
-                onValueChange={(v) => update("timeframe", v as Timeframe)}
-              >
-                <SelectTrigger className="h-9 text-sm font-mono">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIMEFRAMES.map((tf) => (
-                    <SelectItem key={tf.value} value={tf.value} className="font-mono">
-                      {tf.value}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            )}
+          </div>
+
+          {/* Timeframe — all supported choices visible */}
+          <div>
+            <Label className="text-xs font-mono font-semibold text-foreground mb-2 block">
+              $ timeframe
+            </Label>
+            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+              {TIMEFRAMES.map((tf) => (
+                <button
+                  key={tf.value}
+                  type="button"
+                  onClick={() => update("timeframe", tf.value as Timeframe)}
+                  className={cn(
+                    "h-10 rounded-md border text-xs font-mono font-semibold transition-all",
+                    form.timeframe === tf.value
+                      ? "border-primary bg-primary/15 text-primary"
+                      : "border-border/60 bg-background/50 text-muted-foreground hover:border-border hover:text-foreground",
+                  )}
+                  title={tf.label}
+                >
+                  {tf.value}
+                </button>
+              ))}
             </div>
           </div>
+
+          {/* Legacy type/timeframe selects removed: category and visible timeframe controls above are authoritative. */}
 
           {/* Phase 6 — Trading style: changes decision HORIZON and
               requirements only, never market facts. */}
