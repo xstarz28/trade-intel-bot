@@ -152,7 +152,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
           </div>
 
           {/* Instrument + Type + Timeframe */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="col-span-1">
               <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
                 {t.entryForm.instrumentLabel}
