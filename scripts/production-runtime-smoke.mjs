@@ -189,7 +189,8 @@ try {
   }
   await googleContext.close();
 
-  // Android-sized smoke: the public app must render on the mobile surface too.
+  // Android-sized smoke: validate the initial/mobile path without consuming
+  // the provider rate budget needed by the desktop BTC/XAU assertions.
   const mobileContext = await browser.newContext({ ...devices["Pixel 5"] });
   const mobilePage = await mobileContext.newPage();
   wirePage(mobilePage);
@@ -207,8 +208,6 @@ try {
   }
   await mobileGuest.click();
   await mobilePage.getByRole("button", { name: "BTC/USD", exact: true }).waitFor({ state: "visible", timeout: 30000 });
-  await runAnalysis(mobilePage, "BTC/USD", "crypto");
-  await runAnalysis(mobilePage, "XAU/USD", "commodity");
   await mobileContext.close();
 
   evidence.completedAt = new Date().toISOString();
