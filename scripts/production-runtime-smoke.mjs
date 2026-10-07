@@ -79,7 +79,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
   await run.click();
 
-  await targetPage.waitForFunction((targetInstrument) => {
+  await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
     const visibleText = Array.from(document.querySelectorAll("*"))
       .filter((el) => {
         const s = getComputedStyle(el);
@@ -89,7 +89,6 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
       .map((el) => el.textContent || "")
       .join("\n");
     return (
-      visibleText.includes(`${targetInstrument} |`) &&
       visibleText.includes(`${targetInstrument} |`) &&
       visibleText.includes(`| ${targetTimeframe}`) &&
       visibleText.includes("BIAS:") &&
