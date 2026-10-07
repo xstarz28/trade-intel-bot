@@ -1370,6 +1370,30 @@ function decideTrade(
       }
     }
 
+    // ── LAYER: classic price action (cap ±6) — secondary confirmation.
+    // Candlestick/pattern/S&D evidence is derived from the same OHLCV stream,
+    // so it is deliberately capped and can never create or flip core bias.
+    {
+      const classic = tech?.classicPriceAction;
+      if (classic) {
+        const supports = classic.patterns.filter((p) => p.direction === (biasSign === 1 ? "bullish" : "bearish")).length;
+        const conflicts = classic.patterns.filter((p) => p.direction === (biasSign === 1 ? "bearish" : "bullish")).length;
+        const demandSupply = classic.supplyDemand.filter((z) => z.direction === (biasSign === 1 ? "demand" : "supply") && z.fresh).length;
+        const oppositeZones = classic.supplyDemand.filter((z) => z.direction === (biasSign === 1 ? "supply" : "demand") && z.fresh).length;
+        const unicorn = classic.ictUnicorn?.direction === (biasSign === 1 ? "bullish" : "bearish") ? 3 : classic.ictUnicorn ? -3 : 0;
+        const raw = Math.min(6, supports * 1.5 + demandSupply * 2 + unicorn) - Math.min(6, conflicts * 1.5 + oppositeZones * 2);
+        const contribution = Math.max(-6, Math.min(6, Math.round(raw)));
+        s += recordLayer(
+          "Classic Price Action",
+          contribution,
+          6,
+          `${supports} supporting patterns, ${demandSupply} fresh S/D zones${classic.ictUnicorn ? ", ICT Unicorn overlap" : ""}`,
+        );
+      } else {
+        recordLayer("Classic Price Action", 0, 6, "classic pattern context unavailable");
+      }
+    }
+
     // ── LAYER: VWAP location context (cap +3) — never standalone.
     {
       const vw = tech?.smc?.vwap;
