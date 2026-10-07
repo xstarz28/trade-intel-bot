@@ -1125,7 +1125,7 @@ export default function Dashboard() {
             </div>
 
             {/* Phase 50 — Market Opportunities: live opportunity scanner */}
-            <div className="hidden lg:block">
+            <div>
               <MarketOpportunities
                 candidates={discoverCandidates().map((d) => ({
                   instrument: d.instrument,
