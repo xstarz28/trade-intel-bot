@@ -69,6 +69,8 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   const { t } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
   const [manualSearch, setManualSearch] = useState(false);
+  const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
+
   const categoryOptions: { value: InstrumentType; label: string }[] = [
     { value: "forex", label: "FOREX" },
     { value: "crypto", label: "CRYPTO" },
