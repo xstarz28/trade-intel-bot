@@ -21,7 +21,6 @@ import {
 } from "@/lib/analysis-engine";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.svg";
-import logo from "@/assets/logo.svg";
 import {
   Zap,
   AlertCircle,
