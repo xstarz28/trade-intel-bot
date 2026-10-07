@@ -124,6 +124,8 @@ export const fetchMarketData = action({
         .catch(() => ({}));
 
       const price = quoteRes.close ? parseFloat(quoteRes.close) : candles[candles.length - 1].close;
+      const bid = Number.isFinite(Number(quoteRes.bid)) ? Number(quoteRes.bid) : undefined;
+      const ask = Number.isFinite(Number(quoteRes.ask)) ? Number(quoteRes.ask) : undefined;
 
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
@@ -308,7 +310,13 @@ export const fetchMarketData = action({
           instrumentType: args.instrumentType,
           provider: "twelve-data",
           fetchTimestamp: Date.now(),
-          price: { price, timestamp: Date.now(), source: "twelve-data" },
+          price: {
+            price,
+            timestamp: Date.now(),
+            source: "twelve-data",
+            ...(bid !== undefined ? { bid } : {}),
+            ...(ask !== undefined ? { ask } : {}),
+          },
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
