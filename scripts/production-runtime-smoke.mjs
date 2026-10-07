@@ -109,11 +109,15 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   // submit boundary without issuing a second analysis once the button disables.
   await run.click();
   await targetPage.waitForTimeout(750);
-  if (await run.isEnabled()) {
+  const postClickState = {
+    disabled: await run.isDisabled().catch(() => false),
+    text: (await run.innerText().catch(() => "")).trim(),
+  };
+  if (!postClickState.disabled) {
     await run.evaluate((button) => {
       const form = button.closest("form");
       if (!form) throw new Error("Run Analysis submit control is not inside a form");
-      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      form.requestSubmit(button);
     });
   }
 
