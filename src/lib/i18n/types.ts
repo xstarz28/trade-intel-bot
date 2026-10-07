@@ -634,6 +634,11 @@ export interface Translations {
   // ─── Instrument Entry Form (Phase 145) ──────────────────────
   entryForm: {
     newAnalysis: string;
+    available: string;
+    forex: string;
+    crypto: string;
+    stocks: string;
+    commodities: string;
     marketLabel: string;
     searchSpecificInstrument: string;
     hideManualSearch: string;
