@@ -1,7 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
+import { AppAuthProvider } from "@/lib/convex-provider";
 import React, { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router";
@@ -48,13 +47,11 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
-
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
       <I18nProvider>
-        <ConvexAuthProvider client={convex}>
+        <AppAuthProvider>
           <MemoryRouter initialEntries={["/"]}>
             <Suspense fallback={
               <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
@@ -75,7 +72,7 @@ createRoot(document.getElementById("root")!).render(
             </Suspense>
           </MemoryRouter>
           <Toaster />
-        </ConvexAuthProvider>
+        </AppAuthProvider>
       </I18nProvider>
     </RootErrorBoundary>
   </StrictMode>,

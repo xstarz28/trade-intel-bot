@@ -164,10 +164,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@convex-dev/auth-internal/client": path.resolve(__dirname, "./node_modules/@convex-dev/auth/dist/react/client.js"),
     },
     // Force a single copy of React across all packages.
     // Without this, duplicate React copies can trigger "Invalid hook call" errors.
-    dedupe: ["react", "react/jsx-runtime", "react-dom", "react-dom/client"],
+    dedupe: ["react", "react/jsx-runtime", "react-dom", "react-dom/client", "convex"],
   },
   build: {
     // Enable source maps for better debugging (disable in production if needed)
@@ -248,19 +249,18 @@ export default defineConfig({
   // the REAL built bundle (including build-info.json), which is what makes a
   // browser-facing verification of a deployment possible.
   preview: {
-    host: true,
-    port: 4173,
+    host: "0.0.0.0",
+    port: 3000,
     allowedHosts: true,
   },
   // Performance hints
   server: {
-    // Bind to all interfaces so WebContainer's server-ready event fires.
-    host: true,
-    port: 5173,
-    // Allow sandboxed/proxied preview hosts (e.g. *.e2b.app) to load the
-    // dev server. Vite blocks unknown Hosts by default.
+    // Bind to all interfaces so container server-ready event fires.
+    host: "0.0.0.0",
+    port: 3000,
+    // Allow sandboxed/proxied preview hosts to load the dev server.
     allowedHosts: true,
-    // Freebuff requires HMR to remain disabled in the preview iframe.
+    // Disable HMR for iframe preview stability
     hmr: false,
   },
 });

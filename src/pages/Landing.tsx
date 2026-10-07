@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { ChevronRight, Shield, Target, Layers, Scale, Waves } from "lucide-react";
+import { ChevronRight, Target, Layers, Scale, Waves } from "lucide-react";
 import { useNavigate } from "react-router";
 
 const FEATURES = [
