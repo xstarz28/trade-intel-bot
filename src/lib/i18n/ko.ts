@@ -618,6 +618,12 @@ const ko: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    newAnalysis: "새 분석",
+    marketLabel: "시장",
+    searchSpecificInstrument: "특정 종목 검색",
+    hideManualSearch: "수동 검색 숨기기",
+    manualSearchPlaceholder: "종목을 직접 검색하세요. 예: BTC-USDT-SWAP",
+    manualSearchNote: "수동 검색은 선택 사항입니다. 카테고리 선택이 기본 종목 선택 방식입니다.",
     instrumentLabel: "종목",
     typeLabel: "유형",
     timeframeLabel: "타임프레임",
