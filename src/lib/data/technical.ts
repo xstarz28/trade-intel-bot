@@ -421,6 +421,7 @@ export function calculateTechnical(
   // Daily range (latest candle)
   const latestCandle = candles[candles.length - 1];
   const dailyRange = latestCandle.high - latestCandle.low;
+  const classicPriceAction = analyzeClassicPriceAction(candles, htfLabel);
 
   return {
     sma50: sma50Val,
@@ -445,5 +446,6 @@ export function calculateTechnical(
     dailyRange,
     dataPoints: candles.length,
     htfContext,
+    classicPriceAction,
   };
 }
