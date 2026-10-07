@@ -1374,7 +1374,7 @@ function decideTrade(
     // Candlestick/pattern/S&D evidence is derived from the same OHLCV stream,
     // so it is deliberately capped and can never create or flip core bias.
     {
-      const classic = tech?.classicPriceAction;
+      const classic = tech?.classicContext;
       if (classic) {
         const supports = classic.patterns.filter((p) => p.direction === (biasSign === 1 ? "bullish" : "bearish")).length;
         const conflicts = classic.patterns.filter((p) => p.direction === (biasSign === 1 ? "bearish" : "bullish")).length;
