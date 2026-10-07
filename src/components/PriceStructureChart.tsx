@@ -162,7 +162,7 @@ export function PriceStructureChart({
         {displayPlan && (
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] font-mono">
             <span className={planIsProjected ? "text-amber-300" : "text-sky-300"}>
-              {planIsProjected ? "PROJECTED SETUP · NOT EXECUTABLE" : "EXECUTABLE PLAN"}
+              {planIsProjected ? "PROJECTED SETUP · NOT EXECUTABLE" : "ANALYTICAL PLAN · VERIFY EXECUTABLE PRICE"}
             </span>
             <span>ENTRY {fmt(Number(displayPlan.entry))}</span>
             <span>SL {fmt(Number(displayPlan.stopLoss))}</span>
