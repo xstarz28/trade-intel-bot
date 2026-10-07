@@ -130,7 +130,19 @@ export function PriceStructureChart({
   const currentY = lineLevel(lastClose);
   const ext = smc?.internalExternal.external;
   const int = smc?.internalExternal.internal;
-  const rr = displayPlan?.riskReward;
+  const displayedEntry = displayPlan ? Number(displayPlan.entry) : NaN;
+  const displayedSl = displayPlan ? Number(displayPlan.stopLoss) : NaN;
+  const displayedTp = displayPlan ? Number(displayPlan.takeProfit) : NaN;
+  // Never trust a stale/legacy serialized R:R when rendering. Recompute it
+  // from the exact Entry/SL/TP values visible on this chart.
+  const displayedRisk = Number.isFinite(displayedEntry) && Number.isFinite(displayedSl)
+    ? Math.abs(displayedEntry - displayedSl) : NaN;
+  const displayedReward = Number.isFinite(displayedEntry) && Number.isFinite(displayedTp)
+    ? Math.abs(displayedTp - displayedEntry) : NaN;
+  const rr = displayedRisk > 0 && Number.isFinite(displayedReward)
+    ? displayedReward / displayedRisk : undefined;
+  const rrMismatch = displayPlan?.riskReward !== undefined && rr !== undefined
+    ? Math.abs(displayPlan.riskReward - rr) > 0.05 : false;
   const structureLabel = ext?.structure ?? technicalData?.structure ?? "unknown";
 
   return (
@@ -155,7 +167,8 @@ export function PriceStructureChart({
             <span>ENTRY {fmt(Number(displayPlan.entry))}</span>
             <span>SL {fmt(Number(displayPlan.stopLoss))}</span>
             <span>TP {fmt(Number(displayPlan.takeProfit))}</span>
-            <span className={rr !== undefined && rr >= 1.5 ? "text-emerald-300" : "text-red-300"}>R:R {rr?.toFixed(2)}R</span>
+            <span className={rr !== undefined && rr >= 1.5 ? "text-emerald-300" : "text-red-300"}>R:R {rr?.toFixed(2) ?? "—"}R</span>
+            {rrMismatch && <span className="text-amber-300">R:R corrected from stale plan data</span>}
           </div>
         )}
       </CardHeader>
@@ -211,6 +224,21 @@ export function PriceStructureChart({
               return <g key={`${l.label}-${i}`}><line x1={padX} x2={width - padX} y1={ly} y2={ly} className={`stroke-current ${l.cls} opacity-60`} strokeDasharray={l.label.includes("ENTRY") || l.label.includes("P-") ? "7 4" : "5 4"} /><text x={width - padX - 4} y={ly - 4} textAnchor="end" className={`fill-current ${l.cls} text-[8px] font-mono`}>{l.label} {fmt(l.value ?? NaN)}</text></g>;
             })}
 
+
+            {displayPlan && rr !== undefined && displayedRisk > 0 && displayedReward > 0 && (() => {
+              const entryY = lineLevel(displayedEntry);
+              const slY = lineLevel(displayedSl);
+              const tpY = lineLevel(displayedTp);
+              if (entryY === null || slY === null || tpY === null) return null;
+              const riskTop = Math.min(entryY, slY), riskBottom = Math.max(entryY, slY);
+              const rewardTop = Math.min(entryY, tpY), rewardBottom = Math.max(entryY, tpY);
+              return <g opacity="0.28">
+                <rect x={padX + plotW * 0.62} y={riskTop} width={plotW * 0.33} height={Math.max(2, riskBottom-riskTop)} className="fill-red-500" />
+                <rect x={padX + plotW * 0.62} y={rewardTop} width={plotW * 0.33} height={Math.max(2, rewardBottom-rewardTop)} className="fill-emerald-500" />
+                <text x={padX + plotW * 0.63} y={riskTop + 11} className="fill-red-300 text-[8px] font-mono">RISK</text>
+                <text x={padX + plotW * 0.63} y={rewardTop + 11} className="fill-emerald-300 text-[8px] font-mono">REWARD · {rr.toFixed(2)}R</text>
+              </g>;
+            })()}
             {currentY !== null && <line x1={padX} x2={width - padX} y1={currentY} y2={currentY} className="stroke-foreground/50" strokeDasharray="1 4" />}
 
             <line x1={padX} x2={width - padX} y1={volumeTop - 6} y2={volumeTop - 6} className="stroke-border/50" />
