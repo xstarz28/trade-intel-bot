@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { mutation, query } from "./_generated/server";
 
+const MAX_ANALYSIS_HISTORY = 100;
+
 async function resolveUser(ctx: Parameters<typeof getAuthUserId>[0]) {
   return await getAuthUserId(ctx);
 }
@@ -49,7 +51,7 @@ export const save = mutation({
     const userId = await resolveUser(ctx);
     if (!userId) throw new Error("User not found");
 
-    return ctx.db.insert("analyses", {
+    const id = await ctx.db.insert("analyses", {
       userId,
       instrument: args.instrument,
       instrumentType: args.instrumentType,
@@ -77,6 +79,17 @@ export const save = mutation({
       calendarSummary: args.calendarSummary,
       timestamp: Date.now(),
     });
+
+    const history = await ctx.db
+      .query("analyses")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(MAX_ANALYSIS_HISTORY + 1);
+    for (const old of history.slice(MAX_ANALYSIS_HISTORY)) {
+      await ctx.db.delete(old._id);
+    }
+
+    return id;
   },
 });
 
