@@ -104,11 +104,14 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   if (!(await run.isEnabled())) {
     throw new Error("".concat("Run Analysis submit control is disabled for ", instrument, ". Picker text: ", selectedText));
   }
-  // Use the browser's native keyboard activation path. This is equivalent to
-  // a real user pressing Enter on the focused submit control and exercises both
-  // the button and React form onSubmit handlers.
-  await run.focus();
-  await run.press("Enter");
+  // Dispatch the form submit event at the form boundary. React's delegated
+  // onSubmit handler receives this exactly at the same boundary as a native
+  // browser submit, while avoiding pointer/focus quirks from Radix controls.
+  await run.evaluate((button) => {
+    const form = button.closest("form");
+    if (!form) throw new Error("Run Analysis submit control is not inside a form");
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
 
   await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
     const visibleText = Array.from(document.querySelectorAll("*"))
