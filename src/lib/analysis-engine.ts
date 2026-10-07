@@ -107,29 +107,44 @@ function tfDirection(
 }
 
 function computeAlignment(input: AnalysisInput): HtfAlignment | undefined {
-  const htf = input.technicalData?.htfContext;
-  if (!htf || htf.dataPoints < 20) return undefined;
+  const tech = input.technicalData;
+  if (!tech) return undefined;
 
-  const ltf = input.technicalData;
-  const htfDir = tfDirection(htf.structure, htf.chochDirection);
-  const ltfDir = tfDirection(ltf?.structure, ltf?.chochDirection);
-
-  let state: HtfAlignment["state"];
-  if (ltfDir === "none") {
-    state = "ltf_unclear";
-  } else if (htfDir === "none") {
-    state = "htf_unknown";
-  } else if (htfDir === ltfDir) {
-    state = "aligned";
-  } else {
-    state = "counter_trend";
+  // Phase 10 consistency rule: when adaptive MTF exists, its highest
+  // available HTF is the single source of truth. Do not let the legacy
+  // one-rung htfContext (e.g. D1) disagree with the MTF macro (e.g. H4).
+  const mtf = tech.mtf;
+  if (mtf) {
+    const htf = mtf.htfTimeframe
+      ? mtf.timeframes.find((t) => t.timeframe === mtf.htfTimeframe)
+      : undefined;
+    const structure = htf?.smc?.internalExternal.external.structure ?? "unknown";
+    const setup = mtf.timeframes.find((t) => t.role === "setup");
+    const htfDir = mtf.htfBias === "long" ? "long" : mtf.htfBias === "short" ? "short" : "none";
+    const ltfDir = setup?.smc
+      ? tfDirection(setup.smc.internalExternal.external.structure, setup.smc.internalExternal.external.chochDirection)
+      : "none";
+    let state: HtfAlignment["state"];
+    if (ltfDir === "none") state = "ltf_unclear";
+    else if (htfDir === "none") state = "htf_unknown";
+    else if (htfDir === ltfDir) state = "aligned";
+    else state = "counter_trend";
+    return {
+      htfTimeframe: mtf.htfTimeframe ?? "unknown",
+      htfStructure: structure,
+      state,
+    };
   }
 
-  return {
-    htfTimeframe: htf.timeframe,
-    htfStructure: htf.structure,
-    state,
-  };
+  const htf = tech.htfContext;
+  if (!htf || htf.dataPoints < 20) return undefined;
+  const ltfDir = tfDirection(tech.structure, tech.chochDirection);
+  const htfDir = tfDirection(htf.structure, htf.chochDirection);
+  const state =
+    ltfDir === "none" ? "ltf_unclear" :
+    htfDir === "none" ? "htf_unknown" :
+    htfDir === ltfDir ? "aligned" : "counter_trend";
+  return { htfTimeframe: htf.timeframe, htfStructure: htf.structure, state };
 }
 
 // ── Phase 8 P1 — structural-agreement veto (veto-model, not re-weighting) ──
