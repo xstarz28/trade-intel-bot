@@ -196,6 +196,18 @@ try {
   wirePage(mobilePage);
   await mobilePage.goto(url, { waitUntil: "domcontentloaded", timeout });
   await mobilePage.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+  const mobileStart = mobilePage.getByRole("button", { name: /start analysis/i });
+  if (!(await mobileStart.count()) || !(await mobileStart.first().isVisible())) {
+    throw new Error("Mobile production surface did not render Start analysis");
+  }
+  await mobileStart.click();
+  await mobilePage.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+  const mobileGuest = mobilePage.getByRole("button", { name: /continue without an account/i });
+  if (!(await mobileGuest.count()) || !(await mobileGuest.first().isVisible())) {
+    throw new Error("Mobile auth surface did not render guest sign-in");
+  }
+  await mobileGuest.click();
+  await mobilePage.getByRole("button", { name: "BTC/USD", exact: true }).waitFor({ state: "visible", timeout: 30000 });
   const brandLogo = mobilePage.locator("[data-brand-logo][aria-label=\"XSTARZG\"]");
   if (!(await brandLogo.count()) || !(await brandLogo.first().isVisible())) {
     throw new Error("Mobile production surface did not render the XSTARZG brand logo");
@@ -213,18 +225,7 @@ try {
   }
   await mobilePage.keyboard.press("Escape");
 
-  const mobileStart = mobilePage.getByRole("button", { name: /start analysis/i });
-  if (!(await mobileStart.count()) || !(await mobileStart.first().isVisible())) {
-    throw new Error("Mobile production surface did not render Start analysis");
-  }
-  await mobileStart.click();
-  await mobilePage.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
-  const mobileGuest = mobilePage.getByRole("button", { name: /continue without an account/i });
-  if (!(await mobileGuest.count()) || !(await mobileGuest.first().isVisible())) {
-    throw new Error("Mobile auth surface did not render guest sign-in");
-  }
-  await mobileGuest.click();
-  await mobilePage.getByRole("button", { name: "BTC/USD", exact: true }).waitFor({ state: "visible", timeout: 30000 });
+
   await mobileContext.close();
 
   evidence.completedAt = new Date().toISOString();
