@@ -156,7 +156,7 @@ try {
     const match = document.body.innerText.match(/(\d{1,3}(?:,\d{3})*) instruments available/);
     return match ? Number(match[1].replace(/,/g, "")) >= 1000 : false;
   }, undefined, { timeout: 30000 });
-  const desktopUniverse = await page.locator("text=/\\d{1,3}(?:,\\d{3})* instruments available/").first().textContent();
+  const desktopUniverse = await page.locator("text=/\d{1,3}(?:,\\d{3})* instruments available/").first().textContent();
   const desktopUniverseCount = Number((desktopUniverse ?? "").replace(/[^0-9]/g, ""));
   if (!Number.isFinite(desktopUniverseCount) || desktopUniverseCount < 1000) {
     throw new Error(`Desktop production universe unexpectedly small: ${desktopUniverse ?? "missing"}`);
