@@ -20,6 +20,7 @@ const evidence = {
   startedAt: new Date().toISOString(),
   authenticated: false,
   analyses: [],
+  productSurfaces: { chart: false, riskSizing: false },
   googleOAuth: { checked: false, reachedAuthorizationEndpoint: false, redirectUriMismatch: false },
 };
 
@@ -52,9 +53,7 @@ function wirePage(targetPage) {
   });
 }
 
-wirePage(page);
-
-async function runAnalysis(targetPage, instrument, type, evidenceKey) {
+async function runAnalysis(targetPage, instrument, type) {
   if (instrument === "BTC/USD") {
     const btc = targetPage.getByRole("button", { name: "BTC/USD", exact: true });
     if (await btc.count()) await btc.click();
@@ -121,6 +120,14 @@ async function runAnalysis(targetPage, instrument, type, evidenceKey) {
     throw new Error(`${instrument} smoke captured a stale result from another instrument`);
   }
 
+  if (!evidence.productSurfaces.chart) {
+    const chart = targetPage.getByRole("img", { name: /provider OHLCV price structure chart/i });
+    if (!(await chart.count())) {
+      throw new Error(`${instrument} rendered without the provider OHLCV price-structure chart`);
+    }
+    evidence.productSurfaces.chart = true;
+  }
+
   evidence.analyses.push(result);
   return result;
 }
@@ -142,12 +149,23 @@ try {
   await btc.waitFor({ state: "visible", timeout: 30000 });
   evidence.authenticated = true;
 
-  await runAnalysis(page, "BTC/USD", "crypto", "btc");
-  await runAnalysis(page, "XAU/USD", "commodity", "xau");
+  const riskSizing = page.getByText("$ risk-sizing", { exact: true });
+  if (!(await riskSizing.count())) throw new Error("Dashboard does not expose the risk-sizing control");
+  await riskSizing.click();
+  const equity = page.locator('input[placeholder="1000"]');
+  const riskPct = page.locator('input[placeholder="1.0"]');
+  const accountCcy = page.locator('input[placeholder="USD"]');
+  if ((await equity.count()) !== 1 || (await riskPct.count()) !== 1 || (await accountCcy.count()) !== 1) {
+    throw new Error("Risk-sizing inputs are incomplete");
+  }
+  await equity.fill("1000");
+  await riskPct.fill("1");
+  await accountCcy.fill("USD");
+  evidence.productSurfaces.riskSizing = true;
 
-  // Google OAuth preflight: no credentials are entered. We only verify that
-  // the production flow reaches Google's authorization endpoint rather than
-  // stopping at Google's redirect_uri_mismatch error.
+  await runAnalysis(page, "BTC/USD", "crypto");
+  await runAnalysis(page, "XAU/USD", "commodity");
+
   const googleContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const googlePage = await googleContext.newPage();
   wirePage(googlePage);
@@ -165,9 +183,7 @@ try {
     reachedAuthorizationEndpoint: /accounts\.google\.com/i.test(googleUrl),
     redirectUriMismatch: mismatch,
   };
-  if (mismatch) {
-    throw new Error("Google OAuth production flow still reports redirect_uri_mismatch");
-  }
+  if (mismatch) throw new Error("Google OAuth production flow still reports redirect_uri_mismatch");
   if (!evidence.googleOAuth.reachedAuthorizationEndpoint) {
     throw new Error(`Google OAuth did not reach accounts.google.com (final URL: ${googleUrl})`);
   }
@@ -187,7 +203,6 @@ try {
   evidence.convexTraffic = convexTraffic.slice(-40);
   evidence.socketTraffic = socketTraffic.slice(-30);
   evidence.cookies = (await context.cookies()).map(({ name, domain, path }) => ({ name, domain, path }));
-  evidence.localStorageKeys = await page.evaluate(() => Object.keys(localStorage).catch?.(() => []));
   evidence.consoleErrors = consoleErrors.slice(-20);
   console.error(JSON.stringify(evidence, null, 2));
   throw error;
