@@ -7,7 +7,7 @@
  */
 
 import type { OhlcvCandle, TechnicalData } from "./market-types";
-import { analyzeClassicPriceAction } from "./classic-price-action";
+import { analyzeClassicPriceAction, type ClassicPriceActionContext } from "./classic-price-action";
 
 // ── Moving Averages ───────────────────────────────────────────────
 
@@ -424,7 +424,7 @@ export function calculateTechnical(
   const dailyRange = latestCandle.high - latestCandle.low;
   const classicContext = analyzeClassicPriceAction(candles, htfLabel);
 
-  return {
+  return ({
     sma50: sma50Val,
     sma100: sma100Val,
     sma200: sma200Val,
@@ -448,5 +448,5 @@ export function calculateTechnical(
     dataPoints: candles.length,
     htfContext,
     classicContext,
-  };
+  } as TechnicalData & { classicContext: ClassicPriceActionContext });
 }
