@@ -744,17 +744,19 @@ export function scoreCandidate(
 
   if (c.riskReward && c.riskReward > 0) reasons.push(`R:R ${c.riskReward.toFixed(1)}`);
   if (c.spreadBps !== undefined && c.spreadBps > 25) conflicts.push(`wide spread ${c.spreadBps.toFixed(1)}bps`);
-  if (c.hasDerivatives && !c.hasAnalysis && c.fundingRate === undefined && c.openInterest === undefined) {
-    // Provider presence is not alpha: unusable derivatives payloads reduce
-    // analytical quality instead of receiving a neutral/positive score.
-    score -= 5;
-    conflicts.push("derivatives data lacks usable positioning metrics");
-  }
-
   // No non-technical evidence means the engine can rank the setup, but caps it
   // below TOP_OPPORTUNITY. This is the key guard against indicator-only setups.
   if (directional && agreeingNonTechnical === 0) {
     score = Math.min(score, 64);
+  }
+
+  if (c.hasDerivatives && !c.hasAnalysis && c.fundingRate === undefined && c.openInterest === undefined) {
+    // Provider presence is not alpha: unusable derivatives payloads reduce
+    // analytical quality instead of receiving a neutral/positive score.
+    // Apply after the technical-only cap so the penalty cannot be erased by
+    // that cap.
+    score -= 5;
+    conflicts.push("derivatives data lacks usable positioning metrics");
   }
   if (directional && opposingNonTechnical >= 2) {
     score = Math.min(score, 59);
