@@ -53,6 +53,8 @@ function wirePage(targetPage) {
   });
 }
 
+wirePage(page);
+
 async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5") {
   if (instrument === "BTC/USD") {
     // The production input uses the category + combobox instrument browser;
