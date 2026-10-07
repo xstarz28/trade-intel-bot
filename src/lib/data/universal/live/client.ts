@@ -119,12 +119,14 @@ const ENDPOINTS: Record<string, EndpointSpec> = {
         ? `https://www.okx.com/api/v5/market/ticker?instId=${encodeURIComponent(sym)}`
         : `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=100`,
     extract: (json, p) => {
-      const j = json as { data?: string[][] };
+      const j = json as {
+        data?: Array<{ last?: string; bidPx?: string; askPx?: string; ts?: string }>;
+      };
       if (p.capability === "quote") {
         const row = j.data?.[0];
-        const price = row ? num(row[2]) : NaN;
-        const bid = row ? num(row[4]) : undefined;
-        const ask = row ? num(row[5]) : undefined;
+        const price = row ? num(row.last) : NaN;
+        const bid = row ? num(row.bidPx) : undefined;
+        const ask = row ? num(row.askPx) : undefined;
         return {
           symbol: null,
           quote: Number.isFinite(price) && price > 0 ? { price, bid, ask } : undefined,
