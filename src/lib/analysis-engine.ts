@@ -1154,6 +1154,7 @@ function decideTrade(
   currentGateId = "GATE8_RR";
   // ── Gate 8: R:R ──
   let tradePlan: TradePlan | undefined;
+  let projectedTradePlan: TradePlan | undefined;
   if (
     bias !== "Neutral" &&
     entry !== undefined && entry > 0 &&
@@ -1165,6 +1166,30 @@ function decideTrade(
       reasons.push("Structural stop level equals entry price — invalid risk distance.");
     } else {
       const rr = Math.round((reward / risk) * 100) / 100;
+      // Preserve the exact market-derived levels for visual context even when
+      // the setup is rejected. This is explicitly NON-EXECUTABLE and never
+      // changes recommendation, gates, conviction or risk sizing.
+      const buffer =
+        tech?.atr14 !== undefined && Number.isFinite(tech.atr14) && tech.atr14 > 0
+          ? tech.atr14 * 0.2
+          : 0;
+      const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
+      const decimals = entry < 10 ? 5 : 2;
+      const bufferNote =
+        buffer > 0
+          ? ` (incl. ${((buffer / entry) * 100).toFixed(3)}% technical ATR buffer beyond structural level)`
+          : "";
+      projectedTradePlan = {
+        direction: bias === "Bullish" ? "long" : "short",
+        entry: entry.toString(),
+        entryBasis: "live market price at analysis time",
+        stopLoss: sl.toFixed(decimals),
+        slBasis: `${slBasis}${bufferNote}`,
+        takeProfit: tpLevel.toFixed(decimals),
+        tpBasis,
+        riskReward: rr,
+        ...(mtf ? { htfBias: `${mtf.htfTimeframe ?? "HTF"} ${mtf.htfBias} external structure`, setupTimeframe: mtf.setupTimeframe, ...(mtf.triggerTimeframe ? { triggerTimeframe: mtf.triggerTimeframe } : {}) } : {}),
+      };
       if (rr < MIN_RR) {
         reasons.push(
           `Projected R:R ${rr.toFixed(2)} is below the ${MIN_RR.toFixed(2)} minimum for actionable setups.`,
@@ -1173,17 +1198,6 @@ function decideTrade(
         // Small technical buffer beyond the structural level (ATR-based
         // when available). The buffer is disclosed — the invalidation
         // BASE remains the structural level, never a fixed percentage.
-        const buffer =
-          tech?.atr14 !== undefined && Number.isFinite(tech.atr14) && tech.atr14 > 0
-            ? tech.atr14 * 0.2
-            : 0;
-        const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
-        const decimals = entry < 10 ? 5 : 2;
-        const bufferNote =
-          buffer > 0
-            ? ` (incl. ${((buffer / entry) * 100).toFixed(3)}% technical ATR buffer beyond structural level)`
-            : "";
-
         tradePlan = {
           direction: bias === "Bullish" ? "long" : "short",
           entry: entry.toString(),
@@ -2401,6 +2415,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     conviction: decision.conviction,
     noTradeReasons: decision.noTradeReasons,
     tradePlan: decision.tradePlan,
+    projectedTradePlan,
     htfAlignment: alignment,
     mtfSummary,
     marketRegime,
