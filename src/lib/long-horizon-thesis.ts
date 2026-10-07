@@ -196,7 +196,9 @@ function classifyStructuralContext(
   const quality = regime?.continuationQuality;
   const contra = hasContraMtf(result, dir === "neutral" ? "bullish" : dir);
 
-  if (dir === "neutral" && htf === "neutral") {
+  // A neutral final decision must remain structurally neutral here too.
+  // HTF context is descriptive evidence, not an alternate thesis.
+  if (dir === "neutral") {
     return regime?.regime === "RANGE" ? "RANGE" : "UNCONFIRMED";
   }
 
@@ -933,7 +935,11 @@ function assessMissing(result: AnalysisResult): string[] {
   if (result.instrumentType === "forex" && !result.cotContext) {
     missing.push("COT positioning data");
   }
-  if (result.instrumentType === "commodity" && !result.eiaContext) {
+  if (
+    result.instrumentType === "commodity" &&
+    /WTI|CRUDE|BRENT|OIL/i.test(result.instrument) &&
+    !result.eiaContext
+  ) {
     missing.push("EIA inventory data");
   }
   return missing;
