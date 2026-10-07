@@ -95,10 +95,15 @@ describe("Step 2: conviction band reachability", () => {
 
 describe("Step 7: determinism for identical snapshots", () => {
   function strip(r: AnalysisResult) {
-    // Strip legitimately time-dependent identity/provenance fields.
+    // Strip legitimately time-dependent identity/provenance fields, including
+    // nested provider timestamps that are regenerated for each fixture build.
     const { id, timestamp, priceSnapshot, ...rest } = r;
     void id; void timestamp; void priceSnapshot;
-    return JSON.stringify(rest, (_k, v) => (typeof v === "number" && !Number.isFinite(v) ? String(v) : v));
+    const temporalKeys = /^(timestamp|fetchedAt|snapshotTs|observedAt|acquiredAt|createdAt|updatedAt)$/i;
+    return JSON.stringify(rest, (key, v) => {
+      if (temporalKeys.test(key)) return undefined;
+      return typeof v === "number" && !Number.isFinite(v) ? String(v) : v;
+    });
   }
 
   const spec: Spec = {
