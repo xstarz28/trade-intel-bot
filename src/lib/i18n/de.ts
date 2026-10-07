@@ -618,6 +618,11 @@ const de: Translations = {
   // ─── Empty States ───────────────────────────────────────────
   // ─── Instrument Entry Form (Phase 145) ────────────────────
   entryForm: {
+    available: "verfügbar",
+    forex: "FOREX",
+    crypto: "KRYPTO",
+    stocks: "AKTIEN",
+    commodities: "ROHSTOFFE",
     newAnalysis: "Neue Analyse",
     marketLabel: "Markt",
     searchSpecificInstrument: "Bestimmtes Instrument suchen",
