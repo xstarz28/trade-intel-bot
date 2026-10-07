@@ -1,4 +1,9 @@
 /**
+ * User-selected setup timeframe is authoritative across all styles.
+ * Trading style changes horizon requirements, freshness and evidence caps;
+ * it must never silently replace the requested market timeframe.
+ */
+/**
  * Phase 6 — Trading style profiles (pure configuration).
  *
  * A style NEVER changes market facts (structure, swings, liquidity,
@@ -70,8 +75,8 @@ export interface StyleProfile {
 export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
   scalping: {
     style: "scalping",
-    allowedSetupTfs: ["M15", "H1"],
-    fallbackTf: "H1",
+    allowedSetupTfs: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
+    fallbackTf: "M5",
     priceStaleMs: 10 * 60 * 1000,
     fundamentalLayerMultiplier: 0.5,
     fundamentalLayerCap: 8,
@@ -86,8 +91,8 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
   },
   intraday: {
     style: "intraday",
-    allowedSetupTfs: ["M15", "H1", "H4"],
-    fallbackTf: "H4",
+    allowedSetupTfs: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
+    fallbackTf: "H1",
     priceStaleMs: 30 * 60 * 1000,
     fundamentalLayerMultiplier: 1,
     fundamentalLayerCap: 15,
@@ -102,7 +107,7 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
   },
   swing: {
     style: "swing",
-    allowedSetupTfs: ["H4", "D1", "W1"],
+    allowedSetupTfs: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
     fallbackTf: "H4",
     priceStaleMs: 60 * 60 * 1000,
     fundamentalLayerMultiplier: 1.25,
