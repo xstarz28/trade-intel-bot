@@ -52,9 +52,36 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.currentPrice).toBe(100000);
     expect(candidate.dataPoints).toBe(210);
     expect(candidate.hasLiveData).toBe(true);
-    expect(candidate.freshness).toBe("FRESH");
+    expect(candidate.freshness).toBe("DELAYED");
     expect(candidate.providerCoverage).toBe("PARTIAL");
   });
+
+  it.each([
+    ["stale", "STALE"],
+    ["unavailable", "UNAVAILABLE"],
+  ] as const)(
+    "does not promote provider-reported %s data because retrieval timestamp is recent",
+    (providerFreshness, expectedFreshness) => {
+      const now = Date.now();
+      const candidate = buildCandidateFromSource({
+        instrument: "BTC/USD",
+        assetClass: "crypto",
+        marketData: {
+          instrument: "BTC/USD",
+          instrumentType: "crypto",
+          provider: "fixture",
+          fetchTimestamp: now,
+          price: { price: 100000, timestamp: now, source: "fixture" },
+          candles: [],
+          timeframe: "H1",
+          dataFreshness: providerFreshness,
+        },
+      });
+
+      expect(candidate.freshness).toBe(expectedFreshness);
+      expect(candidate.hasLiveData).toBe(false);
+    },
+  );
 
   it("derives technical evidence from provider OHLCV when no precomputed technical payload exists", () => {
     const now = Date.now();
