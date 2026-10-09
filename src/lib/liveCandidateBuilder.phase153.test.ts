@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { buildCandidateFromSource } from "./liveCandidateBuilder";
+import { buildCandidateFromSource, findLiveSnapshotForInstrument } from "./liveCandidateBuilder";
 
 describe("Phase 153 — Live Candidate Builder integrity", () => {
+  it("never substitutes a different quote or contract with the same base asset", () => {
+    const nativeSource = {
+      instrument: "BTC-USDT-SWAP",
+      assetClass: "crypto" as const,
+      providerNative: {
+        provider: "okx",
+        providerInstrumentId: "BTC-USDT-SWAP",
+      },
+    };
+    const liveSources = new Map([[nativeSource.instrument, nativeSource]]);
+
+    expect(findLiveSnapshotForInstrument(liveSources, "BTC/USD")).toBeUndefined();
+    expect(findLiveSnapshotForInstrument(liveSources, "BTC-USDT-SWAP")).toBe(nativeSource);
+  });
+
   it("uses verified market snapshot as the candidate price and data source", () => {
     const now = Date.now();
 
