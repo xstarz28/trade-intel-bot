@@ -146,6 +146,25 @@ export interface CandidateInput {
   fundamentalEvidenceAvailable?: boolean;
 }
 
+/**
+ * Keep discovery-only placeholders out of fallback rankings. This does not
+ * replace scanner freshness/eligibility gates; it prevents the UI fallback
+ * from presenting candidates that have no observed market price or OHLCV data.
+ */
+export function filterCandidatesWithObservedMarketData(
+  candidates: readonly CandidateInput[],
+): CandidateInput[] {
+  return candidates.filter((candidate) =>
+    candidate.hasLiveData &&
+    Number.isFinite(candidate.currentPrice) &&
+    candidate.currentPrice > 0 &&
+    Number.isFinite(candidate.dataPoints) &&
+    candidate.dataPoints > 0 &&
+    candidate.freshness !== "UNAVAILABLE" &&
+    candidate.providerCoverage !== "NONE"
+  );
+}
+
 export interface RankedInstrument {
   /** Canonical instrument ID. */
   instrument: string;
