@@ -72,8 +72,14 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
     await option.click();
   } else if (instrument === "XAU/USD") {
-    const category = type === "crypto" ? "CRYPTO" : type === "commodity" ? "COMMODITIES" : type === "stock" ? "STOCKS" : "FOREX";
-    await targetPage.getByRole("button", { name: category, exact: true }).click();
+    // Market category labels are localized. Their documented form order is
+    // stable, so select by index rather than matching English display text.
+    const categoryIndex = type === "forex" ? 0 : type === "crypto" ? 1 : type === "stock" ? 2 : 3;
+    const categoryButtons = targetPage.locator("form button[type='button']");
+    if ((await categoryButtons.count()) < 4) {
+      throw new Error("Production instrument form is missing its four market-category controls");
+    }
+    await categoryButtons.nth(categoryIndex).click();
     const picker = targetPage.getByRole("combobox").first();
     await picker.click();
     const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
