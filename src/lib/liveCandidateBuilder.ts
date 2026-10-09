@@ -27,6 +27,18 @@ import { calculateTechnical } from "./data/technical";
 // LIVE CANDIDATE INPUT
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Look up only the exact requested instrument identity. Quote currency and
+ * contract type are part of the instrument: BTC/USD must never silently use
+ * BTC-USDT-SWAP (or any other same-base market) as a fallback snapshot.
+ */
+export function findLiveSnapshotForInstrument(
+  liveSources: Map<string, LiveCandidateSource>,
+  instrument: string,
+): LiveCandidateSource | undefined {
+  return liveSources.get(instrument);
+}
+
 export interface LiveCandidateSource {
   /** Candidate/display instrument identifier. For provider-native candidates this is the exact provider instrument ID. */
   instrument: string;
