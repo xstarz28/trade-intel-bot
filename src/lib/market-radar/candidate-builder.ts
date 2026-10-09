@@ -213,8 +213,12 @@ function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessL
   if (source.snapshot?.price && source.snapshot.price > 0) count++;
   if (source.snapshot?.ohlcvAvailable) count++;
   if (source.snapshot?.htfBias && source.snapshot.htfBias !== "unknown") count++;
-  if (source.snapshot?.mtfAlignment) count++;
-  if (source.snapshot?.marketRegime) count++;
+  if (
+    source.snapshot?.mtfAlignment &&
+    source.snapshot.mtfAlignment !== "INSUFFICIENT_DATA" &&
+    source.snapshot.mtfAlignment.toUpperCase() !== "UNKNOWN"
+  ) count++;
+  if (source.snapshot?.marketRegime && source.snapshot.marketRegime.toUpperCase() !== "UNKNOWN") count++;
   if (source.derivatives?.fundingRate !== undefined) count++;
   if (source.derivatives?.openInterest !== undefined) count++;
   if (source.fundamentals?.peRatio !== undefined) count++;
