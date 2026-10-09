@@ -2142,7 +2142,21 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // creation authority. Non-structural evidence can support/weaken/veto to
   // Neutral; only a genuine HTF external reversal authorizes an exception.
   const mtf = input.technicalData?.mtf;
-  const { bias: rawBias, coreWeightedAvg } = calculateBias(breakdown);
+  const { coreWeightedAvg } = calculateBias(breakdown);
+
+  // Direction comes from the actual external structure label, not from a
+  // weighted average that can be cancelled by counter-directional context or
+  // by a primary-timeframe CHoCH. A genuine measured HTF external reversal is
+  // the only exception. The 40/40/20 weighted average remains available for
+  // conviction/evidence strength and gates, not thesis creation.
+  const externalDirection = structuralDirection(input.technicalData);
+  const authorizedHtfReversal = mtf?.htfReversal;
+  const rawBias: DirectionalBias = authorizedHtfReversal
+    ? authorizedHtfReversal.direction === "bullish" ? "Bullish" : "Bearish"
+    : externalDirection === "long" ? "Bullish"
+    : externalDirection === "short" ? "Bearish"
+    : "Neutral";
+
   const { bias, vetoReason: structuralVetoReason } = applyStructuralVeto(rawBias, input, mtf);
   const alignment = computeAlignment(input);
 
