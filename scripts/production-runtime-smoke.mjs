@@ -62,7 +62,7 @@ async function findAnalysisForm(targetPage, expectedTimeframe) {
   for (let index = 0; index < count; index += 1) {
     const candidate = forms.nth(index);
     const picker = candidate.locator('[data-slot="select-trigger"]').first();
-    const timeframe = candidate.getByRole("button", { name: expectedTimeframe, exact: true });
+    const timeframe = candidate.locator("button").filter({ hasText: new RegExp("^" + expectedTimeframe + "$") });
     if (
       (await picker.count()) > 0 &&
       (await timeframe.count()) > 0 &&
@@ -101,7 +101,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
   await option.click();
 
-  const timeframeButton = form.getByRole("button", { name: expectedTimeframe, exact: true });
+  const timeframeButton = form.locator("button").filter({ hasText: new RegExp("^" + expectedTimeframe + "$") });
   if (!(await timeframeButton.count()) || !(await timeframeButton.isVisible())) {
     const controls = await form.locator("button").allTextContents();
     throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}. Form buttons: ${controls.join(" | ")}`);
