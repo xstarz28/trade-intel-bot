@@ -15,6 +15,7 @@ import type {
   LongShortData,
   LiquidationData,
 } from "../lib/data/derivatives-types";
+import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
 
 // ── In-memory cache (10 min TTL) ────────────────────────────────
 const cache = new Map<string, { data: any; expiresAt: number }>();
@@ -239,6 +240,71 @@ async function fetchTokenomics(symbol: string): Promise<import("../lib/data/cryp
     return undefined;
   }
 }
+
+// ── DeFi fundamentals (server-side; public DeFiLlama endpoints) ──
+const defiLlamaAdapter = new DeFiLlamaAdapter();
+const DEFI_LLAMA_CACHE_TTL = 10 * 60 * 1000;
+const defiLlamaCache = new Map<string, {
+  data: Record<string, any>;
+  provider: string;
+  observedAt: number;
+  expiresAt: number;
+}>();
+
+export const fetchDeFiLlamaFundamentals = action({
+  args: {
+    instrument: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    const instrument = args.instrument.trim().toUpperCase();
+    const cached = defiLlamaCache.get(instrument);
+    if (cached && Date.now() < cached.expiresAt) {
+      return {
+        success: true as const,
+        data: cached.data,
+        provider: cached.provider,
+        observedAt: cached.observedAt,
+      };
+    }
+    if (cached) defiLlamaCache.delete(instrument);
+
+    try {
+      const result = await defiLlamaAdapter.fetch(instrument);
+      if (!result) {
+        return {
+          success: false as const,
+          error: "DeFiLlama does not support this instrument.",
+          errorCode: "UNSUPPORTED_ASSET" as const,
+        };
+      }
+      if (!result.success || !result.data || typeof result.data !== "object") {
+        return {
+          success: false as const,
+          error: result.error ?? "DeFiLlama returned no usable data.",
+          errorCode: result.errorCode ?? "NO_DATA",
+        };
+      }
+
+      const normalized = {
+        success: true as const,
+        data: result.data as Record<string, any>,
+        provider: result.provider,
+        observedAt: result.observedAt,
+      };
+      defiLlamaCache.set(instrument, {
+        ...normalized,
+        expiresAt: Date.now() + DEFI_LLAMA_CACHE_TTL,
+      });
+      return normalized;
+    } catch (err) {
+      return {
+        success: false as const,
+        error: err instanceof Error ? err.message : "DeFiLlama request failed.",
+        errorCode: "API_UNAVAILABLE" as const,
+      };
+    }
+  },
+});
 
 // ── Individual Fetchers ─────────────────────────────────────────
 
