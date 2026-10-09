@@ -95,12 +95,30 @@ function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessL
   if (source.treasury?.tenYearYield !== undefined) count++;
   if (source.analysisResult) count++;
 
-  if (count >= 6) return "FULL";
+  // Market snapshot fields and prior analysis metadata are not independent
+  // contextual intelligence. FULL completeness requires at least one actual
+  // asset-relevant context field, not just a dense technical snapshot.
+  const hasContextEvidence =
+    source.derivatives?.fundingRate !== undefined ||
+    source.derivatives?.openInterest !== undefined ||
+    source.derivatives?.liquidationVolume !== undefined ||
+    source.fundamentals?.peRatio !== undefined ||
+    source.fundamentals?.profitMargin !== undefined ||
+    source.fundamentals?.marketCap !== undefined ||
+    source.fundamentals?.revenueGrowth !== undefined ||
+    source.cot?.netNonCommercial !== undefined ||
+    source.eia?.inventory !== undefined ||
+    source.eia?.inventoryChange !== undefined ||
+    source.eia?.futuresStructure !== undefined ||
+    source.treasury?.tenYearYield !== undefined ||
+    source.treasury?.dxyTrend !== undefined ||
+    source.treasury?.riskRegime !== undefined;
+
+  if (count >= 6 && hasContextEvidence) return "FULL";
   if (count >= 4) return "PARTIAL";
   if (count >= 2) return "MINIMAL";
   if (count >= 1) return "MINIMAL";
   return "NONE";
-}
 
 // ═══════════════════════════════════════════════════════════════
 // PROVIDER COVERAGE ASSESSMENT
