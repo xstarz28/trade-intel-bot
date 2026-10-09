@@ -1,10 +1,8 @@
 name: Production runtime smoke
 
 on:
-  # One-shot diagnostic path for the working branch. This runs a browser smoke
-  # against the already-published site; it does NOT trigger any deployment.
-  push:
-    branches: ["fix/radar-completeness-context"]
+  # Only test the public site after a successful production deployment, or
+  # when explicitly requested. A branch push does not change the production UI.
   workflow_run:
     workflows: ["Production frontend deploy"]
     types: [completed]
