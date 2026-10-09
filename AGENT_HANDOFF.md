@@ -22,7 +22,7 @@
 ## Newly fixed candidate-to-ranking defect
 - Dashboard scans previously computed only `INTRADAY` and `SWING`, while Market Opportunities exposes scalping and six investment horizons.
 - Selecting a horizon missing from the scan result fell back to static zero-price/unavailable placeholders despite available live sources, producing an empty/incorrect view.
-- `ALL_SCAN_HORIZONS` is now the shared horizon list for auto-scan and manual refresh, with regression coverage for full horizon coverage.
+- `ALL_SCAN_HORIZONS` is now the shared horizon list for initial discovery, auto-scan, and manual refresh, with regression coverage for full horizon coverage.
 
 ## Validation status
 - Previous checkpoint `e73ef69528569837e028af5a3aff73d434f600d1`: CI passed typecheck/build and 7,397 tests across 178 test files. Lint still reports existing/advisory errors and is not claimed clean.

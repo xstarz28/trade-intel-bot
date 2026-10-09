@@ -257,7 +257,7 @@ export default function Dashboard() {
         setScanResult(
           scanInstruments(
             Array.from(liveSourceRef.current.values()),
-            { horizons: ["INTRADAY", "SWING"], maxResults: 10 },
+            { horizons: ALL_SCAN_HORIZONS, maxResults: 10 },
           ),
         );
       } catch {
