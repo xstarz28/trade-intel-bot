@@ -179,6 +179,7 @@ describe("B — Market-Data Freshness", () => {
     const source = makeSource({
       marketData: makeMarketData("BTC/USD", {
         price: { price: 65000, timestamp: NOW - 60_000, source: "twelve-data" },
+        dataFreshness: "realtime",
       }),
     });
     const candidate = buildCandidateFromSource(source);
@@ -229,7 +230,7 @@ describe("B — Market-Data Freshness", () => {
 describe("C — Horizon-Specific Eligibility", () => {
   it("scalping requires FRESH data", () => {
     const sources = [
-      makeSource({ instrument: "BTC/USD", marketData: makeMarketData("BTC/USD", { price: { price: 65000, timestamp: NOW - MINUTE, source: "x" } }) }),
+      makeSource({ instrument: "BTC/USD", marketData: makeMarketData("BTC/USD", { price: { price: 65000, timestamp: NOW - MINUTE, source: "x" }, dataFreshness: "realtime" }) }),
       makeSource({ instrument: "ETH/USD", marketData: makeMarketData("ETH/USD", { price: { price: 3500, timestamp: NOW - 30 * MINUTE, source: "x" } }) }),
     ];
     const result = scanInstruments(sources, { horizons: ["SCALPING"], maxResults: 10 });
