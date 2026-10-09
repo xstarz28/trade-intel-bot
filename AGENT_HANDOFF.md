@@ -25,6 +25,7 @@
 - `ALL_SCAN_HORIZONS` is now the shared horizon list for initial discovery, auto-scan, and manual refresh, with regression coverage for full horizon coverage.
 
 ## Analysis failure visibility
+- Smoke must unwrap Playwright's `JSHandle` result with `jsonValue()` before comparing it to `"success"`; comparing the handle object itself creates a false failure even when output is present.
 - The Dashboard previously rendered `fetchError` only inside the loading branch, then set `isAnalyzing=false` on error; the failure text disappeared and left the production smoke test waiting until timeout.
 - Provider/analysis failures now remain visible after loading exits. The smoke harness waits for either a valid analysis result or the explicit error panel, and emits visible-page diagnostics on an unresolved timeout. This exposes failures; it does not by itself prove the provider/backend succeeded.
 

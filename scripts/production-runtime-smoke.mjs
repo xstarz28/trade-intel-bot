@@ -123,7 +123,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
 
   let analysisOutcome;
   try {
-    analysisOutcome = await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
+    const outcomeHandle = await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
       // AnimatePresence can keep an exiting error panel in the DOM after it
       // is no longer visible. Only treat an on-screen, non-transparent panel
       // as a real analysis error.
@@ -157,6 +157,8 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
         !visibleText.includes("analyzing...")
       ) ? "success" : false;
     }, { targetInstrument: instrument, targetTimeframe: expectedTimeframe }, { timeout });
+    analysisOutcome = await outcomeHandle.jsonValue();
+    await outcomeHandle.dispose();
   } catch (error) {
     const visibleState = await targetPage.locator("body").innerText().catch(() => "<body unavailable>");
     throw new Error(
@@ -165,8 +167,12 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
 
   if (analysisOutcome !== "success") {
-    const diagnostic = await targetPage.locator('[data-analysis-error="true"]:visible').first().innerText().catch(() => "No visible provider error text captured.");
-    throw new Error(`${instrument} analysis failed visibly: ${diagnostic}`);
+    const errorPanel = targetPage.locator('[data-analysis-error="true"]:visible').first();
+    const diagnostic = await errorPanel.evaluate((el) => el.textContent?.trim() || el.innerText?.trim() || "").catch(() => "");
+    const visibleState = await targetPage.locator("body").innerText().catch(() => "<body unavailable>");
+    throw new Error(
+      `${instrument} analysis failed visibly: ${diagnostic || "error panel has no readable text"}. Page state:\\n${visibleState.slice(-2500)}`,
+    );
   }
 
   const body = await targetPage.locator("body").innerText();
