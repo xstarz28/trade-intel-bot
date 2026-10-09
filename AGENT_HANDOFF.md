@@ -2,24 +2,31 @@
 
 ## Current checkpoint
 - Working branch: `fix/radar-completeness-context`
-- Latest code commit before this handoff: `f4bdb25ce60ada5bb549cf531a7b5e7a97af027b`
-- Scope: one focused recommendation-data-quality defect. `main` and production were not changed.
+- `main` and production have not been changed.
+- Latest code work is on this branch; do not assume this branch is deployed.
 
-## Confirmed defect and fix
-- `src/lib/market-radar/candidate-builder.ts`: a candidate could reach `FULL` completeness by counting five snapshot fields plus a prior `analysisResult`, even when no independent contextual evidence existed.
-- `FULL` now also requires at least one actual contextual field from derivatives, fundamentals, COT, EIA, or Treasury/macro data. Snapshot-only or snapshot-plus-analysis-metadata candidates remain capped at `PARTIAL`.
-- `src/lib/market-radar.phase51.test.ts`: added regression tests for (1) snapshot + prior-analysis metadata without context stays `PARTIAL`, and (2) independently available derivative context can qualify for `FULL`.
+## Confirmed defects and fixes
+
+1. **Radar completeness overstatement** — `src/lib/market-radar/candidate-builder.ts`
+   - Five snapshot fields plus a prior `analysisResult` could reach `FULL` even without independent contextual intelligence.
+   - `FULL` now requires at least one actual context field from derivatives, fundamentals, COT, EIA, or Treasury/macro data.
+   - Regression tests added to `src/lib/market-radar.phase51.test.ts` cover snapshot + prior-analysis metadata remaining `PARTIAL`, and real derivative context allowing `FULL`.
+
+2. **Missing intelligence treated as contradictory evidence** — `src/lib/recommendation-engine.ts`
+   - The confidence coherence formula used default values of 0 for missing fundamental, macro, and positioning layers. Because the formula compared every default to 50, entirely unavailable layers incorrectly pushed coherence down to 10/100.
+   - Coherence now uses only layers with actual evidence, with the baseline remaining neutral for layers that are absent. The original relative weights are retained, so missing data is neither opposition nor artificial support.
+   - Regression tests added to `src/lib/recommendation-engine.phase154.test.ts` verify missing nontechnical evidence does not lower coherence as if it opposed the thesis, while actual opposing fundamental evidence does lower coherence.
 
 ## Validation status
-- Confirmed via GitHub read-back that the updated implementation and both regression tests are present on this branch.
-- No local test command was run by this GitHub editing session. GitHub CI status was empty at the time checked; do not claim tests passed until CI results are available.
-- No production deployment was triggered. The production deploy workflow runs on pushes to `main`, not this `fix/**` branch.
+- Confirmed via GitHub read-back that source changes and regression tests exist on this branch.
+- The GitHub status endpoint returned no CI statuses when last checked. These new tests have **not** been independently run in a local runtime in this session. Do not claim they pass until CI/test evidence arrives.
+- No production deployment was triggered. The production frontend deploy workflow only runs on pushes to `main`; this work is on a `fix/**` branch.
 
 ## Next highest-value task
-Inspect `src/lib/recommendation-engine.ts` and its existing targeted tests only. Find one confirmed scoring/ranking defect that causes evidence-distinct candidates to flatten together or incomplete candidates to rank too highly. Make one focused fix with a regression test. Do not repeat a repository-wide audit, do not change domain/auth/branding, and do not deploy.
+Inspect only the candidate-to-ranking path feeding Market Opportunities. Find one confirmed reason why evidence-distinct instruments may still receive flattened scores or why ineligible placeholders could enter the final ranked list. Make one focused fix with a regression test. Preserve the work above; do not repeat a repo-wide audit.
 
 ## Guardrails
-- Preserve this branch and existing edits.
-- Distinguish discovered instruments from analysis-eligible and ranking-eligible opportunities.
-- Missing evidence must not be fabricated or treated as positive support.
-- Validate with focused tests and report PASS/FAIL/NOT VERIFIED honestly.
+- Continue from this branch and this handoff.
+- Keep `main` and production untouched until validation is satisfactory.
+- Do not fabricate market data, provider availability, scores, or test results.
+- Do not change domain, branding, or unrelated auth work before core analytical behavior is validated.
