@@ -13,6 +13,7 @@ import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation
 import type { MarketSnapshot, FreshnessLevel } from "./types";
 import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
+import type { LiveCandidateSource } from "../liveCandidateBuilder";
 
 // ═══════════════════════════════════════════════════════════════
 // RADAR CANDIDATE SOURCE
@@ -73,6 +74,133 @@ export interface RadarCandidateSource {
     dimensionsAvailable?: number;
     dimensionsTotal?: number;
     relativeValue?: string;
+  };
+}
+
+/**
+ * Adapt the verified runtime source into the radar contract without losing
+ * provider-backed technical or asset-specific context. History-only records
+ * never create a market snapshot or get promoted to live evidence.
+ */
+export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandidateSource {
+  const market = source.marketData;
+  const technical = source.technicalData ?? source.analysisResult?.technicalData;
+  const analysis = source.analysisResult;
+  const intelligence = source.universalIntelligence;
+
+  const htf = technical?.mtf?.htfBias;
+  const htfBias: NonNullable<MarketSnapshot["htfBias"]> =
+    htf === "long" || htf === "short" ? htf :
+    technical?.structure === "HH/HL" ? "long" :
+    technical?.structure === "LH/LL" ? "short" :
+    technical?.structure === "range" ? "neutral" : "unknown";
+  const marketRegime =
+    technical?.structure === "HH/HL" || technical?.structure === "LH/LL" ? "TRENDING" :
+    technical?.structure === "range" ? "RANGING" : "UNKNOWN";
+
+  const latestCandleTimestamp = market?.candles?.reduce<number | undefined>(
+    (latest, candle) => latest === undefined || candle.timestamp > latest ? candle.timestamp : latest,
+    undefined,
+  );
+  const observedAt = market?.price?.timestamp ?? latestCandleTimestamp ?? market?.fetchTimestamp ?? 0;
+
+  const sourceFundamentals = analysis?.fundamentalData?.available
+    ? analysis.fundamentalData
+    : undefined;
+  const universalFundamentals = intelligence?.equity?.fundamentals;
+  const fundingRate = source.derivativesData?.availability.fundingRate
+    ? source.derivativesData.fundingRate?.currentRate
+    : undefined;
+  const openInterest = source.derivativesData?.availability.openInterest
+    ? source.derivativesData.openInterest?.current
+    : undefined;
+  const liquidationVolume = source.derivativesData?.availability.liquidations
+    ? source.derivativesData.liquidations?.totalVolume
+    : undefined;
+  const inventory = source.eiaData?.available ? source.eiaData.series[0]?.latestValue : undefined;
+  const inventoryChange = source.eiaData?.available ? source.eiaData.series[0]?.change : undefined;
+  const tenYearYield = source.treasuryData?.available
+    ? source.treasuryData.latest.nominal["10Y"]
+    : undefined;
+  const cotNet = source.cotData?.available
+    ? source.cotData.netNonCommercial
+    : undefined;
+
+  const snapshot: MarketSnapshot | null = market ? {
+    instrument: market.instrument,
+    assetClass: source.assetClass,
+    price: market.price?.price ?? 0,
+    ohlcvAvailable: (market.candles?.length ?? 0) > 0,
+    dataPoints: market.candles?.length ?? 0,
+    availableTimeframes: (market.candles?.length ?? 0) > 0 ? [market.timeframe] : [],
+    htfBias,
+    marketRegime,
+    mtfAlignment: technical?.mtf?.alignment ?? analysis?.mtfSummary?.alignment,
+    volatility: technical?.atr14,
+    provider: market.provider,
+    observedAt,
+    freshness:
+      market.dataFreshness === "realtime" ? "FRESH" :
+      market.dataFreshness === "delayed" ? "DELAYED" :
+      market.dataFreshness === "stale" ? "STALE" : "UNAVAILABLE",
+    quality: market.dataFreshness === "unavailable" ? "UNAVAILABLE" : "VERIFIED",
+  } : null;
+
+  const derivatives = fundingRate !== undefined || openInterest !== undefined || liquidationVolume !== undefined
+    ? { fundingRate, openInterest, liquidationVolume }
+    : undefined;
+  const fundamentals = {
+    peRatio: sourceFundamentals?.peRatio ?? universalFundamentals?.peRatio,
+    profitMargin: sourceFundamentals?.profitMargin ?? universalFundamentals?.profitMargin,
+    marketCap: sourceFundamentals?.marketCap ?? universalFundamentals?.marketCap,
+    revenueGrowth: universalFundamentals?.revenueGrowth,
+  };
+  const cot = cotNet !== undefined
+    ? { netNonCommercial: cotNet }
+    : undefined;
+  const eia = inventory !== undefined || inventoryChange !== undefined
+    ? { inventory, inventoryChange }
+    : undefined;
+  const treasury = tenYearYield !== undefined ||
+      intelligence?.crossAsset?.dxy?.trend !== undefined ||
+      intelligence?.crossAsset?.riskRegime?.regime !== undefined
+    ? {
+        tenYearYield,
+        dxyTrend: intelligence?.crossAsset?.dxy?.trend,
+        riskRegime: intelligence?.crossAsset?.riskRegime?.regime,
+      }
+    : undefined;
+
+  return {
+    universe: {
+      instrument: source.instrument,
+      assetClass: source.assetClass,
+      region: source.assetClass === "equity"
+        ? (/(?:BBCA|BBRI|TLKM|BMRI|BBNI|GOTO)/i.test(source.instrument) ? "idx" : "us")
+        : "global",
+      requiredCapabilities: ["ohlcv", "quote"],
+      priority: 1,
+      refreshIntervalMs: 300_000,
+    },
+    snapshot,
+    ...(derivatives ? { derivatives } : {}),
+    ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
+    ...(cot ? { cot } : {}),
+    ...(eia ? { eia } : {}),
+    ...(treasury ? { treasury } : {}),
+    ...(analysis ? {
+      analysisResult: {
+        confidence: String(analysis.confidence),
+        bias: analysis.bias,
+        recommendation: analysis.recommendation,
+        technicalData: {
+          htfBias,
+          mtfAlignment: technical?.mtf?.alignment ?? analysis.mtfSummary?.alignment,
+          marketRegime,
+          atr: technical?.atr14,
+        },
+      },
+    } : {}),
   };
 }
 
