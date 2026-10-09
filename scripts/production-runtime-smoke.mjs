@@ -55,42 +55,52 @@ function wirePage(targetPage) {
 
 wirePage(page);
 
-async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5") {
-  if (instrument === "BTC/USD") {
-    // The production input uses the category + combobox instrument browser;
-    // the old direct BTC/USD quick-select button no longer exists.
-    // Category labels are localized; select the category button by its
-    // position in the four-market category grid instead of a translated name.
-    const categoryButtons = targetPage.locator("form button").filter({ hasText: /crypto/i });
-    if (await categoryButtons.count()) {
-      await categoryButtons.first().click();
-    } else {
-      await targetPage.locator("form button").nth(1).click();
+async function findAnalysisForm(targetPage, expectedTimeframe) {
+  const forms = targetPage.locator("form");
+  const count = await forms.count();
+
+  for (let index = 0; index < count; index += 1) {
+    const candidate = forms.nth(index);
+    const picker = candidate.getByRole("combobox").first();
+    const timeframe = candidate.getByRole("button", { name: expectedTimeframe, exact: true });
+    if (
+      (await picker.count()) > 0 &&
+      (await timeframe.count()) > 0 &&
+      (await timeframe.first().isVisible().catch(() => false))
+    ) {
+      return candidate;
     }
-    const picker = targetPage.getByRole("combobox").first();
-    await picker.click();
-    const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
-    await option.click();
-  } else if (instrument === "XAU/USD") {
-    // Market category labels are localized. Their documented form order is
-    // stable, so select by index rather than matching English display text.
-    const categoryIndex = type === "forex" ? 0 : type === "crypto" ? 1 : type === "stock" ? 2 : 3;
-    const categoryButtons = targetPage.locator("form button[type='button']");
-    if ((await categoryButtons.count()) < 4) {
-      throw new Error("Production instrument form is missing its four market-category controls");
-    }
-    await categoryButtons.nth(categoryIndex).click();
-    const picker = targetPage.getByRole("combobox").first();
-    await picker.click();
-    const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
-    await option.click();
   }
 
-  // Derive the form from the actual instrument combobox. Playwright's
-  // filter(has: page-rooted locator) can match no descendant on this page;
-  // the ancestor locator binds all subsequent controls to the selected form.
-  const pickerForForm = targetPage.getByRole("combobox").first();
-  const form = pickerForForm.locator("xpath=ancestor::form[1]");
+  const diagnostics = [];
+  for (let index = 0; index < count; index += 1) {
+    const candidate = forms.nth(index);
+    diagnostics.push(
+      "form#" + index + ": comboboxes=" + (await candidate.getByRole("combobox").count()) + ", buttons=" + (await candidate.locator("button").allTextContents()).join(" | "),
+    );
+  }
+  throw new Error(
+    "Could not locate the visible instrument-analysis form with timeframe " + expectedTimeframe + ". " + (diagnostics.join(" || ") || "No forms found"),
+  );
+}
+
+async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5") {
+  // Anchor every interaction to the actual analysis form. A page-global
+  // combobox can belong to a different surface and lead to an empty ancestor
+  // form, which made the production smoke fail before submitting an analysis.
+  const form = await findAnalysisForm(targetPage, expectedTimeframe);
+  const categoryIndex = type === "forex" ? 0 : type === "crypto" ? 1 : type === "stock" ? 2 : 3;
+  const categoryButtons = form.locator("button[type='button']");
+  if ((await categoryButtons.count()) < 4) {
+    throw new Error("Production instrument form is missing its four market-category controls");
+  }
+  await categoryButtons.nth(categoryIndex).click();
+
+  const picker = form.getByRole("combobox").first();
+  await picker.click();
+  const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
+  await option.click();
+
   const timeframeButton = form.getByRole("button", { name: expectedTimeframe, exact: true });
   if (!(await timeframeButton.count()) || !(await timeframeButton.isVisible())) {
     const controls = await form.locator("button").allTextContents();
@@ -98,7 +108,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
   await timeframeButton.click();
 
-  const selectedInstrument = targetPage.getByRole("combobox").first();
+  const selectedInstrument = form.getByRole("combobox").first();
   const selectedText = await selectedInstrument.innerText().catch(() => "");
   if (!selectedText.includes(instrument)) {
     throw new Error("".concat(instrument, " was not selected before analysis. Picker text: ").concat(selectedText));
