@@ -80,10 +80,11 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     await option.click();
   }
 
-  const timeframeButton = targetPage.locator("button").filter({ hasText: expectedTimeframe }).first();
+  const form = targetPage.locator("form").filter({ has: targetPage.getByRole("combobox").first() }).first();
+  const timeframeButton = form.getByRole("button", { name: expectedTimeframe, exact: true });
   if (!(await timeframeButton.count()) || !(await timeframeButton.isVisible())) {
-    const controls = await targetPage.locator("button").allTextContents();
-    throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}. Buttons: ${controls.join(" | ")}`);
+    const controls = await form.locator("button").allTextContents();
+    throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}. Form buttons: ${controls.join(" | ")}`);
   }
   await timeframeButton.click();
 
@@ -95,7 +96,6 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
 
   // Submit the authoritative instrument form directly. The visible label is localized,
   // so text-matching a translated button is not a reliable production smoke control.
-  const form = targetPage.locator("form").filter({ has: targetPage.getByRole("combobox").first() }).first();
   const run = form.locator("button[type=\"submit\"]").first();
   if (!(await run.count())) {
     const buttons = await form.locator("button").allTextContents();
@@ -121,23 +121,59 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     });
   }
 
-  await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
-    const visibleText = Array.from(document.querySelectorAll("*"))
-      .filter((el) => {
-        const s = getComputedStyle(el);
-        const r = el.getBoundingClientRect();
-        return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
-      })
-      .map((el) => el.textContent || "")
-      .join("\n");
-    return (
-      visibleText.includes(`${targetInstrument} |`) &&
-      visibleText.includes(`| ${targetTimeframe}`) &&
-      visibleText.includes("BIAS:") &&
-      visibleText.includes("Price:") &&
-      !visibleText.includes("analyzing...")
+  let analysisOutcome;
+  try {
+    const outcomeHandle = await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
+      // AnimatePresence can keep an exiting error panel in the DOM after it
+      // is no longer visible. Only treat an on-screen, non-transparent panel
+      // as a real analysis error.
+      const errorPanel = Array.from(document.querySelectorAll('[data-analysis-error="true"]')).find((el) => {
+        const style = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          Number(style.opacity) > 0 &&
+          rect.width > 0 &&
+          rect.height > 0 &&
+          Boolean((el.innerText || el.textContent || "").trim())
+        );
+      });
+      if (errorPanel) return "error";
+
+      const visibleText = Array.from(document.querySelectorAll("*"))
+        .filter((el) => {
+          const s = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
+        })
+        .map((el) => el.textContent || "")
+        .join("\n");
+      return (
+        visibleText.includes(`${targetInstrument} |`) &&
+        visibleText.includes(`| ${targetTimeframe}`) &&
+        visibleText.includes("BIAS:") &&
+        visibleText.includes("Price:") &&
+        !visibleText.includes("analyzing...")
+      ) ? "success" : false;
+    }, { targetInstrument: instrument, targetTimeframe: expectedTimeframe }, { timeout });
+    analysisOutcome = await outcomeHandle.jsonValue();
+    await outcomeHandle.dispose();
+  } catch (error) {
+    const visibleState = await targetPage.locator("body").innerText().catch(() => "<body unavailable>");
+    throw new Error(
+      `${instrument} analysis produced neither a result nor a surfaced provider error within ${timeout}ms. Visible page state:\\n${visibleState.slice(-3500)}\\nOriginal wait error: ${error instanceof Error ? error.message : String(error)}`,
     );
-  }, { targetInstrument: instrument, targetTimeframe: expectedTimeframe }, { timeout });
+  }
+
+  if (analysisOutcome !== "success") {
+    const errorPanel = targetPage.locator('[data-analysis-error="true"]:visible').first();
+    const diagnostic = await errorPanel.evaluate((el) => el.textContent?.trim() || el.innerText?.trim() || "").catch(() => "");
+    const visibleState = await targetPage.locator("body").innerText().catch(() => "<body unavailable>");
+    throw new Error(
+      `${instrument} analysis failed visibly: ${diagnostic || "error panel has no readable text"}. Page state:\\n${visibleState.slice(-2500)}`,
+    );
+  }
 
   const body = await targetPage.locator("body").innerText();
   const priceLabel = targetPage.getByText("Price:", { exact: true });

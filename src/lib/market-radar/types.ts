@@ -151,8 +151,10 @@ export interface MarketSnapshot {
   spreadBps?: number;
   /** Volatility measure (ATR or implied). */
   volatility?: number;
-  /** Available OHLCV data. */
+  /** Whether OHLCV exists for this instrument. */
   ohlcvAvailable: boolean;
+  /** Actual number of OHLCV rows returned by the provider, when known. Never estimated. */
+  dataPoints?: number;
   /** Available timeframes. */
   availableTimeframes: string[];
   /** HTF bias if computable. */

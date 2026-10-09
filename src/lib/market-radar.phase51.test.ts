@@ -80,6 +80,7 @@ function makeSnapshot(overrides?: Partial<{
   spreadBps: number;
   volatility: number;
   ohlcvAvailable: boolean;
+  dataPoints: number;
   provider: string;
   freshness: FreshnessLevel;
 }>): any {
@@ -89,6 +90,9 @@ function makeSnapshot(overrides?: Partial<{
     region: "global",
     price: overrides?.price ?? 65000,
     ohlcvAvailable: overrides?.ohlcvAvailable ?? true,
+    // Test snapshots represent a provider response with 50 rows unless a test
+    // explicitly asks for another observed count.
+    dataPoints: overrides?.dataPoints ?? ((overrides?.ohlcvAvailable ?? true) ? 50 : 0),
     availableTimeframes: ["H1", "H4", "D1"],
     htfBias: overrides?.htfBias ?? "long",
     mtfAlignment: overrides?.mtfAlignment ?? "ALIGNED_BULLISH",
@@ -200,6 +204,60 @@ describe("A — Empty Analysis History", () => {
     });
     const candidate = buildRadarCandidate(source, NOW);
     expect(candidate.dataCompleteness).toBe("PARTIAL");
+  });
+
+  it("does not count UNKNOWN structure labels as completeness evidence", () => {
+    const source = makeSource({
+      snapshot: makeSnapshot({
+        htfBias: "unknown",
+        mtfAlignment: "INSUFFICIENT_DATA",
+        marketRegime: "UNKNOWN",
+      }),
+      derivatives: undefined,
+      fundamentals: undefined,
+      cot: undefined,
+      eia: undefined,
+      treasury: undefined,
+      analysisResult: undefined,
+    });
+    expect(buildRadarCandidate(source, NOW).dataCompleteness).toBe("MINIMAL");
+  });
+
+  it("uses the provider-reported OHLCV row count instead of estimating 50", () => {
+    const exactSource = makeSource({ snapshot: makeSnapshot({ dataPoints: 23 }) });
+    expect(buildRadarCandidate(exactSource, NOW).dataPoints).toBe(23);
+
+    const noCountSnapshot = makeSnapshot({});
+    delete noCountSnapshot.dataPoints;
+    const noCountSource = makeSource({ snapshot: noCountSnapshot });
+    expect(buildRadarCandidate(noCountSource, NOW).dataPoints).toBe(0);
+  });
+
+  it("does not mark snapshot plus prior analysis as FULL without independent context", () => {
+    const source = makeSource({
+      snapshot: makeSnapshot({}),
+      derivatives: undefined,
+      fundamentals: undefined,
+      cot: undefined,
+      eia: undefined,
+      treasury: undefined,
+      analysisResult: {
+        confidence: "80",
+        bias: "Bullish",
+        recommendation: "BUY",
+      },
+    });
+    const candidate = buildRadarCandidate(source, NOW);
+    expect(candidate.dataCompleteness).toBe("PARTIAL");
+  });
+
+  it("allows FULL completeness when independent context evidence is available", () => {
+    const source = makeSource({
+      snapshot: makeSnapshot({}),
+      derivatives: { fundingRate: 0.0001, openInterest: 500_000_000 },
+    });
+    const candidate = buildRadarCandidate(source, NOW);
+    expect(candidate.dataCompleteness).toBe("FULL");
   });
 });
 

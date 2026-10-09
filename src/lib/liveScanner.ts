@@ -34,6 +34,22 @@ export interface ScanConfig {
   now?: number;
 }
 
+/**
+ * Every horizon surfaced by Market Opportunities. Keeping this set centralized
+ * prevents a background scan from silently omitting investing horizons.
+ */
+export const ALL_SCAN_HORIZONS: ScanConfig["horizons"] = [
+  "SCALPING",
+  "INTRADAY",
+  "SWING",
+  "1-4_WEEKS",
+  "1-3_MONTHS",
+  "3-6_MONTHS",
+  "6-12_MONTHS",
+  "1-3_YEARS",
+  "3+_YEARS",
+];
+
 export interface ScanResult {
   /** Results keyed by horizon. */
   results: Map<TradingMode | InvestorHorizon, UniversalRecommendationResult>;

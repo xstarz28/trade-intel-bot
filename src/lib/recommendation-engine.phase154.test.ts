@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   scoreCandidate,
+  filterCandidatesWithObservedMarketData,
   type CandidateInput,
 } from "./recommendation-engine";
 
@@ -26,6 +27,30 @@ function baseCandidate(overrides: Partial<CandidateInput> = {}): CandidateInput 
     ...overrides,
   };
 }
+
+describe("Observed-data fallback eligibility", () => {
+  it("rejects discovery placeholders and accepts only candidates with observed market data", () => {
+    const candidates = [
+      baseCandidate({ instrument: "PLACEHOLDER/USD", currentPrice: 0, dataPoints: 0, hasLiveData: false, freshness: "UNAVAILABLE", providerCoverage: "PARTIAL", dataCompleteness: "MINIMAL" }),
+      baseCandidate({ instrument: "NO-CANDLES/USD", dataPoints: 0 }),
+      baseCandidate({ instrument: "NO-LIVE/USD", hasLiveData: false }),
+      baseCandidate({ instrument: "NO-PRICE/USD", currentPrice: 0 }),
+      baseCandidate({ instrument: "NO-PROVIDER/USD", providerCoverage: "NONE" }),
+      baseCandidate({ instrument: "BTC/USD" }),
+    ];
+
+    expect(filterCandidatesWithObservedMarketData(candidates).map((candidate) => candidate.instrument))
+      .toEqual(["BTC/USD"]);
+  });
+
+  it("retains observed delayed or stale data for horizon-specific downstream gates", () => {
+    const delayed = baseCandidate({ instrument: "DELAYED/USD", freshness: "DELAYED" });
+    const stale = baseCandidate({ instrument: "STALE/USD", freshness: "STALE" });
+
+    expect(filterCandidatesWithObservedMarketData([delayed, stale]).map((candidate) => candidate.instrument))
+      .toEqual(["DELAYED/USD", "STALE/USD"]);
+  });
+});
 
 describe("Phase 154 — recommendation ranking integrity", () => {
   it("higher-quality HTF evidence must improve the analytical score", () => {
@@ -54,5 +79,53 @@ describe("Phase 154 — recommendation ranking integrity", () => {
     );
 
     expect(withDerivatives.analyticalScore).toBeLessThan(without.analyticalScore);
+  });
+
+  it("does not treat missing non-technical evidence as opposing directional evidence", () => {
+    const missing = scoreCandidate(
+      baseCandidate({
+        fundamentalEvidenceAvailable: false,
+        fundamentalScore: undefined,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+    const observedNeutral = scoreCandidate(
+      baseCandidate({
+        fundamentalEvidenceAvailable: true,
+        fundamentalScore: 0,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+
+    expect(missing.confidence).toBe(observedNeutral.confidence);
+    expect(missing.conflicts).toContain("directional fundamental evidence unavailable");
+  });
+
+  it("reduces coherence when actual opposing fundamental evidence is present", () => {
+    const missing = scoreCandidate(
+      baseCandidate({
+        fundamentalEvidenceAvailable: false,
+        fundamentalScore: undefined,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+    const opposing = scoreCandidate(
+      baseCandidate({
+        fundamentalEvidenceAvailable: true,
+        fundamentalScore: -2,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+
+    expect(opposing.confidence).toBeLessThan(missing.confidence);
+    expect(opposing.conflicts).toContain("fundamental evidence opposes the technical direction");
   });
 });

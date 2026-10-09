@@ -129,8 +129,21 @@ describe("P7 chaos matrix — actionable-LONG fixture under provider failures", 
   });
 
   it("NO_TRADE fixture stays NO_TRADE with identical reasons count ≥ baseline", () => {
-    const baseNeutral = runAnalysis(neutralFixture());
-    const degraded = runAnalysis({ ...neutralFixture(), ...ALL_UNAVAILABLE.patch });
+    const baselineInput = neutralFixture();
+    const baseNeutral = runAnalysis(baselineInput);
+    const unavailableTechnicalContext = ALL_UNAVAILABLE.patch.technicalData as TechnicalData | undefined;
+    // The cross-asset failure overlay must preserve the fixture's actual
+    // structure/range facts; provider unavailability changes only crossAsset.
+    const degraded = runAnalysis({
+      ...baselineInput,
+      ...ALL_UNAVAILABLE.patch,
+      technicalData: {
+        ...baselineInput.technicalData!,
+        ...(unavailableTechnicalContext?.crossAsset
+          ? { crossAsset: unavailableTechnicalContext.crossAsset }
+          : {}),
+      },
+    });
     expect(baseNeutral.recommendation).toBe("NO_TRADE");
     expect(degraded.recommendation).toBe("NO_TRADE");
     expect(degraded.tradePlan).toBeUndefined();

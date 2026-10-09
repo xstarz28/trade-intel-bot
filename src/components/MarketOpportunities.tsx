@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   generateRecommendation,
+  filterCandidatesWithObservedMarketData,
   discoverCandidates,
   type CandidateInput,
   type TradingMode,
@@ -425,8 +426,13 @@ export function MarketOpportunities({
       if (horizonResult) return horizonResult;
     }
 
-    // Fallback to static discovery-based candidates (Phase 49)
-    return generateRecommendation(candidates, currentHorizon, { maxResults: 10 });
+    // Discovery metadata is not market evidence. Only fall back to candidates
+    // with an observed price, usable observation count, freshness and provider.
+    return generateRecommendation(
+      filterCandidatesWithObservedMarketData(candidates),
+      currentHorizon,
+      { maxResults: 10 },
+    );
   }, [scanResult, currentHorizon, candidates]);
 
   // Filter by region (post-scan, since regions aren't in the scan config)

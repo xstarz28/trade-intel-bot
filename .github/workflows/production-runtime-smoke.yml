@@ -1,6 +1,8 @@
 name: Production runtime smoke
 
 on:
+  # Only test the public site after a successful production deployment, or
+  # when explicitly requested. A branch push does not change the production UI.
   workflow_run:
     workflows: ["Production frontend deploy"]
     types: [completed]
@@ -16,7 +18,7 @@ concurrency:
 jobs:
   smoke:
     name: Real production BTC analysis smoke
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name == 'fix/radar-completeness-context') || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -30,7 +32,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
 
       - name: Install repository dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund

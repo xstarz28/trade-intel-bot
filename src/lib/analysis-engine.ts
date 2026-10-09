@@ -68,9 +68,9 @@ export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradeP
 // they exist only as a small secondary modifier that can never flip
 // the bias on its own.
 const CORE_WEIGHTS = {
-  trend: 0.45,
-  fundamental: 0.3,
-  sentiment: 0.25,
+  trend: 0.4,
+  fundamental: 0.4,
+  sentiment: 0.2,
 } as const;
 
 /**
@@ -178,8 +178,42 @@ function applyStructuralVeto(
   bias: DirectionalBias,
   input: AnalysisInput,
   mtf?: MtfContext,
+  breakdown?: BiasBreakdown,
 ): { bias: DirectionalBias; vetoReason?: string } {
-  if (bias === "Neutral") return { bias };
+  if (bias === "Neutral") {
+    const structuralDir = structuralDirection(input.technicalData);
+    if (structuralDir !== "none") {
+      const structureSign = structuralDir === "long" ? 1 : -1;
+      const materiallyOpposing = [
+        breakdown?.fundamental ?? 0,
+        breakdown?.sentiment ?? 0,
+      ].filter((score) => Math.abs(score) >= 2 && Math.sign(score) === -structureSign);
+
+      if (materiallyOpposing.length < 2) return { bias: structuralDir === "long" ? "Bullish" : "Bearish" };
+      return {
+        bias,
+        vetoReason: "Structural agreement required: fundamental and positioning both strongly oppose external structure; directional bias remains Neutral.",
+      };
+    }
+
+    const evidenceNames: string[] = [];
+    if ((input.macroData && input.macroData.confidence !== "unavailable") || input.calendarData || input.economicEvents || input.fundamentalData?.available) evidenceNames.push("fundamental");
+    if (
+      (input.sentimentData && input.sentimentData.confidence !== "unavailable") ||
+      (input.derivativesData && input.derivativesData.confidence !== "unavailable") ||
+      input.fundingRate
+    ) evidenceNames.push("positioning/sentiment");
+
+    const structLabel =
+      input.technicalData?.smc?.internalExternal.external.structure ??
+      input.technicalData?.structure ?? "unavailable";
+    return {
+      bias,
+      vetoReason:
+        `Structural agreement required: no directional external structure is available (${structLabel}); non-structural evidence cannot create a directional thesis` +
+        (evidenceNames.length > 0 ? ` — observed evidence: ${evidenceNames.join(", ")}.` : "."),
+    };
+  }
   const biasDir: TfDirection = bias === "Bullish" ? "long" : "short";
   if (structuralDirection(input.technicalData) === biasDir) return { bias };
 
@@ -212,7 +246,7 @@ function applyStructuralVeto(
 
 // ── Bias Calculation (structure + fundamental + positioning core) ──
 
-function calculateBias(breakdown: BiasBreakdown): {
+export function calculateBias(breakdown: BiasBreakdown): {
   bias: DirectionalBias;
   coreWeightedAvg: number;
 } {
@@ -225,10 +259,16 @@ function calculateBias(breakdown: BiasBreakdown): {
   // this weighted average. It is a capped secondary modifier used only
   // in conviction scoring — it can never create or flip the bias.
 
-  // Bias is derived from the CORE average only.
-  let bias: DirectionalBias = "Neutral";
-  if (coreWeightedAvg > 0.25) bias = "Bullish";
-  else if (coreWeightedAvg < -0.25) bias = "Bearish";
+  // Structure is the only authority that can establish direction. The
+  // 40/40/20 weighted average remains an evidence-quality/conviction input,
+  // but opposing fundamental or positioning values must not flip an existing
+  // structural thesis to the opposite direction (or erase it by averaging).
+  // Explicit decision gates can still downgrade a structurally supported
+  // thesis to NO_TRADE when material opposition or weak confluence is present.
+  const bias: DirectionalBias =
+    breakdown.trend > 0 ? "Bullish" :
+    breakdown.trend < 0 ? "Bearish" :
+    "Neutral";
 
   return {
     bias,
@@ -2115,8 +2155,33 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // creation authority. Non-structural evidence can support/weaken/veto to
   // Neutral; only a genuine HTF external reversal authorizes an exception.
   const mtf = input.technicalData?.mtf;
-  const { bias: rawBias, coreWeightedAvg } = calculateBias(breakdown);
-  const { bias, vetoReason: structuralVetoReason } = applyStructuralVeto(rawBias, input, mtf);
+  const { coreWeightedAvg } = calculateBias(breakdown);
+
+  // Keep weighted evidence as the initial read when it is directional, then
+  // apply the external-structure veto. If the weighted layers cancel to
+  // Neutral, use external structure as the anchor unless BOTH fundamental
+  // and positioning materially oppose it. A validated HTF external reversal
+  // remains the only way to authorize a thesis against the external label.
+  const externalDirection = structuralDirection(input.technicalData);
+  const authorizedHtfReversal = mtf?.htfReversal;
+  const weightedCoreBias: DirectionalBias =
+    coreWeightedAvg > 0.25 ? "Bullish" :
+    coreWeightedAvg < -0.25 ? "Bearish" :
+    "Neutral";
+  const externalSign = externalDirection === "long" ? 1 : externalDirection === "short" ? -1 : 0;
+  const materiallyOpposingCount = externalSign === 0 ? 0 : [
+    breakdown.fundamental,
+    breakdown.sentiment,
+  ].filter((score) => Math.abs(score) >= 2 && Math.sign(score) === -externalSign).length;
+
+  const rawBias: DirectionalBias = authorizedHtfReversal
+    ? authorizedHtfReversal.direction === "bullish" ? "Bullish" : "Bearish"
+    : weightedCoreBias !== "Neutral" ? weightedCoreBias
+    : externalDirection !== "none" && materiallyOpposingCount < 2
+      ? externalDirection === "long" ? "Bullish" : "Bearish"
+      : "Neutral";
+
+  const { bias, vetoReason: structuralVetoReason } = applyStructuralVeto(rawBias, input, mtf, breakdown);
   const alignment = computeAlignment(input);
 
   // ── Phase 5: market context (regime, setup class, contradictions) ──

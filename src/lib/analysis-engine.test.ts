@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runAnalysis } from "./analysis-engine";
+import { calculateBias, runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 
 function baseInput(overrides?: Partial<AnalysisInput>): AnalysisInput {
@@ -16,6 +16,32 @@ function baseInput(overrides?: Partial<AnalysisInput>): AnalysisInput {
 describe("calculateBias (via runAnalysis)", () => {
   it("returns Neutral when all scores are zero", () => {
     const result = runAnalysis(baseInput());
+    expect(result.bias).toBe("Neutral");
+  });
+
+  it("applies the documented 40/40/20 weights without letting fundamentals flip structure", () => {
+    const result = calculateBias({
+      trend: 1,
+      fundamental: -2,
+      sentiment: 0,
+      indicator: 0,
+    });
+
+    // The score reflects the full fundamental weight, but direction remains
+    // structurally bullish; Gate 5 decides whether opposing evidence rejects it.
+    expect(result.coreWeightedAvg).toBeCloseTo(-0.4, 8);
+    expect(result.bias).toBe("Bullish");
+  });
+
+  it("does not create a directional thesis from non-technical evidence alone", () => {
+    const result = calculateBias({
+      trend: 0,
+      fundamental: 2,
+      sentiment: 2,
+      indicator: 0,
+    });
+
+    expect(result.coreWeightedAvg).toBeCloseTo(1.2, 8);
     expect(result.bias).toBe("Neutral");
   });
 

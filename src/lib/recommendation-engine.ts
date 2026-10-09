@@ -146,6 +146,25 @@ export interface CandidateInput {
   fundamentalEvidenceAvailable?: boolean;
 }
 
+/**
+ * Keep discovery-only placeholders out of fallback rankings. This does not
+ * replace scanner freshness/eligibility gates; it prevents the UI fallback
+ * from presenting candidates that have no observed market price or OHLCV data.
+ */
+export function filterCandidatesWithObservedMarketData(
+  candidates: readonly CandidateInput[],
+): CandidateInput[] {
+  return candidates.filter((candidate) =>
+    candidate.hasLiveData &&
+    Number.isFinite(candidate.currentPrice) &&
+    candidate.currentPrice > 0 &&
+    Number.isFinite(candidate.dataPoints) &&
+    candidate.dataPoints > 0 &&
+    candidate.freshness !== "UNAVAILABLE" &&
+    candidate.providerCoverage !== "NONE"
+  );
+}
+
 export interface RankedInstrument {
   /** Canonical instrument ID. */
   instrument: string;
@@ -767,8 +786,32 @@ export function scoreCandidate(
   const breadth = directional
     ? Math.min(100, 35 + agreeingNonTechnical * 20 + (c.confluenceCount ?? 0) * 5)
     : 10;
+  // Coherence measures agreement among evidence layers that actually exist.
+  // Treating missing layers as 0/100 silently turns "unknown" into strong
+  // opposition, which previously depressed confidence for every candidate
+  // lacking optional fundamental, macro, or positioning providers.
+  const coherenceLayers: Array<{ score: number; weight: number }> = [];
+  if (c.fundamentalEvidenceAvailable || c.fundamentalScore !== undefined) {
+    coherenceLayers.push({ score: fundamental, weight: 0.4 });
+  }
+  if (c.macroScore !== undefined) {
+    coherenceLayers.push({ score: macro, weight: 0.2 });
+  }
+  if (c.positioningScore !== undefined) {
+    coherenceLayers.push({ score: positioning, weight: 0.2 });
+  }
   const coherence = directional
-    ? Math.min(100, Math.max(0, 50 + (fundamental - 50) * 0.4 + (macro - 50) * 0.2 + (positioning - 50) * 0.2))
+    ? Math.min(
+        100,
+        Math.max(
+          0,
+          50 +
+            coherenceLayers.reduce(
+              (sum, layer) => sum + (layer.score - 50) * layer.weight,
+              0,
+            ),
+        ),
+      )
     : 10;
   const confidence = Math.round(
     Math.min(100, dq.score * 0.25 + breadth * 0.25 + coherence * 0.5),

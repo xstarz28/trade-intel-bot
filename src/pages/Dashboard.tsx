@@ -17,12 +17,12 @@ import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
-import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
-import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
+import { toRadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { getAllInstruments } from "@/lib/data/universal/instruments";
@@ -129,24 +129,6 @@ function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
       setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs),
     ),
   ]);
-}
-
-function findLiveSnapshotForInstrument(
-  liveSources: Map<string, LiveCandidateSource>,
-  instrument: string,
-): LiveCandidateSource | undefined {
-  const exact = liveSources.get(instrument);
-  if (exact) return exact;
-  const base = instrument.split("/")[0]?.toUpperCase();
-  if (!base) return undefined;
-  return Array.from(liveSources.values()).find((source) => {
-    if (source.assetClass !== "crypto" || !source.marketData) return false;
-    const sourceBase = source.instrument
-      .replace(/[-_](?:USDT|USDC|USD|USDE|USDS|BTC|ETH|EUR|AUD|SGD|PLN)(?:[-_].*)?$/i, "")
-      .split(/[/:_-]/)[0]
-      ?.toUpperCase();
-    return sourceBase === base;
-  });
 }
 
 function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
@@ -257,7 +239,7 @@ export default function Dashboard() {
         setScanResult(
           scanInstruments(
             Array.from(liveSourceRef.current.values()),
-            { horizons: ["INTRADAY", "SWING"], maxResults: 10 },
+            { horizons: ALL_SCAN_HORIZONS, maxResults: 10 },
           ),
         );
       } catch {
@@ -812,7 +794,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep],
+    [fetchMarketData, fetchFxRate, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep, riskSizingInputs, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
@@ -900,7 +882,7 @@ export default function Dashboard() {
       setLiveSourcesVersion((version) => version + 1);
 
       const config = {
-        horizons: ["INTRADAY" as const, "SWING" as const],
+        horizons: ALL_SCAN_HORIZONS,
         maxResults: 10,
       };
       setScanResult(
@@ -918,64 +900,22 @@ export default function Dashboard() {
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
   const radarStateRef = useRef<RadarState | null>(null);
 
-  // Auto-scan when live sources change
-  useMemo(() => {
+  // Auto-scan after live sources change. State updates belong in effects,
+  // never in render-time memoization.
+  useEffect(() => {
     if (liveSources.length > 0) {
-      const config = { horizons: ["INTRADAY" as const, "SWING" as const], maxResults: 10 };
+      const config = { horizons: ALL_SCAN_HORIZONS, maxResults: 10 };
       const result = scanInstruments(liveSources, config);
       setScanResult(result);
     }
   }, [liveSources]);
 
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
-  useMemo(() => {
+  useEffect(() => {
     if (liveSources.length === 0) return;
-    // Build radar candidate sources from analysis history
-    const radarSources: RadarCandidateSource[] = liveSources.map(ls => {
-      const ar = ls.analysisResult;
-      return {
-        universe: {
-          instrument: ls.instrument,
-          assetClass: ls.assetClass,
-          region: ls.assetClass === "equity" ? (ls.instrument.includes("BBCA") || ls.instrument.includes("BBRI") || ls.instrument.includes("TLKM") || ls.instrument.includes("BMRI") || ls.instrument.includes("BBNI") || ls.instrument.includes("GOTO") ? "idx" : "us") : "global",
-          requiredCapabilities: ["ohlcv", "quote"],
-          priority: 1,
-          refreshIntervalMs: 300_000,
-        },
-        snapshot: ls.marketData ? {
-          instrument: ls.marketData.instrument,
-          assetClass: ls.assetClass,
-          price: ls.marketData.price.price,
-          ohlcvAvailable: ls.marketData.candles.length > 0,
-          availableTimeframes: ls.marketData.candles.length > 0
-            ? [ls.marketData.timeframe]
-            : [],
-          htfBias: ar?.bias === "Bullish"
-            ? "long"
-            : ar?.bias === "Bearish"
-              ? "short"
-              : "neutral",
-          marketRegime: "UNKNOWN",
-          provider: ls.marketData.provider,
-          observedAt: ls.marketData.price.timestamp || ls.marketData.fetchTimestamp,
-          freshness: ls.marketData.dataFreshness === "realtime"
-            ? "FRESH"
-            : ls.marketData.dataFreshness === "delayed"
-              ? "DELAYED"
-              : ls.marketData.dataFreshness === "stale"
-                ? "STALE"
-                : "UNAVAILABLE",
-          quality: ls.marketData.dataFreshness === "unavailable"
-            ? "UNAVAILABLE"
-            : "VERIFIED",
-        } : null,
-        analysisResult: ar ? {
-          confidence: ar.confidence,
-          bias: ar.bias,
-          recommendation: ar.recommendation,
-        } : undefined,
-      } as RadarCandidateSource;
-    });
+    // Map the verified runtime snapshots and all independently acquired context.
+    // Keep actual structure authoritative; never infer it from the final analysis bias.
+    const radarSources = liveSources.map(toRadarCandidateSource);
 
     const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
     const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);
@@ -1209,14 +1149,27 @@ export default function Dashboard() {
                     ))}
                   </div>
 
-                  {fetchError && (
-                    <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
-                      <p className="text-xs font-mono text-red-400">{fetchError}</p>
-                      <p className="text-[10px] font-mono text-red-400/60 mt-1">
-                        {t.dashboard.checkApiKey}
-                      </p>
-                    </div>
-                  )}
+                </motion.div>
+              ) : fetchError ? (
+                <motion.div
+                  key="analysis-error"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  role="alert"
+                  data-analysis-error="true"
+                  className="flex flex-col items-center justify-center py-16 text-center"
+                >
+                  <div className="max-w-lg rounded-lg border border-red-500/25 bg-red-500/5 px-5 py-4">
+                    <h3 className="text-sm font-semibold font-mono text-red-400">
+                      {t.dashboard.dataFetchFailed}
+                    </h3>
+                    <p className="mt-2 text-xs font-mono text-foreground/90 break-words">
+                      {fetchError}
+                    </p>
+                    <p className="mt-2 text-[10px] font-mono text-muted-foreground">
+                      {t.dashboard.checkApiKey}
+                    </p>
+                  </div>
                 </motion.div>
               ) : currentResult ? (
                 <motion.div

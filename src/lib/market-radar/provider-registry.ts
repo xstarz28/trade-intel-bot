@@ -216,6 +216,7 @@ function buildTwelveDataAdapter(): ProviderAdapter {
           : undefined,
         volume24h: volume,
         ohlcvAvailable: true,
+        dataPoints: values.length,
         availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
         provider: "twelve-data",
         observedAt: new Date(latest.datetime).getTime(),
@@ -404,7 +405,7 @@ function buildOkxAdapter(): ProviderAdapter {
         const ts = parseInt(row[0]);
         return {
           instrument, assetClass: "crypto", price,
-          ohlcvAvailable: true, availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
+          ohlcvAvailable: true, dataPoints: rows.length, availableTimeframes: ["M1", "M5", "M15", "H1", "H4", "D1"],
           provider: "okx", observedAt: Number.isFinite(ts) ? ts : Date.now(),
           freshness: assessFreshness(Number.isFinite(ts) ? ts : Date.now(), Date.now()),
           quality: "VERIFIED",
@@ -749,6 +750,7 @@ export async function acquireProviderNativeLiveData(
       assetClass: input.assetClass,
       price: latest.close,
       ohlcvAvailable: true,
+      dataPoints: candles.length,
       availableTimeframes: ["H1"],
       provider: result.provider ?? input.provider,
       observedAt,

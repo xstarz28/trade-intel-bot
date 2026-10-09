@@ -27,6 +27,18 @@ import { calculateTechnical } from "./data/technical";
 // LIVE CANDIDATE INPUT
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Look up only the exact requested instrument identity. Quote currency and
+ * contract type are part of the instrument: BTC/USD must never silently use
+ * BTC-USDT-SWAP (or any other same-base market) as a fallback snapshot.
+ */
+export function findLiveSnapshotForInstrument(
+  liveSources: Map<string, LiveCandidateSource>,
+  instrument: string,
+): LiveCandidateSource | undefined {
+  return liveSources.get(instrument);
+}
+
 export interface LiveCandidateSource {
   /** Candidate/display instrument identifier. For provider-native candidates this is the exact provider instrument ID. */
   instrument: string;
@@ -71,6 +83,35 @@ function assessFreshness(
   if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
   if (ageMs < 24 * 60 * 60_000) return "STALE";   // < 24 hours
   return "UNAVAILABLE";
+}
+
+type CandidateFreshness = "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE";
+
+const FRESHNESS_RANK: Record<CandidateFreshness, number> = {
+  FRESH: 0,
+  DELAYED: 1,
+  STALE: 2,
+  UNAVAILABLE: 3,
+};
+
+/**
+ * A recent fetch does not make a provider's delayed/stale feed realtime.
+ * Use the more conservative status from the observation timestamp and the
+ * provider's explicit freshness declaration.
+ */
+function constrainByProviderFreshness(
+  observed: CandidateFreshness,
+  reported: MarketData["dataFreshness"] | undefined,
+): CandidateFreshness {
+  if (!reported) return observed;
+  const providerStatus: Record<MarketData["dataFreshness"], CandidateFreshness> = {
+    realtime: "FRESH",
+    delayed: "DELAYED",
+    stale: "STALE",
+    unavailable: "UNAVAILABLE",
+  };
+  const declared = providerStatus[reported];
+  return FRESHNESS_RANK[observed] >= FRESHNESS_RANK[declared] ? observed : declared;
 }
 
 function assessDataCompleteness(source: LiveCandidateSource, technicalData?: TechnicalData): DataCompletenessLevel {
@@ -120,10 +161,19 @@ function extractAtr(tech: TechnicalData | undefined): number | undefined {
 }
 function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
   if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
+  const structureDirection =
+    tech.structure === "HH/HL" ? "long" :
+    tech.structure === "LH/LL" ? "short" : undefined;
+  const breakoutDirection =
+    tech.bosDirection === "bullish" ? "long" :
+    tech.bosDirection === "bearish" ? "short" : undefined;
+  // HTF bias remains authoritative, followed by confirmed directional
+  // structure. When structure is ranging, a real BOS can still provide
+  // directional evidence instead of collapsing every breakout to Neutral.
   const direction =
     tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
       ? tech.mtf.htfBias
-      : tech.structure === "HH/HL" ? "long" : tech.structure === "LH/LL" ? "short" : "neutral";
+      : structureDirection ?? breakoutDirection ?? "neutral";
   if (direction === "neutral") return { setupDirection: "neutral", setupStrength: 20, confluenceCount: 0 };
 
   let score = 35, confirmations = 1;
@@ -254,7 +304,10 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     latestCandleTimestamp ??
     ar?.priceSnapshot?.timestamp ??
     source.marketData?.fetchTimestamp;
-  const freshness = assessFreshness(observationTimestamp, now);
+  const freshness = constrainByProviderFreshness(
+    assessFreshness(observationTimestamp, now),
+    source.marketData?.dataFreshness,
+  );
 
   // Data completeness
   const dataCompleteness = assessDataCompleteness(source, tech);
