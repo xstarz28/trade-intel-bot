@@ -85,6 +85,35 @@ function assessFreshness(
   return "UNAVAILABLE";
 }
 
+type CandidateFreshness = "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE";
+
+const FRESHNESS_RANK: Record<CandidateFreshness, number> = {
+  FRESH: 0,
+  DELAYED: 1,
+  STALE: 2,
+  UNAVAILABLE: 3,
+};
+
+/**
+ * A recent fetch does not make a provider's delayed/stale feed realtime.
+ * Use the more conservative status from the observation timestamp and the
+ * provider's explicit freshness declaration.
+ */
+function constrainByProviderFreshness(
+  observed: CandidateFreshness,
+  reported: MarketData["dataFreshness"] | undefined,
+): CandidateFreshness {
+  if (!reported) return observed;
+  const providerStatus: Record<MarketData["dataFreshness"], CandidateFreshness> = {
+    realtime: "FRESH",
+    delayed: "DELAYED",
+    stale: "STALE",
+    unavailable: "UNAVAILABLE",
+  };
+  const declared = providerStatus[reported];
+  return FRESHNESS_RANK[observed] >= FRESHNESS_RANK[declared] ? observed : declared;
+}
+
 function assessDataCompleteness(source: LiveCandidateSource, technicalData?: TechnicalData): DataCompletenessLevel {
   let count = 0;
   if (source.marketData?.price?.price) count++;
@@ -275,7 +304,10 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     latestCandleTimestamp ??
     ar?.priceSnapshot?.timestamp ??
     source.marketData?.fetchTimestamp;
-  const freshness = assessFreshness(observationTimestamp, now);
+  const freshness = constrainByProviderFreshness(
+    assessFreshness(observationTimestamp, now),
+    source.marketData?.dataFreshness,
+  );
 
   // Data completeness
   const dataCompleteness = assessDataCompleteness(source, tech);
