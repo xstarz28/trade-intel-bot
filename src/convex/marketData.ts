@@ -19,7 +19,6 @@ import {
   crossAssetComparator,
   DXY_CANDIDATE_SYMBOLS,
   pearsonCorrelation,
-  resolveWorkingSymbol,
   selectDxyProbeCandidate,
 } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
