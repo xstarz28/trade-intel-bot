@@ -80,10 +80,11 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     await option.click();
   }
 
-  const timeframeButton = targetPage.locator("button").filter({ hasText: expectedTimeframe }).first();
+  const form = targetPage.locator("form").filter({ has: targetPage.getByRole("combobox").first() }).first();
+  const timeframeButton = form.getByRole("button", { name: expectedTimeframe, exact: true });
   if (!(await timeframeButton.count()) || !(await timeframeButton.isVisible())) {
-    const controls = await targetPage.locator("button").allTextContents();
-    throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}. Buttons: ${controls.join(" | ")}`);
+    const controls = await form.locator("button").allTextContents();
+    throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}. Form buttons: ${controls.join(" | ")}`);
   }
   await timeframeButton.click();
 
@@ -95,7 +96,6 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
 
   // Submit the authoritative instrument form directly. The visible label is localized,
   // so text-matching a translated button is not a reliable production smoke control.
-  const form = targetPage.locator("form").filter({ has: targetPage.getByRole("combobox").first() }).first();
   const run = form.locator("button[type=\"submit\"]").first();
   if (!(await run.count())) {
     const buttons = await form.locator("button").allTextContents();
