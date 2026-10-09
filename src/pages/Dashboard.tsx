@@ -21,6 +21,7 @@ import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandi
 import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
+import { parseDeFiLlamaResult } from "@/lib/data/crypto/defillama-adapter";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import { toRadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
@@ -262,6 +263,7 @@ export default function Dashboard() {
   const fetchFxRate = useAction(api.marketData.fetchFxRate);
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
+  const fetchDeFiLlamaFundamentals = useAction(api.coinglass.fetchDeFiLlamaFundamentals);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
   const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
   const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
@@ -319,6 +321,7 @@ export default function Dashboard() {
         let marketDataResult: MarketDataResult;
         let intelligenceResult: any = null;
         let derivativesResult: any = null;
+        let defiFundamentalsResult: any = null;
         let calendarResult: any = null;
         try {
           // Build fetch promises
@@ -357,6 +360,13 @@ export default function Dashboard() {
                 "Derivatives",
               ),
             );
+            fetchPromises.push(
+              withActionTimeout(
+                fetchDeFiLlamaFundamentals({ instrument: input.instrument }),
+                ACTION_TIMEOUTS_MS.intelligence,
+                "DeFiLlama fundamentals",
+              ),
+            );
           }
 
           const results = await Promise.allSettled(fetchPromises);
@@ -364,6 +374,7 @@ export default function Dashboard() {
           const intelResult = results[1];
           calendarResult = results[2];
           const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
+          const defiFundamentalsResultSettled = input.instrumentType === "crypto" ? results[4] : undefined;
 
           // A verified provider-native snapshot is authoritative when it is
           // genuinely realtime. Do NOT let a fulfilled secondary provider
@@ -423,6 +434,11 @@ export default function Dashboard() {
           // Derivatives is non-critical
           if (derivResult && derivResult.status === "fulfilled") {
             derivativesResult = derivResult.value;
+          }
+          // DeFiLlama is independent and non-critical: analysis continues with
+          // explicit missing-context state when this provider is unavailable.
+          if (defiFundamentalsResultSettled && defiFundamentalsResultSettled.status === "fulfilled") {
+            defiFundamentalsResult = defiFundamentalsResultSettled.value;
           }
         } catch (err: any) {
           updateStep(1, "error");
@@ -523,10 +539,17 @@ export default function Dashboard() {
           const derivativesContext = derivativesResult?.data
             ? parseCoinGlassResult(derivativesResult.data, input.instrument, derivativesResult.data.timestamp ?? Date.now())
             : undefined;
+          const defiContext = defiFundamentalsResult?.success && defiFundamentalsResult?.data
+            ? parseDeFiLlamaResult(
+                defiFundamentalsResult.data as Record<string, any>,
+                input.instrument,
+                defiFundamentalsResult.observedAt ?? Date.now(),
+              )
+            : undefined;
           enrichedInput.cryptoIntelligenceContext = buildCryptoIntelligenceContext(
             input.instrument,
             derivativesContext,
-            undefined,
+            defiContext,
             derivativesResult?.tokenomics,
           ) ?? undefined;
         }
@@ -794,7 +817,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchFxRate, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep, riskSizingInputs, t],
+    [fetchMarketData, fetchFxRate, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep, riskSizingInputs, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
