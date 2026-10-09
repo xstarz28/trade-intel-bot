@@ -20,6 +20,7 @@ import {
   DXY_CANDIDATE_SYMBOLS,
   pearsonCorrelation,
   resolveWorkingSymbol,
+  selectDxyProbeCandidate,
 } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
 
@@ -30,6 +31,12 @@ import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../l
  */
 let dxyResolvedSymbol: string | null = null;
 let dxyAllCandidatesFailedAt: number | null = null;
+// DXY is optional context. Rate-limit its discovery so failed symbol probes
+// cannot starve primary OHLCV and the MTF chain on subsequent analyses.
+let dxyProbeCursor = 0;
+let dxyLastProbeAt: number | null = null;
+let dxyLastProbedSymbol: string | null = null;
+const DXY_PROBE_COOLDOWN_MS = 60_000;
 
 interface TdCandle {
   datetime: string;
@@ -227,15 +234,38 @@ export const fetchMarketData = action({
             } else if (dxyResolvedSymbol) {
               compSymbol = dxyResolvedSymbol;
             } else {
-              const probes: Record<string, boolean> = {};
-              for (const cand of DXY_CANDIDATE_SYMBOLS) {
-                const test = await fetchCandles(cand, "D1", 5, apiKey).catch(() => null);
-                probes[cand] = !!test && test.length > 0;
-                if (probes[cand]) break; // stop at first success — minimal requests
+              // At most one failed provider-symbol probe per cooldown. Do not
+              // burst through the remaining candidates after the core MTF
+              // requests: on a limited plan those optional 404s can starve
+              // the next instrument's actual market-data requests.
+              const candidate = selectDxyProbeCandidate(
+                DXY_CANDIDATE_SYMBOLS,
+                dxyProbeCursor,
+                dxyLastProbeAt,
+                Date.now(),
+                DXY_PROBE_COOLDOWN_MS,
+              );
+              if (candidate) {
+                const test = await fetchCandles(candidate, "D1", 5, apiKey).catch(() => null);
+                dxyLastProbeAt = Date.now();
+                dxyLastProbedSymbol = candidate;
+                if (test && test.length > 0) {
+                  compSymbol = candidate;
+                  dxyResolvedSymbol = candidate;
+                } else {
+                  dxyProbeCursor += 1;
+                  compSymbol = null;
+                  if (dxyProbeCursor >= DXY_CANDIDATE_SYMBOLS.length) {
+                    dxyAllCandidatesFailedAt = Date.now();
+                    dxyProbeCursor = 0;
+                    dxyLastProbeAt = null;
+                  }
+                }
+              } else {
+                // A prior probe failed recently; wait rather than spending
+                // another request in the same rate-limit window.
+                compSymbol = null;
               }
-              compSymbol = resolveWorkingSymbol(DXY_CANDIDATE_SYMBOLS, (c) => probes[c] ?? false);
-              if (compSymbol) dxyResolvedSymbol = compSymbol;
-              else dxyAllCandidatesFailedAt = Date.now();
             }
           }
           const compCandles = compSymbol
@@ -288,7 +318,11 @@ export const fetchMarketData = action({
               available: false,
               unavailableReason:
                 comparator.toUpperCase() === "DXY"
-                  ? "actual DXY price series is not available on the current Twelve Data plan (all documented index symbols verified invalid live) — NEWS-derived USD proxy remains labeled fallback"
+                  ? dxyResolvedSymbol
+                    ? `actual DXY symbol ${dxyResolvedSymbol} was resolved previously, but its ${args.timeframe} price series could not be fetched`
+                    : dxyAllCandidatesFailedAt !== null && Date.now() - dxyAllCandidatesFailedAt < 24 * 3600e3
+                      ? "actual DXY price series unavailable: all documented Twelve Data index symbols were tested and rejected; the labeled news-derived USD proxy remains only a fallback"
+                      : `actual DXY remains unresolved; latest probe ${dxyLastProbedSymbol ?? "not run"} was unavailable or the next probe is throttled to protect primary/MTF request capacity`
                   : `no comparable series returned by the provider for ${comparator}`,
             };
           }
