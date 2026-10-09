@@ -55,4 +55,52 @@ describe("Phase 154 — recommendation ranking integrity", () => {
 
     expect(withDerivatives.analyticalScore).toBeLessThan(without.analyticalScore);
   });
+
+  it("does not treat missing non-technical evidence as opposing directional evidence", () => {
+    const missing = scoreCandidate(
+      baseCandidate({
+        fundamentalEvidenceAvailable: false,
+        fundamentalScore: undefined,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+    const observedNeutral = scoreCandidate(
+      baseCandidate({
+        fundamentalEvidenceAvailable: true,
+        fundamentalScore: 0,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+
+    expect(missing.confidence).toBe(observedNeutral.confidence);
+    expect(missing.conflicts).toContain("directional fundamental evidence unavailable");
+  });
+
+  it("reduces coherence when actual opposing fundamental evidence is present", () => {
+    const missing = scoreCandidate(
+      baseCandidate({
+        fundamentalEvidenceAvailable: false,
+        fundamentalScore: undefined,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+    const opposing = scoreCandidate(
+      baseCandidate({
+        fundamentalEvidenceAvailable: true,
+        fundamentalScore: -2,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+
+    expect(opposing.confidence).toBeLessThan(missing.confidence);
+    expect(opposing.conflicts).toContain("fundamental evidence opposes the technical direction");
+  });
 });
