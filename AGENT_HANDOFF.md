@@ -31,7 +31,8 @@
 
 ## Next bounded task
 - Verify score differentiation with real, verified OHLCV inputs from structurally distinct instruments. Add a regression only after identifying a reproducible scoring collapse; do not tune scores by assumption.
-- Then resume true end-to-end BTC and XAU analysis checks, without deploying to production until the deployment quota/status is known and a smoke test can be run.
+- A confirmed scoring-collapse cause was found in `src/lib/liveCandidateBuilder.ts`: a valid BOS on a ranging structure was ignored, making that actual directional break score as Neutral. Builder now falls back to BOS only when no directional HTF bias or HH/HL/LH/LL structure exists; regression tests cover bullish and bearish breaks.
+- After CI confirms these changes, resume true end-to-end BTC and XAU analysis checks, without deploying to production until the deployment quota/status is known and a smoke test can be run.
 
 ## Guardrails
 - Preserve provider-native instrument identity and provenance.

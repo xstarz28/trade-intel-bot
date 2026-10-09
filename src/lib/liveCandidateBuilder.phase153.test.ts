@@ -78,6 +78,55 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.setupStrength).toBeGreaterThan(0);
   });
 
+  it.each([
+    ["bullish", "long"],
+    ["bearish", "short"],
+  ] as const)(
+    "uses a %s break of structure when market structure is ranging",
+    (bosDirection, expectedDirection) => {
+      const now = Date.now();
+      const candles = Array.from({ length: 100 }, (_, i) => ({
+        timestamp: now - (100 - i) * 60_000,
+        time: now - (100 - i) * 60_000,
+        open: 100,
+        high: 101,
+        low: 99,
+        close: 100,
+        volume: 1,
+      }));
+      const candidate = buildCandidateFromSource({
+        instrument: "TEST-USDT",
+        assetClass: "crypto",
+        marketData: {
+          instrument: "TEST-USDT",
+          instrumentType: "crypto",
+          provider: "okx",
+          fetchTimestamp: now,
+          price: { price: 100, timestamp: now, source: "okx" },
+          candles,
+          timeframe: "H1",
+          higherTimeframe: "H4",
+          dataFreshness: "realtime",
+        },
+        technicalData: {
+          swingHighs: [101, 102, 103],
+          swingLows: [97, 98, 99],
+          structure: "range",
+          bosDirection,
+          chochDirection: "none",
+          supportLevels: [99],
+          resistanceLevels: [103],
+          volumeTrend: "stable",
+          dataPoints: 100,
+        },
+      });
+
+      expect(candidate.setupDirection).toBe(expectedDirection);
+      expect(candidate.setupStrength).toBeGreaterThan(35);
+      expect(candidate.confluenceCount).toBeGreaterThan(1);
+    },
+  );
+
   it("does not treat historical analysis alone as live market data", () => {
     const candidate = buildCandidateFromSource({
       instrument: "BTC/USD",
