@@ -17,7 +17,7 @@ import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
-import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
@@ -129,24 +129,6 @@ function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
       setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs),
     ),
   ]);
-}
-
-function findLiveSnapshotForInstrument(
-  liveSources: Map<string, LiveCandidateSource>,
-  instrument: string,
-): LiveCandidateSource | undefined {
-  const exact = liveSources.get(instrument);
-  if (exact) return exact;
-  const base = instrument.split("/")[0]?.toUpperCase();
-  if (!base) return undefined;
-  return Array.from(liveSources.values()).find((source) => {
-    if (source.assetClass !== "crypto" || !source.marketData) return false;
-    const sourceBase = source.instrument
-      .replace(/[-_](?:USDT|USDC|USD|USDE|USDS|BTC|ETH|EUR|AUD|SGD|PLN)(?:[-_].*)?$/i, "")
-      .split(/[/:_-]/)[0]
-      ?.toUpperCase();
-    return sourceBase === base;
-  });
 }
 
 function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
