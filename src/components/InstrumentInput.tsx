@@ -69,7 +69,14 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   const { t } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
   const [manualSearch, setManualSearch] = useState(false);
-  const instrumentRef = useRef(form.instrument);
+  // Keep every field synchronous with user input so an immediate submit cannot
+  // combine a new instrument with the previous category/timeframe/style render.
+  const formRef = useRef(form);
+  const commitForm = useCallback((updateForm: (current: PersistedForm) => PersistedForm) => {
+    const next = updateForm(formRef.current);
+    formRef.current = next;
+    setForm(next);
+  }, []);
   const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
 
   const categoryOptions: { value: InstrumentType; label: string }[] = [
@@ -83,28 +90,26 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   const filteredInstruments = categoryInstruments.length > 0 ? categoryInstruments : universeOptions;
 
   const selectCategory = useCallback((type: InstrumentType) => {
-    setForm((prev) => {
+    commitForm((prev) => {
       const nextOptions = universeOptions.filter((item) => item.type === type);
       const currentStillValid = nextOptions.some((item) => item.symbol === prev.instrument);
       const nextInstrument = currentStillValid ? prev.instrument : (nextOptions[0]?.symbol ?? "");
-      instrumentRef.current = nextInstrument;
       return {
         ...prev,
         instrumentType: type,
         instrument: nextInstrument,
       };
     });
-  }, [universeOptions]);
+  }, [commitForm, universeOptions]);
 
   const selectInstrument = useCallback((symbol: string) => {
-    instrumentRef.current = symbol;
     const match = universeOptions.find((item) => item.symbol === symbol);
-    setForm((prev) => ({
+    commitForm((prev) => ({
       ...prev,
       instrument: symbol,
       instrumentType: match?.type ?? prev.instrumentType,
     }));
-  }, [universeOptions]);
+  }, [commitForm, universeOptions]);
 
   useEffect(() => {
     try {
@@ -118,27 +123,26 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
     key: K,
     value: PersistedForm[K],
   ) => {
-    if (key === "instrument") instrumentRef.current = String(value);
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }, []);
+    commitForm((prev) => ({ ...prev, [key]: value }));
+  }, [commitForm]);
 
   const handleQuickSelect = useCallback((symbol: string, type: InstrumentType) => {
-    instrumentRef.current = symbol;
-    setForm((prev) => ({ ...prev, instrument: symbol, instrumentType: type }));
-  }, []);
+    commitForm((prev) => ({ ...prev, instrument: symbol, instrumentType: type }));
+  }, [commitForm]);
 
   const submitAnalysis = useCallback(() => {
-    const instrument = instrumentRef.current.trim();
+    const currentForm = formRef.current;
+    const instrument = currentForm.instrument.trim();
     if (!instrument || isAnalyzing) return;
 
     onAnalyze({
       instrument,
-      instrumentType: form.instrumentType,
-      timeframe: form.timeframe,
-      tradingStyle: form.tradingStyle,
-      requestedTimeframe: form.timeframe,
+      instrumentType: currentForm.instrumentType,
+      timeframe: currentForm.timeframe,
+      tradingStyle: currentForm.tradingStyle,
+      requestedTimeframe: currentForm.timeframe,
     });
-  }, [form, isAnalyzing, onAnalyze]);
+  }, [isAnalyzing, onAnalyze]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
