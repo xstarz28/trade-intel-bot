@@ -80,6 +80,7 @@ function makeSnapshot(overrides?: Partial<{
   spreadBps: number;
   volatility: number;
   ohlcvAvailable: boolean;
+  dataPoints: number;
   provider: string;
   freshness: FreshnessLevel;
 }>): any {
@@ -89,6 +90,9 @@ function makeSnapshot(overrides?: Partial<{
     region: "global",
     price: overrides?.price ?? 65000,
     ohlcvAvailable: overrides?.ohlcvAvailable ?? true,
+    // Test snapshots represent a provider response with 50 rows unless a test
+    // explicitly asks for another observed count.
+    dataPoints: overrides?.dataPoints ?? ((overrides?.ohlcvAvailable ?? true) ? 50 : 0),
     availableTimeframes: ["H1", "H4", "D1"],
     htfBias: overrides?.htfBias ?? "long",
     mtfAlignment: overrides?.mtfAlignment ?? "ALIGNED_BULLISH",
@@ -200,6 +204,16 @@ describe("A — Empty Analysis History", () => {
     });
     const candidate = buildRadarCandidate(source, NOW);
     expect(candidate.dataCompleteness).toBe("PARTIAL");
+  });
+
+  it("uses the provider-reported OHLCV row count instead of estimating 50", () => {
+    const exactSource = makeSource({ snapshot: makeSnapshot({ dataPoints: 23 }) });
+    expect(buildRadarCandidate(exactSource, NOW).dataPoints).toBe(23);
+
+    const noCountSnapshot = makeSnapshot({});
+    delete noCountSnapshot.dataPoints;
+    const noCountSource = makeSource({ snapshot: noCountSnapshot });
+    expect(buildRadarCandidate(noCountSource, NOW).dataPoints).toBe(0);
   });
 
   it("does not mark snapshot plus prior analysis as FULL without independent context", () => {
