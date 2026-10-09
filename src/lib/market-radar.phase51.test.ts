@@ -201,6 +201,33 @@ describe("A — Empty Analysis History", () => {
     const candidate = buildRadarCandidate(source, NOW);
     expect(candidate.dataCompleteness).toBe("PARTIAL");
   });
+
+  it("does not mark snapshot plus prior analysis as FULL without independent context", () => {
+    const source = makeSource({
+      snapshot: makeSnapshot({}),
+      derivatives: undefined,
+      fundamentals: undefined,
+      cot: undefined,
+      eia: undefined,
+      treasury: undefined,
+      analysisResult: {
+        confidence: "80",
+        bias: "Bullish",
+        recommendation: "BUY",
+      },
+    });
+    const candidate = buildRadarCandidate(source, NOW);
+    expect(candidate.dataCompleteness).toBe("PARTIAL");
+  });
+
+  it("allows FULL completeness when independent context evidence is available", () => {
+    const source = makeSource({
+      snapshot: makeSnapshot({}),
+      derivatives: { fundingRate: 0.0001, openInterest: 500_000_000 },
+    });
+    const candidate = buildRadarCandidate(source, NOW);
+    expect(candidate.dataCompleteness).toBe("FULL");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
