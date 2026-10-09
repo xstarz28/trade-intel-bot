@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument } from "./liveCandidateBuilder";
+import { buildRadarCandidate, toRadarCandidateSource } from "./market-radar/candidate-builder";
 
 describe("Phase 153 — Live Candidate Builder integrity", () => {
   it("never substitutes a different quote or contract with the same base asset", () => {
@@ -168,6 +169,63 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       expect(candidate.confluenceCount).toBeGreaterThan(1);
     },
   );
+
+  it("passes verified technical structure and derivatives into the radar source", () => {
+    const now = Date.now();
+    const source = {
+      instrument: "BTC-USDT-SWAP",
+      assetClass: "crypto" as const,
+      marketData: {
+        instrument: "BTC-USDT-SWAP",
+        instrumentType: "crypto" as const,
+        provider: "okx",
+        fetchTimestamp: now,
+        price: { price: 100_000, timestamp: now, source: "okx" },
+        candles: [{
+          time: now,
+          timestamp: now,
+          open: 99_900,
+          high: 100_100,
+          low: 99_800,
+          close: 100_000,
+          volume: 12,
+        }],
+        timeframe: "H1" as const,
+        dataFreshness: "realtime" as const,
+      },
+      technicalData: {
+        structure: "HH/HL" as const,
+        mtf: { htfBias: "long" as const, alignment: "ALIGNED_BULLISH" as const },
+        atr14: 250,
+        dataPoints: 1,
+      } as any,
+      derivativesData: {
+        provider: "fixture",
+        symbol: "BTC-USDT-SWAP",
+        timestamp: now,
+        freshness: "realtime" as const,
+        availability: {
+          openInterest: true,
+          fundingRate: true,
+          longShort: false,
+          liquidations: true,
+        },
+        confidence: "high" as const,
+        fundingRate: { currentRate: 0.0001 },
+        openInterest: { current: 500_000_000 },
+        liquidations: { totalVolume: 1_000_000 },
+      },
+    };
+
+    const radarSource = toRadarCandidateSource(source);
+    expect(radarSource.snapshot?.htfBias).toBe("long");
+    expect(radarSource.snapshot?.marketRegime).toBe("TRENDING");
+    expect(radarSource.snapshot?.mtfAlignment).toBe("ALIGNED_BULLISH");
+    expect(radarSource.derivatives?.fundingRate).toBe(0.0001);
+    expect(radarSource.derivatives?.openInterest).toBe(500_000_000);
+    expect(radarSource.derivatives?.liquidationVolume).toBe(1_000_000);
+    expect(buildRadarCandidate(radarSource, now).dataCompleteness).toBe("FULL");
+  });
 
   it("does not treat historical analysis alone as live market data", () => {
     const candidate = buildCandidateFromSource({
