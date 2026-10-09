@@ -108,7 +108,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
   await timeframeButton.click();
 
-  const selectedInstrument = targetPage.getByRole("combobox").first();
+  const selectedInstrument = form.getByRole("combobox").first();
   const selectedText = await selectedInstrument.innerText().catch(() => "");
   if (!selectedText.includes(instrument)) {
     throw new Error("".concat(instrument, " was not selected before analysis. Picker text: ").concat(selectedText));
