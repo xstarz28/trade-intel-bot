@@ -97,7 +97,6 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
             if (feesData?.total24h !== undefined) {
               data.fees = {
                 dailyFees: feesData.total24h,
-                dailyRevenue: feesData.total24h * 0.1, // rough protocol revenue estimate
               };
             }
           }

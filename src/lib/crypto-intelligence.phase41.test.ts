@@ -503,6 +503,21 @@ describe("Phase 41 — Timeout", () => {
     expect(result!.success).toBe(false);
     expect(result!.errorCode).toBe("NETWORK_ERROR");
   });
+
+  it("does not fabricate protocol revenue as a percentage of daily fees", async () => {
+    const adapter = new DeFiLlamaAdapter(async (url) => {
+      const responseUrl = String(url);
+      const body = responseUrl.includes("/historicalChainTvl/")
+        ? [{ date: Math.floor(Date.now() / 1000), tvl: 5_000_000 }]
+        : { total24h: 1_000 };
+      return { ok: true, json: async () => body } as Response;
+    });
+    const result = await adapter.fetch("ETH/USD");
+    expect(result?.success).toBe(true);
+    const data = result?.data as Record<string, any>;
+    expect(data.fees.dailyFees).toBe(1_000);
+    expect(data.fees.dailyRevenue).toBeUndefined();
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════
