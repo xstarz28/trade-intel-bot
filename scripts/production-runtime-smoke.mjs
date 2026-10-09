@@ -124,8 +124,22 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   let analysisOutcome;
   try {
     analysisOutcome = await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
-      const errorPanel = document.querySelector('[data-analysis-error="true"]');
-      if (errorPanel && errorPanel.textContent?.trim()) return "error";
+      // AnimatePresence can keep an exiting error panel in the DOM after it
+      // is no longer visible. Only treat an on-screen, non-transparent panel
+      // as a real analysis error.
+      const errorPanel = Array.from(document.querySelectorAll('[data-analysis-error="true"]')).find((el) => {
+        const style = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          Number(style.opacity) > 0 &&
+          rect.width > 0 &&
+          rect.height > 0 &&
+          Boolean((el.innerText || el.textContent || "").trim())
+        );
+      });
+      if (errorPanel) return "error";
 
       const visibleText = Array.from(document.querySelectorAll("*"))
         .filter((el) => {
@@ -151,7 +165,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
 
   if (analysisOutcome !== "success") {
-    const diagnostic = await targetPage.locator('[data-analysis-error="true"]').innerText().catch(() => "No provider error text captured.");
+    const diagnostic = await targetPage.locator('[data-analysis-error="true"]:visible').first().innerText().catch(() => "No visible provider error text captured.");
     throw new Error(`${instrument} analysis failed visibly: ${diagnostic}`);
   }
 
