@@ -179,7 +179,28 @@ function applyStructuralVeto(
   input: AnalysisInput,
   mtf?: MtfContext,
 ): { bias: DirectionalBias; vetoReason?: string } {
-  if (bias === "Neutral") return { bias };
+  if (bias === "Neutral") {
+    const structuralDir = structuralDirection(input.technicalData);
+    if (structuralDir !== "none") return { bias };
+
+    const evidenceNames: string[] = [];
+    if ((input.macroData && input.macroData.confidence !== "unavailable") || input.calendarData || input.economicEvents || input.fundamentalData?.available) evidenceNames.push("fundamental");
+    if (
+      (input.sentimentData && input.sentimentData.confidence !== "unavailable") ||
+      (input.derivativesData && input.derivativesData.confidence !== "unavailable") ||
+      input.fundingRate
+    ) evidenceNames.push("positioning/sentiment");
+
+    const structLabel =
+      input.technicalData?.smc?.internalExternal.external.structure ??
+      input.technicalData?.structure ?? "unavailable";
+    return {
+      bias,
+      vetoReason:
+        `Structural agreement required: no directional external structure is available (${structLabel}); non-structural evidence cannot create a directional thesis` +
+        (evidenceNames.length > 0 ? ` — observed evidence: ${evidenceNames.join(", ")}.` : "."),
+    };
+  }
   const biasDir: TfDirection = bias === "Bullish" ? "long" : "short";
   if (structuralDirection(input.technicalData) === biasDir) return { bias };
 
