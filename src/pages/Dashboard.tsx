@@ -22,7 +22,7 @@ import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, type 
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
-import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
+import { toRadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { getAllInstruments } from "@/lib/data/universal/instruments";
@@ -913,51 +913,10 @@ export default function Dashboard() {
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
   useEffect(() => {
     if (liveSources.length === 0) return;
-    // Build radar candidate sources from analysis history
-    const radarSources: RadarCandidateSource[] = liveSources.map(ls => {
-      const ar = ls.analysisResult;
-      return {
-        universe: {
-          instrument: ls.instrument,
-          assetClass: ls.assetClass,
-          region: ls.assetClass === "equity" ? (ls.instrument.includes("BBCA") || ls.instrument.includes("BBRI") || ls.instrument.includes("TLKM") || ls.instrument.includes("BMRI") || ls.instrument.includes("BBNI") || ls.instrument.includes("GOTO") ? "idx" : "us") : "global",
-          requiredCapabilities: ["ohlcv", "quote"],
-          priority: 1,
-          refreshIntervalMs: 300_000,
-        },
-        snapshot: ls.marketData ? {
-          instrument: ls.marketData.instrument,
-          assetClass: ls.assetClass,
-          price: ls.marketData.price.price,
-          ohlcvAvailable: ls.marketData.candles.length > 0,
-          availableTimeframes: ls.marketData.candles.length > 0
-            ? [ls.marketData.timeframe]
-            : [],
-          htfBias: ar?.bias === "Bullish"
-            ? "long"
-            : ar?.bias === "Bearish"
-              ? "short"
-              : "neutral",
-          marketRegime: "UNKNOWN",
-          provider: ls.marketData.provider,
-          observedAt: ls.marketData.price.timestamp || ls.marketData.fetchTimestamp,
-          freshness: ls.marketData.dataFreshness === "realtime"
-            ? "FRESH"
-            : ls.marketData.dataFreshness === "delayed"
-              ? "DELAYED"
-              : ls.marketData.dataFreshness === "stale"
-                ? "STALE"
-                : "UNAVAILABLE",
-          quality: ls.marketData.dataFreshness === "unavailable"
-            ? "UNAVAILABLE"
-            : "VERIFIED",
-        } : null,
-        analysisResult: ar ? {
-          confidence: ar.confidence,
-          bias: ar.bias,
-          recommendation: ar.recommendation,
-        } : undefined,
-      } as RadarCandidateSource;
+    // Map the verified runtime snapshots and all independently acquired context.
+    // Keep actual structure authoritative; never infer it from the final analysis bias.
+    const radarSources = liveSources.map(toRadarCandidateSource);
+
     });
 
     const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
