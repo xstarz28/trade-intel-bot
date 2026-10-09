@@ -61,7 +61,7 @@ async function findAnalysisForm(targetPage, expectedTimeframe) {
 
   for (let index = 0; index < count; index += 1) {
     const candidate = forms.nth(index);
-    const picker = candidate.getByRole("combobox").first();
+    const picker = candidate.locator('[data-slot="select-trigger"]').first();
     const timeframe = candidate.getByRole("button", { name: expectedTimeframe, exact: true });
     if (
       (await picker.count()) > 0 &&
@@ -76,7 +76,7 @@ async function findAnalysisForm(targetPage, expectedTimeframe) {
   for (let index = 0; index < count; index += 1) {
     const candidate = forms.nth(index);
     diagnostics.push(
-      "form#" + index + ": comboboxes=" + (await candidate.getByRole("combobox").count()) + ", buttons=" + (await candidate.locator("button").allTextContents()).join(" | "),
+      "form#" + index + ": comboboxes=" + (await candidate.locator('[data-slot="select-trigger"]').count()) + ", buttons=" + (await candidate.locator("button").allTextContents()).join(" | "),
     );
   }
   throw new Error(
@@ -96,7 +96,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
   await categoryButtons.nth(categoryIndex).click();
 
-  const picker = form.getByRole("combobox").first();
+  const picker = form.locator('[data-slot="select-trigger"]').first();
   await picker.click();
   const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
   await option.click();
@@ -108,7 +108,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
   await timeframeButton.click();
 
-  const selectedInstrument = form.getByRole("combobox").first();
+  const selectedInstrument = form.locator('[data-slot="select-trigger"]').first();
   const selectedText = await selectedInstrument.innerText().catch(() => "");
   if (!selectedText.includes(instrument)) {
     throw new Error("".concat(instrument, " was not selected before analysis. Picker text: ").concat(selectedText));
