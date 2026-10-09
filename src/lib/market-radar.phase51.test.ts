@@ -206,6 +206,23 @@ describe("A — Empty Analysis History", () => {
     expect(candidate.dataCompleteness).toBe("PARTIAL");
   });
 
+  it("does not count UNKNOWN structure labels as completeness evidence", () => {
+    const source = makeSource({
+      snapshot: makeSnapshot({
+        htfBias: "unknown",
+        mtfAlignment: "INSUFFICIENT_DATA",
+        marketRegime: "UNKNOWN",
+      }),
+      derivatives: undefined,
+      fundamentals: undefined,
+      cot: undefined,
+      eia: undefined,
+      treasury: undefined,
+      analysisResult: undefined,
+    });
+    expect(buildRadarCandidate(source, NOW).dataCompleteness).toBe("MINIMAL");
+  });
+
   it("uses the provider-reported OHLCV row count instead of estimating 50", () => {
     const exactSource = makeSource({ snapshot: makeSnapshot({ dataPoints: 23 }) });
     expect(buildRadarCandidate(exactSource, NOW).dataPoints).toBe(23);
