@@ -47,6 +47,7 @@ import {
 } from "./liveCandidateBuilder";
 
 import {
+  ALL_SCAN_HORIZONS,
   scanInstruments,
   type ScanConfig,
   type ScanResult,
@@ -889,5 +890,33 @@ describe("AI — UI Result Shape", () => {
     expect(r.methodology).toBeTruthy();
     expect(r.dataQualitySummary).toBeTruthy();
     expect(r.timestamp).toBeGreaterThan(0);
+  });
+});
+
+
+describe("AJ — Market Opportunities horizon coverage", () => {
+  it("scans every trading and investing horizon used by the panel", () => {
+    expect(ALL_SCAN_HORIZONS).toEqual([
+      "SCALPING",
+      "INTRADAY",
+      "SWING",
+      "1-4_WEEKS",
+      "1-3_MONTHS",
+      "3-6_MONTHS",
+      "6-12_MONTHS",
+      "1-3_YEARS",
+      "3+_YEARS",
+    ]);
+
+    const result = scanInstruments([makeSource()], {
+      horizons: ALL_SCAN_HORIZONS,
+      maxResults: 10,
+      now: NOW,
+    });
+
+    expect(Array.from(result.results.keys())).toEqual(ALL_SCAN_HORIZONS);
+    for (const horizon of ALL_SCAN_HORIZONS) {
+      expect(result.results.get(horizon)).toBeDefined();
+    }
   });
 });

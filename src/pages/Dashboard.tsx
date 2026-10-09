@@ -18,7 +18,7 @@ import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
@@ -900,7 +900,7 @@ export default function Dashboard() {
       setLiveSourcesVersion((version) => version + 1);
 
       const config = {
-        horizons: ["INTRADAY" as const, "SWING" as const],
+        horizons: ALL_SCAN_HORIZONS,
         maxResults: 10,
       };
       setScanResult(
@@ -921,7 +921,7 @@ export default function Dashboard() {
   // Auto-scan when live sources change
   useMemo(() => {
     if (liveSources.length > 0) {
-      const config = { horizons: ["INTRADAY" as const, "SWING" as const], maxResults: 10 };
+      const config = { horizons: ALL_SCAN_HORIZONS, maxResults: 10 };
       const result = scanInstruments(liveSources, config);
       setScanResult(result);
     }

@@ -3,30 +3,38 @@
 ## Current checkpoint
 - Working branch: `fix/radar-completeness-context`
 - `main` and production have not been changed.
-- Latest code work is on this branch; do not assume this branch is deployed.
+- Current branch is not assumed to be deployed.
 
-## Confirmed defects and fixes
+## Confirmed fixes
 
 1. **Radar completeness overstatement** — `src/lib/market-radar/candidate-builder.ts`
-   - Five snapshot fields plus a prior `analysisResult` could reach `FULL` even without independent contextual intelligence.
-   - `FULL` now requires at least one actual context field from derivatives, fundamentals, COT, EIA, or Treasury/macro data.
-   - Regression tests added to `src/lib/market-radar.phase51.test.ts` cover snapshot + prior-analysis metadata remaining `PARTIAL`, and real derivative context allowing `FULL`.
+   - Snapshot fields plus prior analysis metadata alone remain `PARTIAL`; `FULL` requires actual contextual evidence from derivatives, fundamentals, COT, EIA, or Treasury/macro data.
+   - Actual provider-reported candle row counts replace the old estimated 50-row value.
 
-2. **Missing intelligence treated as contradictory evidence** — `src/lib/recommendation-engine.ts`
-   - The confidence coherence formula used default values of 0 for missing fundamental, macro, and positioning layers. Because the formula compared every default to 50, entirely unavailable layers incorrectly pushed coherence down to 10/100.
-   - Coherence now uses only layers with actual evidence, with the baseline remaining neutral for layers that are absent. The original relative weights are retained, so missing data is neither opposition nor artificial support.
-   - Regression tests added to `src/lib/recommendation-engine.phase154.test.ts` verify missing nontechnical evidence does not lower coherence as if it opposed the thesis, while actual opposing fundamental evidence does lower coherence.
+2. **Missing intelligence treated as contradiction** — `src/lib/recommendation-engine.ts`
+   - Missing fundamental/macro/positioning layers no longer lower coherence as though they were opposing signals.
+   - Regression coverage distinguishes missing evidence from actual opposition.
+
+3. **Structural bias and outage fixture** — `src/lib/analysis-engine.ts`, `src/lib/chaos.phase8.test.ts`
+   - Weighted evidence is aligned to the displayed 40/40/20 score breakdown, while external structure remains authoritative except for a validated HTF reversal.
+   - The degraded-context test preserves the underlying neutral structure instead of accidentally substituting a default bullish fixture.
+
+## Newly fixed candidate-to-ranking defect
+- Dashboard scans previously computed only `INTRADAY` and `SWING`, while Market Opportunities exposes scalping and six investment horizons.
+- Selecting a horizon missing from the scan result fell back to static zero-price/unavailable placeholders despite available live sources, producing an empty/incorrect view.
+- `ALL_SCAN_HORIZONS` is now the shared horizon list for auto-scan and manual refresh, with regression coverage for full horizon coverage.
 
 ## Validation status
-- Confirmed via GitHub read-back that source changes and regression tests exist on this branch.
-- The GitHub status endpoint returned no CI statuses when last checked. These new tests have **not** been independently run in a local runtime in this session. Do not claim they pass until CI/test evidence arrives.
-- No production deployment was triggered. The production frontend deploy workflow only runs on pushes to `main`; this work is on a `fix/**` branch.
+- Previous checkpoint `e73ef69528569837e028af5a3aff73d434f600d1`: CI passed typecheck/build and 7,397 tests across 178 test files. Lint still reports existing/advisory errors and is not claimed clean.
+- The newly added horizon-coverage fix must still pass its own CI run before it is considered validated.
+- No production deployment was triggered. Production end-to-end BTC/XAU analysis remains unverified.
 
-## Next highest-value task
-Inspect only the candidate-to-ranking path feeding Market Opportunities. Find one confirmed reason why evidence-distinct instruments may still receive flattened scores or why ineligible placeholders could enter the final ranked list. Make one focused fix with a regression test. Preserve the work above; do not repeat a repo-wide audit.
+## Next bounded task
+- Verify score differentiation with real, verified OHLCV inputs from structurally distinct instruments. Add a regression only after identifying a reproducible scoring collapse; do not tune scores by assumption.
+- Then resume true end-to-end BTC and XAU analysis checks, without deploying to production until the deployment quota/status is known and a smoke test can be run.
 
 ## Guardrails
-- Continue from this branch and this handoff.
+- Preserve provider-native instrument identity and provenance.
+- Never synthesize live prices, technical direction, or evidence.
 - Keep `main` and production untouched until validation is satisfactory.
-- Do not fabricate market data, provider availability, scores, or test results.
-- Do not change domain, branding, or unrelated auth work before core analytical behavior is validated.
+- Do not label the product ready based on branch CI alone.
