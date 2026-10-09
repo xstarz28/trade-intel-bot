@@ -785,9 +785,18 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               </div>
             </div>
             {result.mtfSummary.unavailable.length > 0 && (
-              <p className="mt-2 pt-2 border-t border-border/30 text-[10px] font-mono text-amber-400/90">
-                ⚠ unavailable (not synthesized): {result.mtfSummary.unavailable.map((u) => u.timeframe).join(", ")}
-              </p>
+              <div className="mt-2 pt-2 border-t border-border/30">
+                <p className="text-[10px] font-mono text-amber-400/90 mb-1">
+                  ⚠ unavailable (not synthesized)
+                </p>
+                <ul className="space-y-1">
+                  {result.mtfSummary.unavailable.map((u) => (
+                    <li key={`${u.timeframe}:${u.reason}`} className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
+                      <span className="text-amber-300">{u.timeframe}:</span> {u.reason}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </CardContent>
         </Card>
