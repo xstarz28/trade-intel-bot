@@ -17,10 +17,10 @@ concurrency:
 
 jobs:
   smoke:
-    name: Real production BTC analysis smoke
+    name: Real production BTC and XAU analysis smoke
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name == 'fix/radar-completeness-context') || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 18
     env:
       XSTARZ_SMOKE_URL: https://xstarzanalysis.vercel.app
     steps:
@@ -41,6 +41,26 @@ jobs:
           npm install --no-save --legacy-peer-deps playwright@1.55.0
           npx playwright install --with-deps chromium
 
+      - name: Verify the exact revision is live on the production domain
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployed_sha=""
+          for attempt in $(seq 1 12); do
+            metadata="$(curl --fail --silent --show-error --max-time 10 "${XSTARZ_SMOKE_URL}/build-info.json" 2>/dev/null || true)"
+            deployed_sha="$(printf '%s' "$metadata" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).commit||"")}catch{console.log("")}})')"
+            if [ -n "$EXPECTED_SHA" ] && [ "${deployed_sha,,}" = "${EXPECTED_SHA,,}" ]; then
+              echo "Production domain is serving exact source revision $EXPECTED_SHA"
+              break
+            fi
+            echo "Waiting for exact production revision: expected=$EXPECTED_SHA actual=${deployed_sha:-unavailable} attempt=$attempt/12"
+            sleep 5
+          done
+          if [ -z "$EXPECTED_SHA" ] || [ "${deployed_sha,,}" != "${EXPECTED_SHA,,}" ]; then
+            echo "::error::Production does not serve expected revision $EXPECTED_SHA (actual: ${deployed_sha:-unavailable}); refusing to call stale output a passing smoke test."
+            exit 1
+          fi
+
       - name: Run real production analysis
         run: node scripts/production-runtime-smoke.mjs
 
@@ -49,4 +69,4 @@ jobs:
         run: |
           echo "Target: ${XSTARZ_SMOKE_URL}"
           echo "Commit: ${GITHUB_SHA}"
-          echo "The smoke is green only when the public UI signs in as guest, runs BTC/USD analysis, renders a price snapshot, provider source and primary data-quality state."
+          echo "The smoke is green only when the deployed commit matches, guest access works, and BTC/USD plus XAU/USD each render a real price snapshot, provider source, data-quality state and provider OHLCV chart."
