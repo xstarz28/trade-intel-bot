@@ -68,9 +68,9 @@ export type { InstrumentType, Timeframe, Recommendation, ConvictionLevel, TradeP
 // they exist only as a small secondary modifier that can never flip
 // the bias on its own.
 const CORE_WEIGHTS = {
-  trend: 0.45,
-  fundamental: 0.3,
-  sentiment: 0.25,
+  trend: 0.4,
+  fundamental: 0.4,
+  sentiment: 0.2,
 } as const;
 
 /**
@@ -212,7 +212,7 @@ function applyStructuralVeto(
 
 // ── Bias Calculation (structure + fundamental + positioning core) ──
 
-function calculateBias(breakdown: BiasBreakdown): {
+export function calculateBias(breakdown: BiasBreakdown): {
   bias: DirectionalBias;
   coreWeightedAvg: number;
 } {
