@@ -120,7 +120,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const inventory = source.eiaData?.available ? source.eiaData.series[0]?.latestValue : undefined;
   const inventoryChange = source.eiaData?.available ? source.eiaData.series[0]?.change : undefined;
   const tenYearYield = source.treasuryData?.available
-    ? source.treasuryData.latest.nominal["10Y"]
+    ? source.treasuryData.latest.nominal.nominal["10Y"]
     : undefined;
   const cotNet = source.cotData?.available
     ? source.cotData.netNonCommercial
