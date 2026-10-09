@@ -1210,14 +1210,27 @@ export default function Dashboard() {
                     ))}
                   </div>
 
-                  {fetchError && (
-                    <div className="mt-4 max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 px-4 py-3">
-                      <p className="text-xs font-mono text-red-400">{fetchError}</p>
-                      <p className="text-[10px] font-mono text-red-400/60 mt-1">
-                        {t.dashboard.checkApiKey}
-                      </p>
-                    </div>
-                  )}
+                </motion.div>
+              ) : fetchError ? (
+                <motion.div
+                  key="analysis-error"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  role="alert"
+                  data-analysis-error="true"
+                  className="flex flex-col items-center justify-center py-16 text-center"
+                >
+                  <div className="max-w-lg rounded-lg border border-red-500/25 bg-red-500/5 px-5 py-4">
+                    <h3 className="text-sm font-semibold font-mono text-red-400">
+                      {t.dashboard.dataFetchFailed}
+                    </h3>
+                    <p className="mt-2 text-xs font-mono text-foreground/90 break-words">
+                      {fetchError}
+                    </p>
+                    <p className="mt-2 text-[10px] font-mono text-muted-foreground">
+                      {t.dashboard.checkApiKey}
+                    </p>
+                  </div>
                 </motion.div>
               ) : currentResult ? (
                 <motion.div

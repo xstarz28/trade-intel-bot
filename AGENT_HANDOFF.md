@@ -24,6 +24,10 @@
 - Selecting a horizon missing from the scan result fell back to static zero-price/unavailable placeholders despite available live sources, producing an empty/incorrect view.
 - `ALL_SCAN_HORIZONS` is now the shared horizon list for initial discovery, auto-scan, and manual refresh, with regression coverage for full horizon coverage.
 
+## Analysis failure visibility
+- The Dashboard previously rendered `fetchError` only inside the loading branch, then set `isAnalyzing=false` on error; the failure text disappeared and left the production smoke test waiting until timeout.
+- Provider/analysis failures now remain visible after loading exits. The smoke harness waits for either a valid analysis result or the explicit error panel, and emits visible-page diagnostics on an unresolved timeout. This exposes failures; it does not by itself prove the provider/backend succeeded.
+
 ## Validation status
 - Previous checkpoint `e73ef69528569837e028af5a3aff73d434f600d1`: CI passed typecheck/build and 7,397 tests across 178 test files. Lint still reports existing/advisory errors and is not claimed clean.
 - The newly added horizon-coverage fix must still pass its own CI run before it is considered validated.

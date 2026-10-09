@@ -121,23 +121,39 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     });
   }
 
-  await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
-    const visibleText = Array.from(document.querySelectorAll("*"))
-      .filter((el) => {
-        const s = getComputedStyle(el);
-        const r = el.getBoundingClientRect();
-        return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
-      })
-      .map((el) => el.textContent || "")
-      .join("\n");
-    return (
-      visibleText.includes(`${targetInstrument} |`) &&
-      visibleText.includes(`| ${targetTimeframe}`) &&
-      visibleText.includes("BIAS:") &&
-      visibleText.includes("Price:") &&
-      !visibleText.includes("analyzing...")
+  let analysisOutcome;
+  try {
+    analysisOutcome = await targetPage.waitForFunction(({ targetInstrument, targetTimeframe }) => {
+      const errorPanel = document.querySelector('[data-analysis-error="true"]');
+      if (errorPanel && errorPanel.textContent?.trim()) return "error";
+
+      const visibleText = Array.from(document.querySelectorAll("*"))
+        .filter((el) => {
+          const s = getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
+        })
+        .map((el) => el.textContent || "")
+        .join("\n");
+      return (
+        visibleText.includes(`${targetInstrument} |`) &&
+        visibleText.includes(`| ${targetTimeframe}`) &&
+        visibleText.includes("BIAS:") &&
+        visibleText.includes("Price:") &&
+        !visibleText.includes("analyzing...")
+      ) ? "success" : false;
+    }, { targetInstrument: instrument, targetTimeframe: expectedTimeframe }, { timeout });
+  } catch (error) {
+    const visibleState = await targetPage.locator("body").innerText().catch(() => "<body unavailable>");
+    throw new Error(
+      `${instrument} analysis produced neither a result nor a surfaced provider error within ${timeout}ms. Visible page state:\\n${visibleState.slice(-3500)}\\nOriginal wait error: ${error instanceof Error ? error.message : String(error)}`,
     );
-  }, { targetInstrument: instrument, targetTimeframe: expectedTimeframe }, { timeout });
+  }
+
+  if (analysisOutcome !== "success") {
+    const diagnostic = await targetPage.locator('[data-analysis-error="true"]').innerText().catch(() => "No provider error text captured.");
+    throw new Error(`${instrument} analysis failed visibly: ${diagnostic}`);
+  }
 
   const body = await targetPage.locator("body").innerText();
   const priceLabel = targetPage.getByText("Price:", { exact: true });
