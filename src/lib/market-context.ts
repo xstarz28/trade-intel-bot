@@ -304,6 +304,23 @@ export function crossAssetComparator(instrumentType: string, instrument: string)
  */
 export const DXY_CANDIDATE_SYMBOLS = ["DXY", "DX.Y.NYB", "USD_INDEX", "I:DXY"] as const;
 
+/**
+ * Rate-safe DXY discovery: probe at most one symbol per cooldown window.
+ * A failed optional cross-asset probe must not consume the request budget
+ * needed for primary candles and multi-timeframe structure.
+ */
+export function selectDxyProbeCandidate(
+  candidates: readonly string[],
+  cursor: number,
+  lastProbeAt: number | null,
+  now: number,
+  cooldownMs = 60_000,
+): string | null {
+  if (candidates.length === 0 || cursor < 0 || cursor >= candidates.length) return null;
+  if (lastProbeAt !== null && now - lastProbeAt < cooldownMs) return null;
+  return candidates[cursor];
+}
+
 /** Pick the first candidate that a probe reports valid; null when none. */
 export function resolveWorkingSymbol(
   candidates: readonly string[],
