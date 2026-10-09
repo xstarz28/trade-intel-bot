@@ -119,6 +119,7 @@ function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessL
   if (count >= 2) return "MINIMAL";
   if (count >= 1) return "MINIMAL";
   return "NONE";
+}
 
 // ═══════════════════════════════════════════════════════════════
 // PROVIDER COVERAGE ASSESSMENT
