@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runAnalysis } from "./analysis-engine";
+import { calculateBias, runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 
 function baseInput(overrides?: Partial<AnalysisInput>): AnalysisInput {
@@ -17,6 +17,18 @@ describe("calculateBias (via runAnalysis)", () => {
   it("returns Neutral when all scores are zero", () => {
     const result = runAnalysis(baseInput());
     expect(result.bias).toBe("Neutral");
+  });
+
+  it("uses the documented 40/40/20 weights so fundamental evidence materially affects core bias", () => {
+    const result = calculateBias({
+      trend: 1,
+      fundamental: -2,
+      sentiment: 0,
+      indicator: 0,
+    });
+
+    expect(result.coreWeightedAvg).toBeCloseTo(-0.4, 8);
+    expect(result.bias).toBe("Bearish");
   });
 
   it("returns Bullish when trend is strong and price is near high", () => {
