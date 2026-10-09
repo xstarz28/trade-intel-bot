@@ -178,10 +178,23 @@ function applyStructuralVeto(
   bias: DirectionalBias,
   input: AnalysisInput,
   mtf?: MtfContext,
+  breakdown?: BiasBreakdown,
 ): { bias: DirectionalBias; vetoReason?: string } {
   if (bias === "Neutral") {
     const structuralDir = structuralDirection(input.technicalData);
-    if (structuralDir !== "none") return { bias };
+    if (structuralDir !== "none") {
+      const structureSign = structuralDir === "long" ? 1 : -1;
+      const materiallyOpposing = [
+        breakdown?.fundamental ?? 0,
+        breakdown?.sentiment ?? 0,
+      ].filter((score) => Math.abs(score) >= 2 && Math.sign(score) === -structureSign);
+
+      if (materiallyOpposing.length < 2) return { bias: structuralDir === "long" ? "Bullish" : "Bearish" };
+      return {
+        bias,
+        vetoReason: "Structural agreement required: fundamental and positioning both strongly oppose external structure; directional bias remains Neutral.",
+      };
+    }
 
     const evidenceNames: string[] = [];
     if ((input.macroData && input.macroData.confidence !== "unavailable") || input.calendarData || input.economicEvents || input.fundamentalData?.available) evidenceNames.push("fundamental");
@@ -2144,20 +2157,31 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const mtf = input.technicalData?.mtf;
   const { coreWeightedAvg } = calculateBias(breakdown);
 
-  // Direction comes from the actual external structure label, not from a
-  // weighted average that can be cancelled by counter-directional context or
-  // by a primary-timeframe CHoCH. A genuine measured HTF external reversal is
-  // the only exception. The 40/40/20 weighted average remains available for
-  // conviction/evidence strength and gates, not thesis creation.
+  // Keep weighted evidence as the initial read when it is directional, then
+  // apply the external-structure veto. If the weighted layers cancel to
+  // Neutral, use external structure as the anchor unless BOTH fundamental
+  // and positioning materially oppose it. A validated HTF external reversal
+  // remains the only way to authorize a thesis against the external label.
   const externalDirection = structuralDirection(input.technicalData);
   const authorizedHtfReversal = mtf?.htfReversal;
+  const weightedCoreBias: DirectionalBias =
+    coreWeightedAvg > 0.25 ? "Bullish" :
+    coreWeightedAvg < -0.25 ? "Bearish" :
+    "Neutral";
+  const externalSign = externalDirection === "long" ? 1 : externalDirection === "short" ? -1 : 0;
+  const materiallyOpposingCount = externalSign === 0 ? 0 : [
+    breakdown.fundamental,
+    breakdown.sentiment,
+  ].filter((score) => Math.abs(score) >= 2 && Math.sign(score) === -externalSign).length;
+
   const rawBias: DirectionalBias = authorizedHtfReversal
     ? authorizedHtfReversal.direction === "bullish" ? "Bullish" : "Bearish"
-    : externalDirection === "long" ? "Bullish"
-    : externalDirection === "short" ? "Bearish"
-    : "Neutral";
+    : weightedCoreBias !== "Neutral" ? weightedCoreBias
+    : externalDirection !== "none" && materiallyOpposingCount < 2
+      ? externalDirection === "long" ? "Bullish" : "Bearish"
+      : "Neutral";
 
-  const { bias, vetoReason: structuralVetoReason } = applyStructuralVeto(rawBias, input, mtf);
+  const { bias, vetoReason: structuralVetoReason } = applyStructuralVeto(rawBias, input, mtf, breakdown);
   const alignment = computeAlignment(input);
 
   // ── Phase 5: market context (regime, setup class, contradictions) ──
