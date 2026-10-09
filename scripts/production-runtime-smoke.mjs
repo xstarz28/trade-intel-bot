@@ -80,7 +80,11 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     await option.click();
   }
 
-  const form = targetPage.locator("form").filter({ has: targetPage.getByRole("combobox").first() }).first();
+  // Derive the form from the actual instrument combobox. Playwright's
+  // filter(has: page-rooted locator) can match no descendant on this page;
+  // the ancestor locator binds all subsequent controls to the selected form.
+  const pickerForForm = targetPage.getByRole("combobox").first();
+  const form = pickerForForm.locator("xpath=ancestor::form[1]");
   const timeframeButton = form.getByRole("button", { name: expectedTimeframe, exact: true });
   if (!(await timeframeButton.count()) || !(await timeframeButton.isVisible())) {
     const controls = await form.locator("button").allTextContents();
