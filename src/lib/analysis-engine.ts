@@ -225,10 +225,16 @@ export function calculateBias(breakdown: BiasBreakdown): {
   // this weighted average. It is a capped secondary modifier used only
   // in conviction scoring — it can never create or flip the bias.
 
-  // Bias is derived from the CORE average only.
-  let bias: DirectionalBias = "Neutral";
-  if (coreWeightedAvg > 0.25) bias = "Bullish";
-  else if (coreWeightedAvg < -0.25) bias = "Bearish";
+  // Structure is the only authority that can establish direction. The
+  // 40/40/20 weighted average remains an evidence-quality/conviction input,
+  // but opposing fundamental or positioning values must not flip an existing
+  // structural thesis to the opposite direction (or erase it by averaging).
+  // Explicit decision gates can still downgrade a structurally supported
+  // thesis to NO_TRADE when material opposition or weak confluence is present.
+  const bias: DirectionalBias =
+    breakdown.trend > 0 ? "Bullish" :
+    breakdown.trend < 0 ? "Bearish" :
+    "Neutral";
 
   return {
     bias,
