@@ -18,11 +18,12 @@ concurrency:
 jobs:
   smoke:
     name: Real production BTC and XAU analysis smoke
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref_name == 'fix/radar-completeness-context') || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 18
     env:
       XSTARZ_SMOKE_URL: https://xstarzanalysis.vercel.app
+      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
