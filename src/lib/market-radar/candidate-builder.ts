@@ -170,7 +170,9 @@ export function buildRadarCandidate(
     assetClass: source.universe.assetClass,
     currentPrice: price,
     dataCompleteness,
-    dataPoints: snapshot?.ohlcvAvailable ? 50 : 0, // estimated when OHLCV is available
+    // Only a provider-reported candle count can increase data-quality scoring.
+    // An OHLCV availability flag is not evidence that 50 rows were returned.
+    dataPoints: snapshot?.dataPoints ?? 0,
     hasLiveData,
     freshness,
     providerCoverage,
