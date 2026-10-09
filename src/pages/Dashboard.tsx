@@ -918,8 +918,9 @@ export default function Dashboard() {
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
   const radarStateRef = useRef<RadarState | null>(null);
 
-  // Auto-scan when live sources change
-  useMemo(() => {
+  // Auto-scan after live sources change. State updates belong in effects,
+  // never in render-time memoization.
+  useEffect(() => {
     if (liveSources.length > 0) {
       const config = { horizons: ALL_SCAN_HORIZONS, maxResults: 10 };
       const result = scanInstruments(liveSources, config);
@@ -928,7 +929,7 @@ export default function Dashboard() {
   }, [liveSources]);
 
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
-  useMemo(() => {
+  useEffect(() => {
     if (liveSources.length === 0) return;
     // Build radar candidate sources from analysis history
     const radarSources: RadarCandidateSource[] = liveSources.map(ls => {
