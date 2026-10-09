@@ -781,21 +781,18 @@ export function scoreCandidate(
   if (c.positioningScore !== undefined) {
     coherenceLayers.push({ score: positioning, weight: 0.2 });
   }
-  const coherenceWeight = coherenceLayers.reduce((sum, layer) => sum + layer.weight, 0);
   const coherence = directional
-    ? coherenceWeight > 0
-      ? Math.min(
-          100,
-          Math.max(
-            0,
-            50 +
-              coherenceLayers.reduce(
-                (sum, layer) => sum + (layer.score - 50) * layer.weight,
-                0,
-              ) / coherenceWeight,
-          ),
-        )
-      : 50
+    ? Math.min(
+        100,
+        Math.max(
+          0,
+          50 +
+            coherenceLayers.reduce(
+              (sum, layer) => sum + (layer.score - 50) * layer.weight,
+              0,
+            ),
+        ),
+      )
     : 10;
   const confidence = Math.round(
     Math.min(100, dq.score * 0.25 + breadth * 0.25 + coherence * 0.5),
