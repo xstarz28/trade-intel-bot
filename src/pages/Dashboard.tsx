@@ -917,8 +917,6 @@ export default function Dashboard() {
     // Keep actual structure authoritative; never infer it from the final analysis bias.
     const radarSources = liveSources.map(toRadarCandidateSource);
 
-    });
-
     const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
     const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);
     radarStateRef.current = buildRadarState(result);
