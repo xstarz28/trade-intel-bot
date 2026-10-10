@@ -67,5 +67,24 @@ jobs:
           set -euo pipefail
           npx convex env set SITE_URL 'https://xstarzanalysis.vercel.app'
 
+      - name: Sync optional provider credentials to Convex production
+        env:
+          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
+          TOKENOMIST_API_KEY: ${{ secrets.TOKENOMIST_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -n "${COINGLASS_API_KEY:-}" ]; then
+            npx convex env set COINGLASS_API_KEY "$COINGLASS_API_KEY"
+            echo "::notice::CoinGlass API key synchronized to Convex production."
+          else
+            echo "::warning::COINGLASS_API_KEY GitHub Actions secret is missing; CoinGlass will remain unavailable until configured."
+          fi
+          if [ -n "${TOKENOMIST_API_KEY:-}" ]; then
+            npx convex env set TOKENOMIST_API_KEY "$TOKENOMIST_API_KEY"
+            echo "::notice::Tokenomist API key synchronized to Convex production."
+          else
+            echo "::warning::TOKENOMIST_API_KEY GitHub Actions secret is missing; Tokenomist will remain unavailable until configured."
+          fi
+
       - name: Build and deploy backend
         run: npx convex deploy --yes --typecheck disable --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
