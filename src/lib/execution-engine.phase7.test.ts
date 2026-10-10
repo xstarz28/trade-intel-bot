@@ -67,11 +67,11 @@ const smcWithDisplacement = () =>
 function btcInput(style: "scalping" | "intraday" | "swing", over?: Partial<AnalysisInput>): AnalysisInput {
   const smc = style === "scalping" ? { smc: smcWithDisplacement() } : {};
   return {
-    instrument: "BTC/USDT", instrumentType: "crypto", timeframe: "H4",
+    instrument: "BTC-USDT-SWAP", instrumentType: "crypto", timeframe: "H4",
     tradingStyle: style,
     economicEvents: undefined,
     newsContext: "institutional etf approval adoption", // honest 2nd core factor
-    marketData: makeMarket("BTC/USDT"),
+    marketData: makeMarket("BTC-USDT-SWAP"),
     technicalData: techBase({ mtf: mtfBullish, ...smc }),
     ...over,
   } as AnalysisInput;

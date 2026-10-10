@@ -28,7 +28,22 @@ interface AvailableInstrument {
   symbol: string;
   type: InstrumentType;
   label: string;
+  marketType?: "spot" | "perpetual" | "futures";
 }
+
+type CryptoMarketType = "spot" | "perpetual" | "futures";
+function inferCryptoMarketType(item: Pick<AvailableInstrument, "symbol" | "marketType">): CryptoMarketType {
+  if (item.marketType) return item.marketType;
+  const symbol = item.symbol.toUpperCase();
+  if (symbol.endsWith("-SWAP") || symbol.endsWith("-FUTURES")) return "perpetual";
+  if (/-[0-9]{6}$/.test(symbol)) return "futures";
+  return "spot";
+}
+const CRYPTO_MARKET_OPTIONS: Array<{ value: CryptoMarketType; label: string }> = [
+  { value: "spot", label: "SPOT" },
+  { value: "perpetual", label: "PERPETUAL / SWAP" },
+  { value: "futures", label: "DATED FUTURES" },
+];
 
 interface InstrumentInputProps {
   onAnalyze: (input: AnalysisInput) => void;
@@ -68,6 +83,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
   const [manualSearch, setManualSearch] = useState(false);
   const [manualSearchQuery, setManualSearchQuery] = useState("");
+  const [cryptoMarketType, setCryptoMarketType] = useState<CryptoMarketType>("spot");
   const manualInputRef = useRef<HTMLInputElement | null>(null);
   // Keep every field synchronous with user input so an immediate submit cannot
   // combine a new instrument with the previous category/timeframe/style render.
@@ -83,6 +99,12 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
 
   const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
 
+  useEffect(() => {
+    if (form.instrumentType !== "crypto") return;
+    const selected = universeOptions.find((item) => item.symbol === form.instrument);
+    if (selected) setCryptoMarketType(inferCryptoMarketType(selected));
+  }, [form.instrument, form.instrumentType, universeOptions]);
+
   const categoryOptions: { value: InstrumentType; label: string }[] = [
     { value: "forex", label: t.entryForm.forex },
     { value: "crypto", label: t.entryForm.crypto },
@@ -90,24 +112,31 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
     { value: "commodity", label: t.entryForm.commodities },
   ];
 
-  const categoryInstruments = universeOptions.filter((item) => item.type === form.instrumentType);
-  const filteredInstruments = categoryInstruments.length > 0 ? categoryInstruments : universeOptions;
+  const categoryInstruments = universeOptions
+    .filter((item) => item.type === form.instrumentType)
+    .filter((item) => form.instrumentType !== "crypto" || inferCryptoMarketType(item) === cryptoMarketType);
+  const filteredInstruments = categoryInstruments;
 
   const selectCategory = useCallback((type: InstrumentType) => {
     commitForm((prev) => {
-      const nextOptions = universeOptions.filter((item) => item.type === type);
+      const nextOptions = universeOptions
+        .filter((item) => item.type === type)
+        .filter((item) => type !== "crypto" || inferCryptoMarketType(item) === cryptoMarketType);
       const currentStillValid = nextOptions.some((item) => item.symbol === prev.instrument);
-      const nextInstrument = currentStillValid ? prev.instrument : (nextOptions[0]?.symbol ?? "");
-      return {
-        ...prev,
-        instrumentType: type,
-        instrument: nextInstrument,
-      };
+      const preferred = type === "crypto"
+        ? (cryptoMarketType === "perpetual" ? ["BTC-USDT-SWAP"] : cryptoMarketType === "futures" ? [] : ["BTC/USD", "BTC-USDT"])
+        : type === "forex" ? ["EUR/USD"]
+          : type === "stock" ? ["AAPL"]
+            : type === "commodity" ? ["XAU/USD"] : [];
+      const firstPreferred = preferred.find((symbol) => nextOptions.some((item) => item.symbol === symbol));
+      const nextInstrument = currentStillValid ? prev.instrument : (firstPreferred ?? nextOptions[0]?.symbol ?? "");
+      return { ...prev, instrumentType: type, instrument: nextInstrument };
     });
-  }, [commitForm, universeOptions]);
+  }, [commitForm, universeOptions, cryptoMarketType]);
 
   const selectInstrument = useCallback((symbol: string) => {
     const match = universeOptions.find((item) => item.symbol === symbol);
+    if (match?.type === "crypto") setCryptoMarketType(inferCryptoMarketType(match));
     commitForm((prev) => ({
       ...prev,
       instrument: symbol,
@@ -204,6 +233,33 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
             </div>
           </div>
 
+          {form.instrumentType === "crypto" && !manualSearch && (
+            <div data-testid="crypto-market-type" className="flex flex-wrap gap-1 mb-2">
+              {CRYPTO_MARKET_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[9px] font-mono transition-colors",
+                    cryptoMarketType === option.value
+                      ? "border-primary/50 bg-primary/15 text-primary"
+                      : "border-border/50 text-muted-foreground hover:text-foreground",
+                  )}
+                  onClick={() => {
+                    setCryptoMarketType(option.value);
+                    const choices = universeOptions.filter((item) => item.type === "crypto" && inferCryptoMarketType(item) === option.value);
+                    const preferred = option.value === "spot" ? ["BTC/USD", "BTC-USDT"]
+                      : option.value === "perpetual" ? ["BTC-USDT-SWAP"] : [];
+                    const next = preferred.find((symbol) => choices.some((item) => item.symbol === symbol)) ?? choices[0]?.symbol;
+                    commitForm((prev) => ({ ...prev, instrumentType: "crypto", instrument: next ?? "" }));
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Instrument browser — category drives this list */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -222,7 +278,9 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
               <SelectContent className="max-h-80">
                 {filteredInstruments.map((item) => (
                   <SelectItem key={item.symbol} value={item.symbol} className="font-mono">
-                    {item.symbol}{item.label && item.label !== item.symbol ? ` — ${item.label}` : ""}
+                    {item.symbol}
+                    {item.type === "crypto" ? " [" + inferCryptoMarketType(item).toUpperCase() + "]" : ""}
+                    {item.label && item.label !== item.symbol ? ` — ${item.label}` : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

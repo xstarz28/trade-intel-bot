@@ -53,6 +53,20 @@ export interface CandidateInput {
   dataPoints: number;
   /** Whether live market data is available. */
   hasLiveData: boolean;
+  /** Actual timeframe of the OHLCV series used for this candidate. */
+  marketTimeframe?: string;
+  /** Crypto contract type for separate spot/derivative rankings. */
+  marketType?: "spot" | "perpetual" | "futures";
+  /** Decision from a same-instrument engine analysis. */
+  analysisDecision?: "LONG" | "SHORT" | "NO_TRADE";
+  /** Style used by the same-instrument engine analysis. */
+  analysisStyle?: TradingMode;
+  /** A valid risk/reward-qualified plan exists. */
+  hasQualifiedTradePlan?: boolean;
+  /** Higher-timeframe/trigger structure is readable. */
+  mtfSufficient?: boolean;
+  /** Fresh same-contract order-book quote exists. */
+  hasFreshExecutionQuality?: boolean;
   /** Data freshness: FRESH, DELAYED, STALE, UNAVAILABLE. */
   freshness: "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE";
   /** Provider coverage level from Phase 48. */
@@ -170,6 +184,10 @@ export interface RankedInstrument {
   instrument: string;
   /** Asset class. */
   assetClass: AssetClass;
+  /** Crypto contract type for Spot/Perpetual/Futures filters. */
+  marketType?: "spot" | "perpetual" | "futures";
+  /** Observed market timeframe used for this ranking. */
+  marketTimeframe?: string;
   /** Rank position (1 = highest). */
   rank: number;
   /** Analytical score (0-100). Higher = stronger evidence for this horizon. */
@@ -880,6 +898,42 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
 
   // Provider coverage gate
   if (c.providerCoverage === "NONE") return { eligible: false, reason: "no provider coverage" };
+  if (c.analysisDecision === "NO_TRADE") {
+    return { eligible: false, reason: "same-instrument analysis rejected this setup (NO_TRADE)" };
+  }
+
+  if (c.marketTimeframe && horizon === "SCALPING" && !["M1", "M5", "M15"].includes(c.marketTimeframe)) {
+    return { eligible: false, reason: "scalping requires M1/M5/M15 market data; received " + c.marketTimeframe };
+  }
+  if (c.marketTimeframe && horizon === "INTRADAY" && !["M15", "H1", "H4"].includes(c.marketTimeframe)) {
+    return { eligible: false, reason: "intraday requires M15/H1/H4 market data; received " + c.marketTimeframe };
+  }
+  if (c.marketTimeframe && horizon === "SWING" && !["H4", "D1", "W1"].includes(c.marketTimeframe)) {
+    return { eligible: false, reason: "swing requires H4/D1/W1 market data; received " + c.marketTimeframe };
+  }
+
+  // Discovered H1 data is suitable for discovery/intraday ranking, not scalp
+  // trades. Scalping requires a confirmed same-style directional decision,
+  // a valid plan, readable MTF context, and fresh execution on the exact contract.
+  if (horizon === "SCALPING" && c.marketTimeframe) {
+    if (c.analysisDecision !== "LONG" && c.analysisDecision !== "SHORT") {
+      return { eligible: false, reason: "no confirmed directional decision from a same-instrument analysis" };
+    }
+    if (c.analysisStyle !== "SCALPING") {
+      return { eligible: false, reason: "scalping requires a same-instrument SCALPING analysis" };
+    }
+    if (!c.hasQualifiedTradePlan) return { eligible: false, reason: "no valid risk/reward-qualified trade plan" };
+    if (c.mtfSufficient !== true) return { eligible: false, reason: "higher-timeframe/trigger structure is insufficient" };
+    if (c.hasFreshExecutionQuality !== true || c.freshness !== "FRESH") {
+      return { eligible: false, reason: "fresh order-book data for the exact contract is required" };
+    }
+    if (c.spreadBps === undefined) return { eligible: false, reason: "execution spread unavailable" };
+    if (c.spreadBps > 10) return { eligible: false, reason: "spread exceeds 10 bps scalping policy" };
+  }
+
+  if (horizon === "INTRADAY" && c.marketTimeframe && c.freshness === "STALE") {
+    return { eligible: false, reason: "stale data insufficient for intraday" };
+  }
 
   return { eligible: true };
 }
@@ -897,12 +951,11 @@ function classifySuitability(
   if (dataCompleteness === "NONE") return "INSUFFICIENT_DATA";
   if (dataCompleteness === "MINIMAL" && analyticalScore < 50) return "INSUFFICIENT_DATA";
 
-  // A high technical score alone is not a cross-asset opportunity. Independent
-  // evidence must agree with the candidate's direction before a status can say
-  // WATCHLIST or TOP_OPPORTUNITY; opposing evidence never counts as agreement.
-  if (independentAgreementCount === 0) return "NEUTRAL";
-  if (analyticalScore >= 75 && confidence >= 65) return "TOP_OPPORTUNITY";
-  if (analyticalScore >= 60 && confidence >= 50) return "WATCHLIST";
+  // Technical-only and single-layer candidates remain neutral. Two independent
+  // evidence domains must agree with the directional setup before it qualifies.
+  if (independentAgreementCount < 2) return "NEUTRAL";
+  if (analyticalScore >= 78 && confidence >= 70) return "TOP_OPPORTUNITY";
+  if (analyticalScore >= 65 && confidence >= 60) return "WATCHLIST";
   if (analyticalScore >= 30) return "NEUTRAL";
   return "NEUTRAL";
 }
@@ -999,6 +1052,8 @@ export function generateRecommendation(
     rankedInstruments.push({
       instrument: c.instrument,
       assetClass: c.assetClass,
+      marketType: c.marketType,
+      marketTimeframe: c.marketTimeframe,
       rank: i + 1,
       analyticalScore: result.analyticalScore,
       confidence: result.confidence,

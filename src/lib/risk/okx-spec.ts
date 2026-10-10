@@ -82,7 +82,7 @@ export const OKX_CONFLICT_REL_TOLERANCE = 0.001;
  */
 export function mapInstrumentToOkx(instrumentRaw: string): string | undefined {
   const normalized = instrumentRaw.trim().toUpperCase().replace(/[\s_/]+/g, "-");
-  if (/^[A-Z0-9]+-[A-Z0-9]+-(SWAP|FUTURES)$/.test(normalized)) return normalized;
+  if (/^[A-Z0-9]+-[A-Z0-9]+-(?:SWAP|FUTURES|[0-9]{6})$/.test(normalized)) return normalized;
   const m = /^([A-Z0-9]{2,10})-([A-Z0-9]{2,10})$/.exec(normalized);
   if (!m) return undefined;
   return `${m[1]}-${m[2]}-SWAP`;

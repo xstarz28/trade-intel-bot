@@ -56,6 +56,14 @@ import {
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════
 
+function inferMarketType(instrument: string, marketType?: "spot" | "perpetual" | "futures"): "spot" | "perpetual" | "futures" | undefined {
+  if (marketType) return marketType;
+  const symbol = instrument.toUpperCase();
+  if (symbol.endsWith("-SWAP") || symbol.endsWith("-FUTURES")) return "perpetual";
+  if (/-[0-9]{6}$/.test(symbol)) return "futures";
+  return symbol.includes("-") || symbol.includes("/") ? "spot" : undefined;
+}
+
 const SUITABILITY_COLORS: Record<string, string> = {
   TOP_OPPORTUNITY: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   WATCHLIST: "bg-sky-500/15 text-sky-400 border-sky-500/30",
@@ -184,6 +192,12 @@ function RankedCard({ item }: { item: RankedInstrument }) {
         <Badge variant="outline" className={cn("text-[9px] font-sans", ASSET_COLORS[item.assetClass] ?? "border-border/50")}>
           {item.assetClass}
         </Badge>
+        {item.assetClass === "crypto" && (
+          <Badge variant="outline" className="text-[9px] font-sans border-border/50">
+            {(inferMarketType(item.instrument, item.marketType) ?? "spot").toUpperCase()}
+          </Badge>
+        )}
+        {item.marketTimeframe && <Badge variant="outline" className="text-[9px] font-sans border-border/50">{item.marketTimeframe}</Badge>}
         <Badge variant="outline" className={cn("text-[9px] font-sans", SUITABILITY_COLORS[item.suitability])}>
           {mapSuitability(item.suitability, t)}
         </Badge>
@@ -410,6 +424,7 @@ export function MarketOpportunities({
   const [horizonIdx, setHorizonIdx] = useState(1); // default: Intraday / 1-3 Months
   const [showExcluded, setShowExcluded] = useState(false);
   const [assetFilter, setAssetFilter] = useState<AssetClass | "all">("all");
+  const [cryptoTypeFilter, setCryptoTypeFilter] = useState<"all" | "spot" | "perpetual" | "futures">("all");
   const [regionFilter, setRegionFilter] = useState("all");
   const [showFilters, setShowFilters] = useState(false);
 
@@ -451,24 +466,22 @@ export function MarketOpportunities({
 
   // Filter by region (post-scan, since regions aren't in the scan config)
   const filteredRanked = useMemo(() => {
-    if (regionFilter === "all") return result.rankedInstruments;
-    return result.rankedInstruments.filter((item) => {
-      const inst = item.instrument.toUpperCase();
-      if (regionFilter === "us") {
-        // US equities (no .JK suffix, not crypto/forex/commodity/index/macro)
-        return item.assetClass === "equity" && !inst.endsWith(".JK");
-      }
-      if (regionFilter === "idx") {
-        // IDX equities (BBCA, BBRI, etc.) or instruments ending in .JK
-        return item.assetClass === "equity" && (inst.endsWith(".JK") || ["BBCA", "BBRI", "TLKM", "BMRI", "BBNI", "GOTO"].includes(inst));
-      }
-      if (regionFilter === "global") {
-        // Crypto, forex, commodities, indices, macro
-        return ["crypto", "forex", "commodity", "indices", "macro"].includes(item.assetClass);
-      }
-      return true;
-    });
-  }, [result.rankedInstruments, regionFilter]);
+    return result.rankedInstruments
+      .filter((item) => assetFilter === "all" || item.assetClass === assetFilter)
+      .filter((item) => cryptoTypeFilter === "all" || (
+        item.assetClass === "crypto" && inferMarketType(item.instrument, item.marketType) === cryptoTypeFilter
+      ))
+      .filter((item) => tab !== "trading" || item.suitability === "TOP_OPPORTUNITY" || item.suitability === "WATCHLIST")
+      .filter((item) => {
+        if (regionFilter === "all") return true;
+        const inst = item.instrument.toUpperCase();
+        if (regionFilter === "us") return item.assetClass === "equity" && !inst.endsWith(".JK");
+        if (regionFilter === "idx") return item.assetClass === "equity" && (inst.endsWith(".JK") || ["BBCA", "BBRI", "TLKM", "BMRI", "BBNI", "GOTO"].includes(inst));
+        if (regionFilter === "global") return ["crypto", "forex", "commodity", "indices", "macro"].includes(item.assetClass);
+        return true;
+      })
+      .slice(0, 10);
+  }, [result.rankedInstruments, regionFilter, assetFilter, cryptoTypeFilter, tab]);
 
   // Phase 51: radar-based opportunities
   const radarOpps = useMemo(() => {
@@ -656,6 +669,28 @@ export function MarketOpportunities({
           </div>
         )}
 
+        <div className="flex flex-wrap items-center gap-1">
+          <span className="mr-1 text-[8px] font-sans text-muted-foreground/60">Market type</span>
+          {([
+            ["all", "All markets"], ["spot", "Spot"], ["perpetual", "Perpetual"], ["futures", "Futures"],
+          ] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={cn(
+                "rounded-md border px-2 py-1 text-[9px] font-sans transition-colors",
+                cryptoTypeFilter === value ? "border-primary/40 bg-primary/10 text-primary" : "border-border/50 text-muted-foreground hover:text-foreground",
+              )}
+              onClick={() => {
+                setCryptoTypeFilter(value);
+                setAssetFilter(value === "all" ? "all" : "crypto");
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Horizon selector */}
         <div className="flex flex-wrap gap-1">
           {horizons.map((h, i) => (
@@ -678,7 +713,7 @@ export function MarketOpportunities({
         <p className="text-[10px] font-sans text-muted-foreground/70">{result.marketOverview}</p>
         <p data-testid="market-data-legend" className="text-[9px] font-sans text-muted-foreground/55 leading-relaxed">
           Fresh &lt;5 min · Delayed 5–60 min · Stale 1–24 h · Unavailable = missing/invalid timestamp or &gt;24 h.
-          Full meets the engine minimum completeness threshold; some optional providers can still be unavailable. Partial means some required market/context fields are missing.
+          FULL means multiple independent evidence domains. Trading lists show only qualified WATCHLIST/TOP setups; confidence measures evidence coherence, not win probability.
         </p>
 
         {/* Scanning indicator */}

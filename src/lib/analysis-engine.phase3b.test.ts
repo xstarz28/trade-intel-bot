@@ -105,6 +105,36 @@ describe("state machine — tradeable states carry a full plan", () => {
 // ── NO_TRADE states — plan must be undefined ───────────────────────
 
 describe("state machine — every rejection yields NO_TRADE + no plan", () => {
+  it("does not render a projected plan when the nearest scalping target is beyond the ATR horizon", () => {
+    const price = 100;
+    const result = runAnalysis(input({
+      instrument: "BTC-USDT-SWAP",
+      instrumentType: "crypto",
+      timeframe: "M5",
+      tradingStyle: "scalping",
+      marketData: makeMarket(price, {
+        instrument: "BTC-USDT-SWAP",
+        instrumentType: "crypto",
+        provider: "okx-perpetual-public",
+        timeframe: "M5",
+        dataFreshness: "realtime",
+        price: { price, timestamp: Date.now(), source: "okx-perpetual-public" },
+      }),
+      technicalData: tech("HH/HL", {
+        atr14: 1,
+        swingHighs: [200],
+        swingLows: [99],
+        supportLevels: [99],
+        resistanceLevels: [200],
+      }),
+    }));
+
+    expect(result.recommendation).toBe("NO_TRADE");
+    expect(result.noTradeReasons.join(" ")).toContain("SCALPING target horizon");
+    expect(result.projectedTradePlan).toBeUndefined();
+    expect(result.tradePlan).toBeUndefined();
+  });
+
   it("neutral bias", () => {
     const r = runAnalysis(input({ technicalData: tech("range"), economicEvents: "Mixed central bank commentary" }));
     expect(r.recommendation).toBe("NO_TRADE");

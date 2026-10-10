@@ -194,8 +194,13 @@ export function scanInstruments(
     allExcluded.push(...excluded);
 
     const result = generateRecommendation(eligible, horizon, {
-      maxResults: config.maxResults ?? 10,
+      // Rank all observed eligible data first, then show only qualified results.
+      maxResults: eligible.length,
     });
+
+    // Preserve the full scored result for diagnostics and regression tests.
+    // The trader-facing MarketOpportunities view separately shows only qualifying
+    // TOP_OPPORTUNITY/WATCHLIST setups; do not destroy the scanner result here.
 
     // Merge excluded instruments from freshness gates
     result.excludedInstruments = [

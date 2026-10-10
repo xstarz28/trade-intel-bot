@@ -281,13 +281,16 @@ describe("D — Scalping Gating", () => {
     expect(scalpingResult.excludedInstruments.length).toBe(2);
   });
 
-  it("scalping with fresh data produces results", () => {
+  it("does not promote fresh H1 discovery data into a scalping opportunity", () => {
     const sources = [
       makeSource({ instrument: "BTC/USD", marketData: makeMarketData("BTC/USD", { price: { price: 65000, timestamp: NOW - MINUTE, source: "x" }, dataFreshness: "realtime" }) }),
     ];
     const result = scanInstruments(sources, { horizons: ["SCALPING"], maxResults: 10 });
     const scalpingResult = result.results.get("SCALPING")!;
-    expect(scalpingResult.rankedInstruments.length).toBeGreaterThan(0);
+    expect(scalpingResult.rankedInstruments).toHaveLength(0);
+    expect(scalpingResult.excludedInstruments.some((entry) =>
+      entry.instrument === "BTC/USD" && /scalping requires M1\/M5\/M15 market data/.test(entry.reason),
+    )).toBe(true);
   });
 });
 
@@ -318,9 +321,14 @@ describe("E — Intraday Gating", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("F — Swing Scoring", () => {
-  it("swing allows STALE data", () => {
+  it("swing allows STALE H4 data while keeping the actual horizon timeframe", () => {
+    const base = makeMarketData("AAPL", { price: { price: 195, timestamp: NOW - 10 * HOUR, source: "x" }, timeframe: "H4" });
+    const candles = base.candles.map((candle, index, all) => ({
+      ...candle,
+      timestamp: NOW - (all.length - index) * 4 * HOUR,
+    }));
     const sources = [
-      makeSource({ instrument: "AAPL", assetClass: "equity", marketData: makeMarketData("AAPL", { price: { price: 195, timestamp: NOW - 10 * HOUR, source: "x" } }) }),
+      makeSource({ instrument: "AAPL", assetClass: "equity", marketData: { ...base, candles } }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     expect(result.results.get("SWING")!.rankedInstruments.length).toBeGreaterThan(0);
@@ -392,10 +400,10 @@ describe("I — Forex Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("J — Equity Ranking", () => {
-  it("AAPL and MSFT ranked independently", () => {
+  it("AAPL and MSFT ranked independently on swing-compatible H4 data", () => {
     const sources = [
-      makeSource({ instrument: "AAPL", assetClass: "equity" }),
-      makeSource({ instrument: "MSFT", assetClass: "equity" }),
+      makeSource({ instrument: "AAPL", assetClass: "equity", marketData: makeMarketData("AAPL", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "MSFT", assetClass: "equity", marketData: makeMarketData("MSFT", { instrumentType: "stock", timeframe: "H4" }) }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     const ranked = result.results.get("SWING")!.rankedInstruments;
@@ -408,11 +416,11 @@ describe("J — Equity Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("K — IDX Ranking", () => {
-  it("IDX equities are ranked as first-class instruments", () => {
+  it("IDX equities are ranked as first-class instruments on H4 data", () => {
     const sources = [
-      makeSource({ instrument: "BBCA", assetClass: "equity" }),
-      makeSource({ instrument: "BBRI", assetClass: "equity" }),
-      makeSource({ instrument: "TLKM", assetClass: "equity" }),
+      makeSource({ instrument: "BBCA", assetClass: "equity", marketData: makeMarketData("BBCA", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "BBRI", assetClass: "equity", marketData: makeMarketData("BBRI", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "TLKM", assetClass: "equity", marketData: makeMarketData("TLKM", { instrumentType: "stock", timeframe: "H4" }) }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     const ranked = result.results.get("SWING")!.rankedInstruments;
@@ -420,12 +428,12 @@ describe("K — IDX Ranking", () => {
     expect(ranked.map(r => r.instrument).sort()).toEqual(["BBCA", "BBRI", "TLKM"]);
   });
 
-  it("accepts IDX equities directly without a built-in universe", () => {
+  it("accepts IDX equities directly without a built-in universe using H4 data", () => {
     const sources = [
-      makeSource({ instrument: "BBCA", assetClass: "equity" }),
-      makeSource({ instrument: "BBRI", assetClass: "equity" }),
-      makeSource({ instrument: "TLKM", assetClass: "equity" }),
-      makeSource({ instrument: "BMRI", assetClass: "equity" }),
+      makeSource({ instrument: "BBCA", assetClass: "equity", marketData: makeMarketData("BBCA", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "BBRI", assetClass: "equity", marketData: makeMarketData("BBRI", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "TLKM", assetClass: "equity", marketData: makeMarketData("TLKM", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "BMRI", assetClass: "equity", marketData: makeMarketData("BMRI", { instrumentType: "stock", timeframe: "H4" }) }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     const ranked = result.results.get("SWING")!.rankedInstruments;
@@ -470,10 +478,10 @@ describe("M — Index Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("N — Macro Context", () => {
-  it("accepts arbitrary macro instruments directly", () => {
+  it("accepts arbitrary macro instruments directly on D1 data", () => {
     const sources = [
-      makeSource({ instrument: "DXY", assetClass: "macro" }),
-      makeSource({ instrument: "US10Y", assetClass: "macro" }),
+      makeSource({ instrument: "DXY", assetClass: "macro", marketData: makeMarketData("DXY", { instrumentType: "indices", timeframe: "D1" }) }),
+      makeSource({ instrument: "US10Y", assetClass: "macro", marketData: makeMarketData("US10Y", { instrumentType: "indices", timeframe: "D1" }) }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     const ranked = result.results.get("SWING")!.rankedInstruments;
