@@ -285,8 +285,12 @@ function extractEquityData(source: LiveCandidateSource): Partial<CandidateInput>
   };
 }
 
+function isPetroleumInstrument(instrument: string): boolean {
+  return /(?:WTI|CRUDE|USOIL|UKOIL|BRENT|XTIUSD|XBRUSD|CL=F|BZ=F)/i.test(instrument);
+}
+
 function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInput> {
-  const eia = source.eiaData;
+  const eia = isPetroleumInstrument(source.instrument) ? source.eiaData : undefined;
   const cot = source.cotData;
   const intelligence = source.universalIntelligence?.commodity;
   const inventory = intelligence?.inventory?.available ? intelligence.inventory : undefined;
@@ -319,7 +323,8 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     analysisResult: source.analysisResult?.instrument === source.instrument
       ? source.analysisResult
       : undefined,
-    universalIntelligence: source.universalIntelligence?.instrument === source.instrument
+    universalIntelligence: source.universalIntelligence?.instrument === source.instrument &&
+      source.universalIntelligence.assetClass === source.assetClass
       ? source.universalIntelligence
       : undefined,
     derivativesData: source.derivativesData?.symbol ===
