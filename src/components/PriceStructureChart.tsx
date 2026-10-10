@@ -41,7 +41,11 @@ export function PriceStructureChart({
   technicalData,
 }: PriceChartProps) {
   const data = candles
-    .filter((c) => [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite))
+    .filter((c) =>
+      [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite) &&
+      c.high >= Math.max(c.open, c.close, c.low) &&
+      c.low <= Math.min(c.open, c.close, c.high)
+    )
     // Providers differ on candle order. Normalize chronologically before
     // selecting the visible window so "last close" is truly the newest bar.
     .sort((a, b) => a.timestamp - b.timestamp)
@@ -303,9 +307,11 @@ export function PriceStructureChart({
             {/* Volume is a separate lower pane, never painted through candles. */}
             <line x1={left} x2={width - right} y1={volumeTop - 6} y2={volumeTop - 6} className="stroke-border/30" />
             {hasVolume && data.map((c, i) => {
+              const volume = Number.isFinite(c.volume) && c.volume > 0 ? c.volume : 0;
+              if (volume === 0) return null;
               const cx = x(i);
               const bullish = c.close >= c.open;
-              const vy = volumeY(c.volume);
+              const vy = volumeY(volume);
               return (
                 <rect
                   key={`vol-${c.timestamp}-${i}`}
