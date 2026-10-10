@@ -391,6 +391,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     positioningScore: ar?.breakdown?.sentiment,
     fundamentalEvidenceAvailable:
       ar?.fundamentalData?.available === true ||
+      (source.assetClass === "stock" && source.universalIntelligence?.equity?.fundamentals?.available === true) ||
       ar?.macroData?.confidence === "high" ||
       ar?.macroData?.confidence === "medium" ||
       !!ar?.calendarData?.events?.some(
