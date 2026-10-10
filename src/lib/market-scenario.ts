@@ -121,7 +121,7 @@ export function buildMarketScenario(result: AnalysisResult): MarketScenarioConte
         explanation: `MTF alignment supports ${currentDirection} direction (${mtf.alignment})`,
         timeframe: mtf.setupTimeframe,
       });
-    } else if (mtf.alignment === "COUNTER_TREND") {
+    } else if (currentDirection !== "neutral" && mtf.alignment === "COUNTER_TREND") {
       reversalEvidence.push({
         category: "mtf",
         explanation: `MTF counter-trend detected — HTF structure conflicts with LTF direction`,
@@ -137,7 +137,7 @@ export function buildMarketScenario(result: AnalysisResult): MarketScenarioConte
 
   // BOS confirmation
   const bosDir = tech?.bosDirection;
-  if (bosDir && bosDir !== "none") {
+  if (currentDirection !== "neutral" && bosDir && bosDir !== "none") {
     if (
       (currentDirection === "bullish" && bosDir === "bullish") ||
       (currentDirection === "bearish" && bosDir === "bearish")
@@ -157,7 +157,7 @@ export function buildMarketScenario(result: AnalysisResult): MarketScenarioConte
 
   // CHoCH
   const chochDir = tech?.chochDirection;
-  if (chochDir && chochDir !== "none") {
+  if (currentDirection !== "neutral" && chochDir && chochDir !== "none") {
     if (
       (currentDirection === "bullish" && chochDir === "bearish") ||
       (currentDirection === "bearish" && chochDir === "bullish")
@@ -176,7 +176,7 @@ export function buildMarketScenario(result: AnalysisResult): MarketScenarioConte
 
   // Liquidity sweep
   const smc = tech?.smc;
-  if (smc) {
+  if (smc && currentDirection !== "neutral") {
     const sweep = smc.recentSweep;
     if (sweep) {
       const sweepAgainstCurrent =
