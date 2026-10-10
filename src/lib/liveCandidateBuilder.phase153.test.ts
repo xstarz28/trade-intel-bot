@@ -121,6 +121,52 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.setupStrength).toBeGreaterThan(0);
   });
 
+  it("differentiates neutral setup strength using observed RSI and volume context", () => {
+    const now = Date.now();
+    const build = (rsi14: number, volumeTrend: "stable" | "increasing") =>
+      buildCandidateFromSource({
+        instrument: "TEST-USDT",
+        assetClass: "crypto",
+        marketData: {
+          instrument: "TEST-USDT",
+          instrumentType: "crypto",
+          provider: "okx",
+          fetchTimestamp: now,
+          price: { price: 100, timestamp: now, source: "okx" },
+          candles: Array.from({ length: 100 }, (_, i) => ({
+            timestamp: now - (100 - i) * 60_000,
+            time: now - (100 - i) * 60_000,
+            open: 100,
+            high: 101,
+            low: 99,
+            close: 100,
+            volume: 1000,
+          })),
+          timeframe: "H1",
+          higherTimeframe: "H4",
+          dataFreshness: "realtime",
+        },
+        technicalData: {
+          rsi14,
+          structure: "range",
+          bosDirection: "none",
+          chochDirection: "none",
+          supportLevels: [99],
+          resistanceLevels: [101],
+          volumeTrend,
+          dataPoints: 100,
+        },
+      });
+
+    const quiet = build(50, "stable");
+    const active = build(70, "increasing");
+
+    expect(quiet.setupDirection).toBe("neutral");
+    expect(active.setupDirection).toBe("neutral");
+    expect(active.setupStrength).toBeGreaterThan(quiet.setupStrength);
+    expect(active.confluenceCount).toBeGreaterThan(quiet.confluenceCount);
+  });
+
   it.each([
     ["bullish", "long"],
     ["bearish", "short"],
