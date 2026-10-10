@@ -2188,7 +2188,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardContent className="pt-0 space-y-4">
               {/* Derivatives Intelligence */}
               {ci.derivatives && (
-                <div data-provider="coinglass" data-provider-available={String(ci.derivatives.available)}>
+                <div data-provider="derivatives" data-provider-name={ci.derivatives.provider} data-provider-available={String(ci.derivatives.available)}>
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
                     <span className="text-sky-400/80">{"●"}</span> derivatives {"·"} {ci.derivatives.provider}
                     <span className={cn("ml-2", FRESH_COLORS[ci.derivatives.freshness])}> {ci.derivatives.freshness}</span>
