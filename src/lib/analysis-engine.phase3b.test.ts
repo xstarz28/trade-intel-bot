@@ -135,6 +135,36 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
     expect(result.tradePlan).toBeUndefined();
   });
 
+  it("rejects implausible extreme R:R created by an ultra-tight scalping stop", () => {
+    const price = 100;
+    const result = runAnalysis(input({
+      instrument: "BTC-USDT-SWAP",
+      instrumentType: "crypto",
+      timeframe: "M5",
+      tradingStyle: "scalping",
+      marketData: makeMarket(price, {
+        instrument: "BTC-USDT-SWAP",
+        instrumentType: "crypto",
+        provider: "okx-perpetual-public",
+        timeframe: "M5",
+        dataFreshness: "realtime",
+        price: { price, timestamp: Date.now(), source: "okx-perpetual-public" },
+      }),
+      technicalData: tech("HH/HL", {
+        atr14: undefined,
+        swingLows: [99.9],
+        supportLevels: [99.9],
+        swingHighs: [106.6],
+        resistanceLevels: [106.6],
+      }),
+    }));
+
+    expect(result.recommendation).toBe("NO_TRADE");
+    expect(result.noTradeReasons.join(" ")).toContain("exceeds the 10R sanity ceiling");
+    expect(result.projectedTradePlan).toBeUndefined();
+    expect(result.tradePlan).toBeUndefined();
+  });
+
   it("neutral bias", () => {
     const r = runAnalysis(input({ technicalData: tech("range"), economicEvents: "Mixed central bank commentary" }));
     expect(r.recommendation).toBe("NO_TRADE");
