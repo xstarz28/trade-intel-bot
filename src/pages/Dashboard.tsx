@@ -538,7 +538,18 @@ export default function Dashboard() {
         if (input.instrumentType === "crypto") {
           const derivativesContext = derivativesResult?.data
             ? parseCoinGlassResult(derivativesResult.data, input.instrument, derivativesResult.data.timestamp ?? Date.now())
-            : undefined;
+            : derivativesResult?.error
+              ? {
+                  provider: "CoinGlass",
+                  observedAt: Date.now(),
+                  freshness: "UNAVAILABLE" as const,
+                  quality: "UNAVAILABLE" as const,
+                  available: false,
+                  failureReason: [derivativesResult.errorCode, derivativesResult.error].filter(Boolean).join(": "),
+                  availableDatasets: 0,
+                  totalDatasets: 4,
+                }
+              : undefined;
           const defiContext = defiFundamentalsResult?.success && defiFundamentalsResult?.data
             ? parseDeFiLlamaResult(
                 defiFundamentalsResult.data as Record<string, any>,

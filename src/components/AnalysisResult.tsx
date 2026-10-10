@@ -2188,7 +2188,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <CardContent className="pt-0 space-y-4">
               {/* Derivatives Intelligence */}
               {ci.derivatives && (
-                <div>
+                <div data-provider="coinglass" data-provider-available={String(ci.derivatives.available)}>
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
                     <span className="text-sky-400/80">{"●"}</span> derivatives {"·"} {ci.derivatives.provider}
                     <span className={cn("ml-2", FRESH_COLORS[ci.derivatives.freshness])}> {ci.derivatives.freshness}</span>
@@ -2272,7 +2272,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {/* DeFi Fundamentals */}
               {ci.defi && (
-                <div className="border-t border-border/30 pt-3">
+                <div data-provider="defillama" data-provider-available={String(ci.defi.available)} className="border-t border-border/30 pt-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
                     <span className="text-purple-400/80">{"●"}</span> defi fundamentals {"·"} {ci.defi.provider}
                     <span className={cn("ml-2", FRESH_COLORS[ci.defi.freshness])}> {ci.defi.freshness}</span>
@@ -2319,7 +2319,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {/* Tokenomics */}
               {ci.tokenomics && (
-                <div className="border-t border-border/30 pt-3">
+                <div data-provider="tokenomist" data-provider-available={String(ci.tokenomics.available)} className="border-t border-border/30 pt-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
                     <span className="text-orange-400/80">{"●"}</span> tokenomics {"·"} {ci.tokenomics.provider}
                     <span className={cn("ml-2", FRESH_COLORS[ci.tokenomics.freshness])}> {ci.tokenomics.freshness}</span>

@@ -95,9 +95,12 @@ export const fetchDerivatives = action({
 
       if (!apiKey) {
         const tokenomics = await tokenomicsPromise;
-        return tokenomics
-          ? { success: true, tokenomics, error: "COINGLASS_API_KEY is not configured.", errorCode: "AUTH_ERROR" }
-          : { success: false, error: "CoinGlass unavailable: COINGLASS_API_KEY is not configured.", errorCode: "AUTH_ERROR" };
+        return {
+          success: Boolean(tokenomics.available),
+          tokenomics,
+          error: "CoinGlass unavailable: COINGLASS_API_KEY is not configured.",
+          errorCode: "AUTH_ERROR",
+        };
       }
 
       const [settled, tokenomics] = await Promise.all([
@@ -142,9 +145,12 @@ export const fetchDerivatives = action({
           : rateLimit
             ? "CoinGlass rate limit exceeded."
             : reasons[0] || "CoinGlass returned no usable derivatives data.";
-        return tokenomics
-          ? { success: true, tokenomics, error, errorCode }
-          : { success: false, tokenomics, error, errorCode };
+        return {
+          success: Boolean(tokenomics.available),
+          tokenomics,
+          error,
+          errorCode,
+        };
       }
 
       let confidence: CryptoDerivativesData["confidence"] = "low";
@@ -187,7 +193,20 @@ const tokenomicsCache = new Map<string, {
 }>();
 const TOKENOMICS_TTL = 30 * 60 * 1000;
 
-async function fetchTokenomics(instrument: string): Promise<import("../lib/data/crypto/types").TokenomicsIntelligence | undefined> {
+function unavailableTokenomics(reason: string, observedAt = Date.now()): import("../lib/data/crypto/types").TokenomicsIntelligence {
+  return {
+    provider: "Tokenomist",
+    observedAt,
+    freshness: "UNAVAILABLE",
+    quality: "UNAVAILABLE",
+    available: false,
+    failureReason: reason,
+    availableDatasets: 0,
+    totalDatasets: 2,
+  };
+}
+
+async function fetchTokenomics(instrument: string): Promise<import("../lib/data/crypto/types").TokenomicsIntelligence> {
   const key = instrument.trim().toUpperCase();
   const cached = tokenomicsCache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached.data;
@@ -195,18 +214,21 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
 
   try {
     const result = await tokenomistAdapter.fetch(key);
-    if (!result?.success || !result.data || typeof result.data !== "object") return undefined;
+    if (!result?.success || !result.data || typeof result.data !== "object") {
+      const reason = [result?.errorCode, result?.error].filter(Boolean).join(": ") || "Tokenomist returned no usable data.";
+      return unavailableTokenomics(reason, result?.observedAt ?? Date.now());
+    }
     const normalized = parseTokenomistResult(
       result.data as Record<string, any>,
       key,
       result.observedAt ?? Date.now(),
     );
-    if (!normalized.available) return undefined;
+    if (!normalized.available) return normalized;
     tokenomicsCache.set(key, { data: normalized, expiresAt: Date.now() + TOKENOMICS_TTL });
     return normalized;
-  } catch {
-    // Tokenomist is non-critical; main market analysis must continue.
-    return undefined;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : "Tokenomist request failed.";
+    return unavailableTokenomics(reason);
   }
 }
 
