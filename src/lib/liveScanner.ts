@@ -50,6 +50,81 @@ export const ALL_SCAN_HORIZONS: ScanConfig["horizons"] = [
   "3+_YEARS",
 ];
 
+const TIMEFRAME_ALIASES: Record<string, string> = {
+  "1M": "M1", "1MIN": "M1", "1MINUTE": "M1",
+  "5M": "M5", "5MIN": "M5", "5MINUTE": "M5",
+  "15M": "M15", "15MIN": "M15", "15MINUTE": "M15",
+  "1H": "H1", "1HR": "H1", "4H": "H4", "4HR": "H4",
+  "1D": "D1", "1DAY": "D1", "1W": "W1", "1WEEK": "W1",
+};
+
+export function normalizeScanTimeframe(value?: string): string | undefined {
+  if (!value) return undefined;
+  const tf = value.trim().toUpperCase().replace(/\\s+/g, "");
+  return TIMEFRAME_ALIASES[tf] ?? tf;
+}
+
+export function liveSourceCacheKey(instrument: string, timeframe?: string): string {
+  return instrument.trim().toUpperCase() + "|" + (normalizeScanTimeframe(timeframe) ?? "UNKNOWN");
+}
+
+export function timeframeForHorizon(horizon: TradingMode | InvestorHorizon): string {
+  switch (horizon) {
+    case "SCALPING": return "M5";
+    case "INTRADAY": return "H1";
+    case "SWING":
+    case "1-4_WEEKS": return "H4";
+    case "1-3_MONTHS":
+    case "3-6_MONTHS": return "D1";
+    case "6-12_MONTHS":
+    case "1-3_YEARS":
+    case "3+_YEARS": return "W1";
+  }
+}
+
+const HORIZON_TIMEFRAME_PREFERENCE: Record<TradingMode | InvestorHorizon, string[]> = {
+  SCALPING: ["M5", "M1", "M15"],
+  INTRADAY: ["H1", "M15", "H4"],
+  SWING: ["H4", "D1", "W1"],
+  "1-4_WEEKS": ["H4", "D1", "W1"],
+  "1-3_MONTHS": ["D1", "W1", "H4"],
+  "3-6_MONTHS": ["D1", "W1"],
+  "6-12_MONTHS": ["W1", "D1"],
+  "1-3_YEARS": ["W1", "D1"],
+  "3+_YEARS": ["W1", "D1"],
+};
+
+export function selectCandidatesForHorizon(
+  candidates: CandidateInput[],
+  horizon: TradingMode | InvestorHorizon,
+): CandidateInput[] {
+  const preference = HORIZON_TIMEFRAME_PREFERENCE[horizon];
+  const knownTimeframes = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"];
+  const groups = new Map<string, CandidateInput[]>();
+  for (const candidate of candidates) {
+    const group = groups.get(candidate.instrument) ?? [];
+    group.push(candidate);
+    groups.set(candidate.instrument, group);
+  }
+
+  return Array.from(groups.values()).map((group) => [...group].sort((a, b) => {
+    const aTf = normalizeScanTimeframe(a.marketTimeframe);
+    const bTf = normalizeScanTimeframe(b.marketTimeframe);
+    const rank = (tf?: string) => {
+      if (!tf) return 1000;
+      const preferred = preference.indexOf(tf);
+      if (preferred >= 0) return preferred;
+      const known = knownTimeframes.indexOf(tf);
+      return 100 + (known >= 0 ? known : knownTimeframes.length);
+    };
+    const diff = rank(aTf) - rank(bTf);
+    if (diff !== 0) return diff;
+    const freshnessRank = (value: CandidateInput["freshness"]) => value === "FRESH" ? 0 : value === "DELAYED" ? 1 : value === "STALE" ? 2 : 3;
+    if (freshnessRank(a.freshness) !== freshnessRank(b.freshness)) return freshnessRank(a.freshness) - freshnessRank(b.freshness);
+    return Number(b.hasLiveData) - Number(a.hasLiveData);
+  })[0]).filter(Boolean);
+}
+
 export interface ScanResult {
   /** Results keyed by horizon. */
   results: Map<TradingMode | InvestorHorizon, UniversalRecommendationResult>;
@@ -190,7 +265,8 @@ export function scanInstruments(
   const allExcluded: { instrument: string; reason: string }[] = [];
 
   for (const horizon of config.horizons) {
-    const { eligible, excluded } = applyFreshnessGates(candidates, horizon);
+    const horizonCandidates = selectCandidatesForHorizon(candidates, horizon);
+    const { eligible, excluded } = applyFreshnessGates(horizonCandidates, horizon);
     allExcluded.push(...excluded);
 
     const result = generateRecommendation(eligible, horizon, {

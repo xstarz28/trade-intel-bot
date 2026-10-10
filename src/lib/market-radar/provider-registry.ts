@@ -600,6 +600,8 @@ export interface LiveAcquisitionResult {
   instrument: string;
   assetClass: AssetClass;
   providerInstrumentId?: string;
+  /** Exact OHLCV interval requested from the provider. */
+  timeframe?: string;
   snapshot: MarketSnapshot | null;
   candles?: OhlcvCandle[];
   provider: string;
@@ -674,6 +676,43 @@ export async function acquireLiveData(
   }
 }
 
+function normalizeAcquisitionTimeframe(value?: string): string {
+  const tf = (value ?? "H1").trim().toUpperCase().replace(/\\s+/g, "");
+  const aliases: Record<string, string> = {
+    "1M": "M1", "1MIN": "M1", "1MINUTE": "M1",
+    "5M": "M5", "5MIN": "M5", "5MINUTE": "M5",
+    "15M": "M15", "15MIN": "M15", "15MINUTE": "M15",
+    "1H": "H1", "1HR": "H1", "4H": "H4", "4HR": "H4",
+    "1D": "D1", "1DAY": "D1", "1W": "W1", "1WEEK": "W1",
+  };
+  const normalized = aliases[tf] ?? tf;
+  return ["M1", "M5", "M15", "H1", "H4", "D1", "W1"].includes(normalized) ? normalized : "H1";
+}
+
+function candleIntervalMs(timeframe: string): number {
+  const intervals: Record<string, number> = {
+    M1: 60_000, M5: 300_000, M15: 900_000, H1: 3_600_000,
+    H4: 14_400_000, D1: 86_400_000, W1: 604_800_000,
+  };
+  return intervals[timeframe] ?? intervals.H1;
+}
+
+function currentCandleBucketStart(now: number, timeframe: string): number {
+  if (timeframe === "D1") {
+    const date = new Date(now);
+    date.setUTCHours(0, 0, 0, 0);
+    return date.getTime();
+  }
+  if (timeframe === "W1") {
+    const date = new Date(now);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+    return date.getTime();
+  }
+  const interval = candleIntervalMs(timeframe);
+  return Math.floor(now / interval) * interval;
+}
+
 /**
  * Phase 156 — Acquire live data for a provider-native instrument.
  *
@@ -687,16 +726,18 @@ export async function acquireProviderNativeLiveData(
     provider: string;
     providerInstrumentId: string;
     assetClass: AssetClass;
+    timeframe?: string;
   },
   readEnv?: EnvReader,
   transport: Transport = defaultTransport,
 ): Promise<LiveAcquisitionResult> {
   const startTime = Date.now();
+  const timeframe = normalizeAcquisitionTimeframe(input.timeframe);
 
   const result = await executeLiveRequest({
     instrument: input.instrument,
     capability: "ohlcv",
-    timeframe: "1h",
+    timeframe,
     count: 100,
     transport,
     readEnv,
@@ -721,6 +762,7 @@ export async function acquireProviderNativeLiveData(
       instrument: input.instrument,
       assetClass: input.assetClass,
       providerInstrumentId: input.providerInstrumentId,
+      timeframe,
       snapshot: null,
       provider: result.provider ?? input.provider,
       fetchedAt: result.receivedAt ?? Date.now(),
@@ -731,27 +773,25 @@ export async function acquireProviderNativeLiveData(
   }
 
   const fetchedAt = result.receivedAt ?? Date.now();
-  const candleBucketStart = Math.floor(fetchedAt / (60 * 60_000)) * (60 * 60_000);
-  // OKX's current 1h candle carries the live in-progress close. Its timestamp
-  // is the candle opening bucket, not the moment that close was observed.
-  // For that current bucket only, fetchedAt is the honest observation time.
-  // Older buckets retain their provider timestamp and remain DELAYED/STALE.
-  const observedAt = latest.timestamp >= candleBucketStart
-    ? fetchedAt
-    : latest.timestamp;
+  const bucketStart = currentCandleBucketStart(fetchedAt, timeframe);
+  // Exchange OHLCV rows carry candle opening timestamps. Only the current
+  // candle uses fetchedAt as the observation time; older candles retain the
+  // actual exchange timestamp and degrade by age.
+  const observedAt = latest.timestamp >= bucketStart ? fetchedAt : latest.timestamp;
   const freshness = assessFreshness(observedAt, fetchedAt);
 
   return {
     instrument: input.instrument,
     assetClass: input.assetClass,
     providerInstrumentId: input.providerInstrumentId,
+    timeframe,
     snapshot: {
       instrument: input.instrument,
       assetClass: input.assetClass,
       price: latest.close,
       ohlcvAvailable: true,
       dataPoints: candles.length,
-      availableTimeframes: ["H1"],
+      availableTimeframes: [timeframe],
       provider: result.provider ?? input.provider,
       observedAt,
       freshness,
@@ -761,6 +801,7 @@ export async function acquireProviderNativeLiveData(
       ...candle,
       volume: candle.volume ?? 0,
     })),
+    timeframe,
     provider: result.provider ?? input.provider,
     fetchedAt,
     success: true,
@@ -815,7 +856,7 @@ export function providerNativeAcquisitionToMarketData(
       source: result.provider,
     },
     candles,
-    timeframe: "1h",
+    timeframe: normalizeAcquisitionTimeframe(result.timeframe ?? "H1"),
     dataFreshness: freshness,
     ...(result.error ? { error: result.error } : {}),
   };
@@ -854,6 +895,7 @@ export async function acquireBatchProviderNativeLiveData(
     provider: string;
     providerInstrumentId: string;
     assetClass: AssetClass;
+    timeframe?: string;
   }[],
   readEnv?: EnvReader,
   concurrency = 5,

@@ -49,6 +49,7 @@ import {
 import {
   ALL_SCAN_HORIZONS,
   scanInstruments,
+  selectCandidatesForHorizon,
   type ScanConfig,
   type ScanResult,
 } from "./liveScanner";
@@ -118,6 +119,34 @@ function makeSource(overrides?: Partial<LiveCandidateSource>): LiveCandidateSour
     ...overrides,
   };
 }
+
+describe("Horizon-specific OHLCV selection", () => {
+  it("selects real M5, H1 and H4 snapshots for scalping, intraday and swing", () => {
+    const candidateFor = (timeframe: string) => buildCandidateFromSource(makeSource({
+      instrument: "BTC/USD",
+      marketData: makeMarketData("BTC/USD", {
+        instrumentType: "crypto",
+        timeframe,
+        dataFreshness: "realtime",
+        price: { price: 65000, timestamp: NOW, source: "okx" },
+      }),
+    }));
+    const candidates = [candidateFor("H1"), candidateFor("H4"), candidateFor("M5")];
+    expect(selectCandidatesForHorizon(candidates, "SCALPING").map(c => c.marketTimeframe)).toEqual(["M5"]);
+    expect(selectCandidatesForHorizon(candidates, "INTRADAY").map(c => c.marketTimeframe)).toEqual(["H1"]);
+    expect(selectCandidatesForHorizon(candidates, "SWING").map(c => c.marketTimeframe)).toEqual(["H4"]);
+  });
+
+  it("does not duplicate an instrument when multiple timeframes are cached", () => {
+    const candidateFor = (timeframe: string) => buildCandidateFromSource(makeSource({
+      instrument: "ETH/USD",
+      marketData: makeMarketData("ETH/USD", { instrumentType: "crypto", timeframe }),
+    }));
+    const selected = selectCandidatesForHorizon([candidateFor("M5"), candidateFor("H1"), candidateFor("H4")], "INTRADAY");
+    expect(selected).toHaveLength(1);
+    expect(selected[0].marketTimeframe).toBe("H1");
+  });
+});
 
 // ═══════════════════════════════════════════════════════════════
 // A. LIVE CANDIDATE INGESTION
