@@ -20,6 +20,7 @@ const evidence = {
   startedAt: new Date().toISOString(),
   authenticated: false,
   analyses: [],
+  marketTypeCoverage: { forex: false, crypto: false, stock: false, commodity: false },
   productSurfaces: { chart: false, riskSizing: false },
   googleOAuth: { checked: false, reachedAuthorizationEndpoint: false, redirectUriMismatch: false },
 };
@@ -246,6 +247,8 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
 
   const result = {
     instrument,
+    instrumentType: type,
+    timeframe: expectedTimeframe,
     price: priceMatch?.[1] ?? null,
     source: sourceMatch?.[1]?.trim() ?? null,
     primaryDataQuality: quality ?? null,
@@ -273,6 +276,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     evidence.productSurfaces.chart = true;
   }
 
+  evidence.marketTypeCoverage[type] = true;
   evidence.analyses.push(result);
   return result;
 }
@@ -298,8 +302,18 @@ try {
   await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
   evidence.authenticated = true;
 
+  // Real production coverage: one liquid instrument per supported market class.
   await runAnalysis(page, "BTC/USD", "crypto", "M5");
   await runAnalysis(page, "XAU/USD", "commodity", "M5");
+  await runAnalysis(page, "EUR/USD", "forex", "M5");
+  await runAnalysis(page, "AAPL", "stock", "M5");
+
+  const missingMarketTypes = Object.entries(evidence.marketTypeCoverage)
+    .filter(([, covered]) => !covered)
+    .map(([marketType]) => marketType);
+  if (missingMarketTypes.length > 0) {
+    throw new Error("Production smoke missing successful analysis for market types: " + missingMarketTypes.join(", "));
+  }
 
   evidence.completedAt = new Date().toISOString();
   evidence.authTraffic = authTraffic;
