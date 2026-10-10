@@ -120,13 +120,14 @@ export class PatternPlusUnlockAdapter {
     const freshness = freshnessFor(snapshot);
     if (freshness === "UNAVAILABLE") return unavailable("PatternPlus feed has no valid update timestamp.", sourceTimestamp);
 
+    const today = new Date().toISOString().slice(0, 10);
     const allRows = snapshot.data.filter((row) =>
       typeof row.symbol === "string" &&
       row.symbol.trim().toUpperCase() === symbol.toUpperCase() &&
       typeof row.token === "string" &&
       typeof row.date === "string" &&
       Number.isFinite(dayNumber(row.date)) &&
-      dayNumber(row.date) >= dayNumber(snapshot.as_of)
+      row.date >= today
     );
 
     if (allRows.length === 0) {
@@ -153,7 +154,6 @@ export class PatternPlusUnlockAdapter {
       return unavailable("PatternPlus has no valid positive unlock amounts for " + symbol + ".", sourceTimestamp);
     }
 
-    const today = new Date().toISOString().slice(0, 10);
     const horizonDate = new Date(dayNumber(today) + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
     const next30d = validRows.filter((row) => row.date! >= today && row.date! <= horizonDate);
     const sum = (rows: UnlockRow[], selector: (row: UnlockRow) => unknown): number | undefined => {
