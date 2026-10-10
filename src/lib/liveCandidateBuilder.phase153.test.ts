@@ -248,6 +248,29 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
   });
 
 
+
+  it("never borrows price or analysis confidence from a different instrument", () => {
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      analysisResult: {
+        instrument: "ETH/USD",
+        instrumentType: "crypto",
+        timestamp: Date.now(),
+        priceSnapshot: { price: 3000, timestamp: Date.now(), source: "fixture" },
+        confidence: 99,
+        bias: "Bullish",
+        recommendation: "BUY",
+      } as any,
+    });
+
+    expect(candidate.currentPrice).toBe(0);
+    expect(candidate.hasAnalysis).toBe(false);
+    expect(candidate.analysisConfidence).toBeUndefined();
+    expect(candidate.freshness).toBe("UNAVAILABLE");
+    expect(candidate.dataCompleteness).toBe("NONE");
+  });
+
   it("produces identical technical setup when provider candles arrive newest-first or oldest-first", () => {
     const now = Date.now();
     const chronological = Array.from({ length: 210 }, (_, i) => {
