@@ -42,6 +42,9 @@ export function PriceStructureChart({
 }: PriceChartProps) {
   const data = candles
     .filter((c) => [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite))
+    // Providers differ on candle order. Normalize chronologically before
+    // selecting the visible window so "last close" is truly the newest bar.
+    .sort((a, b) => a.timestamp - b.timestamp)
     .slice(-90);
 
   if (data.length < 5) return null;
