@@ -477,6 +477,11 @@ function buildThesisPair(
 
   if (fundamental?.alignment === "FUNDAMENTAL_UNAVAILABLE") {
     thesisStatus = "VALUATION_UNAVAILABLE";
+  } else if (dir === "neutral") {
+    // Good raw data is not the same as a confirmed directional thesis.
+    // A neutral/ranging market has insufficient directional evidence to call
+    // its long-horizon thesis supported.
+    thesisStatus = "INSUFFICIENT_DATA";
   } else if (hasHighSupport && !hasHighConflict && conflicting.length === 0) {
     thesisStatus = "STRONGLY_SUPPORTED";
   } else if (hasHighSupport && conflicting.length <= 1) {
