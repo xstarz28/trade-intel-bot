@@ -110,9 +110,12 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
         ? payload.tokens
         : [];
     if (!entries.length) throw new Error("Tokenomist returned an empty token list.");
-    this.tokenList = entries.filter((row: any) => row && typeof row.id === "string" && typeof row.symbol === "string");
+    const normalizedEntries = entries.filter((row: any): row is TokenListEntry =>
+      row && typeof row.id === "string" && typeof row.symbol === "string"
+    );
+    this.tokenList = normalizedEntries;
     this.tokenListExpiresAt = Date.now() + TOKEN_LIST_TTL_MS;
-    return this.tokenList;
+    return normalizedEntries;
   }
 
   private resolveToken(symbol: string, entries: TokenListEntry[]): TokenListEntry | undefined {
