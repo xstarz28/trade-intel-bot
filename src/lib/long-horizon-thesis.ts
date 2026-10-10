@@ -477,6 +477,11 @@ function buildThesisPair(
 
   if (fundamental?.alignment === "FUNDAMENTAL_UNAVAILABLE") {
     thesisStatus = "VALUATION_UNAVAILABLE";
+  } else if (dir === "neutral") {
+    // Good raw data is not the same as a confirmed directional thesis.
+    // A neutral/ranging market has insufficient directional evidence to call
+    // its long-horizon thesis supported.
+    thesisStatus = "INSUFFICIENT_DATA";
   } else if (hasHighSupport && !hasHighConflict && conflicting.length === 0) {
     thesisStatus = "STRONGLY_SUPPORTED";
   } else if (hasHighSupport && conflicting.length <= 1) {
@@ -928,9 +933,15 @@ function assessMissing(result: AnalysisResult): string[] {
   if (!result.forwardMarketPath) missing.push("Forward market path");
   if (!dataQualityOk(result)) missing.push("Market data quality is degraded");
   if (result.instrumentType === "crypto") {
-    if (!result.derivativesData) missing.push("Crypto derivatives context (CoinGlass)");
-    if (!result.cryptoIntelligenceContext?.defi) missing.push("DeFi fundamentals (TVL, fees, revenue)");
-    if (!result.cryptoIntelligenceContext?.tokenomics) missing.push("Tokenomics data (supply, unlocks)");
+    if (!result.derivativesData && !result.cryptoIntelligenceContext?.derivatives?.available) {
+      missing.push("Crypto derivatives context");
+    }
+    if (!result.cryptoIntelligenceContext?.defi?.available) {
+      missing.push("DeFi fundamentals (TVL, fees, revenue)");
+    }
+    if (!result.cryptoIntelligenceContext?.tokenomics?.available) {
+      missing.push("Tokenomics data (supply, unlocks)");
+    }
   }
   if (result.instrumentType === "forex" && !result.cotContext) {
     missing.push("COT positioning data");

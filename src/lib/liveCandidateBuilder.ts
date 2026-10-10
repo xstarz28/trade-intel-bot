@@ -190,7 +190,40 @@ function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateIn
     tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
       ? tech.mtf.htfBias
       : higherStructureDirection ?? structureDirection ?? breakoutDirection ?? "neutral";
-  if (direction === "neutral") return { setupDirection: "neutral", setupStrength: 20, confluenceCount: 0 };
+  if (direction === "neutral") {
+    // A range is not a directional signal, but neutral candidates should still
+    // be differentiated by their observed context instead of receiving a flat
+    // strength/confluence value.
+    let score = 16;
+    let confirmations = 0;
+
+    if (tech.rsi14 !== undefined && Number.isFinite(tech.rsi14)) {
+      const distanceFromMidline = Math.abs(tech.rsi14 - 50);
+      score += Math.min(10, Math.round(distanceFromMidline * 0.25));
+      if (distanceFromMidline >= 12) confirmations++;
+    }
+    if (tech.volumeTrend === "increasing") { score += 6; confirmations++; }
+    else if (tech.volumeTrend === "decreasing") score -= 3;
+
+    const activePools = tech.smc?.liquidityPools?.filter((pool) => !pool.broken).length ?? 0;
+    if (activePools > 0) { score += Math.min(8, activePools * 2); confirmations++; }
+
+    const freshFvgs = tech.smc?.fvgs?.filter((zone) => zone.status === "fresh").length ?? 0;
+    if (freshFvgs > 0) { score += Math.min(8, freshFvgs * 3); confirmations++; }
+
+    if (tech.smc?.orderBlocks?.some((block) => block.status === "fresh")) {
+      score += 5;
+      confirmations++;
+    }
+    if (tech.smc?.recentSweep) { score += 5; confirmations++; }
+    if (tech.smc?.displacement) { score += 4; confirmations++; }
+
+    return {
+      setupDirection: "neutral",
+      setupStrength: Math.min(55, Math.max(8, score)),
+      confluenceCount: confirmations,
+    };
+  }
 
   let score = 35, confirmations = 1;
   const bullish = direction === "long";
