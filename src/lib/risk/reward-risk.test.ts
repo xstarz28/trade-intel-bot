@@ -29,6 +29,12 @@ describe("calculateRiskRewardRatio", () => {
     })).toBeUndefined();
   });
 
+  it("preserves precision near the minimum-R:R threshold", () => {
+    expect(calculateRiskRewardRatio({
+      direction: "long", entry: "100", stopLoss: "90", takeProfit: "114.99",
+    })).toBeCloseTo(1.499, 10);
+  });
+
   it("rejects zero, negative, and non-finite price levels", () => {
     for (const badPrice of ["0", "-1", "NaN", "Infinity"]) {
       expect(calculateRiskRewardRatio({
