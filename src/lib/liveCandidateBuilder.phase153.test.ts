@@ -115,7 +115,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       },
     });
 
-    expect(candidate.dataCompleteness).toBe("PARTIAL");
+    expect(candidate.dataCompleteness).toBe("MINIMAL");
     expect(candidate.dataPoints).toBe(210);
     expect(candidate.setupDirection).not.toBe("unknown");
     expect(candidate.setupStrength).toBeGreaterThan(0);

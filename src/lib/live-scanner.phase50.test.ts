@@ -281,13 +281,16 @@ describe("D — Scalping Gating", () => {
     expect(scalpingResult.excludedInstruments.length).toBe(2);
   });
 
-  it("scalping with fresh data produces results", () => {
+  it("does not promote fresh H1 discovery data into a scalping opportunity", () => {
     const sources = [
       makeSource({ instrument: "BTC/USD", marketData: makeMarketData("BTC/USD", { price: { price: 65000, timestamp: NOW - MINUTE, source: "x" }, dataFreshness: "realtime" }) }),
     ];
     const result = scanInstruments(sources, { horizons: ["SCALPING"], maxResults: 10 });
     const scalpingResult = result.results.get("SCALPING")!;
-    expect(scalpingResult.rankedInstruments.length).toBeGreaterThan(0);
+    expect(scalpingResult.rankedInstruments).toHaveLength(0);
+    expect(scalpingResult.excludedInstruments.some((entry) =>
+      entry.instrument === "BTC/USD" && /scalping requires M1\/M5\/M15 market data/.test(entry.reason),
+    )).toBe(true);
   });
 });
 
@@ -318,9 +321,14 @@ describe("E — Intraday Gating", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("F — Swing Scoring", () => {
-  it("swing allows STALE data", () => {
+  it("swing allows STALE H4 data while keeping the actual horizon timeframe", () => {
+    const base = makeMarketData("AAPL", { price: { price: 195, timestamp: NOW - 10 * HOUR, source: "x" }, timeframe: "H4" });
+    const candles = base.candles.map((candle, index, all) => ({
+      ...candle,
+      timestamp: NOW - (all.length - index) * 4 * HOUR,
+    }));
     const sources = [
-      makeSource({ instrument: "AAPL", assetClass: "equity", marketData: makeMarketData("AAPL", { price: { price: 195, timestamp: NOW - 10 * HOUR, source: "x" } }) }),
+      makeSource({ instrument: "AAPL", assetClass: "equity", marketData: { ...base, candles } }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     expect(result.results.get("SWING")!.rankedInstruments.length).toBeGreaterThan(0);

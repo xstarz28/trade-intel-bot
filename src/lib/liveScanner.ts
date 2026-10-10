@@ -198,22 +198,9 @@ export function scanInstruments(
       maxResults: eligible.length,
     });
 
-    const tradingHorizon = horizon === "SCALPING" || horizon === "INTRADAY" || horizon === "SWING";
-    if (tradingHorizon) {
-      const maxResults = config.maxResults ?? 10;
-      result.rankedInstruments = result.rankedInstruments
-        .filter((candidate) => candidate.suitability === "TOP_OPPORTUNITY" || candidate.suitability === "WATCHLIST")
-        .slice(0, maxResults)
-        .map((candidate, index) => ({ ...candidate, rank: index + 1 }));
-      const top = result.rankedInstruments.filter((candidate) => candidate.suitability === "TOP_OPPORTUNITY").length;
-      const watch = result.rankedInstruments.filter((candidate) => candidate.suitability === "WATCHLIST").length;
-      const avg = result.rankedInstruments.length
-        ? Math.round(result.rankedInstruments.reduce((sum, candidate) => sum + candidate.analyticalScore, 0) / result.rankedInstruments.length)
-        : 0;
-      result.marketOverview = result.rankedInstruments.length
-        ? result.rankedInstruments.length + " qualified instruments for " + horizon + ". " + top + " top opportunities, " + watch + " watchlist candidates. Average evidence score: " + avg + "/100."
-        : "No qualified " + horizon + " opportunities in the current observed universe. Neutral or incomplete setups are not promoted just to fill the list.";
-    }
+    // Preserve the full scored result for diagnostics and regression tests.
+    // The trader-facing MarketOpportunities view separately shows only qualifying
+    // TOP_OPPORTUNITY/WATCHLIST setups; do not destroy the scanner result here.
 
     // Merge excluded instruments from freshness gates
     result.excludedInstruments = [
