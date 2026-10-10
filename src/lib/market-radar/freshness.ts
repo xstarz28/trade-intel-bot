@@ -14,14 +14,27 @@ import { meetsFreshness, HORIZON_FRESHNESS_GATES, FRESHNESS_ORDER } from "./type
 export function assessFreshness(
   timestamp: number | undefined,
   now: number,
+  providerFreshness?: FreshnessLevel,
 ): FreshnessLevel {
-  if (!timestamp) return "UNAVAILABLE";
-  const ageMs = now - timestamp;
-  if (ageMs < 0) return "UNAVAILABLE"; // future timestamp
-  if (ageMs < 5 * 60_000) return "FRESH";         // < 5 min
-  if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
-  if (ageMs < 24 * 60 * 60_000) return "STALE";   // < 24 hours
-  return "UNAVAILABLE";
+  let ageFreshness: FreshnessLevel;
+  if (!timestamp) {
+    ageFreshness = "UNAVAILABLE";
+  } else {
+    const ageMs = now - timestamp;
+    if (ageMs < 0) ageFreshness = "UNAVAILABLE"; // future timestamp
+    else if (ageMs < 5 * 60_000) ageFreshness = "FRESH"; // < 5 min
+    else if (ageMs < 60 * 60_000) ageFreshness = "DELAYED"; // < 1 hour
+    else if (ageMs < 24 * 60 * 60_000) ageFreshness = "STALE"; // < 24 hours
+    else ageFreshness = "UNAVAILABLE";
+  }
+
+  // A recent fetch timestamp must not upgrade a provider that explicitly says
+  // its underlying observation is delayed, stale, or unavailable. Use the
+  // worse of observed age and provider-reported freshness.
+  if (!providerFreshness) return ageFreshness;
+  return FRESHNESS_ORDER.indexOf(providerFreshness) > FRESHNESS_ORDER.indexOf(ageFreshness)
+    ? providerFreshness
+    : ageFreshness;
 }
 
 // ═══════════════════════════════════════════════════════════════

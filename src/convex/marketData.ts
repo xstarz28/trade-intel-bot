@@ -392,7 +392,7 @@ export const fetchMarketData = action({
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
-          dataFreshness: "delayed" as const,
+          dataFreshness: hasLiveQuote ? "realtime" as const : "delayed" as const,
         },
         technical,
       };

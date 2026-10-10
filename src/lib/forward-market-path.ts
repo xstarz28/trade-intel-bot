@@ -701,19 +701,22 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
     }
   }
 
-  // Investor view always focuses on HTF
-  if (htfDir(result) === "bullish") {
-    investorView = "HTF bullish structure intact — continuation preferred unless invalidation occurs";
+  // Investor view uses HTF context, but never lets HTF alone override a
+  // neutral or opposing current decision.
+  const htfDirection = htfDir(result);
+  if (dir === "neutral") {
+    investorView = htfDirection === "neutral"
+      ? "No clear HTF or active directional thesis — range/unconfirmed. Wait for structural confirmation."
+      : `HTF ${htfDirection} structure is present, but the active decision is neutral. HTF context alone does not establish a directional thesis; wait for structural confirmation.`;
+  } else if (htfDirection === dir) {
+    investorView = `HTF ${htfDirection} structure aligns with the active direction — continuation remains conditional on invalidation levels and fresh confirmation.`;
     if (regime?.marketPhase === "LATE_TREND") {
       investorView += " Late trend phase — increasing exhaustion awareness";
     }
-  } else if (htfDir(result) === "bearish") {
-    investorView = "HTF bearish structure intact — continuation preferred unless invalidation occurs";
-    if (regime?.marketPhase === "LATE_TREND") {
-      investorView += " Late trend phase — increasing exhaustion awareness";
-    }
+  } else if (htfDirection !== "neutral") {
+    investorView = `HTF ${htfDirection} structure conflicts with the active ${dir} decision — continuation is not preferred until structure aligns.`;
   } else {
-    investorView = "No clear HTF structural direction — range/unconfirmed";
+    investorView = "No clear HTF structural direction — wait for directional alignment and confirmation.";
   }
 
   return {

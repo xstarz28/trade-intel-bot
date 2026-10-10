@@ -78,6 +78,7 @@ function assignQualityTier(
 function scoreOpportunity(
   source: RadarCandidateSource,
   horizon: TradingMode | InvestorHorizon,
+  now: number,
 ): { score: number; confidence: number; supporting: string[]; conflicting: string[]; missing: string[]; reasons: string[] } {
   const snapshot = source.snapshot;
   const supporting: string[] = [];
@@ -88,7 +89,7 @@ function scoreOpportunity(
   let confidence = 50;
 
   // ── Data Quality (affects both score and confidence) ──
-  const freshness = snapshot ? assessFreshness(snapshot.observedAt, Date.now()) : "UNAVAILABLE";
+  const freshness = snapshot ? assessFreshness(snapshot.observedAt, now, snapshot.freshness) : "UNAVAILABLE";
   if (freshness === "FRESH") { score += 10; confidence += 15; supporting.push("fresh market data"); }
   else if (freshness === "DELAYED") { score += 5; confidence += 5; supporting.push("delayed data available"); }
   else if (freshness === "STALE") { score -= 10; confidence -= 15; conflicting.push("stale data"); }
@@ -325,7 +326,7 @@ export function scanRadar(
 
   for (const source of filteredSources) {
     const freshness = source.snapshot
-      ? assessFreshness(source.snapshot.observedAt, timestamp)
+      ? assessFreshness(source.snapshot.observedAt, timestamp, source.snapshot.freshness)
       : "UNAVAILABLE";
     freshnessLevels.push(freshness);
     if (freshness === "FRESH" || freshness === "DELAYED") totalWithLiveData++;
@@ -365,7 +366,7 @@ export function scanRadar(
       }
 
       // Score the opportunity
-      const scored = scoreOpportunity(source, horizon);
+      const scored = scoreOpportunity(source, horizon, timestamp);
       const candidate = candidates.find(c => c.instrument === source.universe.instrument);
 
       const lifecycle: OpportunityLifecycle = scored.score >= 50 ? "ACTIVE" : scored.score >= 30 ? "QUALIFIED" : "DISCOVERED";
@@ -455,16 +456,29 @@ export function scanRadar(
       } else if (prev && curr) {
         const scoreDelta = curr.score - prev.score;
         const confDelta = curr.confidence - prev.confidence;
-        if (Math.abs(scoreDelta) > 5) changes.push(`score ${scoreDelta > 0 ? "+" : ""}${scoreDelta}`);
-        if (Math.abs(confDelta) > 5) changes.push(`confidence ${confDelta > 0 ? "+" : ""}${confDelta}`);
+        const recoveredFromUnavailable =
+          (prev.freshness === "UNAVAILABLE" ||
+            ((prev.lifecycle === "EXPIRED" || prev.lifecycle === "INVALIDATED") &&
+              prev.score === 0 && prev.confidence === 0)) &&
+          (curr.freshness === "FRESH" || curr.freshness === "DELAYED") &&
+          curr.score > 0;
+
+        // A transition from no usable data to a scored opportunity is not a
+        // genuine +60/+65 score improvement. Report the recovery as a state
+        // change and omit non-comparable numeric deltas.
+        if (recoveredFromUnavailable) changes.push("market data recovered");
+        else {
+          if (Math.abs(scoreDelta) > 5) changes.push(`score ${scoreDelta > 0 ? "+" : ""}${scoreDelta}`);
+          if (Math.abs(confDelta) > 5) changes.push(`confidence ${confDelta > 0 ? "+" : ""}${confDelta}`);
+        }
         if (prev.lifecycle !== curr.lifecycle) changes.push(`lifecycle ${prev.lifecycle} → ${curr.lifecycle}`);
         if (prev.qualityTier !== curr.qualityTier) changes.push(`tier ${prev.qualityTier} → ${curr.qualityTier}`);
         if (changes.length > 0) {
           diffs.push({
             instrument,
             changes,
-            scoreDelta,
-            confidenceDelta: confDelta,
+            scoreDelta: recoveredFromUnavailable ? undefined : scoreDelta,
+            confidenceDelta: recoveredFromUnavailable ? undefined : confDelta,
             lifecycleChanged: prev.lifecycle !== curr.lifecycle,
             qualityTierChanged: prev.qualityTier !== curr.qualityTier,
             appeared: false,

@@ -650,9 +650,11 @@ export function scoreCandidate(
   const direction =
     c.setupDirection === "long" || c.setupDirection === "short"
       ? c.setupDirection
-      : c.htfBias === "long" || c.htfBias === "short"
-        ? c.htfBias
-        : "neutral";
+      : c.setupDirection === "neutral"
+        ? "neutral"
+        : c.htfBias === "long" || c.htfBias === "short"
+          ? c.htfBias
+          : "neutral";
   const directional = direction === "long" || direction === "short";
   const sign = direction === "long" ? 1 : direction === "short" ? -1 : 0;
 
@@ -753,7 +755,9 @@ export function scoreCandidate(
     reasons.push(`${direction === "long" ? "Bullish" : "Bearish"} structure/setup ${Math.round(technical)}/100`);
     reasons.push(
       c.fundamentalScore !== undefined
-        ? `fundamental evidence ${c.fundamentalScore > 0 ? "+" : ""}${c.fundamentalScore}`
+        ? c.fundamentalScore === 0
+          ? "fundamental evidence neutral (0)"
+          : `fundamental evidence ${c.fundamentalScore > 0 ? "+" : ""}${c.fundamentalScore}`
         : "fundamental evidence unavailable",
     );
     if (agreeingNonTechnical > 0) reasons.push(`${agreeingNonTechnical} non-technical evidence layer(s) agree`);
@@ -769,10 +773,16 @@ export function scoreCandidate(
 
   if (c.riskReward && c.riskReward > 0) reasons.push(`R:R ${c.riskReward.toFixed(1)}`);
   if (c.spreadBps !== undefined && c.spreadBps > 25) conflicts.push(`wide spread ${c.spreadBps.toFixed(1)}bps`);
-  // No non-technical evidence means the engine can rank the setup, but caps it
-  // below TOP_OPPORTUNITY. This is the key guard against indicator-only setups.
+  // Keep the analytical score sensitive to measured setup quality instead of
+  // flattening every uncorroborated candidate at 64. Suitability below is what
+  // prevents a technical-only or contradicted setup from being called a watchlist
+  // opportunity.
   if (directional && agreeingNonTechnical === 0) {
-    score = Math.min(score, 64);
+    conflicts.push(
+      opposingNonTechnical > 0
+        ? "independent evidence does not confirm the setup direction"
+        : "independent directional confirmation unavailable",
+    );
   }
 
   if (c.hasDerivatives && !c.hasAnalysis && c.fundingRate === undefined && c.openInterest === undefined) {
@@ -790,7 +800,14 @@ export function scoreCandidate(
 
   const analyticalScore = Math.max(0, Math.min(100, Math.round(score)));
   const breadth = directional
-    ? Math.min(100, 35 + agreeingNonTechnical * 20 + (c.confluenceCount ?? 0) * 5)
+    ? Math.max(0, Math.min(
+        100,
+        20 +
+          Math.round(Math.max(0, Math.min(100, c.setupStrength ?? 45)) * 0.45) +
+          (c.confluenceCount ?? 0) * 4 +
+          agreeingNonTechnical * 15 -
+          opposingNonTechnical * 8,
+      ))
     : Math.min(45, 10 + (c.confluenceCount ?? 0) * 6 + Math.round(Math.min(55, Math.max(0, c.setupStrength ?? 0)) * 0.15));
   // Coherence measures agreement among evidence layers that actually exist.
   // Treating missing layers as 0/100 silently turns "unknown" into strong
@@ -875,15 +892,16 @@ function classifySuitability(
   analyticalScore: number,
   confidence: number,
   dataCompleteness: DataCompletenessLevel,
-  nonTechnicalEvidenceCount = 0,
+  independentAgreementCount = 0,
 ): RecommendationSuitability {
   if (dataCompleteness === "NONE") return "INSUFFICIENT_DATA";
   if (dataCompleteness === "MINIMAL" && analyticalScore < 50) return "INSUFFICIENT_DATA";
 
-  // A TOP_OPPORTUNITY requires at least one independent non-technical evidence
-  // layer. Technical-only setups remain useful watch candidates, never the
-  // product's primary trade opportunity.
-  if (analyticalScore >= 75 && confidence >= 65 && nonTechnicalEvidenceCount > 0) return "TOP_OPPORTUNITY";
+  // A high technical score alone is not a cross-asset opportunity. Independent
+  // evidence must agree with the candidate's direction before a status can say
+  // WATCHLIST or TOP_OPPORTUNITY; opposing evidence never counts as agreement.
+  if (independentAgreementCount === 0) return "NEUTRAL";
+  if (analyticalScore >= 75 && confidence >= 65) return "TOP_OPPORTUNITY";
   if (analyticalScore >= 60 && confidence >= 50) return "WATCHLIST";
   if (analyticalScore >= 30) return "NEUTRAL";
   return "NEUTRAL";
@@ -952,13 +970,26 @@ export function generateRecommendation(
   // Take top N and format
   for (let i = 0; i < Math.min(scored.length, maxResults); i++) {
     const { input: c, result } = scored[i];
-    const nonTechnicalEvidenceCount = [c.fundamentalScore, c.macroScore, c.positioningScore]
-      .filter((v) => v !== undefined && Number.isFinite(v) && v !== 0).length;
+    const candidateDirection =
+      c.setupDirection === "long" || c.setupDirection === "short"
+        ? c.setupDirection
+        : c.htfBias === "long" || c.htfBias === "short"
+          ? c.htfBias
+          : "neutral";
+    const directionSign = candidateDirection === "long" ? 1 : candidateDirection === "short" ? -1 : 0;
+    const independentAgreementCount = [c.fundamentalScore, c.macroScore, c.positioningScore]
+      .filter((value) =>
+        value !== undefined &&
+        Number.isFinite(value) &&
+        value !== 0 &&
+        directionSign !== 0 &&
+        Math.sign(value) === directionSign,
+      ).length;
     const suitability = classifySuitability(
       result.analyticalScore,
       result.confidence,
       c.dataCompleteness,
-      nonTechnicalEvidenceCount,
+      independentAgreementCount,
     );
 
     const recommendedType = isTradingMode

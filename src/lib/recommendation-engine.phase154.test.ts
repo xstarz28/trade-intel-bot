@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   scoreCandidate,
+  generateRecommendation,
   filterCandidatesWithObservedMarketData,
   type CandidateInput,
 } from "./recommendation-engine";
@@ -73,7 +74,7 @@ describe("Phase 154 — recommendation ranking integrity", () => {
         setupDirection: "neutral",
         setupStrength: 18,
         confluenceCount: 0,
-        htfBias: "neutral",
+        htfBias: "long",
         mtfAlignment: "MIXED",
         marketRegime: "RANGING",
       }),
@@ -84,7 +85,7 @@ describe("Phase 154 — recommendation ranking integrity", () => {
         setupDirection: "neutral",
         setupStrength: 42,
         confluenceCount: 3,
-        htfBias: "neutral",
+        htfBias: "long",
         mtfAlignment: "MIXED",
         marketRegime: "RANGING",
       }),
@@ -95,6 +96,83 @@ describe("Phase 154 — recommendation ranking integrity", () => {
     expect(active.confidence).toBeGreaterThan(quiet.confidence);
     expect(quiet.analyticalScore).toBeLessThanOrEqual(45);
     expect(active.analyticalScore).toBeLessThanOrEqual(45);
+  });
+
+  it("does not turn an explicitly neutral setup bullish solely from HTF bias", () => {
+    const neutralSetup = scoreCandidate(
+      baseCandidate({
+        setupDirection: "neutral",
+        setupStrength: 50,
+        confluenceCount: 3,
+        htfBias: "long",
+        mtfAlignment: "ALIGNED_BULLISH",
+        marketRegime: "RANGING",
+      }),
+      "INTRADAY",
+    );
+    const unclassifiedSetup = scoreCandidate(
+      baseCandidate({
+        setupDirection: "unknown",
+        setupStrength: 50,
+        confluenceCount: 3,
+        htfBias: "long",
+        mtfAlignment: "ALIGNED_BULLISH",
+        marketRegime: "RANGING",
+      }),
+      "INTRADAY",
+    );
+
+    expect(neutralSetup.analyticalScore).toBeLessThanOrEqual(45);
+    expect(unclassifiedSetup.analyticalScore).toBeGreaterThan(neutralSetup.analyticalScore);
+    expect(neutralSetup.conflicts).toContain("no confirmed directional setup");
+  });
+
+  it("preserves measured score differences above the former technical-only ceiling", () => {
+    const moderate = scoreCandidate(
+      baseCandidate({
+        setupStrength: 55,
+        confluenceCount: 2,
+        fundamentalEvidenceAvailable: false,
+        fundamentalScore: undefined,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+    const strong = scoreCandidate(
+      baseCandidate({
+        setupStrength: 85,
+        confluenceCount: 6,
+        fundamentalEvidenceAvailable: false,
+        fundamentalScore: undefined,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+      "INTRADAY",
+    );
+
+    expect(strong.analyticalScore).toBeGreaterThan(moderate.analyticalScore);
+    expect(strong.analyticalScore).toBeGreaterThan(64);
+    expect(strong.confidence).toBeGreaterThan(moderate.confidence);
+  });
+
+  it("does not label a technical-only high score as a watchlist opportunity", () => {
+    const result = generateRecommendation([
+      baseCandidate({
+        instrument: "TECHNICAL-ONLY/USD",
+        setupStrength: 85,
+        confluenceCount: 6,
+        fundamentalEvidenceAvailable: false,
+        fundamentalScore: undefined,
+        macroScore: undefined,
+        positioningScore: undefined,
+      }),
+    ], "INTRADAY", { maxResults: 5 });
+
+    expect(result.rankedInstruments).toHaveLength(1);
+    expect(result.rankedInstruments[0].analyticalScore).toBeGreaterThan(60);
+    expect(result.rankedInstruments[0].suitability).toBe("NEUTRAL");
+    expect(result.rankedInstruments[0].conflictingEvidence).toContain("independent directional confirmation unavailable");
   });
 
   it("lower-quality derivatives evidence is incorporated into the score", () => {

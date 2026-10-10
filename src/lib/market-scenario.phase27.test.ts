@@ -92,6 +92,25 @@ describe("Phase 27 — neutral structure → UNCONFIRMED", () => {
       expect(result.marketScenario!.continuationStatus).toBe("not_applicable");
     }
   });
+
+  it("does not label sweep, BOS, CHoCH, or displacement as continuation/reversal while neutral", () => {
+    const result = runAnalysis(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
+    const neutralResult = {
+      ...result,
+      decisionTrace: {
+        ...result.decisionTrace!,
+        structuralDirection: "none" as const,
+      },
+    };
+    const scenario = buildMarketScenario(neutralResult);
+    const evidence = [...scenario.continuationEvidence, ...scenario.reversalEvidence];
+
+    expect(scenario.currentDirection).toBe("neutral");
+    expect(evidence.some((item) =>
+      ["liquidity", "displacement", "bos", "choch"].includes(item.category),
+    )).toBe(false);
+    expect(evidence.map((item) => item.explanation).join(" ")).not.toContain("neutral direction");
+  });
 });
 
 // ── 3. EXISTING GATES PRESERVED ──────────────────────────────────

@@ -180,16 +180,24 @@ function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateIn
     tech.htfContext?.structure === "LH/LL" ? "short" : undefined;
   const structureDirection =
     tech.structure === "HH/HL" ? "long" :
-    tech.structure === "LH/LL" ? "short" : undefined;
+    tech.structure === "LH/LL" ? "short" :
+    tech.structure === "range" ? "neutral" : undefined;
   const breakoutDirection =
     tech.bosDirection === "bullish" ? "long" :
     tech.bosDirection === "bearish" ? "short" : undefined;
-  // Explicit MTF bias is authoritative, followed by derived higher-timeframe
-  // structure, setup-timeframe structure, and finally a confirmed BOS.
+  // The selected setup timeframe is authoritative for an actionable setup.
+  // A range stays neutral even when the HTF is bullish; only a BOS on the
+  // setup timeframe can break that neutral state. HTF direction is a fallback
+  // only when setup structure itself is genuinely unavailable/unknown.
   const direction =
-    tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
-      ? tech.mtf.htfBias
-      : higherStructureDirection ?? structureDirection ?? breakoutDirection ?? "neutral";
+    structureDirection === "neutral"
+      ? breakoutDirection ?? "neutral"
+      : structureDirection ??
+        breakoutDirection ??
+        higherStructureDirection ??
+        (tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
+          ? tech.mtf.htfBias
+          : "neutral");
   if (direction === "neutral") {
     // A range is not a directional signal, but neutral candidates should still
     // be differentiated by their observed context instead of receiving a flat

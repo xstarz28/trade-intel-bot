@@ -341,7 +341,7 @@ export function buildRadarCandidate(
   const timestamp = now ?? Date.now();
   const snapshot = source.snapshot;
   const freshness: FreshnessLevel = snapshot
-    ? assessFreshness(snapshot.observedAt, timestamp)
+    ? assessFreshness(snapshot.observedAt, timestamp, snapshot.freshness)
     : "UNAVAILABLE";
 
   const dataCompleteness = assessDataCompleteness(source);

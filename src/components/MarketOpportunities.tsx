@@ -87,6 +87,20 @@ const DATA_COMPLETENESS_COLORS: Record<string, string> = {
   NONE: "text-red-400/50",
 };
 
+const FRESHNESS_HELP: Record<string, string> = {
+  FRESH: "The underlying market observation is less than 5 minutes old.",
+  DELAYED: "The underlying observation is 5–60 minutes old or the provider explicitly reports delayed data. Not suitable for scalping.",
+  STALE: "The underlying observation is 1–24 hours old.",
+  UNAVAILABLE: "No valid observation timestamp or the observation is older than 24 hours.",
+};
+
+const DATA_COMPLETENESS_HELP: Record<string, string> = {
+  FULL: "The engine minimum completeness threshold is met. This does not guarantee every optional provider is available; check the missing-context section.",
+  PARTIAL: "Price/market structure is available, but some asset-relevant context layers are missing. This is not a complete multi-layer case.",
+  MINIMAL: "Only a small subset of required market fields is observed; confidence in the setup is limited.",
+  NONE: "No usable observed market data is available.",
+};
+
 const TRADING_HORIZONS: { key: TradingMode; label: string }[] = [
   { key: "SCALPING", label: "Scalping" },
   { key: "INTRADAY", label: "Intraday" },
@@ -196,15 +210,15 @@ function RankedCard({ item }: { item: RankedInstrument }) {
         {item.executionQuality !== undefined && (
           <div className="text-center">
             <p className="text-[9px] font-sans text-muted-foreground">{tx("marketPanel.spreadLabel")}</p>
-            <p className="text-sm font-bold font-sans tabular-nums text-foreground">{item.executionQuality}bps</p>
+            <p className="text-sm font-bold font-sans tabular-nums text-foreground">{item.executionQuality.toFixed(2)}bps</p>
           </div>
         )}
         {/* Data quality badges */}
         <div className="flex items-center gap-1 ml-auto">
-          <Badge variant="outline" className={cn("text-[8px] font-sans", FRESHNESS_COLORS[item.freshness] ?? "border-border/50")}>
+          <Badge variant="outline" title={FRESHNESS_HELP[item.freshness] ?? "Freshness is based on the underlying observation."} className={cn("text-[8px] font-sans", FRESHNESS_COLORS[item.freshness] ?? "border-border/50")}>
             {mapFreshness(item.freshness, t)}
           </Badge>
-          <Badge variant="outline" className="text-[8px] font-sans border-border/50">
+          <Badge variant="outline" title={DATA_COMPLETENESS_HELP[item.dataCompleteness] ?? "Data completeness reflects observed market and context fields."} className="text-[8px] font-sans border-border/50">
             <span className={cn(DATA_COMPLETENESS_COLORS[item.dataCompleteness])}>
               {mapCompleteness(item.dataCompleteness, t)}
             </span>
@@ -662,6 +676,10 @@ export function MarketOpportunities({
 
         {/* Market overview */}
         <p className="text-[10px] font-sans text-muted-foreground/70">{result.marketOverview}</p>
+        <p data-testid="market-data-legend" className="text-[9px] font-sans text-muted-foreground/55 leading-relaxed">
+          Fresh &lt;5 min · Delayed 5–60 min · Stale 1–24 h · Unavailable = missing/invalid timestamp or &gt;24 h.
+          Full meets the engine minimum completeness threshold; some optional providers can still be unavailable. Partial means some required market/context fields are missing.
+        </p>
 
         {/* Scanning indicator */}
         {isScanning && (
