@@ -19,6 +19,7 @@ import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
 import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tokenomist-adapter";
 import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivatives-adapter";
+import { OkxPublicDerivativesAdapter } from "../lib/data/crypto/okx-derivatives-adapter";
 
 // ── In-memory cache (10 min TTL) ────────────────────────────────
 const cache = new Map<string, { data: any; expiresAt: number }>();
@@ -41,15 +42,18 @@ const CG_BASE = "https://open-api-v4.coinglass.com/api";
 const COINGLASS_REQUEST_TIMEOUT_MS = 6_500;
 const binanceFallback = new BinancePublicDerivativesAdapter();
 const bybitFallback = new BybitPublicDerivativesAdapter();
+const okxFallback = new OkxPublicDerivativesAdapter();
 const BINANCE_FALLBACK_CACHE_TTL = 60 * 1000;
 
 async function fetchPublicDerivativesFallback(instrument: string): Promise<{ data: CryptoDerivativesData | null; error: string }> {
-  const [binanceResult, bybitResult] = await Promise.allSettled([
+  const [binanceResult, bybitResult, okxResult] = await Promise.allSettled([
     binanceFallback.fetch(instrument),
     bybitFallback.fetch(instrument),
+    okxFallback.fetch(instrument),
   ]);
   const binanceData = binanceResult.status === "fulfilled" ? binanceResult.value : null;
   const bybitData = bybitResult.status === "fulfilled" ? bybitResult.value : null;
+  const okxData = okxResult.status === "fulfilled" ? okxResult.value : null;
   const describe = (name: string, result: PromiseSettledResult<CryptoDerivativesData | null>) =>
     result.status === "rejected"
       ? name + ": " + (result.reason instanceof Error ? result.reason.message : String(result.reason))
@@ -57,8 +61,12 @@ async function fetchPublicDerivativesFallback(instrument: string): Promise<{ dat
         ? ""
         : name + ": unsupported instrument or no usable datasets";
   return {
-    data: binanceData ?? bybitData ?? null,
-    error: [describe("Binance public", binanceResult), describe("Bybit public", bybitResult)].filter(Boolean).join(" | "),
+    data: binanceData ?? bybitData ?? okxData ?? null,
+    error: [
+      describe("Binance public", binanceResult),
+      describe("Bybit public", bybitResult),
+      describe("OKX public", okxResult),
+    ].filter(Boolean).join(" | "),
   };
 }
 
