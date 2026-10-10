@@ -469,6 +469,19 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
       expect(Array.isArray(lh.missingInformation)).toBe(true);
     });
 
+    it("does not mark a neutral market thesis as supported", () => {
+      const source = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
+      const neutralResult = {
+        ...source,
+        bias: "Neutral" as const,
+        fundamentalThesis: undefined,
+      };
+      const thesis = buildLongHorizonThesis(neutralResult);
+
+      expect(thesis.primaryThesis).toContain("No clear directional structure");
+      expect(thesis.thesisStatus).toBe("INSUFFICIENT_DATA");
+    });
+
     it("does not report DeFi fundamentals as missing when crypto intelligence already contains them", () => {
       const now = Date.now();
       const cryptoIntelligenceContext = {
