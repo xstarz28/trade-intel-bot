@@ -27,6 +27,7 @@ import {
   CoinGlassAdapter,
   parseCoinGlassResult,
 } from "./data/crypto/coinglass-adapter";
+import { BinancePublicDerivativesAdapter, toBinanceUsdtFuturesSymbol } from "./data/crypto/binance-derivatives-adapter";
 import {
   DeFiLlamaAdapter,
   parseDeFiLlamaResult,
@@ -1234,5 +1235,77 @@ describe("Phase 41 — provider failure visibility", () => {
     );
     expect(ctx?.missingInformation).toContain("CoinGlass unavailable: AUTH_ERROR: CoinGlass API key rejected");
     expect(ctx?.missingInformation).toContain("Tokenomist unavailable: AUTH_ERROR: TOKENOMIST_API_KEY is not configured");
+  });
+});
+
+describe("Phase 41 — public Binance derivatives fallback", () => {
+  function response(body: unknown, status = 200): Response {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: status === 200 ? "OK" : "provider error",
+      json: async () => body,
+    } as Response;
+  }
+
+  it("maps canonical instruments without inventing a non-USDT provider symbol", () => {
+    expect(toBinanceUsdtFuturesSymbol("BTC/USD")).toBe("BTCUSDT");
+    expect(toBinanceUsdtFuturesSymbol("ETH/USD")).toBe("ETHUSDT");
+    expect(toBinanceUsdtFuturesSymbol("EUR/USD")).toBeNull();
+  });
+
+  it("normalizes actual public open interest, funding and long/short data", async () => {
+    const requested: string[] = [];
+    const adapter = new BinancePublicDerivativesAdapter(async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.includes("/futures/data/openInterestHist")) {
+        return response([{ symbol: "BTCUSDT", sumOpenInterest: "1000", sumOpenInterestValue: "65000000", timestamp: Date.now() }]);
+      }
+      if (url.includes("/fapi/v1/premiumIndex")) {
+        return response({ symbol: "BTCUSDT", markPrice: "65000", lastFundingRate: "0.0001", time: Date.now() });
+      }
+      if (url.includes("/futures/data/globalLongShortAccountRatio")) {
+        return response([{ symbol: "BTCUSDT", longShortRatio: "1.25", longAccount: "0.5555", shortAccount: "0.4445", timestamp: Date.now() }]);
+      }
+      throw new Error("Unexpected Binance URL: " + url);
+    });
+
+    const result = await adapter.fetch("BTC/USD");
+    expect(result?.provider).toBe("binance-public-futures");
+    expect(result?.symbol).toBe("BTCUSDT");
+    expect(result?.openInterest?.current).toBe(65_000_000);
+    expect(result?.fundingRate?.currentRate).toBe(0.0001);
+    expect(result?.longShort?.accountRatio).toBe(1.25);
+    expect(result?.availability).toEqual({
+      openInterest: true,
+      fundingRate: true,
+      longShort: true,
+      liquidations: false,
+    });
+    expect(result?.confidence).toBe("high");
+    expect(requested).toHaveLength(3);
+    expect(requested.every((url) => url.startsWith("https://fapi.binance.com/"))).toBe(true);
+  });
+
+  it("returns truthful partial data when one public endpoint fails", async () => {
+    const adapter = new BinancePublicDerivativesAdapter(async (input) => {
+      const url = String(input);
+      if (url.includes("/futures/data/openInterestHist")) return response([], 503);
+      if (url.includes("/fapi/v1/premiumIndex")) return response({ symbol: "ETHUSDT", lastFundingRate: "0.0002" });
+      if (url.includes("/futures/data/globalLongShortAccountRatio")) return response([{ longShortRatio: "0.9" }]);
+      throw new Error("Unexpected Binance URL: " + url);
+    });
+
+    const result = await adapter.fetch("ETH/USD");
+    expect(result?.provider).toBe("binance-public-futures");
+    expect(result?.availability).toEqual({
+      openInterest: false,
+      fundingRate: true,
+      longShort: true,
+      liquidations: false,
+    });
+    expect(result?.confidence).toBe("medium");
+    expect(result?.openInterest).toBeUndefined();
   });
 });
