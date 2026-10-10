@@ -61,6 +61,9 @@ export interface RadarCandidateSource {
     confidence?: string;
     bias?: string;
     recommendation?: string;
+    fundamentalScore?: number;
+    positioningScore?: number;
+    fundamentalEvidenceAvailable?: boolean;
     technicalData?: {
       htfBias?: string;
       mtfAlignment?: string;
@@ -225,6 +228,15 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
         confidence: String(analysis.confidence),
         bias: analysis.bias,
         recommendation: analysis.recommendation,
+        fundamentalScore: analysis.breakdown?.fundamental,
+        positioningScore: analysis.breakdown?.sentiment,
+        fundamentalEvidenceAvailable:
+          analysis.fundamentalData?.available === true ||
+          analysis.macroData?.confidence === "high" ||
+          analysis.macroData?.confidence === "medium" ||
+          !!analysis.calendarData?.events?.some(
+            (event) => event.status === "released" && event.actual !== undefined && event.forecast !== undefined,
+          ),
         technicalData: {
           htfBias,
           mtfAlignment: technical?.mtf?.alignment ?? analysis.mtfSummary?.alignment,
@@ -425,6 +437,15 @@ export function buildRadarCandidate(
     if (confStr) {
       const num = parseInt(confStr, 10);
       if (!isNaN(num)) candidate.analysisConfidence = num;
+    }
+    if (source.analysisResult.fundamentalScore !== undefined) {
+      candidate.fundamentalScore = source.analysisResult.fundamentalScore;
+    }
+    if (source.analysisResult.positioningScore !== undefined) {
+      candidate.positioningScore = source.analysisResult.positioningScore;
+    }
+    if (source.analysisResult.fundamentalEvidenceAvailable !== undefined) {
+      candidate.fundamentalEvidenceAvailable = source.analysisResult.fundamentalEvidenceAvailable;
     }
   }
 
