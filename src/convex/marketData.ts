@@ -304,7 +304,11 @@ export const fetchMarketData = action({
         slots.find((slot) => slot.role === "trigger");
       const settled = await Promise.allSettled(
         slots.map((slot) => {
-          if (slot !== preferredSlot) {
+          // Public OKX candles do not consume the Twelve Data credit budget,
+          // so crypto may use the complete available chain. For Twelve Data
+          // markets only the highest HTF is fetched; remaining slots stay
+          // explicitly unavailable until real candles can be fetched.
+          if (args.instrumentType !== "crypto" && slot !== preferredSlot) {
             return Promise.reject(
               new Error("Not fetched: reserved Twelve Data credits for primary analyses across instruments."),
             );
