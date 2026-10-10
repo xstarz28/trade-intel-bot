@@ -17,6 +17,7 @@ import type {
 } from "../lib/data/derivatives-types";
 import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
 import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tokenomist-adapter";
+import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
 
 // ── In-memory cache (10 min TTL) ────────────────────────────────
 const cache = new Map<string, { data: any; expiresAt: number }>();
@@ -29,14 +30,16 @@ function getCached<T>(key: string): T | null {
   return null;
 }
 
-function setCache(key: string, data: any): void {
-  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
+function setCache(key: string, data: any, ttlMs = CACHE_TTL): void {
+  cache.set(key, { data, expiresAt: Date.now() + ttlMs });
 }
 
 // ── CoinGlass API ───────────────────────────────────────────────
 
 const CG_BASE = "https://open-api-v4.coinglass.com/api";
 const COINGLASS_REQUEST_TIMEOUT_MS = 6_500;
+const binanceFallback = new BinancePublicDerivativesAdapter();
+const BINANCE_FALLBACK_CACHE_TTL = 60 * 1000;
 
 async function cgFetch(path: string, apiKey: string): Promise<any> {
   const res = await fetch(CG_BASE + path, {
@@ -94,11 +97,24 @@ export const fetchDerivatives = action({
       }
 
       if (!apiKey) {
-        const tokenomics = await tokenomicsPromise;
+        const [tokenomics, fallbackData] = await Promise.all([
+          tokenomicsPromise,
+          binanceFallback.fetch(args.instrument).catch(() => null),
+        ]);
+        if (fallbackData) {
+          setCache(cacheKey, fallbackData, BINANCE_FALLBACK_CACHE_TTL);
+          return {
+            success: true,
+            data: fallbackData,
+            tokenomics,
+            error: "CoinGlass API key is not configured; using public Binance Futures data as a labeled fallback.",
+            errorCode: "AUTH_ERROR",
+          };
+        }
         return {
           success: Boolean(tokenomics.available),
           tokenomics,
-          error: "CoinGlass unavailable: COINGLASS_API_KEY is not configured.",
+          error: "CoinGlass API key is not configured and public Binance Futures returned no usable derivatives data.",
           errorCode: "AUTH_ERROR",
         };
       }
@@ -145,6 +161,17 @@ export const fetchDerivatives = action({
           : rateLimit
             ? "CoinGlass rate limit exceeded."
             : reasons[0] || "CoinGlass returned no usable derivatives data.";
+        const fallbackData = await binanceFallback.fetch(args.instrument).catch(() => null);
+        if (fallbackData) {
+          setCache(cacheKey, fallbackData, BINANCE_FALLBACK_CACHE_TTL);
+          return {
+            success: true,
+            data: fallbackData,
+            tokenomics,
+            error: error + " Using public Binance Futures fallback.",
+            errorCode,
+          };
+        }
         return {
           success: Boolean(tokenomics.available),
           tokenomics,
