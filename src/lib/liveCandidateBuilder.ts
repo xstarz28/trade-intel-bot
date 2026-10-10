@@ -13,7 +13,7 @@
 
 import type { CandidateInput, DataCompletenessLevel } from "./recommendation-engine";
 import type { AssetClass } from "./data/universal/types";
-import type { MarketData, TechnicalData, OhlcvCandle } from "./data/market-types";
+import type { MarketData, TechnicalData } from "./data/market-types";
 import type { AnalysisResult } from "@/types/analysis";
 import type { UniversalIntelligenceContext } from "./data/universal/types";
 import type { CryptoDerivativesData } from "./data/derivatives-types";
@@ -119,7 +119,7 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
   if (source.marketData?.price?.price) count++;
   if (source.marketData?.candles?.length) count++;
   if (technicalData ?? source.technicalData) count++;
-  if (source.analysisResult) count++;
+  if (source.analysisResult?.instrument === source.instrument) count++;
   if (source.universalIntelligence) count++;
   if (source.derivativesData) count++;
   if (source.calendarData) count++;
@@ -139,9 +139,10 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
 
 function extractHtfBias(tech: TechnicalData | undefined): "long" | "short" | "neutral" | "unknown" {
   if (!tech) return "unknown";
-  if (tech.structure === "HH/HL") return "long";
-  if (tech.structure === "LH/LL") return "short";
-  if (tech.structure === "range") return "neutral";
+  const structure = tech.htfContext?.structure ?? tech.structure;
+  if (structure === "HH/HL") return "long";
+  if (structure === "LH/LL") return "short";
+  if (structure === "range") return "neutral";
   return "unknown";
 }
 
@@ -152,8 +153,21 @@ function extractMarketRegime(tech: TechnicalData | undefined): string | undefine
   return "UNKNOWN";
 }
 
-function extractMtfAlignment(ar: AnalysisResult | undefined): string | undefined {
-  return ar?.mtfSummary?.alignment;
+function extractMtfAlignment(
+  tech: TechnicalData | undefined,
+  ar: AnalysisResult | undefined,
+): string | undefined {
+  if (ar?.mtfSummary?.alignment) return ar.mtfSummary.alignment;
+  if (tech?.mtf?.alignment) return tech.mtf.alignment;
+
+  const primary = tech?.structure === "HH/HL" ? "long"
+    : tech?.structure === "LH/LL" ? "short" : undefined;
+  const higher = tech?.htfContext?.structure === "HH/HL" ? "long"
+    : tech?.htfContext?.structure === "LH/LL" ? "short" : undefined;
+  if (primary === "long" && higher === "long") return "ALIGNED_BULLISH";
+  if (primary === "short" && higher === "short") return "ALIGNED_BEARISH";
+  if (primary && higher && primary !== higher) return "COUNTER_TREND";
+  return undefined;
 }
 
 function extractAtr(tech: TechnicalData | undefined): number | undefined {
@@ -161,19 +175,21 @@ function extractAtr(tech: TechnicalData | undefined): number | undefined {
 }
 function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
   if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
+  const higherStructureDirection =
+    tech.htfContext?.structure === "HH/HL" ? "long" :
+    tech.htfContext?.structure === "LH/LL" ? "short" : undefined;
   const structureDirection =
     tech.structure === "HH/HL" ? "long" :
     tech.structure === "LH/LL" ? "short" : undefined;
   const breakoutDirection =
     tech.bosDirection === "bullish" ? "long" :
     tech.bosDirection === "bearish" ? "short" : undefined;
-  // HTF bias remains authoritative, followed by confirmed directional
-  // structure. When structure is ranging, a real BOS can still provide
-  // directional evidence instead of collapsing every breakout to Neutral.
+  // Explicit MTF bias is authoritative, followed by derived higher-timeframe
+  // structure, setup-timeframe structure, and finally a confirmed BOS.
   const direction =
     tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
       ? tech.mtf.htfBias
-      : structureDirection ?? breakoutDirection ?? "neutral";
+      : higherStructureDirection ?? structureDirection ?? breakoutDirection ?? "neutral";
   if (direction === "neutral") return { setupDirection: "neutral", setupStrength: 20, confluenceCount: 0 };
 
   let score = 35, confirmations = 1;
@@ -229,7 +245,6 @@ function extractSpreadBps(source: LiveCandidateSource): number | undefined {
 
 function extractCryptoData(source: LiveCandidateSource): Partial<CandidateInput> {
   const d = source.derivativesData;
-  const ci = source.universalIntelligence?.equity ?? source.universalIntelligence;
   return {
     hasDerivatives: !!d,
     fundingRate: d?.fundingRate?.currentRate,
@@ -238,38 +253,56 @@ function extractCryptoData(source: LiveCandidateSource): Partial<CandidateInput>
 }
 
 function extractForexData(source: LiveCandidateSource): Partial<CandidateInput> {
-  const t = source.treasuryData;
+  const fx = source.universalIntelligence?.forex;
+  const crossAsset = source.universalIntelligence?.crossAsset;
   const cot = source.cotData;
   const cotAvailable = cot && cot.available ? cot : null;
   return {
-    rateDifferential: undefined, // Would need central bank rate data
-    yieldDifferential: undefined,
-    hasCOT: !!cotAvailable,
-    cotNet: cotAvailable?.netNonCommercial,
-    dxyTrend: undefined,
+    // Use only explicitly available intelligence; never infer rates from a
+    // missing feed or let unavailable provider metadata become evidence.
+    rateDifferential: fx?.rates?.available ? fx.rates.rateDifferential : undefined,
+    yieldDifferential: fx?.yields?.available ? fx.yields.yieldDifferential : undefined,
+    hasCOT: !!cotAvailable || !!(fx?.positioning?.available),
+    cotNet: cotAvailable?.netNonCommercial ??
+      (fx?.positioning?.available ? fx.positioning.nonCommercialNet : undefined),
+    dxyTrend: crossAsset?.dxy?.available
+      ? crossAsset.dxy.trend
+      : fx?.crossAsset?.available ? fx.crossAsset.dxyTrend : undefined,
   };
 }
 
 function extractEquityData(source: LiveCandidateSource): Partial<CandidateInput> {
   const ar = source.analysisResult;
+  const fundamentals = source.universalIntelligence?.equity?.fundamentals;
+  const fundamentalsAvailable = fundamentals?.available === true;
   return {
-    hasFundamentals: !!ar?.fundamentalData?.available,
-    peRatio: ar?.fundamentalData?.peRatio,
-    revenueGrowth: undefined, // FundamentalData doesn't expose revenueGrowth directly
-    profitMargin: ar?.fundamentalData?.profitMargin,
-    marketCap: ar?.fundamentalData?.marketCap,
+    hasFundamentals: !!ar?.fundamentalData?.available || fundamentalsAvailable,
+    peRatio: fundamentalsAvailable ? fundamentals.peRatio : ar?.fundamentalData?.peRatio,
+    revenueGrowth: fundamentalsAvailable ? fundamentals.revenueGrowth : undefined,
+    profitMargin: fundamentalsAvailable ? fundamentals.profitMargin : ar?.fundamentalData?.profitMargin,
+    marketCap: fundamentalsAvailable ? fundamentals.marketCap : ar?.fundamentalData?.marketCap,
   };
 }
 
+function isPetroleumInstrument(instrument: string): boolean {
+  return /(?:WTI|CRUDE|USOIL|UKOIL|BRENT|XTIUSD|XBRUSD|CL=F|BZ=F)/i.test(instrument);
+}
+
 function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInput> {
-  const eia = source.eiaData;
+  const eia = isPetroleumInstrument(source.instrument) ? source.eiaData : undefined;
   const cot = source.cotData;
+  const intelligence = source.universalIntelligence?.commodity;
+  const inventory = intelligence?.inventory?.available ? intelligence.inventory : undefined;
+  const positioning = intelligence?.positioning?.available ? intelligence.positioning : undefined;
+  const futures = intelligence?.futuresStructure?.available ? intelligence.futuresStructure : undefined;
   return {
-    inventory: eia && eia.available ? eia.series[0]?.latestValue : undefined,
-    inventoryChange: eia && eia.available ? eia.series[0]?.change : undefined,
-    hasCOT: !!(cot && cot.available),
-    cotNet: cot && cot.available ? cot.netNonCommercial : undefined,
-    futuresStructure: undefined, // Would need futures curve data
+    inventory: inventory?.currentInventory ?? (eia?.available ? eia.series[0]?.latestValue : undefined),
+    inventoryChange: inventory?.changeWeekly ?? (eia?.available ? eia.series[0]?.change : undefined),
+    hasCOT: !!(cot?.available || positioning),
+    cotNet: cot?.available && cot.netNonCommercial !== undefined
+      ? cot.netNonCommercial
+      : positioning?.managedMoneyNet,
+    futuresStructure: futures?.structure,
   };
 }
 
@@ -278,15 +311,48 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
 // ═══════════════════════════════════════════════════════════════
 
 export function buildCandidateFromSource(source: LiveCandidateSource): CandidateInput {
+  // Never mix evidence across instrument identities. Remove mismatched
+  // analysis/intelligence payloads before they can affect price, confidence,
+  // completeness, or asset-specific recommendation inputs.
+  source = {
+    ...source,
+    marketData: source.marketData?.instrument === source.instrument
+      ? source.marketData
+      : undefined,
+    analysisResult: source.analysisResult?.instrument === source.instrument
+      ? source.analysisResult
+      : undefined,
+    universalIntelligence: source.universalIntelligence?.instrument === source.instrument &&
+      source.universalIntelligence.assetClass === source.assetClass
+      ? source.universalIntelligence
+      : undefined,
+    derivativesData: source.derivativesData?.symbol ===
+      (source.providerNative?.providerInstrumentId ?? source.instrument)
+      ? source.derivativesData
+      : undefined,
+    cotData: source.cotData?.requestedInstrument === source.instrument
+      ? source.cotData
+      : undefined,
+  };
   const now = Date.now();
   // Derive technical evidence from verified provider OHLCV when the source
   // did not already carry a richer technical analysis. Without this bridge,
   // provider-native discovery supplied price/candles but every candidate
   // remained MINIMAL with no direction, collapsing the ranking to identical
   // scores. Explicit upstream technicalData remains authoritative.
+  const orderedCandles = source.marketData?.candles
+    ?.slice()
+    .sort((a, b) => a.timestamp - b.timestamp);
+  const orderedHigherTimeframeCandles = source.marketData?.higherTimeframeCandles
+    ?.slice()
+    .sort((a, b) => a.timestamp - b.timestamp);
   const tech = source.technicalData ?? (
-    source.marketData?.candles && source.marketData.candles.length > 0
-      ? calculateTechnical(source.marketData.candles)
+    orderedCandles && orderedCandles.length > 0
+      ? calculateTechnical(
+          orderedCandles,
+          orderedHigherTimeframeCandles,
+          source.marketData?.higherTimeframe ?? "HTF",
+        )
       : undefined
   );
   const ar = source.analysisResult;
@@ -343,16 +409,23 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     // Structure
     htfBias: tech?.mtf?.htfBias === "long" || tech?.mtf?.htfBias === "short" ? tech.mtf?.htfBias : extractHtfBias(tech),
     marketRegime: extractMarketRegime(tech),
-    mtfAlignment: tech?.mtf?.alignment ?? extractMtfAlignment(ar),
+    mtfAlignment: tech?.mtf?.alignment ?? extractMtfAlignment(tech, ar),
     keySupport: tech?.supportLevels?.[0],
     keyResistance: tech?.resistanceLevels?.[0],
     riskReward: ar?.tradePlan?.riskReward,
     spreadBps: extractSpreadBps(source),
     atr: extractAtr(tech),
 
-    // Cross-asset
-    dxyTrend: undefined,
-    riskRegime: undefined,
+    // Cross-asset context is informational unless the provider explicitly
+    // marks it available. Preserve absence instead of guessing a regime.
+    dxyTrend: source.universalIntelligence?.crossAsset?.dxy?.available
+      ? source.universalIntelligence.crossAsset.dxy.trend
+      : source.universalIntelligence?.forex?.crossAsset?.available
+        ? source.universalIntelligence.forex.crossAsset.dxyTrend
+        : undefined,
+    riskRegime: source.universalIntelligence?.crossAsset?.riskRegime?.available
+      ? source.universalIntelligence.crossAsset.riskRegime.regime
+      : undefined,
 
     // Dedup
     dependencyGroupsUsed: [],
@@ -371,12 +444,8 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     fundamentalScore: ar?.breakdown?.fundamental,
     positioningScore: ar?.breakdown?.sentiment,
     fundamentalEvidenceAvailable:
-      ar?.fundamentalData?.available === true ||
-      ar?.macroData?.confidence === "high" ||
-      ar?.macroData?.confidence === "medium" ||
-      !!ar?.calendarData?.events?.some(
-        (event) => event.status === "released" && event.actual !== undefined && event.forecast !== undefined,
-      ),
+      ar?.breakdown?.fundamental !== undefined &&
+      Number.isFinite(ar.breakdown.fundamental),
     macroScore: (() => {
       if (source.treasuryData?.available && source.assetClass === "commodity") {
         const evidence = deriveMacroYieldEvidence(source.treasuryData);

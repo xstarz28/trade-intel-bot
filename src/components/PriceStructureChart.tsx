@@ -3,6 +3,8 @@ import type { OhlcvCandle, TechnicalData } from "@/lib/data/market-types";
 import type { KeyLevels, TradePlan } from "@/types/analysis";
 
 interface PriceChartProps {
+  instrument: string;
+  instrumentType: string;
   candles: OhlcvCandle[];
   keyLevels: KeyLevels;
   tradePlan?: TradePlan;
@@ -10,11 +12,22 @@ interface PriceChartProps {
   technicalData?: TechnicalData;
 }
 
-function fmt(value: number): string {
+function formatChartPrice(value: number, instrumentType: string, instrument: string): string {
   if (!Number.isFinite(value)) return "—";
-  if (Math.abs(value) >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (Math.abs(value) >= 1) return value.toFixed(2);
-  return value.toFixed(5);
+  const magnitude = Math.abs(value);
+  if (instrumentType === "forex") return value.toFixed(/JPY/i.test(instrument) ? 3 : 5);
+  if (instrumentType === "crypto") {
+    if (magnitude >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    if (magnitude >= 1) return value.toFixed(4);
+    if (magnitude >= 0.01) return value.toFixed(6);
+    if (magnitude >= 0.0001) return value.toFixed(8);
+    return value.toFixed(10);
+  }
+  if (magnitude >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (magnitude >= 1) return value.toFixed(2);
+  if (magnitude >= 0.01) return value.toFixed(4);
+  if (magnitude >= 0.0001) return value.toFixed(6);
+  return value.toFixed(8);
 }
 
 function timeLabel(timestamp: number): string {
@@ -34,6 +47,8 @@ function timeLabel(timestamp: number): string {
  * instead of painting every available object over the price action.
  */
 export function PriceStructureChart({
+  instrument,
+  instrumentType,
   candles,
   keyLevels,
   tradePlan,
@@ -41,16 +56,34 @@ export function PriceStructureChart({
   technicalData,
 }: PriceChartProps) {
   const data = candles
-    .filter((c) => [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite))
+    .filter((c) =>
+      [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite) &&
+      c.high >= Math.max(c.open, c.close, c.low) &&
+      c.low <= Math.min(c.open, c.close, c.high)
+    )
+    // Providers differ on candle order. Normalize chronologically before
+    // selecting the visible window so "last close" is truly the newest bar.
+    .sort((a, b) => a.timestamp - b.timestamp)
     .slice(-90);
 
   if (data.length < 5) return null;
 
+  const fmt = (value: number) => formatChartPrice(value, instrumentType, instrument);
   const smc = technicalData?.smc;
+  const plan = tradePlan ?? projectedTradePlan;
+  const projected = !tradePlan && !!projectedTradePlan;
   const highs = data.map((c) => c.high);
   const lows = data.map((c) => c.low);
-  const max = Math.max(...highs);
-  const min = Math.min(...lows);
+  // Include valid plotted levels in the scale; otherwise an otherwise valid
+  // entry/SL/TP outside the candle-only range silently disappears from chart.
+  const overlayPrices = [
+    Number(keyLevels.support),
+    Number(keyLevels.resistance),
+    Number(keyLevels.invalidation),
+    ...(plan ? [Number(plan.entry), Number(plan.stopLoss), Number(plan.takeProfit)] : []),
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  const max = Math.max(...highs, ...overlayPrices);
+  const min = Math.min(...lows, ...overlayPrices);
   const spanRaw = Math.max(max - min, Number.EPSILON);
   const pad = spanRaw * 0.07;
   const topPrice = max + pad;
@@ -85,8 +118,6 @@ export function PriceStructureChart({
   const support = Number(keyLevels.support);
   const resistance = Number(keyLevels.resistance);
   const invalidation = Number(keyLevels.invalidation);
-  const plan = tradePlan ?? projectedTradePlan;
-  const projected = !tradePlan && !!projectedTradePlan;
 
   const planLevels = plan
     ? [
@@ -129,7 +160,7 @@ export function PriceStructureChart({
           <div className="flex items-center gap-2 text-[9px] font-mono text-muted-foreground">
             <span>{data.length} candles</span>
             <span>·</span>
-            <span className="text-foreground">LIVE {fmt(last.close)}</span>
+            <span className="text-foreground">LAST CLOSE {fmt(last.close)}</span>
           </div>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
@@ -292,9 +323,11 @@ export function PriceStructureChart({
             {/* Volume is a separate lower pane, never painted through candles. */}
             <line x1={left} x2={width - right} y1={volumeTop - 6} y2={volumeTop - 6} className="stroke-border/30" />
             {hasVolume && data.map((c, i) => {
+              const volume = Number.isFinite(c.volume) && c.volume > 0 ? c.volume : 0;
+              if (volume === 0) return null;
               const cx = x(i);
               const bullish = c.close >= c.open;
-              const vy = volumeY(c.volume);
+              const vy = volumeY(volume);
               return (
                 <rect
                   key={`vol-${c.timestamp}-${i}`}

@@ -8,12 +8,12 @@
  * Missing components remain missing — never fabricated.
  */
 
-import type { AssetClass } from "@/lib/data/universal/types";
 import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation-engine";
 import type { MarketSnapshot, FreshnessLevel } from "./types";
 import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
 import type { LiveCandidateSource } from "../liveCandidateBuilder";
+import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
 
 // ═══════════════════════════════════════════════════════════════
 // RADAR CANDIDATE SOURCE
@@ -37,6 +37,11 @@ export interface RadarCandidateSource {
     marketCap?: number;
     revenueGrowth?: number;
   };
+  /** Raw rate/yield context; not directional evidence by itself. */
+  rateDifferential?: number;
+  yieldDifferential?: number;
+  /** Signed gold macro effect derived from actual Treasury observations. */
+  macroScore?: number;
   /** Optional COT data (forex/commodity). */
   cot?: {
     netNonCommercial?: number;
@@ -58,6 +63,9 @@ export interface RadarCandidateSource {
     confidence?: string;
     bias?: string;
     recommendation?: string;
+    fundamentalScore?: number;
+    positioningScore?: number;
+    fundamentalEvidenceAvailable?: boolean;
     technicalData?: {
       htfBias?: string;
       mtfAlignment?: string;
@@ -82,11 +90,30 @@ export interface RadarCandidateSource {
  * provider-backed technical or asset-specific context. History-only records
  * never create a market snapshot or get promoted to live evidence.
  */
+function isPetroleumInstrument(instrument: string): boolean {
+  return /(?:WTI|CRUDE|USOIL|UKOIL|BRENT|XTIUSD|XBRUSD|CL=F|BZ=F)/i.test(instrument);
+}
+
 export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandidateSource {
-  const market = source.marketData;
-  const technical = source.technicalData ?? source.analysisResult?.technicalData;
-  const analysis = source.analysisResult;
-  const intelligence = source.universalIntelligence;
+  const market = source.marketData?.instrument === source.instrument
+    ? source.marketData
+    : undefined;
+  const matchingAnalysis = source.analysisResult?.instrument === source.instrument
+    ? source.analysisResult
+    : undefined;
+  const technical = source.technicalData ?? matchingAnalysis?.technicalData;
+  const analysis = matchingAnalysis;
+  const intelligence = source.universalIntelligence?.instrument === source.instrument &&
+    source.universalIntelligence.assetClass === source.assetClass
+    ? source.universalIntelligence
+    : undefined;
+  const expectedProviderSymbol = source.providerNative?.providerInstrumentId ?? source.instrument;
+  const derivativesData = source.derivativesData?.symbol === expectedProviderSymbol
+    ? source.derivativesData
+    : undefined;
+  const cotData = source.cotData?.requestedInstrument === source.instrument
+    ? source.cotData
+    : undefined;
 
   const htf = technical?.mtf?.htfBias;
   const htfBias: NonNullable<MarketSnapshot["htfBias"]> =
@@ -108,22 +135,41 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     ? analysis.fundamentalData
     : undefined;
   const universalFundamentals = intelligence?.equity?.fundamentals;
-  const fundingRate = source.derivativesData?.availability.fundingRate
-    ? source.derivativesData.fundingRate?.currentRate
+  const universalForex = intelligence?.forex;
+  const universalCommodity = intelligence?.commodity;
+  const fundingRate = derivativesData?.availability.fundingRate
+    ? derivativesData.fundingRate?.currentRate
     : undefined;
-  const openInterest = source.derivativesData?.availability.openInterest
-    ? source.derivativesData.openInterest?.current
+  const openInterest = derivativesData?.availability.openInterest
+    ? derivativesData.openInterest?.current
     : undefined;
-  const liquidationVolume = source.derivativesData?.availability.liquidations
-    ? source.derivativesData.liquidations?.totalVolume
+  const liquidationVolume = derivativesData?.availability.liquidations
+    ? derivativesData.liquidations?.totalVolume
     : undefined;
-  const inventory = source.eiaData?.available ? source.eiaData.series[0]?.latestValue : undefined;
-  const inventoryChange = source.eiaData?.available ? source.eiaData.series[0]?.change : undefined;
+  const eiaApplicable = isPetroleumInstrument(source.instrument);
+  const inventory = (eiaApplicable && source.eiaData?.available ? source.eiaData.series[0]?.latestValue : undefined)
+    ?? (universalCommodity?.inventory?.available ? universalCommodity.inventory.currentInventory : undefined);
+  const inventoryChange = (eiaApplicable && source.eiaData?.available ? source.eiaData.series[0]?.change : undefined)
+    ?? (universalCommodity?.inventory?.available ? universalCommodity.inventory.changeWeekly : undefined);
+  const futuresStructure = universalCommodity?.futuresStructure?.available
+    ? universalCommodity.futuresStructure.structure
+    : undefined;
   const tenYearYield = source.treasuryData?.available
     ? source.treasuryData.latest.nominal.nominal["10Y"]
     : undefined;
-  const cotNet = source.cotData?.available
-    ? source.cotData.netNonCommercial
+  const cotNet = (cotData?.available ? cotData.netNonCommercial : undefined)
+    ?? (universalForex?.positioning?.available ? universalForex.positioning.nonCommercialNet : undefined)
+    ?? (universalCommodity?.positioning?.available ? universalCommodity.positioning.managedMoneyNet : undefined);
+  const rateDifferential = universalForex?.rates?.available
+    ? universalForex.rates.rateDifferential
+    : undefined;
+  const yieldDifferential = universalForex?.yields?.available
+    ? universalForex.yields.yieldDifferential
+    : undefined;
+  const macroScore = source.treasuryData?.available &&
+      source.assetClass === "commodity" &&
+      /XAU|GOLD/i.test(source.instrument)
+    ? deriveMacroYieldEvidence(source.treasuryData).goldLongEffect * 2
     : undefined;
 
   const snapshot: MarketSnapshot | null = market ? {
@@ -158,8 +204,8 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const cot = cotNet !== undefined
     ? { netNonCommercial: cotNet }
     : undefined;
-  const eia = inventory !== undefined || inventoryChange !== undefined
-    ? { inventory, inventoryChange }
+  const eia = inventory !== undefined || inventoryChange !== undefined || futuresStructure !== undefined
+    ? { inventory, inventoryChange, futuresStructure }
     : undefined;
   const treasury = tenYearYield !== undefined ||
       intelligence?.crossAsset?.dxy?.trend !== undefined ||
@@ -185,6 +231,9 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     snapshot,
     ...(derivatives ? { derivatives } : {}),
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
+    ...(rateDifferential !== undefined ? { rateDifferential } : {}),
+    ...(yieldDifferential !== undefined ? { yieldDifferential } : {}),
+    ...(macroScore !== undefined ? { macroScore } : {}),
     ...(cot ? { cot } : {}),
     ...(eia ? { eia } : {}),
     ...(treasury ? { treasury } : {}),
@@ -193,6 +242,11 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
         confidence: String(analysis.confidence),
         bias: analysis.bias,
         recommendation: analysis.recommendation,
+        fundamentalScore: analysis.breakdown?.fundamental,
+        positioningScore: analysis.breakdown?.sentiment,
+        fundamentalEvidenceAvailable:
+          analysis.breakdown?.fundamental !== undefined &&
+          Number.isFinite(analysis.breakdown.fundamental),
         technicalData: {
           htfBias,
           mtfAlignment: technical?.mtf?.alignment ?? analysis.mtfSummary?.alignment,
@@ -258,7 +312,7 @@ function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessL
 // ═══════════════════════════════════════════════════════════════
 
 function assessProviderCoverage(source: RadarCandidateSource): CandidateInput["providerCoverage"] {
-  let total = source.universe.requiredCapabilities.length;
+  const total = source.universe.requiredCapabilities.length;
   if (total === 0) return "FULL";
   let available = 0;
   if (source.snapshot?.price && source.snapshot.price > 0) available++;
@@ -362,6 +416,11 @@ export function buildRadarCandidate(
     candidate.revenueGrowth = source.fundamentals.revenueGrowth;
   }
 
+  // Rate/yield differentials are context fields, not signed alpha by themselves.
+  if (source.rateDifferential !== undefined) candidate.rateDifferential = source.rateDifferential;
+  if (source.yieldDifferential !== undefined) candidate.yieldDifferential = source.yieldDifferential;
+  if (source.macroScore !== undefined) candidate.macroScore = source.macroScore;
+
   // Forex / Commodity — COT
   if (source.cot) {
     candidate.hasCOT = true;
@@ -389,6 +448,15 @@ export function buildRadarCandidate(
     if (confStr) {
       const num = parseInt(confStr, 10);
       if (!isNaN(num)) candidate.analysisConfidence = num;
+    }
+    if (source.analysisResult.fundamentalScore !== undefined) {
+      candidate.fundamentalScore = source.analysisResult.fundamentalScore;
+    }
+    if (source.analysisResult.positioningScore !== undefined) {
+      candidate.positioningScore = source.analysisResult.positioningScore;
+    }
+    if (source.analysisResult.fundamentalEvidenceAvailable !== undefined) {
+      candidate.fundamentalEvidenceAvailable = source.analysisResult.fundamentalEvidenceAvailable;
     }
   }
 
