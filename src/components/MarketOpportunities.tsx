@@ -173,8 +173,8 @@ interface MarketOpportunitiesProps {
   scanResult?: ScanResult;
   /** Phase 51 radar scan result. */
   radarResult?: RadarScanResult;
-  /** Refresh provider data for the selected recommendation horizon. */
-  onRefresh?: (horizon: TradingMode | InvestorHorizon) => void;
+  /** Callback to trigger a new scan. */
+  onRefresh?: () => void;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -511,8 +511,8 @@ export function MarketOpportunities({
   const scanTimestamp = scanResult?.timestamp ?? radarResult?.timestamp;
 
   const handleRefresh = useCallback(() => {
-    if (onRefresh) onRefresh(currentHorizon);
-  }, [onRefresh, currentHorizon]);
+    if (onRefresh) onRefresh();
+  }, [onRefresh]);
 
   return (
     <Card className="border border-border/50">

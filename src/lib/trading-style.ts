@@ -64,8 +64,6 @@ export interface StyleProfile {
   executionLayerCap: number;
   /** Target-horizon guard in ATR multiples (null = unlimited). */
   targetMaxAtrMultiple: number | null;
-  /** Sanity ceiling for R:R; a tiny stop can create a deceptive extreme ratio. */
-  maxRiskReward: number | null;
   /** SCALPING: fresh execution evidence is mandatory. */
   requiresTriggerEvidence: boolean;
   /** SWING: readable HTF context is mandatory. */
@@ -87,7 +85,6 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     eiaLayerCap: 1,
     executionLayerCap: 6,
     targetMaxAtrMultiple: 6,
-    maxRiskReward: 10,
     requiresTriggerEvidence: true,
     requiresHtfContext: false,
     eventRiskWindowHours: null,
@@ -104,7 +101,6 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     eiaLayerCap: 4,
     executionLayerCap: 3,
     targetMaxAtrMultiple: null,
-    maxRiskReward: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: false,
     eventRiskWindowHours: 2,
@@ -121,7 +117,6 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
     eiaLayerCap: 8,
     executionLayerCap: 1,
     targetMaxAtrMultiple: null,
-    maxRiskReward: null,
     requiresTriggerEvidence: false,
     requiresHtfContext: true,
     eventRiskWindowHours: null,

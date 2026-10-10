@@ -65,7 +65,7 @@ const num = (v: unknown): number =>
   typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
 
 function mapOkxBar(timeframe?: string): string {
-  const tf = (timeframe ?? "H1").trim().toUpperCase().replace(/\\s+/g, "");
+  const tf = (timeframe ?? "H1").trim().toUpperCase().replace(/\s+/g, "");
   const bars: Record<string, string> = {
     M1: "1m", "1M": "1m", "1MIN": "1m", "1MINUTE": "1m",
     M5: "5m", "5M": "5m", "5MIN": "5m", "5MINUTE": "5m",

@@ -60,7 +60,7 @@ const TIMEFRAME_ALIASES: Record<string, string> = {
 
 export function normalizeScanTimeframe(value?: string): string | undefined {
   if (!value) return undefined;
-  const tf = value.trim().toUpperCase().replace(/\\s+/g, "");
+  const tf = value.trim().toUpperCase().replace(/\s+/g, "");
   return TIMEFRAME_ALIASES[tf] ?? tf;
 }
 

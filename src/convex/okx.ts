@@ -130,7 +130,6 @@ export const acquireOkxNativeLiveDataBatch = action({
         instrument: v.string(),
         providerInstrumentId: v.string(),
         assetClass: v.literal("crypto"),
-        timeframe: v.optional(v.string()),
       }),
     ),
     concurrency: v.optional(v.number()),
@@ -159,7 +158,6 @@ export const acquireOkxNativeLiveData = action({
     instrument: v.string(),
     providerInstrumentId: v.string(),
     assetClass: v.literal("crypto"),
-    timeframe: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
     return acquireProviderNativeLiveData(
@@ -168,7 +166,6 @@ export const acquireOkxNativeLiveData = action({
         provider: "okx",
         providerInstrumentId: args.providerInstrumentId,
         assetClass: args.assetClass,
-        timeframe: args.timeframe,
       },
       undefined,
     );

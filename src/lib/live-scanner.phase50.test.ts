@@ -49,7 +49,6 @@ import {
 import {
   ALL_SCAN_HORIZONS,
   scanInstruments,
-  selectCandidatesForHorizon,
   type ScanConfig,
   type ScanResult,
 } from "./liveScanner";
@@ -119,34 +118,6 @@ function makeSource(overrides?: Partial<LiveCandidateSource>): LiveCandidateSour
     ...overrides,
   };
 }
-
-describe("Horizon-specific OHLCV selection", () => {
-  it("selects real M5, H1 and H4 snapshots for scalping, intraday and swing", () => {
-    const candidateFor = (timeframe: string) => buildCandidateFromSource(makeSource({
-      instrument: "BTC/USD",
-      marketData: makeMarketData("BTC/USD", {
-        instrumentType: "crypto",
-        timeframe,
-        dataFreshness: "realtime",
-        price: { price: 65000, timestamp: NOW, source: "okx" },
-      }),
-    }));
-    const candidates = [candidateFor("H1"), candidateFor("H4"), candidateFor("M5")];
-    expect(selectCandidatesForHorizon(candidates, "SCALPING").map(c => c.marketTimeframe)).toEqual(["M5"]);
-    expect(selectCandidatesForHorizon(candidates, "INTRADAY").map(c => c.marketTimeframe)).toEqual(["H1"]);
-    expect(selectCandidatesForHorizon(candidates, "SWING").map(c => c.marketTimeframe)).toEqual(["H4"]);
-  });
-
-  it("does not duplicate an instrument when multiple timeframes are cached", () => {
-    const candidateFor = (timeframe: string) => buildCandidateFromSource(makeSource({
-      instrument: "ETH/USD",
-      marketData: makeMarketData("ETH/USD", { instrumentType: "crypto", timeframe }),
-    }));
-    const selected = selectCandidatesForHorizon([candidateFor("M5"), candidateFor("H1"), candidateFor("H4")], "INTRADAY");
-    expect(selected).toHaveLength(1);
-    expect(selected[0].marketTimeframe).toBe("H1");
-  });
-});
 
 // ═══════════════════════════════════════════════════════════════
 // A. LIVE CANDIDATE INGESTION
@@ -429,10 +400,10 @@ describe("I — Forex Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("J — Equity Ranking", () => {
-  it("AAPL and MSFT ranked independently on swing-compatible H4 data", () => {
+  it("AAPL and MSFT ranked independently", () => {
     const sources = [
-      makeSource({ instrument: "AAPL", assetClass: "equity", marketData: makeMarketData("AAPL", { instrumentType: "stock", timeframe: "H4" }) }),
-      makeSource({ instrument: "MSFT", assetClass: "equity", marketData: makeMarketData("MSFT", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "AAPL", assetClass: "equity" }),
+      makeSource({ instrument: "MSFT", assetClass: "equity" }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     const ranked = result.results.get("SWING")!.rankedInstruments;
@@ -445,11 +416,11 @@ describe("J — Equity Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("K — IDX Ranking", () => {
-  it("IDX equities are ranked as first-class instruments on H4 data", () => {
+  it("IDX equities are ranked as first-class instruments", () => {
     const sources = [
-      makeSource({ instrument: "BBCA", assetClass: "equity", marketData: makeMarketData("BBCA", { instrumentType: "stock", timeframe: "H4" }) }),
-      makeSource({ instrument: "BBRI", assetClass: "equity", marketData: makeMarketData("BBRI", { instrumentType: "stock", timeframe: "H4" }) }),
-      makeSource({ instrument: "TLKM", assetClass: "equity", marketData: makeMarketData("TLKM", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "BBCA", assetClass: "equity" }),
+      makeSource({ instrument: "BBRI", assetClass: "equity" }),
+      makeSource({ instrument: "TLKM", assetClass: "equity" }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     const ranked = result.results.get("SWING")!.rankedInstruments;
@@ -457,12 +428,12 @@ describe("K — IDX Ranking", () => {
     expect(ranked.map(r => r.instrument).sort()).toEqual(["BBCA", "BBRI", "TLKM"]);
   });
 
-  it("accepts IDX equities directly without a built-in universe using H4 data", () => {
+  it("accepts IDX equities directly without a built-in universe", () => {
     const sources = [
-      makeSource({ instrument: "BBCA", assetClass: "equity", marketData: makeMarketData("BBCA", { instrumentType: "stock", timeframe: "H4" }) }),
-      makeSource({ instrument: "BBRI", assetClass: "equity", marketData: makeMarketData("BBRI", { instrumentType: "stock", timeframe: "H4" }) }),
-      makeSource({ instrument: "TLKM", assetClass: "equity", marketData: makeMarketData("TLKM", { instrumentType: "stock", timeframe: "H4" }) }),
-      makeSource({ instrument: "BMRI", assetClass: "equity", marketData: makeMarketData("BMRI", { instrumentType: "stock", timeframe: "H4" }) }),
+      makeSource({ instrument: "BBCA", assetClass: "equity" }),
+      makeSource({ instrument: "BBRI", assetClass: "equity" }),
+      makeSource({ instrument: "TLKM", assetClass: "equity" }),
+      makeSource({ instrument: "BMRI", assetClass: "equity" }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     const ranked = result.results.get("SWING")!.rankedInstruments;
@@ -507,10 +478,10 @@ describe("M — Index Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("N — Macro Context", () => {
-  it("accepts arbitrary macro instruments directly on D1 data", () => {
+  it("accepts arbitrary macro instruments directly", () => {
     const sources = [
-      makeSource({ instrument: "DXY", assetClass: "macro", marketData: makeMarketData("DXY", { instrumentType: "indices", timeframe: "D1" }) }),
-      makeSource({ instrument: "US10Y", assetClass: "macro", marketData: makeMarketData("US10Y", { instrumentType: "indices", timeframe: "D1" }) }),
+      makeSource({ instrument: "DXY", assetClass: "macro" }),
+      makeSource({ instrument: "US10Y", assetClass: "macro" }),
     ];
     const result = scanInstruments(sources, { horizons: ["SWING"], maxResults: 10 });
     const ranked = result.results.get("SWING")!.rankedInstruments;

@@ -677,7 +677,7 @@ export async function acquireLiveData(
 }
 
 function normalizeAcquisitionTimeframe(value?: string): string {
-  const tf = (value ?? "H1").trim().toUpperCase().replace(/\\s+/g, "");
+  const tf = (value ?? "H1").trim().toUpperCase().replace(/\s+/g, "");
   const aliases: Record<string, string> = {
     "1M": "M1", "1MIN": "M1", "1MINUTE": "M1",
     "5M": "M5", "5MIN": "M5", "5MINUTE": "M5",

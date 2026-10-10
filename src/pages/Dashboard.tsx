@@ -15,10 +15,10 @@ import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
-import { discoverCandidates, type CandidateInput, type TradingMode, type InvestorHorizon } from "@/lib/recommendation-engine";
+import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, timeframeForHorizon, liveSourceCacheKey, type ScanResult } from "@/lib/liveScanner";
+import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { parseDeFiLlamaResult } from "@/lib/data/crypto/defillama-adapter";
@@ -230,7 +230,7 @@ export default function Dashboard() {
         }));
 
         const acquired = await acquireOkxNativeLiveDataBatch({
-          instruments: nativeInputs.map((item) => ({ ...item, timeframe: "H1" })),
+          instruments: nativeInputs,
           concurrency: 5,
         });
 
@@ -245,7 +245,7 @@ export default function Dashboard() {
           const marketData = providerNativeAcquisitionToMarketData(result);
           if (!marketData) continue;
 
-          liveSourceRef.current.set(liveSourceCacheKey(result.instrument, marketData.timeframe), {
+          liveSourceRef.current.set(result.instrument, {
             instrument: result.instrument,
             assetClass: result.assetClass,
             providerNative: {
@@ -779,7 +779,7 @@ export default function Dashboard() {
         // Phase 153 — retain the actual provider-backed market snapshot used
         // by this successful analysis. History remains persistence only and
         // must never be promoted to LIVE data.
-        liveSourceRef.current.set(liveSourceCacheKey(result.instrument, marketDataResult.data?.timeframe ?? input.timeframe ?? "H1"), {
+        liveSourceRef.current.set(result.instrument, {
           instrument: result.instrument,
           assetClass:
             input.instrumentType === "crypto"
@@ -906,8 +906,7 @@ export default function Dashboard() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
 
-  const handleScanRefresh = useCallback(async (horizon: TradingMode | InvestorHorizon) => {
-    const requestedTimeframe = timeframeForHorizon(horizon);
+  const handleScanRefresh = useCallback(async () => {
     setIsScanning(true);
     try {
       const discovery = await discoverOkxInstruments();
@@ -925,7 +924,6 @@ export default function Dashboard() {
             instrument: item.instId,
             providerInstrumentId: item.instId,
             assetClass: "crypto" as const,
-            timeframe: requestedTimeframe,
           })),
           concurrency: 5,
         });
@@ -935,7 +933,7 @@ export default function Dashboard() {
           if (!result.success) continue;
           const marketData = providerNativeAcquisitionToMarketData(result);
           if (!marketData) continue;
-          liveSourceRef.current.set(liveSourceCacheKey(result.instrument, marketData.timeframe), {
+          liveSourceRef.current.set(result.instrument, {
             instrument: result.instrument,
             assetClass: result.assetClass,
             providerNative: {
@@ -948,8 +946,8 @@ export default function Dashboard() {
       }
 
       // User-triggered only; one FX + one equity + one commodity request per minute.
-      // The selected horizon controls their actual OHLCV interval; calls remain capped
-      // to protect the observed Twelve Data minute budget.
+      // With primary plus one higher timeframe each, this stays below the
+      // observed 8-credit/minute Twelve Data budget and rotates through the catalog.
       if (Date.now() - crossAssetScanLastAtRef.current >= 60_000) {
         crossAssetScanLastAtRef.current = Date.now();
         const catalog = getAllInstruments();
@@ -968,7 +966,7 @@ export default function Dashboard() {
           let chosen: (typeof rows)[number] | undefined;
           for (let offset = 0; offset < rows.length; offset++) {
             const candidate = rows[(cursor + offset) % rows.length];
-            const existing = liveSourceRef.current.get(liveSourceCacheKey(candidate.canonical, requestedTimeframe));
+            const existing = liveSourceRef.current.get(candidate.canonical);
             if (!existing?.analysisResult && (
               !existing?.marketData?.price?.timestamp ||
               Date.now() - existing.marketData.price.timestamp > 4 * 60_000
@@ -986,13 +984,13 @@ export default function Dashboard() {
             fetchMarketData({
               instrument: entry.item!.canonical,
               instrumentType: entry.type,
-              timeframe: requestedTimeframe,
+              timeframe: "H1",
             }),
             ACTION_TIMEOUTS_MS.market,
             "Cross-asset H1 scan",
           );
           if (!result?.success || !result.data) return;
-          liveSourceRef.current.set(liveSourceCacheKey(entry.item!.canonical, result.data.timeframe), {
+          liveSourceRef.current.set(entry.item!.canonical, {
             instrument: entry.item!.canonical,
             assetClass: entry.assetClass,
             marketData: result.data,

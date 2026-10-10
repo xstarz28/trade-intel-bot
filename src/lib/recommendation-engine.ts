@@ -912,19 +912,6 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
     return { eligible: false, reason: "swing requires H4/D1/W1 market data; received " + c.marketTimeframe };
   }
 
-  const investorTimeframes: Partial<Record<InvestorHorizon, string[]>> = {
-    "1-4_WEEKS": ["H4", "D1", "W1"],
-    "1-3_MONTHS": ["D1", "W1"],
-    "3-6_MONTHS": ["D1", "W1"],
-    "6-12_MONTHS": ["W1", "D1"],
-    "1-3_YEARS": ["W1", "D1"],
-    "3+_YEARS": ["W1", "D1"],
-  };
-  const investorAllowed = investorTimeframes[horizon as InvestorHorizon];
-  if (c.marketTimeframe && investorAllowed && !investorAllowed.includes(c.marketTimeframe)) {
-    return { eligible: false, reason: horizon + " requires " + investorAllowed.join("/") + " market data; received " + c.marketTimeframe };
-  }
-
   // Discovered H1 data is suitable for discovery/intraday ranking, not scalp
   // trades. Scalping requires a confirmed same-style directional decision,
   // a valid plan, readable MTF context, and fresh execution on the exact contract.
