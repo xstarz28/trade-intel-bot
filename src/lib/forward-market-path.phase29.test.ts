@@ -113,6 +113,23 @@ describe("Phase 29 — Forward Market Path", () => {
     expect(fp.investorView).toBeTruthy();
   });
 
+  it("does not prefer HTF continuation when the active decision is neutral", () => {
+    const result = runAnalysis(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
+    const neutralResult = {
+      ...result,
+      bias: "Neutral" as const,
+      htfAlignment: {
+        ...result.htfAlignment!,
+        htfStructure: "HH/HL" as const,
+      },
+    };
+    const fp = buildForwardMarketPath(neutralResult);
+
+    expect(fp.directionalBias).toBe("neutral");
+    expect(fp.investorView).toContain("active decision is neutral");
+    expect(fp.investorView).not.toMatch(/continuation preferred/i);
+  });
+
   it("deterministic for same input (I78)", () => {
     const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
     const r1 = runAnalysis(input);
