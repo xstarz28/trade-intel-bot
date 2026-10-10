@@ -115,22 +115,55 @@ function constrainByProviderFreshness(
 }
 
 function assessDataCompleteness(source: LiveCandidateSource, technicalData?: TechnicalData): DataCompletenessLevel {
-  let count = 0;
-  if (source.marketData?.price?.price) count++;
-  if (source.marketData?.candles?.length) count++;
-  if (technicalData ?? source.technicalData) count++;
-  if (source.analysisResult?.instrument === source.instrument) count++;
-  if (source.universalIntelligence) count++;
-  if (source.derivativesData) count++;
-  if (source.calendarData) count++;
-  if (source.treasuryData?.available) count++;
-  if (source.cotData?.available) count++;
-  if (source.eiaData?.available) count++;
+  const price = source.marketData?.price?.price;
+  const candles = source.marketData?.candles ?? [];
+  const hasPrice = Number.isFinite(price) && (price ?? 0) > 0;
+  const hasUsableCandles = candles.length >= 30;
+  const hasTechnicalStructure = !!(technicalData ?? source.technicalData);
+  const hasPrimaryMarketEvidence = hasPrice && hasUsableCandles && hasTechnicalStructure;
 
-  if (count >= 5) return "FULL";
-  if (count >= 3) return "PARTIAL";
-  if (count >= 1) return "MINIMAL";
+  // Price, candles, and indicators are one OHLCV evidence family, not three
+  // independent confirmations. Wrapper objects do not count as data.
+  const domains = new Set<string>();
+  const ar = source.analysisResult?.instrument === source.instrument ? source.analysisResult : undefined;
+  const universal = source.universalIntelligence?.instrument === source.instrument
+    ? source.universalIntelligence
+    : undefined;
+  if (ar?.fundamentalData?.available === true || universal?.equity?.fundamentals?.available === true) domains.add("fundamentals");
+  if (ar?.sentimentData && ar.sentimentData.confidence !== "unavailable" && (ar.sentimentData.articleCount ?? 0) > 0) domains.add("sentiment");
+  if (ar?.macroData && ar.macroData.confidence !== "unavailable" && !!ar.macroData.summary) domains.add("macro");
+  if ((source.derivativesData?.openInterest?.current !== undefined || source.derivativesData?.fundingRate?.currentRate !== undefined) &&
+      source.derivativesData?.freshness !== "UNAVAILABLE") domains.add("derivatives");
+  if (source.calendarData?.events?.some((event) => event.status === "upcoming" || event.status === "released")) domains.add("calendar");
+  if (source.treasuryData?.available || source.cotData?.available || source.eiaData?.available) domains.add("macro-positioning");
+  if (universal?.forex?.rates?.available || universal?.forex?.yields?.available) domains.add("rates");
+  if (universal?.forex?.positioning?.available || universal?.commodity?.positioning?.available) domains.add("positioning");
+  if (universal?.commodity?.inventory?.available) domains.add("inventory");
+  if (universal?.crossAsset?.treasury?.available) domains.add("cross-asset");
+
+  if (hasPrimaryMarketEvidence && domains.size >= 2) return "FULL";
+  if (hasPrimaryMarketEvidence && domains.size >= 1) return "PARTIAL";
+  if (hasPrimaryMarketEvidence) return "MINIMAL";
+  if (hasPrice || candles.length > 0 || hasTechnicalStructure) return "MINIMAL";
   return "NONE";
+}
+
+function normalizeCandidateTimeframe(value?: string): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase();
+  const aliases: Record<string, string> = {
+    "1M": "M1", "1MIN": "M1", "1MINUTE": "M1", "5M": "M5", "5MIN": "M5",
+    "15M": "M15", "15MIN": "M15", "1H": "H1", "1HR": "H1",
+    "4H": "H4", "4HR": "H4", "1D": "D1", "1DAY": "D1", "1W": "W1", "1WEEK": "W1",
+  };
+  return aliases[normalized] ?? normalized;
+}
+
+function deriveCryptoMarketType(instrument: string, providerInstrumentId?: string): "spot" | "perpetual" | "futures" | undefined {
+  const id = (providerInstrumentId ?? instrument).trim().toUpperCase();
+  if (id.endsWith("-SWAP") || id.endsWith("-FUTURES")) return "perpetual";
+  if (/-[0-9]{6}$/.test(id)) return "futures";
+  return id.includes("-") || id.includes("/") ? "spot" : undefined;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -451,6 +484,21 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     htfBias: tech?.mtf?.htfBias === "long" || tech?.mtf?.htfBias === "short" ? tech.mtf?.htfBias : extractHtfBias(tech),
     marketRegime: extractMarketRegime(tech),
     mtfAlignment: tech?.mtf?.alignment ?? extractMtfAlignment(tech, ar),
+    marketTimeframe: normalizeCandidateTimeframe(source.marketData?.timeframe ?? ar?.timeframe),
+    marketType: source.assetClass === "crypto"
+      ? deriveCryptoMarketType(source.instrument, source.providerNative?.providerInstrumentId)
+      : undefined,
+    analysisDecision: ar?.recommendation,
+    analysisStyle: ar?.tradingStyle ? String(ar.tradingStyle).toUpperCase() as "SCALPING" | "INTRADAY" | "SWING" : undefined,
+    hasQualifiedTradePlan: !!(ar?.tradePlan && ar.recommendation !== "NO_TRADE"),
+    mtfSufficient: ar
+      ? !!ar.mtfSummary?.alignment && ar.mtfSummary.alignment !== "INSUFFICIENT_DATA" && ar.mtfSummary.alignment !== "unknown"
+      : !!tech?.mtf?.alignment && tech.mtf.alignment !== "INSUFFICIENT_DATA",
+    hasFreshExecutionQuality: !!(
+      ar?.executionContext?.available &&
+      ar.executionContext.freshness === "FRESH" &&
+      source.instrument.toUpperCase().replaceAll("/", "-").replaceAll("_", "-") === ar.executionContext.instrumentId.toUpperCase()
+    ),
     keySupport: tech?.supportLevels?.[0],
     keyResistance: tech?.resistanceLevels?.[0],
     riskReward: ar?.tradePlan?.riskReward,

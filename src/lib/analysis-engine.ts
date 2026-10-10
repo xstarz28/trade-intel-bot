@@ -1057,6 +1057,14 @@ function decideTrade(
   // ── Gate 6c: style-specific requirements (Phase 6) ──
   // Horizon requirements reading EXISTING evidence only — no invented data.
   if (bias !== "Neutral") {
+    if (
+      styleProfile.style === "scalping" &&
+      (!mtf || mtf.alignment === "INSUFFICIENT_DATA" || mtf.htfBias === "none" || !mtf.triggerTimeframe)
+    ) {
+      reasons.push(
+        "SCALPING veto: higher-timeframe hierarchy and a readable trigger timeframe are required; MTF context is insufficient.",
+      );
+    }
     if (styleProfile.requiresTriggerEvidence) {
       const dirMatches = (d: "bullish" | "bearish") => (d === "bullish") === (dirSign === 1);
       const freshExecution = (sm?: NonNullable<NonNullable<typeof tech>["smc"]>): boolean =>
@@ -1118,7 +1126,32 @@ function decideTrade(
     bias !== "Neutral"
   ) {
     const ed: ExecutionData | undefined = input.executionData;
-    if (ed?.available && ed.freshness === "FRESH") {
+    if (!ed?.available) {
+      reasons.push(
+        "SCALPING veto: fresh same-instrument order-book bid/ask is unavailable; a spot candle cannot borrow a perpetual-futures spread.",
+      );
+    } else if (ed.freshness !== "FRESH") {
+      reasons.push("SCALPING veto: order-book snapshot is stale.");
+    } else {
+      const requestedInstrument = input.instrument.toUpperCase().trim()
+        .replaceAll("/", "-").replaceAll("_", "-").replaceAll(" ", "");
+      const executionInstrument = ed.instrumentId.toUpperCase().trim();
+      if (requestedInstrument !== executionInstrument) {
+        reasons.push(
+          "SCALPING veto: order-book contract " + executionInstrument + " does not match requested instrument " + requestedInstrument + "; spot and derivatives are not interchangeable.",
+        );
+      }
+
+      const referencePrice = input.marketData?.price?.price;
+      if (Number.isFinite(referencePrice) && (referencePrice ?? 0) > 0 && Number.isFinite(ed.mid) && ed.mid > 0) {
+        const basisBps = Math.abs(ed.mid - (referencePrice ?? 0)) / (referencePrice ?? 1) * 10_000;
+        if (basisBps > 3) {
+          reasons.push(
+            "SCALPING veto: order-book midpoint differs from the chart/reference price by " + basisBps.toFixed(2) + " bps (>3.00 bps policy); quote basis is not coherent.",
+          );
+        }
+      }
+
       const extremeSpread = ed.spreadBps >= EXECUTION_EXTREME_SPREAD_BPS;
       if (extremeSpread || ed.regime === "THIN") {
         reasons.push(
@@ -1160,14 +1193,25 @@ function decideTrade(
       const htfBuyPool = htfPools
         .filter((p) => p.side === "buy_side" && !p.swept && !p.broken && p.level > price)
         .sort((a, b) => a.level - b.level)[0];
-      tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? swingResistances[0];
-      tpBasis = buyPoolAbove
-        ? `resting buy-side liquidity (${buyPoolAbove.source}, ${buyPoolAbove.touches} touch${buyPoolAbove.touches > 1 ? "es" : ""}${tech?.smc ? `, ${tech.smc.timeframe}` : ""})`
-        : htfBuyPool
-          ? `resting buy-side liquidity on ${htfBuyPool.tf} (${htfBuyPool.source}, ${htfBuyPool.touches} touch${htfBuyPool.touches > 1 ? "es" : ""}) — HTF target`
-          : tpLevel !== undefined
-            ? "nearest market swing high / resistance (structural)"
-            : "";
+      const bullishTargets = [
+        ...(buyPoolAbove ? [{
+          level: buyPoolAbove.level,
+          basis: "resting buy-side liquidity (" + buyPoolAbove.source + ", " + buyPoolAbove.touches + " touches)",
+        }] : []),
+        ...(htfBuyPool ? [{
+          level: htfBuyPool.level,
+          basis: "resting buy-side liquidity on " + htfBuyPool.tf + " (" + htfBuyPool.source + ")",
+        }] : []),
+        ...swingResistances.filter((level) => level > price).map((level) => ({
+          level,
+          basis: "nearest market swing high / resistance (structural)",
+        })),
+      ].filter((candidate) => Number.isFinite(candidate.level) && candidate.level > price)
+        .sort((a, b) => a.level - b.level);
+      // Choose the closest valid opposing level; do not prefer a remote
+      // liquidity pool that makes the projected scalp target absurdly far away.
+      tpLevel = bullishTargets[0]?.level;
+      tpBasis = bullishTargets[0]?.basis ?? "";
     } else if (bias === "Bearish") {
       stopLevel = swingResistances[0];
       slBasis = stopLevel !== undefined ? `nearest market swing high (structural${tech?.smc ? `, ${tech.smc.timeframe}` : ""})` : "";
@@ -1177,14 +1221,23 @@ function decideTrade(
       const htfSellPool = htfPools
         .filter((p) => p.side === "sell_side" && !p.swept && !p.broken && p.level < price)
         .sort((a, b) => b.level - a.level)[0];
-      tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? swingSupports[0];
-      tpBasis = sellPoolBelow
-        ? `resting sell-side liquidity (${sellPoolBelow.source}, ${sellPoolBelow.touches} touch${sellPoolBelow.touches > 1 ? "es" : ""}${tech?.smc ? `, ${tech.smc.timeframe}` : ""})`
-        : htfSellPool
-          ? `resting sell-side liquidity on ${htfSellPool.tf} (${htfSellPool.source}, ${htfSellPool.touches} touch${htfSellPool.touches > 1 ? "es" : ""}) — HTF target`
-          : tpLevel !== undefined
-            ? "nearest market swing low / support (structural)"
-            : "";
+      const bearishTargets = [
+        ...(sellPoolBelow ? [{
+          level: sellPoolBelow.level,
+          basis: "resting sell-side liquidity (" + sellPoolBelow.source + ", " + sellPoolBelow.touches + " touches)",
+        }] : []),
+        ...(htfSellPool ? [{
+          level: htfSellPool.level,
+          basis: "resting sell-side liquidity on " + htfSellPool.tf + " (" + htfSellPool.source + ")",
+        }] : []),
+        ...swingSupports.filter((level) => level < price).map((level) => ({
+          level,
+          basis: "nearest market swing low / support (structural)",
+        })),
+      ].filter((candidate) => Number.isFinite(candidate.level) && candidate.level < price)
+        .sort((a, b) => b.level - a.level);
+      tpLevel = bearishTargets[0]?.level;
+      tpBasis = bearishTargets[0]?.basis ?? "";
     }
 
     if (bias !== "Neutral" && stopLevel !== undefined && tpLevel !== undefined) {
@@ -1232,6 +1285,9 @@ function decideTrade(
       reasons.push(
         `${styleProfile.style.toUpperCase()} target horizon: the nearest valid target is farther than ${styleProfile.targetMaxAtrMultiple}×ATR from entry — outside this horizon.`,
       );
+      // Do not leave an unreachable projected target visible on the chart.
+      tpLevel = undefined;
+      tpBasis = "";
     }
   }
 
@@ -1290,6 +1346,7 @@ function decideTrade(
         reasons.push(
           `Projected R:R ${rr.toFixed(3)} is below the ${MIN_RR.toFixed(3)} minimum for actionable setups.`,
         );
+        projectedTradePlan = undefined;
       } else {
         // Executable plans use exactly the same displayed levels and R:R
         // geometry as the projected plan; no hidden precision mismatch.

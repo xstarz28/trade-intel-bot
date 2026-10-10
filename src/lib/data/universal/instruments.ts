@@ -656,6 +656,119 @@ const INSTRUMENTS: Record<string, CanonicalInstrument> = {
   },
 };
 
+
+/**
+ * Curated multi-asset catalog. These rows provide searchable identifiers only;
+ * live prices/coverage are verified on request and never manufactured.
+ */
+function addCatalogInstrument(input: {
+  canonical: string;
+  name: string;
+  assetClass: CanonicalInstrument["assetClass"];
+  subType: CanonicalInstrument["subType"];
+  region: Region;
+  exchange: Exchange;
+  sector?: string;
+}): void {
+  if (INSTRUMENTS[input.canonical]) return;
+  const parts = input.canonical.split("/");
+  const baseAsset = parts[0] || input.canonical;
+  const quoteAsset = parts[1] || (input.region === "Indonesia" ? "IDR" : "USD");
+  INSTRUMENTS[input.canonical] = {
+    canonical: input.canonical,
+    displaySymbol: input.canonical,
+    name: input.name,
+    assetClass: input.assetClass,
+    subType: input.subType,
+    baseAsset,
+    quoteAsset,
+    region: input.region,
+    exchanges: [input.exchange],
+    ...(input.sector ? { sector: input.sector } : {}),
+    providerMappings: [{ provider: "twelve-data", symbol: input.canonical, available: true }],
+    isActive: true,
+    tags: ["curated-catalog", input.assetClass],
+  };
+}
+
+const ADDITIONAL_FX_PAIRS: Array<[string, string, Region]> = [
+  ["EUR/GBP", "Euro / British Pound", "Europe"], ["EUR/JPY", "Euro / Japanese Yen", "Europe"],
+  ["EUR/CHF", "Euro / Swiss Franc", "Europe"], ["EUR/AUD", "Euro / Australian Dollar", "Europe"],
+  ["EUR/CAD", "Euro / Canadian Dollar", "Europe"], ["EUR/NZD", "Euro / New Zealand Dollar", "Europe"],
+  ["GBP/JPY", "British Pound / Japanese Yen", "UK"], ["GBP/CHF", "British Pound / Swiss Franc", "UK"],
+  ["GBP/AUD", "British Pound / Australian Dollar", "UK"], ["GBP/CAD", "British Pound / Canadian Dollar", "UK"],
+  ["GBP/NZD", "British Pound / New Zealand Dollar", "UK"], ["AUD/JPY", "Australian Dollar / Japanese Yen", "Australia"],
+  ["AUD/CAD", "Australian Dollar / Canadian Dollar", "Australia"], ["AUD/CHF", "Australian Dollar / Swiss Franc", "Australia"],
+  ["AUD/NZD", "Australian Dollar / New Zealand Dollar", "Australia"], ["CAD/JPY", "Canadian Dollar / Japanese Yen", "Global"],
+  ["CAD/CHF", "Canadian Dollar / Swiss Franc", "Global"], ["NZD/JPY", "New Zealand Dollar / Japanese Yen", "Global"],
+  ["CHF/JPY", "Swiss Franc / Japanese Yen", "Europe"], ["USD/SGD", "US Dollar / Singapore Dollar", "Global"],
+  ["USD/HKD", "US Dollar / Hong Kong Dollar", "Global"], ["USD/CNH", "US Dollar / Offshore Chinese Yuan", "China"],
+  ["USD/MXN", "US Dollar / Mexican Peso", "Global"], ["USD/ZAR", "US Dollar / South African Rand", "Global"],
+  ["USD/INR", "US Dollar / Indian Rupee", "India"], ["USD/KRW", "US Dollar / Korean Won", "Korea"],
+  ["USD/TRY", "US Dollar / Turkish Lira", "Global"], ["USD/PLN", "US Dollar / Polish Zloty", "Europe"],
+  ["USD/SEK", "US Dollar / Swedish Krona", "Europe"], ["USD/NOK", "US Dollar / Norwegian Krone", "Europe"],
+  ["EUR/SEK", "Euro / Swedish Krona", "Europe"], ["EUR/NOK", "Euro / Norwegian Krone", "Europe"],
+  ["GBP/SGD", "British Pound / Singapore Dollar", "UK"], ["AUD/SGD", "Australian Dollar / Singapore Dollar", "Australia"],
+];
+for (const [canonical, name, region] of ADDITIONAL_FX_PAIRS) {
+  addCatalogInstrument({ canonical, name, assetClass: "forex", subType: "forex_spot", region, exchange: "fx_spot" });
+}
+
+const ADDITIONAL_US_EQUITIES: Array<[string, string, string]> = [
+  ["GOOGL", "Alphabet Class A", "Communication Services"], ["META", "Meta Platforms", "Communication Services"],
+  ["AMD", "Advanced Micro Devices", "Technology"], ["AVGO", "Broadcom", "Technology"],
+  ["ORCL", "Oracle", "Technology"], ["CRM", "Salesforce", "Technology"], ["NFLX", "Netflix", "Communication Services"],
+  ["JPM", "JPMorgan Chase", "Financials"], ["BAC", "Bank of America", "Financials"], ["WMT", "Walmart", "Consumer Defensive"],
+  ["COST", "Costco", "Consumer Defensive"], ["KO", "Coca-Cola", "Consumer Defensive"], ["DIS", "Walt Disney", "Communication Services"],
+  ["QCOM", "Qualcomm", "Technology"], ["MU", "Micron Technology", "Technology"], ["PLTR", "Palantir", "Technology"],
+  ["COIN", "Coinbase", "Financials"], ["HOOD", "Robinhood Markets", "Financials"], ["IBM", "IBM", "Technology"],
+  ["UBER", "Uber Technologies", "Technology"], ["SHOP", "Shopify", "Technology"], ["BABA", "Alibaba", "Consumer Cyclical"],
+  ["TSM", "Taiwan Semiconductor ADR", "Technology"], ["SAP", "SAP SE ADR", "Technology"], ["V", "Visa", "Financials"],
+  ["MA", "Mastercard", "Financials"], ["XOM", "Exxon Mobil", "Energy"], ["CVX", "Chevron", "Energy"],
+  ["PFE", "Pfizer", "Healthcare"], ["ABBV", "AbbVie", "Healthcare"], ["NKE", "Nike", "Consumer Cyclical"],
+  ["MCD", "McDonald's", "Consumer Cyclical"], ["CAT", "Caterpillar", "Industrials"], ["LLY", "Eli Lilly", "Healthcare"],
+  ["ADBE", "Adobe", "Technology"], ["INTC", "Intel", "Technology"], ["CSCO", "Cisco Systems", "Technology"],
+  ["AMAT", "Applied Materials", "Technology"], ["GE", "GE Aerospace", "Industrials"], ["T", "AT&T", "Communication Services"],
+];
+for (const [canonical, name, sector] of ADDITIONAL_US_EQUITIES) {
+  addCatalogInstrument({ canonical, name, assetClass: "equity", subType: "equity_common", region: "US", exchange: "NASDAQ", sector });
+}
+
+const ADDITIONAL_IDX_EQUITIES: Array<[string, string, string]> = [
+  ["ASII.JK", "Astra International", "Industrials"], ["ANTM.JK", "Aneka Tambang", "Materials"],
+  ["INDF.JK", "Indofood Sukses Makmur", "Consumer Defensive"], ["ICBP.JK", "Indofood CBP", "Consumer Defensive"],
+  ["UNTR.JK", "United Tractors", "Industrials"], ["PTBA.JK", "Bukit Asam", "Energy"],
+  ["ADRO.JK", "Alamtri Resources Indonesia", "Energy"], ["PGAS.JK", "Perusahaan Gas Negara", "Energy"],
+  ["INKP.JK", "Indah Kiat Pulp & Paper", "Materials"], ["MDKA.JK", "Merdeka Copper Gold", "Materials"],
+  ["BREN.JK", "Barito Renewables Energy", "Utilities"], ["AMRT.JK", "Sumber Alfaria Trijaya", "Consumer Defensive"],
+  ["CPIN.JK", "Charoen Pokphand Indonesia", "Consumer Defensive"], ["KLBF.JK", "Kalbe Farma", "Healthcare"],
+  ["SMGR.JK", "Semen Indonesia", "Materials"], ["ERAA.JK", "Erajaya Swasembada", "Technology"],
+  ["TOWR.JK", "Sarana Menara Nusantara", "Communication Services"], ["BRIS.JK", "Bank Syariah Indonesia", "Financials"],
+];
+for (const [canonical, name, sector] of ADDITIONAL_IDX_EQUITIES) {
+  addCatalogInstrument({ canonical, name, assetClass: "equity", subType: "equity_common", region: "Indonesia", exchange: "IDX", sector });
+}
+
+const ADDITIONAL_COMMODITIES: Array<[string, string]> = [
+  ["SOYBEAN", "Soybean futures"], ["CORN", "Corn futures"], ["WHEAT", "Wheat futures"],
+  ["SUGAR", "Sugar futures"], ["COFFEE", "Coffee futures"], ["COTTON", "Cotton futures"],
+  ["COCOA", "Cocoa futures"], ["LUMBER", "Lumber futures"], ["RICE", "Rough rice futures"],
+  ["OATS", "Oats futures"], ["LEANHOGS", "Lean hog futures"], ["LIVE_CATTLE", "Live cattle futures"],
+];
+for (const [canonical, name] of ADDITIONAL_COMMODITIES) {
+  addCatalogInstrument({ canonical, name, assetClass: "commodity", subType: "commodity_futures", region: "US", exchange: "CBOT" });
+}
+
+const ADDITIONAL_INDICES: Array<[string, string, Region, Exchange]> = [
+  ["RUT", "Russell 2000 Index", "US", "CME"], ["VIX", "CBOE Volatility Index", "US", "CME"],
+  ["DAX", "DAX 40 Index", "Europe", "EUREX"], ["FTSE", "FTSE 100 Index", "UK", "LSE"],
+  ["N225", "Nikkei 225 Index", "Japan", "TSE"], ["HSI", "Hang Seng Index", "China", "HKEX"],
+  ["STOXX50E", "Euro Stoxx 50 Index", "Europe", "EUREX"], ["SSEC", "Shanghai Composite Index", "China", "SSE"],
+];
+for (const [canonical, name, region, exchange] of ADDITIONAL_INDICES) {
+  addCatalogInstrument({ canonical, name, assetClass: "indices", subType: "index_cash", region, exchange });
+}
+
 // ═══════════════════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════════════════
