@@ -83,10 +83,17 @@ export interface RadarCandidateSource {
  * never create a market snapshot or get promoted to live evidence.
  */
 export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandidateSource {
-  const market = source.marketData;
-  const technical = source.technicalData ?? source.analysisResult?.technicalData;
-  const analysis = source.analysisResult;
-  const intelligence = source.universalIntelligence;
+  const market = source.marketData?.instrument === source.instrument
+    ? source.marketData
+    : undefined;
+  const matchingAnalysis = source.analysisResult?.instrument === source.instrument
+    ? source.analysisResult
+    : undefined;
+  const technical = source.technicalData ?? matchingAnalysis?.technicalData;
+  const analysis = matchingAnalysis;
+  const intelligence = source.universalIntelligence?.instrument === source.instrument
+    ? source.universalIntelligence
+    : undefined;
 
   const htf = technical?.mtf?.htfBias;
   const htfBias: NonNullable<MarketSnapshot["htfBias"]> =
