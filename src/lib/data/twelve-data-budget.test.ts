@@ -9,6 +9,7 @@ describe("TwelveDataRequestBudget", () => {
     expect(budget.reserve("primary", now).allowed).toBe(true);
     expect(budget.reserve("higher-timeframe", now).allowed).toBe(true);
     expect(budget.reserve("higher-timeframe", now).allowed).toBe(true);
+    expect(budget.reserve("higher-timeframe", now).allowed).toBe(true);
 
     const deniedHigherTimeframe = budget.reserve("higher-timeframe", now);
     expect(deniedHigherTimeframe.allowed).toBe(false);
