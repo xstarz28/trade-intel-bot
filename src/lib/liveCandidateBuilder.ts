@@ -445,12 +445,8 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     fundamentalScore: ar?.breakdown?.fundamental,
     positioningScore: ar?.breakdown?.sentiment,
     fundamentalEvidenceAvailable:
-      ar?.fundamentalData?.available === true ||
-      ar?.macroData?.confidence === "high" ||
-      ar?.macroData?.confidence === "medium" ||
-      !!ar?.calendarData?.events?.some(
-        (event) => event.status === "released" && event.actual !== undefined && event.forecast !== undefined,
-      ),
+      ar?.breakdown?.fundamental !== undefined &&
+      Number.isFinite(ar.breakdown.fundamental),
     macroScore: (() => {
       if (source.treasuryData?.available && source.assetClass === "commodity") {
         const evidence = deriveMacroYieldEvidence(source.treasuryData);
