@@ -272,6 +272,73 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
   });
 
 
+
+  it("carries universal forex and commodity context into radar recommendation candidates", () => {
+    const now = Date.now();
+    const forexSource = toRadarCandidateSource({
+      instrument: "EUR/USD",
+      assetClass: "forex",
+      marketData: {
+        instrument: "EUR/USD", instrumentType: "forex", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 1.1, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 10 }],
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+      universalIntelligence: {
+        instrument: "EUR/USD", assetClass: "forex", assembledAt: now,
+        forex: {
+          instrument: "EUR/USD", instrumentType: "forex", assembledAt: now,
+          rates: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, rateDifferential: 1.25 },
+          yields: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, yieldDifferential: 0.8 },
+          positioning: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, nonCommercialNet: 4200 },
+          evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
+        },
+        crossAsset: {
+          assembledAt: now,
+          dxy: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, trend: "falling" },
+          riskRegime: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, regime: "risk_on" },
+          evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
+        },
+        evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
+      } as any,
+    });
+    const forexCandidate = buildRadarCandidate(forexSource, now);
+    expect(forexCandidate.rateDifferential).toBe(1.25);
+    expect(forexCandidate.yieldDifferential).toBe(0.8);
+    expect(forexCandidate.cotNet).toBe(4200);
+    expect(forexCandidate.dxyTrend).toBe("falling");
+    expect(forexCandidate.riskRegime).toBe("risk_on");
+
+    const commoditySource = toRadarCandidateSource({
+      instrument: "WTI",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "WTI", instrumentType: "commodity", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 75, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 74, high: 76, low: 73, close: 75, volume: 100 }],
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+      universalIntelligence: {
+        instrument: "WTI", assetClass: "commodity", assembledAt: now,
+        commodity: {
+          instrument: "WTI", instrumentType: "commodity", assembledAt: now,
+          inventory: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, currentInventory: 420, changeWeekly: -8 },
+          futuresStructure: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, structure: "backwardation" },
+          positioning: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, managedMoneyNet: 1234 },
+          evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
+        },
+        evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
+      } as any,
+    });
+    const commodityCandidate = buildRadarCandidate(commoditySource, now);
+    expect(commodityCandidate.inventory).toBe(420);
+    expect(commodityCandidate.inventoryChange).toBe(-8);
+    expect(commodityCandidate.futuresStructure).toBe("backwardation");
+    expect(commodityCandidate.cotNet).toBe(1234);
+  });
+
   it("does not pass mismatched market or analysis identities into radar candidates", () => {
     const now = Date.now();
     const radarSource = toRadarCandidateSource({
