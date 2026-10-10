@@ -15,29 +15,10 @@ import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext } from "../lib/data/mtf";
 import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/classic-price-action";
-import {
-  crossAssetComparator,
-  DXY_CANDIDATE_SYMBOLS,
-  pearsonCorrelation,
-  selectDxyProbeCandidate,
-} from "../lib/market-context";
+import { crossAssetComparator } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
 import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/data/twelve-data-budget";
 import { OKX_SPOT_MARKET_PROVIDER, OkxSpotMarketAdapter } from "../lib/data/crypto/okx-spot-market-adapter";
-
-/**
- * Phase 7C — in-memory memo of the working actual-DXY symbol (per server
- * instance). Failure caching protects the Twelve Data rate budget: when no
- * candidate resolves, probing is skipped for 24h instead of every analysis.
- */
-let dxyResolvedSymbol: string | null = null;
-let dxyAllCandidatesFailedAt: number | null = null;
-// DXY is optional context. Rate-limit its discovery so failed symbol probes
-// cannot starve primary OHLCV and the MTF chain on subsequent analyses.
-let dxyProbeCursor = 0;
-let dxyLastProbeAt: number | null = null;
-let dxyLastProbedSymbol: string | null = null;
-const DXY_PROBE_COOLDOWN_MS = 60_000;
 
 interface TdCandle {
   datetime: string;
@@ -375,130 +356,19 @@ export const fetchMarketData = action({
         delete technical.chainUnavailable;
       }
 
-      // ── Phase 5: cross-asset context (rate-limit safe) ──
-      // ONE extra conditional fetch, only for a RELEVANT comparator
-      // (forex/commodity→DXY, BTC-like crypto→NDX). Failure is non-fatal:
-      // the primary analysis is never sacrificed for secondary context,
-      // and unavailability is flagged explicitly instead of guessed.
+      // Cross-asset prices are optional. The live production key returned
+      // an 8-credits/minute limit, so no extra Twelve Data probe is launched
+      // from a primary analysis. Missing DXY/NDX context stays explicit.
       const comparator = crossAssetComparator(args.instrumentType, symbol);
       let crossAsset: TechnicalData["crossAsset"] | undefined;
       if (comparator && comparator !== symbol.toUpperCase()) {
-        try {
-          // Phase 7C — defensive actual-DXY discovery. The literal "DXY"
-          // symbol is NOT valid on the current Twelve Data plan (verified:
-          // all candidates return 404 while control EUR/USD succeeds), so we
-          // try candidates in order and CACHE failures for 24h to protect
-          // the rate budget. When a candidate works, this becomes ACTUAL
-          // price data with full provenance; otherwise the explicit
-          // unavailable state below stands — never a fabricated series.
-          let compSymbol: string | null = comparator;
-          if (comparator.toUpperCase() === "DXY") {
-            const DAY = 24 * 3600e3;
-            if (dxyAllCandidatesFailedAt !== null && Date.now() - dxyAllCandidatesFailedAt < DAY) {
-              compSymbol = null;
-            } else if (dxyResolvedSymbol) {
-              compSymbol = dxyResolvedSymbol;
-            } else {
-              // At most one failed provider-symbol probe per cooldown. Do not
-              // burst through the remaining candidates after the core MTF
-              // requests: on a limited plan those optional 404s can starve
-              // the next instrument's actual market-data requests.
-              const candidate = selectDxyProbeCandidate(
-                DXY_CANDIDATE_SYMBOLS,
-                dxyProbeCursor,
-                dxyLastProbeAt,
-                Date.now(),
-                DXY_PROBE_COOLDOWN_MS,
-              );
-              if (candidate) {
-                const test = await fetchCandles(candidate, "D1", 5, apiKey).catch(() => null);
-                dxyLastProbeAt = Date.now();
-                dxyLastProbedSymbol = candidate;
-                if (test && test.length > 0) {
-                  compSymbol = candidate;
-                  dxyResolvedSymbol = candidate;
-                } else {
-                  dxyProbeCursor += 1;
-                  compSymbol = null;
-                  if (dxyProbeCursor >= DXY_CANDIDATE_SYMBOLS.length) {
-                    dxyAllCandidatesFailedAt = Date.now();
-                    dxyProbeCursor = 0;
-                    dxyLastProbeAt = null;
-                  }
-                }
-              } else {
-                // A prior probe failed recently; wait rather than spending
-                // another request in the same rate-limit window.
-                compSymbol = null;
-              }
-            }
-          }
-          const compCandles = compSymbol
-            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey).catch(() => null)
-            : null;
-          if (compCandles && compCandles.length >= 25) {
-            const corr = pearsonCorrelation(
-              candles.map((c) => c.close),
-              compCandles.map((c) => c.close),
-            );
-            if (corr) {
-              const last = compCandles[compCandles.length - 1].close;
-              const back = compCandles[Math.max(0, compCandles.length - 21)].close;
-              const momentum =
-                back > 0 && Number.isFinite(last / back)
-                  ? last > back * 1.001
-                    ? ("up" as const)
-                    : last < back * 0.999
-                      ? ("down" as const)
-                      : ("flat" as const)
-                  : undefined;
-              crossAsset = {
-                comparatorSymbol: compSymbol ?? comparator,
-                timeframe: args.timeframe,
-                available: true,
-                dataKind: "actual_price" as const,
-                provider: "Twelve Data",
-                correlation: Math.round(corr.correlation * 1000) / 1000,
-                sampleSize: corr.n,
-                directionalContext:
-                  Math.abs(corr.correlation) >= 0.6
-                    ? corr.correlation > 0
-                      ? ("direct" as const)
-                      : ("inverse" as const)
-                    : ("weak" as const),
-                comparatorMomentum: momentum,
-              };
-            } else {
-              crossAsset = {
-                comparatorSymbol: comparator,
-                timeframe: args.timeframe,
-                available: false,
-                unavailableReason: "insufficient overlapping candle history for an honest correlation",
-              };
-            }
-          } else {
-            crossAsset = {
-              comparatorSymbol: comparator,
-              timeframe: args.timeframe,
-              available: false,
-              unavailableReason:
-                comparator.toUpperCase() === "DXY"
-                  ? dxyResolvedSymbol
-                    ? `actual DXY symbol ${dxyResolvedSymbol} was resolved previously, but its ${args.timeframe} price series could not be fetched`
-                    : dxyAllCandidatesFailedAt !== null && Date.now() - dxyAllCandidatesFailedAt < 24 * 3600e3
-                      ? "actual DXY price series unavailable: all documented Twelve Data index symbols were tested and rejected; the labeled news-derived USD proxy remains only a fallback"
-                      : `actual DXY remains unresolved; latest probe ${dxyLastProbedSymbol ?? "not run"} was unavailable or the next probe is throttled to protect primary/MTF request capacity`
-                  : `no comparable series returned by the provider for ${comparator}`,
-            };
-          }
-        } catch {
-          crossAsset = {
-            comparatorSymbol: comparator,
-            timeframe: args.timeframe,
-            available: false,
-            unavailableReason: "cross-asset fetch failed — primary data unaffected",
-          };
-        }
+        crossAsset = {
+          comparatorSymbol: comparator,
+          timeframe: args.timeframe,
+          available: false,
+          unavailableReason:
+            "Not fetched: provider credits are reserved for primary OHLCV and higher-timeframe market analysis; no proxy or synthetic series was substituted.",
+        };
       }
       if (crossAsset) technical.crossAsset = crossAsset;
 
@@ -549,6 +419,7 @@ export const fetchFxRate = action({
     const from = args.from.toUpperCase();
     const to = args.to.toUpperCase();
     if (from === to) return { success: false as const, error: "same currency — no conversion needed" };
+    let requestBudgetError: string | undefined;
 
     const fetchPair = async (
       pair: string,
@@ -563,7 +434,10 @@ export const fetchFxRate = action({
         const rate = parseFloat(res.close);
         if (!Number.isFinite(rate) || rate <= 0) return null;
         return { rate, timestamp: Date.now(), source: "twelve-data", pair };
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("REQUEST_BUDGET:")) {
+          requestBudgetError = err.message.replace(/^REQUEST_BUDGET:\\s*/, "");
+        }
         return null;
       }
     };
@@ -577,7 +451,9 @@ export const fetchFxRate = action({
     if (!direct && !inverse) {
       return {
         success: false as const,
-        error: `no FX quote available for ${from}/${to} from the provider`,
+        error: requestBudgetError
+          ? `FX quote request skipped to protect the market-analysis quota: ${requestBudgetError}`
+          : `no FX quote available for ${from}/${to} from the provider`,
       };
     }
     return { success: true as const, direct, inverse };
