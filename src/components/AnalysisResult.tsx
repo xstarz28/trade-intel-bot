@@ -1614,7 +1614,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <span className="text-primary/60">$</span> trade-plan
               </h4>
               <Badge variant="outline" className="text-[10px] font-mono ml-auto border-border/50">
-                R:R {result.tradePlan.riskReward.toFixed(2)}
+                R:R {result.tradePlan.riskReward.toFixed(3)}
               </Badge>
             </div>
           </CardHeader>

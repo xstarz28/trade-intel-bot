@@ -11,9 +11,10 @@ import type {
   Recommendation,
   TradePlan,
 } from "@/types/analysis";
-import type { MarketData, MtfContext, TechnicalData, PriceSnapshot } from "@/lib/data/market-types";
+import type { MtfContext, TechnicalData } from "@/lib/data/market-types";
 import type { ClassicPriceActionContext } from "@/lib/data/classic-price-action";
 import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
+import { calculateRiskRewardRatio } from "@/lib/risk/reward-risk";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 import { resolveStyle } from "@/lib/trading-style";
 import {
@@ -1241,46 +1242,55 @@ function decideTrade(
         ? tech.atr14 * 0.2
         : 0;
     const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
-    const risk = Math.abs(entry - sl);
-    const reward = Math.abs(tpLevel - entry);
-    if (risk <= 0) {
-      reasons.push("Displayed structural stop level equals entry price — invalid risk distance.");
+    const direction = bias === "Bullish" ? "long" : "short";
+    const decimals = entry < 10 ? 5 : 2;
+    const displayedEntry = entry.toString();
+    const displayedStopLoss = sl.toFixed(decimals);
+    const displayedTakeProfit = tpLevel.toFixed(decimals);
+    // Validate and calculate against the exact levels rendered in the UI.
+    // Absolute distances alone are unsafe: they can make an invalid-side
+    // stop or target look like a positive R:R setup.
+    const exactRr = calculateRiskRewardRatio({
+      direction,
+      entry: displayedEntry,
+      stopLoss: displayedStopLoss,
+      takeProfit: displayedTakeProfit,
+    });
+    if (exactRr === undefined) {
+      reasons.push(
+        `Displayed entry/SL/TP do not form a valid positive-risk, positive-reward ${direction.toUpperCase()} plan.`,
+      );
     } else {
-      const rr = Math.round((reward / risk) * 100) / 100;
-      // Preserve the exact market-derived levels for visual context even when
-      // the setup is rejected. This is explicitly NON-EXECUTABLE and never
-      // changes recommendation, gates, conviction or risk sizing.
-      const decimals = entry < 10 ? 5 : 2;
+      const rr = exactRr;
       const bufferNote =
         buffer > 0
           ? ` (incl. ${((buffer / entry) * 100).toFixed(3)}% technical ATR buffer beyond structural level)`
           : "";
       projectedTradePlan = {
-        direction: bias === "Bullish" ? "long" : "short",
-        entry: entry.toString(),
+        direction,
+        entry: displayedEntry,
         entryBasis: "live market price at analysis time",
-        stopLoss: sl.toFixed(decimals),
+        stopLoss: displayedStopLoss,
         slBasis: `${slBasis}${bufferNote}`,
-        takeProfit: tpLevel.toFixed(decimals),
+        takeProfit: displayedTakeProfit,
         tpBasis,
         riskReward: rr,
         ...(mtf ? { htfBias: `${mtf.htfTimeframe ?? "HTF"} ${mtf.htfBias} external structure`, setupTimeframe: mtf.setupTimeframe, ...(mtf.triggerTimeframe ? { triggerTimeframe: mtf.triggerTimeframe } : {}) } : {}),
       };
-      if (rr < MIN_RR) {
+      if (exactRr < MIN_RR) {
         reasons.push(
-          `Projected R:R ${rr.toFixed(2)} is below the ${MIN_RR.toFixed(2)} minimum for actionable setups.`,
+          `Projected R:R ${rr.toFixed(3)} is below the ${MIN_RR.toFixed(3)} minimum for actionable setups.`,
         );
       } else {
-        // Small technical buffer beyond the structural level (ATR-based
-        // when available). The buffer is disclosed — the invalidation
-        // BASE remains the structural level, never a fixed percentage.
+        // Executable plans use exactly the same displayed levels and R:R
+        // geometry as the projected plan; no hidden precision mismatch.
         tradePlan = {
-          direction: bias === "Bullish" ? "long" : "short",
-          entry: entry.toString(),
+          direction,
+          entry: displayedEntry,
           entryBasis: "live market price at analysis time",
-          stopLoss: sl.toFixed(decimals),
+          stopLoss: displayedStopLoss,
           slBasis: `${slBasis}${bufferNote}`,
-          takeProfit: tpLevel.toFixed(decimals),
+          takeProfit: displayedTakeProfit,
           tpBasis,
           riskReward: rr,
           ...(mtf
@@ -2107,7 +2117,7 @@ function generateRiskNote(
     }
   } else if (tradePlan) {
     parts.push(
-      `${recommendation} plan — entry ${tradePlan.entry} (${tradePlan.entryBasis}), SL ${tradePlan.stopLoss} (${tradePlan.slBasis}), TP ${tradePlan.takeProfit} (${tradePlan.tpBasis}). R:R ${tradePlan.riskReward.toFixed(2)}.`,
+      `${recommendation} plan — entry ${tradePlan.entry} (${tradePlan.entryBasis}), SL ${tradePlan.stopLoss} (${tradePlan.slBasis}), TP ${tradePlan.takeProfit} (${tradePlan.tpBasis}). R:R ${tradePlan.riskReward.toFixed(3)}.`,
     );
     if (positionSizing?.available) {
       const conv = positionSizing.conversion;
