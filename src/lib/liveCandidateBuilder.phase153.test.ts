@@ -155,6 +155,8 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           swingLows: [99],
           supportLevels: [99],
           resistanceLevels: [101],
+          htfContext: { structure: "HH/HL" } as any,
+          mtf: { htfBias: "long", alignment: "ALIGNED_BULLISH" } as any,
           volumeTrend,
           dataPoints: 100,
         },
