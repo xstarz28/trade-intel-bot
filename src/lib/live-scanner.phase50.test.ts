@@ -400,7 +400,7 @@ describe("I — Forex Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("J — Equity Ranking", () => {
-  it("AAPL and MSFT ranked independently on swing-compatible H4 data", () => {
+  it("AAPL and MSFT ranked independently with swing-compatible H4 candles", () => {
     const sources = [
       makeSource({ instrument: "AAPL", assetClass: "equity", marketData: makeMarketData("AAPL", { instrumentType: "stock", timeframe: "H4" }) }),
       makeSource({ instrument: "MSFT", assetClass: "equity", marketData: makeMarketData("MSFT", { instrumentType: "stock", timeframe: "H4" }) }),
@@ -416,7 +416,7 @@ describe("J — Equity Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("K — IDX Ranking", () => {
-  it("IDX equities are ranked as first-class instruments on H4 data", () => {
+  it("IDX equities are ranked as first-class instruments using H4 candles", () => {
     const sources = [
       makeSource({ instrument: "BBCA", assetClass: "equity", marketData: makeMarketData("BBCA", { instrumentType: "stock", timeframe: "H4" }) }),
       makeSource({ instrument: "BBRI", assetClass: "equity", marketData: makeMarketData("BBRI", { instrumentType: "stock", timeframe: "H4" }) }),
@@ -428,7 +428,7 @@ describe("K — IDX Ranking", () => {
     expect(ranked.map(r => r.instrument).sort()).toEqual(["BBCA", "BBRI", "TLKM"]);
   });
 
-  it("accepts IDX equities directly without a built-in universe using H4 data", () => {
+  it("accepts IDX equities directly without a built-in universe using H4 candles", () => {
     const sources = [
       makeSource({ instrument: "BBCA", assetClass: "equity", marketData: makeMarketData("BBCA", { instrumentType: "stock", timeframe: "H4" }) }),
       makeSource({ instrument: "BBRI", assetClass: "equity", marketData: makeMarketData("BBRI", { instrumentType: "stock", timeframe: "H4" }) }),
@@ -478,7 +478,7 @@ describe("M — Index Ranking", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("N — Macro Context", () => {
-  it("accepts arbitrary macro instruments directly on D1 data", () => {
+  it("accepts arbitrary macro instruments directly using D1 candles", () => {
     const sources = [
       makeSource({ instrument: "DXY", assetClass: "macro", marketData: makeMarketData("DXY", { instrumentType: "indices", timeframe: "D1" }) }),
       makeSource({ instrument: "US10Y", assetClass: "macro", marketData: makeMarketData("US10Y", { instrumentType: "indices", timeframe: "D1" }) }),

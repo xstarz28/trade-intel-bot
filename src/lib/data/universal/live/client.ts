@@ -64,6 +64,20 @@ interface EndpointSpec {
 const num = (v: unknown): number =>
   typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) : NaN;
 
+function mapOkxBar(timeframe?: string): string {
+  const tf = (timeframe ?? "H1").trim().toUpperCase().replace(/\s+/g, "");
+  const bars: Record<string, string> = {
+    M1: "1m", "1M": "1m", "1MIN": "1m", "1MINUTE": "1m",
+    M5: "5m", "5M": "5m", "5MIN": "5m", "5MINUTE": "5m",
+    M15: "15m", "15M": "15m", "15MIN": "15m", "15MINUTE": "15m",
+    H1: "1H", "1H": "1H", "1HR": "1H",
+    H4: "4H", "4H": "4H", "4HR": "4H",
+    D1: "1D", "1D": "1D", "1DAY": "1D",
+    W1: "1W", "1W": "1W", "1WEEK": "1W",
+  };
+  return bars[tf] ?? "1H";
+}
+
 const ENDPOINTS: Record<string, EndpointSpec> = {
   "twelve-data": {
     buildUrl: (sym, p) =>
@@ -117,7 +131,7 @@ const ENDPOINTS: Record<string, EndpointSpec> = {
     buildUrl: (sym, p) =>
       p.capability === "quote"
         ? `https://www.okx.com/api/v5/market/ticker?instId=${encodeURIComponent(sym)}`
-        : `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=1H&limit=100`,
+        : `https://www.okx.com/api/v5/market/candles?instId=${encodeURIComponent(sym)}&bar=${encodeURIComponent(mapOkxBar(p.timeframe))}&limit=${Math.min(300, Math.max(1, Math.floor(p.count ?? 100)))}`,
     extract: (json, p) => {
       const j = json as { data?: unknown[] };
       if (p.capability === "quote") {

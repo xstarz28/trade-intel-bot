@@ -205,8 +205,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           instrumentType={result.instrumentType}
           candles={result.candles}
           keyLevels={result.keyLevels}
-          tradePlan={result.recommendation === "NO_TRADE" ? undefined : result.tradePlan}
-          projectedTradePlan={result.recommendation === "NO_TRADE" ? undefined : result.projectedTradePlan}
+          tradePlan={result.tradePlan}
+          projectedTradePlan={result.projectedTradePlan}
           technicalData={result.technicalData}
         />
       )}
