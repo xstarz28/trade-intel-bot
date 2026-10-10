@@ -246,12 +246,8 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
         fundamentalScore: analysis.breakdown?.fundamental,
         positioningScore: analysis.breakdown?.sentiment,
         fundamentalEvidenceAvailable:
-          analysis.fundamentalData?.available === true ||
-          analysis.macroData?.confidence === "high" ||
-          analysis.macroData?.confidence === "medium" ||
-          !!analysis.calendarData?.events?.some(
-            (event) => event.status === "released" && event.actual !== undefined && event.forecast !== undefined,
-          ),
+          analysis.breakdown?.fundamental !== undefined &&
+          Number.isFinite(analysis.breakdown.fundamental),
         technicalData: {
           htfBias,
           mtfAlignment: technical?.mtf?.alignment ?? analysis.mtfSummary?.alignment,
