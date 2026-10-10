@@ -30,7 +30,7 @@ const DEFAULT_CONFIG: TwelveDataBudgetConfig = {
   // Leave one of the observed eight credits uncommitted as a safety margin.
   maxTotal: 7,
   maxPrimary: 5,
-  maxHigherTimeframe: 2,
+  maxHigherTimeframe: 3,
   maxOptional: 0,
 };
 
