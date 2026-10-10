@@ -13,7 +13,7 @@ import type {
 import { toTokenomistSymbol } from "./symbols";
 
 const TOKENOMIST_BASE = "https://api.unlocks.app";
-const REQUEST_TIMEOUT_MS = 6_000;
+const REQUEST_TIMEOUT_MS = 2_500;
 const TOKEN_LIST_TTL_MS = 15 * 60 * 1000;
 
 type TokenListEntry = {
