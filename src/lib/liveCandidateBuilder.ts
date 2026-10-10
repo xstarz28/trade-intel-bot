@@ -13,7 +13,7 @@
 
 import type { CandidateInput, DataCompletenessLevel } from "./recommendation-engine";
 import type { AssetClass } from "./data/universal/types";
-import type { MarketData, TechnicalData, OhlcvCandle } from "./data/market-types";
+import type { MarketData, TechnicalData } from "./data/market-types";
 import type { AnalysisResult } from "@/types/analysis";
 import type { UniversalIntelligenceContext } from "./data/universal/types";
 import type { CryptoDerivativesData } from "./data/derivatives-types";
@@ -245,7 +245,6 @@ function extractSpreadBps(source: LiveCandidateSource): number | undefined {
 
 function extractCryptoData(source: LiveCandidateSource): Partial<CandidateInput> {
   const d = source.derivativesData;
-  const ci = source.universalIntelligence?.equity ?? source.universalIntelligence;
   return {
     hasDerivatives: !!d,
     fundingRate: d?.fundingRate?.currentRate,
