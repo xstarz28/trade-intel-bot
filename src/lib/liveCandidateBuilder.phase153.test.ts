@@ -620,4 +620,30 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.revenueGrowth).toBeUndefined();
   });
 
+  it("does not convert raw analysis fundamentals or calendar availability into signed evidence", () => {
+    const now = Date.now();
+    const source = {
+      instrument: "AAPL",
+      assetClass: "equity" as const,
+      marketData: {
+        instrument: "AAPL", instrumentType: "stock" as const, provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 250, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 249, high: 251, low: 248, close: 250, volume: 100 }],
+        timeframe: "H1" as const, dataFreshness: "realtime" as const,
+      },
+      analysisResult: {
+        instrument: "AAPL", instrumentType: "stock", timestamp: now,
+        confidence: 70, bias: "Bullish", recommendation: "BUY",
+        fundamentalData: { available: true, peRatio: 31 },
+        macroData: { confidence: "high" },
+        calendarData: { events: [{ status: "released", actual: 2, forecast: 1 }] },
+      } as any,
+    };
+    const live = buildCandidateFromSource(source);
+    const radar = buildRadarCandidate(toRadarCandidateSource(source), now);
+    expect(live.fundamentalEvidenceAvailable).toBe(false);
+    expect(radar.fundamentalEvidenceAvailable).toBe(false);
+  });
+
 });
