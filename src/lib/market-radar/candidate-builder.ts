@@ -8,7 +8,6 @@
  * Missing components remain missing — never fabricated.
  */
 
-import type { AssetClass } from "@/lib/data/universal/types";
 import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation-engine";
 import type { MarketSnapshot, FreshnessLevel } from "./types";
 import type { UniverseEntry } from "./types";
@@ -313,7 +312,7 @@ function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessL
 // ═══════════════════════════════════════════════════════════════
 
 function assessProviderCoverage(source: RadarCandidateSource): CandidateInput["providerCoverage"] {
-  let total = source.universe.requiredCapabilities.length;
+  const total = source.universe.requiredCapabilities.length;
   if (total === 0) return "FULL";
   let available = 0;
   if (source.snapshot?.price && source.snapshot.price > 0) available++;
