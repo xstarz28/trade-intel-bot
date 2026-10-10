@@ -136,25 +136,19 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const liquidationVolume = derivativesData?.availability.liquidations
     ? derivativesData.liquidations?.totalVolume
     : undefined;
-  const inventory = source.eiaData?.available
-    ? source.eiaData.series[0]?.latestValue
-    : universalCommodity?.inventory?.available ? universalCommodity.inventory.currentInventory : undefined;
-  const inventoryChange = source.eiaData?.available
-    ? source.eiaData.series[0]?.change
-    : universalCommodity?.inventory?.available ? universalCommodity.inventory.changeWeekly : undefined;
+  const inventory = (source.eiaData?.available ? source.eiaData.series[0]?.latestValue : undefined)
+    ?? (universalCommodity?.inventory?.available ? universalCommodity.inventory.currentInventory : undefined);
+  const inventoryChange = (source.eiaData?.available ? source.eiaData.series[0]?.change : undefined)
+    ?? (universalCommodity?.inventory?.available ? universalCommodity.inventory.changeWeekly : undefined);
   const futuresStructure = universalCommodity?.futuresStructure?.available
     ? universalCommodity.futuresStructure.structure
     : undefined;
   const tenYearYield = source.treasuryData?.available
     ? source.treasuryData.latest.nominal.nominal["10Y"]
     : undefined;
-  const cotNet = cotData?.available
-    ? cotData.netNonCommercial
-    : universalForex?.positioning?.available
-      ? universalForex.positioning.nonCommercialNet
-      : universalCommodity?.positioning?.available
-        ? universalCommodity.positioning.managedMoneyNet
-        : undefined;
+  const cotNet = (cotData?.available ? cotData.netNonCommercial : undefined)
+    ?? (universalForex?.positioning?.available ? universalForex.positioning.nonCommercialNet : undefined)
+    ?? (universalCommodity?.positioning?.available ? universalCommodity.positioning.managedMoneyNet : undefined);
   const rateDifferential = universalForex?.rates?.available
     ? universalForex.rates.rateDifferential
     : undefined;
