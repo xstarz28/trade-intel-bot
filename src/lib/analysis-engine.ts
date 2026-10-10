@@ -680,8 +680,17 @@ function assessDataCompleteness(input: AnalysisInput): {
     flags.push(`Limited candle history (${input.technicalData!.dataPoints} candles) — indicators may be unreliable`);
   }
   const hasIntelligence = !!(input.sentimentData || input.fundamentalData || input.macroData);
+  const hasCryptoIntelligence = !!(
+    input.cryptoIntelligenceContext?.derivatives?.available ||
+    input.cryptoIntelligenceContext?.defi?.available ||
+    input.cryptoIntelligenceContext?.tokenomics?.available
+  );
   if (!input.newsContext && !hasIntelligence) {
-    flags.push("No news context or intelligence data — fundamental analysis limited to technicals");
+    flags.push(
+      hasCryptoIntelligence
+        ? "Core news/sentiment/fundamental context unavailable — crypto-specific intelligence is shown separately as contextual evidence, not a substitute for core fundamentals"
+        : "No news context or core fundamental intelligence data — fundamental analysis limited to technicals",
+    );
     missing++;
   }
   if (input.instrumentType === "forex" && !input.economicEvents && !input.calendarData) {
