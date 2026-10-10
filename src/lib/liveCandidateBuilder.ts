@@ -238,38 +238,50 @@ function extractCryptoData(source: LiveCandidateSource): Partial<CandidateInput>
 }
 
 function extractForexData(source: LiveCandidateSource): Partial<CandidateInput> {
-  const t = source.treasuryData;
+  const fx = source.universalIntelligence?.forex;
+  const crossAsset = source.universalIntelligence?.crossAsset;
   const cot = source.cotData;
   const cotAvailable = cot && cot.available ? cot : null;
   return {
-    rateDifferential: undefined, // Would need central bank rate data
-    yieldDifferential: undefined,
-    hasCOT: !!cotAvailable,
-    cotNet: cotAvailable?.netNonCommercial,
-    dxyTrend: undefined,
+    // Use only explicitly available intelligence; never infer rates from a
+    // missing feed or let unavailable provider metadata become evidence.
+    rateDifferential: fx?.rates?.available ? fx.rates.rateDifferential : undefined,
+    yieldDifferential: fx?.yields?.available ? fx.yields.yieldDifferential : undefined,
+    hasCOT: !!cotAvailable || !!(fx?.positioning?.available),
+    cotNet: cotAvailable?.netNonCommercial ??
+      (fx?.positioning?.available ? fx.positioning.nonCommercialNet : undefined),
+    dxyTrend: crossAsset?.dxy?.available
+      ? crossAsset.dxy.trend
+      : fx?.crossAsset?.available ? fx.crossAsset.dxyTrend : undefined,
   };
 }
 
 function extractEquityData(source: LiveCandidateSource): Partial<CandidateInput> {
   const ar = source.analysisResult;
+  const fundamentals = source.universalIntelligence?.equity?.fundamentals;
+  const fundamentalsAvailable = fundamentals?.available === true;
   return {
-    hasFundamentals: !!ar?.fundamentalData?.available,
-    peRatio: ar?.fundamentalData?.peRatio,
-    revenueGrowth: undefined, // FundamentalData doesn't expose revenueGrowth directly
-    profitMargin: ar?.fundamentalData?.profitMargin,
-    marketCap: ar?.fundamentalData?.marketCap,
+    hasFundamentals: !!ar?.fundamentalData?.available || fundamentalsAvailable,
+    peRatio: fundamentalsAvailable ? fundamentals.peRatio : ar?.fundamentalData?.peRatio,
+    revenueGrowth: fundamentalsAvailable ? fundamentals.revenueGrowth : undefined,
+    profitMargin: fundamentalsAvailable ? fundamentals.profitMargin : ar?.fundamentalData?.profitMargin,
+    marketCap: fundamentalsAvailable ? fundamentals.marketCap : ar?.fundamentalData?.marketCap,
   };
 }
 
 function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInput> {
   const eia = source.eiaData;
   const cot = source.cotData;
+  const intelligence = source.universalIntelligence?.commodity;
+  const inventory = intelligence?.inventory?.available ? intelligence.inventory : undefined;
+  const positioning = intelligence?.positioning?.available ? intelligence.positioning : undefined;
+  const futures = intelligence?.futuresStructure?.available ? intelligence.futuresStructure : undefined;
   return {
-    inventory: eia && eia.available ? eia.series[0]?.latestValue : undefined,
-    inventoryChange: eia && eia.available ? eia.series[0]?.change : undefined,
-    hasCOT: !!(cot && cot.available),
-    cotNet: cot && cot.available ? cot.netNonCommercial : undefined,
-    futuresStructure: undefined, // Would need futures curve data
+    inventory: inventory?.currentInventory ?? (eia?.available ? eia.series[0]?.latestValue : undefined),
+    inventoryChange: inventory?.changeWeekly ?? (eia?.available ? eia.series[0]?.change : undefined),
+    hasCOT: !!(cot?.available || positioning),
+    cotNet: cot?.available ? cot.netNonCommercial : positioning?.managedMoneyNet,
+    futuresStructure: futures?.structure,
   };
 }
 
@@ -350,9 +362,16 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     spreadBps: extractSpreadBps(source),
     atr: extractAtr(tech),
 
-    // Cross-asset
-    dxyTrend: undefined,
-    riskRegime: undefined,
+    // Cross-asset context is informational unless the provider explicitly
+    // marks it available. Preserve absence instead of guessing a regime.
+    dxyTrend: source.universalIntelligence?.crossAsset?.dxy?.available
+      ? source.universalIntelligence.crossAsset.dxy.trend
+      : source.universalIntelligence?.forex?.crossAsset?.available
+        ? source.universalIntelligence.forex.crossAsset.dxyTrend
+        : undefined,
+    riskRegime: source.universalIntelligence?.crossAsset?.riskRegime?.available
+      ? source.universalIntelligence.crossAsset.riskRegime.regime
+      : undefined,
 
     // Dedup
     dependencyGroupsUsed: [],
