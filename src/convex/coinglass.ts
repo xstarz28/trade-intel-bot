@@ -278,6 +278,7 @@ export const fetchDeFiLlamaFundamentals = action({
 // ── Individual Fetchers (CoinGlass API v4) ────────────────────────
 
 function finiteNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
