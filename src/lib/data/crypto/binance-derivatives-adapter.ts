@@ -69,7 +69,6 @@ export class BinancePublicDerivativesAdapter {
     const oiRows = oiResult.status === "fulfilled" && Array.isArray(oiResult.value) ? oiResult.value : [];
     const latestOi = oiRows[oiRows.length - 1];
     const oiValue = finitePositive(latestOi?.sumOpenInterestValue);
-    const oiBase = finitePositive(latestOi?.sumOpenInterest);
     const openInterest = oiValue !== undefined
       ? { current: oiValue }
       : undefined;
