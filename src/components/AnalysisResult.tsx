@@ -320,7 +320,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </Badge>
                 {dq.primaryData.validCount !== undefined && dq.primaryData.expectedCount !== undefined && (
                   <Badge variant="outline" className="text-[10px] font-mono border-border/50">
-                    {dq.primaryData.validCount}/{dq.primaryData.expectedCount} candles
+                    {dq.primaryData.validCount} usable candles · target {dq.primaryData.expectedCount}
                   </Badge>
                 )}
                 {dq.primaryData.provider && (
@@ -713,6 +713,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               >
                 {result.executionContext.regime}
               </span>
+              <span className="mx-1 text-muted-foreground/60">·</span>
               <span
                 className={cn(
                   "ml-1",
