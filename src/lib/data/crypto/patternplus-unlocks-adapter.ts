@@ -159,16 +159,16 @@ export class PatternPlusUnlockAdapter {
     const sum = (rows: UnlockRow[], selector: (row: UnlockRow) => unknown): number | undefined => {
       const values = rows.map((row) => numberValue(selector(row)));
       if (values.some((value) => value === undefined)) return undefined;
-      return values.reduce((total, value) => total + value!, 0);
+      return values.reduce<number>((total, value) => total + (value ?? 0), 0);
     };
     const nextAmount = sum(next30d, (row) => row.amount) ?? 0;
     const nextUsdValues = next30d.map((row) => numberValue(row.value_usd));
     const nextUsd = nextUsdValues.length > 0 && nextUsdValues.every((value) => value !== undefined)
-      ? nextUsdValues.reduce((total, value) => total + value!, 0)
+      ? nextUsdValues.reduce<number>((total, value) => total + (value ?? 0), 0)
       : undefined;
     const nextPctValues = next30d.map((row) => numberValue(row.pct_circulating));
     const pctCirculating = nextPctValues.length > 0 && nextPctValues.every((value) => value !== undefined)
-      ? nextPctValues.reduce((total, value) => total + value!, 0)
+      ? nextPctValues.reduce<number>((total, value) => total + (value ?? 0), 0)
       : undefined;
 
     const nearest = validRows[0];
