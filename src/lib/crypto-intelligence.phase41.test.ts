@@ -29,6 +29,7 @@ import {
 } from "./data/crypto/coinglass-adapter";
 import { BinancePublicDerivativesAdapter, toBinanceUsdtFuturesSymbol } from "./data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter, toBybitLinearSymbol } from "./data/crypto/bybit-derivatives-adapter";
+import { OkxPublicDerivativesAdapter, toOkxSwapInstrument } from "./data/crypto/okx-derivatives-adapter";
 import {
   DeFiLlamaAdapter,
   parseDeFiLlamaResult,
@@ -1358,5 +1359,58 @@ describe("Phase 41 — public Bybit derivatives fallback", () => {
     });
     expect(result?.confidence).toBe("high");
     expect(requested).toHaveLength(3);
+  });
+});
+
+
+describe("Phase 41 — public OKX derivatives fallback", () => {
+  function response(body: unknown, status = 200): Response {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: status === 200 ? "OK" : "provider error",
+      json: async () => body,
+    } as Response;
+  }
+
+  it("maps supported crypto instruments to OKX perpetual swaps only", () => {
+    expect(toOkxSwapInstrument("BTC/USD")).toBe("BTC-USDT-SWAP");
+    expect(toOkxSwapInstrument("EUR/USD")).toBeNull();
+  });
+
+  it("normalizes public OKX open interest and funding data", async () => {
+    const requested: string[] = [];
+    const adapter = new OkxPublicDerivativesAdapter(async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.includes("/api/v5/public/open-interest")) {
+        return response({ code: "0", msg: "", data: [{ instId: "BTC-USDT-SWAP", oi: "1000", oiCcy: "1000", oiUsd: "65000000", ts: String(Date.now()) }] });
+      }
+      if (url.includes("/api/v5/public/funding-rate")) {
+        return response({ code: "0", msg: "", data: [{ instId: "BTC-USDT-SWAP", fundingRate: "0.0001", fundingTime: String(Date.now()) }] });
+      }
+      throw new Error("Unexpected OKX URL: " + url);
+    });
+
+    const result = await adapter.fetch("BTC/USD");
+    expect(result?.provider).toBe("okx-public-derivatives");
+    expect(result?.symbol).toBe("BTC-USDT-SWAP");
+    expect(result?.openInterest?.current).toBe(65_000_000);
+    expect(result?.fundingRate?.currentRate).toBe(0.0001);
+    expect(result?.availability).toEqual({
+      openInterest: true,
+      fundingRate: true,
+      longShort: false,
+      liquidations: false,
+    });
+    expect(result?.confidence).toBe("medium");
+    expect(requested).toHaveLength(2);
+  });
+
+  it("surfaces public OKX HTTP errors when requests fail", async () => {
+    const adapter = new OkxPublicDerivativesAdapter(async () =>
+      response({ code: "50011", msg: "Rate limit reached", data: [] }, 429)
+    );
+    await expect(adapter.fetch("BTC/USD")).rejects.toThrow("OKX HTTP 429");
   });
 });
