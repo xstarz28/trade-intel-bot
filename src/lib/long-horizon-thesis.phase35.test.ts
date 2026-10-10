@@ -469,6 +469,37 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
       expect(Array.isArray(lh.missingInformation)).toBe(true);
     });
 
+    it("does not report DeFi fundamentals as missing when crypto intelligence already contains them", () => {
+      const now = Date.now();
+      const cryptoIntelligenceContext = {
+        instrument: "BTC/USD",
+        instrumentType: "crypto" as const,
+        assembledAt: now,
+        defi: {
+          provider: "DeFiLlama",
+          observedAt: now,
+          freshness: "FRESH" as const,
+          quality: "VERIFIED" as const,
+          available: true,
+          availableDatasets: 2,
+          totalDatasets: 2,
+          tvl: { current: 4.41e9, change7d: -2.7, change30d: 3, reliable: true },
+          fees: { dailyFees: 257601, reliable: true },
+        },
+        evidence: [],
+        overallAvailability: "PARTIAL" as const,
+        overallQuality: "VERIFIED" as const,
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Verified DeFi TVL and fees context",
+      };
+      const r = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000), { cryptoIntelligenceContext }));
+      const thesis = r.longHorizonThesis ?? buildLongHorizonThesis(r);
+
+      expect(r.cryptoIntelligenceContext?.defi).toBeDefined();
+      expect(thesis.missingInformation).not.toContain("DeFi fundamentals (TVL, fees, revenue)");
+    });
+
     it("each missing item is a non-empty string", () => {
       const r = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
       const lh = buildLongHorizonThesis(r);
