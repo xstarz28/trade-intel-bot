@@ -95,7 +95,7 @@ const FRESHNESS_HELP: Record<string, string> = {
 };
 
 const DATA_COMPLETENESS_HELP: Record<string, string> = {
-  FULL: "Six or more observed fields are available, including at least one asset-relevant context source such as derivatives, fundamentals, positioning, or macro data.",
+  FULL: "The engine minimum completeness threshold is met. This does not guarantee every optional provider is available; check the missing-context section.",
   PARTIAL: "Price/market structure is available, but some asset-relevant context layers are missing. This is not a complete multi-layer case.",
   MINIMAL: "Only a small subset of required market fields is observed; confidence in the setup is limited.",
   NONE: "No usable observed market data is available.",
@@ -678,7 +678,7 @@ export function MarketOpportunities({
         <p className="text-[10px] font-sans text-muted-foreground/70">{result.marketOverview}</p>
         <p data-testid="market-data-legend" className="text-[9px] font-sans text-muted-foreground/55 leading-relaxed">
           Fresh &lt;5 min · Delayed 5–60 min · Stale 1–24 h · Unavailable = missing/invalid timestamp or &gt;24 h.
-          Full requires multiple observed fields plus asset-specific context; Partial means some market fields exist but context is missing.
+          Full meets the engine minimum completeness threshold; some optional providers can still be unavailable. Partial means some required market/context fields are missing.
         </p>
 
         {/* Scanning indicator */}
