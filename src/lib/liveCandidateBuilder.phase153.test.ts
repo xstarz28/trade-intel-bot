@@ -247,6 +247,41 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.dataPoints).toBe(0);
   });
 
+
+  it("produces identical technical setup when provider candles arrive newest-first or oldest-first", () => {
+    const now = Date.now();
+    const chronological = Array.from({ length: 210 }, (_, i) => {
+      const close = 100 + i * 0.25 + Math.sin(i / 7);
+      return {
+        timestamp: now - (210 - i) * 60_000,
+        open: close - 0.1,
+        high: close + 0.4,
+        low: close - 0.4,
+        close,
+        volume: 100 + i,
+      };
+    });
+    const build = (candles: typeof chronological) => buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD", instrumentType: "crypto", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: chronological[chronological.length - 1].close, timestamp: now, source: "fixture" },
+        candles,
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+    });
+
+    const oldestFirst = build(chronological);
+    const newestFirst = build([...chronological].reverse());
+    expect(newestFirst.setupDirection).toBe(oldestFirst.setupDirection);
+    expect(newestFirst.setupStrength).toBe(oldestFirst.setupStrength);
+    expect(newestFirst.htfBias).toBe(oldestFirst.htfBias);
+    expect(newestFirst.keySupport).toBe(oldestFirst.keySupport);
+    expect(newestFirst.keyResistance).toBe(oldestFirst.keyResistance);
+  });
+
   it("maps available universal forex and cross-asset intelligence into ranking inputs", () => {
     const now = Date.now();
     const candidate = buildCandidateFromSource({
