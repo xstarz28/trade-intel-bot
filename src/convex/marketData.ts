@@ -54,34 +54,112 @@ function mapTimeframe(tf: string): string {
   return map[tf] ?? tf.toLowerCase();
 }
 
-/** Fetch + normalize candles for one timeframe. Throws on failure. */
+/** Successful OHLCV snapshots shared across analyses in a warm Convex worker. */
+const candleCache = new Map<string, { candles: OhlcvCandle[]; fetchedAt: number; expiresAt: number }>();
+const candleInflight = new Map<string, Promise<OhlcvCandle[]>>();
+const candleRateLimitBackoff = new Map<string, { message: string; retryAt: number }>();
+const CANDLE_REQUEST_TIMEOUT_MS = 8_000;
+const CANDLE_RATE_LIMIT_BACKOFF_MS = 15_000;
+
+function candleTtlMs(tf: string): number {
+  switch (tf.toUpperCase()) {
+    case "M1": return 10_000;
+    case "M5": return 20_000;
+    case "M15": return 45_000;
+    case "H1": return 120_000;
+    case "H4": return 5 * 60_000;
+    case "D1": return 15 * 60_000;
+    case "W1": return 60 * 60_000;
+    default: return 20_000;
+  }
+}
+
+/**
+ * Fetch + normalize candles with bounded network time, duplicate-request coalescing,
+ * short timeframe-aware caching, and a brief 429 backoff.
+ * Failures never synthesize a candle series and continue to be reported to the caller.
+ */
 async function fetchCandles(
   symbol: string,
   tf: string,
   outputsize: number,
   apiKey: string,
 ): Promise<OhlcvCandle[]> {
-  const res = await fetch(
-    `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${mapTimeframe(tf)}&outputsize=${outputsize}&apikey=${apiKey}`,
-  );
-  const json = await res.json();
-  if (json.code) {
-    throw new Error(`[${json.code}] ${json.message || "provider error"}`);
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  const normalizedTimeframe = tf.trim().toUpperCase();
+  const cacheKey = normalizedSymbol + "|" + normalizedTimeframe;
+  const requestKey = cacheKey + "|" + outputsize;
+  const now = Date.now();
+  const cached = candleCache.get(cacheKey);
+  if (cached && now < cached.expiresAt && cached.candles.length >= outputsize) {
+    return cached.candles.slice(-outputsize).map((candle) => ({ ...candle }));
   }
-  const values: TdCandle[] = json.values ?? [];
-  if (values.length === 0) throw new Error("no candle data returned");
-  return values
-    .reverse()
-    .map((c) => ({
-      timestamp: new Date(c.datetime).getTime(),
-      open: parseFloat(c.open),
-      high: parseFloat(c.high),
-      low: parseFloat(c.low),
-      close: parseFloat(c.close),
-      volume: parseFloat(c.volume) || 0,
-    }));
-}
 
+  const backoff = candleRateLimitBackoff.get(cacheKey);
+  if (backoff && now < backoff.retryAt) throw new Error(backoff.message);
+  if (backoff) candleRateLimitBackoff.delete(cacheKey);
+
+  const existingRequest = candleInflight.get(requestKey);
+  if (existingRequest) {
+    const shared = await existingRequest;
+    return shared.slice(-outputsize).map((candle) => ({ ...candle }));
+  }
+
+  const request = (async (): Promise<OhlcvCandle[]> => {
+    const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(normalizedSymbol) +
+      "&interval=" + encodeURIComponent(mapTimeframe(normalizedTimeframe)) +
+      "&outputsize=" + outputsize + "&apikey=" + encodeURIComponent(apiKey);
+    const response = await fetch(url, { signal: AbortSignal.timeout(CANDLE_REQUEST_TIMEOUT_MS) });
+    const json = await response.json().catch(() => ({} as Record<string, any>));
+    if (json && json.code) {
+      throw new Error("[" + json.code + "] " + (json.message || "provider error"));
+    }
+    if (!response.ok) {
+      throw new Error("[" + response.status + "] " + (response.statusText || "provider HTTP error"));
+    }
+    const values: TdCandle[] = Array.isArray(json?.values) ? json.values : [];
+    if (values.length === 0) throw new Error("no candle data returned");
+    const normalized = values.reverse().map((candle) => ({
+      timestamp: new Date(candle.datetime).getTime(),
+      open: parseFloat(candle.open),
+      high: parseFloat(candle.high),
+      low: parseFloat(candle.low),
+      close: parseFloat(candle.close),
+      volume: parseFloat(candle.volume) || 0,
+    })).filter((candle) =>
+      Number.isFinite(candle.timestamp) &&
+      Number.isFinite(candle.open) && Number.isFinite(candle.high) &&
+      Number.isFinite(candle.low) && Number.isFinite(candle.close),
+    );
+    if (normalized.length === 0) throw new Error("provider returned no valid OHLCV candles");
+
+    const fetchedAt = Date.now();
+    const previous = candleCache.get(cacheKey);
+    if (!previous || normalized.length >= previous.candles.length || fetchedAt >= previous.expiresAt) {
+      candleCache.set(cacheKey, {
+        candles: normalized.map((candle) => ({ ...candle })),
+        fetchedAt,
+        expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
+      });
+    }
+    candleRateLimitBackoff.delete(cacheKey);
+    return normalized;
+  })();
+
+  candleInflight.set(requestKey, request);
+  try {
+    const result = await request;
+    return result.slice(-outputsize).map((candle) => ({ ...candle }));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "provider request failed";
+    if (message.startsWith("[429]") || /rate.?limit|credits for the current minute/i.test(message)) {
+      candleRateLimitBackoff.set(cacheKey, { message, retryAt: Date.now() + CANDLE_RATE_LIMIT_BACKOFF_MS });
+    }
+    throw err;
+  } finally {
+    if (candleInflight.get(requestKey) === request) candleInflight.delete(requestKey);
+  }
+}
 export const fetchMarketData = action({
   args: {
     instrument: v.string(),
