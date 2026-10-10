@@ -246,4 +246,83 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.freshness).toBe("UNAVAILABLE");
     expect(candidate.dataPoints).toBe(0);
   });
+
+  it("maps available universal forex and cross-asset intelligence into ranking inputs", () => {
+    const now = Date.now();
+    const candidate = buildCandidateFromSource({
+      instrument: "EUR/USD", assetClass: "forex",
+      marketData: { instrument: "EUR/USD", instrumentType: "forex", provider: "fixture", fetchTimestamp: now, price: { price: 1.1, timestamp: now, source: "fixture" }, candles: [{ time: now, timestamp: now, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 10 }], timeframe: "H1", dataFreshness: "realtime" },
+      universalIntelligence: {
+        instrument: "EUR/USD", assetClass: "forex", assembledAt: now,
+        forex: {
+          instrument: "EUR/USD", instrumentType: "forex", assembledAt: now,
+          rates: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, rateDifferential: -1.25 },
+          yields: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, yieldDifferential: -0.8 },
+          positioning: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, nonCommercialNet: 4200 },
+          crossAsset: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, dxyTrend: "rising", riskRegime: "risk_off" },
+          evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
+        },
+        crossAsset: {
+          assembledAt: now,
+          dxy: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, trend: "falling" },
+          riskRegime: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, regime: "risk_on" },
+          evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
+        },
+        evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
+      } as any,
+    });
+    expect(candidate.rateDifferential).toBe(-1.25);
+    expect(candidate.yieldDifferential).toBe(-0.8);
+    expect(candidate.cotNet).toBe(4200);
+    expect(candidate.hasCOT).toBe(true);
+    expect(candidate.dxyTrend).toBe("falling");
+    expect(candidate.riskRegime).toBe("risk_on");
+  });
+
+  it("maps available universal equity fundamentals into ranking inputs", () => {
+    const now = Date.now();
+    const candidate = buildCandidateFromSource({
+      instrument: "AAPL", assetClass: "equity",
+      marketData: { instrument: "AAPL", instrumentType: "equity", provider: "fixture", fetchTimestamp: now, price: { price: 250, timestamp: now, source: "fixture" }, candles: [{ time: now, timestamp: now, open: 249, high: 251, low: 248, close: 250, volume: 100 }], timeframe: "H1", dataFreshness: "realtime" },
+      universalIntelligence: {
+        instrument: "AAPL", assetClass: "equity", assembledAt: now,
+        equity: {
+          instrument: "AAPL", instrumentType: "equity", assembledAt: now,
+          fundamentals: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, peRatio: 31, revenueGrowth: 0.12, profitMargin: 0.24, marketCap: 3000000000000 },
+          evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
+        },
+        evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
+      } as any,
+    });
+    expect(candidate.hasFundamentals).toBe(true);
+    expect(candidate.peRatio).toBe(31);
+    expect(candidate.revenueGrowth).toBe(0.12);
+    expect(candidate.profitMargin).toBe(0.24);
+    expect(candidate.marketCap).toBe(3000000000000);
+  });
+
+  it("maps available universal commodity inventory, positioning, and futures structure", () => {
+    const now = Date.now();
+    const candidate = buildCandidateFromSource({
+      instrument: "WTI", assetClass: "commodity",
+      marketData: { instrument: "WTI", instrumentType: "commodity", provider: "fixture", fetchTimestamp: now, price: { price: 75, timestamp: now, source: "fixture" }, candles: [{ time: now, timestamp: now, open: 74, high: 76, low: 73, close: 75, volume: 100 }], timeframe: "H1", dataFreshness: "realtime" },
+      universalIntelligence: {
+        instrument: "WTI", assetClass: "commodity", assembledAt: now,
+        commodity: {
+          instrument: "WTI", instrumentType: "commodity", assembledAt: now,
+          inventory: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, currentInventory: 420, changeWeekly: -8 },
+          futuresStructure: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, structure: "backwardation" },
+          positioning: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, managedMoneyNet: 1234 },
+          evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
+        },
+        evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
+      } as any,
+    });
+    expect(candidate.inventory).toBe(420);
+    expect(candidate.inventoryChange).toBe(-8);
+    expect(candidate.futuresStructure).toBe("backwardation");
+    expect(candidate.cotNet).toBe(1234);
+    expect(candidate.hasCOT).toBe(true);
+  });
+
 });
