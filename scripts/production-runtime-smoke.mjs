@@ -223,11 +223,21 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
       panelVisible: true,
       overallAvailability: pickStatus(["full", "partial", "minimal", "unavailable"]),
       overallQuality: pickStatus(["verified", "degraded", "stale", "insufficient", "unavailable"]),
-      providersVisible: {
-        coinglass: /derivatives\s*·\s*coinglass/i.test(panelText),
-        defiLlama: /defi fundamentals\s*·\s*defillama/i.test(panelText),
-        tokenomist: /tokenomics\s*·\s*tokenomist/i.test(panelText),
-      },
+      providers: await (async () => {
+        const status = async (name) => {
+          const section = panel.locator('[data-provider="' + name + '"]').first();
+          const visible = (await section.count()) > 0;
+          return {
+            visible,
+            available: visible && (await section.getAttribute("data-provider-available")) === "true",
+          };
+        };
+        return {
+          coinglass: await status("coinglass"),
+          defiLlama: await status("defillama"),
+          tokenomist: await status("tokenomist"),
+        };
+      })(),
       missingInformation: missingText.slice(0, 1200),
       panelText: panelText.slice(0, 5000),
     };
