@@ -203,6 +203,7 @@ export const fetchMarketData = action({
       // Live quote — NON-fatal: never discard successful candle data
       const quoteRes = await fetch(
         `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+        { signal: AbortSignal.timeout(4_000) },
       )
         .then((r) => r.json())
         .catch(() => ({}));
@@ -468,6 +469,7 @@ export const fetchFxRate = action({
       try {
         const res = await fetch(
           `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(pair)}&apikey=${apiKey}`,
+          { signal: AbortSignal.timeout(4_000) },
         ).then((r) => r.json());
         if (!res || res.code || res.close === undefined) return null;
         const rate = parseFloat(res.close);
