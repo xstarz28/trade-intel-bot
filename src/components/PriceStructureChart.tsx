@@ -47,10 +47,20 @@ export function PriceStructureChart({
   if (data.length < 5) return null;
 
   const smc = technicalData?.smc;
+  const plan = tradePlan ?? projectedTradePlan;
+  const projected = !tradePlan && !!projectedTradePlan;
   const highs = data.map((c) => c.high);
   const lows = data.map((c) => c.low);
-  const max = Math.max(...highs);
-  const min = Math.min(...lows);
+  // Include valid plotted levels in the scale; otherwise an otherwise valid
+  // entry/SL/TP outside the candle-only range silently disappears from chart.
+  const overlayPrices = [
+    Number(keyLevels.support),
+    Number(keyLevels.resistance),
+    Number(keyLevels.invalidation),
+    ...(plan ? [Number(plan.entry), Number(plan.stopLoss), Number(plan.takeProfit)] : []),
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  const max = Math.max(...highs, ...overlayPrices);
+  const min = Math.min(...lows, ...overlayPrices);
   const spanRaw = Math.max(max - min, Number.EPSILON);
   const pad = spanRaw * 0.07;
   const topPrice = max + pad;
@@ -85,8 +95,6 @@ export function PriceStructureChart({
   const support = Number(keyLevels.support);
   const resistance = Number(keyLevels.resistance);
   const invalidation = Number(keyLevels.invalidation);
-  const plan = tradePlan ?? projectedTradePlan;
-  const projected = !tradePlan && !!projectedTradePlan;
 
   const planLevels = plan
     ? [
@@ -129,7 +137,7 @@ export function PriceStructureChart({
           <div className="flex items-center gap-2 text-[9px] font-mono text-muted-foreground">
             <span>{data.length} candles</span>
             <span>·</span>
-            <span className="text-foreground">LIVE {fmt(last.close)}</span>
+            <span className="text-foreground">LAST CLOSE {fmt(last.close)}</span>
           </div>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
