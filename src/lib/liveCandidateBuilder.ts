@@ -280,7 +280,9 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
     inventory: inventory?.currentInventory ?? (eia?.available ? eia.series[0]?.latestValue : undefined),
     inventoryChange: inventory?.changeWeekly ?? (eia?.available ? eia.series[0]?.change : undefined),
     hasCOT: !!(cot?.available || positioning),
-    cotNet: cot?.available ? cot.netNonCommercial : positioning?.managedMoneyNet,
+    cotNet: cot?.available && cot.netNonCommercial !== undefined
+      ? cot.netNonCommercial
+      : positioning?.managedMoneyNet,
     futuresStructure: futures?.structure,
   };
 }
