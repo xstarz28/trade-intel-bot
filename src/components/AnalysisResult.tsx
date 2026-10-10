@@ -8,6 +8,7 @@ import type { ClassicPriceActionContext } from "@/lib/data/classic-price-action"
 import type { TechnicalData } from "@/lib/data/market-types";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
+import { formatInstrumentPrice } from "@/lib/price-format";
 import { mapTrendLabel, mapConfidence, mapFreshness } from "@/lib/i18n/enum-mapping";
 import {
   TrendingUp,
@@ -77,21 +78,7 @@ interface AnalysisResultProps {
 }
 
 function formatPrice(price: number, instrumentType: string, instrument: string): string {
-  if (!Number.isFinite(price)) return "—";
-  const magnitude = Math.abs(price);
-  if (instrumentType === "forex") return price.toFixed(/JPY/i.test(instrument) ? 3 : 5);
-  if (instrumentType === "crypto") {
-    if (magnitude >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
-    if (magnitude >= 1) return price.toFixed(4);
-    if (magnitude >= 0.01) return price.toFixed(6);
-    if (magnitude >= 0.0001) return price.toFixed(8);
-    return price.toFixed(10);
-  }
-  if (magnitude >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (magnitude >= 1) return price.toFixed(2);
-  if (magnitude >= 0.01) return price.toFixed(4);
-  if (magnitude >= 0.0001) return price.toFixed(6);
-  return price.toFixed(8);
+  return formatInstrumentPrice(price, instrumentType, instrument);
 }
 
 function formatTime(timestamp: number): string {
