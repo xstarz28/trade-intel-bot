@@ -1200,3 +1200,39 @@ describe("Phase 41 — Tokenomist v4 contract", () => {
     expect(called).toBe(false);
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════════
+// CD. Provider Failure Visibility
+// ═══════════════════════════════════════════════════════════════════
+describe("Phase 41 — provider failure visibility", () => {
+  it("preserves actionable CoinGlass and Tokenomist failure reasons", () => {
+    const now = Date.now();
+    const ctx = buildCryptoIntelligenceContext(
+      "BTC/USD",
+      {
+        provider: "CoinGlass",
+        observedAt: now,
+        freshness: "UNAVAILABLE",
+        quality: "UNAVAILABLE",
+        available: false,
+        failureReason: "AUTH_ERROR: CoinGlass API key rejected",
+        availableDatasets: 0,
+        totalDatasets: 4,
+      },
+      undefined,
+      {
+        provider: "Tokenomist",
+        observedAt: now,
+        freshness: "UNAVAILABLE",
+        quality: "UNAVAILABLE",
+        available: false,
+        failureReason: "AUTH_ERROR: TOKENOMIST_API_KEY is not configured",
+        availableDatasets: 0,
+        totalDatasets: 2,
+      },
+    );
+    expect(ctx?.missingInformation).toContain("CoinGlass unavailable: AUTH_ERROR: CoinGlass API key rejected");
+    expect(ctx?.missingInformation).toContain("Tokenomist unavailable: AUTH_ERROR: TOKENOMIST_API_KEY is not configured");
+  });
+});
