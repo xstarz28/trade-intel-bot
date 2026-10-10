@@ -1261,7 +1261,7 @@ function decideTrade(
         `Displayed entry/SL/TP do not form a valid positive-risk, positive-reward ${direction.toUpperCase()} plan.`,
       );
     } else {
-      const rr = Math.round(exactRr * 100) / 100;
+      const rr = exactRr;
       const bufferNote =
         buffer > 0
           ? ` (incl. ${((buffer / entry) * 100).toFixed(3)}% technical ATR buffer beyond structural level)`
@@ -1279,7 +1279,7 @@ function decideTrade(
       };
       if (exactRr < MIN_RR) {
         reasons.push(
-          `Projected R:R ${rr.toFixed(2)} is below the ${MIN_RR.toFixed(2)} minimum for actionable setups.`,
+          `Projected R:R ${rr.toFixed(3)} is below the ${MIN_RR.toFixed(3)} minimum for actionable setups.`,
         );
       } else {
         // Executable plans use exactly the same displayed levels and R:R
@@ -2117,7 +2117,7 @@ function generateRiskNote(
     }
   } else if (tradePlan) {
     parts.push(
-      `${recommendation} plan — entry ${tradePlan.entry} (${tradePlan.entryBasis}), SL ${tradePlan.stopLoss} (${tradePlan.slBasis}), TP ${tradePlan.takeProfit} (${tradePlan.tpBasis}). R:R ${tradePlan.riskReward.toFixed(2)}.`,
+      `${recommendation} plan — entry ${tradePlan.entry} (${tradePlan.entryBasis}), SL ${tradePlan.stopLoss} (${tradePlan.slBasis}), TP ${tradePlan.takeProfit} (${tradePlan.tpBasis}). R:R ${tradePlan.riskReward.toFixed(3)}.`,
     );
     if (positionSizing?.available) {
       const conv = positionSizing.conversion;
