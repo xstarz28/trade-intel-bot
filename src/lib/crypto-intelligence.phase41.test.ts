@@ -1251,7 +1251,7 @@ describe("Phase 41 — public Binance derivatives fallback", () => {
   it("maps canonical instruments without inventing a non-USDT provider symbol", () => {
     expect(toBinanceUsdtFuturesSymbol("BTC/USD")).toBe("BTCUSDT");
     expect(toBinanceUsdtFuturesSymbol("ETH/USDT")).toBe("ETHUSDT");
-    expect(toBinanceUsdtFuturesSymbol("EUR/USD")).toBe("EURUSDT");
+    expect(toBinanceUsdtFuturesSymbol("EUR/USD")).toBeNull();
   });
 
   it("normalizes actual public open interest, funding and long/short data", async () => {
