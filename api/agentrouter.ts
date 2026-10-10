@@ -1,4 +1,14 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+type VercelRequest = {
+  method?: string;
+  headers: Record<string, string | string[] | undefined>;
+  body?: unknown;
+};
+
+type VercelResponse = {
+  setHeader(name: string, value: string): void;
+  status(code: number): VercelResponse;
+  json(body: unknown): unknown;
+};
 
 const ALLOWED_MODELS = new Set([
   "claude-opus-4-8",
