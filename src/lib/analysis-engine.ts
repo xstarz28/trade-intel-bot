@@ -1134,7 +1134,7 @@ function decideTrade(
       reasons.push("SCALPING veto: order-book snapshot is stale.");
     } else {
       const requestedInstrument = input.instrument.toUpperCase().trim()
-        .replaceAll("/", "-").replaceAll("_", "-").replaceAll(" ", "");
+        .replace(/[\/_]/g, "-").replace(/\s+/g, "");
       const executionInstrument = ed.instrumentId.toUpperCase().trim();
       if (requestedInstrument !== executionInstrument) {
         reasons.push(

@@ -133,7 +133,7 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
   if (ar?.sentimentData && ar.sentimentData.confidence !== "unavailable" && (ar.sentimentData.articleCount ?? 0) > 0) domains.add("sentiment");
   if (ar?.macroData && ar.macroData.confidence !== "unavailable" && !!ar.macroData.summary) domains.add("macro");
   if ((source.derivativesData?.openInterest?.current !== undefined || source.derivativesData?.fundingRate?.currentRate !== undefined) &&
-      source.derivativesData?.freshness !== "UNAVAILABLE") domains.add("derivatives");
+      source.derivativesData?.freshness !== "unavailable") domains.add("derivatives");
   if (source.calendarData?.events?.some((event) => event.status === "upcoming" || event.status === "released")) domains.add("calendar");
   if (source.treasuryData?.available || source.cotData?.available || source.eiaData?.available) domains.add("macro-positioning");
   if (universal?.forex?.rates?.available || universal?.forex?.yields?.available) domains.add("rates");
@@ -492,12 +492,12 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     analysisStyle: ar?.tradingStyle ? String(ar.tradingStyle).toUpperCase() as "SCALPING" | "INTRADAY" | "SWING" : undefined,
     hasQualifiedTradePlan: !!(ar?.tradePlan && ar.recommendation !== "NO_TRADE"),
     mtfSufficient: ar
-      ? !!ar.mtfSummary?.alignment && ar.mtfSummary.alignment !== "INSUFFICIENT_DATA" && ar.mtfSummary.alignment !== "unknown"
+      ? !!ar.mtfSummary?.alignment && ar.mtfSummary.alignment !== "INSUFFICIENT_DATA"
       : !!tech?.mtf?.alignment && tech.mtf.alignment !== "INSUFFICIENT_DATA",
     hasFreshExecutionQuality: !!(
       ar?.executionContext?.available &&
       ar.executionContext.freshness === "FRESH" &&
-      source.instrument.toUpperCase().replaceAll("/", "-").replaceAll("_", "-") === ar.executionContext.instrumentId.toUpperCase()
+      source.instrument.toUpperCase().replace(/[\/_]/g, "-") === ar.executionContext.instrumentId.toUpperCase()
     ),
     keySupport: tech?.supportLevels?.[0],
     keyResistance: tech?.resistanceLevels?.[0],
