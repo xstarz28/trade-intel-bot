@@ -119,7 +119,7 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
   if (source.marketData?.price?.price) count++;
   if (source.marketData?.candles?.length) count++;
   if (technicalData ?? source.technicalData) count++;
-  if (source.analysisResult) count++;
+  if (source.analysisResult?.instrument === source.instrument) count++;
   if (source.universalIntelligence) count++;
   if (source.derivativesData) count++;
   if (source.calendarData) count++;
@@ -308,6 +308,18 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
 // ═══════════════════════════════════════════════════════════════
 
 export function buildCandidateFromSource(source: LiveCandidateSource): CandidateInput {
+  // Never mix evidence across instrument identities. Remove mismatched
+  // analysis/intelligence payloads before they can affect price, confidence,
+  // completeness, or asset-specific recommendation inputs.
+  source = {
+    ...source,
+    analysisResult: source.analysisResult?.instrument === source.instrument
+      ? source.analysisResult
+      : undefined,
+    universalIntelligence: source.universalIntelligence?.instrument === source.instrument
+      ? source.universalIntelligence
+      : undefined,
+  };
   const now = Date.now();
   // Derive technical evidence from verified provider OHLCV when the source
   // did not already carry a richer technical analysis. Without this bridge,
@@ -329,11 +341,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
         )
       : undefined
   );
-  // Never borrow an analysis payload from another instrument identity.
-  // A mismatched result must not supply price, bias, confidence, or trade plan.
-  const ar = source.analysisResult?.instrument === source.instrument
-    ? source.analysisResult
-    : undefined;
+  const ar = source.analysisResult;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
 
   // Freshness must describe when the market observation occurred, not when we fetched it.
