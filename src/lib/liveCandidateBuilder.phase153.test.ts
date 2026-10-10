@@ -273,6 +273,54 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
 
 
 
+
+  it("rejects derivatives and COT context for a different instrument", () => {
+    const now = Date.now();
+    const cryptoCandidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD", instrumentType: "crypto", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100000, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 99900, high: 100100, low: 99800, close: 100000, volume: 1 }],
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+      derivativesData: {
+        provider: "fixture", symbol: "ETH/USD", timestamp: now, freshness: "realtime",
+        availability: { openInterest: true, fundingRate: true, longShort: true, liquidations: true },
+        confidence: "high",
+        openInterest: { current: 123456 },
+        fundingRate: { currentRate: 0.01 },
+      } as any,
+    });
+    expect(cryptoCandidate.hasDerivatives).toBe(false);
+    expect(cryptoCandidate.openInterest).toBeUndefined();
+    expect(cryptoCandidate.fundingRate).toBeUndefined();
+
+    const forexCandidate = buildCandidateFromSource({
+      instrument: "EUR/USD",
+      assetClass: "forex",
+      marketData: {
+        instrument: "EUR/USD", instrumentType: "forex", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 1.1, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 1 }],
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+      cotData: {
+        available: true,
+        requestedInstrument: "GBP/USD",
+        source: "fixture",
+        fetchedAt: now,
+        freshness: "FRESH",
+        netNonCommercial: 999,
+      } as any,
+    });
+    expect(forexCandidate.hasCOT).toBe(false);
+    expect(forexCandidate.cotNet).toBeUndefined();
+  });
+
   it("carries universal forex and commodity context into radar recommendation candidates", () => {
     const now = Date.now();
     const forexSource = toRadarCandidateSource({
