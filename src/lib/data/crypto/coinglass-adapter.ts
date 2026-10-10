@@ -111,7 +111,7 @@ export function parseCoinGlassResult(
   const freshness = mapFreshness(data.freshness);
 
   return {
-    provider: data.provider === "binance-public-futures" ? "Binance Futures (public)" : data.provider === "bybit-public-derivatives" ? "Bybit Futures (public)" : "CoinGlass",
+    provider: data.provider === "binance-public-futures" ? "Binance Futures (public)" : data.provider === "bybit-public-derivatives" ? "Bybit Futures (public)" : data.provider === "okx-public-derivatives" ? "OKX Swaps (public)" : "CoinGlass",
     observedAt,
     freshness,
     quality: availableDatasets >= 3 ? "VERIFIED" : availableDatasets >= 1 ? "DEGRADED" : "UNAVAILABLE",
