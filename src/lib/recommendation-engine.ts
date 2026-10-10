@@ -650,9 +650,11 @@ export function scoreCandidate(
   const direction =
     c.setupDirection === "long" || c.setupDirection === "short"
       ? c.setupDirection
-      : c.htfBias === "long" || c.htfBias === "short"
-        ? c.htfBias
-        : "neutral";
+      : c.setupDirection === "neutral"
+        ? "neutral"
+        : c.htfBias === "long" || c.htfBias === "short"
+          ? c.htfBias
+          : "neutral";
   const directional = direction === "long" || direction === "short";
   const sign = direction === "long" ? 1 : direction === "short" ? -1 : 0;
 
