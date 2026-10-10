@@ -38,6 +38,7 @@ import {
   TokenomistAdapter,
   parseTokenomistResult,
 } from "./data/crypto/tokenomist-adapter";
+import { PatternPlusUnlockAdapter } from "./data/crypto/patternplus-unlocks-adapter";
 import {
   deriveDerivativesEvidence,
   deriveDeFiEvidence,
