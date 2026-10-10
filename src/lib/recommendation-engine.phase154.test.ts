@@ -67,6 +67,36 @@ describe("Phase 154 — recommendation ranking integrity", () => {
     expect(strong.analyticalScore).toBeGreaterThan(neutral.analyticalScore);
   });
 
+  it("differentiates neutral candidates by observed context without creating trade direction", () => {
+    const quiet = scoreCandidate(
+      baseCandidate({
+        setupDirection: "neutral",
+        setupStrength: 18,
+        confluenceCount: 0,
+        htfBias: "neutral",
+        mtfAlignment: "MIXED",
+        marketRegime: "RANGING",
+      }),
+      "INTRADAY",
+    );
+    const active = scoreCandidate(
+      baseCandidate({
+        setupDirection: "neutral",
+        setupStrength: 42,
+        confluenceCount: 3,
+        htfBias: "neutral",
+        mtfAlignment: "MIXED",
+        marketRegime: "RANGING",
+      }),
+      "INTRADAY",
+    );
+
+    expect(active.analyticalScore).toBeGreaterThan(quiet.analyticalScore);
+    expect(active.confidence).toBeGreaterThan(quiet.confidence);
+    expect(quiet.analyticalScore).toBeLessThanOrEqual(45);
+    expect(active.analyticalScore).toBeLessThanOrEqual(45);
+  });
+
   it("lower-quality derivatives evidence is incorporated into the score", () => {
     const without = scoreCandidate(
       baseCandidate({ hasDerivatives: false }),
