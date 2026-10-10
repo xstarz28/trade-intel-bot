@@ -23,6 +23,18 @@ describe("calculateRiskRewardRatio", () => {
     })).toBeUndefined();
   });
 
+  it("rejects a long plan whose target is not above entry", () => {
+    expect(calculateRiskRewardRatio({
+      direction: "long", entry: "1.10000", stopLoss: "1.09500", takeProfit: "1.09000",
+    })).toBeUndefined();
+  });
+
+  it("rejects a short plan whose stop is not above entry", () => {
+    expect(calculateRiskRewardRatio({
+      direction: "short", entry: "1.10000", stopLoss: "1.09500", takeProfit: "1.09000",
+    })).toBeUndefined();
+  });
+
   it("rejects a short plan whose target is not below entry", () => {
     expect(calculateRiskRewardRatio({
       direction: "short", entry: "1.10000", stopLoss: "1.10500", takeProfit: "1.11000",
