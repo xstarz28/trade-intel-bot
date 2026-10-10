@@ -111,7 +111,7 @@ export function parseCoinGlassResult(
   const freshness = mapFreshness(data.freshness);
 
   return {
-    provider: "CoinGlass",
+    provider: data.provider === "binance-public-futures" ? "Binance Futures (public)" : "CoinGlass",
     observedAt,
     freshness,
     quality: availableDatasets >= 3 ? "VERIFIED" : availableDatasets >= 1 ? "DEGRADED" : "UNAVAILABLE",
