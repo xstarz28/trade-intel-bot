@@ -57,7 +57,7 @@ export type CryptoDependencyGroup =
   | "ON_CHAIN_ACTIVITY";
 
 export interface CryptoEvidenceItem {
-  /** Provider name (e.g. "CoinGlass", "DeFiLlama", "Tokenomist"). */
+  /** Actual provider name, e.g. CoinGlass, DeFiLlama, Tokenomist or PatternPlus. */
   source: string;
   /** High-level category. */
   category: CryptoEvidenceCategory;
@@ -200,7 +200,7 @@ export interface DeFiIntelligence {
 // ── Tokenomics Context ──────────────────────────────────────────
 
 export interface TokenomicsIntelligence {
-  /** Provider name (Tokenomist). */
+  /** Actual provider name supplying tokenomics data. */
   provider: string;
   /** Observed timestamp. */
   observedAt: number;

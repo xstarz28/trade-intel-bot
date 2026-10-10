@@ -38,6 +38,7 @@ import {
   TokenomistAdapter,
   parseTokenomistResult,
 } from "./data/crypto/tokenomist-adapter";
+import { PatternPlusUnlockAdapter } from "./data/crypto/patternplus-unlocks-adapter";
 import {
   deriveDerivativesEvidence,
   deriveDeFiEvidence,
@@ -1412,5 +1413,28 @@ describe("Phase 41 — public OKX derivatives fallback", () => {
       response({ code: "50011", msg: "Rate limit reached", data: [] }, 429)
     );
     await expect(adapter.fetch("BTC/USD")).rejects.toThrow("OKX HTTP 429");
+  });
+});
+
+
+describe("Phase 41 — PatternPlus fallback integration contract", () => {
+  it("returns the provider identity needed for the linked production attribution", async () => {
+    const date = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const adapter = new PatternPlusUnlockAdapter(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        api: "PatternPlus API",
+        version: 1,
+        file: "unlocks",
+        as_of: new Date().toISOString().slice(0, 10),
+        rebuilt: new Date().toISOString(),
+        data: [{ date, token: "arb-arbitrum", symbol: "ARB", amount: 100, pct_circulating: 0.5 }],
+      }),
+    } as Response));
+    const result = await adapter.fetch("ARB/USD");
+    expect(result.provider).toBe("PatternPlus");
+    expect(result.available).toBe(true);
+    expect(result.unlocks?.upcomingValue30d).toBe(100);
   });
 });

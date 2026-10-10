@@ -207,7 +207,7 @@ export function deriveTokenomicsEvidence(
         ? unlocks.unlockPercentOfCirculating > 5 ? "STRONG" : unlocks.unlockPercentOfCirculating > 1 ? "MODERATE" : "WEAK"
         : "UNKNOWN";
       evidence.push({
-        source: "Tokenomist",
+        source: tokenomics.provider,
         category: "TOKENOMICS",
         direction: "NEUTRAL",
         strength,
@@ -220,7 +220,7 @@ export function deriveTokenomicsEvidence(
     } else {
       // No upcoming unlocks — still informational, not bullish
       evidence.push({
-        source: "Tokenomist",
+        source: tokenomics.provider,
         category: "TOKENOMICS",
         direction: "NEUTRAL",
         strength: "WEAK",
@@ -238,7 +238,7 @@ export function deriveTokenomicsEvidence(
     const supply = tokenomics.supply;
     if (supply.circulatingPercent !== undefined) {
       evidence.push({
-        source: "Tokenomist",
+        source: tokenomics.provider,
         category: "TOKENOMICS",
         direction: "NEUTRAL",
         strength: "WEAK",

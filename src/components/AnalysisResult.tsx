@@ -2319,9 +2319,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               {/* Tokenomics */}
               {ci.tokenomics && (
-                <div data-provider="tokenomist" data-provider-available={String(ci.tokenomics.available)} className="border-t border-border/30 pt-3">
+                <div data-provider="tokenomist" data-provider-name={ci.tokenomics.provider} data-provider-available={String(ci.tokenomics.available)} className="border-t border-border/30 pt-3">
                   <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-                    <span className="text-orange-400/80">{"●"}</span> tokenomics {"·"} {ci.tokenomics.provider}
+                    <span className="text-orange-400/80">{"●"}</span> tokenomics {"·"} {ci.tokenomics.provider === "PatternPlus" ? (
+                      <a href="https://pattern.plus" target="_blank" rel="noreferrer" className="text-orange-300 underline underline-offset-2 hover:text-orange-200">Data: PatternPlus</a>
+                    ) : ci.tokenomics.provider}
                     <span className={cn("ml-2", FRESH_COLORS[ci.tokenomics.freshness])}> {ci.tokenomics.freshness}</span>
                   </p>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-2">

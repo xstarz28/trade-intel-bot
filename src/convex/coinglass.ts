@@ -17,6 +17,7 @@ import type {
 } from "../lib/data/derivatives-types";
 import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
 import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tokenomist-adapter";
+import { PatternPlusUnlockAdapter } from "../lib/data/crypto/patternplus-unlocks-adapter";
 import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivatives-adapter";
 import { OkxPublicDerivativesAdapter } from "../lib/data/crypto/okx-derivatives-adapter";
@@ -241,17 +242,22 @@ export const fetchDerivatives = action({
   },
 });
 
-// ── Tokenomist fundamentals (official API; independently cached) ──
+// ── Tokenomics providers: Tokenomist when configured, public PatternPlus fallback ──
 const tokenomistAdapter = new TokenomistAdapter(undefined, process.env.TOKENOMIST_API_KEY);
+const patternPlusUnlockAdapter = new PatternPlusUnlockAdapter();
 const tokenomicsCache = new Map<string, {
   data: import("../lib/data/crypto/types").TokenomicsIntelligence;
   expiresAt: number;
 }>();
 const TOKENOMICS_TTL = 30 * 60 * 1000;
 
-function unavailableTokenomics(reason: string, observedAt = Date.now()): import("../lib/data/crypto/types").TokenomicsIntelligence {
+function unavailableTokenomics(
+  reason: string,
+  provider = "PatternPlus",
+  observedAt = Date.now(),
+): import("../lib/data/crypto/types").TokenomicsIntelligence {
   return {
-    provider: "Tokenomist",
+    provider,
     observedAt,
     freshness: "UNAVAILABLE",
     quality: "UNAVAILABLE",
@@ -268,23 +274,49 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
   if (cached && Date.now() < cached.expiresAt) return cached.data;
   if (cached) tokenomicsCache.delete(key);
 
-  try {
-    const result = await tokenomistAdapter.fetch(key);
-    if (!result?.success || !result.data || typeof result.data !== "object") {
-      const reason = [result?.errorCode, result?.error].filter(Boolean).join(": ") || "Tokenomist returned no usable data.";
-      return unavailableTokenomics(reason, result?.observedAt ?? Date.now());
+  let tokenomistFailure: string | undefined;
+  if (process.env.TOKENOMIST_API_KEY?.trim()) {
+    try {
+      const result = await tokenomistAdapter.fetch(key);
+      if (result?.success && result.data && typeof result.data === "object") {
+        const normalized = parseTokenomistResult(
+          result.data as Record<string, any>,
+          key,
+          result.observedAt ?? Date.now(),
+        );
+        if (normalized.available) {
+          tokenomicsCache.set(key, { data: normalized, expiresAt: Date.now() + TOKENOMICS_TTL });
+          return normalized;
+        }
+      }
+      tokenomistFailure = [result?.errorCode, result?.error].filter(Boolean).join(": ") ||
+        "Tokenomist did not return usable tokenomics.";
+    } catch (err) {
+      tokenomistFailure = err instanceof Error ? err.message : "Tokenomist request failed.";
     }
-    const normalized = parseTokenomistResult(
-      result.data as Record<string, any>,
-      key,
-      result.observedAt ?? Date.now(),
-    );
-    if (!normalized.available) return normalized;
-    tokenomicsCache.set(key, { data: normalized, expiresAt: Date.now() + TOKENOMICS_TTL });
-    return normalized;
+  }
+
+  // The public feed is rebuilt daily and cached across instrument lookups.
+  // Missing records remain unavailable; they are never interpreted as zero unlocks.
+  try {
+    const fallback = await patternPlusUnlockAdapter.fetch(key);
+    const result = !fallback.available && tokenomistFailure
+      ? {
+          ...fallback,
+          failureReason: "Tokenomist fallback failed (" + tokenomistFailure + "); " +
+            (fallback.failureReason ?? "PatternPlus has no usable record."),
+        }
+      : fallback;
+    tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
+    return result;
   } catch (err) {
-    const reason = err instanceof Error ? err.message : "Tokenomist request failed.";
-    return unavailableTokenomics(reason);
+    const reason = err instanceof Error ? err.message : "PatternPlus fallback request failed.";
+    const result = unavailableTokenomics(
+      tokenomistFailure ? "Tokenomist unavailable (" + tokenomistFailure + "); PatternPlus: " + reason : reason,
+      "PatternPlus",
+    );
+    tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
+    return result;
   }
 }
 

@@ -81,7 +81,7 @@ export function buildCryptoIntelligenceContext(
   const missingInformation: string[] = [];
   if (!derivatives?.available) missingInformation.push(derivatives?.failureReason ? "CoinGlass unavailable: " + derivatives.failureReason : "Derivatives data (CoinGlass)");
   if (!defi?.available) missingInformation.push("DeFi fundamentals (DeFiLlama)");
-  if (!tokenomics?.available) missingInformation.push(tokenomics?.failureReason ? "Tokenomist unavailable: " + tokenomics.failureReason : "Tokenomics data (Tokenomist)");
+  if (!tokenomics?.available) missingInformation.push(tokenomics?.failureReason ? tokenomics.provider + " unavailable: " + tokenomics.failureReason : "Tokenomics data (" + (tokenomics?.provider ?? "provider") + ")");
   if (derivatives && !derivatives.openInterest?.reliable) missingInformation.push("Reliable open interest data");
   if (derivatives && !derivatives.fundingRate?.reliable) missingInformation.push("Reliable funding rate data");
   if (defi && !defi.tvl?.reliable) missingInformation.push("Reliable TVL data");
