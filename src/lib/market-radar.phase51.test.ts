@@ -392,6 +392,24 @@ describe("D — Multi-Asset Scanning", () => {
 // E–H. FRESHNESS BY HORIZON
 // ═══════════════════════════════════════════════════════════════
 
+describe("Provider freshness integrity", () => {
+  it("does not promote provider-reported delayed data because its fetch timestamp is recent", () => {
+    expect(assessFreshness(NOW, NOW + 60_000, "DELAYED")).toBe("DELAYED");
+  });
+
+  it("does not promote an old observation because the provider says fresh", () => {
+    expect(assessFreshness(NOW - 2 * HOUR, NOW, "FRESH")).toBe("STALE");
+  });
+
+  it("candidate builder preserves provider-reported delay", () => {
+    const source = makeSource({
+      snapshot: makeSnapshot({ observedAt: NOW, freshness: "DELAYED" }),
+    });
+    const candidate = buildRadarCandidate(source, NOW + 60_000);
+    expect(candidate.freshness).toBe("DELAYED");
+  });
+});
+
 describe("E — Scalping Freshness", () => {
   it("scalping requires FRESH data", () => {
     const gate = HORIZON_FRESHNESS_GATES.SCALPING;
@@ -863,6 +881,25 @@ describe("T — Snapshot Diff", () => {
     const diff = r2.diffs.find(d => d.instrument === "BTC/USD");
     expect(diff).toBeDefined();
     expect(diff!.changes.some(c => c.includes("score"))).toBe(true);
+  });
+
+  it("reports recovery from unavailable data without a fake +60/+65 score jump", () => {
+    const config: RadarScanConfig = { horizons: ["INTRADAY"], maxResults: 5 };
+    const unavailable = scanRadar([makeSource({ snapshot: null })], config, undefined, NOW);
+    const state = buildRadarState(unavailable);
+    expect(state.previous.get("BTC/USD")?.lifecycle).toBe("EXPIRED");
+
+    const recovered = scanRadar([
+      makeSource({ snapshot: makeSnapshot({ observedAt: NOW, freshness: "FRESH" }) }),
+    ], config, state, NOW + 60_000);
+    const diff = recovered.diffs.find(d => d.instrument === "BTC/USD");
+
+    expect(diff).toBeDefined();
+    expect(diff!.changes).toContain("market data recovered");
+    expect(diff!.changes.some(c => /score [+-]?\d+|confidence [+-]?\d+/.test(c))).toBe(false);
+    expect(diff!.scoreDelta).toBeUndefined();
+    expect(diff!.confidenceDelta).toBeUndefined();
+    expect(diff!.changes).toContain("lifecycle EXPIRED → ACTIVE");
   });
 });
 
