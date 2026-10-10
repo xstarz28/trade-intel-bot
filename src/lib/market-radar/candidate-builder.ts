@@ -37,6 +37,9 @@ export interface RadarCandidateSource {
     marketCap?: number;
     revenueGrowth?: number;
   };
+  /** Raw rate/yield context; not directional evidence by itself. */
+  rateDifferential?: number;
+  yieldDifferential?: number;
   /** Optional COT data (forex/commodity). */
   cot?: {
     netNonCommercial?: number;
@@ -115,6 +118,8 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     ? analysis.fundamentalData
     : undefined;
   const universalFundamentals = intelligence?.equity?.fundamentals;
+  const universalForex = intelligence?.forex;
+  const universalCommodity = intelligence?.commodity;
   const fundingRate = source.derivativesData?.availability.fundingRate
     ? source.derivativesData.fundingRate?.currentRate
     : undefined;
@@ -124,13 +129,30 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const liquidationVolume = source.derivativesData?.availability.liquidations
     ? source.derivativesData.liquidations?.totalVolume
     : undefined;
-  const inventory = source.eiaData?.available ? source.eiaData.series[0]?.latestValue : undefined;
-  const inventoryChange = source.eiaData?.available ? source.eiaData.series[0]?.change : undefined;
+  const inventory = source.eiaData?.available
+    ? source.eiaData.series[0]?.latestValue
+    : universalCommodity?.inventory?.available ? universalCommodity.inventory.currentInventory : undefined;
+  const inventoryChange = source.eiaData?.available
+    ? source.eiaData.series[0]?.change
+    : universalCommodity?.inventory?.available ? universalCommodity.inventory.changeWeekly : undefined;
+  const futuresStructure = universalCommodity?.futuresStructure?.available
+    ? universalCommodity.futuresStructure.structure
+    : undefined;
   const tenYearYield = source.treasuryData?.available
     ? source.treasuryData.latest.nominal.nominal["10Y"]
     : undefined;
   const cotNet = source.cotData?.available
     ? source.cotData.netNonCommercial
+    : universalForex?.positioning?.available
+      ? universalForex.positioning.nonCommercialNet
+      : universalCommodity?.positioning?.available
+        ? universalCommodity.positioning.managedMoneyNet
+        : undefined;
+  const rateDifferential = universalForex?.rates?.available
+    ? universalForex.rates.rateDifferential
+    : undefined;
+  const yieldDifferential = universalForex?.yields?.available
+    ? universalForex.yields.yieldDifferential
     : undefined;
 
   const snapshot: MarketSnapshot | null = market ? {
@@ -165,8 +187,8 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const cot = cotNet !== undefined
     ? { netNonCommercial: cotNet }
     : undefined;
-  const eia = inventory !== undefined || inventoryChange !== undefined
-    ? { inventory, inventoryChange }
+  const eia = inventory !== undefined || inventoryChange !== undefined || futuresStructure !== undefined
+    ? { inventory, inventoryChange, futuresStructure }
     : undefined;
   const treasury = tenYearYield !== undefined ||
       intelligence?.crossAsset?.dxy?.trend !== undefined ||
@@ -192,6 +214,8 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     snapshot,
     ...(derivatives ? { derivatives } : {}),
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
+    ...(rateDifferential !== undefined ? { rateDifferential } : {}),
+    ...(yieldDifferential !== undefined ? { yieldDifferential } : {}),
     ...(cot ? { cot } : {}),
     ...(eia ? { eia } : {}),
     ...(treasury ? { treasury } : {}),
@@ -368,6 +392,10 @@ export function buildRadarCandidate(
     candidate.marketCap = source.fundamentals.marketCap;
     candidate.revenueGrowth = source.fundamentals.revenueGrowth;
   }
+
+  // Rate/yield differentials are context fields, not signed alpha by themselves.
+  if (source.rateDifferential !== undefined) candidate.rateDifferential = source.rateDifferential;
+  if (source.yieldDifferential !== undefined) candidate.yieldDifferential = source.yieldDifferential;
 
   // Forex / Commodity — COT
   if (source.cot) {
