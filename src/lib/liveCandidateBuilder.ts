@@ -338,7 +338,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   switch (source.assetClass) {
     case "crypto": assetSpecific = extractCryptoData(source); break;
     case "forex": assetSpecific = extractForexData(source); break;
-    case "equity": assetSpecific = extractEquityData(source); break;
+    case "stock": assetSpecific = extractEquityData(source); break;
     case "commodity": assetSpecific = extractCommodityData(source); break;
   }
 
