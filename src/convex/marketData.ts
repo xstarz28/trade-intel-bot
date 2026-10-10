@@ -18,6 +18,7 @@ import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/cl
 import { crossAssetComparator } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
 import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/data/twelve-data-budget";
+import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import { OKX_SPOT_MARKET_PROVIDER, OkxSpotMarketAdapter } from "../lib/data/crypto/okx-spot-market-adapter";
 
 interface TdCandle {
@@ -134,7 +135,9 @@ async function fetchCandles(
     reserveTwelveDataCall(requestClass);
     const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(normalizedSymbol) +
       "&interval=" + encodeURIComponent(mapTimeframe(normalizedTimeframe)) +
-      "&outputsize=" + outputsize + "&apikey=" + encodeURIComponent(apiKey);
+      "&outputsize=" + outputsize +
+      "&timezone=UTC" +
+      "&apikey=" + encodeURIComponent(apiKey);
     const response = await fetch(url, { signal: AbortSignal.timeout(CANDLE_REQUEST_TIMEOUT_MS) });
     const json = await response.json().catch(() => ({} as Record<string, any>));
     if (json && json.code) {
@@ -146,7 +149,7 @@ async function fetchCandles(
     const values: TdCandle[] = Array.isArray(json?.values) ? json.values : [];
     if (values.length === 0) throw new Error("no candle data returned");
     const normalized = values.reverse().map((candle) => ({
-      timestamp: new Date(candle.datetime).getTime(),
+      timestamp: parseMarketDataTimestamp(candle.datetime),
       open: parseFloat(candle.open),
       high: parseFloat(candle.high),
       low: parseFloat(candle.low),

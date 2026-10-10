@@ -264,6 +264,9 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   if (!result.primaryDataQuality) {
     throw new Error(`${instrument} rendered without its primary data-quality status`);
   }
+  if (["INVALID", "UNAVAILABLE"].includes(result.primaryDataQuality)) {
+    throw new Error(`${instrument} primary data quality is ${result.primaryDataQuality}; a rendered card is not evidence of a usable market analysis.\\n${body.slice(-2400)}`);
+  }
   if (!body.includes(`${instrument} |`)) {
     throw new Error(`${instrument} smoke captured a stale result from another instrument`);
   }
