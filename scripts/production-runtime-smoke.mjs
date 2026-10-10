@@ -204,11 +204,41 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   const sourceMatch = sourceRow.match(/Source:\s*(.+)$/i);
   const quality = /primary:\s*(GOOD|DEGRADED|INSUFFICIENT|STALE|UNAVAILABLE|INVALID)/i.exec(body)?.[1];
 
+  let cryptoIntelligence = null;
+  if (type === "crypto") {
+    const panel = targetPage.getByTestId("crypto-intelligence-panel");
+    await panel.waitFor({ state: "visible", timeout: 10000 });
+    const panelText = await panel.innerText();
+    const headerText = await panel.locator("h4").locator("..").innerText().catch(() => "");
+    const normalizedHeader = headerText.toLowerCase();
+    const pickStatus = (values) => values.find((value) =>
+      new RegExp("\\b" + value + "\\b", "i").test(normalizedHeader),
+    ) ?? null;
+    const missingIndex = panelText.toLowerCase().indexOf("missing intelligence");
+    const summaryIndex = panelText.toLowerCase().indexOf("crypto intelligence is informational");
+    const missingText = missingIndex < 0
+      ? ""
+      : panelText.slice(missingIndex + "missing intelligence".length, summaryIndex > missingIndex ? summaryIndex : undefined).trim();
+    cryptoIntelligence = {
+      panelVisible: true,
+      overallAvailability: pickStatus(["full", "partial", "minimal", "unavailable"]),
+      overallQuality: pickStatus(["verified", "degraded", "stale", "insufficient", "unavailable"]),
+      providersVisible: {
+        coinglass: /derivatives\\s*·\\s*coinglass/i.test(panelText),
+        defiLlama: /defi fundamentals\\s*·\\s*defillama/i.test(panelText),
+        tokenomist: /tokenomics\\s*·\\s*tokenomist/i.test(panelText),
+      },
+      missingInformation: missingText.slice(0, 1200),
+      panelText: panelText.slice(0, 5000),
+    };
+  }
+
   const result = {
     instrument,
     price: priceMatch?.[1] ?? null,
     source: sourceMatch?.[1]?.trim() ?? null,
     primaryDataQuality: quality ?? null,
+    cryptoIntelligence,
     resultText: body.slice(0, 7000),
     resultVisible: true,
   };
