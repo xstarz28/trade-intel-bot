@@ -2594,6 +2594,16 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     dataQualityContext: assessDataQuality(input),
   };
 
+  // Attach additional intelligence before deriving dependent thesis layers so
+  // every panel reads the same evidence snapshot. These contexts are informational
+  // only and cannot change bias, gates, trade plan, or recommendation.
+  if (input.cryptoIntelligenceContext) {
+    result.cryptoIntelligenceContext = input.cryptoIntelligenceContext;
+  }
+  if (input.universalIntelligenceContext) {
+    result.universalIntelligenceContext = input.universalIntelligenceContext;
+  }
+
   // Phase 26 — structured analyst thesis (pure derivation from existing result data).
   // Must be built AFTER the result object so it can read all result fields.
   const analystThesis = buildAnalystThesis(result as AnalysisResult);
@@ -2620,20 +2630,6 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   // Phase 36 — evidence & thesis challenge audit (informational only).
   const evidenceChallenge = buildEvidenceChallenge(result as AnalysisResult);
   result.evidenceChallenge = evidenceChallenge;
-
-  // Phase 41 — crypto intelligence context (informational only).
-  // Passes through any crypto intelligence from the input.
-  // Cannot modify bias, conviction, gates, trade plan, recommendation, or actionability.
-  if (input.cryptoIntelligenceContext) {
-    result.cryptoIntelligenceContext = input.cryptoIntelligenceContext;
-  }
-
-  // Phase 44 — universal multi-asset intelligence context (informational only).
-  // Passes through any universal intelligence from the input.
-  // Cannot modify bias, conviction, gates, trade plan, recommendation, or actionability.
-  if (input.universalIntelligenceContext) {
-    result.universalIntelligenceContext = input.universalIntelligenceContext;
-  }
 
   return result;
 }
