@@ -139,9 +139,10 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
 
 function extractHtfBias(tech: TechnicalData | undefined): "long" | "short" | "neutral" | "unknown" {
   if (!tech) return "unknown";
-  if (tech.structure === "HH/HL") return "long";
-  if (tech.structure === "LH/LL") return "short";
-  if (tech.structure === "range") return "neutral";
+  const structure = tech.htfContext?.structure ?? tech.structure;
+  if (structure === "HH/HL") return "long";
+  if (structure === "LH/LL") return "short";
+  if (structure === "range") return "neutral";
   return "unknown";
 }
 
@@ -152,8 +153,21 @@ function extractMarketRegime(tech: TechnicalData | undefined): string | undefine
   return "UNKNOWN";
 }
 
-function extractMtfAlignment(ar: AnalysisResult | undefined): string | undefined {
-  return ar?.mtfSummary?.alignment;
+function extractMtfAlignment(
+  tech: TechnicalData | undefined,
+  ar: AnalysisResult | undefined,
+): string | undefined {
+  if (ar?.mtfSummary?.alignment) return ar.mtfSummary.alignment;
+  if (tech?.mtf?.alignment) return tech.mtf.alignment;
+
+  const primary = tech?.structure === "HH/HL" ? "long"
+    : tech?.structure === "LH/LL" ? "short" : undefined;
+  const higher = tech?.htfContext?.structure === "HH/HL" ? "long"
+    : tech?.htfContext?.structure === "LH/LL" ? "short" : undefined;
+  if (primary === "long" && higher === "long") return "ALIGNED_BULLISH";
+  if (primary === "short" && higher === "short") return "ALIGNED_BEARISH";
+  if (primary && higher && primary !== higher) return "COUNTER_TREND";
+  return undefined;
 }
 
 function extractAtr(tech: TechnicalData | undefined): number | undefined {
@@ -301,9 +315,16 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   const orderedCandles = source.marketData?.candles
     ?.slice()
     .sort((a, b) => a.timestamp - b.timestamp);
+  const orderedHigherTimeframeCandles = source.marketData?.higherTimeframeCandles
+    ?.slice()
+    .sort((a, b) => a.timestamp - b.timestamp);
   const tech = source.technicalData ?? (
     orderedCandles && orderedCandles.length > 0
-      ? calculateTechnical(orderedCandles)
+      ? calculateTechnical(
+          orderedCandles,
+          orderedHigherTimeframeCandles,
+          source.marketData?.higherTimeframe ?? "HTF",
+        )
       : undefined
   );
   const ar = source.analysisResult;
@@ -360,7 +381,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     // Structure
     htfBias: tech?.mtf?.htfBias === "long" || tech?.mtf?.htfBias === "short" ? tech.mtf?.htfBias : extractHtfBias(tech),
     marketRegime: extractMarketRegime(tech),
-    mtfAlignment: tech?.mtf?.alignment ?? extractMtfAlignment(ar),
+    mtfAlignment: tech?.mtf?.alignment ?? extractMtfAlignment(tech, ar),
     keySupport: tech?.supportLevels?.[0],
     keyResistance: tech?.resistanceLevels?.[0],
     riskReward: ar?.tradePlan?.riskReward,
