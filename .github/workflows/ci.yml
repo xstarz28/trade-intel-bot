@@ -26,6 +26,8 @@ jobs:
         env:
           VITE_CONVEX_URL: https://hushed-seal-237.convex.cloud
         run: npm run build
+      - name: Test release verifier lazy-chunk discovery
+        run: node --test scripts/verify-frontend-release.smoke.test.mjs
       - name: Test suite
         run: npm test
       - name: Lint (advisory)
