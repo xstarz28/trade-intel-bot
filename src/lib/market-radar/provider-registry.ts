@@ -801,7 +801,6 @@ export async function acquireProviderNativeLiveData(
       ...candle,
       volume: candle.volume ?? 0,
     })),
-    timeframe,
     provider: result.provider ?? input.provider,
     fetchedAt,
     success: true,

@@ -779,7 +779,7 @@ export default function Dashboard() {
         // Phase 153 — retain the actual provider-backed market snapshot used
         // by this successful analysis. History remains persistence only and
         // must never be promoted to LIVE data.
-        liveSourceRef.current.set(liveSourceCacheKey(result.instrument, marketDataResult.data.timeframe), {
+        liveSourceRef.current.set(liveSourceCacheKey(result.instrument, marketDataResult.data?.timeframe ?? input.timeframe ?? "H1"), {
           instrument: result.instrument,
           assetClass:
             input.instrumentType === "crypto"
