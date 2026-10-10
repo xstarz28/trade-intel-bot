@@ -3,6 +3,8 @@ import type { OhlcvCandle, TechnicalData } from "@/lib/data/market-types";
 import type { KeyLevels, TradePlan } from "@/types/analysis";
 
 interface PriceChartProps {
+  instrument: string;
+  instrumentType: string;
   candles: OhlcvCandle[];
   keyLevels: KeyLevels;
   tradePlan?: TradePlan;
@@ -10,11 +12,22 @@ interface PriceChartProps {
   technicalData?: TechnicalData;
 }
 
-function fmt(value: number): string {
+function formatChartPrice(value: number, instrumentType: string, instrument: string): string {
   if (!Number.isFinite(value)) return "—";
-  if (Math.abs(value) >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (Math.abs(value) >= 1) return value.toFixed(2);
-  return value.toFixed(5);
+  const magnitude = Math.abs(value);
+  if (instrumentType === "forex") return value.toFixed(/JPY/i.test(instrument) ? 3 : 5);
+  if (instrumentType === "crypto") {
+    if (magnitude >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    if (magnitude >= 1) return value.toFixed(4);
+    if (magnitude >= 0.01) return value.toFixed(6);
+    if (magnitude >= 0.0001) return value.toFixed(8);
+    return value.toFixed(10);
+  }
+  if (magnitude >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (magnitude >= 1) return value.toFixed(2);
+  if (magnitude >= 0.01) return value.toFixed(4);
+  if (magnitude >= 0.0001) return value.toFixed(6);
+  return value.toFixed(8);
 }
 
 function timeLabel(timestamp: number): string {
@@ -34,6 +47,8 @@ function timeLabel(timestamp: number): string {
  * instead of painting every available object over the price action.
  */
 export function PriceStructureChart({
+  instrument,
+  instrumentType,
   candles,
   keyLevels,
   tradePlan,
@@ -53,6 +68,7 @@ export function PriceStructureChart({
 
   if (data.length < 5) return null;
 
+  const fmt = (value: number) => formatChartPrice(value, instrumentType, instrument);
   const smc = technicalData?.smc;
   const plan = tradePlan ?? projectedTradePlan;
   const projected = !tradePlan && !!projectedTradePlan;
