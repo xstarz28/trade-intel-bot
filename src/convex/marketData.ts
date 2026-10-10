@@ -15,28 +15,10 @@ import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext } from "../lib/data/mtf";
 import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/classic-price-action";
-import {
-  crossAssetComparator,
-  DXY_CANDIDATE_SYMBOLS,
-  pearsonCorrelation,
-  selectDxyProbeCandidate,
-} from "../lib/market-context";
+import { crossAssetComparator } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
+import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/data/twelve-data-budget";
 import { OKX_SPOT_MARKET_PROVIDER, OkxSpotMarketAdapter } from "../lib/data/crypto/okx-spot-market-adapter";
-
-/**
- * Phase 7C — in-memory memo of the working actual-DXY symbol (per server
- * instance). Failure caching protects the Twelve Data rate budget: when no
- * candidate resolves, probing is skipped for 24h instead of every analysis.
- */
-let dxyResolvedSymbol: string | null = null;
-let dxyAllCandidatesFailedAt: number | null = null;
-// DXY is optional context. Rate-limit its discovery so failed symbol probes
-// cannot starve primary OHLCV and the MTF chain on subsequent analyses.
-let dxyProbeCursor = 0;
-let dxyLastProbeAt: number | null = null;
-let dxyLastProbedSymbol: string | null = null;
-const DXY_PROBE_COOLDOWN_MS = 60_000;
 
 interface TdCandle {
   datetime: string;
@@ -60,14 +42,27 @@ const candleCache = new Map<string, { candles: OhlcvCandle[]; fetchedAt: number;
 const candleInflight = new Map<string, Promise<OhlcvCandle[]>>();
 const candleRateLimitBackoff = new Map<string, { message: string; retryAt: number }>();
 const CANDLE_REQUEST_TIMEOUT_MS = 8_000;
-const CANDLE_RATE_LIMIT_BACKOFF_MS = 15_000;
+const CANDLE_RATE_LIMIT_BACKOFF_MS = 60_000;
+const twelveDataRequestBudget = new TwelveDataRequestBudget();
+
+/**
+ * Reserve a provider credit synchronously before starting a request. The
+ * observed production key is on the 8-credit/minute tier, so primary OHLCV
+ * wins over optional quotes, cross-asset probes and extra timeframe candles.
+ */
+function reserveTwelveDataCall(requestClass: TwelveDataRequestClass): void {
+  const reservation = twelveDataRequestBudget.reserve(requestClass);
+  if (!reservation.allowed) {
+    throw new Error(`REQUEST_BUDGET: ${reservation.reason}; retry after ${new Date(reservation.retryAt).toISOString()}`);
+  }
+}
 const okxSpotMarketAdapter = new OkxSpotMarketAdapter();
 const candleProviderCache = new Map<string, string>();
 
 function candleTtlMs(tf: string): number {
   switch (tf.toUpperCase()) {
     case "M1": return 10_000;
-    case "M5": return 20_000;
+    case "M5": return 60_000;
     case "M15": return 45_000;
     case "H1": return 120_000;
     case "H4": return 5 * 60_000;
@@ -88,6 +83,7 @@ async function fetchCandles(
   outputsize: number,
   apiKey: string | undefined,
   instrumentType?: string,
+  requestClass: TwelveDataRequestClass = "optional",
 ): Promise<OhlcvCandle[]> {
   const normalizedSymbol = symbol.trim().toUpperCase();
   const normalizedTimeframe = tf.trim().toUpperCase();
@@ -135,6 +131,7 @@ async function fetchCandles(
       }
     }
     if (!apiKey) throw new Error("TWELVE_DATA_API_KEY is missing for this market-data request");
+    reserveTwelveDataCall(requestClass);
     const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(normalizedSymbol) +
       "&interval=" + encodeURIComponent(mapTimeframe(normalizedTimeframe)) +
       "&outputsize=" + outputsize + "&apikey=" + encodeURIComponent(apiKey);
@@ -183,7 +180,11 @@ async function fetchCandles(
   } catch (err) {
     const message = err instanceof Error ? err.message : "provider request failed";
     if (message.startsWith("[429]") || /rate.?limit|credits for the current minute/i.test(message)) {
-      candleRateLimitBackoff.set(cacheKey, { message, retryAt: Date.now() + CANDLE_RATE_LIMIT_BACKOFF_MS });
+      const retryAt = Date.now() + CANDLE_RATE_LIMIT_BACKOFF_MS;
+      candleRateLimitBackoff.set(cacheKey, { message, retryAt });
+      // Stop every subsequent Twelve Data request in this worker, not just
+      // this symbol/timeframe; the provider quota is shared across symbols.
+      twelveDataRequestBudget.markRateLimited(Date.now(), CANDLE_RATE_LIMIT_BACKOFF_MS);
     }
     throw err;
   } finally {
@@ -218,11 +219,11 @@ export const fetchMarketData = action({
       // Primary (setup) timeframe — errors classified precisely (429, auth…)
       let candles: OhlcvCandle[];
       try {
-        candles = await fetchCandles(symbol, args.timeframe, 210, apiKey, args.instrumentType);
+        candles = await fetchCandles(symbol, args.timeframe, 210, apiKey, args.instrumentType, "primary");
       } catch (err) {
         const msg = err instanceof Error ? err.message : "unknown error";
-        if (msg.startsWith("[429]")) {
-          return { success: false as const, error: `Rate limited: ${msg}`, errorCode: "RATE_LIMIT" as const };
+        if (msg.startsWith("[429]") || msg.startsWith("REQUEST_BUDGET:")) {
+          return { success: false as const, error: `Market data request deferred to protect the Twelve Data request budget: ${msg.replace(/^REQUEST_BUDGET:\\s*/, "")}`, errorCode: "RATE_LIMIT" as const };
         }
         if (msg.startsWith("[401]") || msg.startsWith("[403]")) {
           return { success: false as const, error: `Auth error: ${msg}`, errorCode: "AUTH_ERROR" as const };
@@ -230,7 +231,9 @@ export const fetchMarketData = action({
         return { success: false as const, error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" as const };
       }
 
-      // Live quote — use public OKX first for crypto. Twelve Data is a backup only.
+      // Avoid a separate Twelve Data quote request. Its free-tier credits are
+      // shared with OHLCV; the last verified candle is the fallback price and
+      // retains its source timestamp instead of being mislabeled as "now".
       const marketProvider = candleProviderCache.get(symbol + "|" + args.timeframe) ??
         (args.instrumentType === "crypto" ? OKX_SPOT_MARKET_PROVIDER : "twelve-data");
       let quoteRes: Record<string, any> = {};
@@ -244,15 +247,12 @@ export const fetchMarketData = action({
           };
         }
       }
-      if (!quoteRes.close && apiKey) {
-        quoteRes = await fetch(
-          `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
-          { signal: AbortSignal.timeout(4_000) },
-        ).then((r) => r.json()).catch(() => ({}));
-      }
 
+      const latestCandle = candles[candles.length - 1];
       const quotedPrice = Number(quoteRes.close);
-      const price = Number.isFinite(quotedPrice) && quotedPrice > 0 ? quotedPrice : candles[candles.length - 1].close;
+      const hasLiveQuote = Number.isFinite(quotedPrice) && quotedPrice > 0;
+      const price = hasLiveQuote ? quotedPrice : latestCandle.close;
+      const priceTimestamp = hasLiveQuote ? Date.now() : latestCandle.timestamp;
       const bidValue = Number(quoteRes.bid);
       const askValue = Number(quoteRes.ask);
       const bid = Number.isFinite(bidValue) && bidValue > 0 ? bidValue : undefined;
@@ -275,12 +275,34 @@ export const fetchMarketData = action({
       // Failures (rate limits included) preserve all successful data and
       // mark the slot unavailable — nothing is ever synthesized.
       const slots = buildChain(args.timeframe);
+      // One higher-timeframe series per instrument is the default on the
+      // observed 8-credit/minute provider plan. Prefer the highest rung
+      // (macro/structure context) and explicitly mark skipped timeframes;
+      // the analysis engine must not synthesize missing candles.
+      const preferredSlot =
+        slots.find((slot) => slot.role === "macro") ??
+        slots.find((slot) => slot.role === "structure") ??
+        slots.find((slot) => slot.role === "trigger");
       const settled = await Promise.allSettled(
-        slots.map((s) =>
-          s.role === "trigger"
-            ? fetchCandles(symbol, s.timeframe, 100, apiKey, args.instrumentType)
-            : fetchCandles(symbol, s.timeframe, 120, apiKey, args.instrumentType),
-        ),
+        slots.map((slot) => {
+          // Public OKX candles do not consume the Twelve Data credit budget,
+          // so crypto may use the complete available chain. For Twelve Data
+          // markets only the highest HTF is fetched; remaining slots stay
+          // explicitly unavailable until real candles can be fetched.
+          if (args.instrumentType !== "crypto" && slot !== preferredSlot) {
+            return Promise.reject(
+              new Error("Not fetched: reserved Twelve Data credits for primary analyses across instruments."),
+            );
+          }
+          return fetchCandles(
+            symbol,
+            slot.timeframe,
+            slot.role === "trigger" ? 100 : 120,
+            apiKey,
+            args.instrumentType,
+            "higher-timeframe",
+          );
+        }),
       );
 
       const mtfInputs = slots.map((s, i) => {
@@ -334,130 +356,19 @@ export const fetchMarketData = action({
         delete technical.chainUnavailable;
       }
 
-      // ── Phase 5: cross-asset context (rate-limit safe) ──
-      // ONE extra conditional fetch, only for a RELEVANT comparator
-      // (forex/commodity→DXY, BTC-like crypto→NDX). Failure is non-fatal:
-      // the primary analysis is never sacrificed for secondary context,
-      // and unavailability is flagged explicitly instead of guessed.
+      // Cross-asset prices are optional. The live production key returned
+      // an 8-credits/minute limit, so no extra Twelve Data probe is launched
+      // from a primary analysis. Missing DXY/NDX context stays explicit.
       const comparator = crossAssetComparator(args.instrumentType, symbol);
       let crossAsset: TechnicalData["crossAsset"] | undefined;
       if (comparator && comparator !== symbol.toUpperCase()) {
-        try {
-          // Phase 7C — defensive actual-DXY discovery. The literal "DXY"
-          // symbol is NOT valid on the current Twelve Data plan (verified:
-          // all candidates return 404 while control EUR/USD succeeds), so we
-          // try candidates in order and CACHE failures for 24h to protect
-          // the rate budget. When a candidate works, this becomes ACTUAL
-          // price data with full provenance; otherwise the explicit
-          // unavailable state below stands — never a fabricated series.
-          let compSymbol: string | null = comparator;
-          if (comparator.toUpperCase() === "DXY") {
-            const DAY = 24 * 3600e3;
-            if (dxyAllCandidatesFailedAt !== null && Date.now() - dxyAllCandidatesFailedAt < DAY) {
-              compSymbol = null;
-            } else if (dxyResolvedSymbol) {
-              compSymbol = dxyResolvedSymbol;
-            } else {
-              // At most one failed provider-symbol probe per cooldown. Do not
-              // burst through the remaining candidates after the core MTF
-              // requests: on a limited plan those optional 404s can starve
-              // the next instrument's actual market-data requests.
-              const candidate = selectDxyProbeCandidate(
-                DXY_CANDIDATE_SYMBOLS,
-                dxyProbeCursor,
-                dxyLastProbeAt,
-                Date.now(),
-                DXY_PROBE_COOLDOWN_MS,
-              );
-              if (candidate) {
-                const test = await fetchCandles(candidate, "D1", 5, apiKey).catch(() => null);
-                dxyLastProbeAt = Date.now();
-                dxyLastProbedSymbol = candidate;
-                if (test && test.length > 0) {
-                  compSymbol = candidate;
-                  dxyResolvedSymbol = candidate;
-                } else {
-                  dxyProbeCursor += 1;
-                  compSymbol = null;
-                  if (dxyProbeCursor >= DXY_CANDIDATE_SYMBOLS.length) {
-                    dxyAllCandidatesFailedAt = Date.now();
-                    dxyProbeCursor = 0;
-                    dxyLastProbeAt = null;
-                  }
-                }
-              } else {
-                // A prior probe failed recently; wait rather than spending
-                // another request in the same rate-limit window.
-                compSymbol = null;
-              }
-            }
-          }
-          const compCandles = compSymbol
-            ? await fetchCandles(compSymbol, args.timeframe, 120, apiKey).catch(() => null)
-            : null;
-          if (compCandles && compCandles.length >= 25) {
-            const corr = pearsonCorrelation(
-              candles.map((c) => c.close),
-              compCandles.map((c) => c.close),
-            );
-            if (corr) {
-              const last = compCandles[compCandles.length - 1].close;
-              const back = compCandles[Math.max(0, compCandles.length - 21)].close;
-              const momentum =
-                back > 0 && Number.isFinite(last / back)
-                  ? last > back * 1.001
-                    ? ("up" as const)
-                    : last < back * 0.999
-                      ? ("down" as const)
-                      : ("flat" as const)
-                  : undefined;
-              crossAsset = {
-                comparatorSymbol: compSymbol ?? comparator,
-                timeframe: args.timeframe,
-                available: true,
-                dataKind: "actual_price" as const,
-                provider: "Twelve Data",
-                correlation: Math.round(corr.correlation * 1000) / 1000,
-                sampleSize: corr.n,
-                directionalContext:
-                  Math.abs(corr.correlation) >= 0.6
-                    ? corr.correlation > 0
-                      ? ("direct" as const)
-                      : ("inverse" as const)
-                    : ("weak" as const),
-                comparatorMomentum: momentum,
-              };
-            } else {
-              crossAsset = {
-                comparatorSymbol: comparator,
-                timeframe: args.timeframe,
-                available: false,
-                unavailableReason: "insufficient overlapping candle history for an honest correlation",
-              };
-            }
-          } else {
-            crossAsset = {
-              comparatorSymbol: comparator,
-              timeframe: args.timeframe,
-              available: false,
-              unavailableReason:
-                comparator.toUpperCase() === "DXY"
-                  ? dxyResolvedSymbol
-                    ? `actual DXY symbol ${dxyResolvedSymbol} was resolved previously, but its ${args.timeframe} price series could not be fetched`
-                    : dxyAllCandidatesFailedAt !== null && Date.now() - dxyAllCandidatesFailedAt < 24 * 3600e3
-                      ? "actual DXY price series unavailable: all documented Twelve Data index symbols were tested and rejected; the labeled news-derived USD proxy remains only a fallback"
-                      : `actual DXY remains unresolved; latest probe ${dxyLastProbedSymbol ?? "not run"} was unavailable or the next probe is throttled to protect primary/MTF request capacity`
-                  : `no comparable series returned by the provider for ${comparator}`,
-            };
-          }
-        } catch {
-          crossAsset = {
-            comparatorSymbol: comparator,
-            timeframe: args.timeframe,
-            available: false,
-            unavailableReason: "cross-asset fetch failed — primary data unaffected",
-          };
-        }
+        crossAsset = {
+          comparatorSymbol: comparator,
+          timeframe: args.timeframe,
+          available: false,
+          unavailableReason:
+            "Not fetched: provider credits are reserved for primary OHLCV and higher-timeframe market analysis; no proxy or synthetic series was substituted.",
+        };
       }
       if (crossAsset) technical.crossAsset = crossAsset;
 
@@ -470,7 +381,7 @@ export const fetchMarketData = action({
           fetchTimestamp: Date.now(),
           price: {
             price,
-            timestamp: Date.now(),
+            timestamp: priceTimestamp,
             source: marketProvider,
             ...(bid !== undefined ? { bid } : {}),
             ...(ask !== undefined ? { ask } : {}),
@@ -508,11 +419,13 @@ export const fetchFxRate = action({
     const from = args.from.toUpperCase();
     const to = args.to.toUpperCase();
     if (from === to) return { success: false as const, error: "same currency — no conversion needed" };
+    let requestBudgetError: string | undefined;
 
     const fetchPair = async (
       pair: string,
     ): Promise<{ rate: number; timestamp: number; source: string; pair: string } | null> => {
       try {
+        reserveTwelveDataCall("optional");
         const res = await fetch(
           `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(pair)}&apikey=${apiKey}`,
           { signal: AbortSignal.timeout(4_000) },
@@ -521,7 +434,10 @@ export const fetchFxRate = action({
         const rate = parseFloat(res.close);
         if (!Number.isFinite(rate) || rate <= 0) return null;
         return { rate, timestamp: Date.now(), source: "twelve-data", pair };
-      } catch {
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("REQUEST_BUDGET:")) {
+          requestBudgetError = err.message.replace(/^REQUEST_BUDGET:\\s*/, "");
+        }
         return null;
       }
     };
@@ -535,7 +451,9 @@ export const fetchFxRate = action({
     if (!direct && !inverse) {
       return {
         success: false as const,
-        error: `no FX quote available for ${from}/${to} from the provider`,
+        error: requestBudgetError
+          ? `FX quote request skipped to protect the market-analysis quota: ${requestBudgetError}`
+          : `no FX quote available for ${from}/${to} from the provider`,
       };
     }
     return { success: true as const, direct, inverse };
