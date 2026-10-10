@@ -91,6 +91,10 @@ export interface RadarCandidateSource {
  * provider-backed technical or asset-specific context. History-only records
  * never create a market snapshot or get promoted to live evidence.
  */
+function isPetroleumInstrument(instrument: string): boolean {
+  return /(?:WTI|CRUDE|USOIL|UKOIL|BRENT|XTIUSD|XBRUSD|CL=F|BZ=F)/i.test(instrument);
+}
+
 export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandidateSource {
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
@@ -100,7 +104,8 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     : undefined;
   const technical = source.technicalData ?? matchingAnalysis?.technicalData;
   const analysis = matchingAnalysis;
-  const intelligence = source.universalIntelligence?.instrument === source.instrument
+  const intelligence = source.universalIntelligence?.instrument === source.instrument &&
+    source.universalIntelligence.assetClass === source.assetClass
     ? source.universalIntelligence
     : undefined;
   const expectedProviderSymbol = source.providerNative?.providerInstrumentId ?? source.instrument;
@@ -142,9 +147,10 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const liquidationVolume = derivativesData?.availability.liquidations
     ? derivativesData.liquidations?.totalVolume
     : undefined;
-  const inventory = (source.eiaData?.available ? source.eiaData.series[0]?.latestValue : undefined)
+  const eiaApplicable = isPetroleumInstrument(source.instrument);
+  const inventory = (eiaApplicable && source.eiaData?.available ? source.eiaData.series[0]?.latestValue : undefined)
     ?? (universalCommodity?.inventory?.available ? universalCommodity.inventory.currentInventory : undefined);
-  const inventoryChange = (source.eiaData?.available ? source.eiaData.series[0]?.change : undefined)
+  const inventoryChange = (eiaApplicable && source.eiaData?.available ? source.eiaData.series[0]?.change : undefined)
     ?? (universalCommodity?.inventory?.available ? universalCommodity.inventory.changeWeekly : undefined);
   const futuresStructure = universalCommodity?.futuresStructure?.available
     ? universalCommodity.futuresStructure.structure
