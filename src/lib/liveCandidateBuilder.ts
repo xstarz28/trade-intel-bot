@@ -322,6 +322,13 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     universalIntelligence: source.universalIntelligence?.instrument === source.instrument
       ? source.universalIntelligence
       : undefined,
+    derivativesData: source.derivativesData?.symbol ===
+      (source.providerNative?.providerInstrumentId ?? source.instrument)
+      ? source.derivativesData
+      : undefined,
+    cotData: source.cotData?.requestedInstrument === source.instrument
+      ? source.cotData
+      : undefined,
   };
   const now = Date.now();
   // Derive technical evidence from verified provider OHLCV when the source
