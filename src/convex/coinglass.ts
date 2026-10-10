@@ -230,6 +230,7 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
     const reason = err instanceof Error ? err.message : "Tokenomist request failed.";
     return unavailableTokenomics(reason);
   }
+}
 
 // ── DeFi fundamentals (server-side; public DeFiLlama endpoints) ──
 const defiLlamaAdapter = new DeFiLlamaAdapter();
