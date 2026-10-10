@@ -313,6 +313,9 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   // completeness, or asset-specific recommendation inputs.
   source = {
     ...source,
+    marketData: source.marketData?.instrument === source.instrument
+      ? source.marketData
+      : undefined,
     analysisResult: source.analysisResult?.instrument === source.instrument
       ? source.analysisResult
       : undefined,
