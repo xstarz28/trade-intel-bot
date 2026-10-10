@@ -264,10 +264,14 @@ describe("error handling", () => {
 // ── Cache Behavior ──────────────────────────────────────────────
 
 describe("caching behavior", () => {
-  it("normalizeNewsArticles is pure (no side effects)", () => {
-    const feed = [{ title: "Test", url: "https://test.com", source: "Test" }];
+  it("normalizes identical timestamped input deterministically without mutation", () => {
+    // A fixed provider timestamp avoids comparing two independent Date.now()
+    // fallbacks, which can legitimately differ by one millisecond.
+    const feed = [{ title: "Test", url: "https://test.com", source: "Test", time_published: "20261010T050000" }];
+    const original = structuredClone(feed);
     const result1 = normalizeNewsArticles(feed, "BTC");
     const result2 = normalizeNewsArticles(feed, "BTC");
     expect(result1).toEqual(result2);
+    expect(feed).toEqual(original);
   });
 });
