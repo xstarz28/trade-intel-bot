@@ -20,6 +20,7 @@ import type {
 import { toDefiLlamaId } from "./symbols";
 
 const DEFILLAMA_BASE = "https://api.llama.fi";
+const DEFILLAMA_REQUEST_TIMEOUT_MS = 4_000;
 
 /**
  * DeFiLlama adapter — fetches DeFi fundamental intelligence.
@@ -59,6 +60,7 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
         try {
           const tvlRes = await fetchFn(
             `${DEFILLAMA_BASE}/v2/historicalChainTvl/${mapping.slug}`,
+            { signal: AbortSignal.timeout(DEFILLAMA_REQUEST_TIMEOUT_MS) },
           );
           if (tvlRes.ok) {
             const tvlHistory = await tvlRes.json();
@@ -91,6 +93,7 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
         try {
           const feesRes = await fetchFn(
             `${DEFILLAMA_BASE}/summary/fees/${mapping.slug}?dataType=dailyFees`,
+            { signal: AbortSignal.timeout(DEFILLAMA_REQUEST_TIMEOUT_MS) },
           );
           if (feesRes.ok) {
             const feesData = await feesRes.json();

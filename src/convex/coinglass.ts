@@ -16,6 +16,7 @@ import type {
   LiquidationData,
 } from "../lib/data/derivatives-types";
 import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
+import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tokenomist-adapter";
 
 // ── In-memory cache (10 min TTL) ────────────────────────────────
 const cache = new Map<string, { data: any; expiresAt: number }>();
@@ -34,29 +35,35 @@ function setCache(key: string, data: any): void {
 
 // ── CoinGlass API ───────────────────────────────────────────────
 
-const CG_BASE = "https://open-api-v3.coinglass.com/api";
+const CG_BASE = "https://open-api-v4.coinglass.com/api";
+const COINGLASS_REQUEST_TIMEOUT_MS = 6_500;
 
 async function cgFetch(path: string, apiKey: string): Promise<any> {
-  const res = await fetch(`${CG_BASE}${path}`, {
+  const res = await fetch(CG_BASE + path, {
     headers: {
       accept: "application/json",
-      cg_api_key: apiKey,
+      "CG-API-KEY": apiKey,
     },
+    signal: AbortSignal.timeout(COINGLASS_REQUEST_TIMEOUT_MS),
   });
   if (!res.ok) {
-    throw new Error(`CoinGlass HTTP ${res.status}: ${res.statusText}`);
+    if (res.status === 429) throw new Error("RATE_LIMIT:CoinGlass HTTP 429: " + res.statusText);
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("AUTH_ERROR:CoinGlass HTTP " + res.status + ": " + res.statusText);
+    }
+    throw new Error("CoinGlass HTTP " + res.status + ": " + res.statusText);
   }
   const json = await res.json();
-  // CoinGlass V3/V4 wraps in { code, msg, data }
-  if (json.code && json.code !== "0" && json.code !== 0) {
-    const msg = json.msg || "Unknown CoinGlass error";
+  // CoinGlass V4 wraps successful responses in { code: "0", msg, data }.
+  if (json.code !== undefined && String(json.code) !== "0") {
+    const msg = String(json.msg || "Unknown CoinGlass error");
     if (String(json.code) === "429" || msg.toLowerCase().includes("rate")) {
       throw new Error("RATE_LIMIT:" + msg);
     }
-    if (String(json.code) === "401" || String(json.code) === "403") {
+    if (["401", "403"].includes(String(json.code)) || /auth|api.?key|permission/i.test(msg)) {
       throw new Error("AUTH_ERROR:" + msg);
     }
-    throw new Error(`CoinGlass error ${json.code}: ${msg}`);
+    throw new Error("CoinGlass error " + json.code + ": " + msg);
   }
   return json.data ?? json;
 }
@@ -72,171 +79,133 @@ function mapSymbolForCG(instrument: string): string {
 // ── Main Action ─────────────────────────────────────────────────
 
 export const fetchDerivatives = action({
-  args: {
-    instrument: v.string(),
-  },
+  args: { instrument: v.string() },
   handler: async (_ctx, args): Promise<DerivativesResult> => {
     const apiKey = process.env.COINGLASS_API_KEY;
-  const symbol = mapSymbolForCG(args.instrument);
-  const tokenomics = await fetchTokenomics(symbol);
+    const symbol = mapSymbolForCG(args.instrument);
+    // Start Tokenomist concurrently so it cannot serialize CoinGlass requests.
+    const tokenomicsPromise = fetchTokenomics(args.instrument);
 
     try {
-      const cacheKey = `deriv:${symbol}`;
+      const cacheKey = "deriv:" + symbol;
       const cached = getCached<CryptoDerivativesData>(cacheKey);
       if (cached) {
-        return { success: true, data: cached, tokenomics };
+        return { success: true, data: cached, tokenomics: await tokenomicsPromise };
       }
 
       if (!apiKey) {
+        const tokenomics = await tokenomicsPromise;
         return tokenomics
-          ? { success: true, tokenomics }
-          : {
-              success: false,
-              error: "Crypto derivatives provider is not configured.",
-              errorCode: "AUTH_ERROR",
-            };
+          ? { success: true, tokenomics, error: "COINGLASS_API_KEY is not configured.", errorCode: "AUTH_ERROR" }
+          : { success: false, error: "CoinGlass unavailable: COINGLASS_API_KEY is not configured.", errorCode: "AUTH_ERROR" };
       }
 
-      // Fetch all datasets in parallel
-      const [oiResult, fundingResult, lsResult, liqResult] = await Promise.allSettled([
-        fetchOpenInterest(symbol, apiKey),
-        fetchFundingRate(symbol, apiKey),
-        fetchLongShort(symbol, apiKey),
-        fetchLiquidations(symbol, apiKey),
+      const [settled, tokenomics] = await Promise.all([
+        Promise.allSettled([
+          fetchOpenInterest(symbol, apiKey),
+          fetchFundingRate(symbol, apiKey),
+          fetchLongShort(symbol, apiKey),
+          fetchLiquidations(symbol, apiKey),
+        ]),
+        tokenomicsPromise,
       ]);
-
+      const oiResult = settled[0];
+      const fundingResult = settled[1];
+      const lsResult = settled[2];
+      const liqResult = settled[3];
       const openInterest = oiResult.status === "fulfilled" ? oiResult.value : undefined;
       const fundingRate = fundingResult.status === "fulfilled" ? fundingResult.value : undefined;
       const longShort = lsResult.status === "fulfilled" ? lsResult.value : undefined;
       const liquidations = liqResult.status === "fulfilled" ? liqResult.value : undefined;
 
-      // Check for rate limit errors
-      for (const result of [oiResult, fundingResult, lsResult, liqResult]) {
-        if (result.status === "rejected" && String(result.reason?.message).startsWith("RATE_LIMIT")) {
-          return {
-            success: false,
-            tokenomics,
-            error: "CoinGlass rate limit exceeded.",
-            errorCode: "RATE_LIMIT",
-          };
-        }
-        if (result.status === "rejected" && String(result.reason?.message).startsWith("AUTH_ERROR")) {
-          return {
-            success: false,
-            tokenomics,
-            error: "CoinGlass authentication failed.",
-            errorCode: "AUTH_ERROR",
-          };
-        }
-      }
-
-      // Determine availability
       const availability = {
         openInterest: !!openInterest,
         fundingRate: !!fundingRate,
         longShort: !!longShort,
         liquidations: !!liquidations,
       };
-
       const availableCount = Object.values(availability).filter(Boolean).length;
-      let confidence: CryptoDerivativesData["confidence"] = "unavailable";
+
+      if (availableCount === 0) {
+        const reasons = [oiResult, fundingResult, lsResult, liqResult]
+          .filter((result) => result.status === "rejected")
+          .map((result) => String((result as PromiseRejectedResult).reason?.message || ""));
+        const authError = reasons.find((message) => message.startsWith("AUTH_ERROR:"));
+        const rateLimit = reasons.find((message) => message.startsWith("RATE_LIMIT:"));
+        const errorCode: DerivativesResult["errorCode"] = authError
+          ? "AUTH_ERROR"
+          : rateLimit
+            ? "RATE_LIMIT"
+            : "NO_DATA";
+        const error = authError
+          ? "CoinGlass authentication failed. Check COINGLASS_API_KEY and API v4 permissions."
+          : rateLimit
+            ? "CoinGlass rate limit exceeded."
+            : reasons[0] || "CoinGlass returned no usable derivatives data.";
+        return tokenomics
+          ? { success: true, tokenomics, error, errorCode }
+          : { success: false, tokenomics, error, errorCode };
+      }
+
+      let confidence: CryptoDerivativesData["confidence"] = "low";
       if (availableCount >= 3) confidence = "high";
       else if (availableCount >= 2) confidence = "medium";
-      else if (availableCount >= 1) confidence = "low";
-
-      // Generate interpretation
-      const interpretation = generateInterpretation(openInterest, fundingRate, longShort, liquidations);
 
       const data: CryptoDerivativesData = {
         provider: "coinglass",
         symbol,
         timestamp: Date.now(),
-        freshness: "delayed", // CoinGlass free tier is not realtime
+        freshness: "delayed",
         openInterest,
         fundingRate,
         longShort,
         liquidations,
         availability,
         confidence,
-        interpretation,
+        interpretation: generateInterpretation(openInterest, fundingRate, longShort, liquidations),
       };
-
+      // Only cache responses containing real provider data.
       setCache(cacheKey, data);
       return { success: true, data, tokenomics };
     } catch (err: any) {
+      const tokenomics = await tokenomicsPromise;
       return {
-        success: false,
+        success: Boolean(tokenomics?.available),
         tokenomics,
-        error: `Derivatives fetch failed: ${err?.message ?? "unknown error"}`,
+        error: err instanceof Error ? err.message : "CoinGlass request failed.",
         errorCode: "API_UNAVAILABLE",
       };
     }
   },
 });
 
-// ── Tokenomics (public basic data; cached to control provider/Convex usage) ──
-const tokenomicsCache = new Map<string, { data: import("../lib/data/crypto/types").TokenomicsIntelligence; expiresAt: number }>();
+// ── Tokenomist fundamentals (official API; independently cached) ──
+const tokenomistAdapter = new TokenomistAdapter(undefined, process.env.TOKENOMIST_API_KEY);
+const tokenomicsCache = new Map<string, {
+  data: import("../lib/data/crypto/types").TokenomicsIntelligence;
+  expiresAt: number;
+}>();
 const TOKENOMICS_TTL = 30 * 60 * 1000;
 
-async function fetchTokenomics(symbol: string): Promise<import("../lib/data/crypto/types").TokenomicsIntelligence | undefined> {
-  if (!symbol) return undefined;
-  const cached = tokenomicsCache.get(symbol);
+async function fetchTokenomics(instrument: string): Promise<import("../lib/data/crypto/types").TokenomicsIntelligence | undefined> {
+  const key = instrument.trim().toUpperCase();
+  const cached = tokenomicsCache.get(key);
   if (cached && Date.now() < cached.expiresAt) return cached.data;
+  if (cached) tokenomicsCache.delete(key);
 
   try {
-    const headers = { Accept: "application/json" };
-    const [unlockRes, supplyRes] = await Promise.all([
-      fetch(`https://api.tokenomist.xyz/unlocks?token=${encodeURIComponent(symbol)}&limit=10`, { headers }),
-      fetch(`https://api.tokenomist.xyz/token/${encodeURIComponent(symbol)}/supply`, { headers }),
-    ]);
-
-    const data: Record<string, any> = {};
-    if (unlockRes.ok) {
-      const json = await unlockRes.json();
-      const events = Array.isArray(json?.data) ? json.data : [];
-      const now = Date.now();
-      const horizon = now + 30 * 24 * 60 * 60 * 1000;
-      const upcoming = events.filter((e: any) => {
-        const t = new Date(e.unlock_date ?? e.date ?? 0).getTime();
-        return Number.isFinite(t) && t > now && t < horizon;
-      });
-      const total = upcoming.reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0);
-      data.unlocks = {
-        upcomingCount30d: upcoming.length,
-        upcomingValue30d: total > 0 ? total : undefined,
-        summary: upcoming.length > 0
-          ? `${upcoming.length} unlock event(s) in next 30 days`
-          : "No upcoming unlock events in next 30 days",
-      };
-    }
-    if (supplyRes.ok) {
-      const json = await supplyRes.json();
-      const circulating = Number(json?.circulating_supply ?? 0);
-      const total = Number(json?.total_supply ?? 0);
-      data.supply = {
-        circulatingSupply: circulating > 0 ? circulating : undefined,
-        totalSupply: total > 0 ? total : undefined,
-        circulatingPercent: circulating > 0 && total > 0 ? (circulating / total) * 100 : undefined,
-      };
-    }
-
-    const availableDatasets = [data.unlocks, data.supply].filter(Boolean).length;
-    if (!availableDatasets) return undefined;
-
-    const result: import("../lib/data/crypto/types").TokenomicsIntelligence = {
-      provider: "Tokenomist",
-      observedAt: Date.now(),
-      freshness: "FRESH",
-      quality: availableDatasets === 2 ? "VERIFIED" : "DEGRADED",
-      available: true,
-      supply: data.supply ? { ...data.supply, reliable: data.supply.circulatingSupply > 0 } : undefined,
-      unlocks: data.unlocks ? { ...data.unlocks, reliable: true } : undefined,
-      availableDatasets,
-      totalDatasets: 2,
-    };
-    tokenomicsCache.set(symbol, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
-    return result;
+    const result = await tokenomistAdapter.fetch(key);
+    if (!result?.success || !result.data || typeof result.data !== "object") return undefined;
+    const normalized = parseTokenomistResult(
+      result.data as Record<string, any>,
+      key,
+      result.observedAt ?? Date.now(),
+    );
+    if (!normalized.available) return undefined;
+    tokenomicsCache.set(key, { data: normalized, expiresAt: Date.now() + TOKENOMICS_TTL });
+    return normalized;
   } catch {
+    // Tokenomist is non-critical; main market analysis must continue.
     return undefined;
   }
 }
@@ -306,146 +275,86 @@ export const fetchDeFiLlamaFundamentals = action({
   },
 });
 
-// ── Individual Fetchers ─────────────────────────────────────────
+// ── Individual Fetchers (CoinGlass API v4) ────────────────────────
+
+function finiteNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
 
 async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenInterestData | undefined> {
-  try {
-    const data = await cgFetch(`/futures/openInterest/chart?symbol=${symbol}&interval=1h&limit=2`, apiKey);
-    if (!data) return undefined;
-
-    // CoinGlass returns an array of data points or a single object
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
-
-    const latest = points[points.length - 1];
-    const previous = points.length > 1 ? points[points.length - 2] : null;
-
-    const current = parseFloat(latest.openInterest || latest.value || "0");
-    if (current === 0) return undefined;
-
-    const result: OpenInterestData = { current };
-
-    if (previous) {
-      const prev = parseFloat(previous.openInterest || previous.value || "0");
-      if (prev > 0) {
-        result.change1h = Math.round(((current - prev) / prev) * 10000) / 100;
-      }
-    }
-
-    return result;
-  } catch {
-    return undefined;
-  }
+  const data = await cgFetch("/futures/open-interest/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey);
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  const latest = rows.find((item: any) => String(item.exchange || "").toLowerCase() === "all") ?? rows[0];
+  const current = finiteNumber(latest?.open_interest_usd);
+  if (current === undefined || current <= 0) return undefined;
+  const change1h = finiteNumber(latest?.open_interest_change_percent_1h);
+  const change24h = finiteNumber(latest?.open_interest_change_percent_24h);
+  return {
+    current,
+    ...(change1h !== undefined ? { change1h } : {}),
+    ...(change24h !== undefined ? { change24h } : {}),
+  };
 }
 
 async function fetchFundingRate(symbol: string, apiKey: string): Promise<FundingRateData | undefined> {
-  try {
-    const data = await cgFetch(`/futures/fundingRate/current?symbol=${symbol}`, apiKey);
-    if (!data) return undefined;
+  const data = await cgFetch("/futures/funding-rate/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey);
+  const rows = Array.isArray(data) ? data : data ? [data] : [];
+  const item = rows.find((row: any) => String(row.symbol || "").toUpperCase() === symbol.toUpperCase()) ?? rows[0];
+  const exchanges = Array.isArray(item?.stablecoin_margin_list) ? item.stablecoin_margin_list : [];
+  const actualRates = exchanges
+    .map((entry: any) => ({
+      name: String(entry.exchange || "unknown"),
+      rawRate: finiteNumber(entry.funding_rate),
+      intervalHours: finiteNumber(entry.funding_rate_interval) ?? 8,
+    }))
+    .filter((entry: any) => entry.rawRate !== undefined);
+  if (actualRates.length === 0) return undefined;
 
-    // CoinGlass returns { data: [...] } or a single object
-    const items = Array.isArray(data) ? data : [data];
-    if (items.length === 0) return undefined;
-
-    // Find the entry for our symbol
-    const entry = items.find((item: any) =>
-      item.symbol === symbol || item.symbol?.includes(symbol),
-    ) || items[0];
-
-    const rate = parseFloat(entry.data?.currentRate || entry.currentRate || entry.data || "0");
-    if (isNaN(rate)) return undefined;
-
-    const result: FundingRateData = {
-      currentRate: rate,
-      annualizedRate: rate * 3 * 365, // 3 funding periods per day * 365 days
-    };
-
-    // OI-weighted rate if available
-    if (entry.data?.predictedRate) {
-      result.weightedRate = parseFloat(entry.data.predictedRate);
-    }
-
-    // Exchange-level rates
-    if (entry.data?.exchangeList && Array.isArray(entry.data.exchangeList)) {
-      result.exchanges = entry.data.exchangeList.map((ex: any) => ({
-        name: ex.exchange || ex.name || "unknown",
-        rate: parseFloat(ex.data?.currentRate || ex.rate || "0"),
-      })).filter((ex: any) => !isNaN(ex.rate));
-    }
-
-    return result;
-  } catch {
-    return undefined;
-  }
+  // CoinGlass v4 funding_rate is percentage units (0.0073 means 0.0073%).
+  const selected = actualRates.find((entry: any) => entry.name.toLowerCase() === "binance") ?? actualRates[0];
+  const currentRate = selected.rawRate! / 100;
+  return {
+    currentRate,
+    annualizedRate: currentRate * (24 / Math.max(1, selected.intervalHours)) * 365,
+    exchanges: actualRates.map((entry: any) => ({ name: entry.name, rate: entry.rawRate! / 100 })),
+  };
 }
 
 async function fetchLongShort(symbol: string, apiKey: string): Promise<LongShortData | undefined> {
-  try {
-    const data = await cgFetch(`/futures/longShort/chart?symbol=${symbol}&interval=1h&limit=1`, apiKey);
-    if (!data) return undefined;
-
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
-
-    const latest = points[points.length - 1];
-    const result: LongShortData = {};
-
-    // Account ratio
-    if (latest.longShortRatio !== undefined || latest.data?.longShortRatio !== undefined) {
-      result.accountRatio = parseFloat(latest.longShortRatio || latest.data?.longShortRatio || "0");
-    }
-
-    // Top trader ratio
-    if (latest.topTraderLongShortRatio !== undefined || latest.data?.topTraderLongShortRatio !== undefined) {
-      result.topTraderRatio = parseFloat(latest.topTraderLongShortRatio || latest.data?.topTraderLongShortRatio || "0");
-    }
-
-    // Taker ratio
-    if (latest.takerBuySellRatio !== undefined || latest.data?.takerBuySellRatio !== undefined) {
-      result.takerRatio = parseFloat(latest.takerBuySellRatio || latest.data?.takerBuySellRatio || "0");
-    }
-
-    if (result.accountRatio === undefined && result.topTraderRatio === undefined && result.takerRatio === undefined) {
-      return undefined;
-    }
-
-    return result;
-  } catch {
-    return undefined;
-  }
+  // 4h remains compatible with entry-level API plans.
+  const pair = symbol + "USDT";
+  const path = "/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=" +
+    encodeURIComponent(pair) + "&interval=4h&limit=1";
+  const data = await cgFetch(path, apiKey);
+  const points = Array.isArray(data) ? data : data ? [data] : [];
+  const latest = points[points.length - 1];
+  const ratio = finiteNumber(latest?.global_account_long_short_ratio);
+  if (ratio === undefined || ratio <= 0) return undefined;
+  return { accountRatio: ratio };
 }
 
 async function fetchLiquidations(symbol: string, apiKey: string): Promise<LiquidationData | undefined> {
-  try {
-    const data = await cgFetch(`/futures/liquidation/v2/history?symbol=${symbol}&interval=1h&limit=1`, apiKey);
-    if (!data) return undefined;
-
-    const points = Array.isArray(data) ? data : [data];
-    if (points.length === 0) return undefined;
-
-    const latest = points[points.length - 1];
-    const result: LiquidationData = {};
-
-    const longVol = parseFloat(latest.longLiquidation || latest.data?.longLiquidation || "0");
-    const shortVol = parseFloat(latest.shortLiquidation || latest.data?.shortLiquidation || "0");
-
-    if (longVol > 0 || shortVol > 0) {
-      result.longVolume = longVol;
-      result.shortVolume = shortVol;
-      result.totalVolume = longVol + shortVol;
-      if (longVol > shortVol * 1.5) result.dominantSide = "longs";
-      else if (shortVol > longVol * 1.5) result.dominantSide = "shorts";
-      else result.dominantSide = "balanced";
-    }
-
-    if (result.totalVolume === undefined || result.totalVolume === 0) {
-      return undefined;
-    }
-
-    return result;
-  } catch {
-    return undefined;
-  }
+  // 4h is supported across current plans; amounts are in USD by provider definition.
+  const path = "/futures/liquidation/aggregated-history?exchange_list=Binance%2COKX%2CBybit&symbol=" +
+    encodeURIComponent(symbol) + "&interval=4h&limit=1";
+  const data = await cgFetch(path, apiKey);
+  const points = Array.isArray(data) ? data : data ? [data] : [];
+  const latest = points[points.length - 1];
+  if (!latest) return undefined;
+  const longVol = finiteNumber(latest.aggregated_long_liquidation_usd);
+  const shortVol = finiteNumber(latest.aggregated_short_liquidation_usd);
+  if (longVol === undefined && shortVol === undefined) return undefined;
+  const longs = longVol ?? 0;
+  const shorts = shortVol ?? 0;
+  return {
+    longVolume: longs,
+    shortVolume: shorts,
+    totalVolume: longs + shorts,
+    dominantSide: longs > shorts * 1.5 ? "longs" : shorts > longs * 1.5 ? "shorts" : "balanced",
+    window: "4h",
+  };
 }
 
 // ── Interpretation Generator ────────────────────────────────────

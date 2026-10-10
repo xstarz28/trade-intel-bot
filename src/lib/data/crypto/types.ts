@@ -217,7 +217,9 @@ export interface TokenomicsIntelligence {
   supply?: {
     circulatingSupply?: number;
     totalSupply?: number;
-    /** Circulating as percentage of total. */
+    /** Maximum supply as reported by the provider; not interchangeable with totalSupply. */
+    maxSupply?: number;
+    /** Circulating as percentage of a provider-reported supply denominator. */
     circulatingPercent?: number;
     /** Whether supply data is reliable. */
     reliable: boolean;
@@ -229,6 +231,8 @@ export interface TokenomicsIntelligence {
     upcomingCount30d: number;
     /** Total tokens to be unlocked in next 30 days. */
     upcomingValue30d?: number;
+    /** Provider-reported estimated USD value of those unlocks, when available. */
+    upcomingUsdValue30d?: number;
     /** Unlock as percentage of circulating supply. */
     unlockPercentOfCirculating?: number;
     /** Whether unlock data is reliable. */

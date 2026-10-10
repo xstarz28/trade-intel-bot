@@ -1130,3 +1130,73 @@ describe("Phase 41 — Context Builder", () => {
     expect(ctx!.analystSummary.length).toBeGreaterThan(0);
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════════
+// CC. Tokenomist v4 Contract
+// ═══════════════════════════════════════════════════════════════════
+describe("Phase 41 — Tokenomist v4 contract", () => {
+  it("resolves the provider token ID and parses authenticated v4 unlock data", async () => {
+    const requested: string[] = [];
+    const sentHeaders: Headers[] = [];
+    const unlockDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const adapter = new TokenomistAdapter(async (input, init) => {
+      const url = String(input);
+      requested.push(url);
+      sentHeaders.push(new Headers(init?.headers));
+      if (url.endsWith("/v4/token/list")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: true,
+            data: [
+              { id: "bitcoin", symbol: "BTC", circulatingSupply: 19_800_000, maxSupply: 21_000_000 },
+              { id: "wrapped-btc-other", symbol: "BTC", circulatingSupply: 10, maxSupply: 20 },
+            ],
+          }),
+        } as Response;
+      }
+      if (url.includes("/v4/unlock/events?")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            status: true,
+            data: [{
+              unlockDate,
+              cliffUnlocks: { cliffAmount: 1_000, cliffValue: 95_000 },
+            }],
+          }),
+        } as Response;
+      }
+      throw new Error("Unexpected Tokenomist URL: " + url);
+    }, "test-tokenomist-key");
+
+    const result = await adapter.fetch("BTC/USD");
+    expect(result?.success).toBe(true);
+    expect(requested.some((url) => url.endsWith("/v4/token/list"))).toBe(true);
+    expect(requested.some((url) => url.includes("tokenId=bitcoin"))).toBe(true);
+    expect(sentHeaders.every((headers) => headers.get("x-api-key") === "test-tokenomist-key")).toBe(true);
+
+    const normalized = parseTokenomistResult(result?.data as Record<string, any>, "BTC/USD", result!.observedAt);
+    expect(normalized.supply?.circulatingSupply).toBe(19_800_000);
+    expect(normalized.supply?.maxSupply).toBe(21_000_000);
+    expect(normalized.unlocks?.upcomingCount30d).toBe(1);
+    expect(normalized.unlocks?.upcomingValue30d).toBe(1_000);
+    expect(normalized.unlocks?.upcomingUsdValue30d).toBe(95_000);
+  });
+
+  it("does not request a provider when Tokenomist API key is missing", async () => {
+    let called = false;
+    const adapter = new TokenomistAdapter(async () => {
+      called = true;
+      throw new Error("should not make a request without a key");
+    });
+    const result = await adapter.fetch("BTC/USD");
+    expect(result?.success).toBe(false);
+    expect(result?.errorCode).toBe("AUTH_ERROR");
+    expect(result?.error).toContain("TOKENOMIST_API_KEY");
+    expect(called).toBe(false);
+  });
+});
