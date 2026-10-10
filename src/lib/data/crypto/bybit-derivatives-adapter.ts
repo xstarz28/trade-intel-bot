@@ -83,7 +83,7 @@ export class BybitPublicDerivativesAdapter {
     const ratioRow = ratioRows[0];
     const buyRatio = positive(ratioRow?.buyRatio);
     const sellRatio = positive(ratioRow?.sellRatio);
-    const accountRatio = buyRatio !== undefined && sellRatio !== undefined ? buyRatio / sellRatio : undefined;
+    const accountRatio = buyRatio !== undefined && sellRatio !== undefined ? Number((buyRatio / sellRatio).toFixed(6)) : undefined;
     const longShort = accountRatio !== undefined && Number.isFinite(accountRatio) ? { accountRatio } : undefined;
 
     const availability = {
