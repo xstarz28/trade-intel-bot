@@ -19,7 +19,12 @@ import { crossAssetComparator } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
 import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/data/twelve-data-budget";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
-import { OKX_SPOT_MARKET_PROVIDER, OkxSpotMarketAdapter } from "../lib/data/crypto/okx-spot-market-adapter";
+import {
+  OKX_SPOT_MARKET_PROVIDER,
+  OkxSpotMarketAdapter,
+  normalizeOkxSpotCandles,
+  toOkxSpotBar,
+} from "../lib/data/crypto/okx-spot-market-adapter";
 
 interface TdCandle {
   datetime: string;
@@ -58,6 +63,8 @@ function reserveTwelveDataCall(requestClass: TwelveDataRequestClass): void {
   }
 }
 const okxSpotMarketAdapter = new OkxSpotMarketAdapter();
+const OKX_PERPETUAL_MARKET_PROVIDER = "okx-perpetual-public";
+const OKX_FUTURES_MARKET_PROVIDER = "okx-futures-public";
 const candleProviderCache = new Map<string, string>();
 
 function candleTtlMs(tf: string): number {
@@ -108,6 +115,33 @@ async function fetchCandles(
   }
 
   const request = (async (): Promise<OhlcvCandle[]> => {
+    if (instrumentType === "crypto" && (normalizedSymbol.endsWith("-SWAP") || /-[0-9]{6}$/.test(normalizedSymbol))) {
+      // Keep the user's selected derivatives contract as the exact data identity.
+      // A failed futures/contract query must never silently turn into spot data.
+      const isPerpetual = normalizedSymbol.endsWith("-SWAP");
+      const provider = isPerpetual ? OKX_PERPETUAL_MARKET_PROVIDER : OKX_FUTURES_MARKET_PROVIDER;
+      const response = await fetch(
+        "https://www.okx.com/api/v5/market/candles?instId=" + encodeURIComponent(normalizedSymbol) +
+          "&bar=" + encodeURIComponent(toOkxSpotBar(normalizedTimeframe)) +
+          "&limit=" + Math.min(300, Math.max(1, Math.floor(outputsize))),
+        { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4_000) },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || String(payload.code) !== "0") {
+        throw new Error("OKX derivative candles unavailable for exact contract " + normalizedSymbol + ": " + String(payload?.msg ?? response.statusText));
+      }
+      const normalized = normalizeOkxSpotCandles(payload, outputsize);
+      if (normalized.length === 0) throw new Error("OKX returned no valid candles for exact contract " + normalizedSymbol);
+      const fetchedAt = Date.now();
+      candleCache.set(cacheKey, {
+        candles: normalized.map((candle) => ({ ...candle })),
+        fetchedAt,
+        expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
+      });
+      candleProviderCache.set(cacheKey, provider);
+      return normalized;
+    }
+
     if (instrumentType === "crypto") {
       try {
         const normalized = await okxSpotMarketAdapter.fetchCandles(normalizedSymbol, normalizedTimeframe, outputsize);
@@ -237,8 +271,11 @@ export const fetchMarketData = action({
       // Avoid a separate Twelve Data quote request. Its free-tier credits are
       // shared with OHLCV; the last verified candle is the fallback price and
       // retains its source timestamp instead of being mislabeled as "now".
+      const defaultCryptoProvider = symbol.endsWith("-SWAP")
+        ? OKX_PERPETUAL_MARKET_PROVIDER
+        : /-[0-9]{6}$/.test(symbol) ? OKX_FUTURES_MARKET_PROVIDER : OKX_SPOT_MARKET_PROVIDER;
       const marketProvider = candleProviderCache.get(symbol + "|" + args.timeframe) ??
-        (args.instrumentType === "crypto" ? OKX_SPOT_MARKET_PROVIDER : "twelve-data");
+        (args.instrumentType === "crypto" ? defaultCryptoProvider : "twelve-data");
       let quoteRes: Record<string, any> = {};
       if (args.instrumentType === "crypto" && marketProvider === OKX_SPOT_MARKET_PROVIDER) {
         const okxTicker = await okxSpotMarketAdapter.fetchTicker(symbol).catch(() => null);
@@ -248,6 +285,26 @@ export const fetchMarketData = action({
             ...(okxTicker.bid !== undefined ? { bid: String(okxTicker.bid) } : {}),
             ...(okxTicker.ask !== undefined ? { ask: String(okxTicker.ask) } : {}),
           };
+        }
+      } else if (args.instrumentType === "crypto" &&
+          (marketProvider === OKX_PERPETUAL_MARKET_PROVIDER || marketProvider === OKX_FUTURES_MARKET_PROVIDER)) {
+        try {
+          const response = await fetch(
+            "https://www.okx.com/api/v5/market/ticker?instId=" + encodeURIComponent(symbol),
+            { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4_000) },
+          );
+          const payload = await response.json().catch(() => null);
+          const row = payload?.data?.[0];
+          const last = Number(row?.last), bid = Number(row?.bidPx), ask = Number(row?.askPx);
+          if (response.ok && payload && String(payload.code) === "0" && Number.isFinite(last) && last > 0) {
+            quoteRes = {
+              close: String(last),
+              ...(Number.isFinite(bid) && bid > 0 ? { bid: String(bid) } : {}),
+              ...(Number.isFinite(ask) && ask > 0 ? { ask: String(ask) } : {}),
+            };
+          }
+        } catch {
+          // The candle series remains usable, but without a current contract quote it is delayed.
         }
       }
 

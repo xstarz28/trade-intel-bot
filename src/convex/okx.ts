@@ -33,7 +33,8 @@ export const fetchOkxInstrumentSpec = action({
       };
     }
     try {
-      const res = await fetch(`${ENDPOINT}?instType=SWAP&instId=${encodeURIComponent(instId)}`, {
+      const instType = /-[0-9]{6}$/.test(instId) ? "FUTURES" : "SWAP";
+      const res = await fetch(`${ENDPOINT}?instType=${instType}&instId=${encodeURIComponent(instId)}`, {
         headers: { Accept: "application/json" },
       });
       if (!res.ok) {
