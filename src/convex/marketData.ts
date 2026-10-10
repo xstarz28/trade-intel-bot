@@ -22,6 +22,7 @@ import {
   selectDxyProbeCandidate,
 } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
+import { OKX_SPOT_MARKET_PROVIDER, OkxSpotMarketAdapter } from "../lib/data/crypto/okx-spot-market-adapter";
 
 /**
  * Phase 7C — in-memory memo of the working actual-DXY symbol (per server
@@ -60,6 +61,8 @@ const candleInflight = new Map<string, Promise<OhlcvCandle[]>>();
 const candleRateLimitBackoff = new Map<string, { message: string; retryAt: number }>();
 const CANDLE_REQUEST_TIMEOUT_MS = 8_000;
 const CANDLE_RATE_LIMIT_BACKOFF_MS = 15_000;
+const okxSpotMarketAdapter = new OkxSpotMarketAdapter();
+const candleProviderCache = new Map<string, string>();
 
 function candleTtlMs(tf: string): number {
   switch (tf.toUpperCase()) {
@@ -83,7 +86,8 @@ async function fetchCandles(
   symbol: string,
   tf: string,
   outputsize: number,
-  apiKey: string,
+  apiKey: string | undefined,
+  instrumentType?: string,
 ): Promise<OhlcvCandle[]> {
   const normalizedSymbol = symbol.trim().toUpperCase();
   const normalizedTimeframe = tf.trim().toUpperCase();
@@ -96,8 +100,9 @@ async function fetchCandles(
   }
 
   const backoff = candleRateLimitBackoff.get(cacheKey);
-  if (backoff && now < backoff.retryAt) throw new Error(backoff.message);
-  if (backoff) candleRateLimitBackoff.delete(cacheKey);
+  // Crypto gets a no-key OKX attempt even during Twelve Data backoff.
+  if (backoff && now < backoff.retryAt && instrumentType !== "crypto") throw new Error(backoff.message);
+  if (backoff && now >= backoff.retryAt) candleRateLimitBackoff.delete(cacheKey);
 
   const existingRequest = candleInflight.get(requestKey);
   if (existingRequest) {
@@ -106,6 +111,30 @@ async function fetchCandles(
   }
 
   const request = (async (): Promise<OhlcvCandle[]> => {
+    if (instrumentType === "crypto") {
+      try {
+        const normalized = await okxSpotMarketAdapter.fetchCandles(normalizedSymbol, normalizedTimeframe, outputsize);
+        const fetchedAt = Date.now();
+        candleCache.set(cacheKey, {
+          candles: normalized.map((candle) => ({ ...candle })),
+          fetchedAt,
+          expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
+        });
+        candleProviderCache.set(cacheKey, OKX_SPOT_MARKET_PROVIDER);
+        candleRateLimitBackoff.delete(cacheKey);
+        return normalized;
+      } catch (okxError) {
+        const okxMessage = okxError instanceof Error ? okxError.message : String(okxError);
+        const activeBackoff = candleRateLimitBackoff.get(cacheKey);
+        if (activeBackoff && Date.now() < activeBackoff.retryAt) {
+          throw new Error("OKX Spot unavailable: " + okxMessage + "; Twelve Data backup is rate-limited: " + activeBackoff.message);
+        }
+        if (!apiKey) {
+          throw new Error("OKX Spot unavailable: " + okxMessage + "; Twelve Data backup is unavailable because TWELVE_DATA_API_KEY is missing");
+        }
+      }
+    }
+    if (!apiKey) throw new Error("TWELVE_DATA_API_KEY is missing for this market-data request");
     const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(normalizedSymbol) +
       "&interval=" + encodeURIComponent(mapTimeframe(normalizedTimeframe)) +
       "&outputsize=" + outputsize + "&apikey=" + encodeURIComponent(apiKey);
@@ -142,6 +171,7 @@ async function fetchCandles(
         expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
       });
     }
+    candleProviderCache.set(cacheKey, "twelve-data");
     candleRateLimitBackoff.delete(cacheKey);
     return normalized;
   })();
@@ -174,7 +204,7 @@ export const fetchMarketData = action({
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.TWELVE_DATA_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && args.instrumentType !== "crypto") {
       return {
         success: false as const,
         error: "Market data provider not configured: TWELVE_DATA_API_KEY is missing. Add it in the Keys/API keys tab.",
@@ -188,7 +218,7 @@ export const fetchMarketData = action({
       // Primary (setup) timeframe — errors classified precisely (429, auth…)
       let candles: OhlcvCandle[];
       try {
-        candles = await fetchCandles(symbol, args.timeframe, 210, apiKey);
+        candles = await fetchCandles(symbol, args.timeframe, 210, apiKey, args.instrumentType);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "unknown error";
         if (msg.startsWith("[429]")) {
@@ -200,17 +230,33 @@ export const fetchMarketData = action({
         return { success: false as const, error: `API error: ${msg}`, errorCode: "API_UNAVAILABLE" as const };
       }
 
-      // Live quote — NON-fatal: never discard successful candle data
-      const quoteRes = await fetch(
-        `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
-        { signal: AbortSignal.timeout(4_000) },
-      )
-        .then((r) => r.json())
-        .catch(() => ({}));
+      // Live quote — use public OKX first for crypto. Twelve Data is a backup only.
+      const marketProvider = candleProviderCache.get(symbol + "|" + args.timeframe) ??
+        (args.instrumentType === "crypto" ? OKX_SPOT_MARKET_PROVIDER : "twelve-data");
+      let quoteRes: Record<string, any> = {};
+      if (args.instrumentType === "crypto" && marketProvider === OKX_SPOT_MARKET_PROVIDER) {
+        const okxTicker = await okxSpotMarketAdapter.fetchTicker(symbol).catch(() => null);
+        if (okxTicker) {
+          quoteRes = {
+            close: String(okxTicker.price),
+            ...(okxTicker.bid !== undefined ? { bid: String(okxTicker.bid) } : {}),
+            ...(okxTicker.ask !== undefined ? { ask: String(okxTicker.ask) } : {}),
+          };
+        }
+      }
+      if (!quoteRes.close && apiKey) {
+        quoteRes = await fetch(
+          `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
+          { signal: AbortSignal.timeout(4_000) },
+        ).then((r) => r.json()).catch(() => ({}));
+      }
 
-      const price = quoteRes.close ? parseFloat(quoteRes.close) : candles[candles.length - 1].close;
-      const bid = Number.isFinite(Number(quoteRes.bid)) ? Number(quoteRes.bid) : undefined;
-      const ask = Number.isFinite(Number(quoteRes.ask)) ? Number(quoteRes.ask) : undefined;
+      const quotedPrice = Number(quoteRes.close);
+      const price = Number.isFinite(quotedPrice) && quotedPrice > 0 ? quotedPrice : candles[candles.length - 1].close;
+      const bidValue = Number(quoteRes.bid);
+      const askValue = Number(quoteRes.ask);
+      const bid = Number.isFinite(bidValue) && bidValue > 0 ? bidValue : undefined;
+      const ask = Number.isFinite(askValue) && askValue > 0 ? askValue : undefined;
 
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
@@ -232,8 +278,8 @@ export const fetchMarketData = action({
       const settled = await Promise.allSettled(
         slots.map((s) =>
           s.role === "trigger"
-            ? fetchCandles(symbol, s.timeframe, 100, apiKey)
-            : fetchCandles(symbol, s.timeframe, 120, apiKey),
+            ? fetchCandles(symbol, s.timeframe, 100, apiKey, args.instrumentType)
+            : fetchCandles(symbol, s.timeframe, 120, apiKey, args.instrumentType),
         ),
       );
 
@@ -420,12 +466,12 @@ export const fetchMarketData = action({
         data: {
           instrument: symbol,
           instrumentType: args.instrumentType,
-          provider: "twelve-data",
+          provider: marketProvider,
           fetchTimestamp: Date.now(),
           price: {
             price,
             timestamp: Date.now(),
-            source: "twelve-data",
+            source: marketProvider,
             ...(bid !== undefined ? { bid } : {}),
             ...(ask !== undefined ? { ask } : {}),
           },
