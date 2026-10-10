@@ -249,6 +249,28 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
 
 
 
+
+  it("rejects market snapshots whose instrument identity differs from the candidate", () => {
+    const now = Date.now();
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "ETH/USD", instrumentType: "crypto", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 3000, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 2990, high: 3010, low: 2980, close: 3000, volume: 1 }],
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+    });
+
+    expect(candidate.currentPrice).toBe(0);
+    expect(candidate.dataPoints).toBe(0);
+    expect(candidate.hasLiveData).toBe(false);
+    expect(candidate.freshness).toBe("UNAVAILABLE");
+    expect(candidate.dataCompleteness).toBe("NONE");
+  });
+
   it("never borrows price or analysis confidence from a different instrument", () => {
     const candidate = buildCandidateFromSource({
       instrument: "BTC/USD",
