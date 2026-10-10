@@ -2345,7 +2345,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         )}
                         {ci.tokenomics.supply.circulatingPercent !== undefined && (
                           <p className="text-[10px] font-mono text-muted-foreground">
-                            circulating: {ci.tokenomics.supply.circulatingPercent.toFixed(1)}%
+                            circ / max: {ci.tokenomics.supply.circulatingPercent.toFixed(1)}%
                           </p>
                         )}
                       </div>
