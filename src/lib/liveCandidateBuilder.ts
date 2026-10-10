@@ -366,7 +366,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   switch (source.assetClass) {
     case "crypto": assetSpecific = extractCryptoData(source); break;
     case "forex": assetSpecific = extractForexData(source); break;
-    case "stock": assetSpecific = extractEquityData(source); break;
+    case "equity": assetSpecific = extractEquityData(source); break;
     case "commodity": assetSpecific = extractCommodityData(source); break;
   }
 
@@ -419,7 +419,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     positioningScore: ar?.breakdown?.sentiment,
     fundamentalEvidenceAvailable:
       ar?.fundamentalData?.available === true ||
-      (source.assetClass === "stock" && source.universalIntelligence?.equity?.fundamentals?.available === true) ||
+      (source.assetClass === "equity" && source.universalIntelligence?.equity?.fundamentals?.available === true) ||
       ar?.macroData?.confidence === "high" ||
       ar?.macroData?.confidence === "medium" ||
       !!ar?.calendarData?.events?.some(
