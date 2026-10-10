@@ -251,7 +251,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     const now = Date.now();
     const candidate = buildCandidateFromSource({
       instrument: "EUR/USD", assetClass: "forex",
-      marketData: { instrument: "EUR/USD", instrumentType: "forex", provider: "fixture", fetchTimestamp: now, price: { price: 1.1, timestamp: now, source: "fixture" }, candles: [{ time: now, timestamp: now, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 10 }], timeframe: "H1", dataFreshness: "realtime" },
+      marketData: { instrument: "EUR/USD", instrumentType: "forex", provider: "fixture", fetchTimestamp: now, price: { price: 1.1, timestamp: now, source: "fixture" }, candles: [{ timestamp: now, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 10 }], timeframe: "H1", dataFreshness: "realtime" },
       universalIntelligence: {
         instrument: "EUR/USD", assetClass: "forex", assembledAt: now,
         forex: {
@@ -283,7 +283,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     const now = Date.now();
     const candidate = buildCandidateFromSource({
       instrument: "AAPL", assetClass: "stock",
-      marketData: { instrument: "AAPL", instrumentType: "stock", provider: "fixture", fetchTimestamp: now, price: { price: 250, timestamp: now, source: "fixture" }, candles: [{ time: now, timestamp: now, open: 249, high: 251, low: 248, close: 250, volume: 100 }], timeframe: "H1", dataFreshness: "realtime" },
+      marketData: { instrument: "AAPL", instrumentType: "stock", provider: "fixture", fetchTimestamp: now, price: { price: 250, timestamp: now, source: "fixture" }, candles: [{ timestamp: now, open: 249, high: 251, low: 248, close: 250, volume: 100 }], timeframe: "H1", dataFreshness: "realtime" },
       universalIntelligence: {
         instrument: "AAPL", assetClass: "stock", assembledAt: now,
         equity: {
@@ -305,7 +305,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     const now = Date.now();
     const candidate = buildCandidateFromSource({
       instrument: "WTI", assetClass: "commodity",
-      marketData: { instrument: "WTI", instrumentType: "commodity", provider: "fixture", fetchTimestamp: now, price: { price: 75, timestamp: now, source: "fixture" }, candles: [{ time: now, timestamp: now, open: 74, high: 76, low: 73, close: 75, volume: 100 }], timeframe: "H1", dataFreshness: "realtime" },
+      marketData: { instrument: "WTI", instrumentType: "commodity", provider: "fixture", fetchTimestamp: now, price: { price: 75, timestamp: now, source: "fixture" }, candles: [{ timestamp: now, open: 74, high: 76, low: 73, close: 75, volume: 100 }], timeframe: "H1", dataFreshness: "realtime" },
       universalIntelligence: {
         instrument: "WTI", assetClass: "commodity", assembledAt: now,
         commodity: {
