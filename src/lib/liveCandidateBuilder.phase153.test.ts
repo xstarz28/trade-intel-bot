@@ -151,6 +151,8 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           structure: "range",
           bosDirection: "none",
           chochDirection: "none",
+          swingHighs: [101],
+          swingLows: [99],
           supportLevels: [99],
           resistanceLevels: [101],
           volumeTrend,
@@ -163,8 +165,8 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
 
     expect(quiet.setupDirection).toBe("neutral");
     expect(active.setupDirection).toBe("neutral");
-    expect(active.setupStrength).toBeGreaterThan(quiet.setupStrength);
-    expect(active.confluenceCount).toBeGreaterThan(quiet.confluenceCount);
+    expect(active.setupStrength ?? 0).toBeGreaterThan(quiet.setupStrength ?? 0);
+    expect(active.confluenceCount ?? 0).toBeGreaterThan(quiet.confluenceCount ?? 0);
   });
 
   it.each([
