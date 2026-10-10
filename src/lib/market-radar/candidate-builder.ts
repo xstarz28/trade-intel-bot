@@ -14,6 +14,7 @@ import type { MarketSnapshot, FreshnessLevel } from "./types";
 import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
 import type { LiveCandidateSource } from "../liveCandidateBuilder";
+import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
 
 // ═══════════════════════════════════════════════════════════════
 // RADAR CANDIDATE SOURCE
@@ -40,6 +41,8 @@ export interface RadarCandidateSource {
   /** Raw rate/yield context; not directional evidence by itself. */
   rateDifferential?: number;
   yieldDifferential?: number;
+  /** Signed gold macro effect derived from actual Treasury observations. */
+  macroScore?: number;
   /** Optional COT data (forex/commodity). */
   cot?: {
     netNonCommercial?: number;
@@ -158,6 +161,11 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const yieldDifferential = universalForex?.yields?.available
     ? universalForex.yields.yieldDifferential
     : undefined;
+  const macroScore = source.treasuryData?.available &&
+      source.assetClass === "commodity" &&
+      /XAU|GOLD/i.test(source.instrument)
+    ? deriveMacroYieldEvidence(source.treasuryData).goldLongEffect * 2
+    : undefined;
 
   const snapshot: MarketSnapshot | null = market ? {
     instrument: market.instrument,
@@ -220,6 +228,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
     ...(rateDifferential !== undefined ? { rateDifferential } : {}),
     ...(yieldDifferential !== undefined ? { yieldDifferential } : {}),
+    ...(macroScore !== undefined ? { macroScore } : {}),
     ...(cot ? { cot } : {}),
     ...(eia ? { eia } : {}),
     ...(treasury ? { treasury } : {}),
@@ -409,6 +418,7 @@ export function buildRadarCandidate(
   // Rate/yield differentials are context fields, not signed alpha by themselves.
   if (source.rateDifferential !== undefined) candidate.rateDifferential = source.rateDifferential;
   if (source.yieldDifferential !== undefined) candidate.yieldDifferential = source.yieldDifferential;
+  if (source.macroScore !== undefined) candidate.macroScore = source.macroScore;
 
   // Forex / Commodity — COT
   if (source.cot) {
