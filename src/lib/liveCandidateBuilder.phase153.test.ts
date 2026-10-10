@@ -562,4 +562,62 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.hasCOT).toBe(true);
   });
 
+  it("never applies petroleum inventory to non-oil commodities", () => {
+    const now = Date.now();
+    const eiaData = {
+      available: true,
+      source: "U.S. Energy Information Administration (Weekly Petroleum Status Report)",
+      fetchedAt: now,
+      freshness: "FRESH",
+      series: [{ productId: "EPC0", observationDate: "2026-10-07", latestValue: 420, change: -8 }],
+      failedLegs: [],
+    } as any;
+    const source = {
+      instrument: "XAU/USD",
+      assetClass: "commodity" as const,
+      eiaData,
+    };
+    const live = buildCandidateFromSource(source);
+    const radar = toRadarCandidateSource(source);
+    expect(live.inventory).toBeUndefined();
+    expect(live.inventoryChange).toBeUndefined();
+    expect(radar.eia).toBeUndefined();
+  });
+
+  it("rejects universal intelligence with a mismatched asset class even when symbol matches", () => {
+    const now = Date.now();
+    const candidate = buildCandidateFromSource({
+      instrument: "AAPL",
+      assetClass: "equity",
+      marketData: {
+        instrument: "AAPL", instrumentType: "stock", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 250, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 249, high: 251, low: 248, close: 250, volume: 100 }],
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+      universalIntelligence: {
+        instrument: "AAPL",
+        assetClass: "crypto",
+        assembledAt: now,
+        equity: {
+          instrument: "AAPL", instrumentType: "stock", assembledAt: now,
+          fundamentals: {
+            provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED",
+            available: true, availableDatasets: 1, totalDatasets: 1,
+            peRatio: 31, revenueGrowth: 0.12, profitMargin: 0.24, marketCap: 3000000000000,
+          },
+          evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED",
+          missingInformation: [], analystSummary: "fixture",
+        },
+        evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED",
+        missingInformation: [], dataFlags: [], analystSummary: "fixture",
+      } as any,
+    });
+
+    expect(candidate.hasFundamentals).toBe(false);
+    expect(candidate.peRatio).toBeUndefined();
+    expect(candidate.revenueGrowth).toBeUndefined();
+  });
+
 });
