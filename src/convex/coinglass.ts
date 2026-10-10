@@ -18,6 +18,7 @@ import type {
 import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
 import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tokenomist-adapter";
 import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
+import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivatives-adapter";
 
 // ── In-memory cache (10 min TTL) ────────────────────────────────
 const cache = new Map<string, { data: any; expiresAt: number }>();
@@ -39,7 +40,27 @@ function setCache(key: string, data: any, ttlMs = CACHE_TTL): void {
 const CG_BASE = "https://open-api-v4.coinglass.com/api";
 const COINGLASS_REQUEST_TIMEOUT_MS = 6_500;
 const binanceFallback = new BinancePublicDerivativesAdapter();
+const bybitFallback = new BybitPublicDerivativesAdapter();
 const BINANCE_FALLBACK_CACHE_TTL = 60 * 1000;
+
+async function fetchPublicDerivativesFallback(instrument: string): Promise<{ data: CryptoDerivativesData | null; error: string }> {
+  const [binanceResult, bybitResult] = await Promise.allSettled([
+    binanceFallback.fetch(instrument),
+    bybitFallback.fetch(instrument),
+  ]);
+  const binanceData = binanceResult.status === "fulfilled" ? binanceResult.value : null;
+  const bybitData = bybitResult.status === "fulfilled" ? bybitResult.value : null;
+  const describe = (name: string, result: PromiseSettledResult<CryptoDerivativesData | null>) =>
+    result.status === "rejected"
+      ? name + ": " + (result.reason instanceof Error ? result.reason.message : String(result.reason))
+      : result.value
+        ? ""
+        : name + ": unsupported instrument or no usable datasets";
+  return {
+    data: binanceData ?? bybitData ?? null,
+    error: [describe("Binance public", binanceResult), describe("Bybit public", bybitResult)].filter(Boolean).join(" | "),
+  };
+}
 
 async function cgFetch(path: string, apiKey: string): Promise<any> {
   const res = await fetch(CG_BASE + path, {
@@ -97,24 +118,24 @@ export const fetchDerivatives = action({
       }
 
       if (!apiKey) {
-        const [tokenomics, fallbackData] = await Promise.all([
+        const [tokenomics, fallback] = await Promise.all([
           tokenomicsPromise,
-          binanceFallback.fetch(args.instrument).catch(() => null),
+          fetchPublicDerivativesFallback(args.instrument),
         ]);
-        if (fallbackData) {
-          setCache(cacheKey, fallbackData, BINANCE_FALLBACK_CACHE_TTL);
+        if (fallback.data) {
+          setCache(cacheKey, fallback.data, BINANCE_FALLBACK_CACHE_TTL);
           return {
             success: true,
-            data: fallbackData,
+            data: fallback.data,
             tokenomics,
-            error: "CoinGlass API key is not configured; using public Binance Futures data as a labeled fallback.",
+            error: "CoinGlass API key is not configured; using " + fallback.data.provider + " as a labeled fallback.",
             errorCode: "AUTH_ERROR",
           };
         }
         return {
           success: Boolean(tokenomics.available),
           tokenomics,
-          error: "CoinGlass API key is not configured and public Binance Futures returned no usable derivatives data.",
+          error: "CoinGlass API key is not configured. Public derivatives fallbacks failed: " + fallback.error,
           errorCode: "AUTH_ERROR",
         };
       }
@@ -161,21 +182,21 @@ export const fetchDerivatives = action({
           : rateLimit
             ? "CoinGlass rate limit exceeded."
             : reasons[0] || "CoinGlass returned no usable derivatives data.";
-        const fallbackData = await binanceFallback.fetch(args.instrument).catch(() => null);
-        if (fallbackData) {
-          setCache(cacheKey, fallbackData, BINANCE_FALLBACK_CACHE_TTL);
+        const fallback = await fetchPublicDerivativesFallback(args.instrument);
+        if (fallback.data) {
+          setCache(cacheKey, fallback.data, BINANCE_FALLBACK_CACHE_TTL);
           return {
             success: true,
-            data: fallbackData,
+            data: fallback.data,
             tokenomics,
-            error: error + " Using public Binance Futures fallback.",
+            error: error + " Using " + fallback.data.provider + " fallback.",
             errorCode,
           };
         }
         return {
           success: Boolean(tokenomics.available),
           tokenomics,
-          error,
+          error: error + " Public derivatives fallbacks failed: " + fallback.error,
           errorCode,
         };
       }

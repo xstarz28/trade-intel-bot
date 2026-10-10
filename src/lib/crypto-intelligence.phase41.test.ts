@@ -28,6 +28,7 @@ import {
   parseCoinGlassResult,
 } from "./data/crypto/coinglass-adapter";
 import { BinancePublicDerivativesAdapter, toBinanceUsdtFuturesSymbol } from "./data/crypto/binance-derivatives-adapter";
+import { BybitPublicDerivativesAdapter, toBybitLinearSymbol } from "./data/crypto/bybit-derivatives-adapter";
 import {
   DeFiLlamaAdapter,
   parseDeFiLlamaResult,
@@ -1307,5 +1308,55 @@ describe("Phase 41 — public Binance derivatives fallback", () => {
     });
     expect(result?.confidence).toBe("medium");
     expect(result?.openInterest).toBeUndefined();
+  });
+});
+
+
+describe("Phase 41 — public Bybit derivatives fallback", () => {
+  function response(body: unknown, status = 200): Response {
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: status === 200 ? "OK" : "provider error",
+      json: async () => body,
+    } as Response;
+  }
+
+  it("maps only supported crypto instruments to Bybit linear symbols", () => {
+    expect(toBybitLinearSymbol("BTC/USD")).toBe("BTCUSDT");
+    expect(toBybitLinearSymbol("EUR/USD")).toBeNull();
+  });
+
+  it("normalizes public Bybit open interest, funding and account ratio", async () => {
+    const requested: string[] = [];
+    const adapter = new BybitPublicDerivativesAdapter(async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.includes("/v5/market/open-interest")) {
+        return response({ retCode: 0, retMsg: "OK", result: { list: [{ symbol: "BTCUSDT", openInterest: "1000", timestamp: "1" }] } });
+      }
+      if (url.includes("/v5/market/tickers")) {
+        return response({ retCode: 0, retMsg: "OK", result: { list: [{ symbol: "BTCUSDT", lastPrice: "65000", openInterestValue: "65000000", fundingRate: "0.0001" }] } });
+      }
+      if (url.includes("/v5/market/account-ratio")) {
+        return response({ retCode: 0, retMsg: "OK", result: { list: [{ symbol: "BTCUSDT", buyRatio: "0.6", sellRatio: "0.4", timestamp: "1" }] } });
+      }
+      throw new Error("Unexpected Bybit URL: " + url);
+    });
+
+    const result = await adapter.fetch("BTC/USD");
+    expect(result?.provider).toBe("bybit-public-derivatives");
+    expect(result?.symbol).toBe("BTCUSDT");
+    expect(result?.openInterest?.current).toBe(65_000_000);
+    expect(result?.fundingRate?.currentRate).toBe(0.0001);
+    expect(result?.longShort?.accountRatio).toBe(1.5);
+    expect(result?.availability).toEqual({
+      openInterest: true,
+      fundingRate: true,
+      longShort: true,
+      liquidations: false,
+    });
+    expect(result?.confidence).toBe("high");
+    expect(requested).toHaveLength(3);
   });
 });
