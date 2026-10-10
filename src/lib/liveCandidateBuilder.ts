@@ -329,7 +329,11 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
         )
       : undefined
   );
-  const ar = source.analysisResult;
+  // Never borrow an analysis payload from another instrument identity.
+  // A mismatched result must not supply price, bias, confidence, or trade plan.
+  const ar = source.analysisResult?.instrument === source.instrument
+    ? source.analysisResult
+    : undefined;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
 
   // Freshness must describe when the market observation occurred, not when we fetched it.
