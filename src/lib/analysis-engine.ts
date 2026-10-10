@@ -1360,7 +1360,12 @@ function decideTrade(
         riskReward: rr,
         ...(mtf ? { htfBias: `${mtf.htfTimeframe ?? "HTF"} ${mtf.htfBias} external structure`, setupTimeframe: mtf.setupTimeframe, ...(mtf.triggerTimeframe ? { triggerTimeframe: mtf.triggerTimeframe } : {}) } : {}),
       };
-      if (exactRr < MIN_RR) {
+      if (styleProfile.maxRiskReward !== null && exactRr > styleProfile.maxRiskReward) {
+        reasons.push(
+          `${styleProfile.style.toUpperCase()} veto: calculated R:R ${rr.toFixed(2)} exceeds the ${styleProfile.maxRiskReward}R sanity ceiling; stop distance is too small relative to the target. Revalidate structural levels — this is not a trade setup.`,
+        );
+        projectedTradePlan = undefined;
+      } else if (exactRr < MIN_RR) {
         reasons.push(
           `Projected R:R ${rr.toFixed(3)} is below the ${MIN_RR.toFixed(3)} minimum for actionable setups.`,
         );
