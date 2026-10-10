@@ -20,7 +20,6 @@ import {
   type Timeframe,
 } from "@/lib/analysis-engine";
 import { cn } from "@/lib/utils";
-import logo from "@/assets/logo.svg";
 import {
   Zap,
   AlertCircle,
@@ -69,6 +68,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   const { t } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
   const [manualSearch, setManualSearch] = useState(false);
+  const manualInputRef = useRef<HTMLInputElement | null>(null);
   // Keep every field synchronous with user input so an immediate submit cannot
   // combine a new instrument with the previous category/timeframe/style render.
   const formRef = useRef(form);
@@ -77,6 +77,10 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
     formRef.current = next;
     setForm(next);
   }, []);
+  useEffect(() => {
+    if (manualSearch) manualInputRef.current?.focus();
+  }, [manualSearch]);
+
   const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
 
   const categoryOptions: { value: InstrumentType; label: string }[] = [
@@ -152,8 +156,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   return (
     <Card className="border-border/50 shadow-sm">
       <CardHeader className="pb-3">
-        <div className="flex items-center gap-3">
-          <img src={logo} alt="XSTARZG" width={32} height={32} className="size-8 rounded-lg" />
+        <div className="flex items-center">
           <div>
             <CardTitle className="text-sm font-semibold font-mono">
               {t.entryForm.newAnalysis}
@@ -222,13 +225,17 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
             </button>
 
             {manualSearch && (
-              <div className="mt-2">
+              <div className="relative z-20 mt-2 pointer-events-auto">
                 <Input
+                  ref={manualInputRef}
+                  type="text"
                   placeholder={t.entryForm.manualSearchPlaceholder}
                   value={form.instrument}
                   onChange={(e) => update("instrument", e.target.value)}
-                  className="h-10 text-sm font-mono"
+                  onKeyDown={(event) => event.stopPropagation()}
+                  className="relative z-20 h-10 text-sm font-mono pointer-events-auto"
                   autoComplete="off"
+                  autoFocus
                 />
                 <p className="mt-1.5 text-[10px] font-mono text-muted-foreground">
                   {t.entryForm.manualSearchNote}
