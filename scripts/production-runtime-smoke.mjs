@@ -224,9 +224,9 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
       overallAvailability: pickStatus(["full", "partial", "minimal", "unavailable"]),
       overallQuality: pickStatus(["verified", "degraded", "stale", "insufficient", "unavailable"]),
       providersVisible: {
-        coinglass: /derivatives\\s*·\\s*coinglass/i.test(panelText),
-        defiLlama: /defi fundamentals\\s*·\\s*defillama/i.test(panelText),
-        tokenomist: /tokenomics\\s*·\\s*tokenomist/i.test(panelText),
+        coinglass: /derivatives\s*·\s*coinglass/i.test(panelText),
+        defiLlama: /defi fundamentals\s*·\s*defillama/i.test(panelText),
+        tokenomist: /tokenomics\s*·\s*tokenomist/i.test(panelText),
       },
       missingInformation: missingText.slice(0, 1200),
       panelText: panelText.slice(0, 5000),
