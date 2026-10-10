@@ -97,6 +97,13 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const intelligence = source.universalIntelligence?.instrument === source.instrument
     ? source.universalIntelligence
     : undefined;
+  const expectedProviderSymbol = source.providerNative?.providerInstrumentId ?? source.instrument;
+  const derivativesData = source.derivativesData?.symbol === expectedProviderSymbol
+    ? source.derivativesData
+    : undefined;
+  const cotData = source.cotData?.requestedInstrument === source.instrument
+    ? source.cotData
+    : undefined;
 
   const htf = technical?.mtf?.htfBias;
   const htfBias: NonNullable<MarketSnapshot["htfBias"]> =
@@ -120,14 +127,14 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const universalFundamentals = intelligence?.equity?.fundamentals;
   const universalForex = intelligence?.forex;
   const universalCommodity = intelligence?.commodity;
-  const fundingRate = source.derivativesData?.availability.fundingRate
-    ? source.derivativesData.fundingRate?.currentRate
+  const fundingRate = derivativesData?.availability.fundingRate
+    ? derivativesData.fundingRate?.currentRate
     : undefined;
-  const openInterest = source.derivativesData?.availability.openInterest
-    ? source.derivativesData.openInterest?.current
+  const openInterest = derivativesData?.availability.openInterest
+    ? derivativesData.openInterest?.current
     : undefined;
-  const liquidationVolume = source.derivativesData?.availability.liquidations
-    ? source.derivativesData.liquidations?.totalVolume
+  const liquidationVolume = derivativesData?.availability.liquidations
+    ? derivativesData.liquidations?.totalVolume
     : undefined;
   const inventory = source.eiaData?.available
     ? source.eiaData.series[0]?.latestValue
@@ -141,8 +148,8 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const tenYearYield = source.treasuryData?.available
     ? source.treasuryData.latest.nominal.nominal["10Y"]
     : undefined;
-  const cotNet = source.cotData?.available
-    ? source.cotData.netNonCommercial
+  const cotNet = cotData?.available
+    ? cotData.netNonCommercial
     : universalForex?.positioning?.available
       ? universalForex.positioning.nonCommercialNet
       : universalCommodity?.positioning?.available
