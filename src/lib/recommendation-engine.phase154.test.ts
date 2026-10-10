@@ -98,6 +98,35 @@ describe("Phase 154 — recommendation ranking integrity", () => {
     expect(active.analyticalScore).toBeLessThanOrEqual(45);
   });
 
+  it("does not turn an explicitly neutral setup bullish solely from HTF bias", () => {
+    const neutralSetup = scoreCandidate(
+      baseCandidate({
+        setupDirection: "neutral",
+        setupStrength: 50,
+        confluenceCount: 3,
+        htfBias: "long",
+        mtfAlignment: "ALIGNED_BULLISH",
+        marketRegime: "RANGING",
+      }),
+      "INTRADAY",
+    );
+    const unclassifiedSetup = scoreCandidate(
+      baseCandidate({
+        setupDirection: "unknown",
+        setupStrength: 50,
+        confluenceCount: 3,
+        htfBias: "long",
+        mtfAlignment: "ALIGNED_BULLISH",
+        marketRegime: "RANGING",
+      }),
+      "INTRADAY",
+    );
+
+    expect(neutralSetup.analyticalScore).toBeLessThanOrEqual(45);
+    expect(unclassifiedSetup.analyticalScore).toBeGreaterThan(neutralSetup.analyticalScore);
+    expect(neutralSetup.conflicts).toContain("no confirmed directional setup");
+  });
+
   it("preserves measured score differences above the former technical-only ceiling", () => {
     const moderate = scoreCandidate(
       baseCandidate({
