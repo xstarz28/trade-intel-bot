@@ -162,7 +162,7 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
     }));
     expect(r.recommendation).toBe("NO_TRADE");
     assertStateConsistency(r);
-    expect(r.noTradeReasons.join(" ")).toContain("below the 1.50 minimum");
+    expect(r.noTradeReasons.join(" ")).toContain("below the 1.500 minimum");
   });
 
   it("R:R exactly at the 1.5 threshold is acceptable", () => {
