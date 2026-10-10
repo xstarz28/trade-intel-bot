@@ -298,9 +298,12 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   // provider-native discovery supplied price/candles but every candidate
   // remained MINIMAL with no direction, collapsing the ranking to identical
   // scores. Explicit upstream technicalData remains authoritative.
+  const orderedCandles = source.marketData?.candles
+    ?.slice()
+    .sort((a, b) => a.timestamp - b.timestamp);
   const tech = source.technicalData ?? (
-    source.marketData?.candles && source.marketData.candles.length > 0
-      ? calculateTechnical(source.marketData.candles)
+    orderedCandles && orderedCandles.length > 0
+      ? calculateTechnical(orderedCandles)
       : undefined
   );
   const ar = source.analysisResult;
