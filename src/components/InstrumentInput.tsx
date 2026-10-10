@@ -3,7 +3,6 @@ import { useI18n } from "@/lib/i18n";
 import { TRADING_STYLES, type TradingStyle } from "@/lib/trading-style";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -68,6 +67,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
   const { t } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
   const [manualSearch, setManualSearch] = useState(false);
+  const [manualSearchQuery, setManualSearchQuery] = useState("");
   const manualInputRef = useRef<HTMLInputElement | null>(null);
   // Keep every field synchronous with user input so an immediate submit cannot
   // combine a new instrument with the previous category/timeframe/style render.
@@ -136,22 +136,33 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
 
   const submitAnalysis = useCallback(() => {
     const currentForm = formRef.current;
-    const instrument = currentForm.instrument.trim();
+    const typedInstrument = manualSearchQuery.trim();
+    const instrument = (manualSearch && typedInstrument
+      ? typedInstrument
+      : currentForm.instrument).trim();
     if (!instrument || isAnalyzing) return;
+
+    const knownInstrument = universeOptions.find(
+      (item) => item.symbol.toUpperCase() === instrument.toUpperCase(),
+    );
 
     onAnalyze({
       instrument,
-      instrumentType: currentForm.instrumentType,
+      instrumentType: knownInstrument?.type ?? currentForm.instrumentType,
       timeframe: currentForm.timeframe,
       tradingStyle: currentForm.tradingStyle,
       requestedTimeframe: currentForm.timeframe,
     });
-  }, [isAnalyzing, onAnalyze]);
+  }, [isAnalyzing, manualSearch, manualSearchQuery, onAnalyze, universeOptions]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     submitAnalysis();
   };
+
+  const submitInstrument = manualSearch && manualSearchQuery.trim()
+    ? manualSearchQuery.trim()
+    : form.instrument.trim();
 
   return (
     <Card className="border-border/50 shadow-sm">
@@ -203,7 +214,8 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
                 {filteredInstruments.length.toLocaleString()} {t.entryForm.available}
               </span>
             </div>
-            <Select value={form.instrument} onValueChange={selectInstrument}>
+            {!manualSearch && (
+              <Select value={form.instrument} onValueChange={selectInstrument}>
               <SelectTrigger className="h-11 text-sm font-mono">
                 <SelectValue placeholder={filteredInstruments.length ? t.dashboard.selectInstrument : t.market.noData} />
               </SelectTrigger>
@@ -214,11 +226,16 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
                   </SelectItem>
                 ))}
               </SelectContent>
-            </Select>
+              </Select>
+            )}
 
             <button
               type="button"
-              onClick={() => setManualSearch((value) => !value)}
+              data-testid="manual-search-toggle"
+              onClick={() => {
+                setManualSearch((value) => !value);
+                setManualSearchQuery("");
+              }}
               className="mt-2 text-[11px] font-mono text-muted-foreground hover:text-foreground underline underline-offset-4"
             >
               {manualSearch ? t.entryForm.hideManualSearch : t.entryForm.searchSpecificInstrument}
@@ -226,15 +243,19 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
 
             {manualSearch && (
               <div className="relative z-20 mt-2 pointer-events-auto">
-                <Input
+                <input
                   ref={manualInputRef}
+                  data-testid="manual-instrument-search"
+                  aria-label={t.entryForm.manualSearchPlaceholder}
+                  name="manualInstrumentSearch"
                   type="text"
                   placeholder={t.entryForm.manualSearchPlaceholder}
-                  value={form.instrument}
-                  onChange={(e) => update("instrument", e.target.value)}
-                  onKeyDown={(event) => event.stopPropagation()}
-                  className="relative z-20 h-10 text-sm font-mono pointer-events-auto"
+                  value={manualSearchQuery}
+                  onChange={(event) => setManualSearchQuery(event.currentTarget.value)}
+                  className="relative z-20 h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-foreground shadow-sm outline-none pointer-events-auto focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                   autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
                   autoFocus
                 />
                 <p className="mt-1.5 text-[10px] font-mono text-muted-foreground">
@@ -299,7 +320,7 @@ export function InstrumentInput({ onAnalyze, isAnalyzing, availableInstruments =
           <div className="flex items-center gap-3 pt-1">
             <Button
               type="submit"
-              disabled={!form.instrument.trim() || isAnalyzing}
+              disabled={!submitInstrument || isAnalyzing}
               className="gap-2 px-5 font-mono text-sm"
             >
               {isAnalyzing ? (
