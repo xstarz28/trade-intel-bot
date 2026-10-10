@@ -85,7 +85,7 @@ async function findAnalysisForm(targetPage, expectedTimeframe) {
   );
 }
 
-async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5") {
+async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5", useManualEntry = false) {
   // Anchor every interaction to the actual analysis form. A page-global
   // combobox can belong to a different surface and lead to an empty ancestor
   // form, which made the production smoke fail before submitting an analysis.
@@ -97,10 +97,31 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
   await categoryButtons.nth(categoryIndex).click();
 
-  const picker = form.locator('[data-slot="select-trigger"]').first();
-  await picker.click();
-  const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
-  await option.click();
+  let selectedText = "";
+  if (useManualEntry) {
+    const toggle = form.getByTestId("manual-search-toggle");
+    if (!(await toggle.count())) throw new Error("Manual search toggle is missing from the production instrument form");
+    await toggle.click();
+    const manualInput = form.getByTestId("manual-instrument-search");
+    await manualInput.waitFor({ state: "visible", timeout: 10000 });
+    await manualInput.click();
+    await manualInput.pressSequentially(instrument, { delay: 20 });
+    selectedText = await manualInput.inputValue();
+    if (selectedText !== instrument) {
+      throw new Error(`Manual search did not accept typed symbol ${instrument}; actual value: ${selectedText}`);
+    }
+  } else {
+    const picker = form.locator('[data-slot="select-trigger"]').first();
+    await picker.click();
+    const option = targetPage.getByRole("option").filter({ hasText: instrument }).first();
+    await option.click();
+
+    const selectedInstrument = form.locator('[data-slot="select-trigger"]').first();
+    selectedText = await selectedInstrument.innerText().catch(() => "");
+    if (!selectedText.includes(instrument)) {
+      throw new Error(`${instrument} was not selected before analysis. Picker text: ${selectedText}`);
+    }
+  }
 
   const timeframeButton = form.locator("button").filter({ hasText: new RegExp("^" + expectedTimeframe + "$") });
   if (!(await timeframeButton.count()) || !(await timeframeButton.isVisible())) {
@@ -108,12 +129,6 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     throw new Error(`${instrument} production timeframe control missing: ${expectedTimeframe}. Form buttons: ${controls.join(" | ")}`);
   }
   await timeframeButton.click();
-
-  const selectedInstrument = form.locator('[data-slot="select-trigger"]').first();
-  const selectedText = await selectedInstrument.innerText().catch(() => "");
-  if (!selectedText.includes(instrument)) {
-    throw new Error("".concat(instrument, " was not selected before analysis. Picker text: ").concat(selectedText));
-  }
 
   // Submit the authoritative instrument form directly. The visible label is localized,
   // so text-matching a translated button is not a reliable production smoke control.
@@ -194,6 +209,10 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     throw new Error(
       `${instrument} analysis failed visibly: ${diagnostic || "error panel has no readable text"}. Page state:\\n${visibleState.slice(-2500)}`,
     );
+  }
+
+  if (useManualEntry) {
+    await form.getByTestId("manual-search-toggle").click();
   }
 
   const body = await targetPage.locator("body").innerText();
@@ -306,7 +325,7 @@ try {
   evidence.authenticated = true;
 
   // Real production coverage: one liquid instrument per supported market class.
-  await runAnalysis(page, "BTC/USD", "crypto", "M5");
+  await runAnalysis(page, "BTC/USD", "crypto", "M5", true);
   await runAnalysis(page, "XAU/USD", "commodity", "M5");
   await runAnalysis(page, "EUR/USD", "forex", "M5");
   await runAnalysis(page, "AAPL", "stock", "M5");
