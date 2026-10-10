@@ -333,6 +333,16 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         candles: [{ timestamp: now, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 10 }],
         timeframe: "H1", dataFreshness: "realtime",
       },
+      analysisResult: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        timestamp: now,
+        confidence: 75,
+        bias: "Bullish",
+        recommendation: "BUY",
+        breakdown: { trend: 1, indicator: 1, fundamental: 1, sentiment: -1 },
+        fundamentalData: { available: true },
+      } as any,
       universalIntelligence: {
         instrument: "EUR/USD", assetClass: "forex", assembledAt: now,
         forex: {
@@ -357,6 +367,9 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(forexCandidate.cotNet).toBe(4200);
     expect(forexCandidate.dxyTrend).toBe("falling");
     expect(forexCandidate.riskRegime).toBe("risk_on");
+    expect(forexCandidate.fundamentalScore).toBe(1);
+    expect(forexCandidate.positioningScore).toBe(-1);
+    expect(forexCandidate.fundamentalEvidenceAvailable).toBe(true);
 
     const commoditySource = toRadarCandidateSource({
       instrument: "WTI",
