@@ -659,7 +659,9 @@ export function scoreCandidate(
   // Technical structure is one bucket. Individual indicators are deliberately
   // NOT separate alpha votes here, preventing RSI/MACD-style evidence from
   // dominating the opportunity ranking.
-  let technical = directional ? Math.max(0, Math.min(100, c.setupStrength ?? 45)) : 35;
+  let technical = directional
+    ? Math.max(0, Math.min(100, c.setupStrength ?? 45))
+    : Math.max(0, Math.min(55, c.setupStrength ?? (c.setupDirection === "neutral" ? 20 : 10)));
   if (c.mtfAlignment === "ALIGNED_BULLISH" || c.mtfAlignment === "ALIGNED_BEARISH") {
     technical += 10;
   } else if (c.mtfAlignment === "MIXED" || c.mtfAlignment === "COUNTER_TREND") {
@@ -758,7 +760,11 @@ export function scoreCandidate(
     if (opposingNonTechnical > 0) reasons.push(`${opposingNonTechnical} non-technical evidence layer(s) oppose`);
   } else {
     conflicts.push("no confirmed directional setup");
-    score = Math.min(score, 45);
+    // Neutral/ranging markets may be ranked for monitoring, never as a trade
+    // opportunity. Cap the score according to measured context, not a shared
+    // constant that makes all neutral instruments look identical.
+    const neutralQuality = Math.max(0, Math.min(55, c.setupStrength ?? (c.setupDirection === "neutral" ? 20 : 10)));
+    score = Math.min(score, 15 + neutralQuality * 0.5);
   }
 
   if (c.riskReward && c.riskReward > 0) reasons.push(`R:R ${c.riskReward.toFixed(1)}`);
@@ -785,7 +791,7 @@ export function scoreCandidate(
   const analyticalScore = Math.max(0, Math.min(100, Math.round(score)));
   const breadth = directional
     ? Math.min(100, 35 + agreeingNonTechnical * 20 + (c.confluenceCount ?? 0) * 5)
-    : 10;
+    : Math.min(45, 10 + (c.confluenceCount ?? 0) * 6 + Math.round(Math.min(55, Math.max(0, c.setupStrength ?? 0)) * 0.15));
   // Coherence measures agreement among evidence layers that actually exist.
   // Treating missing layers as 0/100 silently turns "unknown" into strong
   // opposition, which previously depressed confidence for every candidate
