@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   scoreCandidate,
   generateRecommendation,
+  isEligible,
   filterCandidatesWithObservedMarketData,
   type CandidateInput,
 } from "./recommendation-engine";
@@ -125,6 +126,32 @@ describe("Phase 154 — recommendation ranking integrity", () => {
     expect(neutralSetup.analyticalScore).toBeLessThanOrEqual(45);
     expect(unclassifiedSetup.analyticalScore).toBeGreaterThan(neutralSetup.analyticalScore);
     expect(neutralSetup.conflicts).toContain("no confirmed directional setup");
+  });
+
+  it("rejects an H1 data snapshot from the SCALPING recommendation list", () => {
+    const result = isEligible(
+      baseCandidate({ marketTimeframe: "H1", freshness: "FRESH", hasLiveData: true }),
+      "SCALPING",
+    );
+    expect(result).toEqual({
+      eligible: false,
+      reason: "scalping requires M1/M5/M15 market data; received H1",
+    });
+  });
+
+  it("does not promote one non-technical evidence layer to WATCHLIST", () => {
+    const result = generateRecommendation([
+      baseCandidate({
+        instrument: "ONE-LAYER/USD",
+        setupDirection: "long",
+        htfBias: "long",
+        fundamentalEvidenceAvailable: false,
+        fundamentalScore: undefined,
+        macroScore: undefined,
+        positioningScore: 1,
+      }),
+    ], "INTRADAY", { maxResults: 10 });
+    expect(result.rankedInstruments[0]?.suitability).toBe("NEUTRAL");
   });
 
   it("preserves measured score differences above the former technical-only ceiling", () => {
