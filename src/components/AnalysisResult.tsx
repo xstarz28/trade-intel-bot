@@ -1900,7 +1900,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {result.fundamentalData.fiftyTwoWeekHigh !== undefined && (
                 <div>
                   <p className="text-[10px] font-mono text-muted-foreground">52W High</p>
-                  <p className="text-sm font-bold font-mono tabular-nums">{formatPrice(result.fundamentalData.fiftyTwoWeekHigh)}</p>
+                  <p className="text-sm font-bold font-mono tabular-nums">{formatPrice(result.fundamentalData.fiftyTwoWeekHigh, result.instrumentType, result.instrument)}</p>
                 </div>
               )}
             </div>
@@ -1984,21 +1984,21 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         : "bg-red-500/5 border-red-500/15 text-red-400/80"
                     )}>
                       <span className="font-medium">{p.side === "buy_side" ? "buy-side" : "sell-side"}</span>
-                      {' '}{formatPrice(p.level)}
+                      {' '}{formatPrice(p.level, result.instrumentType, result.instrument)}
                       <span className="text-muted-foreground/50"> · {p.source} · {p.touches} touch{p.touches > 1 ? "es" : ""}</span>
                     </div>
                   ))}
                   {obs.slice(0, 2).map((o, i) => (
                     <div key={`ob-${i}`} className="rounded border bg-violet-500/5 border-violet-500/15 px-2.5 py-1.5 text-[10px] font-mono text-violet-400/80">
                       <span className="font-medium">order block</span>
-                      {' '}{o.direction} {formatPrice(o.lower)}–{formatPrice(o.upper)}
+                      {' '}{o.direction} {formatPrice(o.lower, result.instrumentType, result.instrument)}–{formatPrice(o.upper, result.instrumentType, result.instrument)}
                       <span className="text-muted-foreground/50"> · {o.status}</span>
                     </div>
                   ))}
                   {fvgs.slice(0, 2).map((f, i) => (
                     <div key={`fvg-${i}`} className="rounded border bg-amber-500/5 border-amber-500/15 px-2.5 py-1.5 text-[10px] font-mono text-amber-400/80">
                       <span className="font-medium">fair value gap</span>
-                      {' '}{f.direction} {formatPrice(f.lower)}–{formatPrice(f.upper)}
+                      {' '}{f.direction} {formatPrice(f.lower, result.instrumentType, result.instrument)}–{formatPrice(f.upper, result.instrumentType, result.instrument)}
                       <span className="text-muted-foreground/50"> · fresh</span>
                     </div>
                   ))}
