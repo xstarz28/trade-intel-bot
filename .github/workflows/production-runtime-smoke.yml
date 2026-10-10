@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   smoke:
-    name: Real production BTC and XAU analysis smoke
+    name: Real production multi-market analysis smoke
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 18
@@ -70,4 +70,4 @@ jobs:
         run: |
           echo "Target: ${XSTARZ_SMOKE_URL}"
           echo "Commit: ${GITHUB_SHA}"
-          echo "The smoke is green only when the deployed commit matches, guest access works, and BTC/USD plus XAU/USD each render a real price snapshot, provider source, data-quality state and provider OHLCV chart."
+          echo "The smoke is green only when the deployed commit matches, guest access works, and BTC/USD, XAU/USD, EUR/USD and AAPL each render a real price snapshot, provider source and data-quality state; the page also renders a provider OHLCV chart."
