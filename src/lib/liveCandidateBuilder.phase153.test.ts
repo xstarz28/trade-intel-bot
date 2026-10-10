@@ -317,10 +317,10 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
   it("maps available universal equity fundamentals into ranking inputs", () => {
     const now = Date.now();
     const candidate = buildCandidateFromSource({
-      instrument: "AAPL", assetClass: "stock",
+      instrument: "AAPL", assetClass: "equity",
       marketData: { instrument: "AAPL", instrumentType: "stock", provider: "fixture", fetchTimestamp: now, price: { price: 250, timestamp: now, source: "fixture" }, candles: [{ timestamp: now, open: 249, high: 251, low: 248, close: 250, volume: 100 }], timeframe: "H1", dataFreshness: "realtime" },
       universalIntelligence: {
-        instrument: "AAPL", assetClass: "stock", assembledAt: now,
+        instrument: "AAPL", assetClass: "equity", assembledAt: now,
         equity: {
           instrument: "AAPL", instrumentType: "stock", assembledAt: now,
           fundamentals: { provider: "fixture", observedAt: now, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, peRatio: 31, revenueGrowth: 0.12, profitMargin: 0.24, marketCap: 3000000000000 },
