@@ -229,11 +229,12 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
           const visible = (await section.count()) > 0;
           return {
             visible,
+            provider: visible ? await section.getAttribute("data-provider-name") : null,
             available: visible && (await section.getAttribute("data-provider-available")) === "true",
           };
         };
         return {
-          coinglass: await status("coinglass"),
+          derivatives: await status("derivatives"),
           defiLlama: await status("defillama"),
           tokenomist: await status("tokenomist"),
         };
