@@ -271,6 +271,34 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.dataCompleteness).toBe("NONE");
   });
 
+
+  it("does not pass mismatched market or analysis identities into radar candidates", () => {
+    const now = Date.now();
+    const radarSource = toRadarCandidateSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "ETH/USD", instrumentType: "crypto", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 3000, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 2990, high: 3010, low: 2980, close: 3000, volume: 1 }],
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "ETH/USD",
+        instrumentType: "crypto",
+        timestamp: now,
+        confidence: 99,
+        bias: "Bullish",
+        recommendation: "BUY",
+      } as any,
+    });
+
+    expect(radarSource.universe.instrument).toBe("BTC/USD");
+    expect(radarSource.snapshot).toBeNull();
+    expect(radarSource.analysisResult).toBeUndefined();
+  });
+
   it("never borrows price or analysis confidence from a different instrument", () => {
     const candidate = buildCandidateFromSource({
       instrument: "BTC/USD",
