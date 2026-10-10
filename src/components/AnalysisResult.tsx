@@ -2171,7 +2171,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           UNKNOWN: "text-muted-foreground",
         };
         return (
-          <Card className="border border-border/50">
+          <Card data-testid="crypto-intelligence-panel" className="border border-border/50">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
                 <h4 className="text-xs font-mono font-semibold text-muted-foreground">
@@ -2338,9 +2338,14 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                             total: {ci.tokenomics.supply.totalSupply.toLocaleString()}
                           </p>
                         )}
+                        {ci.tokenomics.supply.maxSupply !== undefined && (
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            max: {ci.tokenomics.supply.maxSupply.toLocaleString()}
+                          </p>
+                        )}
                         {ci.tokenomics.supply.circulatingPercent !== undefined && (
                           <p className="text-[10px] font-mono text-muted-foreground">
-                            unlocked: {ci.tokenomics.supply.circulatingPercent.toFixed(1)}%
+                            circulating: {ci.tokenomics.supply.circulatingPercent.toFixed(1)}%
                           </p>
                         )}
                       </div>
@@ -2359,6 +2364,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         {ci.tokenomics.unlocks.summary && (
                           <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 leading-relaxed">
                             {ci.tokenomics.unlocks.summary}
+                          </p>
+                        )}
+                        {ci.tokenomics.unlocks.upcomingUsdValue30d !== undefined && (
+                          <p className="text-[10px] font-mono text-muted-foreground">
+                            value: ${ci.tokenomics.unlocks.upcomingUsdValue30d.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </p>
                         )}
                       </div>
