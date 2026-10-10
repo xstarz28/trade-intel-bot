@@ -400,7 +400,7 @@ describe("trade plan", () => {
     expect(result.recommendation).toBe("LONG");
     expect(result.tradePlan).toBeDefined();
     expect(result.tradePlan?.direction).toBe("long");
-    expect(result.tradePlan?.entry).toBe("100");
+    expect(Number(result.tradePlan?.entry)).toBeCloseTo(100, 5);
     expect(parseFloat(result.tradePlan!.stopLoss)).toBeCloseTo(95, 5);
     expect(parseFloat(result.tradePlan!.takeProfit)).toBeCloseTo(110, 5);
     expect(result.tradePlan?.riskReward).toBeCloseTo(2.0, 2);

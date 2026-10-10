@@ -15,6 +15,7 @@ import type { MtfContext, TechnicalData } from "@/lib/data/market-types";
 import type { ClassicPriceActionContext } from "@/lib/data/classic-price-action";
 import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { calculateRiskRewardRatio } from "@/lib/risk/reward-risk";
+import { formatInstrumentPriceValue } from "@/lib/price-format";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 import { resolveStyle } from "@/lib/trading-style";
 import {
@@ -1243,10 +1244,9 @@ function decideTrade(
         : 0;
     const sl = bias === "Bullish" ? stopLevel - buffer : stopLevel + buffer;
     const direction = bias === "Bullish" ? "long" : "short";
-    const decimals = entry < 10 ? 5 : 2;
-    const displayedEntry = entry.toString();
-    const displayedStopLoss = sl.toFixed(decimals);
-    const displayedTakeProfit = tpLevel.toFixed(decimals);
+    const displayedEntry = formatInstrumentPriceValue(entry, input.instrumentType, input.instrument);
+    const displayedStopLoss = formatInstrumentPriceValue(sl, input.instrumentType, input.instrument);
+    const displayedTakeProfit = formatInstrumentPriceValue(tpLevel, input.instrumentType, input.instrument);
     // Validate and calculate against the exact levels rendered in the UI.
     // Absolute distances alone are unsafe: they can make an invalid-side
     // stop or target look like a positive R:R setup.

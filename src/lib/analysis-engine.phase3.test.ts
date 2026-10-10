@@ -400,7 +400,7 @@ describe("HTF liquidity / FVG / OB integration", () => {
     });
     const r = runAnalysis(baseInput({ marketData: makeMarket(100), technicalData: tech }));
     expect(r.recommendation).toBe("LONG");
-    expect(r.tradePlan?.takeProfit).toBe("112.00");
+    expect(Number(r.tradePlan?.takeProfit)).toBeCloseTo(112, 5);
     expect(r.tradePlan?.tpBasis).toContain("D1");
     expect(r.tradePlan?.tpBasis).toContain("HTF target");
     // Trade plan carries explicit MTF context

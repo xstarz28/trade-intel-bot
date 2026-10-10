@@ -193,7 +193,7 @@ describe("liquidity-aware trade location", () => {
       baseInput({ marketData: makeMarket(100), technicalData: makeTech(bullishSmc()) }),
     );
     expect(result.recommendation).toBe("LONG");
-    expect(result.tradePlan?.takeProfit).toBe("108.00");
+    expect(Number(result.tradePlan?.takeProfit)).toBeCloseTo(108, 5);
     expect(result.tradePlan?.tpBasis).toContain("buy-side liquidity");
   });
 

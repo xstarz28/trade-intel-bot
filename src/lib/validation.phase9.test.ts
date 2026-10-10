@@ -575,7 +575,7 @@ describe("Architectural invariants", () => {
 
   it("I5: no synthetic levels — every plan level traces to fixture-provided facts", () => {
     const s = run({ ...bullStruct, events: hawkEvents });
-    expect(s.plan!.entry).toBe("100");           // fixture live price
+    expect(Number(s.plan!.entry)).toBeCloseTo(100, 5); // fixture live price
     expect(parseFloat(s.plan!.sl)).toBe(BULL_LEVELS.support);   // fixture swing low
     expect(parseFloat(s.plan!.tp)).toBe(BULL_LEVELS.resistance); // fixture swing high
   });
