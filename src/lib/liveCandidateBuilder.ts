@@ -175,19 +175,21 @@ function extractAtr(tech: TechnicalData | undefined): number | undefined {
 }
 function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
   if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
+  const higherStructureDirection =
+    tech.htfContext?.structure === "HH/HL" ? "long" :
+    tech.htfContext?.structure === "LH/LL" ? "short" : undefined;
   const structureDirection =
     tech.structure === "HH/HL" ? "long" :
     tech.structure === "LH/LL" ? "short" : undefined;
   const breakoutDirection =
     tech.bosDirection === "bullish" ? "long" :
     tech.bosDirection === "bearish" ? "short" : undefined;
-  // HTF bias remains authoritative, followed by confirmed directional
-  // structure. When structure is ranging, a real BOS can still provide
-  // directional evidence instead of collapsing every breakout to Neutral.
+  // Explicit MTF bias is authoritative, followed by derived higher-timeframe
+  // structure, setup-timeframe structure, and finally a confirmed BOS.
   const direction =
     tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
       ? tech.mtf.htfBias
-      : structureDirection ?? breakoutDirection ?? "neutral";
+      : higherStructureDirection ?? structureDirection ?? breakoutDirection ?? "neutral";
   if (direction === "neutral") return { setupDirection: "neutral", setupStrength: 20, confluenceCount: 0 };
 
   let score = 35, confirmations = 1;
