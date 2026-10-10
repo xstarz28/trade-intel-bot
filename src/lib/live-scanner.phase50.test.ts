@@ -104,10 +104,16 @@ function makeTechData(overrides?: Partial<TechnicalData>): TechnicalData {
 }
 
 function makeSource(overrides?: Partial<LiveCandidateSource>): LiveCandidateSource {
+  const instrument = overrides?.instrument ?? "BTC/USD";
+  const assetClass = overrides?.assetClass ?? "crypto";
+  const instrumentType: MarketData["instrumentType"] =
+    assetClass === "equity" ? "stock" :
+    assetClass === "macro" ? "indices" :
+    assetClass as MarketData["instrumentType"];
   return {
-    instrument: "BTC/USD",
-    assetClass: "crypto",
-    marketData: makeMarketData("BTC/USD", { instrumentType: "crypto" as any }),
+    instrument,
+    assetClass,
+    marketData: makeMarketData(instrument, { instrumentType }),
     technicalData: makeTechData(),
     ...overrides,
   };
