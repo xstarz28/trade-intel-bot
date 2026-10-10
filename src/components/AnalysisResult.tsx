@@ -76,10 +76,22 @@ interface AnalysisResultProps {
   result: AnalysisResultType;
 }
 
-function formatPrice(price: number): string {
-  if (price >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  if (price >= 1) return price.toFixed(4);
-  return price.toFixed(6);
+function formatPrice(price: number, instrumentType: string, instrument: string): string {
+  if (!Number.isFinite(price)) return "—";
+  const magnitude = Math.abs(price);
+  if (instrumentType === "forex") return price.toFixed(/JPY/i.test(instrument) ? 3 : 5);
+  if (instrumentType === "crypto") {
+    if (magnitude >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    if (magnitude >= 1) return price.toFixed(4);
+    if (magnitude >= 0.01) return price.toFixed(6);
+    if (magnitude >= 0.0001) return price.toFixed(8);
+    return price.toFixed(10);
+  }
+  if (magnitude >= 1000) return price.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (magnitude >= 1) return price.toFixed(2);
+  if (magnitude >= 0.01) return price.toFixed(4);
+  if (magnitude >= 0.0001) return price.toFixed(6);
+  return price.toFixed(8);
 }
 
 function formatTime(timestamp: number): string {
@@ -167,7 +179,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             <div className="flex items-center gap-4 mt-3 pt-3 border-t border-border/30">
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-mono text-muted-foreground">Price:</span>
-                <span className="text-sm font-bold font-mono tabular-nums">{formatPrice(priceSnap.price)}</span>
+                <span className="text-sm font-bold font-mono tabular-nums">{formatPrice(priceSnap.price, result.instrumentType, result.instrument)}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Clock className="size-3 text-muted-foreground" />
@@ -202,6 +214,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
       {result.candles && result.candles.length >= 5 && (
         <PriceStructureChart
+          instrument={result.instrument}
+          instrumentType={result.instrumentType}
           candles={result.candles}
           keyLevels={result.keyLevels}
           tradePlan={result.tradePlan}
@@ -397,7 +411,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <div className="text-center">
                   <p className="text-[10px] font-mono text-muted-foreground">SMA(50)</p>
                   <p className="text-sm font-bold font-mono tabular-nums text-foreground">
-                    {formatPrice(tech.sma50)}
+                    {formatPrice(tech.sma50, result.instrumentType, result.instrument)}
                   </p>
                 </div>
               )}
