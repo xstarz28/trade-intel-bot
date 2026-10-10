@@ -933,9 +933,15 @@ function assessMissing(result: AnalysisResult): string[] {
   if (!result.forwardMarketPath) missing.push("Forward market path");
   if (!dataQualityOk(result)) missing.push("Market data quality is degraded");
   if (result.instrumentType === "crypto") {
-    if (!result.derivativesData) missing.push("Crypto derivatives context (CoinGlass)");
-    if (!result.cryptoIntelligenceContext?.defi) missing.push("DeFi fundamentals (TVL, fees, revenue)");
-    if (!result.cryptoIntelligenceContext?.tokenomics) missing.push("Tokenomics data (supply, unlocks)");
+    if (!result.derivativesData && !result.cryptoIntelligenceContext?.derivatives?.available) {
+      missing.push("Crypto derivatives context");
+    }
+    if (!result.cryptoIntelligenceContext?.defi?.available) {
+      missing.push("DeFi fundamentals (TVL, fees, revenue)");
+    }
+    if (!result.cryptoIntelligenceContext?.tokenomics?.available) {
+      missing.push("Tokenomics data (supply, unlocks)");
+    }
   }
   if (result.instrumentType === "forex" && !result.cotContext) {
     missing.push("COT positioning data");
