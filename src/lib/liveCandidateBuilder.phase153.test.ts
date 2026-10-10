@@ -295,6 +295,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       } as any,
     });
     expect(candidate.hasFundamentals).toBe(true);
+    expect(candidate.fundamentalEvidenceAvailable).toBe(true);
     expect(candidate.peRatio).toBe(31);
     expect(candidate.revenueGrowth).toBe(0.12);
     expect(candidate.profitMargin).toBe(0.24);
