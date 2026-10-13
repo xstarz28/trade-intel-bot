@@ -1047,6 +1047,7 @@ export default function Dashboard() {
                 instrument: entry.item!.canonical,
                 instrumentType: entry.type,
                 timeframe,
+                includeHigherTimeframes: false,
               }),
               ACTION_TIMEOUTS_MS.market,
               `Cross-asset ${timeframe} scan`,
