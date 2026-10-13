@@ -371,6 +371,21 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     // fundamental/positioning factors instead of reconstructing them in UI.
     fundamentalScore: ar?.breakdown?.fundamental,
     positioningScore: ar?.breakdown?.sentiment,
+    positioningEvidenceAvailable:
+      (ar?.sentimentData !== undefined && ar.sentimentData.confidence !== "unavailable") ||
+      (ar?.derivativesData !== undefined && (
+        ar.derivativesData.availability.fundingRate ||
+        ar.derivativesData.availability.openInterest ||
+        ar.derivativesData.availability.longShort ||
+        ar.derivativesData.availability.liquidations
+      )) ||
+      (source.derivativesData !== undefined && (
+        source.derivativesData.availability.fundingRate ||
+        source.derivativesData.availability.openInterest ||
+        source.derivativesData.availability.longShort ||
+        source.derivativesData.availability.liquidations
+      )) ||
+      source.cotData?.available === true,
     fundamentalEvidenceAvailable:
       ar?.fundamentalData?.available === true ||
       ar?.macroData?.confidence === "high" ||
