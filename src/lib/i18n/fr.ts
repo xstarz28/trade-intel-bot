@@ -847,6 +847,8 @@ const fr: Translations = {
     scanning: "Analyse des instruments…",
     noOpportunity: "Aucune Opportunité Claire",
     noOpportunityHint: "Les preuves de marché actuelles ne soutiennent pas un classement fort pour cet horizon.",
+    monitoringTitle: "SURVEILLANCE EN DIRECT · ENTRÉE NON QUALIFIÉE",
+    monitoringDescription: "Ces instruments disposent de données de marché observées exploitables, mais n'atteignent pas le seuil actuel de configuration de trading. Surveillez la structure et la confluence ; cette liste n'est pas un signal d'entrée.",
     noSuitableHint: "Aucun instrument adapté trouvé. Connectez des sources de données live pour une analyse en temps réel.",
     expiredInvalidated: "{expired} expirés · {invalidated} invalidés",
     changesSinceScan: "changements depuis le dernier scan",
