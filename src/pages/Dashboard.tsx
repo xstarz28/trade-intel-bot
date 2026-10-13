@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
-import { buildHistoricalContextSummaries } from "@/lib/analysis-history";
+import { buildHistoricalContextSummaries, buildPersistedContextSummaries } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
@@ -833,11 +833,7 @@ export default function Dashboard() {
             dataFlags: result.dataFlags,
             price: result.priceSnapshot?.price,
             dataSource: result.dataSource,
-            sentimentSummary: result.sentimentData?.confidence !== "unavailable" ? `${result.sentimentData?.label} (${result.sentimentData?.articleCount ?? 0} articles)` : undefined,
-            sentimentScore: result.sentimentData?.confidence !== "unavailable" ? result.sentimentData?.averageScore : undefined,
-            macroSummary: result.macroData?.confidence !== "unavailable" ? result.macroData?.summary : undefined,
-            derivativesSummary: result.derivativesData?.confidence !== "unavailable" ? result.derivativesData?.interpretation : undefined,
-            calendarSummary: result.calendarData?.confidence !== "unavailable" ? `Macro risk: ${result.calendarData?.macroRisk.level} — ${result.calendarData?.macroRisk.explanation}` : undefined,
+            ...buildPersistedContextSummaries(result),
           });
         } catch {
           // Save failed (guest user) — analysis still shows in session
