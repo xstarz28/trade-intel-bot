@@ -36,6 +36,8 @@ export interface OkxInstrumentMetadata {
   settleCcy?: string;
   quoteCcy?: string;
   baseCcy?: string;
+  /** Underlying BASE-QUOTE pair supplied by OKX for derivatives. */
+  uly?: string;
   lotSz?: number;
   minSz?: number;
   tickSz?: number;
@@ -136,6 +138,7 @@ export function parseOkxResponse(json: unknown): OkxParsedResponse {
       ...(typeof r.settleCcy === "string" && r.settleCcy ? { settleCcy: r.settleCcy } : {}),
       ...(typeof r.quoteCcy === "string" && r.quoteCcy ? { quoteCcy: r.quoteCcy } : {}),
       ...(typeof r.baseCcy === "string" && r.baseCcy ? { baseCcy: r.baseCcy } : {}),
+      ...(typeof r.uly === "string" && r.uly ? { uly: r.uly } : {}),
       ...(toPositiveNumber(r.lotSz) !== undefined ? { lotSz: toPositiveNumber(r.lotSz) } : {}),
       ...(toPositiveNumber(r.minSz) !== undefined ? { minSz: toPositiveNumber(r.minSz) } : {}),
       ...(toPositiveNumber(r.tickSz) !== undefined ? { tickSz: toPositiveNumber(r.tickSz) } : {}),

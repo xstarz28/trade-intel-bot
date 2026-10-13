@@ -51,7 +51,7 @@ const en: Translations = {
   dashboard: {
     terminalReady: "Terminal Ready",
     terminalDescription:
-      "Select an instrument and run analysis — structure, liquidity, positioning and fundamental are assembled automatically from the backend.",
+      "Select an instrument and run analysis to view market structure, liquidity, positioning, and available fundamental data.",
     factors: "factors",
     timeframes: "timeframes",
     instruments: "instruments",

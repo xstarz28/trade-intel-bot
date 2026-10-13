@@ -19,14 +19,14 @@ import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { ALL_SCAN_HORIZONS, normalizeScanTimeframe, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { parseDeFiLlamaResult } from "@/lib/data/crypto/defillama-adapter";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import { toRadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
-import { LogOut, Terminal, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
+import { LogOut, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { getAllInstruments } from "@/lib/data/universal/instruments";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
@@ -151,6 +151,41 @@ function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   ]);
 }
 
+function mergeLiveSourcesByTimeframe(
+  ...collections: Iterable<LiveCandidateSource>[]
+): LiveCandidateSource[] {
+  const byIdentity = new Map<string, LiveCandidateSource>();
+
+  for (const source of collections.flatMap((collection) => Array.from(collection))) {
+    const timeframe = (
+      source.marketData?.timeframe ??
+      source.analysisResult?.timeframe ??
+      "UNKNOWN"
+    ).trim().toUpperCase().replace(/\s+/g, "");
+    const key = `${source.instrument.trim().toUpperCase()}|${timeframe}`;
+    const previous = byIdentity.get(key);
+    if (!previous) {
+      byIdentity.set(key, source);
+      continue;
+    }
+
+    byIdentity.set(key, {
+      ...previous,
+      ...source,
+      analysisResult: source.analysisResult ?? previous.analysisResult,
+      universalIntelligence: source.universalIntelligence ?? previous.universalIntelligence,
+      derivativesData: source.derivativesData ?? previous.derivativesData,
+      calendarData: source.calendarData ?? previous.calendarData,
+      treasuryData: source.treasuryData ?? previous.treasuryData,
+      cotData: source.cotData ?? previous.cotData,
+      eiaData: source.eiaData ?? previous.eiaData,
+      technicalData: source.technicalData ?? previous.technicalData,
+    });
+  }
+
+  return Array.from(byIdentity.values());
+}
+
 function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
   return [
     { label: t.dashboard.detectingInstrument, status: "pending" },
@@ -196,83 +231,18 @@ export default function Dashboard() {
   const discoveryCursorRef = useRef(0);
   const crossAssetDiscoveryCursorRef = useRef({ forex: 0, equity: 0, commodity: 0 });
   const crossAssetScanLastAtRef = useRef(0);
+  const initialScanStartedRef = useRef(false);
+  const liveRecommendationSourceRef = useRef(new Map<string, LiveCandidateSource>());
   const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
   const [discoveredCryptoInstruments, setDiscoveredCryptoInstruments] = useState<DiscoveredCryptoInstrument[]>([]);
+  const [marketDiscoveryMessage, setMarketDiscoveryMessage] = useState<string | null>(null);
 
   // Phase 156 — provider-native universal discovery.
   // Discovery metadata alone is NEVER considered live evidence.
   const discoverOkxInstruments = useAction(api.okx.discoverOkxInstruments);
   const acquireOkxNativeLiveDataBatch = useAction(api.okx.acquireOkxNativeLiveDataBatch);
 
-  useEffect(() => {
-    let cancelled = false;
 
-    (async () => {
-      try {
-        const discovery = await discoverOkxInstruments();
-        if (cancelled || !discovery.success || discovery.instruments.length === 0) return;
-
-        setDiscoveredCryptoInstruments(discovery.instruments.map((item) => ({ instId: item.instId, instType: item.instType })));
-
-        const prioritized = prioritizeCryptoDiscovery(discovery.instruments);
-        const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-          prioritized.length > 0 ? prioritized : discovery.instruments,
-          discoveryCursorRef.current,
-          20,
-        );
-        discoveryCursorRef.current = nextCursor;
-
-        const nativeInputs = batch.map((item) => ({
-          // Keep the exact OKX instId. Never canonicalize/substitute it.
-          instrument: item.instId,
-          providerInstrumentId: item.instId,
-          assetClass: "crypto" as const,
-        }));
-
-        const acquired = await acquireOkxNativeLiveDataBatch({
-          instruments: nativeInputs,
-          concurrency: 5,
-        });
-
-        if (cancelled) return;
-
-        const { providerNativeAcquisitionToMarketData } =
-          await import("@/lib/market-radar/provider-registry");
-
-        for (const result of acquired) {
-          if (!result.success) continue;
-
-          const marketData = providerNativeAcquisitionToMarketData(result);
-          if (!marketData) continue;
-
-          liveSourceRef.current.set(result.instrument, {
-            instrument: result.instrument,
-            assetClass: result.assetClass,
-            providerNative: {
-              provider: result.provider,
-              providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-            },
-            marketData,
-          });
-        }
-
-        setLiveSourcesVersion((version) => version + 1);
-
-        setScanResult(
-          scanInstruments(
-            Array.from(liveSourceRef.current.values()),
-            { horizons: ALL_SCAN_HORIZONS, maxResults: 100 },
-          ),
-        );
-      } catch {
-        // Discovery/acquisition failure is non-fatal. Manual analysis remains available.
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch]);
 
 
   // Convex persistence
@@ -401,9 +371,23 @@ export default function Dashboard() {
           // genuinely realtime. Do NOT let a fulfilled secondary provider
           // overwrite it afterward. Delayed/stale native data is never promoted
           // merely because its provider is preferred.
-          const nativeLive =
+          const requestedNativeTimeframe = normalizeScanTimeframe(input.timeframe);
+          const cachedNativeLive =
             input.instrumentType === "crypto"
-              ? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
+              ? (
+                  requestedNativeTimeframe
+                    ? liveRecommendationSourceRef.current.get(
+                        `${input.instrument}|${requestedNativeTimeframe}`,
+                      )
+                    : undefined
+                ) ?? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
+              : undefined;
+          // A fresh H1 quote is not a substitute for an M5 or H4 analysis.
+          const nativeLive =
+            requestedNativeTimeframe &&
+            cachedNativeLive?.marketData &&
+            normalizeScanTimeframe(cachedNativeLive.marketData.timeframe) === requestedNativeTimeframe
+              ? cachedNativeLive
               : undefined;
           const nativeIsRealtime =
             nativeLive?.marketData?.dataFreshness === "realtime";
@@ -419,8 +403,7 @@ export default function Dashboard() {
           } else if (marketResult.status === "fulfilled") {
             marketDataResult = marketResult.value as MarketDataResult;
           } else if (nativeLive?.marketData) {
-            // Primary market data failed: a verified native snapshot is still a
-            // valid fallback, even when its freshness is explicitly disclosed.
+            // Only use a verified snapshot when its actual candle interval matches the request.
             marketDataResult = {
               success: true,
               data: nativeLive.marketData,
@@ -431,7 +414,7 @@ export default function Dashboard() {
           }
 
           if (!marketDataResult.success || !marketDataResult.data) {
-            const liveFallback = liveSourceRef.current.get(input.instrument);
+            const liveFallback = nativeLive;
             if (liveFallback?.marketData) {
               marketDataResult = {
                 success: true,
@@ -894,7 +877,10 @@ export default function Dashboard() {
   }, [discoveredCryptoInstruments]);
 
   const liveSources: LiveCandidateSource[] = useMemo(
-    () => Array.from(liveSourceRef.current.values()),
+    () => mergeLiveSourcesByTimeframe(
+      liveSourceRef.current.values(),
+      liveRecommendationSourceRef.current.values(),
+    ),
     [currentResult, liveSourcesVersion],
   );
 
@@ -905,45 +891,119 @@ export default function Dashboard() {
   const handleScanRefresh = useCallback(async () => {
     setIsScanning(true);
     try {
-      const discovery = await discoverOkxInstruments();
-      if (discovery.success && discovery.instruments.length > 0) {
-        setDiscoveredCryptoInstruments(discovery.instruments.map((item) => ({ instId: item.instId, instType: item.instType })));
-        const prioritized = prioritizeCryptoDiscovery(discovery.instruments);
-        const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-          prioritized.length > 0 ? prioritized : discovery.instruments,
-          discoveryCursorRef.current,
-          20,
-        );
-        discoveryCursorRef.current = nextCursor;
-        const acquired = await acquireOkxNativeLiveDataBatch({
-          instruments: batch.map((item) => ({
-            instrument: item.instId,
-            providerInstrumentId: item.instId,
-            assetClass: "crypto" as const,
-          })),
-          concurrency: 5,
-        });
-        const { providerNativeAcquisitionToMarketData } =
-          await import("@/lib/market-radar/provider-registry");
-        for (const result of acquired) {
-          if (!result.success) continue;
-          const marketData = providerNativeAcquisitionToMarketData(result);
-          if (!marketData) continue;
-          liveSourceRef.current.set(result.instrument, {
-            instrument: result.instrument,
-            assetClass: result.assetClass,
-            providerNative: {
-              provider: result.provider,
-              providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-            },
-            marketData,
-          });
+      // Metadata discovery is separate from verified live candle acquisition.
+      // Failures here must not block independent FX/equity/commodity acquisition.
+      try {
+        const discovery = await discoverOkxInstruments();
+        const discovered = discovery.instruments ?? [];
+
+        if (discovery.success) {
+          setDiscoveredCryptoInstruments(
+            discovered.map((item) => ({ instId: item.instId, instType: item.instType })),
+          );
+
+          const types = new Set(discovered.map((item) => item.instType.toUpperCase()));
+          const missingTypes = [
+            ...(!types.has("SWAP") ? ["perpetual/swap"] : []),
+            ...(!types.has("FUTURES") ? ["dated futures"] : []),
+          ];
+          setMarketDiscoveryMessage(
+            discovered.length === 0
+              ? "OKX returned no active crypto instruments in the latest discovery. Refresh to retry."
+              : missingTypes.length > 0
+                ? `OKX returned no active ${missingTypes.join(" or ")} contracts in the latest discovery. Refresh to retry.`
+                : null,
+          );
+
+          if (discovered.length > 0) {
+            try {
+              const prioritized = prioritizeCryptoDiscovery(discovered);
+              const { batch, nextCursor } = selectRotatingDiscoveryBatch(
+                prioritized.length > 0 ? prioritized : discovered,
+                discoveryCursorRef.current,
+                8,
+              );
+              discoveryCursorRef.current = nextCursor;
+
+              // Acquire distinct real candles for scalping, intraday, and swing.
+              const nativeInputs = batch.flatMap((item) =>
+                (["M5", "H1", "H4"] as const).map((timeframe) => ({
+                  instrument: item.instId,
+                  providerInstrumentId: item.instId,
+                  assetClass: "crypto" as const,
+                  timeframe,
+                })),
+              );
+              const acquired = await acquireOkxNativeLiveDataBatch({
+                instruments: nativeInputs,
+                concurrency: 5,
+              });
+              const { providerNativeAcquisitionToMarketData } =
+                await import("@/lib/market-radar/provider-registry");
+
+              for (const result of acquired) {
+                if (!result.success) continue;
+                const marketData = providerNativeAcquisitionToMarketData(result);
+                if (!marketData) continue;
+
+                const timeframe = (marketData.timeframe ?? result.timeframe ?? "H1")
+                  .trim().toUpperCase().replace(/\s+/g, "");
+                const source: LiveCandidateSource = {
+                  instrument: result.instrument,
+                  assetClass: result.assetClass,
+                  providerNative: {
+                    provider: result.provider,
+                    providerInstrumentId: result.providerInstrumentId ?? result.instrument,
+                  },
+                  marketData,
+                };
+                const key = `${result.instrument}|${timeframe}`;
+                const previousRecommendationSource = liveRecommendationSourceRef.current.get(key);
+                liveRecommendationSourceRef.current.set(key, {
+                  ...previousRecommendationSource,
+                  ...source,
+                  analysisResult: previousRecommendationSource?.analysisResult,
+                  universalIntelligence: previousRecommendationSource?.universalIntelligence,
+                  derivativesData: previousRecommendationSource?.derivativesData,
+                  calendarData: previousRecommendationSource?.calendarData,
+                  treasuryData: previousRecommendationSource?.treasuryData,
+                  cotData: previousRecommendationSource?.cotData,
+                  eiaData: previousRecommendationSource?.eiaData,
+                });
+
+                // The exact-symbol lookup used during manual analysis defaults to H1.
+                if (timeframe === "H1" || !liveSourceRef.current.has(result.instrument)) {
+                  const existing = liveSourceRef.current.get(result.instrument);
+                  liveSourceRef.current.set(result.instrument, {
+                    ...existing,
+                    ...source,
+                    analysisResult: existing?.analysisResult,
+                    universalIntelligence: existing?.universalIntelligence,
+                    derivativesData: existing?.derivativesData,
+                    calendarData: existing?.calendarData,
+                    treasuryData: existing?.treasuryData,
+                    cotData: existing?.cotData,
+                    eiaData: existing?.eiaData,
+                  });
+                }
+              }
+            } catch {
+              setMarketDiscoveryMessage((current) =>
+                current ?? "OKX contracts were found, but live candles could not be loaded. Refresh to retry.",
+              );
+            }
+          }
+        } else {
+          setMarketDiscoveryMessage(
+            discovery.error ?? "OKX instrument discovery is unavailable. Refresh to retry.",
+          );
         }
+      } catch {
+        setMarketDiscoveryMessage("OKX market discovery is temporarily unavailable. Refresh to retry.");
       }
 
-      // User-triggered only; one FX + one equity + one commodity request per minute.
-      // With primary plus one higher timeframe each, this stays below the
-      // observed 8-credit/minute Twelve Data budget and rotates through the catalog.
+      // Three rotating assets × two candle intervals stays within the existing
+      // Twelve Data request budget while supporting fresh scalping/intraday data.
       if (Date.now() - crossAssetScanLastAtRef.current >= 60_000) {
         crossAssetScanLastAtRef.current = Date.now();
         const catalog = getAllInstruments();
@@ -975,35 +1035,77 @@ export default function Dashboard() {
           return { ...group, item: chosen };
         }).filter((entry) => !!entry.item);
 
-        await Promise.allSettled(selected.map(async (entry) => {
-          const result = await withActionTimeout(
-            fetchMarketData({
+        await Promise.allSettled(selected.flatMap((entry) =>
+          (["M5", "H1"] as const).map(async (timeframe) => {
+            const result = await withActionTimeout(
+              fetchMarketData({
+                instrument: entry.item!.canonical,
+                instrumentType: entry.type,
+                timeframe,
+              }),
+              ACTION_TIMEOUTS_MS.market,
+              `Cross-asset ${timeframe} scan`,
+            );
+            if (!result?.success || !result.data) return;
+
+            const source: LiveCandidateSource = {
               instrument: entry.item!.canonical,
-              instrumentType: entry.type,
-              timeframe: "H1",
-            }),
-            ACTION_TIMEOUTS_MS.market,
-            "Cross-asset H1 scan",
-          );
-          if (!result?.success || !result.data) return;
-          liveSourceRef.current.set(entry.item!.canonical, {
-            instrument: entry.item!.canonical,
-            assetClass: entry.assetClass,
-            marketData: result.data,
-            technicalData: result.technical,
-          });
-        }));
+              assetClass: entry.assetClass,
+              marketData: result.data,
+              technicalData: result.technical,
+            };
+            const normalizedTimeframe = (result.data.timeframe ?? timeframe)
+              .trim().toUpperCase().replace(/\s+/g, "");
+            const key = `${entry.item!.canonical}|${normalizedTimeframe}`;
+            const previousSource = liveRecommendationSourceRef.current.get(key);
+            liveRecommendationSourceRef.current.set(key, {
+              ...previousSource,
+              ...source,
+              analysisResult: previousSource?.analysisResult,
+              universalIntelligence: previousSource?.universalIntelligence,
+              derivativesData: previousSource?.derivativesData,
+              calendarData: previousSource?.calendarData,
+              treasuryData: previousSource?.treasuryData,
+              cotData: previousSource?.cotData,
+              eiaData: previousSource?.eiaData,
+            });
+
+            if (normalizedTimeframe === "H1") {
+              const existing = liveSourceRef.current.get(entry.item!.canonical);
+              liveSourceRef.current.set(entry.item!.canonical, {
+                ...existing,
+                ...source,
+                analysisResult: existing?.analysisResult,
+                universalIntelligence: existing?.universalIntelligence,
+                derivativesData: existing?.derivativesData,
+                calendarData: existing?.calendarData,
+                treasuryData: existing?.treasuryData,
+                cotData: existing?.cotData,
+                eiaData: existing?.eiaData,
+              });
+            }
+          }),
+        ));
       }
 
+      const sources = mergeLiveSourcesByTimeframe(
+        liveSourceRef.current.values(),
+        liveRecommendationSourceRef.current.values(),
+      );
       setLiveSourcesVersion((version) => version + 1);
-      setScanResult(scanInstruments(
-        Array.from(liveSourceRef.current.values()),
-        { horizons: ALL_SCAN_HORIZONS, maxResults: 100 },
-      ));
+      setScanResult(
+        scanInstruments(sources, { horizons: ALL_SCAN_HORIZONS, maxResults: 100 }),
+      );
     } finally {
       setIsScanning(false);
     }
   }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchMarketData]);
+
+  useEffect(() => {
+    if (initialScanStartedRef.current) return;
+    initialScanStartedRef.current = true;
+    void handleScanRefresh();
+  }, [handleScanRefresh]);
 
   // Phase 51 — Radar state for autonomous scanning
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
@@ -1024,7 +1126,9 @@ export default function Dashboard() {
     if (liveSources.length === 0) return;
     // Map the verified runtime snapshots and all independently acquired context.
     // Keep actual structure authoritative; never infer it from the final analysis bias.
-    const radarSources = liveSources.map(toRadarCandidateSource);
+    const latestPerInstrument = new Map<string, LiveCandidateSource>();
+    for (const source of liveSources) latestPerInstrument.set(source.instrument, source);
+    const radarSources = Array.from(latestPerInstrument.values()).map(toRadarCandidateSource);
 
     const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
     const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);
@@ -1084,7 +1188,7 @@ export default function Dashboard() {
                   className="h-7 text-[10px] font-mono gap-1"
                   onClick={() => setActiveTab("analysis")}
                 >
-                  <Terminal className="size-3" />
+                  <BarChart3 className="size-3" />
                   {t.nav.analysis}
                 </Button>
                 <Button
@@ -1123,7 +1227,7 @@ export default function Dashboard() {
                   className="h-7 text-[10px] font-mono gap-1"
                   onClick={() => setInvestorTab("analysis")}
                 >
-                  <Terminal className="size-3" />
+                  <BarChart3 className="size-3" />
                   {t.nav.analysis}
                 </Button>
               </>
@@ -1177,7 +1281,12 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left — Input + History */}
           <div className="lg:col-span-4 space-y-4">
-            <InstrumentInput onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} availableInstruments={availableInstruments} />
+            <InstrumentInput
+              onAnalyze={handleAnalyze}
+              isAnalyzing={isAnalyzing}
+              availableInstruments={availableInstruments}
+              marketDiscoveryMessage={marketDiscoveryMessage}
+            />
             <RiskSizingControl value={riskSizingInputs} onChange={setRiskSizingInputs} />
 
             <div className="hidden lg:block">
@@ -1205,7 +1314,7 @@ export default function Dashboard() {
                 isScanning={isScanning}
                 scanResult={scanResult ?? undefined}
                 radarResult={radarResult ?? undefined}
-                onRefresh={liveSources.length > 0 ? handleScanRefresh : undefined}
+                onRefresh={handleScanRefresh}
               />
             </div>
           </div>
@@ -1297,29 +1406,17 @@ export default function Dashboard() {
                   animate={{ opacity: 1 }}
                   className="flex flex-col items-center justify-center py-24 text-center"
                 >
-                  <div className="flex size-16 items-center justify-center rounded-2xl bg-muted/50 mb-4">
-                    <Terminal className="size-7 text-muted-foreground/40" />
+                  <div data-brand-logo aria-label="XSTARZG" className="flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-[#0b0b0d] border border-border/60 mb-4">
+                    <svg viewBox="0 0 512 512" role="img" aria-label="XSTARZG" className="size-16" xmlns="http://www.w3.org/2000/svg">
+                      <rect width="512" height="512" rx="112" fill="#0b0b0d" />
+                      <path d="M256 72 301 178 414 98 334 211 440 256 334 301 414 414 301 334 256 440 211 334 98 414 178 301 72 256 178 211 98 98 211 178Z" fill="#f5f5f5" />
+                      <circle cx="256" cy="256" r="54" fill="#0b0b0d" />
+                      <circle cx="256" cy="256" r="20" fill="#f5f5f5" />
+                    </svg>
                   </div>
-                  <h3 className="text-base font-semibold text-foreground font-mono">
-                    {t.dashboard.terminalReady}
-                  </h3>
                   <p className="mt-1.5 text-sm text-muted-foreground max-w-sm font-mono">
                     {t.dashboard.terminalDescription}
                   </p>
-                  <div className="mt-6 grid grid-cols-3 gap-3 max-w-sm">
-                    <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
-                      <p className="text-lg font-bold text-primary font-mono">4</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{t.dashboard.factors}</p>
-                    </div>
-                    <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
-                      <p className="text-lg font-bold text-primary font-mono">5</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{t.dashboard.timeframes}</p>
-                    </div>
-                    <div className="rounded-lg bg-muted/30 border border-border/50 px-3 py-2.5 text-center">
-                      <p className="text-lg font-bold text-primary font-mono">∞</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 font-mono">{t.dashboard.instruments}</p>
-                    </div>
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
