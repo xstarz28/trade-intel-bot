@@ -729,15 +729,17 @@ export function scoreCandidate(
     conflicts.push("positioning evidence opposes the technical direction");
   }
 
-  const execution =
-    c.spreadBps === undefined ? 55 :
-    c.spreadBps <= 5 ? 95 :
-    c.spreadBps <= 15 ? 80 :
-    c.spreadBps <= 25 ? 60 : 35;
+  // Unknown execution spread / R:R are missing measurements, not neutral
+  // evidence. Do not inject shared default scores that flatten rankings.
+  const execution = c.spreadBps === undefined || !Number.isFinite(c.spreadBps)
+    ? undefined
+    : c.spreadBps <= 5 ? 95
+    : c.spreadBps <= 15 ? 80
+    : c.spreadBps <= 25 ? 60 : 35;
 
-  const rr = c.riskReward && c.riskReward > 0
+  const rr = c.riskReward !== undefined && Number.isFinite(c.riskReward) && c.riskReward > 0
     ? Math.max(20, Math.min(100, 35 + c.riskReward * 25))
-    : 35;
+    : undefined;
 
   const structureWeight = profile.htfStructure + profile.mtfAlignment + profile.marketRegime + profile.volatility;
   const technicalWeight = structureWeight;
@@ -751,14 +753,19 @@ export function scoreCandidate(
   // gates; available evidence receives its full intended weight.
   let weighted =
     technical * technicalWeight +
-    execution * liquidityWeight +
-    dq.score * profile.dataQuality +
-    rr * profile.riskReward;
-  let totalWeight =
-    technicalWeight +
-    liquidityWeight +
-    profile.dataQuality +
-    profile.riskReward;
+    dq.score * profile.dataQuality;
+  let totalWeight = technicalWeight + profile.dataQuality;
+
+  // Only measured execution and a valid risk/reward plan participate. An
+  // absent spread/plan must not be scored as if measured at 55/35.
+  if (execution !== undefined) {
+    weighted += execution * liquidityWeight;
+    totalWeight += liquidityWeight;
+  }
+  if (rr !== undefined) {
+    weighted += rr * profile.riskReward;
+    totalWeight += profile.riskReward;
+  }
 
   if (hasFundamentalEvidence) {
     weighted += fundamental * profile.fundamentals;
