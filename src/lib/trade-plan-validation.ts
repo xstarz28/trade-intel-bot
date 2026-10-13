@@ -46,6 +46,16 @@ export function validateTradePlanAgainstMarket(
 
   if (!latest) return { valid: false, reason: "missing_market_candles" };
 
+  // Reject a setup if the newest completed candle has already traded
+  // through its target or stop, even if it later closed back inside the range.
+  // Otherwise the chart can paint an entry after the opportunity has passed.
+  const targetOrStopAlreadyCrossed = plan.direction === "long"
+    ? latest.high >= target || latest.low <= stop
+    : latest.low <= target || latest.high >= stop;
+  if (targetOrStopAlreadyCrossed) {
+    return { valid: false, reason: "target_or_stop_already_crossed" };
+  }
+
   const candleRange = Math.max(0, latest.high - latest.low);
   const atrTolerance = Number.isFinite(atr14) && (atr14 ?? 0) > 0 ? (atr14 as number) * 0.75 : 0;
   // A small price-relative floor handles instruments whose ATR feed is
@@ -53,16 +63,6 @@ export function validateTradePlanAgainstMarket(
   const tolerance = Math.max(atrTolerance, candleRange * 1.5, entry * 0.0002);
   if (Math.abs(entry - latest.close) > tolerance) {
     return { valid: false, reason: "entry_detached_from_latest_price" };
-  }
-
-  // Never show a fresh entry after the current market has already passed its
-  // target or invalidation. The candle close is the latest confirmed price;
-  // this avoids treating an intrabar wick as a confirmed exit by itself.
-  const targetOrStopAlreadyCrossed = plan.direction === "long"
-    ? latest.close >= target || latest.close <= stop
-    : latest.close <= target || latest.close >= stop;
-  if (targetOrStopAlreadyCrossed) {
-    return { valid: false, reason: "target_or_stop_already_crossed" };
   }
 
   return { valid: true };
