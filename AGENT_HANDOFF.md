@@ -50,3 +50,12 @@
 - If a candidate has a known market timeframe, only M1/M5/M15 can enter scalping ranking; H1/H4/D1/W1 cannot be misrepresented as scalp data.
 - Added regression tests for delayed/stale rejection, allowed scalp timeframes, and H1 rejection.
 - Validation is pending CI; no production deployment is implied.
+
+
+## Follow-up scoring integrity fix — unavailable evidence defaults
+
+- The analysis breakdown always contains numeric factor defaults, including zero. The recommendation layer previously treated a defined zero fundamental/positioning score as if the evidence provider had returned a real neutral measurement.
+- Added explicit `positioningEvidenceAvailable` and now include fundamental/positioning values in scoring, coherence, directional agreement/opposition, and non-technical evidence counts only when the corresponding evidence layer is actually available. A real measured zero remains neutral evidence; a missing provider is missing evidence.
+- `liveCandidateBuilder` now marks positioning availability only when sentiment, derivatives, or COT measurements are available. It also passes the actual provider market timeframe into each candidate.
+- Scalping eligibility now rejects missing timeframe metadata as well as H1/H4/D1/W1, and accepts only verified M1/M5/M15 candidates. Regression tests cover missing timeframe and default-zero evidence.
+- Current CI run for the latest branch commit is pending; no test pass, merge, or production deployment is claimed. Convex schema/storage was not expanded for these scoring changes.
