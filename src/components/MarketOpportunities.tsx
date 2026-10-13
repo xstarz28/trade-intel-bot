@@ -491,10 +491,12 @@ export function MarketOpportunities({
 
   const monitoringRanked = useMemo(() => {
     if (tab !== "trading" || filteredRanked.length > 0) return [];
+    // These candidates passed provider/eligibility checks and have a scored
+    // observation, but did not qualify for entry. Keep them visible for review
+    // even when freshness/completeness is degraded; card badges expose those
+    // limits and the panel explicitly says this is not an entry signal.
     return baseFilteredRanked
-      .filter((item) => item.suitability === "NEUTRAL")
-      .filter((item) => item.dataCompleteness !== "NONE")
-      .filter((item) => item.freshness === "FRESH" || item.freshness === "DELAYED")
+      .filter((item) => item.suitability === "NEUTRAL" || item.suitability === "INSUFFICIENT_DATA")
       .slice(0, 5);
   }, [baseFilteredRanked, filteredRanked.length, tab]);
 
