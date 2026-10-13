@@ -117,10 +117,11 @@ export function selectCandidatesForHorizon(
       const known = knownTimeframes.indexOf(tf);
       return 100 + (known >= 0 ? known : knownTimeframes.length);
     };
-    const diff = rank(aTf) - rank(bTf);
-    if (diff !== 0) return diff;
+    // Eligibility precedes timeframe preference: a stale preferred M5 feed must not shadow fresh M1/M15 for scalping.
     const freshnessRank = (value: CandidateInput["freshness"]) => value === "FRESH" ? 0 : value === "DELAYED" ? 1 : value === "STALE" ? 2 : 3;
     if (freshnessRank(a.freshness) !== freshnessRank(b.freshness)) return freshnessRank(a.freshness) - freshnessRank(b.freshness);
+    const diff = rank(aTf) - rank(bTf);
+    if (diff !== 0) return diff;
     return Number(b.hasLiveData) - Number(a.hasLiveData);
   })[0]).filter(Boolean);
 }
