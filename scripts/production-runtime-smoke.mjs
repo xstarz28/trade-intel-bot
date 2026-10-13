@@ -124,6 +124,19 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     if (selectedText !== instrument) {
       throw new Error(`Manual search did not accept typed symbol ${instrument}; actual value: ${selectedText}`);
     }
+    // Type and SELECT the actual catalog suggestion, not just the search text.
+    // This verifies the manual ticker is resolved to its canonical asset class.
+    const suggestion = form.getByRole("option").filter({ hasText: instrument }).first();
+    await suggestion.waitFor({ state: "visible", timeout: 10000 });
+    const suggestionText = await suggestion.innerText();
+    if (!suggestionText.includes(instrument)) {
+      throw new Error(`Manual search returned a mismatched suggestion for ${instrument}: ${suggestionText}`);
+    }
+    await suggestion.click();
+    const selectedCanonicalSymbol = await manualInput.inputValue();
+    if (selectedCanonicalSymbol !== instrument) {
+      throw new Error(`Manual search selection changed the canonical symbol unexpectedly: ${selectedCanonicalSymbol}`);
+    }
   } else {
     const picker = form.locator('[data-slot="select-trigger"]').first();
     await picker.click();
@@ -332,6 +345,23 @@ try {
   const guest = page.getByRole("button", { name: /continue without an account/i });
   if (!(await guest.count())) throw new Error("Auth page did not expose guest sign-in");
   await guest.click();
+
+  const riskSizingHeading = page.getByText("$ risk-sizing", { exact: true });
+  const equityInput = page.getByPlaceholder("1000", { exact: true });
+  const riskPercentInput = page.getByPlaceholder("1.0", { exact: true });
+  const accountCurrencyInput = page.getByPlaceholder("USD", { exact: true });
+  evidence.productSurfaces.riskSizing =
+    (await riskSizingHeading.count()) > 0 &&
+    (await equityInput.count()) > 0 &&
+    (await riskPercentInput.count()) > 0 &&
+    (await accountCurrencyInput.count()) > 0 &&
+    await riskSizingHeading.isVisible() &&
+    await equityInput.isVisible() &&
+    await riskPercentInput.isVisible() &&
+    await accountCurrencyInput.isVisible();
+  if (!evidence.productSurfaces.riskSizing) {
+    throw new Error("Risk-sizing surface did not render all three user-owned account inputs.");
+  }
 
   const cryptoCategory = page.getByRole("button", { name: "CRYPTO", exact: true });
   await cryptoCategory.waitFor({ state: "visible", timeout: 30000 });
