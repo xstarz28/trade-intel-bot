@@ -135,7 +135,7 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
     expect(result.tradePlan).toBeUndefined();
   });
 
-  it("rejects extreme R:R while preserving its market-derived chart projection", () => {
+  it("rejects extreme R:R and suppresses a projection after its levels are already consumed", () => {
     const price = 100;
     const result = runAnalysis(input({
       instrument: "BTC-USDT-SWAP",
@@ -161,10 +161,9 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
 
     expect(result.recommendation).toBe("NO_TRADE");
     expect(result.noTradeReasons.join(" ")).toContain("exceeds the 10R sanity ceiling");
-    // Rejected levels remain visible as a projection so the user can see
-    // the exact reason for NO_TRADE; they are never an executable trade plan.
-    expect(result.projectedTradePlan).toBeDefined();
-    expect(result.projectedTradePlan?.riskReward).toBeGreaterThan(10);
+    // The latest candle has already traversed the projected levels. Even
+    // rejected levels must not survive as a stale chart projection.
+    expect(result.projectedTradePlan).toBeUndefined();
     expect(result.tradePlan).toBeUndefined();
   });
 
