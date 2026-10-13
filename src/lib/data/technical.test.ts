@@ -47,6 +47,16 @@ describe("RSI", () => {
     expect(rsi(closes)).toBeCloseTo(100);
   });
 
+  it("returns neutral 50 for a flat price series", () => {
+    const closes = Array.from({ length: 20 }, () => 100);
+    expect(rsi(closes)).toBe(50);
+  });
+
+  it("returns 0 for all-down data", () => {
+    const closes = Array.from({ length: 20 }, (_, i) => 120 - i);
+    expect(rsi(closes)).toBeCloseTo(0);
+  });
+
   it("returns value between 0 and 100 for mixed data", () => {
     const closes = [44, 44.34, 44.09, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08, 45.89, 46.03, 45.61, 46.28, 46.28, 46.00, 46.03, 46.41, 46.22, 45.64];
     const r = rsi(closes);
