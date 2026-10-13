@@ -56,6 +56,7 @@ function makeCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
     dataPoints: 200,
     hasLiveData: true,
     freshness: "FRESH",
+    marketTimeframe: "M5",
     providerCoverage: "FULL",
     htfBias: "long",
     marketRegime: "TRENDING",
@@ -1049,5 +1050,11 @@ describe("Scalping freshness and timeframe safety", () => {
     const result = isEligible(makeCandidate({ freshness: "FRESH", marketTimeframe: "H1" }), "SCALPING");
     expect(result.eligible).toBe(false);
     expect(result.reason).toContain("M1/M5/M15");
+  });
+
+  it("rejects scalping candidates when provider timeframe is missing", () => {
+    const result = isEligible(makeCandidate({ freshness: "FRESH", marketTimeframe: undefined }), "SCALPING");
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toContain("timeframe unavailable");
   });
 });
