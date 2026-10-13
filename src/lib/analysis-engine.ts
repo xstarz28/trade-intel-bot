@@ -1443,12 +1443,10 @@ function decideTrade(
         reasons.push(
           `${styleProfile.style.toUpperCase()} veto: calculated R:R ${rr.toFixed(2)} exceeds the ${styleProfile.maxRiskReward}R sanity ceiling; stop distance is too small relative to the target. Revalidate structural levels — this is not a trade setup.`,
         );
-        projectedTradePlan = undefined;
       } else if (exactRr < MIN_RR) {
         reasons.push(
           `Projected R:R ${rr.toFixed(3)} is below the ${MIN_RR.toFixed(3)} minimum for actionable setups.`,
         );
-        if (styleProfile.style === "scalping") projectedTradePlan = undefined;
       } else {
         // Executable plans use exactly the same displayed levels and R:R
         // geometry as the projected plan; no hidden precision mismatch.
