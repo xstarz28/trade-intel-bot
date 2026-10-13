@@ -11,7 +11,7 @@
  * - liquidity/FVG/OB context carries timeframe labels
  */
 import { describe, it, expect } from "vitest";
-import { buildChain, buildMtfContext, selectBudgetedMtfSlot, TF_LADDER } from "./mtf";
+import { buildChain, buildMtfContext, selectBudgetedMtfSlot, selectBudgetedMtfSlots, TF_LADDER } from "./mtf";
 import type { OhlcvCandle } from "./market-types";
 
 const T = (i: number) => 1700000000000 + i * 3600000;
@@ -133,6 +133,23 @@ describe("selectBudgetedMtfSlot — preserve nearest structure under provider qu
       timeframe: "H4",
       role: "structure",
     });
+  });
+
+  it("allocates both M15 structure and M1 trigger to M5 scalping", () => {
+    expect(selectBudgetedMtfSlots(buildChain("M5"), "M5")).toEqual([
+      { timeframe: "M15", role: "structure" },
+      { timeframe: "M1", role: "trigger" },
+    ]);
+  });
+
+  it("keeps one higher-timeframe request for non-scalping horizons", () => {
+    expect(selectBudgetedMtfSlots(buildChain("H1"), "H1")).toEqual([
+      { timeframe: "H4", role: "structure" },
+    ]);
+  });
+
+  it("falls back safely when the requested chain has no slots", () => {
+    expect(selectBudgetedMtfSlots([], "M5")).toEqual([]);
   });
 
   it("falls back to the only available slot when no structure or macro exists", () => {
