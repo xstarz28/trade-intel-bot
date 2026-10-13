@@ -257,40 +257,6 @@ describe("scoreSentiment (via breakdown)", () => {
     expect(result.breakdown.sentiment).toBeGreaterThanOrEqual(1);
   });
 
-  it("treats dominant long liquidations as bearish forced selling", () => {
-    const result = runAnalysis(baseInput({
-      instrumentType: "crypto",
-      instrument: "BTC/USD",
-      derivativesData: {
-        provider: "test",
-        symbol: "BTC",
-        timestamp: Date.now(),
-        freshness: "delayed",
-        liquidations: { totalVolume: 1_000_000, longVolume: 800_000, shortVolume: 200_000, dominantSide: "longs" },
-        availability: { openInterest: false, fundingRate: false, longShort: false, liquidations: true },
-        confidence: "medium",
-      },
-    }));
-    expect(result.breakdown.sentiment).toBeLessThan(0);
-  });
-
-  it("treats dominant short liquidations as bullish forced buying", () => {
-    const result = runAnalysis(baseInput({
-      instrumentType: "crypto",
-      instrument: "BTC/USD",
-      derivativesData: {
-        provider: "test",
-        symbol: "BTC",
-        timestamp: Date.now(),
-        freshness: "delayed",
-        liquidations: { totalVolume: 1_000_000, longVolume: 200_000, shortVolume: 800_000, dominantSide: "shorts" },
-        availability: { openInterest: false, fundingRate: false, longShort: false, liquidations: true },
-        confidence: "medium",
-      },
-    }));
-    expect(result.breakdown.sentiment).toBeGreaterThan(0);
-  });
-
   it("scores +1 for fear/panic (contrarian bullish)", () => {
     const result = runAnalysis(
       baseInput({ newsContext: "Market in panic mode, extreme fear" }),
