@@ -10,7 +10,7 @@ export interface PlanValidationCandle {
 
 export type TradePlanValidation =
   | { valid: true }
-  | { valid: false; reason: "invalid_geometry" | "entry_detached_from_latest_price" };
+  | { valid: false; reason: "invalid_geometry" | "entry_detached_from_latest_price" | "missing_market_candles" | "target_or_stop_already_crossed" };
 
 /**
  * Refuse to present a market-derived plan as current when its levels have
@@ -44,7 +44,7 @@ export function validateTradePlanAgainstMarket(
     )
     .sort((a, b) => b.timestamp - a.timestamp)[0];
 
-  if (!latest) return { valid: true };
+  if (!latest) return { valid: false, reason: "missing_market_candles" };
 
   const candleRange = Math.max(0, latest.high - latest.low);
   const atrTolerance = Number.isFinite(atr14) && (atr14 ?? 0) > 0 ? (atr14 as number) * 0.75 : 0;
@@ -53,6 +53,16 @@ export function validateTradePlanAgainstMarket(
   const tolerance = Math.max(atrTolerance, candleRange * 1.5, entry * 0.0002);
   if (Math.abs(entry - latest.close) > tolerance) {
     return { valid: false, reason: "entry_detached_from_latest_price" };
+  }
+
+  // Never show a fresh entry after the current market has already passed its
+  // target or invalidation. The candle close is the latest confirmed price;
+  // this avoids treating an intrabar wick as a confirmed exit by itself.
+  const targetOrStopAlreadyCrossed = plan.direction === "long"
+    ? latest.close >= target || latest.close <= stop
+    : latest.close <= target || latest.close >= stop;
+  if (targetOrStopAlreadyCrossed) {
+    return { valid: false, reason: "target_or_stop_already_crossed" };
   }
 
   return { valid: true };
