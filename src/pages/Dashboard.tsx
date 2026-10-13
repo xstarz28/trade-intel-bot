@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
-import { buildHistoricalContextSummaries, buildPersistedContextSummaries } from "@/lib/analysis-history";
+import { buildHistoricalContextSummaries, buildPersistedContextSummaries, resolveHistoricalDecision } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
@@ -44,6 +44,7 @@ import { BarChart3, Briefcase } from "lucide-react";
 /** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
 function fromDbRecord(record: any): AnalysisResult {
   const historicalContextSummaries = buildHistoricalContextSummaries(record);
+  const historicalDecision = resolveHistoricalDecision(record.recommendation, record.noTradeReasons);
   return {
     id: record._id,
     instrument: record.instrument,
@@ -51,10 +52,10 @@ function fromDbRecord(record: any): AnalysisResult {
     timeframe: record.timeframe,
     bias: record.bias,
     confidence: record.confidence,
-    recommendation: record.recommendation ?? (record.bias === "Bullish" ? "LONG" : record.bias === "Bearish" ? "SHORT" : "NO_TRADE"),
+    recommendation: historicalDecision.recommendation,
     tradingStyle: record.tradingStyle ?? "intraday",
     conviction: record.conviction ?? undefined,
-    noTradeReasons: record.noTradeReasons ?? [],
+    noTradeReasons: historicalDecision.noTradeReasons,
     technicalSummary: record.technicalSummary,
     fundamentalSummary: record.fundamentalSummary,
     breakdown: record.breakdown,
