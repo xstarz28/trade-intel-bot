@@ -97,7 +97,7 @@ describe("buildChain — adaptive timeframe architecture", () => {
     expect(buildChain("W1")).toEqual([{ timeframe: "D1", role: "trigger" }]);
   });
 
-  it("M5 is a first-class setup with H4/H1/M1 context", () => {
+  it("M5 is a first-class setup with H1/M15/M1 context", () => {
     expect(buildChain("M5")).toEqual([
       { timeframe: "H1", role: "macro" },
       { timeframe: "M15", role: "structure" },
