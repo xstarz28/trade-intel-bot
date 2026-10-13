@@ -117,8 +117,8 @@ describe("derivatives scoring in analysis engine", () => {
         dataFreshness: "delayed",
       },
     });
-    // Long liquidation cascade = potential capitulation (bullish)
-    expect(result.breakdown.sentiment).toBeGreaterThanOrEqual(1);
+    // Long liquidations represent forced selling; do not score them as bullish.
+    expect(result.breakdown.sentiment).toBeLessThanOrEqual(-1);
   });
 
   it("does not apply derivatives scoring to forex", async () => {
