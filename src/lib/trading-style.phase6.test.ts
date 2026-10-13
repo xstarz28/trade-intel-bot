@@ -19,14 +19,11 @@ describe("adaptSetupTimeframe", () => {
     expect(adaptSetupTimeframe("intraday", "H4")).toEqual({ timeframe: "H4", fallbackApplied: false });
   });
 
-  it("preserves every user-selected timeframe across styles", () => {
-    for (const style of ["scalping", "intraday", "swing"] as const) {
-      for (const tf of ["M1", "M5", "M15", "H1", "H4", "D1", "W1"]) {
-        expect(adaptSetupTimeframe(style, tf)).toEqual({ timeframe: tf, fallbackApplied: false });
-      }
-    }
-  });
-});
+  it("falls back when a requested timeframe is incompatible with the selected horizon", () => {
+    expect(adaptSetupTimeframe("scalping", "H1")).toMatchObject({ timeframe: "M5", fallbackApplied: true });
+    expect(adaptSetupTimeframe("intraday", "W1")).toMatchObject({ timeframe: "H1", fallbackApplied: true });
+    expect(adaptSetupTimeframe("swing", "M5")).toMatchObject({ timeframe: "H4", fallbackApplied: true });
+  });});
 
 // ── Fixtures ───────────────────────────────────────────────────────
 
