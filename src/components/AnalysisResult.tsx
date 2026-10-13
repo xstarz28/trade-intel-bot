@@ -8,6 +8,7 @@ import type { ClassicPriceActionContext } from "@/lib/data/classic-price-action"
 import type { TechnicalData } from "@/lib/data/market-types";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
+import { localizeAnalysisText } from "@/lib/i18n/analysis-copy";
 import { formatInstrumentPrice } from "@/lib/price-format";
 import { mapTrendLabel, mapConfidence, mapFreshness } from "@/lib/i18n/enum-mapping";
 import {
@@ -91,7 +92,7 @@ function formatTime(timestamp: number): string {
 }
 
 export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
-  const { t, tx, txi } = useI18n();
+  const { t, tx, txi, locale } = useI18n();
   const biasConfig = BIAS_CONFIG[result.bias];
   const BiasIcon = biasConfig.icon;
   const completenessConfig = COMPLETENESS_CONFIG[result.dataCompleteness];
@@ -218,7 +219,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               $ trade-levels · NO TRADE
             </p>
             <p className="text-[10px] font-mono leading-relaxed text-muted-foreground">
-              Entry / SL / TP projection is unavailable because the current market structure did not produce a valid, market-derived plan for this timeframe. No price levels are being invented. Rejection: {result.noTradeReasons.slice(0, 2).join(" · ") || "setup did not pass the decision gates"}.
+              {localizeAnalysisText("Entry / SL / TP projection is unavailable because the current market structure did not produce a valid, market-derived plan for this timeframe. No price levels are being invented.", locale)} Rejection: {localizeAnalysisText(result.noTradeReasons.slice(0, 2).join(" · ") || "setup did not pass the decision gates", locale)}.
             </p>
           </CardContent>
         </Card>
@@ -353,7 +354,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <span className="text-[10px] font-mono text-muted-foreground/60">provider: {dq.primaryData.provider}</span>
                 )}
               </div>
-              <p className="text-[10px] font-mono text-muted-foreground/60 mb-2">{dq.primaryData.reason}</p>
+              <p className="text-[10px] font-mono text-muted-foreground/60 mb-2">{localizeAnalysisText(dq.primaryData.reason, locale)}</p>
               {/* Indicator availability */}
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono mb-2">
                 {(["sma", "rsi", "macd", "atr", "smc"] as const).map((key) => {
@@ -370,7 +371,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <span className={IND_COLORS[dq.mtf.status === "GOOD" ? "AVAILABLE" : dq.mtf.status === "UNAVAILABLE" ? "UNAVAILABLE" : "INSUFFICIENT_DATA"]}>
                   MTF: {dq.mtf.status}
                 </span>
-                <span className="text-muted-foreground/50">{dq.mtf.reason}</span>
+                <span className="text-muted-foreground/50">{localizeAnalysisText(dq.mtf.reason, locale)}</span>
               </div>
               {/* Provider availability summary */}
               {(() => {
@@ -819,7 +820,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
                 <ul className="space-y-1">
                   {result.mtfSummary.unavailable.map((u) => (
-                    <li key={`${u.timeframe}:${u.reason}`} className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
+                    <li key={`${u.timeframe}:${localizeAnalysisText(u.reason, locale)}`} className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
                       <span className="text-amber-300">{u.timeframe}:</span> {u.reason}
                     </li>
                   ))}
@@ -871,7 +872,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               Structure:{" "}
               <span className="text-foreground">{result.decisionTrace.structuralDirection}</span>
               {result.decisionTrace.biasCalculation.vetoApplied && (
-                <span className="text-amber-400"> · vetoed to Neutral ({result.decisionTrace.biasCalculation.vetoReason})</span>
+                <span className="text-amber-400"> · vetoed to Neutral ({localizeAnalysisText(result.decisionTrace.biasCalculation.vetoReason, locale)})</span>
               )}
               {result.decisionTrace.biasCalculation.vetoApplied === false &&
                 result.decisionTrace.structuralDirection !== "none" && (
@@ -890,7 +891,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         {l.contribution > 0 ? `+${l.contribution}` : l.contribution}
                       </span>
                       <span className="text-muted-foreground w-36 truncate">{l.layer}</span>
-                      <span className="text-muted-foreground/50 truncate flex-1">{l.reason}</span>
+                      <span className="text-muted-foreground/50 truncate flex-1">{localizeAnalysisText(l.reason, locale)}</span>
                     </div>
                   ))}
                 <div className="pt-1 text-[10px] font-mono text-muted-foreground">
@@ -958,7 +959,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-1">
                           <span className="text-emerald-400 shrink-0">+</span>
                           <span className="text-muted-foreground w-28 shrink-0">{e.category}</span>
-                          <span className="text-muted-foreground/80 flex-1">{e.explanation}</span>
+                          <span className="text-muted-foreground/80 flex-1">{localizeAnalysisText(e.explanation, locale)}</span>
                           {e.contribution !== undefined && (
                             <span className="text-emerald-400/60 shrink-0 tabular-nums">
                               {e.contribution > 0 ? "+" : ""}{e.contribution}
@@ -1588,7 +1589,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <div className="text-[10px] font-mono">
                   <span className="text-amber-400 font-semibold">double-counting warnings:</span>
                   {ec.doubleCountingWarnings.map((w, i) => (
-                    <span key={i} className="block text-amber-400/80">• {w.description}</span>
+                    <span key={i} className="block text-amber-400/80">• {localizeAnalysisText(w.description, locale)}</span>
                   ))}
                 </div>
               )}
@@ -1746,7 +1747,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.technicalSummary}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground font-mono">{localizeAnalysisText(result.technicalSummary, locale)}</p>
         </CardContent>
       </Card>
 
@@ -1760,7 +1761,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.fundamentalSummary}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground font-mono">{localizeAnalysisText(result.fundamentalSummary, locale)}</p>
         </CardContent>
       </Card>
 
@@ -2061,7 +2062,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </CardHeader>
         <CardContent className="pt-0">
           <p className="text-sm leading-relaxed text-amber-200/70 font-mono">
-            {result.riskNote}
+            {localizeAnalysisText(result.riskNote, locale)}
           </p>
           <Separator className="my-3 bg-amber-500/10" />
           <p className="text-[11px] text-amber-300/50 font-mono italic">
@@ -2811,7 +2812,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             {/* Macro Risk Explanation */}
             <div className="mb-3">
               <p className="text-[11px] leading-relaxed text-muted-foreground font-mono">
-                {result.calendarData.macroRisk.explanation}
+                {localizeAnalysisText(result.calendarData.macroRisk.explanation, locale)}
               </p>
             </div>
 
