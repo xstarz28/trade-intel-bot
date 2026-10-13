@@ -239,6 +239,8 @@ export const fetchMarketData = action({
       v.literal("indices"),
     ),
     timeframe: v.string(),
+    /** Background live-recommendation scans request primary OHLCV only to preserve quota. */
+    includeHigherTimeframes: v.optional(v.boolean()),
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.TWELVE_DATA_API_KEY;
@@ -345,6 +347,11 @@ export const fetchMarketData = action({
         slots.find((slot) => slot.role === "trigger");
       const settled = await Promise.allSettled(
         slots.map((slot) => {
+          if (args.includeHigherTimeframes === false) {
+            return Promise.reject(
+              new Error("Not fetched: background recommendation scan reserves provider credits for user-requested analyses."),
+            );
+          }
           // Public OKX candles do not consume the Twelve Data credit budget,
           // so crypto may use the complete available chain. For Twelve Data
           // markets only the highest HTF is fetched; remaining slots stay
