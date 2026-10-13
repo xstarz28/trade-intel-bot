@@ -44,7 +44,7 @@ describe("validateTradePlanAgainstMarket", () => {
     expect(validateTradePlanAgainstMarket({
       direction: "long", entry: "101", stopLoss: "98", takeProfit: "107",
     }, [{ ...candles[0], close: 108, high: 109 }], 3)).toEqual({
-      valid: false, reason: "entry_detached_from_latest_price",
+      valid: false, reason: "target_or_stop_already_crossed",
     });
   });
 
@@ -52,7 +52,7 @@ describe("validateTradePlanAgainstMarket", () => {
     expect(validateTradePlanAgainstMarket({
       direction: "short", entry: "101", stopLoss: "104", takeProfit: "95",
     }, [{ ...candles[0], close: 94, low: 93 }], 3)).toEqual({
-      valid: false, reason: "entry_detached_from_latest_price",
+      valid: false, reason: "target_or_stop_already_crossed",
     });
   });
 });
