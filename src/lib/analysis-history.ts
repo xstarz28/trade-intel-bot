@@ -13,7 +13,7 @@ function nonEmptyText(value: unknown): string | undefined {
   const normalized = value.trim();
   if (normalized.length === 0) return undefined;
   // Drop a known legacy placeholder written when sentimentData was absent.
-  if (/^(?:undefined|null)\\s*\\(\\s*0 articles?\\s*\\)$/i.test(normalized)) return undefined;
+  if (/^(?:undefined|null)\s*\(\s*0 articles?\s*\)$/i.test(normalized)) return undefined;
   return normalized;
 }
 
