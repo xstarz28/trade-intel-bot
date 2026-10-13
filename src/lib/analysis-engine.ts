@@ -718,14 +718,16 @@ function assessDataCompleteness(input: AnalysisInput): {
   }
   const hasEconomicEventText =
     typeof input.economicEvents === "string" && input.economicEvents.trim().length > 0;
+  const calendarEvents = input.calendarData?.events;
+  const calendarAvailability = input.calendarData?.availability;
   const hasUsableCalendar = !!(
     input.calendarData &&
     input.calendarData.confidence !== "unavailable" &&
     (
-      input.calendarData.events.length > 0 ||
-      input.calendarData.availability.upcoming24h ||
-      input.calendarData.availability.upcoming72h ||
-      input.calendarData.availability.recentReleased
+      (Array.isArray(calendarEvents) && calendarEvents.length > 0) ||
+      calendarAvailability?.upcoming24h ||
+      calendarAvailability?.upcoming72h ||
+      calendarAvailability?.recentReleased
     )
   );
   if (input.instrumentType === "forex" && !hasEconomicEventText && !hasUsableCalendar) {
