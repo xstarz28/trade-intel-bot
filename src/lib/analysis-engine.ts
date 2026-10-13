@@ -740,10 +740,10 @@ function assessDataCompleteness(input: AnalysisInput): {
     input.derivativesData &&
     input.derivativesData.confidence !== "unavailable" &&
     (
-      input.derivativesData.availability.openInterest ||
-      input.derivativesData.availability.fundingRate ||
-      input.derivativesData.availability.longShort ||
-      input.derivativesData.availability.liquidations
+      input.derivativesData.availability?.openInterest ||
+      input.derivativesData.availability?.fundingRate ||
+      input.derivativesData.availability?.longShort ||
+      input.derivativesData.availability?.liquidations
     )
   );
   if (
