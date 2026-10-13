@@ -532,28 +532,33 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     // fundamental/positioning factors instead of reconstructing them in UI.
     fundamentalScore: ar?.breakdown?.fundamental,
     positioningScore: ar?.breakdown?.sentiment,
+    // Availability here means signed directional evidence was actually
+    // produced by the analysis engine. Raw fundamentals/calendar presence and
+    // default-zero breakdown fields are not themselves directional signals.
     fundamentalEvidenceAvailable:
-      ar?.fundamentalData?.available === true ||
-      ar?.macroData?.confidence === "high" ||
-      ar?.macroData?.confidence === "medium" ||
-      !!ar?.calendarData?.events?.some(
-        (event) => event.status === "released" && event.actual !== undefined && event.forecast !== undefined,
-      ),
+      ar?.breakdown?.fundamental !== undefined &&
+      Number.isFinite(ar.breakdown.fundamental) &&
+      ar.breakdown.fundamental !== 0,
     positioningEvidenceAvailable:
-      (ar?.sentimentData !== undefined && ar.sentimentData.confidence !== "unavailable") ||
-      (ar?.derivativesData !== undefined && (
-        ar.derivativesData.availability.fundingRate ||
-        ar.derivativesData.availability.openInterest ||
-        ar.derivativesData.availability.longShort ||
-        ar.derivativesData.availability.liquidations
-      )) ||
-      (source.derivativesData !== undefined && (
-        source.derivativesData.availability.fundingRate ||
-        source.derivativesData.availability.openInterest ||
-        source.derivativesData.availability.longShort ||
-        source.derivativesData.availability.liquidations
-      )) ||
-      source.cotData?.available === true,
+      ar?.breakdown?.sentiment !== undefined &&
+      Number.isFinite(ar.breakdown.sentiment) &&
+      ar.breakdown.sentiment !== 0 &&
+      (
+        (ar?.sentimentData !== undefined && ar.sentimentData.confidence !== "unavailable") ||
+        (ar?.derivativesData !== undefined && (
+          ar.derivativesData.availability.fundingRate ||
+          ar.derivativesData.availability.openInterest ||
+          ar.derivativesData.availability.longShort ||
+          ar.derivativesData.availability.liquidations
+        )) ||
+        (source.derivativesData !== undefined && (
+          source.derivativesData.availability.fundingRate ||
+          source.derivativesData.availability.openInterest ||
+          source.derivativesData.availability.longShort ||
+          source.derivativesData.availability.liquidations
+        )) ||
+        source.cotData?.available === true
+      ),
     macroScore: (() => {
       if (source.treasuryData?.available && source.assetClass === "commodity") {
         const evidence = deriveMacroYieldEvidence(source.treasuryData);
