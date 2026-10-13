@@ -1002,8 +1002,10 @@ export default function Dashboard() {
         setMarketDiscoveryMessage("OKX market discovery is temporarily unavailable. Refresh to retry.");
       }
 
-      // Three rotating assets × two candle intervals stays within the existing
-      // Twelve Data request budget while supporting fresh scalping/intraday data.
+      // One rotating request per non-crypto asset class per minute (3 total).
+      // Twelve Data's production key is limited to about 8 credits/minute, and
+      // manual analyses reserve additional primary + higher-timeframe requests.
+      // Crypto scans use public OKX and can safely acquire M5/H1/H4 separately.
       if (Date.now() - crossAssetScanLastAtRef.current >= 60_000) {
         crossAssetScanLastAtRef.current = Date.now();
         const catalog = getAllInstruments();
@@ -1035,8 +1037,8 @@ export default function Dashboard() {
           return { ...group, item: chosen };
         }).filter((entry) => !!entry.item);
 
-        await Promise.allSettled(selected.flatMap((entry) =>
-          (["M5", "H1"] as const).map(async (timeframe) => {
+        await Promise.allSettled(selected.map(async (entry) => {
+          const timeframe = "H1";
             const result = await withActionTimeout(
               fetchMarketData({
                 instrument: entry.item!.canonical,
@@ -1084,8 +1086,7 @@ export default function Dashboard() {
                 eiaData: existing?.eiaData,
               });
             }
-          }),
-        ));
+        }));
       }
 
       const sources = mergeLiveSourcesByTimeframe(
