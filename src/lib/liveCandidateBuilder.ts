@@ -533,8 +533,27 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     fundamentalScore: ar?.breakdown?.fundamental,
     positioningScore: ar?.breakdown?.sentiment,
     fundamentalEvidenceAvailable:
-      ar?.breakdown?.fundamental !== undefined &&
-      Number.isFinite(ar.breakdown.fundamental),
+      ar?.fundamentalData?.available === true ||
+      ar?.macroData?.confidence === "high" ||
+      ar?.macroData?.confidence === "medium" ||
+      !!ar?.calendarData?.events?.some(
+        (event) => event.status === "released" && event.actual !== undefined && event.forecast !== undefined,
+      ),
+    positioningEvidenceAvailable:
+      (ar?.sentimentData !== undefined && ar.sentimentData.confidence !== "unavailable") ||
+      (ar?.derivativesData !== undefined && (
+        ar.derivativesData.availability.fundingRate ||
+        ar.derivativesData.availability.openInterest ||
+        ar.derivativesData.availability.longShort ||
+        ar.derivativesData.availability.liquidations
+      )) ||
+      (source.derivativesData !== undefined && (
+        source.derivativesData.availability.fundingRate ||
+        source.derivativesData.availability.openInterest ||
+        source.derivativesData.availability.longShort ||
+        source.derivativesData.availability.liquidations
+      )) ||
+      source.cotData?.available === true,
     macroScore: (() => {
       if (source.treasuryData?.available && source.assetClass === "commodity") {
         const evidence = deriveMacroYieldEvidence(source.treasuryData);
