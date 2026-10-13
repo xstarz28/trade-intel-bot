@@ -153,7 +153,17 @@ export interface AnalysisInput {
   };
 }
 
+export interface HistoricalContextSummaries {
+  /** Narrative preserved from an older history row; not raw provider data. */
+  sentiment?: { summary?: string; score?: number };
+  macro?: string;
+  derivatives?: string;
+  calendar?: string;
+}
+
 export interface AnalysisResult {
+  /** Legacy history context saved as summaries only; never reconstructed as live measurements. */
+  historicalContextSummaries?: HistoricalContextSummaries;
   id: string;
   instrument: string;
   instrumentType: InstrumentType;
