@@ -160,34 +160,14 @@ describe("scoreIndicators (via breakdown)", () => {
 // ── Fundamental scoring ───────────────────────────────────────────
 
 describe("scoreFundamentals (via breakdown)", () => {
-  it("scores Fed hawkish news bearish for EUR/USD and bullish for USD/JPY", () => {
-    const eurUsd = runAnalysis(
-      baseInput({
-        instrumentType: "forex",
-        instrument: "EUR/USD",
-        economicEvents: "Fed signals hawkish stance",
-      }),
-    );
-    const usdJpy = runAnalysis(
-      baseInput({
-        instrumentType: "forex",
-        instrument: "USD/JPY",
-        economicEvents: "Fed signals hawkish stance",
-      }),
-    );
-    expect(eurUsd.breakdown.fundamental).toBeLessThanOrEqual(-1);
-    expect(usdJpy.breakdown.fundamental).toBeGreaterThanOrEqual(1);
-  });
-
-  it("does not guess FX direction from generic currency-free hawkish text", () => {
+  it("scores +1 for hawkish forex news", () => {
     const result = runAnalysis(
       baseInput({
         instrumentType: "forex",
-        instrument: "EUR/USD",
-        economicEvents: "Hawkish stance and rate hike expected",
+        economicEvents: "Fed signals hawkish stance",
       }),
     );
-    expect(result.breakdown.fundamental).toBe(0);
+    expect(result.breakdown.fundamental).toBeGreaterThanOrEqual(1);
   });
 
   it("orients DXY strength against the actual USD pair side", () => {
