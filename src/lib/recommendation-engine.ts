@@ -898,8 +898,9 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
 
   // Provider coverage gate
   if (c.providerCoverage === "NONE") return { eligible: false, reason: "no provider coverage" };
-  // Rejected entries remain eligible for discovery monitoring, not execution.
-  // The scalping gates below still require a confirmed same-style plan.
+  // Keep rejected same-instrument setups available to the discovery ranking.
+  // Their suitability remains NEUTRAL unless independent evidence confirms direction;
+  // scalp execution still requires a qualified plan and fresh execution data.
 
   if (c.marketTimeframe && horizon === "SCALPING" && !["M1", "M5", "M15"].includes(c.marketTimeframe)) {
     return { eligible: false, reason: "scalping requires M1/M5/M15 market data; received " + c.marketTimeframe };
@@ -950,9 +951,10 @@ function classifySuitability(
   if (dataCompleteness === "NONE") return "INSUFFICIENT_DATA";
   if (dataCompleteness === "MINIMAL" && analyticalScore < 50) return "INSUFFICIENT_DATA";
 
-  // Technical setups with sufficient observed quality can be WATCHLIST candidates.
-  // TOP_OPPORTUNITY still requires two independent non-technical confirmations.
-  if (analyticalScore >= 78 && confidence >= 70 && independentAgreementCount >= 2) return "TOP_OPPORTUNITY";
+  // Technical-only and single-layer candidates remain neutral. Two independent
+  // evidence domains must agree with the directional setup before it qualifies.
+  if (independentAgreementCount < 2) return "NEUTRAL";
+  if (analyticalScore >= 78 && confidence >= 70) return "TOP_OPPORTUNITY";
   if (analyticalScore >= 65 && confidence >= 60) return "WATCHLIST";
   if (analyticalScore >= 30) return "NEUTRAL";
   return "NEUTRAL";
