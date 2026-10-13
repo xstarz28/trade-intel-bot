@@ -24,10 +24,12 @@ function baseInput(overrides?: Partial<AnalysisInput>): AnalysisInput {
 function makeCandles(count: number): OhlcvCandle[] {
   return Array.from({ length: count }, (_, i) => ({
     timestamp: Date.now() - (count - i) * 3600000,
-    open: 100 + i * 0.01,
-    high: 100.5 + i * 0.01,
-    low: 99.5 + i * 0.01,
-    close: 100 + i * 0.01,
+    // Keep the synthetic latest close near the requested quote so tests
+    // exercise analysis decisions, not an intentionally stale-entry rejection.
+    open: 100 + i * 0.001,
+    high: 100.5 + i * 0.001,
+    low: 99.5 + i * 0.001,
+    close: 100 + i * 0.001,
     volume: 1000,
   }));
 }
