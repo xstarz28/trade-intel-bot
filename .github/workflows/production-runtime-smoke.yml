@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 18
     env:
       # Keep runtime smoke on the same public hostname that the release job verifies.
-      XSTARZ_SMOKE_URL: ${{ vars.FRONTEND_HOST_URL || 'https://trade-intel-bot.vercel.app' }}
+      XSTARZ_SMOKE_URL: ${{ vars.FRONTEND_HOST_URL || 'https://xstarzanalysis.vercel.app' }}
       EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
