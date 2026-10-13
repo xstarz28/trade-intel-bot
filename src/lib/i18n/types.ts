@@ -683,6 +683,8 @@ export interface Translations {
     scanning: string;
     noOpportunity: string;
     noOpportunityHint: string;
+    monitoringTitle: string;
+    monitoringDescription: string;
     noSuitableHint: string;
     expiredInvalidated: string;
     changesSinceScan: string;
