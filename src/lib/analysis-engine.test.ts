@@ -295,6 +295,81 @@ describe("dataCompleteness", () => {
     expect(result.dataCompleteness).toBe("full");
   });
 
+  it("does not count unavailable intelligence payloads as available evidence", () => {
+    const result = runAnalysis(baseInput({
+      sentimentData: {
+        provider: "alpha-vantage",
+        timestamp: Date.now(),
+        averageScore: 0,
+        articleCount: 0,
+        label: "neutral",
+        breakdown: { positive: 0, negative: 0, neutral: 0 },
+        confidence: "unavailable",
+        articles: [],
+      },
+      fundamentalData: {
+        provider: "alpha-vantage",
+        timestamp: Date.now(),
+        instrumentType: "forex",
+        available: false,
+        unavailableReason: "Provider returned no data",
+      },
+      macroData: {
+        provider: "alpha-vantage",
+        timestamp: Date.now(),
+        indicators: [],
+        summary: "Unavailable",
+        confidence: "unavailable",
+      },
+      newsContext: "   ",
+    }));
+
+    expect(result.dataFlags).toContain(
+      "No news context or core fundamental intelligence data — fundamental analysis limited to technicals",
+    );
+  });
+
+  it("does not treat an unavailable calendar object as economic-event evidence", () => {
+    const result = runAnalysis(baseInput({
+      instrumentType: "forex",
+      calendarData: {
+        provider: "tickatlas",
+        events: [],
+        macroRisk: {
+          level: "medium",
+          explanation: "Calendar feed unavailable",
+          highImpact24h: 0,
+          highImpact72h: 0,
+        },
+        timestamp: Date.now(),
+        freshness: "unavailable",
+        confidence: "unavailable",
+        availability: { upcoming24h: false, upcoming72h: false, recentReleased: false },
+      },
+    }));
+
+    expect(result.dataFlags).toContain("No economic calendar data — macro events not factored");
+  });
+
+  it("rejects a zero-price market payload as valid price evidence", () => {
+    const result = runAnalysis(baseInput({
+      marketData: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 0, timestamp: Date.now(), source: "test" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "unavailable",
+      },
+    }));
+
+    expect(result.dataFlags).toContain("No valid positive price data available — scored neutral");
+    expect(result.dataCompleteness).not.toBe("full");
+    expect(result.recommendation).toBe("NO_TRADE");
+  });
+
   it("marks 'limited' with no data at all", () => {
     const result = runAnalysis(baseInput());
     expect(result.dataCompleteness).toBe("limited");
