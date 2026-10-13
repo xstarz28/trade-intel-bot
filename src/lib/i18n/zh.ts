@@ -843,7 +843,7 @@ const zh: Translations = {
     globalOption: "全球",
     scanning: "正在扫描标的…",
     noOpportunity: "暂无明确机会",
-    noOpportunityHint: "当前市场证据不足以支持该周期的高强度排名。",
+    noOpportunityHint: "当前没有符合入场标准的交易设置。此处显示的中性实时候选仅供监控，不是入场信号。",
     noSuitableHint: "未找到合适的标的。连接实时数据源以进行实时扫描。",
     expiredInvalidated: "{expired} 个已到期 · {invalidated} 个已失效",
     changesSinceScan: "上次扫描以来的变化",

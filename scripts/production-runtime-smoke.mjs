@@ -21,7 +21,8 @@ const evidence = {
   authenticated: false,
   analyses: [],
   marketTypeCoverage: { forex: false, crypto: false, stock: false, commodity: false },
-  productSurfaces: { chart: false, riskSizing: false },
+  cryptoContractCoverage: { spot: false, perpetual: false, futures: false },
+  productSurfaces: { chart: false, riskSizing: false, recommendations: false },
   googleOAuth: { checked: false, reachedAuthorizationEndpoint: false, redirectUriMismatch: false },
 };
 
@@ -85,7 +86,7 @@ async function findAnalysisForm(targetPage, expectedTimeframe) {
   );
 }
 
-async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5", useManualEntry = false) {
+async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5", useManualEntry = false, cryptoContractType = null) {
   // Anchor every interaction to the actual analysis form. A page-global
   // combobox can belong to a different surface and lead to an empty ancestor
   // form, which made the production smoke fail before submitting an analysis.
@@ -96,6 +97,19 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     throw new Error("Production instrument form is missing its four market-category controls");
   }
   await categoryButtons.nth(categoryIndex).click();
+
+  if (type === "crypto" && cryptoContractType) {
+    const marketTypes = form.getByTestId("crypto-market-type");
+    if (!(await marketTypes.count())) {
+      throw new Error("Crypto contract-type selector is missing from the live instrument form");
+    }
+    const filterName = cryptoContractType === "perpetual" ? /PERPETUAL \/ SWAP/i : /DATED FUTURES/i;
+    const filterButton = marketTypes.getByRole("button", { name: filterName });
+    if (!(await filterButton.count())) {
+      throw new Error("Crypto market-type filter is missing: " + cryptoContractType);
+    }
+    await filterButton.click();
+  }
 
   let selectedText = "";
   if (useManualEntry) {
@@ -324,17 +338,55 @@ try {
   await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
   evidence.authenticated = true;
 
-  // Real production coverage: one liquid instrument per supported market class.
+  // Real production coverage: spot crypto + forex, commodity, and equity.
   await runAnalysis(page, "BTC/USD", "crypto", "M5", true);
+  evidence.cryptoContractCoverage.spot = true;
   await runAnalysis(page, "XAU/USD", "commodity", "M5");
   await runAnalysis(page, "EUR/USD", "forex", "M5");
   await runAnalysis(page, "AAPL", "stock", "M5");
+
+  // A neutral live scan must still show monitor-only candidates instead of an
+  // empty recommendation panel. These are not entry signals and stay neutral.
+  const monitorList = page.getByTestId("market-monitoring-list");
+  const qualifiedList = page.getByTestId("market-ranked-list");
+  evidence.productSurfaces.recommendations =
+    (await monitorList.count()) > 0 || (await qualifiedList.count()) > 0;
+  if (!evidence.productSurfaces.recommendations) {
+    throw new Error("Live scanner evaluated instruments but displayed neither qualified rankings nor monitor-only candidates.");
+  }
+
+  // Verify the real OKX SWAP selector, exact native contract, and OHLCV analysis.
+  await runAnalysis(page, "BTC-USDT-SWAP", "crypto", "M5", false, "perpetual");
+  evidence.cryptoContractCoverage.perpetual = true;
+
+  // Pick a currently available dated FUTURES contract from the production
+  // discovery result, rather than assuming a specific expiry symbol exists.
+  const form = await findAnalysisForm(page, "M5");
+  const cryptoButton = form.getByRole("button", { name: "CRYPTO", exact: true });
+  await cryptoButton.click();
+  const futuresFilter = form.getByTestId("crypto-market-type")
+    .getByRole("button", { name: /DATED FUTURES/i });
+  await futuresFilter.click();
+  await page.waitForTimeout(150);
+  const pickerText = await form.locator('[data-slot="select-trigger"]').first().innerText();
+  const futuresMatch = pickerText.match(/[A-Z0-9]+-[A-Z0-9]+-\d{6}/);
+  if (!futuresMatch) {
+    throw new Error("Live OKX DATED FUTURES filter returned no selected contract. Picker text: " + pickerText);
+  }
+  await runAnalysis(page, futuresMatch[0], "crypto", "M5", false, "futures");
+  evidence.cryptoContractCoverage.futures = true;
 
   const missingMarketTypes = Object.entries(evidence.marketTypeCoverage)
     .filter(([, covered]) => !covered)
     .map(([marketType]) => marketType);
   if (missingMarketTypes.length > 0) {
     throw new Error("Production smoke missing successful analysis for market types: " + missingMarketTypes.join(", "));
+  }
+  const missingContractTypes = Object.entries(evidence.cryptoContractCoverage)
+    .filter(([, covered]) => !covered)
+    .map(([contractType]) => contractType);
+  if (missingContractTypes.length > 0) {
+    throw new Error("Production smoke missing successful real-crypto analysis for contract types: " + missingContractTypes.join(", "));
   }
 
   evidence.completedAt = new Date().toISOString();

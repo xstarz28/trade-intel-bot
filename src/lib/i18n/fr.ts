@@ -846,7 +846,7 @@ const fr: Translations = {
     globalOption: "Global",
     scanning: "Analyse des instruments…",
     noOpportunity: "Aucune Opportunité Claire",
-    noOpportunityHint: "Les preuves de marché actuelles ne soutiennent pas un classement fort pour cet horizon.",
+    noOpportunityHint: "Aucune configuration ne répond aux critères d’entrée actuels. Les candidats neutres en direct affichés ici servent uniquement au suivi, pas de signaux d’entrée.",
     noSuitableHint: "Aucun instrument adapté trouvé. Connectez des sources de données live pour une analyse en temps réel.",
     expiredInvalidated: "{expired} expirés · {invalidated} invalidés",
     changesSinceScan: "changements depuis le dernier scan",

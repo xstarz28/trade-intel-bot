@@ -846,7 +846,7 @@ const ja: Translations = {
     globalOption: "グローバル",
     scanning: "インストルメントをスキャン中…",
     noOpportunity: "明確な機会なし",
-    noOpportunityHint: "現在の市場エビデンスは、この期間帯での強いランク付けを支持していません。",
+    noOpportunityHint: "現在のエントリー基準を満たすセットアップはありません。ここに表示される中立のライブ候補は監視専用であり、エントリーシグナルではありません。",
     noSuitableHint: "該当するインストルメントが見つかりませんでした。リアルタイムスキャンにはライブデータソースを接続してください。",
     expiredInvalidated: "{expired}件期限切れ · {invalidated}件無効",
     changesSinceScan: "前回スキャンからの変化",

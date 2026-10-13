@@ -845,7 +845,7 @@ const de: Translations = {
     globalOption: "Global",
     scanning: "Instrumente werden gescannt…",
     noOpportunity: "Keine Klare Chance",
-    noOpportunityHint: "Die aktuelle Marktevidenz unterstützt keine starke Einstufung für diesen Zeithorizont.",
+    noOpportunityHint: "Kein Setup erfüllt derzeit die Einstiegskriterien. Die hier angezeigten neutralen Live-Kandidaten dienen nur der Beobachtung und sind keine Einstiegssignale.",
     noSuitableHint: "Keine passenden Instrumente gefunden. Verbinden Sie Live-Datenquellen für den Echtzeit-Scan.",
     expiredInvalidated: "{expired} abgelaufen · {invalidated} ungültig",
     changesSinceScan: "Änderungen seit dem letzten Scan",
