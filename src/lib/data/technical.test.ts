@@ -114,6 +114,20 @@ describe("analyzeStructure", () => {
   it("returns unknown for insufficient data", () => {
     expect(analyzeStructure([110], [100])).toBe("unknown");
   });
+  it("does not hide a failed latest swing sequence behind the first swing in a window", () => {
+    // Endpoints rise overall, but the two latest highs and lows both fall.
+    expect(analyzeStructure([100, 120, 115], [80, 100, 90])).toBe("LH/LL");
+  });
+
+  it("returns range when the latest high and low do not both confirm the same direction", () => {
+    // Endpoints rise overall, but the latest low fails to make a higher low.
+    expect(analyzeStructure([100, 115, 120], [80, 100, 95])).toBe("range");
+  });
+
+  it("does not classify equal latest swings as bearish structure", () => {
+    expect(analyzeStructure([100, 110, 110], [80, 90, 90])).toBe("range");
+  });
+
 });
 
 describe("detectBos", () => {
