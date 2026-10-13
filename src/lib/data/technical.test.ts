@@ -47,6 +47,14 @@ describe("RSI", () => {
     expect(rsi(closes)).toBeCloseTo(100);
   });
 
+  it("returns neutral 50 for a flat price series", () => {
+    expect(rsi(Array.from({ length: 20 }, () => 100))).toBe(50);
+  });
+
+  it("returns 0 for all-down data", () => {
+    expect(rsi(Array.from({ length: 20 }, (_, i) => 120 - i))).toBeCloseTo(0);
+  });
+
   it("returns value between 0 and 100 for mixed data", () => {
     const closes = [44, 44.34, 44.09, 43.61, 44.33, 44.83, 45.10, 45.42, 45.84, 46.08, 45.89, 46.03, 45.61, 46.28, 46.28, 46.00, 46.03, 46.41, 46.22, 45.64];
     const r = rsi(closes);
@@ -114,6 +122,18 @@ describe("analyzeStructure", () => {
   it("returns unknown for insufficient data", () => {
     expect(analyzeStructure([110], [100])).toBe("unknown");
   });
+  it("uses the latest swing pair rather than hiding deterioration in the window", () => {
+    expect(analyzeStructure([100, 120, 115], [80, 100, 90])).toBe("LH/LL");
+  });
+
+  it("returns range when the latest swing pair is mixed", () => {
+    expect(analyzeStructure([100, 115, 120], [80, 100, 95])).toBe("range");
+  });
+
+  it("returns range when the latest swings are equal", () => {
+    expect(analyzeStructure([100, 110, 110], [80, 90, 90])).toBe("range");
+  });
+
 });
 
 describe("detectBos", () => {
