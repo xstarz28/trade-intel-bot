@@ -385,12 +385,12 @@ describe("runAnalysis — Phase 4 integration", () => {
     });
     // Trade thesis stands on its own evidence…
     expect(result.recommendation).toBe("LONG");
-    // …but position sizing is honestly absent, not fabricated.
-    expect(result.positionSizing).toBeUndefined();
+    // …but the unavailable state and its reason remain explicit; no quantity is fabricated.
+    expect(result.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
     expect(result.riskNote).not.toContain("Position size for the provided");
   });
 
-  it("without any spec, sizing stays undefined — no synthetic fallback ever", () => {
+  it("without any spec, sizing reports unavailable — no synthetic fallback ever", () => {
     const result = runAnalysis({
       ...baseInput(),
       accountEquity: 50000,
@@ -398,7 +398,7 @@ describe("runAnalysis — Phase 4 integration", () => {
       // NO instrumentSpec — even though symbol parses to quote USD.
     });
     expect(result.recommendation).toBe("LONG");
-    expect(result.positionSizing).toBeUndefined();
+    expect(result.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
   });
 
   it("partial spec (symbol-derived quote + explicit contract fields missing) → no sizing", () => {
