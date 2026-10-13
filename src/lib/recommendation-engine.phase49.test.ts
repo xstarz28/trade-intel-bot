@@ -1058,3 +1058,53 @@ describe("Scalping freshness and timeframe safety", () => {
     expect(result.reason).toContain("timeframe unavailable");
   });
 });
+
+
+describe("Evidence availability integrity", () => {
+  it("does not count default zero fundamental scores when fundamental data is unavailable", () => {
+    const withoutDefault = scoreCandidate(makeCandidate({
+      fundamentalScore: undefined,
+      fundamentalEvidenceAvailable: false,
+    }), "INTRADAY");
+    const withDefault = scoreCandidate(makeCandidate({
+      fundamentalScore: 0,
+      fundamentalEvidenceAvailable: false,
+    }), "INTRADAY");
+
+    expect(withDefault.analyticalScore).toBe(withoutDefault.analyticalScore);
+    expect(withDefault.confidence).toBe(withoutDefault.confidence);
+    expect(withDefault.reasons).toContain("fundamental evidence unavailable");
+  });
+
+  it("does not count default zero positioning scores when positioning data is unavailable", () => {
+    const withoutDefault = scoreCandidate(makeCandidate({
+      positioningScore: undefined,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+    const withDefault = scoreCandidate(makeCandidate({
+      positioningScore: 0,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+
+    expect(withDefault.analyticalScore).toBe(withoutDefault.analyticalScore);
+    expect(withDefault.confidence).toBe(withoutDefault.confidence);
+  });
+
+  it("only counts real non-technical evidence as agreement", () => {
+    const noEvidence = scoreCandidate(makeCandidate({
+      fundamentalScore: 0,
+      fundamentalEvidenceAvailable: false,
+      positioningScore: 0,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+    const withEvidence = scoreCandidate(makeCandidate({
+      fundamentalScore: 1,
+      fundamentalEvidenceAvailable: true,
+      positioningScore: 1,
+      positioningEvidenceAvailable: true,
+    }), "INTRADAY");
+
+    expect(withEvidence.analyticalScore).toBeGreaterThan(noEvidence.analyticalScore);
+    expect(withEvidence.confidence).toBeGreaterThan(noEvidence.confidence);
+  });
+});
