@@ -30,7 +30,7 @@ describe("validateTradePlanAgainstMarket", () => {
 
   it("rejects an entry that has drifted materially away from the latest candle", () => {
     expect(validateTradePlanAgainstMarket({
-      direction: "short", entry: "110", stopLoss: "115", takeProfit: "100",
+      direction: "short", entry: "110", stopLoss: "115", takeProfit: "95",
     }, candles, 2)).toEqual({ valid: false, reason: "entry_detached_from_latest_price" });
   });
 
