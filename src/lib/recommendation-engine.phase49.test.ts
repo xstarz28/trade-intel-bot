@@ -1068,6 +1068,19 @@ describe("Evidence availability integrity", () => {
     expect(defaultZero.confidence).toBe(missing.confidence);
   });
 
+  it("does not treat missing spread and risk/reward as measured neutral or poor scores", () => {
+    const unknown = scoreCandidate(makeCandidate({
+      spreadBps: undefined,
+      riskReward: undefined,
+    }), "INTRADAY");
+    const measuredPoor = scoreCandidate(makeCandidate({
+      spreadBps: 40,
+      riskReward: 0.5,
+    }), "INTRADAY");
+
+    expect(unknown.analyticalScore).toBeGreaterThan(measuredPoor.analyticalScore);
+  });
+
   it("counts non-technical agreement only when the evidence source is available", () => {
     const unavailable = scoreCandidate(makeCandidate({
       fundamentalScore: 0,
