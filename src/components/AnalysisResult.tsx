@@ -211,6 +211,19 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         />
       )}
 
+      {result.recommendation === "NO_TRADE" && !result.projectedTradePlan && result.candles && result.candles.length >= 5 && (
+        <Card className="border-amber-500/30">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">
+              $ trade-levels · NO TRADE
+            </p>
+            <p className="text-[10px] font-mono leading-relaxed text-muted-foreground">
+              Entry / SL / TP projection is unavailable because the current market structure did not produce a valid, market-derived plan for this timeframe. No price levels are being invented. Rejection: {result.noTradeReasons.slice(0, 2).join(" · ") || "setup did not pass the decision gates"}.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {tech?.smc && (
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
