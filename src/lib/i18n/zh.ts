@@ -844,6 +844,8 @@ const zh: Translations = {
     scanning: "正在扫描标的…",
     noOpportunity: "暂无明确机会",
     noOpportunityHint: "当前市场证据不足以支持该周期的高强度排名。",
+    monitoringTitle: "实时监控 · 未达到入场条件",
+    monitoringDescription: "这些标的具有可用的实际观测市场数据，但尚未达到当前交易设置门槛。请继续监控结构与共振；此列表不是入场信号。",
     noSuitableHint: "未找到合适的标的。连接实时数据源以进行实时扫描。",
     expiredInvalidated: "{expired} 个已到期 · {invalidated} 个已失效",
     changesSinceScan: "上次扫描以来的变化",
