@@ -86,6 +86,51 @@ const INDICATOR_MODIFIER_MAX = 3;
 /** Minimum projected R:R for a setup to be actionable. */
 const MIN_RR = 1.5;
 
+/**
+ * For scalping, select the nearest REAL opposing structural level that
+ * satisfies the minimum R:R after the displayed stop buffer and price
+ * precision are applied, without exceeding the scalping ATR horizon or
+ * sanity ceiling. If none qualify, the caller keeps the nearest level as a
+ * rejected projection so the actual NO_TRADE reason stays visible.
+ */
+function chooseAdaptiveScalpTarget<T extends { level: number; basis: string }>(
+  candidates: T[],
+  args: {
+    direction: "long" | "short";
+    entry: number;
+    stopLevel: number | undefined;
+    atr14: number | undefined;
+    instrument: string;
+    instrumentType: AnalysisInput["instrumentType"];
+    maxAtrMultiple: number | null;
+    maxRiskReward: number | null;
+  },
+): T | undefined {
+  if (args.stopLevel === undefined) return undefined;
+  const atr = args.atr14;
+  const buffer = atr !== undefined && Number.isFinite(atr) && atr > 0 ? atr * 0.2 : 0;
+  const stop = args.direction === "long" ? args.stopLevel - buffer : args.stopLevel + buffer;
+  return candidates.find((candidate) => {
+    if (
+      args.maxAtrMultiple !== null &&
+      atr !== undefined &&
+      Number.isFinite(atr) &&
+      atr > 0 &&
+      Math.abs(candidate.level - args.entry) > args.maxAtrMultiple * atr
+    ) return false;
+
+    const ratio = calculateRiskRewardRatio({
+      direction: args.direction,
+      entry: formatInstrumentPriceValue(args.entry, args.instrumentType, args.instrument),
+      stopLoss: formatInstrumentPriceValue(stop, args.instrumentType, args.instrument),
+      takeProfit: formatInstrumentPriceValue(candidate.level, args.instrumentType, args.instrument),
+    });
+    return ratio !== undefined &&
+      ratio >= MIN_RR &&
+      (args.maxRiskReward === null || ratio <= args.maxRiskReward);
+  });
+}
+
 function clampScore(score: number): FactorScore {
   return Math.max(-2, Math.min(2, Math.round(score))) as FactorScore;
 }
@@ -1288,10 +1333,25 @@ function decideTrade(
       ].filter((candidate) => Number.isFinite(candidate.level) && candidate.level > price)
         .sort((a, b) => a.level - b.level);
       if (styleProfile.style === "scalping") {
-        // Scalps use the nearest valid opposing level; a remote pool can create
-        // nonsensical 30R–100R projections on a five-minute chart.
-        tpLevel = bullishTargets[0]?.level;
-        tpBasis = bullishTargets[0]?.basis ?? "";
+        // Prefer the nearest real structural target that reaches the minimum
+        // R:R after price precision and the displayed stop buffer, provided
+        // it remains inside the M5-style ATR horizon and sanity ceiling.
+        const adaptiveTarget = chooseAdaptiveScalpTarget(bullishTargets, {
+          direction: "long",
+          entry,
+          stopLevel,
+          atr14: tech?.atr14,
+          instrument: input.instrument,
+          instrumentType: input.instrumentType,
+          maxAtrMultiple: styleProfile.targetMaxAtrMultiple,
+          maxRiskReward: styleProfile.maxRiskReward,
+        });
+        const selectedTarget = adaptiveTarget ?? bullishTargets[0];
+        tpLevel = selectedTarget?.level;
+        tpBasis = selectedTarget?.basis ?? "";
+        if (adaptiveTarget && selectedTarget !== bullishTargets[0]) {
+          tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
+        }
       } else {
         tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? swingResistances[0];
         tpBasis = buyPoolAbove
@@ -1325,8 +1385,22 @@ function decideTrade(
       ].filter((candidate) => Number.isFinite(candidate.level) && candidate.level < price)
         .sort((a, b) => b.level - a.level);
       if (styleProfile.style === "scalping") {
-        tpLevel = bearishTargets[0]?.level;
-        tpBasis = bearishTargets[0]?.basis ?? "";
+        const adaptiveTarget = chooseAdaptiveScalpTarget(bearishTargets, {
+          direction: "short",
+          entry,
+          stopLevel,
+          atr14: tech?.atr14,
+          instrument: input.instrument,
+          instrumentType: input.instrumentType,
+          maxAtrMultiple: styleProfile.targetMaxAtrMultiple,
+          maxRiskReward: styleProfile.maxRiskReward,
+        });
+        const selectedTarget = adaptiveTarget ?? bearishTargets[0];
+        tpLevel = selectedTarget?.level;
+        tpBasis = selectedTarget?.basis ?? "";
+        if (adaptiveTarget && selectedTarget !== bearishTargets[0]) {
+          tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
+        }
       } else {
         tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? swingSupports[0];
         tpBasis = sellPoolBelow

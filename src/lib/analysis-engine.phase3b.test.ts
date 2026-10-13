@@ -228,6 +228,39 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
     expect(r.noTradeReasons.join(" ")).toContain("below the 1.500 minimum");
   });
 
+  it("scalping adapts to the nearest structural target that clears minimum R:R", () => {
+    const instrument = "BTC-USDT-SWAP";
+    const result = runAnalysis(input({
+      instrument,
+      instrumentType: "crypto",
+      timeframe: "M5",
+      tradingStyle: "scalping",
+      marketData: makeMarket(100, {
+        instrument,
+        instrumentType: "crypto",
+        provider: "okx-perpetual-public",
+        timeframe: "M5",
+        dataFreshness: "realtime",
+        price: { price: 100, timestamp: Date.now(), source: "okx-perpetual-public" },
+      }),
+      technicalData: tech("HH/HL", {
+        atr14: 2,
+        supportLevels: [95],
+        swingLows: [95],
+        resistanceLevels: [101, 109.5],
+        swingHighs: [101, 109.5],
+      }),
+    }));
+
+    // The 101 target is real but too close for the 1.5 minimum after the
+    // visible stop buffer. The next real structure (109.5) is still inside
+    // the 6×ATR scalp horizon and meets minimum R:R.
+    expect(result.projectedTradePlan).toBeDefined();
+    expect(Number(result.projectedTradePlan!.takeProfit)).toBeCloseTo(109.5, 3);
+    expect(result.projectedTradePlan!.riskReward).toBeGreaterThanOrEqual(1.5);
+    expect(result.projectedTradePlan!.tpBasis).toContain("adaptive structural target");
+  });
+
   it("R:R exactly at the 1.5 threshold is acceptable", () => {
     const r = runAnalysis(input({
       technicalData: tech("HH/HL", { resistanceLevels: [107.5] }), // 7.5 / 5 = 1.5
