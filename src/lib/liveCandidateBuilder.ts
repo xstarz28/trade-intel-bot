@@ -349,6 +349,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     riskReward: ar?.tradePlan?.riskReward,
     spreadBps: extractSpreadBps(source),
     atr: extractAtr(tech),
+    marketTimeframe: source.marketData?.timeframe ?? tech?.smc?.timeframe,
 
     // Cross-asset
     dxyTrend: undefined,
