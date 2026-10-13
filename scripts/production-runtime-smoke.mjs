@@ -402,8 +402,8 @@ try {
   await runAnalysisWithQuotaRetry(page, "EUR/USD", "forex", "M5");
   await runAnalysisWithQuotaRetry(page, "AAPL", "stock", "M5");
 
-  // A neutral live scan must still show monitor-only candidates instead of an
-  // empty recommendation panel. These are not entry signals and stay neutral.
+  // The scanner must render qualified recommendations or an explicit no-opportunity
+  // state. Neutral discovery candidates must not masquerade as recommendations.
   const monitorList = page.getByTestId("market-monitoring-list");
   const qualifiedList = page.getByTestId("market-ranked-list");
   const noOpportunity = page.getByTestId("market-no-opportunity");
