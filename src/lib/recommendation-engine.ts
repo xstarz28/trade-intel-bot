@@ -1102,11 +1102,11 @@ export function generateRecommendation(
       confidence: result.confidence,
       suitability,
       primaryReasons: scalpDiscoveryOnly
-        ? ["Discovery candidate only — run same-instrument Scalping analysis before considering entry.", ...result.reasons].slice(0, 5)
+        ? ["__SCALP_DISCOVERY_ONLY__", ...result.reasons].slice(0, 5)
         : result.reasons.slice(0, 5),
       supportingEvidence: result.reasons,
       conflictingEvidence: scalpDiscoveryOnly
-        ? ["No same-instrument executable scalp plan has been verified yet.", ...result.conflicts].slice(0, 8)
+        ? ["__SCALP_PLAN_REQUIRED__", ...result.conflicts].slice(0, 8)
         : result.conflicts,
       risks: result.conflicts.filter(c => c.includes("stale") || c.includes("unavailable") || c.includes("minimal")),
       invalidationConditions: [
