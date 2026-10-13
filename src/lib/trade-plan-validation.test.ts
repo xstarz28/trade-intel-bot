@@ -1,0 +1,42 @@
+import { describe, expect, it } from "vitest";
+import { validateTradePlanAgainstMarket } from "./trade-plan-validation";
+
+const candles = [{
+  open: 100,
+  high: 102,
+  low: 98,
+  close: 101,
+  timestamp: 1_700_000_000_000,
+}];
+
+describe("validateTradePlanAgainstMarket", () => {
+  it("accepts a directionally coherent long plan near the latest market price", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "long", entry: "101", stopLoss: "98", takeProfit: "107",
+    }, candles, 3)).toEqual({ valid: true });
+  });
+
+  it("accepts a directionally coherent short plan near the latest market price", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "short", entry: "101", stopLoss: "104", takeProfit: "95",
+    }, candles, 3)).toEqual({ valid: true });
+  });
+
+  it("rejects levels on the wrong side of entry", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "short", entry: "101", stopLoss: "98", takeProfit: "105",
+    }, candles, 3)).toEqual({ valid: false, reason: "invalid_geometry" });
+  });
+
+  it("rejects an entry that has drifted materially away from the latest candle", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "short", entry: "110", stopLoss: "115", takeProfit: "100",
+    }, candles, 2)).toEqual({ valid: false, reason: "entry_detached_from_latest_price" });
+  });
+
+  it("does not invent a candle requirement when no valid candle is available", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "long", entry: "101", stopLoss: "98", takeProfit: "107",
+    }, [], 3)).toEqual({ valid: true });
+  });
+});
