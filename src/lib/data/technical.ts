@@ -187,14 +187,22 @@ export function analyzeStructure(
 ): "HH/HL" | "LH/LL" | "range" | "unknown" {
   if (swingHighs.length < 2 || swingLows.length < 2) return "unknown";
 
-  const recentHighs = swingHighs.slice(-3);
-  const recentLows = swingLows.slice(-3);
+  // Classify structure from the two most recent confirmed swings in each
+  // series. Comparing the first and last points of a 3-swing window can hide
+  // a failed latest higher-low/lower-high and label a weakening structure as
+  // a trend. Equal swings are not directional evidence.
+  const previousHigh = swingHighs[swingHighs.length - 2];
+  const latestHigh = swingHighs[swingHighs.length - 1];
+  const previousLow = swingLows[swingLows.length - 2];
+  const latestLow = swingLows[swingLows.length - 1];
 
-  const highsRising = recentHighs[recentHighs.length - 1] > recentHighs[0];
-  const lowsRising = recentLows[recentLows.length - 1] > recentLows[0];
+  const higherHigh = latestHigh > previousHigh;
+  const higherLow = latestLow > previousLow;
+  const lowerHigh = latestHigh < previousHigh;
+  const lowerLow = latestLow < previousLow;
 
-  if (highsRising && lowsRising) return "HH/HL";
-  if (!highsRising && !lowsRising) return "LH/LL";
+  if (higherHigh && higherLow) return "HH/HL";
+  if (lowerHigh && lowerLow) return "LH/LL";
   return "range";
 }
 
