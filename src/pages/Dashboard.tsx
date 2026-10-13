@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
+import { buildHistoricalContextSummaries } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
@@ -42,6 +43,7 @@ import { BarChart3, Briefcase } from "lucide-react";
 
 /** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
 function fromDbRecord(record: any): AnalysisResult {
+  const historicalContextSummaries = buildHistoricalContextSummaries(record);
   return {
     id: record._id,
     instrument: record.instrument,
@@ -63,10 +65,7 @@ function fromDbRecord(record: any): AnalysisResult {
     timestamp: record.timestamp,
     ...(record.price != null ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } } : {}),
     ...(record.dataSource ? { dataSource: record.dataSource } : {}),
-    ...(record.sentimentSummary ? { sentimentData: { provider: "alpha-vantage", timestamp: record.timestamp, averageScore: record.sentimentScore ?? 0, articleCount: 0, label: (record.sentimentScore ?? 0) > 0.15 ? "bullish" : (record.sentimentScore ?? 0) < -0.15 ? "bearish" : "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "medium" as const, articles: [] } } : {}),
-    ...(record.macroSummary ? { macroData: { provider: "alpha-vantage", timestamp: record.timestamp, indicators: [], summary: record.macroSummary, confidence: "medium" as const } } : {}),
-    ...(record.derivativesSummary ? { derivativesData: { provider: "coinglass", symbol: record.instrument, timestamp: record.timestamp, freshness: "delayed" as const, availability: { openInterest: true, fundingRate: true, longShort: true, liquidations: true }, confidence: "medium" as const, interpretation: record.derivativesSummary } } : {}),
-    ...(record.calendarSummary ? { calendarData: { provider: "tickatlas" as const, events: [], macroRisk: { level: "medium" as const, explanation: record.calendarSummary, highImpact24h: 0, highImpact72h: 0 }, timestamp: record.timestamp, freshness: "recent" as const, confidence: "medium" as const, availability: { upcoming24h: false, upcoming72h: false, recentReleased: false } } } : {}),
+    ...(historicalContextSummaries ? { historicalContextSummaries } : {}),
   };
 }
 
