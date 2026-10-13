@@ -75,6 +75,8 @@ export interface CandidateInput {
   spreadBps?: number;
   /** ATR or volatility measure. */
   atr?: number;
+  /** Actual timeframe of the provider OHLCV used for this candidate. */
+  marketTimeframe?: string;
 
   // ── Asset-specific data (optional, populated per class) ──
   /** Open interest (crypto). */
@@ -850,7 +852,10 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
   if (horizon === "SCALPING") {
     if (!c.hasLiveData) return { eligible: false, reason: "scalping requires live data" };
     if (c.freshness !== "FRESH") return { eligible: false, reason: "scalping requires fresh market data (<5 min)" };
-    if (c.marketTimeframe && !["M1", "M5", "M15"].includes(c.marketTimeframe)) {
+    if (!c.marketTimeframe) {
+      return { eligible: false, reason: "scalping requires a verified M1/M5/M15 market timeframe; timeframe unavailable" };
+    }
+    if (!["M1", "M5", "M15"].includes(c.marketTimeframe.toUpperCase())) {
       return { eligible: false, reason: "scalping requires M1/M5/M15 market data; received " + c.marketTimeframe };
     }
     if (c.spreadBps !== undefined && c.spreadBps > 50) return { eligible: false, reason: "spread too wide for scalping" };
