@@ -155,7 +155,7 @@ export function localizeAnalysisText(value: string | undefined | null, locale: L
   if (!phrases) return value;
   let output = value;
   for (const [source, translated] of phrases) {
-    output = output.replaceAll(source, translated);
+    output = output.split(source).join(translated);
   }
   return output;
 }
