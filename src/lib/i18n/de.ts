@@ -846,6 +846,8 @@ const de: Translations = {
     scanning: "Instrumente werden gescannt…",
     noOpportunity: "Keine Klare Chance",
     noOpportunityHint: "Die aktuelle Marktevidenz unterstützt keine starke Einstufung für diesen Zeithorizont.",
+    monitoringTitle: "LIVE-BEOBACHTUNG · NICHT EINSTIEGSBEREIT",
+    monitoringDescription: "Für diese Instrumente liegen nutzbare beobachtete Marktdaten vor, sie erfüllen jedoch nicht die aktuelle Schwelle für ein Trade-Setup. Struktur und Konfluenz beobachten; diese Liste ist kein Einstiegssignal.",
     noSuitableHint: "Keine passenden Instrumente gefunden. Verbinden Sie Live-Datenquellen für den Echtzeit-Scan.",
     expiredInvalidated: "{expired} abgelaufen · {invalidated} ungültig",
     changesSinceScan: "Änderungen seit dem letzten Scan",
