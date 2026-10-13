@@ -47,8 +47,8 @@ describe("Scalping discovery candidates", () => {
     const result = generateRecommendation([candidate], "SCALPING");
     expect(result.rankedInstruments).toHaveLength(1);
     expect(result.rankedInstruments[0]?.suitability).toBe("NEUTRAL");
-    expect(result.rankedInstruments[0]?.primaryReasons[0]).toContain("Discovery candidate only");
-    expect(result.rankedInstruments[0]?.conflictingEvidence[0]).toContain("No same-instrument executable scalp plan");
+    expect(result.rankedInstruments[0]?.primaryReasons[0]).toBe("__SCALP_DISCOVERY_ONLY__");
+    expect(result.rankedInstruments[0]?.conflictingEvidence[0]).toBe("__SCALP_PLAN_REQUIRED__");
   });
 
   it("still rejects non-live or non-fresh candidates for Scalping discovery", () => {
