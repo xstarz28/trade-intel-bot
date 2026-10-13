@@ -464,14 +464,14 @@ export function MarketOpportunities({
     );
   }, [scanResult, currentHorizon, candidates]);
 
-  // Filter by region (post-scan, since regions aren't in the scan config)
-  const filteredRanked = useMemo(() => {
+  // Apply the same live-data filters before separating actionable setups
+  // from neutral candidates that remain useful to monitor.
+  const baseFilteredRanked = useMemo(() => {
     return result.rankedInstruments
       .filter((item) => assetFilter === "all" || item.assetClass === assetFilter)
       .filter((item) => cryptoTypeFilter === "all" || (
         item.assetClass === "crypto" && inferMarketType(item.instrument, item.marketType) === cryptoTypeFilter
       ))
-      .filter((item) => tab !== "trading" || item.suitability === "TOP_OPPORTUNITY" || item.suitability === "WATCHLIST")
       .filter((item) => {
         if (regionFilter === "all") return true;
         const inst = item.instrument.toUpperCase();
@@ -479,9 +479,26 @@ export function MarketOpportunities({
         if (regionFilter === "idx") return item.assetClass === "equity" && (inst.endsWith(".JK") || ["BBCA", "BBRI", "TLKM", "BMRI", "BBNI", "GOTO"].includes(inst));
         if (regionFilter === "global") return ["crypto", "forex", "commodity", "indices", "macro"].includes(item.assetClass);
         return true;
-      })
-      .slice(0, 10);
-  }, [result.rankedInstruments, regionFilter, assetFilter, cryptoTypeFilter, tab]);
+      });
+  }, [result.rankedInstruments, regionFilter, assetFilter, cryptoTypeFilter]);
+
+  // Trading lists show qualified setups first. If none qualify, show only
+  // real-data neutral candidates as monitoring-only, never as entry signals.
+  const filteredRanked = useMemo(() => baseFilteredRanked
+    .filter((item) => tab !== "trading" || item.suitability === "TOP_OPPORTUNITY" || item.suitability === "WATCHLIST")
+    .slice(0, 10),
+  [baseFilteredRanked, tab]);
+
+  const monitoringRanked = useMemo(() => {
+    if (tab !== "trading" || filteredRanked.length > 0) return [];
+    return baseFilteredRanked
+      .filter((item) => item.suitability === "NEUTRAL")
+      .filter((item) => item.dataCompleteness !== "NONE")
+      .filter((item) => item.freshness === "FRESH" || item.freshness === "DELAYED")
+      .slice(0, 5);
+  }, [baseFilteredRanked, filteredRanked.length, tab]);
+
+  const displayedRankedCount = filteredRanked.length || monitoringRanked.length;
 
   // Phase 51: radar-based opportunities
   const radarOpps = useMemo(() => {
@@ -540,7 +557,7 @@ export function MarketOpportunities({
           </Badge>
 
           <Badge variant="outline" className="text-[9px] font-sans border-border/50">
-            {txi("marketPanel.rankedCount", { count: filteredRanked.length })}
+            {txi("marketPanel.rankedCount", { count: displayedRankedCount })}
           </Badge>
           {result.excludedInstruments.length > 0 && (
             <Badge variant="outline" className="text-[9px] font-sans border-border/50 text-muted-foreground/60">
@@ -759,20 +776,33 @@ export function MarketOpportunities({
         {/* Phase 50 Fallback: Static/Discovery Opportunities */}
         {!useRadar && (
           filteredRanked.length > 0 ? (
-            <div className="space-y-2">
+            <div data-testid="market-ranked-list" className="space-y-2">
               {filteredRanked.map((item) => (
+                <RankedCard key={item.instrument} item={item} />
+              ))}
+            </div>
+          ) : monitoringRanked.length > 0 ? (
+            <div data-testid="market-monitoring-list" className="space-y-2">
+              <div className="rounded-lg border border-border/40 bg-muted/15 p-3">
+                <p className="text-[10px] font-sans font-semibold text-muted-foreground">
+                  {tx("marketPanel.monitoringTitle")}
+                </p>
+                <p className="mt-1 text-[9px] font-sans leading-relaxed text-muted-foreground/70">
+                  {tx("marketPanel.monitoringDescription")}
+                </p>
+              </div>
+              {monitoringRanked.map((item) => (
                 <RankedCard key={item.instrument} item={item} />
               ))}
             </div>
           ) : (
             <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
-              <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />                <p className="text-xs font-sans text-muted-foreground font-semibold">
-                  {tx("marketPanel.noOpportunity")}
-                </p>
-                <p className="text-[10px] font-sans text-muted-foreground/50 mt-1">
-                  {isLive
-                  ? tx("marketPanel.noOpportunityHint")
-                  : tx("marketPanel.noSuitableHint")}
+              <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />
+              <p className="text-xs font-sans text-muted-foreground font-semibold">
+                {tx("marketPanel.noOpportunity")}
+              </p>
+              <p className="text-[10px] font-sans text-muted-foreground/50 mt-1">
+                {isLive ? tx("marketPanel.noOpportunityHint") : tx("marketPanel.noSuitableHint")}
               </p>
             </div>
           )
