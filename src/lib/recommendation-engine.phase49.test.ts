@@ -56,6 +56,7 @@ function makeCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
     dataPoints: 200,
     hasLiveData: true,
     freshness: "FRESH",
+    marketTimeframe: "M5",
     providerCoverage: "FULL",
     htfBias: "long",
     marketRegime: "TRENDING",
@@ -1022,5 +1023,61 @@ describe("Z — Adversarial Inputs", () => {
     });
     const result = scoreCandidate(c, "INTRADAY");
     expect(result.analyticalScore).toBeGreaterThanOrEqual(0);
+  });
+});
+
+
+describe("Evidence availability integrity", () => {
+  it("does not treat a default zero fundamental score as measured neutral evidence", () => {
+    const missing = scoreCandidate(makeCandidate({
+      fundamentalScore: undefined,
+      fundamentalEvidenceAvailable: false,
+    }), "INTRADAY");
+    const defaultZero = scoreCandidate(makeCandidate({
+      fundamentalScore: 0,
+      fundamentalEvidenceAvailable: false,
+    }), "INTRADAY");
+
+    expect(defaultZero.analyticalScore).toBe(missing.analyticalScore);
+    expect(defaultZero.confidence).toBe(missing.confidence);
+    expect(defaultZero.reasons).toContain("fundamental evidence unavailable");
+  });
+
+  it("does not include unavailable positioning defaults in scoring or confidence", () => {
+    const missing = scoreCandidate(makeCandidate({
+      positioningScore: undefined,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+    const defaultZero = scoreCandidate(makeCandidate({
+      positioningScore: 0,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+
+    expect(defaultZero.analyticalScore).toBe(missing.analyticalScore);
+    expect(defaultZero.confidence).toBe(missing.confidence);
+  });
+
+  it("counts non-technical agreement only when the evidence source is available", () => {
+    const unavailable = scoreCandidate(makeCandidate({
+      fundamentalScore: 0,
+      fundamentalEvidenceAvailable: false,
+      positioningScore: 0,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+    const confirmed = scoreCandidate(makeCandidate({
+      fundamentalScore: 1,
+      fundamentalEvidenceAvailable: true,
+      positioningScore: 1,
+      positioningEvidenceAvailable: true,
+    }), "INTRADAY");
+
+    expect(confirmed.analyticalScore).toBeGreaterThan(unavailable.analyticalScore);
+    expect(confirmed.confidence).toBeGreaterThan(unavailable.confidence);
+  });
+
+  it("rejects scalping when the actual provider timeframe is missing", () => {
+    const result = isEligible(makeCandidate({ marketTimeframe: undefined }), "SCALPING");
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toContain("timeframe unavailable");
   });
 });
