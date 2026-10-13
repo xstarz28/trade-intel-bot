@@ -64,6 +64,26 @@ export function selectBudgetedMtfSlot(slots: readonly ChainSlot[]): ChainSlot | 
     slots.find((slot) => slot.role === "trigger");
 }
 
+/**
+ * Select budgeted MTF reads for the requested setup.
+ * M5 scalping needs both its nearest structural context (M15) and its execution
+ * trigger (M1). Spending the only higher-timeframe credit on M15 leaves every
+ * scalping setup without the trigger that the decision gates require. Other
+ * horizons retain the conservative one-extra-timeframe policy.
+ */
+export function selectBudgetedMtfSlots(
+  slots: readonly ChainSlot[],
+  requestedTf: string,
+): ChainSlot[] {
+  const structure = slots.find((slot) => slot.role === "structure");
+  const trigger = slots.find((slot) => slot.role === "trigger");
+  if (requestedTf.toUpperCase() === "M5" && structure && trigger) {
+    return [structure, trigger];
+  }
+  const preferred = selectBudgetedMtfSlot(slots);
+  return preferred ? [preferred] : [];
+}
+
 /** Minimum candles for an independent structural read on any timeframe. */
 const MIN_TF_DATAPOINTS = 20;
 
