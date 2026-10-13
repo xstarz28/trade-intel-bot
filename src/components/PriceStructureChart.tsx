@@ -1,6 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { OhlcvCandle, TechnicalData } from "@/lib/data/market-types";
 import type { KeyLevels, TradePlan } from "@/types/analysis";
+import { validateTradePlanAgainstMarket } from "@/lib/trade-plan-validation";
+import { useI18n } from "@/lib/i18n";
 
 interface PriceChartProps {
   instrument: string;
@@ -55,6 +57,8 @@ export function PriceStructureChart({
   projectedTradePlan,
   technicalData,
 }: PriceChartProps) {
+  const { locale } = useI18n();
+  const isIndonesian = locale === "id";
   const data = candles
     .filter((c) =>
       [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite) &&
@@ -70,8 +74,14 @@ export function PriceStructureChart({
 
   const fmt = (value: number) => formatChartPrice(value, instrumentType, instrument);
   const smc = technicalData?.smc;
-  const plan = tradePlan ?? projectedTradePlan;
-  const projected = !tradePlan && !!projectedTradePlan;
+  const candidatePlan = tradePlan ?? projectedTradePlan;
+  const planValidation = candidatePlan
+    ? validateTradePlanAgainstMarket(candidatePlan, data, technicalData?.atr14)
+    : undefined;
+  // Final safety boundary: persisted results must not draw stale entry levels.
+  const plan = candidatePlan && planValidation?.valid ? candidatePlan : undefined;
+  const rejectedPlan = !!candidatePlan && !plan;
+  const projected = !tradePlan && !!plan && !!projectedTradePlan;
   const highs = data.map((c) => c.high);
   const lows = data.map((c) => c.low);
   // Keep the visible price scale anchored to recent candles plus the
@@ -173,6 +183,13 @@ export function PriceStructureChart({
           )}
           {compactContext.map((item) => <span key={item}>{item}</span>)}
         </div>
+        {rejectedPlan && (
+          <div role="status" className="mt-2 text-[10px] font-mono text-amber-300">
+            {isIndonesian
+              ? "Rencana entry disembunyikan: level sudah tidak cocok dengan candle terbaru. Jalankan analisis ulang."
+              : "Trade plan hidden: levels no longer match the latest candles. Re-run analysis."}
+          </div>
+        )}
         {plan && (
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
             <span className={projected ? "text-amber-300" : "text-sky-300"}>
