@@ -370,6 +370,24 @@ describe("dataCompleteness", () => {
     expect(result.recommendation).toBe("NO_TRADE");
   });
 
+  it("does not crash when the market provider omits the optional price object", () => {
+    const result = runAnalysis(baseInput({
+      marketData: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: undefined,
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "unavailable",
+      } as any,
+    }));
+
+    expect(result.recommendation).toBe("NO_TRADE");
+    expect(result.dataFlags).toContain("No valid positive price data available — scored neutral");
+  });
+
   it("marks 'limited' with no data at all", () => {
     const result = runAnalysis(baseInput());
     expect(result.dataCompleteness).toBe("limited");
