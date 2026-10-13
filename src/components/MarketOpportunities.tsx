@@ -508,16 +508,16 @@ export function MarketOpportunities({
     .slice(0, 10),
   [baseFilteredRanked, tab]);
 
+  // Trading recommendations are actionable rankings, not a list of neutral
+  // discovery candidates. If no candidate meets the qualification gates, show
+  // the explicit no-opportunity state below instead of disguising monitoring
+  // candidates as recommendations.
   const monitoringRanked = useMemo(() => {
-    if (tab !== "trading" || filteredRanked.length > 0) return [];
-    // These candidates passed provider/eligibility checks and have a scored
-    // observation, but did not qualify for entry. Keep them visible for review
-    // even when freshness/completeness is degraded; card badges expose those
-    // limits and the panel explicitly says this is not an entry signal.
+    if (tab === "trading") return [];
     return baseFilteredRanked
       .filter((item) => item.suitability === "NEUTRAL" || item.suitability === "INSUFFICIENT_DATA")
       .slice(0, 5);
-  }, [baseFilteredRanked, filteredRanked.length, tab]);
+  }, [baseFilteredRanked, tab]);
 
   const displayedRankedCount = filteredRanked.length || monitoringRanked.length;
 

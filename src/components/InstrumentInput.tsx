@@ -62,7 +62,8 @@ interface PersistedForm {
 }
 
 const DEFAULT_FORM: PersistedForm = {
-  instrument: "",
+  // Start with a valid instrument so the primary action is usable on a fresh session.
+  instrument: "EUR/USD",
   instrumentType: "forex",
   timeframe: "D1",
   tradingStyle: "intraday",
@@ -73,7 +74,15 @@ function loadPersistedForm(): PersistedForm {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_FORM;
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_FORM, ...parsed };
+    return {
+      ...DEFAULT_FORM,
+      ...parsed,
+      // Older sessions may have persisted an empty instrument, which disabled
+      // the primary submit button even though the form was otherwise ready.
+      instrument: typeof parsed.instrument === "string" && parsed.instrument.trim()
+        ? parsed.instrument
+        : DEFAULT_FORM.instrument,
+    };
   } catch {
     return DEFAULT_FORM;
   }
