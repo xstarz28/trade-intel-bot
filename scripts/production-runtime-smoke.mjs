@@ -346,6 +346,10 @@ try {
   if (!(await guest.count())) throw new Error("Auth page did not expose guest sign-in");
   await guest.click();
 
+  const cryptoCategory = page.getByRole("button", { name: "CRYPTO", exact: true });
+  await cryptoCategory.waitFor({ state: "visible", timeout: 30000 });
+
+  // Wait for guest navigation to settle before asserting dashboard surfaces.
   const riskSizingHeading = page.getByText("$ risk-sizing", { exact: true });
   const equityInput = page.getByPlaceholder("1000", { exact: true });
   const riskPercentInput = page.getByPlaceholder("1.0", { exact: true });
@@ -360,11 +364,8 @@ try {
     await riskPercentInput.isVisible() &&
     await accountCurrencyInput.isVisible();
   if (!evidence.productSurfaces.riskSizing) {
-    throw new Error("Risk-sizing surface did not render all three user-owned account inputs.");
+    throw new Error("Risk-sizing surface did not render all three user-owned account inputs after dashboard navigation.");
   }
-
-  const cryptoCategory = page.getByRole("button", { name: "CRYPTO", exact: true });
-  await cryptoCategory.waitFor({ state: "visible", timeout: 30000 });
   await cryptoCategory.click();
   const instrumentPicker = page.getByRole("combobox").first();
   await instrumentPicker.click();
