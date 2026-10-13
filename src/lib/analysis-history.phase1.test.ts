@@ -37,6 +37,18 @@ describe("buildHistoricalContextSummaries", () => {
     expect(summaries?.derivatives).not.toHaveProperty("availability");
   });
 
+  it("ignores the legacy missing-sentiment placeholder", () => {
+    expect(
+      buildHistoricalContextSummaries({ sentimentSummary: "undefined (0 articles)" }),
+    ).toBeUndefined();
+    expect(
+      buildHistoricalContextSummaries({
+        sentimentSummary: "undefined (0 articles)",
+        macroSummary: "Rates rose.",
+      }),
+    ).toEqual({ macro: "Rates rose." });
+  });
+
   it("ignores blank narratives and non-finite sentiment scores", () => {
     expect(
       buildHistoricalContextSummaries({
