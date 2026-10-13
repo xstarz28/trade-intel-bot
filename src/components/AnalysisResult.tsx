@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScoreBreakdown } from "@/components/ScoreBreakdown";
@@ -1735,6 +1735,51 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.fundamentalSummary}</p>
         </CardContent>
       </Card>
+
+      {result.historicalContextSummaries && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-mono font-semibold text-muted-foreground">
+              HISTORICAL CONTEXT — SAVED SUMMARIES
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 pt-0">
+            <p className="text-[11px] leading-relaxed text-muted-foreground font-mono">
+              Stored narrative summaries only. Raw provider readings, article counts, event records, and
+              availability details were not saved for this historical result; they are not recreated here.
+            </p>
+            {result.historicalContextSummaries.sentiment && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-mono uppercase text-muted-foreground">Sentiment summary</p>
+                {result.historicalContextSummaries.sentiment.score !== undefined && (
+                  <p className="text-xs font-mono">Stored sentiment score: {result.historicalContextSummaries.sentiment.score.toFixed(3)}</p>
+                )}
+                {result.historicalContextSummaries.sentiment.summary && (
+                  <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.historicalContextSummaries.sentiment.summary}</p>
+                )}
+              </div>
+            )}
+            {result.historicalContextSummaries.macro && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-mono uppercase text-muted-foreground">Macro summary</p>
+                <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.historicalContextSummaries.macro}</p>
+              </div>
+            )}
+            {result.historicalContextSummaries.derivatives && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-mono uppercase text-muted-foreground">Derivatives summary</p>
+                <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.historicalContextSummaries.derivatives}</p>
+              </div>
+            )}
+            {result.historicalContextSummaries.calendar && (
+              <div className="space-y-1">
+                <p className="text-[10px] font-mono uppercase text-muted-foreground">Calendar summary</p>
+                <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.historicalContextSummaries.calendar}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* News Sentiment (Alpha Vantage) */}
       {result.sentimentData && result.sentimentData.confidence !== "unavailable" && (
