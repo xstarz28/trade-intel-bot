@@ -844,9 +844,15 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
   // Freshness gate
   if (c.freshness === "UNAVAILABLE") return { eligible: false, reason: "data freshness unavailable" };
 
-  // For scalping: require live data and reasonable execution quality
+  // Scalping is execution-sensitive: a recently fetched stale quote is not
+  // usable just because the provider request succeeded. Keep the instrument
+  // visible to discovery, but never mark stale data eligible for scalp ranking.
   if (horizon === "SCALPING") {
     if (!c.hasLiveData) return { eligible: false, reason: "scalping requires live data" };
+    if (c.freshness !== "FRESH") return { eligible: false, reason: "scalping requires fresh market data (<5 min)" };
+    if (c.marketTimeframe && !["M1", "M5", "M15"].includes(c.marketTimeframe)) {
+      return { eligible: false, reason: "scalping requires M1/M5/M15 market data; received " + c.marketTimeframe };
+    }
     if (c.spreadBps !== undefined && c.spreadBps > 50) return { eligible: false, reason: "spread too wide for scalping" };
   }
 
