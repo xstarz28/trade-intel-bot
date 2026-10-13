@@ -683,8 +683,10 @@ export interface Translations {
     scanning: string;
     noOpportunity: string;
     noOpportunityHint: string;
-    monitoringTitle: string;
-    monitoringDescription: string;
+    /** Optional in secondary locales; i18n resolves absent keys through the English resource. */
+    monitoringTitle?: string;
+    /** Optional in secondary locales; i18n resolves absent keys through the English resource. */
+    monitoringDescription?: string;
     noSuitableHint: string;
     expiredInvalidated: string;
     changesSinceScan: string;
