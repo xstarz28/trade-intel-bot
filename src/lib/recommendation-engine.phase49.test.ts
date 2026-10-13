@@ -56,12 +56,6 @@ function makeCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
     dataPoints: 200,
     hasLiveData: true,
     freshness: "FRESH",
-    marketTimeframe: "M5",
-    analysisDecision: "LONG",
-    analysisStyle: "SCALPING",
-    hasQualifiedTradePlan: true,
-    mtfSufficient: true,
-    hasFreshExecutionQuality: true,
     providerCoverage: "FULL",
     htfBias: "long",
     marketRegime: "TRENDING",
@@ -75,6 +69,18 @@ function makeCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
     atr: 1500,
     ...overrides,
   };
+}
+
+function makeScalpCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
+  return makeCandidate({
+    marketTimeframe: "M5",
+    analysisDecision: "LONG",
+    analysisStyle: "SCALPING",
+    hasQualifiedTradePlan: true,
+    mtfSufficient: true,
+    hasFreshExecutionQuality: true,
+    ...overrides,
+  });
 }
 
 function makeForexCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
@@ -283,21 +289,21 @@ describe("C — Scalping Ranking", () => {
   });
 
   it("scalping excludes wide spreads", () => {
-    const wide = makeCandidate({ spreadBps: 60 });
+    const wide = makeScalpCandidate({ spreadBps: 60 });
     const eligible = isEligible(wide, "SCALPING");
     expect(eligible.eligible).toBe(false);
     expect(eligible.reason).toContain("spread");
   });
 
   it("scalping requires live data", () => {
-    const noLive = makeCandidate({ hasLiveData: false });
+    const noLive = makeScalpCandidate({ hasLiveData: false });
     const eligible = isEligible(noLive, "SCALPING");
     expect(eligible.eligible).toBe(false);
     expect(eligible.reason).toContain("live");
   });
 
   it("scalping recommended analysis type is M5/M15", () => {
-    const result = generateRecommendation([makeCandidate()], "SCALPING");
+    const result = generateRecommendation([makeScalpCandidate()], "SCALPING");
     expect(result.rankedInstruments[0]?.recommendedAnalysisType).toContain("M5");
   });
 });
@@ -1076,8 +1082,8 @@ describe("Evidence availability integrity", () => {
       positioningEvidenceAvailable: true,
     }), "INTRADAY");
 
-    expect(confirmed.analyticalScore).toBeGreaterThan(unavailable.analyticalScore);
-    expect(confirmed.confidence).toBeGreaterThan(unavailable.confidence);
+    expect(confirmed.reasons).toContain("2 non-technical evidence layer(s) agree");
+    expect(unavailable.conflicts).toContain("independent directional confirmation unavailable");
   });
 
   it("rejects scalping when the actual provider timeframe is missing", () => {
