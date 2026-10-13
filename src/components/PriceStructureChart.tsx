@@ -16,7 +16,7 @@ interface PriceChartProps {
 
 const CHART_COPY: Record<string, { title: string; candles: string; lastClose: string; structure: string; plan: string; verify: string; stale: string; rejected: string; unavailable: string; entry: string; stop: string; target: string; resistance: string; support: string; invalidation: string; vwap: string; volumeProfile: string; sweep: string }> = {
   en: { title: "Market structure · provider OHLCV", candles: "candles", lastClose: "LAST CLOSE", structure: "STRUCTURE", plan: "ANALYTICAL PLAN", verify: "VERIFY EXECUTABLE PRICE", stale: "Trade plan hidden: levels no longer match the latest candles. Re-run analysis.", rejected: "No executable entry plan. Rejected projections are not drawn to avoid misleading entry levels.", unavailable: "unavailable", entry: "ENTRY", stop: "SL", target: "TP", resistance: "RES", support: "SUP", invalidation: "INV", vwap: "VWAP", volumeProfile: "Volume Profile", sweep: "SWEEP" },
-  id: { title: "Struktur pasar · OHLCV penyedia", candles: "candle", lastClose: "PENUTUP TERAKHIR", structure: "STRUKTUR", plan: "RENCANA ANALISIS", verify: "VERIFIKASI HARGA EKSEKUSI", stale: "Rencana entry disembunyikan: level tidak cocok dengan candle terbaru. Jalankan analisis ulang.", rejected: "Belum ada rencana entry yang layak dieksekusi. Proyeksi yang ditolak tidak digambar agar tidak menyesatkan.", unavailable: "tidak tersedia", entry: "MASUK", stop: "SL", target: "TP", resistance: "RESISTENSI", support: "SUPORT", invalidation: "INVALIDASI", vwap: "VWAP", volumeProfile: "Profil Volume", sweep: "SAPUAN LIKUIDITAS" },
+  id: { title: "Struktur pasar · OHLCV penyedia", candles: "candle", lastClose: "PENUTUP TERAKHIR", structure: "STRUKTUR", plan: "RENCANA ANALISIS", verify: "VERIFIKASI HARGA EKSEKUSI", stale: "Rencana entry disembunyikan: level tidak cocok dengan candle terbaru. Jalankan analisis ulang.", rejected: "Belum ada rencana entry yang layak dieksekusi. Proyeksi yang ditolak tidak digambar agar tidak menyesatkan.", unavailable: "tidak tersedia", entry: "MASUK", stop: "SL", target: "TP", resistance: "RESISTENSI", support: "DUKUNGAN", invalidation: "INVALIDASI", vwap: "VWAP", volumeProfile: "Profil Volume", sweep: "SAPUAN LIKUIDITAS" },
   es: { title: "Estructura de mercado · OHLCV del proveedor", candles: "velas", lastClose: "ÚLTIMO CIERRE", structure: "ESTRUCTURA", plan: "PLAN ANALÍTICO", verify: "VERIFICAR PRECIO EJECUTABLE", stale: "Plan oculto: los niveles no coinciden con las velas recientes. Repite el análisis.", rejected: "No hay un plan de entrada ejecutable. No se dibujan proyecciones rechazadas.", unavailable: "no disponible", entry: "ENTRADA", stop: "SL", target: "TP", resistance: "RESISTENCIA", support: "SOPORTE", invalidation: "INVALIDACIÓN", vwap: "VWAP", volumeProfile: "Perfil de volumen", sweep: "BARRIDO" },
   pt: { title: "Estrutura de mercado · OHLCV do provedor", candles: "velas", lastClose: "ÚLTIMO FECHAMENTO", structure: "ESTRUTURA", plan: "PLANO ANALÍTICO", verify: "VERIFICAR PREÇO EXECUTÁVEL", stale: "Plano oculto: os níveis não correspondem aos candles recentes. Analise novamente.", rejected: "Não há plano de entrada executável. Projeções rejeitadas não são desenhadas.", unavailable: "indisponível", entry: "ENTRADA", stop: "SL", target: "TP", resistance: "RESISTÊNCIA", support: "SUPORTE", invalidation: "INVALIDAÇÃO", vwap: "VWAP", volumeProfile: "Perfil de volume", sweep: "VARREDURA" },
   fr: { title: "Structure du marché · OHLCV fournisseur", candles: "bougies", lastClose: "DERNIÈRE CLÔTURE", structure: "STRUCTURE", plan: "PLAN ANALYTIQUE", verify: "VÉRIFIER LE PRIX EXÉCUTABLE", stale: "Plan masqué : les niveaux ne correspondent plus aux dernières bougies. Relancez l’analyse.", rejected: "Aucun plan d’entrée exécutable. Les projections rejetées ne sont pas affichées.", unavailable: "indisponible", entry: "ENTRÉE", stop: "SL", target: "TP", resistance: "RÉSISTANCE", support: "SUPPORT", invalidation: "INVALIDATION", vwap: "VWAP", volumeProfile: "Profil de volume", sweep: "BALAYAGE" },
@@ -36,7 +36,7 @@ function formatChartPrice(value: number, instrumentType: string, instrument: str
     if (magnitude >= 0.0001) return value.toFixed(8);
     return value.toFixed(10);
   }
-  if (magnitude >= 1000) return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (magnitude >= 1000) return value.toLocaleString(locale, { maximumFractionDigits: 2 });
   if (magnitude >= 1) return value.toFixed(2);
   if (magnitude >= 0.01) return value.toFixed(4);
   if (magnitude >= 0.0001) return value.toFixed(6);
@@ -205,9 +205,9 @@ export function PriceStructureChart({
             <span className={projected ? "text-amber-300" : "text-sky-300"}>
               {projected ? "PROJECTED SETUP · NOT EXECUTABLE" : `${copy.plan} · ${copy.verify}`}
             </span>
-            <span>ENTRY {fmt(Number(plan.entry))}</span>
-            <span>SL {fmt(Number(plan.stopLoss))}</span>
-            <span>TP {fmt(Number(plan.takeProfit))}</span>
+            <span>{copy.entry} {fmt(Number(plan.entry))}</span>
+            <span>{copy.stop} {fmt(Number(plan.stopLoss))}</span>
+            <span>{copy.target} {fmt(Number(plan.takeProfit))}</span>
             {rr !== undefined && <span className={rr >= 1.5 ? "text-emerald-300" : "text-red-300"}>R:R {rr.toFixed(2)}R</span>}
           </div>
         )}
