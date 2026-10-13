@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
+import { buildHistoricalContextSummaries, buildPersistedContextSummaries, resolveHistoricalDecision } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
@@ -42,6 +43,8 @@ import { BarChart3, Briefcase } from "lucide-react";
 
 /** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
 function fromDbRecord(record: any): AnalysisResult {
+  const historicalContextSummaries = buildHistoricalContextSummaries(record);
+  const historicalDecision = resolveHistoricalDecision(record.recommendation, record.noTradeReasons);
   return {
     id: record._id,
     instrument: record.instrument,
@@ -49,10 +52,10 @@ function fromDbRecord(record: any): AnalysisResult {
     timeframe: record.timeframe,
     bias: record.bias,
     confidence: record.confidence,
-    recommendation: record.recommendation ?? (record.bias === "Bullish" ? "LONG" : record.bias === "Bearish" ? "SHORT" : "NO_TRADE"),
+    recommendation: historicalDecision.recommendation,
     tradingStyle: record.tradingStyle ?? "intraday",
     conviction: record.conviction ?? undefined,
-    noTradeReasons: record.noTradeReasons ?? [],
+    noTradeReasons: historicalDecision.noTradeReasons,
     technicalSummary: record.technicalSummary,
     fundamentalSummary: record.fundamentalSummary,
     breakdown: record.breakdown,
@@ -63,10 +66,7 @@ function fromDbRecord(record: any): AnalysisResult {
     timestamp: record.timestamp,
     ...(record.price != null ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } } : {}),
     ...(record.dataSource ? { dataSource: record.dataSource } : {}),
-    ...(record.sentimentSummary ? { sentimentData: { provider: "alpha-vantage", timestamp: record.timestamp, averageScore: record.sentimentScore ?? 0, articleCount: 0, label: (record.sentimentScore ?? 0) > 0.15 ? "bullish" : (record.sentimentScore ?? 0) < -0.15 ? "bearish" : "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "medium" as const, articles: [] } } : {}),
-    ...(record.macroSummary ? { macroData: { provider: "alpha-vantage", timestamp: record.timestamp, indicators: [], summary: record.macroSummary, confidence: "medium" as const } } : {}),
-    ...(record.derivativesSummary ? { derivativesData: { provider: "coinglass", symbol: record.instrument, timestamp: record.timestamp, freshness: "delayed" as const, availability: { openInterest: true, fundingRate: true, longShort: true, liquidations: true }, confidence: "medium" as const, interpretation: record.derivativesSummary } } : {}),
-    ...(record.calendarSummary ? { calendarData: { provider: "tickatlas" as const, events: [], macroRisk: { level: "medium" as const, explanation: record.calendarSummary, highImpact24h: 0, highImpact72h: 0 }, timestamp: record.timestamp, freshness: "recent" as const, confidence: "medium" as const, availability: { upcoming24h: false, upcoming72h: false, recentReleased: false } } } : {}),
+    ...(historicalContextSummaries ? { historicalContextSummaries } : {}),
   };
 }
 
@@ -834,11 +834,7 @@ export default function Dashboard() {
             dataFlags: result.dataFlags,
             price: result.priceSnapshot?.price,
             dataSource: result.dataSource,
-            sentimentSummary: result.sentimentData?.confidence !== "unavailable" ? `${result.sentimentData?.label} (${result.sentimentData?.articleCount ?? 0} articles)` : undefined,
-            sentimentScore: result.sentimentData?.confidence !== "unavailable" ? result.sentimentData?.averageScore : undefined,
-            macroSummary: result.macroData?.confidence !== "unavailable" ? result.macroData?.summary : undefined,
-            derivativesSummary: result.derivativesData?.confidence !== "unavailable" ? result.derivativesData?.interpretation : undefined,
-            calendarSummary: result.calendarData?.confidence !== "unavailable" ? `Macro risk: ${result.calendarData?.macroRisk.level} — ${result.calendarData?.macroRisk.explanation}` : undefined,
+            ...buildPersistedContextSummaries(result),
           });
         } catch {
           // Save failed (guest user) — analysis still shows in session

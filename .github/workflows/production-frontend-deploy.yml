@@ -102,10 +102,13 @@ jobs:
           echo "::error::Vercel promotion failed with HTTP ${code}"
           exit 1
 
-      - name: Verify published deployment
+      - name: Verify published production host
         run: |
           set -euo pipefail
-          target="https://xstarzanalysis.vercel.app"
+          # FRONTEND_HOST_URL is the configured user-facing production hostname.
+          # Fall back to this exact deployment URL only when no public hostname is configured.
+          target="${FRONTEND_HOST_URL:-${{ steps.deploy.outputs.deployment_url }}}"
+          test -n "${target}"
           npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main
 
       - name: Report public target

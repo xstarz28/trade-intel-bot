@@ -395,6 +395,26 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
 
 // ── Fundamental Scoring (Phase 5: asset-class specific) ───────────
 
+// A DXY strength proxy affects USD/base and USD/quote pairs in opposite
+// directions. It does not independently determine direction for non-USD crosses.
+const FOREX_CURRENCY_CODES = new Set([
+  "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD",
+  "SEK", "NOK", "DKK", "SGD", "HKD", "CNH", "CNY", "MXN",
+  "ZAR", "TRY", "PLN", "HUF", "CZK", "ILS",
+]);
+
+function scoreCurrencyStrengthOnPair(instrument: string, currency: string, strength: number): number {
+  const normalized = instrument.toUpperCase().replace(/[^A-Z]/g, "");
+  if (normalized.length !== 6 || !Number.isFinite(strength) || strength === 0) return 0;
+  const base = normalized.slice(0, 3);
+  const quote = normalized.slice(3, 6);
+  if (!FOREX_CURRENCY_CODES.has(base) || !FOREX_CURRENCY_CODES.has(quote) || base === quote) return 0;
+  const normalizedCurrency = currency.trim().toUpperCase();
+  if (normalizedCurrency === base) return strength;
+  if (normalizedCurrency === quote) return -strength;
+  return 0;
+}
+
 function scoreFundamentals(input: AnalysisInput): FactorScore {
   let score = 0;
 
@@ -429,13 +449,14 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
       input.technicalData?.crossAsset?.available === true &&
       input.technicalData.crossAsset.dataKind === "actual_price" &&
       /DXY/i.test(input.technicalData.crossAsset.comparatorSymbol);
-    if (
-      !actualDxyAvailable &&
-      (input.instrumentType === "forex" || input.instrumentType === "commodity") &&
-      macro.dxyTrend
-    ) {
-      if (macro.dxyTrend === "rising") score -= 1;
-      if (macro.dxyTrend === "falling") score += 1;
+    if (!actualDxyAvailable && macro.dxyTrend) {
+      const usdStrength = macro.dxyTrend === "rising" ? 1 : -1;
+      if (input.instrumentType === "forex") {
+        score += scoreCurrencyStrengthOnPair(input.instrument, "USD", usdStrength);
+      } else if (input.instrumentType === "commodity") {
+        // Preserve the existing USD-denominated commodity proxy direction.
+        score -= usdStrength;
+      }
     }
   } else if (fund && fund.available && input.instrumentType === "stock") {
     if (fund.peRatio !== undefined && fund.peRatio > 0) {
@@ -649,8 +670,15 @@ function scoreSentiment(input: AnalysisInput): FactorScore {
   // thesis creation. Regime detection reads volumeTrend too, but regime is
   // contextual classification only: it never feeds conviction directly.
   if (tech && tech.dataPoints >= 20 && tech.volumeTrend !== "unknown") {
-    if (tech.volumeTrend === "increasing" && structure !== "range" && structure !== "unknown") score += 1;
-    if (tech.volumeTrend === "decreasing" && structure !== "range" && structure !== "unknown") score -= 1;
+    // Volume is directional only relative to the already observed structure.
+    const structureDirection =
+      structure === "HH/HL" ? 1 :
+      structure === "LH/LL" ? -1 :
+      0;
+    if (structureDirection !== 0) {
+      if (tech.volumeTrend === "increasing") score += structureDirection;
+      if (tech.volumeTrend === "decreasing") score -= structureDirection;
+    }
   }
 
   // ── Manual input fallback ──
@@ -669,23 +697,46 @@ function assessDataCompleteness(input: AnalysisInput): {
 } {
   const flags: string[] = [];
   let missing = 0;
-  const hasMarketData = !!input.marketData;
-  const hasTechnical = !!input.technicalData && input.technicalData.dataPoints > 0;
+  const marketPrice = input.marketData?.price?.price;
+  const hasMarketData = typeof marketPrice === "number" && Number.isFinite(marketPrice) && marketPrice > 0;
+  const manualPrice = typeof input.currentPrice === "string" ? Number.parseFloat(input.currentPrice) : Number.NaN;
+  const hasManualPrice = Number.isFinite(manualPrice) && manualPrice > 0;
+  const hasTechnical =
+    !!input.technicalData &&
+    Number.isFinite(input.technicalData.dataPoints) &&
+    input.technicalData.dataPoints > 0;
 
-  if (!hasMarketData && !input.currentPrice) {
-    flags.push("No price data available — scored neutral");
+  if (!hasMarketData && !hasManualPrice) {
+    flags.push("No valid positive price data available — scored neutral");
     missing++;
   }
   if (hasTechnical && input.technicalData!.dataPoints < 50) {
     flags.push(`Limited candle history (${input.technicalData!.dataPoints} candles) — indicators may be unreliable`);
   }
-  const hasIntelligence = !!(input.sentimentData || input.fundamentalData || input.macroData);
+  const hasUsableSentiment = !!(
+    input.sentimentData &&
+    input.sentimentData.confidence !== "unavailable" &&
+    Number.isFinite(input.sentimentData.averageScore) &&
+    Number.isFinite(input.sentimentData.articleCount) &&
+    input.sentimentData.articleCount > 0
+  );
+  const hasUsableFundamentals = input.fundamentalData?.available === true;
+  const hasUsableMacro = !!(
+    input.macroData &&
+    input.macroData.confidence !== "unavailable" &&
+    (
+      (Array.isArray(input.macroData.indicators) && input.macroData.indicators.length > 0) ||
+      input.macroData.dxyTrend !== undefined
+    )
+  );
+  const hasIntelligence = hasUsableSentiment || hasUsableFundamentals || hasUsableMacro;
   const hasCryptoIntelligence = !!(
     input.cryptoIntelligenceContext?.derivatives?.available ||
     input.cryptoIntelligenceContext?.defi?.available ||
     input.cryptoIntelligenceContext?.tokenomics?.available
   );
-  if (!input.newsContext && !hasIntelligence) {
+  const hasNewsContext = typeof input.newsContext === "string" && input.newsContext.trim().length > 0;
+  if (!hasNewsContext && !hasIntelligence) {
     flags.push(
       hasCryptoIntelligence
         ? "Core news/sentiment/fundamental context unavailable — crypto-specific intelligence is shown separately as contextual evidence, not a substitute for core fundamentals"
@@ -693,16 +744,44 @@ function assessDataCompleteness(input: AnalysisInput): {
     );
     missing++;
   }
-  if (input.instrumentType === "forex" && !input.economicEvents && !input.calendarData) {
+  const hasEconomicEventText =
+    typeof input.economicEvents === "string" && input.economicEvents.trim().length > 0;
+  const calendarEvents = input.calendarData?.events;
+  const calendarAvailability = input.calendarData?.availability;
+  const hasUsableCalendar = !!(
+    input.calendarData &&
+    input.calendarData.confidence !== "unavailable" &&
+    (
+      (Array.isArray(calendarEvents) && calendarEvents.length > 0) ||
+      calendarAvailability?.upcoming24h ||
+      calendarAvailability?.upcoming72h ||
+      calendarAvailability?.recentReleased
+    )
+  );
+  if (input.instrumentType === "forex" && !hasEconomicEventText && !hasUsableCalendar) {
     flags.push("No economic calendar data — macro events not factored");
     missing++;
   }
+  const hasUsableManualFunding =
+    typeof input.fundingRate === "string" &&
+    input.fundingRate.trim().length > 0 &&
+    Number.isFinite(Number(input.fundingRate));
+  const hasUsableDerivatives = !!(
+    input.derivativesData &&
+    input.derivativesData.confidence !== "unavailable" &&
+    (
+      input.derivativesData.availability?.openInterest ||
+      input.derivativesData.availability?.fundingRate ||
+      input.derivativesData.availability?.longShort ||
+      input.derivativesData.availability?.liquidations
+    )
+  );
   if (
     input.instrumentType === "crypto" &&
-    !input.fundingRate &&
-    !(input.derivativesData && input.derivativesData.confidence !== "unavailable")
+    !hasUsableManualFunding &&
+    !hasUsableDerivatives
   ) {
-    flags.push("No funding rate data — sentiment analysis limited");
+    flags.push("No usable funding or derivatives data — sentiment analysis limited");
     missing++;
   }
   if (input.instrumentType === "commodity") {
@@ -733,9 +812,9 @@ function assessDataCompleteness(input: AnalysisInput): {
   // Provider quote bid/ask is useful execution context, but it is NOT
   // the prop-firm's executable feed. Keep that distinction explicit.
   const hasProviderQuote =
-    Number.isFinite(input.marketData?.price.bid) &&
-    Number.isFinite(input.marketData?.price.ask) &&
-    (input.marketData?.price.ask ?? 0) >= (input.marketData?.price.bid ?? 0);
+    Number.isFinite(input.marketData?.price?.bid) &&
+    Number.isFinite(input.marketData?.price?.ask) &&
+    (input.marketData?.price?.ask ?? 0) >= (input.marketData?.price?.bid ?? 0);
   if (hasProviderQuote) {
     flags.push("Provider bid/ask quote available — indicative only; verify executable bid/ask on the prop-firm platform");
   } else {
@@ -845,15 +924,15 @@ function decideTrade(
   if (structuralVeto) reasons.push(structuralVeto);
 
   const marketPrice =
-    md?.price.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : undefined);
+    md?.price?.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : undefined);
   // Use the provider's executable-side quote when it exists:
   // ask for long, bid for short. This improves analytical Entry realism,
   // while the UI still labels it as indicative rather than prop-firm executable.
   const entry =
     bias === "Bullish"
-      ? md?.price.ask ?? marketPrice
+      ? md?.price?.ask ?? marketPrice
       : bias === "Bearish"
-        ? md?.price.bid ?? marketPrice
+        ? md?.price?.bid ?? marketPrice
         : marketPrice;
 
   // Structural levels — ONLY from real market swings or user-supplied
@@ -892,8 +971,8 @@ function decideTrade(
   const PRICE_FUTURE_SKEW_MS = 90_000; // documented clock-skew tolerance
   const PRICE_STALE_MS = styleProfile.priceStaleMs;
   if (md) {
-    const ts = md.price.timestamp;
-    const isValidTs = Number.isFinite(ts) && ts > 0 && ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
+    const ts = md.price?.timestamp;
+    const isValidTs = typeof ts === "number" && Number.isFinite(ts) && ts > 0 && ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
     if (!isValidTs) {
       reasons.push(
         `Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.`,

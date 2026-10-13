@@ -170,6 +170,18 @@ describe("scoreFundamentals (via breakdown)", () => {
     expect(result.breakdown.fundamental).toBeGreaterThanOrEqual(1);
   });
 
+  it("orients DXY strength for base, quote, and non-USD cross pairs", () => {
+    const macroData = {
+      provider: "test", timestamp: Date.now(),
+      indicators: [{ name: "context", relevance: "low" as const, sentiment: "neutral" as const }],
+      summary: "test", confidence: "medium" as const, dxyTrend: "rising" as const,
+    };
+    const analyze = (instrument: string) => runAnalysis(baseInput({ instrumentType: "forex", instrument, macroData }));
+    expect(analyze("EUR/USD").breakdown.fundamental).toBe(-1);
+    expect(analyze("USD/JPY").breakdown.fundamental).toBe(1);
+    expect(analyze("EUR/GBP").breakdown.fundamental).toBe(0);
+  });
+
   it("scores -1 for dovish forex news", () => {
     const result = runAnalysis(
       baseInput({
@@ -206,6 +218,38 @@ describe("scoreFundamentals (via breakdown)", () => {
 // ── Sentiment scoring ─────────────────────────────────────────────
 
 describe("scoreSentiment (via breakdown)", () => {
+  it("uses increasing volume as bullish confirmation only with HH/HL", () => {
+    const result = runAnalysis(baseInput({ technicalData: {
+      swingHighs: [1.1, 1.2], swingLows: [1.0, 1.1], structure: "HH/HL",
+      supportLevels: [1.1], resistanceLevels: [1.2], volumeTrend: "increasing", dataPoints: 30,
+    }}));
+    expect(result.breakdown.sentiment).toBeGreaterThan(0);
+  });
+
+  it("uses increasing volume as bearish confirmation with LH/LL", () => {
+    const result = runAnalysis(baseInput({ technicalData: {
+      swingHighs: [1.2, 1.1], swingLows: [1.1, 1.0], structure: "LH/LL",
+      supportLevels: [1.0], resistanceLevels: [1.1], volumeTrend: "increasing", dataPoints: 30,
+    }}));
+    expect(result.breakdown.sentiment).toBeLessThan(0);
+  });
+
+  it("treats decreasing volume as weakening bullish structure", () => {
+    const result = runAnalysis(baseInput({ technicalData: {
+      swingHighs: [1.1, 1.2], swingLows: [1.0, 1.1], structure: "HH/HL",
+      supportLevels: [1.1], resistanceLevels: [1.2], volumeTrend: "decreasing", dataPoints: 30,
+    }}));
+    expect(result.breakdown.sentiment).toBeLessThan(0);
+  });
+
+  it("treats decreasing volume as weakening bearish structure", () => {
+    const result = runAnalysis(baseInput({ technicalData: {
+      swingHighs: [1.2, 1.1], swingLows: [1.1, 1.0], structure: "LH/LL",
+      supportLevels: [1.0], resistanceLevels: [1.1], volumeTrend: "decreasing", dataPoints: 30,
+    }}));
+    expect(result.breakdown.sentiment).toBeGreaterThan(0);
+  });
+
   it("scores -1 for high positive funding rate (contrarian bearish)", () => {
     const result = runAnalysis(
       baseInput({
@@ -293,6 +337,58 @@ describe("dataCompleteness", () => {
       }),
     );
     expect(result.dataCompleteness).toBe("full");
+  });
+
+  it("does not count unavailable intelligence payloads as available evidence", () => {
+    const result = runAnalysis(baseInput({
+      sentimentData: {
+        provider: "alpha-vantage", timestamp: Date.now(), averageScore: 0, articleCount: 0,
+        label: "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 },
+        confidence: "unavailable", articles: [],
+      },
+      fundamentalData: {
+        provider: "alpha-vantage", timestamp: Date.now(), instrumentType: "forex",
+        available: false, unavailableReason: "no data",
+      },
+      macroData: {
+        provider: "alpha-vantage", timestamp: Date.now(), indicators: [],
+        summary: "unavailable", confidence: "unavailable",
+      },
+      newsContext: "   ",
+    }));
+    expect(result.dataFlags).toContain(
+      "No news context or core fundamental intelligence data — fundamental analysis limited to technicals",
+    );
+  });
+
+  it("does not count an unavailable calendar or zero price as usable data", () => {
+    const result = runAnalysis(baseInput({
+      instrumentType: "forex",
+      marketData: {
+        instrument: "EUR/USD", instrumentType: "forex", provider: "test", fetchTimestamp: Date.now(),
+        price: { price: 0, timestamp: Date.now(), source: "test" }, candles: [],
+        timeframe: "D1", dataFreshness: "unavailable",
+      },
+      calendarData: {
+        provider: "tickatlas", events: [],
+        macroRisk: { level: "medium", explanation: "unavailable", highImpact24h: 0, highImpact72h: 0 },
+        timestamp: Date.now(), freshness: "unavailable", confidence: "unavailable",
+        availability: { upcoming24h: false, upcoming72h: false, recentReleased: false },
+      },
+    }));
+    expect(result.dataFlags).toContain("No valid positive price data available — scored neutral");
+    expect(result.dataFlags).toContain("No economic calendar data — macro events not factored");
+    expect(result.recommendation).toBe("NO_TRADE");
+  });
+
+  it("does not crash for malformed optional provider payloads", () => {
+    expect(() => runAnalysis(baseInput({
+      derivativesData: { confidence: "medium" } as any,
+      marketData: {
+        instrument: "EUR/USD", instrumentType: "forex", provider: "test", fetchTimestamp: Date.now(),
+        price: undefined, candles: [], timeframe: "D1", dataFreshness: "unavailable",
+      } as any,
+    }))).not.toThrow();
   });
 
   it("marks 'limited' with no data at all", () => {
