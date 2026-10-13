@@ -177,6 +177,41 @@ describe("Phase 27 — LTF CHoCH does not force reversal", () => {
   });
 });
 
+// ── 5B. MULTIPLE LTF WARNINGS ARE NOT HTF REVERSAL CONFIRMATION ──
+
+describe("Phase 27 — reversal confirmation hierarchy", () => {
+  it("keeps reversal developing when BOS/CHoCH warnings lack an opposing HTF shift", () => {
+    const initial = runAnalysis(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
+    const baseMtf = initial.technicalData?.mtf;
+    const result = {
+      ...initial,
+      decisionTrace: {
+        ...initial.decisionTrace!,
+        structuralDirection: "long" as const,
+      },
+      technicalData: {
+        ...initial.technicalData!,
+        bosDirection: "bearish" as const,
+        chochDirection: "bearish" as const,
+        mtf: baseMtf ? { ...baseMtf, htfReversal: undefined } : undefined,
+      },
+      mtfSummary: {
+        ...(initial.mtfSummary ?? {
+          chainUsed: ["D1", "H4"],
+          unavailable: [],
+          htfBias: "long" as const,
+          setupTimeframe: "D1",
+        }),
+        alignment: "COUNTER_TREND" as const,
+      },
+    };
+    const scenario = buildMarketScenario(result);
+    expect(scenario.reversalEvidence.length).toBeGreaterThanOrEqual(2);
+    expect(scenario.scenario).toBe("REVERSAL_DEVELOPING");
+    expect(scenario.primaryScenario).toContain("reversal risk developing");
+  });
+});
+
 // ── 6. DETERMINISM ───────────────────────────────────────────────
 
 describe("Phase 27 — determinism", () => {

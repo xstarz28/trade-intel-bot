@@ -89,6 +89,7 @@ export function InstrumentInput({
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
   const [manualSearch, setManualSearch] = useState(false);
   const [manualSearchQuery, setManualSearchQuery] = useState("");
+  const [manualSearchError, setManualSearchError] = useState<string | null>(null);
   const [cryptoMarketType, setCryptoMarketType] = useState<CryptoMarketType>("spot");
   const manualInputRef = useRef<HTMLInputElement | null>(null);
   // Keep every field synchronous with user input so an immediate submit cannot
@@ -122,6 +123,30 @@ export function InstrumentInput({
     .filter((item) => item.type === form.instrumentType)
     .filter((item) => form.instrumentType !== "crypto" || inferCryptoMarketType(item) === cryptoMarketType);
   const filteredInstruments = categoryInstruments;
+  const manualQuery = manualSearchQuery.trim().toUpperCase();
+  const manualSearchMatches = manualQuery
+    ? universeOptions
+        .filter((item) =>
+          item.symbol.toUpperCase().includes(manualQuery) ||
+          item.label.toUpperCase().includes(manualQuery)
+        )
+        .sort((a, b) => {
+          const rank = (item: AvailableInstrument) => {
+            const symbol = item.symbol.toUpperCase();
+            const label = item.label.toUpperCase();
+            if (symbol === manualQuery) return 0;
+            if (symbol.startsWith(manualQuery)) return 1;
+            if (label.startsWith(manualQuery)) return 2;
+            if (symbol.includes(manualQuery)) return 3;
+            return 4;
+          };
+          return rank(a) - rank(b) || a.symbol.localeCompare(b.symbol);
+        })
+        .slice(0, 8)
+    : [];
+  const exactManualMatch = manualQuery
+    ? universeOptions.find((item) => item.symbol.toUpperCase() === manualQuery)
+    : undefined;
 
   const selectCategory = useCallback((type: InstrumentType) => {
     commitForm((prev) => {
@@ -181,8 +206,16 @@ export function InstrumentInput({
       (item) => item.symbol.toUpperCase() === instrument.toUpperCase(),
     );
 
+    // Manual search must resolve to a canonical catalog item. Otherwise a
+    // ticker could be sent to the provider under the previously selected class.
+    if (manualSearch && !knownInstrument) {
+      setManualSearchError("Choose a matching instrument from the search results before running analysis.");
+      return;
+    }
+    setManualSearchError(null);
+
     onAnalyze({
-      instrument,
+      instrument: knownInstrument?.symbol ?? instrument,
       instrumentType: knownInstrument?.type ?? currentForm.instrumentType,
       timeframe: currentForm.timeframe,
       tradingStyle: currentForm.tradingStyle,
@@ -195,8 +228,8 @@ export function InstrumentInput({
     submitAnalysis();
   };
 
-  const submitInstrument = manualSearch && manualSearchQuery.trim()
-    ? manualSearchQuery.trim()
+  const submitInstrument = manualSearch
+    ? (exactManualMatch?.symbol ?? "")
     : form.instrument.trim();
 
   return (
@@ -307,6 +340,7 @@ export function InstrumentInput({
               onClick={() => {
                 setManualSearch((value) => !value);
                 setManualSearchQuery("");
+                setManualSearchError(null);
               }}
               className="mt-2 text-[11px] font-mono text-muted-foreground hover:text-foreground underline underline-offset-4"
             >
@@ -323,13 +357,45 @@ export function InstrumentInput({
                   type="text"
                   placeholder={t.entryForm.manualSearchPlaceholder}
                   value={manualSearchQuery}
-                  onChange={(event) => setManualSearchQuery(event.currentTarget.value)}
+                  onChange={(event) => {
+                    setManualSearchQuery(event.currentTarget.value);
+                    setManualSearchError(null);
+                  }}
                   className="relative z-20 h-10 w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono text-foreground shadow-sm outline-none pointer-events-auto focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
                   autoComplete="off"
                   autoCapitalize="off"
                   spellCheck={false}
                   autoFocus
                 />
+                {manualQuery && (
+                  <div role="listbox" aria-label="Instrument search results" className="mt-2 max-h-56 overflow-y-auto rounded-md border border-border/60 bg-background">
+                    {manualSearchMatches.length > 0 ? manualSearchMatches.map((item) => (
+                      <button
+                        key={item.symbol}
+                        type="button"
+                        role="option"
+                        aria-selected={exactManualMatch?.symbol === item.symbol}
+                        className="flex w-full items-start justify-between gap-3 border-b border-border/30 px-3 py-2 text-left last:border-b-0 hover:bg-muted/50"
+                        onClick={() => {
+                          setManualSearchQuery(item.symbol);
+                          setManualSearchError(null);
+                          if (item.type === "crypto") setCryptoMarketType(inferCryptoMarketType(item));
+                          commitForm((prev) => ({ ...prev, instrument: item.symbol, instrumentType: item.type }));
+                        }}
+                      >
+                        <span className="font-mono text-xs font-semibold">{item.symbol}</span>
+                        <span className="text-right text-[10px] text-muted-foreground">{item.label}{("marketType" in item && item.marketType) ? ` · ${item.marketType.toUpperCase()}` : ` · ${item.type.toUpperCase()}`}</span>
+                      </button>
+                    )) : (
+                      <p role="status" className="px-3 py-2 text-[10px] font-mono text-amber-400">
+                        No catalog match. Try a ticker, pair, or instrument name.
+                      </p>
+                    )}
+                  </div>
+                )}
+                {manualSearchError && (
+                  <p role="alert" className="mt-1.5 text-[10px] font-mono text-red-400">{manualSearchError}</p>
+                )}
                 <p className="mt-1.5 text-[10px] font-mono text-muted-foreground">
                   {t.entryForm.manualSearchNote}
                 </p>

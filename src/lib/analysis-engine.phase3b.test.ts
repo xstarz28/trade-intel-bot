@@ -135,7 +135,7 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
     expect(result.tradePlan).toBeUndefined();
   });
 
-  it("rejects implausible extreme R:R created by an ultra-tight scalping stop", () => {
+  it("rejects extreme R:R while preserving its market-derived chart projection", () => {
     const price = 100;
     const result = runAnalysis(input({
       instrument: "BTC-USDT-SWAP",
@@ -161,7 +161,10 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
 
     expect(result.recommendation).toBe("NO_TRADE");
     expect(result.noTradeReasons.join(" ")).toContain("exceeds the 10R sanity ceiling");
-    expect(result.projectedTradePlan).toBeUndefined();
+    // Rejected levels remain visible as a projection so the user can see
+    // the exact reason for NO_TRADE; they are never an executable trade plan.
+    expect(result.projectedTradePlan).toBeDefined();
+    expect(result.projectedTradePlan?.riskReward).toBeGreaterThan(10);
     expect(result.tradePlan).toBeUndefined();
   });
 
@@ -271,14 +274,14 @@ describe("position sizing — computed only from complete real inputs", () => {
     // quantity — the sizing stays explicitly unavailable.
     const r = runAnalysis(input({ accountEquity: 10000, riskPercent: 0.01, instrumentSpec: FULL_SPEC }));
     expect(r.recommendation).toBe("LONG");
-    expect(r.positionSizing).toBeUndefined();
+    expect(r.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
     expect(r.riskNote).toContain("Position sizing unavailable");
   });
 
   it("without a spec, sizing stays unavailable even for a valid LONG", () => {
     const r = runAnalysis(input({ accountEquity: 1000000, riskPercent: 0.02 }));
     expect(r.recommendation).toBe("LONG");
-    expect(r.positionSizing).toBeUndefined();
+    expect(r.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
     expect(r.riskNote).toContain("Position sizing unavailable");
   });
 

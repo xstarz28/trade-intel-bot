@@ -206,9 +206,22 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           candles={result.candles}
           keyLevels={result.keyLevels}
           tradePlan={result.recommendation === "NO_TRADE" ? undefined : result.tradePlan}
-          projectedTradePlan={result.recommendation === "NO_TRADE" ? undefined : result.projectedTradePlan}
+          projectedTradePlan={result.projectedTradePlan}
           technicalData={result.technicalData}
         />
+      )}
+
+      {result.recommendation === "NO_TRADE" && !result.projectedTradePlan && result.candles && result.candles.length >= 5 && (
+        <Card className="border-amber-500/30">
+          <CardContent className="px-4 py-3">
+            <p className="text-[10px] font-mono font-semibold text-amber-400 mb-1">
+              $ trade-levels · NO TRADE
+            </p>
+            <p className="text-[10px] font-mono leading-relaxed text-muted-foreground">
+              Entry / SL / TP projection is unavailable because the current market structure did not produce a valid, market-derived plan for this timeframe. No price levels are being invented. Rejection: {result.noTradeReasons.slice(0, 2).join(" · ") || "setup did not pass the decision gates"}.
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       {tech?.smc && (
@@ -272,19 +285,32 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </Card>
       )}
 
-      {result.positionSizing?.available && (
+      {result.positionSizing && result.recommendation !== "NO_TRADE" && (
         <Card className="border-border/50">
           <CardContent className="px-4 py-3">
-            <p className="text-[10px] font-mono font-semibold text-muted-foreground mb-2">
-              <span className="text-primary/60">$</span> position-sizing
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
-              <div><span className="text-muted-foreground block">Risk budget</span><span className="font-semibold">{result.positionSizing.riskAmount?.toFixed(2)} {result.positionSizing.denominationCurrency}</span></div>
-              <div><span className="text-muted-foreground block">Quantity</span><span className="font-semibold">{result.positionSizing.quantity} {result.positionSizing.quantityUnit}</span></div>
-              <div><span className="text-muted-foreground block">Risk / unit</span><span className="font-semibold">{result.positionSizing.riskPerUnit?.toFixed(6)}</span></div>
-              <div><span className="text-muted-foreground block">Applied risk</span><span className="font-semibold">{((result.positionSizing.appliedRiskPercent ?? 0) * 100).toFixed(2)}%</span></div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[10px] font-mono font-semibold text-muted-foreground">
+                <span className="text-primary/60">$</span> position-sizing
+              </p>
+              <Badge variant="outline" className={cn("text-[9px] font-mono", result.positionSizing.available ? "border-emerald-500/30 text-emerald-400" : "border-amber-500/30 text-amber-400")}>
+                {result.positionSizing.available ? "AVAILABLE" : "NOT AVAILABLE"}
+              </Badge>
             </div>
-            <p className="text-[9px] font-mono text-muted-foreground mt-2">Source: {result.positionSizing.specificationSource ?? "provider/user specification"}. This is your chosen risk budget, not a recommended risk level.</p>
+            {result.positionSizing.available ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
+                  <div><span className="text-muted-foreground block">Risk budget</span><span className="font-semibold">{result.positionSizing.riskAmount?.toFixed(2)} {result.positionSizing.denominationCurrency}</span></div>
+                  <div><span className="text-muted-foreground block">Quantity</span><span className="font-semibold">{result.positionSizing.quantity} {result.positionSizing.quantityUnit}</span></div>
+                  <div><span className="text-muted-foreground block">Risk / unit</span><span className="font-semibold">{result.positionSizing.riskPerUnit?.toFixed(6)}</span></div>
+                  <div><span className="text-muted-foreground block">Applied risk</span><span className="font-semibold">{((result.positionSizing.appliedRiskPercent ?? 0) * 100).toFixed(2)}%</span></div>
+                </div>
+                <p className="text-[9px] font-mono text-muted-foreground mt-2">Source: {result.positionSizing.specificationSource ?? "verified provider/user specification"}. This is your chosen risk budget, not a recommended risk level.</p>
+              </>
+            ) : (
+              <p className="text-[10px] font-mono leading-relaxed text-amber-400">
+                {result.positionSizing.unavailableReason ?? "Position size is unavailable because required account inputs or verified instrument contract details are missing."}
+              </p>
+            )}
           </CardContent>
         </Card>
       )}

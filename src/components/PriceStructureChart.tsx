@@ -74,14 +74,14 @@ export function PriceStructureChart({
   const projected = !tradePlan && !!projectedTradePlan;
   const highs = data.map((c) => c.high);
   const lows = data.map((c) => c.low);
-  // Include valid plotted levels in the scale; otherwise an otherwise valid
-  // entry/SL/TP outside the candle-only range silently disappears from chart.
-  const overlayPrices = [
-    Number(keyLevels.support),
-    Number(keyLevels.resistance),
-    Number(keyLevels.invalidation),
-    ...(plan ? [Number(plan.entry), Number(plan.stopLoss), Number(plan.takeProfit)] : []),
-  ].filter((value) => Number.isFinite(value) && value > 0);
+  // Keep the visible price scale anchored to recent candles plus the
+  // entry/SL/TP levels. Historical support/resistance may sit far outside this
+  // M5 window; allowing those distant levels to set the scale crushes candles
+  // and makes the chart unreadable. Out-of-window structural levels are omitted.
+  const overlayPrices = (plan
+    ? [Number(plan.entry), Number(plan.stopLoss), Number(plan.takeProfit)]
+    : []
+  ).filter((value) => Number.isFinite(value) && value > 0);
   const max = Math.max(...highs, ...overlayPrices);
   const min = Math.min(...lows, ...overlayPrices);
   const spanRaw = Math.max(max - min, Number.EPSILON);

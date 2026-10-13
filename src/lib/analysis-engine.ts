@@ -1443,12 +1443,10 @@ function decideTrade(
         reasons.push(
           `${styleProfile.style.toUpperCase()} veto: calculated R:R ${rr.toFixed(2)} exceeds the ${styleProfile.maxRiskReward}R sanity ceiling; stop distance is too small relative to the target. Revalidate structural levels — this is not a trade setup.`,
         );
-        projectedTradePlan = undefined;
       } else if (exactRr < MIN_RR) {
         reasons.push(
           `Projected R:R ${rr.toFixed(3)} is below the ${MIN_RR.toFixed(3)} minimum for actionable setups.`,
         );
-        if (styleProfile.style === "scalping") projectedTradePlan = undefined;
       } else {
         // Executable plans use exactly the same displayed levels and R:R
         // geometry as the projected plan; no hidden precision mismatch.
@@ -2521,8 +2519,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
           fxDirect: input.fxRates?.direct,
           fxInverse: input.fxRates?.inverse,
         });
+    // Preserve the unavailable state too, so the UI can explain the
+    // actual blocker (missing balance/risk input, contract spec, or FX rate).
+    positionSizing = sizing;
     if (sizing.available) {
-      positionSizing = sizing;
       // Phase 7E — walk the REAL book with the REAL risk-engine quantity.
       // Sizing unavailable → slippage unavailable (no synthetic quantity);
       // contract size unavailable → mapping refused honestly.
