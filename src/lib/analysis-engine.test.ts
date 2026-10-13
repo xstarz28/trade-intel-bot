@@ -206,6 +206,50 @@ describe("scoreFundamentals (via breakdown)", () => {
 // ── Sentiment scoring ─────────────────────────────────────────────
 
 describe("scoreSentiment (via breakdown)", () => {
+  it("lets increasing volume confirm bullish structure", () => {
+    const result = runAnalysis(baseInput({
+      technicalData: {
+        swingHighs: [1.1, 1.2], swingLows: [1.0, 1.1],
+        structure: "HH/HL", supportLevels: [1.1], resistanceLevels: [1.2],
+        volumeTrend: "increasing", dataPoints: 30,
+      },
+    }));
+    expect(result.breakdown.sentiment).toBeGreaterThan(0);
+  });
+
+  it("lets increasing volume confirm bearish structure rather than vote bullish", () => {
+    const result = runAnalysis(baseInput({
+      technicalData: {
+        swingHighs: [1.2, 1.1], swingLows: [1.1, 1.0],
+        structure: "LH/LL", supportLevels: [1.0], resistanceLevels: [1.1],
+        volumeTrend: "increasing", dataPoints: 30,
+      },
+    }));
+    expect(result.breakdown.sentiment).toBeLessThan(0);
+  });
+
+  it("treats decreasing volume as weakening bullish structure", () => {
+    const result = runAnalysis(baseInput({
+      technicalData: {
+        swingHighs: [1.1, 1.2], swingLows: [1.0, 1.1],
+        structure: "HH/HL", supportLevels: [1.1], resistanceLevels: [1.2],
+        volumeTrend: "decreasing", dataPoints: 30,
+      },
+    }));
+    expect(result.breakdown.sentiment).toBeLessThan(0);
+  });
+
+  it("treats decreasing volume as weakening bearish structure", () => {
+    const result = runAnalysis(baseInput({
+      technicalData: {
+        swingHighs: [1.2, 1.1], swingLows: [1.1, 1.0],
+        structure: "LH/LL", supportLevels: [1.0], resistanceLevels: [1.1],
+        volumeTrend: "decreasing", dataPoints: 30,
+      },
+    }));
+    expect(result.breakdown.sentiment).toBeGreaterThan(0);
+  });
+
   it("scores -1 for high positive funding rate (contrarian bearish)", () => {
     const result = runAnalysis(
       baseInput({
