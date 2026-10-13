@@ -106,7 +106,7 @@ describe("position sizing with OKX contract metadata", () => {
       okxSpecData: okxData(),
     }));
     expect(r.recommendation).toBe("LONG"); // thesis untouched
-    expect(r.positionSizing).toBeUndefined();
+    expect(r.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
   });
 });
 
@@ -122,7 +122,7 @@ describe("explicit-vs-OKX conflicts block sizing only", () => {
       okxSpecData: okxData(),
     }));
     expect(r.recommendation).toBe("LONG");
-    expect(r.positionSizing).toBeUndefined(); // blocked
+    expect(r.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) }); // blocked
   });
 
   it("complete explicit spec is used without conflict when consistent", () => {
