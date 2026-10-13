@@ -230,6 +230,7 @@ export default function Dashboard() {
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
   const discoveryCursorRef = useRef(0);
   const crossAssetDiscoveryCursorRef = useRef({ forex: 0, equity: 0, commodity: 0 });
+  const crossAssetGroupRotationRef = useRef(0);
   const crossAssetScanLastAtRef = useRef(0);
   const initialScanStartedRef = useRef(false);
   const liveRecommendationSourceRef = useRef(new Map<string, LiveCandidateSource>());
@@ -1002,10 +1003,10 @@ export default function Dashboard() {
         setMarketDiscoveryMessage("OKX market discovery is temporarily unavailable. Refresh to retry.");
       }
 
-      // One rotating request per non-crypto asset class per minute (3 total).
-      // Twelve Data's production key is limited to about 8 credits/minute, and
-      // manual analyses reserve additional primary + higher-timeframe requests.
-      // Crypto scans use public OKX and can safely acquire M5/H1/H4 separately.
+      // One rotating non-crypto candidate per minute. The provider's production
+      // key is limited to about 8 credits/minute, while each manual analysis
+      // reserves primary + higher-timeframe candles. Crypto uses public OKX and
+      // can safely acquire M5/H1/H4 separately without spending those credits.
       if (Date.now() - crossAssetScanLastAtRef.current >= 60_000) {
         crossAssetScanLastAtRef.current = Date.now();
         const catalog = getAllInstruments();
@@ -1014,7 +1015,9 @@ export default function Dashboard() {
           { key: "equity" as const, assetClass: "equity" as const, type: "stock" as const },
           { key: "commodity" as const, assetClass: "commodity" as const, type: "commodity" as const },
         ];
-        const selected = groups.map((group) => {
+        const selectedGroup = groups[crossAssetGroupRotationRef.current % groups.length];
+        crossAssetGroupRotationRef.current = (crossAssetGroupRotationRef.current + 1) % groups.length;
+        const selected = groups.filter((group) => group.key === selectedGroup.key).map((group) => {
           const rows = catalog.filter((item) =>
             item.assetClass === group.assetClass && item.isActive &&
             item.providerMappings.some((mapping) => mapping.provider === "twelve-data" && mapping.available)
