@@ -940,7 +940,18 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
   // Discovered H1 data is suitable for discovery/intraday ranking, not scalp
   // trades. Scalping requires a confirmed same-style directional decision,
   // a valid plan, readable MTF context, and fresh execution on the exact contract.
-  if (horizon === "SCALPING" && c.marketTimeframe) {
+  // This engine also powers instrument discovery. Requiring a completed
+  // same-instrument analysis here creates a circular dependency: a candidate
+  // cannot appear in the Scalping list until after the user has already
+  // analyzed it. Discovery candidates must still have fresh live M1/M5/M15
+  // data (checked above), but are explicitly kept NEUTRAL below until a
+  // same-instrument analysis proves an executable setup.
+  const hasSameInstrumentAnalysis =
+    c.hasAnalysis === true ||
+    c.analysisDecision !== undefined ||
+    c.analysisStyle !== undefined ||
+    c.hasQualifiedTradePlan === true;
+  if (horizon === "SCALPING" && c.marketTimeframe && hasSameInstrumentAnalysis) {
     if (c.analysisDecision !== "LONG" && c.analysisDecision !== "SHORT") {
       return { eligible: false, reason: "no confirmed directional decision from a same-instrument analysis" };
     }
@@ -1066,12 +1077,16 @@ export function generateRecommendation(
       directionSign !== 0 &&
       Math.sign(value) === directionSign,
     ).length;
-    const suitability = classifySuitability(
-      result.analyticalScore,
-      result.confidence,
-      c.dataCompleteness,
-      independentAgreementCount,
-    );
+    const scalpDiscoveryOnly = horizon === "SCALPING" && c.hasAnalysis !== true &&
+      c.analysisDecision === undefined && c.analysisStyle === undefined;
+    const suitability: RecommendationSuitability = scalpDiscoveryOnly
+      ? "NEUTRAL"
+      : classifySuitability(
+          result.analyticalScore,
+          result.confidence,
+          c.dataCompleteness,
+          independentAgreementCount,
+        );
 
     const recommendedType = isTradingMode
       ? horizon === "SCALPING" ? "M5/M15 analysis" : horizon === "INTRADAY" ? "H1/H4 analysis" : "D1/W1 analysis"
@@ -1086,9 +1101,13 @@ export function generateRecommendation(
       analyticalScore: result.analyticalScore,
       confidence: result.confidence,
       suitability,
-      primaryReasons: result.reasons.slice(0, 5),
+      primaryReasons: scalpDiscoveryOnly
+        ? ["Discovery candidate only — run same-instrument Scalping analysis before considering entry.", ...result.reasons].slice(0, 5)
+        : result.reasons.slice(0, 5),
       supportingEvidence: result.reasons,
-      conflictingEvidence: result.conflicts,
+      conflictingEvidence: scalpDiscoveryOnly
+        ? ["No same-instrument executable scalp plan has been verified yet.", ...result.conflicts].slice(0, 8)
+        : result.conflicts,
       risks: result.conflicts.filter(c => c.includes("stale") || c.includes("unavailable") || c.includes("minimal")),
       invalidationConditions: [
         ...result.conflicts.filter(c => c.includes("unavailable")),

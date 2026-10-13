@@ -30,6 +30,35 @@ function baseCandidate(overrides: Partial<CandidateInput> = {}): CandidateInput 
   };
 }
 
+describe("Scalping discovery candidates", () => {
+  it("shows fresh live M5 instruments as neutral discovery candidates before same-instrument analysis", () => {
+    const candidate = baseCandidate({
+      instrument: "BTC/USD",
+      marketTimeframe: "M5",
+      hasAnalysis: false,
+      analysisDecision: undefined,
+      analysisStyle: undefined,
+      hasQualifiedTradePlan: false,
+      mtfSufficient: undefined,
+      hasFreshExecutionQuality: undefined,
+    });
+
+    expect(isEligible(candidate, "SCALPING")).toEqual({ eligible: true });
+    const result = generateRecommendation([candidate], "SCALPING");
+    expect(result.rankedInstruments).toHaveLength(1);
+    expect(result.rankedInstruments[0]?.suitability).toBe("NEUTRAL");
+    expect(result.rankedInstruments[0]?.primaryReasons[0]).toContain("Discovery candidate only");
+    expect(result.rankedInstruments[0]?.conflictingEvidence[0]).toContain("No same-instrument executable scalp plan");
+  });
+
+  it("still rejects non-live or non-fresh candidates for Scalping discovery", () => {
+    const delayed = baseCandidate({ marketTimeframe: "M5", freshness: "DELAYED" });
+    const noLive = baseCandidate({ marketTimeframe: "M5", hasLiveData: false });
+    expect(isEligible(delayed, "SCALPING").eligible).toBe(false);
+    expect(isEligible(noLive, "SCALPING").eligible).toBe(false);
+  });
+});
+
 describe("Observed-data fallback eligibility", () => {
   it("rejects discovery placeholders and accepts only candidates with observed market data", () => {
     const candidates = [
