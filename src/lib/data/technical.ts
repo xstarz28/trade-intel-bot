@@ -60,7 +60,8 @@ export function rsi(closes: number[], period = 14): number | undefined {
     avgLoss = (avgLoss * (period - 1) + loss) / period;
   }
 
-  if (avgLoss === 0) return 100;
+  // A flat series has neither gains nor losses: neutral RSI, not overbought.
+  if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
   const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
 }
@@ -187,14 +188,20 @@ export function analyzeStructure(
 ): "HH/HL" | "LH/LL" | "range" | "unknown" {
   if (swingHighs.length < 2 || swingLows.length < 2) return "unknown";
 
-  const recentHighs = swingHighs.slice(-3);
-  const recentLows = swingLows.slice(-3);
+  // Require the two most recent highs and lows to confirm the same direction.
+  // Equal or mixed swings are not directional trend evidence.
+  const previousHigh = swingHighs[swingHighs.length - 2];
+  const latestHigh = swingHighs[swingHighs.length - 1];
+  const previousLow = swingLows[swingLows.length - 2];
+  const latestLow = swingLows[swingLows.length - 1];
 
-  const highsRising = recentHighs[recentHighs.length - 1] > recentHighs[0];
-  const lowsRising = recentLows[recentLows.length - 1] > recentLows[0];
+  const higherHigh = latestHigh > previousHigh;
+  const higherLow = latestLow > previousLow;
+  const lowerHigh = latestHigh < previousHigh;
+  const lowerLow = latestLow < previousLow;
 
-  if (highsRising && lowsRising) return "HH/HL";
-  if (!highsRising && !lowsRising) return "LH/LL";
+  if (higherHigh && higherLow) return "HH/HL";
+  if (lowerHigh && lowerLow) return "LH/LL";
   return "range";
 }
 
