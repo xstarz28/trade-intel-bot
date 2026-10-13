@@ -18,7 +18,7 @@ export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectA
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) navigate(redirect);
+    if (!authLoading && isAuthenticated) navigate(redirect, { replace: true });
   }, [authLoading, isAuthenticated, navigate, redirect]);
 
   const run = async (provider: string) => {

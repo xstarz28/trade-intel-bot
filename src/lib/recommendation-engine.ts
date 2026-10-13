@@ -898,9 +898,9 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
 
   // Provider coverage gate
   if (c.providerCoverage === "NONE") return { eligible: false, reason: "no provider coverage" };
-  if (c.analysisDecision === "NO_TRADE") {
-    return { eligible: false, reason: "same-instrument analysis rejected this setup (NO_TRADE)" };
-  }
+  // Keep rejected same-instrument setups available to the discovery ranking.
+  // Their suitability remains NEUTRAL unless independent evidence confirms direction;
+  // scalp execution still requires a qualified plan and fresh execution data.
 
   if (c.marketTimeframe && horizon === "SCALPING" && !["M1", "M5", "M15"].includes(c.marketTimeframe)) {
     return { eligible: false, reason: "scalping requires M1/M5/M15 market data; received " + c.marketTimeframe };

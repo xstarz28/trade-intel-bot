@@ -8,6 +8,7 @@ import type { ClassicPriceActionContext } from "@/lib/data/classic-price-action"
 import type { TechnicalData } from "@/lib/data/market-types";
 import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
+import { localizeAnalysisText } from "@/lib/i18n/analysis-copy";
 import { formatInstrumentPrice } from "@/lib/price-format";
 import { mapTrendLabel, mapConfidence, mapFreshness } from "@/lib/i18n/enum-mapping";
 import {
@@ -91,7 +92,7 @@ function formatTime(timestamp: number): string {
 }
 
 export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
-  const { t, tx, txi } = useI18n();
+  const { t, tx, txi, locale } = useI18n();
   const biasConfig = BIAS_CONFIG[result.bias];
   const BiasIcon = biasConfig.icon;
   const completenessConfig = COMPLETENESS_CONFIG[result.dataCompleteness];
@@ -218,7 +219,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               $ trade-levels · NO TRADE
             </p>
             <p className="text-[10px] font-mono leading-relaxed text-muted-foreground">
-              Entry / SL / TP projection is unavailable because the current market structure did not produce a valid, market-derived plan for this timeframe. No price levels are being invented. Rejection: {result.noTradeReasons.slice(0, 2).join(" · ") || "setup did not pass the decision gates"}.
+              {localizeAnalysisText("Entry / SL / TP projection is unavailable because the current market structure did not produce a valid, market-derived plan for this timeframe. No price levels are being invented.", locale)} Rejection: {localizeAnalysisText(result.noTradeReasons.slice(0, 2).join(" · ") || "setup did not pass the decision gates", locale)}.
             </p>
           </CardContent>
         </Card>
@@ -353,7 +354,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <span className="text-[10px] font-mono text-muted-foreground/60">provider: {dq.primaryData.provider}</span>
                 )}
               </div>
-              <p className="text-[10px] font-mono text-muted-foreground/60 mb-2">{dq.primaryData.reason}</p>
+              <p className="text-[10px] font-mono text-muted-foreground/60 mb-2">{localizeAnalysisText(dq.primaryData.reason, locale)}</p>
               {/* Indicator availability */}
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono mb-2">
                 {(["sma", "rsi", "macd", "atr", "smc"] as const).map((key) => {
@@ -370,7 +371,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <span className={IND_COLORS[dq.mtf.status === "GOOD" ? "AVAILABLE" : dq.mtf.status === "UNAVAILABLE" ? "UNAVAILABLE" : "INSUFFICIENT_DATA"]}>
                   MTF: {dq.mtf.status}
                 </span>
-                <span className="text-muted-foreground/50">{dq.mtf.reason}</span>
+                <span className="text-muted-foreground/50">{localizeAnalysisText(dq.mtf.reason, locale)}</span>
               </div>
               {/* Provider availability summary */}
               {(() => {
@@ -819,7 +820,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </p>
                 <ul className="space-y-1">
                   {result.mtfSummary.unavailable.map((u) => (
-                    <li key={`${u.timeframe}:${u.reason}`} className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
+                    <li key={`${u.timeframe}:${localizeAnalysisText(u.reason, locale)}`} className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
                       <span className="text-amber-300">{u.timeframe}:</span> {u.reason}
                     </li>
                   ))}
@@ -843,7 +844,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {result.noTradeReasons.map((reason, i) => (
                 <li key={i} className="text-[11px] leading-relaxed text-red-300/80 font-mono flex gap-1.5">
                   <span className="shrink-0">—</span>
-                  <span>{reason}</span>
+                  <span>{localizeAnalysisText(reason, locale)}</span>
                 </li>
               ))}
             </ul>
@@ -871,7 +872,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               Structure:{" "}
               <span className="text-foreground">{result.decisionTrace.structuralDirection}</span>
               {result.decisionTrace.biasCalculation.vetoApplied && (
-                <span className="text-amber-400"> · vetoed to Neutral ({result.decisionTrace.biasCalculation.vetoReason})</span>
+                <span className="text-amber-400"> · vetoed to Neutral ({localizeAnalysisText(result.decisionTrace.biasCalculation.vetoReason, locale)})</span>
               )}
               {result.decisionTrace.biasCalculation.vetoApplied === false &&
                 result.decisionTrace.structuralDirection !== "none" && (
@@ -890,7 +891,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         {l.contribution > 0 ? `+${l.contribution}` : l.contribution}
                       </span>
                       <span className="text-muted-foreground w-36 truncate">{l.layer}</span>
-                      <span className="text-muted-foreground/50 truncate flex-1">{l.reason}</span>
+                      <span className="text-muted-foreground/50 truncate flex-1">{localizeAnalysisText(l.reason, locale)}</span>
                     </div>
                   ))}
                 <div className="pt-1 text-[10px] font-mono text-muted-foreground">
@@ -958,7 +959,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-1">
                           <span className="text-emerald-400 shrink-0">+</span>
                           <span className="text-muted-foreground w-28 shrink-0">{e.category}</span>
-                          <span className="text-muted-foreground/80 flex-1">{e.explanation}</span>
+                          <span className="text-muted-foreground/80 flex-1">{localizeAnalysisText(e.explanation, locale)}</span>
                           {e.contribution !== undefined && (
                             <span className="text-emerald-400/60 shrink-0 tabular-nums">
                               {e.contribution > 0 ? "+" : ""}{e.contribution}
@@ -1114,11 +1115,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <div className="space-y-1.5">
                 <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2">
                   <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider mb-0.5">primary</p>
-                  <p className="text-[11px] font-mono text-foreground/80 leading-relaxed">{sc.primaryScenario}</p>
+                  <p className="text-[11px] font-mono text-foreground/80 leading-relaxed">{localizeAnalysisText(sc.primaryScenario, locale)}</p>
                 </div>
                 <div className="rounded-lg bg-muted/10 border border-border/30 px-3 py-2">
                   <p className="text-[10px] font-mono font-medium text-muted-foreground/60 uppercase tracking-wider mb-0.5">alternate</p>
-                  <p className="text-[11px] font-mono text-muted-foreground/70 leading-relaxed">{sc.alternateScenario}</p>
+                  <p className="text-[11px] font-mono text-muted-foreground/70 leading-relaxed">{localizeAnalysisText(sc.alternateScenario, locale)}</p>
                 </div>
               </div>
 
@@ -1126,7 +1127,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {sc.waitReason && (
                 <div className="rounded-lg bg-amber-500/5 border border-amber-500/15 px-3 py-2">
                   <p className="text-[10px] font-mono font-medium text-amber-400 uppercase tracking-wider mb-0.5">why wait?</p>
-                  <p className="text-[11px] font-mono text-amber-300/80 leading-relaxed">{sc.waitReason}</p>
+                  <p className="text-[11px] font-mono text-amber-300/80 leading-relaxed">{localizeAnalysisText(sc.waitReason, locale)}</p>
                 </div>
               )}
 
@@ -1163,7 +1164,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   {sc.confirmationConditions.map((c, i) => (
                     <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
                       <span className="text-muted-foreground/40 shrink-0">→</span>
-                      <span className="text-muted-foreground/80">{c}</span>
+                      <span className="text-muted-foreground/80">{localizeAnalysisText(c, locale)}</span>
                     </div>
                   ))}
                 </div>
@@ -1176,7 +1177,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   {sc.invalidationConditions.map((inv, i) => (
                     <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
                       <span className="text-red-400/60 shrink-0">✕</span>
-                      <span className="text-muted-foreground/80">{inv}</span>
+                      <span className="text-muted-foreground/80">{localizeAnalysisText(inv, locale)}</span>
                     </div>
                   ))}
                 </div>
@@ -1266,11 +1267,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <div className="text-[10px] font-mono space-y-1">
                 <div>
                   <span className="text-muted-foreground">primary:</span>{" "}
-                  <span>{pt.primaryScenario}</span>
+                  <span>{localizeAnalysisText(pt.primaryScenario, locale)}</span>
                 </div>
                 <div>
                   <span className="text-muted-foreground">alternate:</span>{" "}
-                  <span className="text-muted-foreground">{pt.alternateScenario}</span>
+                  <span className="text-muted-foreground">{localizeAnalysisText(pt.alternateScenario, locale)}</span>
                 </div>
               </div>
               {regime.exhaustionSignals.length > 0 && (
@@ -1285,10 +1286,10 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
               <div className="text-[10px] font-mono text-muted-foreground">
                 <span>why: </span>
-                <span>{pt.actionabilityReason}</span>
+                <span>{localizeAnalysisText(pt.actionabilityReason, locale)}</span>
               </div>
               <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">
-                {pt.analystSummary}
+                {localizeAnalysisText(pt.analystSummary, locale)}
               </p>
             </CardContent>
           </Card>
@@ -1319,7 +1320,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   <span className="text-primary/60">$</span> forward-market-path
                 </h4>
                 <Badge variant="outline" className={cn("text-[10px] font-mono", PATH_COLORS[fp.primaryPath])}>
-                  {fp.primaryPath.replace(/_/g, " ")}
+                  {localizeAnalysisText(fp.primaryPath.replace(/_/g, " "), locale)}
                 </Badge>
                 <Badge variant="outline" className="text-[10px] font-mono border-border/50">
                   {fp.horizon.replace(/_/g, " ")}
@@ -1333,7 +1334,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {/* Primary + Alternate + Path Status */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
                 <div><span className="text-muted-foreground">primary:</span> <span>{fp.pathStatus}</span></div>
-                <div><span className="text-muted-foreground">alternate:</span> <span className="text-muted-foreground">{fp.alternatePath.replace(/_/g, " ")}</span></div>
+                <div><span className="text-muted-foreground">alternate:</span> <span className="text-muted-foreground">{localizeAnalysisText(fp.alternatePath.replace(/_/g, " "), locale)}</span></div>
                 <div><span className="text-muted-foreground">structural confidence:</span> <span className={CONF_COLORS[fp.structuralConfidence]}>{fp.structuralConfidence.replace(/_/g, " ")}</span></div>
                 <div><span className="text-muted-foreground">data reliability:</span> <span>{fp.dataReliability}</span></div>
               </div>
@@ -1342,13 +1343,13 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {fp.confirmationConditions.length > 0 && (
                 <div className="text-[10px] font-mono">
                   <span className="text-muted-foreground">confirm:</span>{" "}
-                  {fp.confirmationConditions.map((c, i) => <span key={i} className="block text-emerald-400/80">• {c}</span>)}
+                  {fp.confirmationConditions.map((c, i) => <span key={i} className="block text-emerald-400/80">• {localizeAnalysisText(c, locale)}</span>)}
                 </div>
               )}
               {fp.invalidationConditions.length > 0 && (
                 <div className="text-[10px] font-mono">
                   <span className="text-muted-foreground">invalidate:</span>{" "}
-                  {fp.invalidationConditions.map((c, i) => <span key={i} className="block text-red-400/80">• {c}</span>)}
+                  {fp.invalidationConditions.map((c, i) => <span key={i} className="block text-red-400/80">• {localizeAnalysisText(c, locale)}</span>)}
                 </div>
               )}
 
@@ -1356,7 +1357,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {fp.pathRisks.length > 0 && (
                 <div className="text-[10px] font-mono">
                   <span className="text-muted-foreground">risks:</span>{" "}
-                  {fp.pathRisks.map((r, i) => <span key={i} className="block text-amber-400/80">• {r}</span>)}
+                  {fp.pathRisks.map((r, i) => <span key={i} className="block text-amber-400/80">• {localizeAnalysisText(r, locale)}</span>)}
                 </div>
               )}
 
@@ -1445,18 +1446,18 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             </CardHeader>
             <CardContent className="pt-0 space-y-3">
               <div className="text-[10px] font-mono space-y-1">
-                <p className="text-muted-foreground/80">{lh.marketCycleContext}</p>
-                <p className="text-muted-foreground/60">{lh.structuralSummary}</p>
+                <p className="text-muted-foreground/80">{localizeAnalysisText(lh.marketCycleContext, locale)}</p>
+                <p className="text-muted-foreground/60">{localizeAnalysisText(lh.structuralSummary, locale)}</p>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
                 <div className="rounded border border-emerald-500/15 p-2">
                   <span className="text-emerald-400 font-semibold">primary thesis:</span>
-                  <p className="mt-1 text-muted-foreground/80 leading-relaxed">{lh.primaryThesis}</p>
+                  <p className="mt-1 text-muted-foreground/80 leading-relaxed">{localizeAnalysisText(lh.primaryThesis, locale)}</p>
                 </div>
                 <div className="rounded border border-red-500/15 p-2">
                   <span className="text-red-400 font-semibold">counter thesis:</span>
-                  <p className="mt-1 text-muted-foreground/80 leading-relaxed">{lh.counterThesis}</p>
+                  <p className="mt-1 text-muted-foreground/80 leading-relaxed">{localizeAnalysisText(lh.counterThesis, locale)}</p>
                 </div>
               </div>
 
@@ -1478,27 +1479,27 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
-                <div><span className="text-muted-foreground">primary scenario:</span> <span>{lh.primaryScenario}</span></div>
-                <div><span className="text-muted-foreground">alternate scenario:</span> <span className="text-muted-foreground">{lh.alternateScenario}</span></div>
+                <div><span className="text-muted-foreground">primary scenario:</span> <span>{localizeAnalysisText(lh.primaryScenario, locale)}</span></div>
+                <div><span className="text-muted-foreground">alternate scenario:</span> <span className="text-muted-foreground">{localizeAnalysisText(lh.alternateScenario, locale)}</span></div>
               </div>
 
               {lh.confirmationConditions.length > 0 && (
                 <div className="text-[10px] font-mono">
                   <span className="text-muted-foreground">confirm:</span>
-                  {lh.confirmationConditions.map((c, i) => <span key={i} className="block text-emerald-400/80">• {c}</span>)}
+                  {lh.confirmationConditions.map((c, i) => <span key={i} className="block text-emerald-400/80">• {localizeAnalysisText(c, locale)}</span>)}
                 </div>
               )}
               {lh.invalidationConditions.length > 0 && (
                 <div className="text-[10px] font-mono">
                   <span className="text-muted-foreground">invalidate:</span>
-                  {lh.invalidationConditions.map((c, i) => <span key={i} className="block text-red-400/80">• {c}</span>)}
+                  {lh.invalidationConditions.map((c, i) => <span key={i} className="block text-red-400/80">• {localizeAnalysisText(c, locale)}</span>)}
                 </div>
               )}
 
               {lh.thesisRisks.length > 0 && (
                 <div className="text-[10px] font-mono">
                   <span className="text-muted-foreground">risks:</span>
-                  {lh.thesisRisks.map((r, i) => <span key={i} className="block text-amber-400/80">• {r}</span>)}
+                  {lh.thesisRisks.map((r, i) => <span key={i} className="block text-amber-400/80">• {localizeAnalysisText(r, locale)}</span>)}
                 </div>
               )}
               {lh.missingInformation.length > 0 && (
@@ -1509,9 +1510,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               )}
 
               <div className="text-[10px] font-mono space-y-1">
-                <div><span className="text-muted-foreground">fundamental:</span> <span>{lh.fundamentalContext}</span></div>
-                <div><span className="text-muted-foreground">macro:</span> <span className="text-muted-foreground/80">{lh.macroContext}</span></div>
-                <div><span className="text-muted-foreground">valuation:</span> <span className="text-muted-foreground/80">{lh.valuationContext}</span></div>
+                <div><span className="text-muted-foreground">fundamental:</span> <span>{localizeAnalysisText(lh.fundamentalContext, locale)}</span></div>
+                <div><span className="text-muted-foreground">macro:</span> <span className="text-muted-foreground/80">{localizeAnalysisText(lh.macroContext, locale)}</span></div>
+                <div><span className="text-muted-foreground">valuation:</span> <span className="text-muted-foreground/80">{localizeAnalysisText(lh.valuationContext, locale)}</span></div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[10px] font-mono">
@@ -1564,7 +1565,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               </div>
             </CardHeader>
             <CardContent className="pt-0 space-y-3">
-              <p className="text-[10px] font-mono text-muted-foreground/80">{ec.thesisSupportExplanation}</p>
+              <p className="text-[10px] font-mono text-muted-foreground/80">{localizeAnalysisText(ec.thesisSupportExplanation, locale)}</p>
 
               {ec.strongestSupportingEvidence && (
                 <div className="text-[10px] font-mono rounded border border-emerald-500/15 p-2">
@@ -1581,14 +1582,14 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
               <div className="text-[10px] font-mono rounded border border-border/30 p-2">
                 <span className="text-muted-foreground">counter-thesis:</span>
-                <span className="ml-1">{ec.counterThesis}</span>
+                <span className="ml-1">{localizeAnalysisText(ec.counterThesis, locale)}</span>
               </div>
 
               {ec.doubleCountingWarnings.length > 0 && (
                 <div className="text-[10px] font-mono">
                   <span className="text-amber-400 font-semibold">double-counting warnings:</span>
                   {ec.doubleCountingWarnings.map((w, i) => (
-                    <span key={i} className="block text-amber-400/80">• {w.description}</span>
+                    <span key={i} className="block text-amber-400/80">• {localizeAnalysisText(w.description, locale)}</span>
                   ))}
                 </div>
               )}
@@ -1613,7 +1614,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </div>
               </div>
 
-              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">{ec.auditSummary}</p>
+              <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed">{localizeAnalysisText(ec.auditSummary, locale)}</p>
             </CardContent>
           </Card>
         );
@@ -1746,7 +1747,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.technicalSummary}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground font-mono">{localizeAnalysisText(result.technicalSummary, locale)}</p>
         </CardContent>
       </Card>
 
@@ -1760,7 +1761,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </div>
         </CardHeader>
         <CardContent className="pt-0">
-          <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.fundamentalSummary}</p>
+          <p className="text-sm leading-relaxed text-muted-foreground font-mono">{localizeAnalysisText(result.fundamentalSummary, locale)}</p>
         </CardContent>
       </Card>
 
@@ -2061,7 +2062,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         </CardHeader>
         <CardContent className="pt-0">
           <p className="text-sm leading-relaxed text-amber-200/70 font-mono">
-            {result.riskNote}
+            {localizeAnalysisText(result.riskNote, locale)}
           </p>
           <Separator className="my-3 bg-amber-500/10" />
           <p className="text-[11px] text-amber-300/50 font-mono italic">
@@ -2811,7 +2812,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             {/* Macro Risk Explanation */}
             <div className="mb-3">
               <p className="text-[11px] leading-relaxed text-muted-foreground font-mono">
-                {result.calendarData.macroRisk.explanation}
+                {localizeAnalysisText(result.calendarData.macroRisk.explanation, locale)}
               </p>
             </div>
 
