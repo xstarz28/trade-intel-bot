@@ -976,7 +976,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-1">
                           <span className="text-amber-400 shrink-0">−</span>
                           <span className="text-muted-foreground w-28 shrink-0">{e.category}</span>
-                          <span className="text-muted-foreground/80 flex-1">{e.explanation}</span>
+                          <span className="text-muted-foreground/80 flex-1">{localizeAnalysisText(e.explanation, locale)}</span>
                         </div>
                       ))}
                     </div>
@@ -1138,7 +1138,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   {sc.continuationEvidence.slice(0, 4).map((e, i) => (
                     <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
                       <span className="text-emerald-400 shrink-0">+</span>
-                      <span className="text-muted-foreground/80">{e.explanation}</span>
+                      <span className="text-muted-foreground/80">{localizeAnalysisText(e.explanation, locale)}</span>
                     </div>
                   ))}
                 </div>
@@ -1151,7 +1151,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                   {sc.reversalEvidence.slice(0, 4).map((e, i) => (
                     <div key={i} className="flex items-start gap-2 text-[10px] font-mono mb-0.5">
                       <span className="text-amber-400 shrink-0">−</span>
-                      <span className="text-muted-foreground/80">{e.explanation}</span>
+                      <span className="text-muted-foreground/80">{localizeAnalysisText(e.explanation, locale)}</span>
                     </div>
                   ))}
                 </div>
@@ -1465,7 +1465,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <div className="text-[10px] font-mono">
                   <span className="text-muted-foreground">supporting:</span>
                   {lh.supportingEvidence.map((e, i) => (
-                    <span key={i} className="block text-emerald-400/80">• [{e.source}] {e.explanation}</span>
+                    <span key={i} className="block text-emerald-400/80">• [{e.source}] {localizeAnalysisText(e.explanation, locale)}</span>
                   ))}
                 </div>
               )}
@@ -1473,7 +1473,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <div className="text-[10px] font-mono">
                   <span className="text-muted-foreground">conflicting:</span>
                   {lh.conflictingEvidence.map((e, i) => (
-                    <span key={i} className="block text-red-400/80">• [{e.source}] {e.explanation}</span>
+                    <span key={i} className="block text-red-400/80">• [{e.source}] {localizeAnalysisText(e.explanation, locale)}</span>
                   ))}
                 </div>
               )}
@@ -1570,13 +1570,13 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               {ec.strongestSupportingEvidence && (
                 <div className="text-[10px] font-mono rounded border border-emerald-500/15 p-2">
                   <span className="text-emerald-400 font-semibold">strongest support:</span>
-                  <span className="ml-1">[{ec.strongestSupportingEvidence.source}] {ec.strongestSupportingEvidence.explanation}</span>
+                  <span className="ml-1">[{ec.strongestSupportingEvidence.source}] {localizeAnalysisText(ec.strongestSupportingEvidence.explanation, locale)}</span>
                 </div>
               )}
               {ec.strongestConflictingEvidence && (
                 <div className="text-[10px] font-mono rounded border border-red-500/15 p-2">
                   <span className="text-red-400 font-semibold">strongest conflict:</span>
-                  <span className="ml-1">[{ec.strongestConflictingEvidence.source}] {ec.strongestConflictingEvidence.explanation}</span>
+                  <span className="ml-1">[{ec.strongestConflictingEvidence.source}] {localizeAnalysisText(ec.strongestConflictingEvidence.explanation, locale)}</span>
                 </div>
               )}
 
@@ -1777,11 +1777,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             {result.historicalContextSummaries.sentiment && <div className="space-y-1">
               <p className="text-[10px] font-mono uppercase text-muted-foreground">Sentiment summary</p>
               {result.historicalContextSummaries.sentiment.score !== undefined && <p className="text-xs font-mono">Stored sentiment score: {result.historicalContextSummaries.sentiment.score.toFixed(3)}</p>}
-              {result.historicalContextSummaries.sentiment.summary && <p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.historicalContextSummaries.sentiment.summary}</p>}
+              {result.historicalContextSummaries.sentiment.summary && <p className="text-sm leading-relaxed text-muted-foreground font-mono">{localizeAnalysisText(result.historicalContextSummaries.sentiment.summary, locale)}</p>}
             </div>}
-            {result.historicalContextSummaries.macro && <div className="space-y-1"><p className="text-[10px] font-mono uppercase text-muted-foreground">Macro summary</p><p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.historicalContextSummaries.macro}</p></div>}
-            {result.historicalContextSummaries.derivatives && <div className="space-y-1"><p className="text-[10px] font-mono uppercase text-muted-foreground">Derivatives summary</p><p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.historicalContextSummaries.derivatives}</p></div>}
-            {result.historicalContextSummaries.calendar && <div className="space-y-1"><p className="text-[10px] font-mono uppercase text-muted-foreground">Calendar summary</p><p className="text-sm leading-relaxed text-muted-foreground font-mono">{result.historicalContextSummaries.calendar}</p></div>}
+            {result.historicalContextSummaries.macro && <div className="space-y-1"><p className="text-[10px] font-mono uppercase text-muted-foreground">Macro summary</p><p className="text-sm leading-relaxed text-muted-foreground font-mono">{localizeAnalysisText(result.historicalContextSummaries.macro, locale)}</p></div>}
+            {result.historicalContextSummaries.derivatives && <div className="space-y-1"><p className="text-[10px] font-mono uppercase text-muted-foreground">Derivatives summary</p><p className="text-sm leading-relaxed text-muted-foreground font-mono">{localizeAnalysisText(result.historicalContextSummaries.derivatives, locale)}</p></div>}
+            {result.historicalContextSummaries.calendar && <div className="space-y-1"><p className="text-[10px] font-mono uppercase text-muted-foreground">Calendar summary</p><p className="text-sm leading-relaxed text-muted-foreground font-mono">{localizeAnalysisText(result.historicalContextSummaries.calendar, locale)}</p></div>}
           </CardContent>
         </Card>
       )}
@@ -1868,7 +1868,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             </div>
           </CardHeader>
           <CardContent className="pt-0">
-            <p className="text-sm leading-relaxed text-muted-foreground font-mono mb-3">{result.macroData.summary}</p>
+            <p className="text-sm leading-relaxed text-muted-foreground font-mono mb-3">{localizeAnalysisText(result.macroData.summary, locale)}</p>
             <div className="flex flex-wrap gap-1.5">
               {result.macroData.indicators.slice(0, 6).map((ind, i) => (
                 <span
@@ -2415,7 +2415,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         )}
                         {ci.tokenomics.unlocks.summary && (
                           <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 leading-relaxed">
-                            {ci.tokenomics.unlocks.summary}
+                            {localizeAnalysisText(ci.tokenomics.unlocks.summary, locale)}
                           </p>
                         )}
                         {ci.tokenomics.unlocks.upcomingUsdValue30d !== undefined && (
@@ -2442,7 +2442,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                           {e.direction === "SUPPORTING" ? "+" : e.direction === "CONFLICTING" ? "−" : e.direction === "NEUTRAL" ? "·" : "?"}
                         </span>
                         <span className="text-muted-foreground/60 w-24 shrink-0">{e.category}</span>
-                        <span className="text-muted-foreground/80 flex-1">{e.explanation}</span>
+                        <span className="text-muted-foreground/80 flex-1">{localizeAnalysisText(e.explanation, locale)}</span>
                         <span className={cn("shrink-0", STR_COLORS[e.strength])}>{e.strength}</span>
                       </div>
                     ))}
@@ -2459,7 +2459,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </div>
               )}
               <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed border-t border-border/30 pt-2">
-                {ci.analystSummary}
+                {localizeAnalysisText(ci.analystSummary, locale)}
               </p>
               <p className="text-[9px] font-mono text-muted-foreground/40 italic">
                 Crypto intelligence is informational {"—"} it does not modify bias, conviction, gates, trade plan, or recommendation.
@@ -2749,7 +2749,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                           {e.direction === "SUPPORTING" ? "+" : e.direction === "CONFLICTING" ? "−" : e.direction === "NEUTRAL" ? "·" : "?"}
                         </span>
                         <span className="text-muted-foreground/60 w-24 shrink-0">{e.category}</span>
-                        <span className="text-muted-foreground/80 flex-1 truncate">{e.explanation}</span>
+                        <span className="text-muted-foreground/80 flex-1 truncate">{localizeAnalysisText(e.explanation, locale)}</span>
                         <span className={cn("shrink-0", STR_COLORS[e.strength])}>{e.strength}</span>
                       </div>
                     ))}
@@ -2781,7 +2781,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </div>
               )}
               <p className="text-[10px] font-mono text-muted-foreground/80 leading-relaxed border-t border-border/30 pt-2">
-                {ui.analystSummary}
+                {localizeAnalysisText(ui.analystSummary, locale)}
               </p>
               <p className="text-[9px] font-mono text-muted-foreground/40 italic">
                 Universal intelligence is informational {"—"} it does not modify bias, conviction, gates, trade plan, or recommendation.
