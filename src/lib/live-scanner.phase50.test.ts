@@ -162,6 +162,9 @@ describe("A — Live Candidate Ingestion", () => {
     expect(candidate.hasAnalysis).toBe(true);
     expect(candidate.analysisConfidence).toBe(72);
     expect(candidate.riskReward).toBe(2.0);
+    // Numeric zeroes in the breakdown are defaults, not evidence availability.
+    expect(candidate.fundamentalEvidenceAvailable).toBe(false);
+    expect(candidate.positioningEvidenceAvailable).toBe(false);
   });
 
   it("batch builds candidates from multiple sources", () => {
