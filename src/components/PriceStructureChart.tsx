@@ -74,14 +74,15 @@ export function PriceStructureChart({
 
   const fmt = (value: number) => formatChartPrice(value, instrumentType, instrument);
   const smc = technicalData?.smc;
-  const candidatePlan = tradePlan ?? projectedTradePlan;
+  // Only executable plans belong on the price chart. Rejected projections must not look like entry signals.
+  const candidatePlan = tradePlan;
   const planValidation = candidatePlan
     ? validateTradePlanAgainstMarket(candidatePlan, data, technicalData?.atr14)
     : undefined;
   // Final safety boundary: persisted results must not draw stale entry levels.
   const plan = candidatePlan && planValidation?.valid ? candidatePlan : undefined;
-  const rejectedPlan = !!candidatePlan && !plan;
-  const projected = !tradePlan && !!plan && !!projectedTradePlan;
+  const rejectedPlan = (!!candidatePlan && !plan) || (!!projectedTradePlan && !tradePlan);
+  const projected = false;
   const highs = data.map((c) => c.high);
   const lows = data.map((c) => c.low);
   // Keep the visible price scale anchored to recent candles plus the
@@ -186,8 +187,12 @@ export function PriceStructureChart({
         {rejectedPlan && (
           <div role="status" className="mt-2 text-[10px] font-mono text-amber-300">
             {isIndonesian
-              ? "Rencana entry disembunyikan: level sudah tidak cocok dengan candle terbaru. Jalankan analisis ulang."
-              : "Trade plan hidden: levels no longer match the latest candles. Re-run analysis."}
+              ? (tradePlan
+                  ? "Rencana entry disembunyikan: level sudah tidak cocok dengan candle terbaru. Jalankan analisis ulang."
+                  : "Belum ada rencana entry yang layak dieksekusi. Proyeksi yang ditolak tidak digambar agar tidak menyesatkan.")
+              : (tradePlan
+                  ? "Trade plan hidden: levels no longer match the latest candles. Re-run analysis."
+                  : "No executable entry plan. Rejected projections are not drawn to avoid misleading entry levels.")}
           </div>
         )}
         {plan && (
