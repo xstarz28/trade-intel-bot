@@ -1,6 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { OhlcvCandle, TechnicalData } from "@/lib/data/market-types";
 import type { KeyLevels, TradePlan } from "@/types/analysis";
+import { validateTradePlanAgainstMarket } from "@/lib/trade-plan-validation";
+import { useI18n } from "@/lib/i18n";
 
 interface PriceChartProps {
   instrument: string;
@@ -55,6 +57,8 @@ export function PriceStructureChart({
   projectedTradePlan,
   technicalData,
 }: PriceChartProps) {
+  const { locale } = useI18n();
+  const isIndonesian = locale === "id";
   const data = candles
     .filter((c) =>
       [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite) &&
@@ -70,8 +74,15 @@ export function PriceStructureChart({
 
   const fmt = (value: number) => formatChartPrice(value, instrumentType, instrument);
   const smc = technicalData?.smc;
-  const plan = tradePlan ?? projectedTradePlan;
-  const projected = !tradePlan && !!projectedTradePlan;
+  // Only executable plans belong on the price chart. Rejected projections must not look like entry signals.
+  const candidatePlan = tradePlan;
+  const planValidation = candidatePlan
+    ? validateTradePlanAgainstMarket(candidatePlan, data, technicalData?.atr14)
+    : undefined;
+  // Final safety boundary: persisted results must not draw stale entry levels.
+  const plan = candidatePlan && planValidation?.valid ? candidatePlan : undefined;
+  const rejectedPlan = (!!candidatePlan && !plan) || (!!projectedTradePlan && !tradePlan);
+  const projected = false;
   const highs = data.map((c) => c.high);
   const lows = data.map((c) => c.low);
   // Keep the visible price scale anchored to recent candles plus the
@@ -173,6 +184,17 @@ export function PriceStructureChart({
           )}
           {compactContext.map((item) => <span key={item}>{item}</span>)}
         </div>
+        {rejectedPlan && (
+          <div role="status" className="mt-2 text-[10px] font-mono text-amber-300">
+            {isIndonesian
+              ? (tradePlan
+                  ? "Rencana entry disembunyikan: level sudah tidak cocok dengan candle terbaru. Jalankan analisis ulang."
+                  : "Belum ada rencana entry yang layak dieksekusi. Proyeksi yang ditolak tidak digambar agar tidak menyesatkan.")
+              : (tradePlan
+                  ? "Trade plan hidden: levels no longer match the latest candles. Re-run analysis."
+                  : "No executable entry plan. Rejected projections are not drawn to avoid misleading entry levels.")}
+          </div>
+        )}
         {plan && (
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
             <span className={projected ? "text-amber-300" : "text-sky-300"}>

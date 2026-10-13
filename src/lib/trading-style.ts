@@ -77,7 +77,8 @@ export interface StyleProfile {
 export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
   scalping: {
     style: "scalping",
-    allowedSetupTfs: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
+    // Scalping is restricted to execution-focused lower timeframes.
+    allowedSetupTfs: ["M1", "M5", "M15"],
     fallbackTf: "M5",
     priceStaleMs: 10 * 60 * 1000,
     fundamentalLayerMultiplier: 0.5,
@@ -94,7 +95,8 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
   },
   intraday: {
     style: "intraday",
-    allowedSetupTfs: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
+    // Intraday setups use the intraday ladder, not scalping or swing bars.
+    allowedSetupTfs: ["M15", "H1", "H4"],
     fallbackTf: "H1",
     priceStaleMs: 30 * 60 * 1000,
     fundamentalLayerMultiplier: 1,
@@ -111,7 +113,8 @@ export const STYLE_PROFILES: Record<TradingStyle, StyleProfile> = {
   },
   swing: {
     style: "swing",
-    allowedSetupTfs: ["M1", "M5", "M15", "H1", "H4", "D1", "W1"],
+    // Swing analysis uses higher-timeframe structure.
+    allowedSetupTfs: ["H4", "D1", "W1"],
     fallbackTf: "H4",
     priceStaleMs: 60 * 60 * 1000,
     fundamentalLayerMultiplier: 1.25,

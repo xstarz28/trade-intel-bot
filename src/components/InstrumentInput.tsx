@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
-import { TRADING_STYLES, type TradingStyle } from "@/lib/trading-style";
+import { TRADING_STYLES, resolveStyle, type TradingStyle } from "@/lib/trading-style";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -111,6 +111,18 @@ export function InstrumentInput({
     const selected = universeOptions.find((item) => item.symbol === form.instrument);
     if (selected) setCryptoMarketType(inferCryptoMarketType(selected));
   }, [form.instrument, form.instrumentType, universeOptions]);
+
+  // Keep the selected horizon and setup timeframe coherent, including when
+  // restoring an older saved form that used an incompatible timeframe.
+  useEffect(() => {
+    const profile = resolveStyle(form.tradingStyle);
+    if (!profile.allowedSetupTfs.includes(form.timeframe)) {
+      commitForm((prev) => ({
+        ...prev,
+        timeframe: resolveStyle(prev.tradingStyle).fallbackTf as Timeframe,
+      }));
+    }
+  }, [form.tradingStyle, form.timeframe, commitForm]);
 
   const categoryOptions: { value: InstrumentType; label: string }[] = [
     { value: "forex", label: t.entryForm.forex },
@@ -403,13 +415,45 @@ export function InstrumentInput({
             )}
           </div>
 
-          {/* Timeframe — all supported choices visible */}
+          {/* Phase 6 — Trading style: changes decision HORIZON and
+              requirements only, never market facts. */}
+          <div>
+            <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
+              {t.entryForm.styleLabel}
+            </Label>
+            <div className="grid grid-cols-3 gap-2">
+              {TRADING_STYLES.map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => commitForm((prev) => {
+                    const profile = resolveStyle(st);
+                    return {
+                      ...prev,
+                      tradingStyle: st,
+                      timeframe: profile.fallbackTf as Timeframe,
+                    };
+                  })}
+                  className={`h-9 rounded-md border text-[11px] font-mono uppercase transition-colors ${
+                    form.tradingStyle === st
+                      ? "border-primary/50 bg-primary/15 text-primary"
+                      : "border-border/60 bg-background/50 text-muted-foreground hover:bg-muted/40"
+                  }`}
+                >
+                  {t.investor[st === "scalping" ? "horizonScalping" : st === "swing" ? "horizonSwing" : "horizonIntraday"]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+
+          {/* Timeframes are scoped to the chosen trading horizon. */}
           <div>
             <Label className="text-xs font-mono font-semibold text-foreground mb-2 block">
-              {t.entryForm.timeframeLabel}
+              {t.entryForm.timeframeLabel} · {t.investor[form.tradingStyle === "scalping" ? "horizonScalping" : form.tradingStyle === "swing" ? "horizonSwing" : "horizonIntraday"]}
             </Label>
-            <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-              {TIMEFRAMES.map((tf) => (
+            <div className="grid grid-cols-3 sm:grid-cols-3 gap-1.5">
+              {TIMEFRAMES.filter((tf) => resolveStyle(form.tradingStyle).allowedSetupTfs.includes(tf.value)).map((tf) => (
                 <button
                   key={tf.value}
                   type="button"
@@ -428,31 +472,8 @@ export function InstrumentInput({
             </div>
           </div>
 
-          {/* Legacy type/timeframe selects removed: category and visible timeframe controls above are authoritative. */}
 
-          {/* Phase 6 — Trading style: changes decision HORIZON and
-              requirements only, never market facts. */}
-          <div>
-            <Label className="text-[11px] font-mono font-medium text-muted-foreground mb-1.5 block">
-              {t.entryForm.styleLabel}
-            </Label>
-            <div className="grid grid-cols-3 gap-2">
-              {TRADING_STYLES.map((st) => (
-                <button
-                  key={st}
-                  type="button"
-                  onClick={() => update("tradingStyle", st)}
-                  className={`h-9 rounded-md border text-[11px] font-mono uppercase transition-colors ${
-                    form.tradingStyle === st
-                      ? "border-primary/50 bg-primary/15 text-primary"
-                      : "border-border/60 bg-background/50 text-muted-foreground hover:bg-muted/40"
-                  }`}
-                >
-                  {st}
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Legacy type/timeframe selects removed: category and visible timeframe controls above are authoritative. */}
 
           {/* Submit */}
           <div className="flex items-center gap-3 pt-1">

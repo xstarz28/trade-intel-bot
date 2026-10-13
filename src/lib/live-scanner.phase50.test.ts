@@ -48,6 +48,7 @@ import {
 
 import {
   ALL_SCAN_HORIZONS,
+  selectCandidatesForHorizon,
   scanInstruments,
   type ScanConfig,
   type ScanResult,
@@ -269,6 +270,28 @@ describe("C — Horizon-Specific Eligibility", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+it("prefers fresh M15 over delayed preferred M5 for scalping", () => {
+    const delayedM5 = buildCandidateFromSource(makeSource({
+      instrument: "BTC/USD",
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "M5",
+        price: { price: 65000, timestamp: NOW - 30 * MINUTE, source: "okx" },
+        dataFreshness: "delayed",
+      }),
+    }));
+    const freshM15 = buildCandidateFromSource(makeSource({
+      instrument: "BTC/USD",
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "M15",
+        price: { price: 65000, timestamp: NOW - MINUTE, source: "okx" },
+        dataFreshness: "realtime",
+      }),
+    }));
+    const selected = selectCandidatesForHorizon([delayedM5, freshM15], "SCALPING");
+    expect(selected).toHaveLength(1);
+    expect(selected[0].marketTimeframe).toBe("M15");
+    expect(selected[0].freshness).toBe("FRESH");
+  });
 // D. SCALPING GATING
 // ═══════════════════════════════════════════════════════════════
 
