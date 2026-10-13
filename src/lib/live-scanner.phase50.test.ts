@@ -277,7 +277,22 @@ describe("D — Scalping Gating", () => {
 
   it("scalping with fresh data produces results", () => {
     const sources = [
-      makeSource({ instrument: "BTC/USD", marketData: makeMarketData("BTC/USD", { price: { price: 65000, timestamp: NOW - MINUTE, source: "x" }, dataFreshness: "realtime" }) }),
+      makeSource({
+        instrument: "BTC/USD",
+        marketData: makeMarketData("BTC/USD", {
+          price: { price: 65000, timestamp: NOW - MINUTE, source: "x" },
+          dataFreshness: "realtime",
+          timeframe: "M5",
+          candles: Array.from({ length: 50 }, (_, i) => ({
+            timestamp: NOW - (50 - i) * 5 * MINUTE,
+            open: 65000 + Math.sin(i * 0.3) * 50,
+            high: 65100 + Math.sin(i * 0.3) * 50,
+            low: 64900 + Math.sin(i * 0.3) * 50,
+            close: 65020 + Math.sin(i * 0.3) * 50,
+            volume: 1000 + i * 10,
+          })),
+        }),
+      }),
     ];
     const result = scanInstruments(sources, { horizons: ["SCALPING"], maxResults: 10 });
     const scalpingResult = result.results.get("SCALPING")!;
