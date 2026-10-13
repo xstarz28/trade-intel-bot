@@ -649,8 +649,16 @@ function scoreSentiment(input: AnalysisInput): FactorScore {
   // thesis creation. Regime detection reads volumeTrend too, but regime is
   // contextual classification only: it never feeds conviction directly.
   if (tech && tech.dataPoints >= 20 && tech.volumeTrend !== "unknown") {
-    if (tech.volumeTrend === "increasing" && structure !== "range" && structure !== "unknown") score += 1;
-    if (tech.volumeTrend === "decreasing" && structure !== "range" && structure !== "unknown") score -= 1;
+    // Volume participation confirms or weakens the direction already present
+    // in structure; it is not inherently bullish when volume rises.
+    const structureDirection =
+      structure === "HH/HL" ? 1 :
+      structure === "LH/LL" ? -1 :
+      0;
+    if (structureDirection !== 0) {
+      if (tech.volumeTrend === "increasing") score += structureDirection;
+      if (tech.volumeTrend === "decreasing") score -= structureDirection;
+    }
   }
 
   // ── Manual input fallback ──
