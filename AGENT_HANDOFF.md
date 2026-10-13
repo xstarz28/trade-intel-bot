@@ -44,3 +44,9 @@
 - Never synthesize live prices, technical direction, or evidence.
 - Keep `main` and production untouched until validation is satisfactory.
 - Do not label the product ready based on branch CI alone.
+
+## Follow-up safety fix — scalping freshness
+- Added a hard freshness gate for scalping: only provider-observed data classified `FRESH` (<5 minutes) is eligible; delayed, stale, and unavailable data are rejected with an explicit reason.
+- If a candidate has a known market timeframe, only M1/M5/M15 can enter scalping ranking; H1/H4/D1/W1 cannot be misrepresented as scalp data.
+- Added regression tests for delayed/stale rejection, allowed scalp timeframes, and H1 rejection.
+- Validation is pending CI; no production deployment is implied.
