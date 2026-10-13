@@ -144,7 +144,7 @@ export function buildMarketScenario(result: AnalysisResult): MarketScenarioConte
     ) {
       continuationEvidence.push({
         category: "bos",
-        explanation: `Bullish BOS confirms continuation` ,
+        explanation: `${currentDirection === "bullish" ? "Bullish" : "Bearish"} BOS confirms continuation`,
         timeframe: tech?.smc?.timeframe,
       });
     } else {
@@ -252,6 +252,14 @@ export function buildMarketScenario(result: AnalysisResult): MarketScenarioConte
   const hasReversal = reversalEvidence.length >= 1;
   const hasConflict = conflictingEvidence.length > 0;
   const dataReliable = dq?.primaryData.status !== "STALE" && dq?.primaryData.status !== "INSUFFICIENT" && dq?.primaryData.status !== "INVALID";
+  // Two lower-timeframe warnings are not proof of a confirmed reversal.
+  // Confirmation requires an explicit opposing higher-timeframe structural
+  // shift from independently acquired MTF candles.
+  const htfReversalDirection = tech?.mtf?.htfReversal?.direction;
+  const confirmedHtfReversal =
+    dataReliable &&
+    ((currentDirection === "bullish" && htfReversalDirection === "bearish") ||
+      (currentDirection === "bearish" && htfReversalDirection === "bullish"));
 
   if (currentDirection === "neutral") {
     scenario = "UNCONFIRMED";
@@ -260,12 +268,12 @@ export function buildMarketScenario(result: AnalysisResult): MarketScenarioConte
     confirmationState = "absent";
     primaryScenario = "No clear directional structure — continuation and reversal are not applicable";
     alternateScenario = "Wait for directional structure to develop";
-  } else if (hasReversal && reversalEvidence.length >= 2) {
+  } else if (hasReversal && confirmedHtfReversal) {
     scenario = "REVERSAL_CONFIRMED";
     continuationStatus = "absent";
     reversalStatus = "confirmed";
     confirmationState = "absent";
-    primaryScenario = `${currentDirection} reversal confirmed — structural evidence supports trend change`;
+    primaryScenario = `${currentDirection} trend reversal confirmed — opposing higher-timeframe structure has shifted`;
     alternateScenario = `${currentDirection} continuation still possible if structural support holds`;
   } else if (hasReversal) {
     scenario = "REVERSAL_DEVELOPING";
