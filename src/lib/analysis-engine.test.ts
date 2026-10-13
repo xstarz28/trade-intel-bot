@@ -160,14 +160,63 @@ describe("scoreIndicators (via breakdown)", () => {
 // ── Fundamental scoring ───────────────────────────────────────────
 
 describe("scoreFundamentals (via breakdown)", () => {
-  it("scores +1 for hawkish forex news", () => {
-    const result = runAnalysis(
+  it("scores Fed hawkish news bearish for EUR/USD and bullish for USD/JPY", () => {
+    const eurUsd = runAnalysis(
       baseInput({
         instrumentType: "forex",
+        instrument: "EUR/USD",
         economicEvents: "Fed signals hawkish stance",
       }),
     );
-    expect(result.breakdown.fundamental).toBeGreaterThanOrEqual(1);
+    const usdJpy = runAnalysis(
+      baseInput({
+        instrumentType: "forex",
+        instrument: "USD/JPY",
+        economicEvents: "Fed signals hawkish stance",
+      }),
+    );
+    expect(eurUsd.breakdown.fundamental).toBeLessThanOrEqual(-1);
+    expect(usdJpy.breakdown.fundamental).toBeGreaterThanOrEqual(1);
+  });
+
+  it("does not guess FX direction from generic currency-free hawkish text", () => {
+    const result = runAnalysis(
+      baseInput({
+        instrumentType: "forex",
+        instrument: "EUR/USD",
+        economicEvents: "Hawkish stance and rate hike expected",
+      }),
+    );
+    expect(result.breakdown.fundamental).toBe(0);
+  });
+
+  it("orients DXY strength against the actual USD pair side", () => {
+    const macroData = {
+      provider: "test",
+      timestamp: Date.now(),
+      indicators: [{ name: "context", relevance: "low" as const, sentiment: "neutral" as const }],
+      summary: "test",
+      confidence: "medium" as const,
+      dxyTrend: "rising" as const,
+    };
+    const eurUsd = runAnalysis(baseInput({
+      instrumentType: "forex",
+      instrument: "EUR/USD",
+      macroData,
+    }));
+    const usdJpy = runAnalysis(baseInput({
+      instrumentType: "forex",
+      instrument: "USD/JPY",
+      macroData,
+    }));
+    const eurGbp = runAnalysis(baseInput({
+      instrumentType: "forex",
+      instrument: "EUR/GBP",
+      macroData,
+    }));
+    expect(eurUsd.breakdown.fundamental).toBe(-1);
+    expect(usdJpy.breakdown.fundamental).toBe(1);
+    expect(eurGbp.breakdown.fundamental).toBe(0);
   });
 
   it("scores -1 for dovish forex news", () => {
@@ -226,6 +275,40 @@ describe("scoreSentiment (via breakdown)", () => {
       }),
     );
     expect(result.breakdown.sentiment).toBeGreaterThanOrEqual(1);
+  });
+
+  it("treats dominant long liquidations as bearish forced selling", () => {
+    const result = runAnalysis(baseInput({
+      instrumentType: "crypto",
+      instrument: "BTC/USD",
+      derivativesData: {
+        provider: "test",
+        symbol: "BTC",
+        timestamp: Date.now(),
+        freshness: "delayed",
+        liquidations: { totalVolume: 1_000_000, longVolume: 800_000, shortVolume: 200_000, dominantSide: "longs" },
+        availability: { openInterest: false, fundingRate: false, longShort: false, liquidations: true },
+        confidence: "medium",
+      },
+    }));
+    expect(result.breakdown.sentiment).toBeLessThan(0);
+  });
+
+  it("treats dominant short liquidations as bullish forced buying", () => {
+    const result = runAnalysis(baseInput({
+      instrumentType: "crypto",
+      instrument: "BTC/USD",
+      derivativesData: {
+        provider: "test",
+        symbol: "BTC",
+        timestamp: Date.now(),
+        freshness: "delayed",
+        liquidations: { totalVolume: 1_000_000, longVolume: 200_000, shortVolume: 800_000, dominantSide: "shorts" },
+        availability: { openInterest: false, fundingRate: false, longShort: false, liquidations: true },
+        confidence: "medium",
+      },
+    }));
+    expect(result.breakdown.sentiment).toBeGreaterThan(0);
   });
 
   it("scores +1 for fear/panic (contrarian bullish)", () => {
