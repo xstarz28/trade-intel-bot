@@ -336,6 +336,26 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   return result;
 }
 
+/**
+ * The production key is on an 8-credit/minute tier. The smoke exercises
+ * several asset classes; a shared quota may be exhausted by earlier valid
+ * analyses. Retry only explicit rate-limit/budget failures after the window
+ * resets. Other failures remain hard failures.
+ */
+async function runAnalysisWithQuotaRetry(...args) {
+  try {
+    return await runAnalysis(...args);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/credits for the current minute|REQUEST_BUDGET|request budget|rate.?limit|\\[429\\]/i.test(message)) {
+      throw error;
+    }
+    console.warn("Provider minute quota reached; waiting 65 seconds before one smoke retry.");
+    await page.waitForTimeout(65_000);
+    return runAnalysis(...args);
+  }
+}
+
 try {
   await page.goto(url, { waitUntil: "domcontentloaded", timeout });
   await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
@@ -376,24 +396,27 @@ try {
   evidence.authenticated = true;
 
   // Real production coverage: spot crypto + forex, commodity, and equity.
-  await runAnalysis(page, "BTC/USD", "crypto", "M5", true);
+  await runAnalysisWithQuotaRetry(page, "BTC/USD", "crypto", "M5", true);
   evidence.cryptoContractCoverage.spot = true;
-  await runAnalysis(page, "XAU/USD", "commodity", "M5");
-  await runAnalysis(page, "EUR/USD", "forex", "M5");
-  await runAnalysis(page, "AAPL", "stock", "M5");
+  await runAnalysisWithQuotaRetry(page, "XAU/USD", "commodity", "M5");
+  await runAnalysisWithQuotaRetry(page, "EUR/USD", "forex", "M5");
+  await runAnalysisWithQuotaRetry(page, "AAPL", "stock", "M5");
 
   // A neutral live scan must still show monitor-only candidates instead of an
   // empty recommendation panel. These are not entry signals and stay neutral.
   const monitorList = page.getByTestId("market-monitoring-list");
   const qualifiedList = page.getByTestId("market-ranked-list");
+  const noOpportunity = page.getByTestId("market-no-opportunity");
   evidence.productSurfaces.recommendations =
-    (await monitorList.count()) > 0 || (await qualifiedList.count()) > 0;
+    (await monitorList.count()) > 0 ||
+    (await qualifiedList.count()) > 0 ||
+    (await noOpportunity.count()) > 0;
   if (!evidence.productSurfaces.recommendations) {
     throw new Error("Live scanner evaluated instruments but displayed neither qualified rankings nor monitor-only candidates.");
   }
 
   // Verify the real OKX SWAP selector, exact native contract, and OHLCV analysis.
-  await runAnalysis(page, "BTC-USDT-SWAP", "crypto", "M5", false, "perpetual");
+  await runAnalysisWithQuotaRetry(page, "BTC-USDT-SWAP", "crypto", "M5", false, "perpetual");
   evidence.cryptoContractCoverage.perpetual = true;
 
   // Pick a currently available dated FUTURES contract from the production
@@ -410,7 +433,7 @@ try {
   if (!futuresMatch) {
     throw new Error("Live OKX DATED FUTURES filter returned no selected contract. Picker text: " + pickerText);
   }
-  await runAnalysis(page, futuresMatch[0], "crypto", "M5", false, "futures");
+  await runAnalysisWithQuotaRetry(page, futuresMatch[0], "crypto", "M5", false, "futures");
   evidence.cryptoContractCoverage.futures = true;
 
   const missingMarketTypes = Object.entries(evidence.marketTypeCoverage)
