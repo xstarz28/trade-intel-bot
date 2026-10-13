@@ -34,9 +34,25 @@ describe("validateTradePlanAgainstMarket", () => {
     }, candles, 2)).toEqual({ valid: false, reason: "entry_detached_from_latest_price" });
   });
 
-  it("does not invent a candle requirement when no valid candle is available", () => {
+  it("rejects a plan when no valid market candle exists", () => {
     expect(validateTradePlanAgainstMarket({
       direction: "long", entry: "101", stopLoss: "98", takeProfit: "107",
-    }, [], 3)).toEqual({ valid: true });
+    }, [], 3)).toEqual({ valid: false, reason: "missing_market_candles" });
+  });
+
+  it("rejects a long plan after confirmed price has already reached its target", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "long", entry: "101", stopLoss: "98", takeProfit: "107",
+    }, [{ ...candles[0], close: 108, high: 109 }], 3)).toEqual({
+      valid: false, reason: "entry_detached_from_latest_price",
+    });
+  });
+
+  it("rejects a short plan when the latest confirmed close is beyond its target", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "short", entry: "101", stopLoss: "104", takeProfit: "95",
+    }, [{ ...candles[0], close: 94, low: 93 }], 3)).toEqual({
+      valid: false, reason: "entry_detached_from_latest_price",
+    });
   });
 });
