@@ -19,7 +19,7 @@ import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { ALL_SCAN_HORIZONS, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { ALL_SCAN_HORIZONS, normalizeScanTimeframe, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { parseDeFiLlamaResult } from "@/lib/data/crypto/defillama-adapter";
@@ -371,9 +371,23 @@ export default function Dashboard() {
           // genuinely realtime. Do NOT let a fulfilled secondary provider
           // overwrite it afterward. Delayed/stale native data is never promoted
           // merely because its provider is preferred.
-          const nativeLive =
+          const requestedNativeTimeframe = normalizeScanTimeframe(input.timeframe);
+          const cachedNativeLive =
             input.instrumentType === "crypto"
-              ? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
+              ? (
+                  requestedNativeTimeframe
+                    ? liveRecommendationSourceRef.current.get(
+                        `${input.instrument}|${requestedNativeTimeframe}`,
+                      )
+                    : undefined
+                ) ?? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
+              : undefined;
+          // A fresh H1 quote is not a substitute for an M5 or H4 analysis.
+          const nativeLive =
+            requestedNativeTimeframe &&
+            cachedNativeLive?.marketData &&
+            normalizeScanTimeframe(cachedNativeLive.marketData.timeframe) === requestedNativeTimeframe
+              ? cachedNativeLive
               : undefined;
           const nativeIsRealtime =
             nativeLive?.marketData?.dataFreshness === "realtime";
@@ -389,8 +403,7 @@ export default function Dashboard() {
           } else if (marketResult.status === "fulfilled") {
             marketDataResult = marketResult.value as MarketDataResult;
           } else if (nativeLive?.marketData) {
-            // Primary market data failed: a verified native snapshot is still a
-            // valid fallback, even when its freshness is explicitly disclosed.
+            // Only use a verified snapshot when its actual candle interval matches the request.
             marketDataResult = {
               success: true,
               data: nativeLive.marketData,
@@ -401,7 +414,7 @@ export default function Dashboard() {
           }
 
           if (!marketDataResult.success || !marketDataResult.data) {
-            const liveFallback = liveSourceRef.current.get(input.instrument);
+            const liveFallback = nativeLive;
             if (liveFallback?.marketData) {
               marketDataResult = {
                 success: true,
