@@ -424,42 +424,6 @@ function scoreCurrencyStrengthOnPair(instrument: string, currency: string, stren
   return 0;
 }
 
-const FOREX_CURRENCY_MARKERS: Record<string, RegExp[]> = {
-  USD: [/\bUSD\b/i, /\bU\.?S\.?A?\.?\b/i, /\bUnited States\b/i, /\bFederal Reserve\b/i, /\bFed\b/i, /\bFOMC\b/i, /\bPowell\b/i, /\bNFP\b/i, /\bnon[-\s]?farm payrolls?\b/i],
-  EUR: [/\bEUR\b/i, /\bEuro(?:zone| area)?\b/i, /\bECB\b/i, /\bEuropean Central Bank\b/i, /\bLagarde\b/i],
-  GBP: [/\bGBP\b/i, /\bsterling\b/i, /\bpound(?: sterling)?\b/i, /\bUK\b/i, /\bBoE\b/i, /\bBank of England\b/i, /\bBailey\b/i],
-  JPY: [/\bJPY\b/i, /\byen\b/i, /\bJapan(?:ese)?\b/i, /\bBoJ\b/i, /\bBank of Japan\b/i, /\bUeda\b/i],
-  CHF: [/\bCHF\b/i, /\bSwiss franc\b/i, /\bSwitzerland\b/i, /\bSNB\b/i],
-  CAD: [/\bCAD\b/i, /\bCanadian dollar\b/i, /\bCanada\b/i, /\bBoC\b/i, /\bBank of Canada\b/i],
-  AUD: [/\bAUD\b/i, /\bAustralian dollar\b/i, /\bAustralia\b/i, /\bRBA\b/i, /\bReserve Bank of Australia\b/i],
-  NZD: [/\bNZD\b/i, /\bNew Zealand\b/i, /\bRBNZ\b/i, /\bkiwi\b/i],
-  SEK: [/\bSEK\b/i, /\bSweden\b/i, /\bRiksbank\b/i],
-  NOK: [/\bNOK\b/i, /\bNorway\b/i, /\bNorges Bank\b/i],
-};
-
-function scoreForexTextForPair(instrument: string, text: string): number {
-  if (!parseForexPair(instrument)) return 0;
-  const clauses = text.split(/[;,.!?\n]+/).map((clause) => clause.trim()).filter(Boolean);
-  let score = 0;
-  for (const clause of clauses) {
-    const currencies = Object.entries(FOREX_CURRENCY_MARKERS)
-      .filter(([, markers]) => markers.some((marker) => marker.test(clause)))
-      .map(([currency]) => currency);
-    // Don't assign the same clause to multiple currencies; ambiguous text is
-    // context, not a directional vote.
-    if (currencies.length !== 1) continue;
-
-    const stronger =
-      /\bhawkish\b|\brate hikes?\b|\bhiking rates\b|\btightening\b|\bstrong(?:er)? (?:gdp|nfp|non[-\s]?farm payrolls?|employment|jobs|growth|data)\b|\bbeat(?:s|ing)? expectations\b/i.test(clause);
-    const weaker =
-      /\bdovish\b|\brate cuts?\b|\beasing\b|\bweak(?:er)? (?:gdp|nfp|non[-\s]?farm payrolls?|employment|jobs|growth|data)\b|\bmiss(?:ed|es)? expectations\b|\brecession\b/i.test(clause);
-    if (stronger === weaker) continue;
-
-    score += scoreCurrencyStrengthOnPair(instrument, currencies[0], stronger ? 1 : -1);
-  }
-  return Math.max(-2, Math.min(2, score));
-}
-
 function scoreFundamentals(input: AnalysisInput): FactorScore {
   let score = 0;
 
@@ -538,13 +502,9 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
 
       if (isRateEvent) {
         if (input.instrumentType === "forex") {
-          // A positive policy-rate surprise strengthens the event currency;
-          // translate that into the instrument's base/quote direction.
-          score += scoreCurrencyStrengthOnPair(
-            input.instrument,
-            evt.currency,
-            surprise > 0 ? 1 : -1,
-          );
+          if (evt.currency === "USD" || evt.currency === "EUR" || evt.currency === "GBP") {
+            score += surprise > 0 ? 1 : -1;
+          }
         }
         if (input.instrumentType === "crypto") {
           score += surprise > 0 ? -1 : 1;
@@ -555,13 +515,8 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
           if (evt.currency === "USD") score += surprise > 0 ? -1 : 1;
         }
       } else if (isEmployment) {
-        if (input.instrumentType === "forex") {
-          // Lower unemployment is stronger; positive payroll / employment
-          // surprises are stronger. Apply the event currency to the actual pair.
-          const currencyStrength = eventLower.includes("unemployment")
-            ? (surprise < 0 ? 1 : -1)
-            : (surprise > 0 ? 1 : -1);
-          score += scoreCurrencyStrengthOnPair(input.instrument, evt.currency, currencyStrength);
+        if (input.instrumentType === "forex" && evt.currency === "USD") {
+          score += surprise > 0 ? -1 : 1;
         }
         if (input.instrumentType === "crypto") {
           score += surprise > 0 ? -1 : 1;
@@ -570,14 +525,8 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
           if (evt.currency === "USD") score += surprise > 0 ? -1 : 1;
         }
       } else if (isInflation) {
-        if (input.instrumentType === "forex") {
-          // Use the event's own currency and pair side; a USD-only quote-side
-          // assumption is wrong for USD/JPY and other USD-base pairs.
-          score += scoreCurrencyStrengthOnPair(
-            input.instrument,
-            evt.currency,
-            surprise > 0 ? 1 : -1,
-          );
+        if (input.instrumentType === "forex" && evt.currency === "USD") {
+          score += surprise > 0 ? -1 : 1;
         }
         if (input.instrumentType === "crypto" && pctSurprise > 0.05) {
           score += surprise > 0 ? -1 : 1;
@@ -602,9 +551,10 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     const combined = `${events} ${context}`;
 
     if (input.instrumentType === "forex") {
-      // Only score news when the affected currency is explicit. Generic
-      // "hawkish"/"weak data" prose without a currency must not guess pair direction.
-      score += scoreForexTextForPair(input.instrument, combined);
+      if (combined.includes("hawkish") || combined.includes("rate hike") || combined.includes("tightening")) score += 1;
+      if (combined.includes("dovish") || combined.includes("rate cut") || combined.includes("easing")) score -= 1;
+      if (combined.includes("strong gdp") || combined.includes("strong nfp") || combined.includes("strong employment")) score += 1;
+      if (combined.includes("weak gdp") || combined.includes("weak nfp") || combined.includes("recession")) score -= 1;
     } else if (input.instrumentType === "crypto") {
       if (combined.includes("institutional") || combined.includes("etf approval") || combined.includes("adoption")) score += 1;
       if (combined.includes("regulation") || combined.includes("ban") || combined.includes("crackdown")) score -= 1;
