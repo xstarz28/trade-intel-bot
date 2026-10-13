@@ -2521,8 +2521,10 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
           fxDirect: input.fxRates?.direct,
           fxInverse: input.fxRates?.inverse,
         });
+    // Preserve the unavailable state too, so the UI can explain the
+    // actual blocker (missing balance/risk input, contract spec, or FX rate).
+    positionSizing = sizing;
     if (sizing.available) {
-      positionSizing = sizing;
       // Phase 7E — walk the REAL book with the REAL risk-engine quantity.
       // Sizing unavailable → slippage unavailable (no synthetic quantity);
       // contract size unavailable → mapping refused honestly.
