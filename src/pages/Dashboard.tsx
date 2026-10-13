@@ -285,6 +285,17 @@ export default function Dashboard() {
       setCurrentResult(null);
       setFetchError(null);
 
+      // Recovery watchdog: a hung provider/action must not leave the Analyze
+      // control permanently disabled. Invalidate this run so late responses
+      // cannot overwrite a newer analysis.
+      const watchdog = setTimeout(() => {
+        if (!isStaleRun()) {
+          runTokenRef.current += 1;
+          setIsAnalyzing(false);
+          setFetchError(t.dashboard.dataFetchFailed);
+        }
+      }, 90_000);
+
       // Reset loading steps
       setLoadingSteps(getInitialSteps(t).map((s) => ({ ...s, status: "pending" as const })));
 
@@ -825,9 +836,10 @@ export default function Dashboard() {
         }
       } catch (err: any) {
         if (!isStaleRun()) {
-          setFetchError(`Analysis failed: ${err?.message || "unknown error"}`);
+          setFetchError(`${t.dashboard.dataFetchFailed}: ${err?.message || t.dashboard.providerNotConfigured}`);
         }
       } finally {
+        clearTimeout(watchdog);
         // Only the newest run owns the loading UI; stale runs exit silently.
         if (!isStaleRun()) {
           setIsAnalyzing(false);
@@ -1146,8 +1158,8 @@ export default function Dashboard() {
       <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
-            <div data-brand-logo aria-label="XSTARZG" className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-[#0b0b0d] border border-border/60">
-              <svg viewBox="0 0 512 512" role="img" aria-label="XSTARZG" className="size-8" xmlns="http://www.w3.org/2000/svg">
+            <div data-brand-logo aria-label="XstarzG Analysis" className="flex size-8 items-center justify-center overflow-hidden rounded-lg bg-[#0b0b0d] border border-border/60">
+              <svg viewBox="0 0 512 512" role="img" aria-label="XstarzG Analysis" className="size-8" xmlns="http://www.w3.org/2000/svg">
                 <rect width="512" height="512" rx="112" fill="#0b0b0d"/>
                 <path d="M256 72 301 178 414 98 334 211 440 256 334 301 414 414 301 334 256 440 211 334 98 414 178 301 72 256 178 211 98 98 211 178Z" fill="#f5f5f5"/>
                 <circle cx="256" cy="256" r="54" fill="#0b0b0d"/>
@@ -1156,7 +1168,7 @@ export default function Dashboard() {
             </div>
             <div>
               <h1 className="text-sm font-bold tracking-tight font-mono">
-                Xstarz Analysis<span className="text-muted-foreground"> · </span>
+                XstarzG Analysis<span className="text-muted-foreground"> · </span>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button className="text-primary hover:text-primary/80 transition-colors cursor-pointer">
@@ -1410,8 +1422,8 @@ export default function Dashboard() {
                   animate={{ opacity: 1 }}
                   className="flex flex-col items-center justify-center py-24 text-center"
                 >
-                  <div data-brand-logo aria-label="XSTARZG" className="flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-[#0b0b0d] border border-border/60 mb-4">
-                    <svg viewBox="0 0 512 512" role="img" aria-label="XSTARZG" className="size-16" xmlns="http://www.w3.org/2000/svg">
+                  <div data-brand-logo aria-label="XstarzG Analysis" className="flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-[#0b0b0d] border border-border/60 mb-4">
+                    <svg viewBox="0 0 512 512" role="img" aria-label="XstarzG Analysis" className="size-16" xmlns="http://www.w3.org/2000/svg">
                       <rect width="512" height="512" rx="112" fill="#0b0b0d" />
                       <path d="M256 72 301 178 414 98 334 211 440 256 334 301 414 414 301 334 256 440 211 334 98 414 178 301 72 256 178 211 98 98 211 178Z" fill="#f5f5f5" />
                       <circle cx="256" cy="256" r="54" fill="#0b0b0d" />

@@ -74,6 +74,18 @@ const ASSET_CLASS_LABEL: Record<string, string> = {
   index: "Index Futures",
 };
 
+const CONFLUENCE_EXPLANATION: Record<string, string> = {
+  en: "Evidence alignment score — not a probability of profit.",
+  id: "Skor keselarasan bukti — bukan probabilitas keuntungan.",
+  es: "Puntuación de concordancia de evidencias; no es una probabilidad de beneficio.",
+  pt: "Pontuação de alinhamento das evidências — não é probabilidade de lucro.",
+  fr: "Score de concordance des preuves — ce n’est pas une probabilité de gain.",
+  de: "Übereinstimmung der Belege — keine Gewinnwahrscheinlichkeit.",
+  ja: "証拠の整合性スコアであり、利益確率ではありません。",
+  ko: "증거 일치도 점수이며 수익 확률이 아닙니다.",
+  zh: "证据一致性评分，不代表盈利概率。",
+};
+
 interface AnalysisResultProps {
   result: AnalysisResultType;
 }
@@ -82,8 +94,8 @@ function formatPrice(price: number, instrumentType: string, instrument: string):
   return formatInstrumentPrice(price, instrumentType, instrument);
 }
 
-function formatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString("en-US", {
+function formatTime(timestamp: number, locale: string): string {
+  return new Date(timestamp).toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -159,6 +171,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <span className="text-sm font-medium text-muted-foreground">%</span>
               </div>
               <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">{tx("analysisResult.confluenceScore")}</p>
+              <p className="text-[10px] text-muted-foreground/80 mt-1 max-w-48" title={t.global.disclaimer}>
+                {CONFLUENCE_EXPLANATION[locale] ?? CONFLUENCE_EXPLANATION.en}
+              </p>
             </div>
           </div>
 
@@ -171,7 +186,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               </div>
               <div className="flex items-center gap-1.5">
                 <Clock className="size-3 text-muted-foreground" />
-                <span className="text-[10px] font-mono text-muted-foreground">{formatTime(priceSnap.timestamp)}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{formatTime(priceSnap.timestamp, locale)}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-mono text-muted-foreground">Source:</span>
@@ -1722,7 +1737,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <AlertTriangle className="size-4 text-amber-400 mt-0.5 shrink-0" />
               <div>
                 <p className="text-[11px] font-mono font-semibold text-amber-400 mb-1">
-                  $ warnings
+                  $ PERINGATAN
                 </p>
                 <ul className="space-y-0.5">
                   {result.dataFlags.map((flag, i) => (
@@ -1742,7 +1757,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> technical
+              <span className="text-primary/60">$</span> {tx("analysis.technicalSummary")}
             </h4>
           </div>
         </CardHeader>
@@ -1756,7 +1771,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> fundamental
+              <span className="text-primary/60">$</span> {tx("analysis.fundamentalSummary")}
             </h4>
           </div>
         </CardHeader>
