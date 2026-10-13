@@ -164,7 +164,7 @@ describe("E2E happy path", () => {
     });
     expect(r.recommendation).toBe("NO_TRADE");
     expect(r.tradePlan).toBeUndefined();
-    expect(r.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
+    expect(r.positionSizing).toBeUndefined();
     expect(r.noTradeReasons.length).toBeGreaterThan(0);
   });
 });
