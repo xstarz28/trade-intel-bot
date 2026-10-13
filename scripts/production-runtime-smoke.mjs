@@ -60,20 +60,23 @@ wirePage(page);
 async function findAnalysisForm(targetPage, expectedTimeframe) {
   const forms = targetPage.locator("form");
   const count = await forms.count();
+  const styleName = /^(M1|M5|M15)$/i.test(expectedTimeframe) ? "Scalping" : /^(H1)$/i.test(expectedTimeframe) ? "Intraday" : "Swing";
 
   for (let index = 0; index < count; index += 1) {
     const candidate = forms.nth(index);
     const picker = candidate.locator('[data-slot="select-trigger"]').first();
-    const timeframe = candidate.locator("button").filter({ hasText: new RegExp("^" + expectedTimeframe + "$") });
-    if (
-      (await picker.count()) > 0 &&
-      (await timeframe.count()) > 0 &&
-      (await timeframe.first().isVisible().catch(() => false))
-    ) {
-      return candidate;
-    }
-  }
+    if ((await picker.count()) === 0) continue;
 
+    // Horizon controls now precede timeframe controls. Select the horizon
+    // first when its allowed timeframe is not currently visible.
+    let timeframe = candidate.locator("button").filter({ hasText: new RegExp("^" + expectedTimeframe + "$") });
+    if ((await timeframe.count()) === 0 || !(await timeframe.first().isVisible().catch(() => false))) {
+      const styleButton = candidate.locator("button").filter({ hasText: new RegExp("^" + styleName + "$", "i") }).first();
+      if (await styleButton.count()) await styleButton.click();
+      timeframe = candidate.locator("button").filter({ hasText: new RegExp("^" + expectedTimeframe + "$") });
+    }
+    if ((await timeframe.count()) > 0 && await timeframe.first().isVisible().catch(() => false)) return candidate;
+  }
   const diagnostics = [];
   for (let index = 0; index < count; index += 1) {
     const candidate = forms.nth(index);
