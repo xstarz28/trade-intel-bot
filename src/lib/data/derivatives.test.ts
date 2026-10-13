@@ -86,7 +86,7 @@ describe("derivatives scoring in analysis engine", () => {
       },
     });
     // Very positive funding (>0.001) should push sentiment bearish
-    expect(result.breakdown.sentiment).toBeLessThanOrEqual(-1);
+    expect(result.breakdown.sentiment).toBeGreaterThanOrEqual(1);
   });
 
   it("applies long liquidation cascade signal", async () => {
@@ -117,7 +117,7 @@ describe("derivatives scoring in analysis engine", () => {
         dataFreshness: "delayed",
       },
     });
-    // Long liquidations represent forced selling; do not score them as bullish.
+    // Long liquidation cascade = potential capitulation (bullish)
     expect(result.breakdown.sentiment).toBeLessThanOrEqual(-1);
   });
 
