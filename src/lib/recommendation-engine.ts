@@ -906,6 +906,13 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
   // For scalping: require live data and reasonable execution quality
   if (horizon === "SCALPING") {
     if (!c.hasLiveData) return { eligible: false, reason: "scalping requires live data" };
+    if (c.freshness !== "FRESH") return { eligible: false, reason: "scalping requires fresh market data (<5 min)" };
+    if (!c.marketTimeframe) {
+      return { eligible: false, reason: "scalping requires a verified M1/M5/M15 market timeframe; timeframe unavailable" };
+    }
+    if (!["M1", "M5", "M15"].includes(c.marketTimeframe.toUpperCase())) {
+      return { eligible: false, reason: "scalping requires M1/M5/M15 market data; received " + c.marketTimeframe };
+    }
     if (c.spreadBps !== undefined && c.spreadBps > 50) return { eligible: false, reason: "spread too wide for scalping" };
   }
 
