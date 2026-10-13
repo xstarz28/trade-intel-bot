@@ -12,7 +12,7 @@ const candles = [{
 describe("validateTradePlanAgainstMarket", () => {
   it("accepts a directionally coherent long plan near the latest market price", () => {
     expect(validateTradePlanAgainstMarket({
-      direction: "long", entry: "101", stopLoss: "98", takeProfit: "107",
+      direction: "long", entry: "101", stopLoss: "97", takeProfit: "107",
     }, candles, 3)).toEqual({ valid: true });
   });
 
@@ -36,7 +36,7 @@ describe("validateTradePlanAgainstMarket", () => {
 
   it("rejects a plan when no valid market candle exists", () => {
     expect(validateTradePlanAgainstMarket({
-      direction: "long", entry: "101", stopLoss: "98", takeProfit: "107",
+      direction: "long", entry: "101", stopLoss: "97", takeProfit: "107",
     }, [], 3)).toEqual({ valid: false, reason: "missing_market_candles" });
   });
 
@@ -52,6 +52,22 @@ describe("validateTradePlanAgainstMarket", () => {
     expect(validateTradePlanAgainstMarket({
       direction: "short", entry: "101", stopLoss: "104", takeProfit: "95",
     }, [{ ...candles[0], close: 94, low: 93 }], 3)).toEqual({
+      valid: false, reason: "target_or_stop_already_crossed",
+    });
+  });
+
+  it("rejects a short entry after the latest candle wicked above its stop even if it closed back below", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "short", entry: "101", stopLoss: "104", takeProfit: "95",
+    }, [{ ...candles[0], high: 105, close: 101 }], 3)).toEqual({
+      valid: false, reason: "target_or_stop_already_crossed",
+    });
+  });
+
+  it("rejects a long entry after the latest candle already touched its target intrabar", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "long", entry: "101", stopLoss: "97", takeProfit: "107",
+    }, [{ ...candles[0], high: 108, close: 101 }], 3)).toEqual({
       valid: false, reason: "target_or_stop_already_crossed",
     });
   });
