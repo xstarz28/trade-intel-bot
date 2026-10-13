@@ -11,7 +11,7 @@
  * - liquidity/FVG/OB context carries timeframe labels
  */
 import { describe, it, expect } from "vitest";
-import { buildChain, buildMtfContext, TF_LADDER } from "./mtf";
+import { buildChain, buildMtfContext, selectBudgetedMtfSlot, TF_LADDER } from "./mtf";
 import type { OhlcvCandle } from "./market-types";
 
 const T = (i: number) => 1700000000000 + i * 3600000;
@@ -110,6 +110,37 @@ describe("buildChain — adaptive timeframe architecture", () => {
       { timeframe: "M15", role: "macro" },
       { timeframe: "M5", role: "structure" },
     ]);
+  });
+});
+
+describe("selectBudgetedMtfSlot — preserve nearest structure under provider quotas", () => {
+  it("uses M15 structure rather than H1 macro for an M5 setup", () => {
+    expect(selectBudgetedMtfSlot(buildChain("M5"))).toEqual({
+      timeframe: "M15",
+      role: "structure",
+    });
+  });
+
+  it("uses M5 structure rather than M15 macro for an M1 setup", () => {
+    expect(selectBudgetedMtfSlot(buildChain("M1"))).toEqual({
+      timeframe: "M5",
+      role: "structure",
+    });
+  });
+
+  it("uses H4 structure rather than D1 macro for an H1 setup", () => {
+    expect(selectBudgetedMtfSlot(buildChain("H1"))).toEqual({
+      timeframe: "H4",
+      role: "structure",
+    });
+  });
+
+  it("falls back to the only available slot when no structure or macro exists", () => {
+    expect(selectBudgetedMtfSlot(buildChain("W1"))).toEqual({
+      timeframe: "D1",
+      role: "trigger",
+    });
+    expect(selectBudgetedMtfSlot([])).toBeUndefined();
   });
 });
 
