@@ -153,6 +153,14 @@ export interface AnalysisInput {
   };
 }
 
+export interface HistoricalContextSummaries {
+  /** Narrative preserved from an older history row; not raw provider data. */
+  sentiment?: { summary?: string; score?: number };
+  macro?: string;
+  derivatives?: string;
+  calendar?: string;
+}
+
 export interface AnalysisResult {
   id: string;
   instrument: string;
@@ -197,6 +205,8 @@ export interface AnalysisResult {
   decisionTrace?: import("@/lib/decision-trace").DecisionTrace;
   /** Phase 11 — deterministic fingerprint of the decision-relevant state. */
   decisionFingerprint?: string;
+  /** Legacy history context saved as summaries only; never reconstructed as live measurements. */
+  historicalContextSummaries?: HistoricalContextSummaries;
   technicalSummary: string;
   fundamentalSummary: string;
   breakdown: BiasBreakdown;
