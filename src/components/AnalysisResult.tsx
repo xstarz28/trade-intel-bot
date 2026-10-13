@@ -1722,7 +1722,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <AlertTriangle className="size-4 text-amber-400 mt-0.5 shrink-0" />
               <div>
                 <p className="text-[11px] font-mono font-semibold text-amber-400 mb-1">
-                  $ warnings
+                  $ PERINGATAN
                 </p>
                 <ul className="space-y-0.5">
                   {result.dataFlags.map((flag, i) => (
@@ -1742,7 +1742,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> technical
+              <span className="text-primary/60">$</span> {tx("analysis.technicalSummary")}
             </h4>
           </div>
         </CardHeader>
@@ -1756,7 +1756,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <h4 className="text-xs font-mono font-semibold text-muted-foreground">
-              <span className="text-primary/60">$</span> fundamental
+              <span className="text-primary/60">$</span> {tx("analysis.fundamentalSummary")}
             </h4>
           </div>
         </CardHeader>
