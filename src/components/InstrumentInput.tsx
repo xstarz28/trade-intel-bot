@@ -62,7 +62,8 @@ interface PersistedForm {
 }
 
 const DEFAULT_FORM: PersistedForm = {
-  instrument: "",
+  // Start with a valid instrument so the primary action is usable on a fresh session.
+  instrument: "EUR/USD",
   instrumentType: "forex",
   timeframe: "D1",
   tradingStyle: "intraday",
