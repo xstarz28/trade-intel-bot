@@ -37,8 +37,9 @@ export interface ChainSlot {
  * - macro: two rungs above (when it exists)
  * - trigger: one rung below (execution refinement)
  *
- * Requested timeframes outside the ladder (M1/M5) get no derived slots —
- * they are analyzed standalone rather than inventing relationships.
+ * Requested timeframes outside the ladder get no derived slots and are
+ * analyzed standalone rather than inventing relationships. M1/M5 are first-class
+ * ladder entries with real neighboring timeframes when the provider supplies them.
  */
 export function buildChain(requestedTf: string): ChainSlot[] {
   const idx = TF_LADDER.indexOf(requestedTf as (typeof TF_LADDER)[number]);
