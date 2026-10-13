@@ -3,7 +3,7 @@ import { RequireAuth } from "@/components/RequireAuth";
 import { AppAuthProvider } from "@/lib/convex-provider";
 import React, { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { BrowserRouter, Route, Routes } from "react-router";
 import { I18nProvider } from "@/lib/i18n";
 import "./index.css";
 
@@ -52,7 +52,7 @@ createRoot(document.getElementById("root")!).render(
     <RootErrorBoundary>
       <I18nProvider>
         <AppAuthProvider>
-          <MemoryRouter initialEntries={["/"]}>
+          <BrowserRouter>
             <Suspense fallback={
               <div className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
                 <div className="text-center">
@@ -70,7 +70,7 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
-          </MemoryRouter>
+          </BrowserRouter>
           <Toaster />
         </AppAuthProvider>
       </I18nProvider>
