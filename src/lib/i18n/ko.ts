@@ -846,6 +846,8 @@ const ko: Translations = {
     scanning: "인스트루먼트 스캔 중…",
     noOpportunity: "명확한 기회 없음",
     noOpportunityHint: "현재 시장 증거는 이 기간에 대한 강한 순위를 뒷받침하지 않습니다.",
+    monitoringTitle: "실시간 모니터링 · 진입 조건 미충족",
+    monitoringDescription: "이 종목들은 활용 가능한 관측 시장 데이터가 있지만 현재 트레이드 설정 기준을 충족하지 않습니다. 구조와 컨플루언스를 모니터링하세요. 이 목록은 진입 신호가 아닙니다.",
     noSuitableHint: "적합한 인스트루먼트가 없습니다. 실시간 스캔을 위해 라이브 데이터 소스를 연결하세요.",
     expiredInvalidated: "{expired}개 만료 · {invalidated}개 무효",
     changesSinceScan: "지난 스캔 이후 변경 사항",
