@@ -1028,11 +1028,14 @@ describe("Z — Adversarial Inputs", () => {
 
 describe("Scalping freshness and timeframe safety", () => {
   it("rejects delayed or stale quotes for scalping", () => {
-    for (const freshness of ["DELAYED", "STALE", "UNAVAILABLE"] as const) {
+    for (const freshness of ["DELAYED", "STALE"] as const) {
       const result = isEligible(makeCandidate({ freshness }), "SCALPING");
       expect(result.eligible).toBe(false);
       expect(result.reason).toContain("fresh market data");
     }
+    const unavailable = isEligible(makeCandidate({ freshness: "UNAVAILABLE" }), "SCALPING");
+    expect(unavailable.eligible).toBe(false);
+    expect(unavailable.reason).toContain("freshness unavailable");
   });
 
   it("accepts fresh M1/M5/M15 data for scalping when other gates pass", () => {
