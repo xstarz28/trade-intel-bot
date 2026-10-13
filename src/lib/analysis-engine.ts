@@ -669,23 +669,46 @@ function assessDataCompleteness(input: AnalysisInput): {
 } {
   const flags: string[] = [];
   let missing = 0;
-  const hasMarketData = !!input.marketData;
-  const hasTechnical = !!input.technicalData && input.technicalData.dataPoints > 0;
+  const marketPrice = input.marketData?.price?.price;
+  const hasMarketData = typeof marketPrice === "number" && Number.isFinite(marketPrice) && marketPrice > 0;
+  const manualPrice = typeof input.currentPrice === "string" ? Number.parseFloat(input.currentPrice) : Number.NaN;
+  const hasManualPrice = Number.isFinite(manualPrice) && manualPrice > 0;
+  const hasTechnical =
+    !!input.technicalData &&
+    Number.isFinite(input.technicalData.dataPoints) &&
+    input.technicalData.dataPoints > 0;
 
-  if (!hasMarketData && !input.currentPrice) {
-    flags.push("No price data available — scored neutral");
+  if (!hasMarketData && !hasManualPrice) {
+    flags.push("No valid positive price data available — scored neutral");
     missing++;
   }
   if (hasTechnical && input.technicalData!.dataPoints < 50) {
     flags.push(`Limited candle history (${input.technicalData!.dataPoints} candles) — indicators may be unreliable`);
   }
-  const hasIntelligence = !!(input.sentimentData || input.fundamentalData || input.macroData);
+  const hasUsableSentiment = !!(
+    input.sentimentData &&
+    input.sentimentData.confidence !== "unavailable" &&
+    Number.isFinite(input.sentimentData.averageScore) &&
+    Number.isFinite(input.sentimentData.articleCount) &&
+    input.sentimentData.articleCount > 0
+  );
+  const hasUsableFundamentals = input.fundamentalData?.available === true;
+  const hasUsableMacro = !!(
+    input.macroData &&
+    input.macroData.confidence !== "unavailable" &&
+    (
+      (Array.isArray(input.macroData.indicators) && input.macroData.indicators.length > 0) ||
+      input.macroData.dxyTrend !== undefined
+    )
+  );
+  const hasIntelligence = hasUsableSentiment || hasUsableFundamentals || hasUsableMacro;
+  const hasNewsContext = typeof input.newsContext === "string" && input.newsContext.trim().length > 0;
   const hasCryptoIntelligence = !!(
     input.cryptoIntelligenceContext?.derivatives?.available ||
     input.cryptoIntelligenceContext?.defi?.available ||
     input.cryptoIntelligenceContext?.tokenomics?.available
   );
-  if (!input.newsContext && !hasIntelligence) {
+  if (!hasNewsContext && !hasIntelligence) {
     flags.push(
       hasCryptoIntelligence
         ? "Core news/sentiment/fundamental context unavailable — crypto-specific intelligence is shown separately as contextual evidence, not a substitute for core fundamentals"
@@ -693,16 +716,42 @@ function assessDataCompleteness(input: AnalysisInput): {
     );
     missing++;
   }
-  if (input.instrumentType === "forex" && !input.economicEvents && !input.calendarData) {
+  const hasEconomicEventText =
+    typeof input.economicEvents === "string" && input.economicEvents.trim().length > 0;
+  const hasUsableCalendar = !!(
+    input.calendarData &&
+    input.calendarData.confidence !== "unavailable" &&
+    (
+      input.calendarData.events.length > 0 ||
+      input.calendarData.availability.upcoming24h ||
+      input.calendarData.availability.upcoming72h ||
+      input.calendarData.availability.recentReleased
+    )
+  );
+  if (input.instrumentType === "forex" && !hasEconomicEventText && !hasUsableCalendar) {
     flags.push("No economic calendar data — macro events not factored");
     missing++;
   }
+  const hasUsableManualFunding =
+    typeof input.fundingRate === "string" &&
+    input.fundingRate.trim().length > 0 &&
+    Number.isFinite(Number(input.fundingRate));
+  const hasUsableDerivatives = !!(
+    input.derivativesData &&
+    input.derivativesData.confidence !== "unavailable" &&
+    (
+      input.derivativesData.availability.openInterest ||
+      input.derivativesData.availability.fundingRate ||
+      input.derivativesData.availability.longShort ||
+      input.derivativesData.availability.liquidations
+    )
+  );
   if (
     input.instrumentType === "crypto" &&
-    !input.fundingRate &&
-    !(input.derivativesData && input.derivativesData.confidence !== "unavailable")
+    !hasUsableManualFunding &&
+    !hasUsableDerivatives
   ) {
-    flags.push("No funding rate data — sentiment analysis limited");
+    flags.push("No usable funding or derivatives data — sentiment analysis limited");
     missing++;
   }
   if (input.instrumentType === "commodity") {
