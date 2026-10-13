@@ -15,6 +15,7 @@ import type { MtfContext, TechnicalData } from "@/lib/data/market-types";
 import type { ClassicPriceActionContext } from "@/lib/data/classic-price-action";
 import { resolveInstrumentSpec } from "@/lib/risk/spec-resolver";
 import { calculateRiskRewardRatio } from "@/lib/risk/reward-risk";
+import { validateTradePlanAgainstMarket } from "@/lib/trade-plan-validation";
 import { formatInstrumentPriceValue } from "@/lib/price-format";
 import { computePositionSizing, type PositionSizingResult } from "@/lib/risk";
 import { resolveStyle } from "@/lib/trading-style";
@@ -1544,6 +1545,25 @@ function decideTrade(
             : {}),
         };
       }
+    }
+  }
+
+  // A structurally derived plan is not actionable if its entry has already
+  // drifted away from the latest observed candle. Reject the plan rather than
+  // displaying an entry line that the trader can no longer realistically use.
+  if (projectedTradePlan) {
+    const validation = validateTradePlanAgainstMarket(
+      projectedTradePlan,
+      input.marketData?.candles ?? [],
+      tech?.atr14,
+    );
+    if (!validation.valid) {
+      const reason = validation.reason === "entry_detached_from_latest_price"
+        ? "Plan rejected as stale: live entry is materially detached from the latest observed candle. Refresh market data and re-analyze; no replacement entry is invented."
+        : "Plan rejected: entry, stop-loss, and take-profit do not form valid directional geometry.";
+      reasons.push(reason);
+      projectedTradePlan = undefined;
+      tradePlan = undefined;
     }
   }
 
