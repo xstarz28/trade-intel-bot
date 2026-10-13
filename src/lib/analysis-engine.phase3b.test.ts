@@ -274,14 +274,14 @@ describe("position sizing — computed only from complete real inputs", () => {
     // quantity — the sizing stays explicitly unavailable.
     const r = runAnalysis(input({ accountEquity: 10000, riskPercent: 0.01, instrumentSpec: FULL_SPEC }));
     expect(r.recommendation).toBe("LONG");
-    expect(r.positionSizing).toBeUndefined();
+    expect(r.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
     expect(r.riskNote).toContain("Position sizing unavailable");
   });
 
   it("without a spec, sizing stays unavailable even for a valid LONG", () => {
     const r = runAnalysis(input({ accountEquity: 1000000, riskPercent: 0.02 }));
     expect(r.recommendation).toBe("LONG");
-    expect(r.positionSizing).toBeUndefined();
+    expect(r.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
     expect(r.riskNote).toContain("Position sizing unavailable");
   });
 
