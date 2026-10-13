@@ -239,7 +239,10 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   const quality = /primary:\s*(GOOD|DEGRADED|INSUFFICIENT|STALE|UNAVAILABLE|INVALID)/i.exec(body)?.[1];
 
   let cryptoIntelligence = null;
-  if (type === "crypto") {
+  // The supplemental crypto-intelligence panel is a spot dashboard surface.
+  // Derivatives must still pass real price/provider/quality/chart checks, but
+  // are not rejected simply because this optional spot-only panel is absent.
+  if (type === "crypto" && (!cryptoContractType || cryptoContractType === "spot")) {
     const panel = targetPage.getByTestId("crypto-intelligence-panel");
     await panel.waitFor({ state: "visible", timeout: 10000 });
     const panelText = await panel.innerText();
