@@ -1560,7 +1560,11 @@ function decideTrade(
     if (!validation.valid) {
       const reason = validation.reason === "entry_detached_from_latest_price"
         ? "Plan rejected as stale: live entry is materially detached from the latest observed candle. Refresh market data and re-analyze; no replacement entry is invented."
-        : "Plan rejected: entry, stop-loss, and take-profit do not form valid directional geometry.";
+        : validation.reason === "missing_market_candles"
+          ? "Plan rejected: no valid recent market candles are available to verify an executable entry."
+          : validation.reason === "target_or_stop_already_crossed"
+            ? "Plan rejected: the latest confirmed market close has already crossed the target or stop level; this setup is no longer actionable."
+            : "Plan rejected: entry, stop-loss, and take-profit do not form valid directional geometry.";
       reasons.push(reason);
       projectedTradePlan = undefined;
       tradePlan = undefined;
