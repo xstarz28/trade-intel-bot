@@ -13,7 +13,7 @@ import { action } from "./_generated/server";
 import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
-import { buildChain, buildMtfContext } from "../lib/data/mtf";
+import { buildChain, buildMtfContext, selectBudgetedMtfSlot } from "../lib/data/mtf";
 import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/classic-price-action";
 import { crossAssetComparator } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
@@ -336,19 +336,17 @@ export const fetchMarketData = action({
       // mark the slot unavailable — nothing is ever synthesized.
       const slots = buildChain(args.timeframe);
       // One higher-timeframe series per instrument is the default on the
-      // observed 8-credit/minute provider plan. Prefer the highest rung
-      // (macro/structure context) and explicitly mark skipped timeframes;
+      // observed 8-credit/minute provider plan. Spend that credit on the
+      // nearest higher-timeframe STRUCTURE first (e.g. M15 for an M5 setup),
+      // then macro context, then a lower trigger. Skipped slots stay explicit;
       // the analysis engine must not synthesize missing candles.
-      const preferredSlot =
-        slots.find((slot) => slot.role === "macro") ??
-        slots.find((slot) => slot.role === "structure") ??
-        slots.find((slot) => slot.role === "trigger");
+      const preferredSlot = selectBudgetedMtfSlot(slots);
       const settled = await Promise.allSettled(
         slots.map((slot) => {
           // Public OKX candles do not consume the Twelve Data credit budget,
           // so crypto may use the complete available chain. For Twelve Data
-          // markets only the highest HTF is fetched; remaining slots stay
-          // explicitly unavailable until real candles can be fetched.
+          // markets only the selected budgeted timeframe is fetched; remaining
+          // slots stay explicitly unavailable until real candles can be fetched.
           if (args.instrumentType !== "crypto" && slot !== preferredSlot) {
             return Promise.reject(
               new Error("Not fetched: reserved Twelve Data credits for primary analyses across instruments."),

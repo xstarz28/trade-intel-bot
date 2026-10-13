@@ -37,8 +37,9 @@ export interface ChainSlot {
  * - macro: two rungs above (when it exists)
  * - trigger: one rung below (execution refinement)
  *
- * Requested timeframes outside the ladder (M1/M5) get no derived slots —
- * they are analyzed standalone rather than inventing relationships.
+ * Requested timeframes outside the ladder get no derived slots and are
+ * analyzed standalone rather than inventing relationships. M1/M5 are first-class
+ * ladder entries with real neighboring timeframes when the provider supplies them.
  */
 export function buildChain(requestedTf: string): ChainSlot[] {
   const idx = TF_LADDER.indexOf(requestedTf as (typeof TF_LADDER)[number]);
@@ -49,6 +50,18 @@ export function buildChain(requestedTf: string): ChainSlot[] {
     if (idx > 0) slots.push({ timeframe: TF_LADDER[idx - 1], role: "trigger" });
   }
   return slots;
+}
+
+/**
+ * Select the single extra timeframe when provider quota permits only one.
+ * The nearest higher timeframe is the primary structural gate; the two-rung
+ * macro context is secondary, and a lower trigger is last. This prevents an
+ * M5 setup from spending its sole HTF credit on H1 while skipping M15 structure.
+ */
+export function selectBudgetedMtfSlot(slots: readonly ChainSlot[]): ChainSlot | undefined {
+  return slots.find((slot) => slot.role === "structure") ??
+    slots.find((slot) => slot.role === "macro") ??
+    slots.find((slot) => slot.role === "trigger");
 }
 
 /** Minimum candles for an independent structural read on any timeframe. */
