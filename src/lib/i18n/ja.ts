@@ -847,6 +847,8 @@ const ja: Translations = {
     scanning: "インストルメントをスキャン中…",
     noOpportunity: "明確な機会なし",
     noOpportunityHint: "現在の市場エビデンスは、この期間帯での強いランク付けを支持していません。",
+    monitoringTitle: "ライブ監視 · エントリー条件未達",
+    monitoringDescription: "これらの銘柄には利用可能な観測市場データがありますが、現在のトレードセットアップ基準を満たしていません。構造とコンフルエンスを監視してください。この一覧はエントリーシグナルではありません。",
     noSuitableHint: "該当するインストルメントが見つかりませんでした。リアルタイムスキャンにはライブデータソースを接続してください。",
     expiredInvalidated: "{expired}件期限切れ · {invalidated}件無効",
     changesSinceScan: "前回スキャンからの変化",
