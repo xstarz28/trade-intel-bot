@@ -206,40 +206,6 @@ export function InstrumentInput({
       (item) => item.symbol.toUpperCase() === instrument.toUpperCase(),
     );
 
-    // Manual search selects a canonical result from the instrument catalog.
-    // Never send an unresolved ticker to the provider using a stale category
-    // (for example, searching HYPE while Forex is still selected).
-    if (manualSearch && !knownInstrument) {
-      setManualSearchError("Choose a matching instrument from the search results before running analysis.");
-      return;
-    }
-    setManualSearchError(null);
-
-    const resolvedInstrument = knownInstrument?.symbol ?? instrument;
-    const resolvedInstrumentType = knownInstrument?.type ?? currentForm.instrumentType;
-
-    onAnalyze({
-      instrument: resolvedInstrument,
-      instrumentType: resolvedInstrumentType,
-      timeframe: currentForm.timeframe,
-      tradingStyle: currentForm.tradingStyle,
-      requestedTimeframe: currentForm.timeframe,
-    });
-  }, [isAnalyzing, manualSearch, manualSearchQuery, onAnalyze, universeOptions]);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    submitAnalysis();
-  };
-
-  const submitInstrument = manualSearch
-    ? (exactManualMatch?.symbol ?? "")
-    : form.instrument.trim();
-
-  return (
-      (item) => item.symbol.toUpperCase() === instrument.toUpperCase(),
-    );
-
     // Manual search must resolve to a canonical catalog item. Otherwise a
     // ticker could be sent to the provider under the previously selected class.
     if (manualSearch && !knownInstrument) {
