@@ -1024,3 +1024,27 @@ describe("Z — Adversarial Inputs", () => {
     expect(result.analyticalScore).toBeGreaterThanOrEqual(0);
   });
 });
+
+
+describe("Scalping freshness and timeframe safety", () => {
+  it("rejects delayed or stale quotes for scalping", () => {
+    for (const freshness of ["DELAYED", "STALE", "UNAVAILABLE"] as const) {
+      const result = isEligible(makeCandidate({ freshness }), "SCALPING");
+      expect(result.eligible).toBe(false);
+      expect(result.reason).toContain("fresh market data");
+    }
+  });
+
+  it("accepts fresh M1/M5/M15 data for scalping when other gates pass", () => {
+    for (const marketTimeframe of ["M1", "M5", "M15"]) {
+      const result = isEligible(makeCandidate({ freshness: "FRESH", marketTimeframe }), "SCALPING");
+      expect(result.eligible).toBe(true);
+    }
+  });
+
+  it("rejects H1 data from the scalping ranking", () => {
+    const result = isEligible(makeCandidate({ freshness: "FRESH", marketTimeframe: "H1" }), "SCALPING");
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toContain("M1/M5/M15");
+  });
+});
