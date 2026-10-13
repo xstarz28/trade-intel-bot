@@ -1,4 +1,4 @@
-import type { HistoricalContextSummaries } from "@/types/analysis";
+import type { HistoricalContextSummaries, Recommendation } from "@/types/analysis";
 
 interface StoredAnalysisContext {
   sentimentSummary?: unknown;
@@ -116,4 +116,31 @@ export function buildPersistedContextSummaries(
   }
 
   return saved;
+}
+
+export interface ResolvedHistoricalDecision {
+  recommendation: Recommendation;
+  noTradeReasons: string[];
+}
+
+/**
+ * A bias is not a trade permission. If an old row has no valid saved decision,
+ * fail closed to NO_TRADE rather than infer LONG/SHORT from Bullish/Bearish bias.
+ */
+export function resolveHistoricalDecision(
+  recommendation: unknown,
+  reasons: unknown,
+): ResolvedHistoricalDecision {
+  const savedReasons = Array.isArray(reasons)
+    ? reasons.filter((reason): reason is string => typeof reason === "string" && reason.trim().length > 0)
+    : [];
+  if (recommendation === "LONG" || recommendation === "SHORT" || recommendation === "NO_TRADE") {
+    return { recommendation, noTradeReasons: savedReasons };
+  }
+
+  const unresolvedReason = "Historical trade decision was not stored; this result cannot be treated as an actionable trade.";
+  return {
+    recommendation: "NO_TRADE",
+    noTradeReasons: [...savedReasons, unresolvedReason],
+  };
 }
