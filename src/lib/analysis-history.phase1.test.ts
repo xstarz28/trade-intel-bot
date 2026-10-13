@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildHistoricalContextSummaries, buildPersistedContextSummaries } from "./analysis-history";
+import { buildHistoricalContextSummaries, buildPersistedContextSummaries, resolveHistoricalDecision } from "./analysis-history";
 
 describe("buildHistoricalContextSummaries", () => {
   it("preserves only context summaries and the persisted finite sentiment score", () => {
@@ -103,5 +103,31 @@ describe("buildPersistedContextSummaries", () => {
       derivativesSummary: "Funding elevated.",
       calendarSummary: "Macro risk: high — CPI release imminent.",
     });
+  });
+});
+
+describe("resolveHistoricalDecision", () => {
+  it("preserves an explicitly saved decision instead of deriving it from bias", () => {
+    expect(resolveHistoricalDecision("NO_TRADE", ["no valid setup"])).toEqual({
+      recommendation: "NO_TRADE",
+      noTradeReasons: ["no valid setup"],
+    });
+    expect(resolveHistoricalDecision("SHORT", [])).toEqual({
+      recommendation: "SHORT",
+      noTradeReasons: [],
+    });
+  });
+
+  it("fails closed when the historical decision is missing", () => {
+    const result = resolveHistoricalDecision(undefined, undefined);
+    expect(result.recommendation).toBe("NO_TRADE");
+    expect(result.noTradeReasons).toContain(
+      "Historical trade decision was not stored; this result cannot be treated as an actionable trade.",
+    );
+  });
+
+  it("fails closed when the stored decision is malformed", () => {
+    expect(resolveHistoricalDecision("BUY", ["older note"]).recommendation).toBe("NO_TRADE");
+    expect(resolveHistoricalDecision("BUY", ["older note"]).noTradeReasons).toContain("older note");
   });
 });
