@@ -452,7 +452,7 @@ describe("risk / sizing end-to-end safety", () => {
   it("sizing unavailable → thesis remains valid with an explicit reason", () => {
     const r = run({ ...sizingSpec, accountEquity: undefined, instrumentSpec: undefined });
     expect(r.recommendation).toBe("LONG");
-    expect(r.positionSizing).toBeUndefined();
+    expect(r.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
   });
 
   it("explicit spec wins; conflicting provider metadata blocks sizing honestly", () => {
