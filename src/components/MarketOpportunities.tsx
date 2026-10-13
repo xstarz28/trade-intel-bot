@@ -785,10 +785,10 @@ export function MarketOpportunities({
             <div data-testid="market-monitoring-list" className="space-y-2">
               <div className="rounded-lg border border-border/40 bg-muted/15 p-3">
                 <p className="text-[10px] font-sans font-semibold text-muted-foreground">
-                  {tx("marketPanel.monitoringTitle")}
+                  {tx("marketPanel.suitability.neutral")} · {tx("status.live")}
                 </p>
                 <p className="mt-1 text-[9px] font-sans leading-relaxed text-muted-foreground/70">
-                  {tx("marketPanel.monitoringDescription")}
+                  {tx("marketPanel.noOpportunityHint")}
                 </p>
               </div>
               {monitoringRanked.map((item) => (
