@@ -784,9 +784,9 @@ function assessDataCompleteness(input: AnalysisInput): {
   // Provider quote bid/ask is useful execution context, but it is NOT
   // the prop-firm's executable feed. Keep that distinction explicit.
   const hasProviderQuote =
-    Number.isFinite(input.marketData?.price.bid) &&
-    Number.isFinite(input.marketData?.price.ask) &&
-    (input.marketData?.price.ask ?? 0) >= (input.marketData?.price.bid ?? 0);
+    Number.isFinite(input.marketData?.price?.bid) &&
+    Number.isFinite(input.marketData?.price?.ask) &&
+    (input.marketData?.price?.ask ?? 0) >= (input.marketData?.price?.bid ?? 0);
   if (hasProviderQuote) {
     flags.push("Provider bid/ask quote available — indicative only; verify executable bid/ask on the prop-firm platform");
   } else {
@@ -896,15 +896,15 @@ function decideTrade(
   if (structuralVeto) reasons.push(structuralVeto);
 
   const marketPrice =
-    md?.price.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : undefined);
+    md?.price?.price ?? (input.currentPrice ? parseFloat(input.currentPrice) : undefined);
   // Use the provider's executable-side quote when it exists:
   // ask for long, bid for short. This improves analytical Entry realism,
   // while the UI still labels it as indicative rather than prop-firm executable.
   const entry =
     bias === "Bullish"
-      ? md?.price.ask ?? marketPrice
+      ? md?.price?.ask ?? marketPrice
       : bias === "Bearish"
-        ? md?.price.bid ?? marketPrice
+        ? md?.price?.bid ?? marketPrice
         : marketPrice;
 
   // Structural levels — ONLY from real market swings or user-supplied
@@ -943,8 +943,8 @@ function decideTrade(
   const PRICE_FUTURE_SKEW_MS = 90_000; // documented clock-skew tolerance
   const PRICE_STALE_MS = styleProfile.priceStaleMs;
   if (md) {
-    const ts = md.price.timestamp;
-    const isValidTs = Number.isFinite(ts) && ts > 0 && ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
+    const ts = md.price?.timestamp;
+    const isValidTs = typeof ts === "number" && Number.isFinite(ts) && ts > 0 && ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
     if (!isValidTs) {
       reasons.push(
         `Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.`,
@@ -1989,7 +1989,7 @@ function generateTechnicalSummary(
     // ATR
     if (tech.atr14 !== undefined) {
       parts.push(
-        `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`,
+        `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price?.price ?? 1) ? "elevated" : "normal"}.`,
       );
     }
 
