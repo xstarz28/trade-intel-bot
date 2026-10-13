@@ -51,6 +51,18 @@ export function buildChain(requestedTf: string): ChainSlot[] {
   return slots;
 }
 
+/**
+ * Select the single extra timeframe when provider quota permits only one.
+ * The nearest higher timeframe is the primary structural gate; the two-rung
+ * macro context is secondary, and a lower trigger is last. This prevents an
+ * M5 setup from spending its sole HTF credit on H1 while skipping M15 structure.
+ */
+export function selectBudgetedMtfSlot(slots: readonly ChainSlot[]): ChainSlot | undefined {
+  return slots.find((slot) => slot.role === "structure") ??
+    slots.find((slot) => slot.role === "macro") ??
+    slots.find((slot) => slot.role === "trigger");
+}
+
 /** Minimum candles for an independent structural read on any timeframe. */
 const MIN_TF_DATAPOINTS = 20;
 
