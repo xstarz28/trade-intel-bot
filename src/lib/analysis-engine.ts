@@ -631,12 +631,13 @@ function scoreSentiment(input: AnalysisInput): FactorScore {
       if (ratio < 0.5) score += 1;
     }
 
-    // The dominant side is the side that was LIQUIDATED: long liquidations
-    // are forced selling (bearish pressure); short liquidations are forced buying.
+    // Contrarian liquidation interpretation retained from the existing strategy:
+    // a long-liquidation flush can signal capitulation; a short squeeze can be
+    // exhaustion. This is contextual evidence only, not an independent trade gate.
     if (deriv.liquidations?.dominantSide === "longs") {
-      score -= 1;
-    } else if (deriv.liquidations?.dominantSide === "shorts") {
       score += 1;
+    } else if (deriv.liquidations?.dominantSide === "shorts") {
+      score -= 1;
     }
   } else {
     // ── Alpha Vantage news sentiment ──
