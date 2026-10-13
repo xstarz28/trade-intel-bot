@@ -158,6 +158,8 @@ export interface CandidateInput {
   macroScore?: number;
   /** True when the fundamental bucket has real directional evidence. */
   fundamentalEvidenceAvailable?: boolean;
+  /** True when positioning/sentiment is backed by available provider measurements. */
+  positioningEvidenceAvailable?: boolean;
 }
 
 /**
@@ -700,11 +702,20 @@ export function scoreCandidate(
     return Math.max(0, Math.min(100, 50 + normalized * 25 * sign));
   };
 
-  const fundamental = signedToDirectional(c.fundamentalScore) ?? (c.fundamentalEvidenceAvailable ? 50 : 0);
+  // Numeric zeroes in AnalysisResult.breakdown are defaults, not proof that a
+  // provider measured a neutral state. Only count a layer when its availability
+  // flag is backed by real data; missing evidence must not dilute other layers.
+  const hasFundamentalEvidence = c.fundamentalEvidenceAvailable === true;
+  const hasPositioningEvidence = c.positioningEvidenceAvailable === true;
+  const fundamental = hasFundamentalEvidence
+    ? signedToDirectional(c.fundamentalScore) ?? 50
+    : 0;
   const macro = signedToDirectional(c.macroScore) ?? 0;
-  const positioning = signedToDirectional(c.positioningScore) ?? 0;
+  const positioning = hasPositioningEvidence
+    ? signedToDirectional(c.positioningScore) ?? 50
+    : 0;
 
-  if (!c.fundamentalEvidenceAvailable) {
+  if (!hasFundamentalEvidence) {
     conflicts.push("directional fundamental evidence unavailable");
   } else if (c.fundamentalScore !== undefined && directional && Math.sign(c.fundamentalScore) === -sign) {
     conflicts.push("fundamental evidence opposes the technical direction");
@@ -712,7 +723,9 @@ export function scoreCandidate(
   if (c.macroScore !== undefined && directional && Math.sign(c.macroScore) === -sign) {
     conflicts.push("macro evidence opposes the technical direction");
   }
-  if (c.positioningScore !== undefined && directional && Math.sign(c.positioningScore) === -sign) {
+  if (!hasPositioningEvidence) {
+    conflicts.push("positioning/sentiment evidence unavailable");
+  } else if (c.positioningScore !== undefined && directional && Math.sign(c.positioningScore) === -sign) {
     conflicts.push("positioning evidence opposes the technical direction");
   }
 
@@ -747,7 +760,7 @@ export function scoreCandidate(
     profile.dataQuality +
     profile.riskReward;
 
-  if (c.fundamentalEvidenceAvailable || c.fundamentalScore !== undefined) {
+  if (hasFundamentalEvidence) {
     weighted += fundamental * profile.fundamentals;
     totalWeight += profile.fundamentals;
   }
@@ -755,7 +768,7 @@ export function scoreCandidate(
     weighted += macro * profile.macro;
     totalWeight += profile.macro;
   }
-  if (c.positioningScore !== undefined) {
+  if (hasPositioningEvidence) {
     weighted += positioning * positioningWeight;
     totalWeight += positioningWeight;
   }
@@ -764,15 +777,20 @@ export function scoreCandidate(
 
   // A trading opportunity needs multi-layer agreement. A technical-only setup
   // is useful as a watch candidate, but must never become TOP_OPPORTUNITY.
-  const agreeingNonTechnical = [c.fundamentalScore, c.macroScore, c.positioningScore]
+  const availableNonTechnicalScores = [
+    ...(hasFundamentalEvidence ? [c.fundamentalScore] : []),
+    ...(c.macroScore !== undefined ? [c.macroScore] : []),
+    ...(hasPositioningEvidence ? [c.positioningScore] : []),
+  ];
+  const agreeingNonTechnical = availableNonTechnicalScores
     .filter((v) => v !== undefined && Number.isFinite(v) && sign !== 0 && Math.sign(v as number) === sign).length;
-  const opposingNonTechnical = [c.fundamentalScore, c.macroScore, c.positioningScore]
+  const opposingNonTechnical = availableNonTechnicalScores
     .filter((v) => v !== undefined && Number.isFinite(v) && sign !== 0 && Math.sign(v as number) === -sign).length;
 
   if (directional) {
     reasons.push(`${direction === "long" ? "Bullish" : "Bearish"} structure/setup ${Math.round(technical)}/100`);
     reasons.push(
-      c.fundamentalScore !== undefined
+      hasFundamentalEvidence && c.fundamentalScore !== undefined
         ? c.fundamentalScore === 0
           ? "fundamental evidence neutral (0)"
           : `fundamental evidence ${c.fundamentalScore > 0 ? "+" : ""}${c.fundamentalScore}`
@@ -832,13 +850,13 @@ export function scoreCandidate(
   // opposition, which previously depressed confidence for every candidate
   // lacking optional fundamental, macro, or positioning providers.
   const coherenceLayers: Array<{ score: number; weight: number }> = [];
-  if (c.fundamentalEvidenceAvailable || c.fundamentalScore !== undefined) {
+  if (hasFundamentalEvidence) {
     coherenceLayers.push({ score: fundamental, weight: 0.4 });
   }
   if (c.macroScore !== undefined) {
     coherenceLayers.push({ score: macro, weight: 0.2 });
   }
-  if (c.positioningScore !== undefined) {
+  if (hasPositioningEvidence) {
     coherenceLayers.push({ score: positioning, weight: 0.2 });
   }
   const coherence = directional
@@ -888,6 +906,13 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
   // For scalping: require live data and reasonable execution quality
   if (horizon === "SCALPING") {
     if (!c.hasLiveData) return { eligible: false, reason: "scalping requires live data" };
+    if (c.freshness !== "FRESH") return { eligible: false, reason: "scalping requires fresh market data (<5 min)" };
+    if (!c.marketTimeframe) {
+      return { eligible: false, reason: "scalping requires a verified M1/M5/M15 market timeframe; timeframe unavailable" };
+    }
+    if (!["M1", "M5", "M15"].includes(c.marketTimeframe.toUpperCase())) {
+      return { eligible: false, reason: "scalping requires M1/M5/M15 market data; received " + c.marketTimeframe };
+    }
     if (c.spreadBps !== undefined && c.spreadBps > 50) return { eligible: false, reason: "spread too wide for scalping" };
   }
 
@@ -1030,14 +1055,17 @@ export function generateRecommendation(
           ? c.htfBias
           : "neutral";
     const directionSign = candidateDirection === "long" ? 1 : candidateDirection === "short" ? -1 : 0;
-    const independentAgreementCount = [c.fundamentalScore, c.macroScore, c.positioningScore]
-      .filter((value) =>
-        value !== undefined &&
-        Number.isFinite(value) &&
-        value !== 0 &&
-        directionSign !== 0 &&
-        Math.sign(value) === directionSign,
-      ).length;
+    const independentAgreementCount = [
+      ...(c.fundamentalEvidenceAvailable === true ? [c.fundamentalScore] : []),
+      ...(c.macroScore !== undefined ? [c.macroScore] : []),
+      ...(c.positioningEvidenceAvailable === true ? [c.positioningScore] : []),
+    ].filter((value) =>
+      value !== undefined &&
+      Number.isFinite(value) &&
+      value !== 0 &&
+      directionSign !== 0 &&
+      Math.sign(value) === directionSign,
+    ).length;
     const suitability = classifySuitability(
       result.analyticalScore,
       result.confidence,

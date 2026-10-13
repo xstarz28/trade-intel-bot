@@ -71,6 +71,18 @@ function makeCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
   };
 }
 
+function makeScalpCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
+  return makeCandidate({
+    marketTimeframe: "M5",
+    analysisDecision: "LONG",
+    analysisStyle: "SCALPING",
+    hasQualifiedTradePlan: true,
+    mtfSufficient: true,
+    hasFreshExecutionQuality: true,
+    ...overrides,
+  });
+}
+
 function makeForexCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
   return makeCandidate({
     instrument: "EUR/USD",
@@ -277,21 +289,21 @@ describe("C — Scalping Ranking", () => {
   });
 
   it("scalping excludes wide spreads", () => {
-    const wide = makeCandidate({ spreadBps: 60 });
+    const wide = makeScalpCandidate({ spreadBps: 60 });
     const eligible = isEligible(wide, "SCALPING");
     expect(eligible.eligible).toBe(false);
     expect(eligible.reason).toContain("spread");
   });
 
   it("scalping requires live data", () => {
-    const noLive = makeCandidate({ hasLiveData: false });
+    const noLive = makeScalpCandidate({ hasLiveData: false });
     const eligible = isEligible(noLive, "SCALPING");
     expect(eligible.eligible).toBe(false);
     expect(eligible.reason).toContain("live");
   });
 
   it("scalping recommended analysis type is M5/M15", () => {
-    const result = generateRecommendation([makeCandidate()], "SCALPING");
+    const result = generateRecommendation([makeScalpCandidate()], "SCALPING");
     expect(result.rankedInstruments[0]?.recommendedAnalysisType).toContain("M5");
   });
 });
@@ -1022,5 +1034,61 @@ describe("Z — Adversarial Inputs", () => {
     });
     const result = scoreCandidate(c, "INTRADAY");
     expect(result.analyticalScore).toBeGreaterThanOrEqual(0);
+  });
+});
+
+
+describe("Evidence availability integrity", () => {
+  it("does not treat a default zero fundamental score as measured neutral evidence", () => {
+    const missing = scoreCandidate(makeCandidate({
+      fundamentalScore: undefined,
+      fundamentalEvidenceAvailable: false,
+    }), "INTRADAY");
+    const defaultZero = scoreCandidate(makeCandidate({
+      fundamentalScore: 0,
+      fundamentalEvidenceAvailable: false,
+    }), "INTRADAY");
+
+    expect(defaultZero.analyticalScore).toBe(missing.analyticalScore);
+    expect(defaultZero.confidence).toBe(missing.confidence);
+    expect(defaultZero.reasons).toContain("fundamental evidence unavailable");
+  });
+
+  it("does not include unavailable positioning defaults in scoring or confidence", () => {
+    const missing = scoreCandidate(makeCandidate({
+      positioningScore: undefined,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+    const defaultZero = scoreCandidate(makeCandidate({
+      positioningScore: 0,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+
+    expect(defaultZero.analyticalScore).toBe(missing.analyticalScore);
+    expect(defaultZero.confidence).toBe(missing.confidence);
+  });
+
+  it("counts non-technical agreement only when the evidence source is available", () => {
+    const unavailable = scoreCandidate(makeCandidate({
+      fundamentalScore: 0,
+      fundamentalEvidenceAvailable: false,
+      positioningScore: 0,
+      positioningEvidenceAvailable: false,
+    }), "INTRADAY");
+    const confirmed = scoreCandidate(makeCandidate({
+      fundamentalScore: 1,
+      fundamentalEvidenceAvailable: true,
+      positioningScore: 1,
+      positioningEvidenceAvailable: true,
+    }), "INTRADAY");
+
+    expect(confirmed.reasons).toContain("2 non-technical evidence layer(s) agree");
+    expect(unavailable.conflicts).toContain("independent directional confirmation unavailable");
+  });
+
+  it("rejects scalping when the actual provider timeframe is missing", () => {
+    const result = isEligible(makeCandidate({ marketTimeframe: undefined }), "SCALPING");
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toContain("timeframe unavailable");
   });
 });
