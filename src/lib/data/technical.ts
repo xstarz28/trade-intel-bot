@@ -60,7 +60,9 @@ export function rsi(closes: number[], period = 14): number | undefined {
     avgLoss = (avgLoss * (period - 1) + loss) / period;
   }
 
-  if (avgLoss === 0) return 100;
+  // No gains and no losses means price was flat, not overbought.
+  // The standard formula divides by zero in this case; return neutral RSI 50.
+  if (avgLoss === 0) return avgGain === 0 ? 50 : 100;
   const rs = avgGain / avgLoss;
   return 100 - 100 / (1 + rs);
 }
