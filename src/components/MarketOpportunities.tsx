@@ -817,7 +817,7 @@ export function MarketOpportunities({
               ))}
             </div>
           ) : (
-            <div className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
+            <div data-testid="market-no-opportunity" className="rounded-lg bg-muted/20 border border-border/30 p-4 text-center">
               <AlertTriangle className="size-5 text-muted-foreground/40 mx-auto mb-2" />
               <p className="text-xs font-sans text-muted-foreground font-semibold">
                 {tx("marketPanel.noOpportunity")}
