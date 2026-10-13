@@ -14,6 +14,17 @@ interface PriceChartProps {
   technicalData?: TechnicalData;
 }
 
+const CHART_COPY: Record<string, { title: string; candles: string; lastClose: string; structure: string; plan: string; verify: string; stale: string; rejected: string; unavailable: string }> = {
+  en: { title: "Market structure · provider OHLCV", candles: "candles", lastClose: "LAST CLOSE", structure: "STRUCTURE", plan: "ANALYTICAL PLAN", verify: "VERIFY EXECUTABLE PRICE", stale: "Trade plan hidden: levels no longer match the latest candles. Re-run analysis.", rejected: "No executable entry plan. Rejected projections are not drawn to avoid misleading entry levels.", unavailable: "unavailable" },
+  id: { title: "Struktur pasar · OHLCV penyedia", candles: "candle", lastClose: "PENUTUP TERAKHIR", structure: "STRUKTUR", plan: "RENCANA ANALISIS", verify: "VERIFIKASI HARGA EKSEKUSI", stale: "Rencana entry disembunyikan: level tidak cocok dengan candle terbaru. Jalankan analisis ulang.", rejected: "Belum ada rencana entry yang layak dieksekusi. Proyeksi yang ditolak tidak digambar agar tidak menyesatkan.", unavailable: "tidak tersedia" },
+  es: { title: "Estructura de mercado · OHLCV del proveedor", candles: "velas", lastClose: "ÚLTIMO CIERRE", structure: "ESTRUCTURA", plan: "PLAN ANALÍTICO", verify: "VERIFICAR PRECIO EJECUTABLE", stale: "Plan oculto: los niveles no coinciden con las velas recientes. Repite el análisis.", rejected: "No hay un plan de entrada ejecutable. No se dibujan proyecciones rechazadas.", unavailable: "no disponible" },
+  pt: { title: "Estrutura de mercado · OHLCV do provedor", candles: "velas", lastClose: "ÚLTIMO FECHAMENTO", structure: "ESTRUTURA", plan: "PLANO ANALÍTICO", verify: "VERIFICAR PREÇO EXECUTÁVEL", stale: "Plano oculto: os níveis não correspondem aos candles recentes. Analise novamente.", rejected: "Não há plano de entrada executável. Projeções rejeitadas não são desenhadas.", unavailable: "indisponível" },
+  fr: { title: "Structure du marché · OHLCV fournisseur", candles: "bougies", lastClose: "DERNIÈRE CLÔTURE", structure: "STRUCTURE", plan: "PLAN ANALYTIQUE", verify: "VÉRIFIER LE PRIX EXÉCUTABLE", stale: "Plan masqué : les niveaux ne correspondent plus aux dernières bougies. Relancez l’analyse.", rejected: "Aucun plan d’entrée exécutable. Les projections rejetées ne sont pas affichées.", unavailable: "indisponible" },
+  de: { title: "Marktstruktur · Anbieter-OHLCV", candles: "Kerzen", lastClose: "LETZTER SCHLUSSKURS", structure: "STRUKTUR", plan: "ANALYSEPLAN", verify: "AUSFÜHRBAREN PREIS PRÜFEN", stale: "Plan ausgeblendet: Die Levels passen nicht zu den neuesten Kerzen. Analyse erneut ausführen.", rejected: "Kein ausführbarer Einstiegsplan. Abgelehnte Projektionen werden nicht angezeigt.", unavailable: "nicht verfügbar" },
+  ja: { title: "市場構造 · プロバイダーOHLCV", candles: "本のローソク足", lastClose: "直近終値", structure: "構造", plan: "分析プラン", verify: "実行可能価格を確認", stale: "プランを非表示にしました。最新のローソク足と価格が一致しません。再分析してください。", rejected: "実行可能なエントリープランがありません。却下された予測は表示しません。", unavailable: "利用不可" },
+  ko: { title: "시장 구조 · 공급자 OHLCV", candles: "개 캔들", lastClose: "최근 종가", structure: "구조", plan: "분석 계획", verify: "실행 가능 가격 확인", stale: "최근 캔들과 가격이 일치하지 않아 계획을 숨겼습니다. 다시 분석하세요.", rejected: "실행 가능한 진입 계획이 없습니다. 거부된 예상 수준은 표시하지 않습니다.", unavailable: "사용 불가" },
+  zh: { title: "市场结构 · 数据源 OHLCV", candles: "根K线", lastClose: "最新收盘价", structure: "结构", plan: "分析计划", verify: "核实可执行价格", stale: "已隐藏计划：价位与最新K线不符。请重新分析。", rejected: "当前没有可执行的入场计划。为避免误导，不显示已被拒绝的预测。", unavailable: "不可用" },
+};
 function formatChartPrice(value: number, instrumentType: string, instrument: string): string {
   if (!Number.isFinite(value)) return "—";
   const magnitude = Math.abs(value);
@@ -58,7 +69,7 @@ export function PriceStructureChart({
   technicalData,
 }: PriceChartProps) {
   const { locale } = useI18n();
-  const isIndonesian = locale === "id";
+  const copy = CHART_COPY[locale] ?? CHART_COPY.en;
   const data = candles
     .filter((c) =>
       [c.open, c.high, c.low, c.close, c.timestamp].every(Number.isFinite) &&
@@ -167,15 +178,15 @@ export function PriceStructureChart({
     <Card className="border-border/50 overflow-hidden">
       <CardHeader className="px-4 py-3 border-b border-border/30">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-xs font-mono">$ market-structure · provider OHLCV</CardTitle>
+          <CardTitle className="text-xs font-mono">$ {copy.title}</CardTitle>
           <div className="flex items-center gap-2 text-[9px] font-mono text-muted-foreground">
-            <span>{data.length} candles</span>
+            <span>{data.length} {copy.candles}</span>
             <span>·</span>
-            <span className="text-foreground">LAST CLOSE {fmt(last.close)}</span>
+            <span className="text-foreground">{copy.lastClose} {fmt(last.close)}</span>
           </div>
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
-          <span>STRUCTURE <b className="text-foreground">{smc?.internalExternal.external.structure ?? technicalData?.structure ?? "unknown"}</b></span>
+          <span>{copy.structure} <b className="text-foreground">{smc?.internalExternal.external.structure ?? technicalData?.structure ?? "unknown"}</b></span>
           {smc?.internalExternal.external.bosDirection && smc.internalExternal.external.bosDirection !== "none" && (
             <span>BOS {smc.internalExternal.external.bosDirection}</span>
           )}
@@ -186,19 +197,13 @@ export function PriceStructureChart({
         </div>
         {rejectedPlan && (
           <div role="status" className="mt-2 text-[10px] font-mono text-amber-300">
-            {isIndonesian
-              ? (tradePlan
-                  ? "Rencana entry disembunyikan: level sudah tidak cocok dengan candle terbaru. Jalankan analisis ulang."
-                  : "Belum ada rencana entry yang layak dieksekusi. Proyeksi yang ditolak tidak digambar agar tidak menyesatkan.")
-              : (tradePlan
-                  ? "Trade plan hidden: levels no longer match the latest candles. Re-run analysis."
-                  : "No executable entry plan. Rejected projections are not drawn to avoid misleading entry levels.")}
+            {tradePlan ? copy.stale : copy.rejected}
           </div>
         )}
         {plan && (
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
             <span className={projected ? "text-amber-300" : "text-sky-300"}>
-              {projected ? "PROJECTED SETUP · NOT EXECUTABLE" : "ANALYTICAL PLAN · VERIFY EXECUTABLE PRICE"}
+              {projected ? "PROJECTED SETUP · NOT EXECUTABLE" : `${copy.plan} · ${copy.verify}`}
             </span>
             <span>ENTRY {fmt(Number(plan.entry))}</span>
             <span>SL {fmt(Number(plan.stopLoss))}</span>
@@ -369,8 +374,8 @@ export function PriceStructureChart({
 
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[9px] font-mono text-muted-foreground">
           <span>Price action first</span>
-          {smc?.vwap.available ? <span>VWAP {fmt(smc.vwap.sessionVwap ?? NaN)}</span> : <span>VWAP unavailable</span>}
-          {smc?.volumeProfile.available ? <span>POC {fmt(smc.volumeProfile.poc ?? NaN)}</span> : <span>Volume Profile unavailable</span>}
+          {smc?.vwap.available ? <span>VWAP {fmt(smc.vwap.sessionVwap ?? NaN)}</span> : <span>VWAP {copy.unavailable}</span>}
+          {smc?.volumeProfile.available ? <span>POC {fmt(smc.volumeProfile.poc ?? NaN)}</span> : <span>Volume Profile {copy.unavailable}</span>}
           {smc?.recentSweep && <span>SWEEP {smc.recentSweep.side.replace("_", "-")}</span>}
           {rr !== undefined ? <span className={rr >= 1.5 ? "text-emerald-300" : "text-red-300"}>R:R {rr.toFixed(2)}R</span> : <span>R:R unavailable</span>}
         </div>
