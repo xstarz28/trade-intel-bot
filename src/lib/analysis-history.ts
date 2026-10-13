@@ -64,7 +64,7 @@ interface CurrentAnalysisContext {
     averageScore: number;
   };
   macroData?: { confidence: string; summary: string };
-  derivativesData?: { confidence: string; interpretation: string };
+  derivativesData?: { confidence: string; interpretation?: string };
   calendarData?: {
     confidence: string;
     macroRisk: { level: string; explanation: string };
