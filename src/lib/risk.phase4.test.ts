@@ -401,13 +401,13 @@ describe("runAnalysis — Phase 4 integration", () => {
     expect(result.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
   });
 
-  it("partial spec (symbol-derived quote + explicit contract fields missing) → no sizing", () => {
+  it("partial spec (symbol-derived quote + explicit contract fields missing) → sizing unavailable with reason", () => {
     const result = runAnalysis({
       ...baseInput(),
       accountEquity: 50000,
       riskPercent: 0.02,
       instrumentSpec: { assetClass: "forex" }, // no contract size / step
     });
-    expect(result.positionSizing).toBeUndefined();
+    expect(result.positionSizing).toMatchObject({ available: false, unavailableReason: expect.any(String) });
   });
 });
