@@ -372,7 +372,7 @@ try {
   await futuresFilter.click();
   await page.waitForTimeout(150);
   const pickerText = await form.locator('[data-slot="select-trigger"]').first().innerText();
-  const futuresMatch = pickerText.match(/[A-Z0-9]+-[A-Z0-9]+-\d{6}/);
+  const futuresMatch = pickerText.match(/[A-Z0-9]+(?:[-_][A-Z0-9]+)*-\d{6}/);
   if (!futuresMatch) {
     throw new Error("Live OKX DATED FUTURES filter returned no selected contract. Picker text: " + pickerText);
   }
