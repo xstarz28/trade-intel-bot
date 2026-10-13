@@ -848,6 +848,8 @@ const pt: Translations = {
     scanning: "Analisando instrumentos…",
     noOpportunity: "Nenhuma Oportunidade Clara",
     noOpportunityHint: "A evidência de mercado atual não sustenta uma classificação forte para este horizonte.",
+    monitoringTitle: "MONITORAMENTO AO VIVO · NÃO QUALIFICADO PARA ENTRADA",
+    monitoringDescription: "Estes instrumentos têm dados de mercado observados utilizáveis, mas ainda não atingem o limite atual de configuração de trade. Monitore a estrutura e a confluência; esta lista não é um sinal de entrada.",
     noSuitableHint: "Nenhum instrumento adequado encontrado. Conecte fontes de dados ao vivo para varredura em tempo real.",
     expiredInvalidated: "{expired} expirados · {invalidated} invalidados",
     changesSinceScan: "mudanças desde a última varredura",
