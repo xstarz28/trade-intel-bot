@@ -87,6 +87,44 @@ describe("Phase 150 — OKX universal instrument discovery", () => {
     ]);
   });
 
+  it("discovers swap and dated futures when OKX omits baseCcy/quoteCcy", async () => {
+    const transport = async (url: string): Promise<Response> => {
+      if (url.includes("instType=SWAP")) {
+        return response([okxRow({
+          instId: "BTC-USDT-SWAP",
+          instType: "SWAP",
+          baseCcy: undefined,
+          quoteCcy: undefined,
+          uly: "BTC-USDT",
+        })]);
+      }
+      if (url.includes("instType=FUTURES")) {
+        return response([okxRow({
+          instId: "ETH-USDT-261127",
+          instType: "FUTURES",
+          baseCcy: undefined,
+          quoteCcy: undefined,
+          uly: undefined,
+        })]);
+      }
+      return response([]);
+    };
+
+    const result = await discoverOkxInstruments(transport, 123456);
+    expect(result.instruments.map((item) => item.instId)).toEqual([
+      "BTC-USDT-SWAP",
+      "ETH-USDT-261127",
+    ]);
+    expect(result.instruments.map((item) => [item.baseAsset, item.quoteAsset])).toEqual([
+      ["BTC", "USDT"],
+      ["ETH", "USDT"],
+    ]);
+    expect(result.instruments.map((item) => item.subType)).toEqual([
+      "crypto_perpetual",
+      "crypto_futures",
+    ]);
+  });
+
   it("keeps the exact provider instrument id and never substitutes symbols", async () => {
     const transport = async (url: string): Promise<Response> =>
       url.includes("instType=SWAP")

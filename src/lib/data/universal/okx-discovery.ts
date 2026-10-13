@@ -55,20 +55,33 @@ function mapSubtype(instType: string): InstrumentSubType | undefined {
   }
 }
 
+function parseUnderlyingPair(value: string | undefined): { base: string; quote: string } | undefined {
+  if (!value) return undefined;
+  const match = /^([A-Z0-9]{2,15})-([A-Z0-9]{2,15})$/.exec(value.trim().toUpperCase());
+  return match ? { base: match[1], quote: match[2] } : undefined;
+}
+
 function toDiscoveredInstrument(
   row: OkxInstrumentMetadata,
 ): OkxDiscoveredInstrument | undefined {
   const subType = mapSubtype(row.instType);
+  const pairFromUnderlying = parseUnderlyingPair(row.uly);
+  // Some OKX derivative rows omit baseCcy/quoteCcy. Their exact native
+  // instrument ID remains authoritative; never fabricate a different symbol.
+  const nativeUnderlying = row.instId.trim().toUpperCase().replace(/-(?:SWAP|FUTURES|[0-9]{6})$/, "");
+  const pairFromNativeId = parseUnderlyingPair(nativeUnderlying);
+  const baseAsset =
+    row.baseCcy?.trim().toUpperCase() || pairFromUnderlying?.base || pairFromNativeId?.base;
+  const quoteAsset =
+    row.quoteCcy?.trim().toUpperCase() || pairFromUnderlying?.quote || pairFromNativeId?.quote;
 
-  if (!subType || !row.baseCcy || !row.quoteCcy) {
-    return undefined;
-  }
+  if (!subType || !baseAsset || !quoteAsset) return undefined;
 
   return {
     instId: row.instId,
     instType: row.instType,
-    baseAsset: row.baseCcy,
-    quoteAsset: row.quoteCcy,
+    baseAsset,
+    quoteAsset,
     ...(row.settleCcy ? { settleAsset: row.settleCcy } : {}),
     subType,
     ...(row.state ? { state: row.state } : {}),
@@ -126,10 +139,17 @@ export async function discoverOkxInstruments(
         (warning) => `${response.instType}: ${warning}`,
       ));
 
-      const discovered = parsed.instruments
-        .filter((row) => row.state === undefined || row.state === "live")
+      const activeRows = parsed.instruments.filter(
+        (row) => row.state === undefined || row.state === "live",
+      );
+      const discovered = activeRows
         .map(toDiscoveredInstrument)
         .filter((row): row is OkxDiscoveredInstrument => row !== undefined);
+      if (discovered.length < activeRows.length) {
+        warnings.push(
+          `OKX ${response.instType}: discarded ${activeRows.length - discovered.length} active row(s) without a verifiable supported instrument identity.`,
+        );
+      }
 
       instruments.push(...discovered);
       successfulTypes += 1;

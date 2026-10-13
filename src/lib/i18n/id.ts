@@ -52,7 +52,7 @@ const id: Translations = {
   dashboard: {
     terminalReady: "Terminal Siap",
     terminalDescription:
-      "Pilih instrumen dan jalankan analisis — struktur, likuiditas, positioning dan fundamental diambil otomatis dari backend.",
+      "Pilih instrumen dan jalankan analisis untuk melihat struktur pasar, likuiditas, positioning, dan data fundamental yang tersedia.",
     factors: "faktor",
     timeframes: "timeframe",
     instruments: "instrumen",

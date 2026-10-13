@@ -130,6 +130,7 @@ export const acquireOkxNativeLiveDataBatch = action({
         instrument: v.string(),
         providerInstrumentId: v.string(),
         assetClass: v.literal("crypto"),
+        timeframe: v.optional(v.string()),
       }),
     ),
     concurrency: v.optional(v.number()),
