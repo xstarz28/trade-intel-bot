@@ -74,6 +74,18 @@ const ASSET_CLASS_LABEL: Record<string, string> = {
   index: "Index Futures",
 };
 
+const CONFLUENCE_EXPLANATION: Record<string, string> = {
+  en: "Evidence alignment score — not a probability of profit.",
+  id: "Skor keselarasan bukti — bukan probabilitas keuntungan.",
+  es: "Puntuación de concordancia de evidencias; no es una probabilidad de beneficio.",
+  pt: "Pontuação de alinhamento das evidências — não é probabilidade de lucro.",
+  fr: "Score de concordance des preuves — ce n’est pas une probabilité de gain.",
+  de: "Übereinstimmung der Belege — keine Gewinnwahrscheinlichkeit.",
+  ja: "証拠の整合性スコアであり、利益確率ではありません。",
+  ko: "증거 일치도 점수이며 수익 확률이 아닙니다.",
+  zh: "证据一致性评分，不代表盈利概率。",
+};
+
 interface AnalysisResultProps {
   result: AnalysisResultType;
 }
@@ -159,6 +171,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 <span className="text-sm font-medium text-muted-foreground">%</span>
               </div>
               <p className="text-[11px] text-muted-foreground mt-0.5 font-mono">{tx("analysisResult.confluenceScore")}</p>
+              <p className="text-[10px] text-muted-foreground/80 mt-1 max-w-48" title={t.global.disclaimer}>
+                {CONFLUENCE_EXPLANATION[locale] ?? CONFLUENCE_EXPLANATION.en}
+              </p>
             </div>
           </div>
 
