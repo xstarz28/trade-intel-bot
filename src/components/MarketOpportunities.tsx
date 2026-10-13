@@ -64,6 +64,25 @@ function inferMarketType(instrument: string, marketType?: "spot" | "perpetual" |
   return symbol.includes("-") || symbol.includes("/") ? "spot" : undefined;
 }
 
+const SCALP_DISCOVERY_COPY: Record<string, { candidate: string; planRequired: string }> = {
+  en: { candidate: "Discovery candidate only — run a same-instrument Scalping analysis before considering entry.", planRequired: "No executable Scalping plan has been verified for this instrument yet." },
+  id: { candidate: "Kandidat penemuan saja — jalankan analisis Scalping pada instrumen yang sama sebelum mempertimbangkan entry.", planRequired: "Rencana Scalping yang dapat dieksekusi untuk instrumen ini belum terverifikasi." },
+  es: { candidate: "Solo candidato de descubrimiento: analiza este instrumento en Scalping antes de considerar una entrada.", planRequired: "Aún no se ha verificado un plan Scalping ejecutable para este instrumento." },
+  pt: { candidate: "Apenas candidato de descoberta — analise este instrumento em Scalping antes de considerar uma entrada.", planRequired: "Ainda não foi verificado um plano Scalping executável para este instrumento." },
+  fr: { candidate: "Candidat de découverte uniquement — analysez cet instrument en Scalping avant d’envisager une entrée.", planRequired: "Aucun plan Scalping exécutable n’a encore été vérifié pour cet instrument." },
+  de: { candidate: "Nur Entdeckungskandidat — analysiere dieses Instrument im Scalping-Modus, bevor du einen Einstieg erwägst.", planRequired: "Für dieses Instrument wurde noch kein ausführbarer Scalping-Plan bestätigt." },
+  ja: { candidate: "候補銘柄です。エントリーを検討する前に、この銘柄をスキャルピング分析してください。", planRequired: "この銘柄の実行可能なスキャルピング計画はまだ確認されていません。" },
+  ko: { candidate: "발굴 후보입니다. 진입을 고려하기 전에 해당 종목을 스캘핑 분석하세요.", planRequired: "이 종목의 실행 가능한 스캘핑 계획은 아직 확인되지 않았습니다." },
+  zh: { candidate: "仅为发现候选标的；考虑入场前，请先对该标的进行剥头皮分析。", planRequired: "该标的尚未验证可执行的剥头皮交易计划。" },
+};
+
+function localizeScalpDiscoveryMessage(message: string, locale: string): string {
+  const copy = SCALP_DISCOVERY_COPY[locale] ?? SCALP_DISCOVERY_COPY.en;
+  if (message === "__SCALP_DISCOVERY_ONLY__") return copy.candidate;
+  if (message === "__SCALP_PLAN_REQUIRED__") return copy.planRequired;
+  return message;
+}
+
 const SUITABILITY_COLORS: Record<string, string> = {
   TOP_OPPORTUNITY: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
   WATCHLIST: "bg-sky-500/15 text-sky-400 border-sky-500/30",
@@ -182,7 +201,7 @@ interface MarketOpportunitiesProps {
 // ═══════════════════════════════════════════════════════════════
 
 function RankedCard({ item }: { item: RankedInstrument }) {
-  const { t, tx, txi } = useI18n();
+  const { locale, t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -243,7 +262,7 @@ function RankedCard({ item }: { item: RankedInstrument }) {
       {item.primaryReasons.length > 0 && (
         <div className="mt-2 space-y-0.5">
           {item.primaryReasons.slice(0, 3).map((r, i) => (
-            <p key={i} className="text-[9px] font-sans text-muted-foreground/70">{r}</p>
+            <p key={i} className="text-[9px] font-sans text-muted-foreground/70">{localizeScalpDiscoveryMessage(r, locale)}</p>
           ))}
         </div>
       )}
@@ -254,7 +273,7 @@ function RankedCard({ item }: { item: RankedInstrument }) {
             <div>
               <p className="text-[9px] font-sans font-semibold text-amber-400/80 mb-0.5">{tx("marketPanel.conflictsLabel")}</p>
               {item.conflictingEvidence.map((c, i) => (
-                <p key={i} className="text-[9px] font-sans text-amber-300/60">{c}</p>
+                <p key={i} className="text-[9px] font-sans text-amber-300/60">{localizeScalpDiscoveryMessage(c, locale)}</p>
               ))}
             </div>
           )}
