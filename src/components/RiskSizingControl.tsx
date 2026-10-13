@@ -14,7 +14,7 @@ interface RiskSizingControlProps {
 }
 
 export function RiskSizingControl({ value, onChange }: RiskSizingControlProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
 
   return (
     <Card className="border-border/50">
