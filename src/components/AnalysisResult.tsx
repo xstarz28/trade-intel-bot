@@ -82,8 +82,8 @@ function formatPrice(price: number, instrumentType: string, instrument: string):
   return formatInstrumentPrice(price, instrumentType, instrument);
 }
 
-function formatTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString("en-US", {
+function formatTime(timestamp: number, locale: string): string {
+  return new Date(timestamp).toLocaleTimeString(locale, {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
@@ -171,7 +171,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               </div>
               <div className="flex items-center gap-1.5">
                 <Clock className="size-3 text-muted-foreground" />
-                <span className="text-[10px] font-mono text-muted-foreground">{formatTime(priceSnap.timestamp)}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">{formatTime(priceSnap.timestamp, locale)}</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-[10px] font-mono text-muted-foreground">Source:</span>
