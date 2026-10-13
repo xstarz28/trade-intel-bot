@@ -950,7 +950,7 @@ export function isEligible(c: CandidateInput, horizon: TradingMode | InvestorHor
     c.hasAnalysis === true ||
     c.analysisDecision !== undefined ||
     c.analysisStyle !== undefined ||
-    c.hasQualifiedTradePlan !== undefined;
+    c.hasQualifiedTradePlan === true;
   if (horizon === "SCALPING" && c.marketTimeframe && hasSameInstrumentAnalysis) {
     if (c.analysisDecision !== "LONG" && c.analysisDecision !== "SHORT") {
       return { eligible: false, reason: "no confirmed directional decision from a same-instrument analysis" };
@@ -1078,9 +1078,8 @@ export function generateRecommendation(
       Math.sign(value) === directionSign,
     ).length;
     const scalpDiscoveryOnly = horizon === "SCALPING" && c.hasAnalysis !== true &&
-      c.analysisDecision === undefined && c.analysisStyle === undefined &&
-      c.hasQualifiedTradePlan === undefined;
-    const suitability = scalpDiscoveryOnly
+      c.analysisDecision === undefined && c.analysisStyle === undefined;
+    const suitability: RecommendationSuitability = scalpDiscoveryOnly
       ? "NEUTRAL"
       : classifySuitability(
           result.analyticalScore,
