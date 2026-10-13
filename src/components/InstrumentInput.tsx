@@ -384,7 +384,7 @@ export function InstrumentInput({
                         }}
                       >
                         <span className="font-mono text-xs font-semibold">{item.symbol}</span>
-                        <span className="text-right text-[10px] text-muted-foreground">{item.label}{item.marketType ? ` · ${item.marketType.toUpperCase()}` : ` · ${item.type.toUpperCase()}`}</span>
+                        <span className="text-right text-[10px] text-muted-foreground">{item.label}{("marketType" in item && item.marketType) ? ` · ${item.marketType.toUpperCase()}` : ` · ${item.type.toUpperCase()}`}</span>
                       </button>
                     )) : (
                       <p role="status" className="px-3 py-2 text-[10px] font-mono text-amber-400">
