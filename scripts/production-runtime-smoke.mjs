@@ -287,13 +287,17 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   }
 
   const body = await targetPage.locator("body").innerText();
-  const priceLabel = targetPage.getByText("Price:", { exact: true });
-  const sourceLabel = targetPage.getByText("Source:", { exact: true });
+  // Scope assertions to the active result, not the entire page/history. Older
+  // analyses remain visible elsewhere and may legitimately contain stale or
+  // unavailable data; they must never contaminate the current smoke verdict.
+  const resultText = await resultRoot.innerText();
+  const priceLabel = resultRoot.getByText("Price:", { exact: true });
+  const sourceLabel = resultRoot.getByText("Source:", { exact: true });
   const priceRow = await priceLabel.count() ? await priceLabel.first().locator("..").innerText() : "";
   const sourceRow = await sourceLabel.count() ? await sourceLabel.first().locator("..").innerText() : "";
   const priceMatch = priceRow.match(/Price:\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
   const sourceMatch = sourceRow.match(/Source:\s*(.+)$/i);
-  const quality = /primary:\s*(GOOD|DEGRADED|INSUFFICIENT|STALE|UNAVAILABLE|INVALID)/i.exec(body)?.[1];
+  const quality = /primary:\s*(GOOD|DEGRADED|INSUFFICIENT|STALE|UNAVAILABLE|INVALID)/i.exec(resultText)?.[1];
 
   let cryptoIntelligence = null;
   // The supplemental crypto-intelligence panel is a spot dashboard surface.
@@ -346,7 +350,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     source: sourceMatch?.[1]?.trim() ?? null,
     primaryDataQuality: quality ?? null,
     cryptoIntelligence,
-    resultText: body.slice(0, 7000),
+    resultText: resultText.slice(0, 7000),
     resultVisible: true,
   };
 
@@ -357,14 +361,25 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   if (!result.primaryDataQuality) {
     throw new Error(`${instrument} rendered without its primary data-quality status`);
   }
-  if (["INVALID", "UNAVAILABLE"].includes(result.primaryDataQuality)) {
-    throw new Error(`${instrument} primary data quality is ${result.primaryDataQuality}; a rendered card is not evidence of a usable market analysis.\\n${body.slice(-2400)}`);
+  if (result.primaryDataQuality === "INVALID") {
+    throw new Error(`${instrument} primary data quality is INVALID; provider OHLCV is malformed and cannot be analyzed.\\n${body.slice(-2400)}`);
   }
-  if (!body.includes(`${instrument} |`)) {
+  // Historical timeframes (H4/D1/W1) can legitimately have an old last candle,
+  // and delayed public-equity feeds can be stale during the session. That must
+  // block execution, not make the chart/analysis endpoint itself a failed smoke.
+  // Permit UNAVAILABLE only when the product explicitly rejects the setup.
+  if (result.primaryDataQuality === "UNAVAILABLE" && recommendation !== "NO_TRADE") {
+    throw new Error(`${instrument} has UNAVAILABLE primary data but the UI did not reject execution.\\n${body.slice(-2400)}`);
+  }
+  if (result.primaryDataQuality === "UNAVAILABLE" &&
+      !/stale|unavailable|older than|freshness|data quality/i.test(await noTradeReasons.innerText().catch(() => ""))) {
+    throw new Error(`${instrument} has UNAVAILABLE data without a visible freshness/data-quality rejection reason.\\n${body.slice(-2400)}`);
+  }
+  if (!resultText.includes(`${instrument} |`)) {
     throw new Error(`${instrument} smoke captured a stale result from another instrument`);
   }
 
-  const chart = targetPage.getByTestId("price-structure-chart");
+  const chart = resultRoot.getByTestId("price-structure-chart");
   if ((await chart.count()) !== 1) {
     throw new Error(`${instrument} rendered without one unique provider OHLCV price-structure chart`);
   }
