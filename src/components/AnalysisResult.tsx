@@ -2020,8 +2020,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
             const fvgs = smc?.fvgs?.filter((f) => f.status === "fresh") ?? [];
             const vwap = smc?.vwap?.available ? smc.vwap : undefined;
             const vp = smc?.volumeProfile?.available ? smc.volumeProfile : undefined;
+            const tpo = smc?.tpoProfile?.available ? smc.tpoProfile : undefined;
             const tf = smc?.timeframe ?? result.timeframe;
-            if (pools.length === 0 && obs.length === 0 && fvgs.length === 0 && !vwap && !vp) return null;
+            if (pools.length === 0 && obs.length === 0 && fvgs.length === 0 && !vwap && !vp && !tpo) return null;
             return (
               <div className="border-t border-border/30 pt-3">
                 <p className="text-[10px] font-mono text-muted-foreground/50 mb-2">
@@ -2055,10 +2056,12 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     </div>
                   ))}
                 </div>
-                {(vwap || vp) && (
+                {(vwap || vp || tpo) && (
                   <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] font-mono text-muted-foreground/60">
                     {vwap && <span>vwap: {vwap.sessionVwap?.toFixed(4)} ({vwap.priceLocation.replace("_", " ")})</span>}
-                    {vp && <span>vp poc: {vp.poc?.toFixed(4)} · vah: {vp.vah?.toFixed(4)} · val: {vp.val?.toFixed(4)}</span>}
+                    {vp && <span>vpvr* poc: {vp.poc?.toFixed(4)} · vah: {vp.vah?.toFixed(4)} · val: {vp.val?.toFixed(4)}</span>}
+                    {tpo && <span>tpo poc: {tpo.poc?.toFixed(4)} · vah: {tpo.vah?.toFixed(4)} · val: {tpo.val?.toFixed(4)} ({tpo.blockMinutes}m blocks)</span>}
+                    {vp && <span className="basis-full text-[9px]">* VPVR adalah estimasi dari volume candle OHLCV, bukan data transaksi pada tiap level harga.</span>}
                   </div>
                 )}
               </div>

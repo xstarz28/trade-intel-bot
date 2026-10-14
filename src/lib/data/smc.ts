@@ -37,6 +37,7 @@ import type {
   VwapContext,
 } from "./market-types";
 import { atr as computeAtr } from "./technical";
+import { calculateTpoProfile, calculateVpvrProfile } from "@/lib/technical/market-profile";
 
 // ── Documented constants ──────────────────────────────────────────
 
@@ -545,6 +546,17 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
     return { available: false, unavailableReason: "No candle data." };
   }
 
+  const profile = calculateVpvrProfile(candles, {
+    rows: VOLUME_PROFILE_BINS,
+    valueAreaPercent: VALUE_AREA_COVERAGE,
+  });
+  if (!profile.available) {
+    return {
+      available: false,
+      unavailableReason: profile.reason ??
+        "Representative volume unavailable — Volume Profile omitted rather than fabricated.",
+    };
+  }
   const totalVolume = candles.reduce((s, c) => s + c.volume, 0);
   if (!(totalVolume > 0)) {
     return {
@@ -607,11 +619,12 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
 
   return {
     available: true,
-    poc: centers[pocIdx],
-    vah: centers[vaHi],
-    val: centers[vaLo],
+    poc: profile.poc,
+    vah: profile.vah,
+    val: profile.val,
     hvn,
     lvn,
+    approximation: profile.approximation,
   };
 }
 
@@ -705,5 +718,11 @@ export function computeSmcContext(
     orderBlocks: detectOrderBlocks(candles, timeframe, atrValue),
     vwap: computeVwap(candles),
     volumeProfile: computeVolumeProfile(candles),
+    tpoProfile: (() => {
+      const profile = calculateTpoProfile(candles, { rows: VOLUME_PROFILE_BINS, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE });
+      return profile.available
+        ? { available: true, poc: profile.poc, vah: profile.vah, val: profile.val, totalTpo: profile.total, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE }
+        : { available: false, unavailableReason: profile.reason, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE };
+    })(),
   };
 }

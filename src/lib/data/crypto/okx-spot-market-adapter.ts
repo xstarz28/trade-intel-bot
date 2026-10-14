@@ -62,14 +62,20 @@ export class OkxSpotMarketAdapter {
     return candles;
   }
 
-  async fetchTicker(symbol: string): Promise<{ price: number; bid?: number; ask?: number }> {
+  async fetchTicker(symbol: string): Promise<{ price: number; bid?: number; ask?: number; timestamp?: number }> {
     const instId = toOkxSpotInstrument(symbol);
     if (!instId) throw new Error("Unsupported OKX Spot symbol: " + symbol);
     const json = await this.getJson("/api/v5/market/ticker?instId=" + encodeURIComponent(instId));
     const row = Array.isArray(json?.data) ? json.data[0] : undefined;
     const price = Number(row?.last);
     const bid = Number(row?.bidPx), ask = Number(row?.askPx);
+    const timestamp = Number(row?.ts);
     if (!Number.isFinite(price) || price <= 0) throw new Error("OKX Spot ticker has no valid price for " + instId);
-    return { price, ...(Number.isFinite(bid) && bid > 0 ? { bid } : {}), ...(Number.isFinite(ask) && ask > 0 ? { ask } : {}) };
+    return {
+      price,
+      ...(Number.isFinite(bid) && bid > 0 ? { bid } : {}),
+      ...(Number.isFinite(ask) && ask > 0 ? { ask } : {}),
+      ...(Number.isFinite(timestamp) && timestamp > 0 ? { timestamp } : {}),
+    };
   }
 }

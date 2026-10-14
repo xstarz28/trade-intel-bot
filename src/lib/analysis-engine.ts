@@ -294,6 +294,23 @@ function applyStructuralVeto(
 
 // ── Bias Calculation (structure + fundamental + positioning core) ──
 
+/** Informational evidence strength for NO_TRADE, never win probability. */
+export function calculateNoTradeEvidenceStrength(breakdown: BiasBreakdown): number {
+  // RSI/MACD-derived indicator score is deliberately not an independent core domain.
+  const scores = [breakdown.trend, breakdown.fundamental, breakdown.sentiment];
+  const active = scores.filter((score) => score !== 0);
+  let agreeingPairs = 0;
+  let opposingPairs = 0;
+  for (let i = 0; i < scores.length; i++) {
+    for (let j = i + 1; j < scores.length; j++) {
+      if (scores[i] === 0 || scores[j] === 0) continue;
+      if (Math.sign(scores[i]) === Math.sign(scores[j])) agreeingPairs++;
+      else opposingPairs++;
+    }
+  }
+  return Math.round(Math.max(20, Math.min(55, 20 + active.length * 5 + agreeingPairs * 5 - opposingPairs * 4)));
+}
+
 export function calculateBias(breakdown: BiasBreakdown): {
   bias: DirectionalBias;
   coreWeightedAvg: number;
@@ -1968,9 +1985,9 @@ function decideTrade(
     confidence = Math.round(Math.max(20, Math.min(88, s)));
     conviction = confidence >= 70 ? "High" : confidence >= 50 ? "Medium" : "Low";
   } else {
-    // Informational evidence strength for NO_TRADE — NOT a trade conviction.
-    const absAvg = Math.abs(coreWeightedAvg);
-    confidence = Math.round(Math.max(20, Math.min(55, 30 + absAvg * 20)));
+    // Informational evidence strength varies with observed core evidence and agreement.
+    // It is not a trade conviction or a probability of profit.
+    confidence = calculateNoTradeEvidenceStrength(breakdown);
   }
 
   // ── Key levels output — real levels only, empty when unavailable ──

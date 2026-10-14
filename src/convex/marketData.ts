@@ -14,6 +14,7 @@ import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext, selectBudgetedMtfSlots } from "../lib/data/mtf";
+import { resolveQuoteObservation } from "../lib/data/quote-freshness";
 import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/classic-price-action";
 import { crossAssetComparator } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
@@ -314,6 +315,7 @@ export const fetchMarketData = action({
       v.literal("indices"),
     ),
     timeframe: v.string(),
+    tradingStyle: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.TWELVE_DATA_API_KEY;
@@ -359,6 +361,7 @@ export const fetchMarketData = action({
             close: String(okxTicker.price),
             ...(okxTicker.bid !== undefined ? { bid: String(okxTicker.bid) } : {}),
             ...(okxTicker.ask !== undefined ? { ask: String(okxTicker.ask) } : {}),
+            ...(okxTicker.timestamp !== undefined ? { timestamp: okxTicker.timestamp } : {}),
           };
         }
       } else if (args.instrumentType === "crypto" &&
@@ -376,6 +379,7 @@ export const fetchMarketData = action({
               close: String(last),
               ...(Number.isFinite(bid) && bid > 0 ? { bid: String(bid) } : {}),
               ...(Number.isFinite(ask) && ask > 0 ? { ask: String(ask) } : {}),
+              ...(Number.isFinite(Number(row?.ts)) && Number(row?.ts) > 0 ? { timestamp: Number(row.ts) } : {}),
             };
           }
         } catch {
@@ -385,9 +389,17 @@ export const fetchMarketData = action({
 
       const latestCandle = candles[candles.length - 1];
       const quotedPrice = Number(quoteRes.close);
-      const hasLiveQuote = Number.isFinite(quotedPrice) && quotedPrice > 0;
-      const price = hasLiveQuote ? quotedPrice : latestCandle.close;
-      const priceTimestamp = hasLiveQuote ? Date.now() : latestCandle.timestamp;
+      const quoteHasPrice = Number.isFinite(quotedPrice) && quotedPrice > 0;
+      // Fetch time is not observation time; freshness is resolved centrally.
+      const observation = resolveQuoteObservation({
+        quotePrice: quotedPrice,
+        quoteTimestamp: quoteRes.timestamp,
+        quoteDatetime: quoteRes.datetime == null ? undefined : String(quoteRes.datetime),
+        candleTimestamp: latestCandle.timestamp,
+      });
+      const priceTimestamp = observation.priceTimestamp;
+      const price = quoteHasPrice ? quotedPrice : latestCandle.close;
+      const hasLiveQuote = observation.hasLiveQuote;
       const bidValue = Number(quoteRes.bid);
       const askValue = Number(quoteRes.ask);
       const bid = Number.isFinite(bidValue) && bidValue > 0 ? bidValue : undefined;
@@ -415,7 +427,7 @@ export const fetchMarketData = action({
       // nearest higher-timeframe STRUCTURE first (e.g. M15 for an M5 setup),
       // then macro context, then a lower trigger. Skipped slots stay explicit;
       // the analysis engine must not synthesize missing candles.
-      const preferredSlots = selectBudgetedMtfSlots(slots, args.timeframe);
+      const preferredSlots = selectBudgetedMtfSlots(slots, args.timeframe, args.tradingStyle);
       const settled = await Promise.allSettled(
         slots.map((slot) => {
           // Public OKX candles do not consume the Twelve Data credit budget,
@@ -522,7 +534,7 @@ export const fetchMarketData = action({
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
-          dataFreshness: hasLiveQuote ? "realtime" as const : "delayed" as const,
+          dataFreshness: observation.dataFreshness,
         },
         technical,
       };
