@@ -23,7 +23,7 @@ describe("provider request symbol resolution", () => {
           resolveProviderRequestSymbol(instrument.canonical, "twelve-data"),
           instrument.canonical,
         ).toBe(
-          mapping.symbol.endsWith(".JK") && instrument.primaryExchange === "IDX"
+          mapping.symbol.endsWith(".JK")
             ? mapping.symbol.slice(0, -3)
             : mapping.symbol,
         );
@@ -31,8 +31,10 @@ describe("provider request symbol resolution", () => {
     }
   });
 
-  it("adds Twelve Data's XIDX MIC for IDX listings only", () => {
+  it("adds Twelve Data's XIDX MIC for canonical and discovered IDX listings only", () => {
     expect(resolveProviderRequest("GOTO", "twelve-data")).toEqual({ symbol: "GOTO", micCode: "XIDX" });
+    expect(resolveProviderRequest("ADRO.JK", "twelve-data")).toEqual({ symbol: "ADRO", micCode: "XIDX" });
+    expect(resolveProviderRequest("AMRT.JK", "twelve-data")).toEqual({ symbol: "AMRT", micCode: "XIDX" });
     expect(resolveProviderRequest("AAPL", "twelve-data")).toEqual({ symbol: "AAPL" });
     expect(resolveProviderRequest("UNKNOWN-XYZ", "twelve-data")).toEqual({ symbol: "UNKNOWN-XYZ" });
   });
