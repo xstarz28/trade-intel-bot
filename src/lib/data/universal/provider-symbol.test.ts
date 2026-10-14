@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { resolveProviderRequestSymbol } from "./provider-symbol";
+import { resolveProviderRequest, resolveProviderRequestSymbol } from "./provider-symbol";
 import { getAllInstruments } from "./instruments";
 
 describe("provider request symbol resolution", () => {
   it("uses explicit Twelve Data suffix mappings for Indonesian equities", () => {
-    expect(resolveProviderRequestSymbol("BBCA", "twelve-data")).toBe("BBCA.JK");
-    expect(resolveProviderRequestSymbol("BBRI", "twelve-data")).toBe("BBRI.JK");
-    expect(resolveProviderRequestSymbol("TLKM", "twelve-data")).toBe("TLKM.JK");
+    expect(resolveProviderRequest("BBCA", "twelve-data")).toEqual({ symbol: "BBCA", micCode: "XIDX" });
+    expect(resolveProviderRequest("BBRI", "twelve-data")).toEqual({ symbol: "BBRI", micCode: "XIDX" });
+    expect(resolveProviderRequest("TLKM", "twelve-data")).toEqual({ symbol: "TLKM", micCode: "XIDX" });
   });
 
   it("keeps already-compatible registered provider symbols exact", () => {
@@ -22,9 +22,19 @@ describe("provider request symbol resolution", () => {
         expect(
           resolveProviderRequestSymbol(instrument.canonical, "twelve-data"),
           instrument.canonical,
-        ).toBe(mapping.symbol);
+        ).toBe(
+          mapping.symbol.endsWith(".JK") && instrument.primaryExchange === "IDX"
+            ? mapping.symbol.slice(0, -3)
+            : mapping.symbol,
+        );
       }
     }
+  });
+
+  it("adds Twelve Data's XIDX MIC for IDX listings only", () => {
+    expect(resolveProviderRequest("GOTO", "twelve-data")).toEqual({ symbol: "GOTO", micCode: "XIDX" });
+    expect(resolveProviderRequest("AAPL", "twelve-data")).toEqual({ symbol: "AAPL" });
+    expect(resolveProviderRequest("UNKNOWN-XYZ", "twelve-data")).toEqual({ symbol: "UNKNOWN-XYZ" });
   });
 
   it("preserves exact provider-native contract IDs", () => {
