@@ -246,6 +246,29 @@ function applyStructuralVeto(
 
 // ── Bias Calculation (structure + fundamental + positioning core) ──
 
+/**
+ * Evidence-strength score for a NO_TRADE decision. This is not a win
+ * probability and must not be presented as one. Unlike the old fixed-base
+ * formula, it reflects how many core evidence domains are actually present,
+ * whether they agree, and whether they materially conflict. Secondary
+ * RSI/MACD evidence is deliberately excluded.
+ */
+export function calculateNoTradeEvidenceStrength(breakdown: BiasBreakdown): number {
+  const scores = [breakdown.trend, breakdown.fundamental, breakdown.sentiment];
+  const active = scores.filter((score) => score !== 0);
+  let agreeingPairs = 0;
+  let opposingPairs = 0;
+  for (let i = 0; i < scores.length; i++) {
+    for (let j = i + 1; j < scores.length; j++) {
+      if (scores[i] === 0 || scores[j] === 0) continue;
+      if (Math.sign(scores[i]) === Math.sign(scores[j])) agreeingPairs++;
+      else opposingPairs++;
+    }
+  }
+  const raw = 20 + active.length * 5 + agreeingPairs * 5 - opposingPairs * 4;
+  return Math.round(Math.max(20, Math.min(55, raw)));
+}
+
 export function calculateBias(breakdown: BiasBreakdown): {
   bias: DirectionalBias;
   coreWeightedAvg: number;
@@ -1768,9 +1791,9 @@ function decideTrade(
     confidence = Math.round(Math.max(20, Math.min(88, s)));
     conviction = confidence >= 70 ? "High" : confidence >= 50 ? "Medium" : "Low";
   } else {
-    // Informational evidence strength for NO_TRADE — NOT a trade conviction.
-    const absAvg = Math.abs(coreWeightedAvg);
-    confidence = Math.round(Math.max(20, Math.min(55, 30 + absAvg * 20)));
+    // Informational evidence strength for NO_TRADE — NOT a win probability.
+    // Varies with observed core evidence and agreement instead of a fixed 30 base.
+    confidence = calculateNoTradeEvidenceStrength(breakdown);
   }
 
   // ── Key levels output — real levels only, empty when unavailable ──
