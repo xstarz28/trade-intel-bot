@@ -123,6 +123,36 @@ describe("Phase 25 — indicator quality assessment", () => {
   });
 });
 
+// ── MULTI-TIMEFRAME QUALITY ──────────────────────────────────────
+
+describe("Phase 25 — MTF quality accounting", () => {
+  it("counts unavailable MTF slots in the denominator", () => {
+    const input = buildInput("XAU/USD", "commodity", bullCandles(0, 4000, 200));
+    if (!input.technicalData) throw new Error("fixture must have technical data");
+    input.technicalData.mtf = {
+      requestedTimeframe: "M5",
+      chainUsed: ["M5", "M15", "M1"],
+      timeframes: [
+        { timeframe: "M5", role: "setup", available: true },
+        { timeframe: "M15", role: "structure", available: true },
+        { timeframe: "M1", role: "trigger", available: true },
+      ],
+      unavailable: [
+        { timeframe: "H1", role: "macro", reason: "Not fetched: request budget reserved for primary analysis." },
+      ],
+      alignment: "MIXED",
+      htfBias: "short",
+      htfTimeframe: "M15",
+      setupTimeframe: "M5",
+      triggerTimeframe: "M1",
+    };
+
+    const quality = assessDataQuality(input).mtf;
+    expect(quality.status).toBe("DEGRADED");
+    expect(quality.reason).toBe("3/4 timeframes available — H1 unavailable");
+  });
+});
+
 // ── PROVIDER QUALITY ─────────────────────────────────────────────
 
 describe("Phase 25 — provider quality assessment", () => {
