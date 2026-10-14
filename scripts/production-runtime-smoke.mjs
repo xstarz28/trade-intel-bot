@@ -28,6 +28,21 @@ const evidence = {
 };
 
 function wirePage(targetPage) {
+  targetPage.on("request", (req) => {
+    try {
+      const requested = new URL(req.url());
+      if (/^(accounts\\.google\\.com|oauth2\\.googleapis\\.com)$/i.test(requested.hostname)) {
+        const redirectUri = requested.searchParams.get("redirect_uri");
+        evidence.googleOAuth.reachedAuthorizationEndpoint = true;
+        evidence.googleOAuth.authorizationHost = requested.hostname;
+        if (redirectUri) {
+          const callback = new URL(redirectUri);
+          evidence.googleOAuth.callbackHost = callback.hostname;
+          evidence.googleOAuth.callbackPath = callback.pathname;
+        }
+      }
+    } catch {}
+  });
   targetPage.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
   });
@@ -407,6 +422,44 @@ async function runAnalysisWithQuotaRetry(...args) {
 try {
   await page.goto(url, { waitUntil: "domcontentloaded", timeout });
   await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
+
+  // Exercise Google OAuth independently before the guest session starts.
+  // This verifies the production button, redirect flow and absence of Google's
+  // explicit redirect_uri_mismatch response without entering credentials.
+  const oauthPage = await context.newPage();
+  wirePage(oauthPage);
+  await oauthPage.goto(url, { waitUntil: "domcontentloaded", timeout });
+  const oauthStart = oauthPage.getByRole("button", { name: /start analysis/i });
+  await oauthStart.waitFor({ state: "visible", timeout: 15000 });
+  await oauthStart.click();
+  await oauthPage.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+  const googleButton = oauthPage.getByRole("button", { name: /continue with google/i });
+  await googleButton.waitFor({ state: "visible", timeout: 10000 });
+  evidence.googleOAuth.checked = true;
+  const oauthPopupPromise = oauthPage.waitForEvent("popup", { timeout: 15000 }).catch(() => null);
+  await googleButton.click();
+  const oauthPopup = await oauthPopupPromise;
+  const oauthTarget = oauthPopup ?? oauthPage;
+  await oauthTarget.waitForURL((current) =>
+    /accounts\\.google\\.com|oauth2\\.googleapis\\.com/i.test(current.hostname) ||
+    /redirect_uri_mismatch/i.test(current.href),
+    { timeout: 20000 },
+  ).catch(() => {});
+  const oauthUrl = oauthTarget.url();
+  const oauthText = await oauthTarget.locator("body").innerText().catch(() => "");
+  evidence.googleOAuth.redirectUriMismatch =
+    /redirect_uri_mismatch|Error 400: redirect_uri_mismatch/i.test(oauthUrl + "\\n" + oauthText);
+  if (evidence.googleOAuth.redirectUriMismatch) {
+    throw new Error("Production Google OAuth is rejected by Google: redirect_uri_mismatch.");
+  }
+  evidence.googleOAuth.reachedAuthorizationEndpoint =
+    evidence.googleOAuth.reachedAuthorizationEndpoint ||
+    /^(accounts\\.google\\.com|oauth2\\.googleapis\\.com)$/i.test(new URL(oauthUrl).hostname);
+  if (!evidence.googleOAuth.reachedAuthorizationEndpoint) {
+    throw new Error("Google OAuth button did not reach Google's authorization endpoint. Final URL: " + new URL(oauthUrl).origin + new URL(oauthUrl).pathname);
+  }
+  await oauthTarget.close().catch(() => {});
+  if (oauthTarget !== oauthPage) await oauthPage.close().catch(() => {});
 
   const start = page.getByRole("button", { name: /start analysis/i });
   if (!(await start.count())) throw new Error("Landing page did not expose Start analysis");
