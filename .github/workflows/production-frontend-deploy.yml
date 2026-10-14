@@ -24,7 +24,6 @@ jobs:
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
       VERCEL_PROJECT_NAME: ${{ vars.VERCEL_PROJECT_NAME }}
-      FRONTEND_HOST_URL: ${{ vars.FRONTEND_HOST_URL }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -105,12 +104,11 @@ jobs:
       - name: Verify published production host
         run: |
           set -euo pipefail
-          # FRONTEND_HOST_URL is the configured user-facing production hostname.
-          # Fall back to this exact deployment URL only when no public hostname is configured.
-          target="${FRONTEND_HOST_URL:-${{ steps.deploy.outputs.deployment_url }}}"
-          test -n "${target}"
+          # Verify the branded production domain users actually open. The
+          # legacy trade-intel-bot.vercel.app alias can return a stale/404
+          # response even when the XSTARZG deployment is already promoted.
+          target="https://xstarzanalysis.vercel.app"
           npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main
 
       - name: Report public target
-        run: |
-          if [ -n "${FRONTEND_HOST_URL:-}" ]; then echo "PUBLIC FRONTEND: ${FRONTEND_HOST_URL}"; else echo "PUBLIC FRONTEND DEPLOYMENT: ${{ steps.deploy.outputs.deployment_url }}"; fi
+        run: echo "PUBLIC FRONTEND: https://xstarzanalysis.vercel.app"
