@@ -153,6 +153,7 @@ export interface VolumeProfileContext {
   val?: number;
   hvn?: number[]; // high-volume node midpoints
   lvn?: number[]; // low-volume node midpoints
+  approximation?: string;
 }
 
 export interface TpoProfileContext {
