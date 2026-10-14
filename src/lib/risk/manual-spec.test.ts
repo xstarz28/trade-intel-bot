@@ -62,6 +62,18 @@ describe("buildManualInstrumentSpec", () => {
     })).toBeUndefined();
   });
 
+  it("accepts explicit crypto quote assets such as USDT without inventing a conversion", () => {
+    expect(buildManualInstrumentSpec({
+      instrument: "BTC/USDT",
+      assetClass: "crypto",
+      fields: { ...EMPTY, quoteCurrency: "usdt", contractSize: "0.01", quantityStep: "1" },
+    })).toMatchObject({
+      quoteCurrency: "USDT",
+      contractSize: 0.01,
+      quantityStep: 1,
+    });
+  });
+
   it("keeps a valid partial spec partial when mandatory fields are not supplied", () => {
     expect(buildManualInstrumentSpec({
       instrument: "AAPL",
