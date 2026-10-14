@@ -19,6 +19,7 @@ import {
   type Timeframe,
 } from "@/lib/analysis-engine";
 import { cn } from "@/lib/utils";
+import { buildManualInstrumentSpec, type ManualInstrumentSpecFields } from "@/lib/risk/manual-spec";
 import {
   Zap,
   AlertCircle,
@@ -94,8 +95,15 @@ export function InstrumentInput({
   availableInstruments = [],
   marketDiscoveryMessage,
 }: InstrumentInputProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
+  const [manualSpecOpen, setManualSpecOpen] = useState(false);
+  const [manualSpecFields, setManualSpecFields] = useState<ManualInstrumentSpecFields>({
+    quoteCurrency: "",
+    contractSize: "",
+    quantityStep: "",
+    minQuantity: "",
+  });
   const [manualSearch, setManualSearch] = useState(false);
   const [manualSearchQuery, setManualSearchQuery] = useState("");
   const [manualSearchError, setManualSearchError] = useState<string | null>(null);
@@ -105,7 +113,19 @@ export function InstrumentInput({
   // combine a new instrument with the previous category/timeframe/style render.
   const formRef = useRef(form);
   const commitForm = useCallback((updateForm: (current: PersistedForm) => PersistedForm) => {
-    const next = updateForm(formRef.current);
+    const current = formRef.current;
+    const next = updateForm(current);
+    // Contract metadata belongs only to the exact selected instrument.
+    // Clear it synchronously when that selection changes to prevent reuse
+    // of a gold/forex contract specification on a different market symbol.
+    if (next.instrument !== current.instrument) {
+      setManualSpecFields({
+        quoteCurrency: "",
+        contractSize: "",
+        quantityStep: "",
+        minQuantity: "",
+      });
+    }
     formRef.current = next;
     setForm(next);
   }, []);
@@ -235,14 +255,27 @@ export function InstrumentInput({
     }
     setManualSearchError(null);
 
+    const resolvedInstrument = knownInstrument?.symbol ?? instrument;
+    // The custom specification is sent only with the exact instrument it was
+    // entered for. A typed manual-search symbol that was not selected via the
+    // form never inherits another instrument's contract metadata.
+    const manualSpec = currentForm.instrument.toUpperCase() === resolvedInstrument.toUpperCase()
+      ? buildManualInstrumentSpec({
+          instrument: resolvedInstrument,
+          assetClass: knownInstrument?.type ?? currentForm.instrumentType,
+          fields: manualSpecFields,
+        })
+      : undefined;
+
     onAnalyze({
-      instrument: knownInstrument?.symbol ?? instrument,
+      instrument: resolvedInstrument,
       instrumentType: knownInstrument?.type ?? currentForm.instrumentType,
       timeframe: currentForm.timeframe,
       tradingStyle: currentForm.tradingStyle,
       requestedTimeframe: currentForm.timeframe,
+      ...(manualSpec ? { instrumentSpec: manualSpec } : {}),
     });
-  }, [isAnalyzing, manualSearch, manualSearchQuery, onAnalyze, universeOptions]);
+  }, [isAnalyzing, manualSearch, manualSearchQuery, manualSpecFields, onAnalyze, universeOptions]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -423,6 +456,88 @@ export function InstrumentInput({
               </div>
             )}
           </div>
+
+          {/* Optional broker metadata for transparent, user-controlled position sizing. */}
+          <section className="rounded-md border border-border/50 p-3 space-y-2" data-testid="broker-specification-panel">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between text-left text-[11px] font-mono font-semibold"
+              aria-expanded={manualSpecOpen}
+              data-testid="broker-specification-toggle"
+              onClick={() => setManualSpecOpen((value) => !value)}
+            >
+              <span>{locale === "id" ? "Spesifikasi kontrak broker (opsional)" : "Broker contract specification (optional)"}</span>
+              <span className="text-muted-foreground">{manualSpecOpen ? "−" : "+"}</span>
+            </button>
+            {manualSpecOpen && (
+              <div className="space-y-2">
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  {locale === "id"
+                    ? "Masukkan spesifikasi broker untuk instrumen yang sedang dipilih. Tidak ada ukuran lot atau kontrak standar yang diasumsikan; kolom dibersihkan saat instrumen diganti."
+                    : "Enter broker-confirmed details for the selected instrument. No standard lot or contract size is assumed; these fields reset when the instrument changes."}
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="block text-[10px] font-mono text-muted-foreground">
+                    {locale === "id" ? "Ukuran kontrak" : "Contract size"}
+                    <input
+                      aria-label={locale === "id" ? "Ukuran kontrak" : "Contract size"}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={manualSpecFields.contractSize}
+                      onChange={(event) => setManualSpecFields((prev) => ({ ...prev, contractSize: event.currentTarget.value }))}
+                      placeholder={locale === "id" ? "Dari broker" : "From broker"}
+                      className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-xs font-mono text-foreground"
+                    />
+                  </label>
+                  <label className="block text-[10px] font-mono text-muted-foreground">
+                    {locale === "id" ? "Langkah kuantitas" : "Quantity step"}
+                    <input
+                      aria-label={locale === "id" ? "Langkah kuantitas" : "Quantity step"}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={manualSpecFields.quantityStep}
+                      onChange={(event) => setManualSpecFields((prev) => ({ ...prev, quantityStep: event.currentTarget.value }))}
+                      placeholder={locale === "id" ? "Dari broker" : "From broker"}
+                      className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-xs font-mono text-foreground"
+                    />
+                  </label>
+                  <label className="block text-[10px] font-mono text-muted-foreground">
+                    {locale === "id" ? "Kuantitas minimum" : "Minimum quantity"}
+                    <input
+                      aria-label={locale === "id" ? "Kuantitas minimum" : "Minimum quantity"}
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={manualSpecFields.minQuantity}
+                      onChange={(event) => setManualSpecFields((prev) => ({ ...prev, minQuantity: event.currentTarget.value }))}
+                      placeholder={locale === "id" ? "Opsional" : "Optional"}
+                      className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-xs font-mono text-foreground"
+                    />
+                  </label>
+                  <label className="block text-[10px] font-mono text-muted-foreground">
+                    {locale === "id" ? "Mata uang kuotasi" : "Quote currency"}
+                    <input
+                      aria-label={locale === "id" ? "Mata uang kuotasi" : "Quote currency"}
+                      type="text"
+                      maxLength={3}
+                      pattern="[A-Za-z]{3}"
+                      value={manualSpecFields.quoteCurrency}
+                      onChange={(event) => setManualSpecFields((prev) => ({ ...prev, quoteCurrency: event.currentTarget.value.toUpperCase() }))}
+                      placeholder={locale === "id" ? "Kode 3 huruf" : "3-letter code"}
+                      className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-xs font-mono uppercase text-foreground"
+                    />
+                  </label>
+                </div>
+                <p className="text-[9px] font-mono text-muted-foreground">
+                  {locale === "id"
+                    ? "Sizing hanya aktif dengan spesifikasi lengkap. Jika detail broker belum diketahui, biarkan kosong; hasil ukuran posisi akan tetap tidak tersedia daripada memakai asumsi."
+                    : "Sizing activates only with complete specifications. Leave unknown broker details blank; position size remains unavailable rather than relying on assumptions."}
+                </p>
+              </div>
+            )}
+          </section>
 
           {/* Phase 6 — Trading style: changes decision HORIZON and
               requirements only, never market facts. */}
