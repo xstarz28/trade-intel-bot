@@ -117,7 +117,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
   const classicContext = (tech as TechnicalData & { classicContext?: ClassicPriceActionContext }).classicContext;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="analysis-result" data-recommendation={result.recommendation} data-instrument={result.instrument} data-timeframe={result.timeframe}>
       {/* Header — Bias + Confidence */}
       <Card className={cn("border", biasConfig.border, "overflow-hidden")}>
         <div className={cn("px-5 py-4", biasConfig.bg)}>
@@ -848,7 +848,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
       {/* NO TRADE — explicit rejection reasons */}
       {result.recommendation === "NO_TRADE" && result.noTradeReasons.length > 0 && (
-        <Card className="border-red-500/25 bg-red-500/5">
+        <Card data-testid="analysis-no-trade-reasons" className="border-red-500/25 bg-red-500/5">
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-red-400">⛔ {tx("analysisResult.noTradeRejected")}</h4>
@@ -1637,7 +1637,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
 
 {/* Trade Plan — market-derived levels only; NEVER rendered for NO_TRADE */}
       {result.tradePlan && result.recommendation !== "NO_TRADE" && (
-        <Card className={cn("border", biasConfig.border)}>
+        <Card data-testid="analysis-executable-trade-plan" className={cn("border", biasConfig.border)}>
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-mono font-semibold text-muted-foreground">
