@@ -28,9 +28,12 @@ const DEFAULT_CONFIG: TwelveDataBudgetConfig = {
   windowMs: 60_000,
   cooldownMs: 60_000,
   // Leave one of the observed eight credits uncommitted as a safety margin.
+  // Two complete M5 analyses need two primary candles plus four context reads
+  // (M15 structure + M1 trigger for each). The shared seven-credit cap remains
+  // authoritative, so this widens context allocation without increasing total calls.
   maxTotal: 7,
   maxPrimary: 5,
-  maxHigherTimeframe: 3,
+  maxHigherTimeframe: 4,
   maxOptional: 0,
 };
 
