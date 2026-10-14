@@ -361,6 +361,7 @@ export const fetchMarketData = action({
             close: String(okxTicker.price),
             ...(okxTicker.bid !== undefined ? { bid: String(okxTicker.bid) } : {}),
             ...(okxTicker.ask !== undefined ? { ask: String(okxTicker.ask) } : {}),
+            ...(okxTicker.timestamp !== undefined ? { timestamp: okxTicker.timestamp } : {}),
           };
         }
       } else if (args.instrumentType === "crypto" &&
@@ -378,6 +379,7 @@ export const fetchMarketData = action({
               close: String(last),
               ...(Number.isFinite(bid) && bid > 0 ? { bid: String(bid) } : {}),
               ...(Number.isFinite(ask) && ask > 0 ? { ask: String(ask) } : {}),
+              ...(Number.isFinite(Number(row?.ts)) && Number(row?.ts) > 0 ? { timestamp: Number(row.ts) } : {}),
             };
           }
         } catch {
