@@ -1,0 +1,68 @@
+import { describe, expect, it } from "vitest";
+import {
+  fetchYahooFinanceCandles,
+  parseYahooFinanceCandles,
+  resolveYahooFinanceStockSymbol,
+} from "./yahoo-finance";
+
+function payload() {
+  return {
+    chart: {
+      result: [{
+        timestamp: [1_800_000_000, 1_800_000_300, 1_800_000_600, 1_800_000_900],
+        indicators: {
+          quote: [{
+            open: [10, 11, null, 13],
+            high: [12, 13, 14, 14],
+            low: [9, 10, 12, 12],
+            close: [11, 12, 13, 13.5],
+            volume: [100, null, 300, 400],
+          }],
+        },
+      }],
+    },
+  };
+}
+
+describe("free Yahoo Finance stock fallback", () => {
+  it("resolves canonical IDX shares and provider-discovered .JK tickers to exact Yahoo tickers", () => {
+    expect(resolveYahooFinanceStockSymbol("BBCA")).toBe("BBCA.JK");
+    expect(resolveYahooFinanceStockSymbol("ADRO.JK")).toBe("ADRO.JK");
+    expect(resolveYahooFinanceStockSymbol("AAPL")).toBe("AAPL");
+    expect(resolveYahooFinanceStockSymbol("EUR/USD")).toBeNull();
+    expect(resolveYahooFinanceStockSymbol("BTC-USDT-SWAP")).toBeNull();
+  });
+
+  it("parses ordered, complete candles and excludes invalid OHLC rows", () => {
+    const candles = parseYahooFinanceCandles(payload(), 10);
+    expect(candles).toHaveLength(3);
+    expect(candles.map((item) => item.close)).toEqual([11, 12, 13.5]);
+    expect(candles.map((item) => item.timestamp)).toEqual([1_800_000_000_000, 1_800_000_300_000, 1_800_000_900_000]);
+    expect(candles[1].volume).toBe(0);
+  });
+
+  it("caps to requested outputsize and rejects empty/invalid chart payloads", () => {
+    expect(parseYahooFinanceCandles(payload(), 1)).toHaveLength(1);
+    expect(() => parseYahooFinanceCandles({ chart: { result: [] } }, 200))
+      .toThrow(/no chart data/i);
+    expect(() => parseYahooFinanceCandles({
+      chart: { result: [{ timestamp: [1], indicators: { quote: [{ open: [null], high: [null], low: [null], close: [null] }] } }] },
+    }, 200)).toThrow(/no valid OHLCV candles/i);
+  });
+
+  it("requests the exact Yahoo ticker and correct M5 query through an injected transport", async () => {
+    let requestedUrl = "";
+    const candles = await fetchYahooFinanceCandles("BBCA.JK", "M5", 2, async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify(payload()), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    expect(requestedUrl).toContain("/chart/BBCA.JK?");
+    expect(requestedUrl).toContain("interval=5m");
+    expect(requestedUrl).toContain("range=60d");
+    expect(candles).toHaveLength(2);
+  });
+});
