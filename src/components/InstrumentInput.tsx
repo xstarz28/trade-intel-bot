@@ -134,7 +134,7 @@ export function InstrumentInput({
     if (manualSearch) manualInputRef.current?.focus();
   }, [manualSearch]);
 
-  const universeOptions = dedupeInstrumentCatalog(
+  const universeOptions = dedupeInstrumentCatalog<AvailableInstrument>(
     availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS,
   );
 
