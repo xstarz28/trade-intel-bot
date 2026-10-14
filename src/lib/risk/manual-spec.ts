@@ -27,7 +27,7 @@ export function buildManualInstrumentSpec(args: {
   const quantityStep = positiveNumber(args.fields.quantityStep);
   const minQuantity = positiveNumber(args.fields.minQuantity);
   const rawQuote = args.fields.quoteCurrency.trim().toUpperCase();
-  const quoteCurrency = /^[A-Z]{3}$/.test(rawQuote) ? rawQuote : undefined;
+  const quoteCurrency = /^[A-Z0-9]{3,6}$/.test(rawQuote) ? rawQuote : undefined;
 
   if (
     contractSize === undefined &&
