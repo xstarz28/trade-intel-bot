@@ -401,6 +401,10 @@ try {
   await runAnalysisWithQuotaRetry(page, "XAU/USD", "commodity", "M5");
   await runAnalysisWithQuotaRetry(page, "EUR/USD", "forex", "M5");
   await runAnalysisWithQuotaRetry(page, "AAPL", "stock", "M5");
+  // IDX shares require explicit Twelve Data provider symbols (for example
+  // BBCA -> BBCA.JK); this live check prevents registry mappings from being
+  // correct in unit tests but ignored by the actual market-data action.
+  await runAnalysisWithQuotaRetry(page, "BBCA", "stock", "M5");
 
   // The scanner must render qualified recommendations or an explicit no-opportunity
   // state. Neutral discovery candidates must not masquerade as recommendations.
