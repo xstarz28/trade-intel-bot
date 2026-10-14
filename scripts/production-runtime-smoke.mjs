@@ -392,7 +392,23 @@ try {
   await cryptoCategory.click();
   const instrumentPicker = page.getByRole("combobox").first();
   await instrumentPicker.click();
-  await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
+  const catalogOptionTexts = (await page.getByRole("option").allTextContents())
+    .map((value) => value.replace(/\\s+/g, " ").trim())
+    .filter(Boolean);
+  if (catalogOptionTexts.length === 0) {
+    throw new Error("Production instrument selector returned an empty catalog");
+  }
+  const optionCounts = new Map();
+  for (const value of catalogOptionTexts) {
+    optionCounts.set(value, (optionCounts.get(value) ?? 0) + 1);
+  }
+  const repeatedOptions = [...optionCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([value, count]) => value + " (x" + count + ")");
+  if (repeatedOptions.length > 0) {
+    throw new Error("Production instrument selector contains duplicate visible options: " + repeatedOptions.slice(0, 12).join("; "));
+  }
+  await page.getByRole("option", { name: /BTC\\/USD/i }).first().click();
   evidence.authenticated = true;
 
   // Real production coverage: spot crypto + forex, commodity, and equity.
