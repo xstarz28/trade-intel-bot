@@ -436,7 +436,7 @@ try {
   const googleButton = oauthPage.getByRole("button", { name: /continue with google/i });
   await googleButton.waitFor({ state: "visible", timeout: 10000 });
   evidence.googleOAuth.checked = true;
-  const oauthPopupPromise = oauthPage.waitForEvent("popup", { timeout: 15000 }).catch(() => null);
+  const oauthPopupPromise = oauthPage.waitForEvent("popup", { timeout: 2000 }).catch(() => null);
   await googleButton.click();
   const oauthPopup = await oauthPopupPromise;
   const oauthTarget = oauthPopup ?? oauthPage;
