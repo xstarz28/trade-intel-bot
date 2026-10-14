@@ -20,6 +20,7 @@ import {
 } from "@/lib/analysis-engine";
 import { cn } from "@/lib/utils";
 import { buildManualInstrumentSpec, type ManualInstrumentSpecFields } from "@/lib/risk/manual-spec";
+import { dedupeInstrumentCatalog } from "@/lib/data/instrument-catalog";
 import {
   Zap,
   AlertCircle,
@@ -133,7 +134,9 @@ export function InstrumentInput({
     if (manualSearch) manualInputRef.current?.focus();
   }, [manualSearch]);
 
-  const universeOptions = availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS;
+  const universeOptions = dedupeInstrumentCatalog(
+    availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS,
+  );
 
   useEffect(() => {
     if (form.instrumentType !== "crypto") return;
