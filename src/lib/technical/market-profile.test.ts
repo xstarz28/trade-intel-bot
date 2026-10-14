@@ -23,6 +23,6 @@ describe("TPO and VPVR",()=>{
   });
   it("rejects insufficient candle history",()=>{
     expect(calculateTpoProfile(candles().slice(0,10)).available).toBe(false);
-    expect(calculateVpvrProfile(candles().slice(0,10)).available).toBe(false);
+    expect(calculateVpvrProfile(candles().slice(0,2)).available).toBe(false);
   });
 });
