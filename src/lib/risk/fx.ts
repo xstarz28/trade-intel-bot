@@ -46,7 +46,7 @@ export function parseDailyFxReferenceSnapshot(
     quote !== expectedTo ||
     !Number.isFinite(rate) ||
     rate <= 0 ||
-    !/^\\d{4}-\\d{2}-\\d{2}$/.test(date)
+    !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(date)
   ) {
     return { error: `daily FX reference returned invalid pair/rate metadata for ${expectedFrom}/${expectedTo}` };
   }
