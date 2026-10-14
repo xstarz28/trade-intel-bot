@@ -52,8 +52,9 @@ export interface PositionSizingRequest {
   /** Explicit account currency. When omitted, sizing stays denominated in
    *  the instrument's quote currency (Phase 3B behavior preserved). */
   accountCurrency?: string;
-  /** Market FX snapshots usable for quote→account conversion.
-   *  Must come from a live provider — never hardcoded constants. */
+  /** Observed FX snapshots usable for quote→account conversion.
+   *  Real-time and dated reference sources must disclose their timestamp/provenance.
+   *  Never use embedded constants. */
   fxDirect?: FxRateSnapshot;
   fxInverse?: FxRateSnapshot;
   /** Evaluation clock (ms) for staleness checks; defaults to Date.now(). */
@@ -68,6 +69,8 @@ export interface FxRateSnapshot {
   source: string;
   /** The literal pair the rate was observed for, e.g. "EUR/USD" or "USD/EUR". */
   pair: string;
+  /** Optional source-specific freshness ceiling for dated reference feeds. */
+  maxAgeMs?: number;
 }
 
 export interface ConversionInfo {
@@ -104,7 +107,8 @@ export interface PositionSizingResult {
  * Compute position size from REAL inputs only:
  *   riskAmount = equity × riskPercent   (account currency)
  *   riskPerUnit = |entry − stopLoss| × contractSize   (quote currency)
- *   converted via a live provider FX rate when account ≠ quote currency
+ *   converted via an observed provider FX rate when account ≠ quote currency
+ *   (a dated reference rate is allowed only with its explicit source date/age policy)
  *   quantity = floor(riskAmount / riskPerUnit / step) × step
  *
  * Returns an explicit unavailable state whenever ANY input is missing,
