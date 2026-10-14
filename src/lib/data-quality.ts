@@ -242,8 +242,11 @@ function assessMtf(tech: TechnicalData | undefined): QualityItem {
   }
 
   const availableCount = mtf.chainUsed.length;
-  const totalCount = mtf.timeframes.length;
   const unavailableCount = mtf.unavailable.length;
+  // timeframes/chainUsed contain the slots actually fetched and used; failed
+  // slots live separately in mtf.unavailable. Include both populations so the
+  // denominator never hides a failed timeframe (e.g. "3/3 — H1 unavailable").
+  const totalCount = availableCount + unavailableCount;
 
   if (unavailableCount > 0 && availableCount > 0) {
     return {
