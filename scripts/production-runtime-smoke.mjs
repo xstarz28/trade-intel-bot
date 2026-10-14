@@ -392,6 +392,22 @@ try {
   await cryptoCategory.click();
   const instrumentPicker = page.getByRole("combobox").first();
   await instrumentPicker.click();
+  const catalogOptionTexts = (await page.getByRole("option").allTextContents())
+    .map((value) => value.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (catalogOptionTexts.length === 0) {
+    throw new Error("Production instrument selector returned an empty catalog");
+  }
+  const optionCounts = new Map();
+  for (const value of catalogOptionTexts) {
+    optionCounts.set(value, (optionCounts.get(value) ?? 0) + 1);
+  }
+  const repeatedOptions = [...optionCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([value, count]) => value + " (x" + count + ")");
+  if (repeatedOptions.length > 0) {
+    throw new Error("Production instrument selector contains duplicate visible options: " + repeatedOptions.slice(0, 12).join("; "));
+  }
   await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
   evidence.authenticated = true;
 
@@ -401,6 +417,10 @@ try {
   await runAnalysisWithQuotaRetry(page, "XAU/USD", "commodity", "M5");
   await runAnalysisWithQuotaRetry(page, "EUR/USD", "forex", "M5");
   await runAnalysisWithQuotaRetry(page, "AAPL", "stock", "M5");
+  // IDX shares require explicit Twelve Data provider symbols (for example
+  // BBCA -> BBCA.JK); this live check prevents registry mappings from being
+  // correct in unit tests but ignored by the actual market-data action.
+  await runAnalysisWithQuotaRetry(page, "BBCA", "stock", "M5");
 
   // The scanner must render qualified recommendations or an explicit no-opportunity
   // state. Neutral discovery candidates must not masquerade as recommendations.

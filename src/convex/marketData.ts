@@ -97,10 +97,15 @@ async function fetchCandles(
   requestClass: TwelveDataRequestClass = "optional",
 ): Promise<OhlcvCandle[]> {
   const normalizedSymbol = symbol.trim().toUpperCase();
+  // Preserve exact OKX derivative contract IDs. Other instruments use
+  // the registry's explicit Twelve Data symbol where one exists; unknown
+  // provider-native spot tickers remain unchanged because they have no mapping.
+  const isExactDerivativeContract = instrumentType === "crypto" &&
+    (normalizedSymbol.endsWith("-SWAP") || /-[0-9]{6}$/.test(normalizedSymbol));
   const providerRequestSymbol = resolveProviderRequestSymbol(
     normalizedSymbol,
     "twelve-data",
-    instrumentType === "crypto",
+    isExactDerivativeContract,
   );
   const normalizedTimeframe = tf.trim().toUpperCase();
   const cacheKey = normalizedSymbol + "|" + normalizedTimeframe;
