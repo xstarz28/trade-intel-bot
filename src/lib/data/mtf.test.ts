@@ -148,6 +148,13 @@ describe("selectBudgetedMtfSlot — preserve nearest structure under provider qu
     ]);
   });
 
+  it("fetches H1 structure and M5 trigger for M15 scalping", () => {
+    expect(selectBudgetedMtfSlots(buildChain("M15"), "M15", "scalping")).toEqual([
+      { timeframe: "H1", role: "structure" },
+      { timeframe: "M5", role: "trigger" },
+    ]);
+  });
+
   it("falls back safely when the requested chain has no slots", () => {
     expect(selectBudgetedMtfSlots([], "M5")).toEqual([]);
   });
