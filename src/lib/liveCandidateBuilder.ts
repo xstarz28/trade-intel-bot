@@ -385,17 +385,30 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
 // ═══════════════════════════════════════════════════════════════
 
 export function buildCandidateFromSource(source: LiveCandidateSource): CandidateInput {
-  // Never mix evidence across instrument identities. Remove mismatched
-  // analysis/intelligence payloads before they can affect price, confidence,
-  // completeness, or asset-specific recommendation inputs.
+  // Never mix evidence across instrument identities OR setup timeframes.
+  // The dashboard's instrument-level convenience cache can hold an H1 market
+  // snapshot alongside an earlier M5 analysis. Such an analysis may describe
+  // the right ticker but the wrong candles, so it cannot drive this ranking.
+  const matchingMarketData = source.marketData?.instrument === source.instrument
+    ? source.marketData
+    : undefined;
+  const marketTimeframe = matchingMarketData?.timeframe?.trim().toUpperCase().replace(/\s+/g, "");
+  const analysisTimeframe = source.analysisResult?.timeframe?.trim().toUpperCase().replace(/\s+/g, "");
+  const analysisPrice = source.analysisResult?.priceSnapshot;
+  const marketPrice = matchingMarketData?.price;
+  const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
+    analysisPrice.price === marketPrice.price &&
+    analysisPrice.timestamp === marketPrice.timestamp;
+  const matchingAnalysis = source.analysisResult?.instrument === source.instrument &&
+    !!marketTimeframe &&
+    analysisTimeframe === marketTimeframe &&
+    sameObservedPriceSnapshot
+    ? source.analysisResult
+    : undefined;
   source = {
     ...source,
-    marketData: source.marketData?.instrument === source.instrument
-      ? source.marketData
-      : undefined,
-    analysisResult: source.analysisResult?.instrument === source.instrument
-      ? source.analysisResult
-      : undefined,
+    marketData: matchingMarketData,
+    analysisResult: matchingAnalysis,
     universalIntelligence: source.universalIntelligence?.instrument === source.instrument &&
       source.universalIntelligence.assetClass === source.assetClass
       ? source.universalIntelligence

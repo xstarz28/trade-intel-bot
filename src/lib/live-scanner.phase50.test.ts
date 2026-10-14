@@ -136,6 +136,10 @@ describe("A — Live Candidate Ingestion", () => {
 
   it("builds candidate with analysis result", () => {
     const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "H4",
+        price: { price: 65000, timestamp: NOW, source: "twelve-data" },
+      }),
       analysisResult: {
         id: "test",
         instrument: "BTC/USD",
@@ -166,6 +170,31 @@ describe("A — Live Candidate Ingestion", () => {
     // Numeric zeroes in the breakdown are defaults, not evidence availability.
     expect(candidate.fundamentalEvidenceAvailable).toBe(false);
     expect(candidate.positioningEvidenceAvailable).toBe(false);
+  });
+
+  it("does not reuse an analysis from a different timeframe or price snapshot", () => {
+    const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "H1",
+        price: { price: 66000, timestamp: NOW, source: "twelve-data" },
+      }),
+      analysisResult: {
+        id: "stale-analysis",
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        timeframe: "M5",
+        bias: "Bullish",
+        confidence: 72,
+        recommendation: "LONG",
+        noTradeReasons: [],
+        timestamp: NOW - MINUTE,
+        priceSnapshot: { price: 65000, timestamp: NOW - MINUTE, source: "twelve-data" },
+      } as any,
+    });
+
+    const candidate = buildCandidateFromSource(source);
+    expect(candidate.hasAnalysis).toBe(false);
+    expect(candidate.analysisConfidence).toBeUndefined();
   });
 
   it("batch builds candidates from multiple sources", () => {
@@ -522,6 +551,10 @@ describe("N — Macro Context", () => {
 describe("O — Multi-Timeframe Alignment", () => {
   it("MTF alignment is extracted from analysis result", () => {
     const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "H4",
+        price: { price: 65000, timestamp: NOW, source: "twelve-data" },
+      }),
       analysisResult: {
         id: "test", instrument: "BTC/USD", instrumentType: "crypto", timeframe: "H4",
         bias: "Bullish", confidence: 72, recommendation: "LONG",
@@ -529,6 +562,7 @@ describe("O — Multi-Timeframe Alignment", () => {
         breakdown: { trend: 1, indicator: 0, fundamental: 0, sentiment: 0 },
         keyLevels: { support: "0", resistance: "0", invalidation: "0" },
         riskNote: "", dataCompleteness: "full", dataFlags: [], timestamp: NOW,
+        priceSnapshot: { price: 65000, timestamp: NOW, source: "twelve-data" },
         tradingStyle: "intraday",
         mtfSummary: { alignment: "ALIGNED_BULLISH", chainUsed: ["D1", "H4", "H1"], unavailable: [], htfBias: "long", setupTimeframe: "H4" },
       } as any,
