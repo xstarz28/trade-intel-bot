@@ -562,6 +562,7 @@ describe("O — Multi-Timeframe Alignment", () => {
         breakdown: { trend: 1, indicator: 0, fundamental: 0, sentiment: 0 },
         keyLevels: { support: "0", resistance: "0", invalidation: "0" },
         riskNote: "", dataCompleteness: "full", dataFlags: [], timestamp: NOW,
+        priceSnapshot: { price: 65000, timestamp: NOW, source: "twelve-data" },
         tradingStyle: "intraday",
         mtfSummary: { alignment: "ALIGNED_BULLISH", chainUsed: ["D1", "H4", "H1"], unavailable: [], htfBias: "long", setupTimeframe: "H4" },
       } as any,
