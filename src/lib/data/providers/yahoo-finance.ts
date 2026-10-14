@@ -109,6 +109,64 @@ export function parseYahooFinanceCandles(payload: unknown, outputsize: number): 
   return resultCandles;
 }
 
+/**
+ * Build true four-hour candles from four consecutive one-hour candles in the
+ * same local exchange session. Incomplete session fragments are discarded
+ * instead of being mislabeled as H4 bars.
+ */
+function aggregateFourHourCandles(
+  hourly: OhlcvCandle[],
+  outputsize: number,
+  timeZone: string,
+): OhlcvCandle[] {
+  const dayFormatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const output: OhlcvCandle[] = [];
+  let group: OhlcvCandle[] = [];
+  let previous: OhlcvCandle | undefined;
+
+  const flushCompleteGroup = () => {
+    if (group.length === 4) {
+      output.push({
+        timestamp: group[0].timestamp,
+        open: group[0].open,
+        high: Math.max(...group.map((bar) => bar.high)),
+        low: Math.min(...group.map((bar) => bar.low)),
+        close: group[3].close,
+        volume: group.reduce((total, bar) => total + bar.volume, 0),
+      });
+    }
+    group = [];
+  };
+
+  for (const candle of hourly) {
+    const newSession = previous !== undefined && (
+      dayFormatter.format(new Date(candle.timestamp)) !== dayFormatter.format(new Date(previous.timestamp)) ||
+      candle.timestamp - previous.timestamp > 90 * 60 * 1000
+    );
+    if (newSession) flushCompleteGroup();
+
+    group.push(candle);
+    previous = candle;
+    if (group.length === 4) {
+      flushCompleteGroup();
+      previous = undefined;
+    }
+  }
+
+  // Deliberately discard an incomplete final group: it is not a four-hour bar.
+  flushCompleteGroup();
+  const result = output.slice(-Math.max(1, Math.floor(outputsize)));
+  if (result.length === 0) {
+    throw new Error("Yahoo Finance did not return four consecutive hourly candles for an H4 bar");
+  }
+  return result;
+}
+
 export async function fetchYahooFinanceCandles(
   symbol: string,
   timeframe: string,
@@ -139,5 +197,9 @@ export async function fetchYahooFinanceCandles(
   if (!response.ok) {
     throw new Error("Yahoo Finance chart HTTP " + response.status);
   }
-  return parseYahooFinanceCandles(payload, outputsize);
+  const parseSize = normalizedTimeframe === "H4" ? outputsize * 5 : outputsize;
+  const parsed = parseYahooFinanceCandles(payload, parseSize);
+  if (normalizedTimeframe !== "H4") return parsed;
+  const timezone = normalizedSymbol.endsWith(".JK") ? "Asia/Jakarta" : "America/New_York";
+  return aggregateFourHourCandles(parsed, outputsize, timezone);
 }
