@@ -21,6 +21,7 @@ import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/dat
 import type { FxRateSnapshot } from "../lib/risk";
 import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
+import { resolveProviderRequestSymbol } from "../lib/data/universal/provider-symbol";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
@@ -96,6 +97,11 @@ async function fetchCandles(
   requestClass: TwelveDataRequestClass = "optional",
 ): Promise<OhlcvCandle[]> {
   const normalizedSymbol = symbol.trim().toUpperCase();
+  const providerRequestSymbol = resolveProviderRequestSymbol(
+    normalizedSymbol,
+    "twelve-data",
+    instrumentType === "crypto",
+  );
   const normalizedTimeframe = tf.trim().toUpperCase();
   const cacheKey = normalizedSymbol + "|" + normalizedTimeframe;
   const requestKey = cacheKey + "|" + outputsize;
@@ -169,7 +175,7 @@ async function fetchCandles(
     }
     if (!apiKey) throw new Error("TWELVE_DATA_API_KEY is missing for this market-data request");
     reserveTwelveDataCall(requestClass);
-    const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(normalizedSymbol) +
+    const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(providerRequestSymbol) +
       "&interval=" + encodeURIComponent(mapTimeframe(normalizedTimeframe)) +
       "&outputsize=" + outputsize +
       "&timezone=UTC" +
