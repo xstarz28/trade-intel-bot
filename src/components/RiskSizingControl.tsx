@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "@/lib/i18n";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
@@ -14,6 +15,8 @@ interface RiskSizingControlProps {
 }
 
 export function RiskSizingControl({ value, onChange }: RiskSizingControlProps) {
+  const { locale } = useI18n();
+  const isIndonesian = locale === "id";
   const [open, setOpen] = useState(true);
 
   return (
@@ -27,11 +30,13 @@ export function RiskSizingControl({ value, onChange }: RiskSizingControlProps) {
       {open && (
         <CardContent className="px-3 pb-3 space-y-2">
           <p className="text-[9px] font-mono text-muted-foreground">
-            Your inputs only. No leverage or contract assumptions are used. Sizing appears only when the provider supplies a complete instrument specification.
+            {isIndonesian
+              ? "Gunakan input Anda sendiri. Sistem tidak mengasumsikan leverage atau ukuran kontrak. Ukuran posisi dihitung hanya jika spesifikasi kontrak lengkap tersedia dari provider atau Anda memasukkannya berdasarkan data broker."
+              : "Your inputs only. No leverage or contract assumptions are used. Position sizing is calculated only when complete contract specifications are supplied by a provider or entered from your broker's specifications."}
           </p>
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="text-[9px] font-mono text-muted-foreground">Equity</label>
+              <label className="text-[9px] font-mono text-muted-foreground">{isIndonesian ? "Ekuitas" : "Equity"}</label>
               <Input
                 type="number"
                 min="0"
@@ -43,7 +48,7 @@ export function RiskSizingControl({ value, onChange }: RiskSizingControlProps) {
               />
             </div>
             <div>
-              <label className="text-[9px] font-mono text-muted-foreground">Risk %</label>
+              <label className="text-[9px] font-mono text-muted-foreground">{isIndonesian ? "Risiko %" : "Risk %"}</label>
               <Input
                 type="number"
                 min="0"
@@ -56,7 +61,7 @@ export function RiskSizingControl({ value, onChange }: RiskSizingControlProps) {
               />
             </div>
             <div>
-              <label className="text-[9px] font-mono text-muted-foreground">Account CCY</label>
+              <label className="text-[9px] font-mono text-muted-foreground">{isIndonesian ? "Mata Uang Akun" : "Account CCY"}</label>
               <Input
                 placeholder="USD"
                 value={value.accountCurrency ?? ""}
