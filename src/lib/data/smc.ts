@@ -624,6 +624,7 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
     val: profile.val,
     hvn,
     lvn,
+    approximation: profile.approximation,
   };
 }
 
