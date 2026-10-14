@@ -392,8 +392,8 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
   const matchingMarketData = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
-  const marketTimeframe = matchingMarketData?.timeframe?.trim().toUpperCase().replace(/\\s+/g, "");
-  const analysisTimeframe = source.analysisResult?.timeframe?.trim().toUpperCase().replace(/\\s+/g, "");
+  const marketTimeframe = matchingMarketData?.timeframe?.trim().toUpperCase().replace(/\s+/g, "");
+  const analysisTimeframe = source.analysisResult?.timeframe?.trim().toUpperCase().replace(/\s+/g, "");
   const matchingAnalysis = source.analysisResult?.instrument === source.instrument &&
     !!marketTimeframe &&
     analysisTimeframe === marketTimeframe
