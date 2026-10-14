@@ -23,7 +23,8 @@ jobs:
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Validate GitHub Actions workflow YAML
-        run: ruby -ryaml -e 'ARGV.each { |path| YAML.parse_file(path); puts "Valid YAML: #{path}" }' .github/workflows/*.yml
+        run: |
+          ruby -ryaml -e 'ARGV.each { |path| YAML.parse_file(path); puts "Valid YAML: #{path}" }' .github/workflows/*.yml
 
       - name: Typecheck and production build
         env:
