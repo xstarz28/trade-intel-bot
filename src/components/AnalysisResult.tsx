@@ -2059,8 +2059,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 {(vwap || vp || tpo) && (
                   <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-[10px] font-mono text-muted-foreground/60">
                     {vwap && <span>vwap: {vwap.sessionVwap?.toFixed(4)} ({vwap.priceLocation.replace("_", " ")})</span>}
-                    {vp && <span>vpvr poc: {vp.poc?.toFixed(4)} · vah: {vp.vah?.toFixed(4)} · val: {vp.val?.toFixed(4)}</span>}
+                    {vp && <span>vpvr* poc: {vp.poc?.toFixed(4)} · vah: {vp.vah?.toFixed(4)} · val: {vp.val?.toFixed(4)}</span>}
                     {tpo && <span>tpo poc: {tpo.poc?.toFixed(4)} · vah: {tpo.vah?.toFixed(4)} · val: {tpo.val?.toFixed(4)} ({tpo.blockMinutes}m blocks)</span>}
+                    {vp && <span className="basis-full text-[9px]">* VPVR adalah estimasi dari volume candle OHLCV, bukan data transaksi pada tiap level harga.</span>}
                   </div>
                 )}
               </div>
