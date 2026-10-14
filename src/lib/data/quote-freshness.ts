@@ -28,12 +28,15 @@ export function resolveQuoteObservation(input: QuoteObservationInput): QuoteObse
       : Number.isFinite(parsedDatetime) && parsedDatetime > 0
         ? parsedDatetime
         : undefined;
-  const priceTimestamp = providerTimestamp ?? input.candleTimestamp;
+  const quoteHasPrice = Number.isFinite(input.quotePrice) && input.quotePrice > 0;
+  const priceTimestamp = quoteHasPrice && providerTimestamp !== undefined
+    ? providerTimestamp
+    : input.candleTimestamp;
   const ageMs = now - priceTimestamp;
   const plausible = Number.isFinite(priceTimestamp) && priceTimestamp > 0 && ageMs >= -60_000;
-  const quoteHasPrice = Number.isFinite(input.quotePrice) && input.quotePrice > 0;
-  const hasLiveQuote = quoteHasPrice && providerTimestamp !== undefined &&
-    plausible && ageMs < 5 * 60_000;
+  const quoteAgeMs = providerTimestamp === undefined ? Number.POSITIVE_INFINITY : now - providerTimestamp;
+  const quoteTimestampPlausible = providerTimestamp !== undefined && quoteAgeMs >= -60_000;
+  const hasLiveQuote = quoteHasPrice && quoteTimestampPlausible && quoteAgeMs < 5 * 60_000;
   const dataFreshness: QuoteDataFreshness = !plausible || ageMs >= 24 * 60 * 60_000
     ? "unavailable"
     : hasLiveQuote
