@@ -50,6 +50,47 @@ describe("free Yahoo Finance stock fallback", () => {
     }, 200)).toThrow(/no valid OHLCV candles/i);
   });
 
+  it("aggregates H4 from four real hourly candles and discards partial fragments", async () => {
+    let requestedUrl = "";
+    const baseTime = 1_800_000_000;
+    const open = [100, 101, 102, 103, 104, 105, 106];
+    const payload = {
+      chart: {
+        result: [{
+          timestamp: open.map((_, index) => baseTime + index * 3600),
+          indicators: {
+            quote: [{
+              open,
+              high: open.map((value) => value + 1),
+              low: open.map((value) => value - 1),
+              close: open.map((value) => value + 0.5),
+              volume: open.map(() => 100),
+            }],
+          },
+        }],
+      },
+    };
+
+    const candles = await fetchYahooFinanceCandles("AAPL", "H4", 10, async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    expect(requestedUrl).toContain("interval=60m");
+    expect(candles).toHaveLength(1);
+    expect(candles[0]).toEqual({
+      timestamp: baseTime * 1000,
+      open: 100,
+      high: 104,
+      low: 99,
+      close: 103.5,
+      volume: 400,
+    });
+  });
+
   it("requests the exact Yahoo ticker and correct M5 query through an injected transport", async () => {
     let requestedUrl = "";
     const candles = await fetchYahooFinanceCandles("BBCA.JK", "M5", 2, async (input) => {
