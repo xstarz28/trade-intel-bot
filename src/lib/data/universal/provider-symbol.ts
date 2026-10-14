@@ -20,18 +20,22 @@ export function resolveProviderRequest(
   if (!normalized || preserveNativeIdentity) return { symbol: normalized };
 
   const mapping = getProviderSymbol(normalized, provider);
-  const canonical = resolveInstrument(normalized);
+  const indexedTicker = normalized.endsWith(".JK")
+    ? normalized.slice(0, -3)
+    : normalized;
+  const canonical = resolveInstrument(normalized) ?? resolveInstrument(indexedTicker);
 
   // Twelve Data identifies Indonesian listings by their bare exchange ticker
-  // plus MIC XIDX, rather than the .JK suffix used in some other data systems.
-  // Keep the declared mapping as registry metadata, but translate to the API's
-  // actual request form and avoid guessing this for non-IDX tickers.
-  if (
-    provider === "twelve-data" &&
-    canonical?.primaryExchange === "IDX" &&
-    mapping?.toUpperCase().endsWith(".JK")
-  ) {
-    return { symbol: mapping.slice(0, -3), micCode: "XIDX" };
+  // plus MIC XIDX, rather than the .JK suffix used by other catalog sources.
+  // Cover both canonical registry symbols (BBCA -> BBCA.JK mapping) and
+  // provider-discovered catalog symbols already suffixed with .JK.
+  if (provider === "twelve-data") {
+    if (canonical?.primaryExchange === "IDX" && mapping?.toUpperCase().endsWith(".JK")) {
+      return { symbol: mapping.slice(0, -3), micCode: "XIDX" };
+    }
+    if (normalized.endsWith(".JK")) {
+      return { symbol: indexedTicker, micCode: "XIDX" };
+    }
   }
 
   return { symbol: mapping ?? normalized };
