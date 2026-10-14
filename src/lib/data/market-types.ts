@@ -178,7 +178,7 @@ export interface SmcContext {
   orderBlocks: OrderBlock[]; // most recent first
   vwap: VwapContext;
   volumeProfile: VolumeProfileContext;
-  tpoProfile: TpoProfileContext;
+  tpoProfile?: TpoProfileContext;
 }
 
 // ── Phase 3A: adaptive multi-timeframe architecture ───────────────
