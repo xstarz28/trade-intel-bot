@@ -194,7 +194,7 @@ describe("A — Live Candidate Ingestion", () => {
 
     const candidate = buildCandidateFromSource(source);
     expect(candidate.hasAnalysis).toBe(false);
-    expect(candidate.analysisConfidence).toBe(0);
+    expect(candidate.analysisConfidence).toBeUndefined();
   });
 
   it("batch builds candidates from multiple sources", () => {
