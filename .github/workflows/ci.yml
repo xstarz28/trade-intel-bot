@@ -22,6 +22,10 @@ jobs:
           node-version: "22"
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Validate GitHub Actions workflow YAML
+        run: |
+          ruby -ryaml -e 'ARGV.each { |path| YAML.parse_file(path); puts "Valid YAML: #{path}" }' .github/workflows/*.yml
+
       - name: Typecheck and production build
         env:
           VITE_CONVEX_URL: https://hushed-seal-237.convex.cloud
