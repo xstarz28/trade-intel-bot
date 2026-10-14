@@ -110,6 +110,10 @@ export function InstrumentInput({
   const [manualSearchError, setManualSearchError] = useState<string | null>(null);
   const [cryptoMarketType, setCryptoMarketType] = useState<CryptoMarketType>("spot");
   const manualInputRef = useRef<HTMLInputElement | null>(null);
+  const submitLockRef = useRef(false);
+  useEffect(() => {
+    if (!isAnalyzing) submitLockRef.current = false;
+  }, [isAnalyzing]);
   // Keep every field synchronous with user input so an immediate submit cannot
   // combine a new instrument with the previous category/timeframe/style render.
   const formRef = useRef(form);
@@ -244,7 +248,7 @@ export function InstrumentInput({
     const instrument = (manualSearch && typedInstrument
       ? typedInstrument
       : currentForm.instrument).trim();
-    if (!instrument || isAnalyzing) return;
+    if (!instrument || isAnalyzing || submitLockRef.current) return;
 
     const knownInstrument = universeOptions.find(
       (item) => item.symbol.toUpperCase() === instrument.toUpperCase(),
@@ -270,6 +274,7 @@ export function InstrumentInput({
         })
       : undefined;
 
+    submitLockRef.current = true;
     onAnalyze({
       instrument: resolvedInstrument,
       instrumentType: knownInstrument?.type ?? currentForm.instrumentType,
@@ -606,6 +611,7 @@ export function InstrumentInput({
           <div className="flex items-center gap-3 pt-1">
             <Button
               type="submit"
+              data-testid="run-analysis-button"
               disabled={!submitInstrument || isAnalyzing}
               className="gap-2 px-5 font-mono text-sm"
             >
