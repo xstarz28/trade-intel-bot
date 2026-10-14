@@ -334,6 +334,7 @@ export default function Dashboard() {
                 instrument: input.instrument,
                 instrumentType: input.instrumentType,
                 timeframe: input.timeframe,
+                tradingStyle: input.tradingStyle,
               }),
               ACTION_TIMEOUTS_MS.market,
               "Primary market data",
