@@ -246,6 +246,53 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     await form.getByTestId("manual-search-toggle").click();
   }
 
+  const resultRoot = targetPage.getByTestId("analysis-result");
+  await resultRoot.waitFor({ state: "visible", timeout: 10000 });
+  const recommendation = await resultRoot.getAttribute("data-recommendation");
+  if (!["LONG", "SHORT", "NO_TRADE"].includes(recommendation ?? "")) {
+    throw new Error(`Analysis result has an unknown decision state: ${recommendation}`);
+  }
+
+  const executablePlan = resultRoot.getByTestId("analysis-executable-trade-plan");
+  const noTradeReasons = resultRoot.getByTestId("analysis-no-trade-reasons");
+  if (recommendation === "NO_TRADE") {
+    if ((await executablePlan.count()) !== 0) {
+      throw new Error(`${instrument} is NO_TRADE but an executable trade plan is rendered`);
+    }
+    if ((await noTradeReasons.count()) !== 1 || !(await noTradeReasons.innerText()).trim()) {
+      throw new Error(`${instrument} is NO_TRADE without a visible, explicit rejection reason`);
+    }
+  } else {
+    if ((await executablePlan.count()) !== 1) {
+      throw new Error(`${instrument} is ${recommendation} but has no unique executable trade plan`);
+    }
+    const planFields = await executablePlan.locator(".grid > div").allInnerTexts();
+    if (planFields.length !== 3) {
+      throw new Error(`${instrument} trade plan does not render Entry, Stop Loss and Take Profit`);
+    }
+    const planPrices = planFields.map((field) => {
+      const lines = field.split("\n").map((line) => line.trim()).filter(Boolean);
+      const match = (lines[1] ?? "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+      return match ? Number(match[0]) : Number.NaN;
+    });
+    const [entry, stop, target] = planPrices;
+    if (![entry, stop, target].every((price) => Number.isFinite(price) && price > 0)) {
+      throw new Error(`${instrument} trade plan contains a missing or invalid Entry/SL/TP price`);
+    }
+    const geometryValid = recommendation === "LONG"
+      ? stop < entry && entry < target
+      : target < entry && entry < stop;
+    if (!geometryValid) {
+      throw new Error(`${instrument} ${recommendation} trade plan has invalid Entry/SL/TP geometry`);
+    }
+    const rrText = await executablePlan.getByText(/^R:R\s+\d+(?:\.\d+)?$/).innerText().catch(() => "");
+    const displayedRr = Number(rrText.match(/R:R\s+(\d+(?:\.\d+)?)/)?.[1]);
+    const calculatedRr = Math.abs(target - entry) / Math.abs(entry - stop);
+    if (!Number.isFinite(displayedRr) || displayedRr <= 0 || Math.abs(calculatedRr - displayedRr) > 0.02) {
+      throw new Error(`${instrument} displayed R:R does not match its rendered Entry/SL/TP levels: ${rrText}`);
+    }
+  }
+
   const body = await targetPage.locator("body").innerText();
   const priceLabel = targetPage.getByText("Price:", { exact: true });
   const sourceLabel = targetPage.getByText("Source:", { exact: true });
