@@ -111,4 +111,5 @@ jobs:
           npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main
 
       - name: Report public target
-        run: echo "PUBLIC FRONTEND: https://xstarzanalysis.vercel.app"
+        run: |
+          echo "PUBLIC FRONTEND: https://xstarzanalysis.vercel.app"
