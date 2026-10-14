@@ -31,7 +31,7 @@ function wirePage(targetPage) {
   targetPage.on("request", (req) => {
     try {
       const requested = new URL(req.url());
-      if (/^(accounts\\.google\\.com|oauth2\\.googleapis\\.com)$/i.test(requested.hostname)) {
+      if (/^(accounts\.google\.com|oauth2\.googleapis\.com)$/i.test(requested.hostname)) {
         const redirectUri = requested.searchParams.get("redirect_uri");
         evidence.googleOAuth.reachedAuthorizationEndpoint = true;
         evidence.googleOAuth.authorizationHost = requested.hostname;
@@ -441,20 +441,20 @@ try {
   const oauthPopup = await oauthPopupPromise;
   const oauthTarget = oauthPopup ?? oauthPage;
   await oauthTarget.waitForURL((current) =>
-    /accounts\\.google\\.com|oauth2\\.googleapis\\.com/i.test(current.hostname) ||
+    /accounts\.google\.com|oauth2\.googleapis\.com/i.test(current.hostname) ||
     /redirect_uri_mismatch/i.test(current.href),
     { timeout: 20000 },
   ).catch(() => {});
   const oauthUrl = oauthTarget.url();
   const oauthText = await oauthTarget.locator("body").innerText().catch(() => "");
   evidence.googleOAuth.redirectUriMismatch =
-    /redirect_uri_mismatch|Error 400: redirect_uri_mismatch/i.test(oauthUrl + "\\n" + oauthText);
+    /redirect_uri_mismatch|Error 400: redirect_uri_mismatch/i.test(oauthUrl + "\n" + oauthText);
   if (evidence.googleOAuth.redirectUriMismatch) {
     throw new Error("Production Google OAuth is rejected by Google: redirect_uri_mismatch.");
   }
   evidence.googleOAuth.reachedAuthorizationEndpoint =
     evidence.googleOAuth.reachedAuthorizationEndpoint ||
-    /^(accounts\\.google\\.com|oauth2\\.googleapis\\.com)$/i.test(new URL(oauthUrl).hostname);
+    /^(accounts\.google\.com|oauth2\.googleapis\.com)$/i.test(new URL(oauthUrl).hostname);
   if (!evidence.googleOAuth.reachedAuthorizationEndpoint) {
     throw new Error("Google OAuth button did not reach Google's authorization endpoint. Final URL: " + new URL(oauthUrl).origin + new URL(oauthUrl).pathname);
   }
