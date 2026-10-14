@@ -14,6 +14,7 @@ import { v } from "convex/values";
 import { computeSmcContext } from "../lib/data/smc";
 import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext, selectBudgetedMtfSlots } from "../lib/data/mtf";
+import { resolveQuoteObservation } from "../lib/data/quote-freshness";
 import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/classic-price-action";
 import { crossAssetComparator } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
@@ -387,25 +388,16 @@ export const fetchMarketData = action({
       const latestCandle = candles[candles.length - 1];
       const quotedPrice = Number(quoteRes.close);
       const quoteHasPrice = Number.isFinite(quotedPrice) && quotedPrice > 0;
-      // Do not stamp a quote with Date.now(): fetch time is not observation time.
-      // Parse provider observation time where supplied; otherwise retain the
-      // candle observation time so an undated quote cannot masquerade as live.
-      const rawQuoteTimestamp = Number(quoteRes.timestamp);
-      const parsedQuoteDatetime = quoteRes.datetime ? Date.parse(String(quoteRes.datetime)) : Number.NaN;
-      const providerQuoteTimestamp =
-        Number.isFinite(rawQuoteTimestamp) && rawQuoteTimestamp > 0
-          ? rawQuoteTimestamp < 1_000_000_000_000 ? rawQuoteTimestamp * 1000 : rawQuoteTimestamp
-          : Number.isFinite(parsedQuoteDatetime) && parsedQuoteDatetime > 0
-            ? parsedQuoteDatetime
-            : undefined;
-      const priceTimestamp = quoteHasPrice && providerQuoteTimestamp
-        ? providerQuoteTimestamp
-        : latestCandle.timestamp;
+      // Fetch time is not observation time; freshness is resolved centrally.
+      const observation = resolveQuoteObservation({
+        quotePrice: quotedPrice,
+        quoteTimestamp: quoteRes.timestamp,
+        quoteDatetime: quoteRes.datetime == null ? undefined : String(quoteRes.datetime),
+        candleTimestamp: latestCandle.timestamp,
+      });
+      const priceTimestamp = observation.priceTimestamp;
       const price = quoteHasPrice ? quotedPrice : latestCandle.close;
-      const observationAgeMs = Date.now() - priceTimestamp;
-      const timestampIsPlausible = observationAgeMs >= -60_000;
-      const hasLiveQuote = quoteHasPrice && !!providerQuoteTimestamp &&
-        timestampIsPlausible && observationAgeMs < 5 * 60_000;
+      const hasLiveQuote = observation.hasLiveQuote;
       const bidValue = Number(quoteRes.bid);
       const askValue = Number(quoteRes.ask);
       const bid = Number.isFinite(bidValue) && bidValue > 0 ? bidValue : undefined;
@@ -540,13 +532,7 @@ export const fetchMarketData = action({
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
-          dataFreshness: !timestampIsPlausible || observationAgeMs >= 24 * 60 * 60_000
-            ? "unavailable" as const
-            : hasLiveQuote
-              ? "realtime" as const
-              : observationAgeMs >= 60 * 60_000
-                ? "stale" as const
-                : "delayed" as const,
+          dataFreshness: observation.dataFreshness,
         },
         technical,
       };
