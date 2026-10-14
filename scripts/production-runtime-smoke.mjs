@@ -163,30 +163,23 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
 
   // Submit the authoritative instrument form directly. The visible label is localized,
   // so text-matching a translated button is not a reliable production smoke control.
-  const run = form.locator("button[type=\"submit\"]").first();
-  if (!(await run.count())) {
-    const buttons = await form.locator("button").allTextContents();
-    throw new Error(`Run Analysis submit control is missing for ${instrument}. Form buttons: ${buttons.join(" | ")}`);
+  const run = form.getByTestId("run-analysis-button");
+  if ((await run.count()) !== 1) {
+    throw new Error(`Run Analysis submit control is missing or duplicated for ${instrument}`);
   }
   if (!(await run.isEnabled())) {
-    throw new Error("".concat("Run Analysis submit control is disabled for ", instrument, ". Picker text: ", selectedText));
+    throw new Error(`Run Analysis submit control is disabled for ${instrument}. Picker text: ${selectedText}`);
   }
-  // Prefer the real browser click. If React did not consume the click (for
-  // example while a Radix state transition is settling), fall back to the form
-  // submit boundary without issuing a second analysis once the button disables.
+  // A real click must enter the analysis state by itself. Do not mask a broken
+  // button with requestSubmit() fallback; production smoke should catch it.
   await run.click();
-  await targetPage.waitForTimeout(750);
-  const postClickState = {
-    disabled: await run.isDisabled().catch(() => false),
-    text: (await run.innerText().catch(() => "")).trim(),
-  };
-  if (!postClickState.disabled) {
-    await run.evaluate((button) => {
-      const form = button.closest("form");
-      if (!form) throw new Error("Run Analysis submit control is not inside a form");
-      form.requestSubmit(button);
-    });
-  }
+  await targetPage.waitForFunction(
+    () => document.querySelector('[data-testid="run-analysis-button"]')?.hasAttribute("disabled") === true,
+    null,
+    { timeout: 5000 },
+  ).catch(() => {
+    throw new Error(`Clicking Run Analysis did not disable the button for ${instrument}; analysis did not start through the real UI control.`);
+  });
 
   let analysisOutcome;
   try {

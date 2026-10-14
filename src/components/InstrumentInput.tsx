@@ -110,6 +110,10 @@ export function InstrumentInput({
   const [manualSearchError, setManualSearchError] = useState<string | null>(null);
   const [cryptoMarketType, setCryptoMarketType] = useState<CryptoMarketType>("spot");
   const manualInputRef = useRef<HTMLInputElement | null>(null);
+  const submitLockRef = useRef(false);
+  useEffect(() => {
+    if (!isAnalyzing) submitLockRef.current = false;
+  }, [isAnalyzing]);
   // Keep every field synchronous with user input so an immediate submit cannot
   // combine a new instrument with the previous category/timeframe/style render.
   const formRef = useRef(form);
@@ -244,7 +248,7 @@ export function InstrumentInput({
     const instrument = (manualSearch && typedInstrument
       ? typedInstrument
       : currentForm.instrument).trim();
-    if (!instrument || isAnalyzing) return;
+    if (!instrument || isAnalyzing || submitLockRef.current) return;
 
     const knownInstrument = universeOptions.find(
       (item) => item.symbol.toUpperCase() === instrument.toUpperCase(),
@@ -270,6 +274,7 @@ export function InstrumentInput({
         })
       : undefined;
 
+    submitLockRef.current = true;
     onAnalyze({
       instrument: resolvedInstrument,
       instrumentType: knownInstrument?.type ?? currentForm.instrumentType,
@@ -315,6 +320,7 @@ export function InstrumentInput({
                 <button
                   key={category.value}
                   type="button"
+                  disabled={isAnalyzing}
                   onClick={() => selectCategory(category.value)}
                   className={cn(
                     "h-10 rounded-md border text-xs font-mono font-semibold transition-all",
@@ -335,6 +341,7 @@ export function InstrumentInput({
                 <button
                   key={option.value}
                   type="button"
+                  disabled={isAnalyzing}
                   className={cn(
                     "rounded-md border px-2 py-1 text-[9px] font-mono transition-colors",
                     cryptoMarketType === option.value
@@ -367,7 +374,7 @@ export function InstrumentInput({
               </span>
             </div>
             {!manualSearch && (
-              <Select value={form.instrument} onValueChange={selectInstrument}>
+              <Select value={form.instrument} onValueChange={selectInstrument} disabled={isAnalyzing}>
               <SelectTrigger className="h-11 text-sm font-mono">
                 <SelectValue placeholder={filteredInstruments.length ? t.dashboard.selectInstrument : t.market.noData} />
               </SelectTrigger>
@@ -394,6 +401,7 @@ export function InstrumentInput({
             <button
               type="button"
               data-testid="manual-search-toggle"
+              disabled={isAnalyzing}
               onClick={() => {
                 setManualSearch((value) => !value);
                 setManualSearchQuery("");
@@ -409,6 +417,7 @@ export function InstrumentInput({
                 <input
                   ref={manualInputRef}
                   data-testid="manual-instrument-search"
+                  disabled={isAnalyzing}
                   aria-label={t.entryForm.manualSearchPlaceholder}
                   name="manualInstrumentSearch"
                   type="text"
@@ -431,6 +440,7 @@ export function InstrumentInput({
                         key={item.symbol}
                         type="button"
                         role="option"
+                        disabled={isAnalyzing}
                         aria-selected={exactManualMatch?.symbol === item.symbol}
                         className="flex w-full items-start justify-between gap-3 border-b border-border/30 px-3 py-2 text-left last:border-b-0 hover:bg-muted/50"
                         onClick={() => {
@@ -467,6 +477,7 @@ export function InstrumentInput({
               className="flex w-full items-center justify-between text-left text-[11px] font-mono font-semibold"
               aria-expanded={manualSpecOpen}
               data-testid="broker-specification-toggle"
+              disabled={isAnalyzing}
               onClick={() => setManualSpecOpen((value) => !value)}
             >
               <span>{locale === "id" ? "Spesifikasi kontrak broker (opsional)" : "Broker contract specification (optional)"}</span>
@@ -553,6 +564,7 @@ export function InstrumentInput({
                 <button
                   key={st}
                   type="button"
+                  disabled={isAnalyzing}
                   onClick={() => commitForm((prev) => {
                     const profile = resolveStyle(st);
                     return {
@@ -584,6 +596,7 @@ export function InstrumentInput({
                 <button
                   key={tf.value}
                   type="button"
+                  disabled={isAnalyzing}
                   onClick={() => update("timeframe", tf.value as Timeframe)}
                   className={cn(
                     "h-10 rounded-md border text-xs font-mono font-semibold transition-all",
@@ -606,6 +619,7 @@ export function InstrumentInput({
           <div className="flex items-center gap-3 pt-1">
             <Button
               type="submit"
+              data-testid="run-analysis-button"
               disabled={!submitInstrument || isAnalyzing}
               className="gap-2 px-5 font-mono text-sm"
             >
