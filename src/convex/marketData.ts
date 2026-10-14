@@ -18,6 +18,8 @@ import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/cl
 import { crossAssetComparator } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
 import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/data/twelve-data-budget";
+import type { FxRateSnapshot } from "../lib/risk";
+import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import {
   OKX_SPOT_MARKET_PROVIDER,
@@ -462,59 +464,67 @@ export const fetchMarketData = action({
 });
 
 /**
- * Phase 4 — live FX rate snapshots for quote→account position sizing.
- * Fetches BOTH the direct pair (FROM/TO) and the inverse pair (TO/FROM).
- * Either may fail independently; the pure resolver in lib/risk/fx.ts
- * decides which usable snapshot to apply. No rates are ever invented here.
+ * Phase 4 — account-currency conversion for position sizing.
+ * Uses the free, no-key Frankfurter daily reference API so currency conversion
+ * never consumes Twelve Data credits reserved for current market candles/MTF.
+ *
+ * This is deliberately NOT presented as a live quote or used for directional
+ * evidence. The response carries its actual observation date and a four-day
+ * maximum age. A missing/stale/mismatched response keeps sizing unavailable.
  */
+const FX_REFERENCE_CACHE_TTL_MS = 60 * 60 * 1000;
+const fxReferenceRateCache = new Map<string, { snapshot: FxRateSnapshot; expiresAt: number }>();
+
 export const fetchFxRate = action({
   args: { from: v.string(), to: v.string() },
   handler: async (_ctx, args) => {
-    const apiKey = process.env.TWELVE_DATA_API_KEY;
-    if (!apiKey) {
-      return { success: false as const, error: "TWELVE_DATA_API_KEY missing" };
+    const from = args.from.trim().toUpperCase();
+    const to = args.to.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to)) {
+      return { success: false as const, error: "invalid ISO currency code for FX reference" };
     }
-    const from = args.from.toUpperCase();
-    const to = args.to.toUpperCase();
     if (from === to) return { success: false as const, error: "same currency — no conversion needed" };
-    let requestBudgetError: string | undefined;
 
-    const fetchPair = async (
-      pair: string,
-    ): Promise<{ rate: number; timestamp: number; source: string; pair: string } | null> => {
-      try {
-        reserveTwelveDataCall("optional");
-        const res = await fetch(
-          `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(pair)}&apikey=${apiKey}`,
-          { signal: AbortSignal.timeout(4_000) },
-        ).then((r) => r.json());
-        if (!res || res.code || res.close === undefined) return null;
-        const rate = parseFloat(res.close);
-        if (!Number.isFinite(rate) || rate <= 0) return null;
-        return { rate, timestamp: Date.now(), source: "twelve-data", pair };
-      } catch (err) {
-        if (err instanceof Error && err.message.startsWith("REQUEST_BUDGET:")) {
-          requestBudgetError = err.message.replace(/^REQUEST_BUDGET:\\s*/, "");
-        }
-        return null;
-      }
-    };
-
-    // Parallel — a failing leg never blocks or corrupts the other.
-    const [direct, inverse] = await Promise.all([
-      fetchPair(`${from}/${to}`),
-      fetchPair(`${to}/${from}`),
-    ]);
-
-    if (!direct && !inverse) {
-      return {
-        success: false as const,
-        error: requestBudgetError
-          ? `FX quote request skipped to protect the market-analysis quota: ${requestBudgetError}`
-          : `no FX quote available for ${from}/${to} from the provider`,
-      };
+    const pair = `${from}/${to}`;
+    const now = Date.now();
+    const cached = fxReferenceRateCache.get(pair);
+    if (
+      cached &&
+      now < cached.expiresAt &&
+      now >= cached.snapshot.timestamp &&
+      now - cached.snapshot.timestamp <= (cached.snapshot.maxAgeMs ?? 0)
+    ) {
+      return { success: true as const, direct: { ...cached.snapshot }, inverse: null };
     }
-    return { success: true as const, direct, inverse };
+    if (cached) fxReferenceRateCache.delete(pair);
+
+    try {
+      const response = await fetch(
+        `https://api.frankfurter.dev/v2/rate/${from.toLowerCase()}/${to.toLowerCase()}`,
+        {
+          headers: { accept: "application/json" },
+          signal: AbortSignal.timeout(4_000),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        return {
+          success: false as const,
+          error: `Frankfurter daily FX reference unavailable for ${pair} (HTTP ${response.status})`,
+        };
+      }
+      const parsed = parseDailyFxReferenceSnapshot(payload, from, to, now);
+      if ("error" in parsed) return { success: false as const, error: parsed.error };
+
+      fxReferenceRateCache.set(pair, {
+        snapshot: parsed.snapshot,
+        expiresAt: now + FX_REFERENCE_CACHE_TTL_MS,
+      });
+      return { success: true as const, direct: parsed.snapshot, inverse: null };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : "unknown provider error";
+      return { success: false as const, error: `Frankfurter daily FX reference failed for ${pair}: ${reason}` };
+    }
   },
 });
 
