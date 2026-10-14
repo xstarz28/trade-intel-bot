@@ -314,6 +314,7 @@ export const fetchMarketData = action({
       v.literal("indices"),
     ),
     timeframe: v.string(),
+    tradingStyle: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.TWELVE_DATA_API_KEY;
@@ -415,7 +416,7 @@ export const fetchMarketData = action({
       // nearest higher-timeframe STRUCTURE first (e.g. M15 for an M5 setup),
       // then macro context, then a lower trigger. Skipped slots stay explicit;
       // the analysis engine must not synthesize missing candles.
-      const preferredSlots = selectBudgetedMtfSlots(slots, args.timeframe);
+      const preferredSlots = selectBudgetedMtfSlots(slots, args.timeframe, args.tradingStyle);
       const settled = await Promise.allSettled(
         slots.map((slot) => {
           // Public OKX candles do not consume the Twelve Data credit budget,
