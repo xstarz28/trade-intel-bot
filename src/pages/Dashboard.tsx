@@ -437,6 +437,54 @@ export default function Dashboard() {
               throw new Error(marketDataResult.error || "Market data unavailable");
             }
           }
+
+          // Fail closed if a provider/cache ever returns another symbol, asset
+          // class, or candle interval. A plausible-looking chart must never be
+          // attached to the wrong requested analysis.
+          const snapshot = marketDataResult.data;
+          const requestedInstrument = input.instrument.trim().toUpperCase();
+          const snapshotInstrument = snapshot.instrument?.trim().toUpperCase();
+          if (snapshotInstrument !== requestedInstrument) {
+            throw new Error(
+              `Market data identity mismatch: requested ${requestedInstrument}, received ${snapshotInstrument || "unknown instrument"}.`,
+            );
+          }
+          if (snapshot.instrumentType !== input.instrumentType) {
+            throw new Error(
+              `Market data asset-class mismatch for ${requestedInstrument}: requested ${input.instrumentType}, received ${snapshot.instrumentType || "unknown"}.`,
+            );
+          }
+          const requestedTimeframe = input.timeframe.trim().toUpperCase();
+          const snapshotTimeframe = snapshot.timeframe?.trim().toUpperCase();
+          if (snapshotTimeframe !== requestedTimeframe) {
+            throw new Error(
+              `Market data timeframe mismatch for ${requestedInstrument}: requested ${requestedTimeframe}, received ${snapshotTimeframe || "unknown timeframe"}.`,
+            );
+          }
+          const usableCandles = (snapshot.candles ?? []).filter((candle) =>
+            [candle.timestamp, candle.open, candle.high, candle.low, candle.close].every(Number.isFinite) &&
+            candle.timestamp > 0 &&
+            candle.open > 0 &&
+            candle.high >= Math.max(candle.open, candle.close, candle.low) &&
+            candle.low <= Math.min(candle.open, candle.close, candle.high),
+          );
+          if (usableCandles.length < 5) {
+            throw new Error(
+              `Market data for ${requestedInstrument} ${requestedTimeframe} contains fewer than five valid OHLC candles; analysis and chart were stopped.`,
+            );
+          }
+          if (
+            !Number.isFinite(snapshot.price?.price) ||
+            snapshot.price.price <= 0 ||
+            !Number.isFinite(snapshot.price.timestamp) ||
+            snapshot.price.timestamp <= 0 ||
+            !snapshot.price.source?.trim()
+          ) {
+            throw new Error(
+              `Market data for ${requestedInstrument} has no valid observed price, timestamp, or provider source.`,
+            );
+          }
+
           updateStep(1, "done");
 
           // Intelligence is non-critical
