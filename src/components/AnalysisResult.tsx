@@ -219,6 +219,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         <PriceStructureChart
           instrument={result.instrument}
           instrumentType={result.instrumentType}
+          timeframe={result.timeframe}
           candles={result.candles}
           keyLevels={result.keyLevels}
           tradePlan={result.recommendation === "NO_TRADE" ? undefined : result.tradePlan}
