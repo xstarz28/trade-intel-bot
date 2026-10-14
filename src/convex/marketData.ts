@@ -386,9 +386,26 @@ export const fetchMarketData = action({
 
       const latestCandle = candles[candles.length - 1];
       const quotedPrice = Number(quoteRes.close);
-      const hasLiveQuote = Number.isFinite(quotedPrice) && quotedPrice > 0;
-      const price = hasLiveQuote ? quotedPrice : latestCandle.close;
-      const priceTimestamp = hasLiveQuote ? Date.now() : latestCandle.timestamp;
+      const quoteHasPrice = Number.isFinite(quotedPrice) && quotedPrice > 0;
+      // Do not stamp a quote with Date.now(): fetch time is not observation time.
+      // Parse provider observation time where supplied; otherwise retain the
+      // candle observation time so an undated quote cannot masquerade as live.
+      const rawQuoteTimestamp = Number(quoteRes.timestamp);
+      const parsedQuoteDatetime = quoteRes.datetime ? Date.parse(String(quoteRes.datetime)) : Number.NaN;
+      const providerQuoteTimestamp =
+        Number.isFinite(rawQuoteTimestamp) && rawQuoteTimestamp > 0
+          ? rawQuoteTimestamp < 1_000_000_000_000 ? rawQuoteTimestamp * 1000 : rawQuoteTimestamp
+          : Number.isFinite(parsedQuoteDatetime) && parsedQuoteDatetime > 0
+            ? parsedQuoteDatetime
+            : undefined;
+      const priceTimestamp = quoteHasPrice && providerQuoteTimestamp
+        ? providerQuoteTimestamp
+        : latestCandle.timestamp;
+      const price = quoteHasPrice ? quotedPrice : latestCandle.close;
+      const observationAgeMs = Date.now() - priceTimestamp;
+      const timestampIsPlausible = observationAgeMs >= -60_000;
+      const hasLiveQuote = quoteHasPrice && !!providerQuoteTimestamp &&
+        timestampIsPlausible && observationAgeMs < 5 * 60_000;
       const bidValue = Number(quoteRes.bid);
       const askValue = Number(quoteRes.ask);
       const bid = Number.isFinite(bidValue) && bidValue > 0 ? bidValue : undefined;
@@ -523,7 +540,13 @@ export const fetchMarketData = action({
           candles,
           timeframe: args.timeframe,
           higherTimeframe: mtf.htfTimeframe,
-          dataFreshness: hasLiveQuote ? "realtime" as const : "delayed" as const,
+          dataFreshness: !timestampIsPlausible || observationAgeMs >= 24 * 60 * 60_000
+            ? "unavailable" as const
+            : hasLiveQuote
+              ? "realtime" as const
+              : observationAgeMs >= 60 * 60_000
+                ? "stale" as const
+                : "delayed" as const,
         },
         technical,
       };
