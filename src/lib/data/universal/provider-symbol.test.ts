@@ -23,7 +23,7 @@ describe("provider request symbol resolution", () => {
           resolveProviderRequestSymbol(instrument.canonical, "twelve-data"),
           instrument.canonical,
         ).toBe(
-          mapping.symbol.endsWith(".JK") && instrument.primaryExchange === "IDX"
+          mapping.symbol.endsWith(".JK")
             ? mapping.symbol.slice(0, -3)
             : mapping.symbol,
         );
