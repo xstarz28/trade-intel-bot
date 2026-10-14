@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n";
 interface PriceChartProps {
   instrument: string;
   instrumentType: string;
+  timeframe: string;
   candles: OhlcvCandle[];
   keyLevels: KeyLevels;
   tradePlan?: TradePlan;
@@ -62,6 +63,7 @@ function timeLabel(timestamp: number, locale: string): string {
 export function PriceStructureChart({
   instrument,
   instrumentType,
+  timeframe,
   candles,
   keyLevels,
   tradePlan,
@@ -175,10 +177,10 @@ export function PriceStructureChart({
   ].filter(Boolean);
 
   return (
-    <Card className="border-border/50 overflow-hidden">
+    <Card className="border-border/50 overflow-hidden" data-testid="price-structure-chart" data-instrument={instrument} data-timeframe={timeframe} data-last-close={last.close} data-last-candle-timestamp={last.timestamp}>
       <CardHeader className="px-4 py-3 border-b border-border/30">
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-xs font-mono">$ {copy.title}</CardTitle>
+          <CardTitle className="text-xs font-mono" data-testid="price-structure-chart-title">{instrument} · {timeframe} · {copy.title}</CardTitle>
           <div className="flex items-center gap-2 text-[9px] font-mono text-muted-foreground">
             <span>{data.length} {copy.candles}</span>
             <span>·</span>
@@ -219,7 +221,7 @@ export function PriceStructureChart({
             viewBox={`0 0 ${width} ${height}`}
             className="w-full h-auto min-h-[300px]"
             role="img"
-            aria-label="Provider OHLCV market structure chart"
+            aria-label={`Provider OHLCV market structure chart for ${instrument} ${timeframe}`}
           >
             {/* TradingView-like grid: deliberately subtle. */}
             {[0, 1, 2, 3, 4].map((i) => {
