@@ -32,11 +32,13 @@ import type {
   OrderBlock,
   SmcContext,
   TimeframeStructureContext,
+  TpoProfileContext,
   VolumeProfileContext,
   VwapBand,
   VwapContext,
 } from "./market-types";
 import { atr as computeAtr } from "./technical";
+import { calculateTpoProfile } from "@/lib/technical/market-profile";
 
 // ── Documented constants ──────────────────────────────────────────
 
@@ -538,6 +540,31 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
   return { available: true, sessionVwap, anchoredVwap: anchored, bands, priceLocation };
 }
 
+// ── TPO (Time Price Opportunity) ───────────────────────────────────
+
+export function computeTpoProfile(candles: OhlcvCandle[]): TpoProfileContext {
+  const blockMinutes = 30;
+  const valueAreaPercent = 0.7;
+  const profile = calculateTpoProfile(candles, { rows: 64, blockMinutes, valueAreaPercent });
+  if (!profile.available) {
+    return {
+      available: false,
+      unavailableReason: profile.reason ?? "TPO could not be calculated from available candles.",
+      blockMinutes,
+      valueAreaPercent,
+    };
+  }
+  return {
+    available: true,
+    poc: profile.poc,
+    vah: profile.vah,
+    val: profile.val,
+    totalTpo: profile.total,
+    blockMinutes,
+    valueAreaPercent,
+  };
+}
+
 // ── Volume Profile ────────────────────────────────────────────────
 
 export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileContext {
@@ -705,5 +732,6 @@ export function computeSmcContext(
     orderBlocks: detectOrderBlocks(candles, timeframe, atrValue),
     vwap: computeVwap(candles),
     volumeProfile: computeVolumeProfile(candles),
+    tpoProfile: computeTpoProfile(candles),
   };
 }
