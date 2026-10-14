@@ -513,11 +513,15 @@ export function MarketOpportunities({
   // the explicit no-opportunity state below instead of disguising monitoring
   // candidates as recommendations.
   const monitoringRanked = useMemo(() => {
-    if (tab === "trading") return [];
-    return baseFilteredRanked
+    const monitoring = baseFilteredRanked
       .filter((item) => item.suitability === "NEUTRAL" || item.suitability === "INSUFFICIENT_DATA")
       .slice(0, 5);
-  }, [baseFilteredRanked, tab]);
+    // If no setup passes the trading gates, still expose real-data instruments
+    // worth monitoring. They remain explicitly non-actionable and are never
+    // relabeled WATCHLIST/TOP_OPPORTUNITY.
+    if (tab === "trading") return filteredRanked.length === 0 ? monitoring : [];
+    return monitoring;
+  }, [baseFilteredRanked, tab, filteredRanked.length]);
 
   const displayedRankedCount = filteredRanked.length || monitoringRanked.length;
 
@@ -751,7 +755,7 @@ export function MarketOpportunities({
         <p className="text-[10px] font-sans text-muted-foreground/70">{result.marketOverview}</p>
         <p data-testid="market-data-legend" className="text-[9px] font-sans text-muted-foreground/55 leading-relaxed">
           Fresh &lt;5 min · Delayed 5–60 min · Stale 1–24 h · Unavailable = missing/invalid timestamp or &gt;24 h.
-          FULL means multiple independent evidence domains. Trading lists show only qualified WATCHLIST/TOP setups; confidence measures evidence coherence, not win probability.
+          FULL means multiple independent evidence domains. Trading lists prioritize qualified WATCHLIST/TOP setups; when none qualify, real-data neutral candidates may appear as monitoring-only. Confidence measures evidence coherence, not win probability.
         </p>
 
         {/* Scanning indicator */}
@@ -806,7 +810,7 @@ export function MarketOpportunities({
             <div data-testid="market-monitoring-list" className="space-y-2">
               <div className="rounded-lg border border-border/40 bg-muted/15 p-3">
                 <p className="text-[10px] font-sans font-semibold text-muted-foreground">
-                  {tx("marketPanel.suitability.neutral")} · {tx("status.live")}
+                  {tx("marketPanel.suitability.neutral")} · {isLive ? tx("status.live") : tx("marketPanel.staticBadge")} · MONITORING ONLY
                 </p>
                 <p className="mt-1 text-[9px] font-sans leading-relaxed text-muted-foreground/70">
                   {tx("marketPanel.noOpportunityHint")}
