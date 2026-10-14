@@ -271,8 +271,8 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
       throw new Error(`${instrument} trade plan does not render Entry, Stop Loss and Take Profit`);
     }
     const planPrices = planFields.map((field) => {
-      const lines = field.split("\\n").map((line) => line.trim()).filter(Boolean);
-      const match = (lines[1] ?? "").replace(/,/g, "").match(/-?\\d+(?:\\.\\d+)?/);
+      const lines = field.split("\n").map((line) => line.trim()).filter(Boolean);
+      const match = (lines[1] ?? "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
       return match ? Number(match[0]) : Number.NaN;
     });
     const [entry, stop, target] = planPrices;
@@ -285,8 +285,8 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     if (!geometryValid) {
       throw new Error(`${instrument} ${recommendation} trade plan has invalid Entry/SL/TP geometry`);
     }
-    const rrText = await executablePlan.getByText(/^R:R\\s+\\d+(?:\\.\\d+)?$/).innerText().catch(() => "");
-    const displayedRr = Number(rrText.match(/R:R\\s+(\\d+(?:\\.\\d+)?)/)?.[1]);
+    const rrText = await executablePlan.getByText(/^R:R\s+\d+(?:\.\d+)?$/).innerText().catch(() => "");
+    const displayedRr = Number(rrText.match(/R:R\s+(\d+(?:\.\d+)?)/)?.[1]);
     const calculatedRr = Math.abs(target - entry) / Math.abs(entry - stop);
     if (!Number.isFinite(displayedRr) || displayedRr <= 0 || Math.abs(calculatedRr - displayedRr) > 0.02) {
       throw new Error(`${instrument} displayed R:R does not match its rendered Entry/SL/TP levels: ${rrText}`);
