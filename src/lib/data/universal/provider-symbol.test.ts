@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { resolveProviderRequestSymbol } from "./provider-symbol";
+import { getAllInstruments } from "./instruments";
 
 describe("provider request symbol resolution", () => {
   it("uses explicit Twelve Data suffix mappings for Indonesian equities", () => {
@@ -12,6 +13,18 @@ describe("provider request symbol resolution", () => {
     expect(resolveProviderRequestSymbol("XAU/USD", "twelve-data")).toBe("XAU/USD");
     expect(resolveProviderRequestSymbol("EUR/USD", "twelve-data")).toBe("EUR/USD");
     expect(resolveProviderRequestSymbol("AAPL", "twelve-data")).toBe("AAPL");
+  });
+
+  it("honors every declared available Twelve Data mapping in the registry", () => {
+    for (const instrument of getAllInstruments()) {
+      for (const mapping of instrument.providerMappings) {
+        if (mapping.provider !== "twelve-data" || !mapping.available) continue;
+        expect(
+          resolveProviderRequestSymbol(instrument.canonical, "twelve-data"),
+          instrument.canonical,
+        ).toBe(mapping.symbol);
+      }
+    }
   });
 
   it("preserves exact provider-native contract IDs", () => {
