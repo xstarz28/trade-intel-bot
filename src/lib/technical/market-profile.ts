@@ -81,7 +81,7 @@ export function calculateTpoProfile(input: ProfileCandle[], options: ProfileOpti
 }
 export function calculateVpvrProfile(input: ProfileCandle[], options: ProfileOptions = {}): MarketProfile {
   const candles=validCandles(input), o=optionsOf(options);
-  if(candles.length<20) return {available:false,reason:"At least 20 valid candles are required.",method:"ohlcv-range-allocation",rows:[],valueAreaPercent:o.valueAreaPercent};
+  if(candles.length<3) return {available:false,reason:"At least 3 valid candles are required for a minimal volume profile.",method:"ohlcv-range-allocation",rows:[],valueAreaPercent:o.valueAreaPercent};
   if(candles.some(c=>c.volume==null || !Number.isFinite(c.volume) || c.volume<0) || !candles.some(c=>(c.volume??0)>0))
     return {available:false,reason:"Representative positive volume is unavailable; VPVR was not fabricated.",method:"ohlcv-range-allocation",rows:[],valueAreaPercent:o.valueAreaPercent};
   const {low,high,step}=levelsFor(candles,o.rows);
