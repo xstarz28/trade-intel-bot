@@ -155,6 +155,17 @@ export interface VolumeProfileContext {
   lvn?: number[]; // low-volume node midpoints
 }
 
+export interface TpoProfileContext {
+  available: boolean;
+  unavailableReason?: string;
+  poc?: number;
+  vah?: number;
+  val?: number;
+  totalTpo?: number;
+  blockMinutes: number;
+  valueAreaPercent: number;
+}
+
 /** Everything Phase 2 derives from raw candles on one timeframe. */
 export interface SmcContext {
   timeframe: string;
@@ -166,6 +177,7 @@ export interface SmcContext {
   orderBlocks: OrderBlock[]; // most recent first
   vwap: VwapContext;
   volumeProfile: VolumeProfileContext;
+  tpoProfile?: TpoProfileContext;
 }
 
 // ── Phase 3A: adaptive multi-timeframe architecture ───────────────
