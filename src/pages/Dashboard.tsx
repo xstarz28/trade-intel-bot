@@ -442,6 +442,9 @@ export default function Dashboard() {
           // class, or candle interval. A plausible-looking chart must never be
           // attached to the wrong requested analysis.
           const snapshot = marketDataResult.data;
+          if (!snapshot) {
+            throw new Error("Market data returned no usable snapshot after fallback.");
+          }
           const requestedInstrument = input.instrument.trim().toUpperCase();
           const snapshotInstrument = snapshot.instrument?.trim().toUpperCase();
           if (snapshotInstrument !== requestedInstrument) {
