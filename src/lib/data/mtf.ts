@@ -74,10 +74,13 @@ export function selectBudgetedMtfSlot(slots: readonly ChainSlot[]): ChainSlot | 
 export function selectBudgetedMtfSlots(
   slots: readonly ChainSlot[],
   requestedTf: string,
+  tradingStyle?: string,
 ): ChainSlot[] {
   const structure = slots.find((slot) => slot.role === "structure");
   const trigger = slots.find((slot) => slot.role === "trigger");
-  if (requestedTf.toUpperCase() === "M5" && structure && trigger) {
+  // Scalping needs both the nearest independent HTF structure and the lower
+  // execution trigger. Without the trigger, the engine must reject scalp entries.
+  if ((requestedTf.toUpperCase() === "M5" || tradingStyle?.toLowerCase() === "scalping") && structure && trigger) {
     return [structure, trigger];
   }
   const preferred = selectBudgetedMtfSlot(slots);
