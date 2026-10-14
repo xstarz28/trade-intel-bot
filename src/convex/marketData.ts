@@ -132,6 +132,16 @@ export const fetchMarketData = action({
       const price = quoteRes.close ? parseFloat(quoteRes.close) : candles[candles.length - 1].close;
       const bid = Number.isFinite(Number(quoteRes.bid)) ? Number(quoteRes.bid) : undefined;
       const ask = Number.isFinite(Number(quoteRes.ask)) ? Number(quoteRes.ask) : undefined;
+      // A successful fetch is not the same as a current market observation.
+      // Prefer the provider's quote timestamp; if absent, fall back to the
+      // latest candle timestamp rather than stamping old data with Date.now().
+      const rawQuoteTimestamp = Number(quoteRes.timestamp);
+      const parsedQuoteDatetime = quoteRes.datetime ? Date.parse(String(quoteRes.datetime)) : Number.NaN;
+      const quoteTimestamp = Number.isFinite(rawQuoteTimestamp) && rawQuoteTimestamp > 0
+        ? (rawQuoteTimestamp < 1_000_000_000_000 ? rawQuoteTimestamp * 1000 : rawQuoteTimestamp)
+        : Number.isFinite(parsedQuoteDatetime) && parsedQuoteDatetime > 0
+          ? parsedQuoteDatetime
+          : candles[candles.length - 1].timestamp;
 
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
@@ -345,7 +355,7 @@ export const fetchMarketData = action({
           fetchTimestamp: Date.now(),
           price: {
             price,
-            timestamp: Date.now(),
+            timestamp: quoteTimestamp,
             source: "twelve-data",
             ...(bid !== undefined ? { bid } : {}),
             ...(ask !== undefined ? { ask } : {}),
