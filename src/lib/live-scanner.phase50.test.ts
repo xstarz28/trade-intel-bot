@@ -136,6 +136,10 @@ describe("A — Live Candidate Ingestion", () => {
 
   it("builds candidate with analysis result", () => {
     const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "H4",
+        price: { price: 65000, timestamp: NOW, source: "twelve-data" },
+      }),
       analysisResult: {
         id: "test",
         instrument: "BTC/USD",
@@ -522,6 +526,10 @@ describe("N — Macro Context", () => {
 describe("O — Multi-Timeframe Alignment", () => {
   it("MTF alignment is extracted from analysis result", () => {
     const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "H4",
+        price: { price: 65000, timestamp: NOW, source: "twelve-data" },
+      }),
       analysisResult: {
         id: "test", instrument: "BTC/USD", instrumentType: "crypto", timeframe: "H4",
         bias: "Bullish", confidence: 72, recommendation: "LONG",
