@@ -8,7 +8,7 @@
  * - No synthetic SL/TP fallbacks
  */
 import { describe, it, expect } from "vitest";
-import { runAnalysis, MIN_RR_THRESHOLD } from "./analysis-engine";
+import { runAnalysis, MIN_RR_THRESHOLD, calculateNoTradeEvidenceStrength } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 import type { OhlcvCandle, TechnicalData, MarketData } from "@/lib/data/market-types";
 
@@ -481,5 +481,23 @@ describe("conviction", () => {
     } else {
       expect(opposed.recommendation).toBe("NO_TRADE");
     }
+  });
+});
+
+
+describe("NO_TRADE evidence strength", () => {
+  it("does not force a fixed 30 when core evidence is absent", () => {
+    expect(calculateNoTradeEvidenceStrength({ trend: 0, indicator: -1, fundamental: 0, sentiment: 0 })).toBe(20);
+  });
+  it("increases when independent core evidence agrees", () => {
+    const neutral = calculateNoTradeEvidenceStrength({ trend: 0, indicator: 0, fundamental: 0, sentiment: 0 });
+    const aligned = calculateNoTradeEvidenceStrength({ trend: 1, indicator: 0, fundamental: 1, sentiment: 1 });
+    expect(aligned).toBeGreaterThan(neutral);
+    expect(aligned).toBeLessThanOrEqual(55);
+  });
+  it("penalizes conflicting core evidence", () => {
+    const aligned = calculateNoTradeEvidenceStrength({ trend: 1, indicator: 0, fundamental: 1, sentiment: 1 });
+    const conflicting = calculateNoTradeEvidenceStrength({ trend: 1, indicator: 0, fundamental: -1, sentiment: 0 });
+    expect(conflicting).toBeLessThan(aligned);
   });
 });
