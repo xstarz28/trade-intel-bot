@@ -46,6 +46,19 @@ describe("quote observation freshness", () => {
     expect(seconds.priceTimestamp).toBe(NOW - 60_000);
   });
 
+  it("uses candle observation time when quote price is invalid", () => {
+    const candleTimestamp = NOW - 90 * 60_000;
+    const result = resolveQuoteObservation({
+      quotePrice: Number.NaN,
+      quoteTimestamp: NOW - 30_000,
+      candleTimestamp,
+      now: NOW,
+    });
+    expect(result.hasLiveQuote).toBe(false);
+    expect(result.priceTimestamp).toBe(candleTimestamp);
+    expect(result.dataFreshness).toBe("stale");
+  });
+
   it("does not treat a stale or implausibly future quote as realtime", () => {
     const stale = resolveQuoteObservation({
       quotePrice: 100,
