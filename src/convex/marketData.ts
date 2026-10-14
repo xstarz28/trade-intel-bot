@@ -22,6 +22,7 @@ import type { FxRateSnapshot } from "../lib/risk";
 import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import { resolveProviderRequest } from "../lib/data/universal/provider-symbol";
+import { fetchYahooFinanceCandles, resolveYahooFinanceStockSymbol } from "../lib/data/providers/yahoo-finance";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
@@ -179,50 +180,109 @@ async function fetchCandles(
         }
       }
     }
-    if (!apiKey) throw new Error("TWELVE_DATA_API_KEY is missing for this market-data request");
-    reserveTwelveDataCall(requestClass);
-    const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(providerRequestSymbol) +
-      "&interval=" + encodeURIComponent(mapTimeframe(normalizedTimeframe)) +
-      (providerRequest.micCode ? "&mic_code=" + encodeURIComponent(providerRequest.micCode) : "") +
-      "&outputsize=" + outputsize +
-      "&timezone=UTC" +
-      "&apikey=" + encodeURIComponent(apiKey);
-    const response = await fetch(url, { signal: AbortSignal.timeout(CANDLE_REQUEST_TIMEOUT_MS) });
-    const json = await response.json().catch(() => ({} as Record<string, any>));
-    if (json && json.code) {
-      throw new Error("[" + json.code + "] " + (json.message || "provider error"));
-    }
-    if (!response.ok) {
-      throw new Error("[" + response.status + "] " + (response.statusText || "provider HTTP error"));
-    }
-    const values: TdCandle[] = Array.isArray(json?.values) ? json.values : [];
-    if (values.length === 0) throw new Error("no candle data returned");
-    const normalized = values.reverse().map((candle) => ({
-      timestamp: parseMarketDataTimestamp(candle.datetime),
-      open: parseFloat(candle.open),
-      high: parseFloat(candle.high),
-      low: parseFloat(candle.low),
-      close: parseFloat(candle.close),
-      volume: parseFloat(candle.volume) || 0,
-    })).filter((candle) =>
-      Number.isFinite(candle.timestamp) &&
-      Number.isFinite(candle.open) && Number.isFinite(candle.high) &&
-      Number.isFinite(candle.low) && Number.isFinite(candle.close),
-    );
-    if (normalized.length === 0) throw new Error("provider returned no valid OHLCV candles");
+    const yahooSymbol = instrumentType === "stock"
+      ? resolveYahooFinanceStockSymbol(normalizedSymbol)
+      : null;
+    let yahooAttempt: Promise<OhlcvCandle[]> | null = null;
+    const loadYahooCandles = async (): Promise<OhlcvCandle[]> => {
+      if (!yahooSymbol) throw new Error("No exact Yahoo Finance equity ticker mapping exists");
+      if (!yahooAttempt) {
+        yahooAttempt = fetchYahooFinanceCandles(yahooSymbol, normalizedTimeframe, outputsize).then((candles) => {
+          const fetchedAt = Date.now();
+          candleCache.set(cacheKey, {
+            candles: candles.map((candle) => ({ ...candle })),
+            fetchedAt,
+            expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
+          });
+          candleProviderCache.set(cacheKey, "yahoo-finance-public");
+          candleRateLimitBackoff.delete(cacheKey);
+          return candles;
+        });
+      }
+      return yahooAttempt;
+    };
 
-    const fetchedAt = Date.now();
-    const previous = candleCache.get(cacheKey);
-    if (!previous || normalized.length >= previous.candles.length || fetchedAt >= previous.expiresAt) {
-      candleCache.set(cacheKey, {
-        candles: normalized.map((candle) => ({ ...candle })),
-        fetchedAt,
-        expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
-      });
+    // Twelve Data marks IDX data as Pro/Venture-only. Use the free, exact
+    // Yahoo Finance listing first for .JK equities; never map to a proxy asset.
+    let idxYahooError: string | null = null;
+    if (instrumentType === "stock" && yahooSymbol?.endsWith(".JK")) {
+      try {
+        return await loadYahooCandles();
+      } catch (error) {
+        idxYahooError = error instanceof Error ? error.message : String(error);
+      }
     }
-    candleProviderCache.set(cacheKey, "twelve-data");
-    candleRateLimitBackoff.delete(cacheKey);
-    return normalized;
+
+    if (!apiKey) {
+      if (instrumentType === "stock" && yahooSymbol) {
+        try {
+          return await loadYahooCandles();
+        } catch (error) {
+          throw new Error("Twelve Data key is missing and Yahoo Finance fallback failed: " +
+            (error instanceof Error ? error.message : String(error)));
+        }
+      }
+      throw new Error("TWELVE_DATA_API_KEY is missing for this market-data request");
+    }
+
+    try {
+      reserveTwelveDataCall(requestClass);
+      const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(providerRequestSymbol) +
+        "&interval=" + encodeURIComponent(mapTimeframe(normalizedTimeframe)) +
+        (providerRequest.micCode ? "&mic_code=" + encodeURIComponent(providerRequest.micCode) : "") +
+        "&outputsize=" + outputsize +
+        "&timezone=UTC" +
+        "&apikey=" + encodeURIComponent(apiKey);
+      const response = await fetch(url, { signal: AbortSignal.timeout(CANDLE_REQUEST_TIMEOUT_MS) });
+      const json = await response.json().catch(() => ({} as Record<string, any>));
+      if (json && json.code) {
+        throw new Error("[" + json.code + "] " + (json.message || "provider error"));
+      }
+      if (!response.ok) {
+        throw new Error("[" + response.status + "] " + (response.statusText || "provider HTTP error"));
+      }
+      const values: TdCandle[] = Array.isArray(json?.values) ? json.values : [];
+      if (values.length === 0) throw new Error("no candle data returned");
+      const normalized = values.reverse().map((candle) => ({
+        timestamp: parseMarketDataTimestamp(candle.datetime),
+        open: parseFloat(candle.open),
+        high: parseFloat(candle.high),
+        low: parseFloat(candle.low),
+        close: parseFloat(candle.close),
+        volume: parseFloat(candle.volume) || 0,
+      })).filter((candle) =>
+        Number.isFinite(candle.timestamp) &&
+        Number.isFinite(candle.open) && Number.isFinite(candle.high) &&
+        Number.isFinite(candle.low) && Number.isFinite(candle.close),
+      );
+      if (normalized.length === 0) throw new Error("provider returned no valid OHLCV candles");
+
+      const fetchedAt = Date.now();
+      const previous = candleCache.get(cacheKey);
+      if (!previous || normalized.length >= previous.candles.length || fetchedAt >= previous.expiresAt) {
+        candleCache.set(cacheKey, {
+          candles: normalized.map((candle) => ({ ...candle })),
+          fetchedAt,
+          expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
+        });
+      }
+      candleProviderCache.set(cacheKey, "twelve-data");
+      candleRateLimitBackoff.delete(cacheKey);
+      return normalized;
+    } catch (twelveDataError) {
+      if (instrumentType === "stock" && yahooSymbol) {
+        try {
+          return await loadYahooCandles();
+        } catch (yahooError) {
+          throw new Error("Twelve Data failed: " +
+            (twelveDataError instanceof Error ? twelveDataError.message : String(twelveDataError)) +
+            (idxYahooError ? "; initial IDX Yahoo attempt failed: " + idxYahooError : "") +
+            "; Yahoo Finance fallback failed: " +
+            (yahooError instanceof Error ? yahooError.message : String(yahooError)));
+        }
+      }
+      throw twelveDataError;
+    }
   })();
 
   candleInflight.set(requestKey, request);
@@ -257,7 +317,7 @@ export const fetchMarketData = action({
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.TWELVE_DATA_API_KEY;
-    if (!apiKey && args.instrumentType !== "crypto") {
+    if (!apiKey && args.instrumentType !== "crypto" && args.instrumentType !== "stock") {
       return {
         success: false as const,
         error: "Market data provider not configured: TWELVE_DATA_API_KEY is missing. Add it in the Keys/API keys tab.",
