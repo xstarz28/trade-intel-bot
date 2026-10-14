@@ -371,13 +371,24 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     throw new Error(`${instrument} smoke captured a stale result from another instrument`);
   }
 
-  if (!evidence.productSurfaces.chart) {
-    const chart = targetPage.getByRole("img", { name: /provider OHLCV market structure chart/i });
-    if (!(await chart.count())) {
-      throw new Error(`${instrument} rendered without the provider OHLCV price-structure chart`);
-    }
-    evidence.productSurfaces.chart = true;
+  const chart = targetPage.getByTestId("price-structure-chart");
+  if ((await chart.count()) !== 1) {
+    throw new Error(`${instrument} rendered without one unique provider OHLCV price-structure chart`);
   }
+  const chartInstrument = await chart.getAttribute("data-instrument");
+  const chartTimeframe = await chart.getAttribute("data-timeframe");
+  const chartPrice = Number(await chart.getAttribute("data-last-close"));
+  const chartTimestamp = Number(await chart.getAttribute("data-last-candle-timestamp"));
+  if (chartInstrument?.toUpperCase() !== instrument.toUpperCase()) {
+    throw new Error(`${instrument} analysis displayed a chart for a different instrument: ${chartInstrument}`);
+  }
+  if (chartTimeframe?.toUpperCase() !== expectedTimeframe.toUpperCase()) {
+    throw new Error(`${instrument} chart timeframe mismatch: expected ${expectedTimeframe}, received ${chartTimeframe}`);
+  }
+  if (!Number.isFinite(chartPrice) || chartPrice <= 0 || !Number.isFinite(chartTimestamp) || chartTimestamp <= 0) {
+    throw new Error(`${instrument} chart has an invalid last candle price or timestamp`);
+  }
+  evidence.productSurfaces.chart = true;
 
   evidence.marketTypeCoverage[type] = true;
   evidence.analyses.push(result);
