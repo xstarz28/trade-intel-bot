@@ -21,7 +21,7 @@ import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/dat
 import type { FxRateSnapshot } from "../lib/risk";
 import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
-import { resolveProviderRequestSymbol } from "../lib/data/universal/provider-symbol";
+import { resolveProviderRequest } from "../lib/data/universal/provider-symbol";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
@@ -102,11 +102,12 @@ async function fetchCandles(
   // provider-native spot tickers remain unchanged because they have no mapping.
   const isExactDerivativeContract = instrumentType === "crypto" &&
     (normalizedSymbol.endsWith("-SWAP") || /-[0-9]{6}$/.test(normalizedSymbol));
-  const providerRequestSymbol = resolveProviderRequestSymbol(
+  const providerRequest = resolveProviderRequest(
     normalizedSymbol,
     "twelve-data",
     isExactDerivativeContract,
   );
+  const providerRequestSymbol = providerRequest.symbol;
   const normalizedTimeframe = tf.trim().toUpperCase();
   const cacheKey = normalizedSymbol + "|" + normalizedTimeframe;
   const requestKey = cacheKey + "|" + outputsize;
@@ -182,6 +183,7 @@ async function fetchCandles(
     reserveTwelveDataCall(requestClass);
     const url = "https://api.twelvedata.com/time_series?symbol=" + encodeURIComponent(providerRequestSymbol) +
       "&interval=" + encodeURIComponent(mapTimeframe(normalizedTimeframe)) +
+      (providerRequest.micCode ? "&mic_code=" + encodeURIComponent(providerRequest.micCode) : "") +
       "&outputsize=" + outputsize +
       "&timezone=UTC" +
       "&apikey=" + encodeURIComponent(apiKey);
