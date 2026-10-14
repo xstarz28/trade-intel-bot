@@ -44,3 +44,10 @@
 - Never synthesize live prices, technical direction, or evidence.
 - Keep `main` and production untouched until validation is satisfactory.
 - Do not label the product ready based on branch CI alone.
+
+## TPO / visible-range profile implementation (current branch)
+- Added `src/lib/technical/market-profile.ts` with pure TPO and OHLCV-derived visible-range volume profile calculations, POC/VAH/VAL, bounded value-area expansion, and explicit insufficient-data handling.
+- TPO counts distinct time blocks that touched each price row (30-minute default).
+- VPVR currently allocates each candle's volume evenly over price rows touched by its OHLC range. This is an approximation, not exchange trade-level volume-at-price; the result labels that limitation and refuses to calculate when volume is missing or zero.
+- Wired TPO POC/VAH/VAL into the SMC context and analysis result's SR/profile display. Added unit tests for valid profiles, missing/zero volume, and insufficient history.
+- This is not yet proof of production behavior: CI/typecheck and live BTC/XAU smoke checks still need to pass. Profile outputs are contextual evidence only and must not independently change bias or authorize a trade.
