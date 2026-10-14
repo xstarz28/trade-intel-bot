@@ -206,7 +206,7 @@ function extractMtfAlignment(
 function extractAtr(tech: TechnicalData | undefined): number | undefined {
   return tech?.atr14;
 }
-function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
+function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: number): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
   if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
   const higherStructureDirection =
     tech.htfContext?.structure === "HH/HL" ? "long" :
@@ -259,6 +259,19 @@ function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateIn
     if (tech.smc?.recentSweep) { score += 5; confirmations++; }
     if (tech.smc?.displacement) { score += 4; confirmations++; }
 
+    // TPO + VPVR add one grouped context confirmation only when both profiles
+    // exist. A balanced value area is not converted into a directional signal.
+    const tpo = tech.smc?.tpoProfile;
+    const vp = tech.smc?.volumeProfile;
+    if (tpo?.available && vp?.available && Number.isFinite(currentPrice) &&
+        tpo.val !== undefined && tpo.vah !== undefined &&
+        vp.val !== undefined && vp.vah !== undefined &&
+        currentPrice! >= tpo.val && currentPrice! <= tpo.vah &&
+        currentPrice! >= vp.val && currentPrice! <= vp.vah) {
+      score += 3;
+      confirmations++;
+    }
+
     return {
       setupDirection: "neutral",
       setupStrength: Math.min(55, Math.max(8, score)),
@@ -277,6 +290,23 @@ function extractSetupEvidence(tech: TechnicalData | undefined): Pick<CandidateIn
   if (tech.smc?.displacement?.direction === alignedStructure) { score += 8; confirmations++; }
   if (tech.smc?.orderBlocks?.some(ob => ob.status === "fresh" && ob.direction === alignedStructure)) { score += 7; confirmations++; }
   if (tech.smc?.fvgs?.some(f => f.status === "fresh" && f.direction === alignedStructure)) { score += 5; confirmations++; }
+
+  // TPO and VPVR must independently agree with an already-established setup
+  // direction. They add one grouped confluence point and can never create direction.
+  const tpo = tech.smc?.tpoProfile;
+  const vp = tech.smc?.volumeProfile;
+  if (tpo?.available && vp?.available && Number.isFinite(currentPrice) &&
+      tpo.val !== undefined && tpo.vah !== undefined &&
+      vp.val !== undefined && vp.vah !== undefined) {
+    const aboveValue = currentPrice! > tpo.vah && currentPrice! > vp.vah;
+    const belowValue = currentPrice! < tpo.val && currentPrice! < vp.val;
+    if ((bullish && aboveValue) || (!bullish && belowValue)) {
+      score += 6;
+      confirmations++;
+    } else if ((bullish && belowValue) || (!bullish && aboveValue)) {
+      score -= 6;
+    }
+  }
 
   // Provider OHLCV must produce differentiated opportunity quality, not a
   // flat score for every instrument with merely "some" structure. These are
@@ -539,7 +569,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     hasMacro: !!source.treasuryData?.available || !!source.calendarData,
     hasExecutionQuality: extractSpreadBps(source) !== undefined,
 
-    ...extractSetupEvidence(tech),
+    ...extractSetupEvidence(tech, price),
 
     // Directional evidence bridge: use the analysis engine's signed
     // fundamental/positioning factors instead of reconstructing them in UI.
