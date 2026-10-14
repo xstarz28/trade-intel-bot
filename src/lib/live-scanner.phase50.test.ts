@@ -172,6 +172,31 @@ describe("A — Live Candidate Ingestion", () => {
     expect(candidate.positioningEvidenceAvailable).toBe(false);
   });
 
+  it("does not reuse an analysis from a different timeframe or price snapshot", () => {
+    const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "H1",
+        price: { price: 66000, timestamp: NOW, source: "twelve-data" },
+      }),
+      analysisResult: {
+        id: "stale-analysis",
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        timeframe: "M5",
+        bias: "Bullish",
+        confidence: 72,
+        recommendation: "LONG",
+        noTradeReasons: [],
+        timestamp: NOW - MINUTE,
+        priceSnapshot: { price: 65000, timestamp: NOW - MINUTE, source: "twelve-data" },
+      } as any,
+    });
+
+    const candidate = buildCandidateFromSource(source);
+    expect(candidate.hasAnalysis).toBe(false);
+    expect(candidate.analysisConfidence).toBe(0);
+  });
+
   it("batch builds candidates from multiple sources", () => {
     const sources = [
       makeSource({ instrument: "BTC/USD", assetClass: "crypto" }),
