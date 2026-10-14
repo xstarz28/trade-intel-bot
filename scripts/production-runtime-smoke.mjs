@@ -361,8 +361,19 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   if (!result.primaryDataQuality) {
     throw new Error(`${instrument} rendered without its primary data-quality status`);
   }
-  if (["INVALID", "UNAVAILABLE"].includes(result.primaryDataQuality)) {
-    throw new Error(`${instrument} primary data quality is ${result.primaryDataQuality}; a rendered card is not evidence of a usable market analysis.\\n${body.slice(-2400)}`);
+  if (result.primaryDataQuality === "INVALID") {
+    throw new Error(`${instrument} primary data quality is INVALID; provider OHLCV is malformed and cannot be analyzed.\\n${body.slice(-2400)}`);
+  }
+  // Historical timeframes (H4/D1/W1) can legitimately have an old last candle,
+  // and delayed public-equity feeds can be stale during the session. That must
+  // block execution, not make the chart/analysis endpoint itself a failed smoke.
+  // Permit UNAVAILABLE only when the product explicitly rejects the setup.
+  if (result.primaryDataQuality === "UNAVAILABLE" && recommendation !== "NO_TRADE") {
+    throw new Error(`${instrument} has UNAVAILABLE primary data but the UI did not reject execution.\\n${body.slice(-2400)}`);
+  }
+  if (result.primaryDataQuality === "UNAVAILABLE" &&
+      !/stale|unavailable|older than|freshness|data quality/i.test(await noTradeReasons.innerText().catch(() => ""))) {
+    throw new Error(`${instrument} has UNAVAILABLE data without a visible freshness/data-quality rejection reason.\\n${body.slice(-2400)}`);
   }
   if (!resultText.includes(`${instrument} |`)) {
     throw new Error(`${instrument} smoke captured a stale result from another instrument`);
