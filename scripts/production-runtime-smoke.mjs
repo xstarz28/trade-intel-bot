@@ -22,6 +22,7 @@ const evidence = {
   analyses: [],
   marketTypeCoverage: { forex: false, crypto: false, stock: false, commodity: false },
   cryptoContractCoverage: { spot: false, perpetual: false, futures: false },
+  timeframeCoverage: { M1: false, M5: false, M15: false, H1: false, H4: false, D1: false, W1: false },
   productSurfaces: { chart: false, riskSizing: false, recommendations: false },
   googleOAuth: { checked: false, reachedAuthorizationEndpoint: false, redirectUriMismatch: false },
 };
@@ -421,6 +422,22 @@ try {
   // BBCA -> BBCA.JK); this live check prevents registry mappings from being
   // correct in unit tests but ignored by the actual market-data action.
   await runAnalysisWithQuotaRetry(page, "BBCA", "stock", "M5");
+  evidence.timeframeCoverage.M5 = true;
+
+  // Exercise every supported setup timeframe against the free IDX equity
+  // fallback. This catches invalid timeframe conversions and provider gaps,
+  // not merely ticker selection. Each response must still show a real OHLCV
+  // snapshot and provider/data-quality state.
+  for (const timeframe of ["M1", "M15", "H1", "H4", "D1", "W1"]) {
+    await runAnalysisWithQuotaRetry(page, "BBCA", "stock", timeframe);
+    evidence.timeframeCoverage[timeframe] = true;
+  }
+  const missingTimeframes = Object.entries(evidence.timeframeCoverage)
+    .filter(([, covered]) => !covered)
+    .map(([timeframe]) => timeframe);
+  if (missingTimeframes.length > 0) {
+    throw new Error("Production BBCA analysis did not cover supported timeframes: " + missingTimeframes.join(", "));
+  }
 
   // The scanner must render qualified recommendations or an explicit no-opportunity
   // state. Neutral discovery candidates must not masquerade as recommendations.
