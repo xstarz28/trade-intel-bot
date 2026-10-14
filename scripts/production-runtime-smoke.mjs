@@ -393,7 +393,7 @@ try {
   const instrumentPicker = page.getByRole("combobox").first();
   await instrumentPicker.click();
   const catalogOptionTexts = (await page.getByRole("option").allTextContents())
-    .map((value) => value.replace(/\\s+/g, " ").trim())
+    .map((value) => value.replace(/\s+/g, " ").trim())
     .filter(Boolean);
   if (catalogOptionTexts.length === 0) {
     throw new Error("Production instrument selector returned an empty catalog");
@@ -408,7 +408,7 @@ try {
   if (repeatedOptions.length > 0) {
     throw new Error("Production instrument selector contains duplicate visible options: " + repeatedOptions.slice(0, 12).join("; "));
   }
-  await page.getByRole("option", { name: /BTC\\/USD/i }).first().click();
+  await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
   evidence.authenticated = true;
 
   // Real production coverage: spot crypto + forex, commodity, and equity.
