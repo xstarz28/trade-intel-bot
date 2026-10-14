@@ -18,7 +18,12 @@ import {
   type FxRateSnapshot,
   type InstrumentSpec,
 } from "@/lib/risk";
-import { resolveConversionRate, DEFAULT_FX_MAX_AGE_MS } from "@/lib/risk/fx";
+import {
+  resolveConversionRate,
+  DEFAULT_FX_MAX_AGE_MS,
+  DAILY_REFERENCE_FX_MAX_AGE_MS,
+  parseDailyFxReferenceSnapshot,
+} from "@/lib/risk/fx";
 import {
   parseSymbolCurrencies,
   resolveInstrumentSpec,
@@ -135,6 +140,47 @@ describe("resolveConversionRate", () => {
     });
     expect(r.available).toBe(false);
     if (!r.available) expect(r.reason).toContain("FX_RATE_STALE");
+  });
+
+  it("accepts a dated daily reference within its explicit freshness ceiling", () => {
+    const observationDate = new Date(NOW - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const parsed = parseDailyFxReferenceSnapshot({
+      base: "EUR",
+      quote: "USD",
+      rate: 1.08,
+      date: observationDate,
+    }, "EUR", "USD", NOW);
+    expect("snapshot" in parsed).toBe(true);
+    if ("snapshot" in parsed) {
+      expect(parsed.snapshot.maxAgeMs).toBe(DAILY_REFERENCE_FX_MAX_AGE_MS);
+      expect(parsed.snapshot.source).toContain(observationDate);
+      expect(resolveConversionRate("EUR", "USD", {
+        now: NOW,
+        direct: parsed.snapshot,
+      })).toMatchObject({ available: true, rate: 1.08, direction: "direct" });
+    }
+  });
+
+  it("rejects a daily reference outside its explicit freshness ceiling", () => {
+    const observationDate = new Date(NOW - DAILY_REFERENCE_FX_MAX_AGE_MS - 2 * 24 * 60 * 60 * 1000)
+      .toISOString().slice(0, 10);
+    const parsed = parseDailyFxReferenceSnapshot({
+      base: "EUR",
+      quote: "USD",
+      rate: 1.08,
+      date: observationDate,
+    }, "EUR", "USD", NOW);
+    expect(parsed).toMatchObject({ error: expect.stringContaining("FX_RATE_STALE") });
+  });
+
+  it("rejects an FX provider response for a mismatched currency pair", () => {
+    const parsed = parseDailyFxReferenceSnapshot({
+      base: "USD",
+      quote: "EUR",
+      rate: 0.92,
+      date: new Date(NOW).toISOString().slice(0, 10),
+    }, "EUR", "USD", NOW);
+    expect(parsed).toMatchObject({ error: expect.stringContaining("invalid pair/rate metadata") });
   });
 
   it("rejects invalid rates instead of using them silently", () => {
