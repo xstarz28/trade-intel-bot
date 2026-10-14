@@ -521,11 +521,11 @@ export function InstrumentInput({
                     <input
                       aria-label={locale === "id" ? "Mata uang kuotasi" : "Quote currency"}
                       type="text"
-                      maxLength={3}
-                      pattern="[A-Za-z]{3}"
+                      maxLength={6}
+                      pattern="[A-Za-z0-9]{3,6}"
                       value={manualSpecFields.quoteCurrency}
                       onChange={(event) => setManualSpecFields((prev) => ({ ...prev, quoteCurrency: event.currentTarget.value.toUpperCase() }))}
-                      placeholder={locale === "id" ? "Kode 3 huruf" : "3-letter code"}
+                      placeholder={locale === "id" ? "Kode mata uang/aset" : "Currency/asset code"}
                       className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-xs font-mono uppercase text-foreground"
                     />
                   </label>
