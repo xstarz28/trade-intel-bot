@@ -142,6 +142,12 @@ export interface VwapContext {
   sessionVwap?: number;
   anchoredVwap?: { anchorTime: number; value: number };
   bands?: VwapBand; // volume-weighted deviation bands around session VWAP
+  /** Explicit non-volume-weighted fallback; never labeled as VWAP. */
+  priceOnlyFallback?: {
+    sessionMean: number;
+    method: "arithmetic_mean_typical_price";
+    priceLocation: "above_mean" | "below_mean" | "at_mean";
+  };
   priceLocation: "above_vwap" | "below_vwap" | "at_vwap" | "unavailable";
 }
 
