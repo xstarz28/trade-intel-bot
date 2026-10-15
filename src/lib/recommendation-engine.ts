@@ -827,6 +827,13 @@ export function scoreCandidate(
         : "independent directional confirmation unavailable",
     );
   }
+  // A strong technical read without independent corroboration is a watch
+  // context, not a high-ranked opportunity. Keep its numeric score below the
+  // WATCHLIST threshold so the list cannot make an unconfirmed setup look
+  // better than a genuinely corroborated candidate.
+  if (directional && agreeingNonTechnical === 0) {
+    score = Math.min(score, 59);
+  }
 
   if (c.hasDerivatives && !c.hasAnalysis && c.fundingRate === undefined && c.openInterest === undefined) {
     // Provider presence is not alpha: unusable derivatives payloads reduce
