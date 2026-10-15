@@ -43,12 +43,12 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
   const scenarios: ConditionalEntryScenario[] = [];
   if (resistance !== undefined) {
     const trigger = resistance + buffer;
-    const invalidation = resistance - buffer;
+    const invalidation = support;
     const target = bullishTarget;
-    const risk = trigger - invalidation;
+    const risk = invalidation !== undefined ? trigger - invalidation : 0;
     const reward = target !== undefined ? target - trigger : 0;
     const rr = risk > 0 && reward > 0 ? reward / risk : undefined;
-    const ready = atr !== undefined && target !== undefined && rr !== undefined && rr >= 1.5;
+    const ready = atr !== undefined && support !== undefined && target !== undefined && rr !== undefined && rr >= 1.5;
     scenarios.push({
       id: "bullish-breakout",
       direction: "long",
@@ -57,7 +57,7 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
       ...(target !== undefined ? { target } : {}),
       ...(rr !== undefined ? { riskReward: rr } : {}),
       triggerBasis: "Resistance terdekat + buffer konfirmasi 0,1 ATR",
-      invalidationBasis: "Penutupan kembali di bawah resistance dengan buffer 0,1 ATR",
+      invalidationBasis: "Level support/swing low teramati yang membatalkan skenario breakout",
       ...(target !== undefined ? { targetBasis: "Swing high teramati berikutnya" } : {}),
       ready,
       reason: !atr ? "ATR tidak tersedia; konfirmasi buffer belum dapat dihitung." : !target ? "Belum ada swing high teramati di atas pemicu untuk target yang valid." : !ready ? "R:R berbasis level teramati di bawah minimum 1,5." : "Tunggu candle tutup di atas pemicu dan struktur/MTF mengonfirmasi.",
@@ -65,9 +65,9 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
   }
   if (support !== undefined) {
     const trigger = support - buffer;
-    const invalidation = support + buffer;
+    const invalidation = resistance;
     const target = bearishTarget;
-    const risk = invalidation - trigger;
+    const risk = invalidation !== undefined ? invalidation - trigger : 0;
     const reward = target !== undefined ? trigger - target : 0;
     const rr = risk > 0 && reward > 0 ? reward / risk : undefined;
     const ready = atr !== undefined && target !== undefined && rr !== undefined && rr >= 1.5;
@@ -79,7 +79,7 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
       ...(target !== undefined ? { target } : {}),
       ...(rr !== undefined ? { riskReward: rr } : {}),
       triggerBasis: "Support terdekat − buffer konfirmasi 0,1 ATR",
-      invalidationBasis: "Penutupan kembali di atas support dengan buffer 0,1 ATR",
+      invalidationBasis: "Level resistance/swing high teramati yang membatalkan skenario breakdown",
       ...(target !== undefined ? { targetBasis: "Swing low teramati berikutnya" } : {}),
       ready,
       reason: !atr ? "ATR tidak tersedia; konfirmasi buffer belum dapat dihitung." : !target ? "Belum ada swing low teramati di bawah pemicu untuk target yang valid." : !ready ? "R:R berbasis level teramati di bawah minimum 1,5." : "Tunggu candle tutup di bawah pemicu dan struktur/MTF mengonfirmasi.",
