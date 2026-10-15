@@ -25,6 +25,8 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
   const candles = result.candles ?? [];
   const tech = result.technicalData as TechnicalData | undefined;
   if (candles.length < 20 || !tech || tech.dataPoints < 20) return [];
+  const primaryQuality = result.dataQualityContext?.primaryData.status;
+  if (primaryQuality && ["STALE", "UNAVAILABLE", "INVALID", "INSUFFICIENT"].includes(primaryQuality)) return [];
 
   const last = candles[candles.length - 1];
   const values = [last?.close, last?.high, last?.low, tech.atr14];
