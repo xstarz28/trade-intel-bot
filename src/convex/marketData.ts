@@ -23,7 +23,7 @@ import type { FxRateSnapshot } from "../lib/risk";
 import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import { resolveProviderRequest } from "../lib/data/universal/provider-symbol";
-import { fetchYahooFinanceCandles, resolveYahooFinanceComparatorSymbol, resolveYahooFinanceMarketSymbol, resolveYahooFinanceStockSymbol } from "../lib/data/providers/yahoo-finance";
+import { fetchYahooFinanceCandles, resolveYahooFinanceComparatorSymbol, resolveYahooFinanceMarketSymbol } from "../lib/data/providers/yahoo-finance";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
