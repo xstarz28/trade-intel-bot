@@ -36,7 +36,7 @@ const BASE_FACTS = {
   hasCompleteSpec: false,
 };
 
-/** Sequential reference implementation (the OLD Dashboard behavior). */
+/** Sequential reference implementation for the current provider policy. */
 async function sequentialReference(facts: typeof BASE_FACTS, thunks: Record<string, (() => Promise<unknown>) | undefined>) {
   const out: Record<string, unknown> = {};
   const one = async (cond: boolean, t?: () => Promise<unknown>, pick?: (r: never) => unknown) => {
@@ -49,7 +49,7 @@ async function sequentialReference(facts: typeof BASE_FACTS, thunks: Record<stri
     }
   };
   const isFxLike = facts.instrumentType === "forex" || facts.instrumentType === "commodity";
-    out.cotData = await one(isFxLike, thunks.cot);
+  out.cotData = await one(isFxLike, thunks.cot);
   out.executionData = await one(facts.instrumentType === "crypto" && facts.tradingStyle !== "swing", thunks.execution);
   out.eiaData = await one(
     facts.instrumentType === "commodity" && /WTI|CRUDE|BRENT|OIL/i.test(facts.instrument),
@@ -84,7 +84,7 @@ describe("scheduling benchmark", () => {
     const facts = BASE_FACTS;
     const itype = facts.instrumentType as string;
     const isFxLike = itype === "forex" || itype === "commodity";
-          // Each leg creates and awaits a fresh delay promise — truly serial, no overlap.
+    // Each leg creates and awaits a fresh delay promise — truly serial, no overlap.
     if (isFxLike) await delay(LEG_MS, { success: true, data: {} });                           // COT
     if (itype === "crypto" && facts.tradingStyle !== "swing")
       await delay(LEG_MS, { success: true, data: {} });                                   // Execution
