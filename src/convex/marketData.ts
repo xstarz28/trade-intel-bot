@@ -181,9 +181,7 @@ async function fetchCandles(
         }
       }
     }
-    const yahooSymbol = instrumentType === "stock"
-      ? resolveYahooFinanceStockSymbol(normalizedSymbol)
-      : null;
+    const yahooSymbol = resolveYahooFinanceMarketSymbol(instrumentType ?? "", normalizedSymbol);
     let yahooAttempt: Promise<OhlcvCandle[]> | null = null;
     const loadYahooCandles = async (): Promise<OhlcvCandle[]> => {
       if (!yahooSymbol) throw new Error("No exact Yahoo Finance equity ticker mapping exists");
@@ -215,7 +213,7 @@ async function fetchCandles(
     }
 
     if (!apiKey) {
-      if (instrumentType === "stock" && yahooSymbol) {
+      if (yahooSymbol) {
         try {
           return await loadYahooCandles();
         } catch (error) {
@@ -223,7 +221,7 @@ async function fetchCandles(
             (error instanceof Error ? error.message : String(error)));
         }
       }
-      throw new Error("TWELVE_DATA_API_KEY is missing for this market-data request");
+      throw new Error("TWELVE_DATA_API_KEY is missing and no exact free-provider ticker mapping exists for this market-data request");
     }
 
     try {
@@ -271,14 +269,14 @@ async function fetchCandles(
       candleRateLimitBackoff.delete(cacheKey);
       return normalized;
     } catch (twelveDataError) {
-      if (instrumentType === "stock" && yahooSymbol) {
+      if (yahooSymbol) {
         try {
           return await loadYahooCandles();
         } catch (yahooError) {
           throw new Error("Twelve Data failed: " +
             (twelveDataError instanceof Error ? twelveDataError.message : String(twelveDataError)) +
             (idxYahooError ? "; initial IDX Yahoo attempt failed: " + idxYahooError : "") +
-            "; Yahoo Finance fallback failed: " +
+            "; Yahoo Finance exact-symbol fallback failed: " +
             (yahooError instanceof Error ? yahooError.message : String(yahooError)));
         }
       }
@@ -319,7 +317,12 @@ export const fetchMarketData = action({
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.TWELVE_DATA_API_KEY;
-    if (!apiKey && args.instrumentType !== "crypto" && args.instrumentType !== "stock") {
+    if (
+      !apiKey &&
+      args.instrumentType !== "crypto" &&
+      args.instrumentType !== "stock" &&
+      !resolveYahooFinanceMarketSymbol(args.instrumentType, args.instrument)
+    ) {
       return {
         success: false as const,
         error: "Market data provider not configured: TWELVE_DATA_API_KEY is missing. Add it in the Keys/API keys tab.",
