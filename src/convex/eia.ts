@@ -13,14 +13,15 @@
  * pure module (src/lib/data/eia.ts) — no duplicate logic.
  *
  * The API key is read from process.env.EIA_API_KEY and NEVER hardcoded.
- * Without a key this returns an explicit unavailable state — no placeholder,
- * no fabricated data.
+ * If the key is absent or the EIA API fails completely, use the public FRED
+ * mirror of the same EIA-sourced weekly inventory series. No placeholder,
+ * interpolation, or fabricated data is allowed.
  */
 "use node";
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { buildEiaContext, parseEiaResponse } from "../lib/data/eia";
+import { buildEiaContext, parseEiaResponse, parseFredInventoryCsv } from "../lib/data/eia";
 
 const BASE = "https://api.eia.gov/v2/petroleum/sto/data/";
 const PRODUCT_IDS = ["EPC0", "EPM0", "EPD0"] as const;
@@ -55,23 +56,77 @@ async function fetchProductLeg(
   }
 }
 
+
+const FRED_SERIES = [
+  { productId: "EPC0", seriesId: "WCESTUS1", productName: "Commercial crude oil stocks excluding SPR" },
+  { productId: "EPM0", seriesId: "WGTSTUS1", productName: "Total motor gasoline stocks" },
+  { productId: "EPD0", seriesId: "WDISTUS1", productName: "Distillate fuel oil stocks" },
+] as const;
+
+async function fetchFredProductLeg(
+  item: (typeof FRED_SERIES)[number],
+  now: number,
+): Promise<{ ok: boolean; requestedProductId: string; parsed?: ReturnType<typeof parseFredInventoryCsv>; reason?: string }> {
+  try {
+    // Four to five weekly observations are sufficient for a week-over-week
+    // change and freshness classification; avoid downloading decades per analysis.
+    const endDate = new Date(now).toISOString().slice(0, 10);
+    const startDate = new Date(now - 35 * 86_400_000).toISOString().slice(0, 10);
+    const url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=" +
+      encodeURIComponent(item.seriesId) + "&cosd=" + startDate + "&coed=" + endDate;
+    const res = await fetch(url, {
+      headers: { Accept: "text/csv" },
+      signal: AbortSignal.timeout(7_000),
+    });
+    if (!res.ok) return { ok: false, requestedProductId: item.productId, reason: "FRED mirror HTTP " + res.status };
+    const csv = await res.text();
+    return {
+      ok: true,
+      requestedProductId: item.productId,
+      parsed: parseFredInventoryCsv(csv, item.productId, item.seriesId, item.productName),
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      requestedProductId: item.productId,
+      reason: "FRED mirror network failure: " + (error instanceof Error ? error.message : String(error)).slice(0, 120),
+    };
+  }
+}
+
+async function fetchPublicFredFallback(now: number, eiaFailure?: string) {
+  const legs = await Promise.all(FRED_SERIES.map((item) => fetchFredProductLeg(item, now)));
+  const ctx = buildEiaContext(
+    legs,
+    now,
+    now,
+    "EIA Weekly Petroleum Status Report (public FRED series mirror)",
+  );
+  if (!ctx.available) {
+    return {
+      success: false as const,
+      error: [eiaFailure, ctx.reason].filter(Boolean).join("; "),
+    };
+  }
+  return { success: true as const, data: ctx };
+}
+
 export const fetchEiaInventory = action({
   args: {},
   handler: async (_ctx) => {
     const now = Date.now();
     const apiKey = process.env.EIA_API_KEY;
     if (!apiKey) {
-      return {
-        success: false as const,
-        error:
-          "EIA_API_KEY is missing. Add it in the Keys/API keys tab to enable actual WPSR inventory data.",
-      };
+      return await fetchPublicFredFallback(
+        now,
+        "EIA_API_KEY is missing; tried the public FRED mirror of EIA weekly inventory series",
+      );
     }
 
     const legs = await Promise.all(PRODUCT_IDS.map((p) => fetchProductLeg(p, apiKey)));
     const ctx = buildEiaContext(legs, now, now);
     if (!ctx.available) {
-      return { success: false as const, error: ctx.reason };
+      return await fetchPublicFredFallback(now, "EIA API unavailable: " + ctx.reason);
     }
     return { success: true as const, data: ctx };
   },

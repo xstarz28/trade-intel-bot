@@ -42,7 +42,9 @@ export interface EiaSeriesPoint {
 
 export interface EiaContext {
   available: true;
-  source: "U.S. Energy Information Administration (Weekly Petroleum Status Report)";
+  source:
+    | "U.S. Energy Information Administration (Weekly Petroleum Status Report)"
+    | "EIA Weekly Petroleum Status Report (public FRED series mirror)";
   fetchedAt: number;
   freshness: EiaFreshness;
   /** Only legs that ACTUALLY returned valid dated observations. */
@@ -123,6 +125,49 @@ export interface ParsedEiaError {
  * malformed rows, non-numeric values, and unexpected schemas — always
  * returning an explicit failure reason instead of throwing or guessing.
  */
+
+/**
+ * Parses the public FRED CSV mirror for EIA weekly petroleum stock series.
+ * Values remain in the source's native unit (thousand barrels); missing "."
+ * observations are skipped, never interpolated.
+ */
+export function parseFredInventoryCsv(
+  csv: string,
+  productId: string,
+  seriesId: string,
+  productName: string,
+): ParsedEiaSeries | ParsedEiaError {
+  if (typeof csv !== "string" || !csv.trim()) {
+    return { ok: false, reason: "empty FRED CSV response" };
+  }
+  const lines = csv.trim().split(/\r?\n/);
+  const header = lines[0].split(",").map((field) => field.trim().replace(/^"|"$/g, ""));
+  if (header.length < 2 || header[0] !== "observation_date" || header[1] !== seriesId) {
+    return { ok: false, reason: "unexpected FRED CSV header" };
+  }
+  const observations: { period: string; value: number }[] = [];
+  for (const line of lines.slice(1)) {
+    const fields = line.split(",").map((field) => field.trim().replace(/^"|"$/g, ""));
+    const period = fields[0];
+    const raw = fields[1];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(period ?? "") || !raw || raw === ".") continue;
+    const date = Date.parse(period + "T00:00:00Z");
+    const value = Number(raw);
+    if (
+      !Number.isFinite(date) ||
+      new Date(date).toISOString().slice(0, 10) !== period ||
+      !Number.isFinite(value) ||
+      value <= 0
+    ) continue;
+    observations.push({ period, value });
+  }
+  observations.sort((a, b) => (a.period < b.period ? 1 : a.period > b.period ? -1 : 0));
+  if (observations.length === 0) {
+    return { ok: false, reason: "FRED CSV contains no valid dated inventory observations" };
+  }
+  return { ok: true, productId, productName, unit: "thousand barrels", observations };
+}
+
 export function parseEiaResponse(json: unknown): ParsedEiaSeries | ParsedEiaError {
   if (json === null || typeof json !== "object") {
     return { ok: false, reason: "malformed response: not an object" };
@@ -204,7 +249,12 @@ export interface EiaLegInput {
  * never a synthetic value. The context is available iff at least one leg
  * produced valid data.
  */
-export function buildEiaContext(legs: EiaLegInput[], fetchedAt: number, nowMs: number): EiaData {
+export function buildEiaContext(
+  legs: EiaLegInput[],
+  fetchedAt: number,
+  nowMs: number,
+  source: EiaContext["source"] = "U.S. Energy Information Administration (Weekly Petroleum Status Report)",
+): EiaData {
   const series: EiaSeriesPoint[] = [];
   const failedLegs: { productId: string; reason: string }[] = [];
 
@@ -250,7 +300,7 @@ export function buildEiaContext(legs: EiaLegInput[], fetchedAt: number, nowMs: n
   }
 
   const freshness = classifyEiaFreshness(series[0].observationDate, nowMs);
-  return { available: true, source: "U.S. Energy Information Administration (Weekly Petroleum Status Report)", fetchedAt, freshness, series, failedLegs };
+  return { available: true, source, fetchedAt, freshness, series, failedLegs };
 }
 
 // ── Evidence derivation ────────────────────────────────────────────
