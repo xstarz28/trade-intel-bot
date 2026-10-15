@@ -44,8 +44,7 @@ export interface EiaContext {
   available: true;
   source:
     | "U.S. Energy Information Administration (Weekly Petroleum Status Report)"
-    | "EIA Weekly Petroleum Status Report (public FRED series mirror)"
-    | "EIA Weekly Petroleum Status Report (EIA API + public FRED mirror)";
+    | "EIA Weekly Petroleum Status Report (public FRED series mirror)";
   fetchedAt: number;
   freshness: EiaFreshness;
   /** Only legs that ACTUALLY returned valid dated observations. */
