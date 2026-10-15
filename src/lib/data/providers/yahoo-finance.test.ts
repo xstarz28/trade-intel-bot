@@ -3,6 +3,8 @@ import {
   fetchYahooFinanceCandles,
   parseYahooFinanceCandles,
   resolveYahooFinanceStockSymbol,
+  resolveYahooFinanceMarketSymbol,
+  resolveYahooFinanceComparatorSymbol,
 } from "./yahoo-finance";
 
 function payload() {
@@ -31,6 +33,22 @@ describe("free Yahoo Finance stock fallback", () => {
     expect(resolveYahooFinanceStockSymbol("AAPL")).toBe("AAPL");
     expect(resolveYahooFinanceStockSymbol("EUR/USD")).toBeNull();
     expect(resolveYahooFinanceStockSymbol("BTC-USDT-SWAP")).toBeNull();
+  });
+
+
+  it("maps only exact supported FX/metals instruments to free Yahoo tickers", () => {
+    expect(resolveYahooFinanceMarketSymbol("forex", "EUR/USD")).toBe("EURUSD=X");
+    expect(resolveYahooFinanceMarketSymbol("forex", "USD/JPY")).toBe("JPY=X");
+    expect(resolveYahooFinanceMarketSymbol("commodity", "XAU/USD")).toBe("XAUUSD=X");
+    expect(resolveYahooFinanceMarketSymbol("commodity", "XAGUSD")).toBe("XAGUSD=X");
+    expect(resolveYahooFinanceMarketSymbol("forex", "BTC/USDT")).toBeNull();
+    expect(resolveYahooFinanceMarketSymbol("commodity", "WTI")).toBeNull();
+  });
+
+  it("maps cross-asset context only to actual index symbols", () => {
+    expect(resolveYahooFinanceComparatorSymbol("DXY")).toBe("DX-Y.NYB");
+    expect(resolveYahooFinanceComparatorSymbol("NDX")).toBe("^NDX");
+    expect(resolveYahooFinanceComparatorSymbol("SPX")).toBeNull();
   });
 
   it("parses ordered, complete candles and excludes invalid OHLC rows", () => {
