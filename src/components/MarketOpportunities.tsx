@@ -440,7 +440,7 @@ export function MarketOpportunities({
 }: MarketOpportunitiesProps) {
   const { t, tx, txi } = useI18n();
   const [tab, setTab] = useState<"trading" | "investing">("trading");
-  const [horizonIdx, setHorizonIdx] = useState(1); // default: Intraday / 1-3 Months
+  const [horizonIdx, setHorizonIdx] = useState(0); // default: Scalping / 1-4 Weeks
   const [showExcluded, setShowExcluded] = useState(false);
   const [assetFilter, setAssetFilter] = useState<AssetClass | "all">("all");
   const [cryptoTypeFilter, setCryptoTypeFilter] = useState<"all" | "spot" | "perpetual" | "futures">("all");
@@ -638,7 +638,7 @@ export function MarketOpportunities({
             variant={tab === "trading" ? "default" : "ghost"}
             size="sm"
             className="text-[10px] font-sans h-7"
-            onClick={() => { setTab("trading"); setHorizonIdx(1); }}
+            onClick={() => { setTab("trading"); setHorizonIdx(0); }}
           >
             <TrendingUp className="size-3 mr-1" /> {tx("workspace.trading")}
           </Button>
