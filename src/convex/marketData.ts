@@ -16,7 +16,7 @@ import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext, selectBudgetedMtfSlots } from "../lib/data/mtf";
 import { resolveQuoteObservation } from "../lib/data/quote-freshness";
 import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/classic-price-action";
-import { crossAssetComparator, pearsonCorrelation } from "../lib/market-context";
+import { alignCrossAssetCloses, crossAssetComparator, pearsonCorrelation } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
 import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/data/twelve-data-budget";
 import type { FxRateSnapshot } from "../lib/risk";
@@ -543,16 +543,9 @@ export const fetchMarketData = action({
         if (yahooComparator) {
           try {
             const comparatorCandles = await fetchYahooFinanceCandles(yahooComparator, args.timeframe, 120);
-            const comparatorByTime = new Map(comparatorCandles.map((bar) => [bar.timestamp, bar.close]));
-            const alignedPrimary: number[] = [];
-            const alignedComparator: number[] = [];
-            for (const bar of candles) {
-              const otherClose = comparatorByTime.get(bar.timestamp);
-              if (otherClose !== undefined && Number.isFinite(otherClose) && otherClose > 0) {
-                alignedPrimary.push(bar.close);
-                alignedComparator.push(otherClose);
-              }
-            }
+            const aligned = alignCrossAssetCloses(candles, comparatorCandles, args.timeframe);
+            const alignedPrimary = aligned.primary;
+            const alignedComparator = aligned.comparator;
             const stats = pearsonCorrelation(alignedPrimary, alignedComparator);
             if (!stats) {
               crossAsset.unavailableReason =

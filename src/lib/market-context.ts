@@ -261,6 +261,59 @@ export function classifySetup(input: {
 // ── Cross-asset context ───────────────────────────────────────────
 
 /** Pearson correlation of RETURNS (never raw prices) over the overlap. */
+
+/**
+ * Align closes from independent feeds by nearest candle timestamp.
+ * Vendors can timestamp the same candle at its open or close; exact-equality
+ * matching drops valid evidence. A comparator candle may be used only once,
+ * and matches outside the timeframe-specific tolerance are rejected.
+ */
+export function alignCrossAssetCloses(
+  primary: Array<{ timestamp: number; close: number }>,
+  comparator: Array<{ timestamp: number; close: number }>,
+  timeframe: string,
+): { primary: number[]; comparator: number[] } {
+  const intervalMs: Record<string, number> = {
+    M1: 60_000, M5: 300_000, M15: 900_000,
+    H1: 3_600_000, H4: 14_400_000, D1: 86_400_000, W1: 604_800_000,
+  };
+  const interval = intervalMs[timeframe.toUpperCase()];
+  if (!interval || primary.length === 0 || comparator.length === 0) {
+    return { primary: [], comparator: [] };
+  }
+  const tolerance = timeframe.toUpperCase() === "D1" ? 36 * 3_600_000
+    : timeframe.toUpperCase() === "W1" ? 4 * 86_400_000
+    : interval * 1.25;
+  const sortedComparator = comparator
+    .filter((c) => Number.isFinite(c.timestamp) && Number.isFinite(c.close) && c.close > 0)
+    .slice().sort((a, b) => a.timestamp - b.timestamp);
+  const used = new Set<number>();
+  const pairs: Array<{ timestamp: number; primary: number; comparator: number }> = [];
+  for (const candle of primary.slice().sort((a, b) => a.timestamp - b.timestamp)) {
+    if (!Number.isFinite(candle.timestamp) || !Number.isFinite(candle.close) || candle.close <= 0) continue;
+    let bestIndex = -1;
+    let bestDelta = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < sortedComparator.length; i += 1) {
+      if (used.has(i)) continue;
+      const delta = Math.abs(sortedComparator[i].timestamp - candle.timestamp);
+      if (delta < bestDelta) { bestDelta = delta; bestIndex = i; }
+      if (sortedComparator[i].timestamp > candle.timestamp + tolerance && delta > bestDelta) break;
+    }
+    if (bestIndex < 0 || bestDelta > tolerance) continue;
+    used.add(bestIndex);
+    pairs.push({
+      timestamp: candle.timestamp,
+      primary: candle.close,
+      comparator: sortedComparator[bestIndex].close,
+    });
+  }
+  pairs.sort((a, b) => a.timestamp - b.timestamp);
+  return {
+    primary: pairs.map((p) => p.primary),
+    comparator: pairs.map((p) => p.comparator),
+  };
+}
+
 export function pearsonCorrelation(a: number[], b: number[]): { correlation: number; n: number } | null {
   const n = Math.min(a.length, b.length) - 1;
   if (n < 20) return null; // too few returns to say anything honestly
