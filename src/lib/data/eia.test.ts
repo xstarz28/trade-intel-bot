@@ -48,7 +48,7 @@ describe("parseFredInventoryCsv", () => {
       "2026-08-14,428815",
       "2026-08-21,.",
       "not-a-date,429000",
-    ].join("\\n");
+    ].join("\n");
     const parsed = parseFredInventoryCsv(
       csv,
       "EPC0",
@@ -66,8 +66,8 @@ describe("parseFredInventoryCsv", () => {
   });
 
   it("rejects wrong headers and CSV with no valid observations", () => {
-    expect(parseFredInventoryCsv("date,OTHER\\n2026-08-14,2", "EPC0", "WCESTUS1", "Crude").ok).toBe(false);
-    expect(parseFredInventoryCsv("observation_date,WCESTUS1\\n2026-08-14,.", "EPC0", "WCESTUS1", "Crude").ok).toBe(false);
+    expect(parseFredInventoryCsv("date,OTHER\n2026-08-14,2", "EPC0", "WCESTUS1", "Crude").ok).toBe(false);
+    expect(parseFredInventoryCsv("observation_date,WCESTUS1\n2026-08-14,.", "EPC0", "WCESTUS1", "Crude").ok).toBe(false);
   });
 });
 
