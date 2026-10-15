@@ -66,7 +66,7 @@ describe("Phase 40 — Orchestration Conditional Policy", () => {
   const sp = { instrumentType: "crypto" as const, instrument: "BTC/USD", tradingStyle: "intraday", hasCompleteSpec: true };
 
   it("COT fetched for forex", async () => { let f = false; await fetchOptionalSlowData(fx, { cot: async () => { f = true; return { success: false }; } }); expect(f).toBe(true); });
-  it("COT not for scalping", async () => { let f = false; await fetchOptionalSlowData(sc, { cot: async () => { f = true; return { success: false }; } }); expect(f).toBe(false); });
+  it("COT fetched for scalping", async () => { let f = false; await fetchOptionalSlowData(sc, { cot: async () => { f = true; return { success: false }; } }); expect(f).toBe(true); });
   it("Exec for crypto", async () => { let f = false; await fetchOptionalSlowData(cr, { execution: async () => { f = true; return { success: false }; } }); expect(f).toBe(true); });
   it("Exec not for swing", async () => { let f = false; await fetchOptionalSlowData(sw, { execution: async () => { f = true; return { success: false }; } }); expect(f).toBe(false); });
   it("EIA for oil", async () => { let f = false; await fetchOptionalSlowData(oi, { eia: async () => { f = true; return { success: false }; } }); expect(f).toBe(true); });
