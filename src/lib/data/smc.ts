@@ -460,12 +460,29 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
     return { available: false, unavailableReason: "No candle data.", priceLocation: "unavailable" };
   }
 
+  const buildPriceOnlyFallback = (): NonNullable<VwapContext["priceOnlyFallback"]> | undefined => {
+    const last = candles[candles.length - 1];
+    const sessionDate = new Date(last.timestamp).toISOString().slice(0, 10);
+    const sessionCandles = candles.filter((c) => new Date(c.timestamp).toISOString().slice(0, 10) === sessionDate);
+    const typicalPrices = sessionCandles.map((c) => (c.high + c.low + c.close) / 3).filter(Number.isFinite);
+    if (typicalPrices.length === 0) return undefined;
+    const sessionMean = typicalPrices.reduce((sum, price) => sum + price, 0) / typicalPrices.length;
+    const epsilon = Math.max(1e-10, Math.abs(sessionMean) * 1e-8);
+    return {
+      sessionMean,
+      method: "arithmetic_mean_typical_price",
+      priceLocation: last.close > sessionMean + epsilon ? "above_mean" :
+        last.close < sessionMean - epsilon ? "below_mean" : "at_mean",
+    };
+  };
+
   const totalVol = candles.reduce((s, c) => s + c.volume, 0);
   if (!(totalVol > 0)) {
     return {
       available: false,
       unavailableReason:
         "Volume data is zero/not representative — session VWAP cannot be computed honestly.",
+      priceOnlyFallback: buildPriceOnlyFallback(),
       priceLocation: "unavailable",
     };
   }
@@ -488,6 +505,7 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
     return {
       available: false,
       unavailableReason: "Current session has no volume yet.",
+      priceOnlyFallback: buildPriceOnlyFallback(),
       priceLocation: "unavailable",
     };
   }
