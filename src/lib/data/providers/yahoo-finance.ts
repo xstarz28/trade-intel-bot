@@ -216,13 +216,29 @@ export function resolveYahooFinanceMarketSymbol(instrumentType: string, instrume
   return null;
 }
 
-/** Exact market-index tickers used for cross-asset evidence. */
-export function resolveYahooFinanceComparatorSymbol(comparator: string): string | null {
+/** Exact index tickers first, then explicitly labeled futures proxies. */
+export function resolveYahooFinanceComparatorSymbols(
+  comparator: string,
+): Array<{ symbol: string; label: string }> {
   switch (comparator.trim().toUpperCase()) {
-    case "DXY": return "DX-Y.NYB";
-    case "NDX": return "^NDX";
-    default: return null;
+    case "DXY":
+      return [
+        { symbol: "DX-Y.NYB", label: "DXY" },
+        { symbol: "DX=F", label: "DXY futures proxy (DX=F)" },
+      ];
+    case "NDX":
+      return [
+        { symbol: "^NDX", label: "NDX" },
+        { symbol: "NQ=F", label: "Nasdaq-100 futures proxy (NQ=F)" },
+      ];
+    default:
+      return [];
   }
+}
+
+/** Backwards-compatible primary ticker resolver. */
+export function resolveYahooFinanceComparatorSymbol(comparator: string): string | null {
+  return resolveYahooFinanceComparatorSymbols(comparator)[0]?.symbol ?? null;
 }
 
 export async function fetchYahooFinanceCandles(
