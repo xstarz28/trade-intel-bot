@@ -43,8 +43,12 @@ describe("free Yahoo Finance stock fallback", () => {
     expect(resolveYahooFinanceMarketSymbol("forex", "EUR/IDR")).toBe("EURIDR=X");
     expect(resolveYahooFinanceMarketSymbol("commodity", "XAU/USD")).toBe("XAUUSD=X");
     expect(resolveYahooFinanceMarketSymbol("commodity", "XAGUSD")).toBe("XAGUSD=X");
+    expect(resolveYahooFinanceMarketSymbol("commodity", "WTI")).toBe("CL=F");
+    expect(resolveYahooFinanceMarketSymbol("commodity", "BRENT")).toBe("BZ=F");
+    expect(resolveYahooFinanceMarketSymbol("commodity", "NGAS")).toBe("NG=F");
+    expect(resolveYahooFinanceMarketSymbol("commodity", "COPPER")).toBe("HG=F");
     expect(resolveYahooFinanceMarketSymbol("forex", "BTC/USDT")).toBeNull();
-    expect(resolveYahooFinanceMarketSymbol("commodity", "WTI")).toBeNull();
+    expect(resolveYahooFinanceMarketSymbol("commodity", "LITHIUM")).toBeNull();
   });
 
   it("maps cross-asset context only to actual index symbols", () => {
