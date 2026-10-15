@@ -13,8 +13,9 @@
  * pure module (src/lib/data/eia.ts) — no duplicate logic.
  *
  * The API key is read from process.env.EIA_API_KEY and NEVER hardcoded.
- * Without a key this returns an explicit unavailable state — no placeholder,
- * no fabricated data.
+ * If the key is absent or the EIA API fails completely, use the public FRED
+ * mirror of the same EIA-sourced weekly inventory series. No placeholder,
+ * interpolation, or fabricated data is allowed.
  */
 "use node";
 
