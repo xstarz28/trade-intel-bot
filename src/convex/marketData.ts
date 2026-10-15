@@ -16,14 +16,14 @@ import { calculateTechnical } from "../lib/data/technical";
 import { buildChain, buildMtfContext, selectBudgetedMtfSlots } from "../lib/data/mtf";
 import { resolveQuoteObservation } from "../lib/data/quote-freshness";
 import { detectIctUnicorn, type ClassicPriceActionContext } from "../lib/data/classic-price-action";
-import { crossAssetComparator } from "../lib/market-context";
+import { crossAssetComparator, pearsonCorrelation } from "../lib/market-context";
 import type { OhlcvCandle, TechnicalData, TimeframeStructureContext } from "../lib/data/market-types";
 import { TwelveDataRequestBudget, type TwelveDataRequestClass } from "../lib/data/twelve-data-budget";
 import type { FxRateSnapshot } from "../lib/risk";
 import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import { resolveProviderRequest } from "../lib/data/universal/provider-symbol";
-import { fetchYahooFinanceCandles, resolveYahooFinanceStockSymbol } from "../lib/data/providers/yahoo-finance";
+import { fetchYahooFinanceCandles, resolveYahooFinanceComparatorSymbol, resolveYahooFinanceMarketSymbol, resolveYahooFinanceStockSymbol } from "../lib/data/providers/yahoo-finance";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
@@ -429,24 +429,45 @@ export const fetchMarketData = action({
       // the analysis engine must not synthesize missing candles.
       const preferredSlots = selectBudgetedMtfSlots(slots, args.timeframe, args.tradingStyle);
       const settled = await Promise.allSettled(
-        slots.map((slot) => {
-          // Public OKX candles do not consume the Twelve Data credit budget,
-          // so crypto may use the complete available chain. Twelve Data markets
-          // normally fetch one context timeframe; M5 scalping gets M15 structure
-          // plus M1 trigger because both are mandatory for an executable setup.
+        slots.map(async (slot) => {
+          const size = slot.role === "trigger" ? 100 : 120;
+          // Preserve the primary provider's request budget. For skipped or
+          // failed non-crypto MTF slots, try a free provider with an exact
+          // same-instrument ticker; never substitute a correlated proxy.
+          const yahooSymbol = args.instrumentType === "crypto"
+            ? null
+            : resolveYahooFinanceMarketSymbol(args.instrumentType, symbol);
           if (args.instrumentType !== "crypto" && !preferredSlots.includes(slot)) {
-            return Promise.reject(
-              new Error("Not fetched: reserved Twelve Data credits for primary analyses across instruments."),
-            );
+            if (!yahooSymbol) {
+              throw new Error("Twelve Data request budget reserved; no exact free-provider ticker mapping exists.");
+            }
+            try {
+              return await fetchYahooFinanceCandles(yahooSymbol, slot.timeframe, size);
+            } catch (error) {
+              throw new Error("Budgeted provider skipped this timeframe and Yahoo Finance fallback failed: " +
+                (error instanceof Error ? error.message : String(error)));
+            }
           }
-          return fetchCandles(
-            symbol,
-            slot.timeframe,
-            slot.role === "trigger" ? 100 : 120,
-            apiKey,
-            args.instrumentType,
-            "higher-timeframe",
-          );
+          try {
+            return await fetchCandles(
+              symbol,
+              slot.timeframe,
+              size,
+              apiKey,
+              args.instrumentType,
+              "higher-timeframe",
+            );
+          } catch (primaryError) {
+            if (!yahooSymbol) throw primaryError;
+            try {
+              return await fetchYahooFinanceCandles(yahooSymbol, slot.timeframe, size);
+            } catch (fallbackError) {
+              throw new Error("Primary timeframe provider failed: " +
+                (primaryError instanceof Error ? primaryError.message : String(primaryError)) +
+                "; Yahoo Finance exact-symbol fallback failed: " +
+                (fallbackError instanceof Error ? fallbackError.message : String(fallbackError)));
+            }
+          }
         }),
       );
 
@@ -501,19 +522,60 @@ export const fetchMarketData = action({
         delete technical.chainUnavailable;
       }
 
-      // Cross-asset prices are optional. The live production key returned
-      // an 8-credits/minute limit, so no extra Twelve Data probe is launched
-      // from a primary analysis. Missing DXY/NDX context stays explicit.
+      // Fetch actual cross-asset prices from the free public index feed, not
+      // from the constrained Twelve Data quota. Correlation is computed only
+      // on timestamp-aligned returns; insufficient overlap remains unavailable.
       const comparator = crossAssetComparator(args.instrumentType, symbol);
       let crossAsset: TechnicalData["crossAsset"] | undefined;
       if (comparator && comparator !== symbol.toUpperCase()) {
+        const yahooComparator = resolveYahooFinanceComparatorSymbol(comparator);
         crossAsset = {
           comparatorSymbol: comparator,
           timeframe: args.timeframe,
           available: false,
-          unavailableReason:
-            "Not fetched: provider credits are reserved for primary OHLCV and higher-timeframe market analysis; no proxy or synthetic series was substituted.",
+          unavailableReason: yahooComparator
+            ? "Actual comparator series has not yet been validated."
+            : "No exact Yahoo Finance ticker mapping exists for this comparator.",
         };
+        if (yahooComparator) {
+          try {
+            const comparatorCandles = await fetchYahooFinanceCandles(yahooComparator, args.timeframe, 120);
+            const comparatorByTime = new Map(comparatorCandles.map((bar) => [bar.timestamp, bar.close]));
+            const alignedPrimary: number[] = [];
+            const alignedComparator: number[] = [];
+            for (const bar of candles) {
+              const otherClose = comparatorByTime.get(bar.timestamp);
+              if (otherClose !== undefined && Number.isFinite(otherClose) && otherClose > 0) {
+                alignedPrimary.push(bar.close);
+                alignedComparator.push(otherClose);
+              }
+            }
+            const stats = pearsonCorrelation(alignedPrimary, alignedComparator);
+            if (!stats) {
+              crossAsset.unavailableReason =
+                "Yahoo Finance returned actual comparator prices, but there are fewer than 20 timestamp-aligned returns.";
+            } else {
+              const recentBase = alignedComparator[Math.max(0, alignedComparator.length - 21)];
+              const latestBase = alignedComparator[alignedComparator.length - 1];
+              const momentum = latestBase > recentBase ? "up" : latestBase < recentBase ? "down" : "flat";
+              crossAsset = {
+                comparatorSymbol: comparator,
+                timeframe: args.timeframe,
+                available: true,
+                correlation: stats.correlation,
+                sampleSize: stats.n,
+                directionalContext: stats.correlation >= 0.6 ? "direct" :
+                  stats.correlation <= -0.6 ? "inverse" : "weak",
+                comparatorMomentum: momentum,
+                dataKind: "actual_price",
+                provider: "yahoo-finance-public",
+              };
+            }
+          } catch (error) {
+            crossAsset.unavailableReason = "Actual Yahoo Finance comparator data unavailable: " +
+              (error instanceof Error ? error.message : String(error));
+          }
+        }
       }
       if (crossAsset) technical.crossAsset = crossAsset;
 

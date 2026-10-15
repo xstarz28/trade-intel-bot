@@ -167,6 +167,54 @@ function aggregateFourHourCandles(
   return result;
 }
 
+
+/**
+ * Resolve Yahoo tickers only where the symbol represents the same market
+ * instrument. Never use a related future/index as a substitute for spot.
+ */
+export function resolveYahooFinanceMarketSymbol(instrumentType: string, instrument: string): string | null {
+  const normalized = instrument.trim().toUpperCase();
+  if (!normalized) return null;
+  if (instrumentType === "stock") return resolveYahooFinanceStockSymbol(normalized);
+
+  const compact = normalized.replace(/[^A-Z0-9]/g, "");
+  if (instrumentType === "forex") {
+    const exactPairs: Record<string, string> = {
+      EURUSD: "EURUSD=X", GBPUSD: "GBPUSD=X", AUDUSD: "AUDUSD=X", NZDUSD: "NZDUSD=X",
+      USDJPY: "JPY=X", USDCHF: "CHF=X", USDCAD: "CAD=X",
+      EURJPY: "EURJPY=X", GBPJPY: "GBPJPY=X", AUDJPY: "AUDJPY=X", NZDJPY: "NZDJPY=X",
+      EURGBP: "EURGBP=X", EURCHF: "EURCHF=X", EURAUD: "EURAUD=X", EURCAD: "EURCAD=X",
+      EURNZD: "EURNZD=X", GBPAUD: "GBPAUD=X", GBPCAD: "GBPCAD=X", GBPNZD: "GBPNZD=X",
+      AUDCAD: "AUDCAD=X", AUDNZD: "AUDNZD=X", CADJPY: "CADJPY=X", CHFJPY: "CHFJPY=X",
+    };
+    const knownPair = exactPairs[compact];
+    if (knownPair) return knownPair;
+    // Yahoo's FX convention is BASEQUOTE=X for most pairs, while USD-base
+    // pairs use the quote currency ticker (for example IDR=X). This maps
+    // symbols, not prices; unsupported tickers still fail closed at fetch time.
+    const pair = compact.match(/^([A-Z]{3})([A-Z]{3})$/);
+    if (!pair) return null;
+    const [, base, quote] = pair;
+    if (base === "USD") return quote === "USD" ? null : quote + "=X";
+    if (quote === "USD") return base + "USD=X";
+    return base + quote + "=X";
+  }
+  if (instrumentType === "commodity") {
+    if (["XAUUSD", "GOLD", "XAU"].includes(compact)) return "XAUUSD=X";
+    if (["XAGUSD", "SILVER", "XAG"].includes(compact)) return "XAGUSD=X";
+  }
+  return null;
+}
+
+/** Exact market-index tickers used for cross-asset evidence. */
+export function resolveYahooFinanceComparatorSymbol(comparator: string): string | null {
+  switch (comparator.trim().toUpperCase()) {
+    case "DXY": return "DX-Y.NYB";
+    case "NDX": return "^NDX";
+    default: return null;
+  }
+}
+
 export async function fetchYahooFinanceCandles(
   symbol: string,
   timeframe: string,
