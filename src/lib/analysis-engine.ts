@@ -792,6 +792,11 @@ function assessDataCompleteness(input: AnalysisInput): {
       input.macroData.dxyTrend !== undefined
     )
   );
+  const hasUsableAssetClassMacro = !!(
+    (input.instrumentType === "forex" || input.instrumentType === "commodity") &&
+    (input.treasuryData?.available || input.cotData?.available ||
+      (input.instrumentType === "commodity" && input.eiaData?.available))
+  );
   const hasIntelligence = hasUsableSentiment || hasUsableFundamentals || hasUsableMacro;
   const hasCryptoIntelligence = !!(
     input.cryptoIntelligenceContext?.derivatives?.available ||
@@ -803,7 +808,9 @@ function assessDataCompleteness(input: AnalysisInput): {
     flags.push(
       hasCryptoIntelligence
         ? "Core news/sentiment/fundamental context unavailable — crypto-specific intelligence is shown separately as contextual evidence, not a substitute for core fundamentals"
-        : "No news context or core fundamental intelligence data — fundamental analysis limited to technicals",
+        : hasUsableAssetClassMacro
+          ? "Core news/fundamental feed unavailable — actual Treasury, CFTC positioning, or EIA context is evaluated separately"
+          : "No news context or core fundamental intelligence data — fundamental analysis limited to technicals",
     );
     missing++;
   }

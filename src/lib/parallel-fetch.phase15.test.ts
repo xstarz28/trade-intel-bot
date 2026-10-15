@@ -5,7 +5,7 @@
  * promises) to prove SCHEDULING behavior — never to claim absolute production
  * latency. Proves:
  *  - parallel wall-time ≈ max(legs), not sum(legs)  [structural speedup]
- *  - conditional policy table is verbatim vs the old inline code
+ *  - conditional policy requests relevant macro evidence across trading horizons
  *  - failure isolation & non-fatality for every leg
  *  - call-count invariance (rate-limit budget unchanged)
  *  - engine determinism parity: contexts collected sequentially vs
@@ -36,7 +36,7 @@ const BASE_FACTS = {
   hasCompleteSpec: false,
 };
 
-/** Sequential reference implementation (the OLD Dashboard behavior). */
+/** Sequential reference implementation for the current provider policy. */
 async function sequentialReference(facts: typeof BASE_FACTS, thunks: Record<string, (() => Promise<unknown>) | undefined>) {
   const out: Record<string, unknown> = {};
   const one = async (cond: boolean, t?: () => Promise<unknown>, pick?: (r: never) => unknown) => {
@@ -49,14 +49,13 @@ async function sequentialReference(facts: typeof BASE_FACTS, thunks: Record<stri
     }
   };
   const isFxLike = facts.instrumentType === "forex" || facts.instrumentType === "commodity";
-  const notScalp = facts.tradingStyle !== "scalping";
-  out.cotData = await one(isFxLike && notScalp, thunks.cot);
+  out.cotData = await one(isFxLike, thunks.cot);
   out.executionData = await one(facts.instrumentType === "crypto" && facts.tradingStyle !== "swing", thunks.execution);
   out.eiaData = await one(
-    facts.instrumentType === "commodity" && /WTI|CRUDE|BRENT|OIL/i.test(facts.instrument) && notScalp,
+    facts.instrumentType === "commodity" && /WTI|CRUDE|BRENT|OIL/i.test(facts.instrument),
     thunks.eia,
   );
-  out.treasuryData = await one(isFxLike && notScalp, thunks.treasury);
+  out.treasuryData = await one(isFxLike, thunks.treasury);
   out.okxSpecData = await one(facts.instrumentType === "crypto" && !facts.hasCompleteSpec, thunks.okxSpec);
   return out;
 }
@@ -85,14 +84,13 @@ describe("scheduling benchmark", () => {
     const facts = BASE_FACTS;
     const itype = facts.instrumentType as string;
     const isFxLike = itype === "forex" || itype === "commodity";
-    const notScalp = facts.tradingStyle !== "scalping";
     // Each leg creates and awaits a fresh delay promise — truly serial, no overlap.
-    if (isFxLike && notScalp) await delay(LEG_MS, { success: true, data: {} });            // COT
+    if (isFxLike) await delay(LEG_MS, { success: true, data: {} });                           // COT
     if (itype === "crypto" && facts.tradingStyle !== "swing")
       await delay(LEG_MS, { success: true, data: {} });                                   // Execution
-    if (itype === "commodity" && /WTI|CRUDE|BRENT|OIL/i.test(facts.instrument) && notScalp)
+    if (itype === "commodity" && /WTI|CRUDE|BRENT|OIL/i.test(facts.instrument))
       await delay(LEG_MS, { success: true, data: {} });                                   // EIA
-    if (isFxLike && notScalp) await delay(LEG_MS, { success: true, data: {} });           // Treasury
+    if (isFxLike) await delay(LEG_MS, { success: true, data: {} });                          // Treasury
     if (itype === "crypto" && !facts.hasCompleteSpec)
       await delay(LEG_MS, { success: true, data: {} });                                   // OKX spec
     const serialMs = Date.now() - t0;
@@ -101,7 +99,7 @@ describe("scheduling benchmark", () => {
   });
 });
 
-// ── Conditional policy table (verbatim Phase 7–14 rules) ────────────
+// ── Conditional provider policy ───────────────────────────────────
 
 describe("conditional policy table", () => {
   const spy = () => {
@@ -143,9 +141,11 @@ describe("conditional policy table", () => {
     expect(t.okxSpec.count).toBe(0);
   });
 
-  it("ANY style scalping skips ALL slow providers", async () => {
+  it("scalping still requests relevant COT/Treasury macro context", async () => {
     const t = await runPolicy({ ...BASE_FACTS, tradingStyle: "scalping" });
-    expect(t.cot.count + t.treasury.count + t.eia.count).toBe(0);
+    expect(t.cot.count).toBe(1);
+    expect(t.treasury.count).toBe(1);
+    expect(t.eia.count).toBe(0);
     const c = await runPolicy({
       instrumentType: "crypto", instrument: "BTC/USDT", tradingStyle: "scalping", hasCompleteSpec: false,
     });
@@ -161,7 +161,7 @@ describe("conditional policy table", () => {
     expect(t.okxSpec.count).toBe(1);
   });
 
-  it("oil commodity intraday → COT + Treasury + EIA; gold gets NO EIA", async () => {
+  it("oil commodity requests COT + Treasury + EIA; gold gets NO EIA", async () => {
     const oil = await runPolicy({
       instrumentType: "commodity", instrument: "WTI", tradingStyle: "intraday", hasCompleteSpec: false,
     });

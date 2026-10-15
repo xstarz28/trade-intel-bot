@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { calculateBias, runAnalysis } from "./analysis-engine";
+import { treasury as treasuryFixture } from "./benchmark-fixtures.phase9";
 import type { AnalysisInput } from "@/types/analysis";
 
 function baseInput(overrides?: Partial<AnalysisInput>): AnalysisInput {
@@ -357,6 +358,27 @@ describe("dataCompleteness", () => {
       newsContext: "   ",
     }));
     expect(result.dataFlags).toContain(
+      "No news context or core fundamental intelligence data — fundamental analysis limited to technicals",
+    );
+  });
+
+  it("recognizes actual Treasury macro data when the commodity news feed is unavailable", () => {
+    const result = runAnalysis(baseInput({
+      instrument: "XAU/USD",
+      instrumentType: "commodity",
+      treasuryData: treasuryFixture(20),
+      fundamentalData: {
+        provider: "alpha-vantage", timestamp: Date.now(), instrumentType: "commodity",
+        available: false, unavailableReason: "no commodity fundamentals feed",
+      },
+      sentimentData: {
+        provider: "alpha-vantage", timestamp: Date.now(), averageScore: 0, articleCount: 0,
+        label: "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 },
+        confidence: "unavailable", articles: [],
+      },
+      newsContext: "",
+    }));
+    expect(result.dataFlags).not.toContain(
       "No news context or core fundamental intelligence data — fundamental analysis limited to technicals",
     );
   });
