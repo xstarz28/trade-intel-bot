@@ -105,7 +105,10 @@ export function buildCryptoIntelligenceContext(
     parts.push(`DeFi: TVL $${defi.tvl ? (defi.tvl.current / 1e9).toFixed(2) + "B" : "N/A"}`);
   }
   if (tokenomics?.available) {
-    parts.push(`Tokenomics: ${tokenomics.unlocks?.upcomingCount30d ?? 0} upcoming unlocks`);
+    const unlockSummary = tokenomics.unlocks?.reliable
+      ? `${tokenomics.unlocks.upcomingCount30d} upcoming unlocks`
+      : "unlock schedule unverified";
+    parts.push(`Tokenomics: ${unlockSummary}`);
   }
   if (evidence.length > 0) {
     const supporting = evidence.filter((e) => e.direction === "SUPPORTING").length;
