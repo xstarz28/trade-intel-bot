@@ -202,6 +202,16 @@ export function resolveYahooFinanceMarketSymbol(instrumentType: string, instrume
   if (instrumentType === "commodity") {
     if (["XAUUSD", "GOLD", "XAU"].includes(compact)) return "XAUUSD=X";
     if (["XAGUSD", "SILVER", "XAG"].includes(compact)) return "XAGUSD=X";
+    // The universal registry classifies these instruments as commodity
+    // futures. Yahoo's continuous front-month series are equivalent benchmark
+    // futures families, not spot proxies; unsupported commodity symbols fail closed.
+    const futuresBenchmarks: Record<string, string> = {
+      WTI: "CL=F",
+      BRENT: "BZ=F",
+      NGAS: "NG=F",
+      COPPER: "HG=F",
+    };
+    if (futuresBenchmarks[compact]) return futuresBenchmarks[compact];
   }
   return null;
 }
