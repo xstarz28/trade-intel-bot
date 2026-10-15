@@ -153,7 +153,12 @@ export function parseFredInventoryCsv(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(period ?? "") || !raw || raw === ".") continue;
     const date = Date.parse(period + "T00:00:00Z");
     const value = Number(raw);
-    if (!Number.isFinite(date) || !Number.isFinite(value) || value <= 0) continue;
+    if (
+      !Number.isFinite(date) ||
+      new Date(date).toISOString().slice(0, 10) !== period ||
+      !Number.isFinite(value) ||
+      value <= 0
+    ) continue;
     observations.push({ period, value });
   }
   observations.sort((a, b) => (a.period < b.period ? 1 : a.period > b.period ? -1 : 0));
