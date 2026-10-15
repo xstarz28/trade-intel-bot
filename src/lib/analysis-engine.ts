@@ -792,7 +792,13 @@ function assessDataCompleteness(input: AnalysisInput): {
       input.macroData.dxyTrend !== undefined
     )
   );
-  const hasIntelligence = hasUsableSentiment || hasUsableFundamentals || hasUsableMacro;
+  const hasUsableAssetClassMacro = !!(
+    (input.instrumentType === "forex" || input.instrumentType === "commodity") &&
+    (input.treasuryData?.available || input.cotData?.available ||
+      (input.instrumentType === "commodity" && input.eiaData?.available))
+  );
+  const hasIntelligence =
+    hasUsableSentiment || hasUsableFundamentals || hasUsableMacro || hasUsableAssetClassMacro;
   const hasCryptoIntelligence = !!(
     input.cryptoIntelligenceContext?.derivatives?.available ||
     input.cryptoIntelligenceContext?.defi?.available ||
