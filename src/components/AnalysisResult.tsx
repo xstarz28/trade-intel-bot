@@ -303,8 +303,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               </div>
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Location</span>
-                <span className="font-semibold">{tech.smc.vwap.available ? `VWAP ${tech.smc.vwap.priceLocation.replace("_", " ")}` : "VWAP unavailable"}</span>
-                <span className="text-muted-foreground block mt-1">{tech.smc.volumeProfile.available ? `POC ${tech.smc.volumeProfile.poc?.toFixed(2) ?? "—"} · VA` : "Volume Profile unavailable"}</span>
+                <span className="font-semibold">{tech.smc.vwap.available ? `VWAP ${tech.smc.vwap.priceLocation.replace("_", " ")}` : tech.smc.vwap.priceOnlyFallback ? `Price-only mean ${tech.smc.vwap.priceOnlyFallback.sessionMean.toFixed(2)} · ${tech.smc.vwap.priceOnlyFallback.priceLocation.replace("_", " ")}` : "VWAP unavailable"}</span>
+                <span className="text-muted-foreground block mt-1">{tech.smc.volumeProfile.available ? `POC ${tech.smc.volumeProfile.poc?.toFixed(2) ?? "—"} · VA` : tech.smc.tpoProfile?.available ? `TPO POC ${tech.smc.tpoProfile.poc?.toFixed(2) ?? "—"} · VA (time-based)` : "Volume/TPO Profile unavailable"}</span>
               </div>
             </div>
           </CardContent>

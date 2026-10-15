@@ -294,6 +294,9 @@ describe("computeVwap", () => {
     expect(v.available).toBe(false);
     expect(v.unavailableReason).toBeTruthy();
     expect(v.priceLocation).toBe("unavailable");
+    expect(v.priceOnlyFallback).toBeDefined();
+    expect(v.priceOnlyFallback?.method).toBe("arithmetic_mean_typical_price");
+    expect(v.priceOnlyFallback?.sessionMean).toBeCloseTo(1.5, 6);
   });
 });
 
