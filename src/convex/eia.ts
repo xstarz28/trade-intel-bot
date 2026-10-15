@@ -65,9 +65,15 @@ const FRED_SERIES = [
 
 async function fetchFredProductLeg(
   item: (typeof FRED_SERIES)[number],
+  now: number,
 ): Promise<{ ok: boolean; requestedProductId: string; parsed?: ReturnType<typeof parseFredInventoryCsv>; reason?: string }> {
   try {
-    const url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + encodeURIComponent(item.seriesId);
+    // Four to five weekly observations are sufficient for a week-over-week
+    // change and freshness classification; avoid downloading decades per analysis.
+    const endDate = new Date(now).toISOString().slice(0, 10);
+    const startDate = new Date(now - 35 * 86_400_000).toISOString().slice(0, 10);
+    const url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=" +
+      encodeURIComponent(item.seriesId) + "&cosd=" + startDate + "&coed=" + endDate;
     const res = await fetch(url, {
       headers: { Accept: "text/csv" },
       signal: AbortSignal.timeout(7_000),
@@ -89,7 +95,7 @@ async function fetchFredProductLeg(
 }
 
 async function fetchPublicFredFallback(now: number, eiaFailure?: string) {
-  const legs = await Promise.all(FRED_SERIES.map(fetchFredProductLeg));
+  const legs = await Promise.all(FRED_SERIES.map((item) => fetchFredProductLeg(item, now)));
   const ctx = buildEiaContext(
     legs,
     now,
