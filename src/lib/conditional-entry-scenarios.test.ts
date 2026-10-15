@@ -47,8 +47,8 @@ describe("buildConditionalEntryScenarios", () => {
   it("derives two conditional triggers from observed support/resistance and swing targets", () => {
     const scenarios = buildConditionalEntryScenarios(resultFixture());
     expect(scenarios).toHaveLength(2);
-    expect(scenarios[0]).toMatchObject({ id: "bullish-breakout", direction: "long", trigger: 110.2, invalidation: 109.8, target: 120, ready: true });
-    expect(scenarios[1]).toMatchObject({ id: "bearish-breakdown", direction: "short", trigger: 89.8, invalidation: 90.2, target: 80, ready: true });
+    expect(scenarios[0]).toMatchObject({ id: "bullish-breakout", direction: "long", trigger: 110.2, invalidation: 90, target: 120, ready: true });
+    expect(scenarios[1]).toMatchObject({ id: "bearish-breakdown", direction: "short", trigger: 89.8, invalidation: 110, target: 80, ready: true });
     expect(scenarios.every((scenario) => (scenario.riskReward ?? 0) >= 1.5)).toBe(true);
   });
 
