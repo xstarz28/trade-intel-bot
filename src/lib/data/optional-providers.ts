@@ -83,13 +83,17 @@ const OIL_INSTRUMENT = /WTI|CRUDE|BRENT|OIL/i;
 /**
  * Runs ALL applicable optional provider legs CONCURRENTLY.
  *
- * Conditional policy (verbatim from the previously sequential implementation):
- *   COT        : (forex | commodity) && style !== scalping
+ * Conditional policy:
+ *   COT        : every forex/commodity style (weekly data; no live claim)
  *   Execution  : crypto && style !== swing
- *   EIA        : commodity && oil instrument && style !== scalping
- *   Treasury   : (forex | commodity) && style !== scalping
+ *   EIA        : every oil-commodity style (weekly data; key/provider may be unavailable)
+ *   Treasury   : every forex/commodity style (daily data; no interpolation)
  *   OKX spec   : crypto && no complete explicit spec
  *   FX         : caller-determined pair (quote ≠ account currency)
+ *
+ * Slow macro evidence is fetched for scalping too: a short trading horizon
+ * does not make weekly positioning or daily yields irrelevant. Failures remain
+ * non-fatal and explicitly unavailable; these sources never manufacture bias.
  */
 export async function fetchOptionalSlowData(
   facts: SlowProviderFacts,
@@ -97,12 +101,11 @@ export async function fetchOptionalSlowData(
 ): Promise<SlowProviderContexts> {
   const usdRelevant =
     facts.instrumentType === "forex" || facts.instrumentType === "commodity";
-  const notScalping = facts.tradingStyle !== "scalping";
 
   const [fxRates, cotData, executionData, eiaData, treasuryData, okxSpecData] =
     await Promise.all([
       settleFx(thunks.fx),
-      settleData(usdRelevant && notScalping ? thunks.cot : undefined),
+      settleData(usdRelevant ? thunks.cot : undefined),
       settleData(
         facts.instrumentType === "crypto" && facts.tradingStyle !== "swing"
           ? thunks.execution
@@ -110,12 +113,11 @@ export async function fetchOptionalSlowData(
       ),
       settleData(
         facts.instrumentType === "commodity" &&
-          OIL_INSTRUMENT.test(facts.instrument) &&
-          notScalping
+          OIL_INSTRUMENT.test(facts.instrument)
           ? thunks.eia
           : undefined,
       ),
-      settleData(usdRelevant && notScalping ? thunks.treasury : undefined),
+      settleData(usdRelevant ? thunks.treasury : undefined),
       settleData(
         facts.instrumentType === "crypto" && !facts.hasCompleteSpec
           ? thunks.okxSpec
