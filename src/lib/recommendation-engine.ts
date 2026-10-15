@@ -827,6 +827,12 @@ export function scoreCandidate(
         : "independent directional confirmation unavailable",
     );
   }
+  // Penalize directional candidates that lack two independent corroborating
+  // layers. Preserve score differences for ranking, but stop technical-only
+  // candidates from looking artificially strong against confirmed setups.
+  if (directional && agreeingNonTechnical < 2) {
+    score = Math.max(0, score - 10);
+  }
 
   if (c.hasDerivatives && !c.hasAnalysis && c.fundingRate === undefined && c.openInterest === undefined) {
     // Provider presence is not alpha: unusable derivatives payloads reduce

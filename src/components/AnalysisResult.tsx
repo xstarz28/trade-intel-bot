@@ -10,6 +10,7 @@ import { cn, getTimeAgo } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
 import { localizeAnalysisText } from "@/lib/i18n/analysis-copy";
 import { formatInstrumentPrice } from "@/lib/price-format";
+import { buildConditionalEntryScenarios } from "@/lib/conditional-entry-scenarios";
 import { mapTrendLabel, mapConfidence, mapFreshness } from "@/lib/i18n/enum-mapping";
 import {
   TrendingUp,
@@ -228,6 +229,41 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
         />
       )}
 
+      {result.candles && result.candles.length >= 20 && (
+        <Card className="border-primary/25" data-testid="conditional-entry-scenarios">
+          <CardHeader className="px-4 pb-2 pt-3">
+            <CardTitle className="text-xs font-mono">$ conditional-entry-scenarios · level bersyarat</CardTitle>
+            <p className="text-[10px] leading-relaxed text-muted-foreground">
+              Bukan sinyal entry saat ini. Harga pemicu diturunkan dari resistance/support teramati; tunggu penutupan candle dan konfirmasi struktur. Target hanya ditampilkan jika ada swing pasar teramati.
+            </p>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            {(() => {
+              const scenarios = buildConditionalEntryScenarios(result);
+              if (scenarios.length === 0) return <p className="text-[10px] text-muted-foreground">Level struktur yang cukup belum tersedia untuk menghitung skenario bersyarat.</p>;
+              return <div className="grid gap-2 sm:grid-cols-2">
+                {scenarios.map((scenario) => (
+                  <div key={scenario.id} className="rounded-md border border-border/40 p-3 space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={cn("text-[10px] font-mono font-bold", scenario.direction === "long" ? "text-emerald-400" : "text-red-400")}>
+                        {scenario.direction === "long" ? "LONG · JIKA BREAKOUT" : "SHORT · JIKA BREAKDOWN"}
+                      </span>
+                      <Badge variant="outline" className="text-[9px]">{scenario.ready ? "LAYAK DIPANTAU" : "KONDISIONAL"}</Badge>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
+                      <div><p className="text-muted-foreground">Pemicu</p><p className="font-semibold tabular-nums">{formatPrice(scenario.trigger, result.instrumentType, result.instrument)}</p></div>
+                      <div><p className="text-muted-foreground">Invalidasi</p><p className="font-semibold tabular-nums">{formatPrice(scenario.invalidation, result.instrumentType, result.instrument)}</p></div>
+                      <div><p className="text-muted-foreground">Target teramati</p><p className="font-semibold tabular-nums">{scenario.target !== undefined ? formatPrice(scenario.target, result.instrumentType, result.instrument) : "Belum tersedia"}</p></div>
+                      <div><p className="text-muted-foreground">R:R indikatif</p><p className="font-semibold tabular-nums">{scenario.riskReward !== undefined ? scenario.riskReward.toFixed(2) + "R" : "Belum dapat dihitung"}</p></div>
+                    </div>
+                    <p className="text-[9px] leading-relaxed text-muted-foreground">{scenario.reason}</p>
+                  </div>
+                ))}
+              </div>;
+            })()}
+          </CardContent>
+        </Card>
+      )}
       {result.recommendation === "NO_TRADE" && !result.projectedTradePlan && result.candles && result.candles.length >= 5 && (
         <Card className="border-amber-500/30">
           <CardContent className="px-4 py-3">
