@@ -5,6 +5,7 @@ import {
   resolveYahooFinanceStockSymbol,
   resolveYahooFinanceMarketSymbol,
   resolveYahooFinanceComparatorSymbol,
+  resolveYahooFinanceComparatorSymbols,
 } from "./yahoo-finance";
 
 function payload() {
@@ -55,6 +56,14 @@ describe("free Yahoo Finance stock fallback", () => {
     expect(resolveYahooFinanceComparatorSymbol("DXY")).toBe("DX-Y.NYB");
     expect(resolveYahooFinanceComparatorSymbol("NDX")).toBe("^NDX");
     expect(resolveYahooFinanceComparatorSymbol("SPX")).toBeNull();
+    expect(resolveYahooFinanceComparatorSymbols("DXY")).toEqual([
+      { symbol: "DX-Y.NYB", label: "DXY" },
+      { symbol: "DX=F", label: "DXY futures proxy (DX=F)" },
+    ]);
+    expect(resolveYahooFinanceComparatorSymbols("NDX")).toEqual([
+      { symbol: "^NDX", label: "NDX" },
+      { symbol: "NQ=F", label: "Nasdaq-100 futures proxy (NQ=F)" },
+    ]);
   });
 
   it("parses ordered, complete candles and excludes invalid OHLC rows", () => {
