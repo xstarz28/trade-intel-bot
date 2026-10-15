@@ -1,5 +1,5 @@
 import type { AnalysisResult } from "@/types/analysis";
-import type { OhlcvCandle, TechnicalData } from "@/lib/data/market-types";
+import type { TechnicalData } from "@/lib/data/market-types";
 
 export interface ConditionalEntryScenario {
   id: "bullish-breakout" | "bearish-breakdown";
