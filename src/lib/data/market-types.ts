@@ -232,7 +232,10 @@ export interface MtfContext {
 /** Phase 5 — cross-asset context computed from ACTUAL candles (never hardcoded).
  *  Correlation is Pearson on returns; directional context only at |corr| ≥ 0.6. */
 export interface CrossAssetContext {
+  /** Display label for the actual index or an explicitly labeled futures proxy. */
   comparatorSymbol: string;
+  /** Exact provider ticker used to fetch comparator candles. */
+  providerSymbol?: string;
   timeframe: string;
   available: boolean;
   unavailableReason?: string;
