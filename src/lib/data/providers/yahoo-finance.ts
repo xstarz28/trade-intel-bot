@@ -187,7 +187,17 @@ export function resolveYahooFinanceMarketSymbol(instrumentType: string, instrume
       EURNZD: "EURNZD=X", GBPAUD: "GBPAUD=X", GBPCAD: "GBPCAD=X", GBPNZD: "GBPNZD=X",
       AUDCAD: "AUDCAD=X", AUDNZD: "AUDNZD=X", CADJPY: "CADJPY=X", CHFJPY: "CHFJPY=X",
     };
-    return exactPairs[compact] ?? null;
+    const knownPair = exactPairs[compact];
+    if (knownPair) return knownPair;
+    // Yahoo's FX convention is BASEQUOTE=X for most pairs, while USD-base
+    // pairs use the quote currency ticker (for example IDR=X). This maps
+    // symbols, not prices; unsupported tickers still fail closed at fetch time.
+    const pair = compact.match(/^([A-Z]{3})([A-Z]{3})$/);
+    if (!pair) return null;
+    const [, base, quote] = pair;
+    if (base === "USD") return quote === "USD" ? null : quote + "=X";
+    if (quote === "USD") return base + "USD=X";
+    return base + quote + "=X";
   }
   if (instrumentType === "commodity") {
     if (["XAUUSD", "GOLD", "XAU"].includes(compact)) return "XAUUSD=X";
