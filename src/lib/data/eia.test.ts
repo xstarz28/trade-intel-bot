@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseEiaResponse,
+  parseFredInventoryCsv,
   buildEiaContext,
   classifyEiaFreshness,
   deriveEiaInventoryEvidence,
@@ -37,6 +38,38 @@ function legResponse(
     apiVersion: "2.1.12",
   };
 }
+
+
+describe("parseFredInventoryCsv", () => {
+  it("parses actual dated EIA-sourced FRED observations and skips missing values", () => {
+    const csv = [
+      "observation_date,WCESTUS1",
+      "2026-08-07,424410",
+      "2026-08-14,428815",
+      "2026-08-21,.",
+      "not-a-date,429000",
+    ].join("\\n");
+    const parsed = parseFredInventoryCsv(
+      csv,
+      "EPC0",
+      "WCESTUS1",
+      "Commercial crude oil stocks excluding SPR",
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.productId).toBe("EPC0");
+    expect(parsed.unit).toBe("thousand barrels");
+    expect(parsed.observations).toEqual([
+      { period: "2026-08-14", value: 428815 },
+      { period: "2026-08-07", value: 424410 },
+    ]);
+  });
+
+  it("rejects wrong headers and CSV with no valid observations", () => {
+    expect(parseFredInventoryCsv("date,OTHER\\n2026-08-14,2", "EPC0", "WCESTUS1", "Crude").ok).toBe(false);
+    expect(parseFredInventoryCsv("observation_date,WCESTUS1\\n2026-08-14,.", "EPC0", "WCESTUS1", "Crude").ok).toBe(false);
+  });
+});
 
 describe("parseEiaResponse", () => {
   it("parses a valid documented response with STRING values, sorted desc", () => {
