@@ -2481,6 +2481,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       </div>
                     )}
                   </div>
+                  {ci.tokenomics.failureReason && (
+                    <p className="text-[9px] font-mono text-amber-300/70 leading-relaxed mb-1">
+                      {localizeAnalysisText(ci.tokenomics.failureReason, locale)}
+                    </p>
+                  )}
                   <p className="text-[9px] font-mono text-muted-foreground/50 leading-relaxed">
                     Unlocks are context, not automatic bearish signals. Impact depends on size, recipient behavior, liquidity, and market absorption.
                   </p>

@@ -18,6 +18,8 @@ import type {
 import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
 import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tokenomist-adapter";
 import { PatternPlusUnlockAdapter } from "../lib/data/crypto/patternplus-unlocks-adapter";
+import { parseCoinGeckoSupplyFallback } from "../lib/data/crypto/coingecko-supply";
+import { getProviderSymbol } from "../lib/data/universal/instruments";
 import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivatives-adapter";
 import { OkxPublicDerivativesAdapter } from "../lib/data/crypto/okx-derivatives-adapter";
@@ -300,6 +302,35 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
   // Missing records remain unavailable; they are never interpreted as zero unlocks.
   try {
     const fallback = await patternPlusUnlockAdapter.fetch(key);
+    if (!fallback.available) {
+      // Supply metrics are a separate, useful tokenomics fallback when neither
+      // Tokenomist nor PatternPlus has a verified unlock record. Never infer
+      // zero unlocks from a missing calendar row.
+      const coinGeckoId = getProviderSymbol(key, "coingecko");
+      if (coinGeckoId) {
+        try {
+          const response = await fetch(
+            "https://api.coingecko.com/api/v3/coins/" + encodeURIComponent(coinGeckoId) +
+              "?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false",
+            { headers: { accept: "application/json" }, signal: AbortSignal.timeout(3_000) },
+          );
+          if (response.ok) {
+            const supplyFallback = parseCoinGeckoSupplyFallback(await response.json());
+            if (supplyFallback) {
+              const result = {
+                ...supplyFallback,
+                failureReason: "Supply fallback active. Verified unlock calendar unavailable: " +
+                  (fallback.failureReason ?? tokenomistFailure ?? "no dated unlock records returned"),
+              };
+              tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
+              return result;
+            }
+          }
+        } catch {
+          // Keep the explicit unlock-provider failure below; never synthesize supply.
+        }
+      }
+    }
     const result = !fallback.available && tokenomistFailure
       ? {
           ...fallback,
