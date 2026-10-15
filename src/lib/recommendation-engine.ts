@@ -827,11 +827,11 @@ export function scoreCandidate(
         : "independent directional confirmation unavailable",
     );
   }
-  // A strong technical read without independent corroboration is a watch
-  // context, not a high-ranked opportunity. Keep its numeric score below the
-  // WATCHLIST threshold so the list cannot make an unconfirmed setup look
+  // A strong technical read without two independent corroborating layers is
+  // context for monitoring, not a high-ranked opportunity. Keep its numeric
+  // score below the WATCHLIST threshold so an unconfirmed setup cannot look
   // better than a genuinely corroborated candidate.
-  if (directional && agreeingNonTechnical === 0) {
+  if (directional && agreeingNonTechnical < 2) {
     score = Math.min(score, 59);
   }
 
