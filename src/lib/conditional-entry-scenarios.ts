@@ -41,7 +41,7 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
   const bearishTarget = unique(supports).find((v) => support !== undefined && v < support - buffer);
 
   const scenarios: ConditionalEntryScenario[] = [];
-  if (resistance !== undefined) {
+  if (resistance !== undefined && support !== undefined) {
     const trigger = resistance + buffer;
     const invalidation = support;
     const target = bullishTarget;
@@ -63,7 +63,7 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
       reason: !atr ? "ATR tidak tersedia; konfirmasi buffer belum dapat dihitung." : !target ? "Belum ada swing high teramati di atas pemicu untuk target yang valid." : !ready ? "R:R berbasis level teramati di bawah minimum 1,5." : "Tunggu candle tutup di atas pemicu dan struktur/MTF mengonfirmasi.",
     });
   }
-  if (support !== undefined) {
+  if (support !== undefined && resistance !== undefined) {
     const trigger = support - buffer;
     const invalidation = resistance;
     const target = bearishTarget;
