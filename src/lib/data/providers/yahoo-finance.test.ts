@@ -39,6 +39,8 @@ describe("free Yahoo Finance stock fallback", () => {
   it("maps only exact supported FX/metals instruments to free Yahoo tickers", () => {
     expect(resolveYahooFinanceMarketSymbol("forex", "EUR/USD")).toBe("EURUSD=X");
     expect(resolveYahooFinanceMarketSymbol("forex", "USD/JPY")).toBe("JPY=X");
+    expect(resolveYahooFinanceMarketSymbol("forex", "USD/IDR")).toBe("IDR=X");
+    expect(resolveYahooFinanceMarketSymbol("forex", "EUR/IDR")).toBe("EURIDR=X");
     expect(resolveYahooFinanceMarketSymbol("commodity", "XAU/USD")).toBe("XAUUSD=X");
     expect(resolveYahooFinanceMarketSymbol("commodity", "XAGUSD")).toBe("XAGUSD=X");
     expect(resolveYahooFinanceMarketSymbol("forex", "BTC/USDT")).toBeNull();
