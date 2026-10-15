@@ -23,7 +23,7 @@ import type { FxRateSnapshot } from "../lib/risk";
 import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import { resolveProviderRequest } from "../lib/data/universal/provider-symbol";
-import { fetchYahooFinanceCandles, resolveYahooFinanceComparatorSymbol, resolveYahooFinanceMarketSymbol } from "../lib/data/providers/yahoo-finance";
+import { fetchYahooFinanceCandles, resolveYahooFinanceComparatorSymbols, resolveYahooFinanceMarketSymbol } from "../lib/data/providers/yahoo-finance";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
@@ -525,52 +525,57 @@ export const fetchMarketData = action({
         delete technical.chainUnavailable;
       }
 
-      // Fetch actual cross-asset prices from the free public index feed, not
-      // from the constrained Twelve Data quota. Correlation is computed only
-      // on timestamp-aligned returns; insufficient overlap remains unavailable.
+      // Prefer the exact index feed. If it is unavailable, use an explicitly
+      // labeled related futures series rather than silently claiming it is spot DXY/NDX.
+      // Correlation uses only timestamp-aligned actual prices.
       const comparator = crossAssetComparator(args.instrumentType, symbol);
       let crossAsset: TechnicalData["crossAsset"] | undefined;
       if (comparator && comparator !== symbol.toUpperCase()) {
-        const yahooComparator = resolveYahooFinanceComparatorSymbol(comparator);
+        const candidates = resolveYahooFinanceComparatorSymbols(comparator);
+        const failures: string[] = [];
         crossAsset = {
           comparatorSymbol: comparator,
           timeframe: args.timeframe,
           available: false,
-          unavailableReason: yahooComparator
-            ? "Actual comparator series has not yet been validated."
-            : "No exact Yahoo Finance ticker mapping exists for this comparator.",
+          unavailableReason: candidates.length
+            ? "No comparator candidate has yet produced enough aligned observations."
+            : "No Yahoo Finance index or futures-proxy mapping exists for this comparator.",
         };
-        if (yahooComparator) {
+        for (const candidate of candidates) {
           try {
-            const comparatorCandles = await fetchYahooFinanceCandles(yahooComparator, args.timeframe, 120);
+            const comparatorCandles = await fetchYahooFinanceCandles(candidate.symbol, args.timeframe, 120);
             const aligned = alignCrossAssetCloses(candles, comparatorCandles, args.timeframe);
             const alignedPrimary = aligned.primary;
             const alignedComparator = aligned.comparator;
             const stats = pearsonCorrelation(alignedPrimary, alignedComparator);
             if (!stats) {
-              crossAsset.unavailableReason =
-                "Yahoo Finance returned actual comparator prices, but there are fewer than 20 timestamp-aligned returns.";
-            } else {
-              const recentBase = alignedComparator[Math.max(0, alignedComparator.length - 21)];
-              const latestBase = alignedComparator[alignedComparator.length - 1];
-              const momentum = latestBase > recentBase ? "up" : latestBase < recentBase ? "down" : "flat";
-              crossAsset = {
-                comparatorSymbol: comparator,
-                timeframe: args.timeframe,
-                available: true,
-                correlation: stats.correlation,
-                sampleSize: stats.n,
-                directionalContext: stats.correlation >= 0.6 ? "direct" :
-                  stats.correlation <= -0.6 ? "inverse" : "weak",
-                comparatorMomentum: momentum,
-                dataKind: "actual_price",
-                provider: "yahoo-finance-public",
-              };
+              failures.push(candidate.label + ": fewer than 20 valid timestamp-aligned returns or zero variance");
+              continue;
             }
+            const recentBase = alignedComparator[Math.max(0, alignedComparator.length - 21)];
+            const latestBase = alignedComparator[alignedComparator.length - 1];
+            const momentum = latestBase > recentBase ? "up" : latestBase < recentBase ? "down" : "flat";
+            crossAsset = {
+              comparatorSymbol: candidate.label,
+              providerSymbol: candidate.symbol,
+              timeframe: args.timeframe,
+              available: true,
+              correlation: stats.correlation,
+              sampleSize: stats.n,
+              directionalContext: stats.correlation >= 0.6 ? "direct" :
+                stats.correlation <= -0.6 ? "inverse" : "weak",
+              comparatorMomentum: momentum,
+              dataKind: "actual_price",
+              provider: "yahoo-finance-public",
+            };
+            break;
           } catch (error) {
-            crossAsset.unavailableReason = "Actual Yahoo Finance comparator data unavailable: " +
-              (error instanceof Error ? error.message : String(error));
+            failures.push(candidate.label + ": " +
+              (error instanceof Error ? error.message : String(error)));
           }
+        }
+        if (crossAsset && !crossAsset.available && failures.length) {
+          crossAsset.unavailableReason = failures.join("; ");
         }
       }
       if (crossAsset) technical.crossAsset = crossAsset;
