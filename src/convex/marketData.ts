@@ -24,6 +24,7 @@ import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import { resolveProviderRequest } from "../lib/data/universal/provider-symbol";
 import { fetchYahooFinanceCandles, fetchYahooFinanceMarketCandles, resolveYahooFinanceComparatorSymbols, resolveYahooFinanceMarketSymbol } from "../lib/data/providers/yahoo-finance";
+import { BinanceSpotMarketAdapter, BINANCE_SPOT_MARKET_PROVIDER } from "../lib/data/crypto/binance-spot-market-adapter";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
@@ -68,6 +69,7 @@ function reserveTwelveDataCall(requestClass: TwelveDataRequestClass): void {
   }
 }
 const okxSpotMarketAdapter = new OkxSpotMarketAdapter();
+const binanceSpotMarketAdapter = new BinanceSpotMarketAdapter();
 const OKX_PERPETUAL_MARKET_PROVIDER = "okx-perpetual-public";
 const OKX_FUTURES_MARKET_PROVIDER = "okx-futures-public";
 const candleProviderCache = new Map<string, string>();
@@ -172,12 +174,30 @@ async function fetchCandles(
         return normalized;
       } catch (okxError) {
         const okxMessage = okxError instanceof Error ? okxError.message : String(okxError);
-        const activeBackoff = candleRateLimitBackoff.get(cacheKey);
-        if (activeBackoff && Date.now() < activeBackoff.retryAt) {
-          throw new Error("OKX Spot unavailable: " + okxMessage + "; Twelve Data backup is rate-limited: " + activeBackoff.message);
-        }
-        if (!apiKey) {
-          throw new Error("OKX Spot unavailable: " + okxMessage + "; Twelve Data backup is unavailable because TWELVE_DATA_API_KEY is missing");
+        // Independent public exchange fallback for spot pairs only. Derivative
+        // contracts take the exact-contract path above and are never remapped.
+        try {
+          const normalized = await binanceSpotMarketAdapter.fetchCandles(normalizedSymbol, normalizedTimeframe, outputsize);
+          const fetchedAt = Date.now();
+          candleCache.set(cacheKey, {
+            candles: normalized.map((candle) => ({ ...candle })),
+            fetchedAt,
+            expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
+          });
+          candleProviderCache.set(cacheKey, BINANCE_SPOT_MARKET_PROVIDER);
+          candleRateLimitBackoff.delete(cacheKey);
+          return normalized;
+        } catch (binanceError) {
+          const binanceMessage = binanceError instanceof Error ? binanceError.message : String(binanceError);
+          const activeBackoff = candleRateLimitBackoff.get(cacheKey);
+          if (activeBackoff && Date.now() < activeBackoff.retryAt) {
+            if (!apiKey) {
+              throw new Error("OKX Spot unavailable: " + okxMessage + "; Binance Spot unavailable: " + binanceMessage + "; Twelve Data backup is rate-limited: " + activeBackoff.message);
+            }
+          }
+          if (!apiKey) {
+            throw new Error("OKX Spot unavailable: " + okxMessage + "; Binance Spot fallback failed: " + binanceMessage + "; Twelve Data backup is unavailable because TWELVE_DATA_API_KEY is missing");
+          }
         }
       }
     }
