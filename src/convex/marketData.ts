@@ -68,7 +68,8 @@ function reserveTwelveDataCall(requestClass: TwelveDataRequestClass): void {
     throw new Error(`REQUEST_BUDGET: ${reservation.reason}; retry after ${new Date(reservation.retryAt).toISOString()}`);
   }
 }
-const okxSpotMarketAdapter = new OkxSpotMarketAdapter();\nconst binanceSpotMarketAdapter = new BinanceSpotMarketAdapter();
+const okxSpotMarketAdapter = new OkxSpotMarketAdapter();
+const binanceSpotMarketAdapter = new BinanceSpotMarketAdapter();
 const OKX_PERPETUAL_MARKET_PROVIDER = "okx-perpetual-public";
 const OKX_FUTURES_MARKET_PROVIDER = "okx-futures-public";
 const candleProviderCache = new Map<string, string>();
