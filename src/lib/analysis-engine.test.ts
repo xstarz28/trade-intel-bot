@@ -223,6 +223,9 @@ describe("TPO + VPVR analysis integration", () => {
     const result = runAnalysis(baseInput({
       currentPrice: "1.11",
       technicalData: {
+        sma50: 1.07,
+        sma100: 1.06,
+        sma200: 1.05,
         swingHighs: [1.08, 1.10],
         swingLows: [1.04, 1.06],
         structure: "HH/HL",
@@ -262,6 +265,10 @@ describe("TPO + VPVR analysis integration", () => {
     expect(layer?.cap).toBe(5);
     expect(layer?.reason).toContain("VPVR POC");
     expect(layer?.reason).toContain("TPO POC");
+    const maLayer = result.decisionTrace?.convictionBreakdown.layers.find((item) => item.layer === "Moving Averages");
+    expect(maLayer).toBeDefined();
+    expect(maLayer?.cap).toBe(4);
+    expect(maLayer?.contribution).toBeGreaterThan(0);
   });
 });
 
