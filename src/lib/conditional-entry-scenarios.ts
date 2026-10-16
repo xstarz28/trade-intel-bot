@@ -87,5 +87,62 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
       reason: !atr ? "ATR tidak tersedia; konfirmasi buffer belum dapat dihitung." : !target ? "Belum ada swing low teramati di bawah pemicu untuk target yang valid." : !ready ? "R:R berbasis level teramati di bawah minimum 1,5." : "Tunggu candle tutup di bawah pemicu dan struktur/MTF mengonfirmasi.",
     });
   }
+  // If swing/support/resistance detection has no usable levels, still give
+  // the trader a transparent watch framework from the observed recent range.
+  // These are explicitly mathematical projections, never confirmed S/R or
+  // executable plans. Stale/unavailable primary data was rejected above.
+  if (scenarios.length === 0) {
+    const windowCandles = candles.slice(-20).filter((candle) =>
+      Number.isFinite(candle.high) && candle.high > 0 &&
+      Number.isFinite(candle.low) && candle.low > 0 &&
+      candle.high >= candle.low
+    );
+    if (windowCandles.length >= 10) {
+      const rangeHigh = Math.max(...windowCandles.map((candle) => candle.high));
+      const rangeLow = Math.min(...windowCandles.map((candle) => candle.low));
+      const rangeWidth = rangeHigh - rangeLow;
+      if (Number.isFinite(rangeWidth) && rangeWidth > 0) {
+        const projectionBuffer = atr ? atr * 0.1 : rangeWidth * 0.01;
+        const longTrigger = rangeHigh + projectionBuffer;
+        const longInvalidation = rangeLow - projectionBuffer;
+        const longRisk = longTrigger - longInvalidation;
+        const longReward = Math.max(rangeWidth, atr ? atr * 2 : rangeWidth);
+        const longTarget = longTrigger + longReward;
+        const longRr = longRisk > 0 ? longReward / longRisk : undefined;
+        const shortTrigger = rangeLow - projectionBuffer;
+        const shortInvalidation = rangeHigh + projectionBuffer;
+        const shortRisk = shortInvalidation - shortTrigger;
+        const shortReward = Math.max(rangeWidth, atr ? atr * 2 : rangeWidth);
+        const shortTarget = shortTrigger - shortReward;
+        const shortRr = shortRisk > 0 ? shortReward / shortRisk : undefined;
+        scenarios.push({
+          id: "bullish-breakout",
+          direction: "long",
+          trigger: longTrigger,
+          invalidation: longInvalidation,
+          target: longTarget,
+          ...(longRr !== undefined ? { riskReward: longRr } : {}),
+          triggerBasis: "High rentang 20 candle teramati + buffer volatilitas",
+          invalidationBasis: "Low rentang 20 candle teramati − buffer volatilitas",
+          targetBasis: "Proyeksi 1× rentang teramati atau 2 ATR (mana yang lebih besar), bukan resistance terkonfirmasi",
+          ready: false,
+          reason: "Skenario proyeksi tersedia, tetapi swing/resistance terkonfirmasi belum tersedia. Tunggu struktur dan target pasar nyata sebelum mempertimbangkan entry.",
+        });
+        scenarios.push({
+          id: "bearish-breakdown",
+          direction: "short",
+          trigger: shortTrigger,
+          invalidation: shortInvalidation,
+          target: shortTarget,
+          ...(shortRr !== undefined ? { riskReward: shortRr } : {}),
+          triggerBasis: "Low rentang 20 candle teramati − buffer volatilitas",
+          invalidationBasis: "High rentang 20 candle teramati + buffer volatilitas",
+          targetBasis: "Proyeksi 1× rentang teramati atau 2 ATR (mana yang lebih besar), bukan support terkonfirmasi",
+          ready: false,
+          reason: "Skenario proyeksi tersedia, tetapi swing/support terkonfirmasi belum tersedia. Tunggu struktur dan target pasar nyata sebelum mempertimbangkan entry.",
+        });
+      }
+    }
+  }
   return scenarios;
 }
