@@ -289,6 +289,7 @@ describe("asset-specific fundamental evidence integration", () => {
       instrument: "BTC/USD",
       instrumentType: "crypto",
       currentPrice: "100",
+      newsContext: "ETF adoption supports BTC market fundamentals",
       recentHigh: "105",
       recentLow: "90",
       technicalData: {
