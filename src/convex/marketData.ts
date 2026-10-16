@@ -24,6 +24,7 @@ import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import { resolveProviderRequest } from "../lib/data/universal/provider-symbol";
 import { fetchYahooFinanceCandles, fetchYahooFinanceMarketCandles, resolveYahooFinanceComparatorSymbols, resolveYahooFinanceMarketSymbol } from "../lib/data/providers/yahoo-finance";
+import { BinanceSpotMarketAdapter, BINANCE_SPOT_MARKET_PROVIDER } from "../lib/data/crypto/binance-spot-market-adapter";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
