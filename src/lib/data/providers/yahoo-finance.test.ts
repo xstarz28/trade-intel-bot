@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  fetchYahooFinanceCandles,
+  fetchYahooFinanceCandles,\n  fetchYahooFinanceMarketCandles,\n  resolveYahooFinanceMarketCandidates,
   parseYahooFinanceCandles,
   resolveYahooFinanceStockSymbol,
   resolveYahooFinanceMarketSymbol,
@@ -64,6 +64,41 @@ describe("free Yahoo Finance stock fallback", () => {
       { symbol: "^NDX", label: "NDX" },
       { symbol: "NQ=F", label: "Nasdaq-100 futures proxy (NQ=F)" },
     ]);
+  });
+
+  it("tries exact spot metals before clearly labeled futures proxies", () => {
+    expect(resolveYahooFinanceMarketCandidates("commodity", "XAU/USD")).toEqual([
+      { symbol: "XAUUSD=X", label: "Yahoo Finance spot ticker XAUUSD=X" },
+      { symbol: "GC=F", label: "Yahoo Finance gold futures proxy GC=F (not spot XAU/USD)" },
+    ]);
+    expect(resolveYahooFinanceMarketCandidates("commodity", "XAG/USD")).toEqual([
+      { symbol: "XAGUSD=X", label: "Yahoo Finance spot ticker XAGUSD=X" },
+      { symbol: "SI=F", label: "Yahoo Finance silver futures proxy SI=F (not spot XAG/USD)" },
+    ]);
+  });
+
+  it("falls back from unavailable spot gold to real GC=F candles with explicit proxy provenance", async () => {
+    const requested: string[] = [];
+    const result = await fetchYahooFinanceMarketCandles("commodity", "XAU/USD", "M5", 2, async (input) => {
+      const url = new URL(String(input));
+      const symbol = decodeURIComponent(url.pathname.split("/").pop() ?? "");
+      requested.push(symbol);
+      if (symbol === "XAUUSD=X") {
+        return new Response(JSON.stringify({ chart: { error: { description: "No data found" }, result: null } }), {
+          status: 404,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify(payload()), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    expect(requested).toEqual(["XAUUSD=X", "GC=F"]);
+    expect(result.symbol).toBe("GC=F");
+    expect(result.providerLabel).toContain("futures proxy");
+    expect(result.providerLabel).toContain("not spot XAU/USD");
+    expect(result.candles).toHaveLength(2);
   });
 
   it("parses ordered, complete candles and excludes invalid OHLC rows", () => {
