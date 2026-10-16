@@ -533,6 +533,26 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     }
     if (fund.profitMargin !== undefined && fund.profitMargin > 0.2) score += 1;
     if (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) score += 1;
+
+    // Additional equity quality/valuation signals are bounded as one correlated
+    // group. These are broad heuristics, not sector-adjusted fair-value models.
+    let qualityScore = 0;
+    if (fund.pegRatio !== undefined && fund.pegRatio > 0) {
+      if (fund.pegRatio < 1) qualityScore += 1;
+      if (fund.pegRatio > 2.5) qualityScore -= 1;
+    }
+    if (fund.operatingMargin !== undefined) {
+      if (fund.operatingMargin > 0.15) qualityScore += 1;
+      if (fund.operatingMargin < 0) qualityScore -= 1;
+    }
+    if (fund.returnOnEquity !== undefined) {
+      if (fund.returnOnEquity > 0.15) qualityScore += 1;
+      if (fund.returnOnEquity < 0) qualityScore -= 1;
+    }
+    score += Math.max(-2, Math.min(2, qualityScore));
+
+    // Price/book and dividend yield remain visible in the report but are not
+    // directionally scored without sector/payout sustainability context.
     // Sector context: stored but NO sector-benchmark provider exists —
     // deliberately unscored rather than synthetically ranked.
   }
