@@ -382,6 +382,7 @@ describe("asset-specific fundamental evidence integration", () => {
       instrument: "BTC/USD",
       instrumentType: "crypto",
       currentPrice: "100",
+      newsContext: "regulation crackdown",
       recentHigh: "105",
       recentLow: "60",
       marketData: {
