@@ -2348,16 +2348,54 @@ function generateTechnicalSummary(
       parts.push(`Key resistance: ${tech.resistanceLevels.map((r) => r.toFixed(4)).join(", ")}.`);
     }
 
+    // Moving averages — display the actual calculated values and their
+    // position relative to the observed quote, not just the conviction score.
+    const referencePrice = md?.price.price ??
+      (typeof input.currentPrice === "string" ? Number.parseFloat(input.currentPrice) : undefined);
+    const movingAverages = [
+      { name: "SMA50", value: tech.sma50 },
+      { name: "SMA100", value: tech.sma100 },
+      { name: "SMA200", value: tech.sma200 },
+    ].filter((item): item is { name: string; value: number } =>
+      typeof item.value === "number" && Number.isFinite(item.value) && item.value > 0
+    );
+    if (movingAverages.length > 0) {
+      parts.push(
+        `Moving averages: ${movingAverages.map((item) =>
+          `${item.name} ${item.value.toFixed(4)}${Number.isFinite(referencePrice) && (referencePrice ?? 0) > 0
+            ? ` (price ${referencePrice! > item.value ? "above" : referencePrice! < item.value ? "below" : "at"} the average)`
+            : ""}`
+        ).join("; ")}. Confirmation context only, not a standalone signal.`,
+      );
+    } else {
+      parts.push("Moving averages unavailable: insufficient valid candle history for SMA50/100/200.");
+    }
+
+    // Fibonacci retracement levels are structural reference zones; they are
+    // never treated as independent evidence or used to manufacture direction.
+    if (tech.fibLevels) {
+      const fib = tech.fibLevels;
+      parts.push(
+        `Fibonacci retracement levels: 23.6% ${fib.level236.toFixed(4)}, 38.2% ${fib.level382.toFixed(4)}, 50.0% ${fib.level500.toFixed(4)}, 61.8% ${fib.level618.toFixed(4)}, 78.6% ${fib.level786.toFixed(4)}; reference zones only.`,
+      );
+    }
+
     // Volume
     if (tech.volumeTrend !== "unknown") {
       parts.push(`Volume trend: ${tech.volumeTrend}.`);
     }
+    if (typeof tech.avgVolume20 === "number" && Number.isFinite(tech.avgVolume20)) {
+      parts.push(`20-candle average volume: ${tech.avgVolume20.toFixed(2)}.`);
+    }
 
-    // ATR
+    // ATR and latest candle range
     if (tech.atr14 !== undefined) {
       parts.push(
         `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`,
       );
+    }
+    if (typeof tech.dailyRange === "number" && Number.isFinite(tech.dailyRange)) {
+      parts.push(`Latest candle range: ${tech.dailyRange.toFixed(4)}.`);
     }
 
     // Cross-asset context (Phase 5) — measured from actual candles only.
@@ -2473,10 +2511,15 @@ function generateTechnicalSummary(
     // Secondary momentum context — explicitly non-decisive
     if (tech.rsi14 !== undefined) {
       const rsiLabel = tech.rsi14 > 70 ? "overbought" : tech.rsi14 < 30 ? "oversold" : "neutral";
-      parts.push(`RSI(14): ${tech.rsi14} (${rsiLabel}) — secondary context only.`);
+      parts.push(`RSI(14): ${tech.rsi14} (${rsiLabel})${tech.rsiDivergence && tech.rsiDivergence !== "none" ? `; ${tech.rsiDivergence} divergence detected` : ""} — secondary context only.`);
     }
     if (tech.macdHistogram !== undefined) {
-      parts.push(`MACD histogram: ${tech.macdHistogram > 0 ? "positive" : "negative"} — secondary context only.`);
+      const macdParts = [
+        Number.isFinite(tech.macdLine) ? `line ${tech.macdLine!.toFixed(4)}` : undefined,
+        Number.isFinite(tech.macdSignal) ? `signal ${tech.macdSignal!.toFixed(4)}` : undefined,
+        `histogram ${tech.macdHistogram.toFixed(4)} (${tech.macdHistogram > 0 ? "positive" : tech.macdHistogram < 0 ? "negative" : "neutral"})`,
+      ].filter(Boolean);
+      parts.push(`MACD(12,26,9): ${macdParts.join(", ")} — secondary context only.`);
     }
   } else if (input.currentPrice && input.recentHigh && input.recentLow) {
     if (trendScore >= 1) {
