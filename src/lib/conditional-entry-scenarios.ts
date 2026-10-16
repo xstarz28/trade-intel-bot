@@ -106,13 +106,13 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
         const longTrigger = rangeHigh + projectionBuffer;
         const longInvalidation = rangeLow - projectionBuffer;
         const longRisk = longTrigger - longInvalidation;
-        const longReward = Math.max(rangeWidth, atr ? atr * 2 : rangeWidth);
+        const longReward = Math.max(rangeWidth, atr ? atr * 2 : 0, longRisk * 1.5);
         const longTarget = longTrigger + longReward;
         const longRr = longRisk > 0 ? longReward / longRisk : undefined;
         const shortTrigger = rangeLow - projectionBuffer;
         const shortInvalidation = rangeHigh + projectionBuffer;
         const shortRisk = shortInvalidation - shortTrigger;
-        const shortReward = Math.max(rangeWidth, atr ? atr * 2 : rangeWidth);
+        const shortReward = Math.max(rangeWidth, atr ? atr * 2 : 0, shortRisk * 1.5);
         const shortTarget = shortTrigger - shortReward;
         const shortRr = shortRisk > 0 ? shortReward / shortRisk : undefined;
         scenarios.push({
