@@ -747,6 +747,45 @@ describe("keyLevels", () => {
   });
 });
 
+describe("stock fundamental scoring", () => {
+  it("scores company fundamentals even when news-derived macro indicators are available", () => {
+    const macroData = {
+      provider: "alpha-vantage",
+      timestamp: Date.now(),
+      indicators: [{
+        name: "earnings outlook",
+        relevance: "high" as const,
+        sentiment: "positive" as const,
+      }],
+      summary: "positive news-derived context",
+      confidence: "high" as const,
+    };
+    const macroOnly = runAnalysis(baseInput({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      macroData,
+    }));
+    const withFundamentals = runAnalysis(baseInput({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      macroData,
+      fundamentalData: {
+        provider: "alpha-vantage",
+        timestamp: Date.now(),
+        instrumentType: "stock",
+        symbol: "AAPL",
+        available: true,
+        peRatio: 12,
+        profitMargin: 0.25,
+        earningsPerShare: 4,
+      },
+    }));
+
+    // P/E, margin, and positive EPS contribute independently of the macro feed.
+    expect(withFundamentals.breakdown.fundamental - macroOnly.breakdown.fundamental).toBe(3);
+  });
+});
+
 // ── Instrument formatting ─────────────────────────────────────────
 
 describe("instrument formatting", () => {
