@@ -240,6 +240,20 @@ describe("TPO + VPVR analysis integration", () => {
         sma50: 1.07,
         sma100: 1.06,
         sma200: 1.05,
+        rsi14: 62,
+        rsiDivergence: "bullish",
+        macdLine: 0.012,
+        macdSignal: 0.008,
+        macdHistogram: 0.004,
+        avgVolume20: 1250,
+        dailyRange: 0.02,
+        fibLevels: {
+          level236: 1.12,
+          level382: 1.14,
+          level500: 1.16,
+          level618: 1.18,
+          level786: 1.20,
+        },
         swingHighs: [1.25, 1.30],
         swingLows: [1.07, 1.08],
         structure: "HH/HL",
@@ -281,6 +295,13 @@ describe("TPO + VPVR analysis integration", () => {
 
     expect(result.technicalSummary).toContain("VPVR");
     expect(result.technicalSummary).toContain("TPO market profile");
+    expect(result.technicalSummary).toContain("Moving averages: SMA50");
+    expect(result.technicalSummary).toContain("SMA200");
+    expect(result.technicalSummary).toContain("Fibonacci retracement levels");
+    expect(result.technicalSummary).toContain("MACD(12,26,9)");
+    expect(result.technicalSummary).toContain("bullish divergence detected");
+    expect(result.technicalSummary).toContain("20-candle average volume");
+    expect(result.technicalSummary).toContain("Latest candle range");
     const layer = result.decisionTrace?.convictionBreakdown.layers.find((item) => item.layer === "TPO + VPVR");
     expect(layer).toBeDefined();
     expect(layer?.cap).toBe(5);
