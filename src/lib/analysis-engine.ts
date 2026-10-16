@@ -2614,22 +2614,22 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     parts.push(`Fundamentals — ${fund.name || fund.symbol}:`);
     if (fund.peRatio !== undefined) parts.push(`P/E: ${fund.peRatio.toFixed(1)}`);
     if (fund.pegRatio !== undefined) parts.push(`PEG: ${fund.pegRatio.toFixed(2)}`);
-    if (fund.earningsPerShare !== undefined) parts.push(`EPS: ${fund.earningsPerShare.toFixed(2)}`);
+    if (fund.earningsPerShare !== undefined) parts.push(`EPS: $${fund.earningsPerShare.toFixed(2)}`);
     if (fund.profitMargin !== undefined) parts.push(`Profit margin: ${(fund.profitMargin * 100).toFixed(1)}%`);
     if (fund.operatingMargin !== undefined) parts.push(`Operating margin: ${(fund.operatingMargin * 100).toFixed(1)}%`);
     if (fund.returnOnEquity !== undefined) parts.push(`ROE: ${(fund.returnOnEquity * 100).toFixed(1)}%`);
     if (fund.priceToBook !== undefined) parts.push(`Price/book: ${fund.priceToBook.toFixed(2)}`);
     if (fund.dividendYield !== undefined) parts.push(`Dividend yield: ${(fund.dividendYield * 100).toFixed(2)}%`);
-    if (fund.marketCap !== undefined) parts.push(`Mkt Cap: ${(fund.marketCap / 1e9).toFixed(1)}B`);
+    if (fund.marketCap !== undefined) parts.push(`Mkt Cap: $${(fund.marketCap / 1e9).toFixed(1)}B`);
     if (fund.fiftyTwoWeekLow !== undefined || fund.fiftyTwoWeekHigh !== undefined) {
       parts.push(`52-week range: ${fund.fiftyTwoWeekLow !== undefined ? fund.fiftyTwoWeekLow.toFixed(2) : "n/a"}–${fund.fiftyTwoWeekHigh !== undefined ? fund.fiftyTwoWeekHigh.toFixed(2) : "n/a"}`);
     }
-    if (fund.analystTargetPrice !== undefined) parts.push(`Analyst target estimate: ${fund.analystTargetPrice.toFixed(2)} (provider estimate, not a guarantee)`);
+    if (fund.analystTargetPrice !== undefined) parts.push(`Analyst target estimate: $${fund.analystTargetPrice.toFixed(2)} (provider estimate, not a guarantee)`);
     if (fund.sector) parts.push(`Sector: ${fund.sector} (sector-relative strength UNAVAILABLE — no benchmark provider)`);
     if (fund.latestEarnings?.date) {
       parts.push(`Latest earnings: ${fund.latestEarnings.date}`);
-      if (fund.latestEarnings.eps !== undefined) parts.push(`Reported EPS: ${fund.latestEarnings.eps.toFixed(2)}`);
-      if (fund.latestEarnings.revenue !== undefined) parts.push(`Reported revenue: ${(fund.latestEarnings.revenue / 1e9).toFixed(2)}B`);
+      if (fund.latestEarnings.eps !== undefined) parts.push(`Reported EPS: $${fund.latestEarnings.eps.toFixed(2)}`);
+      if (fund.latestEarnings.revenue !== undefined) parts.push(`Reported revenue: $${(fund.latestEarnings.revenue / 1e9).toFixed(2)}B`);
     }
   } else if (fund && !fund.available && fund.unavailableReason) {
     parts.push(fund.unavailableReason);
