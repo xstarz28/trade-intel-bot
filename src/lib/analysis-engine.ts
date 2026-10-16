@@ -417,19 +417,62 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
   // ── Auto-fetched data path ──
   if (tech && tech.dataPoints >= 14) {
     let score = 0;
+    const parsedPrice = input.marketData?.price?.price ?? Number(input.currentPrice);
+    const price = Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : undefined;
 
-    // RSI — momentum context only
-    if (tech.rsi14 !== undefined) {
-      if (tech.rsi14 > 70) score -= 1;
-      else if (tech.rsi14 < 30) score += 1;
+    // RSI — momentum context only. Divergence is one additional observation,
+    // but this entire momentum group remains a conviction modifier.
+    if (Number.isFinite(tech.rsi14)) {
+      if (tech.rsi14! > 70) score -= 1;
+      else if (tech.rsi14! < 30) score += 1;
       if (tech.rsiDivergence === "bullish") score += 1;
       if (tech.rsiDivergence === "bearish") score -= 1;
     }
 
-    // MACD — momentum context only
-    if (tech.macdHistogram !== undefined) {
-      if (tech.macdHistogram > 0) score += 1;
-      else if (tech.macdHistogram < 0) score -= 1;
+    // MACD — histogram already encodes line-vs-signal separation. Do not
+    // score both it and the MACD line/signal as independent evidence.
+    if (Number.isFinite(tech.macdHistogram)) {
+      if (tech.macdHistogram! > 0) score += 1;
+      else if (tech.macdHistogram! < 0) score -= 1;
+    } else if (Number.isFinite(tech.macdLine) && Number.isFinite(tech.macdSignal)) {
+      if (tech.macdLine! > tech.macdSignal!) score += 1;
+      else if (tech.macdLine! < tech.macdSignal!) score -= 1;
+    }
+
+    // Moving averages are correlated trend observations; treat the 50/100/200
+    // relationship as one capped group rather than three separate votes.
+    if (price !== undefined) {
+      const averages = [tech.sma50, tech.sma100, tech.sma200]
+        .filter((value): value is number => Number.isFinite(value) && value! > 0);
+      if (averages.length >= 2) {
+        const above = averages.filter((value) => price > value).length;
+        const below = averages.filter((value) => price < value).length;
+        if (above >= Math.ceil(averages.length * 2 / 3)) score += 1;
+        else if (below >= Math.ceil(averages.length * 2 / 3)) score -= 1;
+      }
+
+      // Session VWAP is a distinct intraday value reference. Missing VWAP is
+      // neutral; the explicit arithmetic-mean fallback is never mislabeled.
+      const vwap = tech.smc?.vwap;
+      if (vwap?.available && vwap.priceLocation === "above_vwap") score += 1;
+      else if (vwap?.available && vwap.priceLocation === "below_vwap") score -= 1;
+
+      // VPVR and TPO value-area location are one market-profile group. Require
+      // available levels to agree, avoiding double-counting two views of
+      // similar price-distribution information.
+      const profileSides: Array<"above" | "below"> = [];
+      const vp = tech.smc?.volumeProfile;
+      const tpo = tech.smc?.tpoProfile;
+      if (vp?.available && Number.isFinite(vp.vah) && Number.isFinite(vp.val)) {
+        if (price > vp.vah!) profileSides.push("above");
+        else if (price < vp.val!) profileSides.push("below");
+      }
+      if (tpo?.available && Number.isFinite(tpo.vah) && Number.isFinite(tpo.val)) {
+        if (price > tpo.vah!) profileSides.push("above");
+        else if (price < tpo.val!) profileSides.push("below");
+      }
+      if (profileSides.length > 0 && profileSides.every((side) => side === "above")) score += 1;
+      else if (profileSides.length > 0 && profileSides.every((side) => side === "below")) score -= 1;
     }
 
     return clampScore(score);
