@@ -1922,6 +1922,87 @@ function decideTrade(
       );
     }
 
+    // ── LAYER: asset-specific structured fundamentals (cap ±6).
+    // Consume only verified, fresh/delayed evidence for the exact instrument.
+    // Derivatives, macro/rates, positioning and technical categories are excluded
+    // where already represented by existing layers. Dependency groups are
+    // deduplicated; conflicting items inside one group cancel rather than stack.
+    {
+      type StructuredEvidence = {
+        source: string;
+        category: string;
+        direction: "SUPPORTING" | "CONFLICTING";
+        strength: "STRONG" | "MODERATE" | "WEAK";
+        quality: "VERIFIED";
+        freshness: "FRESH" | "DELAYED";
+        dependencyGroup: string;
+        providerAvailable: boolean;
+      };
+      const normalizeInstrument = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const requestedInstrument = normalizeInstrument(input.instrument);
+      const eligible = (item: {
+        direction: string; strength: string; quality: string; freshness: string;
+        dependencyGroup: string; providerAvailable: boolean;
+      }) => item.providerAvailable && item.quality === "VERIFIED" &&
+        (item.freshness === "FRESH" || item.freshness === "DELAYED") &&
+        (item.direction === "SUPPORTING" || item.direction === "CONFLICTING") &&
+        (item.strength === "STRONG" || item.strength === "MODERATE" || item.strength === "WEAK") &&
+        !!item.dependencyGroup;
+
+      const structured: StructuredEvidence[] = [];
+      const universal = input.universalIntelligenceContext;
+      if (universal && normalizeInstrument(universal.instrument) === requestedInstrument) {
+        for (const item of universal.evidence ?? []) {
+          if (!["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND", "FUTURES_STRUCTURE"].includes(item.category)) continue;
+          if (eligible(item)) structured.push({
+            source: item.source, category: item.category,
+            direction: item.direction as StructuredEvidence["direction"],
+            strength: item.strength as StructuredEvidence["strength"],
+            quality: "VERIFIED", freshness: item.freshness as StructuredEvidence["freshness"],
+            dependencyGroup: item.dependencyGroup, providerAvailable: item.providerAvailable,
+          });
+        }
+      }
+
+      const crypto = input.cryptoIntelligenceContext;
+      if (input.instrumentType === "crypto" && crypto &&
+        normalizeInstrument(crypto.instrument) === requestedInstrument) {
+        for (const item of crypto.evidence ?? []) {
+          if (!["DEFI_FUNDAMENTAL", "TOKENOMICS", "ON_CHAIN", "SUPPLY_DYNAMICS"].includes(item.category)) continue;
+          if (eligible(item)) structured.push({
+            source: item.source, category: item.category,
+            direction: item.direction as StructuredEvidence["direction"],
+            strength: item.strength as StructuredEvidence["strength"],
+            quality: "VERIFIED", freshness: item.freshness as StructuredEvidence["freshness"],
+            dependencyGroup: item.dependencyGroup, providerAvailable: item.providerAvailable,
+          });
+        }
+      }
+
+      const groups = new Map<string, number[]>();
+      const strengthValue = (strength: StructuredEvidence["strength"]) =>
+        strength === "STRONG" ? 3 : strength === "MODERATE" ? 2 : 1;
+      for (const item of structured) {
+        const signed = (item.direction === "SUPPORTING" ? 1 : -1) * strengthValue(item.strength);
+        groups.set(item.dependencyGroup, [...(groups.get(item.dependencyGroup) ?? []), signed]);
+      }
+      let raw = 0;
+      let conflictedGroups = 0;
+      for (const values of groups.values()) {
+        const signs = new Set(values.map(Math.sign));
+        if (signs.size > 1) {
+          conflictedGroups++;
+          continue;
+        }
+        raw += values.reduce((best, value) => Math.abs(value) > Math.abs(best) ? value : best, 0);
+      }
+      const contribution = Math.max(-6, Math.min(6, raw));
+      const reason = structured.length === 0
+        ? "no matching verified, fresh asset-specific fundamental evidence"
+        : `${structured.length} eligible evidence items across ${groups.size} dependency groups; ${conflictedGroups} conflicted groups excluded`;
+      s += recordLayer("Asset-Specific Fundamentals", contribution, 6, reason);
+    }
+
     // ── LAYER: positioning (cap ±12)
     {
       const posContribution =
