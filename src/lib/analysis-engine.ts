@@ -2294,7 +2294,7 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   if (input.instrumentType === "commodity") {
     const sym = input.instrument.toUpperCase();
     if (/XAU|XAG|GOLD|SILVER/.test(sym)) {
-      parts.push("Real-yield context UNAVAILABLE — no yields provider integrated; gold fundamentals use news/calendar/USD-proxy context only.");
+      parts.push("Real-yield context UNAVAILABLE — Treasury XML and FRED public real-yield feeds returned no usable observation; nominal yields are not substituted. Gold fundamentals use the remaining verified news/calendar/USD context only.");
     } else if (/WTI|CRUDE|BRENT|OIL/.test(sym)) {
       const eiaCtx = input.eiaData;
       if (eiaCtx?.available) {
