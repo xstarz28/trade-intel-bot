@@ -277,3 +277,65 @@ export async function fetchYahooFinanceCandles(
   const timezone = normalizedSymbol.endsWith(".JK") ? "Asia/Jakarta" : "America/New_York";
   return aggregateFourHourCandles(parsed, outputsize, timezone);
 }
+
+
+export interface YahooMarketCandleCandidate {
+  symbol: string;
+  label: string;
+}
+
+export interface YahooMarketCandleResult {
+  candles: OhlcvCandle[];
+  symbol: string;
+  providerLabel: string;
+}
+
+/**
+ * Resolve ordered free Yahoo candidates. Spot metals are tried first, then a
+ * clearly labeled exchange-traded futures proxy if Yahoo has no spot series.
+ */
+export function resolveYahooFinanceMarketCandidates(
+  instrumentType: string,
+  instrument: string,
+): YahooMarketCandleCandidate[] {
+  const normalized = instrument.trim().toUpperCase();
+  const compact = normalized.replace(/[^A-Z0-9]/g, "");
+  if (instrumentType === "commodity" && ["XAUUSD", "GOLD", "XAU"].includes(compact)) {
+    return [
+      { symbol: "XAUUSD=X", label: "Yahoo Finance spot ticker XAUUSD=X" },
+      { symbol: "GC=F", label: "Yahoo Finance gold futures proxy GC=F (not spot XAU/USD)" },
+    ];
+  }
+  if (instrumentType === "commodity" && ["XAGUSD", "SILVER", "XAG"].includes(compact)) {
+    return [
+      { symbol: "XAGUSD=X", label: "Yahoo Finance spot ticker XAGUSD=X" },
+      { symbol: "SI=F", label: "Yahoo Finance silver futures proxy SI=F (not spot XAG/USD)" },
+    ];
+  }
+  const symbol = resolveYahooFinanceMarketSymbol(instrumentType, normalized);
+  return symbol ? [{ symbol, label: "Yahoo Finance ticker " + symbol }] : [];
+}
+
+/** Try equivalent provider candidates in order and return provenance with candles. */
+export async function fetchYahooFinanceMarketCandles(
+  instrumentType: string,
+  instrument: string,
+  timeframe: string,
+  outputsize: number,
+  transport: YahooChartTransport = fetch,
+): Promise<YahooMarketCandleResult> {
+  const candidates = resolveYahooFinanceMarketCandidates(instrumentType, instrument);
+  if (candidates.length === 0) {
+    throw new Error("No Yahoo Finance ticker or labeled fallback exists for this instrument");
+  }
+  const errors: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const candles = await fetchYahooFinanceCandles(candidate.symbol, timeframe, outputsize, transport);
+      return { candles, symbol: candidate.symbol, providerLabel: candidate.label };
+    } catch (error) {
+      errors.push(candidate.symbol + ": " + (error instanceof Error ? error.message : String(error)));
+    }
+  }
+  throw new Error("All Yahoo Finance market candidates failed: " + errors.join("; "));
+}
