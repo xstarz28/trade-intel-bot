@@ -1960,6 +1960,7 @@ function decideTrade(
       const universal = input.universalIntelligenceContext;
       if (requestedInstrument && universal && normalizeInstrument(universal.instrument) === requestedInstrument) {
         for (const item of universal.evidence ?? []) {
+          if (normalizeInstrument(item.instrument) !== requestedInstrument || item.assetClass !== universal.assetClass) continue;
           if (!["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND"].includes(item.category)) continue;
           if (eligible(item)) structured.push({
             source: item.source, category: item.category,
@@ -2582,6 +2583,7 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   const universalEvidence = input.universalIntelligenceContext;
   if (requestedInstrument && universalEvidence && normalizeInstrument(universalEvidence.instrument) === requestedInstrument) {
     for (const item of universalEvidence.evidence ?? []) {
+      if (normalizeInstrument(item.instrument) !== requestedInstrument || item.assetClass !== universalEvidence.assetClass) continue;
       if (acceptedEvidence(item, ["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND"])) {
         structuredEvidence.push({
           source: item.source, category: item.category,
