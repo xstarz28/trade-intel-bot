@@ -2240,8 +2240,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
       )}
 
       {/* Phase 41–43 — Crypto Intelligence Panel (crypto instruments only).
-          INFORMATIONAL ONLY — presentation of existing intelligence context.
-          Does NOT calculate bias, conviction, gates, trade plan, or recommendation. */}
+          Displays provider evidence; the analysis engine may use verified DeFi/tokenomics
+          evidence for bounded conviction confirmation after structural bias is established.
+          This panel itself never creates/flips bias or bypasses risk gates. */}
       {result.cryptoIntelligenceContext && result.instrumentType === "crypto" && (() => {
         const ci = result.cryptoIntelligenceContext!;
         const AVAIL_COLORS: Record<string, string> = {
@@ -2527,7 +2528,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 {localizeAnalysisText(ci.analystSummary, locale)}
               </p>
               <p className="text-[9px] font-mono text-muted-foreground/40 italic">
-                Crypto intelligence is informational {"—"} it does not modify bias, conviction, gates, trade plan, or recommendation.
+                Verified DeFi/tokenomics evidence may adjust bounded conviction after structural bias exists; it cannot create or flip bias or bypass risk gates.
               </p>
             </CardContent>
           </Card>
@@ -2849,7 +2850,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 {localizeAnalysisText(ui.analystSummary, locale)}
               </p>
               <p className="text-[9px] font-mono text-muted-foreground/40 italic">
-                Universal intelligence is informational {"—"} it does not modify bias, conviction, gates, trade plan, or recommendation.
+                Verified asset-specific evidence may adjust bounded conviction after structural bias exists; unavailable, stale or mismatched evidence is excluded.
               </p>
             </CardContent>
           </Card>
