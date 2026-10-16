@@ -2373,7 +2373,7 @@ function generateTechnicalSummary(
 
     // Fibonacci retracement levels are structural reference zones; they are
     // never treated as independent evidence or used to manufacture direction.
-    if (tech.fibLevels) {
+    if (tech.fibLevels && Object.values(tech.fibLevels).every((level) => Number.isFinite(level))) {
       const fib = tech.fibLevels;
       parts.push(
         `Fibonacci retracement levels: 23.6% ${fib.level236.toFixed(4)}, 38.2% ${fib.level382.toFixed(4)}, 50.0% ${fib.level500.toFixed(4)}, 61.8% ${fib.level618.toFixed(4)}, 78.6% ${fib.level786.toFixed(4)}; reference zones only.`,
@@ -2389,7 +2389,7 @@ function generateTechnicalSummary(
     }
 
     // ATR and latest candle range
-    if (tech.atr14 !== undefined) {
+    if (typeof tech.atr14 === "number" && Number.isFinite(tech.atr14) && tech.atr14 > 0) {
       parts.push(
         `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`,
       );
@@ -2509,11 +2509,11 @@ function generateTechnicalSummary(
     }
 
     // Secondary momentum context — explicitly non-decisive
-    if (tech.rsi14 !== undefined) {
+    if (typeof tech.rsi14 === "number" && Number.isFinite(tech.rsi14) && tech.rsi14 >= 0 && tech.rsi14 <= 100) {
       const rsiLabel = tech.rsi14 > 70 ? "overbought" : tech.rsi14 < 30 ? "oversold" : "neutral";
       parts.push(`RSI(14): ${tech.rsi14} (${rsiLabel})${tech.rsiDivergence && tech.rsiDivergence !== "none" ? `; ${tech.rsiDivergence} divergence detected` : ""} — secondary context only.`);
     }
-    if (tech.macdHistogram !== undefined) {
+    if (typeof tech.macdHistogram === "number" && Number.isFinite(tech.macdHistogram)) {
       const macdParts = [
         Number.isFinite(tech.macdLine) ? `line ${tech.macdLine!.toFixed(4)}` : undefined,
         Number.isFinite(tech.macdSignal) ? `signal ${tech.macdSignal!.toFixed(4)}` : undefined,
