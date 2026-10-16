@@ -298,6 +298,21 @@ describe("computeVwap", () => {
     expect(v.priceOnlyFallback?.method).toBe("arithmetic_mean_typical_price");
     expect(v.priceOnlyFallback?.sessionMean).toBeCloseTo(1.5, 6);
   });
+
+  it("does not mix the prior month into the current UTC session", () => {
+    const previousMonth = Date.UTC(2026, 8, 16, 10, 0, 0);
+    const currentMonth = Date.UTC(2026, 9, 16, 10, 0, 0);
+    const candles = [
+      candle(previousMonth, 999, 1001, 999, 1000, 1000),
+      candle(currentMonth, 9, 11, 9, 10, 1),
+    ];
+    const v = computeVwap(candles);
+
+    expect(v.available).toBe(true);
+    // Both timestamps have UTC day-of-month 16, but only the current session
+    // belongs in VWAP; a day-number-only check incorrectly included price 1000.
+    expect(v.sessionVwap).toBeCloseTo(10, 6);
+  });
 });
 
 // ── Volume Profile ────────────────────────────────────────────────
