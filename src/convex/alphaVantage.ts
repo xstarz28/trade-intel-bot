@@ -1,5 +1,4 @@
 /**
-import { mapAlphaVantageFundamentalMetrics } from "../lib/data/alpha-vantage-fundamentals";
  * Convex server-side action for Alpha Vantage intelligence data.
  * Handles news/sentiment, fundamentals, and macro context.
  * All API keys are read from environment variables — never exposed to client.
@@ -15,6 +14,7 @@ import type {
   MacroData,
   IntelligenceResult,
 } from "../lib/data/intelligence-types";
+import { mapAlphaVantageFundamentalMetrics } from "../lib/data/alpha-vantage-fundamentals";
 
 // ── Simple in-memory cache (resets per Convex action instance) ──
 // For production, use Convex scheduled functions or a database cache.
