@@ -52,7 +52,7 @@ describe("buildConditionalEntryScenarios", () => {
     expect(scenarios.every((scenario) => (scenario.riskReward ?? 0) < 1.5)).toBe(true);
   });
 
-  it("does not invent targets when no farther observed swing exists", () => {
+  it("labels mathematical target projections when no farther observed swing exists", () => {
     const fixture = resultFixture({
       technicalData: {
         dataPoints: 30,
@@ -67,7 +67,35 @@ describe("buildConditionalEntryScenarios", () => {
     });
     const scenarios = buildConditionalEntryScenarios(fixture);
     expect(scenarios).toHaveLength(2);
-    expect(scenarios.every((scenario) => scenario.target === undefined && scenario.riskReward === undefined && !scenario.ready)).toBe(true);
+    expect(scenarios.every((scenario) => scenario.target !== undefined && (scenario.riskReward ?? 0) >= 1.5 && !scenario.ready)).toBe(true);
+    expect(scenarios.every((scenario) => scenario.targetBasis?.includes("bukan swing terkonfirmasi"))).toBe(true);
+  });
+
+  it("provides labeled range/volatility projections when structural levels are missing", () => {
+    const fixture = resultFixture({
+      technicalData: {
+        dataPoints: 30,
+        structure: "range",
+        swingHighs: [],
+        swingLows: [],
+        resistanceLevels: [],
+        supportLevels: [],
+        volumeTrend: "unknown",
+        atr14: 2,
+      },
+    });
+    const scenarios = buildConditionalEntryScenarios(fixture);
+    expect(scenarios).toHaveLength(2);
+    expect(scenarios[0]).toMatchObject({
+      id: "bullish-breakout",
+      trigger: 102.2,
+      invalidation: 97.8,
+      ready: false,
+    });
+    expect(scenarios[0].target).toBeCloseTo(108.8, 8);
+    expect(scenarios[0].targetBasis).toContain("bukan resistance terkonfirmasi");
+    expect(scenarios[1].targetBasis).toContain("bukan support terkonfirmasi");
+    expect(scenarios.every((scenario) => scenario.reason.includes("Tunggu struktur"))).toBe(true);
   });
 
   it("refuses to derive scenarios from insufficient candles", () => {
