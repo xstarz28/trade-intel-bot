@@ -1,7 +1,7 @@
 import type { OhlcvCandle } from "../market-types";
 
-export const BINANCE_SPOT_MARKET_PROVIDER = "binance-spot-public";
-const BASE_URL = "https://api.binance.com";
+export const BINANCE_SPOT_MARKET_PROVIDER = "binance-us-spot-public";
+const BASE_URL = "https://api.binance.us";
 
 const INTERVALS: Record<string, string> = {
   M1: "1m",
