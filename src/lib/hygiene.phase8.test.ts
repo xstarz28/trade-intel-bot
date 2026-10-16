@@ -86,4 +86,31 @@ describe("Market-profile target context", () => {
     expect(r.recommendation).toBe("NO_TRADE");
     expect(r.noTradeReasons.join(" ")).toContain("below the 1.500 minimum");
   });
+
+  it("does not skip a nearer profile target to use a farther liquidity pool", () => {
+    const technicalData = tech({
+      available: true, poc: 100, vah: 104, val: 96,
+    } as unknown as SmcContext["volumeProfile"]);
+    const smc = technicalData.smc as SmcContext;
+    smc.liquidityPools = [{
+      level: 120,
+      side: "buy_side",
+      source: "equal_highs",
+      touches: 2,
+      swept: false,
+      broken: false,
+    }];
+
+    const r = runAnalysis({
+      instrument: "EUR/USD", instrumentType: "forex", timeframe: "H4",
+      marketData: makeMarket(100),
+      technicalData,
+      economicEvents: "Fed signals hawkish stance, rate hike",
+    } as AnalysisInput);
+
+    // The 104 value-area high is closer than the 120 liquidity pool. Its
+    // inadequate R:R must reject the setup instead of reaching for 120.
+    expect(r.recommendation).toBe("NO_TRADE");
+    expect(r.noTradeReasons.join(" ")).toContain("below the 1.500 minimum");
+  });
 });
