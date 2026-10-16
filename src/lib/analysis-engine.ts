@@ -1342,6 +1342,15 @@ function decideTrade(
       const htfBuyPool = htfPools
         .filter((p) => p.side === "buy_side" && !p.swept && !p.broken && p.level > price)
         .sort((a, b) => a.level - b.level)[0];
+      const fibTargetsLong = [
+        ...(tech?.fibLevels ? [
+          { level: tech.fibLevels.level236, basis: "Fibonacci 23.6% retracement" },
+          { level: tech.fibLevels.level382, basis: "Fibonacci 38.2% retracement" },
+          { level: tech.fibLevels.level500, basis: "Fibonacci 50.0% retracement" },
+          { level: tech.fibLevels.level618, basis: "Fibonacci 61.8% retracement" },
+          { level: tech.fibLevels.level786, basis: "Fibonacci 78.6% retracement" },
+        ].filter(level => Number.isFinite(level.level) && level.level > price) : []),
+      ];
       const profileTargetsLong = (() => {
         const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
         const candidates: Array<{ level: number; basis: string }> = [];
@@ -1368,6 +1377,7 @@ function decideTrade(
           basis: "resting buy-side liquidity on " + htfBuyPool.tf + " (" + htfBuyPool.source + ")",
         }] : []),
         ...profileTargetsLong,
+        ...fibTargetsLong,
         ...swingResistances.filter((level) => level > price).map((level) => ({
           level,
           basis: "nearest market swing high / resistance (structural)",
@@ -1411,6 +1421,15 @@ function decideTrade(
       const htfSellPool = htfPools
         .filter((p) => p.side === "sell_side" && !p.swept && !p.broken && p.level < price)
         .sort((a, b) => b.level - a.level)[0];
+      const fibTargetsShort = [
+        ...(tech?.fibLevels ? [
+          { level: tech.fibLevels.level236, basis: "Fibonacci 23.6% retracement" },
+          { level: tech.fibLevels.level382, basis: "Fibonacci 38.2% retracement" },
+          { level: tech.fibLevels.level500, basis: "Fibonacci 50.0% retracement" },
+          { level: tech.fibLevels.level618, basis: "Fibonacci 61.8% retracement" },
+          { level: tech.fibLevels.level786, basis: "Fibonacci 78.6% retracement" },
+        ].filter(level => Number.isFinite(level.level) && level.level < price) : []),
+      ];
       const profileTargetsShort = (() => {
         const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
         const candidates: Array<{ level: number; basis: string }> = [];
@@ -1437,6 +1456,7 @@ function decideTrade(
           basis: "resting sell-side liquidity on " + htfSellPool.tf + " (" + htfSellPool.source + ")",
         }] : []),
         ...profileTargetsShort,
+        ...fibTargetsShort,
         ...swingSupports.filter((level) => level < price).map((level) => ({
           level,
           basis: "nearest market swing low / support (structural)",
@@ -1836,6 +1856,32 @@ function decideTrade(
           " / VA " + (p.val?.toFixed(4) ?? "n/a") + "–" + (p.vah?.toFixed(4) ?? "n/a")).join("; ");
       }
       s += recordLayer("TPO + VPVR", profileScore, 5, profileEvidence);
+    }
+
+    // ── LAYER: Moving-average regime (cap ±4) — confirmation only.
+    // MAs are correlated trend filters, so all available periods share one cap.
+    // They may confirm/weaken the structural thesis but never create core bias.
+    {
+      const averages = [
+        { name: "SMA50", value: tech?.sma50 },
+        { name: "SMA100", value: tech?.sma100 },
+        { name: "SMA200", value: tech?.sma200 },
+      ].filter((item): item is { name: string; value: number } =>
+        typeof item.value === "number" && Number.isFinite(item.value) && item.value > 0
+      );
+      const votes = averages.reduce((sum, item) =>
+        sum + (price > item.value ? 1 : price < item.value ? -1 : 0), 0);
+      const contribution = votes === 0 ? 0 :
+        Math.sign(votes) === biasSign ? Math.min(4, Math.abs(votes) * 2) :
+        -Math.min(4, Math.abs(votes) * 2);
+      s += recordLayer(
+        "Moving Averages",
+        contribution,
+        4,
+        averages.length
+          ? averages.map(item => `${item.name} ${item.value.toFixed(4)} (${price > item.value ? "price above" : price < item.value ? "price below" : "price at"})`).join("; ")
+          : "SMA50/100/200 unavailable",
+      );
     }
 
     // ── LAYER: VWAP location context (cap +3) — never standalone.
