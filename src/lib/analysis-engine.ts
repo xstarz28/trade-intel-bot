@@ -1342,6 +1342,22 @@ function decideTrade(
       const htfBuyPool = htfPools
         .filter((p) => p.side === "buy_side" && !p.swept && !p.broken && p.level > price)
         .sort((a, b) => a.level - b.level)[0];
+      const profileTargetsLong = (() => {
+        const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
+        const candidates: Array<{ level: number; basis: string }> = [];
+        const vp = smc?.volumeProfile;
+        const tpo = smc?.tpoProfile;
+        if (vp?.available) {
+          if (Number.isFinite(vp.poc) && (vp.poc ?? 0) > price) candidates.push({ level: vp.poc!, basis: "VPVR point of control" });
+          if (Number.isFinite(vp.vah) && (vp.vah ?? 0) > price) candidates.push({ level: vp.vah!, basis: "VPVR value-area high" });
+          for (const level of vp.hvn ?? []) if (Number.isFinite(level) && level > price) candidates.push({ level, basis: "VPVR high-volume node" });
+        }
+        if (tpo?.available) {
+          if (Number.isFinite(tpo.poc) && (tpo.poc ?? 0) > price) candidates.push({ level: tpo.poc!, basis: "TPO point of control" });
+          if (Number.isFinite(tpo.vah) && (tpo.vah ?? 0) > price) candidates.push({ level: tpo.vah!, basis: "TPO value-area high" });
+        }
+        return candidates.sort((a, b) => a.level - b.level);
+      })();
       const bullishTargets = [
         ...(buyPoolAbove ? [{
           level: buyPoolAbove.level,
@@ -1351,6 +1367,7 @@ function decideTrade(
           level: htfBuyPool.level,
           basis: "resting buy-side liquidity on " + htfBuyPool.tf + " (" + htfBuyPool.source + ")",
         }] : []),
+        ...profileTargetsLong,
         ...swingResistances.filter((level) => level > price).map((level) => ({
           level,
           basis: "nearest market swing high / resistance (structural)",
@@ -1394,6 +1411,22 @@ function decideTrade(
       const htfSellPool = htfPools
         .filter((p) => p.side === "sell_side" && !p.swept && !p.broken && p.level < price)
         .sort((a, b) => b.level - a.level)[0];
+      const profileTargetsShort = (() => {
+        const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
+        const candidates: Array<{ level: number; basis: string }> = [];
+        const vp = smc?.volumeProfile;
+        const tpo = smc?.tpoProfile;
+        if (vp?.available) {
+          if (Number.isFinite(vp.poc) && (vp.poc ?? 0) < price) candidates.push({ level: vp.poc!, basis: "VPVR point of control" });
+          if (Number.isFinite(vp.val) && (vp.val ?? 0) < price) candidates.push({ level: vp.val!, basis: "VPVR value-area low" });
+          for (const level of vp.lvn ?? []) if (Number.isFinite(level) && level < price) candidates.push({ level, basis: "VPVR low-volume node" });
+        }
+        if (tpo?.available) {
+          if (Number.isFinite(tpo.poc) && (tpo.poc ?? 0) < price) candidates.push({ level: tpo.poc!, basis: "TPO point of control" });
+          if (Number.isFinite(tpo.val) && (tpo.val ?? 0) < price) candidates.push({ level: tpo.val!, basis: "TPO value-area low" });
+        }
+        return candidates.sort((a, b) => b.level - a.level);
+      })();
       const bearishTargets = [
         ...(sellPoolBelow ? [{
           level: sellPoolBelow.level,
@@ -1403,6 +1436,7 @@ function decideTrade(
           level: htfSellPool.level,
           basis: "resting sell-side liquidity on " + htfSellPool.tf + " (" + htfSellPool.source + ")",
         }] : []),
+        ...profileTargetsShort,
         ...swingSupports.filter((level) => level < price).map((level) => ({
           level,
           basis: "nearest market swing low / support (structural)",
@@ -1765,6 +1799,43 @@ function decideTrade(
       } else {
         recordLayer("Classic Price Action", 0, 6, "classic pattern context unavailable");
       }
+    }
+
+    // ── LAYER: Market Profile confluence (TPO + VPVR, cap ±5).
+    // TPO and VPVR are related views of the same OHLCV window, so they are
+    // grouped into ONE capped layer to avoid double-counting correlated data.
+    // They are context only; neither profile can create/flip core bias alone.
+    {
+      const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
+      const vp = smc?.volumeProfile;
+      const tpo = smc?.tpoProfile;
+      const profiles = [
+        ...(vp?.available ? [{ source: "VPVR", poc: vp.poc, vah: vp.vah, val: vp.val }] : []),
+        ...(tpo?.available ? [{ source: "TPO", poc: tpo.poc, vah: tpo.vah, val: tpo.val }] : []),
+      ];
+      let profileScore = 0;
+      let profileEvidence = "TPO/VPVR unavailable";
+      if (profiles.length > 0 && Number.isFinite(price) && price > 0) {
+        // Count each profile's POC only once per method; value-area edges add
+        // limited context when price is accepted outside the value area.
+        let pocVotes = 0;
+        let valueAreaVotes = 0;
+        for (const profile of profiles) {
+          if (Number.isFinite(profile.poc)) {
+            const side = price > profile.poc! ? 1 : price < profile.poc! ? -1 : 0;
+            if (side !== 0) pocVotes += side;
+          }
+          if (biasSign === 1 && Number.isFinite(profile.vah) && price > profile.vah!) valueAreaVotes += 1;
+          if (biasSign === -1 && Number.isFinite(profile.val) && price < profile.val!) valueAreaVotes += 1;
+        }
+        const pocAgreement = Math.sign(pocVotes) === biasSign && pocVotes !== 0;
+        const pocConflict = Math.sign(pocVotes) === -biasSign && pocVotes !== 0;
+        profileScore = (pocAgreement ? 3 : pocConflict ? -3 : 0) + Math.min(2, valueAreaVotes * 2);
+        profileScore = Math.max(-5, Math.min(5, profileScore));
+        profileEvidence = profiles.map(p => p.source + " POC " + (p.poc?.toFixed(4) ?? "n/a") +
+          " / VA " + (p.val?.toFixed(4) ?? "n/a") + "–" + (p.vah?.toFixed(4) ?? "n/a")).join("; ");
+      }
+      s += recordLayer("TPO + VPVR", profileScore, 5, profileEvidence);
     }
 
     // ── LAYER: VWAP location context (cap +3) — never standalone.
@@ -2222,14 +2293,25 @@ function generateTechnicalSummary(
         parts.push(`VWAP unavailable: ${smcInfo.vwap.unavailableReason}`);
       }
 
-      // Volume profile
+      // VPVR: levels are approximate OHLCV-range allocations, not exchange
+      // trade-level volume or proof of institutional orders.
       if (smcInfo.volumeProfile.available) {
         const vp = smcInfo.volumeProfile;
         parts.push(
-          `Volume profile — POC ${vp.poc?.toFixed(4)}, VAH ${vp.vah?.toFixed(4)}, VAL ${vp.val?.toFixed(4)}.`,
+          `VPVR (OHLCV approximation) — POC ${vp.poc?.toFixed(4)}, VAH ${vp.vah?.toFixed(4)}, VAL ${vp.val?.toFixed(4)}${vp.hvn?.length ? `, HVN ${vp.hvn.slice(0, 3).map(v => v.toFixed(4)).join(", ")}` : ""}${vp.lvn?.length ? `, LVN ${vp.lvn.slice(0, 3).map(v => v.toFixed(4)).join(", ")}` : ""}. ${vp.approximation ?? "Volume-profile levels are contextual, not direct evidence of institutional activity."}`,
         );
       } else if (smcInfo.volumeProfile.unavailableReason) {
-        parts.push(`Volume profile unavailable: ${smcInfo.volumeProfile.unavailableReason}`);
+        parts.push(`VPVR unavailable: ${smcInfo.volumeProfile.unavailableReason}`);
+      }
+
+      // TPO: time spent at price (distinct time blocks), not traded volume.
+      if (smcInfo.tpoProfile?.available) {
+        const tpo = smcInfo.tpoProfile;
+        parts.push(
+          `TPO market profile — POC ${tpo.poc?.toFixed(4)}, VAH ${tpo.vah?.toFixed(4)}, VAL ${tpo.val?.toFixed(4)}; ${tpo.blockMinutes}-minute blocks, ${Math.round(tpo.valueAreaPercent * 100)}% value area.`,
+        );
+      } else if (smcInfo.tpoProfile?.unavailableReason) {
+        parts.push(`TPO profile unavailable: ${smcInfo.tpoProfile.unavailableReason}`);
       }
     }
 
