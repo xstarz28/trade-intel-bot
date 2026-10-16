@@ -1960,7 +1960,7 @@ function decideTrade(
       const universal = input.universalIntelligenceContext;
       if (requestedInstrument && universal && normalizeInstrument(universal.instrument) === requestedInstrument) {
         for (const item of universal.evidence ?? []) {
-          if (!["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND", "FUTURES_STRUCTURE"].includes(item.category)) continue;
+          if (!["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND"].includes(item.category)) continue;
           if (eligible(item)) structured.push({
             source: item.source, category: item.category,
             direction: item.direction as StructuredEvidence["direction"],
@@ -2577,7 +2577,7 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   const universalEvidence = input.universalIntelligenceContext;
   if (requestedInstrument && universalEvidence && normalizeInstrument(universalEvidence.instrument) === requestedInstrument) {
     for (const item of universalEvidence.evidence ?? []) {
-      if (acceptedEvidence(item, ["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND", "FUTURES_STRUCTURE"])) {
+      if (acceptedEvidence(item, ["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND"])) {
         structuredEvidence.push({
           source: item.source, category: item.category,
           direction: item.direction as FundamentalEvidenceSummaryItem["direction"],
