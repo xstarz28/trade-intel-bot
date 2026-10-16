@@ -45,7 +45,7 @@ describe("Binance public spot fallback", () => {
       });
     });
     const candles = await adapter.fetchCandles("BTC/USD", "M5", 2);
-    expect(requestedUrl).toContain("/api/v3/klines?symbol=BTCUSDT");
+    expect(requestedUrl).toContain("https://api.binance.us/api/v3/klines?symbol=BTCUSDT");
     expect(requestedUrl).toContain("interval=5m");
     expect(requestedUrl).toContain("limit=2");
     expect(candles).toHaveLength(2);
