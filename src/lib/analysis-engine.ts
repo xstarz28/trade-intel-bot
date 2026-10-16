@@ -1405,12 +1405,14 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? swingResistances[0];
+        tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? profileTargetsLong[0]?.level ?? swingResistances[0];
         tpBasis = buyPoolAbove
           ? "resting buy-side liquidity (" + buyPoolAbove.source + ", " + buyPoolAbove.touches + " touches)"
           : htfBuyPool
             ? "HTF target (" + htfBuyPool.tf + " resting buy-side liquidity: " + htfBuyPool.source + ")"
-            : tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
+            : profileTargetsLong[0]
+              ? profileTargetsLong[0].basis
+              : tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
       }
     } else if (bias === "Bearish") {
       stopLevel = swingResistances[0];
@@ -1481,12 +1483,14 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? swingSupports[0];
+        tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? profileTargetsShort[0]?.level ?? swingSupports[0];
         tpBasis = sellPoolBelow
           ? "resting sell-side liquidity (" + sellPoolBelow.source + ", " + sellPoolBelow.touches + " touches)"
           : htfSellPool
             ? "HTF target (" + htfSellPool.tf + " resting sell-side liquidity: " + htfSellPool.source + ")"
-            : tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
+            : profileTargetsShort[0]
+              ? profileTargetsShort[0].basis
+              : tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
       }
     }
 
