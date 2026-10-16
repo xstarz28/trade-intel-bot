@@ -29,18 +29,18 @@ export function resolveQuoteObservation(input: QuoteObservationInput): QuoteObse
         ? parsedDatetime
         : undefined;
   const quoteHasPrice = Number.isFinite(input.quotePrice) && input.quotePrice > 0;
-  const priceTimestamp = quoteHasPrice && providerTimestamp !== undefined
-    ? providerTimestamp
-    : input.candleTimestamp;
-  const ageMs = now - priceTimestamp;
-  const plausible = Number.isFinite(priceTimestamp) && priceTimestamp > 0 && ageMs >= -60_000;
   const quoteAgeMs = providerTimestamp === undefined ? Number.POSITIVE_INFINITY : now - providerTimestamp;
   const quoteTimestampPlausible = providerTimestamp !== undefined && quoteAgeMs >= -60_000;
-  const hasLiveQuote = quoteHasPrice && quoteTimestampPlausible && quoteAgeMs < 5 * 60_000;
-  const dataFreshness: QuoteDataFreshness = !plausible || ageMs >= 24 * 60 * 60_000
-    ? "unavailable"
-    : hasLiveQuote
-      ? "realtime"
+  // Only a timestamped quote observed within five minutes is used as the
+  // current price. Older quote snapshots must not override a newer candle.
+  const hasLiveQuote = quoteHasPrice && quoteTimestampPlausible && quoteAgeMs >= -60_000 && quoteAgeMs < 5 * 60_000;
+  const priceTimestamp = hasLiveQuote ? providerTimestamp! : input.candleTimestamp;
+  const ageMs = now - input.candleTimestamp;
+  const candlePlausible = Number.isFinite(input.candleTimestamp) && input.candleTimestamp > 0 && ageMs >= -60_000;
+  const dataFreshness: QuoteDataFreshness = hasLiveQuote
+    ? "realtime"
+    : !candlePlausible || ageMs >= 24 * 60 * 60_000
+      ? "unavailable"
       : ageMs >= 60 * 60_000
         ? "stale"
         : "delayed";

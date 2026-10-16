@@ -401,12 +401,14 @@ export const fetchMarketData = action({
         candleTimestamp: latestCandle.timestamp,
       });
       const priceTimestamp = observation.priceTimestamp;
-      const price = quoteHasPrice ? quotedPrice : latestCandle.close;
       const hasLiveQuote = observation.hasLiveQuote;
+      // Never pair a stale quote price with a newer candle timestamp. When
+      // the quote is not verified within five minutes, use the candle close.
+      const price = hasLiveQuote && quoteHasPrice ? quotedPrice : latestCandle.close;
       const bidValue = Number(quoteRes.bid);
       const askValue = Number(quoteRes.ask);
-      const bid = Number.isFinite(bidValue) && bidValue > 0 ? bidValue : undefined;
-      const ask = Number.isFinite(askValue) && askValue > 0 ? askValue : undefined;
+      const bid = hasLiveQuote && Number.isFinite(bidValue) && bidValue > 0 ? bidValue : undefined;
+      const ask = hasLiveQuote && Number.isFinite(askValue) && askValue > 0 ? askValue : undefined;
 
       // ── Shared calculation layer (identical to client-side path) ──
       const technical = calculateTechnical(candles);
