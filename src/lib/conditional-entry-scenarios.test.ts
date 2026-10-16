@@ -67,7 +67,8 @@ describe("buildConditionalEntryScenarios", () => {
     });
     const scenarios = buildConditionalEntryScenarios(fixture);
     expect(scenarios).toHaveLength(2);
-    expect(scenarios.every((scenario) => scenario.target !== undefined && (scenario.riskReward ?? 0) >= 1.5 && !scenario.ready)).toBe(true);\n    expect(scenarios.every((scenario) => scenario.targetBasis?.includes("bukan swing terkonfirmasi"))).toBe(true);
+    expect(scenarios.every((scenario) => scenario.target !== undefined && (scenario.riskReward ?? 0) >= 1.5 && !scenario.ready)).toBe(true);
+    expect(scenarios.every((scenario) => scenario.targetBasis?.includes("bukan swing terkonfirmasi"))).toBe(true);
   });
 
   it("provides labeled range/volatility projections when structural levels are missing", () => {
