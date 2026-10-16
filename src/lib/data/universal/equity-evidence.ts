@@ -61,29 +61,7 @@ export function buildEquityFundamentalEvidence(
     }
   }
 
-  const eps = Number.isFinite(fundamentals.latestEarnings?.eps)
-    ? fundamentals.latestEarnings?.eps
-    : fundamentals.earningsPerShare;
-  if (Number.isFinite(eps) && eps !== 0) {
-    evidence.push({
-      ...base,
-      category: "EARNINGS",
-      direction: eps! > 0 ? "SUPPORTING" : "CONFLICTING",
-      strength: "WEAK",
-      dependencyGroup: "EQUITY_EARNINGS",
-      explanation: `Provider-reported EPS is ${eps!.toFixed(2)}; positive/negative EPS alone is weak evidence and does not establish earnings momentum.`,
-    });
-  }
-
-  if (Number.isFinite(fundamentals.profitMargin) && fundamentals.profitMargin !== 0) {
-    evidence.push({
-      ...base,
-      category: "FUNDAMENTALS",
-      direction: fundamentals.profitMargin! > 0 ? "SUPPORTING" : "CONFLICTING",
-      strength: "WEAK",
-      dependencyGroup: "EQUITY_FINANCIAL_STATEMENTS",
-      explanation: `Provider-reported profit margin is ${(fundamentals.profitMargin! * 100).toFixed(1)}%; treated as weak financial-health context, not a standalone trade signal.`,
-    });
-  }
+  // EPS, profit margin and P/E are already scored by the core
+  // Fundamental layer. Do not add them again here as independent evidence.
   return evidence;
 }
