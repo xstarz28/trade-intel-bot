@@ -184,7 +184,7 @@ async function fetchCandles(
             fetchedAt,
             expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
           });
-          candleProviderCache.set(cacheKey, BINANCE_SPOT_MARKET_PROVIDER);
+          const quoteProxyLabel = /(?:\/|-)USD$/.test(normalizedSymbol) ? " (USDT quote proxy for USD pair)" : "";\n          candleProviderCache.set(cacheKey, BINANCE_SPOT_MARKET_PROVIDER + quoteProxyLabel);
           candleRateLimitBackoff.delete(cacheKey);
           return normalized;
         } catch (binanceError) {
