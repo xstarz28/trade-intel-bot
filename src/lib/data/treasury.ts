@@ -33,7 +33,7 @@ export interface TreasuryRealCurvePoint {
 
 export interface TreasuryContext {
   available: true;
-  source: "US Treasury (home.treasury.gov XML feed)";
+  source: "US Treasury (home.treasury.gov XML feed)" | "US Treasury XML + FRED public CSV fallback" | "FRED public CSV mirror";
   fetchedAt: number;
   freshness: TreasuryFreshness;
   latest: {
@@ -265,6 +265,90 @@ function clampUnit(v: number): number {
  * magnitude scaling — never as deterministic trade rules, and never as a
  * substitute for structure/liquidity (enforced by the engine's hierarchy).
  */
+
+export interface FredYieldObservation {
+  observationDate: string;
+  value: number;
+}
+
+/** Parse an official FRED CSV series; missing dots and malformed rows are skipped. */
+export function parseFredYieldCsv(csv: string | undefined): FredYieldObservation[] {
+  if (!csv) return [];
+  const lines = csv.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const header = lines[0].split(",").map((part) => part.trim().replace(/^"|"$/g, ""));
+  const dateIndex = header.findIndex((name) => /^(observation_date|date)$/i.test(name));
+  const valueIndex = header.findIndex((name) => !/^(observation_date|date)$/i.test(name));
+  if (dateIndex < 0 || valueIndex < 0) return [];
+  const observations: FredYieldObservation[] = [];
+  for (const line of lines.slice(1)) {
+    const columns = line.split(",").map((part) => part.trim().replace(/^"|"$/g, ""));
+    const observationDate = columns[dateIndex];
+    const raw = columns[valueIndex];
+    const value = Number(raw);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(observationDate ?? "")) continue;
+    if (!raw || raw === "." || !Number.isFinite(value)) continue;
+    observations.push({ observationDate, value });
+  }
+  return observations.sort((left, right) => left.observationDate.localeCompare(right.observationDate));
+}
+
+/**
+ * Fill missing yield legs from the public FRED mirror. DGS2/DGS10 are nominal
+ * Treasury yields and DFII10 is the observed 10Y inflation-indexed real yield.
+ * No nominal-to-real conversion or date interpolation is performed.
+ */
+export function applyFredYieldFallback(
+  context: TreasuryData,
+  nominal2yCsv: string | undefined,
+  nominal10yCsv: string | undefined,
+  real10yCsv: string | undefined,
+  nowMs: number,
+): TreasuryData {
+  const dgs2 = parseFredYieldCsv(nominal2yCsv);
+  const dgs10 = parseFredYieldCsv(nominal10yCsv);
+  const dfii10 = parseFredYieldCsv(real10yCsv);
+  const nominalByDate = new Map<string, Record<string, number>>();
+  for (const point of dgs2) nominalByDate.set(point.observationDate, { ...(nominalByDate.get(point.observationDate) ?? {}), "2Y": point.value });
+  for (const point of dgs10) nominalByDate.set(point.observationDate, { ...(nominalByDate.get(point.observationDate) ?? {}), "10Y": point.value });
+  const nominal = [...nominalByDate.entries()]
+    .map(([observationDate, rates]) => ({ observationDate, nominal: rates }))
+    .filter((point) => Object.keys(point.nominal).length > 0)
+    .sort((left, right) => left.observationDate.localeCompare(right.observationDate));
+  const real = dfii10.map((point) => ({ observationDate: point.observationDate, real: { "10Y": point.value } }));
+
+  if (context.available) {
+    const latestReal = context.latest.real ?? real[real.length - 1];
+    const previousReal = context.previous?.real ?? (real.length > 1 ? real[real.length - 2] : undefined);
+    if ((context.latest.real && context.previous?.real) || (!latestReal && !previousReal)) return context;
+    const usedFredFallback = (!context.latest.real && !!latestReal) || (!context.previous?.real && !!previousReal);
+    return {
+      ...context,
+      source: usedFredFallback ? "US Treasury XML + FRED public CSV fallback" : context.source,
+      latest: { ...context.latest, ...(context.latest.real ? {} : latestReal ? { real: latestReal } : {}) },
+      ...(context.previous
+        ? { previous: { ...context.previous, ...(context.previous.real ? {} : previousReal ? { real: previousReal } : {}) } }
+        : {}),
+    };
+  }
+
+  if (nominal.length === 0) return context;
+  const latestNominal = nominal[nominal.length - 1];
+  const previousNominal = nominal.length > 1 ? nominal[nominal.length - 2] : undefined;
+  const latestReal = real[real.length - 1];
+  const previousReal = real.length > 1 ? real[real.length - 2] : undefined;
+  return {
+    available: true,
+    source: "FRED public CSV mirror",
+    fetchedAt: nowMs,
+    freshness: classifyMacroFreshness(latestNominal.observationDate, nowMs),
+    latest: { nominal: latestNominal, ...(latestReal ? { real: latestReal } : {}) },
+    ...(previousNominal || previousReal
+      ? { previous: { ...(previousNominal ? { nominal: previousNominal } : { nominal: latestNominal }), ...(previousReal ? { real: previousReal } : {}) } }
+      : {}),
+  };
+}
+
 export function deriveMacroYieldEvidence(ctx: TreasuryContext): MacroYieldEvidence {
   const notes: string[] = [];
   const empty: MacroYieldEvidence = { goldLongEffect: 0, usdStrengthEffect: 0, notes };
