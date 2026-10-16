@@ -521,7 +521,12 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
         score -= usdStrength;
       }
     }
-  } else if (fund && fund.available && input.instrumentType === "stock") {
+  }
+
+  // Stock fundamentals are independent of news-derived macro context. Do not
+  // make the equity balance sheet/valuation branch an "else" path: a populated
+  // news feed must not silently suppress verified company fundamentals.
+  if (fund && fund.available && input.instrumentType === "stock") {
     if (fund.peRatio !== undefined && fund.peRatio > 0) {
       if (fund.peRatio < 15) score += 1;
       if (fund.peRatio > 35) score -= 1;
