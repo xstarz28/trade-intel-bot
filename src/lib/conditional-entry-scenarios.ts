@@ -144,5 +144,31 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
       }
     }
   }
+  // If a structural trigger exists but no farther opposing swing is known,
+  // fill the target field with a clearly labeled mathematical projection.
+  // This prevents an empty target cell without presenting it as market structure.
+  const recentWindow = candles.slice(-20).filter((candle) =>
+    Number.isFinite(candle.high) && candle.high > 0 &&
+    Number.isFinite(candle.low) && candle.low > 0 &&
+    candle.high >= candle.low
+  );
+  const observedRangeWidth = recentWindow.length >= 10
+    ? Math.max(...recentWindow.map((candle) => candle.high)) - Math.min(...recentWindow.map((candle) => candle.low))
+    : 0;
+  for (const scenario of scenarios) {
+    if (scenario.target !== undefined) continue;
+    const risk = Math.abs(scenario.trigger - scenario.invalidation);
+    if (!(risk > 0) || !Number.isFinite(risk)) continue;
+    const projectionDistance = Math.max(observedRangeWidth, atr ? atr * 2 : 0, risk * 1.5);
+    const projectedTarget = scenario.direction === "long"
+      ? scenario.trigger + projectionDistance
+      : scenario.trigger - projectionDistance;
+    if (!Number.isFinite(projectedTarget) || projectedTarget <= 0) continue;
+    scenario.target = projectedTarget;
+    scenario.riskReward = projectionDistance / risk;
+    scenario.targetBasis = "Proyeksi matematis ≥1,5R / 2 ATR atau rentang teramati (mana lebih besar), bukan swing terkonfirmasi";
+    scenario.ready = false;
+    scenario.reason = "Target matematis ditampilkan agar level tidak kosong, tetapi bukan level swing teramati. Tunggu target struktur nyata sebelum mempertimbangkan entry.";
+  }
   return scenarios;
 }
