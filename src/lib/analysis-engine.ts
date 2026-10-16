@@ -1349,7 +1349,7 @@ function decideTrade(
           { level: tech.fibLevels.level500, basis: "Fibonacci 50.0% retracement" },
           { level: tech.fibLevels.level618, basis: "Fibonacci 61.8% retracement" },
           { level: tech.fibLevels.level786, basis: "Fibonacci 78.6% retracement" },
-        ].filter(level => Number.isFinite(level.level) && level.level > price) : []),
+        ].filter(level => Number.isFinite(level.level) && level.level > price).sort((a, b) => a.level - b.level) : []),
       ];
       const profileTargetsLong = (() => {
         const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
@@ -1405,14 +1405,16 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? profileTargetsLong[0]?.level ?? swingResistances[0];
+        tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? profileTargetsLong[0]?.level ?? fibTargetsLong[0]?.level ?? swingResistances[0];
         tpBasis = buyPoolAbove
           ? "resting buy-side liquidity (" + buyPoolAbove.source + ", " + buyPoolAbove.touches + " touches)"
           : htfBuyPool
             ? "HTF target (" + htfBuyPool.tf + " resting buy-side liquidity: " + htfBuyPool.source + ")"
             : profileTargetsLong[0]
               ? profileTargetsLong[0].basis
-              : tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
+              : fibTargetsLong[0]
+                ? fibTargetsLong[0].basis
+                : tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
       }
     } else if (bias === "Bearish") {
       stopLevel = swingResistances[0];
@@ -1430,7 +1432,7 @@ function decideTrade(
           { level: tech.fibLevels.level500, basis: "Fibonacci 50.0% retracement" },
           { level: tech.fibLevels.level618, basis: "Fibonacci 61.8% retracement" },
           { level: tech.fibLevels.level786, basis: "Fibonacci 78.6% retracement" },
-        ].filter(level => Number.isFinite(level.level) && level.level < price) : []),
+        ].filter(level => Number.isFinite(level.level) && level.level < price).sort((a, b) => b.level - a.level) : []),
       ];
       const profileTargetsShort = (() => {
         const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
@@ -1483,14 +1485,16 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? profileTargetsShort[0]?.level ?? swingSupports[0];
+        tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? profileTargetsShort[0]?.level ?? fibTargetsShort[0]?.level ?? swingSupports[0];
         tpBasis = sellPoolBelow
           ? "resting sell-side liquidity (" + sellPoolBelow.source + ", " + sellPoolBelow.touches + " touches)"
           : htfSellPool
             ? "HTF target (" + htfSellPool.tf + " resting sell-side liquidity: " + htfSellPool.source + ")"
             : profileTargetsShort[0]
               ? profileTargetsShort[0].basis
-              : tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
+              : fibTargetsShort[0]
+                ? fibTargetsShort[0].basis
+                : tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
       }
     }
 
