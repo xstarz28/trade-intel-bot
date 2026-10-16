@@ -307,7 +307,21 @@ function normalizeFundamentalsFromAV(
   // layer can compare it with the observed quote; never synthesize a target.
   base.analystTargetPrice = safeNum(overview.AnalystTargetPrice);
   base.peRatio = safeNum(overview.PERatio);
+  base.forwardPeRatio = safeNum(overview.ForwardPE);
   base.pegRatio = safeNum(overview.PEGRatio);
+  base.priceToSalesRatio = safeNum(overview.PriceToSalesRatioTTM);
+  base.evToRevenue = safeNum(overview.EVToRevenue);
+  base.evToEbitda = safeNum(overview.EVToEBITDA);
+  base.revenueGrowth = safeNum(overview.QuarterlyRevenueGrowthYOY);
+  base.earningsGrowth = safeNum(overview.QuarterlyEarningsGrowthYOY);
+  base.returnOnAssets = safeNum(overview.ReturnOnAssetsTTM);
+  base.revenueTTM = safeNum(overview.RevenueTTM);
+  base.grossProfitTTM = safeNum(overview.GrossProfitTTM);
+  base.dilutedEPS = safeNum(overview.DilutedEPSTTM);
+  base.beta = safeNum(overview.Beta);
+  base.sharesOutstanding = safeNum(overview.SharesOutstanding);
+  base.fiftyDayMovingAverage = safeNum(overview["50DayMovingAverage"]);
+  base.twoHundredDayMovingAverage = safeNum(overview["200DayMovingAverage"]);
   base.bookValue = safeNum(overview.BookValue);
   base.dividendPerShare = safeNum(overview.DividendPerShare);
   base.dividendYield = safeNum(overview.DividendYield);
