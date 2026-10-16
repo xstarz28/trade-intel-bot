@@ -776,13 +776,27 @@ describe("stock fundamental scoring", () => {
         symbol: "AAPL",
         available: true,
         peRatio: 12,
+        forwardPeRatio: 18,
         profitMargin: 0.25,
         earningsPerShare: 4,
         pegRatio: 0.8,
+        priceToSalesRatio: 5.2,
+        evToRevenue: 4.1,
+        evToEbitda: 15,
+        revenueGrowth: 0.12,
+        earningsGrowth: 0.22,
+        returnOnAssets: 0.08,
         operatingMargin: 0.2,
         returnOnEquity: 0.2,
         priceToBook: 4.2,
         dividendYield: 0.01,
+        revenueTTM: 100_000_000_000,
+        grossProfitTTM: 50_000_000_000,
+        dilutedEPS: 3.8,
+        beta: 1.2,
+        sharesOutstanding: 15_000_000_000,
+        fiftyDayMovingAverage: 120,
+        twoHundredDayMovingAverage: 110,
         fiftyTwoWeekLow: 80,
         fiftyTwoWeekHigh: 160,
         analystTargetPrice: 150,
@@ -796,6 +810,12 @@ describe("stock fundamental scoring", () => {
     expect(withFundamentals.breakdown.fundamental).toBe(2);
     expect(withFundamentals.fundamentalSummary).toContain("PEG: 0.80");
     expect(withFundamentals.fundamentalSummary).toContain("ROE: 20.0%");
+    expect(withFundamentals.fundamentalSummary).toContain("Quarterly revenue growth YoY: 12.0%");
+    expect(withFundamentals.fundamentalSummary).toContain("Quarterly earnings growth YoY: 22.0%");
+    expect(withFundamentals.fundamentalSummary).toContain("EV/EBITDA: 15.00");
+    expect(withFundamentals.fundamentalSummary).toContain("Revenue TTM: $100.00B");
+    expect(withFundamentals.fundamentalSummary).toContain("Diluted EPS (TTM): $3.80");
+    expect(withFundamentals.fundamentalSummary).toContain("Beta: 1.20");
     expect(withFundamentals.fundamentalSummary).toContain("Analyst target estimate: $150.00");
     expect(withFundamentals.fundamentalSummary).toContain("52-week range: 80.00–160.00");
   });
