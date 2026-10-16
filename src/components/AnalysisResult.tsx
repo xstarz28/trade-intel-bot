@@ -2457,29 +2457,34 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         )}
                       </div>
                     )}
-                    {ci.tokenomics.unlocks && (
-                      <div>
-                        <p className="text-[10px] font-mono text-muted-foreground">unlocks (30d)</p>
-                        <p className="text-sm font-bold font-mono tabular-nums text-foreground">
-                          {ci.tokenomics.unlocks.upcomingCount30d} event(s)
+                    <div>
+                      <p className="text-[10px] font-mono text-muted-foreground">unlocks (30d)</p>
+                      <p className="text-sm font-bold font-mono tabular-nums text-foreground">
+                        {ci.tokenomics.unlocks?.reliable
+                          ? `${ci.tokenomics.unlocks.upcomingCount30d} event(s)`
+                          : "Unconfirmed"}
+                      </p>
+                      {ci.tokenomics.unlocks?.reliable && ci.tokenomics.unlocks.unlockPercentOfCirculating !== undefined && (
+                        <p className="text-[10px] font-mono text-muted-foreground">
+                          ~{ci.tokenomics.unlocks.unlockPercentOfCirculating.toFixed(2)}% of circ.
                         </p>
-                        {ci.tokenomics.unlocks.unlockPercentOfCirculating !== undefined && (
-                          <p className="text-[10px] font-mono text-muted-foreground">
-                            ~{ci.tokenomics.unlocks.unlockPercentOfCirculating.toFixed(2)}% of circ.
-                          </p>
-                        )}
-                        {ci.tokenomics.unlocks.summary && (
-                          <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 leading-relaxed">
-                            {localizeAnalysisText(ci.tokenomics.unlocks.summary, locale)}
-                          </p>
-                        )}
-                        {ci.tokenomics.unlocks.upcomingUsdValue30d !== undefined && (
-                          <p className="text-[10px] font-mono text-muted-foreground">
-                            value: ${ci.tokenomics.unlocks.upcomingUsdValue30d.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                      )}
+                      {ci.tokenomics.unlocks?.summary && (
+                        <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 leading-relaxed">
+                          {localizeAnalysisText(ci.tokenomics.unlocks.summary, locale)}
+                        </p>
+                      )}
+                      {!ci.tokenomics.unlocks?.reliable && (
+                        <p className="text-[9px] font-mono text-amber-300/70 mt-0.5 leading-relaxed">
+                          {localizeAnalysisText(ci.tokenomics.failureReason ?? "No verified unlock calendar is available; event count is not assumed to be zero.", locale)}
+                        </p>
+                      )}
+                      {ci.tokenomics.unlocks?.reliable && ci.tokenomics.unlocks.upcomingUsdValue30d !== undefined && (
+                        <p className="text-[10px] font-mono text-muted-foreground">
+                          value: ${ci.tokenomics.unlocks.upcomingUsdValue30d.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   {ci.tokenomics.failureReason && (
                     <p className="text-[9px] font-mono text-amber-300/70 leading-relaxed mb-1">
