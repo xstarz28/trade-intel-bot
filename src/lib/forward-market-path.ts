@@ -150,7 +150,7 @@ function getDataReliability(result: AnalysisResult): "good" | "degraded" | "insu
   if (!result.dataQualityContext) return "good";
   const s = result.dataQualityContext.primaryData.status;
   if (s === "GOOD") return "good";
-  if (s === "DEGRADED") return "degraded";
+  if (s === "DEGRADED" || s === "STALE") return "degraded";
   if (s === "INSUFFICIENT") return "insufficient";
   if (s === "UNAVAILABLE" || s === "INVALID") return "unavailable";
   return "good";
