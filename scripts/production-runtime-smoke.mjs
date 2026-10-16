@@ -207,9 +207,19 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
       const resultRoot = document.querySelector('[data-testid="analysis-result"]');
       if (!resultRoot) return false;
       const resultText = resultRoot.innerText || resultRoot.textContent || "";
+      const resultInstrument = resultRoot.getAttribute("data-instrument") || "";
+      const resultTimeframe = resultRoot.getAttribute("data-timeframe") || "";
+      const chart = resultRoot.querySelector('[data-testid="price-structure-chart"]');
+      const chartInstrument = chart?.getAttribute("data-instrument") || "";
+      const chartTimeframe = chart?.getAttribute("data-timeframe") || "";
+      // Never accept an old result just because its narrative mentions the
+      // requested timeframe. The active result AND its chart must match the
+      // exact instrument/timeframe pair requested by this run.
       return (
-        resultText.includes(targetInstrument) &&
-        new RegExp("\\b" + targetTimeframe + "\\b").test(resultText) &&
+        resultInstrument.toUpperCase() === targetInstrument.toUpperCase() &&
+        resultTimeframe.toUpperCase() === targetTimeframe.toUpperCase() &&
+        chartInstrument.toUpperCase() === targetInstrument.toUpperCase() &&
+        chartTimeframe.toUpperCase() === targetTimeframe.toUpperCase() &&
         resultText.includes("BIAS:") &&
         resultText.includes("Price:")
       ) ? "success" : false;
