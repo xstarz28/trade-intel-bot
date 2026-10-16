@@ -410,6 +410,14 @@ describe("Phase 29 — I79: Poor data quality cannot produce false confirmation"
     // Structural confidence reflects data reliability
     expect(["high", "moderate", "low", "insufficient_data"]).toContain(fp.structuralConfidence);
   });
+
+  it("does not label stale primary data as good reliability", () => {
+    const input = buildInput("BBCA", "stock", bullCandles(0, 5000));
+    input.marketData = { ...input.marketData!, dataFreshness: "stale" };
+    const result = runAnalysis(input);
+    expect(result.dataQualityContext?.primaryData.status).toBe("STALE");
+    expect(result.forwardMarketPath?.dataReliability).toBe("degraded");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════
