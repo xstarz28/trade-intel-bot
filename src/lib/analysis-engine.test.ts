@@ -781,11 +781,21 @@ describe("stock fundamental scoring", () => {
         pegRatio: 0.8,
         operatingMargin: 0.2,
         returnOnEquity: 0.2,
+        priceToBook: 4.2,
+        dividendYield: 0.01,
+        fiftyTwoWeekLow: 80,
+        fiftyTwoWeekHigh: 160,
+        analystTargetPrice: 150,
+        latestEarnings: { date: "2026-10-01", eps: 4, revenue: 5_000_000_000 },
       },
     }));
 
     // P/E, margin, EPS and the capped quality group score independently of macro news.
     expect(withFundamentals.breakdown.fundamental - macroOnly.breakdown.fundamental).toBe(5);
+    expect(withFundamentals.fundamentalSummary).toContain("PEG: 0.80");
+    expect(withFundamentals.fundamentalSummary).toContain("ROE: 20.0%");
+    expect(withFundamentals.fundamentalSummary).toContain("Analyst target estimate: $150.00");
+    expect(withFundamentals.fundamentalSummary).toContain("52-week range: 80.00–160.00");
   });
 });
 
