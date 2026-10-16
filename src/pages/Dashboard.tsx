@@ -772,7 +772,9 @@ export default function Dashboard() {
                 } : undefined,
                 evidence: equityEvidence,
                 overallAvailability: fundamentals?.available ? "PARTIAL" : "MINIMAL",
-                overallQuality: fundamentals?.available ? "VERIFIED" : "UNAVAILABLE",
+                overallQuality: fundamentals?.available && availableFundamentalMetrics > 0
+                  ? "VERIFIED"
+                  : fundamentals?.available ? "DEGRADED" : "UNAVAILABLE",
                 missingInformation: [
                   ...(!fundamentals?.available ? ["Fundamental data unavailable"] : []),
                   ...(fundamentals?.available && equityEvidence.length === 0
