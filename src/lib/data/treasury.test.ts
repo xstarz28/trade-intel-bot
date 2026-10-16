@@ -9,6 +9,8 @@ import {
   buildTreasuryContext,
   classifyMacroFreshness,
   deriveMacroYieldEvidence,
+  parseFredYieldCsv,
+  applyFredYieldFallback,
   TREASURY_FRESH_DAYS,
   TREASURY_DELAYED_DAYS,
 } from "./treasury";
@@ -218,5 +220,47 @@ describe("deriveMacroYieldEvidence", () => {
     const smallEv = deriveMacroYieldEvidence(smallCtx);
     expect(bigEv.usdStrengthEffect).toBe(1); // saturated
     expect(smallEv.usdStrengthEffect).toBe(0);
+  });
+});
+
+
+describe("FRED public CSV yield fallback", () => {
+  it("parses observed numeric rows and skips missing observations", () => {
+    expect(parseFredYieldCsv("observation_date,DFII10\n2026-10-14,1.82\n2026-10-15,.\n2026-10-16,1.79")).toEqual([
+      { observationDate: "2026-10-14", value: 1.82 },
+      { observationDate: "2026-10-16", value: 1.79 },
+    ]);
+  });
+
+  it("builds nominal and actual real-yield context without deriving one from the other", () => {
+    const result = applyFredYieldFallback(
+      { available: false, reason: "Treasury XML unavailable" },
+      "observation_date,DGS2\n2026-10-15,3.45\n2026-10-16,3.40",
+      "observation_date,DGS10\n2026-10-15,4.10\n2026-10-16,4.05",
+      "observation_date,DFII10\n2026-10-15,1.75\n2026-10-16,1.70",
+      Date.parse("2026-10-16T12:00:00Z"),
+    );
+    expect(result.available).toBe(true);
+    if (!result.available) return;
+    expect(result.source).toBe("FRED public CSV mirror");
+    expect(result.latest.nominal.nominal["10Y"]).toBe(4.05);
+    expect(result.latest.real?.real["10Y"]).toBe(1.70);
+    expect(result.previous?.real?.real["10Y"]).toBe(1.75);
+  });
+
+  it("fills a missing Treasury real-yield leg from FRED without replacing XML nominal data", () => {
+    const nominalContext = buildTreasuryContext([`${nominalEntry("2026-10-15", { BC_2YEAR: "3.4", BC_10YEAR: "4.0" })}${nominalEntry("2026-10-16", { BC_2YEAR: "3.3", BC_10YEAR: "3.9" })}`], [], NOW);
+    const result = applyFredYieldFallback(
+      nominalContext,
+      undefined,
+      undefined,
+      "observation_date,DFII10\n2026-10-15,1.8\n2026-10-16,1.7",
+      NOW,
+    );
+    expect(result.available).toBe(true);
+    if (!result.available) return;
+    expect(result.source).toBe("US Treasury XML + FRED public CSV fallback");
+    expect(result.latest.nominal.nominal["10Y"]).toBe(3.9);
+    expect(result.latest.real?.real["10Y"]).toBe(1.7);
   });
 });
