@@ -90,9 +90,9 @@ describe("buildConditionalEntryScenarios", () => {
       id: "bullish-breakout",
       trigger: 102.2,
       invalidation: 97.8,
-      target: 108.8,
       ready: false,
     });
+    expect(scenarios[0].target).toBeCloseTo(108.8, 8);
     expect(scenarios[0].targetBasis).toContain("bukan resistance terkonfirmasi");
     expect(scenarios[1].targetBasis).toContain("bukan support terkonfirmasi");
     expect(scenarios.every((scenario) => scenario.reason.includes("Tunggu struktur"))).toBe(true);
