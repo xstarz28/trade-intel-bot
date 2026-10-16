@@ -549,10 +549,24 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
       if (fund.returnOnEquity > 0.15) qualityScore += 1;
       if (fund.returnOnEquity < 0) qualityScore -= 1;
     }
+    if (fund.returnOnAssets !== undefined) {
+      if (fund.returnOnAssets > 0.05) qualityScore += 1;
+      if (fund.returnOnAssets < 0) qualityScore -= 1;
+    }
+    if (fund.revenueGrowth !== undefined) {
+      if (fund.revenueGrowth > 0.1) qualityScore += 1;
+      if (fund.revenueGrowth < -0.1) qualityScore -= 1;
+    }
+    if (fund.earningsGrowth !== undefined) {
+      if (fund.earningsGrowth > 0.1) qualityScore += 1;
+      if (fund.earningsGrowth < -0.1) qualityScore -= 1;
+    }
     score += Math.max(-2, Math.min(2, qualityScore));
 
-    // Price/book and dividend yield remain visible in the report but are not
-    // directionally scored without sector/payout sustainability context.
+    // Correlated growth/profitability metrics share a single ±2 cap. Forward
+    // P/E, EV multiples and price/sales are reported but not scored again
+    // without sector-adjusted comparables. Price/book and dividend yield also
+    // remain unscored without sector/payout sustainability context.
     // Sector context: stored but NO sector-benchmark provider exists —
     // deliberately unscored rather than synthetically ranked.
   }
@@ -2613,14 +2627,28 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   if (fund && fund.available && input.instrumentType === "stock") {
     parts.push(`Fundamentals — ${fund.name || fund.symbol}:`);
     if (fund.peRatio !== undefined) parts.push(`P/E: ${fund.peRatio.toFixed(1)}`);
+    if (fund.forwardPeRatio !== undefined) parts.push(`Forward P/E: ${fund.forwardPeRatio.toFixed(1)}`);
     if (fund.pegRatio !== undefined) parts.push(`PEG: ${fund.pegRatio.toFixed(2)}`);
-    if (fund.earningsPerShare !== undefined) parts.push(`EPS: $${fund.earningsPerShare.toFixed(2)}`);
+    if (fund.priceToSalesRatio !== undefined) parts.push(`Price/sales (TTM): ${fund.priceToSalesRatio.toFixed(2)}`);
+    if (fund.priceToBook !== undefined) parts.push(`Price/book: ${fund.priceToBook.toFixed(2)}`);
+    if (fund.evToRevenue !== undefined) parts.push(`EV/revenue: ${fund.evToRevenue.toFixed(2)}`);
+    if (fund.evToEbitda !== undefined) parts.push(`EV/EBITDA: ${fund.evToEbitda.toFixed(2)}`);
+    if (fund.earningsPerShare !== undefined) parts.push(`EPS: ${fund.earningsPerShare.toFixed(2)}`);
+    if (fund.dilutedEPS !== undefined) parts.push(`Diluted EPS (TTM): ${fund.dilutedEPS.toFixed(2)}`);
     if (fund.profitMargin !== undefined) parts.push(`Profit margin: ${(fund.profitMargin * 100).toFixed(1)}%`);
     if (fund.operatingMargin !== undefined) parts.push(`Operating margin: ${(fund.operatingMargin * 100).toFixed(1)}%`);
+    if (fund.returnOnAssets !== undefined) parts.push(`ROA: ${(fund.returnOnAssets * 100).toFixed(1)}%`);
     if (fund.returnOnEquity !== undefined) parts.push(`ROE: ${(fund.returnOnEquity * 100).toFixed(1)}%`);
-    if (fund.priceToBook !== undefined) parts.push(`Price/book: ${fund.priceToBook.toFixed(2)}`);
+    if (fund.revenueGrowth !== undefined) parts.push(`Quarterly revenue growth YoY: ${(fund.revenueGrowth * 100).toFixed(1)}%`);
+    if (fund.earningsGrowth !== undefined) parts.push(`Quarterly earnings growth YoY: ${(fund.earningsGrowth * 100).toFixed(1)}%`);
     if (fund.dividendYield !== undefined) parts.push(`Dividend yield: ${(fund.dividendYield * 100).toFixed(2)}%`);
-    if (fund.marketCap !== undefined) parts.push(`Mkt Cap: $${(fund.marketCap / 1e9).toFixed(1)}B`);
+    if (fund.marketCap !== undefined) parts.push(`Mkt Cap: ${(fund.marketCap / 1e9).toFixed(1)}B`);
+    if (fund.revenueTTM !== undefined) parts.push(`Revenue TTM: ${(fund.revenueTTM / 1e9).toFixed(2)}B`);
+    if (fund.grossProfitTTM !== undefined) parts.push(`Gross profit TTM: ${(fund.grossProfitTTM / 1e9).toFixed(2)}B`);
+    if (fund.sharesOutstanding !== undefined) parts.push(`Shares outstanding: ${(fund.sharesOutstanding / 1e9).toFixed(2)}B`);
+    if (fund.beta !== undefined) parts.push(`Beta: ${fund.beta.toFixed(2)}`);
+    if (fund.fiftyDayMovingAverage !== undefined) parts.push(`Provider 50-day average: ${fund.fiftyDayMovingAverage.toFixed(2)}`);
+    if (fund.twoHundredDayMovingAverage !== undefined) parts.push(`Provider 200-day average: ${fund.twoHundredDayMovingAverage.toFixed(2)}`);
     if (fund.fiftyTwoWeekLow !== undefined || fund.fiftyTwoWeekHigh !== undefined) {
       parts.push(`52-week range: ${fund.fiftyTwoWeekLow !== undefined ? fund.fiftyTwoWeekLow.toFixed(2) : "n/a"}–${fund.fiftyTwoWeekHigh !== undefined ? fund.fiftyTwoWeekHigh.toFixed(2) : "n/a"}`);
     }
