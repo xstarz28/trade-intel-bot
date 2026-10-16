@@ -549,7 +549,10 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
   }
 
   const price = candles[candles.length - 1].close;
-  const atThreshold = bands ? bands.plus1 * 0.1 : sessionVwap * 0.0005;
+  // Keep the at-VWAP tolerance narrow and price-relative. Using 10% of the
+  // upper deviation band scales the threshold with volatility and can label
+  // materially displaced prices as "at_vwap" on volatile sessions.
+  const atThreshold = Math.max(1e-10, Math.abs(sessionVwap) * 0.0005);
   const priceLocation: VwapContext["priceLocation"] =
     Math.abs(price - sessionVwap) <= atThreshold
       ? "at_vwap"
