@@ -1430,11 +1430,20 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        // All candidate classes share one price-ordered list. Choosing a
-        // pool merely because it is a liquidity pool can skip a nearer VPVR,
-        // TPO, Fibonacci or swing level and artificially improve the R:R.
-        // Always test the nearest opposing structural target first.
-        const nearestTarget = bullishTargets[0];
+        // Compare resting liquidity pools and profile nodes by price first;
+        // these are the primary liquidity targets. If none exists, fall back
+        // to the nearest valid Fibonacci level and then swing resistance.
+        // Never let a farther pool override a nearer profile node.
+        const liquidityTargets = [
+          ...(buyPoolAbove ? [{ level: buyPoolAbove.level, basis: "resting buy-side liquidity (" + buyPoolAbove.source + ", " + buyPoolAbove.touches + " touches)" }] : []),
+          ...(htfBuyPool ? [{ level: htfBuyPool.level, basis: "HTF target (" + htfBuyPool.tf + " resting buy-side liquidity: " + htfBuyPool.source + ")" }] : []),
+          ...profileTargetsLong,
+        ].filter((candidate) => Number.isFinite(candidate.level) && candidate.level > price)
+          .sort((a, b) => a.level - b.level);
+        const nearestTarget = liquidityTargets[0] ?? fibTargetsLong[0] ??
+          (Number.isFinite(swingResistances[0]) && swingResistances[0] > price
+            ? { level: swingResistances[0], basis: "nearest market swing high / resistance (structural)" }
+            : undefined);
         tpLevel = nearestTarget?.level;
         tpBasis = nearestTarget?.basis ?? "";
       }
@@ -1507,9 +1516,19 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        // Use the nearest price-ordered candidate for shorts too; a
-        // farther liquidity pool must not override a nearer structural level.
-        const nearestTarget = bearishTargets[0];
+        // Compare resting liquidity pools and profile nodes by price first;
+        // fall back to Fibonacci and then swing support only when no such
+        // liquidity target is available.
+        const liquidityTargets = [
+          ...(sellPoolBelow ? [{ level: sellPoolBelow.level, basis: "resting sell-side liquidity (" + sellPoolBelow.source + ", " + sellPoolBelow.touches + " touches)" }] : []),
+          ...(htfSellPool ? [{ level: htfSellPool.level, basis: "HTF target (" + htfSellPool.tf + " resting sell-side liquidity: " + htfSellPool.source + ")" }] : []),
+          ...profileTargetsShort,
+        ].filter((candidate) => Number.isFinite(candidate.level) && candidate.level < price)
+          .sort((a, b) => b.level - a.level);
+        const nearestTarget = liquidityTargets[0] ?? fibTargetsShort[0] ??
+          (Number.isFinite(swingSupports[0]) && swingSupports[0] < price
+            ? { level: swingSupports[0], basis: "nearest market swing low / support (structural)" }
+            : undefined);
         tpLevel = nearestTarget?.level;
         tpBasis = nearestTarget?.basis ?? "";
       }
