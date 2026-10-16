@@ -1958,7 +1958,7 @@ function decideTrade(
 
       const structured: StructuredEvidence[] = [];
       const universal = input.universalIntelligenceContext;
-      if (universal && normalizeInstrument(universal.instrument) === requestedInstrument) {
+      if (requestedInstrument && universal && normalizeInstrument(universal.instrument) === requestedInstrument) {
         for (const item of universal.evidence ?? []) {
           if (!["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND", "FUTURES_STRUCTURE"].includes(item.category)) continue;
           if (eligible(item)) structured.push({
@@ -1972,7 +1972,7 @@ function decideTrade(
       }
 
       const crypto = input.cryptoIntelligenceContext;
-      if (input.instrumentType === "crypto" && crypto &&
+      if (requestedInstrument && input.instrumentType === "crypto" && crypto &&
         normalizeInstrument(crypto.instrument) === requestedInstrument) {
         for (const item of crypto.evidence ?? []) {
           if (!["DEFI_FUNDAMENTAL", "TOKENOMICS", "ON_CHAIN", "SUPPLY_DYNAMICS"].includes(item.category)) continue;
@@ -2575,7 +2575,7 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     !!item.dependencyGroup;
 
   const universalEvidence = input.universalIntelligenceContext;
-  if (universalEvidence && normalizeInstrument(universalEvidence.instrument) === requestedInstrument) {
+  if (requestedInstrument && universalEvidence && normalizeInstrument(universalEvidence.instrument) === requestedInstrument) {
     for (const item of universalEvidence.evidence ?? []) {
       if (acceptedEvidence(item, ["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND", "FUTURES_STRUCTURE"])) {
         structuredEvidence.push({
@@ -2589,7 +2589,7 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   }
 
   const cryptoEvidence = input.cryptoIntelligenceContext;
-  if (input.instrumentType === "crypto" && cryptoEvidence &&
+  if (requestedInstrument && input.instrumentType === "crypto" && cryptoEvidence &&
       normalizeInstrument(cryptoEvidence.instrument) === requestedInstrument) {
     for (const item of cryptoEvidence.evidence ?? []) {
       if (acceptedEvidence(item, ["DEFI_FUNDAMENTAL", "TOKENOMICS", "ON_CHAIN", "SUPPLY_DYNAMICS"])) {
