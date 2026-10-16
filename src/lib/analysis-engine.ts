@@ -1405,25 +1405,19 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        // Select the nearest candidate that still meets the minimum displayed
-        // R:R (and this style's ATR/R:R limits). A nearby POC/VAH must not
-        // force a bad trade when a farther structural target is valid.
-        const selectedTarget = chooseAdaptiveScalpTarget(bullishTargets, {
-          direction: "long",
-          entry,
-          stopLevel,
-          atr14: tech?.atr14,
-          instrument: input.instrument,
-          instrumentType: input.instrumentType,
-          maxAtrMultiple: styleProfile.targetMaxAtrMultiple,
-          maxRiskReward: styleProfile.maxRiskReward,
-        });
-        const fallbackTarget = selectedTarget ?? bullishTargets[0];
-        tpLevel = fallbackTarget?.level;
-        tpBasis = fallbackTarget?.basis ?? "";
-        if (selectedTarget && selectedTarget !== bullishTargets[0]) {
-          tpBasis += " (nearest valid structural target meeting minimum R:R)";
-        }
+        // Preserve the nearest relevant opposing liquidity target first. A
+        // farther level must not be selected merely to manufacture a better
+        // R:R; if the nearest target fails the gate, the setup is rejected.
+        tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? profileTargetsLong[0]?.level ?? fibTargetsLong[0]?.level ?? swingResistances[0];
+        tpBasis = buyPoolAbove
+          ? "resting buy-side liquidity (" + buyPoolAbove.source + ", " + buyPoolAbove.touches + " touches)"
+          : htfBuyPool
+            ? "HTF target (" + htfBuyPool.tf + " resting buy-side liquidity: " + htfBuyPool.source + ")"
+            : profileTargetsLong[0]
+              ? profileTargetsLong[0].basis
+              : fibTargetsLong[0]
+                ? fibTargetsLong[0].basis
+                : tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
       }
     } else if (bias === "Bearish") {
       stopLevel = swingResistances[0];
@@ -1494,24 +1488,19 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        // Symmetric target selection for shorts: never privilege a profile
-        // level if its distance cannot support the minimum displayed R:R.
-        const selectedTarget = chooseAdaptiveScalpTarget(bearishTargets, {
-          direction: "short",
-          entry,
-          stopLevel,
-          atr14: tech?.atr14,
-          instrument: input.instrument,
-          instrumentType: input.instrumentType,
-          maxAtrMultiple: styleProfile.targetMaxAtrMultiple,
-          maxRiskReward: styleProfile.maxRiskReward,
-        });
-        const fallbackTarget = selectedTarget ?? bearishTargets[0];
-        tpLevel = fallbackTarget?.level;
-        tpBasis = fallbackTarget?.basis ?? "";
-        if (selectedTarget && selectedTarget !== bearishTargets[0]) {
-          tpBasis += " (nearest valid structural target meeting minimum R:R)";
-        }
+        // Preserve the nearest relevant opposing liquidity target first. A
+        // farther level must not be selected merely to manufacture a better
+        // R:R; if the nearest target fails the gate, the setup is rejected.
+        tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? profileTargetsShort[0]?.level ?? fibTargetsShort[0]?.level ?? swingSupports[0];
+        tpBasis = sellPoolBelow
+          ? "resting sell-side liquidity (" + sellPoolBelow.source + ", " + sellPoolBelow.touches + " touches)"
+          : htfSellPool
+            ? "HTF target (" + htfSellPool.tf + " resting sell-side liquidity: " + htfSellPool.source + ")"
+            : profileTargetsShort[0]
+              ? profileTargetsShort[0].basis
+              : fibTargetsShort[0]
+                ? fibTargetsShort[0].basis
+                : tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
       }
     }
 
@@ -2369,7 +2358,7 @@ function generateTechnicalSummary(
     if (xa) {
       if (xa.available && xa.correlation !== undefined) {
         parts.push(
-          `Cross-asset: ${xa.comparatorSymbol} correlation ${(xa.correlation * 100).toFixed(0)} percent over ${xa.sampleSize} returns (${xa.directionalContext ?? "weak"}) — computed from actual candles, not assumed.`,
+          `Cross-asset: ${xa.comparatorSymbol} correlation coefficient ${xa.correlation.toFixed(2)} over ${xa.sampleSize} returns (${xa.directionalContext ?? "weak"}) — computed from actual candles, not assumed.`,
         );
       } else if (xa.unavailableReason) {
         parts.push(`Cross-asset context unavailable: ${xa.unavailableReason}`);
@@ -2460,7 +2449,7 @@ function generateTechnicalSummary(
       if (smcInfo.tpoProfile?.available) {
         const tpo = smcInfo.tpoProfile;
         parts.push(
-          `TPO market profile — POC ${tpo.poc?.toFixed(4)}, VAH ${tpo.vah?.toFixed(4)}, VAL ${tpo.val?.toFixed(4)}; ${tpo.blockMinutes}-minute blocks, ${Math.round(tpo.valueAreaPercent * 100)} percent value area.`,
+          `TPO market profile — POC ${tpo.poc?.toFixed(4)}, VAH ${tpo.vah?.toFixed(4)}, VAL ${tpo.val?.toFixed(4)}; ${tpo.blockMinutes}-minute blocks, value-area coverage ${tpo.valueAreaPercent.toFixed(2)}.`,
         );
       } else if (smcInfo.tpoProfile?.unavailableReason) {
         parts.push(`TPO profile unavailable: ${smcInfo.tpoProfile.unavailableReason}`);
