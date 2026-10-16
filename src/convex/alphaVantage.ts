@@ -299,6 +299,9 @@ function normalizeFundamentalsFromAV(
   base.sector = overview.Sector;
   base.industry = overview.Industry;
   base.marketCap = safeNum(overview.MarketCapitalization);
+  // Preserve the provider's actual analyst target so the universal evidence
+  // layer can compare it with the observed quote; never synthesize a target.
+  base.analystTargetPrice = safeNum(overview.AnalystTargetPrice);
   base.peRatio = safeNum(overview.PERatio);
   base.pegRatio = safeNum(overview.PEGRatio);
   base.bookValue = safeNum(overview.BookValue);
