@@ -6,9 +6,6 @@ export interface EquityFundamentalSource {
   symbol?: string;
   available: boolean;
   analystTargetPrice?: number;
-  earningsPerShare?: number;
-  latestEarnings?: { eps?: number };
-  profitMargin?: number;
 }
 
 /**
