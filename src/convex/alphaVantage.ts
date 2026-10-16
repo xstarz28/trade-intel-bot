@@ -294,6 +294,10 @@ function normalizeFundamentalsFromAV(
     return base;
   }
 
+  // Preserve the provider-returned symbol, not the requested ticker. The
+  // downstream evidence layer must be able to reject a mismatched provider
+  // response instead of accidentally relabeling it as the requested company.
+  base.symbol = String(overview.Symbol).trim().toUpperCase();
   base.available = true;
   base.name = overview.Name;
   base.sector = overview.Sector;
