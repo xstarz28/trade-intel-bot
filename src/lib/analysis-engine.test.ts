@@ -216,6 +216,55 @@ describe("scoreFundamentals (via breakdown)", () => {
   });
 });
 
+// ── TPO + VPVR integration ────────────────────────────────────────
+
+describe("TPO + VPVR analysis integration", () => {
+  it("uses available profile levels in the conviction trace and technical explanation", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "1.11",
+      technicalData: {
+        swingHighs: [1.08, 1.10],
+        swingLows: [1.04, 1.06],
+        structure: "HH/HL",
+        bosDirection: "bullish",
+        supportLevels: [1.06],
+        resistanceLevels: [1.10, 1.12],
+        volumeTrend: "increasing",
+        dataPoints: 60,
+        smc: {
+          timeframe: "D1",
+          liquidityPools: [],
+          internalExternal: {
+            external: { timeframe: "D1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 60 },
+            internal: { timeframe: "D1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 60 },
+            internalConflict: false,
+          },
+          fvgs: [],
+          orderBlocks: [],
+          vwap: { available: true, sessionVwap: 1.08, priceLocation: "above_vwap" },
+          volumeProfile: {
+            available: true, poc: 1.085, vah: 1.10, val: 1.07,
+            hvn: [1.09], lvn: [1.075],
+            approximation: "OHLCV-range allocation approximation",
+          },
+          tpoProfile: {
+            available: true, poc: 1.087, vah: 1.101, val: 1.071,
+            totalTpo: 120, blockMinutes: 30, valueAreaPercent: 0.7,
+          },
+        },
+      },
+    }));
+
+    expect(result.technicalSummary).toContain("VPVR");
+    expect(result.technicalSummary).toContain("TPO market profile");
+    const layer = result.decisionTrace?.convictionBreakdown.layers.find((item) => item.layer === "TPO + VPVR");
+    expect(layer).toBeDefined();
+    expect(layer?.cap).toBe(5);
+    expect(layer?.reason).toContain("VPVR POC");
+    expect(layer?.reason).toContain("TPO POC");
+  });
+});
+
 // ── Sentiment scoring ─────────────────────────────────────────────
 
 describe("scoreSentiment (via breakdown)", () => {
