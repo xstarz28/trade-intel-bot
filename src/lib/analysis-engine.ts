@@ -1990,7 +1990,12 @@ function decideTrade(
       const strengthValue = (strength: StructuredEvidence["strength"]) =>
         strength === "STRONG" ? 3 : strength === "MODERATE" ? 2 : 1;
       for (const item of structured) {
-        const signed = (item.direction === "SUPPORTING" ? 1 : -1) * strengthValue(item.strength);
+        // Evidence direction is normalized to the long-side thesis by the
+        // provider adapters (SUPPORTING = bullish, CONFLICTING = bearish).
+        // Re-orient it to the already-established structural bias here; a
+        // bullish fundamental must reduce, not inflate, conviction for a short.
+        const longSideDirection = item.direction === "SUPPORTING" ? 1 : -1;
+        const signed = longSideDirection * biasSign * strengthValue(item.strength);
         groups.set(item.dependencyGroup, [...(groups.get(item.dependencyGroup) ?? []), signed]);
       }
       let raw = 0;
