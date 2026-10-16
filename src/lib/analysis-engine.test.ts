@@ -222,6 +222,16 @@ describe("TPO + VPVR analysis integration", () => {
   it("uses available profile levels in the conviction trace and technical explanation", () => {
     const result = runAnalysis(baseInput({
       currentPrice: "1.11",
+      marketData: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 1.11, timestamp: Date.now(), source: "test" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
       technicalData: {
         sma50: 1.07,
         sma100: 1.06,
@@ -288,6 +298,16 @@ describe("asset-specific fundamental evidence integration", () => {
       newsContext: "ETF adoption supports BTC market fundamentals",
       recentHigh: "105",
       recentLow: "90",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 100, timestamp: Date.now(), source: "test" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
       technicalData: {
         swingHighs: [115, 120],
         swingLows: [90, 95],
