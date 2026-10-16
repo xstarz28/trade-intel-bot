@@ -10,8 +10,9 @@
  *   6. Dependency group / double-counting prevention
  *
  * CRITICAL DESIGN:
- *   - This module is INFORMATIONAL ONLY — it cannot modify bias, conviction,
- *     gates, trade plan, or recommendation.
+ *   - Verified, fresh asset-specific fundamental evidence may adjust a bounded
+ *     conviction confirmation layer after a directional thesis exists; it cannot
+ *     create/flip core bias or bypass gates/trade-plan validation.
  *   - Provider availability NEVER becomes directional evidence.
  *   - Missing data remains missing — never fabricated.
  *   - Stale data remains stale — never presented as fresh.
