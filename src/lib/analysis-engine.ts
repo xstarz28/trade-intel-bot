@@ -1430,19 +1430,13 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        // Preserve the nearest relevant opposing liquidity target first. A
-        // farther level must not be selected merely to manufacture a better
-        // R:R; if the nearest target fails the gate, the setup is rejected.
-        tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? profileTargetsLong[0]?.level ?? fibTargetsLong[0]?.level ?? swingResistances[0];
-        tpBasis = buyPoolAbove
-          ? "resting buy-side liquidity (" + buyPoolAbove.source + ", " + buyPoolAbove.touches + " touches)"
-          : htfBuyPool
-            ? "HTF target (" + htfBuyPool.tf + " resting buy-side liquidity: " + htfBuyPool.source + ")"
-            : profileTargetsLong[0]
-              ? profileTargetsLong[0].basis
-              : fibTargetsLong[0]
-                ? fibTargetsLong[0].basis
-                : tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
+        // All candidate classes share one price-ordered list. Choosing a
+        // pool merely because it is a liquidity pool can skip a nearer VPVR,
+        // TPO, Fibonacci or swing level and artificially improve the R:R.
+        // Always test the nearest opposing structural target first.
+        const nearestTarget = bullishTargets[0];
+        tpLevel = nearestTarget?.level;
+        tpBasis = nearestTarget?.basis ?? "";
       }
     } else if (bias === "Bearish") {
       stopLevel = swingResistances[0];
@@ -1513,19 +1507,11 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        // Preserve the nearest relevant opposing liquidity target first. A
-        // farther level must not be selected merely to manufacture a better
-        // R:R; if the nearest target fails the gate, the setup is rejected.
-        tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? profileTargetsShort[0]?.level ?? fibTargetsShort[0]?.level ?? swingSupports[0];
-        tpBasis = sellPoolBelow
-          ? "resting sell-side liquidity (" + sellPoolBelow.source + ", " + sellPoolBelow.touches + " touches)"
-          : htfSellPool
-            ? "HTF target (" + htfSellPool.tf + " resting sell-side liquidity: " + htfSellPool.source + ")"
-            : profileTargetsShort[0]
-              ? profileTargetsShort[0].basis
-              : fibTargetsShort[0]
-                ? fibTargetsShort[0].basis
-                : tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
+        // Use the nearest price-ordered candidate for shorts too; a
+        // farther liquidity pool must not override a nearer structural level.
+        const nearestTarget = bearishTargets[0];
+        tpLevel = nearestTarget?.level;
+        tpBasis = nearestTarget?.basis ?? "";
       }
     }
 
