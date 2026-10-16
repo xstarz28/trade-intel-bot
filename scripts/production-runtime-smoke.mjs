@@ -201,20 +201,17 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
       });
       if (errorPanel) return "error";
 
-      const visibleText = Array.from(document.querySelectorAll("*"))
-        .filter((el) => {
-          const s = getComputedStyle(el);
-          const r = el.getBoundingClientRect();
-          return s.display !== "none" && s.visibility !== "hidden" && r.width > 0 && r.height > 0;
-        })
-        .map((el) => el.textContent || "")
-        .join("\n");
+      // Validate only the active analysis result. Page-wide text also contains
+      // scanner/loading labels and can falsely reject a valid result for another
+      // surface. Instrument display labels vary by asset class (e.g. XAU/USD — Gold).
+      const resultRoot = document.querySelector('[data-testid="analysis-result"]');
+      if (!resultRoot) return false;
+      const resultText = resultRoot.innerText || resultRoot.textContent || "";
       return (
-        visibleText.includes(`${targetInstrument} |`) &&
-        visibleText.includes(`| ${targetTimeframe}`) &&
-        visibleText.includes("BIAS:") &&
-        visibleText.includes("Price:") &&
-        !visibleText.includes("analyzing...")
+        resultText.includes(targetInstrument) &&
+        new RegExp("\\b" + targetTimeframe + "\\b").test(resultText) &&
+        resultText.includes("BIAS:") &&
+        resultText.includes("Price:")
       ) ? "success" : false;
     }, { targetInstrument: instrument, targetTimeframe: expectedTimeframe }, { timeout });
     analysisOutcome = await outcomeHandle.jsonValue();
