@@ -325,8 +325,8 @@ export function applyFredYieldFallback(
       ...context,
       source: context.latest.real ? context.source : "US Treasury XML + FRED public CSV fallback",
       latest: { ...context.latest, ...(context.latest.real ? {} : latestReal ? { real: latestReal } : {}) },
-      ...(context.previous || previousReal
-        ? { previous: { ...context.previous, ...(context.previous?.real ? {} : previousReal ? { real: previousReal } : {}) } }
+      ...(context.previous
+        ? { previous: { ...context.previous, ...(context.previous.real ? {} : previousReal ? { real: previousReal } : {}) } }
         : {}),
     };
   }
