@@ -74,7 +74,22 @@ describe("quote observation freshness", () => {
     });
     expect(stale.dataFreshness).toBe("unavailable");
     expect(stale.hasLiveQuote).toBe(false);
-    expect(future.dataFreshness).toBe("unavailable");
+    // A bad/future quote must not poison a valid current candle observation.
+    expect(future.dataFreshness).toBe("delayed");
     expect(future.hasLiveQuote).toBe(false);
+    expect(future.priceTimestamp).toBe(NOW);
+  });
+
+  it("prefers a fresh candle over a stale quote snapshot", () => {
+    const candleTimestamp = NOW - 10 * 60_000;
+    const result = resolveQuoteObservation({
+      quotePrice: 91,
+      quoteTimestamp: NOW - 26 * 60 * 60_000,
+      candleTimestamp,
+      now: NOW,
+    });
+    expect(result.hasLiveQuote).toBe(false);
+    expect(result.dataFreshness).toBe("delayed");
+    expect(result.priceTimestamp).toBe(candleTimestamp);
   });
 });
