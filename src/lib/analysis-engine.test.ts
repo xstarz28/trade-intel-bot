@@ -228,11 +228,15 @@ describe("TPO + VPVR analysis integration", () => {
         provider: "test",
         fetchTimestamp: Date.now(),
         price: { price: 1.11, timestamp: Date.now(), source: "test" },
-        candles: [],
+        candles: Array.from({ length: 60 }, (_, i) => ({
+          timestamp: Date.now() - (60 - i) * 86400000,
+          open: 1.10, high: 1.12, low: 1.08, close: 1.11, volume: 1000,
+        })),
         timeframe: "D1",
         dataFreshness: "delayed",
       },
       technicalData: {
+        atr14: 0.01,
         sma50: 1.07,
         sma100: 1.06,
         sma200: 1.05,
@@ -304,11 +308,15 @@ describe("asset-specific fundamental evidence integration", () => {
         provider: "test",
         fetchTimestamp: Date.now(),
         price: { price: 100, timestamp: Date.now(), source: "test" },
-        candles: [],
+        candles: Array.from({ length: 60 }, (_, i) => ({
+          timestamp: Date.now() - (60 - i) * 86400000,
+          open: 99, high: 102, low: 98, close: 100, volume: 1000,
+        })),
         timeframe: "D1",
         dataFreshness: "delayed",
       },
       technicalData: {
+        atr14: 2,
         swingHighs: [115, 120],
         swingLows: [90, 95],
         structure: "HH/HL",
