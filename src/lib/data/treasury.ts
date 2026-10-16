@@ -321,9 +321,10 @@ export function applyFredYieldFallback(
     const latestReal = context.latest.real ?? real[real.length - 1];
     const previousReal = context.previous?.real ?? (real.length > 1 ? real[real.length - 2] : undefined);
     if ((context.latest.real && context.previous?.real) || (!latestReal && !previousReal)) return context;
+    const usedFredFallback = (!context.latest.real && !!latestReal) || (!context.previous?.real && !!previousReal);
     return {
       ...context,
-      source: context.latest.real ? context.source : "US Treasury XML + FRED public CSV fallback",
+      source: usedFredFallback ? "US Treasury XML + FRED public CSV fallback" : context.source,
       latest: { ...context.latest, ...(context.latest.real ? {} : latestReal ? { real: latestReal } : {}) },
       ...(context.previous
         ? { previous: { ...context.previous, ...(context.previous.real ? {} : previousReal ? { real: previousReal } : {}) } }
