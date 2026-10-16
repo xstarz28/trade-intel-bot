@@ -272,6 +272,70 @@ describe("TPO + VPVR analysis integration", () => {
   });
 });
 
+describe("asset-specific fundamental evidence integration", () => {
+  it("uses verified fresh crypto fundamentals while deduplicating shared dependencies", () => {
+    const result = runAnalysis(baseInput({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      currentPrice: "100",
+      recentHigh: "105",
+      recentLow: "90",
+      technicalData: {
+        swingHighs: [98, 100],
+        swingLows: [92, 95],
+        structure: "HH/HL",
+        bosDirection: "bullish",
+        supportLevels: [95],
+        resistanceLevels: [105],
+        volumeTrend: "stable",
+        dataPoints: 60,
+      },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: Date.now(),
+        evidence: [
+          {
+            source: "DeFiLlama",
+            category: "DEFI_FUNDAMENTAL",
+            direction: "SUPPORTING",
+            strength: "STRONG",
+            quality: "VERIFIED",
+            freshness: "FRESH",
+            dependencyGroup: "DEFI_TVL",
+            explanation: "Verified TVL evidence",
+            providerAvailable: true,
+          },
+          {
+            source: "DeFiLlama",
+            category: "DEFI_FUNDAMENTAL",
+            direction: "SUPPORTING",
+            strength: "WEAK",
+            quality: "VERIFIED",
+            freshness: "FRESH",
+            dependencyGroup: "DEFI_TVL",
+            explanation: "Same underlying TVL dependency",
+            providerAvailable: true,
+          },
+        ],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Test-only asset fundamentals",
+      },
+    }));
+
+    expect(result.bias).toBe("Bullish");
+    const layer = result.decisionTrace?.convictionBreakdown.layers.find(
+      (item) => item.layer === "Asset-Specific Fundamentals",
+    );
+    expect(layer).toBeDefined();
+    expect(layer?.contribution).toBe(3);
+    expect(layer?.reason).toContain("2 eligible evidence items across 1 dependency groups");
+  });
+});
+
 // ── Sentiment scoring ─────────────────────────────────────────────
 
 describe("scoreSentiment (via breakdown)", () => {
