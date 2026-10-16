@@ -778,11 +778,14 @@ describe("stock fundamental scoring", () => {
         peRatio: 12,
         profitMargin: 0.25,
         earningsPerShare: 4,
+        pegRatio: 0.8,
+        operatingMargin: 0.2,
+        returnOnEquity: 0.2,
       },
     }));
 
-    // P/E, margin, and positive EPS contribute independently of the macro feed.
-    expect(withFundamentals.breakdown.fundamental - macroOnly.breakdown.fundamental).toBe(3);
+    // P/E, margin, EPS and the capped quality group score independently of macro news.
+    expect(withFundamentals.breakdown.fundamental - macroOnly.breakdown.fundamental).toBe(5);
   });
 });
 
