@@ -2547,6 +2547,87 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     parts.push(fund.unavailableReason);
   }
 
+  // Explain the same verified asset-specific evidence that the bounded
+  // conviction layer may consume. Never surface stale/unverified evidence as
+  // if it were scored, and deduplicate correlated observations by dependency.
+  type FundamentalEvidenceSummaryItem = {
+    source: string;
+    category: string;
+    direction: "SUPPORTING" | "CONFLICTING";
+    strength: "STRONG" | "MODERATE" | "WEAK";
+    dependencyGroup: string;
+  };
+  const structuredEvidence: FundamentalEvidenceSummaryItem[] = [];
+  const normalizeInstrument = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const requestedInstrument = normalizeInstrument(input.instrument);
+  const acceptedEvidence = (item: {
+    category: string; direction: string; strength: string; quality: string;
+    freshness: string; dependencyGroup: string; providerAvailable: boolean;
+  }, categories: string[]) =>
+    categories.includes(item.category) &&
+    item.providerAvailable &&
+    item.quality === "VERIFIED" &&
+    (item.freshness === "FRESH" || item.freshness === "DELAYED") &&
+    (item.direction === "SUPPORTING" || item.direction === "CONFLICTING") &&
+    (item.strength === "STRONG" || item.strength === "MODERATE" || item.strength === "WEAK") &&
+    !!item.dependencyGroup;
+
+  const universalEvidence = input.universalIntelligenceContext;
+  if (universalEvidence && normalizeInstrument(universalEvidence.instrument) === requestedInstrument) {
+    for (const item of universalEvidence.evidence ?? []) {
+      if (acceptedEvidence(item, ["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND", "FUTURES_STRUCTURE"])) {
+        structuredEvidence.push({
+          source: item.source, category: item.category,
+          direction: item.direction as FundamentalEvidenceSummaryItem["direction"],
+          strength: item.strength as FundamentalEvidenceSummaryItem["strength"],
+          dependencyGroup: item.dependencyGroup,
+        });
+      }
+    }
+  }
+
+  const cryptoEvidence = input.cryptoIntelligenceContext;
+  if (input.instrumentType === "crypto" && cryptoEvidence &&
+      normalizeInstrument(cryptoEvidence.instrument) === requestedInstrument) {
+    for (const item of cryptoEvidence.evidence ?? []) {
+      if (acceptedEvidence(item, ["DEFI_FUNDAMENTAL", "TOKENOMICS", "ON_CHAIN", "SUPPLY_DYNAMICS"])) {
+        structuredEvidence.push({
+          source: item.source, category: item.category,
+          direction: item.direction as FundamentalEvidenceSummaryItem["direction"],
+          strength: item.strength as FundamentalEvidenceSummaryItem["strength"],
+          dependencyGroup: item.dependencyGroup,
+        });
+      }
+    }
+  }
+
+  if (structuredEvidence.length > 0) {
+    const groups = new Map<string, FundamentalEvidenceSummaryItem[]>();
+    for (const item of structuredEvidence) {
+      groups.set(item.dependencyGroup, [...(groups.get(item.dependencyGroup) ?? []), item]);
+    }
+    const selected: FundamentalEvidenceSummaryItem[] = [];
+    let conflictedGroups = 0;
+    const strengthRank = (value: FundamentalEvidenceSummaryItem["strength"]) =>
+      value === "STRONG" ? 3 : value === "MODERATE" ? 2 : 1;
+    for (const items of groups.values()) {
+      if (new Set(items.map(item => item.direction)).size > 1) {
+        conflictedGroups++;
+        continue;
+      }
+      selected.push([...items].sort((a, b) => strengthRank(b.strength) - strengthRank(a.strength))[0]);
+    }
+    const evidenceText = selected.slice(0, 6).map(item =>
+      `${item.source}: ${item.category} ${item.direction.toLowerCase()} (${item.strength.toLowerCase()})`
+    );
+    parts.push(
+      `Verified asset-specific fundamental evidence: ${evidenceText.join("; ") || "none after conflict checks"}.${selected.length > 6 ? ` ${selected.length - 6} additional independent dependency groups omitted from this summary.` : ""}`,
+    );
+    if (conflictedGroups > 0) {
+      parts.push(`${conflictedGroups} conflicting fundamental dependency group(s) excluded from scoring.`);
+    }
+  }
+
   if (sentiment && sentiment.confidence !== "unavailable") {
     parts.push(
       Number.isFinite(sentiment.averageScore)
