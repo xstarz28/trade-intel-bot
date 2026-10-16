@@ -23,7 +23,7 @@ import type { FxRateSnapshot } from "../lib/risk";
 import { parseDailyFxReferenceSnapshot } from "../lib/risk/fx";
 import { parseMarketDataTimestamp } from "../lib/data/utc-market-timestamp";
 import { resolveProviderRequest } from "../lib/data/universal/provider-symbol";
-import { fetchYahooFinanceCandles, resolveYahooFinanceComparatorSymbols, resolveYahooFinanceMarketSymbol } from "../lib/data/providers/yahoo-finance";
+import { fetchYahooFinanceCandles, fetchYahooFinanceMarketCandles, resolveYahooFinanceComparatorSymbols, resolveYahooFinanceMarketSymbol } from "../lib/data/providers/yahoo-finance";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
@@ -184,16 +184,17 @@ async function fetchCandles(
     const yahooSymbol = resolveYahooFinanceMarketSymbol(instrumentType ?? "", normalizedSymbol);
     let yahooAttempt: Promise<OhlcvCandle[]> | null = null;
     const loadYahooCandles = async (): Promise<OhlcvCandle[]> => {
-      if (!yahooSymbol) throw new Error("No exact Yahoo Finance equity ticker mapping exists");
+      if (!yahooSymbol) throw new Error("No exact Yahoo Finance ticker mapping exists");
       if (!yahooAttempt) {
-        yahooAttempt = fetchYahooFinanceCandles(yahooSymbol, normalizedTimeframe, outputsize).then((candles) => {
+        yahooAttempt = fetchYahooFinanceMarketCandles(instrumentType ?? "", normalizedSymbol, normalizedTimeframe, outputsize).then(({ candles, providerLabel }) => {
           const fetchedAt = Date.now();
           candleCache.set(cacheKey, {
             candles: candles.map((candle) => ({ ...candle })),
             fetchedAt,
             expiresAt: fetchedAt + candleTtlMs(normalizedTimeframe),
           });
-          candleProviderCache.set(cacheKey, "yahoo-finance-public");
+          // Keep fallback provenance visible. Metal futures are not spot quotes.
+          candleProviderCache.set(cacheKey, "yahoo-finance-public · " + providerLabel);
           candleRateLimitBackoff.delete(cacheKey);
           return candles;
         });
