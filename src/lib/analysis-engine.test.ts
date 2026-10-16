@@ -152,6 +152,50 @@ describe("scoreIndicators (via breakdown)", () => {
     expect(result.breakdown.indicator).toBe(1);
   });
 
+  it("uses the 50/100/200-day moving-average group as one bullish conviction modifier", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "120",
+      technicalData: {
+        sma50: 100, sma100: 110, sma200: 115,
+        rsi14: 50, macdHistogram: 0,
+        swingHighs: [], swingLows: [], structure: "range",
+        supportLevels: [], resistanceLevels: [], volumeTrend: "unknown",
+        dataPoints: 60,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(1);
+    // Indicators are conviction context only; they cannot create core bias.
+    expect(result.bias).toBe("Neutral");
+  });
+
+  it("scores the moving-average group bearishly when price is below the available averages", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "90",
+      technicalData: {
+        sma50: 100, sma100: 110, sma200: 115,
+        rsi14: 50, macdHistogram: 0,
+        swingHighs: [], swingLows: [], structure: "range",
+        supportLevels: [], resistanceLevels: [], volumeTrend: "unknown",
+        dataPoints: 60,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(-1);
+    expect(result.bias).toBe("Neutral");
+  });
+
+  it("scores MACD line/signal when the histogram is unavailable without double-counting both", () => {
+    const result = runAnalysis(baseInput({
+      technicalData: {
+        macdLine: 2, macdSignal: 1,
+        swingHighs: [], swingLows: [], structure: "range",
+        supportLevels: [], resistanceLevels: [], volumeTrend: "unknown",
+        dataPoints: 60,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(1);
+    expect(result.bias).toBe("Neutral");
+  });
+
   it("scores 0 with empty context", () => {
     const result = runAnalysis(baseInput());
     expect(result.breakdown.indicator).toBe(0);
