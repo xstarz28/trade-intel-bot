@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  fetchYahooFinanceCandles,\n  fetchYahooFinanceMarketCandles,\n  resolveYahooFinanceMarketCandidates,
+  fetchYahooFinanceCandles,
+  fetchYahooFinanceMarketCandles,
+  resolveYahooFinanceMarketCandidates,
   parseYahooFinanceCandles,
   resolveYahooFinanceStockSymbol,
   resolveYahooFinanceMarketSymbol,
