@@ -377,7 +377,75 @@ describe("asset-specific fundamental evidence integration", () => {
     expect(layer?.contribution).toBe(3);
     expect(layer?.reason).toContain("2 eligible evidence items across 1 dependency groups");
   });
+  it("opposes a short thesis when the verified fundamentals are long-side bullish", () => {
+    const result = runAnalysis(baseInput({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      currentPrice: "100",
+      recentHigh: "105",
+      recentLow: "60",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 100, timestamp: Date.now(), source: "test" },
+        candles: Array.from({ length: 60 }, (_, i) => ({
+          timestamp: Date.now() - (60 - i) * 86400000,
+          open: 99, high: 102, low: 98, close: 100, volume: 1000,
+        })),
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+      technicalData: {
+        swingHighs: [104, 105],
+        swingLows: [60, 70],
+        structure: "LH/LL",
+        bosDirection: "bearish",
+        supportLevels: [70],
+        resistanceLevels: [105],
+        volumeTrend: "stable",
+        dataPoints: 60,
+        htfContext: {
+          timeframe: "D1",
+          structure: "LH/LL",
+          bosDirection: "bearish",
+          chochDirection: "none",
+          dataPoints: 60,
+        },
+      },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: Date.now(),
+        evidence: [{
+          source: "DeFiLlama",
+          category: "DEFI_FUNDAMENTAL",
+          direction: "SUPPORTING",
+          strength: "STRONG",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "DEFI_TVL",
+          explanation: "Bullish long-side evidence",
+          providerAvailable: true,
+        }],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Test-only asset fundamentals",
+      },
+    }));
+
+    expect(result.bias).toBe("Bearish");
+    const layer = result.decisionTrace?.convictionBreakdown.layers.find(
+      (item) => item.layer === "Asset-Specific Fundamentals",
+    );
+    expect(layer).toBeDefined();
+    expect(layer?.contribution).toBe(-3);
+  });
 });
+
 
 // ── Sentiment scoring ─────────────────────────────────────────────
 
