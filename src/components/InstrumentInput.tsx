@@ -149,14 +149,21 @@ export function InstrumentInput({
   }, [form.instrument, form.instrumentType, universeOptions]);
 
   // Keep the selected horizon and setup timeframe coherent, including when
-  // restoring an older saved form that used an incompatible timeframe.
+  // restoring an older saved form. Read the latest synchronous formRef inside
+  // both the effect and state updater: an effect queued for an earlier render
+  // must never overwrite a newer timeframe the user has just selected.
   useEffect(() => {
-    const profile = resolveStyle(form.tradingStyle);
-    if (!profile.allowedSetupTfs.includes(form.timeframe)) {
-      commitForm((prev) => ({
-        ...prev,
-        timeframe: resolveStyle(prev.tradingStyle).fallbackTf as Timeframe,
-      }));
+    const latest = formRef.current;
+    const latestProfile = resolveStyle(latest.tradingStyle);
+    if (!latestProfile.allowedSetupTfs.includes(latest.timeframe)) {
+      commitForm((prev) => {
+        const currentProfile = resolveStyle(prev.tradingStyle);
+        if (currentProfile.allowedSetupTfs.includes(prev.timeframe)) return prev;
+        return {
+          ...prev,
+          timeframe: currentProfile.fallbackTf as Timeframe,
+        };
+      });
     }
   }, [form.tradingStyle, form.timeframe, commitForm]);
 
