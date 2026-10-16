@@ -473,11 +473,22 @@ export interface EquityIntelligenceContext {
   fundamentals?: IntelligenceMeta & {
     marketCap?: number;
     peRatio?: number;
+    forwardPeRatio?: number;
     pegRatio?: number;
+    priceToSalesRatio?: number;
     priceToBook?: number;
+    evToRevenue?: number;
     evToEbitda?: number;
     revenueGrowth?: number;
     earningsGrowth?: number;
+    returnOnAssets?: number;
+    revenueTTM?: number;
+    grossProfitTTM?: number;
+    dilutedEPS?: number;
+    beta?: number;
+    sharesOutstanding?: number;
+    fiftyDayMovingAverage?: number;
+    twoHundredDayMovingAverage?: number;
     profitMargin?: number;
     operatingMargin?: number;
     returnOnEquity?: number;
