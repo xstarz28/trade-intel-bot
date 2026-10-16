@@ -1390,7 +1390,7 @@ describe("Phase 41 — public OKX derivatives fallback", () => {
       if (url.includes("/api/v5/public/funding-rate")) {
         return response({ code: "0", msg: "", data: [{ instId: "BTC-USDT-SWAP", fundingRate: "0.0001", fundingTime: String(Date.now()) }] });
       }
-      throw new Error("Unexpected OKX URL: " + url);
+      return response({ code: "0", msg: "", data: [] });
     });
 
     const result = await adapter.fetch("BTC/USD");
@@ -1405,7 +1405,52 @@ describe("Phase 41 — public OKX derivatives fallback", () => {
       liquidations: false,
     });
     expect(result?.confidence).toBe("medium");
-    expect(requested).toHaveLength(2);
+    expect(requested).toHaveLength(5);
+  });
+
+  it("normalizes public OKX long/short ratio and verified recent liquidation notional", async () => {
+    const now = Date.now();
+    const requested: string[] = [];
+    const adapter = new OkxPublicDerivativesAdapter(async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.includes("/api/v5/public/open-interest")) {
+        return response({ code: "0", data: [{ oiUsd: "65000000" }] });
+      }
+      if (url.includes("/api/v5/public/funding-rate")) {
+        return response({ code: "0", data: [{ fundingRate: "0.0001" }] });
+      }
+      if (url.includes("/api/v5/rubik/stat/contracts/long-short-account-ratio")) {
+        return response({ code: "0", data: [[String(now), "1.5"], [String(now - 300000), "1.4"]] });
+      }
+      if (url.includes("/api/v5/public/liquidation-orders")) {
+        return response({ code: "0", data: [{ details: [
+          { ts: String(now - 60_000), bkPx: "60000", sz: "10", posSide: "long" },
+          { ts: String(now - 120_000), bkPx: "60000", sz: "5", posSide: "short" },
+          { ts: String(now - 2 * 60 * 60_000), bkPx: "60000", sz: "100", posSide: "long" },
+        ] }] });
+      }
+      if (url.includes("/api/v5/public/instruments")) {
+        return response({ code: "0", data: [{ instId: "BTC-USDT-SWAP", ctType: "linear", ctVal: "0.01", ctValCcy: "BTC" }] });
+      }
+      throw new Error("Unexpected OKX URL: " + url);
+    });
+
+    const result = await adapter.fetch("BTC/USD");
+    expect(result?.longShort?.accountRatio).toBe(1.5);
+    expect(result?.liquidations?.totalVolume).toBe(9000);
+    expect(result?.liquidations?.longVolume).toBe(6000);
+    expect(result?.liquidations?.shortVolume).toBe(3000);
+    expect(result?.liquidations?.dominantSide).toBe("longs");
+    expect(result?.liquidations?.window).toContain("last 1h");
+    expect(result?.availability).toEqual({
+      openInterest: true,
+      fundingRate: true,
+      longShort: true,
+      liquidations: true,
+    });
+    expect(result?.confidence).toBe("high");
+    expect(requested).toHaveLength(5);
   });
 
   it("surfaces public OKX HTTP errors when requests fail", async () => {
