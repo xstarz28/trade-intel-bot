@@ -320,13 +320,13 @@ export function applyFredYieldFallback(
   if (context.available) {
     const latestReal = context.latest.real ?? real[real.length - 1];
     const previousReal = context.previous?.real ?? (real.length > 1 ? real[real.length - 2] : undefined);
-    if (context.latest.real || !latestReal) return context;
+    if ((context.latest.real && context.previous?.real) || (!latestReal && !previousReal)) return context;
     return {
       ...context,
-      source: "US Treasury XML + FRED public CSV fallback",
-      latest: { ...context.latest, real: latestReal },
+      source: context.latest.real ? context.source : "US Treasury XML + FRED public CSV fallback",
+      latest: { ...context.latest, ...(context.latest.real ? {} : latestReal ? { real: latestReal } : {}) },
       ...(context.previous || previousReal
-        ? { previous: { ...context.previous, ...(previousReal ? { real: previousReal } : {}) } }
+        ? { previous: { ...context.previous, ...(context.previous?.real ? {} : previousReal ? { real: previousReal } : {}) } }
         : {}),
     };
   }
