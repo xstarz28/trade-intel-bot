@@ -25,7 +25,7 @@ import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { parseDeFiLlamaResult } from "@/lib/data/crypto/defillama-adapter";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
 import { toRadarCandidateSource } from "@/lib/market-radar/candidate-builder";
-import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
+import type { UniversalIntelligenceContext, UniversalEvidenceItem, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { getAllInstruments } from "@/lib/data/universal/instruments";
 import { useNavigate } from "react-router";
@@ -96,6 +96,90 @@ function cryptoMarketType(instId: string, instType?: string): CryptoMarketType {
   if (type === "SWAP" || instId.toUpperCase().endsWith("-SWAP")) return "perpetual";
   if (type === "FUTURES" || /-[0-9]{6}$/.test(instId.toUpperCase())) return "futures";
   return "spot";
+}
+
+/**
+ * Convert only fresh, exact-symbol equity fundamentals into bounded,
+ * directional evidence. A provider being available is not evidence by itself.
+ * Correlated financial metrics share a dependency group in the analysis engine.
+ */
+function buildEquityFundamentalEvidence(
+  instrument: string,
+  currentPrice: number | undefined,
+  fundamentals: {
+    provider: string;
+    timestamp: number;
+    symbol?: string;
+    available: boolean;
+    analystTargetPrice?: number;
+    earningsPerShare?: number;
+    latestEarnings?: { eps?: number };
+    profitMargin?: number;
+  } | undefined,
+  now: number,
+): UniversalEvidenceItem[] {
+  if (!fundamentals?.available || !fundamentals.provider?.trim()) return [];
+  const normalize = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const requested = normalize(instrument);
+  const observedSymbol = typeof fundamentals.symbol === "string" ? normalize(fundamentals.symbol) : "";
+  if (!requested || !observedSymbol || requested !== observedSymbol) return [];
+  if (!Number.isFinite(fundamentals.timestamp) || fundamentals.timestamp <= 0 || fundamentals.timestamp > now) return [];
+  const ageMs = now - fundamentals.timestamp;
+  if (ageMs > 72 * 60 * 60 * 1000) return [];
+  const freshness: UniversalEvidenceItem["freshness"] =
+    ageMs <= 6 * 60 * 60 * 1000 ? "FRESH" : "DELAYED";
+  const evidence: UniversalEvidenceItem[] = [];
+  const base = {
+    source: fundamentals.provider,
+    quality: "VERIFIED" as const,
+    freshness,
+    providerAvailable: true,
+    assetClass: "equity" as const,
+    instrument,
+  };
+
+  if (
+    Number.isFinite(currentPrice) && (currentPrice ?? 0) > 0 &&
+    Number.isFinite(fundamentals.analystTargetPrice) && (fundamentals.analystTargetPrice ?? 0) > 0
+  ) {
+    const relativeGap = (fundamentals.analystTargetPrice! - currentPrice!) / currentPrice!;
+    if (Math.abs(relativeGap) >= 0.05) {
+      evidence.push({
+        ...base,
+        category: "VALUATION",
+        direction: relativeGap > 0 ? "SUPPORTING" : "CONFLICTING",
+        strength: Math.abs(relativeGap) >= 0.15 ? "MODERATE" : "WEAK",
+        dependencyGroup: "EQUITY_VALUATION",
+        explanation: `Provider analyst target is ${(relativeGap * 100).toFixed(1)}% ${relativeGap > 0 ? "above" : "below"} the observed market price; this is an estimate, not a guarantee.`,
+      });
+    }
+  }
+
+  const eps = Number.isFinite(fundamentals.latestEarnings?.eps)
+    ? fundamentals.latestEarnings?.eps
+    : fundamentals.earningsPerShare;
+  if (Number.isFinite(eps) && eps !== 0) {
+    evidence.push({
+      ...base,
+      category: "EARNINGS",
+      direction: eps! > 0 ? "SUPPORTING" : "CONFLICTING",
+      strength: "WEAK",
+      dependencyGroup: "EQUITY_EARNINGS",
+      explanation: `Provider-reported EPS is ${eps!.toFixed(2)}; positive/negative EPS alone is weak evidence and does not establish earnings momentum.`,
+    });
+  }
+
+  if (Number.isFinite(fundamentals.profitMargin) && fundamentals.profitMargin !== 0) {
+    evidence.push({
+      ...base,
+      category: "FUNDAMENTALS",
+      direction: fundamentals.profitMargin! > 0 ? "SUPPORTING" : "CONFLICTING",
+      strength: "WEAK",
+      dependencyGroup: "EQUITY_FINANCIAL_STATEMENTS",
+      explanation: `Provider-reported profit margin is ${(fundamentals.profitMargin! * 100).toFixed(1)}%; treated as weak financial-health context, not a standalone trade signal.`,
+    });
+  }
+  return evidence;
 }
 
 function prioritizeCryptoDiscovery<T extends { instId: string; instType?: string }>(instruments: readonly T[]): T[] {
@@ -709,6 +793,12 @@ export default function Dashboard() {
             let equityCtx: EquityIntelligenceContext | undefined;
             if (input.instrumentType === "stock") {
               const fundamentals = intelligenceResult?.fundamentals;
+              const equityEvidence = buildEquityFundamentalEvidence(
+                input.instrument,
+                marketDataResult.data?.price?.price,
+                fundamentals,
+                now,
+              );
               equityCtx = {
                 instrument: input.instrument,
                 instrumentType: "equity",
@@ -728,11 +818,16 @@ export default function Dashboard() {
                   sector: fundamentals.sector,
                   industry: fundamentals.industry,
                 } : undefined,
-                evidence: [],
+                evidence: equityEvidence,
                 overallAvailability: fundamentals?.available ? "PARTIAL" : "MINIMAL",
                 overallQuality: fundamentals?.available ? "VERIFIED" : "UNAVAILABLE",
-                missingInformation: fundamentals?.available ? [] : ["Fundamental data unavailable"],
-                analystSummary: `Equity intelligence assembled for ${input.instrument}.`,
+                missingInformation: [
+                  ...(!fundamentals?.available ? ["Fundamental data unavailable"] : []),
+                  ...(fundamentals?.available && equityEvidence.length === 0
+                    ? ["No fresh, exact-symbol directional fundamental evidence available"]
+                    : []),
+                ],
+                analystSummary: `Equity intelligence assembled for ${input.instrument}; ${equityEvidence.length} directionally interpretable evidence item(s) passed identity/freshness checks.`,
               };
             }
 
@@ -802,7 +897,7 @@ export default function Dashboard() {
               equity: equityCtx,
               commodity: commodityCtx,
               crossAsset: crossAssetCtx,
-              evidence: [],
+              evidence: equityCtx?.evidence ?? [],
               overallAvailability: "PARTIAL",
               overallQuality: "DEGRADED",
               missingInformation: [
