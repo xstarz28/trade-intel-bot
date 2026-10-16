@@ -1944,7 +1944,8 @@ function decideTrade(
         dependencyGroup: string;
         providerAvailable: boolean;
       };
-      const normalizeInstrument = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const normalizeInstrument = (value: unknown) =>
+    typeof value === "string" ? value.toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
       const requestedInstrument = normalizeInstrument(input.instrument);
       const eligible = (item: {
         direction: string; strength: string; quality: string; freshness: string;
@@ -2558,7 +2559,8 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     dependencyGroup: string;
   };
   const structuredEvidence: FundamentalEvidenceSummaryItem[] = [];
-  const normalizeInstrument = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const normalizeInstrument = (value: unknown) =>
+    typeof value === "string" ? value.toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
   const requestedInstrument = normalizeInstrument(input.instrument);
   const acceptedEvidence = (item: {
     category: string; direction: string; strength: string; quality: string;
