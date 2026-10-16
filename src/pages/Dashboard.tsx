@@ -716,20 +716,55 @@ export default function Dashboard() {
                 fundamentals,
                 now,
               );
+              const fundamentalMetricValues = [
+                fundamentals?.marketCap,
+                fundamentals?.peRatio,
+                fundamentals?.pegRatio,
+                fundamentals?.priceToBook,
+                fundamentals?.profitMargin,
+                fundamentals?.operatingMargin,
+                fundamentals?.returnOnEquity,
+                fundamentals?.dividendYield,
+              ];
+              const availableFundamentalMetrics = fundamentalMetricValues.filter(
+                (value) => typeof value === "number" && Number.isFinite(value),
+              ).length;
+              const latestEarnings = fundamentals?.latestEarnings;
+              const availableEarningsFields = [
+                latestEarnings?.date,
+                latestEarnings?.eps,
+                latestEarnings?.revenue,
+              ].filter((value) => value !== undefined && value !== null && value !== "").length;
               equityCtx = {
                 instrument: input.instrument,
                 instrumentType: "equity",
                 assembledAt: now,
                 fundamentals: fundamentals?.available ? {
                   ...meta("alpha-vantage"),
-                  available: true,
-                  quality: "VERIFIED",
-                  availableDatasets: 5,
-                  totalDatasets: 5,
+                  available: availableFundamentalMetrics > 0,
+                  quality: availableFundamentalMetrics > 0 ? "VERIFIED" : "DEGRADED",
+                  availableDatasets: availableFundamentalMetrics,
+                  totalDatasets: fundamentalMetricValues.length,
                   peRatio: fundamentals.peRatio,
                   marketCap: fundamentals.marketCap,
+                  pegRatio: fundamentals.pegRatio,
+                  priceToBook: fundamentals.priceToBook,
                   profitMargin: fundamentals.profitMargin,
-                  revenueGrowth: fundamentals.revenueGrowth,
+                  operatingMargin: fundamentals.operatingMargin,
+                  returnOnEquity: fundamentals.returnOnEquity,
+                  dividendYield: fundamentals.dividendYield,
+                } : undefined,
+                earnings: latestEarnings ? {
+                  ...meta("alpha-vantage"),
+                  available: availableEarningsFields > 0,
+                  quality: availableEarningsFields > 0 ? "VERIFIED" : "DEGRADED",
+                  availableDatasets: availableEarningsFields,
+                  totalDatasets: 3,
+                  latestEarnings: {
+                    date: latestEarnings.date ?? "",
+                    eps: latestEarnings.eps,
+                    revenue: latestEarnings.revenue,
+                  },
                 } : undefined,
                 sector: fundamentals?.sector ? {
                   sector: fundamentals.sector,
