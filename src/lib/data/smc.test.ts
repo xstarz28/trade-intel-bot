@@ -285,6 +285,19 @@ describe("computeVwap", () => {
     expect(v.bands).toBeDefined();
   });
 
+  it("does not classify a materially displaced price as at VWAP on a volatile session", () => {
+    const candles = [
+      candle(T(0), 100, 101, 99, 100, 1),
+      candle(T(1), 120, 121, 119, 120, 1),
+    ];
+    const v = computeVwap(candles);
+    expect(v.available).toBe(true);
+    expect(v.sessionVwap).toBeCloseTo(110, 6);
+    // Volatility bands are wide here, but the last price is ~9.1% above VWAP.
+    // It must not be treated as "at_vwap" merely because the band is wide.
+    expect(v.priceLocation).toBe("above_vwap");
+  });
+
   it("returns explicit unavailability for zero-volume data (no fake VWAP)", () => {
     const candles = [
       candle(T(0), 0, 2, 0, 1, 0),
