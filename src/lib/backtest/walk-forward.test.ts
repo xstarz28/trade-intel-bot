@@ -125,7 +125,7 @@ describe("runWalkForwardBacktest", () => {
     });
     expect(report.candleCount).toBe(225);
     expect(report.signalsChecked).toBeGreaterThan(0);
-    expect(report.warnings.some((warning) => warning.includes("MTF feeds are synthesized"))).toBe(false);
+    expect(report.warnings.some((warning) => warning.includes("no provider fundamentals, news, COT, derivatives, or MTF feeds are synthesized"))).toBe(true);
     expect(report.warnings.some((warning) => warning.includes("future profitability"))).toBe(true);
   });
 
