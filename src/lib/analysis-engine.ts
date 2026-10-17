@@ -1365,7 +1365,7 @@ function decideTrade(
       reasons.push("Execution book is stale; a fresh quote is required to validate scalp execution.");
     } else {
       const requestedInstrument = input.instrument.toUpperCase().trim()
-        .replace(/[\/_]/g, "-").replace(/\s+/g, "");
+        .replace(/[/_]/g, "-").replace(/\s+/g, "");
       const executionInstrument = ed.instrumentId.toUpperCase().trim();
       if (requestedInstrument !== executionInstrument) {
         reasons.push(
