@@ -138,7 +138,12 @@ function simulateTrade(args: {
     if (stopHit) {
       exitIndex = i;
       exitReason = "stop_loss";
-      rawExit = stopLoss;
+      // A stop-market order can fill worse than its trigger after an opening gap.
+      // Use the bar open when it has already crossed the stop; otherwise use the stop level.
+      const gappedThroughStop = direction === "long"
+        ? candle.open <= stopLoss
+        : candle.open >= stopLoss;
+      rawExit = gappedThroughStop ? candle.open : stopLoss;
       break;
     }
     if (targetHit) {
