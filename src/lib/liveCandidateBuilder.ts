@@ -76,12 +76,28 @@ export interface LiveCandidateSource {
 function assessFreshness(
   timestamp: number | undefined,
   now: number,
+  timeframe?: string,
 ): "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" {
-  if (!timestamp) return "UNAVAILABLE";
-  const ageMs = now - timestamp;
+  if (!Number.isFinite(timestamp) || (timestamp ?? 0) <= 0) return "UNAVAILABLE";
+  const ageMs = now - timestamp!;
+  // A future observation must not be treated as fresh. Allow a small clock-skew
+  // tolerance, but do not promote materially future-dated market data.
+  if (ageMs < -60_000) return "UNAVAILABLE";
   if (ageMs < 5 * 60_000) return "FRESH";         // < 5 min
   if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
-  if (ageMs < 24 * 60 * 60_000) return "STALE";   // < 24 hours
+
+  // Daily/weekly markets are legitimately closed for weekends and holidays.
+  // Their last completed candle can remain useful for a longer-horizon thesis,
+  // but it is STALE (never LIVE) and remains subject to each horizon's gate.
+  const tf = timeframe?.trim().toUpperCase().replace(/\\s+/g, "");
+  const staleLimitMs = tf === "W1" || tf === "1W" || tf === "1WEEK"
+    ? 14 * 24 * 60 * 60_000
+    : tf === "D1" || tf === "1D" || tf === "1DAY" || tf === "H4" || tf === "4H" || tf === "4HR"
+      ? 4 * 24 * 60 * 60_000
+      : tf === "H1" || tf === "1H" || tf === "1HR"
+        ? 48 * 60 * 60_000
+        : 24 * 60 * 60_000;
+  if (ageMs < staleLimitMs) return "STALE";
   return "UNAVAILABLE";
 }
 
@@ -488,7 +504,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
     ar?.priceSnapshot?.timestamp ??
     source.marketData?.fetchTimestamp;
   const freshness = constrainByProviderFreshness(
-    assessFreshness(observationTimestamp, now),
+    assessFreshness(observationTimestamp, now, source.marketData?.timeframe ?? ar?.timeframe),
     source.marketData?.dataFreshness,
   );
 
