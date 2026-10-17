@@ -414,7 +414,7 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
 // MAIN BUILDER
 // ═══════════════════════════════════════════════════════════════
 
-export function buildCandidateFromSource(source: LiveCandidateSource): CandidateInput {
+export function buildCandidateFromSource(source: LiveCandidateSource, now: number = Date.now()): CandidateInput {
   // Never mix evidence across instrument identities OR setup timeframes.
   // The dashboard's instrument-level convenience cache can hold an H1 market
   // snapshot alongside an earlier M5 analysis. Such an analysis may describe
@@ -451,7 +451,6 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
       ? source.cotData
       : undefined,
   };
-  const now = Date.now();
   // Derive technical evidence from verified provider OHLCV when the source
   // did not already carry a richer technical analysis. Without this bridge,
   // provider-native discovery supplied price/candles but every candidate
