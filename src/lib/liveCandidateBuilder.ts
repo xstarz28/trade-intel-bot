@@ -89,7 +89,7 @@ function assessFreshness(
   // Daily/weekly markets are legitimately closed for weekends and holidays.
   // Their last completed candle can remain useful for a longer-horizon thesis,
   // but it is STALE (never LIVE) and remains subject to each horizon's gate.
-  const tf = timeframe?.trim().toUpperCase().replace(/\\s+/g, "");
+  const tf = timeframe?.trim().toUpperCase().replace(/\s+/g, "");
   const staleLimitMs = tf === "W1" || tf === "1W" || tf === "1WEEK"
     ? 14 * 24 * 60 * 60_000
     : tf === "D1" || tf === "1D" || tf === "1DAY" || tf === "H4" || tf === "4H" || tf === "4HR"
