@@ -222,8 +222,11 @@ function buildRoute(
   assetClass: string,
 ): ProviderRoute {
   const pollInterval = getPollIntervalMs(profile.provider);
+  // This route currently configures polling (mode below is POLLING), so a
+  // provider's WebSocket capability alone is not evidence that this instrument
+  // is being consumed over a live socket. Report the actual route's cadence.
   const freshness: ProviderRoute["freshness"] =
-    profile.websocketSupported ? "LIVE" : pollInterval <= 60_000 ? "DELAYED" : "SLOW";
+    pollInterval <= 60_000 ? "DELAYED" : "SLOW";
 
   return {
     provider: profile.provider,
