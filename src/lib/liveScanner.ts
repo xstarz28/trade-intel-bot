@@ -270,9 +270,14 @@ export function scanInstruments(
     const { eligible, excluded } = applyFreshnessGates(horizonCandidates, horizon);
     allExcluded.push(...excluded);
 
+    const requestedLimit = config.maxResults;
+    const maxResults = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.floor(requestedLimit as number))
+      : eligible.length;
     const result = generateRecommendation(eligible, horizon, {
-      // Rank all observed eligible data first, then show only qualified results.
-      maxResults: eligible.length,
+      // Respect the caller's per-horizon limit when provided; otherwise retain
+      // the complete scored set for diagnostics and regression tests.
+      maxResults,
     });
 
     // Preserve the full scored result for diagnostics and regression tests.
