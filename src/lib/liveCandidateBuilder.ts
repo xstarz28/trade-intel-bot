@@ -430,7 +430,7 @@ function extractCommodityData(source: LiveCandidateSource): Partial<CandidateInp
 // MAIN BUILDER
 // ═══════════════════════════════════════════════════════════════
 
-export function buildCandidateFromSource(source: LiveCandidateSource): CandidateInput {
+export function buildCandidateFromSource(source: LiveCandidateSource, now: number = Date.now()): CandidateInput {
   // Never mix evidence across instrument identities OR setup timeframes.
   // The dashboard's instrument-level convenience cache can hold an H1 market
   // snapshot alongside an earlier M5 analysis. Such an analysis may describe
@@ -637,6 +637,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource): Candidate
 
 export function buildCandidatesFromSources(
   sources: LiveCandidateSource[],
+  now: number = Date.now(),
 ): CandidateInput[] {
-  return sources.map(buildCandidateFromSource);
+  return sources.map((source) => buildCandidateFromSource(source, now));
 }
