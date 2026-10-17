@@ -478,6 +478,17 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
     };
   };
 
+  // Negative volume is invalid provider data. Do not let a positive aggregate
+  // hide individual negative bars and produce a plausible-looking false VWAP.
+  if (candles.some((c) => !Number.isFinite(c.volume) || c.volume < 0)) {
+    return {
+      available: false,
+      unavailableReason: "Invalid volume data (non-finite or negative values).",
+      priceOnlyFallback: buildPriceOnlyFallback(),
+      priceLocation: "unavailable",
+    };
+  }
+
   const totalVol = candles.reduce((s, c) => s + c.volume, 0);
   if (!(totalVol > 0)) {
     return {
