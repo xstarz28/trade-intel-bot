@@ -98,6 +98,23 @@ describe("runWalkForwardBacktest", () => {
     expect(report.rejectedPlans).toBe(1);
   });
 
+  it("rejects invalid numeric options instead of silently disabling the replay", () => {
+    expect(() => runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: candles(30),
+      options: { minimumHistory: Number.NaN },
+      analyzeAtClose: () => ({ recommendation: "NO_TRADE" }),
+    })).toThrow(/minimumHistory must be a finite/);
+    expect(() => runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: candles(30),
+      options: { maxHoldingBars: Number.POSITIVE_INFINITY },
+      analyzeAtClose: () => ({ recommendation: "NO_TRADE" }),
+    })).toThrow(/maxHoldingBars must be a finite/);
+  });
+
   it("reports no fake performance metrics when no trades execute", () => {
     const report = runWalkForwardBacktest({
       instrument: "TEST",
