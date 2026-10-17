@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runWalkForwardBacktest, type BacktestSignal } from "./walk-forward";
+import { runProductionWalkForwardBacktest, runWalkForwardBacktest, type BacktestSignal } from "./walk-forward";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 
 const candles = (count: number, start = 1_700_000_000_000): OhlcvCandle[] =>
@@ -113,6 +113,20 @@ describe("runWalkForwardBacktest", () => {
       options: { maxHoldingBars: Number.POSITIVE_INFINITY },
       analyzeAtClose: () => ({ recommendation: "NO_TRADE" }),
     })).toThrow(/maxHoldingBars must be a finite/);
+  });
+
+  it("runs the production analysis adapter over historical prefixes without throwing", () => {
+    const report = runProductionWalkForwardBacktest({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "M1",
+      candles: candles(225),
+      options: { minimumHistory: 220, maxHoldingBars: 3 },
+    });
+    expect(report.candleCount).toBe(225);
+    expect(report.signalsChecked).toBeGreaterThan(0);
+    expect(report.warnings.some((warning) => warning.includes("MTF feeds are synthesized"))).toBe(false);
+    expect(report.warnings.some((warning) => warning.includes("future profitability"))).toBe(true);
   });
 
   it("reports no fake performance metrics when no trades execute", () => {
