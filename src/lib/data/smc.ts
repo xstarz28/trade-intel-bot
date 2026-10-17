@@ -89,8 +89,10 @@ function structureFromPoints(
   const rl = lows.slice(-3);
   const highsRising = rh[rh.length - 1].price > rh[0].price;
   const lowsRising = rl[rl.length - 1].price > rl[0].price;
+  const highsFalling = rh[rh.length - 1].price < rh[0].price;
+  const lowsFalling = rl[rl.length - 1].price < rl[0].price;
   if (highsRising && lowsRising) return "HH/HL";
-  if (!highsRising && !lowsRising) return "LH/LL";
+  if (highsFalling && lowsFalling) return "LH/LL";
   return "range";
 }
 
