@@ -398,6 +398,15 @@ describe("computeSmcContext", () => {
     expect(ctx.volumeProfile.available).toBe(true);
   });
 
+  it("does not label flat equal highs and lows as a bearish trend", () => {
+    const flat = Array.from({ length: 40 }, (_, i) =>
+      candle(T(i), 100, 101, 99, 100),
+    );
+    const ctx = computeSmcContext(flat, "H1");
+    expect(ctx.internalExternal.external.structure).toBe("range");
+    expect(ctx.internalExternal.internal.structure).toBe("range");
+  });
+
   it("flags internal/external conflict when minor structure opposes major", () => {
     const candles = trendWithPullbacks();
     let p = candles[candles.length - 1].close;
