@@ -162,7 +162,8 @@ function simulateTrade(args: {
   const signedMove = direction === "long" ? exit - entry : entry - exit;
   const grossSignedMove = direction === "long" ? rawExit - rawEntry : rawEntry - rawExit;
   const grossReturnPct = (grossSignedMove / rawEntry) * 100;
-  // Net return is measured against actual entry fill, including entry-side costs.\n  const netReturnPct = (signedMove / entry) * 100;
+  // Net return is measured against actual entry fill, including entry-side costs.
+  const netReturnPct = (signedMove / entry) * 100;
   return {
     signalTime: candles[signalIndex].timestamp,
     entryTime: candles[entryIndex].timestamp,
