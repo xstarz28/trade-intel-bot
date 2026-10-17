@@ -467,7 +467,6 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
       ? source.cotData
       : undefined,
   };
-  const now = Date.now();
   // Derive technical evidence from verified provider OHLCV when the source
   // did not already carry a richer technical analysis. Without this bridge,
   // provider-native discovery supplied price/candles but every candidate
