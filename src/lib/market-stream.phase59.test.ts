@@ -36,6 +36,11 @@ import {
 } from "./market-stream/reconnection-engine";
 
 import {
+  detectAssetClass,
+  routeInstrument,
+} from "./market-stream/provider-routing";
+
+import {
   getProviderProfile,
   getProvidersForAssetClass,
   getStreamProvidersForAssetClass,
@@ -1310,5 +1315,30 @@ describe("T. Adversarial Inputs", () => {
     const updated = recordPriceObservation(s, 1000, NaN, "test");
     const result = calculateAcceleration(updated.priceObservations, 2000);
     expect(result).toBeDefined();
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// U. PROVIDER ROUTING SAFETY
+// ═══════════════════════════════════════════════════════════════
+
+describe("U. Provider Routing Safety", () => {
+  it("does not misclassify BTC/USD as forex", () => {
+    expect(detectAssetClass("BTC/USD")).toBe("crypto");
+    expect(routeInstrument("BTC/USD").primary?.provider).toBe("OKX");
+  });
+
+  it("does not route an unknown symbol to a guessed provider", () => {
+    expect(detectAssetClass("XYZ/QQQ")).toBe("unknown");
+    const route = routeInstrument("XYZ/QQQ");
+    expect(route.primary).toBeNull();
+    expect(route.available).toEqual([]);
+    expect(route.reason).toContain("No available provider");
+  });
+
+  it("recognizes common fiat currency pairs as forex", () => {
+    expect(detectAssetClass("EUR/USD")).toBe("forex");
+    expect(routeInstrument("EUR/USD").primary?.provider).toBe("TwelveData");
   });
 });
