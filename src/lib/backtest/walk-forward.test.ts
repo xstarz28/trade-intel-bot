@@ -19,8 +19,19 @@ const longSignal: BacktestSignal = {
 };
 
 describe("runWalkForwardBacktest", () => {
-  it("never gives the analyzer future candles and fills no earlier than the next open", () => {
-    const data = candles(8);
+  it("does not call the analyzer before the minimum history is available", () => {
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: candles(8),
+      options: { minimumHistory: 20 },
+      analyzeAtClose: () => longSignal,
+    });
+    expect(report.signalsChecked).toBe(0);
+  });
+
+  it("never gives the analyzer future candles and starts fills after the signal candle", () => {
+    const data = candles(30);
     const seenLengths: number[] = [];
     const report = runWalkForwardBacktest({
       instrument: "TEST",
@@ -31,11 +42,11 @@ describe("runWalkForwardBacktest", () => {
         seenLengths.push(visible.length);
         expect(visible.length).toBe(index + 1);
         expect(visible[visible.length - 1].timestamp).toBe(data[index].timestamp);
-        return longSignal;
+        return { recommendation: "NO_TRADE" };
       },
     });
     expect(report.executedTrades).toBe(0);
-    expect(seenLengths).toHaveLength(0);
+    expect(seenLengths.length).toBeGreaterThan(0);
   });
 
   it("rejects unsorted/duplicate timestamps and malformed OHLC", () => {
@@ -75,7 +86,7 @@ describe("runWalkForwardBacktest", () => {
 
   it("skips trades whose next-open gap makes R:R lower than 1.5", () => {
     const data = candles(30);
-    data[20] = { ...data[20], open: 108 };
+    data[20] = { ...data[20], open: 108, high: 109 };
     const report = runWalkForwardBacktest({
       instrument: "TEST",
       timeframe: "M1",
