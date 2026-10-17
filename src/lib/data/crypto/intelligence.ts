@@ -8,9 +8,11 @@
  *   2. Provider availability NEVER becomes directional evidence.
  *   3. Missing data remains neutral.
  *   4. All evidence is derived from actual data.
- *   5. This module CANNOT modify bias, conviction, gates, trade plan,
- *      recommendation, or actionability.
- *   6. This module is informational only for the existing decision engine.
+ *   5. This pure builder never directly changes a decision. The analysis
+ *      engine may consume verified DeFi/tokenomics evidence for bounded
+ *      conviction confirmation after structural bias has been established.
+ *   6. Missing data remains neutral; this module cannot create/flip bias or
+ *      bypass risk gates.
  */
 
 import type {

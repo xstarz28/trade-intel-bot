@@ -89,8 +89,10 @@ function structureFromPoints(
   const rl = lows.slice(-3);
   const highsRising = rh[rh.length - 1].price > rh[0].price;
   const lowsRising = rl[rl.length - 1].price > rl[0].price;
+  const highsFalling = rh[rh.length - 1].price < rh[0].price;
+  const lowsFalling = rl[rl.length - 1].price < rl[0].price;
   if (highsRising && lowsRising) return "HH/HL";
-  if (!highsRising && !lowsRising) return "LH/LL";
+  if (highsFalling && lowsFalling) return "LH/LL";
   return "range";
 }
 
@@ -487,14 +489,17 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
     };
   }
 
-  // Session VWAP: cumulative from the start of the latest UTC day
+  // Session VWAP: cumulative from the start of the latest full UTC date.
+  // Compare year-month-day, not only day-of-month (which repeats at month/year
+  // boundaries and could silently pull an old session into the current VWAP).
   let cumPV = 0;
   let cumV = 0;
   let cumP2V = 0;
-  const lastDay = new Date(candles[candles.length - 1].timestamp).getUTCDate();
+  const sessionKey = (timestamp: number) => new Date(timestamp).toISOString().slice(0, 10);
+  const latestSession = sessionKey(candles[candles.length - 1].timestamp);
   for (let i = candles.length - 1; i >= 0; i--) {
     const c = candles[i];
-    if (new Date(c.timestamp).getUTCDate() !== lastDay) break; // previous session started
+    if (sessionKey(c.timestamp) !== latestSession) break; // previous UTC session started
     const typical = (c.high + c.low + c.close) / 3;
     cumPV += typical * c.volume;
     cumP2V += typical * typical * c.volume;
@@ -546,7 +551,10 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
   }
 
   const price = candles[candles.length - 1].close;
-  const atThreshold = bands ? bands.plus1 * 0.1 : sessionVwap * 0.0005;
+  // Keep the at-VWAP tolerance narrow and price-relative. Using 10% of the
+  // upper deviation band scales the threshold with volatility and can label
+  // materially displaced prices as "at_vwap" on volatile sessions.
+  const atThreshold = Math.max(1e-10, Math.abs(sessionVwap) * 0.0005);
   const priceLocation: VwapContext["priceLocation"] =
     Math.abs(price - sessionVwap) <= atThreshold
       ? "at_vwap"

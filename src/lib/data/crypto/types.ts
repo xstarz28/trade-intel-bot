@@ -5,8 +5,9 @@
  * Provider-agnostic: any crypto data source maps into these types.
  *
  * CRITICAL DESIGN:
- *   1. This module is INFORMATIONAL ONLY — it cannot modify
- *      bias, conviction, gates, trade plan, or recommendation.
+ *   1. Structured DeFi/tokenomics/on-chain evidence may adjust a bounded
+ *      conviction confirmation layer after a directional thesis exists; it
+ *      cannot create/flip core bias or bypass gates/trade-plan validation.
  *   2. Provider availability NEVER becomes directional evidence.
  *   3. Missing data remains neutral — never bearish or bullish.
  *   4. No synthetic fundamentals, no fabricated values.

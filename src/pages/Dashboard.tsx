@@ -21,6 +21,7 @@ import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { ALL_SCAN_HORIZONS, normalizeScanTimeframe, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
+import { buildEquityFundamentalEvidence } from "@/lib/data/universal/equity-evidence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { parseDeFiLlamaResult } from "@/lib/data/crypto/defillama-adapter";
 import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
@@ -660,22 +661,30 @@ export default function Dashboard() {
                 instrument: input.instrument,
                 instrumentType: "forex",
                 assembledAt: now,
-                rates: treasuryData?.available ? {
-                  ...meta("treasury"),
-                  available: true,
-                  quality: "VERIFIED",
-                  availableDatasets: 1,
-                  totalDatasets: 1,
-                  rateDifferential: undefined,
-                } : undefined,
+                // Do not relabel US Treasury yields as currency policy rates.
+                // COT positioning is real weekly futures data; map its actual
+                // report fields and preserve report-date freshness.
                 positioning: cotData?.available ? {
                   ...meta("cftc"),
+                  observedAt: Date.parse(`${cotData.latest.reportDate}T00:00:00Z`),
+                  freshness: cotData.freshness,
+                  quality: cotData.freshness === "FRESH" ? "VERIFIED"
+                    : cotData.freshness === "DELAYED" ? "DEGRADED" : "STALE",
                   available: true,
-                  quality: "DEGRADED",
-                  availableDatasets: 1,
-                  totalDatasets: 1,
-                  nonCommercialNet: cotData.mappedAsset ? undefined : undefined,
-                  commercialNet: undefined,
+                  availableDatasets: [
+                    cotData.netNonCommercial,
+                    cotData.changeFromPreviousReport,
+                    cotData.latest.commercialLong !== undefined && cotData.latest.commercialShort !== undefined
+                      ? cotData.latest.commercialLong - cotData.latest.commercialShort
+                      : undefined,
+                  ].filter((value) => typeof value === "number" && Number.isFinite(value)).length,
+                  totalDatasets: 3,
+                  nonCommercialNet: cotData.netNonCommercial,
+                  commercialNet: cotData.latest.commercialLong !== undefined && cotData.latest.commercialShort !== undefined
+                    ? cotData.latest.commercialLong - cotData.latest.commercialShort
+                    : undefined,
+                  changeInNonCommercial: cotData.changeFromPreviousReport,
+                  positioningContext: `${cotData.mappedAsset}; report ${cotData.latest.reportDate}; weekly net-position change ${cotData.changeFromPreviousReport ?? "unavailable"}.`,
                 } : undefined,
                 macro: calendarResult?.data ? {
                   ...meta("trading-economics"),
@@ -689,19 +698,21 @@ export default function Dashboard() {
                     impact: e.importance === 3 ? "high" : e.importance === 2 ? "medium" : "low",
                   })) ?? [],
                 } : undefined,
-                crossAsset: {
-                  ...meta("cross-asset"),
-                  available: true,
-                  quality: "DEGRADED",
-                  availableDatasets: 1,
-                  totalDatasets: 1,
-                  riskRegime: "unknown",
-                },
+                // No verified live DXY/risk-regime series is wired here yet;
+                // omit the sub-context instead of reporting unknown as available.
                 evidence: [],
-                overallAvailability: "PARTIAL",
-                overallQuality: "DEGRADED",
-                missingInformation: [],
-                analystSummary: `Forex intelligence assembled for ${input.instrument}.`,
+                overallAvailability: (Number(!!cotData?.available) + Number(!!calendarResult?.data)) >= 2
+                  ? "PARTIAL"
+                  : (cotData?.available || calendarResult?.data) ? "MINIMAL" : "UNAVAILABLE",
+                overallQuality: (cotData?.available || calendarResult?.data) ? "DEGRADED" : "UNAVAILABLE",
+                missingInformation: [
+                  "Currency-specific policy-rate differential",
+                  "Pair-specific sovereign-yield differential",
+                  ...(!cotData?.available ? ["CFTC COT positioning"] : []),
+                  ...(!calendarResult?.data ? ["Economic calendar"] : []),
+                  "Live DXY trend and cross-asset risk regime",
+                ],
+                analystSummary: `Forex intelligence assembled for ${input.instrument}; COT and calendar data are only counted when provider observations exist.`,
               };
             }
 
@@ -709,30 +720,106 @@ export default function Dashboard() {
             let equityCtx: EquityIntelligenceContext | undefined;
             if (input.instrumentType === "stock") {
               const fundamentals = intelligenceResult?.fundamentals;
+              const equityEvidence = buildEquityFundamentalEvidence(
+                input.instrument,
+                marketDataResult.data?.price?.price,
+                fundamentals,
+                now,
+              );
+              const fundamentalMetricValues = [
+                fundamentals?.marketCap,
+                fundamentals?.peRatio,
+                fundamentals?.forwardPeRatio,
+                fundamentals?.pegRatio,
+                fundamentals?.priceToSalesRatio,
+                fundamentals?.priceToBook,
+                fundamentals?.evToRevenue,
+                fundamentals?.evToEbitda,
+                fundamentals?.revenueGrowth,
+                fundamentals?.earningsGrowth,
+                fundamentals?.returnOnAssets,
+                fundamentals?.profitMargin,
+                fundamentals?.operatingMargin,
+                fundamentals?.returnOnEquity,
+                fundamentals?.dividendYield,
+                fundamentals?.revenueTTM,
+                fundamentals?.grossProfitTTM,
+                fundamentals?.dilutedEPS,
+                fundamentals?.beta,
+                fundamentals?.sharesOutstanding,
+                fundamentals?.fiftyDayMovingAverage,
+                fundamentals?.twoHundredDayMovingAverage,
+              ];
+              const availableFundamentalMetrics = fundamentalMetricValues.filter(
+                (value) => typeof value === "number" && Number.isFinite(value),
+              ).length;
+              const latestEarnings = fundamentals?.latestEarnings;
+              const availableEarningsFields = [
+                latestEarnings?.date,
+                latestEarnings?.eps,
+                latestEarnings?.revenue,
+              ].filter((value) => value !== undefined && value !== null && value !== "").length;
               equityCtx = {
                 instrument: input.instrument,
                 instrumentType: "equity",
                 assembledAt: now,
                 fundamentals: fundamentals?.available ? {
                   ...meta("alpha-vantage"),
-                  available: true,
-                  quality: "VERIFIED",
-                  availableDatasets: 5,
-                  totalDatasets: 5,
+                  available: availableFundamentalMetrics > 0,
+                  quality: availableFundamentalMetrics > 0 ? "VERIFIED" : "DEGRADED",
+                  availableDatasets: availableFundamentalMetrics,
+                  totalDatasets: fundamentalMetricValues.length,
                   peRatio: fundamentals.peRatio,
+                  forwardPeRatio: fundamentals.forwardPeRatio,
                   marketCap: fundamentals.marketCap,
-                  profitMargin: fundamentals.profitMargin,
+                  pegRatio: fundamentals.pegRatio,
+                  priceToSalesRatio: fundamentals.priceToSalesRatio,
+                  priceToBook: fundamentals.priceToBook,
+                  evToRevenue: fundamentals.evToRevenue,
+                  evToEbitda: fundamentals.evToEbitda,
                   revenueGrowth: fundamentals.revenueGrowth,
+                  earningsGrowth: fundamentals.earningsGrowth,
+                  returnOnAssets: fundamentals.returnOnAssets,
+                  revenueTTM: fundamentals.revenueTTM,
+                  grossProfitTTM: fundamentals.grossProfitTTM,
+                  dilutedEPS: fundamentals.dilutedEPS,
+                  beta: fundamentals.beta,
+                  sharesOutstanding: fundamentals.sharesOutstanding,
+                  fiftyDayMovingAverage: fundamentals.fiftyDayMovingAverage,
+                  twoHundredDayMovingAverage: fundamentals.twoHundredDayMovingAverage,
+                  profitMargin: fundamentals.profitMargin,
+                  operatingMargin: fundamentals.operatingMargin,
+                  returnOnEquity: fundamentals.returnOnEquity,
+                  dividendYield: fundamentals.dividendYield,
+                } : undefined,
+                earnings: latestEarnings ? {
+                  ...meta("alpha-vantage"),
+                  available: availableEarningsFields > 0,
+                  quality: availableEarningsFields > 0 ? "VERIFIED" : "DEGRADED",
+                  availableDatasets: availableEarningsFields,
+                  totalDatasets: 3,
+                  latestEarnings: {
+                    date: latestEarnings.date ?? "",
+                    eps: latestEarnings.eps,
+                    revenue: latestEarnings.revenue,
+                  },
                 } : undefined,
                 sector: fundamentals?.sector ? {
                   sector: fundamentals.sector,
                   industry: fundamentals.industry,
                 } : undefined,
-                evidence: [],
+                evidence: equityEvidence,
                 overallAvailability: fundamentals?.available ? "PARTIAL" : "MINIMAL",
-                overallQuality: fundamentals?.available ? "VERIFIED" : "UNAVAILABLE",
-                missingInformation: fundamentals?.available ? [] : ["Fundamental data unavailable"],
-                analystSummary: `Equity intelligence assembled for ${input.instrument}.`,
+                overallQuality: fundamentals?.available && availableFundamentalMetrics > 0
+                  ? "VERIFIED"
+                  : fundamentals?.available ? "DEGRADED" : "UNAVAILABLE",
+                missingInformation: [
+                  ...(!fundamentals?.available ? ["Fundamental data unavailable"] : []),
+                  ...(fundamentals?.available && equityEvidence.length === 0
+                    ? ["No fresh, exact-symbol directional fundamental evidence available"]
+                    : []),
+                ],
+                analystSummary: `Equity intelligence assembled for ${input.instrument}; ${equityEvidence.length} directionally interpretable evidence item(s) passed identity/freshness checks.`,
               };
             }
 
@@ -754,17 +841,35 @@ export default function Dashboard() {
                 } : undefined,
                 positioning: cotData?.available ? {
                   ...meta("cftc"),
+                  observedAt: Date.parse(`${cotData.latest.reportDate}T00:00:00Z`),
+                  freshness: cotData.freshness,
+                  quality: cotData.freshness === "FRESH" ? "VERIFIED"
+                    : cotData.freshness === "DELAYED" ? "DEGRADED" : "STALE",
                   available: true,
-                  quality: "DEGRADED",
-                  availableDatasets: 1,
-                  totalDatasets: 1,
+                  availableDatasets: [
+                    cotData.netNonCommercial,
+                    cotData.changeFromPreviousReport,
+                    cotData.latest.commercialLong !== undefined && cotData.latest.commercialShort !== undefined
+                      ? cotData.latest.commercialLong - cotData.latest.commercialShort
+                      : undefined,
+                  ].filter((value) => typeof value === "number" && Number.isFinite(value)).length,
+                  totalDatasets: 3,
+                  managedMoneyNet: cotData.netNonCommercial,
+                  commercialNet: cotData.latest.commercialLong !== undefined && cotData.latest.commercialShort !== undefined
+                    ? cotData.latest.commercialLong - cotData.latest.commercialShort
+                    : undefined,
+                  changeInManagedMoney: cotData.changeFromPreviousReport,
+                  positioningContext: `${cotData.mappedAsset}; report ${cotData.latest.reportDate}; weekly net-position change ${cotData.changeFromPreviousReport ?? "unavailable"}.`,
                 } : undefined,
                 evidence: [],
-                overallAvailability: (eiaData?.available || cotData?.available) ? "PARTIAL" : "MINIMAL",
-                overallQuality: "DEGRADED",
+                overallAvailability: eiaData?.available && cotData?.available ? "PARTIAL"
+                  : (eiaData?.available || cotData?.available) ? "MINIMAL" : "UNAVAILABLE",
+                overallQuality: (eiaData?.available || cotData?.available) ? "DEGRADED" : "UNAVAILABLE",
                 missingInformation: [
                   ...(!eiaData?.available ? ["EIA inventory data"] : []),
                   ...(!cotData?.available ? ["CFTC COT positioning"] : []),
+                  "Futures curve / contango-backwardation data",
+                  "Commodity-specific supply-demand and seasonality context",
                 ],
                 analystSummary: `Commodity intelligence assembled for ${input.instrument}.`,
               };
@@ -773,18 +878,39 @@ export default function Dashboard() {
             // Build cross-asset context (always available for non-crypto)
             const crossAssetCtx: CrossAssetIntelligenceContext = {
               assembledAt: now,
-              treasury: treasuryData?.available ? {
-                ...meta("treasury"),
-                available: true,
-                quality: "VERIFIED",
-                availableDatasets: 2,
-                totalDatasets: 2,
-                tenYear: treasuryData.latest?.nominal?.nominal?.["10Y"],
-                yieldCurve: undefined,
-              } : undefined,
+              treasury: treasuryData?.available ? (() => {
+                const nominal = treasuryData.latest.nominal.nominal;
+                const twoYear = nominal["2Y"];
+                const tenYear = nominal["10Y"];
+                const thirtyYear = nominal["30Y"];
+                const realYield10y = treasuryData.latest.real?.real["10Y"];
+                const observedAt = Date.parse(`${treasuryData.latest.nominal.observationDate}T00:00:00Z`);
+                const yieldCurve = twoYear !== undefined && tenYear !== undefined
+                  ? twoYear > tenYear ? "inverted" : twoYear < tenYear ? "normal" : "flat"
+                  : undefined;
+                return {
+                  ...meta("treasury"),
+                  observedAt,
+                  freshness: treasuryData.freshness,
+                  available: true,
+                  quality: treasuryData.freshness === "FRESH" ? "VERIFIED"
+                    : treasuryData.freshness === "DELAYED" ? "DEGRADED" : "STALE",
+                  availableDatasets: [twoYear, tenYear, thirtyYear, realYield10y]
+                    .filter((value) => typeof value === "number" && Number.isFinite(value)).length,
+                  totalDatasets: 4,
+                  twoYear,
+                  tenYear,
+                  thirtyYear,
+                  realYield10y,
+                  yieldCurve,
+                };
+              })() : undefined,
               evidence: [],
-              overallAvailability: treasuryData?.available ? "PARTIAL" : "MINIMAL",
-              overallQuality: "DEGRADED",
+              overallAvailability: treasuryData?.available ? "MINIMAL" : "UNAVAILABLE",
+              overallQuality: treasuryData?.available
+                ? treasuryData.freshness === "FRESH" ? "VERIFIED"
+                  : treasuryData.freshness === "DELAYED" ? "DEGRADED" : "STALE"
+                : "UNAVAILABLE",
               missingInformation: [
                 ...(!treasuryData?.available ? ["Treasury yield data"] : []),
                 "DXY data (live)",
@@ -802,14 +928,27 @@ export default function Dashboard() {
               equity: equityCtx,
               commodity: commodityCtx,
               crossAsset: crossAssetCtx,
-              evidence: [],
-              overallAvailability: "PARTIAL",
-              overallQuality: "DEGRADED",
+              evidence: equityCtx?.evidence ?? [],
+              overallAvailability: (
+                input.instrumentType === "forex"
+                  ? Number(!!forexCtx?.positioning?.available) + Number(!!forexCtx?.macro?.available)
+                  : input.instrumentType === "stock"
+                    ? Number(!!equityCtx?.fundamentals?.available) + Number(!!equityCtx?.earnings?.available)
+                    : Number(!!commodityCtx?.inventory?.available) + Number(!!commodityCtx?.positioning?.available)
+              ) > 0 ? "PARTIAL" : crossAssetCtx.treasury?.available ? "MINIMAL" : "UNAVAILABLE",
+              overallQuality: (
+                input.instrumentType === "forex"
+                  ? Number(!!forexCtx?.positioning?.available) + Number(!!forexCtx?.macro?.available)
+                  : input.instrumentType === "stock"
+                    ? Number(!!equityCtx?.fundamentals?.available) + Number(!!equityCtx?.earnings?.available)
+                    : Number(!!commodityCtx?.inventory?.available) + Number(!!commodityCtx?.positioning?.available)
+              ) > 0 ? "DEGRADED" : crossAssetCtx.treasury?.available ? "DEGRADED" : "UNAVAILABLE",
               missingInformation: [
-                ...(!treasuryData?.available ? ["Treasury yield data"] : []),
-                ...(!cotData?.available ? ["CFTC COT positioning"] : []),
-                ...(!eiaData?.available ? ["EIA inventory data"] : []),
-                ...(!intelligenceResult?.fundamentals?.available ? ["Fundamental data"] : []),
+                ...(forexCtx?.missingInformation ?? []),
+                ...(equityCtx?.missingInformation ?? []),
+                ...(commodityCtx?.missingInformation ?? []),
+                ...crossAssetCtx.missingInformation,
+                ...(!intelligenceResult?.fundamentals?.available && input.instrumentType === "stock" ? ["Fundamental data"] : []),
               ],
               dataFlags: [],
               analystSummary: `Universal intelligence assembled for ${input.instrument}.`,

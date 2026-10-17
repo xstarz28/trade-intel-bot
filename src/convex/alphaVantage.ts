@@ -14,6 +14,7 @@ import type {
   MacroData,
   IntelligenceResult,
 } from "../lib/data/intelligence-types";
+import { mapAlphaVantageFundamentalMetrics } from "../lib/data/alpha-vantage-fundamentals";
 
 // ── Simple in-memory cache (resets per Convex action instance) ──
 // For production, use Convex scheduled functions or a database cache.
@@ -294,13 +295,20 @@ function normalizeFundamentalsFromAV(
     return base;
   }
 
+  // Preserve the provider-returned symbol, not the requested ticker. The
+  // downstream evidence layer must be able to reject a mismatched provider
+  // response instead of accidentally relabeling it as the requested company.
+  base.symbol = String(overview.Symbol).trim().toUpperCase();
   base.available = true;
   base.name = overview.Name;
   base.sector = overview.Sector;
   base.industry = overview.Industry;
   base.marketCap = safeNum(overview.MarketCapitalization);
+  // Preserve the provider's actual analyst target so the universal evidence
+  // layer can compare it with the observed quote; never synthesize a target.
+  base.analystTargetPrice = safeNum(overview.AnalystTargetPrice);
   base.peRatio = safeNum(overview.PERatio);
-  base.pegRatio = safeNum(overview.PEGRatio);
+  Object.assign(base, mapAlphaVantageFundamentalMetrics(overview));
   base.bookValue = safeNum(overview.BookValue);
   base.dividendPerShare = safeNum(overview.DividendPerShare);
   base.dividendYield = safeNum(overview.DividendYield);
