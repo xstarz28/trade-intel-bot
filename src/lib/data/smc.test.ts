@@ -312,6 +312,17 @@ describe("computeVwap", () => {
     expect(v.priceOnlyFallback?.sessionMean).toBeCloseTo(1.5, 6);
   });
 
+  it("rejects negative volume instead of calculating a misleading VWAP", () => {
+    const candles = [
+      candle(T(0), 99, 101, 98, 100, 10),
+      candle(T(1), 100, 102, 99, 101, -2),
+    ];
+    const v = computeVwap(candles);
+    expect(v.available).toBe(false);
+    expect(v.unavailableReason).toContain("Invalid volume");
+    expect(v.priceLocation).toBe("unavailable");
+  });
+
   it("does not mix the prior month into the current UTC session", () => {
     const previousMonth = Date.UTC(2026, 8, 16, 10, 0, 0);
     const currentMonth = Date.UTC(2026, 9, 16, 10, 0, 0);
