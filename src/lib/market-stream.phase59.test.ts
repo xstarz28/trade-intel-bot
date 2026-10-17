@@ -1327,6 +1327,8 @@ describe("U. Provider Routing Safety", () => {
   it("does not misclassify BTC/USD as forex", () => {
     expect(detectAssetClass("BTC/USD")).toBe("crypto");
     expect(routeInstrument("BTC/USD").primary?.provider).toBe("OKX");
+    expect(routeInstrument("BTC/USD").primary?.mode).toBe("POLLING");
+    expect(routeInstrument("BTC/USD").primary?.freshness).toBe("DELAYED");
   });
 
   it("does not route an unknown symbol to a guessed provider", () => {
