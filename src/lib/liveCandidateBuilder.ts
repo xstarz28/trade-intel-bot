@@ -77,7 +77,7 @@ function assessFreshness(
   timestamp: number | undefined,
   now: number,
 ): "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" {
-  if (!timestamp) return "UNAVAILABLE";
+  if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp > now) return "UNAVAILABLE";
   const ageMs = now - timestamp;
   if (ageMs < 5 * 60_000) return "FRESH";         // < 5 min
   if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
