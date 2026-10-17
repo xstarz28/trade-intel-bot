@@ -181,12 +181,20 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
   const { instrument, timeframe, candles } = input;
   const validationErrors = validateCandles(candles);
   if (validationErrors.length > 0) throw new Error(validationErrors.join(" "));
-  const minimumHistory = Math.max(20, Math.floor(input.options?.minimumHistory ?? 220));
-  const maxHoldingBars = Math.max(1, Math.floor(input.options?.maxHoldingBars ?? 20));
+  const requestedMinimumHistory = input.options?.minimumHistory ?? 220;
+  const requestedMaxHoldingBars = input.options?.maxHoldingBars ?? 20;
   const costBpsPerSide = input.options?.costBpsPerSide ?? 5;
+  if (!Number.isFinite(requestedMinimumHistory) || requestedMinimumHistory < 20 || requestedMinimumHistory > 100_000) {
+    throw new Error("minimumHistory must be a finite integer-compatible value between 20 and 100000.");
+  }
+  if (!Number.isFinite(requestedMaxHoldingBars) || requestedMaxHoldingBars < 1 || requestedMaxHoldingBars > 100_000) {
+    throw new Error("maxHoldingBars must be a finite integer-compatible value between 1 and 100000.");
+  }
   if (!Number.isFinite(costBpsPerSide) || costBpsPerSide < 0 || costBpsPerSide > 500) {
     throw new Error("costBpsPerSide must be between 0 and 500 basis points.");
   }
+  const minimumHistory = Math.floor(requestedMinimumHistory);
+  const maxHoldingBars = Math.floor(requestedMaxHoldingBars);
 
   const warnings = [
     "Backtest quality depends on the supplied historical OHLCV source and timeframe alignment.",
@@ -252,7 +260,7 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     expectancyR: trades.length ? sumR / trades.length : null,
     profitFactor: grossLossesR > 0 ? grossWinsR / grossLossesR : grossWinsR > 0 ? null : null,
     maxDrawdownR,
-    totalNetReturnPct: trades.reduce((sum, t) => sum + t.netReturnPct, 0),
+    totalNetReturnPct: (trades.reduce((growth, trade) => growth * (1 + trade.netReturnPct / 100), 1) - 1) * 100,
     averageNetReturnPct: trades.length ? trades.reduce((sum, t) => sum + t.netReturnPct, 0) / trades.length : null,
     trades,
     warnings,
