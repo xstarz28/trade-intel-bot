@@ -257,7 +257,10 @@ describe("B — Market-Data Freshness", () => {
 
   it("keeps a recent daily candle usable as STALE across a weekend", () => {
     const source = makeSource({
+      instrument: "AAPL",
+      assetClass: "equity",
       marketData: makeMarketData("AAPL", {
+        instrumentType: "stock",
         timeframe: "D1",
         price: { price: 200, timestamp: NOW - 3 * 24 * HOUR, source: "yahoo-finance" },
       }),
