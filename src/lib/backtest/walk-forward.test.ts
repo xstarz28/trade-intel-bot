@@ -84,6 +84,26 @@ describe("runWalkForwardBacktest", () => {
     expect(report.trades[0].rMultiple).toBeLessThan(0);
   });
 
+  it("includes entry and exit costs in realized R and return denominators", () => {
+    const data = candles(30);
+    data[21] = { ...data[21], open: 100, high: 101, low: 94, close: 96 };
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: data,
+      options: { minimumHistory: 20, maxHoldingBars: 4, costBpsPerSide: 10 },
+      analyzeAtClose: (_visible, index) => index === 19 ? longSignal : { recommendation: "NO_TRADE" },
+    });
+
+    expect(report.executedTrades).toBe(1);
+    const trade = report.trades[0];
+    expect(trade.entry).toBeCloseTo(100.1, 8);
+    expect(trade.exit).toBeCloseTo(94.905, 8);
+    // With symmetric 10 bps per-side costs, the stop loss is -1R after costs.
+    expect(trade.rMultiple).toBeCloseTo(-1, 8);
+    expect(trade.netReturnPct).toBeCloseTo(((94.905 - 100.1) / 100.1) * 100, 8);
+  });
+
   it("models a stop-market fill worse than the trigger after an adverse opening gap", () => {
     const data = candles(30);
     data[21] = { ...data[21], open: 90, high: 92, low: 89, close: 91 };
