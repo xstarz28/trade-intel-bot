@@ -262,7 +262,7 @@ describe("B — Market-Data Freshness", () => {
         price: { price: 200, timestamp: NOW - 3 * 24 * HOUR, source: "yahoo-finance" },
       }),
     });
-    expect(buildCandidateFromSource(source).freshness).toBe("STALE");
+    expect(buildCandidateFromSource(source, NOW).freshness).toBe("STALE");
   });
 
   it("keeps a weekly candle usable for longer-horizon analysis without calling it live", () => {
@@ -272,7 +272,7 @@ describe("B — Market-Data Freshness", () => {
         price: { price: 65000, timestamp: NOW - 10 * 24 * HOUR, source: "okx" },
       }),
     });
-    expect(buildCandidateFromSource(source).freshness).toBe("STALE");
+    expect(buildCandidateFromSource(source, NOW).freshness).toBe("STALE");
   });
 
   it("does not extend intraday freshness just because a candle is old", () => {
@@ -282,7 +282,7 @@ describe("B — Market-Data Freshness", () => {
         price: { price: 65000, timestamp: NOW - 2 * 24 * HOUR, source: "okx" },
       }),
     });
-    expect(buildCandidateFromSource(source).freshness).toBe("UNAVAILABLE");
+    expect(buildCandidateFromSource(source, NOW).freshness).toBe("UNAVAILABLE");
   });
 
   it("rejects materially future-dated observations", () => {
@@ -291,7 +291,7 @@ describe("B — Market-Data Freshness", () => {
         price: { price: 65000, timestamp: NOW + 5 * MINUTE, source: "okx" },
       }),
     });
-    expect(buildCandidateFromSource(source).freshness).toBe("UNAVAILABLE");
+    expect(buildCandidateFromSource(source, NOW).freshness).toBe("UNAVAILABLE");
   });
 
   it("no timestamp produces UNAVAILABLE freshness", () => {
