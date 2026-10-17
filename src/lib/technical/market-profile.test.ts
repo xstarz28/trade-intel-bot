@@ -25,4 +25,13 @@ describe("TPO and VPVR",()=>{
     expect(calculateTpoProfile(candles().slice(0,10)).available).toBe(false);
     expect(calculateVpvrProfile(candles().slice(0,2)).available).toBe(false);
   });
+
+  it("ignores malformed OHLC candles and sanitizes non-finite options",()=>{
+    const data=candles();
+    data[0]={...data[0],high:data[0].open-1};
+    const profile=calculateVpvrProfile(data,{rows:Number.NaN,valueAreaPercent:Number.NaN,blockMinutes:Number.NaN});
+    expect(profile.available).toBe(true);
+    expect(profile.rows).toHaveLength(64);
+    expect(profile.valueAreaPercent).toBe(0.7);
+  });
 });
