@@ -14,7 +14,7 @@
 
 import type { AssetClass } from "./data/universal/types";
 import type { CandidateInput, TradingMode, InvestorHorizon, UniversalRecommendationResult } from "./recommendation-engine";
-import { generateRecommendation, discoverCandidates } from "./recommendation-engine";
+import { generateRecommendation } from "./recommendation-engine";
 import { buildCandidateFromSource, type LiveCandidateSource } from "./liveCandidateBuilder";
 
 // ═══════════════════════════════════════════════════════════════
@@ -259,7 +259,7 @@ export function scanInstruments(
   }
 
   // Build candidates from sources
-  const candidates = filtered.map(s => buildCandidateFromSource(s));
+  const candidates = filtered.map(s => buildCandidateFromSource(s, now));
 
   // Scan each horizon
   const results = new Map<TradingMode | InvestorHorizon, UniversalRecommendationResult>();
