@@ -212,7 +212,7 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
 
   const warnings = [
     "Backtest quality depends on the supplied historical OHLCV source and timeframe alignment.",
-    `Out-of-sample scoring starts at candle index ${firstSignalIndex}${candles[firstSignalIndex] ? ` (${new Date(candles[firstSignalIndex].timestamp).toISOString()})` : " (insufficient candles to reach this index)"}; earlier candles are history only.`,
+    `Out-of-sample scoring starts at candle index ${firstSignalIndex}; earlier candles are history only.`,
     "Signals use the production analysis callback on past-only candles; no provider fundamentals, news, COT, derivatives, or MTF feeds are synthesized.",
     "Entry is next-bar open; stop/target touches use OHLC approximations and stop wins if both levels are touched in one bar.",
     "Fees/slippage are a user-configurable per-side assumption; results are not proof of future profitability.",
