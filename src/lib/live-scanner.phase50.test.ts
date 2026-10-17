@@ -713,6 +713,31 @@ describe("V — Dependency-Group Double-Counting", () => {
 // W. DETERMINISM
 // ═══════════════════════════════════════════════════════════════
 
+describe("W — Scanner result limits", () => {
+  it("respects maxResults independently for each horizon", () => {
+    const sources = Array.from({ length: 8 }, (_, i) =>
+      makeSource({ instrument: `ASSET${i}/USD` }),
+    );
+    const result = scanInstruments(sources, {
+      horizons: ["INTRADAY", "SWING"],
+      maxResults: 1,
+      now: NOW,
+    });
+
+    expect(result.results.get("INTRADAY")!.rankedInstruments.length).toBeLessThanOrEqual(1);
+    expect(result.results.get("SWING")!.rankedInstruments.length).toBeLessThanOrEqual(1);
+    expect(result.totalScanned).toBe(8);
+  });
+
+  it("keeps all scored candidates when maxResults is omitted", () => {
+    const sources = Array.from({ length: 4 }, (_, i) =>
+      makeSource({ instrument: `ASSET${i}/USD` }),
+    );
+    const result = scanInstruments(sources, { horizons: ["INTRADAY"], now: NOW });
+    expect(result.results.get("INTRADAY")!.rankedInstruments.length).toBeGreaterThan(1);
+  });
+});
+
 describe("W — Determinism", () => {
   it("same sources + same config = same result", () => {
     const sources = [makeSource(), makeSource({ instrument: "ETH/USD" })];
