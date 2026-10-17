@@ -125,14 +125,22 @@ export function detectAssetClass(instrument: string): string {
     return INSTRUMENT_ASSET_CLASS[normalized];
   }
 
-  // Pattern-based detection
-  if (normalized.endsWith("/USDT") || normalized.endsWith("/BTC") || normalized.endsWith("/ETH")) {
+  // Pattern-based detection. Recognize common crypto bases explicitly before
+  // considering fiat pairs (e.g. BTC/USD must never be routed as forex).
+  if (/^(BTC|ETH|SOL|BNB|XRP|DOGE|ADA|AVAX|DOT|LINK|MATIC|UNI)\/(USD|USDT|USDC|BTC|ETH)$/.test(normalized) ||
+      normalized.endsWith("/USDT") || normalized.endsWith("/USDC") ||
+      normalized.endsWith("/BTC") || normalized.endsWith("/ETH")) {
     return "crypto";
   }
   if (normalized.includes("/")) {
-    // Likely forex
     const parts = normalized.split("/");
-    if (parts.length === 2 && parts.every(p => /^[A-Z]{3}$/.test(p))) {
+    const fiatCurrencies = new Set([
+      "USD", "EUR", "GBP", "JPY", "AUD", "CAD", "CHF", "NZD",
+      "CNY", "CNH", "HKD", "SGD", "INR", "IDR", "KRW", "THB",
+      "MYR", "PHP", "VND", "TRY", "MXN", "ZAR", "SEK", "NOK",
+      "DKK", "PLN", "CZK", "HUF", "ILS", "AED", "SAR",
+    ]);
+    if (parts.length === 2 && parts.every(p => fiatCurrencies.has(p))) {
       return "forex";
     }
   }
@@ -149,7 +157,9 @@ export function detectAssetClass(instrument: string): string {
     return "macro";
   }
 
-  return "crypto"; // Default for unknown — crypto is most common
+  // Unknown symbols must not silently select a crypto provider. The caller can
+  // supply an explicit assetClassOverride when the symbol is ambiguous.
+  return "unknown";
 }
 
 /**
@@ -161,7 +171,7 @@ export function routeInstrument(
   availableProviders?: Set<string>,
 ): RoutingResult {
   const assetClass = assetClassOverride ?? detectAssetClass(instrument);
-  const priorities = ASSET_CLASS_PROVIDER_PRIORITY[assetClass] ?? ["TwelveData"];
+  const priorities = ASSET_CLASS_PROVIDER_PRIORITY[assetClass] ?? [];
 
   const allRoutes: ProviderRoute[] = [];
 
@@ -212,8 +222,11 @@ function buildRoute(
   assetClass: string,
 ): ProviderRoute {
   const pollInterval = getPollIntervalMs(profile.provider);
+  // This route currently configures polling (mode below is POLLING), so a
+  // provider's WebSocket capability alone is not evidence that this instrument
+  // is being consumed over a live socket. Report the actual route's cadence.
   const freshness: ProviderRoute["freshness"] =
-    profile.websocketSupported ? "LIVE" : pollInterval <= 60_000 ? "DELAYED" : "SLOW";
+    pollInterval <= 60_000 ? "DELAYED" : "SLOW";
 
   return {
     provider: profile.provider,
