@@ -120,9 +120,13 @@ function simulateTrade(args: {
   if (entryIndex >= candles.length) return undefined;
   const rawEntry = candles[entryIndex].open;
   const entry = adversePrice(rawEntry, direction, true, costRate);
-  const risk = direction === "long" ? entry - stopLoss : stopLoss - entry;
-  const reward = direction === "long" ? takeProfit - entry : entry - takeProfit;
-  // Reject gaps that make the original setup invalid or below the engine's minimum R:R.
+  // Evaluate risk/reward using estimated executable fills on BOTH sides.
+  // Otherwise exit-side costs reduce realized P&L but are omitted from the R denominator.
+  const stopFill = adversePrice(stopLoss, direction, false, costRate);
+  const targetFill = adversePrice(takeProfit, direction, false, costRate);
+  const risk = direction === "long" ? entry - stopFill : stopFill - entry;
+  const reward = direction === "long" ? targetFill - entry : entry - targetFill;
+  // Reject gaps/costs that make the executable setup invalid or below minimum R:R.
   if (!(risk > 0) || !(reward > 0) || reward / risk < 1.5) return undefined;
 
   const lastIndex = Math.min(candles.length - 1, entryIndex + Math.max(1, maxHoldingBars) - 1);
@@ -158,7 +162,7 @@ function simulateTrade(args: {
   const signedMove = direction === "long" ? exit - entry : entry - exit;
   const grossSignedMove = direction === "long" ? rawExit - rawEntry : rawEntry - rawExit;
   const grossReturnPct = (grossSignedMove / rawEntry) * 100;
-  const netReturnPct = (signedMove / rawEntry) * 100;
+  // Net return is measured against actual entry fill, including entry-side costs.\n  const netReturnPct = (signedMove / entry) * 100;
   return {
     signalTime: candles[signalIndex].timestamp,
     entryTime: candles[entryIndex].timestamp,
