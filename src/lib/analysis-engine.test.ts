@@ -171,6 +171,40 @@ describe("scoreFundamentals (via breakdown)", () => {
     expect(result.breakdown.fundamental).toBeGreaterThanOrEqual(1);
   });
 
+  it("orients interest-rate surprises by the event currency's base/quote position", () => {
+    const calendarData = {
+      provider: "tickatlas" as const,
+      events: [{
+        id: "rate-surprise",
+        event: "Interest Rate Decision",
+        category: "Interest Rate",
+        country: "United States",
+        currency: "USD",
+        datetime: Date.now() - 60_000,
+        actual: 5.5,
+        forecast: 5.0,
+        previous: 5.0,
+        importance: 3 as const,
+        source: "tickatlas",
+        status: "released" as const,
+      }],
+      macroRisk: { level: "low" as const, explanation: "test", highImpact24h: 0, highImpact72h: 0 },
+      timestamp: Date.now(),
+      freshness: "recent" as const,
+      confidence: "medium" as const,
+      availability: { upcoming24h: false, upcoming72h: false, recentReleased: true },
+    };
+    const analyze = (instrument: string) => runAnalysis(baseInput({
+      instrumentType: "forex",
+      instrument,
+      calendarData,
+    }));
+
+    expect(analyze("EUR/USD").breakdown.fundamental).toBe(-1);
+    expect(analyze("USD/JPY").breakdown.fundamental).toBe(1);
+    expect(analyze("GBP/JPY").breakdown.fundamental).toBe(0);
+  });
+
   it("orients DXY strength for base, quote, and non-USD cross pairs", () => {
     const macroData = {
       provider: "test", timestamp: Date.now(),

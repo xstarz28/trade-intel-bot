@@ -558,9 +558,13 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
 
       if (isRateEvent) {
         if (input.instrumentType === "forex") {
-          if (evt.currency === "USD" || evt.currency === "EUR" || evt.currency === "GBP") {
-            score += surprise > 0 ? 1 : -1;
-          }
+          // A rate surprise affects the event currency; orient it on the pair.
+          // Events for currencies outside the pair contribute no directional score.
+          score += scoreCurrencyStrengthOnPair(
+            input.instrument,
+            evt.currency,
+            surprise > 0 ? 1 : -1,
+          );
         }
         if (input.instrumentType === "crypto") {
           score += surprise > 0 ? -1 : 1;
