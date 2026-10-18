@@ -583,7 +583,13 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
         "Representative volume unavailable — Volume Profile omitted rather than fabricated.",
     };
   }
-  const totalVolume = candles.reduce((s, c) => s + c.volume, 0);
+  // Use the same validated profile rows as POC/VAH/VAL. Re-binning the raw
+  // input here can let malformed candles skew HVN/LVN away from the profile.
+  const rows = profile.rows;
+  if (rows.length === 0) {
+    return { available: false, unavailableReason: "Volume Profile produced no price rows." };
+  }
+  const totalVolume = profile.total ?? rows.reduce((sum, row) => sum + row.value, 0);
   if (!(totalVolume > 0)) {
     return {
       available: false,
@@ -592,56 +598,15 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
     };
   }
 
-  const low = Math.min(...candles.map((c) => c.low));
-  const high = Math.max(...candles.map((c) => c.high));
-  if (!(high > low)) {
-    return { available: false, unavailableReason: "Price range too narrow." };
-  }
-
-  const binSize = (high - low) / VOLUME_PROFILE_BINS;
-  const bins = new Array<number>(VOLUME_PROFILE_BINS).fill(0);
-
-  for (const c of candles) {
-    // Spread each candle's volume across every bin its range touches
-    const startBin = Math.min(
-      VOLUME_PROFILE_BINS - 1,
-      Math.max(0, Math.floor((c.low - low) / binSize)),
-    );
-    const endBin = Math.min(
-      VOLUME_PROFILE_BINS - 1,
-      Math.max(0, Math.floor((c.high - low) / binSize)),
-    );
-    const span = endBin - startBin + 1;
-    for (let b = startBin; b <= endBin; b++) bins[b] += c.volume / span;
-  }
-
-  const centers = bins.map((_, i) => low + binSize * (i + 0.5));
-
-  // POC
-  let pocIdx = 0;
-  for (let i = 1; i < bins.length; i++) {
-    if (bins[i] > bins[pocIdx]) pocIdx = i;
-  }
-
-  // Value Area: expand from POC until VALUE_AREA_COVERAGE of volume contained
-  let vaLo = pocIdx;
-  let vaHi = pocIdx;
-  let vaVolume = bins[pocIdx];
-  while (vaVolume / totalVolume < VALUE_AREA_COVERAGE && (vaLo > 0 || vaHi < bins.length - 1)) {
-    const below = vaLo > 0 ? bins[vaLo - 1] : -1;
-    const above = vaHi < bins.length - 1 ? bins[vaHi + 1] : -1;
-    if (above >= below) {
-      vaHi++;
-      vaVolume += bins[vaHi];
-    } else {
-      vaLo--;
-      vaVolume += bins[vaLo];
-    }
-  }
-
-  const meanVol = totalVolume / bins.length;
-  const hvn = centers.filter((_, i) => bins[i] >= 1.5 * meanVol).slice(0, 5);
-  const lvn = centers.filter((_, i) => bins[i] <= 0.35 * meanVol).slice(0, 5);
+  const meanVol = totalVolume / rows.length;
+  const hvn = rows
+    .filter((row) => row.value >= 1.5 * meanVol)
+    .slice(0, 5)
+    .map((row) => row.price);
+  const lvn = rows
+    .filter((row) => row.value <= 0.35 * meanVol)
+    .slice(0, 5)
+    .map((row) => row.price);
 
   return {
     available: true,
