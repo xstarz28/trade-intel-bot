@@ -214,6 +214,32 @@ describe("scoreFundamentals (via breakdown)", () => {
     );
     expect(result.breakdown.fundamental).toBeLessThanOrEqual(-1);
   });
+
+  it("scores available stock fundamentals even when macro context is also available", () => {
+    const result = runAnalysis(baseInput({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      macroData: {
+        provider: "alpha-vantage",
+        timestamp: Date.now(),
+        indicators: [{ name: "Neutral news context", relevance: "low", sentiment: "neutral" }],
+        summary: "Neutral macro/news context",
+        confidence: "medium",
+      },
+      fundamentalData: {
+        provider: "alpha-vantage",
+        timestamp: Date.now(),
+        instrumentType: "stock",
+        symbol: "AAPL",
+        available: true,
+        peRatio: 12,
+        profitMargin: 0.25,
+        earningsPerShare: 3,
+      },
+    }));
+
+    expect(result.breakdown.fundamental).toBeGreaterThan(0);
+  });
 });
 
 // ── Sentiment scoring ─────────────────────────────────────────────

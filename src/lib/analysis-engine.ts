@@ -521,7 +521,11 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
         score -= usdStrength;
       }
     }
-  } else if (fund && fund.available && input.instrumentType === "stock") {
+  }
+
+  // Company-specific financial metrics are independent of macro/news context.
+  // Score them whenever the provider supplies usable stock fundamentals.
+  if (fund && fund.available && input.instrumentType === "stock") {
     if (fund.peRatio !== undefined && fund.peRatio > 0) {
       if (fund.peRatio < 15) score += 1;
       if (fund.peRatio > 35) score -= 1;
