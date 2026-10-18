@@ -285,6 +285,18 @@ describe("computeVwap", () => {
     expect(v.bands).toBeDefined();
   });
 
+  it("resets session VWAP by full UTC date across month boundaries", () => {
+    // A data gap leaves only January 5 and February 5. Day-of-month-only
+    // comparison incorrectly folds January's volume into February's session.
+    const candles = [
+      candle(Date.UTC(2026, 0, 5, 12), 99, 101, 99, 100, 99),
+      candle(Date.UTC(2026, 1, 5, 12), 199, 201, 199, 200, 1),
+    ];
+    const v = computeVwap(candles);
+    expect(v.available).toBe(true);
+    expect(v.sessionVwap).toBeCloseTo(200, 6);
+  });
+
   it("returns explicit unavailability for zero-volume data (no fake VWAP)", () => {
     const candles = [
       candle(T(0), 0, 2, 0, 1, 0),

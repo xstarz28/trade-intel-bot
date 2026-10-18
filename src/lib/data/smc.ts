@@ -487,14 +487,22 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
     };
   }
 
-  // Session VWAP: cumulative from the start of the latest UTC day
+  // Session VWAP: cumulative from the start of the latest UTC calendar day.
+  // Compare the full session boundary, not only day-of-month: after a data gap,
+  // two candles from different months/years can share the same UTC day number.
   let cumPV = 0;
   let cumV = 0;
   let cumP2V = 0;
-  const lastDay = new Date(candles[candles.length - 1].timestamp).getUTCDate();
+  const lastTimestamp = candles[candles.length - 1].timestamp;
+  const lastDate = new Date(lastTimestamp);
+  const lastSessionStart = Date.UTC(
+    lastDate.getUTCFullYear(),
+    lastDate.getUTCMonth(),
+    lastDate.getUTCDate(),
+  );
   for (let i = candles.length - 1; i >= 0; i--) {
     const c = candles[i];
-    if (new Date(c.timestamp).getUTCDate() !== lastDay) break; // previous session started
+    if (c.timestamp < lastSessionStart) break; // previous UTC session started
     const typical = (c.high + c.low + c.close) / 3;
     cumPV += typical * c.volume;
     cumP2V += typical * typical * c.volume;
