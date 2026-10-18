@@ -329,6 +329,21 @@ describe("computeVolumeProfile", () => {
     expect(vp.val).toBeLessThanOrEqual(vp.poc!);
   });
 
+  it("derives HVN/LVN only from the validated candles used by the profile", () => {
+    const candles = [
+      candle(T(0), 9.9, 10.1, 9.8, 10.0, 900),
+      candle(T(1), 10.0, 10.1, 9.9, 10.05, 800),
+      candle(T(2), 19.9, 20.1, 19.8, 20.0, 100),
+      // Invalid timestamp means this candle must not affect any profile level.
+      candle(Number.NaN, 900, 1000, 899, 999, 1_000_000_000),
+    ];
+    const vp = computeVolumeProfile(candles);
+    expect(vp.available).toBe(true);
+    const nodes = [...(vp.hvn ?? []), ...(vp.lvn ?? [])];
+    expect(nodes.length).toBeGreaterThan(0);
+    expect(nodes.every((price) => price >= 9.8 && price <= 20.1)).toBe(true);
+  });
+
   it("refuses to fabricate a profile from zero-volume data", () => {
     const candles = [
       candle(T(0), 9.9, 10.1, 9.8, 10.0, 0),
