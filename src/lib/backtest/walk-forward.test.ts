@@ -219,6 +219,12 @@ describe("runWalkForwardBacktest", () => {
     expect(visibleAtSignalClose.map((candle) => candle.timestamp)).toEqual([day1]);
   });
 
+  it("rejects non-finite signal cutoffs instead of exposing future higher-timeframe candles", () => {
+    const daily = candles(3, Date.UTC(2026, 9, 18));
+    expect(completedHigherTimeframeCandlesAt(daily, Number.POSITIVE_INFINITY, "D1")).toEqual([]);
+    expect(completedHigherTimeframeCandlesAt(daily, Number.NaN, "D1")).toEqual([]);
+  });
+
   it("includes a higher-timeframe candle exactly at its close boundary and excludes later candles", () => {
     const day1 = Date.UTC(2026, 9, 18);
     const day2 = Date.UTC(2026, 9, 19);
