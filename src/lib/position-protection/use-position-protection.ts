@@ -40,6 +40,7 @@ import {
 import type { RealTimeEvent, ProtectionEvent, AlertHistoryEntry, MonitoringStatus } from "./realtime-types";
 import type { ProtectionAlert } from "./types";
 import { evaluateProtection } from "./protection-engine";
+import type { GivebackState } from "./giveback-monitor";
 
 import {
   createAccelerationState,
