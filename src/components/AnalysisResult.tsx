@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -106,6 +107,16 @@ function formatTime(timestamp: number, locale: string): string {
 
 export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
   const { t, tx, txi, locale } = useI18n();
+  const [currentTime, setCurrentTime] = useState(result.timestamp);
+  useEffect(() => {
+    const refresh = () => setCurrentTime(Date.now());
+    const initialRefresh = window.setTimeout(refresh, 0);
+    const interval = window.setInterval(refresh, 60_000);
+    return () => {
+      window.clearTimeout(initialRefresh);
+      window.clearInterval(interval);
+    };
+  }, []);
   const biasConfig = BIAS_CONFIG[result.bias];
   const BiasIcon = biasConfig.icon;
   const completenessConfig = COMPLETENESS_CONFIG[result.dataCompleteness];
@@ -2891,7 +2902,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     .filter((e) => e.status === "upcoming" && e.importance === 3)
                     .slice(0, 4)
                     .map((evt) => {
-                      const hrs = Math.round((evt.datetime - Date.now()) / (1000 * 60 * 60));
+                      const hrs = Math.round((evt.datetime - currentTime) / (1000 * 60 * 60));
                       return (
                         <div key={evt.id} className="bg-red-500/5 border border-red-500/20 rounded p-2">
                           <p className="text-[11px] font-mono font-medium text-foreground">{evt.event}</p>
