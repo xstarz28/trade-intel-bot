@@ -15,10 +15,10 @@ import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
-import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
+import { adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
-import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { ALL_SCAN_HORIZONS, normalizeScanTimeframe, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { buildEquityFundamentalEvidence } from "@/lib/data/universal/equity-evidence";
@@ -33,7 +33,7 @@ import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
-import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
+import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
