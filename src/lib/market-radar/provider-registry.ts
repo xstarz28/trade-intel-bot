@@ -651,7 +651,7 @@ export async function acquireLiveData(
       error: "provider returned null",
       latencyMs: Date.now() - startTime,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument,
       assetClass,
@@ -659,7 +659,7 @@ export async function acquireLiveData(
       snapshot: null,
       provider: adapter.id,
       success: false,
-      error: err?.message ?? "provider error",
+      error: err instanceof Error ? err.message : "provider error",
       latencyMs: Date.now() - startTime,
     };
   }
