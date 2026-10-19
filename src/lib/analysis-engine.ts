@@ -417,19 +417,62 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
   // ── Auto-fetched data path ──
   if (tech && tech.dataPoints >= 14) {
     let score = 0;
+    const parsedPrice = input.marketData?.price?.price ?? Number(input.currentPrice);
+    const price = Number.isFinite(parsedPrice) && parsedPrice > 0 ? parsedPrice : undefined;
 
-    // RSI — momentum context only
-    if (tech.rsi14 !== undefined) {
-      if (tech.rsi14 > 70) score -= 1;
-      else if (tech.rsi14 < 30) score += 1;
+    // RSI — momentum context only. Divergence is one additional observation,
+    // but this entire momentum group remains a conviction modifier.
+    if (Number.isFinite(tech.rsi14)) {
+      if (tech.rsi14! > 70) score -= 1;
+      else if (tech.rsi14! < 30) score += 1;
       if (tech.rsiDivergence === "bullish") score += 1;
       if (tech.rsiDivergence === "bearish") score -= 1;
     }
 
-    // MACD — momentum context only
-    if (tech.macdHistogram !== undefined) {
-      if (tech.macdHistogram > 0) score += 1;
-      else if (tech.macdHistogram < 0) score -= 1;
+    // MACD — histogram already encodes line-vs-signal separation. Do not
+    // score both it and the MACD line/signal as independent evidence.
+    if (Number.isFinite(tech.macdHistogram)) {
+      if (tech.macdHistogram! > 0) score += 1;
+      else if (tech.macdHistogram! < 0) score -= 1;
+    } else if (Number.isFinite(tech.macdLine) && Number.isFinite(tech.macdSignal)) {
+      if (tech.macdLine! > tech.macdSignal!) score += 1;
+      else if (tech.macdLine! < tech.macdSignal!) score -= 1;
+    }
+
+    // Moving averages are correlated trend observations; treat the 50/100/200
+    // relationship as one capped group rather than three separate votes.
+    if (price !== undefined) {
+      const averages = [tech.sma50, tech.sma100, tech.sma200]
+        .filter((value): value is number => Number.isFinite(value) && value! > 0);
+      if (averages.length >= 2) {
+        const above = averages.filter((value) => price > value).length;
+        const below = averages.filter((value) => price < value).length;
+        if (above >= Math.ceil(averages.length * 2 / 3)) score += 1;
+        else if (below >= Math.ceil(averages.length * 2 / 3)) score -= 1;
+      }
+
+      // Session VWAP is a distinct intraday value reference. Missing VWAP is
+      // neutral; the explicit arithmetic-mean fallback is never mislabeled.
+      const vwap = tech.smc?.vwap;
+      if (vwap?.available && vwap.priceLocation === "above_vwap") score += 1;
+      else if (vwap?.available && vwap.priceLocation === "below_vwap") score -= 1;
+
+      // VPVR and TPO value-area location are one market-profile group. Require
+      // available levels to agree, avoiding double-counting two views of
+      // similar price-distribution information.
+      const profileSides: Array<"above" | "below"> = [];
+      const vp = tech.smc?.volumeProfile;
+      const tpo = tech.smc?.tpoProfile;
+      if (vp?.available && Number.isFinite(vp.vah) && Number.isFinite(vp.val)) {
+        if (price > vp.vah!) profileSides.push("above");
+        else if (price < vp.val!) profileSides.push("below");
+      }
+      if (tpo?.available && Number.isFinite(tpo.vah) && Number.isFinite(tpo.val)) {
+        if (price > tpo.vah!) profileSides.push("above");
+        else if (price < tpo.val!) profileSides.push("below");
+      }
+      if (profileSides.length > 0 && profileSides.every((side) => side === "above")) score += 1;
+      else if (profileSides.length > 0 && profileSides.every((side) => side === "below")) score -= 1;
     }
 
     return clampScore(score);
@@ -532,6 +575,36 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     }
     if (fund.profitMargin !== undefined && fund.profitMargin > 0.2) score += 1;
     if (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) score += 1;
+
+    // Correlated equity quality metrics are capped as one group to limit double-counting.
+    let qualityScore = 0;
+    if (fund.pegRatio !== undefined && fund.pegRatio > 0) {
+      if (fund.pegRatio < 1) qualityScore += 1;
+      if (fund.pegRatio > 2.5) qualityScore -= 1;
+    }
+    if (fund.operatingMargin !== undefined) {
+      if (fund.operatingMargin > 0.15) qualityScore += 1;
+      if (fund.operatingMargin < 0) qualityScore -= 1;
+    }
+    if (fund.returnOnEquity !== undefined) {
+      if (fund.returnOnEquity > 0.15) qualityScore += 1;
+      if (fund.returnOnEquity < 0) qualityScore -= 1;
+    }
+    if (fund.returnOnAssets !== undefined) {
+      if (fund.returnOnAssets > 0.05) qualityScore += 1;
+      if (fund.returnOnAssets < 0) qualityScore -= 1;
+    }
+    if (fund.revenueGrowth !== undefined) {
+      if (fund.revenueGrowth > 0.1) qualityScore += 1;
+      if (fund.revenueGrowth < -0.1) qualityScore -= 1;
+    }
+    if (fund.earningsGrowth !== undefined) {
+      if (fund.earningsGrowth > 0.1) qualityScore += 1;
+      if (fund.earningsGrowth < -0.1) qualityScore -= 1;
+    }
+    score += Math.max(-2, Math.min(2, qualityScore));
+    // Forward multiples, price/book and dividend yield remain report-only without
+    // sector comparables or payout-sustainability context.
     // Sector context: stored but NO sector-benchmark provider exists —
     // deliberately unscored rather than synthetically ranked.
   }
@@ -1291,7 +1364,7 @@ function decideTrade(
       reasons.push("Execution book is stale; a fresh quote is required to validate scalp execution.");
     } else {
       const requestedInstrument = input.instrument.toUpperCase().trim()
-        .replace(/[\/_]/g, "-").replace(/\s+/g, "");
+        .replace(/[/_]/g, "-").replace(/\s+/g, "");
       const executionInstrument = ed.instrumentId.toUpperCase().trim();
       if (requestedInstrument !== executionInstrument) {
         reasons.push(
@@ -1350,6 +1423,31 @@ function decideTrade(
       const htfBuyPool = htfPools
         .filter((p) => p.side === "buy_side" && !p.swept && !p.broken && p.level > price)
         .sort((a, b) => a.level - b.level)[0];
+      const fibTargetsLong = [
+        ...(tech?.fibLevels ? [
+          { level: tech.fibLevels.level236, basis: "Fibonacci 23.6% retracement" },
+          { level: tech.fibLevels.level382, basis: "Fibonacci 38.2% retracement" },
+          { level: tech.fibLevels.level500, basis: "Fibonacci 50.0% retracement" },
+          { level: tech.fibLevels.level618, basis: "Fibonacci 61.8% retracement" },
+          { level: tech.fibLevels.level786, basis: "Fibonacci 78.6% retracement" },
+        ].filter(level => Number.isFinite(level.level) && level.level > price).sort((a, b) => a.level - b.level) : []),
+      ];
+      const profileTargetsLong = (() => {
+        const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
+        const candidates: Array<{ level: number; basis: string }> = [];
+        const vp = smc?.volumeProfile;
+        const tpo = smc?.tpoProfile;
+        if (vp?.available) {
+          if (Number.isFinite(vp.poc) && (vp.poc ?? 0) > price) candidates.push({ level: vp.poc!, basis: "VPVR point of control" });
+          if (Number.isFinite(vp.vah) && (vp.vah ?? 0) > price) candidates.push({ level: vp.vah!, basis: "VPVR value-area high" });
+          for (const level of vp.hvn ?? []) if (Number.isFinite(level) && level > price) candidates.push({ level, basis: "VPVR high-volume node" });
+        }
+        if (tpo?.available) {
+          if (Number.isFinite(tpo.poc) && (tpo.poc ?? 0) > price) candidates.push({ level: tpo.poc!, basis: "TPO point of control" });
+          if (Number.isFinite(tpo.vah) && (tpo.vah ?? 0) > price) candidates.push({ level: tpo.vah!, basis: "TPO value-area high" });
+        }
+        return candidates.sort((a, b) => a.level - b.level);
+      })();
       const bullishTargets = [
         ...(buyPoolAbove ? [{
           level: buyPoolAbove.level,
@@ -1359,6 +1457,8 @@ function decideTrade(
           level: htfBuyPool.level,
           basis: "resting buy-side liquidity on " + htfBuyPool.tf + " (" + htfBuyPool.source + ")",
         }] : []),
+        ...profileTargetsLong,
+        ...fibTargetsLong,
         ...swingResistances.filter((level) => level > price).map((level) => ({
           level,
           basis: "nearest market swing high / resistance (structural)",
@@ -1386,12 +1486,19 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? swingResistances[0];
+        // Preserve the nearest relevant opposing liquidity target first. A
+        // farther level must not be selected merely to manufacture a better
+        // R:R; if the nearest target fails the gate, the setup is rejected.
+        tpLevel = buyPoolAbove?.level ?? htfBuyPool?.level ?? profileTargetsLong[0]?.level ?? fibTargetsLong[0]?.level ?? swingResistances[0];
         tpBasis = buyPoolAbove
           ? "resting buy-side liquidity (" + buyPoolAbove.source + ", " + buyPoolAbove.touches + " touches)"
           : htfBuyPool
             ? "HTF target (" + htfBuyPool.tf + " resting buy-side liquidity: " + htfBuyPool.source + ")"
-            : tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
+            : profileTargetsLong[0]
+              ? profileTargetsLong[0].basis
+              : fibTargetsLong[0]
+                ? fibTargetsLong[0].basis
+                : tpLevel !== undefined ? "nearest market swing high / resistance (structural)" : "";
       }
     } else if (bias === "Bearish") {
       stopLevel = swingResistances[0];
@@ -1402,6 +1509,31 @@ function decideTrade(
       const htfSellPool = htfPools
         .filter((p) => p.side === "sell_side" && !p.swept && !p.broken && p.level < price)
         .sort((a, b) => b.level - a.level)[0];
+      const fibTargetsShort = [
+        ...(tech?.fibLevels ? [
+          { level: tech.fibLevels.level236, basis: "Fibonacci 23.6% retracement" },
+          { level: tech.fibLevels.level382, basis: "Fibonacci 38.2% retracement" },
+          { level: tech.fibLevels.level500, basis: "Fibonacci 50.0% retracement" },
+          { level: tech.fibLevels.level618, basis: "Fibonacci 61.8% retracement" },
+          { level: tech.fibLevels.level786, basis: "Fibonacci 78.6% retracement" },
+        ].filter(level => Number.isFinite(level.level) && level.level < price).sort((a, b) => b.level - a.level) : []),
+      ];
+      const profileTargetsShort = (() => {
+        const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
+        const candidates: Array<{ level: number; basis: string }> = [];
+        const vp = smc?.volumeProfile;
+        const tpo = smc?.tpoProfile;
+        if (vp?.available) {
+          if (Number.isFinite(vp.poc) && (vp.poc ?? 0) < price) candidates.push({ level: vp.poc!, basis: "VPVR point of control" });
+          if (Number.isFinite(vp.val) && (vp.val ?? 0) < price) candidates.push({ level: vp.val!, basis: "VPVR value-area low" });
+          for (const level of vp.lvn ?? []) if (Number.isFinite(level) && level < price) candidates.push({ level, basis: "VPVR low-volume node" });
+        }
+        if (tpo?.available) {
+          if (Number.isFinite(tpo.poc) && (tpo.poc ?? 0) < price) candidates.push({ level: tpo.poc!, basis: "TPO point of control" });
+          if (Number.isFinite(tpo.val) && (tpo.val ?? 0) < price) candidates.push({ level: tpo.val!, basis: "TPO value-area low" });
+        }
+        return candidates.sort((a, b) => b.level - a.level);
+      })();
       const bearishTargets = [
         ...(sellPoolBelow ? [{
           level: sellPoolBelow.level,
@@ -1411,6 +1543,8 @@ function decideTrade(
           level: htfSellPool.level,
           basis: "resting sell-side liquidity on " + htfSellPool.tf + " (" + htfSellPool.source + ")",
         }] : []),
+        ...profileTargetsShort,
+        ...fibTargetsShort,
         ...swingSupports.filter((level) => level < price).map((level) => ({
           level,
           basis: "nearest market swing low / support (structural)",
@@ -1435,12 +1569,19 @@ function decideTrade(
           tpBasis += " (adaptive structural target: nearest level meeting minimum R:R within scalping horizon)";
         }
       } else {
-        tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? swingSupports[0];
+        // Preserve the nearest relevant opposing liquidity target first. A
+        // farther level must not be selected merely to manufacture a better
+        // R:R; if the nearest target fails the gate, the setup is rejected.
+        tpLevel = sellPoolBelow?.level ?? htfSellPool?.level ?? profileTargetsShort[0]?.level ?? fibTargetsShort[0]?.level ?? swingSupports[0];
         tpBasis = sellPoolBelow
           ? "resting sell-side liquidity (" + sellPoolBelow.source + ", " + sellPoolBelow.touches + " touches)"
           : htfSellPool
             ? "HTF target (" + htfSellPool.tf + " resting sell-side liquidity: " + htfSellPool.source + ")"
-            : tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
+            : profileTargetsShort[0]
+              ? profileTargetsShort[0].basis
+              : fibTargetsShort[0]
+                ? fibTargetsShort[0].basis
+                : tpLevel !== undefined ? "nearest market swing low / support (structural)" : "";
       }
     }
 
@@ -1775,6 +1916,69 @@ function decideTrade(
       }
     }
 
+    // ── LAYER: Market Profile confluence (TPO + VPVR, cap ±5).
+    // TPO and VPVR are related views of the same OHLCV window, so they are
+    // grouped into ONE capped layer to avoid double-counting correlated data.
+    // They are context only; neither profile can create/flip core bias alone.
+    {
+      const smc = isUsableSmc(tech?.smc) ? tech!.smc : undefined;
+      const vp = smc?.volumeProfile;
+      const tpo = smc?.tpoProfile;
+      const profiles = [
+        ...(vp?.available ? [{ source: "VPVR", poc: vp.poc, vah: vp.vah, val: vp.val }] : []),
+        ...(tpo?.available ? [{ source: "TPO", poc: tpo.poc, vah: tpo.vah, val: tpo.val }] : []),
+      ];
+      let profileScore = 0;
+      let profileEvidence = "TPO/VPVR unavailable";
+      if (profiles.length > 0 && Number.isFinite(price) && price > 0) {
+        // Count each profile's POC only once per method; value-area edges add
+        // limited context when price is accepted outside the value area.
+        let pocVotes = 0;
+        let valueAreaVotes = 0;
+        for (const profile of profiles) {
+          if (Number.isFinite(profile.poc)) {
+            const side = price > profile.poc! ? 1 : price < profile.poc! ? -1 : 0;
+            if (side !== 0) pocVotes += side;
+          }
+          if (biasSign === 1 && Number.isFinite(profile.vah) && price > profile.vah!) valueAreaVotes += 1;
+          if (biasSign === -1 && Number.isFinite(profile.val) && price < profile.val!) valueAreaVotes += 1;
+        }
+        const pocAgreement = Math.sign(pocVotes) === biasSign && pocVotes !== 0;
+        const pocConflict = Math.sign(pocVotes) === -biasSign && pocVotes !== 0;
+        profileScore = (pocAgreement ? 3 : pocConflict ? -3 : 0) + Math.min(2, valueAreaVotes * 2);
+        profileScore = Math.max(-5, Math.min(5, profileScore));
+        profileEvidence = profiles.map(p => p.source + " POC " + (p.poc?.toFixed(4) ?? "n/a") +
+          " / VA " + (p.val?.toFixed(4) ?? "n/a") + "–" + (p.vah?.toFixed(4) ?? "n/a")).join("; ");
+      }
+      s += recordLayer("TPO + VPVR", profileScore, 5, profileEvidence);
+    }
+
+    // ── LAYER: Moving-average regime (cap ±4) — confirmation only.
+    // MAs are correlated trend filters, so all available periods share one cap.
+    // They may confirm/weaken the structural thesis but never create core bias.
+    {
+      const averages = [
+        { name: "SMA50", value: tech?.sma50 },
+        { name: "SMA100", value: tech?.sma100 },
+        { name: "SMA200", value: tech?.sma200 },
+      ].filter((item): item is { name: string; value: number } =>
+        typeof item.value === "number" && Number.isFinite(item.value) && item.value > 0
+      );
+      const votes = averages.reduce((sum, item) =>
+        sum + (price > item.value ? 1 : price < item.value ? -1 : 0), 0);
+      const contribution = votes === 0 ? 0 :
+        Math.sign(votes) === biasSign ? Math.min(4, Math.abs(votes) * 2) :
+        -Math.min(4, Math.abs(votes) * 2);
+      s += recordLayer(
+        "Moving Averages",
+        contribution,
+        4,
+        averages.length
+          ? averages.map(item => `${item.name} ${item.value.toFixed(4)} (${price > item.value ? "price above" : price < item.value ? "price below" : "price at"})`).join("; ")
+          : "SMA50/100/200 unavailable",
+      );
+    }
+
     // ── LAYER: VWAP location context (cap +3) — never standalone.
     {
       const vw = tech?.smc?.vwap;
@@ -1803,6 +2007,94 @@ function decideTrade(
         styleProfile.fundamentalLayerCap,
         breakdown.fundamental === 0 ? "fundamental evidence neutral/unavailable" : "macro/news/calendar agreement",
       );
+    }
+
+    // ── LAYER: asset-specific structured fundamentals (cap ±6).
+    // Consume only verified, fresh/delayed evidence for the exact instrument.
+    // Derivatives, macro/rates, positioning and technical categories are excluded
+    // where already represented by existing layers. Dependency groups are
+    // deduplicated; conflicting items inside one group cancel rather than stack.
+    {
+      type StructuredEvidence = {
+        source: string;
+        category: string;
+        direction: "SUPPORTING" | "CONFLICTING";
+        strength: "STRONG" | "MODERATE" | "WEAK";
+        quality: "VERIFIED";
+        freshness: "FRESH" | "DELAYED";
+        dependencyGroup: string;
+        providerAvailable: boolean;
+      };
+      const normalizeInstrument = (value: unknown) =>
+    typeof value === "string" ? value.toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
+      const requestedInstrument = normalizeInstrument(input.instrument);
+      const eligible = (item: {
+        direction: string; strength: string; quality: string; freshness: string;
+        dependencyGroup: string; providerAvailable: boolean;
+      }) => item.providerAvailable && item.quality === "VERIFIED" &&
+        (item.freshness === "FRESH" || item.freshness === "DELAYED") &&
+        (item.direction === "SUPPORTING" || item.direction === "CONFLICTING") &&
+        (item.strength === "STRONG" || item.strength === "MODERATE" || item.strength === "WEAK") &&
+        !!item.dependencyGroup;
+
+      const structured: StructuredEvidence[] = [];
+      const universal = input.universalIntelligenceContext;
+      if (requestedInstrument && universal && normalizeInstrument(universal.instrument) === requestedInstrument) {
+        for (const item of universal.evidence ?? []) {
+          if (normalizeInstrument(item.instrument) !== requestedInstrument || item.assetClass !== universal.assetClass) continue;
+          if (!["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND"].includes(item.category)) continue;
+          if (eligible(item)) structured.push({
+            source: item.source, category: item.category,
+            direction: item.direction as StructuredEvidence["direction"],
+            strength: item.strength as StructuredEvidence["strength"],
+            quality: "VERIFIED", freshness: item.freshness as StructuredEvidence["freshness"],
+            dependencyGroup: item.dependencyGroup, providerAvailable: item.providerAvailable,
+          });
+        }
+      }
+
+      const crypto = input.cryptoIntelligenceContext;
+      if (requestedInstrument && input.instrumentType === "crypto" && crypto &&
+        normalizeInstrument(crypto.instrument) === requestedInstrument) {
+        for (const item of crypto.evidence ?? []) {
+          if (!["DEFI_FUNDAMENTAL", "TOKENOMICS", "ON_CHAIN", "SUPPLY_DYNAMICS"].includes(item.category)) continue;
+          if (eligible(item)) structured.push({
+            source: item.source, category: item.category,
+            direction: item.direction as StructuredEvidence["direction"],
+            strength: item.strength as StructuredEvidence["strength"],
+            quality: "VERIFIED", freshness: item.freshness as StructuredEvidence["freshness"],
+            dependencyGroup: item.dependencyGroup, providerAvailable: item.providerAvailable,
+          });
+        }
+      }
+
+      const groups = new Map<string, number[]>();
+      const strengthValue = (strength: StructuredEvidence["strength"]) =>
+        strength === "STRONG" ? 3 : strength === "MODERATE" ? 2 : 1;
+      for (const item of structured) {
+        // Evidence direction is normalized to the long-side thesis by the
+        // provider adapters (SUPPORTING = bullish, CONFLICTING = bearish).
+        // Re-orient it to the already-established structural bias here; a
+        // bullish fundamental must reduce, not inflate, conviction for a short.
+        const longSideDirection = item.direction === "SUPPORTING" ? 1 : -1;
+        const signed = longSideDirection * biasSign * strengthValue(item.strength);
+        groups.set(item.dependencyGroup, [...(groups.get(item.dependencyGroup) ?? []), signed]);
+      }
+      let raw = 0;
+      let conflictedGroups = 0;
+      for (const values of groups.values()) {
+        const signs = new Set(values.map(Math.sign));
+        if (signs.size > 1) {
+          conflictedGroups++;
+          continue;
+        }
+        raw += values.reduce((best, value) => Math.abs(value) > Math.abs(best) ? value : best, 0);
+      }
+      const contribution = Math.max(-6, Math.min(6, raw));
+      const reason = structured.length === 0
+        ? "no matching verified, fresh asset-specific fundamental evidence"
+        : `${structured.length} eligible evidence items across ${groups.size} dependency groups; ${conflictedGroups} conflicted groups excluded`;
+      s += recordLayer("Asset-Specific Fundamentals", contribution, 6, reason);
     }
 
     // ── LAYER: positioning (cap ±12)
@@ -2137,16 +2429,54 @@ function generateTechnicalSummary(
       parts.push(`Key resistance: ${tech.resistanceLevels.map((r) => r.toFixed(4)).join(", ")}.`);
     }
 
+    // Moving averages — display the actual calculated values and their
+    // position relative to the observed quote, not just the conviction score.
+    const referencePrice = md?.price.price ??
+      (typeof input.currentPrice === "string" ? Number.parseFloat(input.currentPrice) : undefined);
+    const movingAverages = [
+      { name: "SMA50", value: tech.sma50 },
+      { name: "SMA100", value: tech.sma100 },
+      { name: "SMA200", value: tech.sma200 },
+    ].filter((item): item is { name: string; value: number } =>
+      typeof item.value === "number" && Number.isFinite(item.value) && item.value > 0
+    );
+    if (movingAverages.length > 0) {
+      parts.push(
+        `Moving averages: ${movingAverages.map((item) =>
+          `${item.name} ${item.value.toFixed(4)}${Number.isFinite(referencePrice) && (referencePrice ?? 0) > 0
+            ? ` (price ${referencePrice! > item.value ? "above" : referencePrice! < item.value ? "below" : "at"} the average)`
+            : ""}`
+        ).join("; ")}. Confirmation context only, not a standalone signal.`,
+      );
+    } else {
+      parts.push("Moving averages unavailable: insufficient valid candle history for SMA50/100/200.");
+    }
+
+    // Fibonacci retracement levels are structural reference zones; they are
+    // never treated as independent evidence or used to manufacture direction.
+    if (tech.fibLevels && Object.values(tech.fibLevels).every((level) => Number.isFinite(level))) {
+      const fib = tech.fibLevels;
+      parts.push(
+        `Fibonacci retracement levels: 23.6% ${fib.level236.toFixed(4)}, 38.2% ${fib.level382.toFixed(4)}, 50.0% ${fib.level500.toFixed(4)}, 61.8% ${fib.level618.toFixed(4)}, 78.6% ${fib.level786.toFixed(4)}; reference zones only.`,
+      );
+    }
+
     // Volume
     if (tech.volumeTrend !== "unknown") {
       parts.push(`Volume trend: ${tech.volumeTrend}.`);
     }
+    if (typeof tech.avgVolume20 === "number" && Number.isFinite(tech.avgVolume20)) {
+      parts.push(`20-candle average volume: ${tech.avgVolume20.toFixed(2)}.`);
+    }
 
-    // ATR
-    if (tech.atr14 !== undefined) {
+    // ATR and latest candle range
+    if (typeof tech.atr14 === "number" && Number.isFinite(tech.atr14) && tech.atr14 > 0) {
       parts.push(
         `ATR(14): ${tech.atr14.toFixed(4)} — volatility ${tech.atr14 > 0.02 * (md?.price.price ?? 1) ? "elevated" : "normal"}.`,
       );
+    }
+    if (typeof tech.dailyRange === "number" && Number.isFinite(tech.dailyRange)) {
+      parts.push(`Latest candle range: ${tech.dailyRange.toFixed(4)}.`);
     }
 
     // Cross-asset context (Phase 5) — measured from actual candles only.
@@ -2154,7 +2484,7 @@ function generateTechnicalSummary(
     if (xa) {
       if (xa.available && xa.correlation !== undefined) {
         parts.push(
-          `Cross-asset: ${xa.comparatorSymbol} correlation ${(xa.correlation * 100).toFixed(0)}% over ${xa.sampleSize} returns (${xa.directionalContext ?? "weak"}) — computed from actual candles, not assumed.`,
+          `Cross-asset: ${xa.comparatorSymbol} correlation coefficient ${xa.correlation.toFixed(2)} over ${xa.sampleSize} returns (${xa.directionalContext ?? "weak"}) — computed from actual candles, not assumed.`,
         );
       } else if (xa.unavailableReason) {
         parts.push(`Cross-asset context unavailable: ${xa.unavailableReason}`);
@@ -2230,14 +2560,25 @@ function generateTechnicalSummary(
         parts.push(`VWAP unavailable: ${smcInfo.vwap.unavailableReason}`);
       }
 
-      // Volume profile
+      // VPVR: levels are approximate OHLCV-range allocations, not exchange
+      // trade-level volume or proof of institutional orders.
       if (smcInfo.volumeProfile.available) {
         const vp = smcInfo.volumeProfile;
         parts.push(
-          `Volume profile — POC ${vp.poc?.toFixed(4)}, VAH ${vp.vah?.toFixed(4)}, VAL ${vp.val?.toFixed(4)}.`,
+          `Volume profile — POC ${vp.poc?.toFixed(4)}, VAH ${vp.vah?.toFixed(4)}, VAL ${vp.val?.toFixed(4)} (VPVR OHLCV approximation)${vp.hvn?.length ? `, HVN ${vp.hvn.slice(0, 3).map(v => v.toFixed(4)).join(", ")}` : ""}${vp.lvn?.length ? `, LVN ${vp.lvn.slice(0, 3).map(v => v.toFixed(4)).join(", ")}` : ""}. ${vp.approximation ?? "Volume-profile levels are contextual, not direct evidence of institutional activity."}`,
         );
       } else if (smcInfo.volumeProfile.unavailableReason) {
-        parts.push(`Volume profile unavailable: ${smcInfo.volumeProfile.unavailableReason}`);
+        parts.push(`Volume profile unavailable (VPVR): ${smcInfo.volumeProfile.unavailableReason}`);
+      }
+
+      // TPO: time spent at price (distinct time blocks), not traded volume.
+      if (smcInfo.tpoProfile?.available) {
+        const tpo = smcInfo.tpoProfile;
+        parts.push(
+          `TPO market profile — POC ${tpo.poc?.toFixed(4)}, VAH ${tpo.vah?.toFixed(4)}, VAL ${tpo.val?.toFixed(4)}; ${tpo.blockMinutes}-minute blocks, value-area coverage ${tpo.valueAreaPercent.toFixed(2)}.`,
+        );
+      } else if (smcInfo.tpoProfile?.unavailableReason) {
+        parts.push(`TPO profile unavailable: ${smcInfo.tpoProfile.unavailableReason}`);
       }
     }
 
@@ -2249,12 +2590,17 @@ function generateTechnicalSummary(
     }
 
     // Secondary momentum context — explicitly non-decisive
-    if (tech.rsi14 !== undefined) {
+    if (typeof tech.rsi14 === "number" && Number.isFinite(tech.rsi14) && tech.rsi14 >= 0 && tech.rsi14 <= 100) {
       const rsiLabel = tech.rsi14 > 70 ? "overbought" : tech.rsi14 < 30 ? "oversold" : "neutral";
-      parts.push(`RSI(14): ${tech.rsi14} (${rsiLabel}) — secondary context only.`);
+      parts.push(`RSI(14): ${tech.rsi14} (${rsiLabel})${tech.rsiDivergence && tech.rsiDivergence !== "none" ? `; ${tech.rsiDivergence} divergence detected` : ""} — secondary context only.`);
     }
-    if (tech.macdHistogram !== undefined) {
-      parts.push(`MACD histogram: ${tech.macdHistogram > 0 ? "positive" : "negative"} — secondary context only.`);
+    if (typeof tech.macdHistogram === "number" && Number.isFinite(tech.macdHistogram)) {
+      const macdParts = [
+        Number.isFinite(tech.macdLine) ? `line ${tech.macdLine!.toFixed(4)}` : undefined,
+        Number.isFinite(tech.macdSignal) ? `signal ${tech.macdSignal!.toFixed(4)}` : undefined,
+        `histogram ${tech.macdHistogram.toFixed(4)} (${tech.macdHistogram > 0 ? "positive" : tech.macdHistogram < 0 ? "negative" : "neutral"})`,
+      ].filter(Boolean);
+      parts.push(`MACD(12,26,9): ${macdParts.join(", ")} — secondary context only.`);
     }
   } else if (input.currentPrice && input.recentHigh && input.recentLow) {
     if (trendScore >= 1) {
@@ -2323,13 +2669,123 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   if (fund && fund.available && input.instrumentType === "stock") {
     parts.push(`Fundamentals — ${fund.name || fund.symbol}:`);
     if (fund.peRatio !== undefined) parts.push(`P/E: ${fund.peRatio.toFixed(1)}`);
+    if (fund.forwardPeRatio !== undefined) parts.push(`Forward P/E: ${fund.forwardPeRatio.toFixed(1)}`);
+    if (fund.pegRatio !== undefined) parts.push(`PEG: ${fund.pegRatio.toFixed(2)}`);
+    if (fund.priceToSalesRatio !== undefined) parts.push(`Price/sales (TTM): ${fund.priceToSalesRatio.toFixed(2)}`);
+    if (fund.priceToBook !== undefined) parts.push(`Price/book: ${fund.priceToBook.toFixed(2)}`);
+    if (fund.evToRevenue !== undefined) parts.push(`EV/revenue: ${fund.evToRevenue.toFixed(2)}`);
+    if (fund.evToEbitda !== undefined) parts.push(`EV/EBITDA: ${fund.evToEbitda.toFixed(2)}`);
     if (fund.earningsPerShare !== undefined) parts.push(`EPS: $${fund.earningsPerShare.toFixed(2)}`);
-    if (fund.profitMargin !== undefined) parts.push(`Margin: ${(fund.profitMargin * 100).toFixed(1)}%`);
+    if (fund.dilutedEPS !== undefined) parts.push(`Diluted EPS (TTM): $${fund.dilutedEPS.toFixed(2)}`);
+    if (fund.profitMargin !== undefined) parts.push(`Profit margin: ${(fund.profitMargin * 100).toFixed(1)}%`);
+    if (fund.operatingMargin !== undefined) parts.push(`Operating margin: ${(fund.operatingMargin * 100).toFixed(1)}%`);
+    if (fund.returnOnAssets !== undefined) parts.push(`ROA: ${(fund.returnOnAssets * 100).toFixed(1)}%`);
+    if (fund.returnOnEquity !== undefined) parts.push(`ROE: ${(fund.returnOnEquity * 100).toFixed(1)}%`);
+    if (fund.revenueGrowth !== undefined) parts.push(`Quarterly revenue growth YoY: ${(fund.revenueGrowth * 100).toFixed(1)}%`);
+    if (fund.earningsGrowth !== undefined) parts.push(`Quarterly earnings growth YoY: ${(fund.earningsGrowth * 100).toFixed(1)}%`);
+    if (fund.dividendYield !== undefined) parts.push(`Dividend yield: ${(fund.dividendYield * 100).toFixed(2)}%`);
     if (fund.marketCap !== undefined) parts.push(`Mkt Cap: $${(fund.marketCap / 1e9).toFixed(1)}B`);
+    if (fund.revenueTTM !== undefined) parts.push(`Revenue TTM: $${(fund.revenueTTM / 1e9).toFixed(2)}B`);
+    if (fund.grossProfitTTM !== undefined) parts.push(`Gross profit TTM: $${(fund.grossProfitTTM / 1e9).toFixed(2)}B`);
+    if (fund.sharesOutstanding !== undefined) parts.push(`Shares outstanding: ${(fund.sharesOutstanding / 1e9).toFixed(2)}B`);
+    if (fund.beta !== undefined) parts.push(`Beta: ${fund.beta.toFixed(2)}`);
+    if (fund.fiftyDayMovingAverage !== undefined) parts.push(`Provider 50-day average: ${fund.fiftyDayMovingAverage.toFixed(2)}`);
+    if (fund.twoHundredDayMovingAverage !== undefined) parts.push(`Provider 200-day average: ${fund.twoHundredDayMovingAverage.toFixed(2)}`);
+    if (fund.fiftyTwoWeekLow !== undefined || fund.fiftyTwoWeekHigh !== undefined) {
+      parts.push(`52-week range: ${fund.fiftyTwoWeekLow !== undefined ? fund.fiftyTwoWeekLow.toFixed(2) : "n/a"}–${fund.fiftyTwoWeekHigh !== undefined ? fund.fiftyTwoWeekHigh.toFixed(2) : "n/a"}`);
+    }
+    if (fund.analystTargetPrice !== undefined) parts.push(`Analyst target estimate: $${fund.analystTargetPrice.toFixed(2)} (provider estimate, not a guarantee)`);
     if (fund.sector) parts.push(`Sector: ${fund.sector} (sector-relative strength UNAVAILABLE — no benchmark provider)`);
-    if (fund.latestEarnings?.date) parts.push(`Latest earnings: ${fund.latestEarnings.date}`);
+    if (fund.latestEarnings?.date) {
+      parts.push(`Latest earnings: ${fund.latestEarnings.date}`);
+      if (fund.latestEarnings.eps !== undefined) parts.push(`Reported EPS: $${fund.latestEarnings.eps.toFixed(2)}`);
+      if (fund.latestEarnings.revenue !== undefined) parts.push(`Reported revenue: $${(fund.latestEarnings.revenue / 1e9).toFixed(2)}B`);
+    }
   } else if (fund && !fund.available && fund.unavailableReason) {
     parts.push(fund.unavailableReason);
+  }
+
+  // Explain the same verified asset-specific evidence that the bounded
+  // conviction layer may consume. Never surface stale/unverified evidence as
+  // if it were scored, and deduplicate correlated observations by dependency.
+  type FundamentalEvidenceSummaryItem = {
+    source: string;
+    category: string;
+    direction: "SUPPORTING" | "CONFLICTING";
+    strength: "STRONG" | "MODERATE" | "WEAK";
+    dependencyGroup: string;
+  };
+  const structuredEvidence: FundamentalEvidenceSummaryItem[] = [];
+  const normalizeInstrument = (value: unknown) =>
+    typeof value === "string" ? value.toUpperCase().replace(/[^A-Z0-9]/g, "") : "";
+  const requestedInstrument = normalizeInstrument(input.instrument);
+  const acceptedEvidence = (item: {
+    category: string; direction: string; strength: string; quality: string;
+    freshness: string; dependencyGroup: string; providerAvailable: boolean;
+  }, categories: string[]) =>
+    categories.includes(item.category) &&
+    item.providerAvailable &&
+    item.quality === "VERIFIED" &&
+    (item.freshness === "FRESH" || item.freshness === "DELAYED") &&
+    (item.direction === "SUPPORTING" || item.direction === "CONFLICTING") &&
+    (item.strength === "STRONG" || item.strength === "MODERATE" || item.strength === "WEAK") &&
+    !!item.dependencyGroup;
+
+  const universalEvidence = input.universalIntelligenceContext;
+  if (requestedInstrument && universalEvidence && normalizeInstrument(universalEvidence.instrument) === requestedInstrument) {
+    for (const item of universalEvidence.evidence ?? []) {
+      if (normalizeInstrument(item.instrument) !== requestedInstrument || item.assetClass !== universalEvidence.assetClass) continue;
+      if (acceptedEvidence(item, ["FUNDAMENTALS", "VALUATION", "EARNINGS", "SUPPLY_DEMAND"])) {
+        structuredEvidence.push({
+          source: item.source, category: item.category,
+          direction: item.direction as FundamentalEvidenceSummaryItem["direction"],
+          strength: item.strength as FundamentalEvidenceSummaryItem["strength"],
+          dependencyGroup: item.dependencyGroup,
+        });
+      }
+    }
+  }
+
+  const cryptoEvidence = input.cryptoIntelligenceContext;
+  if (requestedInstrument && input.instrumentType === "crypto" && cryptoEvidence &&
+      normalizeInstrument(cryptoEvidence.instrument) === requestedInstrument) {
+    for (const item of cryptoEvidence.evidence ?? []) {
+      if (acceptedEvidence(item, ["DEFI_FUNDAMENTAL", "TOKENOMICS", "ON_CHAIN", "SUPPLY_DYNAMICS"])) {
+        structuredEvidence.push({
+          source: item.source, category: item.category,
+          direction: item.direction as FundamentalEvidenceSummaryItem["direction"],
+          strength: item.strength as FundamentalEvidenceSummaryItem["strength"],
+          dependencyGroup: item.dependencyGroup,
+        });
+      }
+    }
+  }
+
+  if (structuredEvidence.length > 0) {
+    const groups = new Map<string, FundamentalEvidenceSummaryItem[]>();
+    for (const item of structuredEvidence) {
+      groups.set(item.dependencyGroup, [...(groups.get(item.dependencyGroup) ?? []), item]);
+    }
+    const selected: FundamentalEvidenceSummaryItem[] = [];
+    let conflictedGroups = 0;
+    const strengthRank = (value: FundamentalEvidenceSummaryItem["strength"]) =>
+      value === "STRONG" ? 3 : value === "MODERATE" ? 2 : 1;
+    for (const items of groups.values()) {
+      if (new Set(items.map(item => item.direction)).size > 1) {
+        conflictedGroups++;
+        continue;
+      }
+      selected.push([...items].sort((a, b) => strengthRank(b.strength) - strengthRank(a.strength))[0]);
+    }
+    const evidenceText = selected.slice(0, 6).map(item =>
+      `${item.source}: ${item.category} ${item.direction.toLowerCase()} (${item.strength.toLowerCase()})`
+    );
+    parts.push(
+      `Verified asset-specific fundamental evidence: ${evidenceText.join("; ") || "none after conflict checks"}.${selected.length > 6 ? ` ${selected.length - 6} additional independent dependency groups omitted from this summary.` : ""}`,
+    );
+    if (conflictedGroups > 0) {
+      parts.push(`${conflictedGroups} conflicting fundamental dependency group(s) excluded from scoring.`);
+    }
   }
 
   if (sentiment && sentiment.confidence !== "unavailable") {

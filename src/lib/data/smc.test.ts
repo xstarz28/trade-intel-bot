@@ -310,6 +310,32 @@ describe("computeVwap", () => {
     expect(v.priceOnlyFallback?.method).toBe("arithmetic_mean_typical_price");
     expect(v.priceOnlyFallback?.sessionMean).toBeCloseTo(1.5, 6);
   });
+
+  it("rejects negative volume instead of calculating a misleading VWAP", () => {
+    const candles = [
+      candle(T(0), 99, 101, 98, 100, 10),
+      candle(T(1), 100, 102, 99, 101, -2),
+    ];
+    const v = computeVwap(candles);
+    expect(v.available).toBe(false);
+    expect(v.unavailableReason).toContain("Invalid volume");
+    expect(v.priceLocation).toBe("unavailable");
+  });
+
+  it("does not mix the prior month into the current UTC session", () => {
+    const previousMonth = Date.UTC(2026, 8, 16, 10, 0, 0);
+    const currentMonth = Date.UTC(2026, 9, 16, 10, 0, 0);
+    const candles = [
+      candle(previousMonth, 999, 1001, 999, 1000, 1000),
+      candle(currentMonth, 9, 11, 9, 10, 1),
+    ];
+    const v = computeVwap(candles);
+
+    expect(v.available).toBe(true);
+    // Both timestamps have UTC day-of-month 16, but only the current session
+    // belongs in VWAP; a day-number-only check incorrectly included price 1000.
+    expect(v.sessionVwap).toBeCloseTo(10, 6);
+  });
 });
 
 // ── Volume Profile ────────────────────────────────────────────────
@@ -395,6 +421,15 @@ describe("computeSmcContext", () => {
     expect(Array.isArray(ctx.liquidityPools)).toBe(true);
     expect(ctx.vwap.available).toBe(true);
     expect(ctx.volumeProfile.available).toBe(true);
+  });
+
+  it("does not label flat equal highs and lows as a bearish trend", () => {
+    const flat = Array.from({ length: 40 }, (_, i) =>
+      candle(T(i), 100, 101, 99, 100),
+    );
+    const ctx = computeSmcContext(flat, "H1");
+    expect(ctx.internalExternal.external.structure).toBe("range");
+    expect(ctx.internalExternal.internal.structure).toBe("range");
   });
 
   it("flags internal/external conflict when minor structure opposes major", () => {
