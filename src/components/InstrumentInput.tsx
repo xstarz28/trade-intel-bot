@@ -245,10 +245,6 @@ export function InstrumentInput({
     commitForm((prev) => ({ ...prev, [key]: value }));
   }, [commitForm]);
 
-  const handleQuickSelect = useCallback((symbol: string, type: InstrumentType) => {
-    commitForm((prev) => ({ ...prev, instrument: symbol, instrumentType: type }));
-  }, [commitForm]);
-
   const submitAnalysis = useCallback(() => {
     const currentForm = formRef.current;
     const typedInstrument = manualSearchQuery.trim();
