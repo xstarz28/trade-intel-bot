@@ -270,11 +270,16 @@ async function fetchCandles(
         high: parseFloat(candle.high),
         low: parseFloat(candle.low),
         close: parseFloat(candle.close),
-        volume: parseFloat(candle.volume) || 0,
+        volume: candle.volume == null || candle.volume.trim() === "" ? 0 : parseFloat(candle.volume),
       })).filter((candle) =>
-        Number.isFinite(candle.timestamp) &&
-        Number.isFinite(candle.open) && Number.isFinite(candle.high) &&
-        Number.isFinite(candle.low) && Number.isFinite(candle.close),
+        Number.isFinite(candle.timestamp) && candle.timestamp > 0 &&
+        Number.isFinite(candle.open) && candle.open > 0 &&
+        Number.isFinite(candle.high) && candle.high > 0 &&
+        Number.isFinite(candle.low) && candle.low > 0 &&
+        Number.isFinite(candle.close) && candle.close > 0 &&
+        Number.isFinite(candle.volume) && candle.volume >= 0 &&
+        candle.high >= Math.max(candle.open, candle.close, candle.low) &&
+        candle.low <= Math.min(candle.open, candle.close, candle.high),
       );
       if (normalized.length === 0) throw new Error("provider returned no valid OHLCV candles");
 
