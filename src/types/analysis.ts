@@ -119,13 +119,12 @@ export interface AnalysisInput {
   // evidence; never presented as live market data.
   okxSpecData?: import("@/lib/risk/okx-spec").OkxSpecData;
   // ── Phase 41: Crypto intelligence context (derivatives, DeFi fundamentals, tokenomics).
-  // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
-  // or actionability. Absent for non-crypto instruments.
+  // Verified, fresh asset-specific DeFi/tokenomics/on-chain evidence may adjust the
+  // capped conviction confirmation layer only; it cannot create/flip core bias or bypass gates.
   cryptoIntelligenceContext?: import("@/lib/data/crypto/types").CryptoIntelligenceContext;
   // ── Phase 44: Universal multi-asset intelligence context.
-  // Informational only: does not modify bias, conviction, gates, trade plan, recommendation,
-  // or actionability. Wraps asset-class-specific intelligence (forex, equity, commodity, cross-asset)
-  // into a common interface for the analysis engine.
+  // Verified, fresh asset-specific fundamentals/valuation/earnings/supply-demand evidence may
+  // adjust the capped conviction confirmation layer only; it cannot create/flip core bias or bypass gates.
   universalIntelligenceContext?: import("@/lib/data/universal/types").UniversalIntelligenceContext;
   // ── Phase 3B: risk model inputs (all optional; sizing stays unavailable
   // unless every required piece is genuinely provided) ──
