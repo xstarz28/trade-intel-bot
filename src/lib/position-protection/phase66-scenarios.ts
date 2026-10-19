@@ -9,7 +9,6 @@
 
 import type { PositionContext, AlertSeverity } from "./types";
 import type { MarketEvidence } from "./thesis-health";
-import type { RealTimeEvent } from "./realtime-types";
 import { evaluateProtection } from "./protection-engine";
 import {
   createMonitoringState,
