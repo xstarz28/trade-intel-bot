@@ -16,16 +16,9 @@ import type {
   AssetClass,
   CanonicalInstrument,
   DataCapability,
-  EvidenceCategory,
-  EvidenceDirection,
   EvidenceQuality,
-  EvidenceStrength,
   FreshnessState,
-  InstrumentSubType,
-  ProviderProfile,
   ProviderRoute,
-  Region,
-  Exchange,
   UniversalEvidenceItem,
 } from "./types";
 
