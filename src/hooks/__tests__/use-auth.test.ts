@@ -104,14 +104,21 @@ describe("useAuth — three-phase state machine", () => {
     expect(result.current.user).toEqual({ name: "Gilfan" });
   });
 
-  it("resolves to 'unauthenticated' when not authenticated", () => {
-    const result = runPhaseSequence([
-      { authLoading: false, authenticated: false, user: null },
-    ]);
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.phase).toBe("unauthenticated");
-    expect(result.current.isAuthenticated).toBe(false);
-    expect(result.current.user).toBeNull();
+  it("resolves to 'unauthenticated' after the initial session grace period", () => {
+    vi.useFakeTimers();
+    try {
+      const result = runPhaseSequence([
+        { authLoading: false, authenticated: false, user: null },
+      ]);
+      expect(result.current.isLoading).toBe(true);
+      act(() => vi.advanceTimersByTime(2000));
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.phase).toBe("unauthenticated");
+      expect(result.current.isAuthenticated).toBe(false);
+      expect(result.current.user).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not immediately log out during a transient auth token gap", () => {
