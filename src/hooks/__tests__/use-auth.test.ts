@@ -105,6 +105,18 @@ describe("useAuth — three-phase state machine", () => {
     expect(result.current.user).toBeNull();
   });
 
+  it("keeps an authenticated session through a brief token-state gap", () => {
+    const result = runPhaseSequence([
+      { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+      // Some provider refresh/callback transitions can briefly report false.
+      { authLoading: false, authenticated: false, user: undefined },
+    ]);
+
+    // A transient false state must not immediately redirect to the login page.
+    expect(result.current.phase).toBe("authenticated");
+    expect(result.current.isAuthenticated).toBe(true);
+  });
+
   it("simulates a full reload → restore cycle", () => {
     const result = runPhaseSequence([
       // Phase 1: initial loading (app just mounted)
