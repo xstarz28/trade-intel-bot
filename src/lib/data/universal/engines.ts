@@ -20,6 +20,7 @@
 
 import type {
   AssetClass,
+  DependencyGroup,
   EvidenceCategory,
   EvidenceDirection,
   EvidenceQuality,
@@ -58,7 +59,7 @@ function buildEvidence(params: {
   strength: EvidenceStrength;
   quality: EvidenceQuality;
   freshness: FreshnessState;
-  dependencyGroup: string;
+  dependencyGroup: DependencyGroup;
   explanation: string;
   providerAvailable: boolean;
   assetClass: AssetClass;
@@ -74,7 +75,7 @@ function buildEvidence(params: {
     strength: params.strength,
     quality: params.quality,
     freshness: params.freshness,
-    dependencyGroup: params.dependencyGroup as any,
+    dependencyGroup: params.dependencyGroup,
     explanation: params.explanation,
     providerAvailable: params.providerAvailable,
     assetClass: params.assetClass,
@@ -98,7 +99,7 @@ function buildEvidence(params: {
 function buildUnavailableEvidence(params: {
   source: string;
   category: EvidenceCategory;
-  dependencyGroup: string;
+  dependencyGroup: DependencyGroup;
   assetClass: AssetClass;
   instrument: string;
   reason: string;
@@ -111,7 +112,7 @@ function buildUnavailableEvidence(params: {
     strength: "UNKNOWN",
     quality: "UNAVAILABLE",
     freshness: "UNAVAILABLE",
-    dependencyGroup: params.dependencyGroup as any,
+    dependencyGroup: params.dependencyGroup,
     explanation: `${params.source}: ${params.reason}`,
     providerAvailable: false,
     assetClass: params.assetClass,
