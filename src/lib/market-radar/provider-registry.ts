@@ -15,17 +15,13 @@
 import type { AssetClass } from "@/lib/data/universal/types";
 import {
   executeLiveRequest,
-  type LiveRequestParams,
-  type LiveRequestResult,
   type Transport,
 } from "@/lib/data/universal/live/client";
 import {
   checkCredentials,
   type EnvReader,
 } from "@/lib/data/universal/live/credentials";
-import { type LiveStatus, isLiveStatus } from "@/lib/data/universal/live/types";
-import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
-import type { MarketSnapshot, FreshnessLevel } from "@/lib/market-radar/types";
+import type { MarketSnapshot } from "@/lib/market-radar/types";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 import { assessFreshness } from "@/lib/market-radar/freshness";
 
@@ -75,11 +71,11 @@ export interface ProviderAdapter {
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
-async function defaultTransport(url: string): Promise<{ ok: boolean; status: number; json?: unknown }> {
+async function defaultTransport(url: string, headers?: Record<string, string>): Promise<{ ok: boolean; status: number; json?: unknown }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: controller.signal, ...(headers ? { headers } : {}) });
     clearTimeout(timeout);
     if (!res.ok) return { ok: false, status: res.status };
     try {
@@ -149,13 +145,13 @@ function buildAdapter(
           health.status = health.consecutiveFailures >= 3 ? "DEGRADED" : "HEALTHY";
         }
         return result;
-      } catch (err: any) {
+      } catch (err: unknown) {
         const latency = Date.now() - t0;
         health.totalFailures++;
         health.lastFailureAt = Date.now();
         health.consecutiveFailures++;
         health.avgLatencyMs = (health.avgLatencyMs * (health.totalRequests - 1) + latency) / health.totalRequests;
-        const msg = err?.message ?? String(err);
+        const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("429")) {
           health.status = "RATE_LIMITED";
           health.cooldownUntil = Date.now() + 60_000;
@@ -202,9 +198,6 @@ function buildTwelveDataAdapter(): ProviderAdapter {
       const price = parseFloat(latest.close);
       if (!Number.isFinite(price) || price <= 0) return null;
 
-      const open = parseFloat(latest.open);
-      const high = parseFloat(latest.high);
-      const low = parseFloat(latest.low);
       const volume = latest.volume ? parseFloat(latest.volume) : undefined;
 
       return {
@@ -296,17 +289,13 @@ function buildCoinGlassAdapter(): ProviderAdapter {
       if (!symbol) return null;
       try {
         const baseUrl = "https://open-api-v3.coinglass.com/api";
-        const headers = { accept: "application/json", cg_api_key: apiKey };
-        const [oiRes, fundingRes] = await Promise.allSettled([
-          defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`),
-          defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`),
+          const [oiRes, fundingRes] = await Promise.allSettled([
+          defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`, { accept: "application/json", cg_api_key: apiKey }),
+          defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`, { accept: "application/json", cg_api_key: apiKey }),
         ]);
         let price = 0;
-        let openInterest: number | undefined;
-        let fundingRate: number | undefined;
         if (oiRes.status === "fulfilled" && oiRes.value.ok && oiRes.value.json) {
           const d = oiRes.value.json as { data?: { openInterest?: string; lastPrice?: string } };
-          openInterest = d.data?.openInterest ? parseFloat(d.data.openInterest) : undefined;
           price = d.data?.lastPrice ? parseFloat(d.data.lastPrice) : 0;
         }
         if (fundingRes.status === "fulfilled" && fundingRes.value.ok && fundingRes.value.json) {
