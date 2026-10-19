@@ -552,7 +552,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     hasFreshExecutionQuality: !!(
       ar?.executionContext?.available &&
       ar.executionContext.freshness === "FRESH" &&
-      source.instrument.toUpperCase().replace(/[\/_]/g, "-") === ar.executionContext.instrumentId.toUpperCase()
+      source.instrument.toUpperCase().replace(/(?:\\|\/|_)/g, "-") === ar.executionContext.instrumentId.toUpperCase()
     ),
     keySupport: tech?.supportLevels?.[0],
     keyResistance: tech?.resistanceLevels?.[0],
