@@ -289,10 +289,10 @@ function buildCoinGlassAdapter(): ProviderAdapter {
       if (!symbol) return null;
       try {
         const baseUrl = "https://open-api-v3.coinglass.com/api";
-          const oiRes = await defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`, { accept: "application/json", cg_api_key: apiKey });
+        const oiRes = await defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`, { accept: "application/json", cg_api_key: apiKey });
         let price = 0;
-        if (oiRes.status === "fulfilled" && oiRes.value.ok && oiRes.value.json) {
-          const d = oiRes.value.json as { data?: { openInterest?: string; lastPrice?: string } };
+        if (oiRes.ok && oiRes.json) {
+          const d = oiRes.json as { data?: { openInterest?: string; lastPrice?: string } };
           price = d.data?.lastPrice ? parseFloat(d.data.lastPrice) : 0;
         }
         if (!Number.isFinite(price) || price <= 0) return null;
