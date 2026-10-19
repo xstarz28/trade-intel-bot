@@ -18,21 +18,14 @@ import type {
   PositionContext,
   AlertSeverity,
   ProtectionAlert,
-  MonitoringState,
 } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type {
   RealTimeEvent,
-  PositionSnapshot,
-  InstrumentState,
-  ProtectionEvent,
-  MonitoringStatus,
 } from "./realtime-types";
-import { evaluateProtection, type ProtectionEngineInput } from "./protection-engine";
+import { evaluateProtection } from "./protection-engine";
 import {
-  createMonitoringState,
   shouldAlert,
-  updateMonitoringState,
 } from "./alert-lifecycle";
 import { alertSeverityRank } from "./types";
 
