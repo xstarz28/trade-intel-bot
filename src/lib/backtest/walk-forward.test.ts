@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { runProductionWalkForwardBacktest, runWalkForwardBacktest, type BacktestSignal } from "./walk-forward";
+import { completedHigherTimeframeCandlesAt, runProductionWalkForwardBacktest, runWalkForwardBacktest, type BacktestSignal } from "./walk-forward";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 
 const candles = (count: number, start = 1_700_000_000_000): OhlcvCandle[] =>
@@ -192,8 +192,54 @@ describe("runWalkForwardBacktest", () => {
     });
     expect(report.candleCount).toBe(225);
     expect(report.signalsChecked).toBeGreaterThan(0);
-    expect(report.warnings.some((warning) => warning.includes("no provider fundamentals, news, COT, derivatives, or MTF feeds are synthesized"))).toBe(true);
+    expect(report.warnings.some((warning) => warning.includes("Provider fundamentals, news, COT, and derivatives are not synthesized"))).toBe(true);
     expect(report.warnings.some((warning) => warning.includes("future profitability"))).toBe(true);
+  });
+
+
+  it("uses only fully closed higher-timeframe candles at the signal close", () => {
+    const day1 = Date.UTC(2026, 9, 18);
+    const day2 = Date.UTC(2026, 9, 19);
+    const day3 = Date.UTC(2026, 9, 20);
+    const daily = [day1, day2, day3].map((timestamp) => ({
+      timestamp,
+      open: 100,
+      high: 105,
+      low: 95,
+      close: 102,
+      volume: 1000,
+    }));
+
+    const visibleAtSignalClose = completedHigherTimeframeCandlesAt(
+      daily,
+      Date.UTC(2026, 9, 19, 12),
+      "D1",
+    );
+
+    expect(visibleAtSignalClose.map((candle) => candle.timestamp)).toEqual([day1]);
+  });
+
+  it("requires higher-timeframe candles and a strictly higher timeframe together", () => {
+    const primary = candles(225);
+    const daily = candles(225, 1_600_000_000_000);
+    expect(() => runProductionWalkForwardBacktest({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H4",
+      candles: primary,
+      higherTimeframe: "D1",
+      options: { minimumHistory: 220 },
+    })).toThrow(/must be provided together/);
+
+    expect(() => runProductionWalkForwardBacktest({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H4",
+      candles: primary,
+      higherTimeframe: "H1",
+      higherTimeframeCandles: daily,
+      options: { minimumHistory: 220 },
+    })).toThrow(/must be higher/);
   });
 
   it("reports no fake performance metrics when no trades execute", () => {
