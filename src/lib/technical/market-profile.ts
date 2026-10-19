@@ -30,15 +30,19 @@ export interface ProfileOptions {
   blockMinutes?: number;
 }
 const validCandles = (input: ProfileCandle[]) => input.filter(c =>
-  Number.isFinite(c.timestamp) && Number.isFinite(c.open) &&
-  Number.isFinite(c.high) && Number.isFinite(c.low) &&
-  Number.isFinite(c.close) && c.low > 0 && c.open > 0 &&
-  c.close > 0 && c.high >= c.low
+  Number.isFinite(c.timestamp) && c.timestamp > 0 &&
+  Number.isFinite(c.open) && Number.isFinite(c.high) &&
+  Number.isFinite(c.low) && Number.isFinite(c.close) &&
+  c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0 &&
+  c.high >= Math.max(c.open, c.close, c.low) &&
+  c.low <= Math.min(c.open, c.close, c.high)
 ).sort((a,b) => a.timestamp-b.timestamp);
+const finiteOption = (value: number | undefined, fallback: number): number =>
+  typeof value === "number" && Number.isFinite(value) ? value : fallback;
 const optionsOf = (o: ProfileOptions) => ({
-  rows: Math.max(8, Math.min(200, Math.floor(o.rows ?? 64))),
-  valueAreaPercent: Math.max(0.5, Math.min(0.9, o.valueAreaPercent ?? 0.7)),
-  blockMs: Math.max(1, o.blockMinutes ?? 30) * 60_000,
+  rows: Math.max(8, Math.min(200, Math.floor(finiteOption(o.rows, 64)))),
+  valueAreaPercent: Math.max(0.5, Math.min(0.9, finiteOption(o.valueAreaPercent, 0.7))),
+  blockMs: Math.max(1, finiteOption(o.blockMinutes, 30)) * 60_000,
 });
 function levelsFor(candles: ProfileCandle[], rows: number) {
   const low = Math.min(...candles.map(c=>c.low));
