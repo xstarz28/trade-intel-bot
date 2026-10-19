@@ -17,6 +17,7 @@
  * M. Final Acceptance Gates
  */
 
+import { alertSeverityRank } from "../position-protection/types";
 import { describe, it, expect } from "vitest";
 import type {
   PositionContext,
