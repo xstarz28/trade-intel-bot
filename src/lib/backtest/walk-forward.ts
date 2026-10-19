@@ -312,6 +312,9 @@ export function completedHigherTimeframeCandlesAt(
   signalCloseTimestamp: number,
   higherTimeframe: Timeframe,
 ): OhlcvCandle[] {
+  // Invalid cutoffs must never make future candles appear completed (e.g. +Infinity).
+  if (!Number.isFinite(signalCloseTimestamp)) return [];
+
   const duration = TIMEFRAME_DURATION_MS[higherTimeframe];
   return candles.filter((candle) =>
     Number.isFinite(candle.timestamp) && candle.timestamp + duration <= signalCloseTimestamp
