@@ -17,28 +17,21 @@ import { describe, it, expect } from "vitest";
 import {
   evaluateAlertRuntimeBridge,
   buildInitialStateStore,
-  extractSnapshot,
-  extractPortfolioSnapshot,
   removePositionFromState,
   removePositionTriggerRecords,
   cleanStaleInstrumentState,
   cleanStaleRuleTriggerRecords,
   type PreviousStateStore,
-  type RuntimeBridgeInput,
 } from "./alert-runtime-bridge";
 
-import type { AlertRule, RuleTriggerRecord, RuleSnapshot } from "./alert-rule-engine";
+import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
 import {
-  evaluateRules,
-  shouldTriggerAlert,
-  updateTriggerRecord,
   alertIdentity,
 } from "./alert-rule-engine";
 
 import {
   buildNotification,
   notificationIdentity,
-  filterNotifications,
   applyRetention,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
@@ -46,30 +39,18 @@ import {
 
 import {
   filterNotificationsByPreferences,
-  isNotificationVisible,
   DEFAULT_PREFERENCES,
-  validatePreferences,
   sanitizePreferences,
   type NotificationPreferences,
 } from "./notification-preferences";
 
 import {
   buildRuntimeHealthSnapshot,
-  calculateOverallHealth,
-  classifyFreshness,
   normalizeRuntimeHealthEvent,
   classifyError,
-  errorCategoryToStatus,
   aggregateRuntimeHealth,
   shouldPersistRuntimeHealth,
-  detectHealthTransitions,
-  FRESH_THRESHOLD_MS,
-  AGING_THRESHOLD_MS,
-  UNAVAILABLE_FAILURE_THRESHOLD,
   type RuntimeHealthEvent,
-  type RuntimeHealthInput,
-  type RuntimeHealthSnapshot,
-  type RuntimeHealthComponent,
 } from "./runtime-health";
 
 import {
@@ -78,14 +59,10 @@ import {
   recordProviderResult,
   shouldPersistFromBuffer,
   markPersisted,
-  getLatestEventForComponent,
   getEventCount,
-  buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
-import type { PortfolioIntelligence } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
