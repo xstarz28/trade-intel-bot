@@ -575,6 +575,36 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     }
     if (fund.profitMargin !== undefined && fund.profitMargin > 0.2) score += 1;
     if (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) score += 1;
+
+    // Correlated equity quality metrics are capped as one group to limit double-counting.
+    let qualityScore = 0;
+    if (fund.pegRatio !== undefined && fund.pegRatio > 0) {
+      if (fund.pegRatio < 1) qualityScore += 1;
+      if (fund.pegRatio > 2.5) qualityScore -= 1;
+    }
+    if (fund.operatingMargin !== undefined) {
+      if (fund.operatingMargin > 0.15) qualityScore += 1;
+      if (fund.operatingMargin < 0) qualityScore -= 1;
+    }
+    if (fund.returnOnEquity !== undefined) {
+      if (fund.returnOnEquity > 0.15) qualityScore += 1;
+      if (fund.returnOnEquity < 0) qualityScore -= 1;
+    }
+    if (fund.returnOnAssets !== undefined) {
+      if (fund.returnOnAssets > 0.05) qualityScore += 1;
+      if (fund.returnOnAssets < 0) qualityScore -= 1;
+    }
+    if (fund.revenueGrowth !== undefined) {
+      if (fund.revenueGrowth > 0.1) qualityScore += 1;
+      if (fund.revenueGrowth < -0.1) qualityScore -= 1;
+    }
+    if (fund.earningsGrowth !== undefined) {
+      if (fund.earningsGrowth > 0.1) qualityScore += 1;
+      if (fund.earningsGrowth < -0.1) qualityScore -= 1;
+    }
+    score += Math.max(-2, Math.min(2, qualityScore));
+    // Forward multiples, price/book and dividend yield remain report-only without
+    // sector comparables or payout-sustainability context.
     // Sector context: stored but NO sector-benchmark provider exists —
     // deliberately unscored rather than synthetically ranked.
   }
