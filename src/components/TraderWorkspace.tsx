@@ -29,11 +29,8 @@ import {
   mapSide,
 } from "@/lib/i18n/enum-mapping";
 import {
-  Shield,
   AlertTriangle,
   CheckCircle,
-  TrendingUp,
-  TrendingDown,
   Minus,
   Newspaper,
   Globe,
