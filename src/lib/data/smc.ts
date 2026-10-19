@@ -89,8 +89,10 @@ function structureFromPoints(
   const rl = lows.slice(-3);
   const highsRising = rh[rh.length - 1].price > rh[0].price;
   const lowsRising = rl[rl.length - 1].price > rl[0].price;
+  const highsFalling = rh[rh.length - 1].price < rh[0].price;
+  const lowsFalling = rl[rl.length - 1].price < rl[0].price;
   if (highsRising && lowsRising) return "HH/HL";
-  if (!highsRising && !lowsRising) return "LH/LL";
+  if (highsFalling && lowsFalling) return "LH/LL";
   return "range";
 }
 
@@ -476,6 +478,17 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
     };
   };
 
+  // Negative volume is invalid provider data. Do not let a positive aggregate
+  // hide individual negative bars and produce a plausible-looking false VWAP.
+  if (candles.some((c) => !Number.isFinite(c.volume) || c.volume < 0)) {
+    return {
+      available: false,
+      unavailableReason: "Invalid volume data (non-finite or negative values).",
+      priceOnlyFallback: buildPriceOnlyFallback(),
+      priceLocation: "unavailable",
+    };
+  }
+
   const totalVol = candles.reduce((s, c) => s + c.volume, 0);
   if (!(totalVol > 0)) {
     return {
@@ -554,7 +567,10 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
   }
 
   const price = candles[candles.length - 1].close;
-  const atThreshold = bands ? bands.plus1 * 0.1 : sessionVwap * 0.0005;
+  // Keep the at-VWAP tolerance narrow and price-relative. Using 10% of the
+  // upper deviation band scales the threshold with volatility and can label
+  // materially displaced prices as "at_vwap" on volatile sessions.
+  const atThreshold = Math.max(1e-10, Math.abs(sessionVwap) * 0.0005);
   const priceLocation: VwapContext["priceLocation"] =
     Math.abs(price - sessionVwap) <= atThreshold
       ? "at_vwap"
