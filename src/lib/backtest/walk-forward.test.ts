@@ -219,6 +219,30 @@ describe("runWalkForwardBacktest", () => {
     expect(visibleAtSignalClose.map((candle) => candle.timestamp)).toEqual([day1]);
   });
 
+  it("includes a higher-timeframe candle exactly at its close boundary and excludes later candles", () => {
+    const day1 = Date.UTC(2026, 9, 18);
+    const day2 = Date.UTC(2026, 9, 19);
+    const day3 = Date.UTC(2026, 9, 20);
+    const daily = [day1, day2, day3].map((timestamp) => ({
+      timestamp,
+      open: 100,
+      high: 105,
+      low: 95,
+      close: 102,
+      volume: 1000,
+    }));
+
+    const atBoundary = completedHigherTimeframeCandlesAt(daily, day2, "D1");
+    expect(atBoundary.map((candle) => candle.timestamp)).toEqual([day1]);
+
+    const afterBoundary = completedHigherTimeframeCandlesAt(
+      daily,
+      day2 + 1,
+      "D1",
+    );
+    expect(afterBoundary.map((candle) => candle.timestamp)).toEqual([day1]);
+  });
+
   it("requires higher-timeframe candles and a strictly higher timeframe together", () => {
     const primary = candles(225);
     const daily = candles(225, 1_600_000_000_000);
