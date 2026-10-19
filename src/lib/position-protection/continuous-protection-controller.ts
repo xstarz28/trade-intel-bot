@@ -19,7 +19,6 @@ import type { MarketEvidence } from "./thesis-health";
 import type {
   RealTimeEvent,
 } from "./realtime-types";
-import type { AccelerationResult } from "./acceleration-monitor";
 import { evaluateProtection } from "./protection-engine";
 import { createMonitoringState } from "./alert-lifecycle";
 import { classifyEarlyProtection, type EarlyProtectionInput } from "./early-protection";
