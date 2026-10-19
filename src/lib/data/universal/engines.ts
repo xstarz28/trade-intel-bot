@@ -21,6 +21,7 @@
 import type {
   AssetClass,
   DependencyGroup,
+  IntelligenceMeta,
   EvidenceCategory,
   EvidenceDirection,
   EvidenceQuality,
@@ -51,6 +52,18 @@ import { resolveInstrument as resolveInstrumentLocal } from "./instruments";
 // ═══════════════════════════════════════════════════════════════
 // EVIDENCE FACTORY
 // ═══════════════════════════════════════════════════════════════
+
+function toDataProvenance(meta: IntelligenceMeta, instrument: string): DataProvenance {
+  return {
+    provider: meta.provider,
+    observedAt: meta.observedAt,
+    freshness: meta.freshness,
+    quality: meta.quality,
+    available: meta.available,
+    ...(meta.failureReason ? { failureReason: meta.failureReason } : {}),
+    instrument,
+  };
+}
 
 function buildEvidence(params: {
   source: string;
@@ -163,7 +176,7 @@ export function buildForexIntelligence(
       observedAt: ctx.rates.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.rates as any);
+    provenance.push(toDataProvenance(ctx.rates, instrument));
   } else if (ctx.rates?.failureReason) {
     evidence.push(buildUnavailableEvidence({
       source: ctx.rates.provider, category: "RATES",
@@ -192,7 +205,7 @@ export function buildForexIntelligence(
       observedAt: ctx.yields.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.yields as any);
+    provenance.push(toDataProvenance(ctx.yields, instrument));
   } else {
     missingInformation.push("Yield curve data");
   }
@@ -214,7 +227,7 @@ export function buildForexIntelligence(
       observedAt: ctx.positioning.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.positioning as any);
+    provenance.push(toDataProvenance(ctx.positioning, instrument));
   } else {
     missingInformation.push("CFTC COT positioning data");
   }
@@ -236,7 +249,7 @@ export function buildForexIntelligence(
       observedAt: ctx.macro.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.macro as any);
+    provenance.push(toDataProvenance(ctx.macro, instrument));
   } else {
     missingInformation.push("Economic calendar data");
   }
@@ -258,7 +271,7 @@ export function buildForexIntelligence(
       observedAt: ctx.crossAsset.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.crossAsset as any);
+    provenance.push(toDataProvenance(ctx.crossAsset, instrument));
   } else {
     missingInformation.push("Cross-asset / DXY context");
   }
@@ -331,7 +344,7 @@ export function buildEquityIntelligence(
       observedAt: ctx.fundamentals.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.fundamentals as any);
+    provenance.push(toDataProvenance(ctx.fundamentals, instrument));
   } else if (ctx.fundamentals?.failureReason) {
     evidence.push(buildUnavailableEvidence({
       source: ctx.fundamentals.provider, category: "FUNDAMENTALS",
@@ -360,7 +373,7 @@ export function buildEquityIntelligence(
       observedAt: ctx.earnings.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.earnings as any);
+    provenance.push(toDataProvenance(ctx.earnings, instrument));
   } else {
     missingInformation.push("Earnings data");
   }
@@ -382,7 +395,7 @@ export function buildEquityIntelligence(
       observedAt: ctx.valuation.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.valuation as any);
+    provenance.push(toDataProvenance(ctx.valuation, instrument));
   } else {
     missingInformation.push("Valuation data");
   }
@@ -404,7 +417,7 @@ export function buildEquityIntelligence(
       observedAt: ctx.corporateActions.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.corporateActions as any);
+    provenance.push(toDataProvenance(ctx.corporateActions, instrument));
   } else {
     missingInformation.push("Corporate actions data");
   }
@@ -471,7 +484,7 @@ export function buildCommodityIntelligence(
       observedAt: ctx.inventory.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.inventory as any);
+    provenance.push(toDataProvenance(ctx.inventory, instrument));
   } else if (ctx.inventory?.failureReason) {
     evidence.push(buildUnavailableEvidence({
       source: ctx.inventory.provider, category: "INVENTORY",
@@ -500,7 +513,7 @@ export function buildCommodityIntelligence(
       observedAt: ctx.supplyDemand.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.supplyDemand as any);
+    provenance.push(toDataProvenance(ctx.supplyDemand, instrument));
   } else {
     missingInformation.push("Supply/demand data");
   }
@@ -522,7 +535,7 @@ export function buildCommodityIntelligence(
       observedAt: ctx.futuresStructure.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.futuresStructure as any);
+    provenance.push(toDataProvenance(ctx.futuresStructure, instrument));
   } else {
     missingInformation.push("Futures structure data");
   }
@@ -544,7 +557,7 @@ export function buildCommodityIntelligence(
       observedAt: ctx.positioning.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.positioning as any);
+    provenance.push(toDataProvenance(ctx.positioning, instrument));
   } else {
     missingInformation.push("CFTC COT positioning data");
   }
@@ -610,7 +623,7 @@ export function buildCrossAssetIntelligence(
       observedAt: ctx.dxy.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.dxy as any);
+    provenance.push(toDataProvenance(ctx.dxy, instrument));
   } else if (ctx.dxy?.failureReason) {
     evidence.push(buildUnavailableEvidence({
       source: ctx.dxy.provider, category: "CROSS_ASSET",
@@ -639,7 +652,7 @@ export function buildCrossAssetIntelligence(
       observedAt: ctx.treasury.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.treasury as any);
+    provenance.push(toDataProvenance(ctx.treasury, instrument));
   } else {
     missingInformation.push("Treasury yield data");
   }
@@ -661,7 +674,7 @@ export function buildCrossAssetIntelligence(
       observedAt: ctx.riskRegime.observedAt,
       fromCache: false,
     }));
-    provenance.push(ctx.riskRegime as any);
+    provenance.push(toDataProvenance(ctx.riskRegime, instrument));
   } else {
     missingInformation.push("Risk regime data");
   }
