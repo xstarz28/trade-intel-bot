@@ -141,11 +141,6 @@ function hasMaterialContradictions(result: AnalysisResult): boolean {
   return (result.keyContradictions?.length ?? 0) > 0;
 }
 
-function dataQualityOk(result: AnalysisResult): boolean {
-  if (!result.dataQualityContext) return true;
-  return result.dataQualityContext.primaryData.status === "GOOD";
-}
-
 function getDataReliability(result: AnalysisResult): "good" | "degraded" | "insufficient" | "unavailable" {
   if (!result.dataQualityContext) return "good";
   const s = result.dataQualityContext.primaryData.status;
@@ -160,14 +155,6 @@ function getHorizon(result: AnalysisResult): TimeHorizon {
   if (result.tradingStyle === "scalping") return "SHORT_TERM";
   if (result.tradingStyle === "swing") return "SWING";
   return "INTRADAY";
-}
-
-function isExtended(result: AnalysisResult, dir: "bullish" | "bearish"): RiskLevel {
-  if (result.marketRegimeContext?.marketPhase === "LATE_TREND") return "ELEVATED";
-  if (result.marketRegimeContext?.marketPhase === "TREND_MATURE") return "MODERATE";
-  if (result.marketRegimeContext?.continuationQuality === "EXHAUSTED") return "HIGH";
-  if (result.marketRegimeContext?.continuationQuality === "WEAK") return "ELEVATED";
-  return "LOW";
 }
 
 function computeExtensionRisk(

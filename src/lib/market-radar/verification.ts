@@ -18,9 +18,6 @@ import {
   type EnvReader,
 } from "@/lib/data/universal/live/credentials";
 import {
-  validateOhlcvSeries,
-  validateQuote,
-  compareCrossProviderPrices,
   type OhlcvRecord,
   type ConsistencyVerdict,
 } from "@/lib/data/universal/live/types";

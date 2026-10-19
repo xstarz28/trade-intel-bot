@@ -18,7 +18,6 @@ import type {
   ProfitProtectionUrgency,
   WhyTpNowExplanation,
 } from "./types";
-import { alertSeverityRank } from "./types";
 import { calculateProfitMetrics } from "./profit-state";
 import {
   evaluateThesisHealth,
@@ -132,7 +131,6 @@ function determineUrgency(
   shock: ShockAssessment,
   givebackPct?: number,
 ): { urgency: ProfitProtectionUrgency; reason: string } {
-  const isProfitable = profit.profitState === "PROFITABLE" || profit.profitState === "STRONGLY_PROFITABLE";
 
   if (severity === "INVALIDATED") {
     return { urgency: "CRITICAL", reason: "Thesis invalidated — key conditions supporting the position are no longer present." };
@@ -202,6 +200,9 @@ function buildWhyTpNow(
   }
   if (shock.state === "SHOCK") {
     confirmations.push(`Market shock detected — ${shock.description}`);
+  }
+  if (givebackPct !== undefined && Number.isFinite(givebackPct) && givebackPct > 30) {
+    confirmations.push(`Profit giveback reached ${givebackPct.toFixed(0)}% of peak unrealized profit.`);
   }
 
   // Still supporting
