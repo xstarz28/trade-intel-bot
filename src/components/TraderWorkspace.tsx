@@ -31,8 +31,6 @@ import {
 import {
   AlertTriangle,
   CheckCircle,
-  Minus,
-  Newspaper,
   Globe,
   Activity,
   Eye,
@@ -52,7 +50,6 @@ import { getInstrumentInfo } from "@/lib/position-protection/instrument-registry
 import {
   buildDecisionSupport,
   getDecisionSupportSummary,
-  type PositionDecisionSupport,
 } from "@/lib/position-protection/decision-support";
 import {
   buildFundamentalRegime,
@@ -60,9 +57,6 @@ import {
   assessTechnicalFundamentalAlignment,
   buildFundamentalInputFromPositionIntel,
   mapInstrumentToAssetClass,
-  type FundamentalRegimeInput,
-  type FundamentalRegime,
-  type AssetFundamentalContext,
 } from "@/lib/position-protection/fundamental-regime";
 import type { AssetClass } from "@/lib/position-protection/fundamental-regime";
 import { classifyNewsRelevance, type NewsItem, type NewsRelevance } from "@/lib/position-protection/news-intelligence";
@@ -71,8 +65,6 @@ import type { LiveInstrumentState } from "@/lib/position-protection/use-live-pro
 import {
   buildFundamentalCausalResult,
   buildAssetCausalContext,
-  type FundamentalCausalResult,
-  type AssetCausalContext,
 } from "@/lib/position-protection/fundamental-transmission";
 
 // ═══════════════════════════════════════════════════════════════
