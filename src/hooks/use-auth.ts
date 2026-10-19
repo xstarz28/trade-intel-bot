@@ -29,20 +29,35 @@ export function useAuth() {
   const phaseRef = useRef<AuthPhase>("initializing");
 
   useEffect(() => {
-    // Don't resolve until the Convex auth provider has finished its
-    // initial session check. The user query is NOT required here —
-    // it may still be loading when the token is already valid.
+    // Wait until Convex has completed the current token/session check.
     if (isAuthLoading) return;
 
-    // Compute the target phase from Convex's current token state.
-    const target: AuthPhase = isAuthenticated ? "authenticated" : "unauthenticated";
-
-    // Ignore duplicate effects, but allow interactive sign-in/sign-out to
-    // update the settled phase after the initial session check.
-    if (phaseRef.current !== target) {
-      phaseRef.current = target;
-      setPhase(target);
+    if (isAuthenticated) {
+      if (phaseRef.current !== "authenticated") {
+        phaseRef.current = "authenticated";
+        setPhase("authenticated");
+      }
+      return;
     }
+
+    // Resolve a genuinely new signed-out session immediately, but do not
+    // bounce an already-authenticated user to /auth during a transient token
+    // refresh/callback gap. A sustained unauthenticated state settles after
+    // a short grace period; any restored token cancels the pending timeout.
+    if (phaseRef.current === "initializing" || phaseRef.current === "unauthenticated") {
+      if (phaseRef.current !== "unauthenticated") {
+        phaseRef.current = "unauthenticated";
+        setPhase("unauthenticated");
+      }
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      phaseRef.current = "unauthenticated";
+      setPhase("unauthenticated");
+    }, 1500);
+
+    return () => clearTimeout(timeout);
   }, [isAuthLoading, isAuthenticated]);
 
   const isLoading = phase === "initializing";
