@@ -458,9 +458,8 @@ function AnalyticalSummarySection({
   instrument: string;
   side: "LONG" | "SHORT";
 }) {
-  if (!intelligence) return null;
-
   const { t } = useI18n();
+  if (!intelligence) return null;
   const thesisLabel = intelligence.thesisHealth ?? "UNKNOWN";
   const thesisColor =
     thesisLabel === "HEALTHY" || thesisLabel === "STABLE" ? "text-emerald-400" :
@@ -605,7 +604,6 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
   const { t } = useI18n();
   if (!intelligence) return null;
 
-  const isLong = intelligence.side === "LONG";
   return (
     <IntelSection title={t.intelligence.keyLevelsLabel} icon={<Shield className="size-3" />}>
       <div className="space-y-1 text-[8px] font-mono">
@@ -682,8 +680,6 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
 export function IntelligenceDashboard({
   intelligence,
   multiDimensional,
-  marketContext,
-  analyticalSummary,
   whatChanged,
   positionSide,
   instrument,
