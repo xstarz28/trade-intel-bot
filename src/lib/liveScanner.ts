@@ -271,8 +271,8 @@ export function scanInstruments(
     allExcluded.push(...excluded);
 
     const result = generateRecommendation(eligible, horizon, {
-      // Rank all observed eligible data first, then show only qualified results.
-      maxResults: eligible.length,
+      // Respect the requested per-horizon result cap; omitted means retain all.
+      maxResults: config.maxResults ?? eligible.length,
     });
 
     // Preserve the full scored result for diagnostics and regression tests.
