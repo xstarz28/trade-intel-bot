@@ -150,7 +150,6 @@ export function classifyMacroRegime(
   const growth = regime.growthRegime;
   const inflation = regime.inflationRegime;
   const overall = regime.overallRegime;
-  const liquidity = regime.liquidityRegime;
 
   // Guard: insufficient data
   if (
