@@ -18,7 +18,7 @@ import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
-import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { ALL_SCAN_HORIZONS, normalizeScanTimeframe, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { buildEquityFundamentalEvidence } from "@/lib/data/universal/equity-evidence";
@@ -33,7 +33,7 @@ import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
-import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
+import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -207,12 +207,18 @@ export default function Dashboard() {
     try {
       const saved = localStorage.getItem("workspaceMode");
       if (saved === "trader" || saved === "investor") return saved;
-    } catch {}
+    } catch {
+      // Storage may be disabled in privacy-restricted browser contexts.
+    }
     return "trader";
   });
   const handleWorkspaceChange = useCallback((mode: WorkspaceMode) => {
     setWorkspaceMode(mode);
-    try { localStorage.setItem("workspaceMode", mode); } catch {}
+    try {
+      localStorage.setItem("workspaceMode", mode);
+    } catch {
+      // Workspace selection still works for the current session without storage.
+    }
     // Reset tab to default for the target workspace
     if (mode === "trader") setActiveTab("analysis");
     if (mode === "investor") setInvestorTab("portfolio");
