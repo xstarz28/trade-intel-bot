@@ -288,18 +288,68 @@ function buildCoinGlassAdapter(): ProviderAdapter {
       const symbol = COINGLASS_SYMBOLS[instrument]?.toUpperCase();
       if (!symbol) return null;
       try {
-        const baseUrl = "https://open-api-v3.coinglass.com/api";
-        const oiRes = await defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`, { accept: "application/json", cg_api_key: apiKey });
-        let price = 0;
-        if (oiRes.ok && oiRes.json) {
-          const d = oiRes.json as { data?: { openInterest?: string; lastPrice?: string } };
-          price = d.data?.lastPrice ? parseFloat(d.data.lastPrice) : 0;
-        }
-        if (!Number.isFinite(price) || price <= 0) return null;
+        // CoinGlass V3 is deprecated. V4 exposes current futures pair prices
+        // and derivatives metrics from the pairs-markets endpoint.
+        const baseUrl = "https://open-api-v4.coinglass.com/api";
+        const response = await defaultTransport(
+          `${baseUrl}/futures/pairs-markets?symbol=${encodeURIComponent(symbol)}`,
+          { accept: "application/json", "CG-API-KEY": apiKey },
+        );
+        if (!response.ok || !response.json) return null;
+
+        const payload = response.json as {
+          code?: string;
+          data?: Array<{
+            instrument_id?: string;
+            exchange_name?: string;
+            current_price?: number;
+            price_change_percent_24h?: number;
+            volume_usd?: number;
+            open_interest_usd?: number;
+            open_interest_change_percent_24h?: number;
+            funding_rate?: number;
+            long_liquidation_usd_24h?: number;
+            short_liquidation_usd_24h?: number;
+          }>;
+        };
+        if (payload.code !== "0" || !Array.isArray(payload.data)) return null;
+
+        // Use one explicit venue and exact instrument match; never select an
+        // arbitrary exchange row or reinterpret open interest as a price.
+        const expectedPair = `${symbol}USDT`;
+        const market = payload.data.find((row) =>
+          row.exchange_name?.toLowerCase() === "binance" &&
+          row.instrument_id?.replace(/_/g, "").toUpperCase() === expectedPair
+        );
+        if (!market || typeof market.current_price !== "number" ||
+            !Number.isFinite(market.current_price) || market.current_price <= 0) return null;
+        const price = market.current_price;
+
+        const now = Date.now();
         return {
-          instrument, assetClass, price, ohlcvAvailable: false,
-          availableTimeframes: [], provider: "coinglass",
-          observedAt: Date.now(), freshness: "FRESH", quality: "VERIFIED",
+          instrument,
+          assetClass,
+          price,
+          ...(typeof market.price_change_percent_24h === "number" && Number.isFinite(market.price_change_percent_24h)
+            ? { change24h: market.price_change_percent_24h } : {}),
+          ...(typeof market.volume_usd === "number" && Number.isFinite(market.volume_usd) && market.volume_usd >= 0
+            ? { volume24h: market.volume_usd } : {}),
+          ...(typeof market.open_interest_usd === "number" && Number.isFinite(market.open_interest_usd) && market.open_interest_usd >= 0
+            ? { openInterestUsd: market.open_interest_usd } : {}),
+          ...(typeof market.open_interest_change_percent_24h === "number" && Number.isFinite(market.open_interest_change_percent_24h)
+            ? { openInterestChange24h: market.open_interest_change_percent_24h } : {}),
+          ...(typeof market.funding_rate === "number" && Number.isFinite(market.funding_rate)
+            ? { fundingRate: market.funding_rate } : {}),
+          ...(typeof market.long_liquidation_usd_24h === "number" && Number.isFinite(market.long_liquidation_usd_24h) && market.long_liquidation_usd_24h >= 0
+            ? { longLiquidationUsd24h: market.long_liquidation_usd_24h } : {}),
+          ...(typeof market.short_liquidation_usd_24h === "number" && Number.isFinite(market.short_liquidation_usd_24h) && market.short_liquidation_usd_24h >= 0
+            ? { shortLiquidationUsd24h: market.short_liquidation_usd_24h } : {}),
+          ohlcvAvailable: false,
+          availableTimeframes: [],
+          provider: "coinglass",
+          observedAt: now,
+          freshness: "FRESH",
+          quality: "VERIFIED",
         };
       } catch { return null; }
     },
