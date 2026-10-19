@@ -13,13 +13,11 @@ import { cn } from "@/lib/utils";
 import {
   generateRecommendation,
   filterCandidatesWithObservedMarketData,
-  discoverCandidates,
   type CandidateInput,
   type TradingMode,
   type InvestorHorizon,
   type UniversalRecommendationResult,
   type RankedInstrument,
-  type DataCompletenessLevel,
 } from "@/lib/recommendation-engine";
 import {
   scanInstruments,
@@ -28,7 +26,7 @@ import {
 } from "@/lib/liveScanner";
 import type { LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { RadarScanResult, RadarOpportunity, OpportunityDiff, QualityTier } from "@/lib/market-radar/types";
+import type { RadarScanResult, RadarOpportunity, QualityTier } from "@/lib/market-radar/types";
 import { useI18n } from "@/lib/i18n";
 import {
   mapHorizon,
@@ -38,8 +36,6 @@ import {
 } from "@/lib/i18n/enum-mapping";
 import {
   TrendingUp,
-  Target,
-  Clock,
   Filter,
   AlertTriangle,
   ChevronDown,
@@ -48,8 +44,6 @@ import {
   RefreshCw,
   Activity,
   Eye,
-  EyeOff,
-  Zap,
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════
