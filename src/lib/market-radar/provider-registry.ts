@@ -289,18 +289,11 @@ function buildCoinGlassAdapter(): ProviderAdapter {
       if (!symbol) return null;
       try {
         const baseUrl = "https://open-api-v3.coinglass.com/api";
-          const [oiRes, fundingRes] = await Promise.allSettled([
-          defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`, { accept: "application/json", cg_api_key: apiKey }),
-          defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`, { accept: "application/json", cg_api_key: apiKey }),
-        ]);
+          const oiRes = await defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`, { accept: "application/json", cg_api_key: apiKey });
         let price = 0;
         if (oiRes.status === "fulfilled" && oiRes.value.ok && oiRes.value.json) {
           const d = oiRes.value.json as { data?: { openInterest?: string; lastPrice?: string } };
           price = d.data?.lastPrice ? parseFloat(d.data.lastPrice) : 0;
-        }
-        if (fundingRes.status === "fulfilled" && fundingRes.value.ok && fundingRes.value.json) {
-          const d = fundingRes.value.json as { data?: { data?: [{ value?: string }] } };
-          fundingRate = d.data?.data?.[0]?.value ? parseFloat(d.data.data[0].value) : undefined;
         }
         if (!Number.isFinite(price) || price <= 0) return null;
         return {
