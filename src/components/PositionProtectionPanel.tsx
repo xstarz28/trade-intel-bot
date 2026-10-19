@@ -25,6 +25,7 @@ import {
   Wifi,
   WifiOff,
   RotateCcw,
+  Gauge,
 } from "lucide-react";
 import type { ProtectionAlert } from "@/lib/position-protection/types";
 import type {
