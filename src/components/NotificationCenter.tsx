@@ -25,16 +25,7 @@ import {
   DEFAULT_PREFERENCES,
   ALL_CATEGORIES,
   type NotificationPreferences,
-  type PreferenceScope,
 } from "../lib/position-protection/notification-preferences";
-
-const SEVERITY_ORDER: Record<string, number> = {
-  INFO: 0,
-  LOW: 1,
-  MEDIUM: 2,
-  HIGH: 3,
-  CRITICAL: 4,
-};
 
 const FILTER_OPTIONS: { label: string; value: NotificationFilter }[] = [
   { label: "ALL", value: "ALL" },
