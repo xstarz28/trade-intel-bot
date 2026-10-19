@@ -260,6 +260,17 @@ describe("B — Market-Data Freshness", () => {
     const candidate = buildCandidateFromSource(source);
     expect(candidate.freshness).toBe("UNAVAILABLE");
   });
+
+  it("rejects future-dated market prices instead of treating them as fresh", () => {
+    const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        price: { price: 65000, timestamp: NOW + MINUTE, source: "test-provider" },
+        dataFreshness: "realtime",
+      }),
+    });
+    const candidate = buildCandidateFromSource(source);
+    expect(candidate.freshness).toBe("UNAVAILABLE");
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
