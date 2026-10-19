@@ -623,7 +623,7 @@ export function buildCrossAssetIntelligence(
       observedAt: ctx.dxy.observedAt,
       fromCache: false,
     }));
-    provenance.push(toDataProvenance(ctx.dxy, instrument));
+    provenance.push(toDataProvenance(ctx.dxy, "DXY"));
   } else if (ctx.dxy?.failureReason) {
     evidence.push(buildUnavailableEvidence({
       source: ctx.dxy.provider, category: "CROSS_ASSET",
@@ -652,7 +652,7 @@ export function buildCrossAssetIntelligence(
       observedAt: ctx.treasury.observedAt,
       fromCache: false,
     }));
-    provenance.push(toDataProvenance(ctx.treasury, instrument));
+    provenance.push(toDataProvenance(ctx.treasury, "US_TREASURY"));
   } else {
     missingInformation.push("Treasury yield data");
   }
@@ -674,7 +674,7 @@ export function buildCrossAssetIntelligence(
       observedAt: ctx.riskRegime.observedAt,
       fromCache: false,
     }));
-    provenance.push(toDataProvenance(ctx.riskRegime, instrument));
+    provenance.push(toDataProvenance(ctx.riskRegime, "GLOBAL_RISK_REGIME"));
   } else {
     missingInformation.push("Risk regime data");
   }
