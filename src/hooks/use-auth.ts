@@ -40,22 +40,16 @@ export function useAuth() {
       return;
     }
 
-    // Resolve a genuinely new signed-out session immediately, but do not
-    // bounce an already-authenticated user to /auth during a transient token
-    // refresh/callback gap. A sustained unauthenticated state settles after
-    // a short grace period; any restored token cancels the pending timeout.
-    if (phaseRef.current === "initializing" || phaseRef.current === "unauthenticated") {
-      if (phaseRef.current !== "unauthenticated") {
-        phaseRef.current = "unauthenticated";
-        setPhase("unauthenticated");
-      }
-      return;
-    }
+    // OAuth callback/session restoration can briefly report unauthenticated
+    // before the new token is visible. Delay ALL signed-out transitions,
+    // including initial resolution, so RequireAuth cannot redirect away from
+    // a callback in flight. A valid token cancels this timeout immediately.
+    if (phaseRef.current === "unauthenticated") return;
 
     const timeout = setTimeout(() => {
       phaseRef.current = "unauthenticated";
       setPhase("unauthenticated");
-    }, 1500);
+    }, 2000);
 
     return () => clearTimeout(timeout);
   }, [isAuthLoading, isAuthenticated]);
