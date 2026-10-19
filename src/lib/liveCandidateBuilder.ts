@@ -81,7 +81,7 @@ function assessFreshness(
   if (!Number.isFinite(timestamp) || (timestamp ?? 0) <= 0) return "UNAVAILABLE";
   const ageMs = now - timestamp!;
   // Do not label materially future-dated provider observations as fresh.
-  if (ageMs < -60_000) return "UNAVAILABLE";
+  if (ageMs < 0) return "UNAVAILABLE";
   if (ageMs < 5 * 60_000) return "FRESH";         // < 5 min
   if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
 
