@@ -1,9 +1,9 @@
 /**
- * Phase 8 P6 — semantic correctness regressions.
+ * Market-profile integration regression.
  *
- * Proves regime detection NEVER becomes additional conviction evidence:
- * toggling a regime-relevant input (volume-profile value area) that feeds NO
- * conviction layer must leave recommendation AND confidence identical.
+ * VPVR value-area levels may change the candidate target and reject a setup
+ * whose nearest opposing level cannot meet minimum R:R. They must not alter
+ * the core directional factor breakdown or manufacture directional bias.
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
@@ -54,8 +54,8 @@ function runWith(vp: SmcContext["volumeProfile"]) {
   } as AnalysisInput);
 }
 
-describe("P6: regime evidence is never conviction evidence", () => {
-  it("value-area containment changes regime votes but NOT conviction", () => {
+describe("Market-profile target context", () => {
+  it("uses a nearby value-area target without changing core factor scores", () => {
     // Price INSIDE the value area → range vote (RANGING-leaning regime).
     const inside = runWith({
       available: true,
@@ -65,15 +65,16 @@ describe("P6: regime evidence is never conviction evidence", () => {
     // Volume profile UNAVAILABLE → fewer regime evidences.
     const withoutVp = runWith({ available: false, unavailableReason: "zero-volume series" });
 
-    expect(inside.recommendation).toBe(withoutVp.recommendation);
-    expect(inside.confidence).toBe(withoutVp.confidence);
+    expect(inside.recommendation).toBe("NO_TRADE");
+    expect(withoutVp.recommendation).toBe("LONG");
+    expect(inside.noTradeReasons.join(" ")).toContain("below the 1.500 minimum");
     expect(inside.breakdown).toEqual(withoutVp.breakdown);
 
-    // Regime classification itself may differ — that is its job.
-    // (Not asserted to a specific label: only that it cannot move conviction.)
+    // The nearby value-area high is a real target candidate. Its inadequate
+    // R:R can reject execution, while core bias/factor scores remain unchanged.
   });
 
-  it("RANGING-regime contradiction stays MINOR and never alters scoring", () => {
+  it("rejects a long setup when the nearby value-area target fails minimum R:R", () => {
     const r = runAnalysis({
       instrument: "EUR/USD", instrumentType: "forex", timeframe: "H4",
       marketData: makeMarket(100),
@@ -82,10 +83,7 @@ describe("P6: regime evidence is never conviction evidence", () => {
       } as unknown as SmcContext["volumeProfile"]),
       economicEvents: "Fed signals hawkish stance, rate hike",
     } as AnalysisInput);
-    if (r.marketRegime?.regime === "RANGING") {
-      const ranging = (r.keyContradictions ?? []).find((c) => /RANGING/i.test(c.description));
-      if (ranging) expect(ranging.severity).toBe("MINOR");
-    }
-    expect(r.recommendation).toBe("LONG");
+    expect(r.recommendation).toBe("NO_TRADE");
+    expect(r.noTradeReasons.join(" ")).toContain("below the 1.500 minimum");
   });
 });
