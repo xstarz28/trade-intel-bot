@@ -16,17 +16,14 @@
 
 import type {
   AlertRule,
-  RuleAlert,
   RuleEvaluationContext,
   RuleSnapshot,
   RuleTriggerRecord,
 } from "./alert-rule-engine";
 import {
-  evaluateRules,
   evaluateRule,
   shouldTriggerAlert,
   alertIdentity,
-  type RuleCondition,
 } from "./alert-rule-engine";
 import { buildNotification, type Notification } from "./notification-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
@@ -38,9 +35,6 @@ import {
   buildTriggerDiagnostic,
   buildNotificationDiagnostic,
   buildPipelineCycleDiagnostic,
-  buildPipelineErrorDiagnostic,
-  buildCleanupDiagnostic,
-  type SkipReason,
 } from "./alert-observability";
 
 // ═══════════════════════════════════════════════════════════════
