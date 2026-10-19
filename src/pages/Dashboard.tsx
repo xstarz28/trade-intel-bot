@@ -8,14 +8,14 @@ import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
-import type { AnalysisResult } from "@/types/analysis";
+import type { AnalysisResult, BiasBreakdown, ConvictionLevel, DirectionalBias, FactorScore, InstrumentType, Timeframe } from "@/types/analysis";
 import { buildHistoricalContextSummaries, buildPersistedContextSummaries, resolveHistoricalDecision } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
-import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
+import { resolveStyle, adaptSetupTimeframe, type TradingStyle } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
 import { findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
@@ -45,29 +45,79 @@ import { BarChart3, Briefcase } from "lucide-react";
 /** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
 type StoredAnalysisRecord = import("convex/server").FunctionReturnType<typeof api.analyses.list>[number];
 
+const STORED_INSTRUMENT_TYPES: readonly InstrumentType[] = ["forex", "crypto", "stock", "commodity", "indices"];
+const STORED_TIMEFRAMES: readonly Timeframe[] = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"];
+const STORED_BIASES: readonly DirectionalBias[] = ["Bullish", "Bearish", "Neutral"];
+const STORED_CONVICTIONS: readonly ConvictionLevel[] = ["High", "Medium", "Low"];
+const STORED_TRADING_STYLES: readonly TradingStyle[] = ["scalping", "intraday", "swing"];
+const FACTOR_SCORES: readonly FactorScore[] = [-2, -1, 0, 1, 2];
+
+function isStoredValue<T extends string>(value: string | undefined, allowed: readonly T[]): value is T {
+  return value !== undefined && allowed.some((candidate) => candidate === value);
+}
+
+function normalizeFactorScore(value: number): FactorScore {
+  return FACTOR_SCORES.some((candidate) => candidate === value) ? value as FactorScore : 0;
+}
+
+/** Convert persisted records defensively: Convex stores legacy enum-like fields as strings. */
 function fromDbRecord(record: StoredAnalysisRecord): AnalysisResult {
   const historicalContextSummaries = buildHistoricalContextSummaries(record);
-  const historicalDecision = resolveHistoricalDecision(record.recommendation, record.noTradeReasons);
+  const validInstrumentType = isStoredValue(record.instrumentType, STORED_INSTRUMENT_TYPES);
+  const validTimeframe = isStoredValue(record.timeframe, STORED_TIMEFRAMES);
+  const validBias = isStoredValue(record.bias, STORED_BIASES);
+  const validTradingStyle = isStoredValue(record.tradingStyle, STORED_TRADING_STYLES);
+  const validConviction = isStoredValue(record.conviction, STORED_CONVICTIONS);
+  const validCompleteness = record.dataCompleteness === "full" || record.dataCompleteness === "partial" || record.dataCompleteness === "limited";
+  const validBreakdown = Object.values(record.breakdown).every((score) => FACTOR_SCORES.some((candidate) => candidate === score));
+  const dataFlags = [...record.dataFlags];
+
+  if (!validInstrumentType) dataFlags.push("Invalid stored instrument type; historical result is non-actionable.");
+  if (!validTimeframe) dataFlags.push("Invalid stored timeframe; historical result is non-actionable.");
+  if (!validBias) dataFlags.push("Invalid stored directional bias; displayed as Neutral.");
+  if (!validTradingStyle && record.tradingStyle !== undefined) dataFlags.push("Invalid stored trading style; displayed as intraday.");
+  if (!validConviction && record.conviction !== undefined) dataFlags.push("Invalid stored conviction; omitted.");
+  if (!validCompleteness) dataFlags.push("Invalid stored data completeness; displayed as limited.");
+  if (!validBreakdown) dataFlags.push("Invalid stored factor score; affected score displayed as zero.");
+
+  const historicalDecision = resolveHistoricalDecision(
+    validInstrumentType && validTimeframe ? record.recommendation : "NO_TRADE",
+    record.noTradeReasons,
+  );
+  const breakdown: BiasBreakdown = {
+    trend: normalizeFactorScore(record.breakdown.trend),
+    indicator: normalizeFactorScore(record.breakdown.indicator),
+    fundamental: normalizeFactorScore(record.breakdown.fundamental),
+    sentiment: normalizeFactorScore(record.breakdown.sentiment),
+  };
+
   return {
     id: record._id,
     instrument: record.instrument,
-    instrumentType: record.instrumentType,
-    timeframe: record.timeframe,
-    bias: record.bias,
-    confidence: record.confidence,
+    instrumentType: validInstrumentType ? record.instrumentType as InstrumentType : "crypto",
+    timeframe: validTimeframe ? record.timeframe as Timeframe : "H1",
+    bias: validBias ? record.bias as DirectionalBias : "Neutral",
+    confidence: Number.isFinite(record.confidence) ? Math.max(0, Math.min(100, record.confidence)) : 0,
     recommendation: historicalDecision.recommendation,
-    tradingStyle: record.tradingStyle ?? "intraday",
-    conviction: record.conviction ?? undefined,
-    noTradeReasons: historicalDecision.noTradeReasons,
+    tradingStyle: validTradingStyle ? record.tradingStyle as TradingStyle : "intraday",
+    conviction: validConviction ? record.conviction as ConvictionLevel : undefined,
+    noTradeReasons: [
+      ...historicalDecision.noTradeReasons,
+      ...(!validInstrumentType || !validTimeframe
+        ? ["Stored instrument type or timeframe is invalid; do not use this historical record as a trade signal."]
+        : []),
+    ],
     technicalSummary: record.technicalSummary,
     fundamentalSummary: record.fundamentalSummary,
-    breakdown: record.breakdown,
+    breakdown,
     keyLevels: record.keyLevels,
     riskNote: record.riskNote,
-    dataCompleteness: record.dataCompleteness,
-    dataFlags: record.dataFlags,
+    dataCompleteness: validCompleteness ? record.dataCompleteness as AnalysisResult["dataCompleteness"] : "limited",
+    dataFlags,
     timestamp: record.timestamp,
-    ...(record.price != null ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } } : {}),
+    ...(record.price != null && Number.isFinite(record.price) && record.price > 0
+      ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } }
+      : {}),
     ...(record.dataSource ? { dataSource: record.dataSource } : {}),
     ...(historicalContextSummaries ? { historicalContextSummaries } : {}),
   };
