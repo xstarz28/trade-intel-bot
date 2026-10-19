@@ -9,10 +9,9 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { MarketSnapshot, FreshnessLevel } from "./types";
+import type { MarketSnapshot } from "./types";
 import { RadarCache } from "./cache";
 import { RateLimitController } from "./rate-limit";
-import { assessFreshness } from "./freshness";
 
 // ═══════════════════════════════════════════════════════════════
 // ACQUISITION RESULT
