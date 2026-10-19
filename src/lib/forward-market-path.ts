@@ -184,8 +184,6 @@ function classifyPrimaryPath(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
   regime?: MarketRegimeContext,
-  fundamental?: FundamentalThesis,
-  scenario?: MarketScenarioContext,
 ): PathStatus {
   if (dir === "neutral") {
     if (regime?.regime === "RANGE") return "RANGE_CONTINUATION";
@@ -195,8 +193,6 @@ function classifyPrimaryPath(
   const htf = htfDir(result);
   const mtfA = mtfAligned(result, dir);
   const contraMtf = hasContraMtf(result, dir);
-  const extRisk = computeExtensionRisk(result, dir, regime);
-
   // Reversal favored — HTF broken + contra MTF + structural evidence
   if (regime?.trendTransition.transitionType === "REVERSAL_CONFIRMED") return "REVERSAL_FAVORED";
   if (regime?.trendTransition.transitionType === "REVERSAL_ATTEMPT" && contraMtf) return "REVERSAL_ATTEMPT";
@@ -522,7 +518,7 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const currentState = `${dirLabel} HTF structure · ${phaseLabel} · ${regimeLabel} · continuation ${qualityLabel}`;
 
   // ── Path classification ──
-  const primaryPath = classifyPrimaryPath(result, dir, regime, fundamental, scenario);
+  const primaryPath = classifyPrimaryPath(result, dir, regime);
   const alternatePath = classifyAlternatePath(primaryPath, dir, regime);
 
   // ── Path status text ──
