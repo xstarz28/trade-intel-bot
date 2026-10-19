@@ -322,6 +322,7 @@ export function runProductionWalkForwardBacktest(args: {
         instrument: args.instrument,
         instrumentType: args.instrumentType,
         timeframe: args.timeframe,
+        dataMode: "historical",
         currentPrice: String(latest.close),
         marketData,
         technicalData,
