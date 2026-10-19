@@ -8,12 +8,10 @@
  * Provider availability NEVER becomes directional evidence.
  */
 
-import type { AssetClass } from "@/lib/data/universal/types";
 import type {
   TradingMode,
   InvestorHorizon,
 } from "@/lib/recommendation-engine";
-import { generateRecommendation } from "@/lib/recommendation-engine";
 import type {
   RadarOpportunity,
   RadarScanConfig,
@@ -22,22 +20,16 @@ import type {
   OpportunityLifecycle,
   QualityTier,
   FreshnessLevel,
-  CorrelationCluster,
-  UniverseEntry,
 } from "./types";
 
 // Re-export types for consumers
 export type { RadarScanResult, RadarScanConfig, RadarOpportunity } from "./types";
 import {
-  HORIZON_FRESHNESS_GATES,
-  meetsFreshness,
-  HORIZON_REFRESH_PRIORITY,
 } from "./types";
-import { DEFAULT_UNIVERSE, CORRELATION_CLUSTERS } from "./universe";
+import { CORRELATION_CLUSTERS } from "./universe";
 import { buildRadarCandidate, type RadarCandidateSource } from "./candidate-builder";
 import {
   checkFreshnessEligibility,
-  shouldTransitionLifecycle,
   assessFreshness,
   summarizeFreshness,
 } from "./freshness";
