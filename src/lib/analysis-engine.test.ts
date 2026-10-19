@@ -152,6 +152,50 @@ describe("scoreIndicators (via breakdown)", () => {
     expect(result.breakdown.indicator).toBe(1);
   });
 
+  it("uses the 50/100/200-day moving-average group as one bullish conviction modifier", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "120",
+      technicalData: {
+        sma50: 100, sma100: 110, sma200: 115,
+        rsi14: 50, macdHistogram: 0,
+        swingHighs: [], swingLows: [], structure: "range",
+        supportLevels: [], resistanceLevels: [], volumeTrend: "unknown",
+        dataPoints: 60,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(1);
+    // Indicators are conviction context only; they cannot create core bias.
+    expect(result.bias).toBe("Neutral");
+  });
+
+  it("scores the moving-average group bearishly when price is below the available averages", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "90",
+      technicalData: {
+        sma50: 100, sma100: 110, sma200: 115,
+        rsi14: 50, macdHistogram: 0,
+        swingHighs: [], swingLows: [], structure: "range",
+        supportLevels: [], resistanceLevels: [], volumeTrend: "unknown",
+        dataPoints: 60,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(-1);
+    expect(result.bias).toBe("Neutral");
+  });
+
+  it("scores MACD line/signal when the histogram is unavailable without double-counting both", () => {
+    const result = runAnalysis(baseInput({
+      technicalData: {
+        macdLine: 2, macdSignal: 1,
+        swingHighs: [], swingLows: [], structure: "range",
+        supportLevels: [], resistanceLevels: [], volumeTrend: "unknown",
+        dataPoints: 60,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(1);
+    expect(result.bias).toBe("Neutral");
+  });
+
   it("scores 0 with empty context", () => {
     const result = runAnalysis(baseInput());
     expect(result.breakdown.indicator).toBe(0);
@@ -275,6 +319,259 @@ describe("scoreFundamentals (via breakdown)", () => {
     expect(result.breakdown.fundamental).toBeGreaterThan(0);
   });
 });
+
+// ── TPO + VPVR integration ────────────────────────────────────────
+
+describe("TPO + VPVR analysis integration", () => {
+  it("uses available profile levels in the conviction trace and technical explanation", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "1.11",
+      marketData: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 1.11, timestamp: Date.now(), source: "test" },
+        candles: Array.from({ length: 60 }, (_, i) => ({
+          timestamp: Date.now() - (60 - i) * 86400000,
+          open: 1.10, high: 1.12, low: 1.08, close: 1.11, volume: 1000,
+        })),
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+      technicalData: {
+        atr14: 0.01,
+        sma50: 1.07,
+        sma100: 1.06,
+        sma200: 1.05,
+        rsi14: 62,
+        rsiDivergence: "bullish",
+        macdLine: 0.012,
+        macdSignal: 0.008,
+        macdHistogram: 0.004,
+        avgVolume20: 1250,
+        dailyRange: 0.02,
+        fibLevels: {
+          level236: 1.20,
+          level382: 1.22,
+          level500: 1.24,
+          level618: 1.26,
+          level786: 1.28,
+        },
+        swingHighs: [1.25, 1.30],
+        swingLows: [1.07, 1.08],
+        structure: "HH/HL",
+        bosDirection: "bullish",
+        supportLevels: [1.08],
+        resistanceLevels: [1.30],
+        volumeTrend: "increasing",
+        dataPoints: 60,
+        htfContext: {
+          timeframe: "D1",
+          structure: "HH/HL",
+          bosDirection: "bullish",
+          chochDirection: "none",
+          dataPoints: 60,
+        },
+        smc: {
+          timeframe: "D1",
+          liquidityPools: [],
+          internalExternal: {
+            external: { timeframe: "D1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 60 },
+            internal: { timeframe: "D1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 60 },
+            internalConflict: false,
+          },
+          fvgs: [],
+          orderBlocks: [],
+          vwap: { available: true, sessionVwap: 1.08, priceLocation: "above_vwap" },
+          volumeProfile: {
+            available: true, poc: 1.085, vah: 1.10, val: 1.07,
+            hvn: [1.09], lvn: [1.075],
+            approximation: "OHLCV-range allocation approximation",
+          },
+          tpoProfile: {
+            available: true, poc: 1.087, vah: 1.101, val: 1.071,
+            totalTpo: 120, blockMinutes: 30, valueAreaPercent: 0.7,
+          },
+        },
+      },
+    }));
+
+    expect(result.technicalSummary).toContain("VPVR");
+    expect(result.technicalSummary).toContain("TPO market profile");
+    expect(result.technicalSummary).toContain("Moving averages: SMA50");
+    expect(result.technicalSummary).toContain("SMA200");
+    expect(result.technicalSummary).toContain("Fibonacci retracement levels");
+    expect(result.technicalSummary).toContain("MACD(12,26,9)");
+    expect(result.technicalSummary).toContain("bullish divergence detected");
+    expect(result.technicalSummary).toContain("20-candle average volume");
+    expect(result.technicalSummary).toContain("Latest candle range");
+    const layer = result.decisionTrace?.convictionBreakdown.layers.find((item) => item.layer === "TPO + VPVR");
+    expect(layer).toBeDefined();
+    expect(layer?.cap).toBe(5);
+    expect(layer?.reason).toContain("VPVR POC");
+    expect(layer?.reason).toContain("TPO POC");
+    const maLayer = result.decisionTrace?.convictionBreakdown.layers.find((item) => item.layer === "Moving Averages");
+    expect(maLayer).toBeDefined();
+    expect(maLayer?.cap).toBe(4);
+    expect(maLayer?.contribution).toBeGreaterThan(0);
+  });
+});
+
+describe("asset-specific fundamental evidence integration", () => {
+  it("uses verified fresh crypto fundamentals while deduplicating shared dependencies", () => {
+    const result = runAnalysis(baseInput({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      currentPrice: "100",
+      newsContext: "ETF adoption supports BTC market fundamentals",
+      recentHigh: "105",
+      recentLow: "90",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 100, timestamp: Date.now(), source: "test" },
+        candles: Array.from({ length: 60 }, (_, i) => ({
+          timestamp: Date.now() - (60 - i) * 86400000,
+          open: 99, high: 102, low: 98, close: 100, volume: 1000,
+        })),
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+      technicalData: {
+        atr14: 2,
+        swingHighs: [115, 120],
+        swingLows: [90, 95],
+        structure: "HH/HL",
+        bosDirection: "bullish",
+        supportLevels: [90],
+        resistanceLevels: [120],
+        volumeTrend: "stable",
+        dataPoints: 60,
+        htfContext: {
+          timeframe: "D1",
+          structure: "HH/HL",
+          bosDirection: "bullish",
+          chochDirection: "none",
+          dataPoints: 60,
+        },
+      },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: Date.now(),
+        evidence: [
+          {
+            source: "DeFiLlama",
+            category: "DEFI_FUNDAMENTAL",
+            direction: "SUPPORTING",
+            strength: "STRONG",
+            quality: "VERIFIED",
+            freshness: "FRESH",
+            dependencyGroup: "DEFI_TVL",
+            explanation: "Verified TVL evidence",
+            providerAvailable: true,
+          },
+          {
+            source: "DeFiLlama",
+            category: "DEFI_FUNDAMENTAL",
+            direction: "SUPPORTING",
+            strength: "WEAK",
+            quality: "VERIFIED",
+            freshness: "FRESH",
+            dependencyGroup: "DEFI_TVL",
+            explanation: "Same underlying TVL dependency",
+            providerAvailable: true,
+          },
+        ],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Test-only asset fundamentals",
+      },
+    }));
+
+    expect(result.bias).toBe("Bullish");
+    const layer = result.decisionTrace?.convictionBreakdown.layers.find(
+      (item) => item.layer === "Asset-Specific Fundamentals",
+    );
+    expect(layer).toBeDefined();
+    expect(layer?.contribution).toBe(3);
+    expect(layer?.reason).toContain("2 eligible evidence items across 1 dependency groups");
+  });
+  it("opposes a short thesis when the verified fundamentals are long-side bullish", () => {
+    const result = runAnalysis(baseInput({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      currentPrice: "100",
+      newsContext: "regulation crackdown",
+      recentHigh: "105",
+      recentLow: "60",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 100, timestamp: Date.now(), source: "test" },
+        candles: Array.from({ length: 60 }, (_, i) => ({
+          timestamp: Date.now() - (60 - i) * 86400000,
+          open: 99, high: 102, low: 98, close: 100, volume: 1000,
+        })),
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+      technicalData: {
+        swingHighs: [104, 105],
+        swingLows: [60, 70],
+        structure: "LH/LL",
+        bosDirection: "bearish",
+        supportLevels: [70],
+        resistanceLevels: [105],
+        volumeTrend: "stable",
+        dataPoints: 60,
+        htfContext: {
+          timeframe: "D1",
+          structure: "LH/LL",
+          bosDirection: "bearish",
+          chochDirection: "none",
+          dataPoints: 60,
+        },
+      },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: Date.now(),
+        evidence: [{
+          source: "DeFiLlama",
+          category: "DEFI_FUNDAMENTAL",
+          direction: "SUPPORTING",
+          strength: "STRONG",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "DEFI_TVL",
+          explanation: "Bullish long-side evidence",
+          providerAvailable: true,
+        }],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Test-only asset fundamentals",
+      },
+    }));
+
+    expect(result.bias).toBe("Bearish");
+    const layer = result.decisionTrace?.convictionBreakdown.layers.find(
+      (item) => item.layer === "Asset-Specific Fundamentals",
+    );
+    expect(layer).toBeDefined();
+    expect(layer?.contribution).toBe(-3);
+  });
+});
+
 
 // ── Sentiment scoring ─────────────────────────────────────────────
 
@@ -551,6 +848,80 @@ describe("keyLevels", () => {
     // Without an opposing structural level the engine refuses to trade
     expect(result.recommendation).toBe("NO_TRADE");
     expect(result.noTradeReasons.length).toBeGreaterThan(0);
+  });
+});
+
+describe("stock fundamental scoring", () => {
+  it("scores company fundamentals even when news-derived macro indicators are available", () => {
+    const macroData = {
+      provider: "alpha-vantage",
+      timestamp: Date.now(),
+      indicators: [{
+        name: "earnings outlook",
+        relevance: "high" as const,
+        sentiment: "neutral" as const,
+      }],
+      summary: "neutral news-derived context",
+      confidence: "high" as const,
+    };
+    const macroOnly = runAnalysis(baseInput({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      macroData,
+    }));
+    const withFundamentals = runAnalysis(baseInput({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      macroData,
+      fundamentalData: {
+        provider: "alpha-vantage",
+        timestamp: Date.now(),
+        instrumentType: "stock",
+        symbol: "AAPL",
+        available: true,
+        peRatio: 12,
+        forwardPeRatio: 18,
+        profitMargin: 0.25,
+        earningsPerShare: 4,
+        pegRatio: 0.8,
+        priceToSalesRatio: 5.2,
+        evToRevenue: 4.1,
+        evToEbitda: 15,
+        revenueGrowth: 0.12,
+        earningsGrowth: 0.22,
+        returnOnAssets: 0.08,
+        operatingMargin: 0.2,
+        returnOnEquity: 0.2,
+        priceToBook: 4.2,
+        dividendYield: 0.01,
+        revenueTTM: 100_000_000_000,
+        grossProfitTTM: 50_000_000_000,
+        dilutedEPS: 3.8,
+        beta: 1.2,
+        sharesOutstanding: 15_000_000_000,
+        fiftyDayMovingAverage: 120,
+        twoHundredDayMovingAverage: 110,
+        fiftyTwoWeekLow: 80,
+        fiftyTwoWeekHigh: 160,
+        analystTargetPrice: 150,
+        latestEarnings: { date: "2026-10-01", eps: 4, revenue: 5_000_000_000 },
+      },
+    }));
+
+    // The stock metrics add a positive signal even with a macro feed present;
+    // the engine's documented factor cap limits the aggregate to +2.
+    expect(macroOnly.breakdown.fundamental).toBe(0);
+    expect(withFundamentals.breakdown.fundamental).toBe(2);
+    expect(withFundamentals.fundamentalSummary).toContain("PEG: 0.80");
+    expect(withFundamentals.fundamentalSummary).toContain("ROE: 20.0%");
+    expect(withFundamentals.fundamentalSummary).toContain("Quarterly revenue growth YoY: 12.0%");
+    expect(withFundamentals.fundamentalSummary).toContain("Quarterly earnings growth YoY: 22.0%");
+    expect(withFundamentals.fundamentalSummary).toContain("EV/EBITDA: 15.00");
+    expect(withFundamentals.fundamentalSummary).toContain("Revenue TTM: $100.00B");
+    expect(withFundamentals.fundamentalSummary).toContain("Diluted EPS (TTM): $3.80");
+    expect(withFundamentals.fundamentalSummary).toContain("Beta: 1.20");
+    expect(withFundamentals.fundamentalSummary).toContain("Analyst target estimate: $150.00");
+    expect(withFundamentals.fundamentalSummary).toContain("52-week range: 80.00–160.00");
   });
 });
 
