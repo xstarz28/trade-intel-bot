@@ -11,6 +11,8 @@ export interface WalkForwardOptions {
   maxHoldingBars?: number;
   /** Combined fee + slippage assumption per side, in basis points. */
   costBpsPerSide?: number;
+  /** Optional first candle index scored as out-of-sample; earlier bars are history only. */
+  outOfSampleStartIndex?: number;
 }
 
 export interface BacktestTrade {
@@ -194,6 +196,12 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
   const requestedMinimumHistory = input.options?.minimumHistory ?? 220;
   const requestedMaxHoldingBars = input.options?.maxHoldingBars ?? 20;
   const costBpsPerSide = input.options?.costBpsPerSide ?? 5;
+  const requestedOutOfSampleStartIndex = input.options?.outOfSampleStartIndex ?? 0;
+  if (!Number.isInteger(requestedOutOfSampleStartIndex) ||
+      requestedOutOfSampleStartIndex < 0 ||
+      requestedOutOfSampleStartIndex >= candles.length - 1) {
+    throw new Error("outOfSampleStartIndex must be an integer candle index before the final candle.");
+  }
   if (!Number.isFinite(requestedMinimumHistory) || requestedMinimumHistory < 20 || requestedMinimumHistory > 100_000) {
     throw new Error("minimumHistory must be a finite integer-compatible value between 20 and 100000.");
   }
@@ -205,9 +213,11 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
   }
   const minimumHistory = Math.floor(requestedMinimumHistory);
   const maxHoldingBars = Math.floor(requestedMaxHoldingBars);
+  const firstSignalIndex = Math.max(minimumHistory - 1, requestedOutOfSampleStartIndex);
 
   const warnings = [
     "Backtest quality depends on the supplied historical OHLCV source and timeframe alignment.",
+    `Out-of-sample scoring starts at candle index ${firstSignalIndex}; earlier candles are history only.`,
     "Signals use the production analysis callback on past-only candles; no provider fundamentals, news, COT, derivatives, or MTF feeds are synthesized.",
     "Entry is next-bar open; stop/target touches use OHLC approximations and stop wins if both levels are touched in one bar.",
     "Fees/slippage are a user-configurable per-side assumption; results are not proof of future profitability.",
@@ -216,9 +226,9 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
   let signalsChecked = 0;
   let noTradeSignals = 0;
   let rejectedPlans = 0;
-  let nextEligibleSignalIndex = minimumHistory - 1;
+  let nextEligibleSignalIndex = firstSignalIndex;
 
-  for (let i = minimumHistory - 1; i < candles.length - 1; i++) {
+  for (let i = firstSignalIndex; i < candles.length - 1; i++) {
     if (i < nextEligibleSignalIndex) continue;
     const visible = candles.slice(0, i + 1);
     const signal = input.analyzeAtClose(visible, i);

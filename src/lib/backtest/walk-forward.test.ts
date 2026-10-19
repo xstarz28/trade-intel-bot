@@ -49,6 +49,37 @@ describe("runWalkForwardBacktest", () => {
     expect(seenLengths.length).toBeGreaterThan(0);
   });
 
+  it("scores only the configured out-of-sample period while retaining earlier candles as history", () => {
+    const data = candles(30);
+    const seenIndices: number[] = [];
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: data,
+      options: { minimumHistory: 20, outOfSampleStartIndex: 24 },
+      analyzeAtClose: (visible, index) => {
+        seenIndices.push(index);
+        expect(visible.length).toBe(index + 1);
+        return { recommendation: "NO_TRADE" };
+      },
+    });
+
+    expect(seenIndices[0]).toBe(24);
+    expect(seenIndices.every((index) => index >= 24)).toBe(true);
+    expect(report.signalsChecked).toBe(5);
+    expect(report.warnings.some((warning) => warning.includes("Out-of-sample scoring starts at candle index 24"))).toBe(true);
+  });
+
+  it("rejects an invalid out-of-sample start index", () => {
+    expect(() => runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: candles(30),
+      options: { outOfSampleStartIndex: 29 },
+      analyzeAtClose: () => ({ recommendation: "NO_TRADE" }),
+    })).toThrow(/outOfSampleStartIndex must be an integer/);
+  });
+
   it("rejects unsorted/duplicate timestamps and malformed OHLC", () => {
     const data = candles(25);
     data[4] = { ...data[4], timestamp: data[3].timestamp };
