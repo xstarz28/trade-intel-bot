@@ -352,11 +352,8 @@ export function PositionProtectionDashboard() {
     if (livePrices.size === 0) return;
 
     const buf = healthBufferRef.current;
-    let anySuccess = false;
-    let anyFailure = false;
     for (const [, state] of livePrices) {
       if (state.success && state.price > 0) {
-        anySuccess = true;
         healthBufferRef.current = recordProviderResult(buf, {
           component: "MARKET_DATA",
           source: state.provider,
@@ -364,7 +361,6 @@ export function PositionProtectionDashboard() {
           success: true,
         });
       } else if (!state.success) {
-        anyFailure = true;
         healthBufferRef.current = recordProviderResult(buf, {
           component: "MARKET_DATA",
           source: state.provider,
@@ -471,7 +467,6 @@ export function PositionProtectionDashboard() {
   // Phase 100: Record intelligence engine health events
   useEffect(() => {
     if (intelligenceMap.size === 0 && positions.length === 0) return;
-    const now = Date.now();
     const analyzed = intelligenceMap.size;
     const total = positions.length;
     const success = analyzed > 0 && analyzed >= total;
@@ -1215,7 +1210,7 @@ export function PositionProtectionDashboard() {
             historicalEventsPersisted: true,
             lastIntelligenceCycleAt: Date.now(),
             dataQuality: Object.fromEntries(
-              Array.from(intelligenceMap.entries()).map(([pid, intel]) => [
+              Array.from(intelligenceMap.entries()).map(([, intel]) => [
                 intel.instrument,
                 intel.dataQuality,
               ]),
