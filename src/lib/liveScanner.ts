@@ -14,7 +14,7 @@
 
 import type { AssetClass } from "./data/universal/types";
 import type { CandidateInput, TradingMode, InvestorHorizon, UniversalRecommendationResult } from "./recommendation-engine";
-import { generateRecommendation, discoverCandidates } from "./recommendation-engine";
+import { generateRecommendation } from "./recommendation-engine";
 import { buildCandidateFromSource, type LiveCandidateSource } from "./liveCandidateBuilder";
 
 // ═══════════════════════════════════════════════════════════════
@@ -263,12 +263,10 @@ export function scanInstruments(
 
   // Scan each horizon
   const results = new Map<TradingMode | InvestorHorizon, UniversalRecommendationResult>();
-  const allExcluded: { instrument: string; reason: string }[] = [];
 
   for (const horizon of config.horizons) {
     const horizonCandidates = selectCandidatesForHorizon(candidates, horizon);
     const { eligible, excluded } = applyFreshnessGates(horizonCandidates, horizon);
-    allExcluded.push(...excluded);
 
     const result = generateRecommendation(eligible, horizon, {
       // Respect the requested per-horizon result cap; omitted means retain all.
