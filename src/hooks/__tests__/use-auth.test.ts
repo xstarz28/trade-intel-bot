@@ -77,12 +77,21 @@ describe("useAuth — three-phase state machine", () => {
     expect(result.current.phase).toBe("authenticated");
   });
 
-  it("resolves to 'unauthenticated' when auth settles without token", () => {
-    const result = runPhaseSequence([
-      { authLoading: false, authenticated: false, user: undefined },
-    ]);
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.phase).toBe("unauthenticated");
+  it("waits briefly before redirecting after an unauthenticated initial check", () => {
+    vi.useFakeTimers();
+    try {
+      const result = runPhaseSequence([
+        { authLoading: false, authenticated: false, user: undefined },
+      ]);
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.phase).toBe("initializing");
+      act(() => vi.advanceTimersByTime(1999));
+      expect(result.current.phase).toBe("initializing");
+      act(() => vi.advanceTimersByTime(1));
+      expect(result.current.phase).toBe("unauthenticated");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("resolves to 'authenticated' when all conditions met", () => {
@@ -113,7 +122,7 @@ describe("useAuth — three-phase state machine", () => {
         { authLoading: false, authenticated: false, user: undefined },
       ]);
       expect(result.current.phase).toBe("authenticated");
-      act(() => vi.advanceTimersByTime(1499));
+      act(() => vi.advanceTimersByTime(1999));
       expect(result.current.phase).toBe("authenticated");
       act(() => vi.advanceTimersByTime(1));
       expect(result.current.phase).toBe("unauthenticated");
@@ -130,7 +139,7 @@ describe("useAuth — three-phase state machine", () => {
         { authLoading: false, authenticated: false, user: undefined },
         { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
       ]);
-      act(() => vi.advanceTimersByTime(1500));
+      act(() => vi.advanceTimersByTime(2000));
       expect(result.current.phase).toBe("authenticated");
     } finally {
       vi.useRealTimers();
