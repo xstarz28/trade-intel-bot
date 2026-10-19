@@ -534,14 +534,24 @@ export function validateIntegrationPipeline(input: {
     });
   }
 
-  // Stage 10: No API keys/secrets in alert
-  const serialized = JSON.stringify(alert);
-  const secretPatterns = [/api[_-]?key/i, /secret/i, /token/i, /password/i, /credential/i];
-  const hasSecret = secretPatterns.some((p) => p.test(serialized) && !serialized.includes("missingData"));
+  // Stage 10: Reject populated secret-like fields without false positives from ordinary alert prose.
+  const containsSecretField = (value: unknown): boolean => {
+    if (Array.isArray(value)) return value.some(containsSecretField);
+    if (value === null || typeof value !== "object") return false;
+
+    return Object.entries(value as Record<string, unknown>).some(([key, nested]) => {
+      const secretKey = /api[_-]?key|secret|token|password|credential/i.test(key);
+      const populated = nested !== undefined && nested !== null && nested !== "";
+      return (secretKey && populated) || containsSecretField(nested);
+    });
+  };
+  const hasSecret = containsSecretField(alert);
   stages.push({
     stage: "NO_SECRETS_IN_ALERT",
-    passed: true, // We check the pattern more carefully
-    reason: "Alert does not contain embedded secrets.",
+    passed: !hasSecret,
+    reason: hasSecret
+      ? "Alert contains a populated secret-like field."
+      : "Alert contains no populated secret-like fields.",
   });
 
   const allPassed = stages.every((s) => s.passed);
