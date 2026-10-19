@@ -20,13 +20,11 @@
 
 import type {
   AssetClass,
-  DataCapability,
   EvidenceCategory,
   EvidenceDirection,
   EvidenceQuality,
   EvidenceStrength,
   FreshnessState,
-  UniversalEvidenceItem,
 } from "./types";
 
 import type {
@@ -44,7 +42,6 @@ import type {
   EquityIntelligenceContext,
   CommodityIntelligenceContext,
   CrossAssetIntelligenceContext,
-  IntelligenceMeta,
 } from "./types";
 
 import { detectDoubleCounting } from "./evidence";
@@ -147,7 +144,6 @@ export function buildForexIntelligence(
   const evidence: EnhancedEvidenceItem[] = [];
   const provenance: DataProvenance[] = [];
   const missingInformation: string[] = [];
-  const dataFlags: string[] = [];
 
   // Interest rates
   if (ctx.rates?.available) {
@@ -314,7 +310,6 @@ export function buildEquityIntelligence(
   const evidence: EnhancedEvidenceItem[] = [];
   const provenance: DataProvenance[] = [];
   const missingInformation: string[] = [];
-  const dataFlags: string[] = [];
 
   // Fundamentals
   if (ctx.fundamentals?.available) {
@@ -457,7 +452,6 @@ export function buildCommodityIntelligence(
   const evidence: EnhancedEvidenceItem[] = [];
   const provenance: DataProvenance[] = [];
   const missingInformation: string[] = [];
-  const dataFlags: string[] = [];
 
   // Inventory
   if (ctx.inventory?.available) {
@@ -597,7 +591,6 @@ export function buildCrossAssetIntelligence(
   const evidence: EnhancedEvidenceItem[] = [];
   const provenance: DataProvenance[] = [];
   const missingInformation: string[] = [];
-  const dataFlags: string[] = [];
 
   // DXY
   if (ctx.dxy?.available) {
