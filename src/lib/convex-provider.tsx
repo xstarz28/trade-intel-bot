@@ -6,6 +6,8 @@ import { ConvexAuthActionsContext } from "@convex-dev/auth-internal/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "@/lib/data/universal/okx-discovery";
 
+type MockRecord = Record<string, unknown> & { positionId?: string };
+
 const STORAGE_KEY_ANALYSES = "xstarz_mock_analyses";
 const STORAGE_KEY_POSITIONS = "xstarz_mock_positions";
 const STORAGE_KEY_ALERTS = "xstarz_mock_alerts";
@@ -38,7 +40,9 @@ function readStorage<T>(key: string, fallback: T): T {
 function writeStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+    // Storage may be unavailable in privacy-restricted or server-rendered contexts.
+  }
 }
 
 const listeners = new Set<() => void>();
@@ -58,18 +62,18 @@ function resolveMockQuery(functionName: string, args?: Record<string, unknown>):
       return readStorage<MockAuthUser | null>(STORAGE_KEY_AUTH, DEFAULT_USER);
     }
     case "analyses:list": {
-      const all = readStorage<any[]>(STORAGE_KEY_ANALYSES, []);
+      const all = readStorage<MockRecord[]>(STORAGE_KEY_ANALYSES, []);
       const limit = typeof args?.limit === "number" ? args.limit : 50;
       return all.slice(0, limit);
     }
     case "positionProtection:listActivePositions": {
-      return readStorage<any[]>(STORAGE_KEY_POSITIONS, []);
+      return readStorage<MockRecord[]>(STORAGE_KEY_POSITIONS, []);
     }
     case "notificationPreferences:getPreferences": {
       return { inApp: true, email: false, sound: true, minSeverity: "WATCH" };
     }
     case "notifications:list": {
-      return readStorage<any[]>(STORAGE_KEY_ALERTS, []);
+      return readStorage<MockRecord[]>(STORAGE_KEY_ALERTS, []);
     }
     case "alertRules:listRules": {
       return [];
@@ -91,7 +95,7 @@ async function resolveMockMutation(
 
   switch (functionName) {
     case "analyses:save": {
-      const current = readStorage<any[]>(STORAGE_KEY_ANALYSES, []);
+      const current = readStorage<MockRecord[]>(STORAGE_KEY_ANALYSES, []);
       const newRecord = {
         _id: id,
         _creationTime: Date.now(),
@@ -109,7 +113,7 @@ async function resolveMockMutation(
       return { success: true };
     }
     case "positionProtection:savePosition": {
-      const positions = readStorage<any[]>(STORAGE_KEY_POSITIONS, []);
+      const positions = readStorage<MockRecord[]>(STORAGE_KEY_POSITIONS, []);
       const existingIdx = positions.findIndex((p) => p.positionId === args?.positionId);
       const newPos = { _id: id, ...args, updatedAt: Date.now() };
       if (existingIdx >= 0) {
@@ -122,7 +126,7 @@ async function resolveMockMutation(
       return id;
     }
     case "positionProtection:deletePosition": {
-      const positions = readStorage<any[]>(STORAGE_KEY_POSITIONS, []);
+      const positions = readStorage<MockRecord[]>(STORAGE_KEY_POSITIONS, []);
       const updated = positions.filter((p) => p.positionId !== args?.positionId);
       writeStorage(STORAGE_KEY_POSITIONS, updated);
       notifyListeners();
@@ -130,7 +134,7 @@ async function resolveMockMutation(
     }
     case "positionProtection:saveAlert":
     case "positionProtection:acknowledgeAlert": {
-      const alerts = readStorage<any[]>(STORAGE_KEY_ALERTS, []);
+      const alerts = readStorage<MockRecord[]>(STORAGE_KEY_ALERTS, []);
       alerts.push({ _id: id, ...args, timestamp: Date.now() });
       writeStorage(STORAGE_KEY_ALERTS, alerts.slice(0, 50));
       notifyListeners();
