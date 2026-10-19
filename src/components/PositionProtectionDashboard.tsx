@@ -174,7 +174,7 @@ function PositionCard({
       horizon: position.horizon,
     },
     evidence: { price: position.entryPrice },
-    now: Date.now(),
+    now: lastUpdateAt ?? position.openedAt,
   }).alert;
 
   const instrumentInfo = getInstrumentInfo(position.instrument);
