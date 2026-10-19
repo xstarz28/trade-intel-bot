@@ -255,6 +255,48 @@ describe("B — Market-Data Freshness", () => {
     expect(candidate.freshness).toBe("UNAVAILABLE");
   });
 
+  it("keeps a recent daily candle usable as STALE across a weekend", () => {
+    const source = makeSource({
+      instrument: "AAPL",
+      assetClass: "equity",
+      marketData: makeMarketData("AAPL", {
+        instrumentType: "stock",
+        timeframe: "D1",
+        price: { price: 200, timestamp: NOW - 3 * 24 * HOUR, source: "yahoo-finance" },
+      }),
+    });
+    expect(buildCandidateFromSource(source, NOW).freshness).toBe("STALE");
+  });
+
+  it("keeps a weekly candle usable for longer-horizon analysis without calling it live", () => {
+    const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "W1",
+        price: { price: 65000, timestamp: NOW - 10 * 24 * HOUR, source: "okx" },
+      }),
+    });
+    expect(buildCandidateFromSource(source, NOW).freshness).toBe("STALE");
+  });
+
+  it("does not extend intraday freshness just because a candle is old", () => {
+    const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        timeframe: "M5",
+        price: { price: 65000, timestamp: NOW - 2 * 24 * HOUR, source: "okx" },
+      }),
+    });
+    expect(buildCandidateFromSource(source, NOW).freshness).toBe("UNAVAILABLE");
+  });
+
+  it("rejects materially future-dated observations", () => {
+    const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        price: { price: 65000, timestamp: NOW + 5 * MINUTE, source: "okx" },
+      }),
+    });
+    expect(buildCandidateFromSource(source, NOW).freshness).toBe("UNAVAILABLE");
+  });
+
   it("no timestamp produces UNAVAILABLE freshness", () => {
     const source = makeSource({ marketData: undefined });
     const candidate = buildCandidateFromSource(source);
