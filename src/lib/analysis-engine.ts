@@ -521,7 +521,11 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
         score -= usdStrength;
       }
     }
-  } else if (fund && fund.available && input.instrumentType === "stock") {
+  }
+
+  // Company-specific financial metrics are independent of macro/news context.
+  // Score them whenever the provider supplies usable stock fundamentals.
+  if (fund && fund.available && input.instrumentType === "stock") {
     if (fund.peRatio !== undefined && fund.peRatio > 0) {
       if (fund.peRatio < 15) score += 1;
       if (fund.peRatio > 35) score -= 1;
@@ -554,9 +558,13 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
 
       if (isRateEvent) {
         if (input.instrumentType === "forex") {
-          if (evt.currency === "USD" || evt.currency === "EUR" || evt.currency === "GBP") {
-            score += surprise > 0 ? 1 : -1;
-          }
+          // A rate surprise affects the event currency; orient it on the pair.
+          // Events for currencies outside the pair contribute no directional score.
+          score += scoreCurrencyStrengthOnPair(
+            input.instrument,
+            evt.currency,
+            surprise > 0 ? 1 : -1,
+          );
         }
         if (input.instrumentType === "crypto") {
           score += surprise > 0 ? -1 : 1;

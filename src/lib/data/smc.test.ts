@@ -285,6 +285,18 @@ describe("computeVwap", () => {
     expect(v.bands).toBeDefined();
   });
 
+  it("resets session VWAP by full UTC date across month boundaries", () => {
+    // A data gap leaves only January 5 and February 5. Day-of-month-only
+    // comparison incorrectly folds January's volume into February's session.
+    const candles = [
+      candle(Date.UTC(2026, 0, 5, 12), 99, 101, 99, 100, 99),
+      candle(Date.UTC(2026, 1, 5, 12), 199, 201, 199, 200, 1),
+    ];
+    const v = computeVwap(candles);
+    expect(v.available).toBe(true);
+    expect(v.sessionVwap).toBeCloseTo(200, 6);
+  });
+
   it("returns explicit unavailability for zero-volume data (no fake VWAP)", () => {
     const candles = [
       candle(T(0), 0, 2, 0, 1, 0),
@@ -315,6 +327,21 @@ describe("computeVolumeProfile", () => {
     expect(vp.poc).toBeLessThan(12); // POC must sit in the 10-band, not the 20-band
     expect(vp.vah).toBeGreaterThanOrEqual(vp.poc!);
     expect(vp.val).toBeLessThanOrEqual(vp.poc!);
+  });
+
+  it("derives HVN/LVN only from the validated candles used by the profile", () => {
+    const candles = [
+      candle(T(0), 9.9, 10.1, 9.8, 10.0, 900),
+      candle(T(1), 10.0, 10.1, 9.9, 10.05, 800),
+      candle(T(2), 19.9, 20.1, 19.8, 20.0, 100),
+      // Invalid timestamp means this candle must not affect any profile level.
+      candle(Number.NaN, 900, 1000, 899, 999, 1_000_000_000),
+    ];
+    const vp = computeVolumeProfile(candles);
+    expect(vp.available).toBe(true);
+    const nodes = [...(vp.hvn ?? []), ...(vp.lvn ?? [])];
+    expect(nodes.length).toBeGreaterThan(0);
+    expect(nodes.every((price) => price >= 9.8 && price <= 20.1)).toBe(true);
   });
 
   it("refuses to fabricate a profile from zero-volume data", () => {

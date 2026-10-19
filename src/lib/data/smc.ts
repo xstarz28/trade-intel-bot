@@ -487,14 +487,22 @@ export function computeVwap(candles: OhlcvCandle[]): VwapContext {
     };
   }
 
-  // Session VWAP: cumulative from the start of the latest UTC day
+  // Session VWAP: cumulative from the start of the latest UTC calendar day.
+  // Compare the full session boundary, not only day-of-month: after a data gap,
+  // two candles from different months/years can share the same UTC day number.
   let cumPV = 0;
   let cumV = 0;
   let cumP2V = 0;
-  const lastDay = new Date(candles[candles.length - 1].timestamp).getUTCDate();
+  const lastTimestamp = candles[candles.length - 1].timestamp;
+  const lastDate = new Date(lastTimestamp);
+  const lastSessionStart = Date.UTC(
+    lastDate.getUTCFullYear(),
+    lastDate.getUTCMonth(),
+    lastDate.getUTCDate(),
+  );
   for (let i = candles.length - 1; i >= 0; i--) {
     const c = candles[i];
-    if (new Date(c.timestamp).getUTCDate() !== lastDay) break; // previous session started
+    if (c.timestamp < lastSessionStart) break; // previous UTC session started
     const typical = (c.high + c.low + c.close) / 3;
     cumPV += typical * c.volume;
     cumP2V += typical * typical * c.volume;
@@ -575,7 +583,13 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
         "Representative volume unavailable — Volume Profile omitted rather than fabricated.",
     };
   }
-  const totalVolume = candles.reduce((s, c) => s + c.volume, 0);
+  // Use the same validated profile rows as POC/VAH/VAL. Re-binning the raw
+  // input here can let malformed candles skew HVN/LVN away from the profile.
+  const rows = profile.rows;
+  if (rows.length === 0) {
+    return { available: false, unavailableReason: "Volume Profile produced no price rows." };
+  }
+  const totalVolume = profile.total ?? rows.reduce((sum, row) => sum + row.value, 0);
   if (!(totalVolume > 0)) {
     return {
       available: false,
@@ -584,56 +598,15 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
     };
   }
 
-  const low = Math.min(...candles.map((c) => c.low));
-  const high = Math.max(...candles.map((c) => c.high));
-  if (!(high > low)) {
-    return { available: false, unavailableReason: "Price range too narrow." };
-  }
-
-  const binSize = (high - low) / VOLUME_PROFILE_BINS;
-  const bins = new Array<number>(VOLUME_PROFILE_BINS).fill(0);
-
-  for (const c of candles) {
-    // Spread each candle's volume across every bin its range touches
-    const startBin = Math.min(
-      VOLUME_PROFILE_BINS - 1,
-      Math.max(0, Math.floor((c.low - low) / binSize)),
-    );
-    const endBin = Math.min(
-      VOLUME_PROFILE_BINS - 1,
-      Math.max(0, Math.floor((c.high - low) / binSize)),
-    );
-    const span = endBin - startBin + 1;
-    for (let b = startBin; b <= endBin; b++) bins[b] += c.volume / span;
-  }
-
-  const centers = bins.map((_, i) => low + binSize * (i + 0.5));
-
-  // POC
-  let pocIdx = 0;
-  for (let i = 1; i < bins.length; i++) {
-    if (bins[i] > bins[pocIdx]) pocIdx = i;
-  }
-
-  // Value Area: expand from POC until VALUE_AREA_COVERAGE of volume contained
-  let vaLo = pocIdx;
-  let vaHi = pocIdx;
-  let vaVolume = bins[pocIdx];
-  while (vaVolume / totalVolume < VALUE_AREA_COVERAGE && (vaLo > 0 || vaHi < bins.length - 1)) {
-    const below = vaLo > 0 ? bins[vaLo - 1] : -1;
-    const above = vaHi < bins.length - 1 ? bins[vaHi + 1] : -1;
-    if (above >= below) {
-      vaHi++;
-      vaVolume += bins[vaHi];
-    } else {
-      vaLo--;
-      vaVolume += bins[vaLo];
-    }
-  }
-
-  const meanVol = totalVolume / bins.length;
-  const hvn = centers.filter((_, i) => bins[i] >= 1.5 * meanVol).slice(0, 5);
-  const lvn = centers.filter((_, i) => bins[i] <= 0.35 * meanVol).slice(0, 5);
+  const meanVol = totalVolume / rows.length;
+  const hvn = rows
+    .filter((row) => row.value >= 1.5 * meanVol)
+    .slice(0, 5)
+    .map((row) => row.price);
+  const lvn = rows
+    .filter((row) => row.value <= 0.35 * meanVol)
+    .slice(0, 5)
+    .map((row) => row.price);
 
   return {
     available: true,
