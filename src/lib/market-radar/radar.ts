@@ -76,7 +76,6 @@ function scoreOpportunity(
   const supporting: string[] = [];
   const conflicting: string[] = [];
   const missing: string[] = [];
-  const reasons: string[] = [];
   let score = 50; // baseline
   let confidence = 50;
 
