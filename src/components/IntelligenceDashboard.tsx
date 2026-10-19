@@ -14,24 +14,19 @@
  * All data must come from real intelligence pipeline — no fabricated content.
  */
 
-import React, { useMemo } from "react";
+import React from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension, mapSensitivity, mapMarketState, mapSeverity, mapPullbackClassification, mapSide } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   TrendingUp,
-  Calendar,
   Layers,
   GitBranch,
   RefreshCw,
-  AlertTriangle,
   CheckCircle,
-  XCircle,
-  Clock,
   Target,
   Shield,
   Zap,
-  Info,
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════
@@ -39,7 +34,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 
 import type { NewsSynthesis, NewsRelevance } from "@/lib/position-protection/news-intelligence";
-import type { FundamentalSynthesis, CatalystAnalysis, FundamentalInterpretation } from "@/lib/position-protection/fundamental-intelligence";
+import type { FundamentalSynthesis, FundamentalInterpretation } from "@/lib/position-protection/fundamental-intelligence";
 import type { HierarchicalEvidence, ScenarioSynthesis, DimensionStatus, MultiDimensionalSynthesis } from "@/lib/position-protection/multi-dimensional-intelligence";
 import type { PositionIntelligence } from "@/lib/position-protection/market-intelligence-analyzer";
 import { HistoricalTimelineView } from "./HistoricalTimeline";
