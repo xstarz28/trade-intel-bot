@@ -24,7 +24,6 @@ import {
   updateReview,
   updateTradeInfo,
   getValidTransitions,
-  classifyOutcome,
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
 
@@ -97,22 +96,9 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
     }
   };
 
-  const handleClose = (entry: JournalEntry, exitPrice?: number, pnl?: number) => {
-    const outcome = classifyOutcome(pnl);
-    const updated = transitionEntry(entry, "CLOSED", { exitPrice, pnl, outcome });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
-  };
-
   // ── Updates ──
   const updateEntryInList = (updated: JournalEntry) => {
     setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-  };
-
-  const handleUpdateNotes = (entry: JournalEntry, notes: string) => {
-    const updated = updateReview(entry, { notes });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
   };
 
   const handleUpdateReview = (entry: JournalEntry, field: string, value: string) => {
