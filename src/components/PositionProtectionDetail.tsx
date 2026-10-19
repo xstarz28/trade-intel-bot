@@ -142,7 +142,6 @@ function calculateProfitDisplay(ref: ProtectionReference): {
 }
 
 export function PositionProtectionDetail({
-  positionId,
   instrument,
   side,
   timeline,
