@@ -105,6 +105,38 @@ describe("useAuth — three-phase state machine", () => {
     expect(result.current.user).toBeNull();
   });
 
+  it("does not immediately log out during a transient auth token gap", () => {
+    vi.useFakeTimers();
+    try {
+      const result = runPhaseSequence([
+        { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+        { authLoading: false, authenticated: false, user: undefined },
+      ]);
+      expect(result.current.phase).toBe("authenticated");
+      act(() => vi.advanceTimersByTime(1499));
+      expect(result.current.phase).toBe("authenticated");
+      act(() => vi.advanceTimersByTime(1));
+      expect(result.current.phase).toBe("unauthenticated");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels pending unauthenticated transition when token returns", () => {
+    vi.useFakeTimers();
+    try {
+      const result = runPhaseSequence([
+        { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+        { authLoading: false, authenticated: false, user: undefined },
+        { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+      ]);
+      act(() => vi.advanceTimersByTime(1500));
+      expect(result.current.phase).toBe("authenticated");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("simulates a full reload → restore cycle", () => {
     const result = runPhaseSequence([
       // Phase 1: initial loading (app just mounted)
