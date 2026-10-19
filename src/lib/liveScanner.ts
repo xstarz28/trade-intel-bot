@@ -259,7 +259,7 @@ export function scanInstruments(
   }
 
   // Build candidates from sources
-  const candidates = filtered.map(s => buildCandidateFromSource(s));
+  const candidates = filtered.map(s => buildCandidateFromSource(s, now));
 
   // Scan each horizon
   const results = new Map<TradingMode | InvestorHorizon, UniversalRecommendationResult>();

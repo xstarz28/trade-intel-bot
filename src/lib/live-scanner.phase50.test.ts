@@ -125,6 +125,17 @@ function makeSource(overrides?: Partial<LiveCandidateSource>): LiveCandidateSour
 // ═══════════════════════════════════════════════════════════════
 
 describe("A — Live Candidate Ingestion", () => {
+  it("uses the supplied clock for deterministic freshness classification", () => {
+    const source = makeSource({
+      marketData: makeMarketData("BTC/USD", {
+        price: { price: 65000, timestamp: NOW, source: "test" },
+        dataFreshness: "realtime",
+      }),
+    });
+    const candidate = buildCandidateFromSource(source, NOW + 10 * MINUTE);
+    expect(candidate.freshness).toBe("DELAYED");
+  });
+
   it("builds CandidateInput from live source with market data", () => {
     const source = makeSource();
     const candidate = buildCandidateFromSource(source);
