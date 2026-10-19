@@ -77,12 +77,21 @@ describe("useAuth — three-phase state machine", () => {
     expect(result.current.phase).toBe("authenticated");
   });
 
-  it("resolves to 'unauthenticated' when auth settles without token", () => {
-    const result = runPhaseSequence([
-      { authLoading: false, authenticated: false, user: undefined },
-    ]);
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.phase).toBe("unauthenticated");
+  it("waits briefly before redirecting after an unauthenticated initial check", () => {
+    vi.useFakeTimers();
+    try {
+      const result = runPhaseSequence([
+        { authLoading: false, authenticated: false, user: undefined },
+      ]);
+      expect(result.current.isLoading).toBe(true);
+      expect(result.current.phase).toBe("initializing");
+      act(() => vi.advanceTimersByTime(1999));
+      expect(result.current.phase).toBe("initializing");
+      act(() => vi.advanceTimersByTime(1));
+      expect(result.current.phase).toBe("unauthenticated");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("resolves to 'authenticated' when all conditions met", () => {
@@ -95,14 +104,53 @@ describe("useAuth — three-phase state machine", () => {
     expect(result.current.user).toEqual({ name: "Gilfan" });
   });
 
-  it("resolves to 'unauthenticated' when not authenticated", () => {
-    const result = runPhaseSequence([
-      { authLoading: false, authenticated: false, user: null },
-    ]);
-    expect(result.current.isLoading).toBe(false);
-    expect(result.current.phase).toBe("unauthenticated");
-    expect(result.current.isAuthenticated).toBe(false);
-    expect(result.current.user).toBeNull();
+  it("resolves to 'unauthenticated' after the initial session grace period", () => {
+    vi.useFakeTimers();
+    try {
+      const result = runPhaseSequence([
+        { authLoading: false, authenticated: false, user: null },
+      ]);
+      expect(result.current.isLoading).toBe(true);
+      act(() => vi.advanceTimersByTime(2000));
+      expect(result.current.isLoading).toBe(false);
+      expect(result.current.phase).toBe("unauthenticated");
+      expect(result.current.isAuthenticated).toBe(false);
+      expect(result.current.user).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not immediately log out during a transient auth token gap", () => {
+    vi.useFakeTimers();
+    try {
+      const result = runPhaseSequence([
+        { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+        { authLoading: false, authenticated: false, user: undefined },
+      ]);
+      expect(result.current.phase).toBe("authenticated");
+      act(() => vi.advanceTimersByTime(1999));
+      expect(result.current.phase).toBe("authenticated");
+      act(() => vi.advanceTimersByTime(1));
+      expect(result.current.phase).toBe("unauthenticated");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels pending unauthenticated transition when token returns", () => {
+    vi.useFakeTimers();
+    try {
+      const result = runPhaseSequence([
+        { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+        { authLoading: false, authenticated: false, user: undefined },
+        { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
+      ]);
+      act(() => vi.advanceTimersByTime(2000));
+      expect(result.current.phase).toBe("authenticated");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("simulates a full reload → restore cycle", () => {
