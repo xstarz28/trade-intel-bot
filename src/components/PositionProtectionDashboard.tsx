@@ -377,7 +377,6 @@ export function PositionProtectionDashboard() {
   const saveSnapshotMut = useMutation(api.historicalIntelligence.saveSnapshot);
   const saveEventsMut = useMutation(api.historicalIntelligence.saveEvents);
   const deleteHistoryMut = useMutation(api.historicalIntelligence.deleteHistoryForPosition);
-  const pruneHistoryMut = useMutation(api.historicalIntelligence.pruneHistory);
 
   // ─── Shared Macro Context Data ───────────────────────────
   // Treasury yields + economic calendar are fetched once per mounted
