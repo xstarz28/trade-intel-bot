@@ -61,7 +61,7 @@ export function AnalysisHistory({ analyses, onSelect, selectedId }: AnalysisHist
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <ScrollArea className="max-h-[400px]">
+        <ScrollArea className="h-[min(360px,40vh)] min-h-[180px] w-full">
           <div className="space-y-1">
             {analyses.map((a) => {
               const BiasIcon = BIAS_ICONS[a.bias];
