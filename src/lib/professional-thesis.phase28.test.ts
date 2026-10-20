@@ -317,7 +317,6 @@ describe("Phase 28 — I56: Style changes context, not facts", () => {
     const baseInput = buildInput("BTC/USD", "crypto", candles);
 
     const scalpingInput = { ...baseInput, tradingStyle: "scalping" as const };
-    const intradayInput = { ...baseInput, tradingStyle: "intraday" as const };
     const swingInput = { ...baseInput, tradingStyle: "swing" as const };
 
     const rScalping = runAnalysis(scalpingInput);
