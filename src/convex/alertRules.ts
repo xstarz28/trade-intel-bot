@@ -46,7 +46,7 @@ export const createRule = mutation({
     cooldownMs: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     // Count existing rules
@@ -87,7 +87,7 @@ export const updateRule = mutation({
     cooldownMs: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const rules = await ctx.db
@@ -113,7 +113,7 @@ export const updateRule = mutation({
 export const deleteRule = mutation({
   args: { ruleId: v.string() },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const rule = await ctx.db
@@ -148,7 +148,7 @@ export const deleteRule = mutation({
 export const getRecentAlerts = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) return [];
     const limit = Math.min(args.limit ?? 50, 100);
     return await ctx.db
@@ -175,7 +175,7 @@ export const saveAlert = mutation({
     timestamp: v.number(),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     await ctx.db.insert("ruleAlertHistory", {
@@ -208,7 +208,7 @@ export const saveAlert = mutation({
 export const clearAlerts = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const alerts = await ctx.db
