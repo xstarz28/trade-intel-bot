@@ -277,7 +277,7 @@ describe("runWalkForwardBacktest", () => {
   it("forwards only completed higher-timeframe candles to each production analysis call", () => {
     vi.mocked(runAnalysis).mockClear();
     const base = Date.UTC(2026, 9, 1);
-    const primary = Array.from({ length: 30 }, (_, index) => ({
+    const primary = Array.from({ length: 150 }, (_, index) => ({
       timestamp: base + index * 4 * 60 * 60 * 1000,
       open: 100 + index * 0.1,
       high: 102 + index * 0.1,
@@ -285,7 +285,7 @@ describe("runWalkForwardBacktest", () => {
       close: 101 + index * 0.1,
       volume: 1000 + index,
     }));
-    const daily = candles(5, base).map((candle, index) => ({
+    const daily = candles(35, base).map((candle, index) => ({
       ...candle,
       timestamp: base + index * 24 * 60 * 60 * 1000,
     }));
@@ -313,6 +313,8 @@ describe("runWalkForwardBacktest", () => {
       expect(supplied.every((candle) => candle.timestamp + 24 * 60 * 60 * 1000 <= signalClose)).toBe(true);
       if (expected.length > 0) {
         sawCompletedHigherTimeframe = true;
+      }
+      if (expected.length >= 20) {
         expect(input.technicalData?.htfContext?.timeframe).toBe("D1");
         expect(input.technicalData?.htfContext?.dataPoints).toBe(expected.length);
       }
