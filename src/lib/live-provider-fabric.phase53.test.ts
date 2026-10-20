@@ -40,6 +40,7 @@ import {
 // ── Universe ──
 
 // ── Radar ──
+import { scanRadar } from "./market-radar/radar";
 import { buildRadarCandidate, type RadarCandidateSource } from "./market-radar/candidate-builder";
 
 const NOW = Date.now();
