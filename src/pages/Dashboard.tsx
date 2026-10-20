@@ -381,13 +381,13 @@ export default function Dashboard() {
         // Step 2: Fetching market data + intelligence + derivatives in parallel
         updateStep(1, "active");
         let marketDataResult: MarketDataResult;
-        let intelligenceResult: any = null;
-        let derivativesResult: any = null;
-        let defiFundamentalsResult: any = null;
-        let calendarResult: any = null;
+        let intelligenceResult: Awaited<ReturnType<typeof fetchIntelligence>> | null = null;
+        let derivativesResult: Awaited<ReturnType<typeof fetchDerivatives>> | null = null;
+        let defiFundamentalsResult: Awaited<ReturnType<typeof fetchDeFiLlamaFundamentals>> | null = null;
+        let calendarResult: Awaited<ReturnType<typeof fetchCalendar>> | null = null;
         try {
           // Build fetch promises
-          const fetchPromises: Promise<any>[] = [
+          const fetchPromises: Promise<unknown>[] = [
             withActionTimeout(
               fetchMarketData({
                 instrument: input.instrument,
@@ -435,7 +435,7 @@ export default function Dashboard() {
           const results = await Promise.allSettled(fetchPromises);
           const marketResult = results[0];
           const intelResult = results[1];
-          calendarResult = results[2];
+          const calendarResultSettled = results[2];
           const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
           const defiFundamentalsResultSettled = input.instrumentType === "crypto" ? results[4] : undefined;
 
@@ -552,20 +552,20 @@ export default function Dashboard() {
 
           // Intelligence is non-critical
           if (intelResult.status === "fulfilled") {
-            intelligenceResult = intelResult.value;
+            intelligenceResult = intelResult.value as Awaited<ReturnType<typeof fetchIntelligence>>;
           }
           // Calendar is non-critical
-          if (calendarResult && calendarResult.status === "fulfilled") {
-            calendarResult = calendarResult.value;
+          if (calendarResultSettled.status === "fulfilled") {
+            calendarResult = calendarResultSettled.value as Awaited<ReturnType<typeof fetchCalendar>>;
           }
           // Derivatives is non-critical
           if (derivResult && derivResult.status === "fulfilled") {
-            derivativesResult = derivResult.value;
+            derivativesResult = derivResult.value as Awaited<ReturnType<typeof fetchDerivatives>>;
           }
           // DeFiLlama is independent and non-critical: analysis continues with
           // explicit missing-context state when this provider is unavailable.
           if (defiFundamentalsResultSettled && defiFundamentalsResultSettled.status === "fulfilled") {
-            defiFundamentalsResult = defiFundamentalsResultSettled.value;
+            defiFundamentalsResult = defiFundamentalsResultSettled.value as Awaited<ReturnType<typeof fetchDeFiLlamaFundamentals>>;
           }
         } catch (err: unknown) {
           updateStep(1, "error");
@@ -685,7 +685,7 @@ export default function Dashboard() {
               : undefined;
           const defiContext = defiFundamentalsResult?.success && defiFundamentalsResult?.data
             ? parseDeFiLlamaResult(
-                defiFundamentalsResult.data as Record<string, any>,
+                defiFundamentalsResult.data as Record<string, unknown>,
                 input.instrument,
                 defiFundamentalsResult.observedAt ?? Date.now(),
               )
@@ -751,7 +751,7 @@ export default function Dashboard() {
                   quality: "VERIFIED",
                   availableDatasets: 1,
                   totalDatasets: 1,
-                  upcomingEvents: calendarResult.data.events?.filter((e: any) => e.status === "upcoming").slice(0, 5).map((e: any) => ({
+                  upcomingEvents: calendarResult.data.events?.filter((e) => e.status === "upcoming").slice(0, 5).map((e) => ({
                     name: e.event,
                     date: new Date(e.datetime).toISOString().slice(0, 10),
                     impact: e.importance === 3 ? "high" : e.importance === 2 ? "medium" : "low",
