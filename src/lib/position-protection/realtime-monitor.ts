@@ -12,7 +12,6 @@ import type {
   InstrumentState,
   ProtectionEvent,
   MonitoringStatus,
-  Timeframe,
   EventType,
 } from "./realtime-types";
 import type { PositionContext, AlertSeverity } from "./types";

@@ -6,14 +6,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
+import type { AlertRule } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import {
   evaluateAlertRuntimeBridge,
   extractSnapshot,
   buildInitialStateStore,
   removePositionFromState,
-  type RuntimeBridgeInput,
   type PreviousStateStore,
 } from "./alert-runtime-bridge";
 

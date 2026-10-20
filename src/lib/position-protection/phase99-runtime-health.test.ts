@@ -22,7 +22,6 @@ import {
   MAX_COMPONENTS,
   type RuntimeHealthInput,
   type RuntimeHealthComponent,
-  type RuntimeHealthStatus,
 } from "./runtime-health";
 
 // ─── Test Helpers ────────────────────────────────────────────

@@ -13,7 +13,6 @@ import type {
   ThesisHealthScore,
   ThesisHealthState,
   DeteriorationSignal,
-  DeteriorationCategory,
 } from "./types";
 
 // ═══════════════════════════════════════════════════════════════

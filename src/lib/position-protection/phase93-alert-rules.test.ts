@@ -18,10 +18,8 @@ import {
   MAX_RULES_PER_USER,
   MAX_ALERTS_PER_EVALUATION,
   type AlertRule,
-  type RuleAlert,
   type RuleEvaluationContext,
   type RuleTriggerRecord,
-  type RuleSnapshot,
 } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import type { PortfolioIntelligence } from "./portfolio-intelligence";
