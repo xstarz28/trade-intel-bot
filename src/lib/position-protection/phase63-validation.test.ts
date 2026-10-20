@@ -1248,7 +1248,7 @@ describe("W. Alert Lifecycle", () => {
 
 describe("X. Performance / Memory Bounds", () => {
   it("cleanup limits dispatcher history", () => {
-    let state = createMonitorState();
+    const state = createMonitorState();
     // Add lots of alerts
     for (let i = 0; i < 100; i++) {
       state.dispatcher.history.push({
@@ -1347,7 +1347,7 @@ describe("Y. Behavioral Scenario: Profitable LONG → Deteriorating", () => {
 
   it("system should NOT wait for SL before warning", () => {
     // Position with SL at 95, currently at 110, starts dropping
-    let monitoring = createMonitoringState("BTC/USDT");
+    const monitoring = createMonitoringState("BTC/USDT");
     const sl = 95;
 
     // Price drops to 100 but hasn't hit SL yet
