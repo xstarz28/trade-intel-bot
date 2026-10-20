@@ -48,6 +48,17 @@ const bybitFallback = new BybitPublicDerivativesAdapter();
 const okxFallback = new OkxPublicDerivativesAdapter();
 const BINANCE_FALLBACK_CACHE_TTL = 60 * 1000;
 
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function rowsFrom(value: unknown): JsonRecord[] {
+  if (Array.isArray(value)) return value.filter(isRecord);
+  return isRecord(value) ? [value] : [];
+}
+
 async function fetchPublicDerivativesFallback(instrument: string): Promise<{ data: CryptoDerivativesData | null; error: string }> {
   const [binanceResult, bybitResult, okxResult] = await Promise.allSettled([
     binanceFallback.fetch(instrument),
@@ -73,7 +84,7 @@ async function fetchPublicDerivativesFallback(instrument: string): Promise<{ dat
   };
 }
 
-async function cgFetch(path: string, apiKey: string): Promise<any> {
+async function cgFetch(path: string, apiKey: string): Promise<unknown> {
   const res = await fetch(CG_BASE + path, {
     headers: {
       accept: "application/json",
@@ -88,19 +99,20 @@ async function cgFetch(path: string, apiKey: string): Promise<any> {
     }
     throw new Error("CoinGlass HTTP " + res.status + ": " + res.statusText);
   }
-  const json = await res.json();
+  const payload: unknown = await res.json();
+  if (!isRecord(payload)) throw new Error("CoinGlass returned a non-object response.");
   // CoinGlass V4 wraps successful responses in { code: "0", msg, data }.
-  if (json.code !== undefined && String(json.code) !== "0") {
-    const msg = String(json.msg || "Unknown CoinGlass error");
-    if (String(json.code) === "429" || msg.toLowerCase().includes("rate")) {
+  if (payload.code !== undefined && String(payload.code) !== "0") {
+    const msg = String(payload.msg || "Unknown CoinGlass error");
+    if (String(payload.code) === "429" || msg.toLowerCase().includes("rate")) {
       throw new Error("RATE_LIMIT:" + msg);
     }
-    if (["401", "403"].includes(String(json.code)) || /auth|api.?key|permission/i.test(msg)) {
+    if (["401", "403"].includes(String(payload.code)) || /auth|api.?key|permission/i.test(msg)) {
       throw new Error("AUTH_ERROR:" + msg);
     }
-    throw new Error("CoinGlass error " + json.code + ": " + msg);
+    throw new Error("CoinGlass error " + String(payload.code) + ": " + msg);
   }
-  return json.data ?? json;
+  return payload.data ?? payload;
 }
 
 // ── Symbol mapping ──────────────────────────────────────────────
@@ -282,7 +294,7 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
       const result = await tokenomistAdapter.fetch(key);
       if (result?.success && result.data && typeof result.data === "object") {
         const normalized = parseTokenomistResult(
-          result.data as Record<string, any>,
+          result.data as Record<string, unknown>,
           key,
           result.observedAt ?? Date.now(),
         );
@@ -355,7 +367,7 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
 const defiLlamaAdapter = new DeFiLlamaAdapter();
 const DEFI_LLAMA_CACHE_TTL = 10 * 60 * 1000;
 const defiLlamaCache = new Map<string, {
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   provider: string;
   observedAt: number;
   expiresAt: number;
@@ -397,7 +409,7 @@ export const fetchDeFiLlamaFundamentals = action({
 
       const normalized = {
         success: true as const,
-        data: result.data as Record<string, any>,
+        data: result.data as Record<string, unknown>,
         provider: result.provider,
         observedAt: result.observedAt,
       };
@@ -426,8 +438,8 @@ function finiteNumber(value: unknown): number | undefined {
 
 async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenInterestData | undefined> {
   const data = await cgFetch("/futures/open-interest/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey);
-  const rows = Array.isArray(data) ? data : data ? [data] : [];
-  const latest = rows.find((item: any) => String(item.exchange || "").toLowerCase() === "all") ?? rows[0];
+  const rows = rowsFrom(data);
+  const latest = rows.find((item) => String(item.exchange ?? "").toLowerCase() === "all") ?? rows[0];
   const current = finiteNumber(latest?.open_interest_usd);
   if (current === undefined || current <= 0) return undefined;
   const change1h = finiteNumber(latest?.open_interest_change_percent_1h);
@@ -441,25 +453,29 @@ async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenIn
 
 async function fetchFundingRate(symbol: string, apiKey: string): Promise<FundingRateData | undefined> {
   const data = await cgFetch("/futures/funding-rate/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey);
-  const rows = Array.isArray(data) ? data : data ? [data] : [];
-  const item = rows.find((row: any) => String(row.symbol || "").toUpperCase() === symbol.toUpperCase()) ?? rows[0];
-  const exchanges = Array.isArray(item?.stablecoin_margin_list) ? item.stablecoin_margin_list : [];
+  const rows = rowsFrom(data);
+  const item = rows.find((row) => String(row.symbol ?? "").toUpperCase() === symbol.toUpperCase()) ?? rows[0];
+  const exchanges = Array.isArray(item?.stablecoin_margin_list)
+    ? item.stablecoin_margin_list.filter(isRecord)
+    : [];
   const actualRates = exchanges
-    .map((entry: any) => ({
-      name: String(entry.exchange || "unknown"),
+    .map((entry) => ({
+      name: String(entry.exchange ?? "unknown"),
       rawRate: finiteNumber(entry.funding_rate),
       intervalHours: finiteNumber(entry.funding_rate_interval) ?? 8,
     }))
-    .filter((entry: any) => entry.rawRate !== undefined);
+    .filter((entry): entry is { name: string; rawRate: number; intervalHours: number } =>
+      entry.rawRate !== undefined,
+    );
   if (actualRates.length === 0) return undefined;
 
   // CoinGlass v4 funding_rate is percentage units (0.0073 means 0.0073%).
-  const selected = actualRates.find((entry: any) => entry.name.toLowerCase() === "binance") ?? actualRates[0];
-  const currentRate = selected.rawRate! / 100;
+  const selected = actualRates.find((entry) => entry.name.toLowerCase() === "binance") ?? actualRates[0];
+  const currentRate = selected.rawRate / 100;
   return {
     currentRate,
     annualizedRate: currentRate * (24 / Math.max(1, selected.intervalHours)) * 365,
-    exchanges: actualRates.map((entry: any) => ({ name: entry.name, rate: entry.rawRate! / 100 })),
+    exchanges: actualRates.map((entry) => ({ name: entry.name, rate: entry.rawRate / 100 })),
   };
 }
 
@@ -469,7 +485,7 @@ async function fetchLongShort(symbol: string, apiKey: string): Promise<LongShort
   const path = "/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=" +
     encodeURIComponent(pair) + "&interval=4h&limit=1";
   const data = await cgFetch(path, apiKey);
-  const points = Array.isArray(data) ? data : data ? [data] : [];
+  const points = rowsFrom(data);
   const latest = points[points.length - 1];
   const ratio = finiteNumber(latest?.global_account_long_short_ratio);
   if (ratio === undefined || ratio <= 0) return undefined;
