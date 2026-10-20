@@ -11,7 +11,6 @@ import {
   deriveMacroYieldEvidence,
   parseFredYieldCsv,
   applyFredYieldFallback,
-  TREASURY_FRESH_DAYS,
   TREASURY_DELAYED_DAYS,
 } from "./treasury";
 
