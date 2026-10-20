@@ -590,7 +590,7 @@ describe("AC — Total Provider Failure", () => {
 
 describe("AD — Missing Credentials", () => {
   it("Twelve Data unavailable without API key", async () => {
-    const result = await acquireLiveData("EUR/USD", "forex", (name) => undefined);
+    const result = await acquireLiveData("EUR/USD", "forex", () => undefined);
     // Without API key, Twelve Data adapter is not available
     // CoinGecko doesn't support forex, so result should be null
     expect(result.success).toBe(false);
@@ -1029,9 +1029,10 @@ describe("BB — Concurrent Scanning", () => {
 describe("BC — Sequential Scanning Isolation", () => {
   it("sequential scans don't leak state", () => {
     const config = { horizons: ["INTRADAY" as const], maxResults: 5 };
-    const r1 = scanRadar([makeSource("BTC/USD", "crypto")], config, undefined, NOW);
-    const r2 = scanRadar([makeSource("EUR/USD", "forex")], config, undefined, NOW);
-    expect(r2.results.get("INTRADAY")!.some(o => o.instrument === "BTC/USD")).toBe(false);
+    const btcScan = scanRadar([makeSource("BTC/USD", "crypto")], config, undefined, NOW);
+    const eurScan = scanRadar([makeSource("EUR/USD", "forex")], config, undefined, NOW);
+    expect(eurScan.results.get("INTRADAY")!.some(o => o.instrument === "BTC/USD")).toBe(false);
+    expect(btcScan.results.get("INTRADAY")!.some(o => o.instrument === "EUR/USD")).toBe(false);
   });
 });
 
