@@ -120,7 +120,7 @@ import {
 
 
 // Giveback
-import { calculateGiveback, classifyGivebackSeverity } from "../position-protection/giveback-monitor";
+import { calculateGiveback, classifyGivebackSeverity, type GivebackState } from "../position-protection/giveback-monitor";
 
 // Early protection
 
@@ -1703,12 +1703,21 @@ describe("X. Giveback Monitoring Runtime", () => {
   });
 
   it("Giveback classified correctly at boundaries", () => {
-    expect(classifyGivebackSeverity({ givebackPct: 0 } as any, "SWING")).toBe("NONE");
-    expect(classifyGivebackSeverity({ givebackPct: 100 } as any, "SWING")).toBe("PROTECT_NOW");
+    expect(classifyGivebackSeverity({
+      peakPrice: 110, currentPrice: 105, peakProfit: 10, currentProfit: 5,
+      givebackAbsolute: 5, givebackPct: 0, pullbackType: "NORMAL_PULLBACK", accelerating: false,
+    } satisfies GivebackState, "SWING")).toBe("NONE");
+    expect(classifyGivebackSeverity({
+      peakPrice: 110, currentPrice: 105, peakProfit: 10, currentProfit: 5,
+      givebackAbsolute: 5, givebackPct: 100, pullbackType: "NORMAL_PULLBACK", accelerating: false,
+    } satisfies GivebackState, "SWING")).toBe("PROTECT_NOW");
   });
 
   it("SCALPING is more sensitive than INVESTING", () => {
-    const scalpResult = classifyGivebackSeverity({ givebackPct: 30 } as any, "SCALPING");
+    const scalpResult = classifyGivebackSeverity({
+      peakPrice: 110, currentPrice: 105, peakProfit: 10, currentProfit: 5,
+      givebackAbsolute: 5, givebackPct: 30, pullbackType: "NORMAL_PULLBACK", accelerating: false,
+    } satisfies GivebackState, "SCALPING");
     const investResult = classifyGivebackSeverity({ givebackPct: 30 } as any, "INVESTING");
     const order = { NONE: 0, WATCH: 1, PARTIAL_TP: 2, MANUAL_TP: 3, PROTECT_NOW: 4 };
     expect(order[scalpResult] ?? -1).toBeGreaterThanOrEqual(order[investResult] ?? -1);
