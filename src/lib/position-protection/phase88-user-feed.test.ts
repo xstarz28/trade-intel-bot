@@ -23,10 +23,8 @@ import {
   boundFeed,
   MAX_FEED_ITEMS,
   type UserPosition,
-  type FeedItem,
 } from "./user-intelligence-feed";
 import {
-  classifyNewsFreshness,
   type NewsItem,
 } from "./news-intelligence";
 
