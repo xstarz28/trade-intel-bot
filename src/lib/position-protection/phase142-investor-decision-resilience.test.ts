@@ -31,7 +31,6 @@ import type {
 import type { LiveInstrumentState } from "./use-live-protection-polling";
 import {
   buildInvestorDecisionSynthesis,
-  type DecisionState,
 } from "./investor-decision-synthesis";
 
 // ═══════════════════════════════════════════════════════════════

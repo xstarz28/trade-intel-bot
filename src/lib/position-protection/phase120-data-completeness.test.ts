@@ -8,11 +8,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildFundamentalRegime,
   buildFundamentalInputFromPositionIntel,
-  buildAssetFundamentalContext,
   mapInstrumentToAssetClass,
-  type GrowthObservation,
-  type EmploymentObservation,
-  type ConsumerConfidenceObservation,
   type FundamentalRegimeInput,
 } from "./fundamental-regime";
 

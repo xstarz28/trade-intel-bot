@@ -21,7 +21,6 @@ import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import type { InvestorMacroContext, MacroQuoteView } from "./investor-macro-context";
 import {
   buildInvestorDecisionSynthesis,
-  type DecisionState,
 } from "./investor-decision-synthesis";
 
 // ═══════════════════════════════════════════════════════════════
