@@ -183,8 +183,7 @@ function computeExtensionRisk(
 function classifyPrimaryPath(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
-  regime?: MarketRegimeContext,
-): PathStatus {
+ ): PathStatus {
   if (dir === "neutral") {
     if (regime?.regime === "RANGE") return "RANGE_CONTINUATION";
     return "UNCONFIRMED";
@@ -251,7 +250,6 @@ function classifyAlternatePath(
 function buildPathEvidence(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
-  primary: PathStatus,
 ): PathEvidence[] {
   const evidence: PathEvidence[] = [];
 
@@ -505,7 +503,6 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const dir = dirBias(result);
   const regime = result.marketRegimeContext;
   const fundamental = result.fundamentalThesis;
-  const scenario = result.marketScenario;
   const horizon = getHorizon(result);
   const dataReliability = getDataReliability(result);
 
@@ -519,13 +516,13 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
 
   // ── Path classification ──
   const primaryPath = classifyPrimaryPath(result, dir, regime);
-  const alternatePath = classifyAlternatePath(primaryPath, dir, regime);
+  const alternatePath = classifyAlternatePath(primaryPath, dir);
 
   // ── Path status text ──
   const pathStatus = primaryPath.replace(/_/g, " ").toLowerCase();
 
   // ── Evidence ──
-  const pathEvidence = buildPathEvidence(result, dir, primaryPath);
+  const pathEvidence = buildPathEvidence(result, dir);
   const opposingEvidence = buildOpposingEvidence(result, dir as "bullish" | "bearish" | "neutral");
 
   // ── Trigger levels ──
