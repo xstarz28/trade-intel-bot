@@ -303,7 +303,7 @@ describe("runWalkForwardBacktest", () => {
     const calls = vi.mocked(runAnalysis).mock.calls;
     expect(calls.length).toBeGreaterThan(0);
     let sawCompletedHigherTimeframe = false;
-    for (const [input] of calls) {
+    for (const [callIndex, [input]] of calls.entries()) {
       const visible = input.marketData?.candles;
       expect(visible?.length).toBeGreaterThan(0);
       const signalClose = visible![visible!.length - 1].timestamp + 4 * 60 * 60 * 1000;
@@ -317,6 +317,11 @@ describe("runWalkForwardBacktest", () => {
       if (expected.length >= 20) {
         expect(input.technicalData?.htfContext?.timeframe).toBe("D1");
         expect(input.technicalData?.htfContext?.dataPoints).toBe(expected.length);
+        const analysisResult = vi.mocked(runAnalysis).mock.results[callIndex];
+        expect(analysisResult?.type).toBe("return");
+        if (analysisResult?.type === "return") {
+          expect(analysisResult.value.dataFlags.join(" ")).not.toContain("No higher-timeframe structural data");
+        }
       }
     }
     expect(sawCompletedHigherTimeframe).toBe(true);
