@@ -139,7 +139,11 @@ export function generatePositionThesis(
       direction: aligned ? "SUPPORTING" : "CONFLICTING",
       strength: "STRONG",
     };
-    aligned ? supporting.push(item) : conflicting.push(item);
+    if (aligned) {
+      supporting.push(item);
+    } else {
+      conflicting.push(item);
+    }
   }
 
   // M15 trend
