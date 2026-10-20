@@ -152,38 +152,6 @@ function makeSnapshot(overrides: Partial<PositionSnapshot> = {}): PositionSnapsh
   };
 }
 
-function makeEvent(overrides: Partial<RealTimeEvent> = {}): RealTimeEvent {
-  return {
-    eventId: `evt-${Date.now()}-${Math.random()}`,
-    instrument: "BTC/USDT",
-    timestamp: Date.now(),
-    source: "OKX",
-    freshness: "FRESH",
-    eventType: "PRICE_UPDATE",
-    priority: "LOW",
-    dependencyGroup: "PRICE",
-    payload: { price: 105000 },
-    ...overrides,
-  };
-}
-
-function makeStreamEvent(overrides: Partial<StreamEvent> = {}): StreamEvent {
-  return {
-    eventId: `se-${Date.now()}-${Math.random()}`,
-    provider: "OKX",
-    instrument: "BTC/USDT",
-    providerSymbol: "BTC-USDT",
-    assetClass: "crypto",
-    eventType: "QUOTE",
-    timestamp: Date.now(),
-    receivedAt: Date.now(),
-    freshness: "FRESH",
-    dependencyGroup: "PRICE",
-    payload: { price: 105000 },
-    ...overrides,
-  };
-}
-
 // ═══════════════════════════════════════════════════════════════
 // PART A — CODE AUDIT: Integration gap detection
 // ═══════════════════════════════════════════════════════════════
