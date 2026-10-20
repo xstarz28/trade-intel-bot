@@ -9,8 +9,8 @@
  */
 
 import type { PositionSide } from "./types";
-import type { NewsItem, NewsRelevance, RelevanceLevel } from "./news-intelligence";
-import { classifyNewsRelevance, classifyNewsFreshness, deduplicateNews } from "./news-intelligence";
+import type { NewsItem, RelevanceLevel } from "./news-intelligence";
+import { classifyNewsRelevance, deduplicateNews } from "./news-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // USER POSITION
