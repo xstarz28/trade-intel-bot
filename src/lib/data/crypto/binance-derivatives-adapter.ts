@@ -11,6 +11,12 @@ import { isCryptoInstrument, toCoinGlassSymbol } from "./symbols";
 const BASE_URL = "https://fapi.binance.com";
 const REQUEST_TIMEOUT_MS = 4_000;
 
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 type FetchFn = typeof fetch;
 
 function finitePositive(value: unknown): number | undefined {
@@ -41,20 +47,21 @@ export class BinancePublicDerivativesAdapter {
     this.fetchFn = fetchFn ?? fetch;
   }
 
-  private async getJson(path: string): Promise<any> {
+  private async getJson(path: string): Promise<unknown> {
     const response = await this.fetchFn(BASE_URL + path, {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    const json = await response.json().catch(() => null);
+    const payload: unknown = await response.json().catch(() => null);
+    const json = isRecord(payload) ? payload : undefined;
     if (!response.ok) {
       const detail = String(json?.msg ?? response.statusText ?? "provider request failed");
       throw new Error("Binance Futures HTTP " + response.status + ": " + detail);
     }
-    if (json && !Array.isArray(json) && json.code !== undefined && Number(json.code) < 0) {
-      throw new Error("Binance Futures " + json.code + ": " + String(json.msg ?? "provider error"));
+    if (json && json.code !== undefined && Number(json.code) < 0) {
+      throw new Error("Binance Futures " + String(json.code) + ": " + String(json.msg ?? "provider error"));
     }
-    return json;
+    return payload;
   }
 
   async fetch(instrument: string): Promise<CryptoDerivativesData | null> {
@@ -67,20 +74,20 @@ export class BinancePublicDerivativesAdapter {
       this.getJson("/futures/data/globalLongShortAccountRatio?symbol=" + encodeURIComponent(symbol) + "&period=4h&limit=1"),
     ]);
 
-    const oiRows = oiResult.status === "fulfilled" && Array.isArray(oiResult.value) ? oiResult.value : [];
+    const oiRows = oiResult.status === "fulfilled" && Array.isArray(oiResult.value) ? oiResult.value.filter(isRecord) : [];
     const latestOi = oiRows[oiRows.length - 1];
     const oiValue = finitePositive(latestOi?.sumOpenInterestValue);
     const openInterest = oiValue !== undefined
       ? { current: oiValue }
       : undefined;
 
-    const premium = premiumResult.status === "fulfilled" ? premiumResult.value : undefined;
+    const premium = premiumResult.status === "fulfilled" && isRecord(premiumResult.value) ? premiumResult.value : undefined;
     const rawFunding = finite(premium?.lastFundingRate);
     const fundingRate = rawFunding !== undefined
       ? { currentRate: rawFunding }
       : undefined;
 
-    const ratioRows = ratioResult.status === "fulfilled" && Array.isArray(ratioResult.value) ? ratioResult.value : [];
+    const ratioRows = ratioResult.status === "fulfilled" && Array.isArray(ratioResult.value) ? ratioResult.value.filter(isRecord) : [];
     const latestRatio = ratioRows[ratioRows.length - 1];
     const accountRatio = finitePositive(latestRatio?.longShortRatio);
     const longShort = accountRatio !== undefined ? { accountRatio } : undefined;
