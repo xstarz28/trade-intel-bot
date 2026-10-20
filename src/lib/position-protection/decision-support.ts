@@ -159,9 +159,19 @@ export function classifyEvidence(
   evidence: EvidenceItem,
   side: string,
 ): EvidenceClassified {
-  // Map raw direction to side-aware classification
+  // Reject invalid position sides rather than silently classifying evidence
+  // against a position direction that does not exist.
   let classification: EvidenceClassification;
   let sourceDimension: string;
+  if (side !== "LONG" && side !== "SHORT") {
+    return {
+      category: evidence.category,
+      description: evidence.description,
+      classification: "UNAVAILABLE",
+      strength: evidence.strength,
+      sourceDimension: evidence.category,
+    };
+  }
 
   switch (evidence.direction) {
     case "supporting":
