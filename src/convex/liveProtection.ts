@@ -662,7 +662,7 @@ async function fetchTwelveDataOHLCV(
       sourceMode: "UNAVAILABLE",
       provider: "TwelveData",
       success: false,
-      error: err?.message ?? "Fetch failed",
+      error: errorMessage(err) || "Fetch failed",
     };
   }
 }
