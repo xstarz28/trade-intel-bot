@@ -169,7 +169,7 @@ export function registerInstrumentForPolling(
     usingFallback: false,
     lastPrice: null,
     freshness: "UNAVAILABLE",
-    lastEventAt: 0,
+    lastEventAt: now,
     totalPolls: 0,
     successfulPolls: 0,
     failedPolls: 0,
