@@ -16,7 +16,6 @@ import type {
   AssetClass,
   CanonicalInstrument,
   DataCapability,
-  Exchange,
   Region,
 } from "./types";
 import {
