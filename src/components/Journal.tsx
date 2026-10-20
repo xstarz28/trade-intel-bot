@@ -49,6 +49,16 @@ const OUTCOME_COLORS: Record<string, string> = {
 
 // ── Props ────────────────────────────────────────────────────────
 
+type JournalReviewField =
+  | "entryReason"
+  | "thesisAtEntry"
+  | "confirmationObserved"
+  | "invalidationObserved"
+  | "whatWentRight"
+  | "whatWentWrong"
+  | "lessons"
+  | "notes";
+
 interface JournalProps {
   /** Current analysis result to journal (optional). */
   currentResult?: AnalysisResult | null;
@@ -101,7 +111,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
     setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
   };
 
-  const handleUpdateReview = (entry: JournalEntry, field: string, value: string) => {
+  const handleUpdateReview = (entry: JournalEntry, field: JournalReviewField, value: string) => {
     const updated = updateReview(entry, { [field]: value });
     updateEntryInList(updated);
     setSelectedEntry(updated);
@@ -314,17 +324,17 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                 ["whatWentWrong", "What Went Wrong"],
                 ["lessons", "Lessons"],
                 ["notes", "Notes"],
-              ] as [string, string][]).map(([field, label]) => (
+              ] as const satisfies readonly (readonly [JournalReviewField, string])[]).map(([field, label]) => (
                 <div key={field}>
                   <span className="text-muted-foreground">{label}:</span>
                   {editMode ? (
                     <Textarea
-                      defaultValue={(entry as any)[field] ?? ""}
+                      defaultValue={entry[field] ?? ""}
                       className="text-[10px] font-mono mt-1 min-h-[40px]"
                       onBlur={(e) => handleUpdateReview(entry, field, e.target.value)}
                     />
                   ) : (
-                    <span className="block text-muted-foreground/80 mt-1">{(entry as any)[field] ?? "—"}</span>
+                    <span className="block text-muted-foreground/80 mt-1">{entry[field] ?? "—"}</span>
                   )}
                 </div>
               ))}
