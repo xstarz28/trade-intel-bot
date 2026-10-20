@@ -8,8 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import * as RTL from "@testing-library/react";
-const { render } = RTL;
-const screen = (RTL as any).screen;
+const { render, screen } = RTL;
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { runAnalysis } from "./analysis-engine";
 import {

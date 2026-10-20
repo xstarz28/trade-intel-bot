@@ -122,7 +122,7 @@ function makeMinimalAnalysisResult(instrument: string = "BTC/USD", instrumentTyp
       swingLows: [65000, 64000],
       supportLevels: [66000, 64000],
       resistanceLevels: [70000, 72000],
-    } as any,
+    } as unknown as AnalysisResult["technicalData"],
     technicalSummary: "Structure is bullish with higher highs and higher lows.",
     fundamentalSummary: "Macro context neutral.",
     riskNote: "Standard market risk applies.",

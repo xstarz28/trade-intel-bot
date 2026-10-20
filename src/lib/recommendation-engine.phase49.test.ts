@@ -986,7 +986,7 @@ describe("Z — Adversarial Inputs", () => {
   });
 
   it("unknown asset class still produces a score", () => {
-    const c = makeCandidate({ assetClass: "macro" as any });
+    const c = makeCandidate({ assetClass: "macro" as CandidateInput["assetClass"] });
     const result = scoreCandidate(c, "INTRADAY");
     expect(result.analyticalScore).toBeGreaterThanOrEqual(0);
   });
