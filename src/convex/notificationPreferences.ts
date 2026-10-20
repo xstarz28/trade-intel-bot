@@ -23,7 +23,8 @@ const VALID_SCOPES = ["POSITION", "INSTRUMENT", "PORTFOLIO", "GLOBAL"];
 export const getPreferences = query({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity ? ctx.db.normalizeId("users", identity.subject) : null;
     if (!userId) {
       return {
         minimumSeverity: "INFO",
@@ -39,7 +40,7 @@ export const getPreferences = query({
 
     const record = await ctx.db
       .query("notificationPreferences")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
 
     if (!record) {
@@ -85,7 +86,8 @@ export const savePreferences = mutation({
     showDismissedNotifications: v.boolean(),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity ? ctx.db.normalizeId("users", identity.subject) : null;
     if (!userId) throw new Error("Authentication required");
 
     // Validate
@@ -104,7 +106,7 @@ export const savePreferences = mutation({
 
     const existing = await ctx.db
       .query("notificationPreferences")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
 
     const now = Date.now();
@@ -123,7 +125,7 @@ export const savePreferences = mutation({
       });
     } else {
       await ctx.db.insert("notificationPreferences", {
-        userId: userId as any,
+        userId: userId,
         minimumSeverity: args.minimumSeverity,
         enabledCategories: args.enabledCategories,
         enabledScopes: args.enabledScopes,
@@ -142,12 +144,13 @@ export const savePreferences = mutation({
 export const resetPreferences = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const identity = await ctx.auth.getUserIdentity();
+    const userId = identity ? ctx.db.normalizeId("users", identity.subject) : null;
     if (!userId) throw new Error("Authentication required");
 
     const existing = await ctx.db
       .query("notificationPreferences")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
 
     if (existing) {
