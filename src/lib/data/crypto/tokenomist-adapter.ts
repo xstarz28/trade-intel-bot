@@ -16,6 +16,24 @@ const TOKENOMIST_BASE = "https://api.unlocks.app";
 const REQUEST_TIMEOUT_MS = 2_500;
 const TOKEN_LIST_TTL_MS = 15 * 60 * 1000;
 
+type JsonRecord = Record<string, unknown>;
+
+type TokenomistResponseData = {
+  supply?: {
+    circulatingSupply?: number;
+    maxSupply?: number;
+    circulatingPercent?: number;
+  };
+  unlocks: {
+    upcomingCount30d: number;
+    upcomingValue30d: number;
+    upcomingUsdValue30d?: number;
+    summary: string;
+  };
+  availableDatasets: number;
+  totalDatasets: number;
+};
+
 type TokenListEntry = {
   id?: string;
   name?: string;
@@ -50,6 +68,14 @@ const TOKEN_ID_HINTS: Record<string, string> = {
   AAVE: "aave",
 };
 
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isTokenListEntry(value: unknown): value is TokenListEntry {
+  return isRecord(value) && typeof value.id === "string" && typeof value.symbol === "string";
+}
+
 function asFiniteNumber(value: unknown): number | undefined {
   if (value === null || value === undefined || value === "") return undefined;
   const n = typeof value === "number" ? value : Number(value);
@@ -76,7 +102,7 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
     return toTokenomistSymbol(instrument) !== null;
   }
 
-  private async request(path: string): Promise<any> {
+  private async request(path: string): Promise<unknown> {
     const fetchFn = this.httpFetch ?? fetch;
     const response = await fetchFn(TOKENOMIST_BASE + path, {
       headers: {
@@ -94,9 +120,9 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
       }
       throw Object.assign(new Error("Tokenomist HTTP " + response.status + ": " + response.statusText), { code: "API_UNAVAILABLE" });
     }
-    const json = await response.json();
-    if (json?.status === false || json?.success === false) {
-      throw Object.assign(new Error(String(json?.message ?? json?.error ?? "Tokenomist returned an unsuccessful response.")), { code: "API_UNAVAILABLE" });
+    const json: unknown = await response.json();
+    if (isRecord(json) && (json.status === false || json.success === false)) {
+      throw Object.assign(new Error(String(json.message ?? json.error ?? "Tokenomist returned an unsuccessful response.")), { code: "API_UNAVAILABLE" });
     }
     return json;
   }
@@ -104,15 +130,13 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
   private async getTokenList(): Promise<TokenListEntry[]> {
     if (this.tokenList && Date.now() < this.tokenListExpiresAt) return this.tokenList;
     const payload = await this.request("/v4/token/list");
-    const entries = Array.isArray(payload?.data)
+    const entries = isRecord(payload) && Array.isArray(payload.data)
       ? payload.data
-      : Array.isArray(payload?.tokens)
+      : isRecord(payload) && Array.isArray(payload.tokens)
         ? payload.tokens
         : [];
     if (!entries.length) throw new Error("Tokenomist returned an empty token list.");
-    const normalizedEntries = entries.filter((row: any): row is TokenListEntry =>
-      row && typeof row.id === "string" && typeof row.symbol === "string"
-    );
+    const normalizedEntries = entries.filter(isTokenListEntry);
     this.tokenList = normalizedEntries;
     this.tokenListExpiresAt = Date.now() + TOKEN_LIST_TTL_MS;
     return normalizedEntries;
@@ -168,22 +192,23 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
         "/v4/unlock/events?tokenId=" + encodeURIComponent(token.id) +
         "&start=" + encodeURIComponent(start) + "&end=" + encodeURIComponent(end),
       );
-      const rawEvents = Array.isArray(eventsPayload?.data) ? eventsPayload.data : [];
-      const upcoming = rawEvents.flatMap((event: any) => {
-        const eventTime = new Date(event?.unlockDate ?? "").getTime();
+      const rawEvents = isRecord(eventsPayload) && Array.isArray(eventsPayload.data) ? eventsPayload.data : [];
+      const upcoming = rawEvents.flatMap((event: unknown) => {
+        if (!isRecord(event)) return [];
+        const eventTime = new Date(typeof event.unlockDate === "string" ? event.unlockDate : "").getTime();
         if (!Number.isFinite(eventTime) || eventTime < now.getTime() || eventTime > horizon.getTime()) return [];
         // v4 documents cliff unlock events; do not treat linear-only events as v4 unlocks.
-        const cliff = event?.cliffUnlocks;
+        const cliff = event.cliffUnlocks;
         if (!cliff || typeof cliff !== "object") return [];
         const entries = Array.isArray(cliff) ? cliff : [cliff];
-        const amount = entries.reduce((sum: number, row: any) => sum + (asFiniteNumber(row?.cliffAmount) ?? 0), 0);
-        const usdValue = entries.reduce((sum: number, row: any) => sum + (asFiniteNumber(row?.cliffValue) ?? 0), 0);
+        const amount = entries.reduce((sum: number, row: unknown) => sum + (isRecord(row) ? asFiniteNumber(row.cliffAmount) ?? 0 : 0), 0);
+        const usdValue = entries.reduce((sum: number, row: unknown) => sum + (isRecord(row) ? asFiniteNumber(row.cliffValue) ?? 0 : 0), 0);
         return [{ amount, usdValue }];
       });
 
       const circulatingSupply = asFiniteNumber(token.circulatingSupply);
       const maxSupply = asFiniteNumber(token.maxSupply);
-      const data: Record<string, any> = {
+      const data: TokenomistResponseData = {
         supply: (circulatingSupply !== undefined || maxSupply !== undefined) ? {
           ...(circulatingSupply !== undefined ? { circulatingSupply } : {}),
           ...(maxSupply !== undefined ? { maxSupply } : {}),
@@ -211,14 +236,14 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
         data,
         ...(data.availableDatasets === 0 ? { error: "Tokenomist returned no usable tokenomics data." } : {}),
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
         provider: this.name,
         observedAt,
         error: err instanceof Error ? err.message : "Tokenomist request failed.",
-        errorCode: ["AUTH_ERROR", "RATE_LIMIT", "UNSUPPORTED_ASSET", "API_UNAVAILABLE"].includes(err?.code)
-          ? err.code
+        errorCode: isRecord(err) && typeof err.code === "string" && ["AUTH_ERROR", "RATE_LIMIT", "UNSUPPORTED_ASSET", "API_UNAVAILABLE"].includes(err.code)
+          ? err.code as "AUTH_ERROR" | "RATE_LIMIT" | "UNSUPPORTED_ASSET" | "API_UNAVAILABLE"
           : "NETWORK_ERROR",
       };
     }
@@ -226,12 +251,16 @@ export class TokenomistAdapter implements CryptoIntelligenceProvider {
 }
 
 export function parseTokenomistResult(
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   _instrument: string,
   observedAt: number,
 ): TokenomicsIntelligence {
-  const availableDatasets = data.availableDatasets ?? 0;
-  const totalDatasets = data.totalDatasets ?? 2;
+  const availableDatasets = asFiniteNumber(data.availableDatasets) ?? 0;
+  const totalDatasets = asFiniteNumber(data.totalDatasets) ?? 2;
+  const supply = isRecord(data.supply) ? data.supply : undefined;
+  const unlocks = isRecord(data.unlocks) ? data.unlocks : undefined;
+  const circulatingSupply = asFiniteNumber(supply?.circulatingSupply);
+  const upcomingValue30d = asFiniteNumber(unlocks?.upcomingValue30d);
   return {
     provider: "Tokenomist",
     observedAt,
@@ -239,22 +268,22 @@ export function parseTokenomistResult(
     quality: availableDatasets >= 2 ? "VERIFIED" : availableDatasets >= 1 ? "DEGRADED" : "UNAVAILABLE",
     available: availableDatasets > 0,
     failureReason: availableDatasets === 0 ? "No Tokenomist data available" : undefined,
-    supply: data.supply ? {
-      circulatingSupply: data.supply.circulatingSupply,
-      maxSupply: data.supply.maxSupply,
-      totalSupply: data.supply.totalSupply,
-      circulatingPercent: data.supply.circulatingPercent,
-      reliable: typeof data.supply.circulatingSupply === "number" && data.supply.circulatingSupply > 0,
+    supply: supply ? {
+      circulatingSupply,
+      maxSupply: asFiniteNumber(supply.maxSupply),
+      totalSupply: asFiniteNumber(supply.totalSupply),
+      circulatingPercent: asFiniteNumber(supply.circulatingPercent),
+      reliable: circulatingSupply !== undefined && circulatingSupply > 0,
     } : undefined,
-    unlocks: data.unlocks ? {
-      upcomingCount30d: data.unlocks.upcomingCount30d ?? 0,
-      upcomingValue30d: data.unlocks.upcomingValue30d,
-      upcomingUsdValue30d: data.unlocks.upcomingUsdValue30d,
-      unlockPercentOfCirculating: data.supply?.circulatingSupply && data.unlocks.upcomingValue30d
-        ? (data.unlocks.upcomingValue30d / data.supply.circulatingSupply) * 100
+    unlocks: unlocks ? {
+      upcomingCount30d: asFiniteNumber(unlocks.upcomingCount30d) ?? 0,
+      upcomingValue30d,
+      upcomingUsdValue30d: asFiniteNumber(unlocks.upcomingUsdValue30d),
+      unlockPercentOfCirculating: circulatingSupply && upcomingValue30d
+        ? (upcomingValue30d / circulatingSupply) * 100
         : undefined,
       reliable: true,
-      summary: data.unlocks.summary,
+      summary: typeof unlocks.summary === "string" ? unlocks.summary : "Unlock data reported",
     } : undefined,
     availableDatasets,
     totalDatasets,
