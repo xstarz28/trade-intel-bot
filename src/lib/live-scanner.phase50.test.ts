@@ -51,7 +51,6 @@ import {
   selectCandidatesForHorizon,
   scanInstruments,
   type ScanConfig,
-  type ScanResult,
 } from "./liveScanner";
 
 import type { CandidateInput } from "./recommendation-engine";
