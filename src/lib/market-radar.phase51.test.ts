@@ -797,8 +797,8 @@ describe("Q — Opportunity Lifecycle", () => {
     const source = makeSource({ snapshot: makeSnapshot({ observedAt: NOW }) });
     const config: RadarScanConfig = { horizons: ["INTRADAY"], maxResults: 5 };
     const r1 = scanRadar([source], config, undefined, NOW);
-    const state1 = buildRadarState(r1);
     expect(r1.results.get("INTRADAY")![0].lifecycle).toBe("ACTIVE");
+    expect(buildRadarState(r1).results.get("INTRADAY")![0].lifecycle).toBe("ACTIVE");
 
     // Stale source → transition
     const staleSource = makeSource({ snapshot: makeSnapshot({ observedAt: NOW - 2 * HOUR }) });
