@@ -113,6 +113,7 @@ export function initiateReconnect(state: ReconnectState, now: number): Reconnect
     ...state,
     status: "RECONNECTING",
     attempts: state.attempts + 1,
+    gapStartAt: state.gapStartAt || now,
     lastError: undefined,
   };
 }
