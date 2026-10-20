@@ -152,7 +152,7 @@ function makeSnapshot(overrides: Partial<PositionSnapshot> = {}): PositionSnapsh
   };
 }
 
-function makeEvent(overrides: Partial<RealTimeEvent> = {}): RealTimeEvent {
+): RealTimeEvent {
   return {
     eventId: `evt-${Date.now()}-${Math.random()}`,
     instrument: "BTC/USDT",
@@ -167,7 +167,7 @@ function makeEvent(overrides: Partial<RealTimeEvent> = {}): RealTimeEvent {
   };
 }
 
-function makeStreamEvent(overrides: Partial<StreamEvent> = {}): StreamEvent {
+): StreamEvent {
   return {
     eventId: `se-${Date.now()}-${Math.random()}`,
     provider: "OKX",
