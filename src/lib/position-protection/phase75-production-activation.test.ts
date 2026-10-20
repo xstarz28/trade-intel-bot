@@ -218,7 +218,7 @@ describe("C. Live Data → Protection Pipeline", () => {
       assetClass: "crypto",
       openedAt: Date.now(),
     }, Date.now());
-    controller = startController(controller);
+    startController(controller);
 
     const bridge = createBridgeState();
     const quote: ProviderQuoteData = {
