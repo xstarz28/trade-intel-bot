@@ -56,10 +56,10 @@ function flatCandles(base: number, n = 200): OhlcvCandle[] {
   }));
 }
 
-function mixedCandles(n = 200): OhlcvCandle[] {
+function mixedCandles(n = 200, basePrice = 50000): OhlcvCandle[] {
   return Array.from({ length: n }, (_, i) => {
     const up = i % 2 === 0;
-    const base = 50000 + Math.sin(i * 0.1) * 2000;
+    const base = basePrice + Math.sin(i * 0.1) * 2000;
     return {
       timestamp: ts(i),
       open: base + (up ? -10 : 10),
@@ -113,7 +113,7 @@ function runFlat(symbol: string, type: AnalysisInput["instrumentType"], base: nu
 }
 
 function runMixed(symbol: string, type: AnalysisInput["instrumentType"], base: number): AnalysisResult {
-  return runAnalysis(buildInput(symbol, type, mixedCandles()));
+  return runAnalysis(buildInput(symbol, type, mixedCandles(200, base)));
 }
 
 /** Assert complete pipeline coherence for a result. */
@@ -623,6 +623,9 @@ describe("Phase 33 — Cross-layer contradiction audit", () => {
     const r = run("BTC/USD", "crypto", 50000);
     const fp = r.forwardMarketPath!;
     const regime = r.marketRegimeContext!;
+    const currentState = fp.currentState.toLowerCase();
+    if (regime.marketPhase) expect(currentState).toContain(regime.marketPhase.replace(/_/g, " ").toLowerCase());
+    if (regime.regime) expect(currentState).toContain(regime.regime.replace(/_/g, " ").toLowerCase());
 
     // If keyLevels.invalidation exists, it should appear in invalidation conditions
     if (r.keyLevels?.invalidation && r.keyLevels.invalidation !== "N/A") {
