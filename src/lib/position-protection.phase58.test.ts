@@ -94,21 +94,6 @@ function longBtc(overrides?: Partial<PositionContext>): PositionContext {
   };
 }
 
-function shortEur(overrides?: Partial<PositionContext>): PositionContext {
-  return {
-    instrument: "EUR/USD",
-    assetClass: "forex",
-    side: "SHORT",
-    entryPrice: 1.1,
-    currentPrice: 1.09,
-    stopLoss: 1.12,
-    takeProfit: 1.06,
-    openedAt: NOW - 86400_000,
-    horizon: "INTRADAY",
-    ...overrides,
-  };
-}
-
 function cleanEvidence(price?: number): MarketEvidence {
   return { price: price ?? 84000 };
 }
