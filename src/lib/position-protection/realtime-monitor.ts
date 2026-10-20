@@ -236,7 +236,7 @@ export function processEvent(
 
   // 1. Update instrument state
   const instKey = event.instrument;
-  let inst = updatedState.instruments.get(instKey) ?? {
+  const inst = updatedState.instruments.get(instKey) ?? {
     instrument: instKey,
     lastPrice: 0,
     lastUpdateAt: 0,
