@@ -1053,10 +1053,10 @@ describe("R. Decision Immutability", () => {
       monitoringState: createMonitoringState("BTC/USDT"), now: NOW,
     });
     // ProtectionAlert has no recommendation, bias, conviction, tradePlan fields
-    expect((result.alert as any).recommendation).toBeUndefined();
-    expect((result.alert as any).bias).toBeUndefined();
-    expect((result.alert as any).conviction).toBeUndefined();
-    expect((result.alert as any).tradePlan).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).recommendation).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).bias).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).conviction).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).tradePlan).toBeUndefined();
   });
 });
 
@@ -1433,7 +1433,7 @@ describe("BB. Position Registration", () => {
 
   it("validates side", () => {
     const result = validateRegistration({
-      positionId: "test", instrument: "BTC/USDT", side: "LONG" as any, entryPrice: 100000, horizon: "SWING",
+      positionId: "test", instrument: "BTC/USDT", side: "LONG", entryPrice: 100000, horizon: "SWING",
     });
     expect(result.valid).toBe(true);
   });
@@ -1535,9 +1535,9 @@ describe("EE. Market Radar Compatibility", () => {
       monitoringState: createMonitoringState("BTC/USDT"), now: NOW,
     });
     // These fields must NOT exist on ProtectionAlert
-    expect((result.alert as any).recommendation).toBeUndefined();
-    expect((result.alert as any).bias).toBeUndefined();
-    expect((result.alert as any).conviction).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).recommendation).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).bias).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).conviction).toBeUndefined();
   });
 });
 
