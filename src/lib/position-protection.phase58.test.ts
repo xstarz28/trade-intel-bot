@@ -10,10 +10,7 @@ import { describe, it, expect } from "vitest";
 import type {
   RealTimeEvent,
   PositionSnapshot,
-  InstrumentState,
   EventType,
-  Timeframe,
-  MonitoringStatus,
 } from "@/lib/position-protection/realtime-types";
 import {
   TIMEFRAME_ORDER,

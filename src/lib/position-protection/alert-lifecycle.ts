@@ -6,7 +6,7 @@
  */
 
 import type { AlertSeverity, AlertLifecycleState, AlertLifecycleEntry, MonitoringState } from "./types";
-import { ALERT_SEVERITY_ORDER, alertSeverityRank } from "./types";
+import { alertSeverityRank } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
 // COOLDOWN PERIODS (ms)
