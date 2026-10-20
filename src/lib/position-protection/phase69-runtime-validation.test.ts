@@ -630,7 +630,7 @@ describe("E. Event Processing Hardening", () => {
 
   it("Event with invalid freshness fails", () => {
     const event = createPriceEvent("BTC/USDT", 105000, "OKX");
-    const guard = validateEvent({ ...event, freshness: "INVALID" as any });
+    const guard = validateEvent({ ...event, freshness: "INVALID" as unknown as typeof event.freshness });
     expect(guard.passed).toBe(false);
   });
 
