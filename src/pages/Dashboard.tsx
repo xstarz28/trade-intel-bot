@@ -670,7 +670,7 @@ export default function Dashboard() {
 
         if (input.instrumentType === "crypto") {
           const derivativesContext = derivativesResult?.data
-            ? parseCoinGlassResult(derivativesResult.data, input.instrument, derivativesResult.data.timestamp ?? Date.now())
+            ? parseCoinGlassResult({ ...derivativesResult.data }, input.instrument, derivativesResult.data.timestamp ?? Date.now())
             : derivativesResult?.error
               ? {
                   provider: "CoinGlass",
