@@ -12,6 +12,15 @@
  */
 "use node";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown";
+}
+
+
 import { action } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -146,7 +155,7 @@ async function fetchCoingeckoPrices(
         success: true,
       };
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     return validCoins.map((c) => ({
       instrument: c.instrument,
       coinId: c.coinId!,
@@ -156,7 +165,7 @@ async function fetchCoingeckoPrices(
       marketCap: 0,
       timestamp: Date.now(),
       success: false,
-      error: `CoinGecko request failed: ${err?.message ?? "unknown"}`,
+      error: `CoinGecko request failed: ${errorMessage(err)}`,
     }));
   }
 }
@@ -228,7 +237,7 @@ async function fetchTwelveDataQuote(
         timestamp: Date.now(),
         success: true,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
         continue;
@@ -240,7 +249,7 @@ async function fetchTwelveDataQuote(
         ask: 0,
         timestamp: Date.now(),
         success: false,
-        error: `TwelveData request failed: ${err?.message ?? "unknown"}`,
+        error: `TwelveData request failed: ${errorMessage(err)}`,
       };
     }
   }
@@ -354,13 +363,13 @@ async function fetchYahooFinanceQuote(
       timestamp: (meta.regularMarketTime ?? Date.now()) * 1000,
       success: true,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument: symbol,
       price: 0,
       timestamp: Date.now(),
       success: false,
-      error: `Yahoo Finance request failed: ${err?.message ?? "unknown"}`,
+      error: `Yahoo Finance request failed: ${errorMessage(err)}`,
     };
   }
 }
@@ -597,9 +606,10 @@ async function fetchTwelveDataOHLCV(
       };
     }
 
-    const data = await res.json() as any;
+    const payload: unknown = await res.json();
+    const data = isRecord(payload) ? payload : null;
 
-    if (data.status === "error" || !data.values) {
+    if (!data || data.status === "error" || !Array.isArray(data.values)) {
       return {
         instrument,
         timeframe,
@@ -607,24 +617,24 @@ async function fetchTwelveDataOHLCV(
         sourceMode: "UNAVAILABLE",
         provider: "TwelveData",
         success: false,
-        error: data.message ?? "No data",
+        error: typeof data?.message === "string" ? data.message : "No data",
       };
     }
 
     const candles: OHLCVCandle[] = [];
-    for (const v of data.values) {
-      const open = parseFloat(v.open);
-      const high = parseFloat(v.high);
-      const low = parseFloat(v.low);
-      const close = parseFloat(v.close);
-      const volume = parseFloat(v.volume ?? "0");
+    for (const v of data.values.filter(isRecord)) {
+      const open = Number.parseFloat(String(v.open ?? ""));
+      const high = Number.parseFloat(String(v.high ?? ""));
+      const low = Number.parseFloat(String(v.low ?? ""));
+      const close = Number.parseFloat(String(v.close ?? ""));
+      const volume = Number.parseFloat(String(v.volume ?? "0"));
 
       // Validate candle
       if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) continue;
       if (open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
 
       candles.push({
-        timestamp: new Date(v.datetime).getTime(),
+        timestamp: new Date(String(v.datetime ?? "")).getTime(),
         open,
         high,
         low,
@@ -644,7 +654,7 @@ async function fetchTwelveDataOHLCV(
       provider: "TwelveData",
       success: candles.length > 0,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument,
       timeframe,
