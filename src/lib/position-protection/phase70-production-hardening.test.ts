@@ -858,7 +858,7 @@ describe("E. Convex Persistence Recovery", () => {
       mutation: () => { throw new Error("Convex unavailable"); },
       query: () => { throw new Error("Convex unavailable"); },
     };
-    const bridge = new ConvexPersistenceBridge(failingClient as any);
+    const bridge = new ConvexPersistenceBridge(failingClient);
 
     // Save works locally even when Convex fails
     const saved = await bridge.savePositionState({
