@@ -11,7 +11,6 @@
  */
 
 import type { AnalysisResult } from "@/types/analysis";
-import type { EvidenceItem } from "@/lib/analyst-thesis";
 
 // ── Types ────────────────────────────────────────────────────────
 
