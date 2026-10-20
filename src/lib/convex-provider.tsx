@@ -8,6 +8,14 @@ import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "@/lib/data
 
 type MockRecord = Record<string, unknown> & { positionId?: string };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asArgs(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
 const STORAGE_KEY_ANALYSES = "xstarz_mock_analyses";
 const STORAGE_KEY_POSITIONS = "xstarz_mock_positions";
 const STORAGE_KEY_ALERTS = "xstarz_mock_alerts";
@@ -182,7 +190,7 @@ async function resolveMockAction(
         const { acquireBatchProviderNativeLiveData } = await import(
           "@/lib/market-radar/provider-registry"
         );
-        const instruments = ((args?.instruments as any[]) || []).map((input) => ({
+        const instruments = (Array.isArray(args?.instruments) ? args.instruments.filter(isRecord) : []).map((input) => ({
           ...input,
           provider: "okx",
           assetClass: input.assetClass ?? "crypto",
@@ -203,8 +211,8 @@ function createMockConvexClient() {
   return {
     address: "https://mock.xstarz.local",
     options: { verbose: false },
-    watchQuery(query: FunctionReference<any> | string, ...argsAndOptions: any[]) {
-      const args = argsAndOptions[0];
+    watchQuery(query: FunctionReference | string, ...argsAndOptions: unknown[]) {
+      const args = asArgs(argsAndOptions[0]);
       const fnName = typeof query === "string" ? query : getFunctionName(query);
       return {
         onUpdate(callback: () => void) {
@@ -221,19 +229,19 @@ function createMockConvexClient() {
         },
       };
     },
-    async mutation(mutationReference: FunctionReference<any> | string, ...args: any[]) {
+    async mutation(mutationReference: FunctionReference | string, ...args: unknown[]) {
       const fnName =
         typeof mutationReference === "string"
           ? mutationReference
           : getFunctionName(mutationReference);
-      return resolveMockMutation(fnName, args[0]);
+      return resolveMockMutation(fnName, asArgs(args[0]));
     },
-    async action(actionReference: FunctionReference<any> | string, ...args: any[]) {
+    async action(actionReference: FunctionReference | string, ...args: unknown[]) {
       const fnName =
         typeof actionReference === "string"
           ? actionReference
           : getFunctionName(actionReference);
-      return resolveMockAction(fnName, args[0]);
+      return resolveMockAction(fnName, asArgs(args[0]));
     },
     connectionState() {
       return {
