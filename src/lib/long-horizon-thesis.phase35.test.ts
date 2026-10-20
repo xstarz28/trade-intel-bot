@@ -593,12 +593,12 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
 
     it("no optional providers does not crash", () => {
       const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
-      delete (input as any).sentimentData;
-      delete (input as any).fundamentalData;
-      delete (input as any).macroData;
-      delete (input as any).derivativesData;
-      delete (input as any).treasuryData;
-      delete (input as any).cotData;
+      delete input.sentimentData;
+      delete input.fundamentalData;
+      delete input.macroData;
+      delete input.derivativesData;
+      delete input.treasuryData;
+      delete input.cotData;
       const r = runAndGet(input);
       const lh = buildLongHorizonThesis(r);
       expect(lh).toBeDefined();
@@ -644,10 +644,10 @@ describe("Phase 35 — Invariants I95-I114", () => {
 
   it("I98 — Missing data remains neutral", () => {
     const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
-    delete (input as any).fundamentalData;
-    delete (input as any).macroData;
-    delete (input as any).treasuryData;
-    delete (input as any).cotData;
+    delete input.fundamentalData;
+    delete input.macroData;
+    delete input.treasuryData;
+    delete input.cotData;
     const r = runAndGet(input);
     const lh = buildLongHorizonThesis(r);
     // Should NOT claim fundamental support when data is missing
@@ -793,8 +793,8 @@ describe("Phase 35 — Invariants I95-I114", () => {
 
   it("I113 — Thesis status without valuation data is honest", () => {
     const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
-    delete (input as any).fundamentalData;
-    delete (input as any).macroData;
+    delete input.fundamentalData;
+    delete input.macroData;
     const r = runAndGet(input);
     const lh = buildLongHorizonThesis(r);
     // When fundamental data is missing, thesis status should reflect this
