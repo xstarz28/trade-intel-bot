@@ -30,15 +30,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { PositionContext, ProtectionAlert, AlertSeverity } from "./types";
+import type { PositionContext, AlertSeverity } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type {
-  RealTimeEvent,
   PositionSnapshot,
 } from "./realtime-types";
-import type { WhyTpNowExplanation } from "./types";
+
 import { evaluateProtection } from "./protection-engine";
-import { classifyEarlyProtection, type EarlyProtectionInput } from "./early-protection";
+import { classifyEarlyProtection } from "./early-protection";
 import { aggregateTimeframeEvidence, type TimeframeEvidence } from "./multi-timeframe-engine";
 import { detectShock } from "./shock-detector";
 import { calculateProfitMetrics } from "./profit-state";
@@ -58,15 +57,12 @@ import {
 import {
   createMonitorState,
   processEvent,
-  processEvents,
   coalesceEvents,
   addPosition,
   removePosition,
   cleanup,
 } from "./realtime-monitor";
 import {
-  createDispatcherState,
-  shouldDispatch,
   severityToNotificationPriority,
 } from "./alert-dispatcher";
 import {
@@ -77,25 +73,16 @@ import {
 } from "./alert-lifecycle";
 import {
   createPriceEvent,
-  createQuoteEvent,
-  createCandleEvent,
   createStructureChangeEvent,
   createMomentumChangeEvent,
   createVolatilityChangeEvent,
   createFundingChangeEvent,
-  createOIChangeEvent,
-  createLiquidationChangeEvent,
-  createCrossAssetEvent,
-  createMacroChangeEvent,
-  createNewsEvent,
   createDataStaleEvent,
   createProviderDegradedEvent,
   createProviderRecoveredEvent,
-  createPositionUpdateEvent,
 } from "./market-event-bridge";
 import {
   validateRegistration,
-  createSnapshotFromRegistration,
   generatePositionId,
   inferAssetClass,
 } from "./position-registration";
@@ -118,9 +105,7 @@ import {
   type PersistedAlert,
 } from "./persistence";
 import {
-  ALERT_SEVERITY_ORDER,
   alertSeverityRank,
-  type ProfitProtectionUrgency,
   urgencyRank,
 } from "./types";
 

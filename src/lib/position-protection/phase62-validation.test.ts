@@ -8,7 +8,7 @@
  * Convex persistence, reconnection, radar compatibility, performance,
  * security, determinism, instrument/position isolation, and E2E flow.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ═══════════════════════════════════════════════════════════════
 // IMPORTS — Phase 57
@@ -18,23 +18,17 @@ import { evaluateThesisHealth, extractAllSignals, type MarketEvidence } from "..
 import { detectShock } from "../position-protection/shock-detector";
 import {
   createMonitoringState,
-  shouldAlert,
   updateMonitoringState,
-  deduplicateByDependencyGroup,
 } from "../position-protection/alert-lifecycle";
 import { computeProtectionReference } from "../position-protection/protection-reference";
 import { evaluateProtection } from "../position-protection/protection-engine";
-import type { PositionContext, AlertSeverity, MonitoringState } from "../position-protection/types";
+import type { PositionContext, AlertSeverity } from "../position-protection/types";
 
 // ═══════════════════════════════════════════════════════════════
 // IMPORTS — Phase 58
 // ═══════════════════════════════════════════════════════════════
 import {
   processEvent,
-  coalesceEvents,
-  addPosition,
-  removePosition,
-  createMonitorState,
 } from "../position-protection/realtime-monitor";
 import { calculateGiveback, classifyGivebackSeverity } from "../position-protection/giveback-monitor";
 import {
@@ -48,10 +42,9 @@ import {
   createDispatcherState,
   shouldDispatch,
   dispatch,
-  acknowledgeAlert,
   severityToNotificationPriority,
 } from "../position-protection/alert-dispatcher";
-import type { RealTimeEvent, PositionSnapshot, ProtectionEvent } from "../position-protection/realtime-types";
+import type { RealTimeEvent, PositionSnapshot } from "../position-protection/realtime-types";
 
 // ═══════════════════════════════════════════════════════════════
 // IMPORTS — Phase 59
@@ -66,7 +59,6 @@ import {
   buildHealthState,
 } from "../market-stream/reconnection-engine";
 import {
-  getProviderProfile,
   isProviderAvailable,
 } from "../market-stream/provider-adapters";
 import {
@@ -74,8 +66,6 @@ import {
   registerSymbolMapping,
   validateSymbolIdentity,
   processStreamEvent,
-  registerPosition,
-  reconcileProvider,
   getMonitoringStatus,
 } from "../market-stream/stream-orchestrator";
 import type { StreamEvent } from "../market-stream/types";
@@ -86,7 +76,7 @@ import type { StreamEvent } from "../market-stream/types";
 import { InMemoryRepository } from "../position-protection/persistence";
 import { ConvexPersistenceAdapter } from "../position-protection/convex-persistence";
 import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
-import type { PersistedPositionState, PersistedAlert, EventCursor } from "../position-protection/persistence";
+import type { PersistedPositionState, PersistedAlert } from "../position-protection/persistence";
 import {
   createPriceEvent,
   createCandleEvent,
