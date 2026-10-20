@@ -25,7 +25,7 @@ import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivati
 import { OkxPublicDerivativesAdapter } from "../lib/data/crypto/okx-derivatives-adapter";
 
 // ── In-memory cache (10 min TTL) ────────────────────────────────
-const cache = new Map<string, { data: any; expiresAt: number }>();
+const cache = new Map<string, { data: unknown; expiresAt: number }>();
 const CACHE_TTL = 10 * 60 * 1000;
 
 function getCached<T>(key: string): T | null {
@@ -35,7 +35,7 @@ function getCached<T>(key: string): T | null {
   return null;
 }
 
-function setCache(key: string, data: any, ttlMs = CACHE_TTL): void {
+function setCache(key: string, data: unknown, ttlMs = CACHE_TTL): void {
   cache.set(key, { data, expiresAt: Date.now() + ttlMs });
 }
 
@@ -232,7 +232,7 @@ export const fetchDerivatives = action({
       // Only cache responses containing real provider data.
       setCache(cacheKey, data);
       return { success: true, data, tokenomics };
-    } catch (err: any) {
+    } catch (err: unknown) {
       const tokenomics = await tokenomicsPromise;
       return {
         success: Boolean(tokenomics?.available),
