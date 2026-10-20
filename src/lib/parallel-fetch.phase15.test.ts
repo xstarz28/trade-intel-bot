@@ -21,8 +21,6 @@ import {
   macro,
   treasury as treasuryFixture,
 } from "./benchmark-fixtures.phase9";
-import type { AnalysisInput } from "@/types/analysis";
-
 // Deterministic latency simulation (no real network, no jitter).
 const delay = (ms: number, value: unknown = undefined) =>
   new Promise<never>((resolve) => setTimeout(() => resolve(value as never), ms));
@@ -35,30 +33,6 @@ const BASE_FACTS = {
   tradingStyle: "intraday",
   hasCompleteSpec: false,
 };
-
-/** Sequential reference implementation for the current provider policy. */
-async function sequentialReference(facts: typeof BASE_FACTS, thunks: Record<string, (() => Promise<unknown>) | undefined>) {
-  const out: Record<string, unknown> = {};
-  const one = async (cond: boolean, t?: () => Promise<unknown>, pick?: (r: never) => unknown) => {
-    if (!cond || !t) return undefined;
-    try {
-      const r = await t() as { success?: boolean };
-      return r && r.success ? pick?.(r as never) ?? (r as { data?: unknown }).data : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-  const isFxLike = facts.instrumentType === "forex" || facts.instrumentType === "commodity";
-  out.cotData = await one(isFxLike, thunks.cot);
-  out.executionData = await one(facts.instrumentType === "crypto" && facts.tradingStyle !== "swing", thunks.execution);
-  out.eiaData = await one(
-    facts.instrumentType === "commodity" && /WTI|CRUDE|BRENT|OIL/i.test(facts.instrument),
-    thunks.eia,
-  );
-  out.treasuryData = await one(isFxLike, thunks.treasury);
-  out.okxSpecData = await one(facts.instrumentType === "crypto" && !facts.hasCompleteSpec, thunks.okxSpec);
-  return out;
-}
 
 // ── Scheduling benchmark (deterministic simulated latency) ──────────
 
