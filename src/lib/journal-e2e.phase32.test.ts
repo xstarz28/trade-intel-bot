@@ -13,11 +13,8 @@ import {
   transitionEntry,
   updateReview,
   updateTradeInfo,
-  isValidTransition,
   isTerminal,
-  getValidTransitions,
   computePnl,
-  classifyOutcome,
 } from "./journal";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
