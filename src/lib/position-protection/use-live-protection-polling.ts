@@ -189,11 +189,11 @@ export function useLiveProtectionPolling(
       }
       setLastPollAt(now);
       setLastError(anySuccess ? null : "All providers returned errors");
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTotalPolls((p) => p + 1);
       setFailedPolls((p) => p + 1);
       setLastPollAt(Date.now());
-      setLastError(err?.message ?? "Unknown poll error");
+      setLastError(err instanceof Error ? err.message : "Unknown poll error");
     }
   }, [fetchLiveQuotes]);
 
