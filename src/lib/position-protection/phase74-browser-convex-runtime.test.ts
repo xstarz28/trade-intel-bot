@@ -784,6 +784,7 @@ describe("E. Polling Runtime + Routing Consistency", () => {
 
 describe("F. Persistence — In-Memory Fallback", () => {
   it("ConvexPersistenceBridge works in fallback mode", async () => {
+    const bridge = new ConvexPersistenceBridge(null);
     await bridge.savePositionState({
       positionId: "p74-fallback", instrument: "BTC/USDT", side: "LONG",
       entryPrice: 79000, horizon: "SWING", openedAt: NOW,
