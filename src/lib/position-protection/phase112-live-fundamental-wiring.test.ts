@@ -12,7 +12,6 @@ import {
   buildFundamentalRegime,
   buildAssetFundamentalContext,
   type FundamentalRegimeInput,
-  type AssetClass,
 } from "./fundamental-regime";
 import { buildAssetCausalContext, buildCausalTransmissions, buildFundamentalCausalResult } from "./fundamental-transmission";
 import type { NewsItem } from "./news-intelligence";

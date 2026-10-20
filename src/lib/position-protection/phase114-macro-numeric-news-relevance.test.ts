@@ -23,21 +23,15 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  mapInstrumentToAssetClass,
   buildFundamentalInputFromPositionIntel,
   buildFundamentalRegime,
   buildAssetFundamentalContext,
-  assessTechnicalFundamentalAlignment,
   type FundamentalRegimeInput,
-  type AssetClass,
-  type EvidenceDirection,
 } from "./fundamental-regime";
 import {
-  buildAssetCausalContext,
   buildCausalTransmissions,
-  buildFundamentalCausalResult,
 } from "./fundamental-transmission";
-import { classifyNewsRelevance, type NewsItem, type NewsRelevance } from "./news-intelligence";
+import { classifyNewsRelevance, type NewsItem } from "./news-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS

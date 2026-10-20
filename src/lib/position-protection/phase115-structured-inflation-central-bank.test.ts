@@ -28,8 +28,6 @@ import {
   type FundamentalRegime,
   type InflationObservation,
   type PolicyRateObservation,
-  type InflationExpectationSurprise,
-  type PolicyRateRegime,
 } from "./fundamental-regime";
 import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
 
