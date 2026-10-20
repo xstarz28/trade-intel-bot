@@ -257,17 +257,20 @@ export function computePipelineHealth(
   events: AlertDiagnosticEvent[],
   now: number,
 ): AlertPipelineHealth {
-  const cycleEvents = events.filter((e) => e.eventType === "PIPELINE_CYCLE" && e.timestamp <= now);
+  // Future-dated events can come from clock skew or malformed persisted data.
+  // Exclude them consistently from this point-in-time health snapshot.
+  const observedEvents = events.filter((event) => event.timestamp <= now);
+  const cycleEvents = observedEvents.filter((e) => e.eventType === "PIPELINE_CYCLE");
   const lastCycle = cycleEvents.length > 0 ? cycleEvents[cycleEvents.length - 1].timestamp : 0;
-  const errorCount = events.filter((e) => e.eventType === "PIPELINE_ERROR").length;
-  const dataUnavailableCount = events.filter((e) => e.eventType === "DATA_UNAVAILABLE").length;
-  const triggeredCount = events.filter((e) => e.eventType === "RULE_TRIGGERED").length;
-  const cooldownCount = events.filter((e) => e.eventType === "RULE_COOLDOWN_BLOCKED").length;
-  const dedupCount = events.filter((e) => e.eventType === "RULE_DEDUPLICATED").length;
-  const skippedCount = events.filter((e) => e.eventType === "RULE_SKIPPED").length;
-  const evaluatedCount = events.filter((e) => e.eventType === "RULE_EVALUATED").length;
-  const notifCreated = events.filter((e) => e.eventType === "NOTIFICATION_CREATED").length;
-  const notifDedup = events.filter((e) => e.eventType === "NOTIFICATION_DEDUPLICATED").length;
+  const errorCount = observedEvents.filter((e) => e.eventType === "PIPELINE_ERROR").length;
+  const dataUnavailableCount = observedEvents.filter((e) => e.eventType === "DATA_UNAVAILABLE").length;
+  const triggeredCount = observedEvents.filter((e) => e.eventType === "RULE_TRIGGERED").length;
+  const cooldownCount = observedEvents.filter((e) => e.eventType === "RULE_COOLDOWN_BLOCKED").length;
+  const dedupCount = observedEvents.filter((e) => e.eventType === "RULE_DEDUPLICATED").length;
+  const skippedCount = observedEvents.filter((e) => e.eventType === "RULE_SKIPPED").length;
+  const evaluatedCount = observedEvents.filter((e) => e.eventType === "RULE_EVALUATED").length;
+  const notifCreated = observedEvents.filter((e) => e.eventType === "NOTIFICATION_CREATED").length;
+  const notifDedup = observedEvents.filter((e) => e.eventType === "NOTIFICATION_DEDUPLICATED").length;
 
   // Derive rule counts from most recent cycle or cumulative
   const lastCycleEvent = cycleEvents.length > 0 ? cycleEvents[cycleEvents.length - 1] : null;
