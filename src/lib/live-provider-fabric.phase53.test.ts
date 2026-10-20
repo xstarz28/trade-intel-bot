@@ -38,6 +38,7 @@ import {
 } from "./data/universal/live/types";
 
 // ── Universe ──
+import { getClusterForInstrument, DEFAULT_UNIVERSE } from "./market-radar/universe";
 
 // ── Radar ──
 import { scanRadar } from "./market-radar/radar";
