@@ -182,7 +182,7 @@ async function ensureLiveData(): Promise<void> {
         assetClass: detectAssetClass(symbol),
         price: price && Number.isFinite(price) && price > 0 ? price : 0,
         timestamp: Date.now(), success: !!(price && Number.isFinite(price) && price > 0),
-        latencyMs: 0, mode: "LIVE",
+        latencyMs: 0, mode: price && Number.isFinite(price) && price > 0 ? "LIVE" : "NOT_EXERCISED",
         routedProvider: routing.primary?.provider ?? "UNKNOWN",
         routingConsistent: routing.primary?.provider === "CoinGecko",
       });
@@ -200,7 +200,7 @@ async function ensureLiveData(): Promise<void> {
         assetClass: detectAssetClass(symbol), price: 0,
         timestamp: Date.now(), success: false,
         error: "CoinGecko batch request failed",
-        latencyMs: 0, mode: "LIVE",
+        latencyMs: 0, mode: "NOT_EXERCISED",
         routedProvider: routing.primary?.provider ?? "UNKNOWN",
         routingConsistent: routing.primary?.provider === "CoinGecko",
       });
