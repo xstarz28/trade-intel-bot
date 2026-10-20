@@ -8,10 +8,10 @@
  * INFORMATIONAL ONLY — no execution, no trading signals, no probability.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapIntelligenceStatus } from "@/lib/i18n/enum-mapping";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import {
   buildRuntimeHealthSnapshot,
@@ -24,6 +24,7 @@ import {
   HEALTH_STATUS_BG,
   FRESHNESS_COLOR,
   COMPONENT_LABELS,
+  shouldPersistRuntimeHealth,
 } from "../lib/position-protection/runtime-health";
 
 function formatAge(ms: number | undefined): string {
@@ -75,6 +76,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
     api.runtimeHealth.getRuntimeHealthHistory,
     showHistory ? { limit: 10 } : "skip",
   );
+  const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
 
   // Build live snapshot from input signals
   const liveSnapshot: RuntimeHealthSnapshot | null = useMemo(() => {
@@ -82,11 +84,10 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
     return buildRuntimeHealthSnapshot(healthInput, Date.now());
   }, [healthInput]);
 
-  // Use live snapshot if available, otherwise fall back to persisted
-  const snapshot: RuntimeHealthSnapshot | null = useMemo(() => {
-    if (liveSnapshot) return liveSnapshot;
+  // Reconstruct persisted data separately so live snapshots can be deduplicated
+  // against the last stored state before writing another history record.
+  const persistedSnapshot: RuntimeHealthSnapshot | null = useMemo(() => {
     if (!latestHealth) return null;
-    // Reconstruct from persisted data
     return {
       timestamp: latestHealth.timestamp,
       overallStatus: latestHealth.overallStatus as RuntimeHealthStatus,
@@ -109,7 +110,16 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
       staleComponents: latestHealth.staleComponents as RuntimeComponent[],
       unavailableComponents: latestHealth.unavailableComponents as RuntimeComponent[],
     };
-  }, [liveSnapshot, latestHealth]);
+  }, [latestHealth]);
+
+  const snapshot = liveSnapshot ?? persistedSnapshot;
+
+  useEffect(() => {
+    if (!liveSnapshot || !shouldPersistRuntimeHealth(persistedSnapshot, liveSnapshot)) return;
+    void saveHealthMut(liveSnapshot).catch(() => {
+      // Keep the live dashboard usable if persistence is temporarily unavailable.
+    });
+  }, [liveSnapshot, persistedSnapshot, saveHealthMut]);
 
   const isLoading = latestHealth === undefined && !healthInput;
 
