@@ -16,7 +16,7 @@ import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 import type { MarketData, TechnicalData } from "@/lib/data/market-types";
-import type { ExecutionData, ExecutionQuality } from "@/lib/execution-quality";
+import type { ExecutionQuality } from "@/lib/execution-quality";
 
 // ── Fixtures ───────────────────────────────────────────────────────
 
