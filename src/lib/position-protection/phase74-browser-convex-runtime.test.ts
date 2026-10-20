@@ -580,8 +580,7 @@ describe("C. Live Data → Complete Protection Pipeline", () => {
     const alertDecision = shouldAlert(monState, result.alert.severity, NOW);
     expect(typeof alertDecision.shouldFire).toBe("boolean");
 
-    // 5. Persistence
-    const bridge = new ConvexPersistenceBridge(null);
+    // 5. Serialization boundary
     const serialized = JSON.stringify(result.alert);
     const parsed = JSON.parse(serialized);
     expect(parsed.instrument).toBe("BTC/USDT");
@@ -665,7 +664,6 @@ describe("D. Source Mode Integrity", () => {
   });
 
   it("Freshness transitions are time-based and deterministic", () => {
-    const label = createLiveLabel("CoinGecko", NOW);
     expect(calculateFreshness(NOW, NOW + 30_000)).toBe("FRESH");
     expect(calculateFreshness(NOW, NOW + 90_000)).toBe("DELAYED");
     expect(calculateFreshness(NOW, NOW + 600_000)).toBe("STALE");
