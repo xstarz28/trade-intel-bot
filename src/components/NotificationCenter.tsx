@@ -36,6 +36,10 @@ const FILTER_OPTIONS: { label: string; value: NotificationFilter }[] = [
   { label: "LOW", value: "LOW" },
 ];
 
+function isNotificationSeverity(value: unknown): value is NotificationSeverity {
+  return value === "INFO" || value === "LOW" || value === "MEDIUM" || value === "HIGH" || value === "CRITICAL";
+}
+
 function formatTimestamp(ts: number): string {
   const now = Date.now();
   const diff = now - ts;
@@ -62,7 +66,9 @@ export function NotificationCenter() {
   const prefs: NotificationPreferences = useMemo(() => {
     if (!rawPrefs) return DEFAULT_PREFERENCES;
     return {
-      minimumSeverity: rawPrefs.minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
+      minimumSeverity: isNotificationSeverity(rawPrefs.minimumSeverity)
+        ? rawPrefs.minimumSeverity
+        : DEFAULT_PREFERENCES.minimumSeverity,
       enabledCategories: rawPrefs.enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
       enabledScopes: rawPrefs.enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
       mutedRuleIds: rawPrefs.mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
