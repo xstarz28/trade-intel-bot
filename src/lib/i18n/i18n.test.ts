@@ -1,9 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import en from "./en";
 import id from "./id";
 import es from "./es";
 import pt from "./pt";
-import type { Translations, Locale } from "./types";
 import { SUPPORTED_LOCALES, LOCALE_LABELS } from "./locales";
 import { DEFAULT_LOCALE } from "./types";
 
