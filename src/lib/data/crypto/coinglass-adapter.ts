@@ -18,16 +18,7 @@ import type {
 } from "./types";
 import { toCoinGlassSymbol } from "./symbols";
 
-type CoinGlassPayload = {
-  provider?: string;
-  openInterest?: { current: number; change1h?: number; change24h?: number };
-  fundingRate?: { currentRate: number; annualizedRate?: number };
-  liquidations?: { totalVolume?: number; longVolume?: number; shortVolume?: number; dominantSide?: "longs" | "shorts" | "balanced" };
-  longShort?: { accountRatio?: number; topTraderRatio?: number; takerRatio?: number };
-  availability: { openInterest: boolean; fundingRate: boolean; longShort: boolean; liquidations: boolean };
-  confidence: string;
-  freshness: string;
-};
+type CoinGlassPayload = Record<string, unknown>;
 
 type CoinGlassFetchResult = {
   success: boolean;
@@ -102,61 +93,81 @@ export class CoinGlassAdapter implements CryptoIntelligenceProvider {
  * Pure function — no side effects.
  */
 export function parseCoinGlassResult(
-  data: CoinGlassPayload,
+  data: Record<string, unknown>,
   instrument: string,
   observedAt: number,
 ): DerivativesIntelligence {
-  const avail = data.availability ?? {};
-  const totalDatasets = 4;
+  const availability = isRecord(data.availability) ? data.availability : {};
+  const openInterest = isRecord(data.openInterest) ? data.openInterest : undefined;
+  const fundingRate = isRecord(data.fundingRate) ? data.fundingRate : undefined;
+  const liquidations = isRecord(data.liquidations) ? data.liquidations : undefined;
+  const longShort = isRecord(data.longShort) ? data.longShort : undefined;
   const availableDatasets = [
-    avail.openInterest,
-    avail.fundingRate,
-    avail.longShort,
-    avail.liquidations,
+    availability.openInterest,
+    availability.fundingRate,
+    availability.longShort,
+    availability.liquidations,
   ].filter(Boolean).length;
-
-  const freshness = mapFreshness(data.freshness);
+  const freshness = mapFreshness(typeof data.freshness === "string" ? data.freshness : undefined);
+  const openInterestCurrent = numeric(openInterest?.current);
+  const fundingCurrent = numeric(fundingRate?.currentRate);
+  const liquidationTotal = numeric(liquidations?.totalVolume);
+  const accountRatio = numeric(longShort?.accountRatio);
+  const provider = data.provider === "binance-public-futures"
+    ? "Binance Futures (public)"
+    : data.provider === "bybit-public-derivatives"
+      ? "Bybit Futures (public)"
+      : data.provider === "okx-public-derivatives"
+        ? "OKX Swaps (public)"
+        : "CoinGlass";
 
   return {
-    provider: data.provider === "binance-public-futures" ? "Binance Futures (public)" : data.provider === "bybit-public-derivatives" ? "Bybit Futures (public)" : data.provider === "okx-public-derivatives" ? "OKX Swaps (public)" : "CoinGlass",
+    provider,
     observedAt,
     freshness,
     quality: availableDatasets >= 3 ? "VERIFIED" : availableDatasets >= 1 ? "DEGRADED" : "UNAVAILABLE",
     available: availableDatasets > 0,
     failureReason: availableDatasets === 0 ? "No CoinGlass datasets available" : undefined,
-
-    openInterest: data.openInterest ? {
-      current: data.openInterest.current ?? 0,
-      change1h: data.openInterest.change1h,
-      change24h: data.openInterest.change24h,
-      reliable: typeof data.openInterest.current === "number" && !Number.isNaN(data.openInterest.current) && data.openInterest.current > 0,
+    openInterest: openInterest ? {
+      current: openInterestCurrent ?? 0,
+      change1h: numeric(openInterest.change1h),
+      change24h: numeric(openInterest.change24h),
+      reliable: openInterestCurrent !== undefined && openInterestCurrent > 0,
     } : undefined,
-
-    fundingRate: data.fundingRate ? {
-      currentRate: data.fundingRate.currentRate ?? 0,
-      annualizedRate: data.fundingRate.annualizedRate,
-      isExtreme: Math.abs(data.fundingRate.currentRate ?? 0) > 0.001,
-      reliable: typeof data.fundingRate.currentRate === "number" && !Number.isNaN(data.fundingRate.currentRate),
+    fundingRate: fundingRate ? {
+      currentRate: fundingCurrent ?? 0,
+      annualizedRate: numeric(fundingRate.annualizedRate),
+      isExtreme: Math.abs(fundingCurrent ?? 0) > 0.001,
+      reliable: fundingCurrent !== undefined,
     } : undefined,
-
-    liquidation: data.liquidations ? {
-      totalVolume: data.liquidations.totalVolume,
-      longVolume: data.liquidations.longVolume,
-      shortVolume: data.liquidations.shortVolume,
-      dominantSide: data.liquidations.dominantSide,
-      reliable: typeof data.liquidations.totalVolume === "number" && !Number.isNaN(data.liquidations.totalVolume) && data.liquidations.totalVolume > 0,
+    liquidation: liquidations ? {
+      totalVolume: liquidationTotal,
+      longVolume: numeric(liquidations.longVolume),
+      shortVolume: numeric(liquidations.shortVolume),
+      dominantSide: liquidations.dominantSide === "longs" || liquidations.dominantSide === "shorts" || liquidations.dominantSide === "balanced"
+        ? liquidations.dominantSide
+        : undefined,
+      reliable: liquidationTotal !== undefined && liquidationTotal > 0,
     } : undefined,
-
-    positioning: data.longShort ? {
-      accountRatio: data.longShort.accountRatio,
-      topTraderRatio: data.longShort.topTraderRatio,
-      takerRatio: data.longShort.takerRatio,
-      reliable: typeof data.longShort.accountRatio === "number" && !Number.isNaN(data.longShort.accountRatio),
+    positioning: longShort ? {
+      accountRatio,
+      topTraderRatio: numeric(longShort.topTraderRatio),
+      takerRatio: numeric(longShort.takerRatio),
+      reliable: accountRatio !== undefined,
     } : undefined,
-
     availableDatasets,
-    totalDatasets,
+    totalDatasets: 4,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function numeric(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function mapFreshness(raw: string | undefined): "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" {
