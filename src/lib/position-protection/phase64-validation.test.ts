@@ -1221,7 +1221,7 @@ describe("AH. Horizon Sensitivity", () => {
     // Use a giveback % that SCALPING classifies more aggressively than INVESTING
     const gb = makeGivebackState(30);
     const scalp = classifyGivebackSeverity(gb, "SCALPING");
-    const invest = classifyGivebackSeverity({ ...gb } as any, "INVESTING");
+    const invest = classifyGivebackSeverity(gb, "INVESTING");
     // SCALPING 30% >= partialTpPct(25) → PARTIAL_TP; INVESTING 30% < watchPct(40) → NONE
     const givebackOrder: Record<string, number> = { "NONE": 0, "WATCH": 1, "PARTIAL_TP": 2, "MANUAL_TP": 3, "PROTECT_NOW": 4 };
     expect(givebackOrder[scalp] ?? -1).toBeGreaterThanOrEqual(givebackOrder[invest] ?? -1);
