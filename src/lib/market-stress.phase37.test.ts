@@ -30,7 +30,7 @@ import { buildChain, buildMtfContext } from "./data/mtf";
 import { buildEvidenceChallenge } from "./evidence-challenge";
 import { buildLongHorizonThesis } from "./long-horizon-thesis";
 import { auditDecisionIntegrity } from "./decision-integrity";
-import { createAnalysisSnapshot, journalFromAnalysis } from "./journal";
+import { createAnalysisSnapshot } from "./journal";
 
 // ══════════════════════════════════════════════════════════════════
 // FIXTURE BUILDERS

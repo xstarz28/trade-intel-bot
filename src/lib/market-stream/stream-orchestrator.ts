@@ -39,7 +39,6 @@ import type { RealTimeEvent, ProtectionEvent } from "../position-protection/real
 import {
   createAccelerationState,
   recordPriceObservation,
-  recordGivebackObservation,
   detectPriceAcceleration,
   detectGivebackAcceleration,
   type AccelerationState,
@@ -47,7 +46,6 @@ import {
 } from "../position-protection/acceleration-monitor";
 import type {
   MonitoringStateRepository,
-  PersistedPositionState,
 } from "../position-protection/persistence";
 
 // ═══════════════════════════════════════════════════════════════
