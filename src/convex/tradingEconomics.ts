@@ -29,7 +29,7 @@ function getCached(key: string): EconomicCalendarData | null {
 
 const TA_BASE = "https://tickatlas.com/v1";
 
-async function taFetch(path: string, apiKey: string): Promise<any> {
+async function taFetch(path: string, apiKey: string): Promise<unknown> {
   const url = `${TA_BASE}${path}`;
   const res = await fetch(url, {
     headers: {
@@ -68,6 +68,18 @@ const CURRENCY_COUNTRY: Record<string, string> = {
 
 // ── Response Normalization ───────────────────────────────────────
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function normalizeImportance(raw: string | undefined): EventImportance {
   if (!raw) return 1;
   const lower = raw.toLowerCase();
@@ -76,7 +88,7 @@ function normalizeImportance(raw: string | undefined): EventImportance {
   return 1;
 }
 
-function parseValue(raw: any): number | string | undefined {
+function parseValue(raw: unknown): number | string | undefined {
   if (raw === null || raw === undefined || raw === "" || raw === "‑" || raw === "—") {
     return undefined;
   }
@@ -85,20 +97,21 @@ function parseValue(raw: any): number | string | undefined {
   return String(raw);
 }
 
-function normalizeEvent(raw: any): EconomicEvent | null {
-  if (!raw) return null;
+function normalizeEvent(value: unknown): EconomicEvent | null {
+  if (!isRecord(value)) return null;
+  const raw = value;
 
   const id = raw.id ?? `ta-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const eventName = raw.event ?? raw.Event ?? "";
+  const eventName = stringValue(raw.event) ?? stringValue(raw.Event) ?? "";
   if (!eventName) return null;
 
-  const currency = raw.currency ?? raw.Currency ?? "";
+  const currency = stringValue(raw.currency) ?? stringValue(raw.Currency) ?? "";
   const country = CURRENCY_COUNTRY[currency] ?? "";
 
   // Parse datetime
   let datetime = Date.now();
   const dateStr = raw.datetime ?? raw.Date ?? raw.date;
-  if (dateStr) {
+  if (typeof dateStr === "string" || typeof dateStr === "number") {
     const parsed = new Date(dateStr).getTime();
     if (!isNaN(parsed)) datetime = parsed;
   }
@@ -119,7 +132,7 @@ function normalizeEvent(raw: any): EconomicEvent | null {
   return {
     id: String(id),
     event: eventName,
-    category: raw.category ?? raw.Category ?? "",
+    category: stringValue(raw.category) ?? stringValue(raw.Category) ?? "",
     country,
     currency,
     datetime,
@@ -127,10 +140,10 @@ function normalizeEvent(raw: any): EconomicEvent | null {
     forecast,
     previous,
     revised,
-    importance: normalizeImportance(raw.impact ?? raw.Importance),
+    importance: normalizeImportance(stringValue(raw.impact) ?? stringValue(raw.Importance)),
     source: "tickatlas",
-    sourceUrl: raw.url ?? raw.Source_url,
-    referencePeriod: raw.period ?? raw.Period,
+    sourceUrl: stringValue(raw.url) ?? stringValue(raw.Source_url),
+    referencePeriod: stringValue(raw.period) ?? stringValue(raw.Period),
     status,
   };
 }
@@ -180,22 +193,22 @@ export const fetchCalendar = action({
       const dateFrom = now.toISOString().split("T")[0];
       const dateTo = in7Days.toISOString().split("T")[0];
 
-      let rawEvents: any[] = [];
+      let rawEvents: Record<string, unknown>[] = [];
       try {
         const result = await taFetch(
           `/calendar?countries=${countryParam}&from=${dateFrom}&to=${dateTo}`,
           apiKey,
         );
-        if (result?.success && Array.isArray(result?.data?.events)) {
-          rawEvents = result.data.events;
-        } else if (Array.isArray(result?.data)) {
-          rawEvents = result.data;
+        if (isRecord(result) && result.success && isRecord(result.data) && Array.isArray(result.data.events)) {
+          rawEvents = result.data.events.filter(isRecord);
+        } else if (isRecord(result) && Array.isArray(result.data)) {
+          rawEvents = result.data.filter(isRecord);
         }
-      } catch (err: any) {
-        if (String(err?.message).startsWith("RATE_LIMIT")) {
+      } catch (err: unknown) {
+        if (errorMessage(err).startsWith("RATE_LIMIT")) {
           return { success: false, error: "TickAtlas rate limit exceeded.", errorCode: "RATE_LIMIT" };
         }
-        if (String(err?.message).startsWith("AUTH_ERROR")) {
+        if (errorMessage(err).startsWith("AUTH_ERROR")) {
           return { success: false, error: "TickAtlas authentication failed.", errorCode: "AUTH_ERROR" };
         }
       }
@@ -209,11 +222,11 @@ export const fetchCalendar = action({
           `/calendar?countries=${countryParam}&from=${datePast}&to=${dateFrom}`,
           apiKey,
         );
-        const pastEvents = result?.success && Array.isArray(result?.data?.events)
-          ? result.data.events
-          : Array.isArray(result?.data) ? result.data : [];
+        const pastEvents = isRecord(result) && result.success && isRecord(result.data) && Array.isArray(result.data.events)
+          ? result.data.events.filter(isRecord)
+          : isRecord(result) && Array.isArray(result.data) ? result.data.filter(isRecord) : [];
         if (Array.isArray(pastEvents)) {
-          const existingIds = new Set(rawEvents.map((e: any) => e.id));
+          const existingIds = new Set(rawEvents.map((e) => e.id));
           for (const evt of pastEvents) {
             if (evt.id && !existingIds.has(evt.id)) {
               const norm = normalizeEvent(evt);
@@ -280,10 +293,10 @@ export const fetchCalendar = action({
 
       cache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL });
       return { success: true, data };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
-        error: `Calendar fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Calendar fetch failed: ${errorMessage(err)}`,
         errorCode: "API_UNAVAILABLE",
       };
     }
