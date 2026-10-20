@@ -666,11 +666,11 @@ describe("Phase 97 — Stale Instrument State Cleanup", () => {
 
 describe("Phase 97 — Safety", () => {
   it("no execution language in any notification", () => {
-    const conditions = ["THESIS_STATE_CHANGED", "NEWS_BECAME_CONFLICTING", "PORTFOLIO_CONFLICT_DETECTED", "DATA_BECAME_UNAVAILABLE"];
+    const conditions: AlertRule["condition"][] = ["THESIS_STATE_CHANGED", "NEWS_BECAME_CONFLICTING", "PORTFOLIO_CONFLICT_DETECTED", "DATA_BECAME_UNAVAILABLE"];
     for (const condition of conditions) {
       const alert = {
         alertId: "a1", ruleId: "r1", ruleName: "R", userId: "u1",
-        instrument: "BTC/USDT", condition: condition as any,
+        instrument: "BTC/USDT", condition,
         severity: "HIGH" as const, description: "test description", timestamp: 1000, source: "CUSTOM_RULE" as const,
       };
       const notif = buildNotification(alert, "LONG", 2000);
@@ -683,11 +683,11 @@ describe("Phase 97 — Safety", () => {
   });
 
   it("no probability language in any notification", () => {
-    const conditions = ["THESIS_STATE_CHANGED", "REGIME_CHANGED", "NEWS_BECAME_SUPPORTING"];
+    const conditions: AlertRule["condition"][] = ["THESIS_STATE_CHANGED", "REGIME_CHANGED", "NEWS_BECAME_SUPPORTING"];
     for (const condition of conditions) {
       const alert = {
         alertId: "a1", ruleId: "r1", ruleName: "R", userId: "u1",
-        instrument: "BTC/USDT", condition: condition as any,
+        instrument: "BTC/USDT", condition,
         severity: "HIGH" as const, description: "test description", timestamp: 1000, source: "CUSTOM_RULE" as const,
       };
       const notif = buildNotification(alert, "LONG", 2000);
