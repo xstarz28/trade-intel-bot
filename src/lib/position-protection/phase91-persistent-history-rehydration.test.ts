@@ -22,12 +22,9 @@ import {
   isSnapshotStale,
   mergeTimelineEvents,
   mergeSnapshots,
-  decidePersistence,
   reconstructTimeline,
   snapshotToArgs,
   eventsToArgs,
-  persistedToSnapshot,
-  persistedToEvent,
   type PersistedSnapshot,
   type PersistedEvent,
 } from "./persistent-history-engine";

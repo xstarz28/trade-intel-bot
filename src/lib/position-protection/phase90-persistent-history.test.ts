@@ -28,7 +28,6 @@ import {
 } from "./persistent-history-engine";
 import {
   createSnapshot,
-  detectChanges,
   MAX_HISTORY_EVENTS,
   type IntelligenceSnapshot,
   type HistoricalEvent,
