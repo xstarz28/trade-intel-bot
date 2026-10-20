@@ -9,7 +9,6 @@ import {
   validateCandle,
   normalizeCandles,
   sma,
-  ema,
   rsi,
   atr,
   detectSwings,
@@ -19,7 +18,6 @@ import {
 import {
   createTimeframeData,
   analyzeTimeframe,
-  classifyMarketRegime,
   analyzeMTFConfluence,
   type TimeframeData,
   type TimeframeKey,
