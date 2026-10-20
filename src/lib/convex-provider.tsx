@@ -5,6 +5,7 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexAuthActionsContext } from "@convex-dev/auth-internal/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "@/lib/data/universal/okx-discovery";
+import type { AssetClass } from "@/lib/data/universal/types";
 
 type MockRecord = Record<string, unknown> & { positionId?: string };
 
@@ -14,6 +15,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asArgs(value: unknown): Record<string, unknown> | undefined {
   return isRecord(value) ? value : undefined;
+}
+
+function isAssetClass(value: unknown): value is AssetClass {
+  return value === "crypto" || value === "forex" || value === "equity" ||
+    value === "commodity" || value === "indices" || value === "macro";
 }
 
 const STORAGE_KEY_ANALYSES = "xstarz_mock_analyses";
@@ -190,11 +196,19 @@ async function resolveMockAction(
         const { acquireBatchProviderNativeLiveData } = await import(
           "@/lib/market-radar/provider-registry"
         );
-        const instruments = (Array.isArray(args?.instruments) ? args.instruments.filter(isRecord) : []).map((input) => ({
-          ...input,
-          provider: "okx",
-          assetClass: input.assetClass ?? "crypto",
-        }));
+        const instruments = (Array.isArray(args?.instruments) ? args.instruments.filter(isRecord) : [])
+          .flatMap((input) => {
+            if (typeof input.instrument !== "string" || typeof input.providerInstrumentId !== "string") {
+              return [];
+            }
+            return [{
+              instrument: input.instrument,
+              providerInstrumentId: input.providerInstrumentId,
+              provider: "okx",
+              assetClass: isAssetClass(input.assetClass) ? input.assetClass : "crypto",
+              ...(typeof input.timeframe === "string" ? { timeframe: input.timeframe } : {}),
+            }];
+          });
         const concurrency = typeof args?.concurrency === "number" ? args.concurrency : 5;
         return await acquireBatchProviderNativeLiveData(instruments, undefined, concurrency);
       } catch {
@@ -211,7 +225,7 @@ function createMockConvexClient() {
   return {
     address: "https://mock.xstarz.local",
     options: { verbose: false },
-    watchQuery(query: FunctionReference | string, ...argsAndOptions: unknown[]) {
+    watchQuery(query: FunctionReference<"query"> | string, ...argsAndOptions: unknown[]) {
       const args = asArgs(argsAndOptions[0]);
       const fnName = typeof query === "string" ? query : getFunctionName(query);
       return {
@@ -229,14 +243,14 @@ function createMockConvexClient() {
         },
       };
     },
-    async mutation(mutationReference: FunctionReference | string, ...args: unknown[]) {
+    async mutation(mutationReference: FunctionReference<"mutation"> | string, ...args: unknown[]) {
       const fnName =
         typeof mutationReference === "string"
           ? mutationReference
           : getFunctionName(mutationReference);
       return resolveMockMutation(fnName, asArgs(args[0]));
     },
-    async action(actionReference: FunctionReference | string, ...args: unknown[]) {
+    async action(actionReference: FunctionReference<"action"> | string, ...args: unknown[]) {
       const fnName =
         typeof actionReference === "string"
           ? actionReference
