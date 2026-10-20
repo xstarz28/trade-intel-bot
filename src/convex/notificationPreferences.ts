@@ -24,7 +24,11 @@ export const getPreferences = query({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    const userId = identity ? ctx.db.normalizeId("users", identity.subject) : null;
+    const email = identity?.email;
+    const userByEmail = email
+      ? await ctx.db.query("users").withIndex("email", (q) => q.eq("email", email)).unique()
+      : null;
+    const userId = userByEmail?._id ?? (identity ? ctx.db.normalizeId("users", identity.subject) : null);
     if (!userId) {
       return {
         minimumSeverity: "INFO",
@@ -87,7 +91,11 @@ export const savePreferences = mutation({
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
-    const userId = identity ? ctx.db.normalizeId("users", identity.subject) : null;
+    const email = identity?.email;
+    const userByEmail = email
+      ? await ctx.db.query("users").withIndex("email", (q) => q.eq("email", email)).unique()
+      : null;
+    const userId = userByEmail?._id ?? (identity ? ctx.db.normalizeId("users", identity.subject) : null);
     if (!userId) throw new Error("Authentication required");
 
     // Validate
@@ -145,7 +153,11 @@ export const resetPreferences = mutation({
   args: {},
   handler: async (ctx) => {
     const identity = await ctx.auth.getUserIdentity();
-    const userId = identity ? ctx.db.normalizeId("users", identity.subject) : null;
+    const email = identity?.email;
+    const userByEmail = email
+      ? await ctx.db.query("users").withIndex("email", (q) => q.eq("email", email)).unique()
+      : null;
+    const userId = userByEmail?._id ?? (identity ? ctx.db.normalizeId("users", identity.subject) : null);
     if (!userId) throw new Error("Authentication required");
 
     const existing = await ctx.db
