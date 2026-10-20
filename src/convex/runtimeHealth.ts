@@ -43,7 +43,7 @@ export const getRuntimeHealthHistory = query({
     limit: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) return [];
 
     const limit = Math.min(args.limit ?? 20, MAX_HEALTH_HISTORY);
@@ -85,7 +85,7 @@ export const saveRuntimeHealth = mutation({
     unavailableComponents: v.array(v.string()),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     // Dedup: skip if a snapshot with same timestamp already exists
@@ -134,7 +134,7 @@ export const saveRuntimeHealth = mutation({
 export const deleteAllRuntimeHealth = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const records = await ctx.db
