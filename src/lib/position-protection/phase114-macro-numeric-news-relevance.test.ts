@@ -457,7 +457,7 @@ describe("H. VIX regression — backward compatibility", () => {
 
 describe("I. NewsRelevance integration", () => {
   it("newsRelevance passed through to FundamentalRegimeInput", () => {
-    const news = makeNewsItem("Fed signals rate cuts", "MONETARY_POLICY", ["BTCUSD"]);
+    const news = makeNewsItem("Fed signals rate cuts", "CENTRAL_BANK", ["BTCUSD"]);
     const relevance = classifyNewsRelevance(news, "BTCUSD", "LONG");
     const input = buildFundamentalInputFromPositionIntel(
       { instrument: "BTCUSD", assetClass: "crypto" },
@@ -490,19 +490,19 @@ describe("I. NewsRelevance integration", () => {
 
 describe("J. Asset-specific news relevance", () => {
   it("gold-related news is relevant to XAUUSD", () => {
-    const news = makeNewsItem("Gold prices surge on safe-haven demand", "COMMODITY_FUNDAMENTAL", ["XAU/USD"]);
+    const news = makeNewsItem("Gold prices surge on safe-haven demand", "COMMODITY", ["XAU/USD"]);
     const rel = classifyNewsRelevance(news, "XAUUSD", "LONG");
     expect(rel.relevance).not.toBe("NONE");
   });
 
   it("crypto news is relevant to BTCUSD", () => {
-    const news = makeNewsItem("Bitcoin ETF approval expected", "CRYPTO_FUNDAMENTAL", ["BTC/USD"]);
+    const news = makeNewsItem("Bitcoin ETF approval expected", "CRYPTO_SPECIFIC", ["BTC/USD"]);
     const rel = classifyNewsRelevance(news, "BTCUSD", "LONG");
     expect(rel.relevance).not.toBe("NONE");
   });
 
   it("macro rate news is relevant to crypto", () => {
-    const news = makeNewsItem("Fed signals rate cuts ahead", "MONETARY_POLICY", []);
+    const news = makeNewsItem("Fed signals rate cuts ahead", "CENTRAL_BANK", []);
     const rel = classifyNewsRelevance(news, "BTCUSD", "LONG");
     expect(rel.relevance).not.toBe("NONE");
   });
