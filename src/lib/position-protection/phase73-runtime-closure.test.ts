@@ -174,7 +174,7 @@ async function ensureLiveData(): Promise<void> {
       ["solana", "SOL/USDT"],
       ["dogecoin", "DOGE/USDT"],
     ];
-    for (const [, symbol] of coinMap) {
+    for (const [coinId, symbol] of coinMap) {
       const price = data[coinId]?.usd;
       const routing = routeInstrument(symbol);
       liveResults.push({
