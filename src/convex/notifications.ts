@@ -7,9 +7,15 @@
  */
 
 import { v } from "convex/values";
-import { query, mutation } from "./_generated/server";
+import { query, mutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 
 const MAX_NOTIFICATIONS = 200;
+
+async function resolveUserId(ctx: QueryCtx | MutationCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return ctx.db.normalizeId("users", identity.subject);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // QUERIES
@@ -19,12 +25,12 @@ const MAX_NOTIFICATIONS = 200;
 export const getNotifications = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) return [];
     const limit = Math.min(args.limit ?? 100, 200);
     return await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(limit);
   },
@@ -39,7 +45,7 @@ export const getUnreadNotifications = query({
     return await ctx.db
       .query("notifications")
       .withIndex("by_user_read", (q) =>
-        q.eq("userId", userId as any).eq("read", false),
+        q.eq("userId", userId).eq("read", false),
       )
       .order("desc")
       .take(100);
@@ -55,7 +61,7 @@ export const getUnreadCount = query({
     const unread = await ctx.db
       .query("notifications")
       .withIndex("by_user_read", (q) =>
-        q.eq("userId", userId as any).eq("read", false),
+        q.eq("userId", userId).eq("read", false),
       )
       .take(200);
     return unread.length;
@@ -93,7 +99,7 @@ export const createNotification = mutation({
     const existing = await ctx.db
       .query("notifications")
       .withIndex("by_user_notif", (q) =>
-        q.eq("userId", userId as any).eq("notificationId", args.notificationId),
+        q.eq("userId", userId).eq("notificationId", args.notificationId),
       )
       .first();
 
@@ -105,12 +111,12 @@ export const createNotification = mutation({
     // Count existing for retention enforcement
     const allNotifs = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", userId as any))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(MAX_NOTIFICATIONS + 1);
 
     const id = await ctx.db.insert("notifications", {
-      userId: userId as any,
+      userId: userId,
       notificationId: args.notificationId,
       alertIdentity: args.alertIdentity,
       ruleId: args.ruleId,
@@ -153,7 +159,7 @@ export const markNotificationRead = mutation({
     const notif = await ctx.db
       .query("notifications")
       .withIndex("by_user_notif", (q) =>
-        q.eq("userId", userId as any).eq("notificationId", args.notificationId),
+        q.eq("userId", userId).eq("notificationId", args.notificationId),
       )
       .first();
 
@@ -172,7 +178,7 @@ export const markAllNotificationsRead = mutation({
     const unread = await ctx.db
       .query("notifications")
       .withIndex("by_user_read", (q) =>
-        q.eq("userId", userId as any).eq("read", false),
+        q.eq("userId", userId).eq("read", false),
       )
       .take(200);
 
@@ -194,7 +200,7 @@ export const dismissNotification = mutation({
     const notif = await ctx.db
       .query("notifications")
       .withIndex("by_user_notif", (q) =>
-        q.eq("userId", userId as any).eq("notificationId", args.notificationId),
+        q.eq("userId", userId).eq("notificationId", args.notificationId),
       )
       .first();
 
@@ -213,7 +219,7 @@ export const deleteNotification = mutation({
     const notif = await ctx.db
       .query("notifications")
       .withIndex("by_user_notif", (q) =>
-        q.eq("userId", userId as any).eq("notificationId", args.notificationId),
+        q.eq("userId", userId).eq("notificationId", args.notificationId),
       )
       .first();
 
