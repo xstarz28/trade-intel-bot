@@ -62,14 +62,14 @@ export function NotificationCenter() {
   const prefs: NotificationPreferences = useMemo(() => {
     if (!rawPrefs) return DEFAULT_PREFERENCES;
     return {
-      minimumSeverity: (rawPrefs as any).minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
-      enabledCategories: (rawPrefs as any).enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
-      enabledScopes: (rawPrefs as any).enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
-      mutedRuleIds: (rawPrefs as any).mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
-      enabledInstruments: (rawPrefs as any).enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
-      mutedInstruments: (rawPrefs as any).mutedInstruments ?? DEFAULT_PREFERENCES.mutedInstruments,
-      showReadNotifications: (rawPrefs as any).showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
-      showDismissedNotifications: (rawPrefs as any).showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
+      minimumSeverity: rawPrefs.minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
+      enabledCategories: rawPrefs.enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
+      enabledScopes: rawPrefs.enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
+      mutedRuleIds: rawPrefs.mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
+      enabledInstruments: rawPrefs.enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
+      mutedInstruments: rawPrefs.mutedInstruments ?? DEFAULT_PREFERENCES.mutedInstruments,
+      showReadNotifications: rawPrefs.showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
+      showDismissedNotifications: rawPrefs.showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
     };
   }, [rawPrefs]);
 
