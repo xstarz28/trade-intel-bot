@@ -90,7 +90,7 @@ export class MarketDataAcquisitionService {
     assetClass: AssetClass,
     now?: number,
   ): Promise<AcquisitionResult> {
-    const startTime = Date.now();
+    const startTime = now ?? Date.now();
 
     // Check cache first (stale-while-revalidate)
     const cached = this.cache.get<MarketSnapshot>(
