@@ -267,6 +267,7 @@ function PositionRow({
   return (
     <button
       onClick={onClick}
+      aria-label={`Open position ${positionId} (${intel.instrument})`}
       className="w-full flex items-center gap-2 p-2 rounded border border-border/20 hover:bg-muted/30 transition-colors text-left"
     >
       <div className="flex-1 min-w-0">
@@ -300,10 +301,8 @@ function PositionRow({
 
 function PortfolioDrillDown({
   portfolioIntel,
-  intelligenceMap,
 }: {
   portfolioIntel: PortfolioIntelligence;
-  intelligenceMap: Map<string, PositionIntelligence>;
 }) {
   const { t } = useI18n();
   const conflicts = portfolioIntel.conflicts ?? [];
@@ -338,7 +337,7 @@ function PortfolioDrillDown({
       {conflicts.length > 0 && (
         <div className="space-y-1">
           <span className="text-[8px] font-mono text-red-400 uppercase">{t.trader.conflicts}</span>
-          {conflicts.map((c: any, i: number) => (
+          {conflicts.map((c, i: number) => (
             <div key={i} className="text-[8px] font-mono text-muted-foreground p-1.5 rounded bg-red-500/5 border border-red-500/10">
               {c.description ?? `${c.positionA ?? "?"} vs ${c.positionB ?? "?"}`}
             </div>
@@ -350,7 +349,7 @@ function PortfolioDrillDown({
       {alignments.length > 0 && (
         <div className="space-y-1">
           <span className="text-[8px] font-mono text-emerald-400 uppercase">{t.trader.alignments}</span>
-          {alignments.map((a: any, i: number) => (
+          {alignments.map((a, i: number) => (
             <div key={i} className="text-[8px] font-mono text-muted-foreground p-1.5 rounded bg-emerald-500/5 border border-emerald-500/10">
               {a.description ?? `${(a.positions ?? []).join(" + ")}`}
             </div>
@@ -362,7 +361,7 @@ function PortfolioDrillDown({
       {watchItems.length > 0 && (
         <div className="space-y-1">
           <span className="text-[8px] font-mono text-amber-400 uppercase">{t.trader.watchList}</span>
-          {watchItems.slice(0, 5).map((w: any, i: number) => (
+          {watchItems.slice(0, 5).map((w, i: number) => (
             <div key={i} className="text-[8px] font-mono text-muted-foreground p-1.5 rounded bg-amber-500/5 border border-amber-500/10">
               {w.instrument ? `${w.instrument}: ` : ""}{w.description ?? w.reason ?? t.trader.monitor}
             </div>
@@ -434,7 +433,6 @@ export function TraderWorkspace({
   healthSnapshot,
   alertCount,
   unreadCount,
-  feedNews,
   onSelectPosition,
   onSelectPortfolio,
   onSelectAlerts,
@@ -555,7 +553,6 @@ export function TraderWorkspace({
         >
           <PortfolioDrillDown
             portfolioIntel={portfolioIntel}
-            intelligenceMap={intelligenceMap}
           />
         </WorkspaceSection>
       )}
@@ -898,8 +895,8 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
   // Determine technical direction from evidence
   const techSupporting = intel.evidence.filter((e) => e.direction === "supporting").length;
   const techConflicting = intel.evidence.filter((e) => e.direction === "conflicting").length;
-  const techDir = techSupporting > techConflicting ? "SUPPORTING" : techConflicting > techSupporting ? "CONFLICTING" : "NEUTRAL";
-  const alignment = assessTechnicalFundamentalAlignment(techDir as any, assetCtx.fundamentalAssessment);
+  const techDir: "SUPPORTING" | "CONFLICTING" | "NEUTRAL" = techSupporting > techConflicting ? "SUPPORTING" : techConflicting > techSupporting ? "CONFLICTING" : "NEUTRAL";
+  const alignment = assessTechnicalFundamentalAlignment(techDir, assetCtx.fundamentalAssessment);
 
   const regimeColor: Record<string, string> = {
     RISK_ON: "text-emerald-400",
