@@ -12,7 +12,6 @@ import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
 import { assemble, buildMtf, buildSmc, BULL_LEVELS } from "./benchmark-fixtures.phase9";
 import type { AnalysisInput } from "@/types/analysis";
-import type { TechnicalData } from "@/lib/data/market-types";
 
 const bullSpec = {
   structure: "HH/HL" as const, bos: "bullish" as const,
