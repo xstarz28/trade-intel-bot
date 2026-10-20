@@ -268,7 +268,7 @@ describe("C. Live Data → Protection Pipeline", () => {
       openedAt: Date.now(),
     }, Date.now());
 
-    controller = startController(controller);
+    startController(controller);
 
     // Same price update to both
     const bridge = createBridgeState();
