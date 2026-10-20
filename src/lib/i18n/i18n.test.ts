@@ -181,171 +181,171 @@ describe("i18n — key coverage for critical sections", () => {
   it("has all nav keys in EN/ID/ES", () => {
     const navKeys = ["overview", "analysis", "protection", "portfolio", "intelligence", "positions", "feed", "alerts", "notifications", "market", "system", "rules"];
     for (const k of navKeys) {
-      expect((en as any).nav[k]).toBeTruthy();
-      expect((id as any).nav[k]).toBeTruthy();
-      expect((es as any).nav[k]).toBeTruthy();
+      expect(Reflect.get(en.nav, k)).toBeTruthy();
+      expect(Reflect.get(id.nav, k)).toBeTruthy();
+      expect(Reflect.get(es.nav, k)).toBeTruthy();
     }
   });
 
   it("has all trader workspace keys in EN/ID/ES", () => {
     const traderKeys = ["portfolioOverview", "positions", "portfolioContext", "dataQuality", "systemHealth", "actions", "decisionSupport", "evidenceTrace", "currentAssessment", "positionMetrics", "marketContext"];
     for (const k of traderKeys) {
-      expect((en as any).trader[k]).toBeTruthy();
-      expect((id as any).trader[k]).toBeTruthy();
-      expect((es as any).trader[k]).toBeTruthy();
+      expect(Reflect.get(en.trader, k)).toBeTruthy();
+      expect(Reflect.get(id.trader, k)).toBeTruthy();
+      expect(Reflect.get(es.trader, k)).toBeTruthy();
     }
   });
 
   it("has all investor workspace keys in EN/ID/ES", () => {
     const investorKeys = ["noPositions", "noPositionsHint", "portfolioHealth", "positions", "healthy", "atRisk", "invalidated", "riskSummary", "riskLevel"];
     for (const k of investorKeys) {
-      expect((en as any).investor[k]).toBeTruthy();
-      expect((id as any).investor[k]).toBeTruthy();
-      expect((es as any).investor[k]).toBeTruthy();
+      expect(Reflect.get(en.investor, k)).toBeTruthy();
+      expect(Reflect.get(id.investor, k)).toBeTruthy();
+      expect(Reflect.get(es.investor, k)).toBeTruthy();
     }
   });
 
   it("has all protection keys in EN/ID/ES", () => {
     const protKeys = ["title", "addPosition", "noPositions", "noPositionsHint", "technicalIntelligence", "mtfAnalysis", "fundamentalIntelligence", "macroIntelligence", "crossAssetIntelligence", "causalTransmission", "techFundAlignment", "decisionSupportTitle"];
     for (const k of protKeys) {
-      expect((en as any).protection[k]).toBeTruthy();
-      expect((id as any).protection[k]).toBeTruthy();
-      expect((es as any).protection[k]).toBeTruthy();
+      expect(Reflect.get(en.protection, k)).toBeTruthy();
+      expect(Reflect.get(id.protection, k)).toBeTruthy();
+      expect(Reflect.get(es.protection, k)).toBeTruthy();
     }
   });
 
   it("has all intelligence keys in EN/ID/ES", () => {
     const intelKeys = ["technical", "fundamental", "macro", "crossAsset", "news", "newsIntelligence", "fundamentals", "evidenceHierarchy", "scenarios", "whatChanged", "analyticalSummary", "keyLevelsLabel"];
     for (const k of intelKeys) {
-      expect((en as any).intelligence[k]).toBeTruthy();
-      expect((id as any).intelligence[k]).toBeTruthy();
-      expect((es as any).intelligence[k]).toBeTruthy();
+      expect(Reflect.get(en.intelligence, k)).toBeTruthy();
+      expect(Reflect.get(id.intelligence, k)).toBeTruthy();
+      expect(Reflect.get(es.intelligence, k)).toBeTruthy();
     }
   });
 
   it("has all decision support keys in EN/ID/ES", () => {
     const decKeys = ["supportingEvidence", "conflictingEvidence", "whatCouldChange", "whatToMonitor", "dataAvailability", "thesisHealth"];
     for (const k of decKeys) {
-      expect((en as any).decision[k]).toBeTruthy();
-      expect((id as any).decision[k]).toBeTruthy();
-      expect((es as any).decision[k]).toBeTruthy();
+      expect(Reflect.get(en.decision, k)).toBeTruthy();
+      expect(Reflect.get(id.decision, k)).toBeTruthy();
+      expect(Reflect.get(es.decision, k)).toBeTruthy();
     }
   });
 
   it("has all status keys in EN/ID/ES", () => {
     const statusKeys = ["available", "unavailable", "insufficientData", "healthy", "stable", "caution", "deteriorating", "severelyDeteriorating", "invalidated", "unknown", "none", "watch", "highRisk", "live", "reconnecting", "dataStale", "disconnected", "monitoringPaused", "limited", "insufficient"];
     for (const k of statusKeys) {
-      expect((en as any).status[k]).toBeTruthy();
-      expect((id as any).status[k]).toBeTruthy();
-      expect((es as any).status[k]).toBeTruthy();
+      expect(Reflect.get(en.status, k)).toBeTruthy();
+      expect(Reflect.get(id.status, k)).toBeTruthy();
+      expect(Reflect.get(es.status, k)).toBeTruthy();
     }
   });
 
   it("has all macro regime keys in EN/ID/ES", () => {
     const macroKeys = ["regime", "stagflation", "reflation", "disinflation", "contraction", "recovery", "riskOn", "riskOff", "stressed", "mixed", "insufficientData"];
     for (const k of macroKeys) {
-      expect((en as any).macro[k]).toBeTruthy();
-      expect((id as any).macro[k]).toBeTruthy();
-      expect((es as any).macro[k]).toBeTruthy();
+      expect(Reflect.get(en.macro, k)).toBeTruthy();
+      expect(Reflect.get(id.macro, k)).toBeTruthy();
+      expect(Reflect.get(es.macro, k)).toBeTruthy();
     }
   });
 
   it("has all fundamental keys in EN/ID/ES", () => {
     const fundKeys = ["macroRegime", "inflationRatesYieldsCurrency", "growthEnergyGeopolitical", "fundamentalEvidence", "technicalVsFundamental", "fundamentalTransmission", "whatCouldChangeMonitor", "dataAvailability", "overall", "inflationLabel", "driver", "marketRates", "policyRateLabel", "realYields", "usd", "liquidityLabel", "tips10y"];
     for (const k of fundKeys) {
-      expect((en as any).fundamental[k]).toBeTruthy();
-      expect((id as any).fundamental[k]).toBeTruthy();
-      expect((es as any).fundamental[k]).toBeTruthy();
+      expect(Reflect.get(en.fundamental, k)).toBeTruthy();
+      expect(Reflect.get(id.fundamental, k)).toBeTruthy();
+      expect(Reflect.get(es.fundamental, k)).toBeTruthy();
     }
   });
 
   it("has all journal keys in EN/ID/ES", () => {
     const journalKeys = ["title", "createEntry", "backToDashboard", "journalAsTrade", "journalAsObservation", "entryReason", "thesisAtEntry"];
     for (const k of journalKeys) {
-      expect((en as any).journal[k]).toBeTruthy();
-      expect((id as any).journal[k]).toBeTruthy();
-      expect((es as any).journal[k]).toBeTruthy();
+      expect(Reflect.get(en.journal, k)).toBeTruthy();
+      expect(Reflect.get(id.journal, k)).toBeTruthy();
+      expect(Reflect.get(es.journal, k)).toBeTruthy();
     }
   });
 
   it("has all global keys in EN/ID/ES", () => {
     const globalKeys = ["loading", "error", "empty", "back", "save", "cancel", "close", "confirm", "exit", "search", "filter", "refresh", "noData", "disclaimer", "guest"];
     for (const k of globalKeys) {
-      expect((en as any).global[k]).toBeTruthy();
-      expect((id as any).global[k]).toBeTruthy();
-      expect((es as any).global[k]).toBeTruthy();
+      expect(Reflect.get(en.global, k)).toBeTruthy();
+      expect(Reflect.get(id.global, k)).toBeTruthy();
+      expect(Reflect.get(es.global, k)).toBeTruthy();
     }
   });
 
   it("has all dashboard keys in EN/ID/ES", () => {
     const dashKeys = ["terminalReady", "terminalDescription", "factors", "timeframes", "instruments", "selectInstrument", "notFound", "pageNotFound"];
     for (const k of dashKeys) {
-      expect((en as any).dashboard[k]).toBeTruthy();
-      expect((id as any).dashboard[k]).toBeTruthy();
-      expect((es as any).dashboard[k]).toBeTruthy();
+      expect(Reflect.get(en.dashboard, k)).toBeTruthy();
+      expect(Reflect.get(id.dashboard, k)).toBeTruthy();
+      expect(Reflect.get(es.dashboard, k)).toBeTruthy();
     }
   });
 
   it("has all alerts keys in EN/ID/ES", () => {
     const alertKeys = ["title", "createRule", "editRule", "deleteRule", "ruleName", "condition", "severity", "scope", "instrument", "position", "cooldown", "enabled", "disabled", "save", "cancel", "noRules", "noRulesHint"];
     for (const k of alertKeys) {
-      expect((en as any).alerts[k]).toBeTruthy();
-      expect((id as any).alerts[k]).toBeTruthy();
-      expect((es as any).alerts[k]).toBeTruthy();
+      expect(Reflect.get(en.alerts, k)).toBeTruthy();
+      expect(Reflect.get(id.alerts, k)).toBeTruthy();
+      expect(Reflect.get(es.alerts, k)).toBeTruthy();
     }
   });
 
   it("has all notifications keys in EN/ID/ES", () => {
     const notifKeys = ["title", "markAllRead", "dismiss", "noNotifications", "noUnread", "unread", "read", "ago", "now", "minutes", "hours", "days"];
     for (const k of notifKeys) {
-      expect((en as any).notifications[k]).toBeTruthy();
-      expect((id as any).notifications[k]).toBeTruthy();
-      expect((es as any).notifications[k]).toBeTruthy();
+      expect(Reflect.get(en.notifications, k)).toBeTruthy();
+      expect(Reflect.get(id.notifications, k)).toBeTruthy();
+      expect(Reflect.get(es.notifications, k)).toBeTruthy();
     }
   });
 
   it("has all market keys in EN/ID/ES", () => {
     const mktKeys = ["title", "live", "stale", "unavailable", "vix", "dxy", "us10y", "wti", "noData"];
     for (const k of mktKeys) {
-      expect((en as any).market[k]).toBeTruthy();
-      expect((id as any).market[k]).toBeTruthy();
-      expect((es as any).market[k]).toBeTruthy();
+      expect(Reflect.get(en.market, k)).toBeTruthy();
+      expect(Reflect.get(id.market, k)).toBeTruthy();
+      expect(Reflect.get(es.market, k)).toBeTruthy();
     }
   });
 
   it("has all system keys in EN/ID/ES", () => {
     const sysKeys = ["title", "overallStatus", "healthy", "degraded", "failed", "components", "lastUpdate", "noData", "intelligenceCycle", "alertPipeline", "persistence", "allOperational"];
     for (const k of sysKeys) {
-      expect((en as any).system[k]).toBeTruthy();
-      expect((id as any).system[k]).toBeTruthy();
-      expect((es as any).system[k]).toBeTruthy();
+      expect(Reflect.get(en.system, k)).toBeTruthy();
+      expect(Reflect.get(id.system, k)).toBeTruthy();
+      expect(Reflect.get(es.system, k)).toBeTruthy();
     }
   });
 
   it("has all analysis keys in EN/ID/ES", () => {
     const anaKeys = ["runAnalysis", "analyzing", "selectInstrument", "timeframe", "noResult", "confidence", "bias", "recommendation", "bullish", "bearish", "noTrade", "long", "short", "technicalSummary", "fundamentalSummary", "keyLevels", "support", "resistance", "invalidationLevel", "riskNote", "dataCompleteness"];
     for (const k of anaKeys) {
-      expect((en as any).analysis[k]).toBeTruthy();
-      expect((id as any).analysis[k]).toBeTruthy();
-      expect((es as any).analysis[k]).toBeTruthy();
+      expect(Reflect.get(en.analysis, k)).toBeTruthy();
+      expect(Reflect.get(id.analysis, k)).toBeTruthy();
+      expect(Reflect.get(es.analysis, k)).toBeTruthy();
     }
   });
 
   it("has all emptyStates keys in EN/ID/ES", () => {
     const emptyKeys = ["noPositions", "noAlerts", "noNotifications", "noNews", "noMarketData", "noAnalysis", "noHistory", "selectToBegin"];
     for (const k of emptyKeys) {
-      expect((en as any).emptyStates[k]).toBeTruthy();
-      expect((id as any).emptyStates[k]).toBeTruthy();
-      expect((es as any).emptyStates[k]).toBeTruthy();
+      expect(Reflect.get(en.emptyStates, k)).toBeTruthy();
+      expect(Reflect.get(id.emptyStates, k)).toBeTruthy();
+      expect(Reflect.get(es.emptyStates, k)).toBeTruthy();
     }
   });
 
   it("has all forms keys in EN/ID/ES", () => {
     const formKeys = ["required", "optional", "invalid", "enterPrice", "enterInstrument", "selectSide", "selectHorizon", "selectTimeframe"];
     for (const k of formKeys) {
-      expect((en as any).forms[k]).toBeTruthy();
-      expect((id as any).forms[k]).toBeTruthy();
-      expect((es as any).forms[k]).toBeTruthy();
+      expect(Reflect.get(en.forms, k)).toBeTruthy();
+      expect(Reflect.get(id.forms, k)).toBeTruthy();
+      expect(Reflect.get(es.forms, k)).toBeTruthy();
     }
   });
 });
