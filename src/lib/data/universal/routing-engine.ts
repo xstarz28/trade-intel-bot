@@ -13,7 +13,6 @@
 
 import type {
   AssetClass,
-  CanonicalInstrument,
   DataCapability,
 } from "./types";
 import type {
