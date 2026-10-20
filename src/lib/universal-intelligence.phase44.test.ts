@@ -42,6 +42,7 @@ import {
 
 import {
   createEvidenceItem,
+  createUnavailableEvidence,
   detectDoubleCounting,
   deriveForexEvidence,
   deriveEquityEvidence,
