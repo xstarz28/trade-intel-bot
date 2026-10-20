@@ -802,7 +802,7 @@ describe("Q. Alert Deduplication", () => {
 
 describe("R. Dashboard", () => {
   it("getDashboard returns correct counts", () => {
-    let state = registerTestPosition(createControllerState());
+    const state = registerTestPosition(createControllerState());
     const dashboard = getDashboard(state);
     expect(dashboard.totalPositions).toBe(1);
     expect(dashboard.activePositions).toBe(1);
@@ -1028,7 +1028,7 @@ describe("Z. Performance / Memory", () => {
 
 describe("AA. Trader Scenario: Profitable LONG → Protection BEFORE SL", () => {
   it("full lifecycle: healthy → early deterioration → acceleration → giveback → alert BEFORE SL", () => {
-    let state = registerTestPosition(createControllerState());
+    const state = registerTestPosition(createControllerState());
     const pos = state.positions.get("btc-long-1")!;
 
     // Step 1: Healthy
@@ -1141,7 +1141,7 @@ describe("AD. Radar Compatibility", () => {
 
 describe("AE. Event Processing End-to-End", () => {
   it("processes price events and increments evaluation count", () => {
-    let state = registerTestPosition(createControllerState());
+    const state = registerTestPosition(createControllerState());
     const event = createPriceEvent("BTC/USDT", 113000, "test");
     const result = processEventForController(state, event, NOW);
     expect(result.state.evaluationsPerformed).toBeGreaterThanOrEqual(0);
