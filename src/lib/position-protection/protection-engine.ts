@@ -257,8 +257,6 @@ function buildAlertMessage(
   severity: AlertSeverity,
   thesisHealth: { state: string; score: number; deteriorationCount: number },
   profit: ProfitMetrics,
-  shock: ShockAssessment,
-  supportingCount: number,
 ): string {
   switch (severity) {
     case "NONE":
@@ -389,7 +387,7 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
     supportingEvidence,
     conflictingEvidence,
     missingData,
-    alertMessage: buildAlertMessage(severity, thesisHealth, profit, shock, supportingEvidence.length),
+    alertMessage: buildAlertMessage(severity, thesisHealth, profit),
     actionRecommendation: determineAction(severity, profit),
     protectionReference: protectionRef.available ? protectionRef.level : undefined,
     deteriorationSignals: deduplicated,
