@@ -17,7 +17,7 @@ type BinanceTransport = (input: RequestInfo | URL, init?: RequestInit) => Promis
 
 /** Convert only a two-leg spot pair; USD is represented by the liquid USDT pair. */
 export function toBinanceSpotSymbol(symbol: string): string | null {
-  const parts = symbol.trim().toUpperCase().replace(/\s/g, "").split(/[\/-]/);
+  const parts = symbol.trim().toUpperCase().replace(/\s/g, "").split(/[/-]/);
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
   const base = parts[0];
   const quote = parts[1] === "USD" ? "USDT" : parts[1];
