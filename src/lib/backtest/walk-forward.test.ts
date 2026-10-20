@@ -277,7 +277,14 @@ describe("runWalkForwardBacktest", () => {
   it("forwards only completed higher-timeframe candles to each production analysis call", () => {
     vi.mocked(runAnalysis).mockClear();
     const base = Date.UTC(2026, 9, 1);
-    const primary = candles(30, base);
+    const primary = Array.from({ length: 30 }, (_, index) => ({
+      timestamp: base + index * 4 * 60 * 60 * 1000,
+      open: 100 + index * 0.1,
+      high: 102 + index * 0.1,
+      low: 98 + index * 0.1,
+      close: 101 + index * 0.1,
+      volume: 1000 + index,
+    }));
     const daily = candles(5, base).map((candle, index) => ({
       ...candle,
       timestamp: base + index * 24 * 60 * 60 * 1000,
