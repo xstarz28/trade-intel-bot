@@ -18,6 +18,24 @@ import type {
 } from "./types";
 import { toCoinGlassSymbol } from "./symbols";
 
+type CoinGlassPayload = {
+  provider?: string;
+  openInterest?: { current: number; change1h?: number; change24h?: number };
+  fundingRate?: { currentRate: number; annualizedRate?: number };
+  liquidations?: { totalVolume?: number; longVolume?: number; shortVolume?: number; dominantSide?: "longs" | "shorts" | "balanced" };
+  longShort?: { accountRatio?: number; topTraderRatio?: number; takerRatio?: number };
+  availability: { openInterest: boolean; fundingRate: boolean; longShort: boolean; liquidations: boolean };
+  confidence: string;
+  freshness: string;
+};
+
+type CoinGlassFetchResult = {
+  success: boolean;
+  data?: CoinGlassPayload;
+  error?: string;
+  errorCode?: string;
+} | null;
+
 /**
  * CoinGlass adapter — fetches derivatives intelligence.
  *
@@ -27,22 +45,9 @@ import { toCoinGlassSymbol } from "./symbols";
 export class CoinGlassAdapter implements CryptoIntelligenceProvider {
   readonly name = "CoinGlass";
 
-  private fetchThunk?: () => Promise<{
-    success: boolean;
-    data?: {
-      openInterest?: { current: number; change1h?: number; change24h?: number };
-      fundingRate?: { currentRate: number; annualizedRate?: number };
-      liquidations?: { totalVolume?: number; longVolume?: number; shortVolume?: number; dominantSide?: "longs" | "shorts" | "balanced" };
-      longShort?: { accountRatio?: number; topTraderRatio?: number; takerRatio?: number };
-      availability: { openInterest: boolean; fundingRate: boolean; longShort: boolean; liquidations: boolean };
-      confidence: string;
-      freshness: string;
-    };
-    error?: string;
-    errorCode?: string;
-  } | null>;
+  private fetchThunk?: () => Promise<CoinGlassFetchResult>;
 
-  constructor(fetchThunk?: () => Promise<any>) {
+  constructor(fetchThunk?: () => Promise<CoinGlassFetchResult>) {
     this.fetchThunk = fetchThunk;
   }
 
@@ -69,7 +74,9 @@ export class CoinGlassAdapter implements CryptoIntelligenceProvider {
           provider: this.name,
           observedAt: Date.now(),
           error: result?.error ?? "CoinGlass returned no data",
-          errorCode: (result?.errorCode as any) ?? "NO_DATA",
+          errorCode: result?.errorCode && ["API_UNAVAILABLE", "RATE_LIMIT", "AUTH_ERROR", "UNSUPPORTED_ASSET", "NO_DATA", "NETWORK_ERROR"].includes(result.errorCode)
+            ? result.errorCode as NonNullable<CryptoIntelligenceProviderResult["errorCode"]>
+            : "NO_DATA",
         };
       }
       return {
@@ -95,7 +102,7 @@ export class CoinGlassAdapter implements CryptoIntelligenceProvider {
  * Pure function — no side effects.
  */
 export function parseCoinGlassResult(
-  data: Record<string, any>,
+  data: CoinGlassPayload,
   instrument: string,
   observedAt: number,
 ): DerivativesIntelligence {
