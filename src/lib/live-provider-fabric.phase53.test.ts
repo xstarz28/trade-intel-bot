@@ -23,7 +23,7 @@ import {
 
 // ── Types ──
 import type { AssetClass } from "./data/universal/types";
-import type { MarketSnapshot, FreshnessLevel } from "./market-radar/types";
+import type { MarketSnapshot } from "./market-radar/types";
 import { assessFreshness } from "./market-radar/freshness";
 import { meetsFreshness } from "./market-radar/types";
 import { RadarCache, buildCacheKey } from "./market-radar/cache";
@@ -38,10 +38,8 @@ import {
 } from "./data/universal/live/types";
 
 // ── Universe ──
-import { getClusterForInstrument } from "./market-radar/universe";
 
 // ── Radar ──
-import {  } from "./market-radar/radar";
 import { buildRadarCandidate, type RadarCandidateSource } from "./market-radar/candidate-builder";
 
 const NOW = Date.now();
