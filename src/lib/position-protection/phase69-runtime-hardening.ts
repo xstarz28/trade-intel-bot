@@ -84,6 +84,7 @@ export function guardAgainstDuplicateRegistration(
       reason: `Position "${newPositionId}" is already registered.`,
       details: {
         existingInstrument: existingPositions.get(newPositionId)?.instrument,
+        newInstrument: instrument,
       },
     };
   }
@@ -331,11 +332,8 @@ export function guardCleanupOnRemoval(
   }
 
   // Verify other positions are not affected
-  const unaffected = Array.from(positionsBeforeRemoval.entries()).every(
-    ([id, val]) => {
-      if (id === removedPositionId) return true;
-      return positionsAfterRemoval.has(id);
-    },
+  const unaffected = Array.from(positionsBeforeRemoval.keys()).every(
+    (id) => id === removedPositionId || positionsAfterRemoval.has(id),
   );
 
   if (!unaffected) {
