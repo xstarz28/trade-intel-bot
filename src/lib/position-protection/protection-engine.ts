@@ -17,6 +17,7 @@ import type {
   MonitoringState,
   ProfitProtectionUrgency,
   WhyTpNowExplanation,
+  ThesisHealthState,
 } from "./types";
 import { calculateProfitMetrics } from "./profit-state";
 import {
@@ -32,6 +33,20 @@ import {
   updateMonitoringState,
   deduplicateByDependencyGroup,
 } from "./alert-lifecycle";
+
+function normalizeThesisHealthState(value: string): ThesisHealthState {
+  switch (value) {
+    case "HEALTHY":
+    case "STABLE":
+    case "DETERIORATING":
+    case "SEVERELY_DETERIORATING":
+    case "INVALIDATED":
+    case "UNKNOWN":
+      return value;
+    default:
+      return "UNKNOWN";
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // ALERT SEVERITY DETERMINATION
@@ -380,7 +395,7 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
     urgency,
     urgencyReason,
     whyTpNow,
-    thesisHealth: thesisHealth.state as any,
+    thesisHealth: normalizeThesisHealthState(thesisHealth.state),
     thesisHealthScore: thesisHealth.score,
     profit,
     shock,
