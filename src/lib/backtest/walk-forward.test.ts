@@ -137,6 +137,21 @@ describe("runWalkForwardBacktest", () => {
     expect(trade.netReturnPct).toBeCloseTo(((94.905 - 100.1) / 100.1) * 100, 8);
   });
 
+  it("clamps malformed out-of-range signal confidence to the supported range", () => {
+    const data = candles(30);
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: data,
+      options: { minimumHistory: 20, maxHoldingBars: 2, costBpsPerSide: 0 },
+      analyzeAtClose: (_visible, index) =>
+        index === 19 ? { ...longSignal, confidence: 150 } : { recommendation: "NO_TRADE" },
+    });
+
+    expect(report.executedTrades).toBe(1);
+    expect(report.trades[0].confidence).toBe(100);
+  });
+
   it("models a stop-market fill worse than the trigger after an adverse opening gap", () => {
     const data = candles(30);
     data[21] = { ...data[21], open: 90, high: 92, low: 89, close: 91 };

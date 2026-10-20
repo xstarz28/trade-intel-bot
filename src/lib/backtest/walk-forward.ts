@@ -180,7 +180,7 @@ function simulateTrade(args: {
     grossReturnPct,
     netReturnPct,
     rMultiple: signedMove / risk,
-    confidence: Number.isFinite(signal.confidence) ? Number(signal.confidence) : 0,
+    confidence: Number.isFinite(signal.confidence) ? Math.max(0, Math.min(100, Number(signal.confidence))) : 0,
   };
 }
 
