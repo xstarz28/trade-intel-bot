@@ -83,7 +83,6 @@ function buildInput(
 ): AnalysisInput {
   const tech = calculateTechnical(candles);
   tech.smc = computeSmcContext(candles, "D1");
-  const slots = buildChain("D1");
   return {
     instrument,
     instrumentType: type,
