@@ -278,11 +278,11 @@ describe("Phase 67 E — Alert Anti-Spam", () => {
         }
       )
     );
-    const rank = [
-      "NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED",
-    ] as const;
-    expect(rank.indexOf(r2.alert.severity as any)).toBeGreaterThanOrEqual(
-      rank.indexOf(r1.alert.severity as any)
+    const rank: Record<string, number> = {
+      NONE: 0, WATCH: 1, CAUTION: 2, HIGH_RISK: 3, INVALIDATED: 4,
+    };
+    expect(rank[r2.alert.severity] ?? -1).toBeGreaterThanOrEqual(
+      rank[r1.alert.severity] ?? -1
     );
   });
 });
@@ -721,7 +721,7 @@ describe("Phase 67 P — No Auto-Execution", () => {
         { shortTermTrend: "bearish", structureBroken: true }
       )
     );
-    const alert = result.alert as any;
+    const alert = result.alert as unknown as Record<string, unknown>;
     expect(alert.orderId).toBeUndefined();
     expect(alert.executionResult).toBeUndefined();
     expect(alert.tradeId).toBeUndefined();
@@ -745,7 +745,7 @@ describe("Phase 67 Q — Decision Immutability", () => {
 
   it("protection alert does not contain trade plan fields", () => {
     const result = evaluateProtection(inp({ currentPrice: 110000 }));
-    const alert = result.alert as any;
+    const alert = result.alert as unknown as Record<string, unknown>;
     expect(alert.recommendation).toBeUndefined();
     expect(alert.bias).toBeUndefined();
     expect(alert.conviction).toBeUndefined();
@@ -828,11 +828,11 @@ describe("Phase 67 S — Recovery", () => {
     const rGood = evaluateProtection(
       inp({ currentPrice: 110000 }, { shortTermTrend: "bullish" })
     );
-    const rank = [
-      "NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED",
-    ] as const;
-    expect(rank.indexOf(rGood.alert.severity as any)).toBeLessThanOrEqual(
-      rank.indexOf(rBad.alert.severity as any)
+    const rank: Record<string, number> = {
+      NONE: 0, WATCH: 1, CAUTION: 2, HIGH_RISK: 3, INVALIDATED: 4,
+    };
+    expect(rank[rGood.alert.severity] ?? -1).toBeLessThanOrEqual(
+      rank[rBad.alert.severity] ?? -1
     );
   });
 });
