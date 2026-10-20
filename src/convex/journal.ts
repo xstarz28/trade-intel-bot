@@ -19,7 +19,7 @@ async function resolveUser(ctx: QueryCtx | MutationCtx) {
       .unique();
     if (byEmail) return byEmail;
   }
-  const userId = ctx.db.normalizeId("users", identity.subject);
+  const userId = ctx.db.normalizeId("users", identity.subject) as import("./_generated/dataModel").Id<"users"> | null;
   if (!userId) return null;
   return await ctx.db.get(userId);
 }
