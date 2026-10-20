@@ -703,7 +703,7 @@ describe("AA. End-to-End Profit Protection Flow", () => {
       leverage: 10, openedAt: NOW - 3600_000, horizon: "SWING",
     };
 
-    let monitorState = createMonitoringState("BTC/USDT");
+    const monitorState = createMonitoringState("BTC/USDT");
 
     const s1 = evaluateProtection({
       position: { ...pos, currentPrice: 115 },
