@@ -73,7 +73,7 @@ export function calculateTpoProfile(input: ProfileCandle[], options: ProfileOpti
   const blocks=Array.from({length:o.rows},()=>new Set<number>());
   for (const c of candles) {
     const block=Math.floor(c.timestamp/o.blockMs);
-    let first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
+    const first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
     let last=Math.max(0,Math.min(o.rows-1,Math.floor((c.high-low)/step)));
     if(c.high===high) last=o.rows-1;
     for(let i=first;i<=last;i++) blocks[i].add(block);
@@ -93,7 +93,7 @@ export function calculateVpvrProfile(input: ProfileCandle[], options: ProfileOpt
   const values=Array.from({length:o.rows},()=>0);
   for(const c of candles) {
     const volume=c.volume??0; if(volume===0) continue;
-    let first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
+    const first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
     let last=Math.max(0,Math.min(o.rows-1,Math.floor((c.high-low)/step)));
     if(c.high===high) last=o.rows-1;
     const share=volume/Math.max(1,last-first+1);
