@@ -183,7 +183,8 @@ function computeExtensionRisk(
 function classifyPrimaryPath(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
- ): PathStatus {
+  regime?: MarketRegimeContext,
+): PathStatus {
   if (dir === "neutral") {
     if (regime?.regime === "RANGE") return "RANGE_CONTINUATION";
     return "UNCONFIRMED";
