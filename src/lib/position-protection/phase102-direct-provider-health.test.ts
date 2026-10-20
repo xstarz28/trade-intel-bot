@@ -452,6 +452,7 @@ describe("Phase 102 — Health Aggregation", () => {
       makeEvent({ component: "INTELLIGENCE_ENGINE", status: "HEALTHY", timestamp: now - 1000 }),
     ];
     const components = aggregateRuntimeHealth(events, now);
+    expect(components.find((component) => component.component === "MARKET_DATA")?.status).toBe("UNAVAILABLE");
     const snap = buildSnapshotFromBuffer(
       { events, lastPersistedSnapshot: null },
       now,
