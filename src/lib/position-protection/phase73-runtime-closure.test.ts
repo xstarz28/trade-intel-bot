@@ -1047,7 +1047,7 @@ describe("J. Diagnostics / Observability", () => {
       payload: { price: 100 },
       freshness: "FRESH" as const, processed: false,
     };
-    const guard = validateEvent(badEvent as any);
+    const guard = validateEvent(badEvent as unknown as Parameters<typeof validateEvent>[0]);
     expect(guard.passed).toBe(false);
   });
 });
