@@ -33,6 +33,7 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import React from "react";
+import { ConvexHttpClient } from "convex/browser";
 import * as RTL from "@testing-library/react";
 const { render } = RTL;
 const screen = RTL.screen;
@@ -135,15 +136,8 @@ import { runScenario, normalPullbackNoPrematureTP } from "../position-protection
 // CONVEX HTTP CLIENT — REAL RUNTIME
 // ═══════════════════════════════════════════════════════════════
 
-let ConvexHttpClient: typeof import("convex/browser").ConvexHttpClient | undefined;
-try {
-  ({ ConvexHttpClient } = require("convex/browser"));
-} catch {
-  // Not available
-}
-
 const CONVEX_URL = "https://enduring-turtle-81.convex.cloud";
-const convexClient = ConvexHttpClient ? new ConvexHttpClient(CONVEX_URL) : null;
+const convexClient = new ConvexHttpClient(CONVEX_URL);
 
 const NOW = Date.now();
 
