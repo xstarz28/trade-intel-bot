@@ -10,12 +10,12 @@
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
-import { sma, rsi, macd, atr, fibonacciLevels } from "./data/technical";
+import { sma, rsi, macd } from "./data/technical";
 import { calculateTechnical } from "./data/technical";
 import { computeSmcContext } from "./data/smc";
 import { buildChain, buildMtfContext } from "./data/mtf";
 import type { AnalysisInput } from "@/types/analysis";
-import type { MarketData, TechnicalData, OhlcvCandle } from "@/lib/data/market-types";
+import type { MarketData, OhlcvCandle } from "@/lib/data/market-types";
 
 // ── helpers ──────────────────────────────────────────────────────
 

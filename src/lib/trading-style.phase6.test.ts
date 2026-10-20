@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 import type { MarketData, MtfContext, SmcContext, TechnicalData } from "@/lib/data/market-types";
-import { adaptSetupTimeframe, resolveStyle } from "./trading-style";
+import { adaptSetupTimeframe } from "./trading-style";
 
 // ── Timeframe adaptation ───────────────────────────────────────────
 
