@@ -567,9 +567,10 @@ export default function Dashboard() {
           if (defiFundamentalsResultSettled && defiFundamentalsResultSettled.status === "fulfilled") {
             defiFundamentalsResult = defiFundamentalsResultSettled.value;
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           updateStep(1, "error");
-          setFetchError(`${t.dashboard.dataFetchFailed}: ${err?.message || t.dashboard.providerNotConfigured}`);
+          const errorMessage = err instanceof Error ? err.message : t.dashboard.providerNotConfigured;
+          setFetchError(`${t.dashboard.dataFetchFailed}: ${errorMessage}`);
           setIsAnalyzing(false);
           return;
         }
@@ -1083,9 +1084,10 @@ export default function Dashboard() {
         } catch {
           // Save failed (guest user) — analysis still shows in session
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!isStaleRun()) {
-          setFetchError(`${t.dashboard.dataFetchFailed}: ${err?.message || t.dashboard.providerNotConfigured}`);
+          const errorMessage = err instanceof Error ? err.message : t.dashboard.providerNotConfigured;
+          setFetchError(`${t.dashboard.dataFetchFailed}: ${errorMessage}`);
         }
       } finally {
         clearTimeout(watchdog);
