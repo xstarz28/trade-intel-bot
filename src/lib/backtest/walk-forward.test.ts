@@ -167,6 +167,25 @@ describe("runWalkForwardBacktest", () => {
     expect(report.rejectedPlans).toBe(1);
   });
 
+  it("rejects malformed runtime recommendations instead of interpreting them as shorts", () => {
+    const invalidSignal = {
+      recommendation: "WAIT",
+      tradePlan: { direction: "short", entry: "100", stopLoss: "105", takeProfit: "90" },
+      confidence: 80,
+    } as unknown as BacktestSignal;
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: candles(30),
+      options: { minimumHistory: 20 },
+      analyzeAtClose: () => invalidSignal,
+    });
+
+    expect(report.executedTrades).toBe(0);
+    expect(report.rejectedPlans).toBeGreaterThan(0);
+    expect(report.losses).toBe(0);
+  });
+
   it("rejects invalid numeric options instead of silently disabling the replay", () => {
     expect(() => runWalkForwardBacktest({
       instrument: "TEST",
