@@ -18,6 +18,7 @@ import {
   SEVERITY_BG,
 } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
+import type { TimeframeAnalysis } from "./multi-timeframe-engine";
 import type { PortfolioIntelligence } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
@@ -39,6 +40,28 @@ function makeRule(overrides?: Partial<AlertRule>): AlertRule {
     createdAt: 1000,
     updatedAt: 1000,
     ...overrides,
+  };
+}
+
+function makeTimeframeAnalysis(
+  timeframe: TimeframeAnalysis["timeframe"],
+  trend: TimeframeAnalysis["trend"],
+): TimeframeAnalysis {
+  return {
+    timeframe,
+    trend,
+    momentum: "NEUTRAL",
+    rsiValue: undefined,
+    volatility: "NORMAL",
+    atrValue: undefined,
+    atrPct: undefined,
+    structure: "INSUFFICIENT_DATA",
+    structureBroken: false,
+    lastSwingHigh: undefined,
+    lastSwingLow: undefined,
+    priceVsMA: "UNKNOWN",
+    dataQuality: "LIMITED",
+    candleCount: 5,
   };
 }
 
@@ -332,7 +355,7 @@ describe("THESIS_BECAME_INVALIDATED", () => {
 describe("REGIME_CHANGED", () => {
   it("triggers when market regime changes", () => {
     const rule = makeRule({ condition: "REGIME_CHANGED" });
-    const intel = makeIntel({ ohlcvRegime: "HIGH_VOLATILITY" as any });
+    const intel = makeIntel({ ohlcvRegime: "VOLATILE" });
     const prev = makeSnapshot({ marketRegime: "LOW_VOLATILITY" });
 
     const ctx: RuleEvaluationContext = {
@@ -347,7 +370,7 @@ describe("REGIME_CHANGED", () => {
 
   it("does not trigger when regime is unchanged", () => {
     const rule = makeRule({ condition: "REGIME_CHANGED" });
-    const intel = makeIntel({ ohlcvRegime: "TRENDING_UP" as any });
+    const intel = makeIntel({ ohlcvRegime: "TRENDING_UP" });
     const prev = makeSnapshot({ marketRegime: "TRENDING_UP" });
 
     const ctx: RuleEvaluationContext = {
@@ -367,7 +390,7 @@ describe("REGIME_CHANGED", () => {
 describe("H1_TREND_CHANGED", () => {
   it("triggers when H1 trend changes", () => {
     const rule = makeRule({ condition: "H1_TREND_CHANGED" });
-    const intel = makeIntel({ h1Analysis: { trend: "BEARISH" } as any });
+    const intel = makeIntel({ h1Analysis: makeTimeframeAnalysis("H1", "BEARISH") });
     const prev = makeSnapshot({ h1Trend: "BULLISH" });
 
     const ctx: RuleEvaluationContext = {
@@ -383,7 +406,7 @@ describe("H1_TREND_CHANGED", () => {
 
   it("does not trigger when H1 trend is unchanged", () => {
     const rule = makeRule({ condition: "H1_TREND_CHANGED" });
-    const intel = makeIntel({ h1Analysis: { trend: "BULLISH" } as any });
+    const intel = makeIntel({ h1Analysis: makeTimeframeAnalysis("H1", "BULLISH") });
     const prev = makeSnapshot({ h1Trend: "BULLISH" });
 
     const ctx: RuleEvaluationContext = {
@@ -399,7 +422,7 @@ describe("H1_TREND_CHANGED", () => {
 describe("M15_TREND_CHANGED", () => {
   it("triggers when M15 trend changes", () => {
     const rule = makeRule({ condition: "M15_TREND_CHANGED" });
-    const intel = makeIntel({ m15Analysis: { trend: "BEARISH" } as any });
+    const intel = makeIntel({ m15Analysis: makeTimeframeAnalysis("M15", "BEARISH") });
     const prev = makeSnapshot({ m15Trend: "BULLISH" });
 
     const ctx: RuleEvaluationContext = {
@@ -415,7 +438,7 @@ describe("M15_TREND_CHANGED", () => {
 describe("M5_TREND_CHANGED", () => {
   it("triggers when M5 trend changes", () => {
     const rule = makeRule({ condition: "M5_TREND_CHANGED" });
-    const intel = makeIntel({ m5Analysis: { trend: "NEUTRAL" } as any });
+    const intel = makeIntel({ m5Analysis: makeTimeframeAnalysis("M5", "NEUTRAL") });
     const prev = makeSnapshot({ m5Trend: "BULLISH" });
 
     const ctx: RuleEvaluationContext = {
@@ -435,7 +458,7 @@ describe("M5_TREND_CHANGED", () => {
 describe("STRUCTURE_CHANGED", () => {
   it("triggers when structure changes", () => {
     const rule = makeRule({ condition: "STRUCTURE_CHANGED" });
-    const intel = makeIntel({ ohlcvRegime: "RANGE_BOUND" as any });
+    const intel = makeIntel({ ohlcvRegime: "RANGING" });
     const prev = makeSnapshot({ structure: "TRENDING_UP" });
 
     const ctx: RuleEvaluationContext = {
@@ -449,7 +472,7 @@ describe("STRUCTURE_CHANGED", () => {
 
   it("does not trigger when prev structure is undefined", () => {
     const rule = makeRule({ condition: "STRUCTURE_CHANGED" });
-    const intel = makeIntel({ ohlcvRegime: "RANGE_BOUND" as any });
+    const intel = makeIntel({ ohlcvRegime: "RANGING" });
     const prev = makeSnapshot({ structure: undefined });
 
     const ctx: RuleEvaluationContext = {
