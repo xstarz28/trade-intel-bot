@@ -383,7 +383,7 @@ export function validateInstrumentIdentity(instrument: string): {
   const trimmed = instrument.trim().toUpperCase();
 
   // Must contain only valid characters
-  if (!/^[A-Z0-9/\._-]+$/.test(trimmed)) {
+  if (!/^[A-Z0-9/._-]+$/.test(trimmed)) {
     return { valid: false, canonical: trimmed, reason: "Invalid characters in instrument symbol." };
   }
 
