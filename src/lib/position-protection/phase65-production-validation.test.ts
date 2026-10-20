@@ -32,6 +32,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import type { GivebackState } from "../position-protection/giveback-monitor";
 import type { PositionContext } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
 
@@ -108,6 +109,19 @@ import {
 } from "../market-stream/stream-orchestrator";
 
 const NOW = Date.now();
+
+function makeGivebackState(givebackPct: number): GivebackState {
+  return {
+    peakPrice: 100,
+    currentPrice: 100,
+    peakProfit: 0,
+    currentProfit: 0,
+    givebackAbsolute: 0,
+    givebackPct,
+    pullbackType: "NORMAL_PULLBACK",
+    accelerating: false,
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
@@ -647,13 +661,13 @@ describe("I. Peak Profit & Giveback", () => {
   });
 
   it("giveback classification works for SCALPING", () => {
-    const gb = { givebackPct: 20 };
-    const severity = classifyGivebackSeverity(gb as any, "SCALPING");
+    const gb = makeGivebackState(20);
+    const severity = classifyGivebackSeverity(gb, "SCALPING");
     expect(["WATCH", "PARTIAL_TP", "MANUAL_TP", "PROTECT_NOW"]).toContain(severity);
   });
 
   it("giveback classification is NONE for small giveback in INVESTING", () => {
-    const gb = { givebackPct: 10 };
+    const gb = makeGivebackState(10);
     const severity = classifyGivebackSeverity(gb as any, "INVESTING");
     expect(severity).toBe("NONE");
   });
