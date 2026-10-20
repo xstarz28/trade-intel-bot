@@ -185,6 +185,7 @@ describe("Phase 32 — Snapshot immutability", () => {
     const closed = transitionEntry(modifiedTrade, "OPEN");
     const closedFinal = transitionEntry(closed, "CLOSED", { pnl: 100 });
     const reviewed = updateReview(closedFinal, { lessons: "learned" });
+    expect(reviewed.lessons).toBe("learned");
 
     // Original AnalysisResult completely untouched
     expect(result.bias).toBe(origBias);
@@ -338,6 +339,7 @@ describe("Phase 32 — Adversarial: snapshot mutation attempts", () => {
     expect(entry.notes).toBeUndefined();
     expect(entry.entry).toBeUndefined();
     expect(entry.status).toBe("PLANNED");
+    expect(entry).toEqual(orig);
   });
 });
 
