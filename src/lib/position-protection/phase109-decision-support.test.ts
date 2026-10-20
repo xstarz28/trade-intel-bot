@@ -12,12 +12,25 @@ import {
 } from "./decision-support";
 import type { PositionIntelligence, EvidenceItem, InvalidationCondition } from "./market-intelligence-analyzer";
 import type { PortfolioIntelligence } from "./portfolio-intelligence";
+import type { TimeframeAnalysis } from "./multi-timeframe-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // PHASE 109 — DECISION SUPPORT & EVIDENCE QUALITY TESTS
 // ═══════════════════════════════════════════════════════════════
 
 const now = Date.now();
+
+function makeTimeframeAnalysis(
+  timeframe: TimeframeAnalysis["timeframe"],
+  trend: TimeframeAnalysis["trend"],
+): TimeframeAnalysis {
+  return {
+    timeframe, trend, momentum: "NEUTRAL", rsiValue: undefined, volatility: "NORMAL",
+    atrValue: undefined, atrPct: undefined, structure: "INSUFFICIENT_DATA",
+    structureBroken: false, lastSwingHigh: undefined, lastSwingLow: undefined,
+    priceVsMA: "UNKNOWN", dataQuality: "LIMITED", candleCount: 5,
+  };
+}
 
 function makeEvidence(overrides: Partial<EvidenceItem> = {}): EvidenceItem {
   return {
@@ -150,8 +163,8 @@ describe("Phase 109: Decision Support Construction", () => {
 
   it("derives dimension availability", () => {
     const intel = makeIntel({
-      h1Analysis: { timeframe: "H1", trend: "BULLISH" } as any,
-      m15Analysis: { timeframe: "M15", trend: "BULLISH" } as any,
+      h1Analysis: makeTimeframeAnalysis("H1", "BULLISH"),
+      m15Analysis: makeTimeframeAnalysis("M15", "BULLISH"),
     });
     const ds = buildDecisionSupport("pos-1", intel, now);
 
@@ -321,8 +334,8 @@ describe("Phase 109: Unavailable Dimensions", () => {
 
   it("available timeframes are surfaced correctly", () => {
     const intel = makeIntel({
-      h1Analysis: { timeframe: "H1", trend: "BULLISH" } as any,
-      m15Analysis: { timeframe: "M15", trend: "BULLISH" } as any,
+      h1Analysis: makeTimeframeAnalysis("H1", "BULLISH"),
+      m15Analysis: makeTimeframeAnalysis("M15", "BULLISH"),
     });
     const ds = buildDecisionSupport("pos-1", intel, now);
 
@@ -587,9 +600,9 @@ describe("Phase 109: Invalidation Model", () => {
 describe("Phase 109: Watch Items", () => {
   it("timeframe disagreement generates MEDIUM watch item", () => {
     const intel = makeIntel({
-      h1Analysis: { timeframe: "H1", trend: "BULLISH", ...{} } as any,
-      m15Analysis: { timeframe: "M15", trend: "BEARISH", ...{} } as any,
-      m5Analysis: { timeframe: "M5", trend: "BULLISH", ...{} } as any,
+      h1Analysis: makeTimeframeAnalysis("H1", "BULLISH"),
+      m15Analysis: makeTimeframeAnalysis("M15", "BEARISH"),
+      m5Analysis: makeTimeframeAnalysis("M5", "BULLISH"),
     });
     const classified = classifyAllEvidence(intel);
     const watchItems = deriveWatchItems(intel, classified);
