@@ -668,7 +668,7 @@ describe("I. Peak Profit & Giveback", () => {
 
   it("giveback classification is NONE for small giveback in INVESTING", () => {
     const gb = makeGivebackState(10);
-    const severity = classifyGivebackSeverity(gb as any, "INVESTING");
+    const severity = classifyGivebackSeverity(gb, "INVESTING");
     expect(severity).toBe("NONE");
   });
 });
