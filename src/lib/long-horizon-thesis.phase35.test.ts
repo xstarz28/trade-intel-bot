@@ -92,7 +92,6 @@ function buildInput(
       candles: candles.slice(-120),
     })),
   ];
-  const mtf = buildMtfContext("D1", mtfInputs);
 
   return {
     instrument,
@@ -587,7 +586,6 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
     it("bullish structure produces counter-thesis about bearish development", () => {
       const r = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
       const lh = buildLongHorizonThesis(r);
-      const counterLower = lh.counterThesis.toLowerCase();
       expect(lh.counterThesis.length).toBeGreaterThan(0);
     });
   });
@@ -721,7 +719,6 @@ describe("Phase 35 — Invariants I95-I114", () => {
     const r = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
     const lh = buildLongHorizonThesis(r);
     // Both should reference the same structural bias
-    const dir = r.bias.toLowerCase();
     // At least one of them should mention the structural direction
     const invLower = lh.investorImplication.toLowerCase();
     const traderLower = lh.traderImplication.toLowerCase();
