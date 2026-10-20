@@ -40,7 +40,7 @@ import {
   buildTreasuryContext,
   deriveMacroYieldEvidence,
 } from "./data/treasury";
-import { parseOkxOrderBook } from "./execution-quality";
+import { parseOkxOrderBook, buildExecutionData } from "./execution-quality";
 
 // ─── HTTP helpers for live public endpoints ─────────────────────────
 
