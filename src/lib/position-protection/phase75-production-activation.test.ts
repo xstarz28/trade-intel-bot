@@ -22,7 +22,6 @@ import {
 import {
   bridgeQuoteToEvents,
   createBridgeState,
-  type LiveMarketBridgeState,
   type ProviderQuoteData,
 } from "../market-stream/live-market-bridge";
 import {
@@ -33,9 +32,6 @@ import {
   stopController,
   pauseController,
   resumeController,
-  evaluatePosition,
-  type ContinuousControllerState,
-  type PositionControllerState,
 } from "./continuous-protection-controller";
 import type { RealTimeEvent } from "./realtime-types";
 import { removePosition } from "./continuous-protection-controller";
