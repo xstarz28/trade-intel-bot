@@ -25,7 +25,6 @@ import {
   DEFAULT_PREFERENCES,
   ALL_CATEGORIES,
   ALL_SCOPES,
-  type PreferenceScope,
   type NotificationPreferences,
 } from "../lib/position-protection/notification-preferences";
 
