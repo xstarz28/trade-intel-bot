@@ -10,7 +10,6 @@
 
 import {
   getProviderProfile,
-  getProvidersForAssetClass,
   getPollIntervalMs,
   type ProviderStreamProfile,
 } from "./provider-adapters";
