@@ -95,7 +95,7 @@ function calibInput(
     profit: { profitState: "PROFITABLE", unrealizedPnL: 5000, distanceFromEntryPct: 5, peakProfit: 5000, givebackPct: 0 },
     thesisHealthScore: 80,
     thesisHealthState: "HEALTHY",
-    shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+    shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
     givebackPct: 0,
     accelerationLevel: "NORMAL",
     deteriorationCount: 0,
@@ -230,7 +230,7 @@ describe("Phase 68 B — Pullback Classifier", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev(),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 3,
       accelerationLevel: "NORMAL",
     });
@@ -241,7 +241,7 @@ describe("Phase 68 B — Pullback Classifier", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev({ shortTermTrend: "bearish", mediumTermTrend: "bearish", structureBroken: true }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 20,
       accelerationLevel: "NORMAL",
     });
@@ -252,7 +252,7 @@ describe("Phase 68 B — Pullback Classifier", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev(),
-      shock: { state: "SHOCK", score: 80, indicators: {} } as any,
+      shock: { state: "SHOCK", description: "Shock detected", indicators: {}, confidence: 80 },
       givebackPct: 20,
       accelerationLevel: "NORMAL",
     });
@@ -263,7 +263,7 @@ describe("Phase 68 B — Pullback Classifier", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev({ shortTermTrend: "bearish", mediumTermTrend: "bearish" }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 10,
       accelerationLevel: "HIGH",
     });
@@ -274,7 +274,7 @@ describe("Phase 68 B — Pullback Classifier", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev(),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 18,
       accelerationLevel: "NORMAL",
     });
@@ -286,7 +286,7 @@ describe("Phase 68 B — Pullback Classifier", () => {
     const result = classifyPullbackType({
       position: pos({ side: "SHORT" }),
       evidence: ev({ shortTermTrend: "bullish", mediumTermTrend: "bullish", structureBroken: true }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 25,
       accelerationLevel: "ELEVATED",
     });
@@ -297,7 +297,7 @@ describe("Phase 68 B — Pullback Classifier", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev({ shortTermTrend: undefined, mediumTermTrend: undefined }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 3,
       accelerationLevel: "NORMAL",
     });
@@ -308,7 +308,7 @@ describe("Phase 68 B — Pullback Classifier", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev({ shortTermTrend: "bearish", mediumTermTrend: "bullish" }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 8,
       accelerationLevel: "NORMAL",
     });
@@ -671,7 +671,7 @@ describe("Phase 68 F — Evidence Ranking", () => {
           thesisHealthScore: 20,
           givebackPct: 35,
           accelerationLevel: "HIGH",
-          shock: { state: "ELEVATED", score: 50, indicators: {} } as any,
+          shock: { state: "ELEVATED", description: "Elevated shock", indicators: {}, confidence: 50 },
         }
       )
     );
@@ -786,8 +786,8 @@ describe("Phase 68 I — LONG/SHORT Symmetry", () => {
     );
     // Both should produce non-NONE severity
     const rank = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"] as const;
-    expect(rank.indexOf(longResult.alert.severity as any)).toBeGreaterThan(0);
-    expect(rank.indexOf(shortResult.alert.severity as any)).toBeGreaterThan(0);
+    expect(rank.indexOf(longResult.alert.severity)).toBeGreaterThan(0);
+    expect(rank.indexOf(shortResult.alert.severity)).toBeGreaterThan(0);
   });
 
   it("LONG side is LONG, SHORT side is SHORT", () => {
@@ -867,7 +867,7 @@ describe("Phase 68 K — Fast Reversal Detection", () => {
       )
     );
     const rank = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"] as const;
-    expect(rank.indexOf(result.alert.severity as any)).toBeGreaterThan(1);
+    expect(rank.indexOf(result.alert.severity)).toBeGreaterThan(1);
   });
 
   it("acceleration + giveback produces meaningful classification", () => {
@@ -906,7 +906,7 @@ describe("Phase 68 K — Fast Reversal Detection", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev(),
-      shock: { state: "SHOCK", score: 90, indicators: {} } as any,
+      shock: { state: "SHOCK", description: "Shock detected", indicators: {}, confidence: 90 },
       givebackPct: 20,
       accelerationLevel: "NORMAL",
     });
@@ -940,7 +940,7 @@ describe("Phase 68 L — Giveback Scenarios", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev({ structureBroken: true, shortTermTrend: "bearish", mediumTermTrend: "bearish" }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 20,
       accelerationLevel: "NORMAL",
     });
@@ -951,7 +951,7 @@ describe("Phase 68 L — Giveback Scenarios", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev({ shortTermTrend: "bearish", mediumTermTrend: "bearish" }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 35,
       accelerationLevel: "HIGH",
     });
@@ -968,7 +968,7 @@ describe("Phase 68 M — Shock Scenarios", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev(),
-      shock: { state: "SHOCK", score: 85, indicators: {} } as any,
+      shock: { state: "SHOCK", description: "Shock detected", indicators: {}, confidence: 85 },
       givebackPct: 25,
       accelerationLevel: "NORMAL",
     });
@@ -979,7 +979,7 @@ describe("Phase 68 M — Shock Scenarios", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev(),
-      shock: { state: "SHOCK", score: 85, indicators: {} } as any,
+      shock: { state: "SHOCK", description: "Shock detected", indicators: {}, confidence: 85 },
       givebackPct: 5,
       accelerationLevel: "NORMAL",
     });
@@ -992,7 +992,7 @@ describe("Phase 68 M — Shock Scenarios", () => {
         {},
         {},
         {
-          shock: { state: "SHOCK", score: 80, indicators: {} } as any,
+          shock: { state: "SHOCK", description: "Shock detected", indicators: {}, confidence: 80 },
           givebackPct: 20,
           severity: "CAUTION",
         }
@@ -1066,8 +1066,8 @@ describe("Phase 68 O — Multi-Timeframe", () => {
       )
     );
     const rank = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"] as const;
-    expect(rank.indexOf(dual.alert.severity as any)).toBeGreaterThanOrEqual(
-      rank.indexOf(single.alert.severity as any)
+    expect(rank.indexOf(dual.alert.severity)).toBeGreaterThanOrEqual(
+      rank.indexOf(single.alert.severity)
     );
   });
 });
@@ -1170,10 +1170,10 @@ describe("Phase 68 Q — Missing Data", () => {
 
 describe("Phase 68 R — Stale Data", () => {
   it("stale data degrades alert quality", () => {
-    const fresh = evaluateAlertQuality({
+    const base = {
       independentSignalCount: 3,
       dependencyDiversity: 2,
-      freshness: "FRESH",
+      freshness: "FRESH" as const,
       multiTimeframeConfirmation: true,
       shockConfirmation: false,
       givebackConfirmation: true,
@@ -1181,11 +1181,9 @@ describe("Phase 68 R — Stale Data", () => {
       structuralConfirmation: true,
       conflictingEvidenceCount: 0,
       missingEvidenceCount: 0,
-    });
-    const stale = evaluateAlertQuality({
-      ...fresh as any,
-      freshness: "STALE",
-    });
+    };
+    const fresh = evaluateAlertQuality(base);
+    const stale = evaluateAlertQuality({ ...base, freshness: "STALE" });
     expect(stale.score).toBeLessThanOrEqual(fresh.score);
   });
 });
@@ -1246,8 +1244,8 @@ describe("Phase 68 T — Alert Escalation", () => {
       )
     );
     const rank = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"] as const;
-    expect(rank.indexOf(severe.alert.severity as any)).toBeGreaterThanOrEqual(
-      rank.indexOf(mild.alert.severity as any)
+    expect(rank.indexOf(severe.alert.severity)).toBeGreaterThanOrEqual(
+      rank.indexOf(mild.alert.severity)
     );
   });
 });
@@ -1268,8 +1266,8 @@ describe("Phase 68 U — Recovery", () => {
       inp({ currentPrice: 110000 }, { shortTermTrend: "bullish" })
     );
     const rank = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"] as const;
-    expect(rank.indexOf(good.alert.severity as any)).toBeLessThanOrEqual(
-      rank.indexOf(bad.alert.severity as any)
+    expect(rank.indexOf(good.alert.severity)).toBeLessThanOrEqual(
+      rank.indexOf(bad.alert.severity)
     );
   });
 });
@@ -1297,7 +1295,7 @@ describe("Phase 68 V — Determinism", () => {
     const input: PullbackClassificationInput = {
       position: pos(),
       evidence: ev({ shortTermTrend: "bearish", mediumTermTrend: "bearish", structureBroken: true }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 20,
       accelerationLevel: "NORMAL",
     };
@@ -1358,7 +1356,7 @@ describe("Phase 68 W — Security", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev(),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 5,
       accelerationLevel: "NORMAL",
     });
@@ -1521,7 +1519,7 @@ describe("Phase 68 AA — No Auto-Execution", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev({ structureBroken: true, shortTermTrend: "bearish" }),
-      shock: { state: "SHOCK", score: 90, indicators: {} } as any,
+      shock: { state: "SHOCK", description: "Shock detected", indicators: {}, confidence: 90 },
       givebackPct: 30,
       accelerationLevel: "HIGH",
     });
@@ -1544,10 +1542,9 @@ describe("Phase 68 AB — Decision Immutability", () => {
 
   it("protection engine result has no trade plan fields", () => {
     const result = evaluateProtection(inp({ currentPrice: 110000 }));
-    const alert = result.alert as any;
-    expect(alert.recommendation).toBeUndefined();
-    expect(alert.bias).toBeUndefined();
-    expect(alert.conviction).toBeUndefined();
+    expect(Reflect.get(result.alert, "recommendation")).toBeUndefined();
+    expect(Reflect.get(result.alert, "bias")).toBeUndefined();
+    expect(Reflect.get(result.alert, "conviction")).toBeUndefined();
   });
 });
 
@@ -1721,14 +1718,14 @@ describe("Phase 68 AF — False-Negative Matrix", () => {
       )
     );
     const rank = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"] as const;
-    expect(rank.indexOf(result.alert.severity as any)).toBeGreaterThan(0);
+    expect(rank.indexOf(result.alert.severity)).toBeGreaterThan(0);
   });
 
   it("acceleration + giveback → meaningful pullback", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev({ shortTermTrend: "bearish", mediumTermTrend: "bearish" }),
-      shock: { state: "NORMAL", score: 0, indicators: {} } as any,
+      shock: { state: "NORMAL", description: "No shock", indicators: {}, confidence: 0 },
       givebackPct: 30,
       accelerationLevel: "HIGH",
     });
@@ -1750,7 +1747,7 @@ describe("Phase 68 AF — False-Negative Matrix", () => {
     const result = classifyPullbackType({
       position: pos(),
       evidence: ev(),
-      shock: { state: "SHOCK", score: 90, indicators: {} } as any,
+      shock: { state: "SHOCK", description: "Shock detected", indicators: {}, confidence: 90 },
       givebackPct: 25,
       accelerationLevel: "NORMAL",
     });
