@@ -13,7 +13,7 @@ import {
   type RuntimeHealthInput,
   type RuntimeHealthSnapshot,
 } from "./runtime-health";
-import type { RuleAlert, AlertRule } from "./alert-rule-engine";
+import type { RuleAlert } from "./alert-rule-engine";
 import type {
   PositionIntelligence,
   EvidenceItem,
@@ -23,8 +23,6 @@ import type {
   PortfolioIntelligence,
   PortfolioSummary,
   PortfolioConflict,
-  PortfolioAlignment,
-  PortfolioWatchItem,
 } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
