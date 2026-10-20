@@ -27,11 +27,9 @@ async function resolveUser(ctx: {
       .unique();
     if (byEmail) return byEmail;
   }
-  try {
-    return await ctx.db.get(identity.subject);
-  } catch {
-    return null;
-  }
+  const userId = ctx.db.normalizeId("users", identity.subject);
+  if (!userId) return null;
+  return await ctx.db.get(userId);
 }
 
 // ═══════════════════════════════════════════════════════════════
