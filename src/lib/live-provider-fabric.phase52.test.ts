@@ -9,7 +9,7 @@
  * - LIVE SMOKE tests: make real requests, only run with credentials
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 
 // ── Provider Registry ──
 import {
@@ -27,7 +27,7 @@ import {
 
 // ── Radar Types ──
 import type { AssetClass } from "./data/universal/types";
-import type { MarketSnapshot, FreshnessLevel } from "./market-radar/types";
+import type { MarketSnapshot } from "./market-radar/types";
 import { assessFreshness } from "./market-radar/freshness";
 import { RadarCache, buildCacheKey } from "./market-radar/cache";
 import { RateLimitController } from "./market-radar/rate-limit";
@@ -39,7 +39,6 @@ import {
   compareCrossProviderPrices,
   assessDataQuality,
   type OhlcvRecord,
-  type LiveStatus,
 } from "./data/universal/live/types";
 
 // ═══════════════════════════════════════════════════════════════
