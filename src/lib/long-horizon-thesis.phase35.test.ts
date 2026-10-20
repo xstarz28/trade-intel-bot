@@ -580,7 +580,6 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
     it("bearish structure produces counter-thesis about bullish development", () => {
       const r = runAndGet(buildInput("ETH/USD", "crypto", bearCandles(0, 3000)));
       const lh = buildLongHorizonThesis(r);
-      const counterLower = lh.counterThesis.toLowerCase();
       // Counter thesis should mention opposite direction
       expect(lh.counterThesis.length).toBeGreaterThan(0);
     });
