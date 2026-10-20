@@ -22,6 +22,17 @@ import { toDefiLlamaId } from "./symbols";
 const DEFILLAMA_BASE = "https://api.llama.fi";
 const DEFILLAMA_REQUEST_TIMEOUT_MS = 4_000;
 
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
 /**
  * DeFiLlama adapter — fetches DeFi fundamental intelligence.
  */
@@ -53,7 +64,10 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
 
     let networkError: string | undefined;
     try {
-      const data: Record<string, any> = {};
+      const data: {
+        tvl?: { current: number; change7d?: number; change30d?: number };
+        fees?: { dailyFees?: number };
+      } = {};
 
       // Fetch TVL (chain-level)
       if (mapping.level === "chain") {
@@ -63,17 +77,25 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
             { signal: AbortSignal.timeout(DEFILLAMA_REQUEST_TIMEOUT_MS) },
           );
           if (tvlRes.ok) {
-            const tvlHistory = await tvlRes.json();
-            if (Array.isArray(tvlHistory) && tvlHistory.length > 0) {
-              const latest = tvlHistory[tvlHistory.length - 1];
-              const weekAgo = tvlHistory.find(
-                (e: any) => Math.abs(e.date - latest.date) >= 6 * 86400 && Math.abs(e.date - latest.date) <= 8 * 86400,
-              );
-              const monthAgo = tvlHistory.find(
-                (e: any) => Math.abs(e.date - latest.date) >= 28 * 86400 && Math.abs(e.date - latest.date) <= 32 * 86400,
-              );
+            const payload: unknown = await tvlRes.json();
+            const history = Array.isArray(payload) ? payload.filter(isRecord) : [];
+            const validHistory = history.flatMap((entry) => {
+              const date = finiteNumber(entry.date);
+              const tvl = finiteNumber(entry.tvl);
+              return date !== undefined && tvl !== undefined ? [{ date, tvl }] : [];
+            });
+            if (validHistory.length > 0) {
+              const latest = validHistory[validHistory.length - 1];
+              const weekAgo = validHistory.find((entry) => {
+                const distance = Math.abs(entry.date - latest.date);
+                return distance >= 6 * 86400 && distance <= 8 * 86400;
+              });
+              const monthAgo = validHistory.find((entry) => {
+                const distance = Math.abs(entry.date - latest.date);
+                return distance >= 28 * 86400 && distance <= 32 * 86400;
+              });
               data.tvl = {
-                current: latest.tvl ?? 0,
+                current: latest.tvl,
                 change7d: weekAgo && weekAgo.tvl > 0
                   ? ((latest.tvl - weekAgo.tvl) / weekAgo.tvl) * 100
                   : undefined,
@@ -96,11 +118,10 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
             { signal: AbortSignal.timeout(DEFILLAMA_REQUEST_TIMEOUT_MS) },
           );
           if (feesRes.ok) {
-            const feesData = await feesRes.json();
-            if (feesData?.total24h !== undefined) {
-              data.fees = {
-                dailyFees: feesData.total24h,
-              };
+            const feesPayload: unknown = await feesRes.json();
+            if (isRecord(feesPayload)) {
+              const total24h = finiteNumber(feesPayload.total24h);
+              if (total24h !== undefined) data.fees = { dailyFees: total24h };
             }
           }
         } catch (e) {
@@ -148,12 +169,17 @@ export class DeFiLlamaAdapter implements CryptoIntelligenceProvider {
  * Pure function — no side effects.
  */
 export function parseDeFiLlamaResult(
-  data: Record<string, any>,
+  data: Record<string, unknown>,
   instrument: string,
   observedAt: number,
 ): DeFiIntelligence {
-  const availableDatasets = data.availableDatasets ?? 0;
-  const totalDatasets = data.totalDatasets ?? 2;
+  const availableDatasets = finiteNumber(data.availableDatasets) ?? 0;
+  const totalDatasets = finiteNumber(data.totalDatasets) ?? 2;
+  const tvl = isRecord(data.tvl) ? data.tvl : undefined;
+  const fees = isRecord(data.fees) ? data.fees : undefined;
+  const currentTvl = finiteNumber(tvl?.current);
+  const dailyFees = finiteNumber(fees?.dailyFees);
+  const dailyRevenue = finiteNumber(fees?.dailyRevenue);
 
   return {
     provider: "DeFiLlama",
@@ -163,17 +189,17 @@ export function parseDeFiLlamaResult(
     available: availableDatasets > 0,
     failureReason: availableDatasets === 0 ? "No DeFiLlama data available" : undefined,
 
-    tvl: data.tvl ? {
-      current: data.tvl.current ?? 0,
-      change7d: data.tvl.change7d,
-      change30d: data.tvl.change30d,
-      reliable: typeof data.tvl.current === "number" && data.tvl.current > 0,
+    tvl: tvl ? {
+      current: currentTvl ?? 0,
+      change7d: finiteNumber(tvl.change7d),
+      change30d: finiteNumber(tvl.change30d),
+      reliable: currentTvl !== undefined && currentTvl > 0,
     } : undefined,
 
-    fees: data.fees ? {
-      dailyFees: data.fees.dailyFees,
-      dailyRevenue: data.fees.dailyRevenue,
-      reliable: typeof data.fees.dailyFees === "number" && data.fees.dailyFees > 0,
+    fees: fees ? {
+      dailyFees,
+      dailyRevenue,
+      reliable: dailyFees !== undefined && dailyFees > 0,
     } : undefined,
 
     stablecoins: undefined,
