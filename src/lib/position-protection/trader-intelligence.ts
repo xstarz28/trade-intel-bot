@@ -156,7 +156,11 @@ export function generatePositionThesis(
       direction: aligned ? "SUPPORTING" : opposing ? "CONFLICTING" : "SUPPORTING",
       strength: "MODERATE",
     };
-    aligned ? supporting.push(item) : conflicting.push(item);
+    if (aligned) {
+      supporting.push(item);
+    } else {
+      conflicting.push(item);
+    }
   }
 
   // M5 momentum
