@@ -1079,7 +1079,7 @@ describe("AJ. Empty input", () => {
   });
 
   it("AJ3 — processEvent with no matching position returns empty alerts", () => {
-    let state = createMonitorState();
+    const state = createMonitorState();
     const result = processEvent(state, makePosEvent("p_none", "BTC/USD", 100), NOW);
     expect(result.alerts.length).toBe(0);
   });
@@ -1219,7 +1219,7 @@ describe("AP. Cleanup", () => {
   });
 
   it("AP2 — cleanup bounds seen fingerprints", () => {
-    let dsp = createDispatcherState();
+    const dsp = createDispatcherState();
     for (let i = 0; i < 10; i++) {
       dsp.seenFingerprints.add(`fp-${i}`);
     }
