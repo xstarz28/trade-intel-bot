@@ -370,7 +370,7 @@ export function buildTimelineEntry(
   changes: ChangeDetection,
   confluence: MTFConfluence,
 ): TimelineEntry | null {
-  if (!changes.changed || changes.changes.length === 0 || !confluence.regime) return null;
+  if (!changes.changed || changes.changes.length === 0 || confluence.regime === "INSUFFICIENT_DATA") return null;
 
   return {
     timestamp: Date.now(),
