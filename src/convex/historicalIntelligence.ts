@@ -11,6 +11,7 @@
  */
 
 import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 
 // ═══════════════════════════════════════════════════════════════
@@ -45,7 +46,7 @@ async function resolveUser(ctx: {
 /** Verify the user owns this position. */
 async function verifyPositionOwnership(
   ctx: { db: QueryCtx["db"] | MutationCtx["db"] },
-  userId: string,
+  userId: Id<"users">,
   positionId: string,
 ): Promise<boolean> {
   const position = await ctx.db
@@ -64,7 +65,7 @@ async function verifyPositionOwnership(
 /** Enforce retention limits for a position. Server-side only. */
 async function enforceRetention(
   ctx: { db: MutationCtx["db"] },
-  userId: string,
+  userId: Id<"users">,
   positionId: string,
 ): Promise<number> {
   let pruned = 0;
