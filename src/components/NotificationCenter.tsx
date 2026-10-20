@@ -69,7 +69,9 @@ export function NotificationCenter() {
       minimumSeverity: isNotificationSeverity(rawPrefs.minimumSeverity)
         ? rawPrefs.minimumSeverity
         : DEFAULT_PREFERENCES.minimumSeverity,
-      enabledCategories: rawPrefs.enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
+      enabledCategories: rawPrefs.enabledCategories === undefined
+        ? DEFAULT_PREFERENCES.enabledCategories
+        : ALL_CATEGORIES.filter((category) => rawPrefs.enabledCategories.includes(category)),
       enabledScopes: rawPrefs.enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
       mutedRuleIds: rawPrefs.mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
       enabledInstruments: rawPrefs.enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
