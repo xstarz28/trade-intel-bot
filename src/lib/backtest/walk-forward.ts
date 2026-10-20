@@ -233,6 +233,17 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     const visible = candles.slice(0, i + 1);
     const signal = input.analyzeAtClose(visible, i);
     signalsChecked++;
+    if (
+      !signal ||
+      (signal.recommendation !== "LONG" &&
+        signal.recommendation !== "SHORT" &&
+        signal.recommendation !== "NO_TRADE")
+    ) {
+      // Runtime callers can violate the TypeScript contract; malformed signals
+      // must never be interpreted as a short recommendation by the simulator.
+      rejectedPlans++;
+      continue;
+    }
     if (signal.recommendation === "NO_TRADE") {
       noTradeSignals++;
       continue;
