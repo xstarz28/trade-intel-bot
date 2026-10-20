@@ -322,6 +322,7 @@ describe("Phase 97 — LONG → SHORT Lifecycle", () => {
       new Map(),
       5000,
     );
+    expect(r1).toHaveProperty("notifications");
 
     // SHORT position — same instrument, different side
     const shortIntel = makeIntel({ side: "SHORT" });
