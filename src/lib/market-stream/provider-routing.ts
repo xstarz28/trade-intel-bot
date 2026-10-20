@@ -239,14 +239,11 @@ function buildRoute(
 }
 
 /**
- * Check if a provider's credentials are configured.
- * Credential validation happens server-side in Convex actions.
- * Client-side routing is based on provider profiles, not credential availability.
+ * Check whether a provider is recognized by the routing registry.
+ * This does not validate credentials: secrets are checked server-side in Convex actions.
  */
-export function checkProviderCredentials(_provider: string): boolean {
-  // Credentials are resolved server-side only via Convex actions.
-  // Client-side routing is based on provider profiles.
-  return true;
+export function checkProviderCredentials(provider: string): boolean {
+  return getProviderProfile(provider) !== undefined;
 }
 
 /**
