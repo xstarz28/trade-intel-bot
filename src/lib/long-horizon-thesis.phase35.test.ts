@@ -409,12 +409,9 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
     it("different instruments produce different theses", () => {
       const btc = buildLongHorizonThesis(runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000))));
       const eth = buildLongHorizonThesis(runAndGet(buildInput("ETH/USD", "crypto", bearCandles(0, 3000))));
-      // At least one field should differ
-      // 
-        // ignore ||
-        // ignore ||
-        // ignore;
+      // Both instrument-specific theses must be populated.
       expect(btc.primaryThesis.length).toBeGreaterThan(0);
+      expect(eth.primaryThesis.length).toBeGreaterThan(0);
     });
   });
 
