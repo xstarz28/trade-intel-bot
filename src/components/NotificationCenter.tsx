@@ -24,6 +24,8 @@ import {
   filterNotificationsByPreferences,
   DEFAULT_PREFERENCES,
   ALL_CATEGORIES,
+  ALL_SCOPES,
+  type PreferenceScope,
   type NotificationPreferences,
 } from "../lib/position-protection/notification-preferences";
 
@@ -72,7 +74,9 @@ export function NotificationCenter() {
       enabledCategories: rawPrefs.enabledCategories === undefined
         ? DEFAULT_PREFERENCES.enabledCategories
         : ALL_CATEGORIES.filter((category) => rawPrefs.enabledCategories.includes(category)),
-      enabledScopes: rawPrefs.enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
+      enabledScopes: rawPrefs.enabledScopes === undefined
+        ? DEFAULT_PREFERENCES.enabledScopes
+        : ALL_SCOPES.filter((scope) => rawPrefs.enabledScopes.includes(scope)),
       mutedRuleIds: rawPrefs.mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
       enabledInstruments: rawPrefs.enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
       mutedInstruments: rawPrefs.mutedInstruments ?? DEFAULT_PREFERENCES.mutedInstruments,
