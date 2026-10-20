@@ -476,9 +476,9 @@ describe("Phase 95 — Dedup", () => {
       r1.updatedTriggerRecords,
       5001,
     );
-    // With cooldown=0 and new timestamp, re-trigger is allowed, but Phase 93 handles this
-    // The key is no duplicate notifications from same identity
+    // The same trigger identity must not create a duplicate notification.
     expect(r1.notifications.length).toBe(1);
+    expect(r2.notifications).toHaveLength(0);
   });
 });
 
