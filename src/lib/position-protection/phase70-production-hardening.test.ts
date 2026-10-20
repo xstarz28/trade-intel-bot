@@ -520,6 +520,8 @@ describe("C. Provider Failure / Failover", () => {
 
     // Fail the provider
     state = processPollFailure(state, "BTC/USDT", "timeout", NOW).state;
+    expect(state.instruments.get("BTC/USDT")!.consecutiveFailures).toBe(1);
+    expect(state.instruments.get("BTC/USDT")!.freshness).toBe("STALE");
 
     // Evaluate a position — provider failure should not affect direction
     const alert = evaluate(btcLong(), healthyEvidence(110_000));
@@ -575,10 +577,6 @@ describe("C. Provider Failure / Failover", () => {
   });
 
   it("Stale response treated as failure", () => {
-    let state = createPollingServiceState();
-    state = startPollingService(state, NOW);
-    state = registerInstrumentForPolling(state, "BTC/USDT", NOW);
-
     const staleQuote: ProviderQuoteData = {
       instrument: "BTC/USDT", provider: "OKX", price: 105_000, timestamp: NOW, freshness: "STALE",
     };
@@ -1482,21 +1480,17 @@ describe("I. Security Audit", () => {
     expect(typeof parsed.timestamp).toBe("number");
   });
 
-  it("No probability claims in evidence across all severities", () => {
-    const alertSeverities: AlertSeverity[] = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"];
-    for (const sev of alertSeverities) {
-      const alert = evaluate(btcLong(), healthyEvidence(110_000));
-      const allText = [
-        ...alert.supportingEvidence,
-        ...alert.conflictingEvidence,
-        ...alert.whyTpNow.confirmations,
-        ...alert.whyTpNow.whatChanged,
-      ].join(" ");
-      expect(allText).not.toMatch(/\d+%\\s*chance/i);
-      expect(allText).not.toMatch(/probability\\s+of/i);
-    }
-  });
-});
+  it("No probability claims in evidence", () => {
+    const alert = evaluate(btcLong(), healthyEvidence(110_000));
+    const allText = [
+      ...alert.supportingEvidence,
+      ...alert.conflictingEvidence,
+      ...alert.whyTpNow.confirmations,
+      ...alert.whyTpNow.whatChanged,
+    ].join(" ");
+    expect(allText).not.toMatch(/\\d+%\\s*chance/i);
+    expect(allText).not.toMatch(/probability\\s+of/i);
+  });});
 
 // ═══════════════════════════════════════════════════════════════
 // J. DIAGNOSTICS / OBSERVABILITY
@@ -1678,9 +1672,12 @@ describe("K. LONG/SHORT Symmetry Under Pressure", () => {
     expect(shortPullback).toBeDefined();
   });
 
-  it("BTC LONG ≠ BTC SHORT — different evaluation results", () => {
+  it("BTC LONG and BTC SHORT both evaluate to valid severities", () => {
     const longAlert = evaluate(btcLong(), healthyEvidence(110_000));
     const shortAlert = evaluate(btcShort(), { ...healthyEvidence(90_000), shortTermTrend: "bearish" });
+    const validSeverities: AlertSeverity[] = ["NONE", "WATCH", "CAUTION", "HIGH_RISK", "INVALIDATED"];
+    expect(validSeverities).toContain(longAlert.severity);
+    expect(validSeverities).toContain(shortAlert.severity);
   });
 
   it("BTC ≠ ETH — independent evaluations", () => {
