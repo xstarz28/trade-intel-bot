@@ -22,19 +22,6 @@ interface TwelveDataCandle {
   volume: string;
 }
 
-interface TwelveDataQuote {
-  symbol: string;
-  name: string;
-  exchange: string;
-  close: string;
-  previous_close: string;
-  change: string;
-  percent_change: string;
-  volume: string;
-  bid: string;
-  ask: string;
-}
-
 export class TwelveDataProvider implements MarketDataProvider {
   readonly name = "twelve-data";
   private config: ProviderConfig;
