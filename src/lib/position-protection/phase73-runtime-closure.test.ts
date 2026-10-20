@@ -193,7 +193,7 @@ async function ensureLiveData(): Promise<void> {
       ["bitcoin", "BTC/USDT"], ["ethereum", "ETH/USDT"],
       ["solana", "SOL/USDT"], ["dogecoin", "DOGE/USDT"],
     ];
-    for (const [coinId, symbol] of coinMap) {
+    for (const [, symbol] of coinMap) {
       const routing = routeInstrument(symbol);
       liveResults.push({
         provider: "CoinGecko", instrument: symbol,
