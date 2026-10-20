@@ -174,7 +174,7 @@ describe("Phase 97 — Cooldown Boundary", () => {
     const prevState = makeEmptyState();
     prevState.snapshots.set("pos-1", makeHealthySnapshot());
 
-    const r1 = evaluateAlertRuntimeBridge(
+    evaluateAlertRuntimeBridge(
       { rules, intelligenceMap: intelMap },
       prevState,
       new Map(),
