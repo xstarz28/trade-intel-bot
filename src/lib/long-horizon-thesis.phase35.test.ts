@@ -23,7 +23,7 @@ import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 import { calculateTechnical } from "./data/technical";
 import { computeSmcContext } from "./data/smc";
-import { buildChain, buildMtfContext } from "./data/mtf";
+import { buildChain } from "./data/mtf";
 
 // ── Fixture builders ─────────────────────────────────────────────
 
@@ -84,15 +84,6 @@ function buildInput(
   const tech = calculateTechnical(candles);
   tech.smc = computeSmcContext(candles, "D1");
   const slots = buildChain("D1");
-  const mtfInputs = [
-    { timeframe: "D1", role: "setup" as const, candles },
-    ...slots.map((s) => ({
-      timeframe: s.timeframe,
-      role: (s.role === "setup" || s.role === "trigger" ? s.role : "setup") as "setup" | "trigger",
-      candles: candles.slice(-120),
-    })),
-  ];
-
   return {
     instrument,
     instrumentType: type,
