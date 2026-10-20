@@ -228,7 +228,7 @@ describe("Phase 40 — No Fabrication", () => {
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — Decision Integrity", () => {
   it("same input same result", () => { const a = runAnalysis(buildInput("BTC/USD", "crypto")); const b = runAnalysis({ ...buildInput("BTC/USD", "crypto") }); expect(a.recommendation).toBe(b.recommendation); });
-  it("confidence bounded", () => { for (const s of ["BTC/USD", "EUR/USD", "XAU/USD", "AAPL"]) { expect(runAnalysis(buildInput(s, detectAssetClass(s) as AnalysisInput["instrumentType"])).confidence).toBeGreaterThanOrEqual(0); } });
+  it("confidence bounded", () => { for (const s of ["BTC/USD", "EUR/USD", "XAU/USD", "AAPL"]) { expect(runAnalysis(buildInput(s, detectAssetClass(s) as "crypto" | "forex" | "commodity" | "stock")).confidence).toBeGreaterThanOrEqual(0); } });
   it("long horizon info", () => { const r = runAnalysis(buildInput("BTC/USD", "crypto")); if (r.longHorizonThesis) expect(typeof r.longHorizonThesis.marketCycle).toBe("string"); });
   it("evidence challenge info", () => { const r = runAnalysis(buildInput("EUR/USD", "forex")); if (r.evidenceChallenge) expect(r.evidenceChallenge.evidenceImpact).toBe("INFORMATIONAL_ONLY"); });
 });

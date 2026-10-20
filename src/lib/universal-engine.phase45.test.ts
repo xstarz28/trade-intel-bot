@@ -515,7 +515,7 @@ describe("Phase 45 — L. Cache Isolation", () => {
     cacheSet({ instrument: "BTC/USD", capability: "ohlcv", providerId: "twelve-data" }, { price: 50000 });
     const entry = cacheGet({ instrument: "BTC/USD", capability: "ohlcv", providerId: "twelve-data" });
     expect(entry).not.toBeNull();
-    expect(Reflect.get(entry!.data, "price")).toBe(50000);
+    expect(Reflect.get(entry!.data as object, "price")).toBe(50000);
   });
 
   it("cacheHas returns correct result", () => {
@@ -933,8 +933,8 @@ describe("Phase 45 — X. Adversarial Cross-Instrument", () => {
     const aapl = cacheGet({ instrument: "AAPL", capability: "earnings", providerId: "alpha-vantage" });
     const crossCheck = cacheGet({ instrument: "AAPL", capability: "ohlcv", providerId: "twelve-data" });
 
-    expect(Reflect.get(btc!.data, "price")).toBe(50000);
-    expect(Reflect.get(aapl!.data, "eps")).toBe(1.50);
+    expect(Reflect.get(btc!.data as object, "price")).toBe(50000);
+    expect(Reflect.get(aapl!.data as object, "eps")).toBe(1.50);
     expect(crossCheck).toBeNull();
   });
 
