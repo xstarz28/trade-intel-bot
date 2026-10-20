@@ -102,6 +102,19 @@ import {
 } from "./types";
 import { aggregateTimeframeEvidence, type TimeframeEvidence } from "./multi-timeframe-engine";
 
+function makeGivebackState(givebackPct: number) {
+  return {
+    peakPrice: 100,
+    currentPrice: 100,
+    peakProfit: 0,
+    currentProfit: 0,
+    givebackAbsolute: 0,
+    givebackPct,
+    pullbackType: "NORMAL_PULLBACK" as const,
+    accelerating: false,
+  };
+}
+
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
@@ -919,10 +932,10 @@ describe("V. Decision Immutability", () => {
       position: longBtc(), evidence: deterioratingEvidence(104000),
       monitoringState: createMonitoringState("BTC/USDT"), now: NOW,
     });
-    expect((result.alert as any).recommendation).toBeUndefined();
-    expect((result.alert as any).bias).toBeUndefined();
-    expect((result.alert as any).conviction).toBeUndefined();
-    expect((result.alert as any).tradePlan).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).recommendation).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).bias).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).conviction).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).tradePlan).toBeUndefined();
   });
 });
 
@@ -1130,8 +1143,8 @@ describe("AD. Radar Compatibility", () => {
       position: longBtc(), evidence: deterioratingEvidence(104000),
       monitoringState: createMonitoringState("BTC/USDT"), now: NOW,
     });
-    expect((result.alert as any).recommendation).toBeUndefined();
-    expect((result.alert as any).bias).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).recommendation).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).bias).toBeUndefined();
   });
 });
 
@@ -1206,8 +1219,8 @@ describe("AG. Shock Interaction", () => {
 describe("AH. Horizon Sensitivity", () => {
   it("SCALPING tighter than INVESTING for giveback", () => {
     // Use a giveback % that SCALPING classifies more aggressively than INVESTING
-    const gb = { givebackPct: 30 };
-    const scalp = classifyGivebackSeverity({ ...gb } as any, "SCALPING");
+    const gb = makeGivebackState(30);
+    const scalp = classifyGivebackSeverity(gb, "SCALPING");
     const invest = classifyGivebackSeverity({ ...gb } as any, "INVESTING");
     // SCALPING 30% >= partialTpPct(25) → PARTIAL_TP; INVESTING 30% < watchPct(40) → NONE
     const givebackOrder: Record<string, number> = { "NONE": 0, "WATCH": 1, "PARTIAL_TP": 2, "MANUAL_TP": 3, "PROTECT_NOW": 4 };
