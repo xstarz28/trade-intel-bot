@@ -19,7 +19,6 @@ import {
   acquireBatchLiveData,
   getProviderHealthSummary,
   resetAdapters,
-  type ProviderAdapter,
 } from "./market-radar/provider-registry";
 
 // ── Types ──
@@ -36,15 +35,13 @@ import {
   validateOhlcvSeries,
   validateQuote,
   compareCrossProviderPrices,
-  assessDataQuality,
-  type OhlcvRecord,
 } from "./data/universal/live/types";
 
 // ── Universe ──
-import { DEFAULT_UNIVERSE, CORRELATION_CLUSTERS, getClusterForInstrument } from "./market-radar/universe";
+import { getClusterForInstrument } from "./market-radar/universe";
 
 // ── Radar ──
-import { scanRadar, buildRadarState } from "./market-radar/radar";
+import {  } from "./market-radar/radar";
 import { buildRadarCandidate, type RadarCandidateSource } from "./market-radar/candidate-builder";
 
 const NOW = Date.now();
