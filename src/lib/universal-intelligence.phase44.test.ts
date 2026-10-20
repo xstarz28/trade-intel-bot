@@ -861,7 +861,7 @@ describe("Phase 44 — K. Security — No Secrets", () => {
     for (const p of providers) {
       const serialized = JSON.stringify(p);
       expect(serialized).not.toMatch(/sk-[a-zA-Z0-9]{20,}/);
-      expect(serialized).not.toMatch(/api[_-]?key[\"']?\s*[:=]\s*[\"'][a-zA-Z0-9]{10,}/);
+      expect(serialized).not.toMatch(/api[_-]?key["']?\s*[:=]\s*["'][a-zA-Z0-9]{10,}/);
     }
   });
 
