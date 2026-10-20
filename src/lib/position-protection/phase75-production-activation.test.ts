@@ -380,7 +380,7 @@ describe("D. Provider Failure / Recovery", () => {
       assetClass: "crypto",
       openedAt: Date.now(),
     }, Date.now());
-    controller = startController(controller);
+    startController(controller);
 
     // Send stale quote — should not update position
     const bridge = createBridgeState();
