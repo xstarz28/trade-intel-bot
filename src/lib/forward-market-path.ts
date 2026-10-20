@@ -221,7 +221,6 @@ function classifyPrimaryPath(
 function classifyAlternatePath(
   primary: PathStatus,
   dir: "bullish" | "bearish" | "neutral",
-  regime?: MarketRegimeContext,
 ): PathStatus {
   if (dir === "neutral") {
     return "UNCONFIRMED";
