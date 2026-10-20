@@ -681,7 +681,7 @@ describe("Phase 101 — User Isolation", () => {
     const bufA = createHealthEventBuffer();
     const bufB = createHealthEventBuffer();
 
-    let bufA2 = recordProviderResult(bufA, { component: "NEWS", success: true });
+    const bufA2 = recordProviderResult(bufA, { component: "NEWS", success: true });
     expect(getEventCount(bufA2)).toBe(1);
     expect(getEventCount(bufB)).toBe(0);
   });
