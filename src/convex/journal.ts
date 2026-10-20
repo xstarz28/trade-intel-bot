@@ -132,18 +132,19 @@ export const transition = mutation({
     }
 
     const now = Date.now();
-    const update: Record<string, any> = {
+    const update = {
       status: args.newStatus,
       "timestamps.updatedAt": now,
+      ...(args.newStatus === "CLOSED"
+        ? {
+            closedAt: now,
+            ...(args.exitPrice !== undefined ? { exitPrice: args.exitPrice } : {}),
+            ...(args.pnl !== undefined ? { pnl: args.pnl } : {}),
+            ...(args.pnlPercent !== undefined ? { pnlPercent: args.pnlPercent } : {}),
+            ...(args.outcome !== undefined ? { outcome: args.outcome } : {}),
+          }
+        : {}),
     };
-
-    if (args.newStatus === "CLOSED") {
-      update.closedAt = now;
-      if (args.exitPrice !== undefined) update.exitPrice = args.exitPrice;
-      if (args.pnl !== undefined) update.pnl = args.pnl;
-      if (args.pnlPercent !== undefined) update.pnlPercent = args.pnlPercent;
-      if (args.outcome !== undefined) update.outcome = args.outcome;
-    }
 
     await ctx.db.patch(args.journalId, update);
     return args.journalId;
@@ -178,15 +179,23 @@ export const updateFields = mutation({
     if (!entry) throw new Error("Journal entry not found");
     if (entry.userId !== user._id) throw new Error("Not authorized");
 
-    const update: Record<string, any> = {
+    const update = {
       "timestamps.updatedAt": Date.now(),
+      ...(args.entry !== undefined ? { entry: args.entry } : {}),
+      ...(args.stopLoss !== undefined ? { stopLoss: args.stopLoss } : {}),
+      ...(args.takeProfit !== undefined ? { takeProfit: args.takeProfit } : {}),
+      ...(args.riskReward !== undefined ? { riskReward: args.riskReward } : {}),
+      ...(args.positionSize !== undefined ? { positionSize: args.positionSize } : {}),
+      ...(args.notionalValue !== undefined ? { notionalValue: args.notionalValue } : {}),
+      ...(args.entryReason !== undefined ? { entryReason: args.entryReason } : {}),
+      ...(args.thesisAtEntry !== undefined ? { thesisAtEntry: args.thesisAtEntry } : {}),
+      ...(args.confirmationObserved !== undefined ? { confirmationObserved: args.confirmationObserved } : {}),
+      ...(args.invalidationObserved !== undefined ? { invalidationObserved: args.invalidationObserved } : {}),
+      ...(args.whatWentRight !== undefined ? { whatWentRight: args.whatWentRight } : {}),
+      ...(args.whatWentWrong !== undefined ? { whatWentWrong: args.whatWentWrong } : {}),
+      ...(args.lessons !== undefined ? { lessons: args.lessons } : {}),
+      ...(args.notes !== undefined ? { notes: args.notes } : {}),
     };
-
-    // Only include defined fields
-    for (const [key, val] of Object.entries(args)) {
-      if (key === "journalId") continue;
-      if (val !== undefined) update[key] = val;
-    }
 
     await ctx.db.patch(args.journalId, update);
     return args.journalId;
