@@ -502,7 +502,7 @@ describe("Phase 38 — Runtime & Data-Failure Resilience", () => {
 
     it("different completion order preserves identity", () => {
       const r1 = run(buildInput("ETH/USD", "crypto", bullCandles()));
-      run(buildInput("BTC/USD", "crypto", bullCandles()));
+      const r2 = run(buildInput("BTC/USD", "crypto", bullCandles()));
       const r3 = run(buildInput("EUR/USD", "forex", bullCandles(1.1)));
 
       // ETH finished first
