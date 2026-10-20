@@ -302,6 +302,7 @@ describe("runWalkForwardBacktest", () => {
 
     const calls = vi.mocked(runAnalysis).mock.calls;
     expect(calls.length).toBeGreaterThan(0);
+    let sawCompletedHigherTimeframe = false;
     for (const [input] of calls) {
       const visible = input.marketData?.candles;
       expect(visible?.length).toBeGreaterThan(0);
@@ -311,10 +312,12 @@ describe("runWalkForwardBacktest", () => {
       expect(supplied.map((candle) => candle.timestamp)).toEqual(expected.map((candle) => candle.timestamp));
       expect(supplied.every((candle) => candle.timestamp + 24 * 60 * 60 * 1000 <= signalClose)).toBe(true);
       if (expected.length > 0) {
+        sawCompletedHigherTimeframe = true;
         expect(input.technicalData?.htfContext?.timeframe).toBe("D1");
         expect(input.technicalData?.htfContext?.dataPoints).toBe(expected.length);
       }
     }
+    expect(sawCompletedHigherTimeframe).toBe(true);
   });
 
   it("reports no fake performance metrics when no trades execute", () => {
