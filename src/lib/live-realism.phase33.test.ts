@@ -19,8 +19,6 @@ import {
   createAnalysisSnapshot,
   journalFromAnalysis,
   createObservationEntry,
-  transitionEntry,
-  isValidTransition,
 } from "./journal";
 import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
 import type { MarketData, OhlcvCandle } from "@/lib/data/market-types";
