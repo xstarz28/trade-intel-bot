@@ -14,18 +14,6 @@ function ascendingCandles(n: number, startPrice = 100): OhlcvCandle[] {
   }));
 }
 
-/** Helper: generate n descending candles. */
-function descendingCandles(n: number, startPrice = 200): OhlcvCandle[] {
-  return Array.from({ length: n }, (_, i) => ({
-    timestamp: Date.now() - (n - i) * 86400000,
-    open: startPrice - i,
-    high: startPrice - i + 1,
-    low: startPrice - i - 1,
-    close: startPrice - i - 0.5,
-    volume: 1000,
-  }));
-}
-
 describe("SMA", () => {
   it("computes correct simple moving average", () => {
     const data = [10, 11, 12, 13, 14];
