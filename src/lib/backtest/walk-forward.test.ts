@@ -320,6 +320,7 @@ describe("runWalkForwardBacktest", () => {
         const analysisResult = vi.mocked(runAnalysis).mock.results[callIndex];
         expect(analysisResult?.type).toBe("return");
         if (analysisResult?.type === "return") {
+          expect(analysisResult.value.htfAlignment).toBeDefined();
           expect(analysisResult.value.dataFlags.join(" ")).not.toContain("No higher-timeframe structural data");
         }
       }
