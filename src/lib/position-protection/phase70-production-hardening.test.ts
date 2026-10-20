@@ -1488,7 +1488,7 @@ describe("I. Security Audit", () => {
       ...alert.whyTpNow.confirmations,
       ...alert.whyTpNow.whatChanged,
     ].join(" ");
-    expect(allText).not.toMatch(/\\d+%\\s*chance/i);
+    expect(allText).not.toMatch(/\d+%\s*chance/i);
     expect(allText).not.toMatch(/probability\\s+of/i);
   });});
 
