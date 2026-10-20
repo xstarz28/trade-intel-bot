@@ -19,6 +19,7 @@ import type {
   EvidenceItem,
   InvalidationCondition,
 } from "./market-intelligence-analyzer";
+import type { TimeframeAnalysis } from "./multi-timeframe-engine";
 import type {
   PortfolioIntelligence,
   PortfolioSummary,
@@ -49,6 +50,18 @@ function makeInvalidation(overrides: Partial<InvalidationCondition> = {}): Inval
     distancePct: 5.2,
     approaching: false,
     ...overrides,
+  };
+}
+
+function makeTimeframeAnalysis(
+  timeframe: TimeframeAnalysis["timeframe"],
+  trend: TimeframeAnalysis["trend"],
+): TimeframeAnalysis {
+  return {
+    timeframe, trend, momentum: "NEUTRAL", rsiValue: undefined, volatility: "NORMAL",
+    atrValue: undefined, atrPct: undefined, structure: "INSUFFICIENT_DATA",
+    structureBroken: false, lastSwingHigh: undefined, lastSwingLow: undefined,
+    priceVsMA: "UNKNOWN", dataQuality: "LIMITED", candleCount: 5,
   };
 }
 
@@ -300,9 +313,9 @@ describe("Phase 109: Position Detail Usability", () => {
 
   it("preserves MTF trend data", () => {
     const intel = makeIntel({
-      h1Analysis: { trend: "BULLISH" } as any,
-      m15Analysis: { trend: "BEARISH" } as any,
-      m5Analysis: { trend: "NEUTRAL" } as any,
+      h1Analysis: makeTimeframeAnalysis("H1", "BULLISH"),
+      m15Analysis: makeTimeframeAnalysis("M15", "BEARISH"),
+      m5Analysis: makeTimeframeAnalysis("M5", "NEUTRAL"),
     });
 
     expect(intel.h1Analysis?.trend).toBe("BULLISH");
