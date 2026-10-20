@@ -23,7 +23,6 @@ import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 import { calculateTechnical } from "./data/technical";
 import { computeSmcContext } from "./data/smc";
-import { buildChain } from "./data/mtf";
 
 // ── Fixture builders ─────────────────────────────────────────────
 
