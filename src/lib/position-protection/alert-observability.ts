@@ -257,7 +257,7 @@ export function computePipelineHealth(
   events: AlertDiagnosticEvent[],
   now: number,
 ): AlertPipelineHealth {
-  const cycleEvents = events.filter((e) => e.eventType === "PIPELINE_CYCLE");
+  const cycleEvents = events.filter((e) => e.eventType === "PIPELINE_CYCLE" && e.timestamp <= now);
   const lastCycle = cycleEvents.length > 0 ? cycleEvents[cycleEvents.length - 1].timestamp : 0;
   const errorCount = events.filter((e) => e.eventType === "PIPELINE_ERROR").length;
   const dataUnavailableCount = events.filter((e) => e.eventType === "DATA_UNAVAILABLE").length;
