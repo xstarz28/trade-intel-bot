@@ -324,16 +324,7 @@ describe("Phase 43 — D. Evidence Challenge Integration", () => {
     result.cryptoIntelligenceContext = makeFullCryptoContext("BTC/USD");
 
     const challenge = buildEvidenceChallenge(result);
-    // Crypto evidence should appear in supporting, conflicting, or missing
-    const allText = [
-      challenge.thesisSupportExplanation,
-      challenge.auditSummary,
-      ...(challenge.thesisStrengtheners || []),
-      ...(challenge.thesisWeaknesseners || []),
-      ...(challenge.thesisInvalidators || []),
-    ].join(" ").toLowerCase();
-
-    // Should reference crypto-related concepts or be informational
+    // The challenge may report support, conflict, or insufficient evidence.
     expect(challenge.thesisSupportStatus).toBeDefined();
   });
 
@@ -375,7 +366,7 @@ describe("Phase 43 — E. Instrument Isolation", () => {
     expect(ctx!.instrumentType).toBe("crypto");
   });
 
-  it.each(nonCryptoInstruments)("no crypto intelligence for %s (%s)", (inst, type) => {
+  it.each(nonCryptoInstruments)("no crypto intelligence for %s (%s)", (inst) => {
     const ctx = buildCryptoIntelligenceContext(inst);
     expect(ctx).toBeNull();
   });
@@ -665,9 +656,7 @@ describe("Phase 43 — J. No Fabrication", () => {
 
     const ctx = buildCryptoIntelligenceContext("BTC/USD", partial);
     expect(ctx).not.toBeNull();
-    // Should have UNAVAILABLE evidence for missing datasets
-    const unavailableEvidence = ctx!.evidence.filter((e) => e.direction === "UNAVAILABLE");
-    // If there are 0 available datasets, all evidence should be unavailable or none should exist
+    // With no available datasets, evidence must not claim support or conflict
     expect(ctx!.evidence.filter((e) => e.direction === "SUPPORTING" || e.direction === "CONFLICTING")).toHaveLength(0);
   });
 });
