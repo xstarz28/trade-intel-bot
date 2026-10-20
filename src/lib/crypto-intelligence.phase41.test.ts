@@ -47,7 +47,6 @@ import {
 } from "./data/crypto/evidence";
 import { buildCryptoIntelligenceContext } from "./data/crypto/intelligence";
 import type {
-  CryptoIntelligenceContext,
   DerivativesIntelligence,
   DeFiIntelligence,
   TokenomicsIntelligence,
