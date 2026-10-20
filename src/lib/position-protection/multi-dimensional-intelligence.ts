@@ -656,7 +656,6 @@ export function synthesizeMultiDimensionalIntelligence(input: {
 
   // Evidence quality
   const primarySupport = evidence.filter((e) => e.tier === "PRIMARY" && e.direction === "SUPPORTING").length;
-  const primaryConflict = evidence.filter((e) => e.tier === "PRIMARY" && e.direction === "CONFLICTING").length;
   const totalSupport = evidence.filter((e) => e.direction === "SUPPORTING").length;
   const totalConflict = evidence.filter((e) => e.direction === "CONFLICTING").length;
 
