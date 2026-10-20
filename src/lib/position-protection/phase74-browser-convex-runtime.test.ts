@@ -1209,7 +1209,6 @@ describe("L. Acceptance Gates", () => {
   });
 
   it("GATE: No secrets in any client-visible data", () => {
-    const bridge = new ConvexPersistenceBridge(null);
     const snap = snapshot(createDiagnosticsState());
     expect(JSON.stringify(snap)).not.toMatch(/AKIA|sk_live|sk_test|ghp_|Bearer|process\.env/);
   });
