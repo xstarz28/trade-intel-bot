@@ -132,6 +132,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
   const [monitor, setMonitor] = useState<MonitorState>(createMonitorState);
   const [protectionAlerts, setProtectionAlerts] = useState<Map<string, ProtectionAlert>>(new Map());
   const [positionAlerts, setPositionAlerts] = useState<Map<string, ProtectionEvent[]>>(new Map());
+  const [, setAlertHistoryMap] = useState<Map<string, AlertHistoryEntry[]>>(new Map());
   const [accelerationStates, setAccelerationStates] = useState<Map<string, ReturnType<typeof createAccelerationState>>>(new Map());
   const [persistenceDegraded, setPersistenceDegraded] = useState(false);
 
