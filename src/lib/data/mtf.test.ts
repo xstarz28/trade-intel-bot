@@ -345,7 +345,7 @@ describe("unavailable / insufficient timeframe data", () => {
 // ── Liquidity / FVG / OB carry timeframe context ────────────────────
 
 describe("MTF SMC context carries timeframe labels", () => {
-  it("every liquidity pool, FVG and OB belongs to its own timeframe", () => {
+  it("SMC context, FVG and OB retain their originating timeframe", () => {
     const bull = trendCandles(1);
     const bear = trendCandles(-1);
     const ctx = buildMtfContext("H1", [
@@ -354,17 +354,13 @@ describe("MTF SMC context carries timeframe labels", () => {
     ]);
     for (const t of ctx.timeframes) {
       const smc = t.smc!;
-      for (const pool of smc.liquidityPools) {
-        // Every pool must retain the timeframe of the candles that produced it.
-        expect(pool.timeframe).toBe(t.timeframe);
-      }
+      expect(smc.timeframe).toBe(t.timeframe);
       for (const f of smc.fvgs) expect(f.timeframe).toBe(t.timeframe);
       for (const ob of smc.orderBlocks) expect(ob.timeframe).toBe(t.timeframe);
     }
-    // Distinct geometries → distinct pool sets per timeframe (independence)
+    // Distinct geometries → independent SMC context per timeframe.
     const d1 = ctx.timeframes.find((t) => t.timeframe === "D1")!;
     const h1 = ctx.timeframes.find((t) => t.timeframe === "H1")!;
-    // Both computed — neither copied from the other
     expect(d1.smc).toBeDefined();
     expect(h1.smc).toBeDefined();
     expect(d1.smc).not.toBe(h1.smc);
