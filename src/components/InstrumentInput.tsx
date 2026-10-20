@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
 import { TRADING_STYLES, resolveStyle, type TradingStyle } from "@/lib/trading-style";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,7 @@ interface InstrumentInputProps {
 }
 
 const STORAGE_KEY = "xstarzg-analysis-form";
+const EMPTY_AVAILABLE_INSTRUMENTS: AvailableInstrument[] = [];
 
 interface PersistedForm {
   instrument: string;
@@ -93,7 +94,7 @@ function loadPersistedForm(): PersistedForm {
 export function InstrumentInput({
   onAnalyze,
   isAnalyzing,
-  availableInstruments = [],
+  availableInstruments = EMPTY_AVAILABLE_INSTRUMENTS,
   marketDiscoveryMessage,
 }: InstrumentInputProps) {
   const { t, locale } = useI18n();
@@ -142,8 +143,11 @@ export function InstrumentInput({
     if (manualSearch) manualInputRef.current?.focus();
   }, [manualSearch]);
 
-  const universeOptions = dedupeInstrumentCatalog<AvailableInstrument>(
-    availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS,
+  const universeOptions = useMemo(
+    () => dedupeInstrumentCatalog<AvailableInstrument>(
+      availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS,
+    ),
+    [availableInstruments],
   );
 
   // Keep the selected horizon and setup timeframe coherent, including when
