@@ -159,8 +159,6 @@ export function classifyEvidence(
   evidence: EvidenceItem,
   side: string,
 ): EvidenceClassified {
-  const isLong = side === "LONG";
-
   // Map raw direction to side-aware classification
   let classification: EvidenceClassification;
   let sourceDimension: string;
