@@ -171,7 +171,7 @@ async function fetchCoinGeckoPrice(
       return {
         provider: "CoinGecko", instrument: symbol, price: 0,
         timestamp: Date.now(), success: false,
-        error: String((data as any).error), latencyMs: Date.now() - start,
+        error: String(data.error), latencyMs: Date.now() - start,
         mode: "LIVE",
       };
     }
