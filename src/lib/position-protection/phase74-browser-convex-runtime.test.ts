@@ -52,7 +52,6 @@ import {
   guardProviderFailureNeutrality,
   guardNoFabrication,
   validateIntegrationPipeline,
-  validateEvent,
   verifyMemoryBounds,
   runSecurityAudit,
 } from "../position-protection/phase69-runtime-hardening";
@@ -63,7 +62,6 @@ import {
   registerPosition as ctrlRegister,
   removePosition as ctrlRemove,
   startController,
-  stopController,
   processEventForController,
   getDashboard,
 } from "../position-protection/continuous-protection-controller";
@@ -71,10 +69,8 @@ import {
 // Event bridge
 import {
   createPriceEvent,
-  createProviderDegradedEvent,
-  createProviderRecoveredEvent,
 } from "../position-protection/market-event-bridge";
-import { computeEventPriority } from "../position-protection/event-priority";
+
 
 // Source labeling
 import {
@@ -103,9 +99,7 @@ import {
   stopPollingService,
   pausePollingService,
   resumePollingService,
-  unregisterInstrumentForPolling,
   getPollingDashboard,
-  getInstrumentsNeedingPoll,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 
@@ -113,13 +107,8 @@ import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 import {
   routeInstrument,
   detectAssetClass,
-  getFallbackRoute,
-  getActiveInstruments,
 } from "../market-stream/provider-routing";
-import {
-  getProviderProfile,
-  getAllProviders,
-} from "../market-stream/provider-adapters";
+
 
 // Persistence
 import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
@@ -127,18 +116,11 @@ import { InMemoryRepository } from "../position-protection/persistence";
 import type { PersistedAlert } from "../position-protection/persistence";
 
 // Dispatch
-import {
-  createDispatcherState,
-  dispatch,
-  acknowledgeAlert,
-} from "../position-protection/alert-dispatcher";
+
 
 // Diagnostics
 import {
   createDiagnosticsState,
-  recordEventReceived,
-  recordProviderFailure,
-  recordProviderRecovery,
   recordAlertEmitted,
   snapshot,
 } from "../position-protection/diagnostics";
@@ -147,7 +129,7 @@ import {
 import { guardAgainstFalsePositive } from "../position-protection/false-positive-guard";
 
 // Scenarios
-import { runScenario, healthyProfitableLong, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
+import { runScenario, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
 
 // ═══════════════════════════════════════════════════════════════
 // CONVEX HTTP CLIENT — REAL RUNTIME
