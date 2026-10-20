@@ -9,6 +9,12 @@ import { isCryptoInstrument, toCoinGlassSymbol } from "./symbols";
 const BASE_URL = "https://api.bybit.com";
 const REQUEST_TIMEOUT_MS = 4_000;
 
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function finite(value: unknown): number | undefined {
   if (value === null || value === undefined || value === "") return undefined;
   const n = typeof value === "number" ? value : Number(value);
@@ -35,12 +41,13 @@ export class BybitPublicDerivativesAdapter {
     this.fetchFn = fetchFn ?? fetch;
   }
 
-  private async getJson(path: string): Promise<any> {
+  private async getJson(path: string): Promise<JsonRecord> {
     const response = await this.fetchFn(BASE_URL + path, {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    const json = await response.json().catch(() => null);
+    const payload: unknown = await response.json().catch(() => null);
+    const json = isRecord(payload) ? payload : undefined;
     if (!response.ok) {
       throw new Error("Bybit HTTP " + response.status + ": " + String(json?.retMsg ?? response.statusText ?? "request failed"));
     }
@@ -61,15 +68,19 @@ export class BybitPublicDerivativesAdapter {
       this.getJson("/v5/market/account-ratio?category=linear&symbol=" + encoded + "&period=4h&limit=1"),
     ]);
 
-    const tickerRows = tickerResult.status === "fulfilled" && Array.isArray(tickerResult.value?.result?.list)
-      ? tickerResult.value.result.list
+    const tickerResultPayload = tickerResult.status === "fulfilled" && isRecord(tickerResult.value.result)
+      ? tickerResult.value.result
+      : undefined;
+    const tickerRows: JsonRecord[] = tickerResultPayload && Array.isArray(tickerResultPayload.list)
+      ? tickerResultPayload.list.filter(isRecord)
       : [];
-    const ticker = tickerRows.find((row: any) => String(row.symbol || "").toUpperCase() === symbol) ?? tickerRows[0];
+    const ticker = tickerRows.find((row) => String(row.symbol ?? "").toUpperCase() === symbol) ?? tickerRows[0];
     const tickerOiUsd = positive(ticker?.openInterestValue);
     const lastPrice = positive(ticker?.lastPrice);
 
-    const oiPayload = oiResult.status === "fulfilled" ? oiResult.value?.result?.list : undefined;
-    const oiRows = Array.isArray(oiPayload) ? oiPayload : [];
+    const oiResultPayload = oiResult.status === "fulfilled" && isRecord(oiResult.value.result) ? oiResult.value.result : undefined;
+    const oiPayload = oiResultPayload?.list;
+    const oiRows: JsonRecord[] = Array.isArray(oiPayload) ? oiPayload.filter(isRecord) : [];
     const oiRow = oiRows[0];
     const oiBase = positive(oiRow?.openInterest);
     const openInterestUsd = tickerOiUsd ?? (oiBase !== undefined && lastPrice !== undefined ? oiBase * lastPrice : undefined);
@@ -78,8 +89,9 @@ export class BybitPublicDerivativesAdapter {
     const rawFunding = finite(ticker?.fundingRate);
     const fundingRate = rawFunding !== undefined ? { currentRate: rawFunding } : undefined;
 
-    const ratioPayload = ratioResult.status === "fulfilled" ? ratioResult.value?.result?.list : undefined;
-    const ratioRows = Array.isArray(ratioPayload) ? ratioPayload : [];
+    const ratioResultPayload = ratioResult.status === "fulfilled" && isRecord(ratioResult.value.result) ? ratioResult.value.result : undefined;
+    const ratioPayload = ratioResultPayload?.list;
+    const ratioRows: JsonRecord[] = Array.isArray(ratioPayload) ? ratioPayload.filter(isRecord) : [];
     const ratioRow = ratioRows[0];
     const buyRatio = positive(ratioRow?.buyRatio);
     const sellRatio = positive(ratioRow?.sellRatio);
@@ -94,7 +106,7 @@ export class BybitPublicDerivativesAdapter {
     };
     const count = Object.values(availability).filter(Boolean).length;
     if (count === 0) {
-      const reason = (label: string, result: PromiseSettledResult<any>) =>
+      const reason = (label: string, result: PromiseSettledResult<JsonRecord>) =>
         result.status === "rejected"
           ? label + ": " + (result.reason instanceof Error ? result.reason.message : String(result.reason))
           : label + ": no usable fields";
