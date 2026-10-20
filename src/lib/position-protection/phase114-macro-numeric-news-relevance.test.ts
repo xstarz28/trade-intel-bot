@@ -39,19 +39,19 @@ import { classifyNewsRelevance, type NewsItem } from "./news-intelligence";
 
 const now = Date.now();
 
-function makeNewsItem(headline: string, category: string = "OTHER", instruments: string[] = []): NewsItem {
+function makeNewsItem(headline: string, category: NewsItem["category"] = "OTHER", instruments: string[] = []): NewsItem {
   return {
     id: `n-${Date.now()}-${Math.random()}`,
     headline,
     timestamp: now,
     source: "Test",
     relatedInstruments: instruments,
-    assetClass: "macro" as any,
-    category: category as any,
-    sentiment: "NEUTRAL" as any,
-    impactStrength: "MODERATE" as any,
-    freshness: "FRESH" as any,
-    sourceMode: "LIVE" as any,
+    assetClass: "macro",
+    category: category,
+    sentiment: "NEUTRAL",
+    impactStrength: "MODERATE",
+    freshness: "FRESH",
+    sourceMode: "LIVE",
   };
 }
 
