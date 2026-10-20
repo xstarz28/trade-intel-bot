@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { runAnalysis } from "@/lib/analysis-engine";
 import { completedHigherTimeframeCandlesAt, runProductionWalkForwardBacktest, runWalkForwardBacktest, type BacktestSignal } from "./walk-forward";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 
@@ -270,6 +271,42 @@ describe("runWalkForwardBacktest", () => {
       higherTimeframeCandles: daily,
       options: { minimumHistory: 220 },
     })).toThrow(/must be higher/);
+  });
+
+  it("forwards only completed higher-timeframe candles to each production analysis call", () => {
+    vi.mocked(runAnalysis).mockClear();
+    const base = Date.UTC(2026, 9, 1);
+    const primary = candles(30, base);
+    const daily = candles(5, base).map((candle, index) => ({
+      ...candle,
+      timestamp: base + index * 24 * 60 * 60 * 1000,
+    }));
+
+    runProductionWalkForwardBacktest({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H4",
+      candles: primary,
+      higherTimeframe: "D1",
+      higherTimeframeCandles: daily,
+      options: { minimumHistory: 20, maxHoldingBars: 2 },
+    });
+
+    const calls = vi.mocked(runAnalysis).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    for (const [input] of calls) {
+      const visible = input.marketData?.candles;
+      expect(visible?.length).toBeGreaterThan(0);
+      const signalClose = visible![visible!.length - 1].timestamp + 4 * 60 * 60 * 1000;
+      const expected = daily.filter((candle) => candle.timestamp + 24 * 60 * 60 * 1000 <= signalClose);
+      const supplied = input.marketData?.higherTimeframeCandles ?? [];
+      expect(supplied.map((candle) => candle.timestamp)).toEqual(expected.map((candle) => candle.timestamp));
+      expect(supplied.every((candle) => candle.timestamp + 24 * 60 * 60 * 1000 <= signalClose)).toBe(true);
+      if (expected.length > 0) {
+        expect(input.technicalData?.htfContext?.timeframe).toBe("D1");
+        expect(input.technicalData?.htfContext?.dataPoints).toBe(expected.length);
+      }
+    }
   });
 
   it("reports no fake performance metrics when no trades execute", () => {
