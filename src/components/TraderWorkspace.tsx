@@ -351,7 +351,7 @@ function PortfolioDrillDown({
           <span className="text-[8px] font-mono text-emerald-400 uppercase">{t.trader.alignments}</span>
           {alignments.map((a, i: number) => (
             <div key={i} className="text-[8px] font-mono text-muted-foreground p-1.5 rounded bg-emerald-500/5 border border-emerald-500/10">
-              {a.description ?? `${(a.positions ?? []).join(" + ")}`}
+              {a.description ?? a.instruments.join(" + ")}
             </div>
           ))}
         </div>
@@ -363,7 +363,7 @@ function PortfolioDrillDown({
           <span className="text-[8px] font-mono text-amber-400 uppercase">{t.trader.watchList}</span>
           {watchItems.slice(0, 5).map((w, i: number) => (
             <div key={i} className="text-[8px] font-mono text-muted-foreground p-1.5 rounded bg-amber-500/5 border border-amber-500/10">
-              {w.instrument ? `${w.instrument}: ` : ""}{w.description ?? w.reason ?? t.trader.monitor}
+              {w.instrument ? `${w.instrument}: ` : ""}{w.reason || t.trader.monitor}
             </div>
           ))}
         </div>
