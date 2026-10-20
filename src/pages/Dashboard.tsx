@@ -293,7 +293,7 @@ export default function Dashboard() {
   const crossAssetScanLastAtRef = useRef(0);
   const initialScanStartedRef = useRef(false);
   const liveRecommendationSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
+  const [liveSources, setLiveSources] = useState<LiveCandidateSource[]>([]);
   const [discoveredCryptoInstruments, setDiscoveredCryptoInstruments] = useState<DiscoveredCryptoInstrument[]>([]);
   const [marketDiscoveryMessage, setMarketDiscoveryMessage] = useState<string | null>(null);
 
@@ -1048,6 +1048,10 @@ export default function Dashboard() {
           eiaData,
           universalIntelligence: enrichedInput.universalIntelligenceContext,
         });
+        setLiveSources(mergeLiveSourcesByTimeframe(
+          liveSourceRef.current.values(),
+          liveRecommendationSourceRef.current.values(),
+        ));
 
         await new Promise((r) => setTimeout(r, 150));
         updateStep(4, "done");
@@ -1140,16 +1144,15 @@ export default function Dashboard() {
     );
   }, [discoveredCryptoInstruments]);
 
-  const liveSources: LiveCandidateSource[] = useMemo(
-    () => mergeLiveSourcesByTimeframe(
-      liveSourceRef.current.values(),
-      liveRecommendationSourceRef.current.values(),
-    ),
-    [currentResult, liveSourcesVersion],
+  // Render from React state rather than reading mutable refs during render.
+  // Refs remain the acquisition cache; snapshots are published after updates.
+  const scanResult: ScanResult | null = useMemo(
+    () => liveSources.length > 0
+      ? scanInstruments(liveSources, { horizons: ALL_SCAN_HORIZONS, maxResults: 100 })
+      : null,
+    [liveSources],
   );
 
-  // Phase 50 — Live scan result from available sources
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
 
   const handleScanRefresh = useCallback(async () => {
@@ -1359,10 +1362,7 @@ export default function Dashboard() {
         liveSourceRef.current.values(),
         liveRecommendationSourceRef.current.values(),
       );
-      setLiveSourcesVersion((version) => version + 1);
-      setScanResult(
-        scanInstruments(sources, { horizons: ALL_SCAN_HORIZONS, maxResults: 100 }),
-      );
+      setLiveSources(sources);
     } finally {
       setIsScanning(false);
     }
@@ -1377,16 +1377,6 @@ export default function Dashboard() {
   // Phase 51 — Radar state for autonomous scanning
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
   const radarStateRef = useRef<RadarState | null>(null);
-
-  // Auto-scan after live sources change. State updates belong in effects,
-  // never in render-time memoization.
-  useEffect(() => {
-    if (liveSources.length > 0) {
-      const config = { horizons: ALL_SCAN_HORIZONS, maxResults: 100 };
-      const result = scanInstruments(liveSources, config);
-      setScanResult(result);
-    }
-  }, [liveSources]);
 
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
   useEffect(() => {
