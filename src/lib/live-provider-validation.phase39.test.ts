@@ -16,6 +16,7 @@
  * we test graceful-failure behavior and pure normalization logic.
  */
 import { describe, it, expect } from "vitest";
+import { createTwelveDataProvider } from "./data/providers/twelve-data";
 
 // ─── Pure modules (directly testable) ──────────────────────────────
 import {
@@ -681,18 +682,8 @@ describe("Phase 39 — OKX Order Book (Live)", () => {
 
 describe("Phase 39 — Provider Failure Behavior", () => {
   describe("Twelve Data (keyed provider)", () => {
-    it("returns explicit error when API key is missing", () => {
-      // We verify the constructor validates key presence
-      // In production, Convex action checks process.env.TWELVE_DATA_API_KEY
-      // The pure module throws if no key
-      try {
-        const { createTwelveDataProvider } = require("./data/providers/twelve-data");
-        // This should either throw or require a key
-        // We just verify the module exists and the factory exists
-        expect(typeof createTwelveDataProvider).toBe("function");
-      } catch {
-        // Module import issue — still validates the module path is correct
-      }
+    it("throws explicitly when the API key is missing", () => {
+      expect(() => createTwelveDataProvider("")).toThrow(/TWELVE_DATA_API_KEY/);
     });
   });
 
