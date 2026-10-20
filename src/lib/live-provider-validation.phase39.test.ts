@@ -15,7 +15,7 @@
  * For keyed providers (Twelve Data, Alpha Vantage, CoinGlass, EIA, TickAtlas),
  * we test graceful-failure behavior and pure normalization logic.
  */
-import {  } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ─── Pure modules (directly testable) ──────────────────────────────
 import {
@@ -40,7 +40,7 @@ import {
   buildTreasuryContext,
   deriveMacroYieldEvidence,
 } from "./data/treasury";
-import { parseOkxOrderBook,  } from "./execution-quality";
+import { parseOkxOrderBook } from "./execution-quality";
 
 // ─── HTTP helpers for live public endpoints ─────────────────────────
 
