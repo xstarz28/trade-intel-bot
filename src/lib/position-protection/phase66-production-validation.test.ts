@@ -23,6 +23,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import type { GivebackState } from "../position-protection/giveback-monitor";
 import type { PositionContext } from "../position-protection/types";
 
 
@@ -92,6 +93,19 @@ import {
 } from "../position-protection/continuous-protection-controller";
 
 const NOW = Date.now();
+
+function makeGivebackState(givebackPct: number): GivebackState {
+  return {
+    peakPrice: 100,
+    currentPrice: 100,
+    peakProfit: 0,
+    currentProfit: 0,
+    givebackAbsolute: 0,
+    givebackPct,
+    pullbackType: "NORMAL_PULLBACK",
+    accelerating: false,
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════
 // A. HEALTHY PROFITABLE LONG SCENARIO
@@ -780,9 +794,9 @@ describe("AC. Missing SL/TP Safety", () => {
 
 describe("AD. Horizon Sensitivity", () => {
   it("SCALPING is more sensitive than INVESTING to giveback", () => {
-    const gb = { givebackPct: 30 };
-    const scalp = classifyGivebackSeverity(gb as any, "SCALPING");
-    const invest = classifyGivebackSeverity(gb as any, "INVESTING");
+    const gb = makeGivebackState(30);
+    const scalp = classifyGivebackSeverity(gb, "SCALPING");
+    const invest = classifyGivebackSeverity(gb, "INVESTING");
     const order: Record<string, number> = { NONE: 0, WATCH: 1, PARTIAL_TP: 2, MANUAL_TP: 3, PROTECT_NOW: 4 };
     expect(order[scalp] ?? -1).toBeGreaterThanOrEqual(order[invest] ?? -1);
   });
@@ -837,11 +851,11 @@ describe("AF. Why TP Now Quality", () => {
 
 describe("AG. Giveback Classification Boundaries", () => {
   it("0% giveback is NONE", () => {
-    expect(classifyGivebackSeverity({ givebackPct: 0 } as any, "SWING")).toBe("NONE");
+    expect(classifyGivebackSeverity(makeGivebackState(0), "SWING")).toBe("NONE");
   });
 
   it("100% giveback is PROTECT_NOW", () => {
-    expect(classifyGivebackSeverity({ givebackPct: 100 } as any, "SWING")).toBe("PROTECT_NOW");
+    expect(classifyGivebackSeverity(makeGivebackState(100), "SWING")).toBe("PROTECT_NOW");
   });
 });
 
