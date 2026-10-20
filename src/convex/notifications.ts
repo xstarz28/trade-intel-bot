@@ -40,7 +40,7 @@ export const getNotifications = query({
 export const getUnreadNotifications = query({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) return [];
     return await ctx.db
       .query("notifications")
@@ -56,7 +56,7 @@ export const getUnreadNotifications = query({
 export const getUnreadCount = query({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) return 0;
     const unread = await ctx.db
       .query("notifications")
@@ -92,7 +92,7 @@ export const createNotification = mutation({
     condition: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     // Server-side dedup: check if notification with same identity already exists
@@ -153,7 +153,7 @@ export const createNotification = mutation({
 export const markNotificationRead = mutation({
   args: { notificationId: v.string() },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const notif = await ctx.db
@@ -172,7 +172,7 @@ export const markNotificationRead = mutation({
 export const markAllNotificationsRead = mutation({
   args: {},
   handler: async (ctx) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const unread = await ctx.db
@@ -194,7 +194,7 @@ export const markAllNotificationsRead = mutation({
 export const dismissNotification = mutation({
   args: { notificationId: v.string() },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const notif = await ctx.db
@@ -213,7 +213,7 @@ export const dismissNotification = mutation({
 export const deleteNotification = mutation({
   args: { notificationId: v.string() },
   handler: async (ctx, args) => {
-    const userId = (await ctx.auth.getUserIdentity())?.subject;
+    const userId = await resolveUserId(ctx);
     if (!userId) throw new Error("Authentication required");
 
     const notif = await ctx.db
