@@ -16,10 +16,8 @@ import { useAction } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { LiveQuoteResult } from "../../convex/liveProtection";
 import type { RealTimeEvent } from "./realtime-types";
-import { createPriceEvent } from "./market-event-bridge";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 import { bridgeQuoteToEvents, type LiveMarketBridgeState, createBridgeState } from "../market-stream/live-market-bridge";
-import { detectAssetClass } from "../market-stream/provider-routing";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
