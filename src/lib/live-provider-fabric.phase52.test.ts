@@ -21,7 +21,6 @@ import {
   resetAdapters,
   type ProviderAdapter,
   type ProviderHealth,
-  type ProviderHealthStatus,
 } from "./market-radar/provider-registry";
 
 // ── Provider-Registry Types ──
