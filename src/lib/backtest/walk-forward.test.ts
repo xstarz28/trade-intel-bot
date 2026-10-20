@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { runAnalysis } from "@/lib/analysis-engine";
+vi.mock("@/lib/analysis-engine", { spy: true });
 import { completedHigherTimeframeCandlesAt, runProductionWalkForwardBacktest, runWalkForwardBacktest, type BacktestSignal } from "./walk-forward";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 
