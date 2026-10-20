@@ -13,7 +13,7 @@ const MAX_HEALTH_HISTORY = 100;
 async function resolveUserId(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
-  return ctx.db.normalizeId("users", identity.subject);
+  return ctx.db.normalizeId("users", identity.subject) as import("./_generated/dataModel").Id<"users"> | null;
 }
 
 // ═══════════════════════════════════════════════════════════════
