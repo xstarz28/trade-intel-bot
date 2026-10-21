@@ -999,7 +999,7 @@ describe("AG. Decision immutability", () => {
     expect(Object.prototype.hasOwnProperty.call(alert, "recommendation")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(alert, "bias")).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(alert, "conviction")).toBe(false);
-    expect((alert as any).tradePlan).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(alert, "tradePlan")).toBe(false);
   });
 });
 
