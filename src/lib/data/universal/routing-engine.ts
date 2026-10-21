@@ -15,7 +15,6 @@ import type {
   AssetClass,
   CapabilityQuality,
   DataCapability,
-  EvidenceQuality,
 } from "./types";
 import type {
   ProviderHealthRecord,
@@ -29,12 +28,12 @@ import { resolveInstrument } from "./instruments";
 // PROVIDER HEALTH STORE (in-memory, module-level)
 // ═══════════════════════════════════════════════════════════════
 
-function toEvidenceQuality(quality: CapabilityQuality): EvidenceQuality {
+function toCapabilityQuality(quality: string): CapabilityQuality {
   switch (quality) {
-    case "FULL": return "VERIFIED";
-    case "PARTIAL": return "INSUFFICIENT";
+    case "FULL": return "FULL";
+    case "PARTIAL": return "PARTIAL";
     case "DEGRADED": return "DEGRADED";
-    case "UNAVAILABLE": return "UNAVAILABLE";
+    default: return "UNAVAILABLE";
   }
 }
 
@@ -317,7 +316,7 @@ export function routeProviderRequest(
       providerId: spec.id,
       providerName: spec.name,
       capability,
-      quality: toEvidenceQuality(quality),
+      quality: toCapabilityQuality(quality),
       credentialsAvailable: spec.authRequired ? spec.credentialsAvailable : true,
       maxFreshnessMs: undefined,
       healthStatus: status,
@@ -393,7 +392,7 @@ export function routeProviderNativeRequest(
     providerId: spec.id,
     providerName: spec.name,
     capability,
-    quality: toEvidenceQuality(quality),
+    quality: toCapabilityQuality(quality),
     credentialsAvailable: spec.authRequired
       ? spec.credentialsAvailable
       : true,
