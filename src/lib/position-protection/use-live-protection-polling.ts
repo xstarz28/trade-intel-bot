@@ -130,7 +130,22 @@ export function useLiveProtectionPolling(
       let currentBridge = bridgeStateRef.current;
 
       for (const result of results) {
-        if (result.success && Number.isFinite(result.price) && result.price > 0) {
+        const quoteAgeMs = now - result.timestamp;
+        const quoteIsFresh =
+          Number.isFinite(result.timestamp) &&
+          result.timestamp > 0 &&
+          quoteAgeMs >= -30_000 &&
+          quoteAgeMs <= Math.max(pollIntervalMs * 2, 60_000);
+
+        // Only verified LIVE, finite, fresh quotes may enter the protection bridge.
+        // Never promote simulated or stale provider data to fresh market evidence.
+        if (
+          result.success &&
+          result.sourceMode === "LIVE" &&
+          Number.isFinite(result.price) &&
+          result.price > 0 &&
+          quoteIsFresh
+        ) {
           anySuccess = true;
 
           // Create ProviderQuoteData for the bridge
@@ -166,14 +181,28 @@ export function useLiveProtectionPolling(
 
           callbacksRef.current?.(result.instrument, result.price, result.provider);
         } else {
+          const staleSuccessfulQuote =
+            result.success &&
+            Number.isFinite(result.price) &&
+            result.price > 0 &&
+            !quoteIsFresh;
+          const simulatedQuote = result.sourceMode === "SIMULATED";
           next.set(result.instrument, {
             instrument: result.instrument,
             price: 0,
             provider: result.provider,
-            sourceMode: "UNAVAILABLE",
+            sourceMode: staleSuccessfulQuote
+              ? "STALE"
+              : simulatedQuote
+                ? "SIMULATED"
+                : "UNAVAILABLE",
             lastUpdateAt: now,
             success: false,
-            error: result.error,
+            error: staleSuccessfulQuote
+              ? "Quote rejected because its timestamp is stale or invalid"
+              : simulatedQuote
+                ? "Simulated quotes are not accepted by live position protection"
+                : result.error,
           });
         }
       }
