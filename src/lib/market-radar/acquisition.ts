@@ -163,8 +163,11 @@ export class MarketDataAcquisitionService {
         latencyMs: Date.now() - startTime,
         fromCache: false,
       };
-    } catch (err: any) {
-      const is429 = err?.status === 429 || err?.statusCode === 429;
+    } catch (err: unknown) {
+      const errorRecord = typeof err === "object" && err !== null
+        ? err as { status?: unknown; statusCode?: unknown; message?: unknown }
+        : undefined;
+      const is429 = errorRecord?.status === 429 || errorRecord?.statusCode === 429;
       this.rateLimit.recordFailure(provider.name, is429);
       return {
         instrument,
@@ -172,7 +175,7 @@ export class MarketDataAcquisitionService {
         snapshot: null,
         provider: provider.name,
         success: false,
-        error: err?.message || "provider error",
+        error: typeof errorRecord?.message === "string" ? errorRecord.message : "provider error",
         latencyMs: Date.now() - startTime,
         fromCache: false,
       };
