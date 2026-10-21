@@ -157,6 +157,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
     if (!convexPositions || convexPositions.length === 0) return;
 
     // Recover positions into the orchestrator
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydrate the orchestrator from persisted positions when the external query resolves.
     setOrchestrator((prev) => {
       let state = prev;
       for (const pos of convexPositions) {
