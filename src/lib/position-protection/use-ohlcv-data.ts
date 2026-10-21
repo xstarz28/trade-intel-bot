@@ -79,11 +79,15 @@ export function useOHLCVData(
     fetchCount: 0,
     errorCount: 0,
     lastError: undefined,
-  });  const stateRef = useRef(state);
-  stateRef.current = state;
-
+  });
+  const stateRef = useRef(state);
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+
+  // Keep mutable refs synchronized after commit, not during render.
+  useEffect(() => {
+    stateRef.current = state;
+    optionsRef.current = options;
+  }, [state, options]);
 
   const fetchOHLCV = useCallback(async () => {
     if (!enabled || instruments.length === 0) return;
@@ -124,7 +128,8 @@ export function useOHLCVData(
         instruments: batch,
         timeframes,
         outputsize: MAX_CANDLES_PER_TIMEFRAME,
-      });      const now = Date.now();
+      });
+      const now = Date.now();
       const fetchDuration = now - fetchStart;
       const fetchErrors = results.filter((r) => !r.success);
       const fetchSuccesses = results.filter((r) => r.success);
