@@ -861,7 +861,7 @@ describe("AS — Radar Independence from Analysis History", () => {
 
   it("radar produces results from snapshot-only sources", () => {
     const source = makeSource("BTC/USD", "crypto");
-    (source as any).analysisResult = undefined;
+    Object.assign(source, { analysisResult: undefined });
     const result = scanRadar([source], { horizons: ["INTRADAY"], maxResults: 5 }, undefined, NOW);
     expect(result.totalScanned).toBe(1);
   });
