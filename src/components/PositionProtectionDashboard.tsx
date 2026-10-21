@@ -379,11 +379,9 @@ export function PositionProtectionDashboard() {
   useEffect(() => {
     if (livePrices.size === 0) return;
 
-    const buf = healthBufferRef.current;
     for (const [, state] of livePrices) {
       if (state.success && state.price > 0) {
-    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
-        healthBufferRef.current = recordProviderResult(buf, {
+        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
           component: "MARKET_DATA",
           source: state.provider,
           operation: `Price fetch: ${state.instrument}`,
