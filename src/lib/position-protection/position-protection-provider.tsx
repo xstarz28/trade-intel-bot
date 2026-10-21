@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- This module intentionally exports related UI primitives or context helpers alongside components. */
 /**
  * Phase 60 — Position Protection Provider
  *
