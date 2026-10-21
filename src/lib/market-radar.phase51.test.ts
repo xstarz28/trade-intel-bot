@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 // ── Types ──
 import {
   type FreshnessLevel,
+  type MarketSnapshot,
   type RadarScanConfig,
   HORIZON_FRESHNESS_GATES,
 } from "./market-radar/types";
@@ -59,20 +60,11 @@ import {
 const NOW = Date.now();
 const HOUR = 3600_000;
 
-function makeSnapshot(overrides?: Partial<{
-  instrument: string;
-  price: number;
-  observedAt: number;
-  htfBias: string;
-  mtfAlignment: string;
-  marketRegime: string;
-  spreadBps: number;
-  volatility: number;
-  ohlcvAvailable: boolean;
-  dataPoints: number;
-  provider: string;
-  freshness: FreshnessLevel;
-}>): any {
+function makeSnapshot(overrides?: Partial<Pick<MarketSnapshot,
+  "instrument" | "price" | "observedAt" | "htfBias" | "mtfAlignment" |
+  "marketRegime" | "spreadBps" | "volatility" | "ohlcvAvailable" |
+  "dataPoints" | "provider" | "freshness"
+>>): MarketSnapshot {
   return {
     instrument: overrides?.instrument ?? "BTC/USD",
     assetClass: "crypto",
