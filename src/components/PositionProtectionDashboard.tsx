@@ -380,7 +380,7 @@ export function PositionProtectionDashboard() {
     if (livePrices.size === 0) return;
 
     for (const [, state] of livePrices) {
-      if (state.success && state.price > 0) {
+      if (state.success && Number.isFinite(state.price) && state.price > 0) {
         healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
           component: "MARKET_DATA",
           source: state.provider,
