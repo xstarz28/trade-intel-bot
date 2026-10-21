@@ -569,7 +569,7 @@ export function PositionProtectionDashboard() {
   const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
   const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
   const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
-  // eslint-disable-next-line react-hooks/refs, react-hooks/purity -- Snapshotting the event buffer here is the existing dashboard read model; persistence writes remain effect-owned.
+  // eslint-disable-next-line react-hooks/refs, react-hooks/purity, react-hooks/exhaustive-deps -- The ref-backed health snapshot is intentionally invalidated when intelligence updates; persistence writes remain effect-owned.
   const healthSnapshot = useMemo(() => buildSnapshotFromBuffer(healthBufferRef.current, Date.now()), [intelligenceMap]);
 
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
