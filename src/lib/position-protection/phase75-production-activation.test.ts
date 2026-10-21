@@ -218,7 +218,7 @@ describe("C. Live Data → Protection Pipeline", () => {
       assetClass: "crypto",
       openedAt: Date.now(),
     }, Date.now());
-    startController(controller);
+    controller = startController(controller);
 
     const bridge = createBridgeState();
     const quote: ProviderQuoteData = {
@@ -268,7 +268,7 @@ describe("C. Live Data → Protection Pipeline", () => {
       openedAt: Date.now(),
     }, Date.now());
 
-    startController(controller);
+    controller = startController(controller);
 
     // Same price update to both
     const bridge = createBridgeState();
@@ -324,7 +324,7 @@ describe("C. Live Data → Protection Pipeline", () => {
       openedAt: Date.now(),
     }, Date.now());
 
-    startController(controller);
+    controller = startController(controller);
 
     // Only send BTC event
     const bridge = createBridgeState();
@@ -380,7 +380,7 @@ describe("D. Provider Failure / Recovery", () => {
       assetClass: "crypto",
       openedAt: Date.now(),
     }, Date.now());
-    startController(controller);
+    controller = startController(controller);
 
     // Send stale quote — should not update position
     const bridge = createBridgeState();
