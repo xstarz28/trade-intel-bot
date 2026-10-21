@@ -138,9 +138,13 @@ export function usePositionProtection(): UsePositionProtectionResult {
 
   // Refs for stable access in callbacks
   const orchestratorRef = useRef(orchestrator);
-  orchestratorRef.current = orchestrator;
   const monitorRef = useRef(monitor);
-  monitorRef.current = monitor;
+
+  // Refs are read by callbacks; synchronize them after React commits state.
+  useEffect(() => {
+    orchestratorRef.current = orchestrator;
+    monitorRef.current = monitor;
+  }, [orchestrator, monitor]);
 
   // ─── Recovery from Convex ──────────────────────────────
   useEffect(() => {
