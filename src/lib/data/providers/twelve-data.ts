@@ -22,6 +22,17 @@ interface TwelveDataCandle {
   volume: string;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseProviderNumber(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 export class TwelveDataProvider implements MarketDataProvider {
   readonly name = "twelve-data";
   private config: ProviderConfig;
@@ -87,17 +98,25 @@ export class TwelveDataProvider implements MarketDataProvider {
       throw new Error(`Twelve Data API error ${res.status}: ${body}`);
     }
 
-    const json: any = await res.json();
-    if (json.code) {
-      throw new Error(`Twelve Data error ${json.code}: ${json.message}`);
+    const payload: unknown = await res.json();
+    if (!isRecord(payload)) {
+      throw new Error("Twelve Data returned an invalid quote payload");
+    }
+    if (payload.code) {
+      throw new Error(`Twelve Data error ${String(payload.code)}: ${String(payload.message ?? "")}`);
+    }
+
+    const price = parseProviderNumber(payload.close);
+    if (price === undefined || price <= 0) {
+      throw new Error("Twelve Data returned an invalid closing price");
     }
 
     return {
-      price: parseFloat(json.close),
+      price,
       timestamp: Date.now(),
       source: this.name,
-      bid: json.bid ? parseFloat(json.bid) : undefined,
-      ask: json.ask ? parseFloat(json.ask) : undefined,
+      bid: parseProviderNumber(payload.bid),
+      ask: parseProviderNumber(payload.ask),
     };
   }
 
