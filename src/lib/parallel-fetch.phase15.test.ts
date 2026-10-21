@@ -25,7 +25,7 @@ import {
 const delay = (ms: number, value: unknown = undefined) =>
   new Promise<never>((resolve) => setTimeout(() => resolve(value as never), ms));
 
-const ok = (data: unknown) => ({ success: true as const, data }) as any;
+const ok = <T>(data: T) => ({ success: true as const, data });
 
 const BASE_FACTS = {
   instrumentType: "forex" as import("@/lib/data/optional-providers").SlowProviderFacts["instrumentType"],
@@ -76,22 +76,30 @@ describe("scheduling benchmark", () => {
 // ── Conditional provider policy ───────────────────────────────────
 
 describe("conditional policy table", () => {
-  const spy = () => {
+  type ProviderKey = keyof NonNullable<Parameters<typeof fetchOptionalSlowData>[1]>;
+  type ProviderThunkFor<K extends ProviderKey> = NonNullable<Parameters<typeof fetchOptionalSlowData>[1][K]>;
+
+  const spy = <K extends ProviderKey>(_provider: K) => {
     let calls = 0;
     return {
       get count() {
         return calls;
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      thunk: () => {
+      thunk: (() => {
         calls++;
-        return Promise.resolve(ok({})) as any;
-      },
+        return Promise.resolve(ok({}));
+      }) as unknown as ProviderThunkFor<K>,
     };
   };
 
   function buildThunks() {
-    return { cot: spy(), execution: spy(), eia: spy(), treasury: spy(), okxSpec: spy() };
+    return {
+      cot: spy("cot"),
+      execution: spy("execution"),
+      eia: spy("eia"),
+      treasury: spy("treasury"),
+      okxSpec: spy("okxSpec"),
+    };
   }
 
   const runPolicy = async (facts: Parameters<typeof fetchOptionalSlowData>[0]) => {
