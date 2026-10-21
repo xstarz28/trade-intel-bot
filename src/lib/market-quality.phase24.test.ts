@@ -274,7 +274,7 @@ describe("metamorphic invariance", () => {
     const a = runAnalysis(input);
     // Create with reversed key order
     const reversed: Record<string, unknown> = {};
-    const keys = Object.keys(input).reverse();
+    const keys = (Object.keys(input) as Array<keyof AnalysisInput>).reverse();
     Object.assign(reversed, Object.fromEntries(keys.map((key) => [key, input[key]])));
     const b = runAnalysis(reversed as unknown as AnalysisInput);
     expect(a.bias).toBe(b.bias);
