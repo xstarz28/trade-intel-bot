@@ -387,14 +387,15 @@ export function PositionProtectionDashboard() {
           operation: `Price fetch: ${state.instrument}`,
           success: true,
         });
-      } else if (!state.success) {
+      } else {
+        const error = state.error ?? "Provider returned an invalid or non-finite price";
         healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
           component: "MARKET_DATA",
           source: state.provider,
           operation: `Price fetch: ${state.instrument}`,
           success: false,
-          error: state.error,
-          message: state.error,
+          error,
+          message: error,
         });
       }
     }
