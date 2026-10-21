@@ -981,10 +981,10 @@ describe("AZ — Decision Immutability", () => {
     const source = makeSource("BTC/USD", "crypto");
     const result = scanRadar([source], { horizons: ["SWING"], maxResults: 5 }, undefined, NOW);
     const opp = result.results.get("SWING")![0];
-    expect((opp as any).recommendation).toBeUndefined();
-    expect((opp as any).bias).toBeUndefined();
-    expect((opp as any).conviction).toBeUndefined();
-    expect((opp as any).tradePlan).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(opp, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "conviction")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "tradePlan")).toBe(false);
   });
 });
 
