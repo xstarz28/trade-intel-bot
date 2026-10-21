@@ -95,6 +95,7 @@ export function useLiveProtectionPolling(
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isPollingRef = useRef(false);
+  const pollInFlightRef = useRef(false);
   const instrumentsRef = useRef(instruments);
   const callbacksRef = useRef(options?.onPriceUpdate);
   const eventsRef = useRef(options?.onEvent);
@@ -109,8 +110,11 @@ export function useLiveProtectionPolling(
   // ─── Poll function ─────────────────────────────────────
   const doPoll = useCallback(async () => {
     const currentInstruments = instrumentsRef.current;
-    if (currentInstruments.length === 0) return;
+    // A slow provider response must not overlap the next interval and allow
+    // older quotes to overwrite newer ones.
+    if (currentInstruments.length === 0 || pollInFlightRef.current) return;
 
+    pollInFlightRef.current = true;
     try {
       // Call the REAL Convex action that makes REAL HTTP requests
       const results: LiveQuoteResult[] = await fetchLiveQuotes({
@@ -195,6 +199,8 @@ export function useLiveProtectionPolling(
       setFailedPolls((p) => p + 1);
       setLastPollAt(Date.now());
       setLastError(err instanceof Error ? err.message : "Unknown poll error");
+    } finally {
+      pollInFlightRef.current = false;
     }
   }, [fetchLiveQuotes]);
 
