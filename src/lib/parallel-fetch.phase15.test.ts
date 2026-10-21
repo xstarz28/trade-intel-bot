@@ -80,6 +80,7 @@ describe("conditional policy table", () => {
   type ProviderThunkFor<K extends ProviderKey> = NonNullable<Parameters<typeof fetchOptionalSlowData>[1][K]>;
 
   const spy = <K extends ProviderKey>(_provider: K) => {
+    void _provider;
     let calls = 0;
     return {
       get count() {
