@@ -81,6 +81,7 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
   // Build live snapshot from input signals
   const liveSnapshot: RuntimeHealthSnapshot | null = useMemo(() => {
     if (!healthInput) return null;
+    // eslint-disable-next-line react-hooks/purity -- Freshness must be assessed against wall-clock time when this input snapshot is created.
     return buildRuntimeHealthSnapshot(healthInput, Date.now());
   }, [healthInput]);
 
