@@ -1068,11 +1068,11 @@ describe("AB — Decision Immutability", () => {
     const result = scanRadar([source], { horizons: ["SWING"], maxResults: 5 }, undefined, NOW);
     const opp = result.results.get("SWING")![0];
     // Opportunity should have its own fields, not decision-engine fields
-    expect((opp as any).recommendation).toBeUndefined();
-    expect((opp as any).bias).toBeUndefined();
-    expect((opp as any).conviction).toBeUndefined();
-    expect((opp as any).tradePlan).toBeUndefined();
-    expect((opp as any).noTradeReasons).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(opp, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "conviction")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "tradePlan")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "noTradeReasons")).toBe(false);
   });
 });
 
