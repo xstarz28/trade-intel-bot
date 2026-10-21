@@ -1,5 +1,7 @@
 "use client"
 
+/* eslint-disable react-refresh/only-export-components -- This module intentionally exports related UI primitives or context helpers alongside components. */
+
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
