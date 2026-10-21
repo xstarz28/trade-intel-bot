@@ -762,11 +762,11 @@ describe("dataCompleteness", () => {
 
   it("does not crash for malformed optional provider payloads", () => {
     expect(() => runAnalysis(baseInput({
-      derivativesData: { confidence: "medium" } as any,
+      derivativesData: { confidence: "medium" } as unknown as AnalysisInput["derivativesData"],
       marketData: {
         instrument: "EUR/USD", instrumentType: "forex", provider: "test", fetchTimestamp: Date.now(),
         price: undefined, candles: [], timeframe: "D1", dataFreshness: "unavailable",
-      } as any,
+      } as unknown as AnalysisInput["marketData"],
     }))).not.toThrow();
   });
 
