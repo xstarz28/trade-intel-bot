@@ -25,7 +25,7 @@ import {
 const delay = (ms: number, value: unknown = undefined) =>
   new Promise<never>((resolve) => setTimeout(() => resolve(value as never), ms));
 
-const ok = (data: unknown) => ({ success: true as const, data }) as any;
+const ok = (data: unknown) => ({ success: true as const, data }) as unknown as Awaited<ReturnType<NonNullable<Parameters<typeof fetchOptionalSlowData>[1]["cot"]>>>;
 
 const BASE_FACTS = {
   instrumentType: "forex" as import("@/lib/data/optional-providers").SlowProviderFacts["instrumentType"],
@@ -85,7 +85,7 @@ describe("conditional policy table", () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       thunk: () => {
         calls++;
-        return Promise.resolve(ok({})) as any;
+        return Promise.resolve(ok({})) as unknown as ReturnType<NonNullable<Parameters<typeof fetchOptionalSlowData>[1]["cot"]>>;
       },
     };
   };
