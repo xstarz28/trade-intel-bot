@@ -100,9 +100,9 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     ohlcvRegime: "TRENDING_UP",
     shortTermContext: "BULLISH",
     volatilityContext: "NORMAL",
-    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as any,
-    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as any,
-    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as any,
+    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as unknown as PositionIntelligence["h1Analysis"],
+    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as unknown as PositionIntelligence["m15Analysis"],
+    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as unknown as PositionIntelligence["m5Analysis"],
     evidence: [],
     dataQuality: "HIGH",
     dataSource: "TwelveData",
@@ -558,7 +558,7 @@ describe("Phase 101 — Data Provenance", () => {
 describe("Phase 101 — Position/Rule Lifecycle", () => {
   it("position removal cleans previous state", () => {
     const intel1 = makeIntel({ instrument: "BTC/USDT" });
-    const intel2 = makeIntel({ instrument: "ETH/USDT", side: "LONG" as any });
+    const intel2 = makeIntel({ instrument: "ETH/USDT", side: "LONG" as PositionIntelligence["side"] });
     const state = buildInitialStateStore(new Map([["pos-1", intel1], ["pos-2", intel2]]));
 
     const cleaned = removePositionFromState(state, "pos-1");
