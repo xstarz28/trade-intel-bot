@@ -390,7 +390,6 @@ export function PositionProtectionDashboard() {
           success: true,
         });
       } else if (!state.success) {
-    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
         healthBufferRef.current = recordProviderResult(buf, {
           component: "MARKET_DATA",
           source: state.provider,
