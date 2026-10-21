@@ -357,6 +357,7 @@ export function PositionProtectionDashboard() {
       }
     },
     onOHLCVHealthEvent: useCallback((event: OHLCVHealthEvent) => {
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
       healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
         component: event.component,
         source: event.source,
@@ -382,6 +383,7 @@ export function PositionProtectionDashboard() {
     const buf = healthBufferRef.current;
     for (const [, state] of livePrices) {
       if (state.success && state.price > 0) {
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
         healthBufferRef.current = recordProviderResult(buf, {
           component: "MARKET_DATA",
           source: state.provider,
@@ -389,6 +391,7 @@ export function PositionProtectionDashboard() {
           success: true,
         });
       } else if (!state.success) {
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
         healthBufferRef.current = recordProviderResult(buf, {
           component: "MARKET_DATA",
           source: state.provider,
@@ -499,6 +502,7 @@ export function PositionProtectionDashboard() {
     const analyzed = intelligenceMap.size;
     const total = positions.length;
     const success = analyzed > 0 && analyzed >= total;
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
     healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
       component: "INTELLIGENCE_ENGINE",
       operation: `Analyzed ${analyzed}/${total} positions`,
@@ -510,6 +514,7 @@ export function PositionProtectionDashboard() {
   // Phase 100: Record portfolio intelligence health events (uses memoized portfolioIntel)
   useEffect(() => {
     if (!portfolioIntel) return;
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
     healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
       component: "PORTFOLIO_INTELLIGENCE",
       operation: "Portfolio analysis",
@@ -610,12 +615,14 @@ export function PositionProtectionDashboard() {
         if (decision.shouldPersistSnapshot && !stale) {
           lastPersistedRef.current.set(posId, snapshotIdentity(snapshot));
           saveSnapshotMut(snapshotToArgs(snapshot)).then(() => {
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
             healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save snapshot",
               success: true,
             });
           }).catch((err) => {
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
             healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save snapshot",
@@ -628,12 +635,14 @@ export function PositionProtectionDashboard() {
           saveEventsMut(eventsToArgs(
             posId, intel.instrument, intel.side, decision.newEvents,
           )).then(() => {
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
             healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save events",
               success: true,
             });
           }).catch((err) => {
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
             healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save events",
@@ -725,6 +734,7 @@ export function PositionProtectionDashboard() {
     diagnosticsRef.current = applyDiagnosticRetention([...diagnosticsRef.current, ...result.diagnostics], MAX_DIAGNOSTIC_EVENTS);
 
     // Phase 100: Record alert pipeline health
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
     healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
       component: "ALERT_RULE_ENGINE",
       operation: `Evaluated ${typedRules.length} rules`,
@@ -752,6 +762,7 @@ export function PositionProtectionDashboard() {
         condition: notif.condition,
       }).then(() => {
         // Phase 100: Record notification persistence success
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
         healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
           component: "NOTIFICATION_PERSISTENCE",
           operation: "Persist notification",
@@ -759,6 +770,7 @@ export function PositionProtectionDashboard() {
         });
       }).catch((err) => {
         // Phase 100: Record notification persistence failure
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
         healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
           component: "NOTIFICATION_PERSISTENCE",
           operation: "Persist notification",
@@ -806,6 +818,7 @@ export function PositionProtectionDashboard() {
     const now = Date.now();
     const snapshotToPersist = shouldPersistFromBuffer(healthBufferRef.current, now);
     if (snapshotToPersist) {
+    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
       healthBufferRef.current = markPersisted(healthBufferRef.current, snapshotToPersist);
       isPersistingHealthRef.current = true;
       saveHealthMut({
