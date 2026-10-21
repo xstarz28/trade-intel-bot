@@ -368,7 +368,7 @@ describe("G. Economic event integration", () => {
 
 describe("H. News/event separation", () => {
   it("NEWS_EVENTS and ECONOMIC_EVENTS are separate dimensions", () => {
-    const r = makeRegime({ newsItems: [{ title: "test", body: "test", url: "", publishedAt: Date.now(), source: "test" } as any], economicEvents: [makeEvent()] });
+    const r = makeRegime({ newsItems: [{ title: "test", body: "test", url: "", publishedAt: Date.now(), source: "test" } as unknown as NonNullable<FundamentalRegimeInput["newsItems"]>[number]], economicEvents: [makeEvent()] });
     const newsDim = r.dimensions.find((d) => d.name === "NEWS_EVENTS");
     const evDim = r.dimensions.find((d) => d.name === "ECONOMIC_EVENTS");
     expect(newsDim?.status).toBe("AVAILABLE");
