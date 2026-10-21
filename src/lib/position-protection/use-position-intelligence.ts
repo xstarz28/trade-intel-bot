@@ -138,6 +138,7 @@ export function usePositionIntelligence(
   useEffect(() => {
     if (livePrices.size === 0) return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Live price changes must be appended to the historical observation accumulator.
     setPriceObservations((prev) => {
       const next = new Map(prev);
       const now = Date.now();
