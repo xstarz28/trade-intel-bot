@@ -1718,7 +1718,7 @@ describe("X. Giveback Monitoring Runtime", () => {
       peakPrice: 110, currentPrice: 105, peakProfit: 10, currentProfit: 5,
       givebackAbsolute: 5, givebackPct: 30, pullbackType: "NORMAL_PULLBACK", accelerating: false,
     } satisfies GivebackState, "SCALPING");
-    const investResult = classifyGivebackSeverity({ givebackPct: 30 } as any, "INVESTING");
+    const investResult = classifyGivebackSeverity({ givebackPct: 30 } as unknown as GivebackState, "INVESTING");
     const order = { NONE: 0, WATCH: 1, PARTIAL_TP: 2, MANUAL_TP: 3, PROTECT_NOW: 4 };
     expect(order[scalpResult] ?? -1).toBeGreaterThanOrEqual(order[investResult] ?? -1);
   });
