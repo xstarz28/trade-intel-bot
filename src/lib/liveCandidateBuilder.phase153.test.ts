@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument } from "./liveCandidateBuilder";
+import type { LiveCandidateSource } from "./liveCandidateBuilder";
 import { buildRadarCandidate, toRadarCandidateSource } from "./market-radar/candidate-builder";
 
 describe("Phase 153 — Live Candidate Builder integrity", () => {
@@ -308,7 +309,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         confidence: 80,
         bias: "Bullish",
         recommendation: "BUY",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
 
     expect(candidate.currentPrice).toBe(0);
@@ -362,7 +363,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         confidence: "high",
         openInterest: { current: 123456 },
         fundingRate: { currentRate: 0.01 },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["derivativesData"]>,
     });
     expect(cryptoCandidate.hasDerivatives).toBe(false);
     expect(cryptoCandidate.openInterest).toBeUndefined();
@@ -385,7 +386,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         fetchedAt: now,
         freshness: "FRESH",
         netNonCommercial: 999,
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["cotData"]>,
     });
     expect(forexCandidate.hasCOT).toBe(false);
     expect(forexCandidate.cotNet).toBeUndefined();
@@ -412,7 +413,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         recommendation: "BUY",
         breakdown: { trend: 1, indicator: 1, fundamental: 1, sentiment: -1 },
         fundamentalData: { available: true },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
       universalIntelligence: {
         instrument: "EUR/USD", assetClass: "forex", assembledAt: now,
         forex: {
@@ -429,7 +430,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     const forexCandidate = buildRadarCandidate(forexSource, now);
     expect(forexCandidate.rateDifferential).toBe(1.25);
@@ -461,7 +462,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     const commodityCandidate = buildRadarCandidate(commoditySource, now);
     expect(commodityCandidate.inventory).toBe(420);
@@ -489,7 +490,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         confidence: 99,
         bias: "Bullish",
         recommendation: "BUY",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
 
     expect(radarSource.universe.instrument).toBe("BTC/USD");
@@ -509,7 +510,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         confidence: 99,
         bias: "Bullish",
         recommendation: "BUY",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
 
     expect(candidate.currentPrice).toBe(0);
@@ -575,7 +576,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     expect(candidate.rateDifferential).toBe(-1.25);
     expect(candidate.yieldDifferential).toBe(-0.8);
@@ -598,7 +599,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     expect(candidate.hasFundamentals).toBe(true);
     expect(candidate.fundamentalEvidenceAvailable).toBe(false); // raw fundamentals are not signed directional evidence
@@ -623,7 +624,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     expect(candidate.inventory).toBe(420);
     expect(candidate.inventoryChange).toBe(-8);
@@ -641,7 +642,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       freshness: "FRESH",
       series: [{ productId: "EPC0", observationDate: "2026-10-07", latestValue: 420, change: -8 }],
       failedLegs: [],
-    } as any;
+    } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>;
     const source = {
       instrument: "XAU/USD",
       assetClass: "commodity" as const,
@@ -682,7 +683,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED",
         missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
 
     expect(candidate.hasFundamentals).toBe(false);
@@ -708,7 +709,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         fundamentalData: { available: true, peRatio: 31 },
         macroData: { confidence: "high" },
         calendarData: { events: [{ status: "released", actual: 2, forecast: 1 }] },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     };
     const live = buildCandidateFromSource(source);
     const radar = buildRadarCandidate(toRadarCandidateSource(source), now);
