@@ -181,6 +181,9 @@ export function useLiveProtectionPolling(
 
           callbacksRef.current?.(result.instrument, result.price, result.provider);
         } else {
+          const invalidSuccessfulPrice =
+            result.success &&
+            (!Number.isFinite(result.price) || result.price <= 0);
           const staleSuccessfulQuote =
             result.success &&
             Number.isFinite(result.price) &&
@@ -198,11 +201,13 @@ export function useLiveProtectionPolling(
                 : "UNAVAILABLE",
             lastUpdateAt: now,
             success: false,
-            error: staleSuccessfulQuote
-              ? "Quote rejected because its timestamp is stale or invalid"
-              : simulatedQuote
-                ? "Simulated quotes are not accepted by live position protection"
-                : result.error,
+            error: invalidSuccessfulPrice
+              ? "Provider returned an invalid or non-finite price"
+              : staleSuccessfulQuote
+                ? "Quote rejected because its timestamp is stale or invalid"
+                : simulatedQuote
+                  ? "Simulated quotes are not accepted by live position protection"
+                  : result.error,
           });
         }
       }
