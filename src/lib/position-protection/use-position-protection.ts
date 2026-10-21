@@ -135,6 +135,12 @@ export function usePositionProtection(): UsePositionProtectionResult {
   const [, setAlertHistoryMap] = useState<Map<string, AlertHistoryEntry[]>>(new Map());
   const [accelerationStates, setAccelerationStates] = useState<Map<string, ReturnType<typeof createAccelerationState>>>(new Map());
   const [persistenceDegraded, setPersistenceDegraded] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Refs for stable access in callbacks
   const orchestratorRef = useRef(orchestrator);
@@ -422,7 +428,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
   // ─── Build Position States ─────────────────────────────
   const positions: MonitoredPositionState[] = useMemo(() => {
     const result: MonitoredPositionState[] = [];
-    const now = Date.now();
+    const now = clockNow;
 
     for (const [posId, registered] of orchestrator.positions) {
       const snapshot = monitor.positions.get(posId);
@@ -455,7 +461,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
     }
 
     return result;
-  }, [orchestrator.positions, monitor.positions, monitor.giveback, protectionAlerts, positionAlerts, accelerationStates]);
+  }, [orchestrator.positions, monitor.positions, monitor.giveback, protectionAlerts, positionAlerts, accelerationStates, clockNow]);
 
   // ─── Alert History ─────────────────────────────────────
   const alertHistory: AlertHistoryEntry[] = useMemo(() => {
