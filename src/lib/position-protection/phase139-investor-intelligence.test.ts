@@ -239,7 +239,7 @@ describe("classifyIntelAvailability", () => {
   });
 
   it("never promotes unknown/future data quality to AVAILABLE", () => {
-    const intel = makeIntel("BTC/USD", { dataQuality: "SOMETHING_NEW" as any });
+    const intel = makeIntel("BTC/USD", { dataQuality: "SOMETHING_NEW" });
     expect(classifyIntelAvailability(intel)).toBe("INSUFFICIENT");
   });
 
