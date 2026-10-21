@@ -185,7 +185,7 @@ export function useLiveProtectionPolling(
             result.success &&
             Number.isFinite(result.price) &&
             result.price > 0 &&
-            !quoteIsFresh;
+            (!quoteIsFresh || result.sourceMode === "STALE");
           const simulatedQuote = result.sourceMode === "SIMULATED";
           next.set(result.instrument, {
             instrument: result.instrument,
