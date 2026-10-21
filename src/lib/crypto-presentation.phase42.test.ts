@@ -109,15 +109,15 @@ function makeBullishResultWithCryptoIntel(): AnalysisResult {
     ...makeAnalysisResult(),
     cryptoIntelligenceContext: makeCryptoContext(),
     marketRegimeContext: {
-      regime: "TREND_DEVELOPING" as any,
+      regime: "TREND_DEVELOPING" as NonNullable<AnalysisResult["marketRegimeContext"]>["regime"],
       marketPhase: "EARLY_TREND",
       currentDirection: "bullish",
       continuationQuality: "STRONG",
       exhaustionSignals: [],
       trendTransition: {
         currentTrend: "bullish",
-        transitionType: "CONTINUATION" as any,
-        confidenceLevel: "developing" as any,
+        transitionType: "CONTINUATION" as NonNullable<NonNullable<AnalysisResult["marketRegimeContext"]>["trendTransition"]>["transitionType"],
+        confidenceLevel: "developing" as NonNullable<NonNullable<AnalysisResult["marketRegimeContext"]>["trendTransition"]>["confidenceLevel"],
         evidence: [],
         confirmationConditions: [],
         invalidationConditions: [],
