@@ -388,7 +388,7 @@ export function PositionProtectionDashboard() {
           success: true,
         });
       } else if (!state.success) {
-        healthBufferRef.current = recordProviderResult(buf, {
+        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
           component: "MARKET_DATA",
           source: state.provider,
           operation: `Price fetch: ${state.instrument}`,
