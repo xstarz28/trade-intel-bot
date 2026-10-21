@@ -246,7 +246,7 @@ describe("decision determinism parity", () => {
     // Concurrent path (new orchestrator).
     const par = await fetchOptionalSlowData(BASE_FACTS, {
       treasury: (async () => ok(makeTreasury())) as unknown as NonNullable<SlowProviderThunks["treasury"]>,
-      cot: async () => ok({ reportDate: "2026-08-18" }),
+      cot: (async () => ok({ reportDate: "2026-08-18" })) as unknown as NonNullable<SlowProviderThunks["cot"]>,
     });
 
     // Sequential path (old semantics, same responses).
