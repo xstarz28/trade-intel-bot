@@ -170,7 +170,7 @@ describe("Phase 25 — provider quality assessment", () => {
         latest: { nominal: { observationDate: "2026-08-01", nominal: { "2Y": 4.5, "10Y": 4.2 } }, real: undefined },
         fetchedAt: Date.now(),
         source: "test",
-      } as any,
+      } as unknown as NonNullable<AnalysisInput["treasuryData"]>,
     });
     const dq = assessDataQuality(input);
     expect(dq.providers.treasury?.status).toBe("GOOD");
@@ -178,7 +178,7 @@ describe("Phase 25 — provider quality assessment", () => {
 
   it("unavailable treasury → UNAVAILABLE", () => {
     const input = buildInput("EUR/USD", "forex", bullCandles(0, 1.1, 200), {
-      treasuryData: { available: false, reason: "test failure" } as any,
+      treasuryData: { available: false, reason: "test failure" } as unknown as NonNullable<AnalysisInput["treasuryData"]>,
     });
     const dq = assessDataQuality(input);
     expect(dq.providers.treasury?.status).toBe("UNAVAILABLE");
