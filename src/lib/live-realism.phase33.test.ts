@@ -682,7 +682,7 @@ describe("Phase 33 — Rapid-run / race audit", () => {
     const results = symbols.map((s) => {
       const type = s.includes("BTC") || s.includes("ETH") ? "crypto" : s.includes("XAU") ? "commodity" : "forex";
       const base = s === "BTC/USD" ? 50000 : s === "ETH/USD" ? 3000 : s === "XAU/USD" ? 2000 : 1.1;
-      return run(s, type as any, base);
+      return run(s, type as Parameters<typeof run>[1], base);
     });
 
     // Each result has its own instrument
