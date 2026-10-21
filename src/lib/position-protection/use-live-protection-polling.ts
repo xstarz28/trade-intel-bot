@@ -93,13 +93,15 @@ export function useLiveProtectionPolling(
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isPollingRef = useRef(false);
   const instrumentsRef = useRef(instruments);
-  instrumentsRef.current = instruments;
-
   const callbacksRef = useRef(options?.onPriceUpdate);
-  callbacksRef.current = options?.onPriceUpdate;
-
   const eventsRef = useRef(options?.onEvent);
-  eventsRef.current = options?.onEvent;
+
+  // Keep refs synchronized after commit rather than mutating them during render.
+  useEffect(() => {
+    instrumentsRef.current = instruments;
+    callbacksRef.current = options?.onPriceUpdate;
+    eventsRef.current = options?.onEvent;
+  }, [instruments, options?.onPriceUpdate, options?.onEvent]);
 
   // ─── Poll function ─────────────────────────────────────
   const doPoll = useCallback(async () => {
