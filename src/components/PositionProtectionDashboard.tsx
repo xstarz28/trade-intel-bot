@@ -772,7 +772,7 @@ export function PositionProtectionDashboard() {
         });
       });
     }
-  }, [intelligenceMap, alertRules, createNotificationMut]);
+  }, [intelligenceMap, portfolioIntel, alertRules, createNotificationMut]);
 
   // ─── Phase 95/97: Reset bridge state when positions are removed ──
   useEffect(() => {
@@ -883,7 +883,7 @@ export function PositionProtectionDashboard() {
 
       prevAlertsRef.current.set(pos.position.positionId, newSeverity);
     }
-  }, [positions, notificationsEnabled]);
+  }, [positions, notificationsEnabled, t, txi]);
 
   // ─── Register Handler ────────────────────────────────────
   const handleRegister = useCallback(
@@ -899,7 +899,7 @@ export function PositionProtectionDashboard() {
         duration: 3000,
       });
     },
-    [registerPos],
+    [registerPos, t, txi],
   );
 
   // ─── Remove Handler ──────────────────────────────────────
@@ -920,7 +920,7 @@ export function PositionProtectionDashboard() {
         duration: 3000,
       });
     },
-    [removePos, deleteHistoryMut],
+    [removePos, deleteHistoryMut, txi],
   );
 
   // ─── Summary Stats ───────────────────────────────────────
