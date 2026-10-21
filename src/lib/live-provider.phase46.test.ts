@@ -1463,7 +1463,7 @@ describe("S — Edge Cases & Empty States", () => {
   });
 
   it("verifyQuote handles completely empty object", () => {
-    const r = validateQuote({} as any);
+    const r = validateQuote({} as Parameters<typeof validateQuote>[0]);
     expect(r.valid).toBe(false);
   });
 
@@ -1493,7 +1493,7 @@ describe("S — Edge Cases & Empty States", () => {
       ["AAPL", "ohlcv"],
     ];
     pairs.forEach(([inst, cap]) => {
-      const route = routeProviderRequest(inst, cap as any);
+      const route = routeProviderRequest(inst, cap as Parameters<typeof routeProviderRequest>[1]);
       expect(route.routes.length).toBeGreaterThan(0);
     });
   });
