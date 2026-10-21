@@ -861,7 +861,7 @@ describe("N. Early TP Warning", () => {
         pullbackType: "PROTECTION_EVENT" as const,
         accelerating: true,
       },
-      multiTimeframe: { level: "MODERATE", overallDeterioration: "MODERATE", adverseCount: 2, totalEvaluated: 5, htfConfirmation: false, ltfConfirmation: true, structuralBreak: false, momentumDivergence: true, highestAdverseTimeframe: "M15", aggregatedConfidence: 0.6, description: "Test", timeframeResults: [] } as any,
+      multiTimeframe: { level: "MODERATE", overallDeterioration: "MODERATE", adverseCount: 2, totalEvaluated: 5, htfConfirmation: false, ltfConfirmation: true, structuralBreak: false, momentumDivergence: true, highestAdverseTimeframe: "M15", aggregatedConfidence: 0.6, description: "Test", timeframeResults: [] } as unknown as NonNullable<Parameters<typeof classifyEarlyProtection>[0]["multiTimeframe"]>,
       deteriorationCount: 2,
       thesisHealthScore: 60,
       shockState: "ELEVATED" as const,
