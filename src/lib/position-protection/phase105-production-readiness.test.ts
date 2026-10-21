@@ -75,9 +75,9 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     entryPrice: 60000, currentPrice: 65000, thesisHealth: "HEALTHY", thesisHealthScore: 80,
     confidence: "STRONG_EVIDENCE", ohlcvRegime: "TRENDING_UP", shortTermContext: "BULLISH",
     volatilityContext: "NORMAL",
-    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as any,
-    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as any,
-    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as any,
+    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as unknown as PositionIntelligence["h1Analysis"],
+    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as unknown as PositionIntelligence["m15Analysis"],
+    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as unknown as PositionIntelligence["m5Analysis"],
     evidence: [], dataQuality: "HIGH", dataSource: "TwelveData", ...overrides,
   } as PositionIntelligence;
 }
