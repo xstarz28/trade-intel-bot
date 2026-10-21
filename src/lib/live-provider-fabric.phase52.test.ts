@@ -154,7 +154,7 @@ describe("B — Provider Routing", () => {
     // Add a degraded adapter first
     const degraded = makeFakeAdapter("degraded-p", ["crypto"], ["quote"], makeSnapshot());
     // Simulate degradation
-    (degraded as any).getHealth().status = "DEGRADED";
+    Object.defineProperty(degraded, "getHealth", { value: () => ({ ...degraded.getHealth(), status: "DEGRADED" }) });
     // selectBestAdapter should prefer healthy over degraded
     const adapter = selectBestAdapter("BTC/USD", "crypto", "quote");
     // The default twelve-data adapter should still be available
