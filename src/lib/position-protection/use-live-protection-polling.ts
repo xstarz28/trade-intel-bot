@@ -92,6 +92,7 @@ export function useLiveProtectionPolling(
   const [failedPolls, setFailedPolls] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const [bridgeState, setBridgeState] = useState<LiveMarketBridgeState>(createBridgeState);
+  const bridgeStateRef = useRef(bridgeState);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isPollingRef = useRef(false);
@@ -126,7 +127,7 @@ export function useLiveProtectionPolling(
 
       const next = new Map(livePricesRef.current);
       const newEvents: RealTimeEvent[] = [];
-      let currentBridge = createBridgeState();
+      let currentBridge = bridgeStateRef.current;
 
       for (const result of results) {
         if (result.success && Number.isFinite(result.price) && result.price > 0) {
@@ -180,6 +181,7 @@ export function useLiveProtectionPolling(
       // Keep React state updaters pure: callbacks and other state updates run here.
       livePricesRef.current = next;
       setLivePrices(next);
+      bridgeStateRef.current = currentBridge;
       setBridgeState(currentBridge);
 
       if (newEvents.length > 0) {
