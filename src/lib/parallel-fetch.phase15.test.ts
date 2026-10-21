@@ -12,7 +12,7 @@
  *    concurrently feed IDENTICAL decisions and fingerprints.
  */
 import { describe, it, expect } from "vitest";
-import { fetchOptionalSlowData } from "./data/optional-providers";
+import { fetchOptionalSlowData, type SlowProviderThunks } from "./data/optional-providers";
 import { runAnalysis } from "./analysis-engine";
 import {
   assemble,
@@ -194,10 +194,10 @@ describe("failure matrix under concurrency", () => {
       hasCompleteSpec: false,
     };
     const r = await fetchOptionalSlowData(cryptoFacts, {
-      treasury: async () => ok({ curve: [4.2] }), // condition off (crypto) → never invoked
+      treasury: (async () => ok({ curve: [4.2] })) as unknown as NonNullable<SlowProviderThunks["treasury"]>, // condition off (crypto) → never invoked
       execution: () => Promise.reject(new Error("book timeout")),
       eia: async () => ({ success: false }), // explicit provider refusal
-      okxSpec: async () => ok({ instId: "X" }),
+      okxSpec: (async () => ok({ instId: "X" })) as unknown as NonNullable<SlowProviderThunks["okxSpec"]>,
     });
     expect(r.executionData).toBeUndefined(); // rejection → unavailable
     expect(r.eiaData).toBeUndefined();       // refusal → unavailable
@@ -209,7 +209,7 @@ describe("failure matrix under concurrency", () => {
   it("non-success responses map to undefined exactly like the sequential code", async () => {
     const r = await fetchOptionalSlowData(BASE_FACTS, {
       treasury: async () => ({ success: false }),
-      cot: async () => ok({ reportDate: "2026-08-18" }),
+      cot: (async () => ok({ reportDate: "2026-08-18" })) as unknown as NonNullable<SlowProviderThunks["cot"]>,
     });
     expect(r.treasuryData).toBeUndefined();
     expect(!r.cotData || "reportDate" in r.cotData ? (r.cotData as { reportDate: string }).reportDate : "MISSING").toBe("2026-08-18");
@@ -222,7 +222,7 @@ describe("failure matrix under concurrency", () => {
       if (treasuryCalls === 1) throw new Error("transient");
       return Promise.resolve(ok({}));
     };
-    await fetchOptionalSlowData(BASE_FACTS, { treasury: flaky }); // rejects once…
+    await fetchOptionalSlowData(BASE_FACTS, { treasury: flaky as unknown as NonNullable<SlowProviderThunks["treasury"]> }); // rejects once…
     expect(treasuryCalls).toBe(1); // …and is NEVER retried within a run
   });
 });
@@ -245,7 +245,7 @@ describe("decision determinism parity", () => {
 
     // Concurrent path (new orchestrator).
     const par = await fetchOptionalSlowData(BASE_FACTS, {
-      treasury: async () => ok(makeTreasury()),
+      treasury: (async () => ok(makeTreasury())) as unknown as NonNullable<SlowProviderThunks["treasury"]>,
       cot: async () => ok({ reportDate: "2026-08-18" }),
     });
 
@@ -274,7 +274,7 @@ describe("decision determinism parity", () => {
 
   it("full pipeline through the orchestrator stays oracle-stable (macro fixture)", async () => {
     const slow = await fetchOptionalSlowData(BASE_FACTS, {
-      treasury: async () => ok(makeTreasuryPublic()),
+      treasury: (async () => ok(makeTreasuryPublic())) as unknown as NonNullable<SlowProviderThunks["treasury"]>,
     });
     const input = {
       ...assemble({ ...BULL, treasuryData: slow.treasuryData as never }),
