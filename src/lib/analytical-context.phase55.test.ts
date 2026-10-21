@@ -409,7 +409,7 @@ describe("AL. Radar compatibility", () => {
 
 // AM. Decision immutability
 describe("AM. Decision immutability", () => {
-  it("AM1 — no recommendation in depth", () => { const d = buildCryptoAnalyticalDepth("BTC/USD", cryptoData()); expect((d as any).recommendation).toBeUndefined(); expect((d as any).bias).toBeUndefined(); });
+  it("AM1 — no recommendation in depth", () => { const d = buildCryptoAnalyticalDepth("BTC/USD", cryptoData()); expect(Object.prototype.hasOwnProperty.call(d, "recommendation")).toBe(false); expect(Object.prototype.hasOwnProperty.call(d, "bias")).toBe(false); });
   it("AM2 — no trade signals in regime", () => { expect(JSON.stringify(classifyRegime({ breakout: true })).toLowerCase()).not.toContain("entry"); });
 });
 
