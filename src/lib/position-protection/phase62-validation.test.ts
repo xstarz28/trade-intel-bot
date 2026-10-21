@@ -1472,7 +1472,7 @@ describe("PART AS — Position Registration", () => {
 
   it("validates side", () => {
     const r = validateRegistration({
-      positionId: "p1", instrument: "BTC", side: "LONG" as any,
+      positionId: "p1", instrument: "BTC", side: "LONG" as unknown as Parameters<typeof validateRegistration>[0]["side"],
       entryPrice: 100, horizon: "SWING",
     });
     expect(r.valid).toBe(true);
