@@ -106,6 +106,34 @@ import {
 } from "@/lib/position-protection/persistent-history-engine";
 import { type OHLCVHealthEvent } from "@/lib/position-protection/use-ohlcv-data";
 
+function normalizeNewsAssetClass(value: string): NewsItem["assetClass"] {
+  switch (value.toLowerCase()) {
+    case "crypto": return "crypto";
+    case "forex": return "forex";
+    case "commodity": return "commodity";
+    case "macro": return "macro";
+    case "equity":
+    case "stock":
+    case "stocks":
+    case "indices": return "equity";
+    default: return "other";
+  }
+}
+
+function categoryForNewsAssetClass(value: string): NewsItem["category"] {
+  switch (value.toLowerCase()) {
+    case "crypto": return "CRYPTO_SPECIFIC";
+    case "forex": return "FOREX";
+    case "commodity": return "COMMODITY";
+    case "equity":
+    case "stock":
+    case "stocks":
+    case "indices": return "COMPANY";
+    case "macro": return "FUNDAMENTAL";
+    default: return "OTHER";
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // SEVERITY → TOAST CONFIG
 // ═══════════════════════════════════════════════════════════════
@@ -399,15 +427,17 @@ export function PositionProtectionDashboard() {
         if (cancelled) break;
         try {
           const assetClass = userPositions.find(p => p.instrument === instrument)?.assetClass ?? "crypto";
-          const instrumentType = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
+          const instrumentType: "crypto" | "forex" | "stock" = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
           const result = await fetchIntelligence({
             instrument: instrument.split("/")[0],
-            instrumentType: instrumentType as any,
+            instrumentType,
           });
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
-          const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
+          const newsAssetClass = normalizeNewsAssetClass(String(assetClass));
+          const newsCategory = categoryForNewsAssetClass(String(assetClass));
+          const newsItems: NewsItem[] = articles.map((art, i: number) => ({
             id: `av-${instrument}-${i}`,
             timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
             source: art.source || "AlphaVantage",
@@ -415,10 +445,10 @@ export function PositionProtectionDashboard() {
             summary: art.summary || undefined,
             url: art.url || undefined,
             relatedInstruments: [instrument],
-            assetClass: assetClass as any,
-            category: assetClass === "crypto" ? "CRYPTO_SPECIFIC" as const : "FOREX" as const,
-            sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
-                       art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
+            assetClass: newsAssetClass,
+            category: newsCategory,
+            sentiment: art.sentimentLabel === "positive" || art.sentimentLabel === "somewhat-positive" ? "BULLISH" as const :
+                       art.sentimentLabel === "negative" || art.sentimentLabel === "somewhat-negative" ? "BEARISH" as const : "NEUTRAL" as const,
             impactStrength: "MODERATE" as const,
             freshness: classifyNewsFreshness(
               art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
@@ -513,7 +543,7 @@ export function PositionProtectionDashboard() {
 
   // Map Convex reactive results by positionId
   const convTimelines = useMemo(() => {
-    const map = new Map<string, any>();
+    const map = new Map<string, NonNullable<typeof convTimeline0>>();
     const results = [convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4];
     for (let i = 0; i < positionIds.length && i < results.length; i++) {
       const result = results[i];
