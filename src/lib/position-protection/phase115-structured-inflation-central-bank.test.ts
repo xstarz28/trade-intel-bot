@@ -376,7 +376,7 @@ describe("H. News/event separation", () => {
   });
 
   it("news without economic events → only NEWS_EVENTS available", () => {
-    const r = makeRegime({ newsItems: [{ title: "test", body: "test", url: "", publishedAt: Date.now(), source: "test" } as any] });
+    const r = makeRegime({ newsItems: [{ title: "test", body: "test", url: "", publishedAt: Date.now(), source: "test" } as unknown as NonNullable<FundamentalRegimeInput["newsItems"]>[number]] });
     const newsDim = r.dimensions.find((d) => d.name === "NEWS_EVENTS");
     const evDim = r.dimensions.find((d) => d.name === "ECONOMIC_EVENTS");
     expect(newsDim?.status).toBe("AVAILABLE");
