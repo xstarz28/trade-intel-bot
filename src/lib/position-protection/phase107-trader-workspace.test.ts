@@ -47,9 +47,9 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     ],
     nextMonitor: ["M15 structure", "Volume confirmation"],
     dataQuality: "AVAILABLE",
-    h1Analysis: { trend: "BULLISH", structureBroken: false, volatility: "NORMAL" } as any,
-    m15Analysis: { trend: "BULLISH", structureBroken: false, volatility: "NORMAL" } as any,
-    m5Analysis: { trend: "BEARISH", structureBroken: false, volatility: "EXPANDED" } as any,
+    h1Analysis: { trend: "BULLISH", structureBroken: false, volatility: "NORMAL" } as unknown as PositionIntelligence["h1Analysis"],
+    m15Analysis: { trend: "BULLISH", structureBroken: false, volatility: "NORMAL" } as unknown as PositionIntelligence["m15Analysis"],
+    m5Analysis: { trend: "BEARISH", structureBroken: false, volatility: "EXPANDED" } as unknown as PositionIntelligence["m5Analysis"],
     ...overrides,
   } as PositionIntelligence;
 }
@@ -91,14 +91,14 @@ function makePortfolioIntel(overrides: Partial<PortfolioIntelligence> = {}): Por
       },
     ],
     marketContext: "Mixed risk environment",
-    riskContext: { level: "MODERATE", description: "Moderate risk" } as any,
+    riskContext: { level: "MODERATE", description: "Moderate risk" } as unknown as PortfolioIntelligence["riskContext"],
     dataAvailability: {
       technical: "AVAILABLE",
       macro: "AVAILABLE",
       news: "UNAVAILABLE",
       derivatives: "UNAVAILABLE",
       fundamentals: "UNAVAILABLE",
-    } as any,
+    } as unknown as PortfolioIntelligence["dataAvailability"],
     generatedAt: Date.now(),
     ...overrides,
   };
