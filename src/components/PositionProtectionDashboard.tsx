@@ -381,6 +381,7 @@ export function PositionProtectionDashboard() {
 
     for (const [, state] of livePrices) {
       if (state.success && Number.isFinite(state.price) && state.price > 0) {
+        // eslint-disable-next-line react-hooks/immutability -- The health buffer is an intentional mutable accumulator shared with async provider callbacks; preserve ordered per-instrument recording without a second state timeline.
         healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
           component: "MARKET_DATA",
           source: state.provider,
@@ -388,7 +389,11 @@ export function PositionProtectionDashboard() {
           success: true,
         });
       } else {
-        const error = state.error ?? "Provider returned an invalid or non-finite price";
+        const error =
+          state.error ??
+          (state.success
+            ? "Provider returned an invalid or non-finite price"
+            : "Provider fetch failed without an error message");
         healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
           component: "MARKET_DATA",
           source: state.provider,
