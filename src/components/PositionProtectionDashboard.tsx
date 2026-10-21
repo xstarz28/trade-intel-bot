@@ -346,6 +346,7 @@ export function PositionProtectionDashboard() {
     livePrices,
     ohlcv,
     isPolling,
+    lastPollAt,
     successfulPolls,
     lastError,
   } = usePositionIntelligence(positions, {
@@ -1236,7 +1237,7 @@ export function PositionProtectionDashboard() {
             notificationPersisted: true,
             historicalSnapshotPersisted: true,
             historicalEventsPersisted: true,
-            lastIntelligenceCycleAt: Date.now(),
+            lastIntelligenceCycleAt: lastPollAt,
             dataQuality: Object.fromEntries(
               Array.from(intelligenceMap.entries()).map(([, intel]) => [
                 intel.instrument,
