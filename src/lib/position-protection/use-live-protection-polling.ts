@@ -82,6 +82,9 @@ export function useLiveProtectionPolling(
   const enabled = options?.enabled !== false;
 
   const [livePrices, setLivePrices] = useState<Map<string, LiveInstrumentState>>(new Map());
+  // Keep the latest committed poll result available without side effects inside
+  // a React state updater, which React may invoke more than once in development.
+  const livePricesRef = useRef(livePrices);
   const [isPolling, setIsPolling] = useState(false);
   const [lastPollAt, setLastPollAt] = useState(0);
   const [totalPolls, setTotalPolls] = useState(0);
@@ -117,71 +120,67 @@ export function useLiveProtectionPolling(
       const now = Date.now();
       let anySuccess = false;
 
-      setLivePrices((prev) => {
-        const next = new Map(prev);
-        const newEvents: RealTimeEvent[] = [];
+      const next = new Map(livePricesRef.current);
+      const newEvents: RealTimeEvent[] = [];
+      let currentBridge = createBridgeState();
 
-        let currentBridge = createBridgeState();
+      for (const result of results) {
+        if (result.success && Number.isFinite(result.price) && result.price > 0) {
+          anySuccess = true;
 
-        for (const result of results) {
-          if (result.success && result.price > 0) {
-            anySuccess = true;
+          // Create ProviderQuoteData for the bridge
+          const quoteData: ProviderQuoteData = {
+            instrument: result.instrument,
+            provider: result.provider,
+            price: result.price,
+            bid: result.bid,
+            ask: result.ask,
+            volume24h: result.volume24h,
+            change24h: result.change24h,
+            timestamp: result.timestamp,
+            freshness: "FRESH",
+          };
 
-            // Create ProviderQuoteData for the bridge
-            const quoteData: ProviderQuoteData = {
-              instrument: result.instrument,
-              provider: result.provider,
-              price: result.price,
-              bid: result.bid,
-              ask: result.ask,
-              volume24h: result.volume24h,
-              change24h: result.change24h,
-              timestamp: result.timestamp,
-              freshness: "FRESH",
-            };
+          // Bridge to RealTimeEvents
+          const bridgeResult = bridgeQuoteToEvents(currentBridge, quoteData);
+          currentBridge = bridgeResult.state;
+          newEvents.push(...bridgeResult.events);
 
-            // Bridge to RealTimeEvents
-            const bridgeResult = bridgeQuoteToEvents(currentBridge, quoteData);
-            currentBridge = bridgeResult.state;
-            newEvents.push(...bridgeResult.events);
+          next.set(result.instrument, {
+            instrument: result.instrument,
+            price: result.price,
+            bid: result.bid,
+            ask: result.ask,
+            change24h: result.change24h,
+            volume24h: result.volume24h,
+            provider: result.provider,
+            sourceMode: result.sourceMode,
+            lastUpdateAt: now,
+            success: true,
+          });
 
-            // Update live prices state
-            next.set(result.instrument, {
-              instrument: result.instrument,
-              price: result.price,
-              bid: result.bid,
-              ask: result.ask,
-              change24h: result.change24h,
-              volume24h: result.volume24h,
-              provider: result.provider,
-              sourceMode: result.sourceMode,
-              lastUpdateAt: now,
-              success: true,
-            });
-
-            // Fire callback
-            callbacksRef.current?.(result.instrument, result.price, result.provider);
-          } else {
-            next.set(result.instrument, {
-              instrument: result.instrument,
-              price: 0,
-              provider: result.provider,
-              sourceMode: "UNAVAILABLE",
-              lastUpdateAt: now,
-              success: false,
-              error: result.error,
-            });
-          }
+          callbacksRef.current?.(result.instrument, result.price, result.provider);
+        } else {
+          next.set(result.instrument, {
+            instrument: result.instrument,
+            price: 0,
+            provider: result.provider,
+            sourceMode: "UNAVAILABLE",
+            lastUpdateAt: now,
+            success: false,
+            error: result.error,
+          });
         }
+      }
 
-        // Emit events to the protection pipeline
-        if (newEvents.length > 0) {
-          eventsRef.current?.(newEvents);
-        }
+      // Keep React state updaters pure: callbacks and other state updates run here.
+      livePricesRef.current = next;
+      setLivePrices(next);
+      setBridgeState(currentBridge);
 
-        setBridgeState(currentBridge);
-        return next;
-      });
+      if (newEvents.length > 0) {
+        eventsRef.current?.(newEvents);
+      }
 
       setTotalPolls((p) => p + 1);
       if (anySuccess) {
