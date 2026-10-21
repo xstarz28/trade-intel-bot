@@ -525,8 +525,8 @@ describe("U — Security", () => {
 describe("V — No Secrets", () => {
   it("snapshot does not contain auth headers", () => {
     const snapshot = makeSnapshot();
-    expect((snapshot as any).authorization).toBeUndefined();
-    expect((snapshot as any).headers).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "authorization")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "headers")).toBe(false);
   });
 });
 
@@ -560,10 +560,10 @@ describe("W — Deterministic Normalization", () => {
 describe("X — Decision Immutability", () => {
   it("snapshot contains no recommendation/bias/conviction", () => {
     const snapshot = makeSnapshot();
-    expect((snapshot as any).recommendation).toBeUndefined();
-    expect((snapshot as any).bias).toBeUndefined();
-    expect((snapshot as any).conviction).toBeUndefined();
-    expect((snapshot as any).tradePlan).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "conviction")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "tradePlan")).toBe(false);
   });
 
   it("data quality is informational only", () => {
@@ -572,8 +572,8 @@ describe("X — Decision Immutability", () => {
       consistency: "CONSISTENT",
     });
     // Quality should not contain any decision fields
-    expect((qa as any).recommendation).toBeUndefined();
-    expect((qa as any).bias).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(qa, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(qa, "bias")).toBe(false);
   });
 });
 
