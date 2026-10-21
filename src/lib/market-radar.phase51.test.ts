@@ -72,7 +72,7 @@ function makeSnapshot(overrides?: Partial<{
   dataPoints: number;
   provider: string;
   freshness: FreshnessLevel;
-}>) {
+}>): any {
   return {
     instrument: overrides?.instrument ?? "BTC/USD",
     assetClass: "crypto",
