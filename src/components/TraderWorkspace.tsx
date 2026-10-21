@@ -886,7 +886,7 @@ function FundamentalContextPanel({ intel, newsItems, livePrices, treasuryData, c
   const regimeInput = useMemo(() => buildFundamentalInputFromPositionIntel(
     { instrument: intel.instrument, assetClass: intel.assetClass, shortTermContext: intel.shortTermContext, mediumTermContext: intel.mediumTermContext, evidence: intel.evidence },
     { newsItems, newsRelevance: newsRelevance ?? undefined, macroContext, crossAssetContext, macroObservations, treasuryContext: treasuryData ?? undefined, fundamentalDataPoints, economicEvents, inflationObservation: parsedInflationObs, policyRateObservation: parsedPolicyRateObs, growthObservation: parsedGrowthObs, employmentObservation: parsedEmploymentObs, consumerConfidenceObservation: parsedConsumerConfObs },
-  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations, treasuryData, fundamentalDataPoints, economicEvents, parsedInflationObs, parsedPolicyRateObs, parsedGrowthObs, parsedEmploymentObs, parsedConsumerConfObs]);
+  ), [intel.instrument, intel.assetClass, intel.shortTermContext, intel.mediumTermContext, intel.evidence, newsItems, newsRelevance, macroContext, crossAssetContext, macroObservations, treasuryData, fundamentalDataPoints, economicEvents, parsedInflationObs, parsedPolicyRateObs, parsedGrowthObs, parsedEmploymentObs, parsedConsumerConfObs]);
   const regime = useMemo(() => buildFundamentalRegime(regimeInput), [regimeInput]);
   const assetCtx = useMemo(() => buildAssetFundamentalContext(assetClass, regime), [assetClass, regime]);
   const causalResult = useMemo(() => buildFundamentalCausalResult(regime), [regime]);
