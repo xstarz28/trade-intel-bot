@@ -233,7 +233,7 @@ export function useLiveProtectionPolling(
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [fetchLiveQuotes]);
+  }, [fetchLiveQuotes, pollIntervalMs]);
 
   // ─── Start/Stop ────────────────────────────────────────
   const startPolling = useCallback(() => {
