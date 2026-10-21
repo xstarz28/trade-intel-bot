@@ -230,17 +230,26 @@ export function useLiveProtectionPolling(
     if (enabled && instruments.length > 0) {
       startPolling();
     } else {
-      stopPolling();
+      // Stop external work without synchronously scheduling state from an effect.
+      isPollingRef.current = false;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     }
 
     return () => {
-      stopPolling();
+      isPollingRef.current = false;
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     };
-  }, [enabled, instruments.length, startPolling, stopPolling]);
+  }, [enabled, instruments.length, startPolling]);
 
   return {
     livePrices,
-    isPolling,
+    isPolling: isPolling && enabled && instruments.length > 0,
     lastPollAt,
     totalPolls,
     successfulPolls,
