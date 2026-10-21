@@ -368,7 +368,7 @@ describe("D. Provider Failure / Recovery", () => {
     expect(result.state.eventsDropped).toBe(1);
   });
 
-  it("stale data cannot create false protection alert", () => {
+  it("stale data cannot update a protected position", () => {
     let controller = createControllerState();
     controller = registerPosition(controller, {
       positionId: "stale-test",
@@ -381,8 +381,9 @@ describe("D. Provider Failure / Recovery", () => {
       openedAt: Date.now(),
     }, Date.now());
     controller = startController(controller);
+    expect(controller.globalLifecycle).toBe("RUNNING");
 
-    // Send stale quote — should not update position
+    // Send stale quote — it must not become a PRICE_UPDATE.
     const bridge = createBridgeState();
     const staleQuote: ProviderQuoteData = {
       instrument: "BTC/USDT",
@@ -393,8 +394,13 @@ describe("D. Provider Failure / Recovery", () => {
     };
 
     const result = bridgeQuoteToEvents(bridge, staleQuote);
-    // Bridge drops stale events
-    expect(result.events.filter((e) => e.eventType === "PRICE_UPDATE").length).toBe(0);
+    expect(result.events.some((event) => event.eventType === "PRICE_UPDATE")).toBe(false);
+
+    // Process any diagnostic events and prove the position price stays unchanged.
+    for (const event of result.events) {
+      controller = processEventForController(controller, event, Date.now()).state;
+    }
+    expect(controller.positions.get("stale-test")?.currentPrice).toBe(85_000);
   });
 });
 
