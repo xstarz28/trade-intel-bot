@@ -642,7 +642,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       freshness: "FRESH",
       series: [{ productId: "EPC0", observationDate: "2026-10-07", latestValue: 420, change: -8 }],
       failedLegs: [],
-    } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>;
+    } as unknown as NonNullable<LiveCandidateSource["eiaData"]>;
     const source = {
       instrument: "XAU/USD",
       assetClass: "commodity" as const,
