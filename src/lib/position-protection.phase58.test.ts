@@ -128,7 +128,7 @@ describe("A. Event model", () => {
   it("A2 — payload is a plain object", () => {
     const e = makeEvent({ instrument: "X", payload: { price: 123, foo: "bar" } });
     expect(typeof e.payload).toBe("object");
-    expect((e.payload as any).price).toBe(123);
+    expect(e.payload).toMatchObject({ price: 123 });
   });
 
   it("A3 — positionId is optional", () => {
@@ -964,9 +964,9 @@ describe("AE. No probability fabrication", () => {
       position: longBtc({ currentPrice: 84000 }),
       evidence: cleanEvidence(84000),
     });
-    expect((alert as any).probability).toBeUndefined();
-    expect((alert as any).winProbability).toBeUndefined();
-    expect((alert as any).profitProbability).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(alert, "probability")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "winProbability")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "profitProbability")).toBe(false);
   });
 });
 
@@ -996,9 +996,9 @@ describe("AG. Decision immutability", () => {
       position: longBtc(),
       evidence: cleanEvidence(84000),
     });
-    expect((alert as any).recommendation).toBeUndefined();
-    expect((alert as any).bias).toBeUndefined();
-    expect((alert as any).conviction).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(alert, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "conviction")).toBe(false);
     expect((alert as any).tradePlan).toBeUndefined();
   });
 });
