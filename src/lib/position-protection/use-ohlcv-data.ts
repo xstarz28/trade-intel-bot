@@ -223,17 +223,18 @@ export function useOHLCVData(
         });
       }
     }
-  }, [instruments.join(","), timeframes.join(","), enabled, fetchCandles]);
+  }, [instruments, timeframes, enabled, fetchCandles]);
 
   // Initial fetch + periodic refresh
+  const instrumentCount = instruments.length;
   useEffect(() => {
-    if (!enabled || instruments.length === 0) return;
+    if (!enabled || instrumentCount === 0) return;
 
     fetchOHLCV();
     const interval = setInterval(fetchOHLCV, refreshMs);
 
     return () => clearInterval(interval);
-  }, [fetchOHLCV, enabled, refreshMs]);
+  }, [fetchOHLCV, enabled, refreshMs, instrumentCount]);
 
   return {
     ...state,
