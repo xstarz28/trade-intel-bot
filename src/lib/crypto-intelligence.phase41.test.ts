@@ -574,8 +574,8 @@ describe("Phase 41 — Cross-Instrument Isolation", () => {
 
   it("non-crypto fetch returns null", async () => {
     const cg = new CoinGlassAdapter(async () => ({ success: true, provider: "CG", observedAt: Date.now(), data: {} }));
-    const dl = new DeFiLlamaAdapter(async () => ({ ok: true, json: async () => ({}) } as any));
-    const tm = new TokenomistAdapter(async () => ({ ok: true, json: async () => ({}) } as any));
+    const dl = new DeFiLlamaAdapter(async () => ({ ok: true, json: async () => ({}) } as unknown as Response));
+    const tm = new TokenomistAdapter(async () => ({ ok: true, json: async () => ({}) } as unknown as Response));
     expect(await cg.fetch("EUR/USD")).toBeNull();
     expect(await dl.fetch("EUR/USD")).toBeNull();
     expect(await tm.fetch("EUR/USD")).toBeNull();
