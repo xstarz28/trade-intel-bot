@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- This module intentionally exports related UI primitives or context helpers alongside components. */
 import * as React from "react"
 import * as TogglePrimitive from "@radix-ui/react-toggle"
 import { cva, type VariantProps } from "class-variance-authority"
@@ -43,4 +42,5 @@ function Toggle({
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- Exported styling helper accompanies the component API.
 export { Toggle, toggleVariants }
