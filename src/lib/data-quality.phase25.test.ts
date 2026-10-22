@@ -107,7 +107,7 @@ describe("Phase 25 — primary data quality assessment", () => {
       input.marketData.dataFreshness = "realtime";
       input.marketData.price = {
         ...input.marketData.price,
-        timestamp: Date.now() - 4 * 60_000,
+        timestamp: Date.now() - 4 * 24 * 60 * 60_000,
         source: "twelve-data",
       };
     }
