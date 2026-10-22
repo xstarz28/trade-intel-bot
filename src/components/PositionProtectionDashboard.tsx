@@ -592,7 +592,7 @@ export function PositionProtectionDashboard() {
   const triggerRecordsRef = useRef<Map<string, RuleTriggerRecord>>(new Map());
   const bridgeInitializedRef = useRef(false);
   const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
-  const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
+
   const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
   const healthSnapshot = useMemo(
     () => buildSnapshotFromBuffer(healthBufferRef.current, healthClockNow),
