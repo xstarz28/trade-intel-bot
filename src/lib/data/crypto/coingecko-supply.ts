@@ -115,7 +115,10 @@ export function parseCoinGeckoSupplyFallback(
 
   const denominator = maxSupply ?? totalSupply;
   const updated = typeof md.last_updated === "string" ? Date.parse(md.last_updated) : Number.NaN;
-  const observedAt = Number.isFinite(updated) && updated > 0 ? updated : fetchedAt;
+  const hasProviderTimestamp = Number.isFinite(updated) && updated > 0;
+  const observedAt = hasProviderTimestamp ? updated : fetchedAt;
+  const timestampInFuture = observedAt > fetchedAt + 5 * 60_000;
+  const timestampStale = fetchedAt - observedAt > 24 * 60 * 60_000;
   const supply: NonNullable<TokenomicsIntelligence["supply"]> = {
     reliable: circulatingSupply !== undefined,
     ...(circulatingSupply !== undefined ? { circulatingSupply } : {}),
@@ -129,10 +132,15 @@ export function parseCoinGeckoSupplyFallback(
   return {
     provider: "CoinGecko public API",
     observedAt,
-    freshness: fetchedAt - observedAt > 24 * 60 * 60_000 ? "STALE" : "FRESH",
+    freshness: timestampStale || timestampInFuture ? "STALE" : "FRESH",
     quality: "DEGRADED",
     available: true,
-    failureReason: "Supply metrics use CoinGecko as a fallback. This source does not provide a verified upcoming unlock calendar; unlock events remain unconfirmed.",
+    failureReason: [
+      "Supply metrics use CoinGecko as a fallback.",
+      !hasProviderTimestamp ? "Provider observation timestamp is missing or invalid; receipt time is used only as a degraded fallback." : "",
+      timestampInFuture ? "Provider observation timestamp is unexpectedly in the future; treat supply freshness as stale." : "",
+      "This source does not provide a verified upcoming unlock calendar; unlock events remain unconfirmed.",
+    ].filter(Boolean).join(" "),
     supply,
     availableDatasets: 1,
     totalDatasets: 2,
