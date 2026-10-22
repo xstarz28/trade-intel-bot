@@ -338,6 +338,7 @@ export function PositionProtectionDashboard() {
 
   const [healthRevision, setHealthRevision] = useState(0);
   const [healthClockNow, setHealthClockNow] = useState(() => Date.now());
+  const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
 
   useEffect(() => {
     const timer = setInterval(() => setHealthClockNow(Date.now()), 30_000);
