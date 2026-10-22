@@ -34,8 +34,9 @@ jobs:
         run: node --test scripts/verify-frontend-release.smoke.test.mjs
       - name: Syntax-check production runtime smoke
         run: node --check scripts/production-runtime-smoke.mjs
+      - name: Syntax-check CoinGecko live verifier
+        run: node --check scripts/verify-coingecko-live.mjs
       - name: Test suite
         run: npm test
-      - name: Lint (advisory)
-        continue-on-error: true
+      - name: Lint
         run: npm run lint
