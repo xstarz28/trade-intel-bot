@@ -20,13 +20,16 @@ const validPrices = {
   ethereum: { usd: 3_500 },
 };
 
-test("requires an API key and does not call the provider without one", async () => {
-  let called = false;
-  await assert.rejects(
-    verifyCoinGeckoLive({ apiKey: " ", fetchImpl: async () => { called = true; } }),
-    /COINGECKO_DEMO_API_KEY is required/,
-  );
-  assert.equal(called, false);
+test("supports public API verification without requiring an API key", async () => {
+  const result = await verifyCoinGeckoLive({
+    fetchImpl: async (_url, options) => {
+      assert.equal(options.headers["x-cg-demo-api-key"], undefined);
+      return response({ body: validPrices });
+    },
+    log: () => {},
+    warn: () => assert.fail("did not expect a retry"),
+  });
+  assert.deepEqual(result.verifiedCoins, ["bitcoin", "ethereum"]);
 });
 
 test("verifies positive finite BTC and ETH prices from a real response", async () => {
