@@ -15,16 +15,19 @@ function response({ status = 200, body = {}, headers = {}, text = "" } = {}) {
   };
 }
 
-const validPrices = {
-  bitcoin: { usd: 67_000, last_updated_at: Math.floor(Date.now() / 1_000) },
-  ethereum: { usd: 3_500, last_updated_at: Math.floor(Date.now() / 1_000) },
+const validPrices = () => {
+  const timestamp = Math.floor(Date.now() / 1_000);
+  return {
+    bitcoin: { usd: 67_000, last_updated_at: timestamp },
+    ethereum: { usd: 3_500, last_updated_at: timestamp },
+  };
 };
 
 test("supports public API verification without requiring an API key", async () => {
   const result = await verifyCoinGeckoLive({
     fetchImpl: async (_url, options) => {
       assert.equal(options.headers["x-cg-demo-api-key"], undefined);
-      return response({ body: validPrices });
+      return response({ body: validPrices() });
     },
     log: () => {},
     warn: () => assert.fail("did not expect a retry"),
@@ -41,7 +44,7 @@ test("verifies positive finite BTC and ETH prices from a real response", async (
       assert.equal(url.searchParams.get("ids"), "bitcoin,ethereum");
       assert.equal(url.searchParams.get("include_last_updated_at"), "true");
       assert.equal(options.headers["x-cg-demo-api-key"], "demo-key");
-      return response({ body: validPrices });
+      return response({ body: validPrices() });
     },
     log: (message) => logs.push(message),
     warn: () => assert.fail("did not expect a retry"),
@@ -59,7 +62,7 @@ test("retries a 429 using Retry-After before accepting a live response", async (
       calls += 1;
       return calls === 1
         ? response({ status: 429, headers: { "retry-after": "0" } })
-        : response({ body: validPrices });
+        : response({ body: validPrices() });
     },
     sleepImpl: async (ms) => waits.push(ms),
     random: () => 0.5,
@@ -80,7 +83,7 @@ test("uses bounded exponential backoff with jitter when 429 omits Retry-After", 
       calls += 1;
       return calls === 1
         ? response({ status: 429 })
-        : response({ body: validPrices });
+        : response({ body: validPrices() });
     },
     sleepImpl: async (ms) => waits.push(ms),
     random: () => 0.5,
@@ -99,7 +102,7 @@ test("retries transient network/timeout failures and fails closed after the retr
       fetchImpl: async () => {
         calls += 1;
         if (calls === 1) throw new Error("socket timeout");
-        return response({ body: validPrices });
+        return response({ body: validPrices() });
       },
       sleepImpl: async (ms) => waits.push(ms),
       random: () => 0.5,
