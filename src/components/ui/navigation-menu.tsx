@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- This module intentionally exports related UI primitives or context helpers alongside components. */
 import * as React from "react"
 import * as NavigationMenuPrimitive from "@radix-ui/react-navigation-menu"
 import { cva } from "class-variance-authority"
@@ -156,6 +155,7 @@ function NavigationMenuIndicator({
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- Exported styling helper accompanies the component API.
 export {
   NavigationMenu,
   NavigationMenuList,
