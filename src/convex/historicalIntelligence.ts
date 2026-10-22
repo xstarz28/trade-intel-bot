@@ -20,6 +20,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 
 const MAX_SNAPSHOTS = 50;
 const MAX_EVENTS = 100;
+const RETENTION_PRUNE_BATCH = 20;
 
 // ═══════════════════════════════════════════════════════════════
 // AUTH RESOLUTION
@@ -71,20 +72,19 @@ async function enforceRetention(
   let pruned = 0;
 
   // Prune snapshots
-  // Read only the retention window plus one overflow row. This keeps the
-  // hot write path bounded even if old data is unexpectedly oversized.
-  // Repeated pruneHistory calls can drain legacy backlogs one batch at a time.
+  // Read only the retention window plus a bounded overflow batch. Normal writes
+  // prune one row; legacy oversized histories can be reduced faster without an
+  // unbounded scan or delete loop.
   const snapshots = await ctx.db
     .query("historicalSnapshots")
     .withIndex("by_user_position_ts", (q) =>
       q.eq("userId", userId).eq("positionId", positionId),
     )
     .order("desc")
-    .take(MAX_SNAPSHOTS + 1);
+    .take(MAX_SNAPSHOTS + RETENTION_PRUNE_BATCH);
 
-  if (snapshots.length > MAX_SNAPSHOTS) {
-    const oldest = snapshots[MAX_SNAPSHOTS];
-    await ctx.db.delete(oldest._id);
+  for (const snapshot of snapshots.slice(MAX_SNAPSHOTS)) {
+    await ctx.db.delete(snapshot._id);
     pruned++;
   }
 
@@ -97,11 +97,10 @@ async function enforceRetention(
       q.eq("userId", userId).eq("positionId", positionId),
     )
     .order("desc")
-    .take(MAX_EVENTS + 1);
+    .take(MAX_EVENTS + RETENTION_PRUNE_BATCH);
 
-  if (events.length > MAX_EVENTS) {
-    const oldest = events[MAX_EVENTS];
-    await ctx.db.delete(oldest._id);
+  for (const event of events.slice(MAX_EVENTS)) {
+    await ctx.db.delete(event._id);
     pruned++;
   }
 
