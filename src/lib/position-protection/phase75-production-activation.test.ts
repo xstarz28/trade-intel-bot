@@ -110,12 +110,14 @@ describe("A. Real Live Market Data", () => {
     }
   });
 
-  it("fetches at least one real crypto price from CoinGecko", () => {
+  it("fetches at least one real crypto price from CoinGecko", ({ skip }) => {
     if (liveResults.length === 0) {
-      console.warn("COINGECKO: No results — rate limited, skipping live gate");
-      return; // graceful skip under rate limit
+      skip("CoinGecko returned no results (rate limited or unavailable)");
     }
     const successes = liveResults.filter((r) => r.success);
+    if (successes.length === 0) {
+      skip("CoinGecko returned no valid positive prices");
+    }
     expect(successes.length).toBeGreaterThanOrEqual(1);
     for (const r of successes) {
       expect(r.price).toBeGreaterThan(0);
@@ -123,9 +125,11 @@ describe("A. Real Live Market Data", () => {
     }
   });
 
-  it("all successful prices are positive and unique", () => {
+  it("all successful prices are positive and unique", ({ skip }) => {
     const successes = liveResults.filter((r) => r.success);
-    if (successes.length === 0) return; // rate limited
+    if (successes.length === 0) {
+      skip("CoinGecko returned no valid prices to validate");
+    }
     const prices = successes.map((r) => r.price);
     const unique = new Set(prices);
     expect(unique.size).toBe(prices.length);
@@ -176,17 +180,14 @@ describe("B. Provider Routing Consistency", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("C. Live Data → Protection Pipeline", () => {
-  it("bridges real BTC price into RealTimeEvents", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    if (!btc?.success) {
-      console.warn("LIVE_DATA: BTC not available, using fallback price");
-    }
-    const price = btc?.success ? btc.price : 80_000;
-
+  it("bridges a valid quote fixture into RealTimeEvents", () => {
+    // This is a deterministic pipeline test, not evidence of live-provider access.
+    const price = 80_000;
+    const provider = "TestFixture";
     const bridge = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
-      provider: "CoinGecko",
+      provider,
       price,
       timestamp: Date.now(),
       freshness: "FRESH",
@@ -200,7 +201,7 @@ describe("C. Live Data → Protection Pipeline", () => {
     expect(priceEvent!.instrument).toBe("BTC/USDT");
     expect(typeof priceEvent!.payload.price).toBe("number");
     expect(priceEvent!.payload.price).toBe(price);
-    expect(priceEvent!.source).toBe("CoinGecko");
+    expect(priceEvent!.source).toBe(provider);
   });
 
   it("processes live events through protection controller", () => {
