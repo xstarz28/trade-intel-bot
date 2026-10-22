@@ -347,7 +347,6 @@ export function PositionProtectionDashboard() {
 
   const recordHealthResult = useCallback(
     (params: Parameters<typeof recordProviderResult>[1]) => {
-      // eslint-disable-next-line react-hooks/immutability -- One intentional mutable accumulator serializes health events from polling, effects, and async persistence callbacks.
       healthBufferRef.current = recordProviderResult(healthBufferRef.current, params);
       setHealthRevision((revision) => revision + 1);
     },
@@ -355,7 +354,6 @@ export function PositionProtectionDashboard() {
   );
 
   const markHealthSnapshotPersisted = useCallback((snapshot: ReturnType<typeof buildSnapshotFromBuffer>) => {
-    // eslint-disable-next-line react-hooks/immutability -- Persistence metadata belongs to the same serialized health accumulator.
     healthBufferRef.current = markPersisted(healthBufferRef.current, snapshot);
     setHealthRevision((revision) => revision + 1);
   }, []);
@@ -405,6 +403,7 @@ export function PositionProtectionDashboard() {
 
     for (const [, state] of livePrices) {
       if (state.success && Number.isFinite(state.price) && state.price > 0) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Record completed external provider results in the runtime-health accumulator.
         recordHealthResult({
           component: "MARKET_DATA",
           source: state.provider,
@@ -527,6 +526,7 @@ export function PositionProtectionDashboard() {
     const analyzed = intelligenceMap.size;
     const total = positions.length;
     const success = analyzed > 0 && analyzed >= total;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Record the completed asynchronous intelligence cycle in runtime health.
     recordHealthResult({
       component: "INTELLIGENCE_ENGINE",
       operation: `Analyzed ${analyzed}/${total} positions`,
@@ -538,6 +538,7 @@ export function PositionProtectionDashboard() {
   // Phase 100: Record portfolio intelligence health events (uses memoized portfolioIntel)
   useEffect(() => {
     if (!portfolioIntel) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Synchronize the completed portfolio-analysis result into runtime health.
     recordHealthResult({
       component: "PORTFOLIO_INTELLIGENCE",
       operation: "Portfolio analysis",
@@ -597,6 +598,7 @@ export function PositionProtectionDashboard() {
   const healthSnapshot = useMemo(
     // eslint-disable-next-line react-hooks/refs -- Read the serialized health accumulator only when its revision or freshness clock changes.
     () => buildSnapshotFromBuffer(healthBufferRef.current, healthClockNow),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- healthRevision explicitly invalidates this snapshot after mutable-buffer events.
     [healthRevision, healthClockNow],
   );
 
