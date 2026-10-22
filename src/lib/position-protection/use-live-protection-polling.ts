@@ -75,7 +75,7 @@ export function useLiveProtectionPolling(
   options?: {
     pollIntervalMs?: number;
     enabled?: boolean;
-    onPriceUpdate?: (instrument: string, price: number, provider: string) => void;
+    onPriceUpdate?: (instrument: string, price: number, provider: string, timestamp: number) => void;
     onEvent?: (events: RealTimeEvent[]) => void;
   },
 ): UseLiveProtectionPollingResult {
@@ -182,7 +182,7 @@ export function useLiveProtectionPolling(
             success: true,
           });
 
-          callbacksRef.current?.(result.instrument, result.price, result.provider);
+          callbacksRef.current?.(result.instrument, result.price, result.provider, result.timestamp);
         } else {
           const invalidSuccessfulPrice =
             result.success &&
