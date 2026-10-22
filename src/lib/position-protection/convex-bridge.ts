@@ -104,7 +104,8 @@ export class ConvexPersistenceBridge implements MonitoringStateRepository {
     // lastUpdateAt is a heartbeat, not a decision-state change. Avoid rewriting
     // the same position on every monitoring tick; still refresh durability every
     // 30 seconds and persist immediately when any meaningful field changes.
-    const { lastUpdateAt: _lastUpdateAt, ...decisionState } = args;
+    const { lastUpdateAt: heartbeatTimestamp, ...decisionState } = args;
+    void heartbeatTimestamp;
     const signature = JSON.stringify(decisionState);
     const previous = this.persistedPositionSignatures.get(state.positionId);
     const inFlightSignature = this.inFlightPositionWrites.get(state.positionId);
