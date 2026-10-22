@@ -51,6 +51,8 @@ jobs:
 
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Audit resolved npm dependencies
+        run: npm audit --audit-level=high
 
       - name: Verify production identity
         env:
