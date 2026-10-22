@@ -85,7 +85,7 @@ async function fetchBinanceSpotFallback(
   const eligible = instruments.filter(({ instrument }) => instrument.endsWith("/USDT"));
   if (eligible.length === 0) return new Map();
 
-  const symbolToInstrument = new Map(
+  const symbolToInstrument = new Map<string, { instrument: string; coinId: string }>(
     eligible.map(({ instrument, coinId }) => [
       instrument.replace("/", ""),
       { instrument, coinId },
