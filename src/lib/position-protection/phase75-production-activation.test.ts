@@ -49,7 +49,7 @@ interface LiveInstrument {
   success: boolean;
 }
 
-const liveResults: LiveInstrument[] = [
+const marketFixtures: LiveInstrument[] = [
   { instrument: "BTC/USDT", price: 80_000, provider: "CoinGeckoFixture", success: true },
   { instrument: "ETH/USDT", price: 3_000, provider: "CoinGeckoFixture", success: true },
   { instrument: "SOL/USDT", price: 150, provider: "CoinGeckoFixture", success: true },
@@ -62,8 +62,8 @@ const liveResults: LiveInstrument[] = [
 
 describe("A. Market Data Fixture Integrity", () => {
   it("contains finite positive prices for supported crypto instruments", () => {
-    expect(liveResults.length).toBeGreaterThanOrEqual(1);
-    for (const result of liveResults) {
+    expect(marketFixtures.length).toBeGreaterThanOrEqual(1);
+    for (const result of marketFixtures) {
       expect(result.success).toBe(true);
       expect(result.price).toBeGreaterThan(0);
       expect(Number.isFinite(result.price)).toBe(true);
@@ -71,7 +71,7 @@ describe("A. Market Data Fixture Integrity", () => {
   });
 
   it("contains unique instrument identities", () => {
-    const instruments = liveResults.map((result) => result.instrument);
+    const instruments = marketFixtures.map((result) => result.instrument);
     expect(new Set(instruments).size).toBe(instruments.length);
   });
 });
@@ -108,15 +108,15 @@ describe("B. Provider Routing Consistency", () => {
   });
 
   it("labels test prices as fixtures rather than live provider observations", () => {
-    expect(liveResults.every((result) => result.provider === "CoinGeckoFixture")).toBe(true);
+    expect(marketFixtures.every((result) => result.provider === "CoinGeckoFixture")).toBe(true);
   });
 });
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION C: LIVE DATA → PROTECTION PIPELINE
+// SECTION C: QUOTE FIXTURE → PROTECTION PIPELINE
 // ═══════════════════════════════════════════════════════════════
 
-describe("C. Live Data → Protection Pipeline", () => {
+describe("C. Quote Fixture → Protection Pipeline", () => {
   it("bridges a valid quote fixture into RealTimeEvents", () => {
     // This is a deterministic pipeline test, not evidence of live-provider access.
     const price = 80_000;
@@ -141,8 +141,8 @@ describe("C. Live Data → Protection Pipeline", () => {
     expect(priceEvent!.source).toBe(provider);
   });
 
-  it("processes live events through protection controller", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
+  it("processes a quote fixture through the protection controller", () => {
+    const btc = marketFixtures.find((r) => r.instrument === "BTC/USDT");
     const price = btc?.success ? btc.price : 80_000;
 
     let controller = createControllerState();
@@ -180,7 +180,7 @@ describe("C. Live Data → Protection Pipeline", () => {
   });
 
   it("LONG and SHORT on same instrument have independent state", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
+    const btc = marketFixtures.find((r) => r.instrument === "BTC/USDT");
     const price = btc?.success ? btc.price : 80_000;
 
     let controller = createControllerState();
@@ -234,8 +234,8 @@ describe("C. Live Data → Protection Pipeline", () => {
   });
 
   it("BTC and ETH are isolated from each other", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    const eth = liveResults.find((r) => r.instrument === "ETH/USDT");
+    const btc = marketFixtures.find((r) => r.instrument === "BTC/USDT");
+    const eth = marketFixtures.find((r) => r.instrument === "ETH/USDT");
     const btcPrice = btc?.success ? btc.price : 80_000;
     const ethPrice = eth?.success ? eth.price : 3_000;
 
@@ -347,7 +347,7 @@ describe("D. Provider Failure / Recovery", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("E. Source Mode Integrity", () => {
-  it("live data is labeled as FRESH in bridge events", () => {
+  it("freshness metadata is preserved in bridge events", () => {
     const bridge = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
@@ -507,7 +507,7 @@ describe("F. Polling Lifecycle", () => {
 
 describe("G. No Auto-Execution Safety", () => {
   it("protection engine never produces order actions", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
+    const btc = marketFixtures.find((r) => r.instrument === "BTC/USDT");
     const price = btc?.success ? btc.price : 80_000;
 
     let controller = createControllerState();
