@@ -16,8 +16,8 @@ function response({ status = 200, body = {}, headers = {}, text = "" } = {}) {
 }
 
 const validPrices = {
-  bitcoin: { usd: 67_000 },
-  ethereum: { usd: 3_500 },
+  bitcoin: { usd: 67_000, last_updated_at: Math.floor(Date.now() / 1_000) },
+  ethereum: { usd: 3_500, last_updated_at: Math.floor(Date.now() / 1_000) },
 };
 
 test("supports public API verification without requiring an API key", async () => {
@@ -39,6 +39,7 @@ test("verifies positive finite BTC and ETH prices from a real response", async (
     fetchImpl: async (url, options) => {
       assert.equal(url.hostname, "api.coingecko.com");
       assert.equal(url.searchParams.get("ids"), "bitcoin,ethereum");
+      assert.equal(url.searchParams.get("include_last_updated_at"), "true");
       assert.equal(options.headers["x-cg-demo-api-key"], "demo-key");
       return response({ body: validPrices });
     },
@@ -178,10 +179,33 @@ test("rejects HTTP errors, malformed JSON, and missing or invalid prices", async
     await t.test(name, async () => {
       await assert.rejects(
         verifyCoinGeckoLive({ apiKey: "demo-key", fetchImpl: async () => response({ body }) }),
-        /malformed response object|invalid USD price/,
+        /malformed response object|invalid USD price|missing or invalid provider timestamp/,
       );
     });
   }
+});
+
+test("rejects stale and future-dated CoinGecko quotes", async (t) => {
+  const nowMs = 1_800_000_000_000;
+  const fresh = Math.floor(nowMs / 1_000);
+  await t.test("stale quote", async () => {
+    await assert.rejects(
+      verifyCoinGeckoLive({ now: () => nowMs, fetchImpl: async () => response({ body: {
+        bitcoin: { usd: 67_000, last_updated_at: fresh - 301 },
+        ethereum: { usd: 3_500, last_updated_at: fresh },
+      } }), log: () => {} }),
+      /stale or future-dated quote for bitcoin/,
+    );
+  });
+  await t.test("future-dated quote", async () => {
+    await assert.rejects(
+      verifyCoinGeckoLive({ now: () => nowMs, fetchImpl: async () => response({ body: {
+        bitcoin: { usd: 67_000, last_updated_at: fresh + 61 },
+        ethereum: { usd: 3_500, last_updated_at: fresh },
+      } }), log: () => {} }),
+      /stale or future-dated quote for bitcoin/,
+    );
+  });
 });
 
 test("parses Retry-After seconds and HTTP dates with a deterministic clock", () => {
