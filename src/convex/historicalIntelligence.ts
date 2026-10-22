@@ -71,37 +71,38 @@ async function enforceRetention(
   let pruned = 0;
 
   // Prune snapshots
+  // Read only the retention window plus one overflow row. This keeps the
+  // hot write path bounded even if old data is unexpectedly oversized.
+  // Repeated pruneHistory calls can drain legacy backlogs one batch at a time.
   const snapshots = await ctx.db
     .query("historicalSnapshots")
     .withIndex("by_user_position_ts", (q) =>
       q.eq("userId", userId).eq("positionId", positionId),
     )
     .order("desc")
-    .collect();
+    .take(MAX_SNAPSHOTS + 1);
 
   if (snapshots.length > MAX_SNAPSHOTS) {
-    const toDelete = snapshots.slice(MAX_SNAPSHOTS);
-    for (const s of toDelete) {
-      await ctx.db.delete(s._id);
-      pruned++;
-    }
+    const oldest = snapshots[MAX_SNAPSHOTS];
+    await ctx.db.delete(oldest._id);
+    pruned++;
   }
 
   // Prune events
+  // Bound reads and deletes per mutation to prevent a large historical
+  // backlog from turning every new event into an expensive full-table scan.
   const events = await ctx.db
     .query("historicalEvents")
     .withIndex("by_user_position_ts", (q) =>
       q.eq("userId", userId).eq("positionId", positionId),
     )
     .order("desc")
-    .collect();
+    .take(MAX_EVENTS + 1);
 
   if (events.length > MAX_EVENTS) {
-    const toDelete = events.slice(MAX_EVENTS);
-    for (const e of toDelete) {
-      await ctx.db.delete(e._id);
-      pruned++;
-    }
+    const oldest = events[MAX_EVENTS];
+    await ctx.db.delete(oldest._id);
+    pruned++;
   }
 
   return pruned;
