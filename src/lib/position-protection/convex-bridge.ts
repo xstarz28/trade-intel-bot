@@ -118,19 +118,22 @@ export class ConvexPersistenceBridge implements MonitoringStateRepository {
     }
 
     this.inFlightPositionWrites.set(state.positionId, signature);
-    try {
-      await this.client.mutation("positionProtection:savePosition", args);
-      this.persistedPositionSignatures.set(state.positionId, { signature, persistedAt: Date.now() });
-      this.degraded = false;
-    } catch {
-      // Do not cache failed writes: the next monitoring update can retry.
-      this.degraded = true;
-      return false;
-    } finally {
-      if (this.inFlightPositionWrites.get(state.positionId) === signature) {
-        this.inFlightPositionWrites.delete(state.positionId);
-      }
-    }
+    // Keep remote I/O off the monitoring hot path. Failed writes are not cached,
+    // so a later state update can retry instead of silently losing durability.
+    void Promise.resolve()
+      .then(() => this.client!.mutation("positionProtection:savePosition", args))
+      .then(() => {
+        this.persistedPositionSignatures.set(state.positionId, { signature, persistedAt: Date.now() });
+        this.degraded = false;
+      })
+      .catch(() => {
+        this.degraded = true;
+      })
+      .finally(() => {
+        if (this.inFlightPositionWrites.get(state.positionId) === signature) {
+          this.inFlightPositionWrites.delete(state.positionId);
+        }
+      });
     return true;
   }
 
