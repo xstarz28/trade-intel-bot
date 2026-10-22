@@ -20,16 +20,10 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown";
 }
 
-function finiteProviderNumber(value: unknown): number | undefined {
-  if (typeof value !== "number" && typeof value !== "string") return undefined;
-  if (typeof value === "string" && value.trim() === "") return undefined;
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
+import { normalizeTwelveDataQuotePayload } from "./provider-quote-validation";
 
 // ═══════════════════════════════════════════════════════════════
 // COINGECKO — FREE, NO KEY NEEDED
@@ -223,32 +217,16 @@ async function fetchTwelveDataQuote(
         return failure(`TwelveData HTTP ${res.status}`);
       }
 
-      if (!isRecord(json)) {
-        return failure("TwelveData returned an invalid quote payload");
+      const normalized = normalizeTwelveDataQuotePayload(json);
+      if (!normalized.success) {
+        return failure(normalized.error);
       }
-
-      if (json.code) {
-        return failure(`TwelveData [${String(json.code)}]: ${String(json.message ?? "provider error")}`);
-      }
-
-      const price = finiteProviderNumber(json.close);
-      if (price === undefined || price <= 0) {
-        return failure("TwelveData returned an invalid closing price");
-      }
-
-      const parsedBid = finiteProviderNumber(json.bid);
-      const parsedAsk = finiteProviderNumber(json.ask);
-      const bid = parsedBid !== undefined && parsedBid > 0 ? parsedBid : undefined;
-      const ask = parsedAsk !== undefined && parsedAsk > 0 ? parsedAsk : undefined;
-      // Do not fabricate bid/ask from the last-traded price. If the provider
-      // returns a crossed spread, omit both sides rather than surface bad data.
-      const spreadIsCrossed = bid !== undefined && ask !== undefined && bid > ask;
 
       return {
         instrument: symbol,
-        price,
-        ...(!spreadIsCrossed && bid !== undefined ? { bid } : {}),
-        ...(!spreadIsCrossed && ask !== undefined ? { ask } : {}),
+        price: normalized.price,
+        ...(normalized.bid !== undefined ? { bid: normalized.bid } : {}),
+        ...(normalized.ask !== undefined ? { ask: normalized.ask } : {}),
         timestamp: Date.now(),
         success: true,
       };
