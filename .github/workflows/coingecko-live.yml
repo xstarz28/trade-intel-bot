@@ -1,4 +1,4 @@
-name: CoinGecko Live Integration
+name: CoinGecko Live Integration (Public API)
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   verify-live-provider:
-    name: Verify authenticated CoinGecko live quotes
+    name: Verify CoinGecko live quotes without requiring a key
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: "22"
-      - name: Verify real CoinGecko quotes
+      - name: Verify real public CoinGecko quotes
         env:
           COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
         run: node scripts/verify-coingecko-live.mjs
