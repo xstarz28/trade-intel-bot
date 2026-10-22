@@ -225,43 +225,27 @@ function buildTwelveDataAdapter(): ProviderAdapter {
 // ═══════════════════════════════════════════════════════════════
 
 function buildCoinGeckoAdapter(): ProviderAdapter {
-  const COINGECKO_IDS: Record<string, string> = {
-    "BTC/USD": "bitcoin",
-    "ETH/USD": "ethereum",
-    "SOL/USD": "solana",
-    "DOGE/USD": "dogecoin",
-    "XRP/USD": "ripple",
-    "ADA/USD": "cardano",
-    "AVAX/USD": "avalanche-2",
-    "LINK/USD": "chainlink",
-  };
-
   return buildAdapter(
     "coingecko",
     "CoinGecko",
     ["crypto"],
     ["quote"],
     async (instrument) => {
-      const coinId = COINGECKO_IDS[instrument];
-      if (!coinId) return null;
-
-      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinId}&vs_currencies=usd&include_24hr_change=true`;
-      const res = await defaultTransport(url);
-      if (!res.ok || !res.json) return null;
-
-      const data = res.json as Record<string, { usd?: number; usd_24h_change?: number }>;
-      const price = data[coinId]?.usd;
-      if (price === undefined || !Number.isFinite(price) || price <= 0) return null;
+      // Reuse the shared provider: it normalizes canonical symbols, coalesces
+      // requests, bounds retries, respects 429 cooldowns, and rejects stale
+      // or future-dated quotes. Do not stamp a failed/old quote with Date.now().
+      const { fetchCryptoPrice } = await import("@/lib/data/providers/coingecko");
+      const quote = await fetchCryptoPrice(instrument);
+      if (!quote) return null;
 
       return {
         instrument,
         assetClass: "crypto",
-        price,
-        change24h: data[coinId]?.usd_24h_change,
+        price: quote.price,
         ohlcvAvailable: false,
         availableTimeframes: [],
         provider: "coingecko",
-        observedAt: Date.now(),
+        observedAt: quote.timestamp,
         freshness: "FRESH",
         quality: "VERIFIED",
       };
