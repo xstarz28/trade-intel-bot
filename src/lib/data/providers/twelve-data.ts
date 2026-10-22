@@ -29,7 +29,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function parseProviderNumber(value: unknown): number | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
   if (typeof value === "string" && value.trim() === "") return undefined;
-  const parsed = typeof value === "number" ? value : Number.parseFloat(value);
+  const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
