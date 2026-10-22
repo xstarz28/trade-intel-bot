@@ -89,7 +89,7 @@ async function fetchBinanceSpotFallback(
     eligible.map(({ instrument, coinId }) => [
       instrument.replace("/", ""),
       { instrument, coinId },
-    ]),
+    ] as const),
   );
   const symbols = [...symbolToInstrument.keys()];
   try {
