@@ -12,6 +12,18 @@ const MAX_ALERT_HISTORY = 200;
 async function resolveUserId(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
+
+  // Match the same identity resolution used by journal and notification preferences.
+  // Auth subjects are not always Convex document IDs, so prefer the indexed email
+  // mapping when available and only then try a normalized users ID.
+  if (identity.email) {
+    const byEmail = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", identity.email))
+      .unique();
+    if (byEmail) return byEmail._id;
+  }
+
   return ctx.db.normalizeId("users", identity.subject) as import("./_generated/dataModel").Id<"users"> | null;
 }
 
