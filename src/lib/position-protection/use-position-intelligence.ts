@@ -45,6 +45,7 @@ import {
 import {
   addObservation,
   createObservationState,
+  isFinitePositivePrice,
   type PriceObservationState,
 } from "./price-observation-engine";
 import type { RealTimeEvent } from "./realtime-types";
@@ -144,7 +145,7 @@ export function usePositionIntelligence(
       const now = Date.now();
 
       for (const [instrument, state] of livePrices) {
-        if (state.sourceMode !== "LIVE" || state.price <= 0) continue;
+        if (state.sourceMode !== "LIVE" || !isFinitePositivePrice(state.price)) continue;
 
         const obs = next.get(instrument) ?? createObservationState(instrument);
         next.set(instrument, addObservation(obs, state.price, now));
@@ -163,7 +164,7 @@ export function usePositionIntelligence(
       const alert = pos.alert;
       const live = livePrices.get(pos.position.instrument);
 
-      const currentPrice = live?.sourceMode === "LIVE" && live.price > 0
+      const currentPrice = live?.sourceMode === "LIVE" && isFinitePositivePrice(live.price)
         ? live.price
         : pos.position.entryPrice;
 
