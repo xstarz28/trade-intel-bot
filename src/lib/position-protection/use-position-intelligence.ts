@@ -27,7 +27,7 @@
  * INFORMATIONAL_ONLY — never executes trades.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { MonitoredPositionState } from "./use-position-protection";
 import {
   useLiveProtectionPolling,
@@ -110,6 +110,26 @@ export function usePositionIntelligence(
     [positions],
   );
 
+  const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
+  const onPriceUpdate = useCallback((
+    instrument: string,
+    price: number,
+    _provider: string,
+    quoteTimestamp: number,
+  ) => {
+    if (!isFinitePositivePrice(price) || !Number.isFinite(quoteTimestamp) || quoteTimestamp <= 0) return;
+
+    setPriceObservations((previous) => {
+      const current = previous.get(instrument) ?? createObservationState(instrument);
+      const updated = addObservation(current, price, quoteTimestamp);
+      if (updated === current) return previous;
+
+      const next = new Map(previous);
+      next.set(instrument, updated);
+      return next;
+    });
+  }, []);
+
   const {
     livePrices,
     isPolling,
@@ -122,6 +142,7 @@ export function usePositionIntelligence(
     enabled: monitoredInstruments.length > 0,
     pollIntervalMs: 30_000,
     onEvent: options?.onLiveEvent,
+    onPriceUpdate,
   });
 
   // ─── OHLCV Data (MTF candles) ────────────────────────────
@@ -132,28 +153,7 @@ export function usePositionIntelligence(
     onHealthEvent: options?.onOHLCVHealthEvent,
   });
 
-  // ─── Price Observations (per instrument) ─────────────────
-  const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
-
-  // Update observations whenever fresh live prices arrive.
-  useEffect(() => {
-    if (livePrices.size === 0) return;
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Live price changes must be appended to the historical observation accumulator.
-    setPriceObservations((prev) => {
-      const next = new Map(prev);
-
-      for (const [instrument, state] of livePrices) {
-        if (state.sourceMode !== "LIVE" || !isFinitePositivePrice(state.price)) continue;
-
-        const obs = next.get(instrument) ?? createObservationState(instrument);
-        const quoteTimestamp = state.quoteTimestamp ?? state.lastUpdateAt;
-        next.set(instrument, addObservation(obs, state.price, quoteTimestamp));
-      }
-
-      return next;
-    });
-  }, [livePrices]);
+  // Price observations are appended only from accepted live quote callbacks.
 
   // ─── Generate Intelligence per Position ───────────────────
   const intelligenceMap = useMemo(() => {
