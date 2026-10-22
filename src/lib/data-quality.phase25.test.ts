@@ -113,7 +113,7 @@ describe("Phase 25 — primary data quality assessment", () => {
     }
     const dq = assessDataQuality(input);
     expect(dq.primaryData.status).toBe("STALE");
-    expect(dq.primaryData.reason).toContain("realtime price snapshot is older");
+    expect(dq.primaryData.reason).toContain("Realtime price snapshot is older");
   });
 });
 
