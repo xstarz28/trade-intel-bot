@@ -10,7 +10,7 @@ function finiteNumber(value: unknown): number | undefined {
 }
 
 export type TwelveDataQuoteNormalization =
-  | { success: true; price: number; bid?: number; ask?: number }
+  | { success: true; price: number; timestamp: number; bid?: number; ask?: number }
   | { success: false; error: string };
 
 /**
@@ -34,6 +34,15 @@ export function normalizeTwelveDataQuotePayload(payload: unknown): TwelveDataQuo
     return { success: false, error: "TwelveData returned an invalid closing price" };
   }
 
+  const rawTimestamp = finiteNumber(payload.timestamp);
+  if (rawTimestamp === undefined || rawTimestamp <= 0) {
+    return { success: false, error: "TwelveData returned an invalid quote timestamp" };
+  }
+  const timestamp = rawTimestamp < 1_000_000_000_000 ? rawTimestamp * 1000 : rawTimestamp;
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return { success: false, error: "TwelveData returned an invalid quote timestamp" };
+  }
+
   const parsedBid = finiteNumber(payload.bid);
   const parsedAsk = finiteNumber(payload.ask);
   const bid = parsedBid !== undefined && parsedBid > 0 ? parsedBid : undefined;
@@ -43,6 +52,7 @@ export function normalizeTwelveDataQuotePayload(payload: unknown): TwelveDataQuo
   return {
     success: true,
     price,
+    timestamp,
     ...(!crossedSpread && bid !== undefined ? { bid } : {}),
     ...(!crossedSpread && ask !== undefined ? { ask } : {}),
   };
