@@ -543,7 +543,6 @@ export function PositionProtectionDashboard() {
     const analyzed = intelligenceMap.size;
     const total = positions.length;
     const success = analyzed > 0 && analyzed >= total;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Record the completed asynchronous intelligence cycle in runtime health.
     recordHealthResult({
       component: "INTELLIGENCE_ENGINE",
       operation: `Analyzed ${analyzed}/${total} positions`,
@@ -555,7 +554,6 @@ export function PositionProtectionDashboard() {
   // Phase 100: Record portfolio intelligence health events (uses memoized portfolioIntel)
   useEffect(() => {
     if (!portfolioIntel) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Synchronize the completed portfolio-analysis result into runtime health.
     recordHealthResult({
       component: "PORTFOLIO_INTELLIGENCE",
       operation: "Portfolio analysis",
