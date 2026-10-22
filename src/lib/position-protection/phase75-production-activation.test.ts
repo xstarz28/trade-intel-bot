@@ -49,11 +49,16 @@ interface LiveInstrument {
   success: boolean;
 }
 
+const BTC_FIXTURE_PRICE = 80_000;
+const ETH_FIXTURE_PRICE = 3_000;
+const SOL_FIXTURE_PRICE = 150;
+const DOGE_FIXTURE_PRICE = 0.2;
+
 const marketFixtures: LiveInstrument[] = [
-  { instrument: "BTC/USDT", price: 80_000, provider: "CoinGeckoFixture", success: true },
-  { instrument: "ETH/USDT", price: 3_000, provider: "CoinGeckoFixture", success: true },
-  { instrument: "SOL/USDT", price: 150, provider: "CoinGeckoFixture", success: true },
-  { instrument: "DOGE/USDT", price: 0.2, provider: "CoinGeckoFixture", success: true },
+  { instrument: "BTC/USDT", price: BTC_FIXTURE_PRICE, provider: "CoinGeckoFixture", success: true },
+  { instrument: "ETH/USDT", price: ETH_FIXTURE_PRICE, provider: "CoinGeckoFixture", success: true },
+  { instrument: "SOL/USDT", price: SOL_FIXTURE_PRICE, provider: "CoinGeckoFixture", success: true },
+  { instrument: "DOGE/USDT", price: DOGE_FIXTURE_PRICE, provider: "CoinGeckoFixture", success: true },
 ];
 
 // ═══════════════════════════════════════════════════════════════
@@ -142,8 +147,7 @@ describe("C. Quote Fixture → Protection Pipeline", () => {
   });
 
   it("processes a quote fixture through the protection controller", () => {
-    const btc = marketFixtures.find((r) => r.instrument === "BTC/USDT");
-    const price = btc?.success ? btc.price : 80_000;
+    const price = BTC_FIXTURE_PRICE;
 
     let controller = createControllerState();
     controller = registerPosition(controller, {
@@ -180,8 +184,7 @@ describe("C. Quote Fixture → Protection Pipeline", () => {
   });
 
   it("LONG and SHORT on same instrument have independent state", () => {
-    const btc = marketFixtures.find((r) => r.instrument === "BTC/USDT");
-    const price = btc?.success ? btc.price : 80_000;
+    const price = BTC_FIXTURE_PRICE;
 
     let controller = createControllerState();
     controller = registerPosition(controller, {
@@ -234,10 +237,8 @@ describe("C. Quote Fixture → Protection Pipeline", () => {
   });
 
   it("BTC and ETH are isolated from each other", () => {
-    const btc = marketFixtures.find((r) => r.instrument === "BTC/USDT");
-    const eth = marketFixtures.find((r) => r.instrument === "ETH/USDT");
-    const btcPrice = btc?.success ? btc.price : 80_000;
-    const ethPrice = eth?.success ? eth.price : 3_000;
+    const btcPrice = BTC_FIXTURE_PRICE;
+    const ethPrice = ETH_FIXTURE_PRICE;
 
     let controller = createControllerState();
     controller = registerPosition(controller, {
@@ -507,8 +508,7 @@ describe("F. Polling Lifecycle", () => {
 
 describe("G. No Auto-Execution Safety", () => {
   it("protection engine never produces order actions", () => {
-    const btc = marketFixtures.find((r) => r.instrument === "BTC/USDT");
-    const price = btc?.success ? btc.price : 80_000;
+    const price = BTC_FIXTURE_PRICE;
 
     let controller = createControllerState();
     controller = registerPosition(controller, {
