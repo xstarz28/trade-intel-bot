@@ -23,7 +23,7 @@ function errorMessage(error: unknown): string {
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { normalizeTwelveDataQuotePayload } from "./provider-quote-validation";
+import { normalizeTwelveDataQuotePayload, normalizeYahooFinanceQuotePayload } from "./provider-quote-validation";
 
 // ═══════════════════════════════════════════════════════════════
 // COINGECKO — FREE, NO KEY NEEDED
@@ -312,33 +312,22 @@ async function fetchYahooFinanceQuote(
       };
     }
 
-    const data = await res.json();
-    const meta = data?.chart?.result?.[0]?.meta;
-    if (!meta || typeof meta.regularMarketPrice !== "number") {
+    const data: unknown = await res.json();
+    const normalized = normalizeYahooFinanceQuotePayload(data);
+    if (!normalized.success) {
       return {
         instrument: symbol,
         price: 0,
         timestamp: Date.now(),
         success: false,
-        error: "Yahoo Finance: no price data",
-      };
-    }
-
-    const price = meta.regularMarketPrice;
-    if (!Number.isFinite(price) || price <= 0) {
-      return {
-        instrument: symbol,
-        price: 0,
-        timestamp: Date.now(),
-        success: false,
-        error: `Yahoo Finance: invalid price ${price}`,
+        error: normalized.error,
       };
     }
 
     return {
       instrument: symbol,
-      price,
-      timestamp: (meta.regularMarketTime ?? Date.now()) * 1000,
+      price: normalized.price,
+      timestamp: normalized.timestamp,
       success: true,
     };
   } catch (err: unknown) {
