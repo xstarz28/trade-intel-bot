@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTwelveDataQuotePayload } from "./provider-quote-validation";
+import { normalizeTwelveDataQuotePayload, normalizeYahooFinanceQuotePayload } from "./provider-quote-validation";
 
 describe("normalizeTwelveDataQuotePayload", () => {
   it("accepts a finite positive close without inventing missing bid/ask", () => {
@@ -63,6 +63,34 @@ describe("normalizeTwelveDataQuotePayload", () => {
     })).toEqual({
       success: false,
       error: "TwelveData [429]: rate limit",
+    });
+  });
+});
+
+describe("normalizeYahooFinanceQuotePayload", () => {
+  it("uses the provider market timestamp instead of local receipt time", () => {
+    expect(normalizeYahooFinanceQuotePayload({
+      chart: {
+        result: [{
+          meta: {
+            regularMarketPrice: 101.25,
+            regularMarketTime: 1_792_663_200,
+          },
+        }],
+      },
+    })).toEqual({
+      success: true,
+      price: 101.25,
+      timestamp: 1_792_663_200_000,
+    });
+  });
+
+  it("rejects quotes without a valid provider market timestamp", () => {
+    expect(normalizeYahooFinanceQuotePayload({
+      chart: { result: [{ meta: { regularMarketPrice: 101.25 } }] },
+    })).toEqual({
+      success: false,
+      error: "Yahoo Finance returned an invalid market timestamp",
     });
   });
 });
