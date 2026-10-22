@@ -12,7 +12,8 @@
     "test": "vitest run",
     "frontend:prebuilt": "node scripts/prepare-vercel-output.mjs",
     "frontend:publish:rest": "node scripts/deploy-frontend-rest.mjs",
-    "verify:frontend:release": "node scripts/verify-frontend-release.mjs"
+    "verify:frontend:release": "node scripts/verify-frontend-release.mjs",
+    "verify:coingecko:live": "node scripts/verify-coingecko-live.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.90",
