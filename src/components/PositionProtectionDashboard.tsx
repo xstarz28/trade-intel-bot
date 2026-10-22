@@ -416,7 +416,7 @@ export function PositionProtectionDashboard() {
           (state.success
             ? "Provider returned an invalid or non-finite price"
             : "Provider fetch failed without an error message");
-        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        recordHealthResult({
           component: "MARKET_DATA",
           source: state.provider,
           operation: `Price fetch: ${state.instrument}`,
@@ -526,7 +526,7 @@ export function PositionProtectionDashboard() {
     const analyzed = intelligenceMap.size;
     const total = positions.length;
     const success = analyzed > 0 && analyzed >= total;
-    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+    recordHealthResult({
       component: "INTELLIGENCE_ENGINE",
       operation: `Analyzed ${analyzed}/${total} positions`,
       success,
@@ -537,7 +537,7 @@ export function PositionProtectionDashboard() {
   // Phase 100: Record portfolio intelligence health events (uses memoized portfolioIntel)
   useEffect(() => {
     if (!portfolioIntel) return;
-    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+    recordHealthResult({
       component: "PORTFOLIO_INTELLIGENCE",
       operation: "Portfolio analysis",
       success: true,
@@ -639,13 +639,13 @@ export function PositionProtectionDashboard() {
         if (decision.shouldPersistSnapshot && !stale) {
           lastPersistedRef.current.set(posId, snapshotIdentity(snapshot));
           saveSnapshotMut(snapshotToArgs(snapshot)).then(() => {
-            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+            recordHealthResult({
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save snapshot",
               success: true,
             });
           }).catch((err) => {
-            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+            recordHealthResult({
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save snapshot",
               success: false,
@@ -657,13 +657,13 @@ export function PositionProtectionDashboard() {
           saveEventsMut(eventsToArgs(
             posId, intel.instrument, intel.side, decision.newEvents,
           )).then(() => {
-            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+            recordHealthResult({
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save events",
               success: true,
             });
           }).catch((err) => {
-            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+            recordHealthResult({
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save events",
               success: false,
@@ -754,7 +754,7 @@ export function PositionProtectionDashboard() {
     diagnosticsRef.current = applyDiagnosticRetention([...diagnosticsRef.current, ...result.diagnostics], MAX_DIAGNOSTIC_EVENTS);
 
     // Phase 100: Record alert pipeline health
-    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+    recordHealthResult({
       component: "ALERT_RULE_ENGINE",
       operation: `Evaluated ${typedRules.length} rules`,
       success: true,
@@ -781,14 +781,14 @@ export function PositionProtectionDashboard() {
         condition: notif.condition,
       }).then(() => {
         // Phase 100: Record notification persistence success
-        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        recordHealthResult({
           component: "NOTIFICATION_PERSISTENCE",
           operation: "Persist notification",
           success: true,
         });
       }).catch((err) => {
         // Phase 100: Record notification persistence failure
-        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        recordHealthResult({
           component: "NOTIFICATION_PERSISTENCE",
           operation: "Persist notification",
           success: false,
