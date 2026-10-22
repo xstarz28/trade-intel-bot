@@ -718,6 +718,47 @@ describe("H — Live Client Execution", () => {
     expect(isLiveStatus(r.diagnostic.status)).toBe(true);
   });
 
+  it("CoinGecko universal quote requires a fresh provider timestamp", async () => {
+    const valid = await executeLiveRequest({
+      instrument: "BTC/USD",
+      capability: "quote",
+      providerNative: { provider: "coingecko", providerInstrumentId: "bitcoin", assetClass: "crypto" },
+      transport: mockTransport({ bitcoin: { usd: 67_000, last_updated_at: Math.floor(NOW / 1_000) } }),
+      now: NOW,
+    });
+    expect(valid.status).toBe("LIVE_VERIFIED");
+    expect(valid.quote?.price).toBe(67_000);
+
+    const stale = await executeLiveRequest({
+      instrument: "BTC/USD",
+      capability: "quote",
+      providerNative: { provider: "coingecko", providerInstrumentId: "bitcoin", assetClass: "crypto" },
+      transport: mockTransport({ bitcoin: { usd: 67_000, last_updated_at: Math.floor((NOW - 10 * 60_000) / 1_000) } }),
+      now: NOW,
+    });
+    expect(stale.status).toBe("MALFORMED_RESPONSE");
+    expect(stale.quote).toBeUndefined();
+  });
+
+  it("CoinGecko universal endpoint requests provider update timestamps", async () => {
+    let requestedUrl = "";
+    await executeLiveRequest({
+      instrument: "BTC/USD",
+      capability: "quote",
+      providerNative: { provider: "coingecko", providerInstrumentId: "bitcoin", assetClass: "crypto" },
+      transport: async (url) => {
+        requestedUrl = url;
+        return {
+          ok: true,
+          status: 200,
+          json: { bitcoin: { usd: 67_000, last_updated_at: Math.floor(NOW / 1_000) } },
+        };
+      },
+      now: NOW,
+    });
+    expect(new URL(requestedUrl).searchParams.get("include_last_updated_at")).toBe("true");
+  });
+
   it("diagnostic never contains credentials", async () => {
     const tdResponse = {
       symbol: "BTC/USD",
