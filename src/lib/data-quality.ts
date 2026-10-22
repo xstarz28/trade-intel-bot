@@ -76,6 +76,16 @@ const MACD_MIN = 35;
 const ATR_MIN = 14;
 const SMC_MIN = 20;
 
+const TIMEFRAME_MAX_REALTIME_AGE_MS: Record<AnalysisInput["timeframe"], number> = {
+  M1: 3 * 60_000,
+  M5: 15 * 60_000,
+  M15: 45 * 60_000,
+  H1: 3 * 60 * 60_000,
+  H4: 12 * 60 * 60_000,
+  D1: 3 * 24 * 60 * 60_000,
+  W1: 21 * 24 * 60 * 60_000,
+};
+
 function assessPrimaryData(
   input: AnalysisInput,
 ): QualityItem {
@@ -121,6 +131,21 @@ function assessPrimaryData(
       return {
         status: "INVALID",
         reason: "Price timestamp is invalid or implausibly future",
+        provider: md.provider,
+      };
+    }
+
+    // A provider may incorrectly label an old snapshot as realtime. Apply an
+    // age check only to realtime feeds; delayed/historical feeds are explicitly
+    // classified by their provider metadata and must not be judged by wall time.
+    if (
+      md.dataFreshness === "realtime" &&
+      ts !== undefined &&
+      Date.now() - ts > TIMEFRAME_MAX_REALTIME_AGE_MS[input.timeframe]
+    ) {
+      return {
+        status: "STALE",
+        reason: `Realtime price snapshot is older than the allowed ${input.timeframe} freshness window`,
         provider: md.provider,
       };
     }
