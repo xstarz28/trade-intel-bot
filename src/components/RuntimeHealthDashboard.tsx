@@ -70,6 +70,12 @@ interface RuntimeHealthDashboardProps {
 export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardProps) {
   const { t } = useI18n();
   const [showHistory, setShowHistory] = useState(false);
+  const [clockNow, setClockNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   const latestHealth = useQuery(api.runtimeHealth.getLatestRuntimeHealth);
   const healthHistory = useQuery(
@@ -81,9 +87,8 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
   // Build live snapshot from input signals
   const liveSnapshot: RuntimeHealthSnapshot | null = useMemo(() => {
     if (!healthInput) return null;
-    // eslint-disable-next-line react-hooks/purity -- Freshness must be assessed against wall-clock time when this input snapshot is created.
-    return buildRuntimeHealthSnapshot(healthInput, Date.now());
-  }, [healthInput]);
+    return buildRuntimeHealthSnapshot(healthInput, clockNow);
+  }, [healthInput, clockNow]);
 
   // Reconstruct persisted data separately so live snapshots can be deduplicated
   // against the last stored state before writing another history record.
