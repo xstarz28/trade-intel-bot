@@ -336,6 +336,29 @@ export function PositionProtectionDashboard() {
     persistenceDegraded,
   } = usePositionProtection();
 
+  const [healthRevision, setHealthRevision] = useState(0);
+  const [healthClockNow, setHealthClockNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setHealthClockNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const recordHealthResult = useCallback(
+    (params: Parameters<typeof recordProviderResult>[1]) => {
+      // eslint-disable-next-line react-hooks/immutability -- One intentional mutable accumulator serializes health events from polling, effects, and async persistence callbacks.
+      healthBufferRef.current = recordProviderResult(healthBufferRef.current, params);
+      setHealthRevision((revision) => revision + 1);
+    },
+    [],
+  );
+
+  const markHealthSnapshotPersisted = useCallback((snapshot: ReturnType<typeof buildSnapshotFromBuffer>) => {
+    // eslint-disable-next-line react-hooks/immutability -- Persistence metadata belongs to the same serialized health accumulator.
+    healthBufferRef.current = markPersisted(healthBufferRef.current, snapshot);
+    setHealthRevision((revision) => revision + 1);
+  }, []);
+
   // ─── Shared Position Intelligence ───────────────────────
   // Single derivation of the per-position intelligence map, shared with the
   // investor workspace so the intelligence engine is never run twice by
@@ -357,7 +380,7 @@ export function PositionProtectionDashboard() {
       }
     },
     onOHLCVHealthEvent: useCallback((event: OHLCVHealthEvent) => {
-      healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+      recordHealthResult({
         component: event.component,
         source: event.source,
         operation: event.operation,
@@ -366,7 +389,7 @@ export function PositionProtectionDashboard() {
         error: event.error,
         message: event.message,
       });
-    }, []),
+    }, [recordHealthResult]),
   });
   const [activeTab, setActiveTab] = useState<"workspace" | "positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications" | "system">("workspace");
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
@@ -381,8 +404,7 @@ export function PositionProtectionDashboard() {
 
     for (const [, state] of livePrices) {
       if (state.success && Number.isFinite(state.price) && state.price > 0) {
-        // eslint-disable-next-line react-hooks/immutability -- The health buffer is an intentional mutable accumulator shared with async provider callbacks; preserve ordered per-instrument recording without a second state timeline.
-        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        recordHealthResult({
           component: "MARKET_DATA",
           source: state.provider,
           operation: `Price fetch: ${state.instrument}`,
@@ -504,7 +526,6 @@ export function PositionProtectionDashboard() {
     const analyzed = intelligenceMap.size;
     const total = positions.length;
     const success = analyzed > 0 && analyzed >= total;
-    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
     healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
       component: "INTELLIGENCE_ENGINE",
       operation: `Analyzed ${analyzed}/${total} positions`,
@@ -516,7 +537,6 @@ export function PositionProtectionDashboard() {
   // Phase 100: Record portfolio intelligence health events (uses memoized portfolioIntel)
   useEffect(() => {
     if (!portfolioIntel) return;
-    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
     healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
       component: "PORTFOLIO_INTELLIGENCE",
       operation: "Portfolio analysis",
@@ -573,8 +593,10 @@ export function PositionProtectionDashboard() {
   const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
   const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
   const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
-  // eslint-disable-next-line react-hooks/refs, react-hooks/purity, react-hooks/exhaustive-deps -- The ref-backed health snapshot is intentionally invalidated when intelligence updates; persistence writes remain effect-owned.
-  const healthSnapshot = useMemo(() => buildSnapshotFromBuffer(healthBufferRef.current, Date.now()), [intelligenceMap]);
+  const healthSnapshot = useMemo(
+    () => buildSnapshotFromBuffer(healthBufferRef.current, healthClockNow),
+    [healthRevision, healthClockNow],
+  );
 
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
   useEffect(() => {
@@ -732,7 +754,6 @@ export function PositionProtectionDashboard() {
     diagnosticsRef.current = applyDiagnosticRetention([...diagnosticsRef.current, ...result.diagnostics], MAX_DIAGNOSTIC_EVENTS);
 
     // Phase 100: Record alert pipeline health
-    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
     healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
       component: "ALERT_RULE_ENGINE",
       operation: `Evaluated ${typedRules.length} rules`,
@@ -814,8 +835,7 @@ export function PositionProtectionDashboard() {
     const now = Date.now();
     const snapshotToPersist = shouldPersistFromBuffer(healthBufferRef.current, now);
     if (snapshotToPersist) {
-    // eslint-disable-next-line react-hooks/immutability -- This mutable health accumulator is updated by effects and event callbacks.
-      healthBufferRef.current = markPersisted(healthBufferRef.current, snapshotToPersist);
+      markHealthSnapshotPersisted(snapshotToPersist);
       isPersistingHealthRef.current = true;
       saveHealthMut({
         timestamp: snapshotToPersist.timestamp,
@@ -840,12 +860,14 @@ export function PositionProtectionDashboard() {
         unavailableComponents: snapshotToPersist.unavailableComponents,
       }).then(() => {
         isPersistingHealthRef.current = false;
+        setHealthRevision((revision) => revision + 1);
       }).catch(() => {
         isPersistingHealthRef.current = false;
         // Do NOT record a health event for persistence failure — prevents recursive loop
+        setHealthRevision((revision) => revision + 1);
       });
     }
-  }, [intelligenceMap, positions.length, saveHealthMut]);
+  }, [intelligenceMap, positions.length, saveHealthMut, healthRevision, markHealthSnapshotPersisted]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
