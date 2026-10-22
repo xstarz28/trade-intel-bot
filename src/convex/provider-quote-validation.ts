@@ -57,3 +57,34 @@ export function normalizeTwelveDataQuotePayload(payload: unknown): TwelveDataQuo
     ...(!crossedSpread && ask !== undefined ? { ask } : {}),
   };
 }
+/** Normalize Yahoo Finance chart payloads without inventing a local quote time. */
+export function normalizeYahooFinanceQuotePayload(payload: unknown):
+  | { success: true; price: number; timestamp: number }
+  | { success: false; error: string } {
+  if (!isRecord(payload) || !isRecord(payload.chart)) {
+    return { success: false, error: "Yahoo Finance returned an invalid chart payload" };
+  }
+
+  const results = payload.chart.result;
+  const firstResult = Array.isArray(results) ? results[0] : undefined;
+  if (!isRecord(firstResult) || !isRecord(firstResult.meta)) {
+    return { success: false, error: "Yahoo Finance returned no quote metadata" };
+  }
+
+  const price = finiteNumber(firstResult.meta.regularMarketPrice);
+  if (price === undefined || price <= 0) {
+    return { success: false, error: "Yahoo Finance returned an invalid market price" };
+  }
+
+  const rawTimestamp = finiteNumber(firstResult.meta.regularMarketTime);
+  if (rawTimestamp === undefined || rawTimestamp <= 0) {
+    return { success: false, error: "Yahoo Finance returned an invalid market timestamp" };
+  }
+  const timestamp = rawTimestamp < 1_000_000_000_000 ? rawTimestamp * 1000 : rawTimestamp;
+  if (!Number.isFinite(timestamp) || timestamp <= 0) {
+    return { success: false, error: "Yahoo Finance returned an invalid market timestamp" };
+  }
+
+  return { success: true, price, timestamp };
+}
+
