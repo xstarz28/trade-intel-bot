@@ -852,7 +852,6 @@ export function PositionProtectionDashboard() {
     const now = Date.now();
     const snapshotToPersist = shouldPersistFromBuffer(healthBufferRef.current, now);
     if (snapshotToPersist) {
-      markHealthSnapshotPersisted(snapshotToPersist);
       isPersistingHealthRef.current = true;
       saveHealthMut({
         timestamp: snapshotToPersist.timestamp,
@@ -876,12 +875,14 @@ export function PositionProtectionDashboard() {
         staleComponents: snapshotToPersist.staleComponents,
         unavailableComponents: snapshotToPersist.unavailableComponents,
       }).then(() => {
+        // Mark only confirmed writes as persisted; failed writes must remain retryable.
+        markHealthSnapshotPersisted(snapshotToPersist);
         isPersistingHealthRef.current = false;
         touchHealthBuffer();
       }).catch(() => {
         isPersistingHealthRef.current = false;
-        // Do NOT record a health event for persistence failure — prevents recursive loop
-        touchHealthBuffer();
+        // Leave the snapshot unmarked so a later health event or clock tick can retry.
+        // Do NOT record a health event for persistence failure — prevents recursive loop.
       });
     }
   }, [intelligenceMap, positions.length, saveHealthMut, healthBuffer, healthSnapshot, markHealthSnapshotPersisted, touchHealthBuffer]);
