@@ -210,11 +210,8 @@ async function fetchTwelveDataQuote(
         { signal: AbortSignal.timeout(10_000) },
       );
       const json: unknown = await res.json();
-      if (!isRecord(json)) {
-        return failure("TwelveData returned an invalid quote payload");
-      }
 
-      if (res.status === 429 || Number(json.code) === 429) {
+      if (res.status === 429 || (isRecord(json) && Number(json.code) === 429)) {
         // Rate limited — back off and retry
         if (attempt < retries) {
           await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
@@ -224,6 +221,10 @@ async function fetchTwelveDataQuote(
 
       if (!res.ok) {
         return failure(`TwelveData HTTP ${res.status}`);
+      }
+
+      if (!isRecord(json)) {
+        return failure("TwelveData returned an invalid quote payload");
       }
 
       if (json.code) {
