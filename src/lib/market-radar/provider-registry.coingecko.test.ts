@@ -14,9 +14,12 @@ afterEach(() => {
 describe("CoinGecko Market Radar adapter", () => {
   it("uses the shared validated quote path and preserves the provider timestamp", async () => {
     const nowSeconds = Math.floor(Date.now() / 1000);
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      bitcoin: { usd: 68000, last_updated_at: nowSeconds },
-    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+      void _init;
+      return new Response(JSON.stringify({
+        bitcoin: { usd: 68000, last_updated_at: nowSeconds },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await coingeckoAdapter().fetch("BTC/USD", "crypto", () => undefined);
@@ -39,9 +42,12 @@ describe("CoinGecko Market Radar adapter", () => {
 
   it("returns null for stale or unsupported CoinGecko quotes instead of inventing freshness", async () => {
     const staleSeconds = Math.floor(Date.now() / 1000) - 10 * 60;
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-      bitcoin: { usd: 68000, last_updated_at: staleSeconds },
-    }), { status: 200, headers: { "content-type": "application/json" } }));
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+      void _init;
+      return new Response(JSON.stringify({
+        bitcoin: { usd: 68000, last_updated_at: staleSeconds },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(coingeckoAdapter().fetch("BTC/USD", "crypto", () => undefined)).resolves.toBeNull();
