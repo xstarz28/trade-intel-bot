@@ -595,6 +595,7 @@ export function PositionProtectionDashboard() {
 
   const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
   const healthSnapshot = useMemo(
+    // eslint-disable-next-line react-hooks/refs -- Read the serialized health accumulator only when its revision or freshness clock changes.
     () => buildSnapshotFromBuffer(healthBufferRef.current, healthClockNow),
     [healthRevision, healthClockNow],
   );
