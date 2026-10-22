@@ -30,4 +30,16 @@ describe("addObservation", () => {
     expect(withValidPrice.observations).toEqual([{ price: 65_000, timestamp: 1_000 }]);
     expect(withValidPrice.lastUpdateAt).toBe(1_000);
   });
+
+  it("does not append observations with invalid, duplicate, or out-of-order timestamps", () => {
+    const initial = createObservationState("BTC/USDT");
+    const withValidPrice = addObservation(initial, 65_000, 1_000);
+
+    for (const timestamp of [Number.NaN, Number.POSITIVE_INFINITY, 1_000, 999]) {
+      expect(addObservation(withValidPrice, 65_100, timestamp)).toBe(withValidPrice);
+    }
+
+    expect(withValidPrice.observations).toEqual([{ price: 65_000, timestamp: 1_000 }]);
+    expect(withValidPrice.lastUpdateAt).toBe(1_000);
+  });
 });
