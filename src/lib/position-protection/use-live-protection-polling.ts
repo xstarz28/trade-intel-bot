@@ -32,6 +32,8 @@ export interface LiveInstrumentState {
   volume24h?: number;
   provider: string;
   sourceMode: "LIVE" | "SIMULATED" | "STALE" | "UNAVAILABLE";
+  /** Provider-supplied quote timestamp (distinct from local poll time). */
+  quoteTimestamp?: number;
   lastUpdateAt: number;
   success: boolean;
   error?: string;
@@ -175,6 +177,7 @@ export function useLiveProtectionPolling(
             volume24h: result.volume24h,
             provider: result.provider,
             sourceMode: result.sourceMode,
+            quoteTimestamp: result.timestamp,
             lastUpdateAt: now,
             success: true,
           });
