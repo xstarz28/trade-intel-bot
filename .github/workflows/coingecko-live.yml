@@ -2,6 +2,11 @@ name: CoinGecko Live Integration (Public API)
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/coingecko-live.yml"
+      - "scripts/verify-coingecko-live.mjs"
+      - "scripts/verify-coingecko-live.test.mjs"
 
 permissions:
   contents: read
