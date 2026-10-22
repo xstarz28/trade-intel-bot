@@ -14,7 +14,7 @@
  * - Convex action contract
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   routeInstrument,
   detectAssetClass,
@@ -37,7 +37,9 @@ import type { RealTimeEvent } from "./realtime-types";
 import { removePosition } from "./continuous-protection-controller";
 
 // ═══════════════════════════════════════════════════════════════
-// LIVE DATA GATE — real HTTP requests
+// DETERMINISTIC MARKET DATA FIXTURES
+// Live provider access is verified separately by scripts/verify-coingecko-live.mjs.
+// Unit tests must not depend on shared public API rate limits.
 // ═══════════════════════════════════════════════════════════════
 
 interface LiveInstrument {
@@ -45,94 +47,32 @@ interface LiveInstrument {
   price: number;
   provider: string;
   success: boolean;
-  error?: string;
 }
 
-let liveResults: LiveInstrument[] = [];
-
-async function fetchCoingeckoBatch(instruments: string[]): Promise<LiveInstrument[]> {
-  const coinMap: Record<string, string> = {
-    "BTC/USDT": "bitcoin",
-    "ETH/USDT": "ethereum",
-    "SOL/USDT": "solana",
-    "DOGE/USDT": "dogecoin",
-  };
-
-  const ids = instruments
-    .map((i) => coinMap[i.toUpperCase().trim()])
-    .filter(Boolean)
-    .join(",");
-
-  if (!ids) return [];
-
-  const res = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true`,
-    { signal: AbortSignal.timeout(10_000) },
-  );
-
-  // Rate limited — return empty results, don't throw
-  if (res.status === 429) {
-    console.warn("COINGECKO: Rate limited (429) — tests will be skipped");
-    return [];
-  }
-
-  const data = await res.json();
-
-  // CoinGecko error response
-  if (data && typeof data === "object" && "error" in data) {
-    console.warn("COINGECKO: API error —", data.error);
-    return [];
-  }
-
-  return instruments.map((inst) => {
-    const coinId = coinMap[inst.toUpperCase().trim()];
-    const coinData = coinId ? data[coinId] : null;
-    const price = coinData?.usd;
-    return {
-      instrument: inst.toUpperCase().trim(),
-      price: typeof price === "number" ? price : 0,
-      provider: "CoinGecko",
-      success: typeof price === "number" && price > 0,
-    };
-  });
-}
+const liveResults: LiveInstrument[] = [
+  { instrument: "BTC/USDT", price: 80_000, provider: "CoinGeckoFixture", success: true },
+  { instrument: "ETH/USDT", price: 3_000, provider: "CoinGeckoFixture", success: true },
+  { instrument: "SOL/USDT", price: 150, provider: "CoinGeckoFixture", success: true },
+  { instrument: "DOGE/USDT", price: 0.2, provider: "CoinGeckoFixture", success: true },
+];
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION A: REAL LIVE DATA
+// SECTION A: MARKET DATA FIXTURE INTEGRITY
 // ═══════════════════════════════════════════════════════════════
 
-describe("A. Real Live Market Data", () => {
-  beforeAll(async () => {
-    try {
-      liveResults = await fetchCoingeckoBatch(["BTC/USDT", "ETH/USDT", "SOL/USDT", "DOGE/USDT"]);
-    } catch {
-      liveResults = [];
+describe("A. Market Data Fixture Integrity", () => {
+  it("contains finite positive prices for supported crypto instruments", () => {
+    expect(liveResults.length).toBeGreaterThanOrEqual(1);
+    for (const result of liveResults) {
+      expect(result.success).toBe(true);
+      expect(result.price).toBeGreaterThan(0);
+      expect(Number.isFinite(result.price)).toBe(true);
     }
   });
 
-  it("fetches at least one real crypto price from CoinGecko", ({ skip }) => {
-    if (liveResults.length === 0) {
-      skip("CoinGecko returned no results (rate limited or unavailable)");
-    }
-    const successes = liveResults.filter((r) => r.success);
-    if (successes.length === 0) {
-      skip("CoinGecko returned no valid positive prices");
-    }
-    expect(successes.length).toBeGreaterThanOrEqual(1);
-    for (const r of successes) {
-      expect(r.price).toBeGreaterThan(0);
-      expect(Number.isFinite(r.price)).toBe(true);
-    }
-  });
-
-  it("all successful prices are positive and unique", ({ skip }) => {
-    const successes = liveResults.filter((r) => r.success);
-    if (successes.length === 0) {
-      skip("CoinGecko returned no valid prices to validate");
-    }
-    const prices = successes.map((r) => r.price);
-    const unique = new Set(prices);
-    expect(unique.size).toBe(prices.length);
+  it("contains unique instrument identities", () => {
+    const instruments = liveResults.map((result) => result.instrument);
+    expect(new Set(instruments).size).toBe(instruments.length);
   });
 });
 
@@ -167,11 +107,8 @@ describe("B. Provider Routing Consistency", () => {
     expect(detectAssetClass("GBP/USD")).toBe("forex");
   });
 
-  it("CoinGecko is the actual runtime provider for crypto (since OKX key not configured)", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    if (btc?.success) {
-      expect(btc.provider).toBe("CoinGecko");
-    }
+  it("labels test prices as fixtures rather than live provider observations", () => {
+    expect(liveResults.every((result) => result.provider === "CoinGeckoFixture")).toBe(true);
   });
 });
 
