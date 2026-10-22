@@ -448,8 +448,8 @@ export const fetchLiveProtectionQuote = action({
     if (cryptoInstruments.length > 0) {
       const coingeckoResults = await fetchCoingeckoPrices(cryptoInstruments);
       for (const r of coingeckoResults) {
-        // OKX is the preferred primary provider for crypto,
-        // but CoinGecko is used as fallback (free, no key needed)
+        // The route registry prefers OKX, but this action currently queries CoinGecko
+        // and uses Binance Spot only when CoinGecko fails or is rate-limited.
         results.push({
           instrument: r.instrument,
           assetClass: "crypto",
@@ -461,8 +461,8 @@ export const fetchLiveProtectionQuote = action({
           primaryProvider: "OKX",
           fallbackUsed: true,
           fallbackReason: r.provider === "BinanceSpot"
-            ? "CoinGecko rate-limited or unavailable — Binance public spot fallback used"
-            : "OKX quote route unavailable — CoinGecko fallback used",
+            ? "OKX quote route is not called by this action; CoinGecko failed or was rate-limited, so Binance public spot fallback was used"
+            : "OKX quote route is not called by this action; CoinGecko supplied the quote",
           sourceMode: r.success ? "LIVE" : "UNAVAILABLE",
           success: r.success,
           error: r.error,
