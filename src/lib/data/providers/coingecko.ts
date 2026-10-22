@@ -115,11 +115,13 @@ export async function fetchCryptoPrice(
 
       const timestamp = updatedAt * 1_000;
       const fetchedAt = now();
-      // Do not treat a future-dated or excessively stale provider quote as live.
       if (timestamp > fetchedAt + 60_000 || fetchedAt - timestamp > 5 * 60_000) return null;
 
       const result: PriceSnapshot = { price, timestamp, source: "coingecko" };
-      if (useSharedCache) quoteCache.set(coinId, { quote: result, expiresAt: fetchedAt + CACHE_TTL_MS });
+      if (useSharedCache) {
+        rateLimitedUntil = 0;
+        quoteCache.set(coinId, { quote: result, expiresAt: fetchedAt + CACHE_TTL_MS });
+      }
       return result;
     }
     return null;
