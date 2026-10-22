@@ -10,7 +10,7 @@
  *
  * INFORMATIONAL_ONLY — never executes trades.
  */
-import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import React, { useEffect, useRef, useCallback, useState, useMemo, useSyncExternalStore } from "react";
 import { useI18n } from "@/lib/i18n";
 import {
   mapSide,
@@ -336,9 +336,31 @@ export function PositionProtectionDashboard() {
     persistenceDegraded,
   } = usePositionProtection();
 
-  const [healthRevision, setHealthRevision] = useState(0);
   const [healthClockNow, setHealthClockNow] = useState(() => Date.now());
   const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
+  const healthListenersRef = useRef(new Set<() => void>());
+
+  const subscribeHealthBuffer = useCallback((listener: () => void) => {
+    healthListenersRef.current.add(listener);
+    return () => {
+      healthListenersRef.current.delete(listener);
+    };
+  }, []);
+  const getHealthBufferSnapshot = useCallback(() => healthBufferRef.current, []);
+  const healthBuffer = useSyncExternalStore(
+    subscribeHealthBuffer,
+    getHealthBufferSnapshot,
+    getHealthBufferSnapshot,
+  );
+
+  const notifyHealthBuffer = useCallback(() => {
+    for (const listener of healthListenersRef.current) listener();
+  }, []);
+  const touchHealthBuffer = useCallback(() => {
+    // Publish a new immutable snapshot so subscribers retry persistence after an in-flight save.
+    healthBufferRef.current = { ...healthBufferRef.current };
+    notifyHealthBuffer();
+  }, [notifyHealthBuffer]);
 
   useEffect(() => {
     const timer = setInterval(() => setHealthClockNow(Date.now()), 30_000);
@@ -348,15 +370,15 @@ export function PositionProtectionDashboard() {
   const recordHealthResult = useCallback(
     (params: Parameters<typeof recordProviderResult>[1]) => {
       healthBufferRef.current = recordProviderResult(healthBufferRef.current, params);
-      setHealthRevision((revision) => revision + 1);
+      notifyHealthBuffer();
     },
-    [],
+    [notifyHealthBuffer],
   );
 
   const markHealthSnapshotPersisted = useCallback((snapshot: ReturnType<typeof buildSnapshotFromBuffer>) => {
     healthBufferRef.current = markPersisted(healthBufferRef.current, snapshot);
-    setHealthRevision((revision) => revision + 1);
-  }, []);
+    notifyHealthBuffer();
+  }, [notifyHealthBuffer]);
 
   // ─── Shared Position Intelligence ───────────────────────
   // Single derivation of the per-position intelligence map, shared with the
@@ -591,10 +613,8 @@ export function PositionProtectionDashboard() {
 
   const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
   const healthSnapshot = useMemo(
-    // eslint-disable-next-line react-hooks/refs -- Read the serialized health accumulator only when its revision or freshness clock changes.
-    () => buildSnapshotFromBuffer(healthBufferRef.current, healthClockNow),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- healthRevision explicitly invalidates this snapshot after mutable-buffer events.
-    [healthRevision, healthClockNow],
+    () => buildSnapshotFromBuffer(healthBuffer, healthClockNow),
+    [healthBuffer, healthClockNow],
   );
 
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
@@ -859,14 +879,14 @@ export function PositionProtectionDashboard() {
         unavailableComponents: snapshotToPersist.unavailableComponents,
       }).then(() => {
         isPersistingHealthRef.current = false;
-        setHealthRevision((revision) => revision + 1);
+        touchHealthBuffer();
       }).catch(() => {
         isPersistingHealthRef.current = false;
         // Do NOT record a health event for persistence failure — prevents recursive loop
-        setHealthRevision((revision) => revision + 1);
+        touchHealthBuffer();
       });
     }
-  }, [intelligenceMap, positions.length, saveHealthMut, healthRevision, markHealthSnapshotPersisted]);
+  }, [intelligenceMap, positions.length, saveHealthMut, healthBuffer, healthSnapshot, markHealthSnapshotPersisted, touchHealthBuffer]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
