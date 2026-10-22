@@ -389,21 +389,8 @@ export function PositionProtectionDashboard() {
         message: event.message,
       });
     }, [recordHealthResult]),
-  });
-  const [activeTab, setActiveTab] = useState<"workspace" | "positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications" | "system">("workspace");
-  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
-  const [timelines, setTimelines] = useState<Map<string, HistoricalTimeline>>(new Map());
-  const [showForm, setShowForm] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const prevAlertsRef = useRef<Map<string, AlertSeverity>>(new Map());
-
-  // ─── Phase 100: Record market data health from actual polling results ──
-  useEffect(() => {
-    if (livePrices.size === 0) return;
-
-    for (const [, state] of livePrices) {
+    onQuoteResult: useCallback((state: LiveInstrumentState) => {
       if (state.success && Number.isFinite(state.price) && state.price > 0) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect -- Record completed external provider results in the runtime-health accumulator.
         recordHealthResult({
           component: "MARKET_DATA",
           source: state.provider,
@@ -425,8 +412,16 @@ export function PositionProtectionDashboard() {
           message: error,
         });
       }
-    }
-  }, [livePrices, recordHealthResult]);
+    }, [recordHealthResult]),
+  });
+  const [activeTab, setActiveTab] = useState<"workspace" | "positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications" | "system">("workspace");
+  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
+  const [timelines, setTimelines] = useState<Map<string, HistoricalTimeline>>(new Map());
+  const [showForm, setShowForm] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const prevAlertsRef = useRef<Map<string, AlertSeverity>>(new Map());
+
+  // Market-data health is recorded at the provider-result callback boundary.
 
   // ─── Phase 90: Convex Historical Intelligence Persistence ──
   const saveSnapshotMut = useMutation(api.historicalIntelligence.saveSnapshot);
