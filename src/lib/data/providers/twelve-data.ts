@@ -135,9 +135,19 @@ export class TwelveDataProvider implements MarketDataProvider {
       throw new Error("Twelve Data returned an invalid closing price");
     }
 
+    const rawTimestamp = parseProviderNumber(payload.timestamp);
+    const timestamp = rawTimestamp === undefined
+      ? undefined
+      : rawTimestamp < 1_000_000_000_000
+        ? rawTimestamp * 1000
+        : rawTimestamp;
+    if (timestamp === undefined || !Number.isFinite(timestamp) || timestamp <= 0) {
+      throw new Error("Twelve Data returned an invalid quote timestamp");
+    }
+
     return {
       price,
-      timestamp: Date.now(),
+      timestamp,
       source: this.name,
       bid: parseProviderNumber(payload.bid),
       ask: parseProviderNumber(payload.ask),
