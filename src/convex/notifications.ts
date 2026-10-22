@@ -14,6 +14,16 @@ const MAX_NOTIFICATIONS = 200;
 async function resolveUserId(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
+
+  // Match the user-resolution path used by the journal and other persisted features.
+  if (identity.email) {
+    const byEmail = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", identity.email))
+      .unique();
+    if (byEmail) return byEmail._id;
+  }
+
   return ctx.db.normalizeId("users", identity.subject) as import("./_generated/dataModel").Id<"users"> | null;
 }
 
