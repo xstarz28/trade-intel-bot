@@ -45,12 +45,12 @@ describe("CoinGecko Market Radar adapter", () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
       void _init;
       return new Response(JSON.stringify({
-        bitcoin: { usd: 68000, last_updated_at: staleSeconds },
+        ethereum: { usd: 3200, last_updated_at: staleSeconds },
       }), { status: 200, headers: { "content-type": "application/json" } });
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(coingeckoAdapter().fetch("BTC/USD", "crypto", () => undefined)).resolves.toBeNull();
+    await expect(coingeckoAdapter().fetch("ETH/USD", "crypto", () => undefined)).resolves.toBeNull();
     await expect(coingeckoAdapter().fetch("UNKNOWN/USD", "crypto", () => undefined)).resolves.toBeNull();
   });
 });
