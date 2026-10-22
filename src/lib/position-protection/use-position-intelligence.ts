@@ -29,7 +29,6 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { MonitoredPositionState } from "./use-position-protection";
-import type { LiveInstrumentState } from "./use-live-protection-polling";
 import {
   useLiveProtectionPolling,
   type LiveInstrumentState,
