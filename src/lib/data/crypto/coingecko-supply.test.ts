@@ -25,6 +25,22 @@ describe("CoinGecko public supply fallback", () => {
     expect(parseCoinGeckoSupplyFallback({ market_data: { circulating_supply: 0, total_supply: null, max_supply: null } })).toBeNull();
   });
 
+  it("marks implausibly future source observations stale", () => {
+    const result = parseCoinGeckoSupplyFallback({
+      market_data: { circulating_supply: 100, last_updated: "2026-10-16T00:00:00.000Z" },
+    }, Date.parse("2026-10-15T00:00:00.000Z"));
+    expect(result?.freshness).toBe("STALE");
+    expect(result?.failureReason).toContain("unexpectedly in the future");
+  });
+
+  it("discloses missing provider timestamps instead of implying verified freshness", () => {
+    const result = parseCoinGeckoSupplyFallback({
+      market_data: { circulating_supply: 100 },
+    }, Date.parse("2026-10-15T00:00:00.000Z"));
+    expect(result?.failureReason).toContain("timestamp is missing or invalid");
+    expect(result?.quality).toBe("DEGRADED");
+  });
+
   it("marks old source observations stale", () => {
     const result = parseCoinGeckoSupplyFallback({
       market_data: { circulating_supply: 100, last_updated: "2026-10-10T00:00:00.000Z" },
