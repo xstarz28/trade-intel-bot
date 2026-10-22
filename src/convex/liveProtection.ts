@@ -49,125 +49,190 @@ const COINGECKO_IDS: Record<string, string> = {
   "UNI/USDT": "uniswap",
 };
 
-/** Fetch real prices from CoinGecko — batch endpoint, no key needed */
+type CryptoPriceResult = {
+  instrument: string;
+  coinId: string;
+  price: number;
+  change24h: number;
+  volume24h: number;
+  marketCap: number;
+  timestamp: number;
+  success: boolean;
+  provider: "CoinGecko" | "BinanceSpot";
+  error?: string;
+};
+
+const COINGECKO_CACHE_TTL_MS = 15_000;
+const COINGECKO_BACKOFF_DEFAULT_MS = 30_000;
+const coingeckoPriceCache = new Map<string, CryptoPriceResult>();
+let coingeckoRateLimitedUntil = 0;
+
+function failedCryptoResult(
+  instrument: string,
+  coinId: string,
+  error: string,
+  provider: CryptoPriceResult["provider"] = "CoinGecko",
+): CryptoPriceResult {
+  return {
+    instrument, coinId, price: 0, change24h: 0, volume24h: 0, marketCap: 0,
+    timestamp: Date.now(), success: false, provider, error,
+  };
+}
+
+/** Public exchange fallback for exact USDT spot pairs; never invents USD/USDT equivalence. */
+async function fetchBinanceSpotFallback(
+  instruments: Array<{ instrument: string; coinId: string }>,
+): Promise<Map<string, CryptoPriceResult>> {
+  const eligible = instruments.filter(({ instrument }) => instrument.endsWith("/USDT"));
+  if (eligible.length === 0) return new Map();
+
+  const symbolToInstrument = new Map(
+    eligible.map(({ instrument, coinId }) => [
+      instrument.replace("/", ""),
+      { instrument, coinId },
+    ]),
+  );
+  const symbols = [...symbolToInstrument.keys()];
+  try {
+    const url = "https://api.binance.com/api/v3/ticker/price?symbols=" +
+      encodeURIComponent(JSON.stringify(symbols));
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return new Map();
+    const payload: unknown = await response.json();
+    if (!Array.isArray(payload)) return new Map();
+
+    const results = new Map<string, CryptoPriceResult>();
+    const timestamp = Date.now();
+    for (const item of payload) {
+      if (!isRecord(item) || typeof item.symbol !== "string") continue;
+      const mapped = symbolToInstrument.get(item.symbol);
+      const price = typeof item.price === "string" ? Number(item.price) : item.price;
+      if (!mapped || typeof price !== "number" || !Number.isFinite(price) || price <= 0) continue;
+      const result: CryptoPriceResult = {
+        instrument: mapped.instrument,
+        coinId: mapped.coinId,
+        price,
+        change24h: 0,
+        volume24h: 0,
+        marketCap: 0,
+        timestamp,
+        success: true,
+        provider: "BinanceSpot",
+      };
+      results.set(mapped.instrument, result);
+      coingeckoPriceCache.set(mapped.instrument, result);
+    }
+    return results;
+  } catch {
+    return new Map();
+  }
+}
+
+/** Fetch real crypto prices; authenticate when a CoinGecko Demo key is configured and fail over on rate limits. */
 async function fetchCoingeckoPrices(
   instruments: string[],
-): Promise<
-  Array<{
-    instrument: string;
-    coinId: string;
-    price: number;
-    change24h: number;
-    volume24h: number;
-    marketCap: number;
-    timestamp: number;
-    success: boolean;
-    error?: string;
-  }>
-> {
-  // Map instruments to CoinGecko IDs
+): Promise<CryptoPriceResult[]> {
   const idMap = instruments.map((inst) => ({
     instrument: inst.toUpperCase().trim(),
     coinId: COINGECKO_IDS[inst.toUpperCase().trim()] ?? null,
   }));
+  const validCoins = idMap.filter(
+    (coin): coin is { instrument: string; coinId: string } => coin.coinId !== null,
+  );
+  const unknownResults = idMap
+    .filter((coin) => coin.coinId === null)
+    .map((coin) => failedCryptoResult(
+      coin.instrument, "unknown", `Unknown CoinGecko coin for ${coin.instrument}`,
+    ));
+  if (validCoins.length === 0) return unknownResults;
 
-  // Filter to known coins
-  const validCoins = idMap.filter((c) => c.coinId !== null);
-  if (validCoins.length === 0) {
-    return idMap.map((c) => ({
-      instrument: c.instrument,
-      coinId: c.coinId ?? "unknown",
-      price: 0,
-      change24h: 0,
-      volume24h: 0,
-      marketCap: 0,
-      timestamp: Date.now(),
-      success: false,
-      error: `Unknown CoinGecko coin for ${c.instrument}`,
-    }));
+  const now = Date.now();
+  const cached = validCoins.map((coin) => coingeckoPriceCache.get(coin.instrument));
+  if (cached.every((result) => result && now - result.timestamp <= COINGECKO_CACHE_TTL_MS)) {
+    return [...cached.filter((result): result is CryptoPriceResult => result !== undefined), ...unknownResults];
   }
 
-  const coinIds = validCoins.map((c) => c.coinId!).join(",");
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinIds}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true&include_market_cap=true`;
+  if (now < coingeckoRateLimitedUntil) {
+    const fallback = await fetchBinanceSpotFallback(validCoins);
+    const results = validCoins.map((coin) => fallback.get(coin.instrument) ??
+      failedCryptoResult(
+        coin.instrument, coin.coinId,
+        `CoinGecko rate limited; retry after ${new Date(coingeckoRateLimitedUntil).toISOString()} and no valid Binance Spot fallback was available`,
+      ));
+    return [...results, ...unknownResults];
+  }
 
+  const coinIds = [...new Set(validCoins.map((coin) => coin.coinId))].join(",");
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinIds)}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true&include_market_cap=true`;
   try {
-    const res = await fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(10_000),
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const demoApiKey = process.env.COINGECKO_DEMO_API_KEY?.trim();
+    if (demoApiKey) headers["x-cg-demo-api-key"] = demoApiKey;
+
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(8_000),
     });
 
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => "unknown");
-      return validCoins.map((c) => ({
-        instrument: c.instrument,
-        coinId: c.coinId!,
-        price: 0,
-        change24h: 0,
-        volume24h: 0,
-        marketCap: 0,
-        timestamp: Date.now(),
-        success: false,
-        error: `CoinGecko HTTP ${res.status}: ${errorText.slice(0, 100)}`,
-      }));
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1_000, 5 * 60_000)
+        : COINGECKO_BACKOFF_DEFAULT_MS;
+      coingeckoRateLimitedUntil = Date.now() + retryDelay;
+      const fallback = await fetchBinanceSpotFallback(validCoins);
+      const results = validCoins.map((coin) => fallback.get(coin.instrument) ??
+        failedCryptoResult(
+          coin.instrument, coin.coinId,
+          `CoinGecko HTTP 429; provider backoff until ${new Date(coingeckoRateLimitedUntil).toISOString()}; Binance Spot fallback unavailable`,
+        ));
+      return [...results, ...unknownResults];
     }
 
-    const data = await res.json();
-    const now = Date.now();
+    if (!response.ok) {
+      const detail = (await response.text().catch(() => "")).slice(0, 120);
+      const fallback = await fetchBinanceSpotFallback(validCoins);
+      const results = validCoins.map((coin) => fallback.get(coin.instrument) ??
+        failedCryptoResult(coin.instrument, coin.coinId, `CoinGecko HTTP ${response.status}: ${detail || "provider error"}`));
+      return [...results, ...unknownResults];
+    }
 
-    return validCoins.map((c) => {
-      const coinData = data[c.coinId!];
-      if (!coinData || typeof coinData.usd !== "number") {
-        return {
-          instrument: c.instrument,
-          coinId: c.coinId!,
-          price: 0,
-          change24h: 0,
-          volume24h: 0,
-          marketCap: 0,
-          timestamp: now,
-          success: false,
-          error: `No price data for ${c.coinId}`,
-        };
+    const payload: unknown = await response.json();
+    if (!isRecord(payload)) {
+      return [...validCoins.map((coin) =>
+        failedCryptoResult(coin.instrument, coin.coinId, "CoinGecko returned a malformed response")), ...unknownResults];
+    }
+
+    const fetchedAt = Date.now();
+    const results = validCoins.map((coin): CryptoPriceResult => {
+      const quote = payload[coin.coinId];
+      if (!isRecord(quote) || typeof quote.usd !== "number" ||
+          !Number.isFinite(quote.usd) || quote.usd <= 0) {
+        return failedCryptoResult(coin.instrument, coin.coinId, `No valid price data for ${coin.coinId}`);
       }
-
-      const price = coinData.usd;
-      if (!Number.isFinite(price) || price <= 0) {
-        return {
-          instrument: c.instrument,
-          coinId: c.coinId!,
-          price: 0,
-          change24h: 0,
-          volume24h: 0,
-          marketCap: 0,
-          timestamp: now,
-          success: false,
-          error: `Invalid price for ${c.coinId}: ${price}`,
-        };
-      }
-
-      return {
-        instrument: c.instrument,
-        coinId: c.coinId!,
-        price,
-        change24h: typeof coinData.usd_24h_change === "number" ? coinData.usd_24h_change : 0,
-        volume24h: typeof coinData.usd_24h_vol === "number" ? coinData.usd_24h_vol : 0,
-        marketCap: typeof coinData.usd_market_cap === "number" ? coinData.usd_market_cap : 0,
-        timestamp: now,
+      const result: CryptoPriceResult = {
+        instrument: coin.instrument,
+        coinId: coin.coinId,
+        price: quote.usd,
+        change24h: typeof quote.usd_24h_change === "number" && Number.isFinite(quote.usd_24h_change) ? quote.usd_24h_change : 0,
+        volume24h: typeof quote.usd_24h_vol === "number" && Number.isFinite(quote.usd_24h_vol) ? quote.usd_24h_vol : 0,
+        marketCap: typeof quote.usd_market_cap === "number" && Number.isFinite(quote.usd_market_cap) ? quote.usd_market_cap : 0,
+        timestamp: fetchedAt,
         success: true,
+        provider: "CoinGecko",
       };
+      coingeckoPriceCache.set(coin.instrument, result);
+      return result;
     });
-  } catch (err: unknown) {
-    return validCoins.map((c) => ({
-      instrument: c.instrument,
-      coinId: c.coinId!,
-      price: 0,
-      change24h: 0,
-      volume24h: 0,
-      marketCap: 0,
-      timestamp: Date.now(),
-      success: false,
-      error: `CoinGecko request failed: ${errorMessage(err)}`,
-    }));
+    return [...results, ...unknownResults];
+  } catch (error: unknown) {
+    const fallback = await fetchBinanceSpotFallback(validCoins);
+    const results = validCoins.map((coin) => fallback.get(coin.instrument) ??
+      failedCryptoResult(coin.instrument, coin.coinId, `CoinGecko request failed: ${errorMessage(error)}; Binance Spot fallback unavailable`));
+    return [...results, ...unknownResults];
   }
 }
 
@@ -393,10 +458,12 @@ export const fetchLiveProtectionQuote = action({
           change24h: r.change24h,
           volume24h: r.volume24h,
           timestamp: r.timestamp,
-          provider: "CoinGecko",
+          provider: r.provider,
           primaryProvider: "OKX",
           fallbackUsed: true,
-          fallbackReason: "OKX API key not configured — CoinGecko used as free fallback",
+          fallbackReason: r.provider === "BinanceSpot"
+            ? "CoinGecko rate-limited or unavailable — Binance public spot fallback used"
+            : "OKX quote route unavailable — CoinGecko fallback used",
           sourceMode: r.success ? "LIVE" : "UNAVAILABLE",
           success: r.success,
           error: r.error,
