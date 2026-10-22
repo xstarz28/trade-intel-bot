@@ -125,3 +125,87 @@ describe("ConvexPersistenceBridge (no client — fallback path)", () => {
     expect(await bridge.isAvailable()).toBe(true);
   });
 });
+
+
+describe("ConvexPersistenceBridge (write efficiency)", () => {
+  it("coalesces unchanged position heartbeats but persists meaningful state changes", async () => {
+    const writes: Array<{ functionName: string; args?: Record<string, unknown> }> = [];
+    const client = {
+      mutation: async (functionName: string, args?: Record<string, unknown>) => {
+        writes.push({ functionName, args });
+        return "ok";
+      },
+      query: async () => null,
+    };
+    const bridge = new ConvexPersistenceBridge(client);
+    const state: PersistedPositionState = {
+      positionId: "pos-efficient",
+      instrument: "BTC/USDT",
+      side: "LONG",
+      entryPrice: 50000,
+      horizon: "SWING",
+      openedAt: 1_800_000_000_000,
+      currentSeverity: "NONE",
+      lifecycleState: "MONITORING",
+      monitoringLifecycle: "MONITORING",
+      lastUpdateAt: 1_800_000_000_000,
+      lastAlertAt: 0,
+      consecutiveSameSeverity: 0,
+    };
+
+    await bridge.savePositionState(state);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await bridge.savePositionState({ ...state, lastUpdateAt: state.lastUpdateAt + 1_000 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0].functionName).toBe("positionProtection:savePosition");
+
+    await bridge.savePositionState({
+      ...state,
+      currentSeverity: "WATCH",
+      lastUpdateAt: state.lastUpdateAt + 2_000,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(writes).toHaveLength(2);
+    expect(writes[1].args?.currentSeverity).toBe("WATCH");
+    expect(bridge.isDegraded()).toBe(false);
+  });
+
+  it("does not suppress retries after a failed position write", async () => {
+    let attempts = 0;
+    const client = {
+      mutation: async () => {
+        attempts += 1;
+        if (attempts === 1) throw new Error("temporary Convex failure");
+        return "ok";
+      },
+      query: async () => null,
+    };
+    const bridge = new ConvexPersistenceBridge(client);
+    const state: PersistedPositionState = {
+      positionId: "pos-retry",
+      instrument: "ETH/USDT",
+      side: "LONG",
+      entryPrice: 3000,
+      horizon: "SWING",
+      openedAt: 1_800_000_000_000,
+      currentSeverity: "NONE",
+      lifecycleState: "MONITORING",
+      monitoringLifecycle: "MONITORING",
+      lastUpdateAt: 1_800_000_000_000,
+      lastAlertAt: 0,
+      consecutiveSameSeverity: 0,
+    };
+
+    await bridge.savePositionState(state);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(bridge.isDegraded()).toBe(true);
+
+    await bridge.savePositionState({ ...state, lastUpdateAt: state.lastUpdateAt + 1_000 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(attempts).toBe(2);
+    expect(bridge.isDegraded()).toBe(false);
+  });
+});
