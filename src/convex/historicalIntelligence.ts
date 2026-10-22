@@ -247,6 +247,9 @@ export const saveEvents = mutation({
         category: event.category,
         strength: event.strength,
       });
+      // Also deduplicate within this incoming batch, not only against rows
+      // that existed before the mutation began.
+      existingIds.add(eventIdentity(event));
       ids.push(id);
     }
 
@@ -318,7 +321,10 @@ export const getEvents = query({
     const owns = await verifyPositionOwnership(ctx, user._id, args.positionId);
     if (!owns) return [];
 
-    const limit = Math.min(args.limit ?? 100, 100);
+    const requestedLimit = args.limit ?? 100;
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(0, Math.min(Math.floor(requestedLimit), 100))
+      : 100;
     return await ctx.db
       .query("historicalEvents")
       .withIndex("by_user_position_ts", (q) =>
