@@ -29,6 +29,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import type { MonitoredPositionState } from "./use-position-protection";
+import type { LiveInstrumentState } from "./use-live-protection-polling";
 import {
   useLiveProtectionPolling,
   type LiveInstrumentState,
@@ -59,6 +60,8 @@ export interface UsePositionIntelligenceOptions {
    * are evaluated from these events exactly as the protection dashboard does).
    */
   onLiveEvent?: (events: RealTimeEvent[]) => void;
+  /** Forward accepted and rejected quote results to runtime health. */
+  onQuoteResult?: (state: LiveInstrumentState) => void;
   /** Forward OHLCV provider health events (runtime health recording). */
   onOHLCVHealthEvent?: (event: OHLCVHealthEvent) => void;
 }
@@ -143,6 +146,7 @@ export function usePositionIntelligence(
     pollIntervalMs: 30_000,
     onEvent: options?.onLiveEvent,
     onPriceUpdate,
+    onQuoteResult: options?.onQuoteResult,
   });
 
   // ─── OHLCV Data (MTF candles) ────────────────────────────
