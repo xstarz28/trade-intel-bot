@@ -157,7 +157,6 @@ function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- Public form hook accompanies the form component API.
 export {
   useFormField,
   Form,

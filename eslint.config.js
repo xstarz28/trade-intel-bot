@@ -30,4 +30,14 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // These shared UI modules intentionally export both components and their public hooks/style helpers.
+    files: [
+      "src/components/ui/button-group.tsx",
+      "src/components/ui/form.tsx",
+      "src/components/ui/navigation-menu.tsx",
+      "src/components/ui/sidebar.tsx",
+    ],
+    rules: { "react-refresh/only-export-components": "off" },
+  },
 );

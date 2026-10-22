@@ -698,7 +698,6 @@ function SidebarMenuSubButton({
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- Exported sidebar hook accompanies the provider/component API.
 export {
   Sidebar,
   SidebarContent,

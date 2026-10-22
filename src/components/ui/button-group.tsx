@@ -75,7 +75,6 @@ function ButtonGroupSeparator({
   )
 }
 
-// eslint-disable-next-line react-refresh/only-export-components -- Exported styling helper accompanies the component API.
 export {
   ButtonGroup,
   ButtonGroupSeparator,
