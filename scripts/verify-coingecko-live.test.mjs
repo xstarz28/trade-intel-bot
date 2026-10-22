@@ -58,12 +58,68 @@ test("retries a 429 using Retry-After before accepting a live response", async (
         : response({ body: validPrices });
     },
     sleepImpl: async (ms) => waits.push(ms),
+    random: () => 0.5,
     log: () => {},
     warn: () => {},
   });
   assert.equal(calls, 2);
   assert.deepEqual(waits, [0]);
   assert.deepEqual(result.verifiedCoins, ["bitcoin", "ethereum"]);
+});
+
+test("uses bounded exponential backoff with jitter when 429 omits Retry-After", async () => {
+  let calls = 0;
+  const waits = [];
+  await verifyCoinGeckoLive({
+    apiKey: "demo-key",
+    fetchImpl: async () => {
+      calls += 1;
+      return calls === 1
+        ? response({ status: 429 })
+        : response({ body: validPrices });
+    },
+    sleepImpl: async (ms) => waits.push(ms),
+    random: () => 0.5,
+    log: () => {},
+    warn: () => {},
+  });
+  assert.deepEqual(waits, [1_000]);
+});
+
+test("retries transient network/timeout failures and fails closed after the retry budget", async (t) => {
+  await t.test("recovers after a transient network error", async () => {
+    let calls = 0;
+    const waits = [];
+    await verifyCoinGeckoLive({
+      apiKey: "demo-key",
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) throw new Error("socket timeout");
+        return response({ body: validPrices });
+      },
+      sleepImpl: async (ms) => waits.push(ms),
+      random: () => 0.5,
+      log: () => {},
+      warn: () => {},
+    });
+    assert.equal(calls, 2);
+    assert.deepEqual(waits, [1_000]);
+  });
+  await t.test("does not report success after repeated network errors", async () => {
+    let calls = 0;
+    await assert.rejects(
+      verifyCoinGeckoLive({
+        apiKey: "demo-key",
+        fetchImpl: async () => { calls += 1; throw new Error("network down"); },
+        sleepImpl: async () => {},
+        random: () => 0.5,
+        log: () => {},
+        warn: () => {},
+      }),
+      /request failed after 3 attempts.*network down/,
+    );
+    assert.equal(calls, 3);
+  });
 });
 
 test("fails after repeated 429 responses instead of reporting a pass", async () => {
@@ -73,6 +129,7 @@ test("fails after repeated 429 responses instead of reporting a pass", async () 
       apiKey: "demo-key",
       fetchImpl: async () => { calls += 1; return response({ status: 429 }); },
       sleepImpl: async () => {},
+      random: () => 0.5,
       log: () => {},
       warn: () => {},
     }),
@@ -127,5 +184,5 @@ test("rejects HTTP errors, malformed JSON, and missing or invalid prices", async
 test("parses Retry-After seconds and HTTP dates with a deterministic clock", () => {
   assert.equal(retryDelayMs(response({ headers: { "retry-after": "3" } }), 1_000), 3_000);
   assert.equal(retryDelayMs(response({ headers: { "retry-after": new Date(6_000).toUTCString() } }), 1_000), 5_000);
-  assert.equal(retryDelayMs(response(), 1_000), 2_000);
+  assert.equal(retryDelayMs(response(), 1_000, 2_000, () => 0.5), 2_000);
 });
