@@ -4,7 +4,7 @@
  * Convex server-side action that fetches REAL market data from free/available
  * providers and normalizes it into ProviderQuoteData for the protection pipeline.
  *
- * CoinGecko: free, no API key needed — crypto (BTC, ETH, SOL, DOGE, etc.)
+ * Crypto quotes: CoinGecko (Demo API key when configured), with public Binance Spot fallback for exact USDT pairs.
  * TwelveData free tier: limited forex (EUR/USD with demo key if configured)
  *
  * NO FABRICATION. NO FAKE DATA. REAL HTTP REQUESTS ONLY.
@@ -26,7 +26,7 @@ import { v } from "convex/values";
 import { normalizeTwelveDataQuotePayload, normalizeYahooFinanceQuotePayload } from "./provider-quote-validation";
 
 // ═══════════════════════════════════════════════════════════════
-// COINGECKO — FREE, NO KEY NEEDED
+// COINGECKO — AUTHENTICATED WHEN CONFIGURED, RATE-LIMIT-AWARE FALLBACK
 // ═══════════════════════════════════════════════════════════════
 
 /** CoinGecko coin ID mapping from common trading symbols */
@@ -53,9 +53,9 @@ type CryptoPriceResult = {
   instrument: string;
   coinId: string;
   price: number;
-  change24h: number;
-  volume24h: number;
-  marketCap: number;
+  change24h?: number;
+  volume24h?: number;
+  marketCap?: number;
   timestamp: number;
   success: boolean;
   provider: "CoinGecko" | "BinanceSpot";
@@ -74,8 +74,7 @@ function failedCryptoResult(
   provider: CryptoPriceResult["provider"] = "CoinGecko",
 ): CryptoPriceResult {
   return {
-    instrument, coinId, price: 0, change24h: 0, volume24h: 0, marketCap: 0,
-    timestamp: Date.now(), success: false, provider, error,
+    instrument, coinId, price: 0, timestamp: Date.now(), success: false, provider, error,
   };
 }
 
@@ -115,9 +114,6 @@ async function fetchBinanceSpotFallback(
         instrument: mapped.instrument,
         coinId: mapped.coinId,
         price,
-        change24h: 0,
-        volume24h: 0,
-        marketCap: 0,
         timestamp,
         success: true,
         provider: "BinanceSpot",
@@ -217,9 +213,12 @@ async function fetchCoingeckoPrices(
         instrument: coin.instrument,
         coinId: coin.coinId,
         price: quote.usd,
-        change24h: typeof quote.usd_24h_change === "number" && Number.isFinite(quote.usd_24h_change) ? quote.usd_24h_change : 0,
-        volume24h: typeof quote.usd_24h_vol === "number" && Number.isFinite(quote.usd_24h_vol) ? quote.usd_24h_vol : 0,
-        marketCap: typeof quote.usd_market_cap === "number" && Number.isFinite(quote.usd_market_cap) ? quote.usd_market_cap : 0,
+        ...(typeof quote.usd_24h_change === "number" && Number.isFinite(quote.usd_24h_change)
+          ? { change24h: quote.usd_24h_change } : {}),
+        ...(typeof quote.usd_24h_vol === "number" && Number.isFinite(quote.usd_24h_vol)
+          ? { volume24h: quote.usd_24h_vol } : {}),
+        ...(typeof quote.usd_market_cap === "number" && Number.isFinite(quote.usd_market_cap)
+          ? { marketCap: quote.usd_market_cap } : {}),
         timestamp: fetchedAt,
         success: true,
         provider: "CoinGecko",
@@ -455,8 +454,8 @@ export const fetchLiveProtectionQuote = action({
           instrument: r.instrument,
           assetClass: "crypto",
           price: r.price,
-          change24h: r.change24h,
-          volume24h: r.volume24h,
+          ...(r.change24h !== undefined ? { change24h: r.change24h } : {}),
+          ...(r.volume24h !== undefined ? { volume24h: r.volume24h } : {}),
           timestamp: r.timestamp,
           provider: r.provider,
           primaryProvider: "OKX",
