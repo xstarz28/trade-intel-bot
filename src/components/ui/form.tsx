@@ -1,6 +1,6 @@
 "use client"
 
-/* eslint-disable react-refresh/only-export-components -- This module intentionally exports related UI primitives or context helpers alongside components. */
+
 
 import * as React from "react"
 import type * as LabelPrimitive from "@radix-ui/react-label"
@@ -157,6 +157,7 @@ function FormMessage({ className, ...props }: React.ComponentProps<"p">) {
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- Public form hook accompanies the form component API.
 export {
   useFormField,
   Form,
