@@ -59,7 +59,7 @@ export function addObservation(
   price: number,
   timestamp: number,
 ): PriceObservationState {
-  if (!isFinitePositivePrice(price)) return state;
+  if (!isFinitePositivePrice(price) || !Number.isFinite(timestamp) || timestamp <= state.lastUpdateAt) return state;
 
   const observations = [...state.observations, { price, timestamp }];
 
