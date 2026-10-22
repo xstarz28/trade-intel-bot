@@ -38,6 +38,7 @@ export async function verifyCoinGeckoLive({
   const url = new URL(API_URL);
   url.searchParams.set("ids", COINS.join(","));
   url.searchParams.set("vs_currencies", "usd");
+  url.searchParams.set("include_last_updated_at", "true");
   url.searchParams.set("include_24hr_vol", "true");
   url.searchParams.set("include_24hr_change", "true");
 
@@ -97,11 +98,21 @@ export async function verifyCoinGeckoLive({
   }
 
   for (const coin of COINS) {
-    const price = data?.[coin]?.usd;
+    const quote = data?.[coin];
+    const price = quote?.usd;
+    const updatedAt = quote?.last_updated_at;
     if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) {
       throw new Error(`CoinGecko returned an invalid USD price for ${coin}; live-provider verification failed.`);
     }
-    log(`CoinGecko live quote verified: ${coin.toUpperCase()} USD price is finite and positive.`);
+    if (typeof updatedAt !== "number" || !Number.isFinite(updatedAt) || updatedAt <= 0) {
+      throw new Error(`CoinGecko returned a missing or invalid provider timestamp for ${coin}; live-provider verification failed.`);
+    }
+    const quoteTimestamp = updatedAt * 1_000;
+    const ageMs = now() - quoteTimestamp;
+    if (quoteTimestamp > now() + 60_000 || ageMs > 5 * 60_000) {
+      throw new Error(`CoinGecko returned a stale or future-dated quote for ${coin}; live-provider verification failed.`);
+    }
+    log(`CoinGecko live quote verified: ${coin.toUpperCase()} USD price is finite, positive, and timestamp-fresh.`);
   }
   log("CoinGecko live-provider verification passed.");
   return { verifiedCoins: [...COINS] };
