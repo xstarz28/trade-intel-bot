@@ -227,7 +227,7 @@ async function fetchTwelveDataQuote(
         price: normalized.price,
         ...(normalized.bid !== undefined ? { bid: normalized.bid } : {}),
         ...(normalized.ask !== undefined ? { ask: normalized.ask } : {}),
-        timestamp: Date.now(),
+        timestamp: normalized.timestamp,
         success: true,
       };
     } catch {
