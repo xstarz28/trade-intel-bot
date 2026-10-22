@@ -79,14 +79,38 @@ export class TwelveDataProvider implements MarketDataProvider {
       throw new Error(`No candle data returned for ${symbol}`);
     }
 
-    return values.reverse().map((c) => ({
-      timestamp: new Date(c.datetime).getTime(),
-      open: parseFloat(c.open),
-      high: parseFloat(c.high),
-      low: parseFloat(c.low),
-      close: parseFloat(c.close),
-      volume: parseFloat(c.volume) || 0,
-    }));
+    const candles = values.reverse().flatMap((c): OhlcvCandle[] => {
+      const timestamp = new Date(c.datetime).getTime();
+      const open = parseProviderNumber(c.open);
+      const high = parseProviderNumber(c.high);
+      const low = parseProviderNumber(c.low);
+      const close = parseProviderNumber(c.close);
+      const parsedVolume = parseProviderNumber(c.volume);
+      const volume = parsedVolume ?? (c.volume.trim() === "" ? 0 : undefined);
+
+      // Reject malformed OHLC rows instead of letting NaN/Infinity or
+      // impossible candle ranges contaminate downstream indicators.
+      if (
+        !Number.isFinite(timestamp) || timestamp <= 0 ||
+        open === undefined || open <= 0 ||
+        high === undefined || high <= 0 ||
+        low === undefined || low <= 0 ||
+        close === undefined || close <= 0 ||
+        volume === undefined || volume < 0 ||
+        low > Math.min(open, close) ||
+        high < Math.max(open, close)
+      ) {
+        return [];
+      }
+
+      return [{ timestamp, open, high, low, close, volume }];
+    });
+
+    if (candles.length === 0) {
+      throw new Error(`No valid OHLCV candles returned for ${symbol}`);
+    }
+
+    return candles;
   }
 
   async fetchPrice(symbol: string): Promise<PriceSnapshot> {
