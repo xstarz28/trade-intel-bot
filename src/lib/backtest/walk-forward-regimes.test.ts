@@ -29,7 +29,8 @@ const short: BacktestSignal = {
 
 describe("walk-forward market-regime and execution-cost regressions", () => {
   it("does not turn a falling-market short into a long or leak future bars", () => {
-    const data = makeCandles(Array.from({ length: 35 }, (_, i) => 110 - i * 0.5));
+    const data = makeCandles(Array.from({ length: 35 }, () => 100));
+    data[20] = { ...data[20], open: 100, high: 101, low: 89, close: 95 };
     const report = runWalkForwardBacktest({
       instrument: "SYNTHETIC-DOWN",
       timeframe: "M1",
@@ -49,7 +50,8 @@ describe("walk-forward market-regime and execution-cost regressions", () => {
   });
 
   it("applies both entry and exit costs to a profitable long in a rising regime", () => {
-    const data = makeCandles(Array.from({ length: 35 }, (_, i) => 95 + i * 0.5));
+    const data = makeCandles(Array.from({ length: 35 }, () => 100));
+    data[20] = { ...data[20], open: 100, high: 111, low: 99, close: 105 };
     const signalAt = (visible: readonly OhlcvCandle[], index: number): BacktestSignal => {
       expect(visible.length).toBe(index + 1);
       return index === 19 ? long : { recommendation: "NO_TRADE" };
