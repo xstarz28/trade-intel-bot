@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components -- This module intentionally exports related UI primitives or context helpers alongside components. */
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -76,6 +75,7 @@ function ButtonGroupSeparator({
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- Exported styling helper accompanies the component API.
 export {
   ButtonGroup,
   ButtonGroupSeparator,
