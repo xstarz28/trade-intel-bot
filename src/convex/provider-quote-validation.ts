@@ -15,7 +15,7 @@ export type TwelveDataQuoteNormalization =
 
 /**
  * Validate a Twelve Data quote payload without inventing missing quote fields.
- * The caller separately verifies HTTP status and timestamps.
+ * The caller separately verifies HTTP status and applies the freshness window.
  */
 export function normalizeTwelveDataQuotePayload(payload: unknown): TwelveDataQuoteNormalization {
   if (!isRecord(payload)) {
@@ -57,6 +57,7 @@ export function normalizeTwelveDataQuotePayload(payload: unknown): TwelveDataQuo
     ...(!crossedSpread && ask !== undefined ? { ask } : {}),
   };
 }
+
 /** Normalize Yahoo Finance chart payloads without inventing a local quote time. */
 export function normalizeYahooFinanceQuotePayload(payload: unknown):
   | { success: true; price: number; timestamp: number }
