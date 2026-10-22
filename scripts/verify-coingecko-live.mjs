@@ -34,11 +34,6 @@ export async function verifyCoinGeckoLive({
   random = Math.random,
 } = {}) {
   const normalizedApiKey = apiKey?.trim();
-  if (!normalizedApiKey) {
-    throw new Error(
-      "COINGECKO_DEMO_API_KEY is required. Create a CoinGecko Demo API key and set it as an environment variable; live verification will not silently skip.",
-    );
-  }
 
   const url = new URL(API_URL);
   url.searchParams.set("ids", COINS.join(","));
@@ -52,7 +47,7 @@ export async function verifyCoinGeckoLive({
       response = await fetchImpl(url, {
         headers: {
           accept: "application/json",
-          "x-cg-demo-api-key": normalizedApiKey,
+          ...(normalizedApiKey ? { "x-cg-demo-api-key": normalizedApiKey } : {}),
         },
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
