@@ -127,8 +127,29 @@ async function fetchBinanceSpotFallback(
   }
 }
 
+const coingeckoInflightRequests = new Map<string, Promise<CryptoPriceResult[]>>();
+
+/** Coalesce concurrent identical batches so a burst of protection polls shares one provider request. */
+async function fetchCoingeckoPrices(instruments: string[]): Promise<CryptoPriceResult[]> {
+  const batchKey = [...new Set(instruments.map((instrument) => instrument.toUpperCase().trim()))]
+    .sort()
+    .join("|");
+  const existing = coingeckoInflightRequests.get(batchKey);
+  if (existing) return (await existing).map((result) => ({ ...result }));
+
+  const request = fetchCoingeckoPricesUnshared(instruments);
+  coingeckoInflightRequests.set(batchKey, request);
+  try {
+    return (await request).map((result) => ({ ...result }));
+  } finally {
+    if (coingeckoInflightRequests.get(batchKey) === request) {
+      coingeckoInflightRequests.delete(batchKey);
+    }
+  }
+}
+
 /** Fetch real crypto prices; authenticate when a CoinGecko Demo key is configured and fail over on rate limits. */
-async function fetchCoingeckoPrices(
+async function fetchCoingeckoPricesUnshared(
   instruments: string[],
 ): Promise<CryptoPriceResult[]> {
   const idMap = instruments.map((inst) => ({
