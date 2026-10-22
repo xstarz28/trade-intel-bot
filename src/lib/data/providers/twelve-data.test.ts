@@ -30,6 +30,10 @@ describe("TwelveDataProvider candle validation", () => {
         datetime: "2026-10-22T09:55:00Z",
         open: "98", high: "102", low: "97", close: "101", volume: "",
       },
+      {
+        datetime: "2026-10-22T09:50:00Z",
+        open: "98", high: "102", low: "97", close: "101garbage", volume: "1",
+      },
     ])));
 
     const provider = new TwelveDataProvider({ apiKey: "test-key", baseUrl: "https://example.test" });
@@ -74,6 +78,17 @@ describe("TwelveDataProvider candle validation", () => {
       bid: 123.4,
       ask: 123.5,
     });
+  });
+
+  it("rejects malformed numeric strings instead of parsing their numeric prefix", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(quoteResponseFor({
+      close: "123.45garbage",
+      timestamp: "1792663200",
+    })));
+
+    const provider = new TwelveDataProvider({ apiKey: "test-key", baseUrl: "https://example.test" });
+    await expect(provider.fetchPrice("EUR/USD"))
+      .rejects.toThrow(/invalid closing price/i);
   });
 
   it("rejects a price snapshot when the provider timestamp is missing", async () => {
