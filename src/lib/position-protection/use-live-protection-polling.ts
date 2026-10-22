@@ -76,6 +76,7 @@ export function useLiveProtectionPolling(
     pollIntervalMs?: number;
     enabled?: boolean;
     onPriceUpdate?: (instrument: string, price: number, provider: string, timestamp: number) => void;
+    onQuoteResult?: (state: LiveInstrumentState) => void;
     onEvent?: (events: RealTimeEvent[]) => void;
   },
 ): UseLiveProtectionPollingResult {
@@ -101,14 +102,16 @@ export function useLiveProtectionPolling(
   const pollInFlightRef = useRef(false);
   const instrumentsRef = useRef(instruments);
   const callbacksRef = useRef(options?.onPriceUpdate);
+  const quoteResultCallbacksRef = useRef(options?.onQuoteResult);
   const eventsRef = useRef(options?.onEvent);
 
   // Keep refs synchronized after commit rather than mutating them during render.
   useEffect(() => {
     instrumentsRef.current = instruments;
     callbacksRef.current = options?.onPriceUpdate;
+    quoteResultCallbacksRef.current = options?.onQuoteResult;
     eventsRef.current = options?.onEvent;
-  }, [instruments, options?.onPriceUpdate, options?.onEvent]);
+  }, [instruments, options?.onPriceUpdate, options?.onQuoteResult, options?.onEvent]);
 
   // ─── Poll function ─────────────────────────────────────
   const doPoll = useCallback(async () => {
@@ -168,7 +171,7 @@ export function useLiveProtectionPolling(
           currentBridge = bridgeResult.state;
           newEvents.push(...bridgeResult.events);
 
-          next.set(result.instrument, {
+          const liveState: LiveInstrumentState = {
             instrument: result.instrument,
             price: result.price,
             bid: result.bid,
@@ -180,8 +183,9 @@ export function useLiveProtectionPolling(
             quoteTimestamp: result.timestamp,
             lastUpdateAt: now,
             success: true,
-          });
-
+          };
+          next.set(result.instrument, liveState);
+          quoteResultCallbacksRef.current?.(liveState);
           callbacksRef.current?.(result.instrument, result.price, result.provider, result.timestamp);
         } else {
           const invalidSuccessfulPrice =
@@ -193,7 +197,7 @@ export function useLiveProtectionPolling(
             result.price > 0 &&
             (!quoteIsFresh || result.sourceMode === "STALE");
           const simulatedQuote = result.sourceMode === "SIMULATED";
-          next.set(result.instrument, {
+          const liveState: LiveInstrumentState = {
             instrument: result.instrument,
             price: 0,
             provider: result.provider,
@@ -211,7 +215,9 @@ export function useLiveProtectionPolling(
                 : simulatedQuote
                   ? "Simulated quotes are not accepted by live position protection"
                   : result.error,
-          });
+          };
+          next.set(result.instrument, liveState);
+          quoteResultCallbacksRef.current?.(liveState);
         }
       }
 
