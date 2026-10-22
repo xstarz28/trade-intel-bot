@@ -37,6 +37,11 @@ export interface PriceObservationState {
 
 const DEFAULT_MAX_OBSERVATIONS = 500;
 
+/** Accept only finite, strictly positive prices from market-data sources. */
+export function isFinitePositivePrice(price: number): boolean {
+  return Number.isFinite(price) && price > 0;
+}
+
 export function createObservationState(
   instrument: string,
   maxObservations = DEFAULT_MAX_OBSERVATIONS,
@@ -54,7 +59,7 @@ export function addObservation(
   price: number,
   timestamp: number,
 ): PriceObservationState {
-  if (!Number.isFinite(price) || price <= 0) return state;
+  if (!isFinitePositivePrice(price)) return state;
 
   const observations = [...state.observations, { price, timestamp }];
 
