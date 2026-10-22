@@ -20,6 +20,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown";
 }
 
+function finiteProviderNumber(value: unknown): number | undefined {
+  if (typeof value !== "number" && typeof value !== "string") return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
@@ -182,21 +189,32 @@ async function fetchTwelveDataQuote(
 ): Promise<{
   instrument: string;
   price: number;
-  bid: number;
-  ask: number;
+  bid?: number;
+  ask?: number;
   timestamp: number;
   success: boolean;
   error?: string;
 }> {
+  const failure = (error: string) => ({
+    instrument: symbol,
+    price: 0,
+    timestamp: Date.now(),
+    success: false as const,
+    error,
+  });
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(
         `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
         { signal: AbortSignal.timeout(10_000) },
       );
-      const json = await res.json();
+      const json: unknown = await res.json();
+      if (!isRecord(json)) {
+        return failure("TwelveData returned an invalid quote payload");
+      }
 
-      if (json.code === 429) {
+      if (res.status === 429 || Number(json.code) === 429) {
         // Rate limited — back off and retry
         if (attempt < retries) {
           await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
@@ -204,65 +222,46 @@ async function fetchTwelveDataQuote(
         }
       }
 
-      if (json.code) {
-        return {
-          instrument: symbol,
-          price: 0,
-          bid: 0,
-          ask: 0,
-          timestamp: Date.now(),
-          success: false,
-          error: `TwelveData [${json.code}]: ${json.message ?? "provider error"}`,
-        };
+      if (!res.ok) {
+        return failure(`TwelveData HTTP ${res.status}`);
       }
 
-      const price = parseFloat(json.close);
-      if (!Number.isFinite(price) || price <= 0) {
-        return {
-          instrument: symbol,
-          price: 0,
-          bid: 0,
-          ask: 0,
-          timestamp: Date.now(),
-          success: false,
-          error: `Invalid price: ${json.close}`,
-        };
+      if (json.code) {
+        return failure(`TwelveData [${String(json.code)}]: ${String(json.message ?? "provider error")}`);
       }
+
+      const price = finiteProviderNumber(json.close);
+      if (price === undefined || price <= 0) {
+        return failure("TwelveData returned an invalid closing price");
+      }
+
+      const parsedBid = finiteProviderNumber(json.bid);
+      const parsedAsk = finiteProviderNumber(json.ask);
+      const bid = parsedBid !== undefined && parsedBid > 0 ? parsedBid : undefined;
+      const ask = parsedAsk !== undefined && parsedAsk > 0 ? parsedAsk : undefined;
+      // Do not fabricate bid/ask from the last-traded price. If the provider
+      // returns a crossed spread, omit both sides rather than surface bad data.
+      const spreadIsCrossed = bid !== undefined && ask !== undefined && bid > ask;
 
       return {
         instrument: symbol,
         price,
-        bid: parseFloat(json.bid ?? "0") || price,
-        ask: parseFloat(json.ask ?? "0") || price,
+        ...(!spreadIsCrossed && bid !== undefined ? { bid } : {}),
+        ...(!spreadIsCrossed && ask !== undefined ? { ask } : {}),
         timestamp: Date.now(),
         success: true,
       };
-    } catch (err: unknown) {
+    } catch {
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
         continue;
       }
-      return {
-        instrument: symbol,
-        price: 0,
-        bid: 0,
-        ask: 0,
-        timestamp: Date.now(),
-        success: false,
-        error: `TwelveData request failed: ${errorMessage(err)}`,
-      };
+      // Avoid returning raw fetch errors, which can contain the credentialed URL.
+      return failure("TwelveData request failed");
     }
   }
   // Unreachable but satisfies TS
-  return {
-    instrument: symbol,
-    price: 0,
-    bid: 0,
-    ask: 0,
-    timestamp: Date.now(),
-    success: false,
-    error: "Unexpected retry exhaustion",
-  };
+  return failure("Unexpected retry exhaustion");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -482,8 +481,8 @@ export const fetchLiveProtectionQuote = action({
             instrument: r.instrument,
             assetClass: detectAssetClass(inst),
             price: r.price,
-            bid: r.bid,
-            ask: r.ask,
+            ...(r.bid !== undefined ? { bid: r.bid } : {}),
+            ...(r.ask !== undefined ? { ask: r.ask } : {}),
             timestamp: r.timestamp,
             provider: "TwelveData",
             primaryProvider: "TwelveData",
