@@ -18,7 +18,7 @@ import type {
 import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
 import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tokenomist-adapter";
 import { PatternPlusUnlockAdapter } from "../lib/data/crypto/patternplus-unlocks-adapter";
-import { parseCoinGeckoSupplyFallback } from "../lib/data/crypto/coingecko-supply";
+import { fetchCoinGeckoSupplyPayload, parseCoinGeckoSupplyFallback } from "../lib/data/crypto/coingecko-supply";
 import { getProviderSymbol } from "../lib/data/universal/instruments";
 import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivatives-adapter";
@@ -314,41 +314,41 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
   // Missing records remain unavailable; they are never interpreted as zero unlocks.
   try {
     const fallback = await patternPlusUnlockAdapter.fetch(key);
+    let coinGeckoFailure: string | undefined;
     if (!fallback.available) {
-      // Supply metrics are a separate, useful tokenomics fallback when neither
-      // Tokenomist nor PatternPlus has a verified unlock record. Never infer
-      // zero unlocks from a missing calendar row.
+      // Supply metrics are a separate fallback, never an inferred unlock schedule.
       const coinGeckoId = getProviderSymbol(key, "coingecko");
       if (coinGeckoId) {
-        try {
-          const response = await fetch(
-            "https://api.coingecko.com/api/v3/coins/" + encodeURIComponent(coinGeckoId) +
-              "?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false",
-            { headers: { accept: "application/json" }, signal: AbortSignal.timeout(3_000) },
-          );
-          if (response.ok) {
-            const supplyFallback = parseCoinGeckoSupplyFallback(await response.json());
-            if (supplyFallback) {
-              const result = {
-                ...supplyFallback,
-                failureReason: "Supply fallback active. Verified unlock calendar unavailable: " +
-                  (fallback.failureReason ?? tokenomistFailure ?? "no dated unlock records returned"),
-              };
-              tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
-              return result;
-            }
+        const fetched = await fetchCoinGeckoSupplyPayload(coinGeckoId, {
+          apiKey: process.env.COINGECKO_DEMO_API_KEY,
+        });
+        if (fetched.payload !== undefined) {
+          const supplyFallback = parseCoinGeckoSupplyFallback(fetched.payload);
+          if (supplyFallback) {
+            const result = {
+              ...supplyFallback,
+              failureReason: "Supply fallback active. Verified unlock calendar unavailable: " +
+                (fallback.failureReason ?? tokenomistFailure ?? "no dated unlock records returned"),
+            };
+            tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
+            return result;
           }
-        } catch {
-          // Keep the explicit unlock-provider failure below; never synthesize supply.
+          coinGeckoFailure = "CoinGecko returned no valid supply metrics.";
+        } else {
+          coinGeckoFailure = fetched.failureReason;
         }
+      } else {
+        coinGeckoFailure = "CoinGecko fallback unavailable: no verified provider ID for this instrument.";
       }
     }
-    const result = !fallback.available && tokenomistFailure
-      ? {
-          ...fallback,
-          failureReason: "Tokenomist fallback failed (" + tokenomistFailure + "); " +
-            (fallback.failureReason ?? "PatternPlus has no usable record."),
-        }
+
+    const failureReasons = [
+      tokenomistFailure ? "Tokenomist unavailable (" + tokenomistFailure + ")." : undefined,
+      fallback.failureReason ?? (!fallback.available ? "PatternPlus has no usable record." : undefined),
+      coinGeckoFailure,
+    ].filter((reason): reason is string => Boolean(reason));
+    const result = !fallback.available && failureReasons.length > 0
+      ? { ...fallback, failureReason: failureReasons.join(" ") }
       : fallback;
     tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
     return result;
