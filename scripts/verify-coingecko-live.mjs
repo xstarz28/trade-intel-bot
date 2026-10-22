@@ -8,17 +8,18 @@ const MAX_ATTEMPTS = 3;
 const MAX_RETRY_DELAY_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 
-export function retryDelayMs(response, now = Date.now()) {
+export function retryDelayMs(response, now = Date.now(), fallbackMs = 2_000, random = Math.random) {
   const value = response.headers.get("retry-after");
-  if (!value) return 2_000;
-
-  const seconds = Number(value);
-  if (value.trim() !== "" && Number.isFinite(seconds) && seconds >= 0) {
-    return seconds * 1_000;
+  if (value !== null && value.trim() !== "") {
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1_000;
+    const date = Date.parse(value);
+    if (Number.isFinite(date)) return Math.max(0, date - now);
   }
 
-  const date = Date.parse(value);
-  return Number.isFinite(date) ? Math.max(0, date - now) : 2_000;
+  // Bounded jitter avoids synchronized retries when the provider omits Retry-After.
+  const jitter = 0.5 + Math.min(1, Math.max(0, random()));
+  return Math.round(fallbackMs * jitter);
 }
 
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,6 +31,7 @@ export async function verifyCoinGeckoLive({
   log = console.log,
   warn = console.warn,
   now = Date.now,
+  random = Math.random,
 } = {}) {
   const normalizedApiKey = apiKey?.trim();
   if (!normalizedApiKey) {
@@ -46,13 +48,25 @@ export async function verifyCoinGeckoLive({
 
   let response;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    response = await fetchImpl(url, {
-      headers: {
-        accept: "application/json",
-        "x-cg-demo-api-key": normalizedApiKey,
-      },
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    try {
+      response = await fetchImpl(url, {
+        headers: {
+          accept: "application/json",
+          "x-cg-demo-api-key": normalizedApiKey,
+        },
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+    } catch (error) {
+      if (attempt === MAX_ATTEMPTS) {
+        throw new Error(
+          `CoinGecko request failed after ${MAX_ATTEMPTS} attempts: ${error instanceof Error ? error.message : String(error)}; no live-provider check was passed.`,
+        );
+      }
+      const delay = Math.min(MAX_RETRY_DELAY_MS, Math.round(1_000 * 2 ** (attempt - 1) * (0.5 + Math.min(1, Math.max(0, random())))));
+      warn(`CoinGecko network/timeout error; retrying with bounded exponential backoff (attempt ${attempt + 1}/${MAX_ATTEMPTS}).`);
+      await sleepImpl(delay);
+      continue;
+    }
 
     if (response.status !== 429) break;
     if (attempt === MAX_ATTEMPTS) {
@@ -61,7 +75,8 @@ export async function verifyCoinGeckoLive({
       );
     }
 
-    const delay = retryDelayMs(response, now());
+    const fallbackMs = 1_000 * 2 ** (attempt - 1);
+    const delay = retryDelayMs(response, now(), fallbackMs, random);
     if (!Number.isFinite(delay) || delay > MAX_RETRY_DELAY_MS) {
       throw new Error(
         `CoinGecko requested a ${Number.isFinite(delay) ? Math.ceil(delay / 1000) : "non-finite"}s retry delay, exceeding the safe ${MAX_RETRY_DELAY_MS / 1000}s limit. Retry later; no live-provider check was passed.`,
