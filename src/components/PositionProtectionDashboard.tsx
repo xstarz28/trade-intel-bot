@@ -427,7 +427,7 @@ export function PositionProtectionDashboard() {
         });
       }
     }
-  }, [livePrices]);
+  }, [livePrices, recordHealthResult]);
 
   // ─── Phase 90: Convex Historical Intelligence Persistence ──
   const saveSnapshotMut = useMutation(api.historicalIntelligence.saveSnapshot);
@@ -533,7 +533,7 @@ export function PositionProtectionDashboard() {
       success,
       message: `${analyzed}/${total} positions analyzed`,
     });
-  }, [intelligenceMap.size, positions.length]);
+  }, [intelligenceMap.size, positions.length, recordHealthResult]);
 
   // Phase 100: Record portfolio intelligence health events (uses memoized portfolioIntel)
   useEffect(() => {
@@ -544,7 +544,7 @@ export function PositionProtectionDashboard() {
       success: true,
       message: `${portfolioIntel.summary.totalPositions} positions analyzed`,
     });
-  }, [portfolioIntel]);
+  }, [portfolioIntel, recordHealthResult]);
 
   // ─── Phase 91: Reactive Convex Historical Timeline Queries ──
   // One query per position, reactive — automatically updates when Convex data changes
@@ -706,7 +706,7 @@ export function PositionProtectionDashboard() {
       }
       return next;
     });
-  }, [intelligenceMap, convTimelines, saveSnapshotMut, saveEventsMut]);
+  }, [intelligenceMap, convTimelines, saveSnapshotMut, saveEventsMut, recordHealthResult]);
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ────────────
   const createNotificationMut = useMutation(api.notifications.createNotification);
@@ -799,7 +799,7 @@ export function PositionProtectionDashboard() {
         });
       });
     }
-  }, [intelligenceMap, portfolioIntel, alertRules, createNotificationMut]);
+  }, [intelligenceMap, portfolioIntel, alertRules, createNotificationMut, recordHealthResult]);
 
   // ─── Phase 95/97: Reset bridge state when positions are removed ──
   useEffect(() => {
