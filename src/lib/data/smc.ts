@@ -733,7 +733,7 @@ export function computeSmcContext(
     tpoProfile: (() => {
       const profile = calculateTpoProfile(candles, { rows: VOLUME_PROFILE_BINS, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE });
       return profile.available
-        ? { available: true, poc: profile.poc, vah: profile.vah, val: profile.val, totalTpo: profile.total, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE }
+        ? { available: true, poc: profile.poc, vah: profile.vah, val: profile.val, totalTpo: profile.total, blockMinutes: profile.blockMinutes ?? 30, valueAreaPercent: VALUE_AREA_COVERAGE }
         : { available: false, unavailableReason: profile.reason, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE };
     })(),
   };
