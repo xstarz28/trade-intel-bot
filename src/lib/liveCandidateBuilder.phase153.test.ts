@@ -99,6 +99,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         price: { price: 1.1, timestamp: observedAt, source: "fixture" },
         candles: [],
         timeframe: "H 1",
+        dataFreshness: "realtime",
       },
     }, now);
 
