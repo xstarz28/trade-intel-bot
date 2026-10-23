@@ -87,6 +87,10 @@ function gitInfo() {
   // weakening the dirty-tree check.
   if (process.env.VERCEL === "1" && status.trim()) {
     console.warn(`[build-provenance] dirty paths:\n${status}`);
+    const vercelConfigDiff = read("git diff -- vercel.json");
+    if (vercelConfigDiff) {
+      console.warn(`[build-provenance] vercel.json diff:\n${vercelConfigDiff}`);
+    }
   }
   const worktreeDirty =
     gitCommit.length === 0 ? null : status.trim().length > 0;
