@@ -29,3 +29,12 @@ jobs:
         env:
           RUN_REAL_MARKET_WALK_FORWARD: "1"
         run: npx vitest run src/lib/backtest/real-market-walk-forward.live.test.ts --reporter=verbose
+
+      - name: Upload reproducible market data and metrics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: real-market-walk-forward-evidence-${{ github.run_id }}
+          path: artifacts/real-market-walk-forward/*.json
+          if-no-files-found: warn
+          retention-days: 30
