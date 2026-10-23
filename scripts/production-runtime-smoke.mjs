@@ -19,6 +19,7 @@ const evidence = {
   target: url,
   startedAt: new Date().toISOString(),
   authenticated: false,
+  sessionType: "guest",
   analyses: [],
   marketTypeCoverage: { forex: false, crypto: false, stock: false, commodity: false },
   cryptoContractCoverage: { spot: false, perpetual: false, futures: false },
@@ -497,7 +498,8 @@ try {
     throw new Error("Production instrument selector contains duplicate visible options: " + repeatedOptions.slice(0, 12).join("; "));
   }
   await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
-  evidence.authenticated = true;
+  // Guest entry is not an authenticated account session. Keep authenticated=false
+  // so this smoke cannot accidentally satisfy the authenticated-browser release gate.
 
   // Real production coverage: spot crypto + forex, commodity, and equity.
   await runAnalysisWithQuotaRetry(page, "BTC/USD", "crypto", "M5", true);
