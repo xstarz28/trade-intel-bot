@@ -29,14 +29,23 @@ export interface ProfileOptions {
   valueAreaPercent?: number;
   blockMinutes?: number;
 }
-const validCandles = (input: ProfileCandle[]) => input.filter(c =>
-  Number.isFinite(c.timestamp) && c.timestamp > 0 &&
-  Number.isFinite(c.open) && Number.isFinite(c.high) &&
-  Number.isFinite(c.low) && Number.isFinite(c.close) &&
-  c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0 &&
-  c.high >= Math.max(c.open, c.close, c.low) &&
-  c.low <= Math.min(c.open, c.close, c.high)
-).sort((a,b) => a.timestamp-b.timestamp);
+const validCandles = (input: ProfileCandle[]) => {
+  const sorted = input.filter(c =>
+    Number.isFinite(c.timestamp) && c.timestamp > 0 &&
+    Number.isFinite(c.open) && Number.isFinite(c.high) &&
+    Number.isFinite(c.low) && Number.isFinite(c.close) &&
+    c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0 &&
+    c.high >= Math.max(c.open, c.close, c.low) &&
+    c.low <= Math.min(c.open, c.close, c.high)
+  ).sort((a,b) => a.timestamp-b.timestamp);
+
+  // Provider retries can occasionally return the same candle more than once.
+  // Counting duplicate timestamps would inflate VPVR volume and TPO history.
+  // Keep the last valid record for each timestamp deterministically.
+  const unique = new Map<number, ProfileCandle>();
+  for (const candle of sorted) unique.set(candle.timestamp, candle);
+  return [...unique.values()];
+};
 const finiteOption = (value: number | undefined, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 const optionsOf = (o: ProfileOptions) => ({
