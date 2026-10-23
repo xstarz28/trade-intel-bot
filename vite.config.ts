@@ -81,7 +81,13 @@ function gitInfo() {
 
   // An uncommitted tree does not correspond to the commit it names, so the
   // artifact says so rather than implying reproducibility it does not have.
-  const status = read("git status --porcelain");
+  const status = read("git status --porcelain --untracked-files=all");
+  // Vercel-only diagnostic: reveal changed paths in build logs so generated
+  // platform files can be distinguished from real source edits without
+  // weakening the dirty-tree check.
+  if (process.env.VERCEL === "1" && status.trim()) {
+    console.warn(`[build-provenance] dirty paths:\n${status}`);
+  }
   const worktreeDirty =
     gitCommit.length === 0 ? null : status.trim().length > 0;
 
