@@ -86,7 +86,7 @@ function assessFreshness(
   if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
 
   // Closed-market daily/weekly candles remain usable only as STALE evidence.
-  const tf = timeframe?.trim().toUpperCase().replace(/\\s+/g, "");
+  const tf = timeframe?.trim().toUpperCase().replace(/\s+/g, "");
   const staleLimitMs = tf === "W1" || tf === "1W" || tf === "1WEEK"
     ? 14 * 24 * 60 * 60_000
     : tf === "D1" || tf === "1D" || tf === "1DAY" || tf === "H4" || tf === "4H" || tf === "4HR"
