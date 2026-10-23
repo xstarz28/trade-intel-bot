@@ -22,6 +22,8 @@ export interface MarketProfile {
   val?: number;
   total?: number;
   valueAreaPercent: number;
+  /** Effective TPO block size after respecting the source candle resolution. */
+  blockMinutes?: number;
   approximation?: string;
 }
 export interface ProfileOptions {
@@ -79,9 +81,23 @@ export function calculateTpoProfile(input: ProfileCandle[], options: ProfileOpti
   if (candles.length<20) return {available:false,reason:"At least 20 valid candles are required.",method:"time-price-opportunity",rows:[],valueAreaPercent:o.valueAreaPercent};
   const {low,high,step}=levelsFor(candles,o.rows);
   if (!(high>low)) return {available:false,reason:"Price range is degenerate.",method:"time-price-opportunity",rows:[],valueAreaPercent:o.valueAreaPercent};
+
+  // Never manufacture sub-candle TPO observations. If the input is H1/H4/D1,
+  // 30-minute blocks cannot be reconstructed from OHLC alone; use at least
+  // the median source-candle interval and disclose the effective resolution.
+  const intervals = candles.slice(1)
+    .map((c, i) => c.timestamp - candles[i].timestamp)
+    .filter(delta => Number.isFinite(delta) && delta > 0)
+    .sort((a,b) => a-b);
+  const middle = Math.floor(intervals.length / 2);
+  const medianInterval = intervals.length === 0 ? o.blockMs
+    : intervals.length % 2 === 1 ? intervals[middle]
+    : (intervals[middle - 1] + intervals[middle]) / 2;
+  const effectiveBlockMs = Math.max(o.blockMs, medianInterval);
+  const effectiveBlockMinutes = effectiveBlockMs / 60_000;
   const blocks=Array.from({length:o.rows},()=>new Set<number>());
   for (const c of candles) {
-    const block=Math.floor(c.timestamp/o.blockMs);
+    const block=Math.floor(c.timestamp/effectiveBlockMs);
     const first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
     let last=Math.max(0,Math.min(o.rows-1,Math.floor((c.high-low)/step)));
     if(c.high===high) last=o.rows-1;
@@ -89,8 +105,8 @@ export function calculateTpoProfile(input: ProfileCandle[], options: ProfileOpti
   }
   const values=blocks.map(b=>b.size), rows=values.map((value,i)=>({price:low+(i+0.5)*step,value}));
   const area=areaFor(values,low,step,o.valueAreaPercent);
-  return area ? {available:true,method:"time-price-opportunity",rows,...area,valueAreaPercent:o.valueAreaPercent}
-    : {available:false,reason:"No TPO observations were produced.",method:"time-price-opportunity",rows,valueAreaPercent:o.valueAreaPercent};
+  return area ? {available:true,method:"time-price-opportunity",rows,...area,valueAreaPercent:o.valueAreaPercent,blockMinutes:effectiveBlockMinutes}
+    : {available:false,reason:"No TPO observations were produced.",method:"time-price-opportunity",rows,valueAreaPercent:o.valueAreaPercent,blockMinutes:effectiveBlockMinutes};
 }
 export function calculateVpvrProfile(input: ProfileCandle[], options: ProfileOptions = {}): MarketProfile {
   const candles=validCandles(input), o=optionsOf(options);
