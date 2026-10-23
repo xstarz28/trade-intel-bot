@@ -137,6 +137,7 @@ describe.runIf(enabled)("REAL MARKET walk-forward (Yahoo Finance daily OHLCV)", 
       metrics: {
         signalsChecked: report.signalsChecked,
         noTradeSignals: report.noTradeSignals,
+        noTradeReasonCounts: report.noTradeReasonCounts,
         rejectedPlans: report.rejectedPlans,
         executedTrades: report.executedTrades,
         winRatePct: report.winRatePct,
