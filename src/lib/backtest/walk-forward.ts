@@ -38,6 +38,8 @@ export interface WalkForwardReport {
   candleCount: number;
   signalsChecked: number;
   noTradeSignals: number;
+  /** Aggregated engine gate reasons for NO_TRADE signals, to diagnose over-rejection. */
+  noTradeReasonCounts: Record<string, number>;
   rejectedPlans: number;
   executedTrades: number;
   wins: number;
@@ -56,6 +58,7 @@ export interface BacktestSignal {
   recommendation: "LONG" | "SHORT" | "NO_TRADE";
   tradePlan?: Pick<TradePlan, "direction" | "entry" | "stopLoss" | "takeProfit">;
   confidence?: number;
+  noTradeReasons?: string[];
 }
 
 export interface WalkForwardInput {
@@ -225,6 +228,7 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
   const trades: BacktestTrade[] = [];
   let signalsChecked = 0;
   let noTradeSignals = 0;
+  const noTradeReasonCounts: Record<string, number> = {};
   let rejectedPlans = 0;
   let nextEligibleSignalIndex = firstSignalIndex;
 
@@ -246,6 +250,10 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     }
     if (signal.recommendation === "NO_TRADE") {
       noTradeSignals++;
+      for (const reason of signal.noTradeReasons ?? []) {
+        const normalized = reason.trim();
+        if (normalized) noTradeReasonCounts[normalized] = (noTradeReasonCounts[normalized] ?? 0) + 1;
+      }
       continue;
     }
     const trade = simulateTrade({
@@ -283,6 +291,7 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     candleCount: candles.length,
     signalsChecked,
     noTradeSignals,
+    noTradeReasonCounts,
     rejectedPlans,
     executedTrades: trades.length,
     wins,
@@ -402,6 +411,7 @@ export function runProductionWalkForwardBacktest(args: {
         recommendation: result.recommendation,
         tradePlan: result.tradePlan,
         confidence: result.confidence,
+        noTradeReasons: result.noTradeReasons,
       };
     },
   });
