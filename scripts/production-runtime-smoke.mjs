@@ -306,6 +306,20 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   const sourceMatch = sourceRow.match(/Source:\s*(.+)$/i);
   const quality = /primary:\s*(GOOD|DEGRADED|INSUFFICIENT|STALE|UNAVAILABLE|INVALID)/i.exec(resultText)?.[1];
 
+  // Fail closed on stale primary data: a visible stale snapshot must never
+  // coexist with an actionable LONG/SHORT plan, even if other checks pass.
+  if (quality === "STALE") {
+    if (recommendation !== "NO_TRADE") {
+      throw new Error(`${instrument} primary data is STALE but recommendation is ${recommendation}; refusing an actionable decision from stale data`);
+    }
+    if ((await executablePlan.count()) !== 0) {
+      throw new Error(`${instrument} primary data is STALE but an executable trade plan is rendered`);
+    }
+    if ((await noTradeReasons.count()) !== 1 || !/stale|outdated|age|freshness/i.test(await noTradeReasons.innerText())) {
+      throw new Error(`${instrument} primary data is STALE without a visible stale-data rejection reason`);
+    }
+  }
+
   let cryptoIntelligence = null;
   // The supplemental crypto-intelligence panel is a spot dashboard surface.
   // Derivatives must still pass real price/provider/quality/chart checks, but
