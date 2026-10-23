@@ -85,6 +85,28 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     },
   );
 
+  it("normalizes whitespace in timeframe labels before applying freshness limits", () => {
+    const now = Date.UTC(2026, 9, 23, 12);
+    const observedAt = now - 30 * 60 * 60 * 1000;
+    const candidate = buildCandidateFromSource({
+      instrument: "TEST/USD",
+      assetClass: "forex",
+      marketData: {
+        instrument: "TEST/USD",
+        instrumentType: "forex",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 1.1, timestamp: observedAt, source: "fixture" },
+        candles: [],
+        timeframe: "H 1",
+      },
+    }, now);
+
+    // H1 observations remain stale-usable for up to 48 hours; an unnormalized
+    // label incorrectly falls through to the generic 24-hour limit.
+    expect(candidate.freshness).toBe("STALE");
+  });
+
   it("derives technical evidence from provider OHLCV when no precomputed technical payload exists", () => {
     const now = Date.now();
     const candles = Array.from({ length: 210 }, (_, i) => {
