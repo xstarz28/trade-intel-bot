@@ -99,13 +99,18 @@ type Env = Record<string, string | undefined>;
  *   1. `XSTARZ_BUILD_REF`    — explicit, set by the deploy workflow;
  *   2. `SOURCE_REF`          — the guard's deploy-source variable;
  *   3. `GITHUB_REF_NAME`     — the branch in CI even on a detached checkout;
- *   4. `GITHUB_REF`          — full ref, normalised.
+ *   4. `GITHUB_REF`          — full ref, normalised;
+ *   5. `VERCEL_GIT_COMMIT_REF` — Vercel's ref for Git-backed deployments.
  *
  * Returns `""` when none is present (the caller then falls back to git).
  */
 export function resolveBuildRef(env: Env): string {
   return normalizeGitRef(
-    env.XSTARZ_BUILD_REF ?? env.SOURCE_REF ?? env.GITHUB_REF_NAME ?? env.GITHUB_REF,
+    env.XSTARZ_BUILD_REF ??
+      env.SOURCE_REF ??
+      env.GITHUB_REF_NAME ??
+      env.GITHUB_REF ??
+      env.VERCEL_GIT_COMMIT_REF,
   );
 }
 
