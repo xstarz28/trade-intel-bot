@@ -100,7 +100,7 @@ function gitInfo() {
   const effectiveStatus = status
     .split("\n")
     .filter((line) => {
-      const path = line.slice(3);
+      const path = line.slice(2).trimStart();
       return !(committedVercelConfigMatches && path === "vercel.json");
     })
     .join("\n");
