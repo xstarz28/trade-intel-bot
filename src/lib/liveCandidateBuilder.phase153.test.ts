@@ -718,3 +718,75 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
   });
 
 });
+
+// Regression: HTF bias is context only; it must not be mislabeled as a
+// confirmed setup when the selected timeframe has no structure or BOS.
+describe("HTF bias versus setup confirmation", () => {
+  function buildWithSetupStructure(structure: "unknown" | "HH/HL") {
+    const now = Date.now();
+    const candles = Array.from({ length: 100 }, (_, i) => ({
+      timestamp: now - (100 - i) * 60_000,
+      time: now - (100 - i) * 60_000,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volume: 1000,
+    }));
+
+    return buildCandidateFromSource({
+      instrument: "BTC-USDT-SWAP",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC-USDT-SWAP",
+        instrumentType: "crypto",
+        provider: "okx",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "okx" },
+        candles,
+        timeframe: "H4",
+        higherTimeframe: "D1",
+        dataFreshness: "realtime",
+      },
+      technicalData: {
+        structure,
+        bosDirection: "none",
+        chochDirection: "none",
+        swingHighs: [],
+        swingLows: [],
+        supportLevels: [99],
+        resistanceLevels: [101],
+        volumeTrend: "stable",
+        dataPoints: 100,
+        htfContext: {
+          timeframe: "D1",
+          structure: "HH/HL",
+          bosDirection: "none",
+          chochDirection: "none",
+          dataPoints: 100,
+        },
+        mtf: {
+          requestedTimeframe: "H4",
+          chainUsed: ["D1", "H4"],
+          unavailable: [],
+          timeframes: [],
+          htfBias: "long",
+          alignment: "ALIGNED_BULLISH",
+          setupTimeframe: "H4",
+        },
+      },
+    });
+  }
+
+  it("keeps a bullish HTF bias but marks the setup neutral without setup-timeframe confirmation", () => {
+    const candidate = buildWithSetupStructure("unknown");
+    expect(candidate.htfBias).toBe("long");
+    expect(candidate.setupDirection).toBe("neutral");
+  });
+
+  it("allows a directional setup when the selected timeframe has confirmed structure", () => {
+    const candidate = buildWithSetupStructure("HH/HL");
+    expect(candidate.htfBias).toBe("long");
+    expect(candidate.setupDirection).toBe("long");
+  });
+});
