@@ -26,6 +26,19 @@ describe("TPO and VPVR",()=>{
     expect(calculateVpvrProfile(candles().slice(0,2)).available).toBe(false);
   });
 
+  it("does not double-count duplicate provider candle timestamps",()=>{
+    const data=candles(100);
+    const baseline=calculateVpvrProfile(data,{rows:32});
+    const duplicated=calculateVpvrProfile([...data,data[data.length-1]],{rows:32});
+    expect(baseline.available).toBe(true);
+    expect(duplicated.available).toBe(true);
+    expect(duplicated.total).toBeCloseTo(baseline.total!,8);
+
+    const tpoBaseline=calculateTpoProfile(data,{rows:32,blockMinutes:30});
+    const tpoDuplicated=calculateTpoProfile([...data,data[data.length-1]],{rows:32,blockMinutes:30});
+    expect(tpoBaseline.total).toBe(tpoDuplicated.total);
+  });
+
   it("ignores malformed OHLC candles and sanitizes non-finite options",()=>{
     const data=candles();
     data[0]={...data[0],high:data[0].open-1};
