@@ -34,7 +34,8 @@ const markets: Array<{ symbol: string; instrument: string; type: InstrumentType 
 
 async function loadYahooDailyCandles(symbol: string): Promise<OhlcvCandle[]> {
   const period2 = Math.floor(Date.now() / 1000);
-  const period1 = period2 - 3 * 365 * 24 * 60 * 60;
+  // Five years of daily history broadens the sample across more market regimes.
+  const period1 = period2 - 5 * 365 * 24 * 60 * 60;
   const endpoint = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
   endpoint.searchParams.set("period1", String(period1));
   endpoint.searchParams.set("period2", String(period2));
@@ -105,6 +106,8 @@ async function loadYahooDailyCandles(symbol: string): Promise<OhlcvCandle[]> {
 describe.runIf(enabled)("REAL MARKET walk-forward (Yahoo Finance daily OHLCV)", () => {
   it.each(markets)("$symbol: run production decision engine on real historical candles", async ({ symbol, instrument, type }) => {
     const candles = await loadYahooDailyCandles(symbol);
+    // Score roughly two years out-of-sample; the earlier history is warm-up only.
+    const outOfSampleStartIndex = Math.max(300, candles.length - 500);
     const report = runProductionWalkForwardBacktest({
       instrument,
       instrumentType: type,
@@ -112,7 +115,7 @@ describe.runIf(enabled)("REAL MARKET walk-forward (Yahoo Finance daily OHLCV)", 
       candles,
       options: {
         minimumHistory: 220,
-        outOfSampleStartIndex: Math.max(300, candles.length - 180),
+        outOfSampleStartIndex,
         maxHoldingBars: 20,
         // Conservative combined fee+slippage assumption per side; no leverage/funding is implied.
         costBpsPerSide: 10,
@@ -128,7 +131,8 @@ describe.runIf(enabled)("REAL MARKET walk-forward (Yahoo Finance daily OHLCV)", 
       firstCandleUtc: new Date(candles[0].timestamp).toISOString(),
       lastCandleUtc: new Date(candles[candles.length - 1].timestamp).toISOString(),
       candleCount: candles.length,
-      outOfSampleStartIndex: Math.max(300, candles.length - 180),
+      outOfSampleStartIndex,
+      outOfSampleCandleCount: candles.length - outOfSampleStartIndex,
       costs: { feeAndSlippageBpsPerSide: 10 },
       metrics: {
         signalsChecked: report.signalsChecked,
@@ -154,6 +158,7 @@ describe.runIf(enabled)("REAL MARKET walk-forward (Yahoo Finance daily OHLCV)", 
 
     expect(report.candleCount).toBe(candles.length);
     expect(report.signalsChecked).toBeGreaterThan(0);
+    expect(candles.length - outOfSampleStartIndex).toBeGreaterThanOrEqual(400);
     expect(report.warnings.some((warning) => warning.includes("Out-of-sample"))).toBe(true);
     expect(Number.isFinite(report.maxDrawdownR)).toBe(true);
     expect(Number.isFinite(report.totalNetReturnPct)).toBe(true);
