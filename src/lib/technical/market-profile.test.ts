@@ -12,6 +12,13 @@ describe("TPO and VPVR",()=>{
     expect(p.available).toBe(true); expect(p.poc).toBeGreaterThan(0);
     expect(p.val).toBeLessThanOrEqual(p.poc!); expect(p.vah).toBeGreaterThanOrEqual(p.poc!);
   });
+  it("does not claim 30-minute TPO resolution from four-hour candles",()=>{
+    const h4=candles().map((c,i)=>({...c,timestamp:1_800_000_000_000+i*4*60*60_000}));
+    const profile=calculateTpoProfile(h4,{rows:32,blockMinutes:30});
+    expect(profile.available).toBe(true);
+    expect(profile.blockMinutes).toBe(240);
+  });
+
   it("calculates approximate VPVR only with positive usable volume",()=>{
     const p=calculateVpvrProfile(candles(100),{rows:32});
     expect(p.available).toBe(true); expect(p.approximation).toContain("not true trade-level");
