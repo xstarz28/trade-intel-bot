@@ -368,9 +368,14 @@ describe("runWalkForwardBacktest", () => {
       timeframe: "M1",
       candles: candles(30),
       options: { minimumHistory: 20 },
-      analyzeAtClose: () => ({ recommendation: "NO_TRADE" }),
+      analyzeAtClose: () => ({
+        recommendation: "NO_TRADE",
+        noTradeReasons: ["Data completeness is LIMITED", "Core bias is Neutral"],
+      }),
     });
     expect(report.executedTrades).toBe(0);
+    expect(report.noTradeReasonCounts["Data completeness is LIMITED"]).toBe(report.noTradeSignals);
+    expect(report.noTradeReasonCounts["Core bias is Neutral"]).toBe(report.noTradeSignals);
     expect(report.winRatePct).toBeNull();
     expect(report.expectancyR).toBeNull();
     expect(report.profitFactor).toBeNull();
