@@ -119,7 +119,7 @@ export function resolveBuildRef(env: Env): string {
  * then `GITHUB_SHA` (CI), else `""` so the caller can fall back to git.
  */
 export function resolveBuildCommit(env: Env): string {
-  const explicit = (env.XSTARZ_BUILD_COMMIT ?? env.GITHUB_SHA ?? "").trim();
+  const explicit = (env.XSTARZ_BUILD_COMMIT ?? env.GITHUB_SHA ?? env.VERCEL_GIT_COMMIT_SHA ?? "").trim();
   return /^[0-9a-f]{7,40}$/i.test(explicit) ? explicit.toLowerCase() : "";
 }
 
