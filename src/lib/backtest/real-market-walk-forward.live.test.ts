@@ -54,25 +54,49 @@ async function loadYahooDailyCandles(symbol: string): Promise<OhlcvCandle[]> {
   const timestamps = result?.timestamp ?? [];
   if (!quote || timestamps.length === 0) throw new Error(`${symbol}: historical provider returned no daily OHLCV candles`);
 
+  let invalidOhlcvRows = 0;
   const candles = timestamps.flatMap((timestamp, index): OhlcvCandle[] => {
     const open = quote.open?.[index];
     const high = quote.high?.[index];
     const low = quote.low?.[index];
     const close = quote.close?.[index];
     const volume = quote.volume?.[index];
-    if (![open, high, low, close, volume].every((value) => typeof value === "number" && Number.isFinite(value))) return [];
+    if (![open, high, low, close, volume].every((value) => typeof value === "number" && Number.isFinite(value))) {
+      invalidOhlcvRows++;
+      return [];
+    }
+
+    // Reject malformed provider rows instead of inventing/correcting prices.
+    const o = open as number;
+    const h = high as number;
+    const l = low as number;
+    const c = close as number;
+    const v = volume as number;
+    if (
+      !Number.isFinite(timestamp) ||
+      timestamp <= 0 ||
+      Math.min(o, h, l, c) <= 0 ||
+      v < 0 ||
+      h < Math.max(o, c, l) ||
+      l > Math.min(o, c, h)
+    ) {
+      invalidOhlcvRows++;
+      return [];
+    }
+
     return [{
       timestamp: timestamp * 1000,
-      open: open as number,
-      high: high as number,
-      low: low as number,
-      close: close as number,
-      volume: volume as number,
+      open: o,
+      high: h,
+      low: l,
+      close: c,
+      volume: v,
     }];
   });
 
+  console.log(`YAHOO_OHLCV_VALIDATION ${JSON.stringify({ symbol, providerRows: timestamps.length, acceptedRows: candles.length, rejectedMalformedRows: invalidOhlcvRows })}`);
   if (candles.length < 500) {
-    throw new Error(`${symbol}: only ${candles.length} valid daily candles; at least 500 required`);
+    throw new Error(`${symbol}: only ${candles.length} valid daily candles after rejecting ${invalidOhlcvRows} malformed rows; at least 500 required`);
   }
   return candles;
 }
