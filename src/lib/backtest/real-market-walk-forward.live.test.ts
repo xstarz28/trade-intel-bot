@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { runProductionWalkForwardBacktest } from "./walk-forward";
 import type { InstrumentType } from "@/types/analysis";
@@ -143,6 +144,12 @@ describe.runIf(enabled)("REAL MARKET walk-forward (Yahoo Finance daily OHLCV)", 
       },
       warnings: report.warnings,
     };
+    await mkdir("artifacts/real-market-walk-forward", { recursive: true });
+    await writeFile(
+      `artifacts/real-market-walk-forward/${symbol.replace(/[^A-Za-z0-9_-]/g, "_")}.json`,
+      JSON.stringify({ ...summary, candles }, null, 2) + "\n",
+      "utf8",
+    );
     console.log(`REAL_MARKET_WALK_FORWARD ${JSON.stringify(summary)}`);
 
     expect(report.candleCount).toBe(candles.length);
