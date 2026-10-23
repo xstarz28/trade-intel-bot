@@ -1,4 +1,5 @@
-import { chromium, devices } from "playwright";
+import { chromium } from "playwright";
+import { access } from "node:fs/promises";
 
 const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzanalysis.vercel.app";
 const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
@@ -8,7 +9,16 @@ if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(url)) {
 }
 
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const storageStatePath = process.env.XSTARZ_SMOKE_STORAGE_STATE;
+if (storageStatePath) {
+  await access(storageStatePath).catch(() => {
+    throw new Error("XSTARZ_SMOKE_STORAGE_STATE was set, but the storage-state file is not readable.");
+  });
+}
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 1000 },
+  ...(storageStatePath ? { storageState: storageStatePath } : {}),
+});
 const page = await context.newPage();
 
 const authTraffic = [];
@@ -450,13 +460,23 @@ try {
   await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
 
   const start = page.getByRole("button", { name: /start analysis/i });
-  if (!(await start.count())) throw new Error("Landing page did not expose Start analysis");
-  await start.click();
-  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+  if (await start.count()) await start.click();
 
   const guest = page.getByRole("button", { name: /continue without an account/i });
-  if (!(await guest.count())) throw new Error("Auth page did not expose guest sign-in");
-  await guest.click();
+  if (storageStatePath) {
+    // Never convert a guest flow into an authenticated pass. A supplied state
+    // must actually skip the guest choice and reach the dashboard.
+    if (await guest.isVisible().catch(() => false)) {
+      throw new Error("Supplied Playwright storage state is not authenticated: the guest/auth gate is still visible. Use a valid, authorized account session.");
+    }
+    evidence.authenticated = true;
+    evidence.sessionType = "storage-state";
+  } else {
+    await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+    if (!(await guest.count())) throw new Error("Auth page did not expose guest sign-in");
+    await guest.click();
+    evidence.sessionType = "guest";
+  }
 
   const cryptoCategory = page.getByRole("button", { name: "CRYPTO", exact: true });
   await cryptoCategory.waitFor({ state: "visible", timeout: 30000 });
