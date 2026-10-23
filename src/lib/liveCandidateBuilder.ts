@@ -221,9 +221,9 @@ function extractAtr(tech: TechnicalData | undefined): number | undefined {
 }
 function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: number): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
   if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
-  const higherStructureDirection =
-    tech.htfContext?.structure === "HH/HL" ? "long" :
-    tech.htfContext?.structure === "LH/LL" ? "short" : undefined;
+  // Higher-timeframe bias is context, not a trigger on the selected setup
+  // timeframe. Keep it in htfBias; do not manufacture a directional setup
+  // when the selected timeframe has neither directional structure nor BOS.
   const structureDirection =
     tech.structure === "HH/HL" ? "long" :
     tech.structure === "LH/LL" ? "short" :
@@ -238,12 +238,7 @@ function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: nu
   const direction =
     structureDirection === "neutral"
       ? breakoutDirection ?? "neutral"
-      : structureDirection ??
-        breakoutDirection ??
-        higherStructureDirection ??
-        (tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
-          ? tech.mtf.htfBias
-          : "neutral");
+      : structureDirection ?? breakoutDirection ?? "neutral";
   if (direction === "neutral") {
     // A range is not a directional signal, but neutral candidates should still
     // be differentiated by their observed context instead of receiving a flat
