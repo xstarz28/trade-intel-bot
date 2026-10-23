@@ -469,7 +469,8 @@ try {
     if (await guest.isVisible().catch(() => false)) {
       throw new Error("Supplied Playwright storage state is not authenticated: the guest/auth gate is still visible. Use a valid, authorized account session.");
     }
-    evidence.authenticated = true;
+    // Do not mark this run authenticated yet: absence of the guest CTA alone
+    // is insufficient. The dashboard and its required controls must load first.
     evidence.sessionType = "storage-state";
   } else {
     await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
@@ -498,6 +499,9 @@ try {
   if (!evidence.productSurfaces.riskSizing) {
     throw new Error("Risk-sizing surface did not render all three user-owned account inputs after dashboard navigation.");
   }
+  // Only count the storage-state run as authenticated after the dashboard and
+  // its key controls are visibly usable. A guest run remains explicitly guest.
+  if (storageStatePath) evidence.authenticated = true;
   await cryptoCategory.click();
   const instrumentPicker = page.getByRole("combobox").first();
   await instrumentPicker.click();
