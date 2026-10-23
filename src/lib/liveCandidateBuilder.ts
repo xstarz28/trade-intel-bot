@@ -233,8 +233,8 @@ function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: nu
     tech.bosDirection === "bearish" ? "short" : undefined;
   // The selected setup timeframe is authoritative for an actionable setup.
   // A range stays neutral even when the HTF is bullish; only a BOS on the
-  // setup timeframe can break that neutral state. HTF direction is a fallback
-  // only when setup structure itself is genuinely unavailable/unknown.
+  // setup timeframe can break that neutral state. Missing setup structure is
+  // not replaced by HTF direction: the HTF bias remains separate context.
   const direction =
     structureDirection === "neutral"
       ? breakoutDirection ?? "neutral"
