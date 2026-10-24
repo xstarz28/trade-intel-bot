@@ -264,8 +264,15 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
 
 function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessLevel {
   let count = 0;
-  if (source.snapshot?.price && source.snapshot.price > 0) count++;
-  if (source.snapshot?.ohlcvAvailable) count++;
+  if (Number.isFinite(source.snapshot?.price) && (source.snapshot?.price ?? 0) > 0) count++;
+  // OHLCV is evidence only when the provider reports a usable candle sample.
+  // A boolean availability flag with zero/unknown rows must not satisfy the
+  // market-history completeness gate.
+  if (
+    source.snapshot?.ohlcvAvailable === true &&
+    Number.isFinite(source.snapshot.dataPoints) &&
+    (source.snapshot.dataPoints ?? 0) >= 20
+  ) count++;
   if (source.snapshot?.htfBias && source.snapshot.htfBias !== "unknown") count++;
   if (
     source.snapshot?.mtfAlignment &&
@@ -279,7 +286,6 @@ function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessL
   if (source.cot?.netNonCommercial !== undefined) count++;
   if (source.eia?.inventory !== undefined) count++;
   if (source.treasury?.tenYearYield !== undefined) count++;
-  if (source.analysisResult) count++;
 
   // Market snapshot fields and prior analysis metadata are not independent
   // contextual intelligence. FULL completeness requires at least one actual
