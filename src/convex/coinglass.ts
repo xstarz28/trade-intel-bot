@@ -126,12 +126,18 @@ function mapSymbolForCG(instrument: string): string {
 // ── Main Action ─────────────────────────────────────────────────
 
 export const fetchDerivatives = action({
-  args: { instrument: v.string() },
+  args: {
+    instrument: v.string(),
+    includeTokenomics: v.optional(v.boolean()),
+  },
   handler: async (_ctx, args): Promise<DerivativesResult> => {
     const apiKey = process.env.COINGLASS_API_KEY;
     const symbol = mapSymbolForCG(args.instrument);
-    // Start Tokenomist concurrently so it cannot serialize CoinGlass requests.
-    const tokenomicsPromise = fetchTokenomics(args.instrument);
+    // Background radar needs derivatives only; skip tokenomics fan-out unless
+    // explicitly requested so scanning does not trigger unrelated provider calls.
+    const tokenomicsPromise = args.includeTokenomics === false
+      ? Promise.resolve(undefined)
+      : fetchTokenomics(args.instrument);
 
     try {
       const cacheKey = "deriv:" + symbol;
@@ -156,7 +162,7 @@ export const fetchDerivatives = action({
           };
         }
         return {
-          success: Boolean(tokenomics.available),
+          success: Boolean(tokenomics?.available),
           tokenomics,
           error: "CoinGlass API key is not configured. Public derivatives fallbacks failed: " + fallback.error,
           errorCode: "AUTH_ERROR",
