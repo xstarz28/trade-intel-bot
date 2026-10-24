@@ -335,7 +335,7 @@ export function AppAuthProvider({ children }: { children: React.ReactNode }) {
     if (!isConvexConfigured) return null;
     try {
       return new ConvexReactClient(convexUrl);
-    } catch (e) {
+    } catch {
       console.warn("[AppAuthProvider] Could not construct the configured Convex client.");
       return null;
     }
