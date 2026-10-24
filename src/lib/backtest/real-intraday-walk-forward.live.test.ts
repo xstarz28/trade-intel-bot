@@ -170,7 +170,9 @@ describe.runIf(enabled)("REAL MARKET intraday walk-forward (Yahoo Finance BTC-US
 
     for (const dataset of datasets) {
       expect(dataset.candles.length, `${dataset.timeframe} should have sufficient completed history`).toBeGreaterThanOrEqual(300);
-      const outOfSampleStartIndex = Math.max(220, dataset.candles.length - 120);
+      // Use the final 20% of each timeframe for scoring so M15/H1/H4 cover
+      // approximately the same calendar horizon instead of incomparable fixed bar counts.
+      const outOfSampleStartIndex = Math.max(220, Math.floor(dataset.candles.length * 0.8));
       const report = runProductionWalkForwardBacktest({
         instrument: "BTC/USD",
         instrumentType: "crypto" satisfies InstrumentType,
@@ -196,6 +198,7 @@ describe.runIf(enabled)("REAL MARKET intraday walk-forward (Yahoo Finance BTC-US
         candleCount: dataset.candles.length,
         outOfSampleStartIndex,
         outOfSampleCandleCount: dataset.candles.length - outOfSampleStartIndex,
+        outOfSampleApproxCalendarDays: Number(((dataset.candles[dataset.candles.length - 1].timestamp - dataset.candles[outOfSampleStartIndex].timestamp) / (24 * 60 * 60 * 1000)).toFixed(2)),
         costs: { feeAndSlippageBpsPerSide: 10 },
         metrics: {
           signalsChecked: report.signalsChecked,
@@ -222,6 +225,7 @@ describe.runIf(enabled)("REAL MARKET intraday walk-forward (Yahoo Finance BTC-US
 
       expect(report.candleCount).toBe(dataset.candles.length);
       expect(report.signalsChecked).toBeGreaterThan(0);
+      expect(dataset.candles.length - outOfSampleStartIndex).toBeGreaterThanOrEqual(50);
       expect(report.noTradeSignals + report.executedTrades).toBeLessThanOrEqual(report.signalsChecked);
       expect(Number.isFinite(report.maxDrawdownR)).toBe(true);
       expect(Number.isFinite(report.totalNetReturnPct)).toBe(true);
