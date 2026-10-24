@@ -1176,9 +1176,21 @@ function decideTrade(
   const agreeing = coreScores.filter((f) => f.score !== 0 && Math.sign(f.score) === dirSign);
   const opposing = coreScores.filter((f) => f.score !== 0 && Math.sign(f.score) === -dirSign);
 
-  if (bias !== "Neutral" && agreeing.length < 2) {
+  // Price-only instruments may not have independently available fundamentals,
+  // news sentiment, or derivatives. A strong, directionally aligned technical
+  // confirmation may satisfy the second confluence slot, but only AFTER the
+  // external structure has already established direction. Indicators remain
+  // secondary: they cannot create or reverse the directional thesis.
+  const technicalConfirmation =
+    !!input.technicalData &&
+    input.technicalData.dataPoints >= 14 &&
+    Math.abs(breakdown.indicator) >= 2 &&
+    Math.sign(breakdown.indicator) === dirSign;
+  const confluenceCount = agreeing.length + (technicalConfirmation ? 1 : 0);
+
+  if (bias !== "Neutral" && confluenceCount < 2) {
     reasons.push(
-      `Confluence too weak: only ${agreeing.length} core factor(s) support the ${bias.toLowerCase()} bias (need at least 2).`,
+      `Confluence too weak: only ${confluenceCount} aligned core/technical confirmation(s) support the ${bias.toLowerCase()} bias (need at least 2).`,
     );
   }
 
