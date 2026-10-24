@@ -194,6 +194,8 @@ export interface RadarOpportunity {
   assetClass: AssetClass;
   /** Region. */
   region?: string;
+  /** Actual observed timeframe used to rank this horizon. */
+  marketTimeframe?: string;
   /** Lifecycle state. */
   lifecycle: OpportunityLifecycle;
   /** Quality tier. */

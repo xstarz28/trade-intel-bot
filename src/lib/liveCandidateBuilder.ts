@@ -22,6 +22,7 @@ import { deriveMacroYieldEvidence, type TreasuryData } from "./data/treasury";
 import type { CotData } from "./data/cot";
 import type { EiaData } from "./data/eia";
 import { calculateTechnical } from "./data/technical";
+import { matchesDerivativeSymbol } from "./data/derivatives-symbol";
 
 // ═══════════════════════════════════════════════════════════════
 // LIVE CANDIDATE INPUT
@@ -219,7 +220,7 @@ function extractMtfAlignment(
 function extractAtr(tech: TechnicalData | undefined): number | undefined {
   return tech?.atr14;
 }
-function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: number): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
+export function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: number): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
   if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
   // Higher-timeframe bias is context, not a trigger on the selected setup
   // timeframe. Keep it in htfBias; do not manufacture a directional setup
@@ -451,8 +452,12 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
       source.universalIntelligence.assetClass === source.assetClass
       ? source.universalIntelligence
       : undefined,
-    derivativesData: source.derivativesData?.symbol ===
-      (source.providerNative?.providerInstrumentId ?? source.instrument)
+    derivativesData: source.derivativesData &&
+      matchesDerivativeSymbol(
+        source.instrument,
+        source.providerNative?.providerInstrumentId,
+        source.derivativesData.symbol,
+      )
       ? source.derivativesData
       : undefined,
     cotData: source.cotData?.requestedInstrument === source.instrument

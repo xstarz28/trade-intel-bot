@@ -12,8 +12,10 @@ import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation
 import type { MarketSnapshot, FreshnessLevel } from "./types";
 import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
-import type { LiveCandidateSource } from "../liveCandidateBuilder";
+import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
+import { calculateTechnical } from "../data/technical";
 import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
+import { matchesDerivativeSymbol } from "@/lib/data/derivatives-symbol";
 
 // ═══════════════════════════════════════════════════════════════
 // RADAR CANDIDATE SOURCE
@@ -24,6 +26,10 @@ export interface RadarCandidateSource {
   universe: UniverseEntry;
   /** Market snapshot from provider (if available). */
   snapshot?: MarketSnapshot | null;
+  /** Verified setup evidence derived from provider candles/technical analysis. */
+  setupDirection?: CandidateInput["setupDirection"];
+  setupStrength?: number;
+  confluenceCount?: number;
   /** Optional additional intelligence. */
   derivatives?: {
     fundingRate?: number;
@@ -94,21 +100,63 @@ function isPetroleumInstrument(instrument: string): boolean {
   return /(?:WTI|CRUDE|USOIL|UKOIL|BRENT|XTIUSD|XBRUSD|CL=F|BZ=F)/i.test(instrument);
 }
 
+function normalizeRadarSourceTimeframe(value?: string): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase().replace(/\\s+/g, "");
+  const aliases: Record<string, string> = {
+    "1M": "M1", "1MIN": "M1", "5M": "M5", "5MIN": "M5",
+    "15M": "M15", "15MIN": "M15", "1H": "H1", "1HR": "H1",
+    "4H": "H4", "4HR": "H4", "1D": "D1", "1DAY": "D1",
+    "1W": "W1", "1WEEK": "W1",
+  };
+  return aliases[normalized] ?? normalized;
+}
+
 export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandidateSource {
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
-  const matchingAnalysis = source.analysisResult?.instrument === source.instrument
+  const instrumentAnalysis = source.analysisResult?.instrument === source.instrument
     ? source.analysisResult
     : undefined;
-  const technical = source.technicalData ?? matchingAnalysis?.technicalData;
-  const analysis = matchingAnalysis;
+  const marketTimeframe = normalizeRadarSourceTimeframe(market?.timeframe);
+  const analysisTimeframe = normalizeRadarSourceTimeframe(instrumentAnalysis?.timeframe);
+  const analysisPrice = instrumentAnalysis?.priceSnapshot;
+  const marketPrice = market?.price;
+  const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
+    analysisPrice.price === marketPrice.price &&
+    analysisPrice.timestamp === marketPrice.timestamp;
+  // Technical data is reusable only for the exact market observation and
+  // timeframe that produced it. Same-instrument fundamentals remain valid
+  // context, but a different-timeframe technical read must not leak into setup evidence.
+  const matchingAnalysis = instrumentAnalysis &&
+    !!marketTimeframe &&
+    analysisTimeframe === marketTimeframe &&
+    sameObservedPriceSnapshot
+    ? instrumentAnalysis
+    : undefined;
+  const candleSeries = market?.candles?.slice().sort((a, b) => a.timestamp - b.timestamp);
+  const technical = source.technicalData ?? matchingAnalysis?.technicalData ?? (
+    candleSeries && candleSeries.length >= 30
+      ? calculateTechnical(
+          candleSeries,
+          market?.higherTimeframeCandles?.slice().sort((a, b) => a.timestamp - b.timestamp),
+          market?.higherTimeframe ?? "HTF",
+        )
+      : undefined
+  );
+  const setupEvidence = extractSetupEvidence(technical, market?.price?.price);
+  const analysis = instrumentAnalysis;
   const intelligence = source.universalIntelligence?.instrument === source.instrument &&
     source.universalIntelligence.assetClass === source.assetClass
     ? source.universalIntelligence
     : undefined;
-  const expectedProviderSymbol = source.providerNative?.providerInstrumentId ?? source.instrument;
-  const derivativesData = source.derivativesData?.symbol === expectedProviderSymbol
+  const derivativesData = source.derivativesData &&
+    matchesDerivativeSymbol(
+      source.instrument,
+      source.providerNative?.providerInstrumentId,
+      source.derivativesData.symbol,
+    )
     ? source.derivativesData
     : undefined;
   const cotData = source.cotData?.requestedInstrument === source.instrument
@@ -181,7 +229,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     availableTimeframes: (market.candles?.length ?? 0) > 0 ? [market.timeframe] : [],
     htfBias,
     marketRegime,
-    mtfAlignment: technical?.mtf?.alignment ?? analysis?.mtfSummary?.alignment,
+    mtfAlignment: technical?.mtf?.alignment ?? matchingAnalysis?.mtfSummary?.alignment,
     volatility: technical?.atr14,
     provider: market.provider,
     observedAt,
@@ -231,6 +279,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     snapshot,
     ...(derivatives ? { derivatives } : {}),
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
+    ...(setupEvidence ? setupEvidence : {}),
     ...(rateDifferential !== undefined ? { rateDifferential } : {}),
     ...(yieldDifferential !== undefined ? { yieldDifferential } : {}),
     ...(macroScore !== undefined ? { macroScore } : {}),
@@ -373,6 +422,11 @@ export function buildRadarCandidate(
     freshness,
     providerCoverage,
   };
+
+  // Verified setup evidence from the same source used to build this candidate.
+  if (source.setupDirection !== undefined) candidate.setupDirection = source.setupDirection;
+  if (source.setupStrength !== undefined && Number.isFinite(source.setupStrength)) candidate.setupStrength = source.setupStrength;
+  if (source.confluenceCount !== undefined && Number.isFinite(source.confluenceCount)) candidate.confluenceCount = source.confluenceCount;
 
   // Market structure (only from real data)
   if (snapshot?.htfBias) {

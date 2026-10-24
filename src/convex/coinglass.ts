@@ -20,6 +20,8 @@ import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tok
 import { PatternPlusUnlockAdapter } from "../lib/data/crypto/patternplus-unlocks-adapter";
 import { fetchCoinGeckoSupplyPayload, parseCoinGeckoSupplyFallback } from "../lib/data/crypto/coingecko-supply";
 import { getProviderSymbol } from "../lib/data/universal/instruments";
+import { normalizeDerivativeSymbol } from "../lib/data/derivatives-symbol";
+import { toCoinGlassSymbol } from "../lib/data/crypto/symbols";
 import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivatives-adapter";
 import { OkxPublicDerivativesAdapter } from "../lib/data/crypto/okx-derivatives-adapter";
@@ -118,20 +120,27 @@ async function cgFetch(path: string, apiKey: string): Promise<unknown> {
 // ── Symbol mapping ──────────────────────────────────────────────
 
 function mapSymbolForCG(instrument: string): string {
-  // BTC/USD → BTC, ETH/USD → ETH
-  const sym = instrument.toUpperCase().trim();
-  return sym.split("/")[0];
+  // CoinGlass aggregates derivatives by base asset, while callers may supply
+  // canonical pairs (BTC/USD) or exchange-native IDs (BTC-USDT-SWAP).
+  const normalized = toCoinGlassSymbol(instrument) ?? normalizeDerivativeSymbol(instrument);
+  return normalized || instrument.trim().toUpperCase();
 }
 
 // ── Main Action ─────────────────────────────────────────────────
 
 export const fetchDerivatives = action({
-  args: { instrument: v.string() },
+  args: {
+    instrument: v.string(),
+    includeTokenomics: v.optional(v.boolean()),
+  },
   handler: async (_ctx, args): Promise<DerivativesResult> => {
     const apiKey = process.env.COINGLASS_API_KEY;
     const symbol = mapSymbolForCG(args.instrument);
-    // Start Tokenomist concurrently so it cannot serialize CoinGlass requests.
-    const tokenomicsPromise = fetchTokenomics(args.instrument);
+    // Background radar needs derivatives only; skip tokenomics fan-out unless
+    // explicitly requested so scanning does not trigger unrelated provider calls.
+    const tokenomicsPromise = args.includeTokenomics === false
+      ? Promise.resolve(undefined)
+      : fetchTokenomics(args.instrument);
 
     try {
       const cacheKey = "deriv:" + symbol;
@@ -156,7 +165,7 @@ export const fetchDerivatives = action({
           };
         }
         return {
-          success: Boolean(tokenomics.available),
+          success: Boolean(tokenomics?.available),
           tokenomics,
           error: "CoinGlass API key is not configured. Public derivatives fallbacks failed: " + fallback.error,
           errorCode: "AUTH_ERROR",
@@ -217,7 +226,7 @@ export const fetchDerivatives = action({
           };
         }
         return {
-          success: Boolean(tokenomics.available),
+          success: Boolean(tokenomics?.available),
           tokenomics,
           error: error + " Public derivatives fallbacks failed: " + fallback.error,
           errorCode,

@@ -517,9 +517,10 @@ describe("Phase 105 — Security / Data Provenance", () => {
   });
 
   it("no fabricated market values", () => {
+    const now = 1_700_000_000_000;
     const health = buildRuntimeHealthSnapshot(
-      { marketDataAvailable: true, marketDataLastSuccess: Date.now() },
-      Date.now(),
+      { marketDataAvailable: true, marketDataLastSuccess: now },
+      now,
     );
     const json = JSON.stringify(health);
     expect(json).not.toContain("$");
