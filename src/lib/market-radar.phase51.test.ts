@@ -494,6 +494,8 @@ describe("D — Multi-Asset Scanning", () => {
     const intraday = result.results.get("INTRADAY")!.find(o => o.instrument === "BTC/USD")!;
     const swing = result.results.get("SWING")!.find(o => o.instrument === "BTC/USD")!;
 
+    expect(intraday.marketTimeframe).toBe("H1");
+    expect(swing.marketTimeframe).toBe("H4");
     expect(intraday.score).toBeGreaterThan(swing.score);
     expect(intraday.supportingEvidence).toContain("MTF aligned: ALIGNED_BULLISH");
     expect(swing.conflictingEvidence).toContain("MTF mixed signals");
