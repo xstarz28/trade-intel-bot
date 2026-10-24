@@ -226,7 +226,7 @@ export const fetchDerivatives = action({
           };
         }
         return {
-          success: Boolean(tokenomics.available),
+          success: Boolean(tokenomics?.available),
           tokenomics,
           error: error + " Public derivatives fallbacks failed: " + fallback.error,
           errorCode,
