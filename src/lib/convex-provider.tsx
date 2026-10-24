@@ -5,7 +5,7 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexAuthActionsContext } from "@convex-dev/auth-internal/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "@/lib/data/universal/okx-discovery";
-import { resolveAuthProviderMode } from "@/lib/auth-provider-mode";
+import { isActiveConvexUrl, resolveAuthProviderMode } from "@/lib/auth-provider-mode";
 import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 import type { AssetClass } from "@/lib/data/universal/types";
 
@@ -329,7 +329,7 @@ function MockConvexAuthProvider({ children }: { children: React.ReactNode }) {
 export function AppAuthProvider({ children }: { children: React.ReactNode }) {
   const rawUrl = import.meta.env.VITE_CONVEX_URL;
   const convexUrl = typeof rawUrl === "string" ? rawUrl.trim() : "";
-  const isConvexConfigured = isAllowedConvexCloudUrl(convexUrl);
+  const isConvexConfigured = isActiveConvexUrl(convexUrl) && isAllowedConvexCloudUrl(convexUrl);
 
   const realConvex = useMemo(() => {
     if (!isConvexConfigured) return null;
