@@ -126,7 +126,7 @@ function selectSourcesForHorizon(
   const targetDuration = RADAR_TIMEFRAME_MS[preference[0] ?? "H1"] ?? RADAR_TIMEFRAME_MS.H1!;
   const timeframeRank = (source: RadarCandidateSource): number => {
     const timeframe = normalizeRadarTimeframe(source.snapshot?.availableTimeframes?.[0]);
-    if (!timeframe) return 1000;
+    if (!timeframe || !RADAR_KNOWN_TIMEFRAMES.includes(timeframe)) return 1000;
     const preferred = preference.indexOf(timeframe);
     if (preferred >= 0) return preferred;
     const duration = RADAR_TIMEFRAME_MS[timeframe];
