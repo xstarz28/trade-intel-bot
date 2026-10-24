@@ -179,7 +179,7 @@ describe.runIf(enabled)("REAL MARKET intraday walk-forward (Yahoo Finance BTC-US
       await mkdir("artifacts/real-market-walk-forward", { recursive: true });
       await writeFile(
         `artifacts/real-market-walk-forward/BTC-USD-${dataset.timeframe}.json`,
-        JSON.stringify({ ...evidence, candles: dataset.candles }, null, 2) + "\\n",
+        JSON.stringify({ ...evidence, candles: dataset.candles }, null, 2) + "\n",
         "utf8",
       );
       console.log(`REAL_INTRADAY_WALK_FORWARD ${JSON.stringify(evidence)}`);
