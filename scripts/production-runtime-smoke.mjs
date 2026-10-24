@@ -317,6 +317,24 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   const sourceMatch = sourceRow.match(/Source:\s*(.+)$/i);
   const quality = /primary:\s*(GOOD|DEGRADED|INSUFFICIENT|STALE|UNAVAILABLE|INVALID)/i.exec(resultText)?.[1];
 
+  // TPO/VPVR are core analysis evidence, not decorative labels. Require
+  // explicit POC/VAH/VAL values when the profile is available, or an honest
+  // unavailable reason when the provider cannot support the profile.
+  const hasVpvrLevels = /vpvr\*?\s*poc:\s*[\d,.]+.*?vah:\s*[\d,.]+.*?val:\s*[\d,.]+/is.test(resultText);
+  const hasTpoLevels = /tpo\s*poc:\s*[\d,.]+.*?vah:\s*[\d,.]+.*?val:\s*[\d,.]+/is.test(resultText);
+  const vpvrUnavailable = /Volume Profile unavailable|Volume limitation: Representative positive volume is unavailable; VPVR was not fabricated/i.test(resultText);
+  const tpoUnavailable = /Volume\/TPO Profile unavailable|TPO profile unavailable/i.test(resultText);
+  const profileEvidence = {
+    vpvr: hasVpvrLevels ? "available" : vpvrUnavailable ? "explicitly unavailable" : "missing values and missing reason",
+    tpo: hasTpoLevels ? "available" : tpoUnavailable ? "explicitly unavailable" : "missing values and missing reason",
+  };
+  if (instrument === "BTC/USD" && !hasVpvrLevels && !vpvrUnavailable) {
+    throw new Error(`BTC/USD result omitted VPVR POC/VAH/VAL and did not explain why the profile is unavailable.\\n${resultText.slice(0, 2400)}`);
+  }
+  if (instrument === "XAU/USD" && !hasTpoLevels && !tpoUnavailable) {
+    throw new Error(`XAU/USD result omitted TPO POC/VAH/VAL and did not explain why the profile is unavailable.\\n${resultText.slice(0, 2400)}`);
+  }
+
   // Fail closed on stale primary data: a visible stale snapshot must never
   // coexist with an actionable LONG/SHORT plan, even if other checks pass.
   if (quality === "STALE") {
@@ -382,6 +400,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     source: sourceMatch?.[1]?.trim() ?? null,
     primaryDataQuality: quality ?? null,
     cryptoIntelligence,
+    profileEvidence,
     resultText: resultText.slice(0, 7000),
     resultVisible: true,
   };
