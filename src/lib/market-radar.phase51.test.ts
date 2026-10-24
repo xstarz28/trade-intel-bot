@@ -44,8 +44,11 @@ import {
 // ── Candidate Builder ──
 import {
   buildRadarCandidate,
+  toRadarCandidateSource,
   type RadarCandidateSource,
 } from "./market-radar/candidate-builder";
+import type { LiveCandidateSource } from "./liveCandidateBuilder";
+import type { TechnicalData } from "./data/market-types";
 
 // ── Radar Engine ──
 import {
@@ -177,6 +180,46 @@ describe("A — Empty Analysis History", () => {
     expect(candidate.setupDirection).toBe("short");
     expect(candidate.setupStrength).toBe(71);
     expect(candidate.confluenceCount).toBe(4);
+  });
+
+  it("derives radar setup evidence from matching live technical data", () => {
+    const technical = {
+      structure: "LH/LL",
+      bosDirection: "bearish",
+      rsi14: 32,
+      macdHistogram: -1,
+      volumeTrend: "increasing",
+      swingHighs: [],
+      swingLows: [],
+      supportLevels: [],
+      resistanceLevels: [],
+      dataPoints: 60,
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 65000, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+    };
+
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.setupDirection).toBe("short");
+    expect(source.setupStrength).toBeGreaterThan(35);
+    expect(source.confluenceCount).toBeGreaterThan(0);
+
+    const candidate = buildRadarCandidate(source, NOW);
+    expect(candidate.setupDirection).toBe("short");
+    expect(candidate.setupStrength).toBe(source.setupStrength);
+    expect(candidate.confluenceCount).toBe(source.confluenceCount);
   });
 
   it("candidate builder works without analysis result", () => {
