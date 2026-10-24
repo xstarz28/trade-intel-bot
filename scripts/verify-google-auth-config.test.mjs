@@ -61,9 +61,9 @@ test("rejects auth and frontend URLs that point at different deployments", () =>
 
 test("keeps the state INVALID when required fields are also missing", () => {
   const result = classifyGoogleAuthConfig({
+    ...configured,
     AUTH_GOOGLE_ID: "bad-id",
-    CONVEX_SITE_URL: "https://hushed-seal-237.convex.site",
-    SITE_URL: "https://xstarzanalysis.vercel.app",
+    AUTH_GOOGLE_SECRET: undefined,
   });
   assert.equal(result.state, "INVALID");
   assert.deepEqual(result.missing, ["AUTH_GOOGLE_SECRET"]);
