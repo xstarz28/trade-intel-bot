@@ -119,7 +119,34 @@ function aggregateHourlyToH4(hourly: OhlcvCandle[]): OhlcvCandle[] {
     });
 }
 
-const cases: Array<{ timeframe: Timeframe; candles: OhlcvCandle[]; source: string }> = [];
+/** Aggregate only complete, contiguous hourly bars into UTC-aligned daily bars. */
+function aggregateHourlyToD1(hourly: OhlcvCandle[]): OhlcvCandle[] {
+  const dayMs = 24 * 60 * 60 * 1000;
+  const groups = new Map<number, OhlcvCandle[]>();
+  for (const candle of hourly) {
+    const bucket = Math.floor(candle.timestamp / dayMs) * dayMs;
+    const group = groups.get(bucket) ?? [];
+    group.push(candle);
+    groups.set(bucket, group);
+  }
+  return [...groups.entries()]
+    .sort(([a], [b]) => a - b)
+    .flatMap(([timestamp, group]): OhlcvCandle[] => {
+      group.sort((a, b) => a.timestamp - b.timestamp);
+      if (group.length !== 24) return [];
+      for (let i = 1; i < group.length; i++) {
+        if (group[i].timestamp - group[i - 1].timestamp !== 60 * 60 * 1000) return [];
+      }
+      return [{
+        timestamp,
+        open: group[0].open,
+        high: Math.max(...group.map((c) => c.high)),
+        low: Math.min(...group.map((c) => c.low)),
+        close: group[group.length - 1].close,
+        volume: group.reduce((sum, c) => sum + c.volume, 0),
+      }];
+    });
+}
 
 describe.runIf(enabled)("REAL MARKET intraday walk-forward (Yahoo Finance BTC-USD)", () => {
   it("runs the production analysis engine on M15, H1 and H4 data", async () => {
@@ -128,10 +155,17 @@ describe.runIf(enabled)("REAL MARKET intraday walk-forward (Yahoo Finance BTC-US
       loadYahooIntradayCandles("60m"),
     ]);
     const h4 = aggregateHourlyToH4(hourly);
-    const datasets: Array<{ timeframe: Timeframe; candles: OhlcvCandle[]; source: string }> = [
-      { timeframe: "M15", candles: m15, source: "Yahoo Finance 15m" },
-      { timeframe: "H1", candles: hourly, source: "Yahoo Finance 60m" },
-      { timeframe: "H4", candles: h4, source: "H4 aggregated from four completed Yahoo Finance 60m candles" },
+    const d1 = aggregateHourlyToD1(hourly);
+    const datasets: Array<{
+      timeframe: Timeframe;
+      candles: OhlcvCandle[];
+      source: string;
+      higherTimeframe: Timeframe;
+      higherTimeframeCandles: OhlcvCandle[];
+    }> = [
+      { timeframe: "M15", candles: m15, source: "Yahoo Finance 15m", higherTimeframe: "H1", higherTimeframeCandles: hourly },
+      { timeframe: "H1", candles: hourly, source: "Yahoo Finance 60m", higherTimeframe: "H4", higherTimeframeCandles: h4 },
+      { timeframe: "H4", candles: h4, source: "H4 aggregated from four completed Yahoo Finance 60m candles", higherTimeframe: "D1", higherTimeframeCandles: d1 },
     ];
 
     for (const dataset of datasets) {
@@ -142,6 +176,8 @@ describe.runIf(enabled)("REAL MARKET intraday walk-forward (Yahoo Finance BTC-US
         instrumentType: "crypto" satisfies InstrumentType,
         timeframe: dataset.timeframe,
         candles: dataset.candles,
+        higherTimeframe: dataset.higherTimeframe,
+        higherTimeframeCandles: dataset.higherTimeframeCandles,
         options: {
           minimumHistory: 220,
           outOfSampleStartIndex,
