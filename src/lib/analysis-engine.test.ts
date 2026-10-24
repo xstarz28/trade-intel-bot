@@ -958,3 +958,50 @@ describe("confidence", () => {
     expect(neutral.confidence).toBeLessThanOrEqual(95);
   });
 });
+
+
+describe("technical-only confluence", () => {
+  it("allows strong aligned indicators to confirm an already directional structure without creating the bias", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "1.2",
+      technicalData: {
+        swingHighs: [1.15, 1.18],
+        swingLows: [1.05, 1.1],
+        structure: "HH/HL",
+        bosDirection: "bullish",
+        supportLevels: [1.05, 1.1],
+        resistanceLevels: [1.15, 1.18],
+        volumeTrend: "unknown",
+        dataPoints: 100,
+        rsi14: 25,
+        macdHistogram: 0.02,
+        sma50: 1.1,
+        sma100: 1.0,
+      },
+    }));
+
+    expect(result.bias).toBe("Bullish");
+    expect(result.noTradeReasons.some((reason) => reason.includes("Confluence too weak"))).toBe(false);
+  });
+
+  it("does not let indicators create direction when external structure is unavailable", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "1.2",
+      technicalData: {
+        swingHighs: [],
+        swingLows: [],
+        structure: "range",
+        supportLevels: [],
+        resistanceLevels: [],
+        volumeTrend: "unknown",
+        dataPoints: 100,
+        rsi14: 25,
+        macdHistogram: 0.02,
+        sma50: 1.1,
+        sma100: 1.0,
+      },
+    }));
+
+    expect(result.bias).toBe("Neutral");
+  });
+});
